@@ -79,7 +79,9 @@ ABBREV = [
 def normalize(value) -> str:
     if not value:
         return ""
-    s = DIACRITICS.sub("", unicodedata.normalize("NFD", str(value))).lower()
+    # ı/İ fold to i first, as wine_normalize_text does (F-356).
+    s = str(value).replace("ı", "i").replace("İ", "i")
+    s = DIACRITICS.sub("", unicodedata.normalize("NFD", s)).lower()
     for pat, rep in ABBREV:
         s = pat.sub(rep, s)
     return re.sub(r"[^a-z0-9]+", " ", s).strip()

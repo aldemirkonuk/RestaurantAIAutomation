@@ -59,6 +59,15 @@ describe("registersForLabel", () => {
     expect(registersForLabel("")).toEqual([]);
     expect(registersForLabel("   ")).toEqual([]);
   });
+
+  it("reads Turkish labels the way they are printed, not only in ASCII", () => {
+    // The keywords are written folded ("raki", "cay"); the labels are not.
+    expect(registersForLabel("Rakı")).toEqual(["spirits"]);
+    expect(registersForLabel("Yeni Rakı")).toEqual(["spirits"]);
+    expect(registersForLabel("RAKI")).toEqual(["spirits"]);
+    expect(registersForLabel("Çay")).toEqual(["non_alcoholic"]);
+    expect(registersForLabel("Sıcak İçecekler · Çay")).toEqual(["non_alcoholic"]);
+  });
 });
 
 describe("registerForKind", () => {

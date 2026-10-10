@@ -126,7 +126,8 @@ const ABBREVIATIONS: ReadonlyArray<readonly [RegExp, string]> = [
 /**
  * Fold a source string down to comparable letters and digits.
  *
- * NFD + diacritic strip so "Château" and "Chateau" agree. Punctuation becomes a
+ * Turkish ı/İ fold to i, then NFD + diacritic strip, so "Château" and
+ * "Chateau" agree and so do "Karası" and "KARASI". Punctuation becomes a
  * space rather than being deleted so "Blanc de Blancs" and "Blanc-de-Blancs"
  * agree. Trade abbreviations expand before the punctuation pass, because the
  * period they end on is the thing that identifies them as abbreviations.
@@ -136,7 +137,14 @@ const ABBREVIATIONS: ReadonlyArray<readonly [RegExp, string]> = [
  */
 export function normalizeSignatureText(value?: string | null): string {
   if (!value) return "";
-  let s = value.normalize("NFD").replace(DIACRITICS, "").toLowerCase();
+  // ı has no NFD decomposition, so the strip left it and the [^a-z0-9] pass
+  // split the word on it: "Karası" became "karas", never meeting "KARASI".
+  // Fold ı and İ to i first, as foldText (../common/text-fold) does.
+  let s = value
+    .replace(/[ıİ]/g, "i")
+    .normalize("NFD")
+    .replace(DIACRITICS, "")
+    .toLowerCase();
   for (const [pattern, expansion] of ABBREVIATIONS) {
     s = s.replace(pattern, expansion);
   }

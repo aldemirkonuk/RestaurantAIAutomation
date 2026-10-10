@@ -55,6 +55,7 @@ import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
 import { queryKeys } from '@/lib/query-keys';
 import { EM, MONO, SANS, SERIF } from './format';
 import { PRICE_UOMS, PRICE_UOM_LABEL, isMultiplying, type PriceUom } from './price-unit';
+import { foldText } from '@/lib/textFold';
 
 /** What the new route answers. Four states, never collapsed into fewer. */
 export interface LastAgreementVM {
@@ -217,14 +218,14 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
   const vendors = useMemo(() => (providers.data ?? []) as Array<Record<string, any>>, [providers.data]);
 
   const matches = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = foldText(search.trim());
     if (q === '') return [];
     const taken = new Set(lines.map((l) => l.inventoryId));
     return shelf
       .filter((item) => {
         if (taken.has(item.id)) return false;
-        const name = String(item.wineName ?? '').toLowerCase();
-        const producer = String(item.producer ?? '').toLowerCase();
+        const name = foldText(String(item.wineName ?? ''));
+        const producer = foldText(String(item.producer ?? ''));
         return name.includes(q) || producer.includes(q);
       })
       .slice(0, 6);

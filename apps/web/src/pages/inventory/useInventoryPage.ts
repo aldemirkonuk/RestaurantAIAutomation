@@ -4,6 +4,7 @@ import { useInventoryData } from "../../hooks/useInventoryData";
 import { useWinesByIds } from "../../hooks/queries";
 import { mapApiWinesToUiWines } from "../../lib/wine-library";
 import { classifyStock } from "../../lib/inventoryStatus";
+import { foldText } from "../../lib/textFold";
 
 export interface InventoryItem extends Wine {
   inventoryId?: string;
@@ -242,19 +243,19 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
 
     // Search filter
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+      const query = foldText(searchQuery);
       items = items.filter(
         (item) =>
-          item.name.toLowerCase().includes(query) ||
+          foldText(item.name).includes(query) ||
           // BOTH NAMES ARE SEARCHABLE (ADR 0124, the naming rule, founder
           // 2026-09-05). `item.name` is the house's alias when it has set one,
           // so matching only on it makes the library's own name unfindable —
           // a house that renames "1988 Wine X" to "Wine X" could no longer
           // search "1988". The library name is never DISPLAYED here; it is
           // only matched.
-          ((item as any).libraryName ?? "").toLowerCase().includes(query) ||
-          item.producer.toLowerCase().includes(query) ||
-          item.grape.toLowerCase().includes(query),
+          foldText((item as any).libraryName).includes(query) ||
+          foldText(item.producer).includes(query) ||
+          foldText(item.grape).includes(query),
       );
     }
 

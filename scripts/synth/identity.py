@@ -52,7 +52,9 @@ _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 def wine_normalize_text(value: str | None) -> str:
     """Mirror of public.wine_normalize_text(text)."""
-    s = unicodedata.normalize("NFD", value or "")
+    # ı/İ fold to i first: ı has no NFD decomposition (F-356, 20261231500000).
+    s = (value or "").replace("ı", "i").replace("İ", "i")
+    s = unicodedata.normalize("NFD", s)
     s = _DIACRITICS.sub("", s)
     s = s.lower()
     for pat, rep in _EXPANSIONS:
