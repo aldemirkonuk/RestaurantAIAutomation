@@ -303,16 +303,21 @@ export class AdvancedAnalyticsService {
   private toDaily(
     rows: Array<{ date: string; value: number }>,
     days: number,
+    /** With a zone, the days end at the house's yesterday (ADR 0296). */
+    zone: string | null = null,
   ): number[] {
     const byDay = new Map<string, number>();
     for (const r of rows)
       if (r.date) byDay.set(r.date, (byDay.get(r.date) || 0) + r.value);
     const values: number[] = [];
     const today = new Date();
+    const houseDay = zone ? houseToday(zone, today) : null;
     for (let d = days; d >= 1; d--) {
-      const day = new Date(today.getTime() - d * 86400000)
-        .toISOString()
-        .substring(0, 10);
+      const day = houseDay
+        ? shiftHouseDay(houseDay, -d)
+        : new Date(today.getTime() - d * 86400000)
+            .toISOString()
+            .substring(0, 10);
       values.push(byDay.get(day) || 0);
     }
     return values;
@@ -950,9 +955,14 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getWine360(restaurantId: string, masterWineId: string) {
+    // The wine's demand days are the house's (F-928), as its forecast's are.
+    const { zone } = await readHouseZone(
+      this.dbService.getClient(),
+      restaurantId,
+    );
     const [inventory, consumption, forecast] = await Promise.all([
       this.loadInventoryWithCost(restaurantId),
-      this.loadConsumption(restaurantId, 90),
+      this.loadConsumption(restaurantId, 90, zone ? { zone } : {}),
       this.analyticsService.getDemandForecast(restaurantId, {
         masterWineId,
         horizon: 14,
@@ -969,6 +979,7 @@ export class AdvancedAnalyticsService {
         .filter((c) => c.qty != null)
         .map((c) => ({ date: c.date, value: c.qty as number })),
       90,
+      zone,
     );
     const profile = myUnits.complete ? E.demandProfile(daily) : null;
     const unmeasured = this.uncountedWines(consumption);

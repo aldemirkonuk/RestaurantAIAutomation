@@ -306,3 +306,66 @@ describe("salesDipWhen — the bands", () => {
     expect(text).not.toMatch(/tonight/i);
   });
 });
+
+/**
+ * F-926 (wave-35 sim): the generator files each sale on the house's clock
+ * (ADR 0296), so its "yesterday" is the house's. Aged on UTC, a US house's
+ * yesterday read two days old every evening and lost "Tonight". 2026-10-10
+ * 03:00 UTC is 2026-10-09 20:00 in Los Angeles.
+ */
+describe("a sales dip is aged in house days (F-926)", () => {
+  const evening = new Date("2026-10-10T03:00:00.000Z");
+  const LA = "America/Los_Angeles";
+
+  it("the house's yesterday is 1 day old in a Los Angeles evening", () => {
+    expect(salesDipWhen("d:2026-10-08", evening, LA)).toEqual({
+      urgency: "now",
+      date: "2026-10-08",
+      ageDays: 1,
+    });
+    expect(salesDipWhen("d:2026-10-09", evening, LA).ageDays).toBe(0);
+  });
+
+  it("control: with no zone the age stays UTC's", () => {
+    expect(salesDipWhen("d:2026-10-08", evening).ageDays).toBe(2);
+  });
+
+  it("the card reads the house's zone and keeps 'Tonight'", async () => {
+    jest.useFakeTimers({
+      now: evening,
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "setTimeout",
+        "setInterval",
+        "queueMicrotask",
+      ],
+    });
+    try {
+      const service = makeService([
+        dip({ subject: "Thursday", periodKey: "d:2026-10-08" }),
+      ]);
+      // The house row answers its zone; every other read answers empty.
+      const db = (service as any).dbService;
+      const from = db.supabase.from;
+      const withZone = {
+        from: (table: string) => {
+          const b = from(table);
+          b.maybeSingle = async () => ({
+            data: table === "restaurants" ? { timezone: LA } : null,
+            error: null,
+          });
+          return b;
+        },
+      };
+      db.supabase = withZone;
+      db.getClient = () => withZone;
+      const out = await service.getRecommendations("r-1");
+      const entry = out.recommendations.find((r) => r.ruleKey === RULE);
+      expect(entry?.urgency).toBe("now");
+      expect(entry?.recommendation).toMatch(/^Tonight:/);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
