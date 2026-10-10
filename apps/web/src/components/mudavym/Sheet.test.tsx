@@ -707,6 +707,31 @@ describe('the scrim, the name and the nudge', () => {
     expect(screen.getByRole('button', { name: 'Close Theme' })).toBeInTheDocument();
   });
 
+  /* F-223: a 440 px popover on a 375 px phone ran 81 px off the right edge. */
+  it('caps a popover to the screen on a phone, 16 px clear on both edges', () => {
+    const was = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+    try {
+      function P() {
+        const anchor = useRef<HTMLButtonElement>(null);
+        return (
+          <div className="mudavym">
+            <button type="button" ref={anchor}>invite</button>
+            <Popover open anchorRef={anchor} onClose={() => {}} label="Invite" width={440}>
+              <button type="button">Done</button>
+            </Popover>
+          </div>
+        );
+      }
+      render(<P />);
+      const panel = screen.getByRole('dialog', { name: 'Invite' });
+      expect(panel.style.width).toBe('343px');
+      expect(panel.style.left).toBe('16px');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: was });
+    }
+  });
+
   /* Judge probe J7: the "reads like a title" nudge fired for a menu. */
   it('does not nudge a popover or a menu to write a contract sentence', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

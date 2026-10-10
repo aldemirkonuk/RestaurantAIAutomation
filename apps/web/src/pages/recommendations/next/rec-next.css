@@ -362,6 +362,9 @@ p.rc-delta { margin: 0 0 12px; }
   padding: 10px 14px; border-radius: 10px;
   border: 1px solid var(--seal-ring, rgba(26, 94, 107, 0.32)); background: var(--paper-1, #f3efe6);
 }
+/* On a phone the four doors are fixed over the page foot (57 px, z 40,
+   house-shell.css); the bar rides above them, or it is painted behind them. */
+body:has(.mdv-doors) .rc-bulk { bottom: calc(69px + env(safe-area-inset-bottom, 0px)); z-index: 41; }
 .rc-bulk span { font-size: 12px; color: var(--ink-2, #4f473c); }
 .rc-foot {
   margin-top: 34px; padding-top: 12px; border-top: 1px solid var(--paper-2, #eae4d8);

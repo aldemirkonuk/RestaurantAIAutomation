@@ -376,8 +376,8 @@ function useAnchoredPosition(
   open: boolean,
   anchorRef: RefObject<HTMLElement | null> | undefined,
   width: number,
-): { top: number; left: number } | null {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+): { top: number; left: number; width: number } | null {
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   useLayoutEffect(() => {
     if (!open || !anchorRef?.current) {
       setPos(null);
@@ -387,11 +387,14 @@ function useAnchoredPosition(
       const el = anchorRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      let left = Math.max(16, r.right - width);
-      if (left + width > window.innerWidth - 16) {
-        left = Math.max(16, window.innerWidth - width - 16);
+      // On a phone a 440 px popover is wider than the screen: cap it so both
+      // edges keep 16 px, or its right side (Close, the action row) is cut off.
+      const w = Math.min(width, window.innerWidth - 32);
+      let left = Math.max(16, r.right - w);
+      if (left + w > window.innerWidth - 16) {
+        left = Math.max(16, window.innerWidth - w - 16);
       }
-      setPos({ top: r.bottom + 10, left });
+      setPos({ top: r.bottom + 10, left, width: w });
     };
     update();
     window.addEventListener('resize', update);
@@ -1003,7 +1006,7 @@ function OverlayRoot({
         style={
           shape === 'popover'
             ? {
-                width,
+                width: pos?.width ?? width,
                 top: pos?.top ?? 0,
                 left: pos?.left ?? 0,
                 // `opacity`, NOT `visibility`: a `visibility: hidden` subtree

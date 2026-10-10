@@ -32,6 +32,17 @@ body:has(.mdv-doors) .mdv-offlinebar {
   bottom: calc(57px + env(safe-area-inset-bottom, 0px));
 }
 
+/* On a phone the page's foot padding clears only the doors (64 px,
+   house-shell.css); while a bar is up it clears the bar too (about 30 px
+   each), so the last control on the page is not under it. */
+body:has(.mdv-offlinebar) .mdv-shell[data-phone='true'] .mdv-shell__page {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+
+body:has(.mdv-offlinebar + .mdv-offlinebar) .mdv-shell[data-phone='true'] .mdv-shell__page {
+  padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+}
+
 .mdv-offlinebar__word {
   font-weight: 600;
   text-transform: uppercase;
