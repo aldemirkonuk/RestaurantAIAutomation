@@ -16,6 +16,8 @@ const auth = vi.hoisted(() => ({
   uid: 'user-1' as string | null,
 }));
 
+const zoneSaid = vi.hoisted(() => ({ zone: 'UTC' }));
+
 const api = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
@@ -69,7 +71,7 @@ vi.mock('@/services/api/restaurants', () => ({
   restaurantsApi: {
     getOperatingHours: vi.fn(async () => ({
       restaurantId: 'rest-house-1',
-      timezone: 'UTC',
+      timezone: zoneSaid.zone,
       operatingHours: null,
       updatedAt: null,
     })),
@@ -89,6 +91,7 @@ vi.mock('@/hooks/useCellarRegisters', () => ({
 }));
 
 import { useSettingsNextData } from './useSettingsNextData';
+import { forgetHouseZones, useHouseZone } from '@/lib/houseZone';
 import SettingsNext from './SettingsNext';
 
 function icalGets() {
@@ -98,6 +101,8 @@ function icalGets() {
 }
 
 beforeEach(() => {
+  zoneSaid.zone = 'UTC';
+  forgetHouseZones();
   auth.role = 'owner';
   auth.rid = 'rest-house-1';
   auth.uid = 'user-1';
@@ -279,5 +284,40 @@ describe('useSettingsNextData — a save that answers after a house switch (F-62
     auth.rid = 'rest-house-1';
     rerender();
     await waitFor(() => expect(result.current.writer.failed).toBeNull());
+  });
+});
+
+describe('useSettingsNextData — a recorded time zone reaches the rest of the app (F-995)', () => {
+  it('a page already showing the old zone moves to the new one without a reload', async () => {
+    localStorage.setItem('activeRestaurantId', 'rest-house-1');
+    try {
+      const { result } = renderHook(() => ({ data: useSettingsNextData(), zone: useHouseZone() }));
+      await waitFor(() => expect(result.current.zone).toBe('UTC'));
+      zoneSaid.zone = 'Europe/Istanbul';
+      api.put.mockResolvedValueOnce({ data: null });
+      await act(async () => {
+        await result.current.data.saveTimeZone('Europe/Istanbul');
+      });
+      await waitFor(() => expect(result.current.zone).toBe('Europe/Istanbul'));
+    } finally {
+      localStorage.removeItem('activeRestaurantId');
+    }
+  });
+});
+
+describe('useSettingsNextData — the point-of-sale register reads each till\'s switch (F-996)', () => {
+  it('carries the refused tills, and a failed switch read leaves the check count standing', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/pos-hub/connections/rest-house-1') {
+        return { data: { connections: [{ provider: 'square', providerName: 'Square', enabled: false, changedAt: null }] } };
+      }
+      return { data: null };
+    });
+    const { result } = renderHook(() => useSettingsNextData());
+    await waitFor(() => expect(result.current.pos.status).toBe('ok'));
+    expect(result.current.pos.data?.feeds).toEqual([
+      { provider: 'square', providerName: 'Square', enabled: false, changedAt: null },
+    ]);
+    expect(result.current.pos.data?.feedsError).toBeNull();
   });
 });

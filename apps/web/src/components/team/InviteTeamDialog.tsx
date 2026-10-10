@@ -3,13 +3,14 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
 import { Check, Copy, X, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
 import { Button } from '../ui/button'
 import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
 import { apiClient, getErrorMessage } from '../../services/api/client'
 import { Panel, Popover } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import { invitationEmailSentence, type InvitationEmailOutcome } from '../../lib/inviteMailSecret'
+import { useHouseZone } from '../../lib/houseZone'
+import { fmtExpiry } from '../../pages/settings/next/st-format'
 
 interface InviteTeamDialogProps {
   open: boolean
@@ -58,6 +59,8 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   const [invite, setInvite] = useState<GeneratedInvite | null>(null)
   const [copied, setCopied] = useState(false)
   const anchorPos = useAnchoredDialogPosition(open, anchorRef)
+  // F-997: the expiry on the house clock, worded as Settings › Team words it.
+  const zone = useHouseZone()
   const shell = useMudavymShell()
 
   const handleGenerate = async () => {
@@ -184,8 +187,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
           </p>
         )}
         <p className="mdv-hintline" style={{ margin: 0 }}>
-          Share this link with your team member. It expires{' '}
-          {format(new Date(invite.expiresAt), 'MMM d, yyyy')}.
+          Share this link with your team member. {fmtExpiry(invite.expiresAt, zone)}.
         </p>
         <div className="mdv-panelbox">
           <span className="mdv-label">Invite code</span>
@@ -327,8 +329,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
                   </p>
                 )}
                 <p className="text-sm text-gray-500 mb-4">
-                  Share this link with your team member. It expires{' '}
-                  {format(new Date(invite.expiresAt), 'MMM d, yyyy')}.
+                  Share this link with your team member. {fmtExpiry(invite.expiresAt, zone)}.
                 </p>
 
                 {/* Invite code display */}

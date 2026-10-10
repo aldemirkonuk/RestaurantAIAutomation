@@ -173,3 +173,26 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
     expect(localStorage.getItem("accessToken")).toBe(TOKEN_B);
   });
 });
+
+describe("AuthContext — a switch that happened is reported as happened (F-994)", () => {
+  it("returns true when the new session is stored but /auth/me then fails", async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    mockApi.post.mockResolvedValueOnce({
+      data: { accessToken: TOKEN_B, refreshToken: "refresh-b" },
+    });
+    mockApi.get.mockImplementation(async (url: string) => {
+      if (url === "/api/v1/auth/me") throw new Error("503 from the gateway");
+      return { data: [] };
+    });
+    let switched: boolean | undefined;
+    await act(async () => {
+      switched = await result.current.setActiveRestaurantId(BRANCH_B);
+    });
+    // The page is in B: the switcher must not say "You're still in A".
+    expect(switched).toBe(true);
+    expect(result.current.activeRestaurantId).toBe(BRANCH_B);
+    expect(localStorage.getItem("accessToken")).toBe(TOKEN_B);
+  });
+});

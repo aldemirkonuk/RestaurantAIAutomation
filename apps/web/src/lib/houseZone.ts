@@ -43,9 +43,18 @@ export function readHouseZone(restaurantId: string): Promise<string | null> {
   return read;
 }
 
-/** Test seam: forget every remembered read. */
-export function forgetHouseZones(): void {
-  reads.clear();
+/** Mounted `useHouseZone` callers, told when a remembered zone is dropped. */
+const listeners = new Set<() => void>();
+
+/**
+ * Forget the remembered zone of one house, or of every house, and have every
+ * mounted reader read it again. Called when a zone is recorded (F-995) and at
+ * a house switch; without it a page kept the old zone until a full reload.
+ */
+export function forgetHouseZones(restaurantId?: string): void {
+  if (restaurantId) reads.delete(restaurantId);
+  else reads.clear();
+  for (const told of [...listeners]) told();
 }
 
 /**
@@ -55,6 +64,14 @@ export function forgetHouseZones(): void {
 export function useHouseZone(): string | null | undefined {
   const rid = activeHouseId();
   const [said, setSaid] = useState<{ rid: string; zone: string | null } | undefined>(undefined);
+  const [epoch, setEpoch] = useState(0);
+  useEffect(() => {
+    const told = () => setEpoch((n) => n + 1);
+    listeners.add(told);
+    return () => {
+      listeners.delete(told);
+    };
+  }, []);
   useEffect(() => {
     if (!rid) return;
     let live = true;
@@ -64,7 +81,7 @@ export function useHouseZone(): string | null | undefined {
     return () => {
       live = false;
     };
-  }, [rid]);
+  }, [rid, epoch]);
   if (!rid) return null;
   return said && said.rid === rid ? said.zone : undefined;
 }

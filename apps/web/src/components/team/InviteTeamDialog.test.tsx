@@ -17,12 +17,19 @@ import { InviteTeamDialog } from './InviteTeamDialog'
 import { apiClient } from '../../services/api/client'
 import { toast } from 'sonner'
 import { claimMudavymShell, resetMudavymShell } from '../../lib/mudavym/shellGround'
+import { forgetHouseZones } from '../../lib/houseZone'
+import { fmtExpiry } from '../../pages/settings/next/st-format'
 
 vi.mock('../../services/api/client', () => ({
   apiClient: { post: vi.fn() },
   getErrorMessage: (e: unknown) => String(e),
 }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+// F-997: the expiry is worded on the house's clock; the zone is read once per house.
+const houseZoneSaid = vi.hoisted(() => ({ zone: null as string | null }))
+vi.mock('../../services/api/restaurants', () => ({
+  restaurantsApi: { getOperatingHours: vi.fn(async () => ({ timezone: houseZoneSaid.zone })) },
+}))
 
 const LEGACY_OVERLAY = 'fixed inset-0 bg-black/30 z-50'
 const LEGACY_CENTERED =
@@ -148,19 +155,51 @@ describe('with a Mudavym page on screen', () => {
   })
 
   it('states the expiry in words once a link is generated, on both branches', async () => {
-    // The code and the URL are useless without the date the recipient is racing;
-    // "single-use, 7 days" before, an actual day after.
-    draw(true, { anchored: true })
-    expect(screen.getByText(/expires in 7 days/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
-    await waitFor(() => expect(screen.getByText('AB12CD34')).toBeInTheDocument())
-    expect(screen.getByText(/It expires Sep 11, 2026\./)).toBeInTheDocument()
+    // The code and the URL are useless without the time the recipient is racing;
+    // "single-use, 7 days" before, the invite's own expiry after.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-04T18:00:00.000Z'))
+    try {
+      draw(true, { anchored: true })
+      expect(screen.getByText(/expires in 7 days/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
+      await waitFor(() => expect(screen.getByText('AB12CD34')).toBeInTheDocument())
+      expect(screen.getByText(/member\. Expires in 7 days\./)).toBeInTheDocument()
 
-    resetMudavymShell()
-    draw(false)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Generate Invite Link' })[0])
-    await waitFor(() => expect(screen.getAllByText('AB12CD34').length).toBeGreaterThan(0))
-    expect(screen.getAllByText(/It expires Sep 11, 2026\./).length).toBeGreaterThan(0)
+      resetMudavymShell()
+      draw(false)
+      fireEvent.click(screen.getAllByRole('button', { name: 'Generate Invite Link' })[0])
+      await waitFor(() => expect(screen.getAllByText('AB12CD34').length).toBeGreaterThan(0))
+      expect(screen.getAllByText(/member\. Expires in 7 days\./).length).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("dates the expiry on the house's clock, the way Settings › Team does (F-997)", async () => {
+    // Device: New York (the suite's zone). House: Tokyo. 28 hours to go is
+    // "tomorrow" on the device and two days off on the house's calendar.
+    const now = new Date('2026-10-10T12:00:00.000Z')
+    const expiresAt = '2026-10-11T16:00:00.000Z'
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
+    forgetHouseZones()
+    houseZoneSaid.zone = 'Asia/Tokyo'
+    localStorage.setItem('activeRestaurantId', 'rest-1')
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { ...INVITE, expiresAt } } as never)
+    try {
+      draw(true, { anchored: true })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
+      const house = fmtExpiry(expiresAt, 'Asia/Tokyo', now.getTime())
+      expect(house).toMatch(/^Expires in 2 days/)
+      await waitFor(() => expect(screen.getByText(`Share this link with your team member. ${house}.`)).toBeInTheDocument())
+      expect(screen.queryByText(/Expires tomorrow/)).toBeNull()
+    } finally {
+      localStorage.removeItem('activeRestaurantId')
+      houseZoneSaid.zone = null
+      forgetHouseZones()
+      vi.useRealTimers()
+    }
   })
 })
 

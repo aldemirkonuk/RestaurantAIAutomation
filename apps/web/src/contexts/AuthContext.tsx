@@ -43,6 +43,7 @@ import {
   signOutWarning,
 } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
+import { forgetHouseZones } from "../lib/houseZone";
 import { ensurePersisted } from "../lib/deviceStorage";
 import { HouseMovedElsewhere } from "./HouseMovedElsewhere";
 
@@ -882,6 +883,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // before anything renders under the new name (PROCURE-04, MENU-01,
         // OPS-03). Same tick as the state below, so no read lands between.
         forgetHouseReads(queryClient);
+        // The house zone is read once per house; a switch reads it afresh, so
+        // a zone recorded elsewhere since is not kept (F-995).
+        forgetHouseZones();
         setHouseReadsForgotten((n) => n + 1);
         setHouseMovedTo(null);
         setActiveRestaurantIdState(house);
@@ -891,8 +895,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // The role is the role in THIS house now; `/auth/me` reads it from the
         // new session. Until it answers, `user` below carries no role (F-192).
-        const me = await api.get("/api/v1/auth/me");
-        setUser(userFrom(me.data.user, accessToken));
+        // The switch has happened by now: a failed read here is "role not
+        // read yet", never a refusal (F-994). The role effect above reads
+        // this house's role on its own.
+        try {
+          const me = await api.get("/api/v1/auth/me");
+          setUser(userFrom(me.data.user, accessToken));
+        } catch (err) {
+          console.warn("Opened the house; its role is not read yet", err);
+        }
         return true;
       } catch (err) {
         // A refused switch stays in the current house and says so. This used

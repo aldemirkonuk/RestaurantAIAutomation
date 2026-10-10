@@ -70,6 +70,7 @@ import {
   type OperatingHoursResponse,
 } from '@/services/api/restaurants';
 import type { UserPreferences } from '@/hooks/useUserPreferences';
+import { forgetHouseZones } from '@/lib/houseZone';
 import { errText, httpStatus, type TermSource } from './st-format';
 
 /* ── Remote ──────────────────────────────────────────────────────────────── */
@@ -262,6 +263,21 @@ export interface PosRegister {
   status: PosStatusResponse | null;
   /** The status read failed on its own; the provider list still answered. */
   statusError: string | null;
+  /**
+   * Each till's switch, `GET /pos-hub/connections/:rid` (F-914): which feeds
+   * the house refuses. Its own read, so a failure leaves the rest standing
+   * (F-996). Absent when it was not read.
+   */
+  feeds?: TillFeed[] | null;
+  feedsError?: string | null;
+}
+
+/** One provider's switch as `GET /pos-hub/connections/:rid` returns it. */
+export interface TillFeed {
+  provider: string;
+  providerName: string;
+  enabled: boolean;
+  changedAt: string | null;
 }
 
 export interface IntegrationsRegister {
@@ -678,12 +694,20 @@ export function useSettingsNextData() {
 
   const pos = useRemote<PosRegister>(tenantKey('pos'), async () => {
     const providers = await getPosProviders();
-    try {
-      const status = await getPosStatus(rid as string);
-      return { providers, status, statusError: null };
-    } catch (e) {
-      return { providers, status: null, statusError: errText(e) };
-    }
+    const [status, feeds] = await Promise.allSettled([
+      getPosStatus(rid as string),
+      apiClient.get<{ connections?: unknown }>(`/pos-hub/connections/${rid}`).then(({ data }) => {
+        if (!Array.isArray(data?.connections)) throw new Error('the answer was not a list of tills');
+        return data.connections as TillFeed[];
+      }),
+    ]);
+    return {
+      providers,
+      status: status.status === 'fulfilled' ? status.value : null,
+      statusError: status.status === 'rejected' ? errText(status.reason) : null,
+      feeds: feeds.status === 'fulfilled' ? feeds.value : null,
+      feedsError: feeds.status === 'rejected' ? errText(feeds.reason) : null,
+    };
   });
 
   // One preferences record serves three registers; the key is shared so moving
@@ -1069,8 +1093,11 @@ export function useSettingsNextData() {
         // The Hours register prints the same column and tags it from this
         // register (ADR 0304, `hoursTimezoneCert`); re-read it so the two agree.
         hours.reload();
+        // Every page's "today" reads the zone once per house (lib/houseZone);
+        // drop that copy so they move to the zone just recorded (F-995).
+        forgetHouseZones(rid ?? undefined);
       }),
-    [writer, houseTimeZone, ledger, hours],
+    [writer, houseTimeZone, ledger, hours, rid],
   );
 
   /** Turn Jev's reading of vendor mail on or off — a person's press, never a default. */
