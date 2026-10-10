@@ -1087,7 +1087,17 @@ export function applyCurrencyRules(args: {
     fileField,
   });
 
-  if (filed.kind === "none") return withholdMoney(doc, filed.because);
+  // VEN-W13 (founder, 2026-10-01). Which rung filed the currency, as a word,
+  // and the code the paper itself stated — kept on the record so a vendor's
+  // usual currency is counted from what invoices PRINTED, never from prose
+  // and never from the house's own code standing in for one.
+  const filedTag = {
+    currencyFiledKind: filed.kind,
+    currencyFiledCode: filed.kind === "file" ? filed.code : null,
+  } as const;
+
+  if (filed.kind === "none")
+    return withholdMoney({ ...doc, ...filedTag }, filed.because);
 
   // B3. Only reachable when the file itself stated a code — `orderDisagreement`
   // returns null otherwise — so a document filed FROM the order can never
@@ -1100,7 +1110,7 @@ export function applyCurrencyRules(args: {
   });
   if (versusOrder)
     return withholdMoney(
-      { ...doc, currency: filed.code, currencyFiledFrom: filed.from },
+      { ...doc, ...filedTag, currency: filed.code, currencyFiledFrom: filed.from },
       versusOrder,
     );
 
@@ -1134,6 +1144,7 @@ export function applyCurrencyRules(args: {
     // the model" — an absence stated is not an absence assumed.
     return {
       ...doc,
+      ...filedTag,
       currency: filed.code,
       currencyFiledFrom: from,
       warnings,
@@ -1143,12 +1154,13 @@ export function applyCurrencyRules(args: {
   const agreement = currencyAgreement(filed.code, seen);
   if (agreement.kind === "disagrees")
     return withholdMoney(
-      { ...doc, currency: filed.code, currencyFiledFrom: from, warnings },
+      { ...doc, ...filedTag, currency: filed.code, currencyFiledFrom: from, warnings },
       agreement.sentence,
     );
 
   return {
     ...doc,
+    ...filedTag,
     currency: filed.code,
     currencyFiledFrom: from,
     warnings:

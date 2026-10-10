@@ -12,6 +12,7 @@
  * item 4's filter-bar row, not something to guess at from one caller.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,7 +21,7 @@ import {
   addProviderFromCatalogue,
   type VendorCatalogueEntry,
 } from '../../../services/api/vendors';
-import { EM, MONO, SANS } from './pv-format';
+import { EM, houseMessage, MONO, SANS } from './pv-format';
 import { SCOPE_LABEL, listedTag, wineSearchable, type VendorScope } from './vendor-scope';
 import type { VendorScopes, CatalogueSearch, BookSearch } from './useVendorScopes';
 
@@ -128,6 +129,14 @@ function fmtReadAt(iso: string | null): string | null {
  * showing what the person expected. Never silent: a widened default says so, an
  * unanswerable menu rung says why, and a failed read says it failed.
  */
+/**
+ * The menu match reads wines only (`vendor-menu-supply.ts` keys every piece of
+ * evidence on `master_wine_id`), and the house sells every drink and then food
+ * (founder 2026-10-01). Said, so a beer vendor missing from "Supplies my menu"
+ * does not read as a vendor who supplies nothing on it (VEN-W33).
+ */
+const WINES_ONLY = 'Only wines are matched so far — beer, spirits, other drinks and food on the menu are not counted yet.';
+
 export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
   const { scope, reason, supply } = scopes;
   if (scope === 'find') return null;
@@ -148,7 +157,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
       : reason === 'menu-unlinked'
         ? 'None of your current menu’s lines is linked to a wine yet, so no vendor can be matched to it'
         : reason === 'unreadable' && supply.status === 'error'
-          ? `Which vendors supply your menu could not be worked out (${supply.message})`
+          ? `Which vendors supply your menu could not be worked out${supply.message ? ` (${supply.message})` : ''}`
           : null;
 
   if (scope === 'all') {
@@ -158,6 +167,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
     return (
       <p role="status" data-testid="scope-widened" style={note}>
         {why} — showing all your vendors.{' '}
+        {reason === 'menu-unlinked' && <>{WINES_ONLY} </>}
         {reason === 'no-menu' && readMenu}
         {reason === 'unreadable' && retry}
       </p>
@@ -188,7 +198,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
     return (
       <p role="status" data-testid="scope-menu-empty" style={note}>
         None of your vendors has a price in the last {windowDays} days, an order, or a stock line
-        for any of the {menu.wines} wine{menu.wines === 1 ? '' : 's'} on your current menu.{' '}
+        for any of the {menu.wines} wine{menu.wines === 1 ? '' : 's'} on your current menu. {WINES_ONLY}{' '}
         <button type="button" style={linkBtn} onClick={() => scopes.choose('all')}>
           See all your vendors
         </button>
@@ -200,7 +210,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
       Vendors with a price in the last {windowDays} days, an order, or a stock line for one of the{' '}
       {menu.wines} wine{menu.wines === 1 ? '' : 's'} on your current menu
       {menu.menus > 1 ? ` (${menu.menus} menus are marked current; all are read)` : ''}
-      {readAt ? `, current since ${readAt}` : ''}.
+      {readAt ? `, current since ${readAt}` : ''}. {WINES_ONLY}
     </p>
   );
 }
@@ -247,7 +257,7 @@ export function BookSearchBar({ book, shown }: { book: BookSearch; shown: number
     } else if (w.status === 'error') {
       line = (
         <p role="alert" data-testid="book-wine-failed" style={note}>
-          The wine search could not run ({w.message}) — only vendor names are matched below. That is a failed
+          The wine search could not run{w.message ? ` (${w.message})` : ''} — only vendor names are matched below. That is a failed
           search, not a wine nobody sold you.
         </p>
       );
@@ -331,6 +341,7 @@ export function FindNewVendors({
   const [adding, setAdding] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(() => new Set());
   const [addError, setAddError] = useState<string | null>(null);
+  const canChange = useCanChangeVendors();
 
   const add = async (v: CatalogueVendorLike) => {
     setAdding(v.id);
@@ -343,8 +354,8 @@ export function FindNewVendors({
       if (status === 409) {
         setAdded((s) => new Set(s).add(v.id));
       } else {
-        const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-        setAddError(`${v.name} could not be added (${typeof msg === 'string' && msg ? msg : 'unknown error'}).`);
+        const msg = houseMessage(e, '');
+        setAddError(`${v.name} could not be added${msg ? ` (${msg})` : ''}. Nothing was added; try again.`);
       }
     } finally {
       setAdding(null);
@@ -391,7 +402,9 @@ export function FindNewVendors({
       </div>
       <p id="find-country-hint" style={quiet}>
         The curated catalogue — vendors a person has checked, listed by two-letter country code.
-        Adding one puts it in your own book; nothing is sent to the vendor.{' '}
+        {canChange
+          ? ' Adding one puts it in your own book; nothing is sent to the vendor.'
+          : ' A manager or an owner adds one to your book.'}{' '}
         <span data-testid="find-country-basis">{countryHint(find)}</span>
       </p>
 
@@ -405,7 +418,7 @@ export function FindNewVendors({
       {find.status === 'loading' && !result && <p style={quiet}>Searching the catalogue…</p>}
       {find.status === 'error' && (
         <p role="alert" style={note}>
-          The catalogue could not be searched ({find.message}). That is a failed search, not an empty
+          The catalogue could not be searched{find.message ? ` (${find.message})` : ''}. That is a failed search, not an empty
           catalogue.
         </p>
       )}
@@ -457,6 +470,8 @@ function CatalogueRow({
   onAdd: () => void;
   tag?: string;
 }) {
+  // VEN-W30: staff read the catalogue; only owners and managers add from it.
+  const canChange = useCanChangeVendors();
   return (
     <li
       data-testid={tag ? 'find-wine-row' : 'find-row'}
@@ -499,7 +514,7 @@ function CatalogueRow({
       </div>
       {yours ? (
         <span style={{ fontSize: 12, color: 'var(--ink-4, #665D50)' }}>In your vendors</span>
-      ) : (
+      ) : canChange && (
         <button
           type="button"
           onClick={onAdd}
@@ -554,7 +569,7 @@ function CatalogueWineResults({
   if (w.status === 'error') {
     return (
       <p role="alert" data-testid="find-wine-failed" style={note}>
-        The wine search could not run ({w.message}). That is a failed search, not a wine no vendor lists.
+        The wine search could not run{w.message ? ` (${w.message})` : ''}. That is a failed search, not a wine no vendor lists.
       </p>
     );
   }

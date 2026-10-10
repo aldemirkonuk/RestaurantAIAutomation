@@ -3,6 +3,7 @@ import { ForbiddenException } from "@nestjs/common";
 import { ProviderIntelligenceController } from "./provider-intelligence.controller";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { DatabaseService } from "../database/database.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
 /**
@@ -32,6 +33,7 @@ describe("ProviderIntelligenceController — refuses a tenantless session before
           useValue: mockIntelligenceService,
         },
         { provide: DatabaseService, useValue: {} },
+        { provide: OrganizationsService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

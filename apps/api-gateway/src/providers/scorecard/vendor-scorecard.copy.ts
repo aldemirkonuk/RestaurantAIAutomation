@@ -3,8 +3,9 @@
  *
  * The founder, 2026-09-21 (question 7): "english +TR formats and other
  * languages possiblee for others like japanese, italian, chinese etc." So the
- * words are English, the numbers, dates and money are formatted in the house's
- * own locale through `Intl` (`common/house-frame.ts` finds it), and every
+ * words are English, the numbers and money are formatted in the house's
+ * own locale through `Intl` (`common/house-frame.ts` finds it) — dates are
+ * written out in English, "Sep 13, 2026" (VEN-W23, 2026-10-01) — and every
  * user-facing string this read sends is HERE — the measure names, the
  * sentences, the refusals, the Docket's entry texts and the errors — so a
  * translation layer can take this one file later. No i18n framework is built.
@@ -18,6 +19,7 @@
  */
 
 import type { HouseFrame } from "../../common/house-frame";
+import { calendarDayWords } from "../house-day";
 import { INCOMPLETE_AFTER_DAYS } from "../../procurement/overdue-order";
 
 const INCOMPLETE_DAYS = INCOMPLETE_AFTER_DAYS;
@@ -35,7 +37,12 @@ export interface Fmt {
   pct1(fraction: number): string;
   /** Money in its currency; a bare amount when none is recorded — never a guessed dollar. */
   money(amount: number, currency: string | null): string;
-  /** A calendar date (`YYYY-MM-DD`), all numerals, in the house's order; ISO when the house names no locale. */
+  /**
+   * A calendar date (`YYYY-MM-DD`, already the house's day) in English words —
+   * "Sep 13, 2026". VEN-W23 (founder, 2026-10-01): dates on the vendor sheet
+   * are written out, whatever the house's locale, so "09/10" can never be read
+   * two ways. Numbers and money keep the house's locale.
+   */
   date(dateOnly: string): string;
   /** Hours as words a person reads: `40 min`, `5 h 40`, `3 d`. */
   hours(h: number): string;
@@ -65,14 +72,6 @@ export function makeFmt(locale: string | null): Fmt {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const dates = locale
-    ? new Intl.DateTimeFormat(locale, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        timeZone: "UTC",
-      })
-    : null;
   return {
     locale,
     pct(part, whole) {
@@ -100,10 +99,7 @@ export function makeFmt(locale: string | null): Fmt {
       }
     },
     date(dateOnly) {
-      const d = dateOnly.slice(0, 10);
-      if (!dates || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-      const t = new Date(`${d}T00:00:00Z`);
-      return Number.isFinite(t.getTime()) ? dates.format(t) : d;
+      return calendarDayWords(dateOnly);
     },
     hours(h) {
       if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`;
@@ -167,7 +163,7 @@ export const COPY = {
   } as Record<Key, [string, string]>,
 
   alerting:
-    "No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.",
+    "These figures send no alerts.",
 
   notCollected: {
     onTime:
@@ -271,7 +267,7 @@ export const COPY = {
   prior: {
     label: (days: number): string => `prior ${days} d`,
     couldNotRead: "could not be read",
-    notCollected: "not collected",
+    notCollected: "not recorded",
     nothing: "nothing to compare with",
     tooFew: (sample: number): string => `${sample} — too few to compare`,
   },

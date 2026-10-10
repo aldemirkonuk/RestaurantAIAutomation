@@ -87,6 +87,14 @@ export interface AgreementCurrencyInputs {
    */
   vendorUsualCurrency?: string | null | undefined;
   /**
+   * VEN-W13 (founder, 2026-10-01): `providers.usual_currency_source` — whether
+   * a person stated it or it was written from the vendor's invoices — and,
+   * for the latter, how many. The sheet must not credit a person's profile
+   * entry for what their invoices said.
+   */
+  vendorUsualSource?: "person" | "invoices" | null;
+  vendorUsualInvoiceCount?: number | null;
+  /**
    * The currency on the most recent `procurement_documents` row for this
    * provider and house, or null. The DATE is not needed here — the caller reads
    * the latest and passes its code — but the caller must order by the
@@ -297,6 +305,18 @@ export function orderCurrencyOffer(
   };
   const who = inputs.vendorName?.trim() || "This vendor";
   const usual = normalise(inputs.vendorUsualCurrency);
+
+  if (usual && inputs.vendorUsualSource === "invoices")
+    return {
+      code: usual,
+      basis: "vendor_usual",
+      sentence:
+        `${usual} — the currency ${who} usually invoices in, from ` +
+        `${inputs.vendorUsualInvoiceCount ?? "several"} of their invoices. Change it ` +
+        `if this order is priced differently; the order will record which of ` +
+        `the two it was.`,
+      alsoKnown,
+    };
 
   if (usual)
     return {

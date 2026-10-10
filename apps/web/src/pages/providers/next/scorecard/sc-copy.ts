@@ -26,7 +26,7 @@ export const SC = {
 
   figure: {
     didNotAnswer: 'did not answer',
-    notCollected: 'not collected',
+    notCollected: 'not recorded',
     nothingToScore: 'nothing to score',
     tooFew: 'too few',
     ofMinimum: (sample: number, minimum: number) => `${sample} of ${minimum}`,
@@ -65,14 +65,13 @@ export const SC = {
     readFailedTail: 'That is a failed read, not a clean record — no line here is claimed.',
     tryAgain: 'Try again',
     reading: 'Reading the orders, the door, the invoices, the mail and the credits…',
-    noRows: 'no rows',
     claimsBelowMinimum: (minimum: number) =>
       `Under ${minimum} claims there is no percent — these are the claims themselves:`,
     howScored: 'How this is scored',
     howScoredBody:
       'Each line is a count of this house’s own records over a count of records, with its percent — nothing is weighted and nothing is added into a grade. The window is set beside the window of the same length before it, both counts printed, and they are compared only when both reach the line’s minimum. Every line needs 5 records before a percent is shown: 5 orders, 5 door verdicts, 5 compared invoice lines, 5 answered messages, 5 claims. An order past its expected date and not received is first asked about — “Did it arrive?” — and counts as late only once someone here says not yet, or it lands after its date; unanswered, it is listed as unconfirmed and not counted, and after 30 days it moves to Incomplete orders under Documents & Reports and out of these figures. Price as agreed is the verdict recorded when the invoice was verified. Credits count only money a credit memo allowed — promised is not recovered. A register that did not answer says so on its own line; missing is never zero. How the vendor’s mail reads is below, for owners and managers, and is in no figure.',
     alertingFallback:
-      'No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.',
+      'These figures send no alerts.',
   },
 
   roll: {

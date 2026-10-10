@@ -1245,6 +1245,28 @@ describe('a manager may see, not approve', () => {
     });
   });
 
+  it('marks only the pressed grant busy when two members’ grants are listed (F-280)', () => {
+    const d = base();
+    d.houseGrants = reg({
+      grants: [grant(), grant({ connectionId: 'c2', ownerUserId: 'u-ali', ownerName: 'Ali Demir' })],
+      unattributed: 0,
+    });
+    d.setHouseGrantAccess = {
+      mutate: vi.fn(),
+      isPending: true,
+      variables: { connectionId: 'c1', houseUses: false },
+    };
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const busy = screen.getAllByRole('button', { name: /^stop the house using it…$/i });
+    const idle = screen.getAllByRole('button', { name: /^stop the house using it$/i });
+    expect(busy).toHaveLength(1);
+    expect(busy[0]).toBeDisabled();
+    expect(idle).toHaveLength(1);
+    expect(idle[0]).toBeEnabled();
+  });
+
   it('never offers to revoke somebody else’s grant, and never offers an approval', () => {
     const d = base();
     d.houseGrants = reg({ grants: [grant()], unattributed: 0 });

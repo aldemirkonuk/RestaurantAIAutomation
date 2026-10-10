@@ -1254,7 +1254,11 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       label: g.houseAccess.revoked
                         ? 'Use it again'
                         : 'Stop the house using it',
-                      busy: d.setHouseGrantAccess.isPending,
+                      // F-280: one shared mutation serves every member's row, so
+                      // only the row whose grant is being changed reads as busy.
+                      busy:
+                        d.setHouseGrantAccess.isPending &&
+                        d.setHouseGrantAccess.variables?.connectionId === g.connectionId,
                       onClick: () =>
                         d.setHouseGrantAccess.mutate({
                           connectionId: g.connectionId,

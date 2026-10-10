@@ -580,7 +580,7 @@ export function inferMinimumOrder(orders: OrderFact[]): Finding<MinimumOrderFind
 /* ── 5. Payment terms — the one that cannot be inferred ──────────────────── */
 
 export const PAYMENT_TERMS_NOT_INFERABLE =
-  "no table records when a vendor invoice was raised or settled, so there is no interval to measure — payment terms can only be stated";
+  "no invoice here records when it was paid, so payment terms cannot be worked out — write them down";
 
 /* ── The bundle a register renders ───────────────────────────────────────── */
 

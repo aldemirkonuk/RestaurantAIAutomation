@@ -1,4 +1,10 @@
 import { isIso4217, notACurrencyBecause } from "../common/iso-4217";
+import { houseDayWords } from "./house-day";
+import {
+  INVOICES_TO_WRITE,
+  type UsualCurrencyDecision,
+  type UsualCurrencySource,
+} from "./usual-currency-from-invoices";
 
 /**
  * What a vendor USUALLY invoices in, as a person stated it — and the hard limit
@@ -37,6 +43,15 @@ import { isIso4217, notACurrencyBecause } from "../common/iso-4217";
  * that a person saves without reading is indistinguishable afterwards from one
  * they thought about, and the whole point of `usual_currency_set_by` is to be
  * able to tell those apart.
+ *
+ * AMENDED 2026-10-01 (founder, ruling VEN-W13: "write auto ... 3 invoices").
+ * The field is still never filled from the house's currency or from ONE
+ * invoice. It IS written, with no person on it, once at least three of the
+ * vendor's invoices printed the same code and none of the counted ones
+ * disagree — and the row then says so (`usual_currency_source = 'invoices'`,
+ * with the count), so "they thought about it" and "their paper says so" stay
+ * distinguishable. A person's value is never overwritten by that write. The
+ * rules live in `usual-currency-from-invoices.ts`.
  */
 
 /**
@@ -100,9 +115,25 @@ export function vendorCurrencySentence(args: {
   setByName?: string | null;
   setAt?: string | null;
   vendorName?: string | null;
+  /**
+   * VEN-W13 (founder, 2026-10-01). Where the code came from, how many invoices
+   * it was written from, and what the vendor's invoices say now. Absent, the
+   * sentence is the person-only one this function always gave.
+   */
+  source?: UsualCurrencySource | null;
+  invoiceCount?: number | null;
+  decision?: UsualCurrencyDecision | null;
+  /**
+   * VEN-W23 (founder, 2026-10-01). The house's IANA zone, so "stated on" is
+   * the house's own calendar day in words. Null or absent: the day is read in
+   * UTC and the sentence says "(UTC)".
+   */
+  houseZone?: string | null;
 }): string {
   const who = args.vendorName?.trim() || "This vendor";
   const code = (args.code ?? "").trim().toUpperCase();
+  const fromInvoices = invoiceSentence({ ...args, who, code });
+  if (fromInvoices) return fromInvoices;
   // A STORED VALUE THAT IS NOT A CURRENCY IS NAMED, not reported as an absence.
   // `ZZZ` was writable here until 2026-09-06, so rows can hold one, and telling
   // a manager the field is empty when it is not is the fault this whole pass is
@@ -116,26 +147,114 @@ export function vendorCurrencySentence(args: {
     );
   if (!isCurrency(code))
     return (
-      `${who} has not stated a usual currency. Nothing is assumed in its place — ` +
-      `not this house's currency and not the currency of their last invoice — so ` +
-      `an order to them starts with an empty currency field. Type the code they ` +
-      `usually invoice in and it will be offered there.`
+      `${who} has no usual currency on file, so an order to them starts with no ` +
+      `currency. Choose the one they invoice in and orders to them will start in it.`
     );
 
   const name = args.setByName?.trim();
-  const when = args.setAt?.trim();
+  // The HOUSE's calendar day, in words (VEN-W23) — never the UTC date sliced
+  // off the timestamp, which an evening in Chicago turned into tomorrow.
+  const when = houseDayWords(args.setAt, args.houseZone);
   const attribution =
     name && when
-      ? ` Stated by ${name} on ${when.slice(0, 10)}.`
+      ? ` Stated by ${name} on ${when}.`
       : name
         ? ` Stated by ${name}.`
         : "";
   return (
     `${who} usually invoices in ${code}.${attribution} This is offered as the ` +
     `starting currency when an order is placed with them, and it can be changed ` +
-    `there. IT NEVER FILES AN INVOICE: an invoice takes the currency printed on ` +
+    `there. It never sets an invoice's currency: an invoice takes the currency printed on ` +
     `it, then the currency of the order it is matched to.`
   );
+}
+
+const plural = (n: number, one: string, many: string) =>
+  `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The five sheet states of ruling VEN-W13, in the words of the approved
+ * sketch. Returns null when the ordinary person-stated (or empty, or
+ * not-a-currency) sentence applies instead.
+ */
+function invoiceSentence(args: {
+  who: string;
+  code: string;
+  source?: UsualCurrencySource | null;
+  invoiceCount?: number | null;
+  decision?: UsualCurrencyDecision | null;
+}): string | null {
+  const d = args.decision;
+  if (!d) return null;
+  const { who, code } = args;
+  const valid = code !== "" && isCurrency(code);
+
+  switch (d.state) {
+    case "A": {
+      const n = d.counted || args.invoiceCount || 0;
+      return (
+        `All ${plural(n, "invoice", "invoices")} from ${who} ${n === 1 ? "was" : "were"} printed in ${code}, ` +
+        `so orders to them start in ${code}. You can change it on the order.`
+      );
+    }
+    case "B": {
+      const [first, ...rest] = d.counts;
+      const parts = [
+        `${first.invoices} printed in ${first.code}`,
+        ...rest.map((c) => `${c.invoices} in ${c.code}`),
+      ];
+      return (
+        `Their invoices disagree: ${parts.join(", ")}. ` +
+        `Choose the one they usually invoice in; your name goes on it.`
+      );
+    }
+    case "C": {
+      if (!d.clash || !valid) return null;
+      const n = d.clash.lastInvoices;
+      return (
+        `${n === 1 ? "Their last invoice was" : `Their last ${n} invoices were`} printed in ${d.clash.code}. ` +
+        `${code} stays until someone switches it.`
+      );
+    }
+    case "D": {
+      const others = d.counts.filter((c) => c.code !== code);
+      const later = others.reduce((sum, c) => sum + c.invoices, 0);
+      const codes = others.map((c) => c.code);
+      const named =
+        codes.length <= 1
+          ? codes.join("")
+          : `${codes.slice(0, -1).join(", ")} and ${codes[codes.length - 1]}`;
+      return (
+        `${later === 1 ? "A later invoice was" : `${later} later invoices were`} printed in ${named}. ` +
+        `Orders still start in ${code}; choose which one they usually invoice in.`
+      );
+    }
+    case "E": {
+      const only = d.counts[0];
+      if (!only)
+        return (
+          `No invoice from ${who} has printed a currency yet. ` +
+          `After ${INVOICES_TO_WRITE} in the same currency it is filled in for you — or choose it now.`
+        );
+      const n = only.invoices;
+      const printed =
+        n === 1
+          ? `printed in ${only.code}`
+          : `${n === 2 ? "both" : "all"} printed in ${only.code}`;
+      if (n >= INVOICES_TO_WRITE)
+        return (
+          `${plural(n, "invoice", "invoices")} so far, ${printed}. ` +
+          `It is filled in for you when their next invoice is read — or choose it now.`
+        );
+      const more = INVOICES_TO_WRITE - n;
+      return (
+        `${plural(n, "invoice", "invoices")} so far, ${printed}. ` +
+        `After ${more} more in the same currency it is filled in for you — or choose it now.`
+      );
+    }
+    default:
+      return null;
+  }
 }
 
 /**
@@ -162,7 +281,26 @@ export function vendorCurrencySentence(args: {
 export function usualCurrencyCoverageSentence(args: {
   stated: number;
   total: number;
+  /**
+   * VEN-W13: how many of the `stated` were written from the vendor's own
+   * invoices rather than by a person. Optional; zero says nothing extra.
+   */
+  fromInvoices?: number;
 }): string {
+  const base = coverageBase(args);
+  const n = args.fromInvoices ?? 0;
+  if (n <= 0 || args.stated <= 0) return base;
+  return (
+    `${base} ` +
+    (n === args.stated
+      ? args.stated === 1
+        ? "It was filled in from their invoices."
+        : "All of them were filled in from their invoices."
+      : `${n} of them ${n === 1 ? "was" : "were"} filled in from their invoices.`)
+  );
+}
+
+function coverageBase(args: { stated: number; total: number }): string {
   const { stated, total } = args;
   const vendors = total === 1 ? "vendor" : "vendors";
   // NEVER AN EMPTY PANEL. Every branch below is a sentence, including the two
@@ -171,28 +309,24 @@ export function usualCurrencyCoverageSentence(args: {
   // heading on it: a reader cannot tell it from a panel that failed to load.
   if (total === 0)
     return (
-      "There are no vendors on this house's book, so there is nothing to state a " +
-      "usual currency for. When a vendor is added, an order to them starts with an " +
-      "empty currency field until somebody states what they usually invoice in."
+      "No vendors yet. Once one is in the book, the currency they invoice in can be noted on it."
     );
+  if (total === 1)
+    return stated === 1
+      ? "Your one vendor has a usual currency on file. Orders to them start in it, and it can be changed on the order."
+      : "Your one vendor has no usual currency on file. Once one is noted, orders to them start in it; until then an order starts with no currency.";
   if (stated === 0)
     return (
-      `None of your ${total} ${vendors} has stated a usual currency. ` +
-      `Nothing is assumed in their place — not this house's currency and not the ` +
-      `currency of their last invoice — so every order starts with an empty ` +
-      `currency field, and an invoice matched to such an order is filed under this ` +
-      `house's currency rather than the order's.`
+      `None of your ${total} ${vendors} has a usual currency on file. ` +
+      `Once one is noted, orders to that vendor start in it; until then an order starts with no currency.`
     );
   if (stated === total)
     return (
-      `All ${total} of your ${vendors} ${total === 1 ? "has" : "have"} stated a usual currency. ` +
-      `Each one is offered as the starting currency on an order to that vendor and can ` +
-      `be changed there; none of them files an invoice.`
+      `All ${total} of your ${vendors} ${total === 1 ? "has" : "have"} a usual currency on file. ` +
+      `Orders to them start in it, and it can be changed on the order.`
     );
   return (
-    `${stated} of your ${total} ${vendors} ${stated === 1 ? "has" : "have"} stated a usual currency. ` +
-    `An order to one of the remaining ${total - stated} starts with an empty currency ` +
-    `field — nothing is assumed in its place — and an invoice matched to such an order ` +
-    `is filed under this house's currency rather than the order's.`
+    `${stated} of your ${total} ${vendors} ${stated === 1 ? "has" : "have"} a usual currency on file. ` +
+    `Orders to the other ${total - stated} start with no currency until one is noted.`
   );
 }

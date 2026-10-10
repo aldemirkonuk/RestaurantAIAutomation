@@ -78,6 +78,42 @@ export class ProviderIntelligenceService {
       throw error;
     }
 
+    // Who confirmed each fact, by name (VEN-W14: "Confirmed · <name>"). Read
+    // separately and NEVER load-bearing, like the usual-currency author in
+    // providers.service.ts: a name that cannot be read leaves the attribution
+    // off rather than failing the facts.
+    const confirmers = [
+      ...new Set(
+        (data || [])
+          .map((r: { verified_by?: string | null }) => r.verified_by)
+          .filter((v): v is string => typeof v === "string" && v !== ""),
+      ),
+    ];
+    const nameOf = new Map<string, string>();
+    if (confirmers.length > 0) {
+      try {
+        const { data: people, error: peopleError } =
+          await this.databaseService.supabase
+            .from("users")
+            .select("user_id, name")
+            .in("user_id", confirmers);
+        if (peopleError)
+          this.logger.warn(
+            `Who confirmed ${providerId}'s facts could not be read (${peopleError.message}); no names are shown.`,
+          );
+        for (const p of (people || []) as {
+          user_id?: string;
+          name?: string | null;
+        }[]) {
+          if (p.user_id && p.name) nameOf.set(p.user_id, p.name);
+        }
+      } catch (e) {
+        this.logger.warn(
+          `Who confirmed ${providerId}'s facts could not be read (${(e as Error)?.message}); no names are shown.`,
+        );
+      }
+    }
+
     const grouped: Record<string, any[]> = {};
     for (const row of data || []) {
       const cat = row.category;
@@ -92,6 +128,12 @@ export class ProviderIntelligenceService {
         version: row.version,
         expiresAt: row.expires_at,
         updatedAt: row.updated_at,
+        // VEN-W14: the sheet dates each fact and names who confirmed it.
+        createdAt: row.created_at ?? null,
+        verifiedAt: row.verified_at ?? null,
+        verifiedByName: row.verified_by
+          ? (nameOf.get(row.verified_by) ?? null)
+          : null,
       });
     }
 
@@ -110,7 +152,11 @@ export class ProviderIntelligenceService {
     // exist, and it must not answer 500.
     const { data, error } = await this.databaseService.supabase
       .from("provider_knowledge")
-      .update({ verified: true, verified_by: userId })
+      .update({
+        verified: true,
+        verified_by: userId,
+        verified_at: new Date().toISOString(),
+      })
       .eq("id", knowledgeId)
       .eq("restaurant_id", restaurantId)
       .select("*")
@@ -126,7 +172,7 @@ export class ProviderIntelligenceService {
 
     if (!data) {
       throw new NotFoundException(
-        `No knowledge fact with id ${knowledgeId} belongs to this restaurant.`,
+        "That fact from their mail is no longer in this house's book; it may have been removed.",
       );
     }
 
@@ -467,7 +513,7 @@ export class ProviderIntelligenceService {
     }
     if (!data) {
       throw new NotFoundException(
-        `No provider with id ${providerId} belongs to this restaurant.`,
+        "That vendor is not in this house's book; it may have been removed.",
       );
     }
   }

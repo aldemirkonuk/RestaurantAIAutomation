@@ -24,6 +24,7 @@
  * (ADR 0042).
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { ink, useReducedMotion } from '../../../lib/mudavym/motion';
 import type { ProviderContact } from '../../../services/api/providers';
 import { useProviderContacts, PHONE_TYPE_CHOICES } from './useProviderContacts';
@@ -159,6 +160,8 @@ export interface ContactsListProps {
   saveError: string | null;
   onSetPhoneType: (contactId: string, phoneType: string) => void;
   onReload: () => void;
+  /** VEN-W30: staff read the line's type in words; only owners and managers get the picker. */
+  canChange?: boolean;
 }
 
 /**
@@ -175,6 +178,7 @@ export function ContactsList({
   saveError,
   onSetPhoneType,
   onReload,
+  canChange = true,
 }: ContactsListProps) {
   const reduced = useReducedMotion();
   const savingName = saving ? contacts?.find((c) => c.id === saving)?.name ?? null : null;
@@ -190,10 +194,10 @@ export function ContactsList({
       )}
 
       {/* A FAILED READ IS NOT AN EMPTY BOOK. */}
-      {!loading && error && (
+      {!loading && error !== null && (
         <p role="alert" style={REFUSAL}>
           This vendor’s contacts could not be read, so nothing is shown — that is
-          not the same as this vendor having none. {error}{' '}
+          not the same as this vendor having none.{error ? ` ${error}` : ''}{' '}
           <button
             type="button"
             onClick={onReload}
@@ -233,17 +237,25 @@ export function ContactsList({
                   {c.name}
                   {c.phone ? ` · ${c.phone}` : ''}
                 </span>
-                <ReachChip reach={c.reach} stated={c.phoneTypeStated} reduced={reduced} />
+                {c.phone && <ReachChip reach={c.reach} stated={c.phoneTypeStated} reduced={reduced} />}
               </div>
 
+              {/* A contact with no number has no line to classify: the
+                  server's sentence would describe a number that is not there. */}
+              {!c.phone && (
+                <p style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '2px 0 0' }}>
+                  No phone number on file for this contact.
+                </p>
+              )}
+
               {/* The server's own sentence. Never re-worded here. */}
-              {c.reachSays && (
+              {c.phone && c.reachSays && (
                 <p style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '2px 0 0' }}>
                   {c.reachSays}
                 </p>
               )}
 
-              {c.phone && (
+              {c.phone && canChange && (
                 <label
                   style={{
                     ...BODY,
@@ -303,9 +315,9 @@ export function ContactsList({
         </p>
       )}
 
-      {saveError && (
+      {saveError !== null && (
         <p role="alert" style={REFUSAL}>
-          That was not saved, so the book still holds what it held: {saveError}
+          That was not saved, so the book still holds what it held.{saveError ? ` ${saveError}` : ''}
         </p>
       )}
     </section>
@@ -315,6 +327,7 @@ export function ContactsList({
 export function ContactsSection({ providerId, providerName }: Props) {
   const { contacts, loading, error, saving, saveError, setPhoneType, reload } =
     useProviderContacts(providerId);
+  const canChange = useCanChangeVendors();
 
   return (
     <ContactsList
@@ -326,6 +339,7 @@ export function ContactsSection({ providerId, providerName }: Props) {
       saveError={saveError}
       onSetPhoneType={(id, type) => void setPhoneType(id, type)}
       onReload={reload}
+      canChange={canChange}
     />
   );
 }
