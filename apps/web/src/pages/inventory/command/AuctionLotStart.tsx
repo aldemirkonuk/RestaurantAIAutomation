@@ -64,7 +64,7 @@ import { searchWines } from '@/services/api/wines';
 import { createAuctionLotRecord } from '@/services/api/inventory';
 import { settingsApi } from '@/services/api/settings';
 import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
-import { lotBookedCost } from './auctionLotCost';
+import { lotBookedCost, readExchangeRate } from './auctionLotCost';
 import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 
@@ -321,7 +321,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       // `cost.ok` already proved both parse, so this cannot fail here — it
       // just avoids widening `LotCost`'s shape for two fields only this
       // caller needs.
-      const rate = num(lot.exchangeRate, group);
+      const rate = readExchangeRate(lot.exchangeRate);
       const typed = num(lot.houseCost, group);
       await createAuctionLotRecord({
         inventoryId,

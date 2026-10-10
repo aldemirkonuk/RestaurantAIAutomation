@@ -29,6 +29,17 @@ function numberOrNull(v: string, group: GroupMark | null): number | null {
   return parseDecimal(v, group) ?? Number.NaN;
 }
 
+/**
+ * The stated exchange rate as typed, read WITHOUT the house's thousands mark
+ * (F-778). A rate is never written in thousands-grouped form, but it often
+ * carries three or four decimals: in a Turkish house "44.125" grouped would be
+ * 44,125 and book every bottle 1000x too high. A lone mark in a rate is always
+ * the decimal mark.
+ */
+export function readExchangeRate(v: string): number | null {
+  return numberOrNull(v, null);
+}
+
 export function lotBookedCost(input: {
   lotPerBottle: number;
   /** The lot's ISO-4217 code. */
@@ -39,10 +50,10 @@ export function lotBookedCost(input: {
   exchangeRate: string;
   /** As typed: '' is "not typed". */
   houseCost: string;
-  /** The house's thousands mark, for "1.250" (see `lib/parseDecimal`). */
+  /** The house's thousands mark, for a typed cost "1.250" (see `lib/parseDecimal`). Never applied to the rate. */
   group?: GroupMark | null;
 }): BookedCost {
-  const rate = numberOrNull(input.exchangeRate, input.group ?? null);
+  const rate = readExchangeRate(input.exchangeRate);
   const typed = numberOrNull(input.houseCost, input.group ?? null);
   if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) {
     return { ok: false, why: 'An exchange rate must be a number above zero.' };

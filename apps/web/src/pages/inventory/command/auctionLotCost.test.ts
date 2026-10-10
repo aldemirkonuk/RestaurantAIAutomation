@@ -30,4 +30,15 @@ describe('lotBookedCost', () => {
   it.each(['0', '-1', 'abc'])('a rate of %s is refused', (rate) => {
     expect(lotBookedCost({ ...base, houseCurrency: 'EUR', exchangeRate: rate }).ok).toBe(false);
   });
+  // F-778: a rate is never thousands-grouped, so a '.'-grouping house's mark is not applied to it.
+  it("a rate of '44.125' in a '.'-grouping house is 44.125, not 44,125", () => {
+    expect(
+      lotBookedCost({ lotPerBottle: 100, currency: 'EUR', houseCurrency: 'TRY', exchangeRate: '44.125', houseCost: '', group: '.' }),
+    ).toMatchObject({ ok: true, booked: 4412.5, basis: 'stated_rate' });
+  });
+  it("the house's mark still reads a typed house cost of '1.250' as 1,250", () => {
+    expect(
+      lotBookedCost({ lotPerBottle: 100, currency: 'EUR', houseCurrency: 'TRY', exchangeRate: '44.125', houseCost: '1.250', group: '.' }),
+    ).toMatchObject({ ok: true, booked: 1250, basis: 'typed_house_cost' });
+  });
 });

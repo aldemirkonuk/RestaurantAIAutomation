@@ -6,9 +6,13 @@ import { AddWineToInventoryModal } from "./AddWineToInventoryModal";
 
 const useWines = vi.hoisted(() => vi.fn());
 const useStorageLocations = vi.hoisted(() => vi.fn());
+const groupMark = vi.hoisted(() => ({ value: null as "." | "," | null }));
 
 vi.mock("../../hooks/queries", () => ({ useWines }));
 vi.mock("../../hooks/useStorageLocations", () => ({ useStorageLocations }));
+vi.mock("../../hooks/useHouseGroupMark", () => ({
+  useHouseGroupMark: () => groupMark.value,
+}));
 vi.mock("../../stores/restaurantSettingsStore", () => ({
   useRestaurantSettingsStore: () => ({ measurementUnit: "ml" }),
 }));
@@ -28,6 +32,7 @@ const wine = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  groupMark.value = null;
   useWines.mockReturnValue({ data: [wine] });
   useStorageLocations.mockReturnValue({ locations: [] });
 });
@@ -127,5 +132,34 @@ describe("AddWineToInventoryModal — an unknown cost is expressible", () => {
 
     await waitFor(() => expect(onAddWine).toHaveBeenCalled());
     expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(42);
+  });
+});
+
+// F-779: the same typed "1.250" means the same here as in the price cell and
+// the batch receive grid — ₺1,250 in a house that groups thousands with ".".
+describe("AddWineToInventoryModal — amounts read the way the house writes them", () => {
+  it("reads '1.250' as 1,250 in a '.'-grouping house, for the cost and the bottle price", async () => {
+    groupMark.value = ".";
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.type(screen.getByPlaceholderText(/leave blank if unknown/i), "1.250");
+    await user.type(screen.getByPlaceholderText(/leave blank if not set/i), "2.400,50");
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(1250);
+    expect(onAddWine.mock.calls[0][4].menuPriceBottle).toBe(2400.5);
+  });
+
+  it("reads '12,50' as 12.5 in a house whose mark is not known", async () => {
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.type(screen.getByPlaceholderText(/leave blank if unknown/i), "12,50");
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(12.5);
   });
 });

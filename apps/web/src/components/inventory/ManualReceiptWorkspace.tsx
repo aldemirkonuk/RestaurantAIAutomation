@@ -31,6 +31,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useWines } from '../../hooks/queries'
 import { useProviders } from '../../hooks/queries/useProviderQueries'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 import { persistBatchToInventory, type MenuScannerPersistResult } from '../../lib/menuScannerPersistence'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
@@ -73,8 +74,10 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     limit: 25,
   })
 
-  const totals = useMemo(() => batchTotals(rows), [rows])
-  const issues = useMemo(() => validateBatchRows(rows), [rows])
+  // The house's group mark, so a typed cost reads as the grid shows it (F-779).
+  const group = useHouseGroupMark()
+  const totals = useMemo(() => batchTotals(rows, group), [rows, group])
+  const issues = useMemo(() => validateBatchRows(rows, group), [rows, group])
   const alreadyOnReceipt = useMemo(
     () => new Set(rows.map((r) => r.wineId).filter(Boolean) as string[]),
     [rows],
@@ -166,7 +169,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     setError(null)
     try {
       const persisted = await persistBatchToInventory(
-        batchRowsToBulkLines(rows, { providerId: providerId || undefined }),
+        batchRowsToBulkLines(rows, { providerId: providerId || undefined }, group),
         { source: 'manual_receipt', reason: reference.trim() || undefined },
       )
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
