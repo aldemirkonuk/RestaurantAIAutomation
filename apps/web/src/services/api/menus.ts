@@ -76,7 +76,24 @@ export interface MenuImportResult {
   sourceImage?: string | null
   /** Whether the source file (photo, PDF, CSV) was kept, and why not when it was not. */
   source?: { kept: boolean; failure: string | null }
+  /** A spreadsheet read: the columns not read, the rows skipped and why, the cells unread. */
+  read?: MenuReadNotes | null
+  /**
+   * Client-only: when several files were sent at once, what each one gave (its
+   * lines, or why it was not read). The lines of every read file are in `items`.
+   */
+  files?: MenuFileResult[]
 }
+
+export interface MenuReadNotes {
+  ignoredColumns: string[]
+  dropped: Array<{ row: number; reason: string }>
+  unreadable: string[]
+}
+
+export type MenuFileResult =
+  | { name: string; itemsExtracted: number; read?: MenuReadNotes | null }
+  | { name: string; failure: string }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const
 export type MenuCadence = (typeof MENU_CADENCES)[number]

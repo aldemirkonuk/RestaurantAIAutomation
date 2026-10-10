@@ -1,7 +1,12 @@
 import { useState, useRef } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
-import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
+import {
+  importMenu,
+  type MenuFileResult,
+  type MenuImportResult,
+  type MenuImportSuccess,
+} from '../../services/api/menus'
 import {
   DOCUMENT_ACCEPT,
   MAX_UPLOAD_BYTES,
@@ -54,6 +59,10 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
   const parseCsvPreview = (text: string) => {
     const lines = text.split(/\r?\n/).filter((l) => l.trim())
     if (lines.length === 0) return
+    // The same delimiter the reader picks: the one the header uses most.
+    const delimiter = [',', ';', '\t'].reduce((best, d) =>
+      lines[0].split(d).length > lines[0].split(best).length ? d : best,
+    )
 
     const parseRow = (line: string): string[] => {
       const result: string[] = []
@@ -63,7 +72,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
         const char = line[i]
         if (char === '"') {
           inQuotes = !inQuotes
-        } else if (char === ',' && !inQuotes) {
+        } else if (char === delimiter && !inQuotes) {
           result.push(current.trim())
           current = ''
         } else {
@@ -180,6 +189,9 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       },
     )
 
+  const reasonOf = (err: any) =>
+    err?.response?.data?.message || err?.message || 'it could not be read'
+
   const handleImport = async () => {
     if (!csvContent && !fileBase64) return
     setLoading(true)
@@ -188,35 +200,50 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       const total = 1 + queue.length
       if (total > 1) setProgress({ done: 0, total, current: fileName || '' })
 
-      // The file already read into state, then the rest of the queue — each as
-      // its own request. One failure is reported but does not abandon the
-      // files after it.
-      let result = await importOne({
-        scan: isScanFile,
-        base64: fileBase64,
-        csv: csvContent,
-      })
-      const failures: string[] = []
-
-      for (let i = 0; i < queue.length; i++) {
-        const f = queue[i]
-        setProgress({ done: i + 1, total, current: f.name })
+      // The file already read into state, then the rest of the queue, each as
+      // its own request. One failure does not abandon the files after it, and
+      // every file's result goes on to the proof (F-682): the last one alone
+      // used to, and the failures were said on a step that was then left.
+      const read: Array<{ name: string; result: MenuImportResult }> = []
+      const files: MenuFileResult[] = []
+      const sources = [
+        { name: fileName || 'file 1', load: async () => ({ scan: isScanFile, base64: fileBase64, csv: csvContent }) },
+        ...queue.map((f) => ({ name: f.name, load: () => readFile(f) })),
+      ]
+      for (let i = 0; i < sources.length; i++) {
+        const { name, load } = sources[i]
+        if (total > 1) setProgress({ done: i, total, current: name })
         try {
-          result = await importOne(await readFile(f))
+          const result = await importOne(await load())
+          read.push({ name, result })
+          files.push({ name, itemsExtracted: result.itemsExtracted, read: result.read ?? null })
         } catch (err: any) {
-          failures.push(
-            `${f.name}: ${err?.response?.data?.message || err?.message || 'import failed'}`,
-          )
+          files.push({ name, failure: reasonOf(err) })
         }
       }
 
-      if (failures.length) {
+      if (read.length === 0) {
         setError(
-          `${failures.length} of ${total} file(s) failed — ${failures.join('; ')}`,
+          files
+            .map((f) => ('failure' in f ? (total > 1 ? `${f.name}: ${f.failure}` : f.failure) : ''))
+            .join(' '),
         )
+        return
       }
+      const [first] = read
+      const result: MenuImportResult =
+        total > 1
+          ? {
+              ...first.result,
+              itemsExtracted: read.reduce((n, r) => n + r.result.itemsExtracted, 0),
+              submissionsCreated: read.reduce((n, r) => n + r.result.submissionsCreated, 0),
+              items: read.flatMap((r) => r.result.items),
+              read: null,
+              files,
+            }
+          : first.result
       const image =
-        isScanFile && fileBase64 && !/\.pdf$/i.test(fileName || '')
+        isScanFile && fileBase64 && !/\.pdf$/i.test(fileName || '') && first.name === fileName
           ? `data:image/jpeg;base64,${fileBase64}`
           : null
       onSuccess(result, { image })
@@ -353,10 +380,10 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
               </span>
             ) : queue.length > 0 ? (
               `Import ${queue.length + 1} files`
-            ) : isExcelFile || isScanFile ? (
-              'Import wines'
             ) : (
-              `Import ${estimatedTotal > 0 ? estimatedTotal : ''} wines`
+              // The count of lines is the reader's to say, on the proof: a raw
+              // row count includes headings and blank-name rows (F-684).
+              'Read this file'
             )}
           </Button>
         </div>

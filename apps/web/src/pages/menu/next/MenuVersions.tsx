@@ -222,7 +222,22 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               : ''}
             It is not the current menu, and no price has changed.
           </p>
-          {canManage ? (
+          {result.read?.ignoredColumns.length ? (
+            <p className="cl-note" data-testid="menu-read-ignored">
+              Columns not read: {result.read.ignoredColumns.join(', ')}.
+            </p>
+          ) : null}
+          {result.read?.dropped.length ? (
+            <p className="cl-note" data-testid="menu-read-dropped">
+              {result.read.dropped.length} row{result.read.dropped.length === 1 ? '' : 's'} skipped:{' '}
+              {result.read.dropped.slice(0, 8).map((d) => `row ${d.row} (${d.reason})`).join('; ')}
+              {result.read.dropped.length > 8 ? `; and ${result.read.dropped.length - 8} more` : ''}.
+            </p>
+          ) : null}
+          {result.read?.unreadable.length ? (
+            <p className="cl-note">Cells not read: {result.read.unreadable.slice(0, 8).join('; ')}.</p>
+          ) : null}
+          {canManage && result.itemsExtracted > 0 ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
                 type="button"
@@ -236,7 +251,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
                 Keep it, not current
               </button>
             </div>
-          ) : (
+          ) : canManage ? null : (
             <p className="cl-note">An owner or a manager chooses whether it becomes the current menu. It is kept either way.</p>
           )}
           {planning && chosen === null ? (

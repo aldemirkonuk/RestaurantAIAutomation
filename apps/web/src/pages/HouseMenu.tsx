@@ -4,7 +4,9 @@ import { BrandMark } from '../components/brand/BrandMark'
 import {
   addMenuItem,
   reviewMenuItem,
+  type MenuFileResult,
   type MenuImportReviewItem,
+  type MenuReadNotes,
 } from '../services/api/menus'
 import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
 
@@ -46,6 +48,31 @@ function price(item: MenuImportReviewItem) {
     item.bottlePrice != null ? `${item.bottlePrice} bottle` : null,
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+/** What a spreadsheet read kept back, in a sentence each (F-017, F-683, F-684). */
+function notesSaid(notes: MenuReadNotes | null | undefined): string[] {
+  if (!notes) return []
+  const said: string[] = []
+  if (notes.ignoredColumns.length) {
+    said.push(`Columns we did not read: ${notes.ignoredColumns.join(', ')}.`)
+  }
+  if (notes.dropped.length) {
+    const rows = notes.dropped.map((d) => `row ${d.row} (${d.reason})`)
+    said.push(
+      `${notes.dropped.length} row${notes.dropped.length === 1 ? '' : 's'} skipped: ${rows.slice(0, 8).join('; ')}${rows.length > 8 ? `; and ${rows.length - 8} more` : ''}.`,
+    )
+  }
+  if (notes.unreadable.length) {
+    said.push(`Cells we could not read: ${notes.unreadable.slice(0, 8).join('; ')}.`)
+  }
+  return said
+}
+
+/** Every file sent at once, and what each one gave (F-682). */
+function fileSaid(file: MenuFileResult): string {
+  if ('failure' in file) return `${file.name}: not read. ${file.failure}`
+  return `${file.name}: ${file.itemsExtracted} line${file.itemsExtracted === 1 ? '' : 's'} read.`
 }
 
 export default function HouseMenu() {
@@ -171,6 +198,20 @@ export default function HouseMenu() {
           <p><strong className="block font-serif text-3xl">{items.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">set</span></p>
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">pencilled</span></p>
         </div>
+
+        {proof.files?.length || notesSaid(proof.read).length ? (
+          <div data-testid="proof-read-notes" className="mt-6 space-y-2 text-sm text-[#6d685f]">
+            {proof.files?.map((file) => (
+              <div key={file.name}>
+                <p className={'failure' in file ? 'text-[#8a2b1d]' : undefined}>{fileSaid(file)}</p>
+                {'failure' in file ? null : notesSaid(file.read).map((line) => <p key={line} className="ml-4">{line}</p>)}
+              </div>
+            ))}
+            {notesSaid(proof.read).map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        ) : null}
 
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (
