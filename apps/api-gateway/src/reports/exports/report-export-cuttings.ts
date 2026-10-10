@@ -305,6 +305,65 @@ export const TILL_REFUNDS_NOT_TAKEN_OFF =
 
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
+/**
+ * `rp-registers-trade.tsx` notCountedNote, for the file (F-1009): the orders
+ * neither buying figure counts, by kind. Their order value is a figure of its
+ * own (money is typed there, not printed inside a sentence). Null when there
+ * are none, or the gateway did not say.
+ */
+function notCountedLine(raw: unknown): string | null {
+  const n = obj(raw);
+  const approved = num(n.approved) ?? 0;
+  const partly = num(n.partlyReceived) ?? 0;
+  const other = num(n.other) ?? 0;
+  const unpriced = num(n.unpriced) ?? 0;
+  const parts = [
+    approved > 0
+      ? nounCount(approved, "approved order", "approved orders")
+      : null,
+    partly > 0
+      ? nounCount(partly, "partly received order", "partly received orders")
+      : null,
+    other > 0
+      ? nounCount(
+          other,
+          "order still being negotiated",
+          "orders still being negotiated",
+        )
+      : null,
+  ].filter((p): p is string => p !== null);
+  if (parts.length === 0) return null;
+  const list =
+    parts.length === 1
+      ? parts[0]
+      : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  const unpricedLine =
+    unpriced > 0
+      ? ` ${unpriced} of them ${unpriced === 1 ? "carries" : "carry"} no price, so that order value leaves ${unpriced === 1 ? "it" : "them"} out.`
+      : "";
+  return `Not in either figure: ${list}, written above at their order value.${unpricedLine} They count once the vendor confirms them or they close.`;
+}
+
+/**
+ * `rp-registers-trade.tsx` unpricedNotes, for the file (F-1009): an order with
+ * no price is left out of the buying sums, and the file says how many, as the
+ * screen does — so a short figure is not handed on as the whole one.
+ */
+function unpricedLines(spendRaw: unknown, committedRaw: unknown): string[] {
+  const spend = num(spendRaw) ?? 0;
+  const committed = num(committedRaw) ?? 0;
+  const out: string[] = [];
+  if (spend > 0)
+    out.push(
+      `${spend} delivered ${spend === 1 ? "order carries" : "orders carry"} no price in these 180 days, so the 30-day buying figures leave ${spend === 1 ? "it" : "them"} out and may be short by what ${spend === 1 ? "it" : "they"} cost.`,
+    );
+  if (committed > 0)
+    out.push(
+      `${committed} open ${committed === 1 ? "order carries" : "orders carry"} no price, so Committed, not yet delivered leaves ${committed === 1 ? "it" : "them"} out.`,
+    );
+  return out;
+}
+
 function writePacing(payload: unknown): ExportDoc {
   const c = obj(payload);
   const last = num(c.spendLast30d);
@@ -313,6 +372,8 @@ function writePacing(payload: unknown): ExportDoc {
     ? (c.projectedNext4Weeks as unknown[])
     : null;
   const bothZero = (last ?? 0) === 0 && (prev ?? 0) === 0;
+  const notCounted = notCountedLine(c.notCounted);
+  const basis = obj(c.basis);
 
   return doc({
     say: bothZero
@@ -324,6 +385,18 @@ function writePacing(payload: unknown): ExportDoc {
       f("Pace", figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"), "percent"),
       f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
+      ...(notCounted
+        ? [
+            f(
+              "Not in either figure, at order value",
+              figure(
+                obj(c.notCounted).orderValue,
+                "the cashflow register returned no figure",
+              ),
+              "money",
+            ),
+          ]
+        : []),
     ],
     tables:
       projection && projection.length > 0
@@ -349,9 +422,15 @@ function writePacing(payload: unknown): ExportDoc {
       bothZero
         ? 'Both windows came back at zero, and the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so zero means "no delivered order was returned", not necessarily "nothing was bought".'
         : "",
+      notCounted ?? "",
+      ...unpricedLines(c.spendUnpricedCount, c.committedUnpricedCount),
     ],
     basis: sentences(
-      obj(c.basis).outflow ? `Outflow: ${str(obj(c.basis).outflow)}.` : null,
+      basis.outflow ? `Outflow: ${str(basis.outflow)}.` : null,
+      basis.days ? `Days: ${str(basis.days)}.` : null,
+      basis.notCounted
+        ? `Not in either figure: ${str(basis.notCounted)}.`
+        : null,
     ),
   });
 }
@@ -947,6 +1026,9 @@ function writeBench(payload: unknown): ExportDoc {
     ],
     notes: [
       noPeers,
+      ...(cashflowMissing
+        ? []
+        : unpricedLines(cf.spendUnpricedCount, cf.committedUnpricedCount)),
       last === 0 && prev === 0
         ? 'Both buying windows came back at zero, and the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so zero means "no delivered order was returned", not necessarily "nothing was bought".'
         : "",

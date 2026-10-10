@@ -319,3 +319,80 @@ describe("RecommendationActionsService.readDispositions", () => {
     expect(out.map.size).toBe(0);
   });
 });
+
+/**
+ * F-1011: the Dismissed, Done, Snoozed and "all" tabs are read WHOLE too.
+ * `listByStatus` was still an unranged select after F-385 fixed its sibling,
+ * so past 1,000 acted keys a tab showed an arbitrary 1,000 with no word.
+ */
+describe("RecommendationActionsService.listByStatus", () => {
+  /** PostgREST's shape: at most 1,000 rows a response, keyset on `id`, eq applied. */
+  function pagedDb(rows: Array<Record<string, unknown>>) {
+    return {
+      getClient: () => ({
+        from: () => {
+          let after: string | null = null;
+          let lim = 1000;
+          const eqs: Array<[string, unknown]> = [];
+          const b: any = {};
+          for (const m of ["select", "order"]) b[m] = () => b;
+          b.eq = (c: string, v: unknown) => (eqs.push([c, v]), b);
+          b.gt = (_c: string, v: string) => ((after = v), b);
+          b.limit = (n: number) => ((lim = Math.min(n, 1000)), b);
+          b.then = (resolve: any, reject: any) =>
+            Promise.resolve({
+              data: rows
+                .filter((r) => eqs.every(([c, v]) => r[c] === v))
+                .filter((r) => after === null || String(r.id) > after)
+                .slice(0, lim),
+              error: null,
+            }).then(resolve, reject);
+          return b;
+        },
+      }),
+    } as any;
+  }
+
+  const rows = Array.from({ length: 1201 }, (_, i) => ({
+    id: `a-${String(i).padStart(5, "0")}`,
+    restaurant_id: "r-1",
+    rule_key: `rule-${i}`,
+    status: i % 2 === 0 ? "dismissed" : "done",
+    updated_at: new Date(Date.UTC(2026, 8, 1) + i * 60_000).toISOString(),
+  }));
+
+  it("lists every dismissal past the first 1,000, newest first", async () => {
+    const out = await new RecommendationActionsService(
+      pagedDb(rows),
+    ).listByStatus("r-1", "all");
+    expect(out).toHaveLength(1201);
+    expect(out[0].ruleKey).toBe("rule-1200");
+    expect(out[1200].ruleKey).toBe("rule-0");
+    const dismissed = await new RecommendationActionsService(
+      pagedDb(rows),
+    ).listByStatus("r-1", "dismissed");
+    expect(dismissed).toHaveLength(601);
+    expect(dismissed.every((r) => r.status === "dismissed")).toBe(true);
+  });
+
+  it("a refused page refuses the tab, never a part of it", async () => {
+    const db = {
+      getClient: () => ({
+        from: () => {
+          const b: any = {};
+          for (const m of ["select", "eq", "order", "gt", "limit"])
+            b[m] = () => b;
+          b.then = (resolve: any, reject: any) =>
+            Promise.resolve({ data: null, error: { message: "timeout" } }).then(
+              resolve,
+              reject,
+            );
+          return b;
+        },
+      }),
+    } as any;
+    await expect(
+      new RecommendationActionsService(db).listByStatus("r-1", "done"),
+    ).rejects.toThrow(/could not be read whole/);
+  });
+});

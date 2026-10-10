@@ -56,6 +56,7 @@
  */
 
 import { monthDays, recordWords as houseRecordWords } from '@/components/mudavym/dayStripDates';
+import { houseToday } from '@/lib/houseCalendar';
 import { localDayKey } from '@/lib/localDay';
 import type { EntryVM, GoalRow } from './useRecommendationsNextData';
 
@@ -83,7 +84,7 @@ export interface DueMark {
 }
 
 export interface DayCell {
-  /** YYYY-MM-DD, on the reader's clock — the day the strip files by. */
+  /** YYYY-MM-DD, on the house's clock — the day the strip files by. */
   date: string;
   /** One letter, the house's own abbreviation (never Intl — see `fmtDay`). */
   weekday: string;
@@ -124,19 +125,21 @@ export function posDaysFor(month: string, todayKey: string): number {
 }
 
 /**
- * The day a timestamp falls on, on the reader's clock. Null when it will not
+ * The day a timestamp falls on, on the HOUSE's clock. Null when it will not
  * parse.
  *
  * Not the UTC date: for a house west of Greenwich that is tomorrow from the
  * evening on, so an entry that fired at 18:00 PDT would sit on a day that has
- * not happened yet. The till's own days are house days, so the strip files on
- * the reader's day too rather than mixing two clocks on one row of cells.
+ * not happened yet. Not the reader's day either (F-1012): the till's cells
+ * are house days, so an owner in Detroit reading an Istanbul house would see
+ * the house's today drawn as a future cell. With no zone set (or one this
+ * browser cannot read) the device's day stands in, as everywhere else.
  */
-export function businessDate(iso: string | null | undefined): string | null {
+export function businessDate(iso: string | null | undefined, zone?: string | null): string | null {
   if (!iso) return null;
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return null;
-  return localDayKey(t);
+  return localDayKey(houseToday(zone, t));
 }
 
 export interface BuildDaysInput {
@@ -148,6 +151,8 @@ export interface BuildDaysInput {
   exclusions: Array<{ businessDate: string; reason: string | null }> | null;
   /** Defaults to now; injected by the tests so the model is deterministic. */
   now?: Date;
+  /** The house's time zone: every cell is a house day (F-1012). */
+  zone?: string | null;
 }
 
 /**
@@ -159,19 +164,19 @@ export interface BuildDaysInput {
  */
 export function buildDays(input: BuildDaysInput): DayCell[] {
   const now = input.now ?? new Date();
-  const todayKey = localDayKey(now);
+  const todayKey = localDayKey(houseToday(input.zone, now));
 
   const firedByDay = new Map<string, string[]>();
   const dueByDay = new Map<string, DueMark[]>();
 
   for (const e of input.entries) {
-    const first = businessDate(e.firstSeenAt);
+    const first = businessDate(e.firstSeenAt, input.zone);
     if (first) {
       const list = firedByDay.get(first);
       if (list) list.push(e.ruleKey);
       else firedByDay.set(first, [e.ruleKey]);
     }
-    const wake = businessDate(e.snoozeUntil);
+    const wake = businessDate(e.snoozeUntil, input.zone);
     if (wake) {
       const mark: DueMark = { kind: 'snooze', label: 'a snoozed entry wakes', ruleKey: e.ruleKey };
       const list = dueByDay.get(wake);
@@ -239,9 +244,14 @@ export function buildDays(input: BuildDaysInput): DayCell[] {
  * first-fired date touches NO day — it is withheld from every selection rather
  * than shown on all of them, and the page says how many are in that state.
  */
-export function touchesDay(entry: EntryVM, date: string, goals: GoalRow[] | null | undefined): boolean {
-  if (businessDate(entry.firstSeenAt) === date) return true;
-  if (businessDate(entry.snoozeUntil) === date) return true;
+export function touchesDay(
+  entry: EntryVM,
+  date: string,
+  goals: GoalRow[] | null | undefined,
+  zone?: string | null,
+): boolean {
+  if (businessDate(entry.firstSeenAt, zone) === date) return true;
+  if (businessDate(entry.snoozeUntil, zone) === date) return true;
   if (Array.isArray(goals))
     return goals.some(
       (g) =>

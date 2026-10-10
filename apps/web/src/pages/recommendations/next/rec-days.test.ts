@@ -279,3 +279,41 @@ describe('the strip on an LA evening — the reader’s day, not the UTC one (F-
     expect(cells.find((c) => c.date === '2026-09-30')!.fired).toEqual([]);
   });
 });
+
+describe('the strip runs on the house’s clock, not the reader’s (F-1012)', () => {
+  // An owner in Detroit reads the Istanbul house at 20:00 EDT on 30 September.
+  // In Istanbul it is already 03:00 on 1 October, and the till has filed
+  // checks on that day.
+  let tz: string | undefined;
+  beforeEach(() => {
+    tz = process.env.TZ;
+    process.env.TZ = 'America/Detroit';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-01T00:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    process.env.TZ = tz;
+  });
+
+  const zone = 'Europe/Istanbul';
+
+  it('rings the house’s today, not the reader’s', () => {
+    const cells = buildDays({ ...base, month: '2026-10', now: undefined, zone });
+    expect(cells.find((c) => c.isToday)!.date).toBe('2026-10-01');
+    expect(cells.find((c) => c.date === '2026-10-01')!.isFuture).toBe(false);
+  });
+
+  it('files a fired mark and a wake on the house’s day', () => {
+    // 01:30 in Istanbul on 1 October, 21:30 in Detroit on 30 September.
+    const fired = entry({ firstSeenAt: '2026-09-30T22:30:00.000Z' });
+    const cells = buildDays({ ...base, month: '2026-10', now: undefined, entries: [fired], zone });
+    expect(cells.find((c) => c.date === '2026-10-01')!.fired).toEqual(['stockout_imminent']);
+    expect(businessDate('2026-09-30T22:30:00.000Z', zone)).toBe('2026-10-01');
+    expect(touchesDay(fired, '2026-10-01', [], zone)).toBe(true);
+  });
+
+  it('with no zone set, the device’s day stands in', () => {
+    expect(businessDate('2026-09-30T22:30:00.000Z')).toBe('2026-09-30');
+  });
+});
