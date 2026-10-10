@@ -39,6 +39,11 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
 from core.commitment_patterns import contains_commitment_language
+from core.house_only_figures import (
+    order_letter_without_ceiling,
+    vendor_safe_intent,
+    withheld_figures_in,
+)
 from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from utils.logger import setup_logger
@@ -476,6 +481,9 @@ class AuditEntry:
     active_promos_referenced: List[str] = field(default_factory=list)
     intent_source: str = ""
     commitment_language_detected: bool = False
+    # A house-only figure (the price ceiling) was found in the model's draft,
+    # so the draft was dropped for the fixed template (core/house_only_figures).
+    withheld_figure_dropped: bool = False
 
 
 # =============================================================================
@@ -2269,7 +2277,9 @@ class ProviderConversationAgent(BaseAgent):
                 style_profile=style_summary,
                 last_5_messages=msg_history or "No prior messages in this session",
                 top_5_relevant_memories=mem_text or "No relevant memories found",
-                intent_description=json.dumps(intent, default=str),
+                # The ceiling is the house's own, so it is left out of the
+                # intent in the prompt (memories or history may still hold it).
+                intent_description=json.dumps(vendor_safe_intent(intent), default=str),
                 active_promos=promo_text,
                 tone_instruction=tone_instruction,
                 last_3_db_interactions=db_ctx["last_3_db_interactions"],
@@ -2297,7 +2307,24 @@ class ProviderConversationAgent(BaseAgent):
 
             draft_text = response.text.strip()
 
+            # A house-only figure in the draft (the model can still meet one in
+            # memories or history) replaces the draft with a fixed order letter
+            # built from wine_name, quantity and target_price (no per-bottle
+            # fallback), without house-only keys (ADR 0326). The drop is recorded in
+            # constraint_flags.audit_trail and, under Level 4, in the
+            # decision log by key name only; the model's draft is not kept.
+            withheld = withheld_figures_in(draft_text, intent)
+            if withheld:
+                self.logger.warning(
+                    f"Draft for provider {provider_id} held a house-only figure "
+                    f"({', '.join(withheld)}); using the fixed order letter instead"
+                )
+                audit.withheld_figure_dropped = True
+                draft_text = order_letter_without_ceiling(intent)
+
             # AI-SPEC §6: Check commitment language — log warning; caller must force pending_approval
+            # (the fixed order letter gets the same check: it interpolates the
+            # intent's wine name and quantity)
             if self._check_commitment_language(draft_text):
                 self.logger.warning(
                     f"Commitment language detected in draft for provider {provider_id} "
@@ -2307,16 +2334,29 @@ class ProviderConversationAgent(BaseAgent):
 
             # Level 4: log draft generation decision to decision_log
             if settings.prov_agent_level4_enabled:
+                inputs = {
+                    "provider_id": str(provider_id),
+                    "intent": str(intent.get("intent_type", "unknown"))[:500],
+                    "context_injected": list(db_ctx.keys()),
+                    "close_relationship": close_relationship,
+                }
+                output = {"draft_preview": str(draft_text)[:500]}
+                reasoning = (
+                    "Gemini-generated reply using provider context + DB history (D-19)"
+                )
+                if withheld:
+                    # key names only: the withheld value is never logged
+                    inputs["withheld_keys"] = list(withheld)
+                    output["replaced_by_order_letter"] = True
+                    reasoning = (
+                        "The model's draft held a house-only figure, so the fixed "
+                        "order letter was staged instead (ADR 0326)"
+                    )
                 await self.log_decision(
                     decision_type="draft_generated",
-                    inputs={
-                        "provider_id": str(provider_id),
-                        "intent": str(intent.get("intent_type", "unknown"))[:500],
-                        "context_injected": list(db_ctx.keys()),
-                        "close_relationship": close_relationship,
-                    },
-                    output={"draft_preview": str(draft_text)[:500]},
-                    reasoning="Gemini-generated reply using provider context + DB history (D-19)",
+                    inputs=inputs,
+                    output=output,
+                    reasoning=reasoning,
                     confidence=0.8,
                 )
 
@@ -2339,17 +2379,33 @@ class ProviderConversationAgent(BaseAgent):
         formality = style.get("formality", "semi-formal")
 
         if intent_type == "negotiate_price":
+            # A missing or non-numeric target asks for the vendor's price
+            # instead of raising on the format spec.
+            try:
+                price = float(target_price)
+            except (TypeError, ValueError):
+                price = None
             if formality == "casual":
+                at = (
+                    f"at ${price:.2f}/bottle"
+                    if price is not None
+                    else "and at what price"
+                )
                 return (
                     f"Hey! Quick question — could you do "
                     f"{quantity} bottles of {wine} "
-                    f"at ${target_price:.2f}/bottle? "
+                    f"{at}? "
                     f"Let me know what you think!"
                 )
+            ask = (
+                f"Would ${price:.2f} per bottle work for you? "
+                if price is not None
+                else "What would your best price per bottle be? "
+            )
             return (
                 f"I hope this message finds you well. "
                 f"We're looking to order {quantity} bottles of {wine}. "
-                f"Would ${target_price:.2f} per bottle work for you? "
+                f"{ask}"
                 f"I'd appreciate your thoughts on this."
             )
 
@@ -2858,6 +2914,7 @@ class ProviderConversationAgent(BaseAgent):
                         "style_adaptations": audit.style_adaptations,
                         "active_promos_referenced": audit.active_promos_referenced,
                         "intent_source": audit.intent_source,
+                        "withheld_figure_dropped": audit.withheld_figure_dropped,
                     },
                 },
             }
