@@ -69,8 +69,9 @@ export function servesPeriod(
   if (kind !== "pm" && kind !== "double") return false;
   const start = toMinutes(shift.start_time);
   const end = toMinutes(shift.end_time);
-  // Past 15:00, or past midnight (an end at or before the start).
-  return end > 15 * 60 || end <= start;
+  // Past 15:00, or past midnight (an end before the start). Equal times are a
+  // moment, not a whole night, as in pay-rules hoursBetween (F-874).
+  return end > 15 * 60 || end < start;
 }
 
 /** "2026-10-09" → "Fri 9 Oct", the date as the refusal says it. */
@@ -1877,7 +1878,8 @@ function clockAt(zone: string, now: Date): string {
 }
 /**
  * Whether a shift's end is at or before `nowOnClock` (from `clockAt`). A shift
- * that ends at or before it starts runs past midnight, into the next day.
+ * that ends before it starts runs past midnight, into the next day; equal
+ * times are a moment on its own day, as the feed and the hours read them (F-874).
  */
 function shiftHasEnded(
   sh: { shift_date?: string | null; start_time?: string | null; end_time?: string | null },
@@ -1886,7 +1888,7 @@ function shiftHasEnded(
   if (!sh.shift_date || !sh.end_time || !nowOnClock) return false;
   const end = sh.end_time.slice(0, 5);
   const start = (sh.start_time ?? "").slice(0, 5);
-  const endDay = start && end <= start ? addDays(sh.shift_date, 1) : sh.shift_date;
+  const endDay = start && end < start ? addDays(sh.shift_date, 1) : sh.shift_date;
   return `${endDay} ${end}` <= nowOnClock;
 }
 /** A shift's scheduled span, breaks included. */

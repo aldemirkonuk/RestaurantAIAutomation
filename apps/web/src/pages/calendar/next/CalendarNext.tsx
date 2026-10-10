@@ -666,7 +666,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
               )}
             </>
           )}
-          {view === 'agenda' && <AgendaRoll data={data} onOpenEvent={openEvent} />}
+          {view === 'agenda' && <AgendaRoll data={data} onOpenEvent={openEvent} today={houseToday(zone)} />}
         </div>
 
         {/* THE QUESTION, ASKED AFTER THE MEETING ENDS (ADR 0111 · census 102).

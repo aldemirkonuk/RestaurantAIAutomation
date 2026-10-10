@@ -18,7 +18,7 @@
 
 import { useState } from 'react';
 import { Seal } from '../../../components/mudavym';
-import { EM, clock, longDay, sinceOrUntil, span } from './cal-format';
+import { EM, clock, longDay, daySpan, sinceOrUntil } from './cal-format';
 import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
 import { DayRecordMark, SkyMark, TakingsMark } from './SkyMark';
 import { addDays, dayKey, parseDayKey, startOfWeek } from './cal-format';
@@ -133,7 +133,7 @@ export function DayLedger({
       data-ruled={data.isRuledOff(e)}
       onClick={() => onOpenEvent(e)}
     >
-      <span className="cn-when">{span(e.startTime, e.endTime, e.allDay)}</span>
+      <span className="cn-when">{daySpan(e, day)}</span>
       <span className="cn-entry">
         <b>{e.title}</b>
         <LinkLine event={e} data={data} />
@@ -245,7 +245,9 @@ export default function MonthLedger({
   onOpenEvent,
   onCreateAt,
 }: MonthLedgerProps) {
-  const [dragged, setDragged] = useState<CalEvent | null>(null);
+  // The entry AND the day it was grabbed on: a multi-day entry has a ribbon on
+  // every day it covers (F-198), so the move is target minus that day (F-871).
+  const [dragged, setDragged] = useState<{ event: CalEvent; from: string } | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -255,18 +257,20 @@ export default function MonthLedger({
   const today = houseToday ?? dayKey(new Date());
 
   const drop = (target: string) => {
-    const event = dragged;
+    const grabbed = dragged;
     setDragged(null);
     setOver(null);
-    if (!event || event.date === target) return;
-    const shift = event.endDate
-      ? Math.round((parseDayKey(target).getTime() - parseDayKey(event.date).getTime()) / 86_400_000)
-      : 0;
+    if (!grabbed || grabbed.from === target) return;
+    const { event } = grabbed;
+    const shift = Math.round(
+      (parseDayKey(target).getTime() - parseDayKey(grabbed.from).getTime()) / 86_400_000,
+    );
+    const moved = (key: string) => dayKey(addDays(parseDayKey(key), shift));
     data.move.mutate({
       id: event.seriesId,
       patch: {
-        eventDate: target,
-        ...(event.endDate ? { eventDateEnd: dayKey(addDays(parseDayKey(event.endDate), shift)) } : {}),
+        eventDate: moved(event.date),
+        ...(event.endDate ? { eventDateEnd: moved(event.endDate) } : {}),
       },
     });
   };
@@ -339,9 +343,9 @@ export default function MonthLedger({
                   key={ev.id}
                   event={ev}
                   ruled={data.isRuledOff(ev)}
-                  dragging={dragged?.id === ev.id}
+                  dragging={dragged?.event.id === ev.id}
                   onOpen={() => onOpenEvent(ev)}
-                  onDragStart={() => setDragged(ev)}
+                  onDragStart={() => setDragged({ event: ev, from: key })}
                   onDragEnd={() => {
                     setDragged(null);
                     setOver(null);

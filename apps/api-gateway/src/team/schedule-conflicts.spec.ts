@@ -354,6 +354,15 @@ describe("coverage counts a shift by its Kind as well as its start (F-170)", () 
     ).toBe(true);
   });
 
+  it("does not read equal start and end times as a shift past midnight (F-874)", () => {
+    expect(
+      servesPeriod(
+        { start_time: "10:00", end_time: "10:00", shift_type: "pm" },
+        "pm",
+      ),
+    ).toBe(false);
+  });
+
   it("does not count a morning shift left at the form's default Kind toward the evening", () => {
     expect(
       servesPeriod(
