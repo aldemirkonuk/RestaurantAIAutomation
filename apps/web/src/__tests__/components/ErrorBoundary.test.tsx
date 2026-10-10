@@ -237,6 +237,30 @@ describe('ErrorBoundary', () => {
     fireEvent.click(screen.getByText('try again'));
     expect(client.getQueryData(['shell'])).toBe('still here');
   });
+
+  // F-1081: offline, a reload lands on the browser's "No internet" page.
+  it('a chunk error offline keeps the in-app screen instead of reloading', () => {
+    sessionStorage.clear();
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const Chunk = () => {
+      throw new TypeError('Failed to fetch dynamically imported module: /assets/DoorNext-abc.js');
+    };
+    try {
+      render(
+        <ErrorBoundary fallback={({ errorCategory }) => <div>wall: {errorCategory}</div>}>
+          <Chunk />
+        </ErrorBoundary>
+      );
+      expect(reload).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem('chunk_reload')).toBeNull();
+      expect(screen.getByText('wall: network')).toBeInTheDocument();
+    } finally {
+      onLine.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 // F-736: the category comes from typed fields, never from words in the message.

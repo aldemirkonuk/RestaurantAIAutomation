@@ -115,7 +115,10 @@ export class ErrorBoundary extends Component<Props, State> {
       msg.includes('error loading dynamically imported module') ||
       msg.includes('loading chunk') ||
       msg.includes('chunkloaderror')
-    if (isChunkError && !sessionStorage.getItem('chunk_reload')) {
+    // Offline, a reload lands on the browser's own "No internet" page and the
+    // app is gone until the signal returns (F-1081) — keep the in-app screen.
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+    if (isChunkError && !offline && !sessionStorage.getItem('chunk_reload')) {
       sessionStorage.setItem('chunk_reload', '1')
       window.location.reload()
       return
@@ -127,7 +130,7 @@ export class ErrorBoundary extends Component<Props, State> {
       type: 'react_error_boundary',
     })
     
-    const errorCategory = categorizeError(error)
+    const errorCategory = isChunkError && offline ? 'network' : categorizeError(error)
     
     this.setState({
       error,
