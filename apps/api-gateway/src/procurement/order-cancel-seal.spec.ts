@@ -196,13 +196,23 @@ async function makeService(
         order: () => q,
         limit: () => q,
         range: () => q,
+        // `__missing` stands for an id that is not in this house: a list
+        // read finds nothing, and `.single()` answers as PostgREST does.
         maybeSingle: async () =>
-          table === "procurement_orders"
+          table === "procurement_orders" && !order.__missing
             ? { data: { ...order }, error: null }
             : { data: null, error: null },
         single: async () =>
           table === "procurement_orders"
-            ? { data: { ...order }, error: null }
+            ? order.__missing
+              ? {
+                  data: null,
+                  error: {
+                    code: "PGRST116",
+                    message: "Cannot coerce the result to a single JSON object",
+                  },
+                }
+              : { data: { ...order }, error: null }
             : { data: null, error: null },
         then: (resolve: any, reject: any) =>
           Promise.resolve({ data: tableRows[table] ?? [], error: null }).then(resolve, reject),
@@ -694,6 +704,89 @@ describe("the PATCH route is held to the same table", () => {
     } as any);
     expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
     expect(h.order.manager_notes).toBe("call the rep");
+  });
+
+  // F-943: the quoted and negotiated prices are what an order costs, so they
+  // take the price's gate; whether the price was right is the invoice check's
+  // verdict and is never typed in.
+  it("[REVERT-FAILS] refuses a negotiated price from someone who is not a manager or an owner (F-943)", async () => {
+    roleGate.allow = false;
+    const h = await makeService({
+      status: ProcurementOrderStatus.PENDING,
+      negotiated_price: 40,
+    });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { negotiatedPrice: 4 } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getStatus()).toBe(403);
+    expect(roleGate.assert).toHaveBeenCalledWith(
+      MANAGER,
+      HOUSE,
+      "change what an order costs",
+    );
+    expect(h.order.negotiated_price).toBe(40);
+  });
+
+  it("[REVERT-FAILS] refuses a quoted price once the order is approved (F-943)", async () => {
+    const h = await makeService({
+      status: ProcurementOrderStatus.APPROVED,
+      quoted_price: 40,
+    });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { quotedPrice: 4 } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(err.getResponse().reason).toBe("price_set_before_approval");
+    expect(h.order.quoted_price).toBe(40);
+  });
+
+  it("lets a manager set a pending order's quoted price without touching its total (F-943)", async () => {
+    const h = await makeService({
+      status: ProcurementOrderStatus.PENDING,
+      quoted_price: 40,
+      total_cost: 2000,
+    });
+    await h.service.updateOrder(HOUSE, ORDER_ID, { quotedPrice: 38 } as any, {
+      actorUserId: MANAGER,
+    });
+    expect(h.order.quoted_price).toBe(38);
+    expect(h.order.total_cost).toBe(2000);
+  });
+
+  it("[REVERT-FAILS] refuses a typed-in price check, in words, and writes nothing (F-943)", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.DELIVERED });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { priceVerified: true } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getStatus()).toBe(400);
+    expect(err.getResponse().reason).toBe("price_check_is_not_typed_in");
+    expect(err.getResponse().message).toMatch(/checked against the invoice/);
+    expect(h.updates).toHaveLength(0);
+    expect("price_verified" in h.order).toBe(false);
+  });
+
+  // F-944: an id that is not in this house was a 500 in PostgREST's words.
+  it("[REVERT-FAILS] answers an order that is not in this house with a 404 in words (F-944)", async () => {
+    const h = await makeService({ __missing: true });
+    const err = await refusal(() =>
+      h.service.updateOrder(
+        HOUSE,
+        ORDER_ID,
+        { managerNotes: "call the rep" } as any,
+        { actorUserId: MANAGER },
+      ),
+    );
+    expect(err.getStatus()).toBe(404);
+    expect(err.message).toBe(
+      "No order with that id belongs to this restaurant, so there was nothing to change.",
+    );
+    expect(err.message).not.toMatch(/coerce/);
   });
 
   // F-557: procurement_orders has no location column, so `locationId` used

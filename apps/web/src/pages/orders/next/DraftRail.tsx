@@ -39,6 +39,7 @@ import {
   type OrderConversationDto,
 } from "@/hooks/queries/useDraftEmailQueries";
 import { SendStandingNote, holdAct } from "@/components/orders/SendStanding";
+import { useHouseGroupMark } from "@/hooks/useHouseGroupMark";
 import {
   EM,
   MONO,
@@ -689,6 +690,8 @@ function DraftCard({
   currency: string | null;
 }) {
   const [expanded, setExpanded] = useState(focused);
+  // Figures grouped the house's way (F-942).
+  const group = useHouseGroupMark();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const reduced = useReducedMotion();
   // ORD-W8: opening an order on the ledger opens its letter here and brings it
@@ -776,7 +779,7 @@ function DraftCard({
               {priceLabel}
             </span>
           )}
-          {qty !== null ? `${qty} × ${fmtMoney(price, currency)}` : fmtMoney(total, currency)}
+          {qty !== null ? `${qty} × ${fmtMoney(price, currency, group)}` : fmtMoney(total, currency, group)}
         </span>
         <span
           aria-hidden

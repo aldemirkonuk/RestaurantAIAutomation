@@ -5,7 +5,8 @@
  * dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
-import { formatMoney } from '@/lib/currency';
+import { formatMoney, inHouseMarks } from '@/lib/currency';
+import { displayGroupMark, type GroupMark } from '@/lib/parseDecimal';
 
 export const EM = '—';
 
@@ -25,17 +26,9 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-const money = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-export function fmtMoney(v: number | null | undefined): string {
-  const n = num(v);
-  return n === null ? EM : money.format(n);
-}
+// RETIRED (F-940): `fmtMoney`, which printed every figure as US dollars. Its
+// one caller was the credit-request card, which now names the claim's own
+// money through `fmtMoneyIn`.
 
 /** Whole-dollar form for the recovered figure. Unknown stays a dash. */
 const moneyWhole = new Intl.NumberFormat('en-US', {
@@ -91,43 +84,32 @@ export function fmtMoneyWholeFloor(
  * (F-453): the currency's own decimals, or whole units with `whole`; a code
  * that names no currency (`UNRECORDED`, null) prints the number with "currency
  * not recorded" rather than borrowing dollars. Unknown is still a dash.
+ * `group` is the house's grouping mark (`useHouseGroupMark`); given, the figure
+ * is re-marked the house's way (F-940).
  */
 export function fmtMoneyIn(
   v: number | null | undefined,
   currency: string | null,
-  opts: { whole?: boolean; atFloor?: boolean } = {},
+  opts: { whole?: boolean; atFloor?: boolean; group?: GroupMark | null } = {},
 ): string {
   const n = num(v);
   if (n === null) return EM;
-  const body = formatMoney(n, currency, opts.whole ? { maximumFractionDigits: 0 } : {});
+  const printed = formatMoney(n, currency, opts.whole ? { maximumFractionDigits: 0 } : {});
+  const body = inHouseMarks(printed, displayGroupMark(), opts.group ?? null);
   return opts.atFloor ? `${GE}${body}` : body;
 }
 
-const moneyWholeByCurrency = new Map<string, Intl.NumberFormat>();
 /**
  * Whole-money form in a STATED currency, not the page's hardcoded USD
- * formatters above (fixer review, 2026-09-18: "a priced receipt needs its
+ * formatter above (fixer review, 2026-09-18: "a priced receipt needs its
  * currency" — a vendor-box subtotal must never sum, or print, across
- * currencies as if they were one). Falls back to USD only when the order
- * itself carries no currency, which is the pre-existing convention this
- * page's other figures already assume.
+ * currencies as if they were one). An order that carries no currency prints
+ * its number with "currency not recorded", never a borrowed "$" (F-941); a
+ * code `Intl` does not know prints beside the number.
  */
 export function fmtMoneyWholeCcy(v: number | null | undefined, currency: string | null): string {
-  const n = num(v);
-  if (n === null) return EM;
-  const code = (currency ?? 'USD').toUpperCase();
-  let fmt = moneyWholeByCurrency.get(code);
-  if (!fmt) {
-    try {
-      fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, maximumFractionDigits: 0 });
-    } catch {
-      // An unrecognised ISO-4217 code (a typo the order-entry side let through) —
-      // print the code itself rather than pretending it was USD.
-      fmt = null as any;
-    }
-    if (fmt) moneyWholeByCurrency.set(code, fmt);
-  }
-  return fmt ? fmt.format(n) : `${Math.round(n)} ${code}`;
+  const code = typeof currency === 'string' ? currency.trim().toUpperCase() : null;
+  return fmtMoneyIn(v, code || null, { whole: true });
 }
 
 /**

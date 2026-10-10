@@ -78,6 +78,7 @@
 // a manager may pick, their names, and the formatter that refuses to print a
 // symbol nobody earned.
 export { currencyForCountry } from './countries';
+import type { GroupMark } from './parseDecimal';
 
 /**
  * What the sign-up form and the agreement sheet will actually RECORD, given the
@@ -379,6 +380,24 @@ export function formatMoney(
       maximumFractionDigits: digits,
     })} ${currency}`
   }
+}
+
+/**
+ * A printed figure re-marked the way the HOUSE groups its numbers (F-940,
+ * F-942). `shown` is the grouping mark the figure was printed with, `house` the
+ * house's own (`useHouseGroupMark`). When they differ, the group and decimal
+ * marks inside each run of digits trade places, so a lira house reads
+ * "₺1.250,00" where the formatter printed "₺1,250.00"; the symbol and any
+ * words around the figure are left alone. Either mark unknown changes nothing:
+ * a guess at the house's locale is worse than the screen's own.
+ */
+export function inHouseMarks(
+  text: string,
+  shown: GroupMark | null,
+  house: GroupMark | null,
+): string {
+  if (!shown || !house || shown === house) return text
+  return text.replace(/\d[\d.,]*\d/g, (run) => run.replace(/[.,]/g, (c) => (c === '.' ? ',' : '.')))
 }
 
 /**

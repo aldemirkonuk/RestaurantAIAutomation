@@ -8,7 +8,7 @@
     "apps/web/src/pages/notifications/next/MarketIndexPanel.test.tsx": 1,
     "apps/web/src/pages/notifications/next/NotificationsNext.test.tsx": 1,
     "apps/web/src/pages/orders/next/format.ts": 1,
-    "apps/web/src/pages/receiving/next/rc-format.ts": 2,
+    "apps/web/src/pages/receiving/next/rc-format.ts": 1,
     "apps/web/src/utils/wineLibraryExport.ts": 2
   }
 }

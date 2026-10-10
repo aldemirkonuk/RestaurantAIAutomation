@@ -42,6 +42,7 @@ import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } f
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
@@ -49,6 +50,8 @@ const VALID_STATIONS = new Set<string>([...STAGES, 'recurring']);
 
 export default function OrdersNext() {
   const data = useOrdersNextData();
+  // Figures grouped the house's way (F-942).
+  const group = useHouseGroupMark();
   const { activeRestaurantId, user } = useAuth();
   /* Read here as well as inside the sheet so the guard can fire BEFORE the
      composer opens — the legacy desk's `openCreateOrderFlow` rule
@@ -342,13 +345,13 @@ export default function OrdersNext() {
                     color: 'var(--ink-1, #211C16)',
                   }}
                 >
-                  {fmtMoneyWhole(c.amount, c.currency)}
+                  {fmtMoneyWhole(c.amount, c.currency, group)}
                 </span>
               ))
             ) : (
               <Tally
                 value={data.month.thisMonth}
-                format={(n) => fmtMoneyWhole(n, monthCurrency)}
+                format={(n) => fmtMoneyWhole(n, monthCurrency, group)}
                 style={{
                   display: 'block',
                   fontFamily: MONO,
@@ -364,13 +367,14 @@ export default function OrdersNext() {
               last month{' '}
               {(data.month.lastMonthByCurrency?.length ?? 0) > 1
                 ? data.month.lastMonthByCurrency!
-                    .map((c) => fmtMoneyWhole(c.amount, c.currency))
+                    .map((c) => fmtMoneyWhole(c.amount, c.currency, group))
                     .join(' · ')
                 : data.month.lastMonth === null
                   ? EM
                   : fmtMoneyWhole(
                       data.month.lastMonth,
                       data.month.lastMonthByCurrency?.[0]?.currency ?? data.houseCurrency ?? null,
+                      group,
                     )}
               {data.month.unpricedThisMonth > 0 &&
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}

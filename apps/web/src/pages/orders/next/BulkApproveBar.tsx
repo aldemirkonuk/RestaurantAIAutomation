@@ -26,6 +26,7 @@ import * as ordersApi from '@/services/api/orders';
 import { AMOUNTS_WITHHELD, MONO, SANS, fmtMoney, sumByCurrency } from './format';
 import type { OrderRowVM } from './useOrdersNextData';
 import { approveConflict } from '@/services/api/approveConflict';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 
 export interface BulkApproveBarProps {
   selectedRows: OrderRowVM[];
@@ -51,6 +52,8 @@ function refusalReason(err: unknown): string | null {
 }
 
 export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningChange }: BulkApproveBarProps) {
+  // Figures grouped the house's way (F-942).
+  const group = useHouseGroupMark();
   const approve = useApproveOrder();
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState<Phase>('idle');
@@ -431,7 +434,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
               ? doneLine(result)
               : withheld
                 ? AMOUNTS_WITHHELD
-                : `${knownTotals.length ? knownTotals.map((c) => fmtMoney(c.amount, c.currency)).join(' and ') : fmtMoney(0, selectedRows[0]?.currency)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
+                : `${knownTotals.length ? knownTotals.map((c) => fmtMoney(c.amount, c.currency, group)).join(' and ') : fmtMoney(0, selectedRows[0]?.currency, group)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
           </span>
           {phase === 'done' && result && result.reasons.length > 0 && (
             <span
