@@ -227,10 +227,13 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           : null
       onSuccess(result, { image })
     } catch (e: any) {
-      // A scan sent with no answer back may already be read and kept, so the
+      // A file sent with no answer back may already be read and kept, so the
       // file is let go: pressing Import again would read and keep it twice
-      // (F-803). Files queued behind it were never sent, and are named.
-      if (isScanFile && readWithoutAnswer(e)) {
+      // (F-803). A CSV or spreadsheet too (F-807): the gateway import is not
+      // idempotent, each call inserts a new version (menus.service.ts:597) and
+      // nothing dedupes on source_sha256. Files queued behind it were never
+      // sent, and are named.
+      if (readWithoutAnswer(e)) {
         const unsent = queue.length
         resetFile()
         setError(
