@@ -128,6 +128,9 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   // rewrite the operator's record. So an untouched out-of-enum value is simply
   // not sent, and the sheet says the field is holding a value it cannot re-send.
   const [typeTouched, setTypeTouched] = useState(false);
+  // A custom type is the whole house's: deleting it is asked first (F-694),
+  // and the gateway lets only an owner or a manager do it.
+  const [confirmTypeId, setConfirmTypeId] = useState<string | null>(null);
   const [statusTouched, setStatusTouched] = useState(false);
   const [color, setColor] = useState(editing?.color ?? '');
   const [date, setDate] = useState(editing?.date ?? (target.mode === 'create' ? target.date : ''));
@@ -334,18 +337,40 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                     <span className="cn-swatch" style={{ background: t.color }} aria-hidden />
                     {t.name}
                   </button>
-                  {!t.isDefault && (
+                  {!t.isDefault && confirmTypeId !== t.id && (
                     <button
                       type="button"
                       className="cn-chip cn-ink"
                       aria-label={`Delete the ${t.name} type`}
-                      onClick={() => {
-                        ask('deleteType');
-                        data.deleteType.mutate(t.id);
-                      }}
+                      onClick={() => setConfirmTypeId(t.id)}
                     >
                       ×
                     </button>
+                  )}
+                  {!t.isDefault && confirmTypeId === t.id && (
+                    <span className="cn-row" role="group" aria-label={`Confirm deleting ${t.name}`} style={{ gap: 2 }}>
+                      <span className="cn-quiet cn-tight">
+                        Delete “{t.name}” for the whole house? Entries keep the name; the colour goes.
+                      </span>
+                      <button
+                        type="button"
+                        className="cn-chip cn-ink"
+                        onClick={() => {
+                          setConfirmTypeId(null);
+                          ask('deleteType');
+                          data.deleteType.mutate(t.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        className="cn-chip cn-ink"
+                        onClick={() => setConfirmTypeId(null)}
+                      >
+                        Keep
+                      </button>
+                    </span>
                   )}
                 </span>
               );

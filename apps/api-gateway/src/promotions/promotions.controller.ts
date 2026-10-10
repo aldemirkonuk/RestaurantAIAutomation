@@ -115,7 +115,10 @@ export class PromotionsController {
   }
 
   @Post(":id/restore")
-  @ApiOperation({ summary: "Bring a put-away offer back to the house's table" })
+  @ApiOperation({
+    summary: "Bring a put-away offer back to the house's table",
+    description: "Records who restored it, and the dismissal it took back, in the house log.",
+  })
   @ApiResponse({ status: 200, description: "Restored" })
   @ApiResponse({ status: 404, description: "No such offer on this house's table" })
   async restore(
@@ -123,8 +126,12 @@ export class PromotionsController {
     @Param("id", new ParseUUIDPipe()) id: string,
   ): Promise<{ restored: true }> {
     const house = houseOf(user);
+    // F-695: a restore names who did it, as a dismissal does.
+    if (!user?.userId) {
+      throw new ForbiddenException("This session names no person.");
+    }
     try {
-      return await this.promotions.restore(house, id);
+      return await this.promotions.restore(house, user.userId, id);
     } catch (error) {
       rethrow(error, "The offer could not be restored");
     }

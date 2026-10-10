@@ -234,6 +234,50 @@ describe('useRecommendationsNextData transport', () => {
     expect(result.current.undo?.excludedDate).toBeUndefined();
   });
 
+  it('Undo from the page passes only the key; the day comes off the Undo (F-692)', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    api.delete.mockReset();
+    api.delete.mockResolvedValue({ data: {} });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], dismissAndStrike);
+    });
+    const u = result.current.undo!;
+    expect(u.excludedDate).toBe('2026-09-02');
+    await act(async () => {
+      await result.current.restore(u.ruleKey);
+    });
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ ruleKey: 'stockout_imminent#chablis-2021#d:2026-09-02', status: 'active' }),
+    );
+    expect(api.delete).toHaveBeenCalledWith('/analytics/exclusions/r1/2026-09-02');
+    expect(result.current.note).toMatch(/2026-09-02 counts again in every average/);
+  });
+
+  it('Undo from the page passes only the key; the day comes off the Undo (F-692)', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    api.delete.mockReset();
+    api.delete.mockResolvedValue({ data: {} });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], dismissAndStrike);
+    });
+    const u = result.current.undo!;
+    expect(u.excludedDate).toBe('2026-09-02');
+    await act(async () => {
+      await result.current.restore(u.ruleKey);
+    });
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ ruleKey: 'stockout_imminent#chablis-2021#d:2026-09-02', status: 'active' }),
+    );
+    expect(api.delete).toHaveBeenCalledWith('/analytics/exclusions/r1/2026-09-02');
+    expect(result.current.note).toMatch(/2026-09-02 counts again in every average/);
+  });
+
   it('says so when the entry was dismissed but the day could not be excluded', async () => {
     api.post.mockImplementation(async (url: string) => {
       if (url.includes('/exclusions')) throw new Error('no table');

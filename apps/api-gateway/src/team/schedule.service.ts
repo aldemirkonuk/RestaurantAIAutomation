@@ -720,14 +720,20 @@ export class ScheduleService {
   /**
    * A shift's planned cost: worked hours (span minus the break the shift is
    * counted with — recorded, or the Art. 68 minimum for its length when none
-   * is on record) at the wage on file now. A failed wage read is an
-   * error, not an unpriced shift: "no wage on file" is what `null` says, and a
-   * database hiccup is not that.
+   * is on record) at the wage in force on the shift's date. A failed wage read
+   * is an error, not an unpriced shift: "no wage on file" is what `null` says,
+   * and a database hiccup is not that.
+   *
+   * The wage in force (F-690): the wage on file now, unless it changed after
+   * the shift's date — then the wage the first such change replaced
+   * (`team_member_wage_changes.old_wage`). Fixing September's break after an
+   * October raise used to reprice September at the October wage.
    */
   private async laborCost(
     restaurantId: string,
     memberId: string | null | undefined,
     shift: ShiftLike,
+    shiftDate: string,
   ): Promise<number | null> {
     if (!memberId) return null;
     const { data: m, error } = await this.sb
@@ -745,7 +751,28 @@ export class ScheduleService {
         "Could not read this person's wage to price the shift, so it was not saved.",
       );
     }
-    return priceShift(m?.hourly_wage ?? null, shift);
+    const dayAfter = new Date(`${shiftDate.slice(0, 10)}T00:00:00Z`);
+    dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+    const { data: later, error: laterErr } = await this.sb
+      .from("team_member_wage_changes")
+      .select("old_wage, changed_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", memberId)
+      .gte("changed_at", dayAfter.toISOString())
+      .order("changed_at", { ascending: true })
+      .limit(1);
+    if (laterErr) {
+      this.logger.error(
+        `laborCost: could not read the wage history of member ${memberId} ` +
+          `in ${restaurantId}: ${laterErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this person's wage history to price the shift, so it was not saved.",
+      );
+    }
+    const wage =
+      later && later.length > 0 ? later[0].old_wage : (m?.hourly_wage ?? null);
+    return priceShift(wage ?? null, shift);
   }
 
   /**
@@ -814,7 +841,7 @@ export class ScheduleService {
       start_time: dto.startTime,
       end_time: dto.endTime,
       recorded_break_min: recordedBreak ?? null,
-    });
+    }, dto.shiftDate);
     const { data, error } = await this.sb
       .from("shifts")
       .insert({
@@ -977,15 +1004,20 @@ export class ScheduleService {
       dto.endTime !== undefined ||
       recordedBreak !== undefined
     ) {
-      patch.labor_cost = await this.laborCost(restaurantId, pricedMember, {
-        start_time: nextStart,
-        end_time: nextEnd,
-        shift_breaks: cur.shift_breaks ?? [],
-        recorded_break_min:
-          recordedBreak !== undefined
-            ? recordedBreak
-            : (cur.recorded_break_min ?? null),
-      });
+      patch.labor_cost = await this.laborCost(
+        restaurantId,
+        pricedMember,
+        {
+          start_time: nextStart,
+          end_time: nextEnd,
+          shift_breaks: cur.shift_breaks ?? [],
+          recorded_break_min:
+            recordedBreak !== undefined
+              ? recordedBreak
+              : (cur.recorded_break_min ?? null),
+        },
+        nextDate,
+      );
     }
 
     const { data, error } = await this.sb
@@ -1008,7 +1040,7 @@ export class ScheduleService {
     // failed read or delete is said, not answered as done.
     const { data: cur, error: curErr } = await this.sb
       .from("shifts")
-      .select("member_id")
+      .select("member_id, shift_date, start_time, end_time, role, state")
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -1023,6 +1055,35 @@ export class ScheduleService {
     }
     if (!cur) throw new NotFoundException("Shift not found");
     await this.team.assertOnTheRoster(restaurantId, cur, "Shift not found");
+    // F-690: a deleted shift leaves a trail — who deleted which shift, and
+    // what it was — before the row goes. No trail, no delete. The cost is
+    // left out: the house log is read by people without pay access.
+    const { error: auditErr } = await this.sb.from("system_audit_log").insert({
+      actor_type: "user",
+      actor_id: userId,
+      action: "shift_deleted",
+      entity_type: "shift",
+      entity_id: shiftId,
+      changes: {
+        member_id: cur.member_id ?? null,
+        shift_date: cur.shift_date ?? null,
+        start_time: cur.start_time ?? null,
+        end_time: cur.end_time ?? null,
+        role: cur.role ?? null,
+        state: cur.state ?? null,
+      },
+      restaurant_id: restaurantId,
+      reason: null,
+    });
+    if (auditErr) {
+      this.logger.error(
+        `deleteShift: could not record the delete of shift ${shiftId} in ` +
+          `${restaurantId}: ${auditErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not keep a record of this shift, so it was not deleted.",
+      );
+    }
     const { error } = await this.sb
       .from("shifts")
       .delete()
@@ -1467,7 +1528,9 @@ export class ScheduleService {
   ): Promise<number | null> {
     const { data: s, error } = await this.sb
       .from("shifts")
-      .select("start_time, end_time, recorded_break_min, shift_breaks(*)")
+      .select(
+        "start_time, end_time, shift_date, recorded_break_min, shift_breaks(*)",
+      )
       // Scoped even though the only caller already proved ownership with a
       // scoped fetch: an unscoped read that is safe only because of what its
       // caller happens to do first is one refactor away from not being.
@@ -1488,7 +1551,7 @@ export class ScheduleService {
       );
     }
     if (!s) return null;
-    return this.laborCost(restaurantId, memberId, s);
+    return this.laborCost(restaurantId, memberId, s, s.shift_date);
   }
 
   // ── Coverage engine ──────────────────────────────────────────────────────

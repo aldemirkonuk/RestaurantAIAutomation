@@ -327,3 +327,47 @@ describe("storage-locations — another house's location id is a 404", () => {
     await expect(svc.listMappings(HOUSE_A)).resolves.toEqual([]);
   });
 });
+
+describe("storage-locations — a zone with bottles in it is not deleted (F-691)", () => {
+  function withBottles(lots: number, mapped: number) {
+    return fakeDb({
+      storage_locations: [
+        { id: ZONE_OF_A, restaurant_id: HOUSE_A, zone: "A cellar", deleted_at: null },
+      ],
+      inventory_lots: [
+        { id: "l1", restaurant_id: HOUSE_A, location_id: ZONE_OF_A, stock_state: "live", qty: lots },
+        // Another house's lot in a zone of the same id is not counted.
+        { id: "l2", restaurant_id: HOUSE_B, location_id: ZONE_OF_A, stock_state: "live", qty: 9 },
+      ],
+      wine_location_mappings: [
+        { id: "m1", restaurant_id: HOUSE_A, wine_id: WINE, location_id: ZONE_OF_A, quantity: mapped },
+      ],
+    });
+  }
+
+  it("refuses with the count, and writes nothing", async () => {
+    const { db, writes } = withBottles(12, 12);
+    const svc = new StorageLocationsService(db);
+    await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      message: expect.stringContaining("12 bottles are still in this zone"),
+    });
+    expect(writes).toEqual([]);
+  });
+
+  it("a mapping alone (no lot yet) still holds the zone", async () => {
+    const { db, writes } = withBottles(0, 1);
+    const svc = new StorageLocationsService(db);
+    await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      message: expect.stringContaining("1 bottle is still in this zone"),
+    });
+    expect(writes).toEqual([]);
+  });
+
+  it("an empty zone deletes", async () => {
+    const { db } = withBottles(0, 0);
+    const svc = new StorageLocationsService(db);
+    await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).resolves.toEqual({ success: true });
+  });
+});

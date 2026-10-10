@@ -602,9 +602,53 @@ export class StorageLocationsService {
    * A soft delete. The zones inside it are not deleted: trigger
    * storage_locations_orphans_go_top_level (migration 20261203110000) clears
    * their parent_id in the same statement, so they become top-level zones.
+   *
+   * A zone that still holds bottles is not deleted (F-691): its lots and
+   * mappings would keep pointing at a zone nobody can see or bring back. The
+   * count is said, and the bottles are moved first.
    */
   async deleteLocation(restaurantId: string, locationId: string) {
     const client = this.dbService.supabase;
+    const [lotsQ, mapsQ] = await Promise.all([
+      client
+        .from("inventory_lots")
+        .select("qty")
+        .eq("restaurant_id", restaurantId)
+        .eq("location_id", locationId)
+        .eq("stock_state", "live"),
+      client
+        .from("wine_location_mappings")
+        .select("quantity")
+        .eq("restaurant_id", restaurantId)
+        .eq("location_id", locationId),
+    ]);
+    if (lotsQ.error || mapsQ.error) {
+      this.logger.error(
+        `Failed to count the bottles in location ${locationId}: ` +
+          `${(lotsQ.error ?? mapsQ.error)?.message}`,
+      );
+      throw new HttpException(
+        "Could not check whether bottles are still in this zone, so it was not deleted.",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    const sum = (rows: unknown, col: string) =>
+      ((rows as Array<Record<string, unknown>> | null) ?? []).reduce(
+        (n, r) => n + Math.max(0, Number(r[col]) || 0),
+        0,
+      );
+    const bottles = Math.max(
+      sum(lotsQ.data, "qty"),
+      sum(mapsQ.data, "quantity"),
+    );
+    if (bottles > 0) {
+      throw new HttpException(
+        `${bottles} ${bottles === 1 ? "bottle is" : "bottles are"} still in ` +
+          `this zone. Move ${bottles === 1 ? "it" : "them"} to another zone ` +
+          `first. Nothing was deleted.`,
+        HttpStatus.CONFLICT,
+      );
+    }
     const { data, error } = await client
       .from("storage_locations")
       .update({ deleted_at: new Date().toISOString() })

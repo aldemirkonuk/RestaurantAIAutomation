@@ -1,4 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import * as locationGuard from "../common/tenant/assert-location-belongs-to-restaurant";
 import { HttpException } from "@nestjs/common";
 import { InventoryService } from "./inventory.service";
 import { DatabaseService } from "../database/database.service";
@@ -1135,6 +1136,59 @@ describe("InventoryService", () => {
 
       expect(rows[0]).toMatchObject({ kind: "beer", beverageKind: "beer" });
       expect(rows[1]).toMatchObject({ kind: "beer", beverageKind: null });
+    });
+  });
+
+  describe("createInventoryItem — re-adding a removed wine (F-693)", () => {
+    // F-435 checks the zone is this house's; this mock chain is not a query.
+    beforeEach(() => {
+      jest.spyOn(locationGuard, "assertLocationsBelongToRestaurant").mockResolvedValue(undefined);
+    });
+    afterEach(() => jest.restoreAllMocks());
+    const removed = () => {
+      mockSingle
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-old", is_active: false }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-old", wine_name: "Barolo Riserva" }, error: null });
+    };
+
+    it("applies what the form says and keeps the vendor it was not told to change", async () => {
+      removed();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-9",
+        providerId: null,
+        thresholdMin: 4,
+        thresholdMax: 30,
+        saleType: "both",
+        pourSizeMl: 125,
+        bottleSizeMl: 1500,
+        storageLocationId: "zone-1",
+      } as any);
+      const written = mockSupabaseChain.update.mock.calls[0][0];
+      expect(written).toMatchObject({
+        is_active: true,
+        threshold_min: 4,
+        threshold_max: 30,
+        sale_type: "both",
+        pour_size_ml: 125,
+        bottle_size_ml: 1500,
+        storage_location_id: "zone-1",
+      });
+      expect("provider_id" in written).toBe(false);
+    });
+
+    it("a named vendor is written", async () => {
+      removed();
+      await service.createInventoryItem("rest-1", { wineId: "mw-9", providerId: "prov-2" } as any);
+      expect(mockSupabaseChain.update.mock.calls[0][0].provider_id).toBe("prov-2");
+    });
+
+    it("says so when the bottles typed in were not recorded", async () => {
+      removed();
+      mockRpc.mockResolvedValueOnce({ data: null, error: { message: "lot refused" } });
+      await expect(
+        service.createInventoryItem("rest-1", { wineId: "mw-9", stockLive: 12 } as any),
+      ).rejects.toThrow("its 12 bottles were not recorded");
     });
   });
 });

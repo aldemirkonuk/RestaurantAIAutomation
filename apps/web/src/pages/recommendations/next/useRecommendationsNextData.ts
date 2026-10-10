@@ -420,7 +420,10 @@ export interface RecommendationsData {
     undoWith?: Record<string, unknown>,
   ) => Promise<boolean>;
   dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
-  /** `excludedDate`: a day the dismissal struck out, counted again with it. */
+  /**
+   * `excludedDate`: a day the dismissal struck out, counted again with it.
+   * Omitted, it is read off the Undo on screen for the same key (F-692).
+   */
   restore: (ruleKey: string, excludedDate?: string) => Promise<void>;
   /** End this person's own snooze on one key — the entry is back for them. */
   wake: (ruleKey: string) => Promise<void>;
@@ -561,6 +564,9 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [goalBook, setGoalBook] = useState<GoalBookVM>(undefined);
   const seq = useRef(0);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The offer on screen, for `restore` to read the day it should count again.
+  const undoRef = useRef<UndoVM | null>(null);
+  undoRef.current = undo;
 
   // The figures the Standing read sets (the tab counts, rules evaluated,
   // the house's and your own hidden counts and whether each was readable,
@@ -1248,14 +1254,24 @@ export function useRecommendationsNextData(): RecommendationsData {
           : ` The entry is dismissed, but ${choice.excludeDate} could NOT be excluded from the analysis — the averages still count it.`;
       }
       const paper = miss ? ` It holds, but it was ${miss}.` : '';
-      say(`${choice.said}${tail}${paper} Undo here, or on the History leaf.`);
+      // Undo here takes back both writes (F-692); the History leaf brings
+      // back the entry only, and the day is counted again from the ribbon.
+      const back = struck
+        ? ' Undo here brings back both; the History leaf brings back the entry only.'
+        : ' Undo here, or on the History leaf.';
+      say(`${choice.said}${tail}${paper}${back}`);
       offerUndo(choice.key, choice.said, false, undefined, struck);
     },
     [rid, say, offerUndo, excludeDay, exclusions],
   );
 
   const restore = useCallback(
-    async (ruleKey: string, excludedDate?: string) => {
+    async (
+      ruleKey: string,
+      excludedDate: string | undefined = undoRef.current?.ruleKey === ruleKey
+        ? undoRef.current.excludedDate
+        : undefined,
+    ) => {
       if (!rid) return;
       try {
         const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
