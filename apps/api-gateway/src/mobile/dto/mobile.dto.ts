@@ -85,4 +85,11 @@ export interface TodayPulseResponse {
   windowStart: string | null;
   windowEnd: string;
   generatedAt: string;
+  /**
+   * The house's money (`restaurants.currency`) and its formats tag
+   * (`houseFrame().locale`), so the phone prints every money figure the
+   * house's way (F-885). null = not recorded: no symbol, en-US grouping.
+   */
+  currency: string | null;
+  locale: string | null;
 }

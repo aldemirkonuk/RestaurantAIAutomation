@@ -7,11 +7,8 @@ import { Card } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { color, space } from "@/design/tokens";
 import { useTodayPulse } from "@/api/queries";
+import { houseMoney } from "@/lib/houseMoney";
 import { resolvePulseStripView } from "./pulseStripView";
-
-function money(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
 
 /**
  * The glance that costs zero taps: tonight's revenue, checks, the delta
@@ -62,7 +59,7 @@ export function PulseStrip() {
         {view.revenue.status === "known" ? (
           <>
             <AppText variant="display" style={{ marginTop: 2 }}>
-              {money(view.revenue.amount)}
+              {houseMoney(view.revenue.amount, data)}
             </AppText>
             <AppText variant="footnote" tone="secondary">
               {view.revenue.checksLabel}

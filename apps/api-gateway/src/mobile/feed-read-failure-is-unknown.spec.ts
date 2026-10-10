@@ -191,3 +191,31 @@ describe("today pulse reads the house's register (F-674)", () => {
     expect(pulse.windowStart).toBeNull();
   });
 });
+
+/**
+ * F-885: the phone printed "$" with en-US grouping on every money figure. The
+ * pulse now carries the house's money and formats tag, which the phone's
+ * strip, Insights, cellar and orders format through.
+ */
+describe("today pulse carries the house's money (F-885)", () => {
+  it("sends a lira house's currency and its formats tag", async () => {
+    const pulse = await buildWithDb({
+      restaurants: [
+        { id: "r-1", timezone: "Europe/Istanbul", country: "TR", currency: "TRY" },
+      ],
+      pos_checks: [],
+    }).getTodayPulse("u-1", "r-1", NOW);
+
+    expect(pulse.currency).toBe("TRY");
+    expect(pulse.locale).toBe("tr-TR");
+  });
+
+  it("sends null, never USD, for a house with no recorded currency", async () => {
+    const pulse = await buildWithDb({
+      restaurants: [{ ...HOUSE, currency: null }],
+      pos_checks: [],
+    }).getTodayPulse("u-1", "r-1", NOW);
+
+    expect(pulse.currency).toBeNull();
+  });
+});

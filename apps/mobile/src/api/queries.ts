@@ -12,6 +12,7 @@ import type {
 import { useSession } from "@/state/session";
 import { houseDateKey, mondayOfKey } from "@/lib/houseDate";
 import type { HouseSummary } from "@/auth/houseChoice";
+import type { HouseMoneyFrame } from "@/lib/houseMoney";
 
 export const feedKey = ["mobile", "feed"] as const;
 export const pulseKey = ["mobile", "pulse"] as const;
@@ -44,6 +45,16 @@ export function useTodayPulse() {
     enabled,
     refetchInterval: 5 * 60_000,
   });
+}
+
+/**
+ * The house's money and formats tag, read off the pulse (F-885), so every
+ * money figure on the phone prints the house's way. Unknown until the pulse
+ * answers: a figure with no symbol, never a dollar.
+ */
+export function useHouseMoneyFrame(): HouseMoneyFrame {
+  const { data } = useTodayPulse();
+  return { currency: data?.currency ?? null, locale: data?.locale ?? null };
 }
 
 /** The houses this person belongs to (the chooser's list; F-675). */
