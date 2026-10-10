@@ -130,7 +130,9 @@ export const GUIDE_ENTRIES: readonly GuideEntry[] = [
         text: 'Team, Profile and Connections hold who has access to what — the house’s roster, your own account, and every outside grant (mail, model-context servers, POS, payment) this house depends on.',
       },
     ],
-    goes: { to: '/get-started', label: 'Open the getting-started guide' },
+    // F-239: was /get-started, the first-house sign-up — a housed person
+    // landed on step one of opening a new house. The tours are the guide.
+    goes: { to: '/help#hp-tours', label: 'Take the page tours' },
   },
 ];
 

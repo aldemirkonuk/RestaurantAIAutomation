@@ -137,6 +137,14 @@ describe("known_personnel has no column, so the service does not name it (F-559)
       .join("\n");
     expect(code).not.toMatch(/known_personnel|knownPersonnel/);
   });
+
+  it("is not promised by ProviderResponseDto either, since nothing fills it", () => {
+    const dto = fs.readFileSync(
+      path.join(SRC, "providers/dto/providers.dto.ts"),
+      "utf8",
+    );
+    expect(dto).not.toMatch(/knownPersonnel/);
+  });
 });
 
 /** The values a `CHECK (col = ANY (ARRAY['a', ...]))` constraint allows. */

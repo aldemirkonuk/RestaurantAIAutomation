@@ -372,11 +372,9 @@ export class ProviderResponseDto {
     description: "Business type: Distributor, Importer, Wholesaler, etc.",
   })
   primaryBusinessType?: string;
-
-  @ApiPropertyOptional({
-    description: "Known personnel / contacts (legacy array)",
-  })
-  knownPersonnel?: string[];
+  // A known-personnel array was documented here with no column behind it
+  // and no writer (F-559). Contacts live in provider_contacts
+  // (ProviderContactResponseDto).
 }
 
 // --- Provider Contacts DTOs ---
