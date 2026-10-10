@@ -85,6 +85,19 @@ export type OrderRecurrenceFrequency =
 export const ORDER_RECURRENCE_STATUSES = ["active", "paused", "ended"] as const;
 export type OrderRecurrenceStatus = (typeof ORDER_RECURRENCE_STATUSES)[number];
 
+/**
+ * The act names filed in `system_audit_log`. One register, four verbs. Here
+ * rather than in the service so `procurement.service.ts` can file the ENDED
+ * act when it cancels a recurring parent without importing the service that
+ * imports it.
+ */
+export const RECURRENCE_ACTS = {
+  SET: "order_recurrence_set",
+  PAUSED: "order_recurrence_paused",
+  RESUMED: "order_recurrence_resumed",
+  ENDED: "order_recurrence_ended",
+} as const;
+
 /** The states from which the generator will mint a child. One member, stated. */
 export const ORDER_RECURRENCE_GENERATING_STATUS: OrderRecurrenceStatus =
   "active";

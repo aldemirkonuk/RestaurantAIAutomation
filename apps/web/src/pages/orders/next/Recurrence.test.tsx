@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toRow } from './useOrdersNextData';
+import { localTodayIso, recurrenceBlockedReason } from './RecurrenceSheet';
 import {
   RECURRENCE_UNREAD,
   emptyStationSentence,
@@ -332,5 +333,48 @@ describe('what the empty Recurring station is allowed to say', () => {
 
   it('says "none" only when every row was read and every row said no', () => {
     expect(emptyStationSentence(true, 12, 12)).toBe('None of the 12 orders in this book repeats.');
+  });
+});
+
+describe('what the sheet refuses before the button (F-302, F-303)', () => {
+  const ruled = {
+    recurrenceFrequency: 'weekly',
+    recurrenceAnchorDay: 1,
+    recurrenceNextDueOn: '2026-09-12',
+    recurrenceParentOrderId: null,
+    recurrenceOccurrenceOn: null,
+  };
+
+  it('refuses a rule on a cancelled or rejected order', () => {
+    for (const status of ['CANCELLED', 'REJECTED', 'FAILED']) {
+      const row = toRow(wire({ status, approvedAt: '2026-09-01T10:00:00Z' }), providers);
+      expect(recurrenceBlockedReason(row)).toContain('no agreement to repeat');
+    }
+  });
+
+  it('refuses to replace an ended rule, and says how to repeat the order instead', () => {
+    const row = toRow(
+      wire({ ...ruled, recurrenceStatus: 'ended', approvedAt: '2026-09-01T10:00:00Z' }),
+      providers,
+    );
+    expect(recurrenceBlockedReason(row)).toContain('an ended rule is not started again');
+  });
+
+  it('lets an approved order with an active or paused rule be given a new one', () => {
+    for (const recurrenceStatus of ['active', 'paused']) {
+      const row = toRow(
+        wire({ ...ruled, recurrenceStatus, approvedAt: '2026-09-01T10:00:00Z' }),
+        providers,
+      );
+      expect(recurrenceBlockedReason(row)).toBeNull();
+    }
+  });
+});
+
+describe("the start date's today (F-304, F-307)", () => {
+  it("is the device's calendar day, not the UTC one", () => {
+    // 23:30 local on 7 Sep, whatever the zone the test runs in.
+    expect(localTodayIso(new Date(2026, 8, 7, 23, 30))).toBe('2026-09-07');
+    expect(localTodayIso(new Date(2026, 0, 1, 0, 5))).toBe('2026-01-01');
   });
 });

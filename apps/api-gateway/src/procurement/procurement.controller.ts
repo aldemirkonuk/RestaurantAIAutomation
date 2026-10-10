@@ -280,6 +280,9 @@ export class ProcurementController {
         user.restaurantId,
         orderId,
         dto,
+        // Only to record who ended a standing order's series, when this
+        // change closes the order it repeats.
+        { actorUserId: user.userId },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

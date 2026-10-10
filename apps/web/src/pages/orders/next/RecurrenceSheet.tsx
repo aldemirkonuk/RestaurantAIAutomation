@@ -65,9 +65,43 @@ function anchorKind(f: RecurrenceFrequency): 'weekday' | 'monthday' | 'none' {
   return 'none';
 }
 
-/** Today as YYYY-MM-DD in UTC — the same calendar the gateway measures in. */
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * Today as YYYY-MM-DD on this device's own calendar, which is the house's when
+ * the device is in the house. Not UTC: in Los Angeles the UTC date turns over
+ * at 17:00, so a UTC "today" would default the start to tomorrow and, as the
+ * date picker's floor, refuse the house's own today. The gateway reads the
+ * house's zone and rolls any past start forward, so this is a default and a
+ * floor, never the authority.
+ */
+export function localTodayIso(now: Date = new Date()): string {
+  return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/** The order states that close an order with nothing arriving. */
+const CLOSED_STATUSES = new Set(['cancelled', 'rejected']);
+
+/*
+ * THE REFUSAL, SHOWN BEFORE THE BUTTON.
+ *
+ * The gateway refuses a recurrence on an order nobody has approved, with the
+ * reason "there is no agreement to repeat", and on a cancelled or rejected
+ * one, and it will not bring an ended rule back. Printing that here rather
+ * than after the round trip is ADR 0083's rule: a control that looks live and
+ * is not teaches an operator that the page is unreliable.
+ *
+ * Each test is the one the gateway makes, read off the same wire.
+ */
+export function recurrenceBlockedReason(row: OrderRowVM | null): string | null {
+  if (!row) return 'No order is open.';
+  if (row.recurrence.parentOrderId)
+    return 'This order is one occurrence of another order’s rule, so it cannot carry a rule of its own. Set it on the order it came from.';
+  if (CLOSED_STATUSES.has(row.status))
+    return `This order was ${row.status}, so there is no agreement to repeat. Set a rule on an order the house still stands behind.`;
+  if (row.recurrence.status === 'ended')
+    return 'This rule was ended, and an ended rule is not started again. To repeat this order, set a rule on a newer order.';
+  if (!row.approvedAt)
+    return 'This order has not been approved, so there is no agreement to repeat. Approve it once — the hold, the seal — and a recurrence can be set on it afterwards.';
+  return null;
 }
 
 /*
@@ -165,7 +199,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
   const queryClient = useQueryClient();
   const [frequency, setFrequency] = useState<RecurrenceFrequency | null>(null);
   const [anchorDay, setAnchorDay] = useState<number | null>(null);
-  const [startsOn, setStartsOn] = useState<string>(todayIso());
+  const [startsOn, setStartsOn] = useState<string>(localTodayIso());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -173,23 +207,9 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
   const existing = row?.recurrence ?? null;
   const alreadyRecurs = !!existing?.frequency;
 
-  /*
-   * THE REFUSAL, SHOWN BEFORE THE BUTTON.
-   *
-   * The gateway refuses a recurrence on an order nobody has approved, with the
-   * reason "there is no agreement to repeat". Printing it here rather than
-   * after the round trip is ADR 0083's rule: a control that looks live and is
-   * not teaches an operator that the page is unreliable.
-   *
-   * `approvedAt` is the same test the gateway makes, read off the same wire.
-   */
-  const blockedReason: string | null = !row
-    ? 'No order is open.'
-    : row.recurrence.parentOrderId
-      ? 'This order is one occurrence of another order’s rule, so it cannot carry a rule of its own. Set it on the order it came from.'
-      : !row.approvedAt
-        ? 'This order has not been approved, so there is no agreement to repeat. Approve it once — the hold, the seal — and a recurrence can be set on it afterwards.'
-        : null;
+  const blockedReason = recurrenceBlockedReason(row);
+  const ended = existing?.status === 'ended';
+  const today = localTodayIso();
 
   const projection = useMemo(() => {
     if (!frequency) return [];
@@ -232,30 +252,33 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
             {/* The one sentence an operator must not have to discover. */}
             Every occurrence is raised for approval. Nothing is ever bought without a hold.
           </span>
-          <button
-            type="button"
-            onClick={() =>
-              post('/recurrence', {
-                frequency,
-                ...(anchorDay === null ? {} : { anchorDay }),
-                startsOn,
-              })
-            }
-            disabled={!canSave}
-            data-testid="recurrence-save"
-            style={{
-              fontFamily: SANS,
-              fontSize: 12.5,
-              padding: '7px 14px',
-              borderRadius: 3,
-              border: '1px solid var(--seal, #1A5E6B)',
-              background: canSave ? 'var(--seal, #1A5E6B)' : 'transparent',
-              color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #665D50)',
-              cursor: canSave ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {alreadyRecurs ? 'Replace the rule' : 'Set the rule'}
-          </button>
+          {/* An ended rule is not replaced (the gateway refuses it), so no button offers to. */}
+          {!ended && (
+            <button
+              type="button"
+              onClick={() =>
+                post('/recurrence', {
+                  frequency,
+                  ...(anchorDay === null ? {} : { anchorDay }),
+                  startsOn,
+                })
+              }
+              disabled={!canSave}
+              data-testid="recurrence-save"
+              style={{
+                fontFamily: SANS,
+                fontSize: 12.5,
+                padding: '7px 14px',
+                borderRadius: 3,
+                border: '1px solid var(--seal, #1A5E6B)',
+                background: canSave ? 'var(--seal, #1A5E6B)' : 'transparent',
+                color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #665D50)',
+                cursor: canSave ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {alreadyRecurs ? 'Replace the rule' : 'Set the rule'}
+            </button>
+          )}
         </div>
       }
     >
@@ -411,6 +434,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
               <input
                 type="date"
                 value={startsOn}
+                min={today}
                 onChange={(e) => setStartsOn(e.target.value)}
                 data-testid="recurrence-startson"
                 style={field}
@@ -439,6 +463,12 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
                       : `On ${WEEKDAYS[anchorDay]}.`}
                 </p>
               </div>
+            )}
+
+            {existing?.status === 'paused' && (
+              <p data-testid="recurrence-stays-paused" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+                A new rule does not resume it: it stays paused until you press Resume it.
+              </p>
             )}
           </>
         )}

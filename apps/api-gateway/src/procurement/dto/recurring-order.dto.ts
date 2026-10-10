@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  Equals,
   IsBoolean,
   IsIn,
   IsInt,
@@ -14,6 +15,10 @@ import {
 } from "class-validator";
 import { ORDER_UNIT_TYPES } from "../order-units";
 import { RECURRING_FREQUENCIES } from "../recurring-orders.service";
+
+/** Why a standing order cannot approve itself, in the owner's words. */
+export const AUTO_APPROVE_REFUSED =
+  "A standing order cannot approve itself. Every order it places waits for a manager to approve it, so leave automatic approval off.";
 
 /**
  * A standing order: what to re-buy, from whom, and how often.
@@ -104,8 +109,15 @@ export class CreateRecurringOrderDto {
   @IsOptional()
   frequency_day?: number;
 
+  /**
+   * Refused when true. Approving an order takes a person's hold (the seal),
+   * and a schedule has no hand to hold with: an auto-approving schedule could
+   * only ever fail at 08:00, every day. Kept as a field so an old client that
+   * sends `false` is not broken.
+   */
   @ApiPropertyOptional({ default: false })
   @IsBoolean()
+  @Equals(false, { message: AUTO_APPROVE_REFUSED })
   @IsOptional()
   auto_approve?: boolean;
 
@@ -179,6 +191,7 @@ export class UpdateRecurringOrderDto {
 
   @ApiPropertyOptional()
   @IsBoolean()
+  @Equals(false, { message: AUTO_APPROVE_REFUSED })
   @IsOptional()
   auto_approve?: boolean;
 

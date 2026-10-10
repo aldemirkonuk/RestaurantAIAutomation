@@ -14,13 +14,10 @@
  * here and is not called from here; `order-recurrence.spec.ts` asserts that the
  * generator's whole run touches no status but the PENDING `createOrder` writes.
  *
- * This is a deliberate divergence from the sibling `recurring_orders` path,
- * which carries an `auto_approve` column and calls
- * `procurementService.approveOrder(restaurantId, order.id, userId)` directly
- * (`recurring-orders.service.ts:888`) with no challenge argument — so an
- * `auto_approve` schedule spends money with no seal and no threshold check.
- * That is filed in `.planning/v3.0-TECH-DEBT.md`; it is not repaired here
- * because it is a different subsystem's decision.
+ * The sibling `recurring_orders` path carried an `auto_approve` column and
+ * called `approveOrder` with no seal, which was refused every time and wedged
+ * the schedule (F-306). It now raises those orders for approval too, and its
+ * DTO refuses `auto_approve: true`.
  *
  * ===========================================================================
  * WHY THE GENERATOR CANNOT JUST CALL createOrder AND WALK AWAY
@@ -56,13 +53,23 @@ import { DatabaseService } from "../database/database.service";
 import { CreateOrderDto } from "./dto/procurement.dto";
 import { ProcurementService, asUuid } from "./procurement.service";
 import {
+  OrderRecurrenceFrequency,
   OrderRecurrenceStatus,
+  RECURRENCE_ACTS,
   isDueOn,
   nextOccurrenceOn,
   planRecurrence,
   readRecurrenceFrequency,
   readRecurrenceStatus,
 } from "./order-recurrence";
+import {
+  ORDER_ENDS_ITS_SERIES_STATUSES,
+  readOrderStatus,
+  statusInWords,
+} from "./order-transitions";
+import { houseToday, readHouseZone } from "../common/house-day";
+
+export { RECURRENCE_ACTS };
 
 /**
  * Every recurrence column, written out rather than `*`.
@@ -112,6 +119,12 @@ export interface RecurrenceRow {
   recurrence_occurrence_on: string | null;
 }
 
+/** A due series' vendor, as the generator reads it: its name and its switch. */
+interface VendorSwitch {
+  name: string | null;
+  is_active: boolean | null;
+}
+
 /**
  * What ONE generator run actually did. Every due series lands in exactly one
  * bucket, and the run is logged whether or not it made anything.
@@ -138,6 +151,13 @@ export interface RecurrenceRunOutcome {
   /** The series could not be minted. The parent is NOT advanced. */
   failed: number;
   /**
+   * Left alone on purpose, and said: the parent order was cancelled, rejected
+   * or failed, or its vendor has been switched off. Nothing is minted and the
+   * date is not advanced, so the series shows up here every run until a
+   * person ends it or switches the vendor back on.
+   */
+  skipped: number;
+  /**
    * The stored next date disagreed with what `nextOccurrenceOn` derives, so the
    * series was left alone rather than minted against a date nothing produced.
    */
@@ -147,14 +167,6 @@ export interface RecurrenceRunOutcome {
   /** Why, when it failed. Never swallowed. */
   error: string | null;
 }
-
-/** The act names filed in `system_audit_log`. One register, three verbs. */
-export const RECURRENCE_ACTS = {
-  SET: "order_recurrence_set",
-  PAUSED: "order_recurrence_paused",
-  RESUMED: "order_recurrence_resumed",
-  ENDED: "order_recurrence_ended",
-} as const;
 
 @Injectable()
 export class OrderRecurrenceService {
@@ -168,6 +180,29 @@ export class OrderRecurrenceService {
   /** Today in UTC, YYYY-MM-DD. Overridable so the tests do not need a clock. */
   private today(now: Date = new Date()): string {
     return now.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Today on the HOUSE's clock, for the writes one house makes (set, resume).
+   * A house in Los Angeles is already on tomorrow's UTC date after 17:00, so
+   * a UTC "today" would start or roll a series a day early. Falls back to the
+   * UTC day, and says so, when the house has no zone or the read fails — the
+   * same day the generator runs on.
+   */
+  private async todayInHouse(restaurantId: string): Promise<string> {
+    try {
+      const { zone } = await readHouseZone(
+        this.databaseService.supabase,
+        restaurantId,
+      );
+      if (zone) return houseToday(zone);
+    } catch (err: any) {
+      this.logger.warn(
+        `The house's time zone could not be read (${err?.message}); today is ` +
+          `taken on the UTC calendar for this recurrence change.`,
+      );
+    }
+    return this.today();
   }
 
   // =========================================================================
@@ -216,6 +251,18 @@ export class OrderRecurrenceService {
       });
     }
 
+    // A cancelled, rejected or failed order is not an agreement anybody still
+    // stands behind, and a rule on it would keep raising orders for it.
+    const orderStatus = readOrderStatus(order.status);
+    if (orderStatus && ORDER_ENDS_ITS_SERIES_STATUSES.includes(orderStatus)) {
+      throw new BadRequestException({
+        reason: "order_closed",
+        message:
+          `Order ${order.order_number} was ${statusInWords(orderStatus)}, so there is no ` +
+          `agreement to repeat. Set the rule on an order the house still stands behind.`,
+      });
+    }
+
     if (!order.approved_at) {
       throw new BadRequestException({
         reason: "not_approved",
@@ -226,13 +273,26 @@ export class OrderRecurrenceService {
       });
     }
 
+    // Replacing the rule is not a way back from "ended" — the same promise
+    // `moveRecurrenceTo` keeps for resume.
+    const current = readRecurrenceStatus(order.recurrence_status);
+    if (current === "ended") {
+      throw new BadRequestException({
+        reason: "already_ended",
+        message:
+          `The recurrence on order ${order.order_number} was ended, and an ended series ` +
+          `is not restarted. Set a new recurrence on a current order instead.`,
+      });
+    }
+
     // `startsOn` defaults to today, never to the order's own approval date: an
     // order approved three weeks ago would start a series three weeks overdue,
     // and the generator would read that as work to catch up on.
+    const today = await this.todayInHouse(restaurantId);
     const plan = planRecurrence({
       frequency: input.frequency,
       anchorDay: input.anchorDay,
-      startsOn: input.startsOn ?? this.today(),
+      startsOn: input.startsOn ?? today,
     });
     if (!plan.ok) {
       throw new BadRequestException({
@@ -241,6 +301,21 @@ export class OrderRecurrenceService {
       });
     }
 
+    // A start date in the past is rolled forward exactly as resume rolls a
+    // paused series: otherwise a weekly rule started three months back mints
+    // one order every morning until it catches up.
+    const nextDueOn = this.rollForward(
+      order.order_number,
+      plan.value.nextDueOn,
+      plan.value.frequency,
+      plan.value.anchorDay,
+      today,
+      "Choose a start date nearer today.",
+    );
+
+    // A paused series stays paused: a new rule is not a resume. Who paused it,
+    // and when, stay as they were, because nobody moved it.
+    const to: OrderRecurrenceStatus = current === "paused" ? "paused" : "active";
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
@@ -248,10 +323,11 @@ export class OrderRecurrenceService {
         recurrence_frequency: plan.value.frequency,
         recurrence_anchor_day: plan.value.anchorDay,
         recurrence_anchored_on: plan.value.anchoredOn,
-        recurrence_next_due_on: plan.value.nextDueOn,
-        recurrence_status: "active",
-        recurrence_status_by: asUuid(userId),
-        recurrence_status_at: now,
+        recurrence_next_due_on: nextDueOn,
+        recurrence_status: to,
+        ...(to === "active"
+          ? { recurrence_status_by: asUuid(userId), recurrence_status_at: now }
+          : {}),
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -271,12 +347,13 @@ export class OrderRecurrenceService {
       actorUserId: userId,
       action: RECURRENCE_ACTS.SET,
       from: order.recurrence_status,
-      to: "active",
+      to,
       detail: {
         frequency: plan.value.frequency,
         anchorDay: plan.value.anchorDay,
         anchoredOn: plan.value.anchoredOn,
-        nextDueOn: plan.value.nextDueOn,
+        nextDueOn,
+        rolledForward: nextDueOn !== plan.value.nextDueOn,
       },
     });
 
@@ -372,35 +449,15 @@ export class OrderRecurrenceService {
     };
     let rolledTo: string | null = null;
     if (to === "active") {
-      const today = this.today();
-      let cursor = order.recurrence_next_due_on ?? today;
-      let guard = 0;
-      while (isDueOn(cursor, today) && cursor !== today) {
-        const next = nextOccurrenceOn(
-          cursor,
-          frequency,
-          order.recurrence_anchor_day,
-        );
-        if (!next.ok) {
-          throw new BadRequestException({
-            reason: next.reason,
-            message: next.message,
-          });
-        }
-        cursor = next.value;
-        // A daily rule paused for a decade is 3,650 steps. The ceiling is a
-        // refusal rather than a silent stop: a series this far behind is a
-        // decision, not an arithmetic problem.
-        if (++guard > 4000) {
-          throw new BadRequestException({
-            reason: "resume_too_far_behind",
-            message:
-              `The recurrence on order ${order.order_number} is more than 4,000 occurrences ` +
-              `behind, which is further than this house will roll a paused series forward. ` +
-              `End it and set a new recurrence on a current order.`,
-          });
-        }
-      }
+      const today = await this.todayInHouse(restaurantId);
+      const cursor = this.rollForward(
+        order.order_number,
+        order.recurrence_next_due_on ?? today,
+        frequency,
+        order.recurrence_anchor_day,
+        today,
+        "End it and set a new recurrence on a current order.",
+      );
       if (cursor !== order.recurrence_next_due_on) rolledTo = cursor;
       patch.recurrence_next_due_on = cursor;
     }
@@ -435,6 +492,46 @@ export class OrderRecurrenceService {
     });
 
     return data as unknown as RecurrenceRow;
+  }
+
+  /**
+   * The first occurrence at or after `today`, stepping by the rule from
+   * `from`. A date already today or later comes back unchanged. Steps by the
+   * rule rather than jumping to today, so a Tuesday series stays on Tuesdays.
+   */
+  private rollForward(
+    orderNumber: string,
+    from: string,
+    frequency: OrderRecurrenceFrequency,
+    anchorDay: number | null,
+    today: string,
+    tooFarHint: string,
+  ): string {
+    let cursor = from;
+    let guard = 0;
+    while (isDueOn(cursor, today) && cursor !== today) {
+      const next = nextOccurrenceOn(cursor, frequency, anchorDay);
+      if (!next.ok) {
+        throw new BadRequestException({
+          reason: next.reason,
+          message: next.message,
+        });
+      }
+      cursor = next.value;
+      // A daily rule paused for a decade is 3,650 steps. The ceiling is a
+      // refusal rather than a silent stop: a series this far behind is a
+      // decision, not an arithmetic problem.
+      if (++guard > 4000) {
+        throw new BadRequestException({
+          reason: "resume_too_far_behind",
+          message:
+            `The recurrence on order ${orderNumber} is more than 4,000 occurrences ` +
+            `behind, which is further than this house will roll a series forward. ` +
+            tooFarHint,
+        });
+      }
+    }
+    return cursor;
   }
 
   pauseRecurrence(restaurantId: string, orderId: string, userId: string) {
@@ -499,6 +596,7 @@ export class OrderRecurrenceService {
       created: 0,
       collided: 0,
       failed: 0,
+      skipped: 0,
       drifted: 0,
       queryFailed: false,
       error: null,
@@ -529,9 +627,41 @@ export class OrderRecurrenceService {
     const rows = (data ?? []) as unknown as RecurrenceRow[];
     out.due = rows.length;
 
+    // Every due series' vendor, in one read, so a series whose vendor the
+    // house switched off is left alone rather than raised against it. A failed
+    // read is not "every vendor is on": nothing is raised, nothing advances,
+    // and the next run tries again.
+    const vendors = new Map<string, VendorSwitch>();
+    const providerIds = [...new Set(rows.map((r) => r.provider_id).filter(Boolean))];
+    if (providerIds.length > 0) {
+      const { data: vendorRows, error: vendorError } =
+        await this.databaseService.supabase
+          .from("providers")
+          .select("id, name, is_active")
+          .in("id", providerIds);
+      if (vendorError) {
+        out.failed = rows.length;
+        out.error = vendorError.message;
+        this.logger.error(
+          `The recurrence generator could not read whether its vendors are switched on ` +
+            `for ${runFor}: ${vendorError.message}. None of the ${rows.length} due ` +
+            `orders was raised and none was advanced, so the next run will try again.`,
+        );
+        this.recordRun(out);
+        return out;
+      }
+      for (const v of (vendorRows ?? []) as Array<VendorSwitch & { id: string }>) {
+        vendors.set(v.id, v);
+      }
+    }
+
     for (const row of rows) {
       try {
-        const verdict = await this.mintOccurrence(row, runFor);
+        const verdict = await this.mintOccurrence(
+          row,
+          runFor,
+          vendors.get(row.provider_id) ?? null,
+        );
         out[verdict] += 1;
       } catch (err: any) {
         out.failed += 1;
@@ -559,7 +689,7 @@ export class OrderRecurrenceService {
   private recordRun(out: RecurrenceRunOutcome): void {
     const line =
       `Recurrence generator ${out.runFor}: due=${out.due} created=${out.created} ` +
-      `collided=${out.collided} drifted=${out.drifted} failed=${out.failed} ` +
+      `collided=${out.collided} skipped=${out.skipped} drifted=${out.drifted} failed=${out.failed} ` +
       `queryFailed=${out.queryFailed}`;
     if (out.queryFailed || out.failed > 0 || out.drifted > 0) {
       this.logger.error(line + (out.error ? ` — ${out.error}` : ""));
@@ -581,9 +711,32 @@ export class OrderRecurrenceService {
   private async mintOccurrence(
     row: RecurrenceRow,
     runFor: string,
-  ): Promise<"created" | "collided" | "failed" | "drifted"> {
+    vendor: VendorSwitch | null,
+  ): Promise<"created" | "collided" | "failed" | "skipped" | "drifted"> {
     const frequency = readRecurrenceFrequency(row.recurrence_frequency);
     const occurrenceOn = row.recurrence_next_due_on;
+
+    // The order the series repeats was cancelled, rejected or failed. Cancel
+    // now ends the series in the same write, so this is a series closed
+    // before that rule existed — reported, never raised.
+    const parentStatus = readOrderStatus(row.status);
+    if (parentStatus && ORDER_ENDS_ITS_SERIES_STATUSES.includes(parentStatus)) {
+      this.logger.warn(
+        `Order ${row.order_number} was ${statusInWords(parentStatus)} but its ` +
+          `recurrence is still active, so no order was raised for ` +
+          `${String(occurrenceOn)}. End the recurrence to stop this notice.`,
+      );
+      return "skipped";
+    }
+    if (vendor?.is_active === false) {
+      this.logger.warn(
+        `The vendor on order ${row.order_number}` +
+          `${vendor.name ? ` (${vendor.name})` : ""} has been switched ` +
+          `off, so no order was raised for ${String(occurrenceOn)}. Switch the ` +
+          `vendor back on, or end the recurrence.`,
+      );
+      return "skipped";
+    }
 
     if (!frequency || !occurrenceOn) {
       this.logger.error(
