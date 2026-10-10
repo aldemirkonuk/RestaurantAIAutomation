@@ -15,6 +15,7 @@
     "start:prod": "node dist/main",
     "openapi:export": "EXPORT_OPENAPI=1 ts-node -r tsconfig-paths/register src/openapi.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest --runInBand --forceExit",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

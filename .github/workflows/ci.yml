@@ -1223,7 +1223,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
+        # Full history: the eslint --fix drift guard diffs against the merge base.
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -1237,8 +1240,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # F-925. `lint` is the LOCAL fixer: the gateway's runs `eslint --fix`, so
+      # running it here rewrote the runner's checkout and passed by
+      # construction. `lint:check` is the same ESLint without --fix.
       - name: Run ESLint
-        run: pnpm run lint
+        run: pnpm run lint:check
+
+      # Prettier drift is only a warning, so the step above cannot see it. A
+      # gateway file this change adds or edits must already be what
+      # `eslint --fix` would make it; untouched legacy drift is left alone.
+      # Pushes compare against the previous commit (squash merges = one PR).
+      - name: Touched gateway files are already eslint --fix clean
+        if: ${{ !cancelled() }}
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
+        run: ./scripts/check_eslint_fix_drift_in_touched_files.py --base "$BASE"
 
       - name: Type check
         run: pnpm run type-check
@@ -1381,8 +1397,8 @@ jobs:
       # isolated_from_pytest_ini_and_conftest` (scripts/test_pr_audit_gate.py)
       # is extended to pin this flag the same way it already pins the two
       # above, so a silent drift here is caught the same way.
-      - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units, audit gate, jev prompt gate)
-        run: python3 -P -m pytest -c /dev/null --confcutdir=scripts scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py scripts/test_pr_audit_gate.py scripts/test_require_pr_audit.py scripts/jev/prompt_gate_test.py -q -p no:cacheprovider
+      - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units, eslint --fix drift, audit gate, jev prompt gate)
+        run: python3 -P -m pytest -c /dev/null --confcutdir=scripts scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py scripts/test_check_eslint_fix_drift_in_touched_files.py scripts/test_pr_audit_gate.py scripts/test_require_pr_audit.py scripts/jev/prompt_gate_test.py -q -p no:cacheprovider
 
   # Lint Python code
   lint-python:

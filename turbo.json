@@ -28,6 +28,9 @@
     "lint": {
       "outputs": []
     },
+    "lint:check": {
+      "outputs": []
+    },
     "typecheck": {
       "dependsOn": [
         "^build"
