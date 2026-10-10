@@ -7,6 +7,7 @@
 
 import {
   currentQueueOwner,
+  queueOwnerForNewEntry,
   endsWithSessionOf,
   isVisibleTo,
   type ParkedState,
@@ -318,8 +319,9 @@ export const offlineStorage = {
       retryCount: 0,
       timestamp: new Date(mutation.timestamp),
       // Who made it, read from the session at the moment it is queued — never
-      // at replay time, which is the defect OD-203 (b) closes.
-      owner: currentQueueOwner(),
+      // at replay time, which is the defect OD-203 (b) closes — in the house
+      // this tab shows, not whichever house another tab last moved to (F-244).
+      owner: queueOwnerForNewEntry(),
     }
     
     await idbPut(STORES.PENDING_MUTATIONS, fullMutation)

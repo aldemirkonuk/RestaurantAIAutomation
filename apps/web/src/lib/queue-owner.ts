@@ -52,7 +52,33 @@ export interface ParkedState {
   at: string
 }
 
-/** The person and house of the session signed in right now, or null. */
+/**
+ * The house THIS tab shows (F-244). Every tab of a browser shares one session
+ * in storage, so after a switch in another tab the stored house is not the
+ * one this tab's screen was made in. Set by AuthContext from its own state.
+ */
+let tabHouse: string | null = null
+
+export function pinTabHouse(house: string | null): void {
+  tabHouse = house
+}
+
+/**
+ * The owner to stamp on a change queued NOW, in this tab: the person of the
+ * session, and the house this tab shows. A change made on a screen showing A
+ * belongs to A, even when another tab has since moved the session to B; it
+ * waits for a session in A instead of parking as "not sent" in B (F-244).
+ */
+export function queueOwnerForNewEntry(): QueueOwner | null {
+  const session = currentQueueOwner()
+  if (!session || !tabHouse) return session
+  return { ...session, restaurantId: tabHouse }
+}
+
+/**
+ * The person and house of the session signed in right now, or null. This is
+ * what a replay reaches, so readers and senders judge entries by it.
+ */
 export function currentQueueOwner(): QueueOwner | null {
   let token: string | null = null
   let active: string | null = null

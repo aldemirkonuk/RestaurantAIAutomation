@@ -10,55 +10,18 @@
  *     returns 401, not speculatively. This eliminates the "async barrier"
  *     that previously serialized all parallel page-load requests behind a
  *     token refresh round-trip.
- *  3. Refresh is DEDUPLICATED — a single in-flight refreshPromise is shared
- *     by all concurrent 401 responses so the refresh endpoint is called
- *     at most once per expiry cycle, regardless of how many requests failed.
+ *  3. Refresh is DEDUPLICATED — every concurrent 401 joins the one in-flight
+ *     refresh in lib/sessionRefresh.ts, the only place a refresh token is
+ *     exchanged. This file kept a second copy with its own in-flight slot
+ *     until F-610: the two could race, and an answer for the house the
+ *     session had just left was written over the new one.
  */
 
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
-import { goToChooser, noteHouseEnded, storeSession } from '../../lib/houseMemory';
+import { goToChooser } from '../../lib/houseMemory';
+import { doRefresh } from '../../lib/sessionRefresh';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
-
-/** Single in-flight refresh promise — shared across all concurrent 401s */
-let refreshPromise: Promise<string> | null = null;
-
-/**
- * Exchange the refresh token for a new access token.
- * Throws (does NOT navigate) when there is no refresh token — the caller is
- * responsible for deciding whether to redirect. This prevents an infinite
- * reload loop when the SyncManager makes API calls while the user is already
- * logged out (no token → 401 → doTokenRefresh → window.location.href →
- * page reload → SyncManager restarts → repeat).
- */
-async function doTokenRefresh(): Promise<string> {
-  const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  const response = await axios.post(
-    `${API_GATEWAY_URL}/api/v1/auth/refresh`,
-    { refreshToken },
-  );
-  const { accessToken, refreshToken: newRefresh, houseAccessEnded } = response.data;
-  storeSession(accessToken, newRefresh);
-  // The session's house ended (ADR 0164, R5): the new pair names no house.
-  // The person chooses; retrying this request would only be refused again.
-  if (noteHouseEnded(accessToken, houseAccessEnded?.restaurantId)) {
-    goToChooser();
-    throw new HouseAccessEnded();
-  }
-  return accessToken as string;
-}
-
-/** Thrown by a refresh whose answer was "that house is no longer yours". */
-class HouseAccessEnded extends Error {
-  constructor() {
-    super('Your access to this house has ended.');
-    this.name = 'HouseAccessEnded';
-  }
-}
 
 function createApiClient(): AxiosInstance {
   const client = axios.create({
@@ -108,36 +71,21 @@ function createApiClient(): AxiosInstance {
           return Promise.reject(error);
         }
 
-        // Deduplicate: all concurrent 401s share the same refresh call
-        if (!refreshPromise) {
-          refreshPromise = doTokenRefresh()
-            .catch((err) => {
-              // Only a refused refresh token ends the session (a 401 from the
-              // refresh route). A house that ended already sent the person to
-              // the chooser; a 503 or a dropped connection says "try again",
-              // not "you are not who you said you were" (ADR 0164).
-              const status = (err as AxiosError)?.response?.status;
-              if (!(err instanceof HouseAccessEnded) && status === 401) {
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
-                window.location.href = '/login';
-              }
-              throw err;
-            })
-            .finally(() => {
-              refreshPromise = null;
-            });
-        }
-
-        try {
-          const newToken = await refreshPromise;
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        // Joins the in-flight refresh, if there is one. A house that ended
+        // already sent the person to the chooser; a 503 or a dropped
+        // connection says "try again". Only a refused refresh token ends the
+        // session, and sessionRefresh then removes it (ADR 0164).
+        const newToken = await doRefresh();
+        if (!newToken) {
+          if (!localStorage.getItem('refreshToken')) {
+            window.location.href = '/login';
           }
-          return client(originalRequest);
-        } catch {
           return Promise.reject(error);
         }
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        }
+        return client(originalRequest);
       }
 
       // OD-79. The API now refuses gated routes for an unverified account.

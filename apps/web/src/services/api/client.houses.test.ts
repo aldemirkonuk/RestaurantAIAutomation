@@ -133,3 +133,29 @@ describe("apiClient and the session house", () => {
     expect(href).toBe("/login");
   });
 });
+
+describe("apiClient refreshes through the one shared refresh (F-610)", () => {
+  it("a 401 joins a refresh already in flight instead of starting a second one", async () => {
+    localStorage.setItem("accessToken", "a");
+    localStorage.setItem("refreshToken", "r");
+    let answer!: (v: unknown) => void;
+    h.globalPost.mockReturnValue(
+      new Promise((ok) => {
+        answer = ok;
+      }),
+    );
+    h.instance.mockResolvedValue({ data: "retried" });
+    const { doRefresh } = await import("../../lib/sessionRefresh");
+
+    const elsewhere = doRefresh();
+    const retried = h.handlers.onError!(fail(401));
+    answer({ data: { accessToken: "a2", refreshToken: "r2" } });
+
+    await expect(elsewhere).resolves.toBe("a2");
+    await expect(retried).resolves.toEqual({ data: "retried" });
+    expect(h.globalPost).toHaveBeenCalledTimes(1);
+    expect(h.instance).toHaveBeenCalledWith(
+      expect.objectContaining({ headers: { Authorization: "Bearer a2" } }),
+    );
+  });
+});

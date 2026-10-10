@@ -82,3 +82,74 @@ describe("doRefresh — single-flight", () => {
     await expect(doRefresh()).resolves.toBe("access-1");
   });
 });
+
+describe("doRefresh — the session moved while the refresh was out (F-610)", () => {
+  const U = "11111111-1111-4111-8111-111111111111";
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const jwt = (claims: Record<string, unknown>) =>
+    `h.${btoa(JSON.stringify(claims)).replace(/=+$/, "")}.s`;
+  const inA = jwt({ sub: U, restaurantId: A });
+  const inB = jwt({ sub: U, restaurantId: B });
+
+  function pending() {
+    let settle!: { ok: (v: unknown) => void; fail: (e: unknown) => void };
+    h.post.mockReturnValue(
+      new Promise((ok, fail) => {
+        settle = { ok, fail };
+      }),
+    );
+    return () => settle;
+  }
+
+  it("a house switch during the refresh keeps the new house; the old answer is dropped", async () => {
+    localStorage.setItem("accessToken", inA);
+    localStorage.setItem("refreshToken", "rA");
+    localStorage.setItem("activeRestaurantId", A);
+    const settle = pending();
+
+    const result = doRefresh();
+    // The switch lands while the refresh is out.
+    localStorage.setItem("accessToken", inB);
+    localStorage.setItem("refreshToken", "rB");
+    localStorage.setItem("activeRestaurantId", B);
+    settle().ok({
+      data: { accessToken: jwt({ sub: U, restaurantId: A, n: 2 }), refreshToken: "rA2" },
+    });
+
+    await expect(result).resolves.toBe(inB);
+    expect(localStorage.getItem("accessToken")).toBe(inB);
+    expect(localStorage.getItem("refreshToken")).toBe("rB");
+    expect(localStorage.getItem("activeRestaurantId")).toBe(B);
+  });
+
+  it("a refusal of the token held before the switch does not sign the new house out", async () => {
+    localStorage.setItem("accessToken", inA);
+    localStorage.setItem("refreshToken", "rA");
+    const settle = pending();
+
+    const result = doRefresh();
+    localStorage.setItem("accessToken", inB);
+    localStorage.setItem("refreshToken", "rB");
+    localStorage.setItem("activeRestaurantId", B);
+    settle().fail({ response: { status: 401 } });
+
+    await expect(result).resolves.toBe(inB);
+    expect(localStorage.getItem("refreshToken")).toBe("rB");
+    expect(localStorage.getItem("activeRestaurantId")).toBe(B);
+  });
+
+  it("a sign-out during the refresh is not undone by its answer", async () => {
+    localStorage.setItem("accessToken", inA);
+    localStorage.setItem("refreshToken", "rA");
+    const settle = pending();
+
+    const result = doRefresh();
+    localStorage.clear();
+    settle().ok({ data: { accessToken: inA, refreshToken: "rA2" } });
+
+    await expect(result).resolves.toBeNull();
+    expect(localStorage.getItem("accessToken")).toBeNull();
+    expect(localStorage.getItem("refreshToken")).toBeNull();
+  });
+});
