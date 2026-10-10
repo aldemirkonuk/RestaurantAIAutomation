@@ -19,6 +19,7 @@ import {
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
 import { readHouseCurrency } from "../../common/house-money";
+import { readHouseZone } from "../../common/house-day";
 import {
   BottleHow,
   UnitsLabel,
@@ -396,15 +397,21 @@ export class InsightGeneratorService {
     // manager asking for that type's whole list, so it is not capped.
     const maxPerCategory =
       opts.maxPerCategory ?? (narrowed ? Number.POSITIVE_INFINITY : 5);
-    const [bundle, state] = await Promise.all([
+    // The week a subject-less card fired in is the house's week, read once
+    // here for every card (F-796, as the recommendations feed does for
+    // F-384): keyed on UTC, a card put away on a Los Angeles Sunday evening
+    // was already in next week's key and came straight back.
+    const firedAt = new Date();
+    const [bundle, state, zone] = await Promise.all([
       this.loadBundle(restaurantId),
       this.actions.readState(restaurantId),
+      this.readFiringZone(restaurantId),
     ]);
     const candidates = availableCandidates(bundle.availability);
 
     let insights: InsightRecord[] = [];
     const push = (r: InsightRecord | null) => {
-      if (r && r.sentence) insights.push(r);
+      if (r && r.sentence) insights.push(keyOnFiring(r, firedAt, zone));
     };
 
     // ---- family executors (each guards on its own data) -------------------
@@ -838,6 +845,23 @@ export class InsightGeneratorService {
   // ==========================================================================
   // Data bundle
   // ==========================================================================
+
+  /**
+   * The house's zone for firing keys. A house with no zone, or a zone that
+   * cannot be read, keys on UTC as before: a key is not a figure, and a
+   * failed read must not take the whole feed down with it (F-384).
+   */
+  private async readFiringZone(restaurantId: string): Promise<string | null> {
+    try {
+      return (await readHouseZone(this.dbService.getClient(), restaurantId))
+        .zone;
+    } catch (err: any) {
+      this.logger.warn(
+        `house zone unread; firing weeks keyed on UTC: ${err?.message ?? err}`,
+      );
+      return null;
+    }
+  }
 
   private async loadBundle(restaurantId: string): Promise<Bundle> {
     const client = this.dbService.getClient();
@@ -2182,22 +2206,15 @@ export class InsightGeneratorService {
     if (!sentence) return null;
     const subject =
       scoreParams.subject ?? scoreParams.entityLabel ?? evidence.entity ?? null;
-    // "Each firing is one card" (ADR 0191 round 3, founder 2026-09-21): a
-    // type that names no subject and no period is keyed by the week it fired
-    // in — the founder's own example of a firing period, and the grain the
-    // catalogue's types carry no other horizon for. A one-item dismiss or
-    // done then hides this firing, not the whole type (which is the
-    // catalogue's On/Off), and the item returns when it fires next week.
-    const target = withFiring(
-      {
-        ruleId: insightRuleId(candidateKey),
-        subject,
-        periodKey: scoreParams.periodKey ?? null,
-      },
-      "week",
-      new Date(),
-    );
-    const periodKey = target.periodKey ?? null;
+    // A type that names no subject and no period is keyed by the week it
+    // fired in, on the house's clock — `keyOnFiring`, applied as each
+    // record is pushed in `generate()`.
+    const target = {
+      ruleId: insightRuleId(candidateKey),
+      subject,
+      periodKey: scoreParams.periodKey ?? null,
+    };
+    const periodKey = target.periodKey;
     return {
       candidateKey,
       category,
@@ -2227,6 +2244,39 @@ export class InsightGeneratorService {
 // ---------------------------------------------------------------------------
 
 type Push = (r: InsightRecord | null) => void;
+
+/**
+ * "Each firing is one card" (ADR 0191 round 3, founder 2026-09-21): a type
+ * that names no subject and no period is keyed by the week it fired in — the
+ * founder's own example of a firing period, and the grain the catalogue's
+ * types carry no other horizon for. A one-item dismiss or done then hides
+ * this firing, not the whole type (which is the catalogue's On/Off), and the
+ * item returns when it fires next week. The week is the house's when its
+ * zone is known (F-796); with none it is UTC's. A record that names a
+ * subject or a period is returned as it is.
+ */
+export function keyOnFiring(
+  r: InsightRecord,
+  at: Date,
+  zone: string | null,
+): InsightRecord {
+  const own = {
+    ruleId: insightRuleId(r.candidateKey),
+    subject: r.subject,
+    periodKey: r.periodKey,
+  };
+  const target = withFiring(own, "week", at, zone);
+  if (target === own) return r;
+  return {
+    ...r,
+    periodKey: target.periodKey ?? null,
+    suppression: {
+      key: buildSuppressionKey(target, "insight"),
+      scope: effectiveScope(target, "insight"),
+      keys: suppressionKeys(target),
+    },
+  };
+}
 
 /** The record with the bottle basis of the lines it rests on (ADR 0297). */
 function withUnits(
