@@ -565,6 +565,62 @@ describe("the PATCH route is held to the same table", () => {
     expect(h.order.final_price).toBe(42);
   });
 
+  it("[REVERT-FAILS] refuses lowering a pending $30,000 order's total to $1 (F-743)", async () => {
+    const h = await makeService({
+      status: ProcurementOrderStatus.PENDING,
+      quantity: 600,
+      bottles_total: 600,
+      final_price: 50,
+      total_cost: 30000,
+    });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { totalCost: 1 } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getStatus()).toBe(400);
+    expect(err.getResponse().reason).toBe("total_disagrees_with_price");
+    expect(err.getResponse().message).toMatch(/\$1\.00\).*\$30000\.00/);
+    expect(h.order.total_cost).toBe(30000);
+    expect(h.updates.filter((u) => u.table === "procurement_orders")).toEqual([]);
+  });
+
+  it("[REVERT-FAILS] a new price works the total out again, so approval tests what it seals (F-743)", async () => {
+    const h = await makeService({
+      status: ProcurementOrderStatus.PENDING,
+      quantity: 600,
+      bottles_total: 600,
+      final_price: 50,
+      total_cost: 30000,
+    });
+    await h.service.updateOrder(HOUSE, ORDER_ID, { finalPrice: 4 } as any, {
+      actorUserId: MANAGER,
+    });
+    expect(h.order.final_price).toBe(4);
+    expect(h.order.total_cost).toBe(2400);
+  });
+
+  it("works a case price out per case, with the line's deposit (F-743)", async () => {
+    const h = await makeService({
+      status: ProcurementOrderStatus.PENDING,
+      quantity: 5,
+      unit_type: "case",
+      bottles_total: 60,
+      final_price: 400,
+      total_cost: 2000,
+      procurement_order_items: [
+        { price_uom: "case", price_pack_size: 12, deposit: 10 },
+      ],
+    });
+    await h.service.updateOrder(
+      HOUSE,
+      ORDER_ID,
+      { finalPrice: 420, totalCost: 2110 } as any,
+      { actorUserId: MANAGER },
+    );
+    expect(h.order.total_cost).toBe(2110);
+  });
+
   it("leaves a PATCH that carries no status alone", async () => {
     const h = await makeService();
     await h.service.updateOrder(HOUSE, ORDER_ID, {

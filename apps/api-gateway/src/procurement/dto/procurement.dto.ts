@@ -289,8 +289,10 @@ export class UpdateOrderDto {
   @IsOptional()
   finalPrice?: number;
 
+  /** Checked against quantity × price and refused when it disagrees (F-743). */
   @ApiPropertyOptional()
   @IsNumber()
+  @Min(0)
   @IsOptional()
   totalCost?: number;
 

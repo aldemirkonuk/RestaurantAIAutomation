@@ -3519,11 +3519,14 @@ export class ProcurementService {
     // here and compared-and-set on the write, so an approval landing between
     // the two cannot be repriced after the fact.
     let pricedFromStatus: string | null = null;
+    let workedOutTotal: number | null = null;
     if (writesMoney) {
       const { data: current, error: readError } =
         await this.databaseService.supabase
           .from("procurement_orders")
-          .select("status")
+          .select(
+            "status, quantity, unit_type, bottles_total, final_price, procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
+          )
           .eq("restaurant_id", restaurantId)
           .eq("id", orderId)
           .maybeSingle();
@@ -3546,6 +3549,58 @@ export class ProcurementService {
         });
       }
       pricedFromStatus = status;
+
+      // F-743. The total is worked out here from the quantity and the price,
+      // the same way `createOrder` does (F-732), never written from the body:
+      // the ceiling and the seal both read `total_cost`, so a $1 total sent
+      // here slipped a pending $30,000 order under a $2,500 ceiling. A new
+      // price moves the total with it, and the approval that follows tests
+      // the total it will actually seal.
+      const row = current as Record<string, any>;
+      const quantity = Number(row.quantity);
+      const bottlesTotal = Number(row.bottles_total);
+      const units = resolveOrderUnits({
+        quantity,
+        unitType: row.unit_type,
+        bottlesPerUnit:
+          row.bottles_total != null && quantity > 0
+            ? bottlesTotal / quantity
+            : null,
+      });
+      const lines = embeddedOrderLines(row.procurement_order_items);
+      const agreedTotal = units.ok
+        ? agreementLineTotal({
+            price: dto.finalPrice ?? Number(row.final_price ?? 0),
+            stated: foldOrderPriceUnit(lines),
+            bottlesTotal: units.bottlesTotal,
+            quantity,
+            unitType: units.unitType,
+            opaque: units.opaque,
+            fees:
+              lines.length === 1
+                ? readAgreementFees(lines[0])
+                : NO_AGREEMENT_FEES,
+          })
+        : null;
+      if (!agreedTotal || !agreedTotal.ok) {
+        throw new BadRequestException({
+          reason: "order_total_not_worked_out",
+          message:
+            "This order's total could not be worked out from its quantity and price, so the price was not changed.",
+        });
+      }
+      if (
+        dto.totalCost != null &&
+        Math.abs(dto.totalCost - agreedTotal.total) >= 0.005
+      ) {
+        throw new BadRequestException({
+          reason: "total_disagrees_with_price",
+          message:
+            `The total sent with this change ($${Number(dto.totalCost).toFixed(2)}) is not what the quantity at the agreed price comes to ($${agreedTotal.total.toFixed(2)}). ` +
+            "Nothing was changed. Send it again without a total and it is worked out from the price.",
+        });
+      }
+      workedOutTotal = agreedTotal.total;
     }
 
     // D-06: Block location assignment while order is in a pending state.
@@ -3580,7 +3635,7 @@ export class ProcurementService {
       quoted_price: dto.quotedPrice ?? undefined,
       negotiated_price: dto.negotiatedPrice ?? undefined,
       final_price: dto.finalPrice ?? undefined,
-      total_cost: dto.totalCost ?? undefined,
+      total_cost: workedOutTotal ?? undefined,
       manager_notes: dto.managerNotes ?? undefined,
       rejection_reason: dto.rejectionReason ?? undefined,
       delivery_notes: dto.deliveryNotes ?? undefined,
@@ -4069,7 +4124,8 @@ export class ProcurementService {
       restaurantId,
       orderId,
       { status: ProcurementOrderStatus.COMPLETED },
-      { statusTransitionAlreadyChecked: true },
+      // The person was checked above; `updateOrder` asks again by name (F-300).
+      { statusTransitionAlreadyChecked: true, actorUserId: userId },
     );
 
     try {
