@@ -116,7 +116,8 @@ export function computeMatch(input: MatchInput): MatchResult {
   const priceMismatch = bothPriced && !currencyDiffers && !priceVerified
   const requiresOverride = priceMismatch && overrideReason.length === 0
 
-  const backorderQty = Math.max(0, orderedQty - acceptedQty)
+  // Refused bottles were delivered: a claim against the vendor, never a backorder (F-875).
+  const backorderQty = Math.max(0, orderedQty - acceptedQty - rejectedQty)
 
   const overbilledVsShip = hasShip && hasInvoice && (invoiceQty as number) > (shippedQty as number)
   // Physical vs physical. The slip counts bottles on the truck, free ones included, so this

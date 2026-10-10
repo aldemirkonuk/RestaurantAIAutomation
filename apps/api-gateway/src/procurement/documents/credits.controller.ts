@@ -31,6 +31,7 @@ import { RolesGuard } from "../../auth/guards/roles.guard";
 import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
+import { houseFrame, type HouseRecord } from "../../common/house-frame";
 import {
   HouseLettersService,
   type CreditLetter,
@@ -354,6 +355,7 @@ export class CreditsController {
         outcome.next.creditDocumentId as string,
         outcome.next.creditedAmount as number,
         user,
+        row.currency ?? null,
       );
 
     const now = new Date().toISOString();
@@ -412,16 +414,23 @@ async function refuseUnfitMemo(
   memoId: string,
   creditedAmount: number,
   user: AuthedUser,
+  claimCurrency: string | null,
 ): Promise<void> {
   const client = db.getClient();
+  // Either read failing is the same honest refusal as the house check above
+  // (F-877): nothing was changed, try again — never the database's own words.
+  const unreadable = () =>
+    new HttpException(
+      "Could not read this credit memo or what is already credited against it, so the claim was not changed. Please try again.",
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
   const { data: memo, error } = await client
     .from("procurement_documents")
-    .select("id, doc_type, provider_id, total")
+    .select("id, doc_type, provider_id, total, currency")
     .eq("id", memoId)
     .eq("restaurant_id", user.restaurantId)
     .maybeSingle();
-  if (error)
-    throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+  if (error) throw unreadable();
   if (!memo)
     throw new HttpException(
       "That credit memo is not among this house's papers.",
@@ -434,25 +443,47 @@ async function refuseUnfitMemo(
     .eq("restaurant_id", user.restaurantId)
     .eq("credit_document_id", memoId)
     .eq("state", "credited");
-  if (othersErr)
-    throw new HttpException(
-      othersErr.message,
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+  if (othersErr) throw unreadable();
   const already = (others ?? [])
     .filter((o) => o.id !== claimId)
     .reduce((sum, o) => sum + Number(o.credited_amount ?? 0), 0);
 
-  const refusal = memoRefusal(
-    {
-      docType: memo.doc_type,
-      providerId: memo.provider_id ?? null,
-      total: memo.total == null ? null : Number(memo.total),
-    },
-    claimProviderId,
-    creditedAmount,
-    already,
-  );
+  const refusalIn = (locale: string | null) =>
+    memoRefusal(
+      {
+        docType: memo.doc_type,
+        providerId: memo.provider_id ?? null,
+        total: memo.total == null ? null : Number(memo.total),
+        currency: memo.currency ?? null,
+      },
+      claimProviderId,
+      creditedAmount,
+      already,
+      { claimCurrency, locale },
+    );
+  // The house's formats are read only when there is a refusal to say.
+  const refusal = refusalIn(null)
+    ? refusalIn(await houseLocale(db, user.restaurantId))
+    : null;
   if (refusal)
     throw new HttpException(refusal, HttpStatus.UNPROCESSABLE_ENTITY);
+}
+
+/**
+ * The house's formats tag, for the refusal's figures only (F-877). A failed
+ * read is formats, not money: the figures print in plain "en" form with their
+ * currency still named, and the refusal itself still stands.
+ */
+async function houseLocale(
+  db: DatabaseService,
+  restaurantId: string,
+): Promise<string | null> {
+  const { data, error } = await db
+    .getClient()
+    .from("restaurants")
+    .select("timezone, country")
+    .eq("id", restaurantId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return houseFrame(data as HouseRecord).locale;
 }

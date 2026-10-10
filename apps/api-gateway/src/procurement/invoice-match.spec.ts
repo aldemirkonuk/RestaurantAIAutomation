@@ -240,7 +240,12 @@ describe("computeMatch", () => {
       expect(check(r, "damage").ok).toBe(false);
       expect(r.creditDue).toBe(true);
       expect(r.ledgerDelta).toBe(-2); // only the 22 good bottles stay in stock
-      expect(r.backorderQty).toBe(2);
+      // The 2 broken were delivered: a claim, not a backorder (F-875), so
+      // nothing holds the order open and close short agrees nothing is owed.
+      expect(r.backorderQty).toBe(0);
+      expect(check(r, "fulfilment").detail).toBe(
+        "22 of 24 accepted, 2 refused",
+      );
     });
 
     it("distinguishes damage from a short ship even though both leave 22 in stock", () => {
@@ -261,7 +266,8 @@ describe("computeMatch", () => {
 
       expect(r.verdict).toBe("qty_short");
       expect(check(r, "damage").ok).toBe(false);
-      expect(r.backorderQty).toBe(4);
+      // 3 never came; the 1 refused is a claim, not one of them (F-875).
+      expect(r.backorderQty).toBe(3);
     });
   });
 

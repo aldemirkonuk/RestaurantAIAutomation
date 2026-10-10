@@ -509,6 +509,26 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   )
 
   /*
+   * F-875: refused bottles are not a backorder. `computeMatch` takes this
+   * check's refusals off; the ones refused at the DOOR never reach this form,
+   * so they come off here, as the gateway takes them off before it decides
+   * whether the order stays open. Converted into the unit the screen counts in
+   * only when that conversion is known; otherwise nothing is taken off.
+   */
+  const doorRefused = (() => {
+    const bottles = shelf?.readable ? (shelf.rejectedAtDoorBottles ?? 0) : 0
+    const unit = (order.unitType ?? 'bottle').toString().trim().toLowerCase() || 'bottle'
+    if (inBottles || !MULTIPLYING.has(unit)) return bottles
+    return shelf?.packSize ? bottles / shelf.packSize : 0
+  })()
+  const stillOwed = Math.max(0, match.backorderQty - doorRefused)
+  const shelfOwed = shelf?.readable
+    ? (shelf.backorderBottles ?? 0) -
+      (shelf.rejectedAtDoorBottles ?? 0) -
+      (shelf.rejectedAtDeskBottles ?? 0)
+    : 0
+
+  /*
    * ITEM A — THE PRICE IS REFUSED WHILE THE INVOICE'S MONEY IS HELD.
    *
    * `moneyState` is the gateway's own verdict, computed by the SAME function
@@ -679,11 +699,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
       queryClient.invalidateQueries({ queryKey: ['orders'] })
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
-      const heldOpen = match.backorderQty > 0
+      const heldOpen = stillOwed > 0
       toast.success(
         heldOpen ? 'Received, order held open' : 'Receipt verified',
         heldOpen
-          ? `${acceptedQty} of ${orderedQty} accepted — ${match.backorderQty} still on backorder.`
+          ? `${acceptedQty} of ${orderedQty} accepted — ${stillOwed} still on backorder.`
           : match.summary,
       )
       onClose()
@@ -700,7 +720,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
     ? 'Currency required'
     : blocked
     ? 'Reason required'
-    : match.backorderQty > 0
+    : stillOwed > 0
       ? 'Accept & keep open'
       : priceDiffers
         ? 'Accept with override'
@@ -771,9 +791,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 last verification.
               </p>
             )}
-            {shelf?.readable && (shelf.backorderBottles ?? 0) > 0 && (
+            {/* Refused bottles are a claim, never still owed (F-876): the
+                same sum close short and the door lane read. */}
+            {shelfOwed > 0 && (
               <p className="mt-1" data-testid="receiving-shelf-backorder">
-                {shelf.backorderBottles} {shelf.backorderBottles === 1 ? 'bottle is' : 'bottles are'} still
+                {shelfOwed} {shelfOwed === 1 ? 'bottle is' : 'bottles are'} still
                 owed on this order.
               </p>
             )}
@@ -845,10 +867,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
             <div
               className={cn(
                 'text-right font-mono text-sm font-bold',
-                match.backorderQty === 0 ? 'text-emerald-600' : 'text-amber-600',
+                stillOwed === 0 ? 'text-emerald-600' : 'text-amber-600',
               )}
             >
-              {match.backorderQty === 0 ? <Check className="w-4 h-4 inline" /> : match.backorderQty}
+              {stillOwed === 0 ? <Check className="w-4 h-4 inline" /> : stillOwed}
             </div>
           </div>
 
@@ -1199,20 +1221,20 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         <div className="flex items-center justify-between gap-3 px-6 py-4 bg-gray-50 border-t border-gray-100">
           {readOnly ? (
             <span className="text-xs text-gray-400">Read-only audit record</span>
-          ) : match.backorderQty > 0 ? (
+          ) : stillOwed > 0 ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600">
               <AlertTriangle className="w-3.5 h-3.5" />
               {/* In the unit the screen counts in (F-177): a case-counted
                   order's shortfall is cases, and said "1 bottle" before. */}
               <span data-testid="receiving-backorder-footer">
-                {match.backorderQty}{' '}
+                {stillOwed}{' '}
                 {inBottles
-                  ? match.backorderQty === 1 ? 'bottle' : 'bottles'
+                  ? stillOwed === 1 ? 'bottle' : 'bottles'
                   : unitWord(
                       (order.unitType ?? 'bottle').toString().trim().toLowerCase() || 'bottle',
-                      match.backorderQty,
+                      stillOwed,
                     )}{' '}
-                {match.backorderQty === 1 ? 'stays' : 'stay'} on backorder
+                {stillOwed === 1 ? 'stays' : 'stay'} on backorder
               </span>
             </span>
           ) : (

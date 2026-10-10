@@ -193,6 +193,10 @@ function makeDb(opts: {
   statusChangedMeanwhile?: boolean;
   /** F-374. `apply_stock_movement` fails with this. */
   stockMoveError?: { message: string } | null;
+  /** F-875. The door's `case_count` events for the order (refusals at the door). */
+  doorEvents?: Row[];
+  /** F-875. The read of the door's counts fails with this. */
+  doorReadError?: { message: string } | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -258,6 +262,14 @@ function makeDb(opts: {
         // The idempotence check's read of the latest `reconciled` event,
         // before the one-tap confirmation's own insert (never reached on the
         // `insert` op above, which the branch above already answered).
+        if (
+          table === "procurement_receipt_events" &&
+          op !== "insert" &&
+          filters.stage === "case_count"
+        )
+          return opts.doorReadError
+            ? { data: null, error: opts.doorReadError }
+            : { data: opts.doorEvents ?? [], error: null };
         if (table === "procurement_receipt_events" && op !== "insert") {
           if (opts.latestReconciledReadError)
             return { data: null, error: opts.latestReconciledReadError };
@@ -1423,6 +1435,86 @@ describe("verifyReceipt — the verification is an event, not four order columns
       Object.fromEntries(
         Object.keys(calls.orderUpdates[0]).map((k) => [k, (bottleOrder as any)[k] ?? null]),
       ),
+    );
+  });
+});
+
+describe("verifyReceipt — refused bottles are not a backorder (F-875)", () => {
+  const twelve = {
+    id: ORDER,
+    order_number: "ORD-2026-00012",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 12,
+    bottles_total: 12,
+    unit_type: "bottle",
+    final_price: 20,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+  const statusOf = (calls: Calls) => calls.orderUpdates[0]?.status;
+
+  it("12 ordered, 2 broken refused at the check, 10 billed: the order completes", async () => {
+    const { db, calls } = makeDb({ orderRow: twelve });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 20,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+      rejectedQuantity: 2,
+      rejectedReason: "two broken",
+    } as any);
+    expect(statusOf(calls)).toBe("COMPLETED");
+  });
+
+  it("2 refused at the door, 10 accepted at the check: the order completes", async () => {
+    const { db, calls } = makeDb({
+      orderRow: twelve,
+      doorEvents: [{ stage: "case_count", rejected_qty_bottles: 2 }],
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 20,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+    } as any);
+    expect(statusOf(calls)).toBe("COMPLETED");
+  });
+
+  it("bottles that never came still hold the order open", async () => {
+    const { db, calls } = makeDb({
+      orderRow: twelve,
+      doorEvents: [{ stage: "case_count", rejected_qty_bottles: 1 }],
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 20,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+    } as any);
+    expect(statusOf(calls)).toBe("PARTIALLY_RECEIVED");
+  });
+
+  it("a door read that fails changes nothing and says so", async () => {
+    const { db, calls } = makeDb({
+      orderRow: twelve,
+      doorReadError: { message: "timeout" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 10,
+        invoiceUnitPrice: 20,
+        invoiceCurrency: "USD",
+        acceptedQuantity: 10,
+      } as any),
+    ).rejects.toThrow(
+      /refused at the door .*could not be read.*Nothing was changed/,
+    );
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual(
+      [],
     );
   });
 });
