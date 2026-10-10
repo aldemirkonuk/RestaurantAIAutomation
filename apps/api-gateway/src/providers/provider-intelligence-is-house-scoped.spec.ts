@@ -395,7 +395,9 @@ function controllerFor(
   );
 }
 
-const userA = { userId: "user-a", restaurantId: HOUSE_A };
+// An owner: these reads include the vendor's prices, which only a holder of
+// the house's money reads (F-1078, provider-knowledge-money-for-role.spec.ts).
+const userA = { userId: "user-a", restaurantId: HOUSE_A, role: "owner" };
 const noHouse = { userId: "user-a", restaurantId: null };
 
 function setup() {

@@ -925,7 +925,12 @@ export class AnalyticsController {
     return this.tableAnalytics.getBasketAffinity(restaurantId);
   }
 
+  // Each open check's running spend and its $/min pace are the house's
+  // money, like table-performance above: owner or manager only (F-1067,
+  // ADR 0145). No page calls this route yet.
   @Get("hot-tables/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Live table surge watchlist",
     description:

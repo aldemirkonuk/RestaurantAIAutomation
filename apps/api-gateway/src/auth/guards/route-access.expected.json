@@ -39,7 +39,10 @@
     "manager"
   ],
   "GET /analytics/basket/:restaurantId (AnalyticsController.getBasket)": "open",
-  "GET /analytics/hot-tables/:restaurantId (AnalyticsController.getHotTables)": "open",
+  "GET /analytics/hot-tables/:restaurantId (AnalyticsController.getHotTables)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/goal-scenarios (AnalyticsController.getGoalScenarios)": "open",
   "POST /analytics/goal-scenarios/requests/:restaurantId (AnalyticsController.requestGoalScenario)": "open",
   "GET /analytics/goal-scenarios/requests (AnalyticsController.listGoalScenarioRequests)": "open",

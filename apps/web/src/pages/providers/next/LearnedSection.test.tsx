@@ -323,6 +323,10 @@ describe('LearnedSection', () => {
       expect(await screen.findAllByTestId('learned-fact')).toHaveLength(3);
       expect(screen.getByText('Their offers are for owners and managers to see.')).toBeInTheDocument();
       expect(screen.getByText('Messages with them are for owners and managers to read.')).toBeInTheDocument();
+      // F-1078: the gateway leaves their prices out; the sheet says why.
+      expect(
+        screen.getByText('Their prices and money terms are for owners and managers to see.'),
+      ).toBeInTheDocument();
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(screen.queryByTestId('learned-offer')).not.toBeInTheDocument();
       expect(screen.queryByTestId('learned-message')).not.toBeInTheDocument();
@@ -377,6 +381,14 @@ describe('LearnedSection', () => {
     expect(screen.queryByRole('button', { name: /^Confirm/ })).not.toBeInTheDocument();
     // what was already confirmed still reads as confirmed
     expect(screen.getByText('Confirmed · Aslı Kaya')).toBeInTheDocument();
+  });
+
+  it.each(['owner', 'manager'])('%s is not told prices are withheld (F-1078)', async (role) => {
+    auth.role = role;
+    full();
+    renderIt();
+    expect(await screen.findAllByTestId('learned-fact')).toHaveLength(3);
+    expect(screen.queryByText(/prices and money terms are for owners/)).not.toBeInTheDocument();
   });
 
   it('the owner sees Confirm too', async () => {

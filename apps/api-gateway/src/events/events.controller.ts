@@ -99,10 +99,15 @@ export class EventsController {
   })
   async listEvents(
     @Query() query: GetEventsQueryDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<EventListResponseDto> {
     try {
-      return await this.eventsService.listEvents(user.restaurantId, query);
+      return await this.eventsService.listEvents(
+        user.restaurantId,
+        query,
+        user.role ?? null,
+      );
     } catch (error) {
       this.logger.error({
         message: "List events endpoint error",
