@@ -11,6 +11,9 @@ const REASONS: Record<string, string> = {
   invalid_callback: 'The provider return did not match this permission.',
   invalid_browser_origin: 'The original app address is no longer configured.',
   exchange_failed: 'The connection outcome could not be established. Check the connection below before starting again.',
+  // F-822: the person's own standing, read when the provider handed the account back.
+  membership_refused: 'Nothing was connected, because you no longer have access to this restaurant or your email address is not confirmed yet. Ask the owner to check your access, then try again.',
+  membership_unreadable: 'Nothing was connected, because your access to this restaurant could not be checked just now. Try again in a moment.',
   // F-819: the return URL carries no house name, so the other house is not named here.
   held_by_another_house: 'This account is already connected for another of your restaurants. One connection like this can serve one restaurant, so nothing was connected here. Disconnect it while working in that restaurant first, or ask someone here to connect their own.',
 }
