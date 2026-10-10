@@ -22,7 +22,12 @@ import {
   shiftHouseDay,
   type HouseZone,
 } from "../common/house-day";
-import { localMidnight } from "../notifications/producers/service-day";
+import {
+  goalPeriodEndAfter,
+  goalPeriodStart,
+  goalSchedule,
+  goalWindow,
+} from "./goal-window";
 import {
   UncountedConsumptionError,
   UnitsLabel,
@@ -542,27 +547,15 @@ export class GoalsService {
     // a goal set at 22:00 in Los Angeles was set that day. Either way the
     // count stops on the deadline's house day: a quarter goal that missed on
     // 30 Sep does not go on adding October's sales.
+    // `goalWindow` is the one answer, shared with the insight feed's goal
+    // card (F-864).
     const zone = house.zone;
     const deadlineDay = goal.deadline
       ? String(goal.deadline).slice(0, 10)
       : undefined;
-    const today = zone ? houseToday(zone) : null;
-    const anchor =
-      today && deadlineDay && deadlineDay < today ? deadlineDay : today;
-    const periodic = ["day", "week", "month", "quarter"].includes(goal.period);
-    const periodStart =
-      zone && anchor
-        ? periodic
-          ? this.periodStart(goal.period, zone, anchor)
-          : (houseDayOf(goal.created_at, zone) ??
-            this.periodStart(goal.period, zone))
-        : null;
-    // The period's own end, when it closes before the deadline: the pace of a
-    // weekly goal is judged against this week, not the months to its deadline.
-    const periodEnd =
-      periodic && periodStart
-        ? this.periodEndAfter(goal.period, periodStart)
-        : null;
+    const win = zone ? goalWindow(goal, zone) : null;
+    const periodStart = win?.periodStart ?? null;
+    const periodEnd = win?.periodEnd ?? null;
     const measured = await this.computeMetricWithSeries(
       restaurantId,
       goal.metric_key,
@@ -656,9 +649,9 @@ export class GoalsService {
     let onTrack: boolean | null = null;
     let projected: number | null = null;
     let paceUnread: string | null = null;
-    // The schedule runs from the midnight that opened the goal's first day to
-    // the midnight that opens its deadline day — both on the house's clock
-    // (ADR 0296), as both were on UTC's before. With no zone the deadline has
+    // The schedule is `goalSchedule`'s: from the midnight that opened the
+    // goal's first day to the midnight that closes its deadline day (F-865),
+    // on the house's clock (ADR 0296). With no zone the deadline has
     // no midnight to count to, so the pace is not computed and `paceUnread`
     // carries the reason: the reports desk prints it, the goals export
     // withholds the pace with it, and the recommendations margin says "Pace
@@ -666,18 +659,14 @@ export class GoalsService {
     // zone; every other metric has already thrown HOUSE_ZONE_UNSET.
     if (goal.deadline && !zone) paceUnread = HOUSE_ZONE_UNSET_PACE;
     if (goal.deadline && zone && periodStart) {
-      const start = localMidnight(periodStart, zone).getTime();
-      const deadlineAt = localMidnight(deadlineDay!, zone).getTime();
-      const end =
-        periodEnd && periodEnd < deadlineDay!
-          ? localMidnight(periodEnd, zone).getTime()
-          : deadlineAt;
-      const totalDays = Math.max(1, (end - start) / 86400000);
-      const elapsed = Math.min(
-        totalDays,
-        Math.max(0, (Date.now() - start) / 86400000),
+      const schedule = goalSchedule(
+        { periodStart, periodEnd, deadlineDay: deadlineDay! },
+        zone,
       );
-      daysLeft = Math.max(0, Math.ceil((deadlineAt - Date.now()) / 86400000));
+      const end = schedule.endAt;
+      const totalDays = schedule.totalDays;
+      const elapsed = schedule.elapsedDays;
+      daysLeft = schedule.daysLeft;
       // A level (average check, attach rate, days of stock) ramps from its
       // baseline, a running total from nothing (F-183).
       const baseline =
@@ -994,58 +983,19 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   /**
    * The first house date of a goal's period, on the house's clock (ADR 0296).
    * A week opens on Sunday, a quarter on its first month's 1st, and a custom
-   * goal looks back 30 days — the same periods as before, now counted on the
-   * house's calendar instead of the server's.
+   * goal looks back 30 days. `goalPeriodStart` (`goal-window.ts`) holds it.
    */
   private periodStart(
     period: string | undefined,
     zone: string,
     on: string = houseToday(zone),
   ): string {
-    const today = on;
-    const [y, m, d] = today.split("-").map(Number);
-    const two = (n: number) => String(n).padStart(2, "0");
-    switch (period) {
-      case "day":
-        return today;
-      case "week":
-        return shiftHouseDay(
-          today,
-          -new Date(Date.UTC(y, m - 1, d)).getUTCDay(),
-        );
-      case "quarter":
-        return `${y}-${two(Math.floor((m - 1) / 3) * 3 + 1)}-01`;
-      case "month":
-        return `${y}-${two(m)}-01`;
-      default:
-        return shiftHouseDay(today, -30); // custom default: trailing 30d
-    }
+    return goalPeriodStart(period, zone, on);
   }
 
-  /**
-   * The first house date AFTER the period that opened on `start`: the day
-   * after a day, a week on, the next month's or quarter's 1st. Null for a
-   * custom goal, which has no period to end.
-   */
+  /** The first house date AFTER the period: `goalPeriodEndAfter`. */
   private periodEndAfter(period: string | undefined, start: string): string | null {
-    const [y, m] = start.split("-").map(Number);
-    const two = (n: number) => String(n).padStart(2, "0");
-    const monthOn = (months: number) => {
-      const n = y * 12 + (m - 1) + months;
-      return `${Math.floor(n / 12)}-${two((n % 12) + 1)}-01`;
-    };
-    switch (period) {
-      case "day":
-        return shiftHouseDay(start, 1);
-      case "week":
-        return shiftHouseDay(start, 7);
-      case "month":
-        return monthOn(1);
-      case "quarter":
-        return monthOn(3);
-      default:
-        return null;
-    }
+    return goalPeriodEndAfter(period, start);
   }
 
   private async computeMetric(

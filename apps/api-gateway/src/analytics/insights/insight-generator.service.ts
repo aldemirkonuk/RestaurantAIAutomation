@@ -19,7 +19,8 @@ import {
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { orderSpend } from "../../procurement/order-spend";
 import { readWholeWindow } from "../../common/read-whole-window";
-import { readHouseCurrency } from "../../common/house-money";
+import { readHouseMoney } from "../../common/house-money";
+import { goalSchedule, goalWindow } from "../goal-window";
 import {
   HOUSE_DAY_LOOKBACK_MS,
   houseDayOf,
@@ -988,11 +989,12 @@ export class InsightGeneratorService {
     // the data, not after it, because every daily series below is built
     // through `toDaily` and every one of them must honour the same list.
     // Beside them, the house's own money, so every currency figure in a
-    // sentence prints in it (F-341). It never rejects: null prints the figure
-    // with no symbol, never as dollars.
-    const [exclusions, currency] = await Promise.all([
+    // sentence prints in it (F-341), grouped by the house's own mark (F-866).
+    // It never rejects: null prints the figure with no symbol, never as
+    // dollars, and a null locale groups en-US.
+    const [exclusions, { currency, locale }] = await Promise.all([
       this.dayExclusions.load(restaurantId),
-      readHouseCurrency(client, restaurantId),
+      readHouseMoney(client, restaurantId),
     ]);
 
     // Every row is filed on the house's day, as /reports files it (ADR 0296):
@@ -1155,6 +1157,7 @@ export class InsightGeneratorService {
       exclusionsReadable: exclusions.readable,
       unread,
       currency,
+      locale,
       zone,
     };
 
@@ -1491,6 +1494,7 @@ export class InsightGeneratorService {
       measureLabel: "purchasing spend",
       unit: "currency",
       currency: bundle.currency,
+      locale: bundle.locale,
       dimension: "overall",
       category: "purchasing",
       periodWindow: 30,
@@ -1516,6 +1520,7 @@ export class InsightGeneratorService {
         measureLabel: "purchasing spend",
         unit: "currency",
         currency: bundle.currency,
+        locale: bundle.locale,
         topShare: sorted[0].total / total,
         topCount: 1,
         hhi,
@@ -1674,6 +1679,7 @@ export class InsightGeneratorService {
       measureLabel: "sales",
       unit: "currency",
       currency: bundle.currency,
+      locale: bundle.locale,
       dimension: "overall",
       category: "sales",
     });
@@ -1853,6 +1859,7 @@ export class InsightGeneratorService {
               measureLabel: "average check",
               unit: "currency",
               currency: bundle.currency,
+              locale: bundle.locale,
               r: best.r,
               attribute: best.name,
             };
@@ -1917,6 +1924,7 @@ export class InsightGeneratorService {
               measureLabel: "average check",
               unit: "currency",
               currency: bundle.currency,
+              locale: bundle.locale,
               drivers,
             };
             push(
@@ -1944,6 +1952,7 @@ export class InsightGeneratorService {
             measureLabel: "average check",
             unit: "currency",
             currency: bundle.currency,
+            locale: bundle.locale,
             value: top.value,
             rank: 1,
             peerCount: standings.length,
@@ -2000,6 +2009,7 @@ export class InsightGeneratorService {
             measureLabel: "average check",
             unit: "currency",
             currency: bundle.currency,
+            locale: bundle.locale,
             value: top.value,
             rank: 1,
             peerCount: standings.length,
@@ -2099,6 +2109,7 @@ export class InsightGeneratorService {
           measureLabel: "spend",
           unit: "currency",
           currency: bundle.currency,
+          locale: bundle.locale,
           value: c.total || 0,
           z,
           surgeMinutes: Math.round(minutes),
@@ -2137,30 +2148,31 @@ export class InsightGeneratorService {
       const atMost = g.direction === "at_most";
       let daysLeft: number | null = null;
       let onTrack: boolean | null = null;
-      if (g.deadline) {
-        const total = g.created_at
-          ? (new Date(g.deadline).getTime() -
-              new Date(g.created_at).getTime()) /
-            86400000
-          : null;
-        daysLeft = Math.max(
-          0,
-          Math.ceil((new Date(g.deadline).getTime() - Date.now()) / 86400000),
+      // The goals desk's own window and schedule (`goalWindow`,
+      // `goalSchedule`): a "this month" goal is paced from the month's first
+      // house day, as the stored `current_value` counts it, not from the day
+      // it was created, and through the whole deadline day (F-864, F-865).
+      // With no zone the desk computes no pace, and neither does this card.
+      if (g.deadline && bundle.zone) {
+        const win = goalWindow(g, bundle.zone);
+        const schedule = goalSchedule(
+          { ...win, deadlineDay: win.deadlineDay! },
+          bundle.zone,
         );
-        if (total && total > 0) {
-          const elapsedFrac = Math.min(
-            1,
-            Math.max(0, (total - daysLeft) / total),
-          );
-          // The goals desk's own line (`getGoalProgress`): a level ramps from
-          // its baseline, a total from nothing, and a "keep at most" goal is
-          // on pace while it stays under the line, not over it (F-383).
-          onTrack = goalPaceHolds(
-            g.direction,
-            current,
-            goalExpectedByNow(g.metric_key, target, baseline, elapsedFrac),
-          );
-        }
+        daysLeft = schedule.daysLeft;
+        // The goals desk's own line (`getGoalProgress`): a level ramps from
+        // its baseline, a total from nothing, and a "keep at most" goal is
+        // on pace while it stays under the line, not over it (F-383).
+        onTrack = goalPaceHolds(
+          g.direction,
+          current,
+          goalExpectedByNow(
+            g.metric_key,
+            target,
+            baseline,
+            schedule.elapsedDays / schedule.totalDays,
+          ),
+        );
       }
       // "X% of the way" only means something for a running total chased
       // upward; a level or a ceiling is said by its pace alone.
@@ -2207,6 +2219,8 @@ export class InsightGeneratorService {
     unit: InsightEvidence["unit"];
     /** The house's currency for a `currency` unit (F-341). */
     currency?: string | null;
+    /** The house's formats tag for that figure (F-866). */
+    locale?: string | null;
     dimension: string;
     category: InsightCategory;
     periodWindow?: number;
@@ -2220,6 +2234,7 @@ export class InsightGeneratorService {
       measureLabel,
       unit,
       currency,
+      locale,
       dimension,
       category,
     } = params;
@@ -2263,6 +2278,7 @@ export class InsightGeneratorService {
             measureLabel,
             unit,
             currency,
+            locale,
             value: cmp.value,
             baseline: cmp.baselineMean,
             deltaPct: cmp.deltaPct,
@@ -2321,6 +2337,7 @@ export class InsightGeneratorService {
         measureLabel,
         unit,
         currency,
+        locale,
         value: cmp.current,
         baseline: cmp.previous,
         deltaPct: cmp.deltaPct,
@@ -2359,6 +2376,7 @@ export class InsightGeneratorService {
         measureLabel,
         unit,
         currency,
+        locale,
         trendPctPerWeek: trend * 7,
         n: trendSeries.length,
         spanDays: recent.length,
@@ -2391,6 +2409,7 @@ export class InsightGeneratorService {
           measureLabel,
           unit,
           currency,
+          locale,
           value: values[i],
           z,
           date: dates[i],
@@ -2709,6 +2728,8 @@ interface Bundle {
   unread: string[];
   /** `restaurants.currency`; null when not recorded or not readable (F-341). */
   currency: string | null;
+  /** The house's formats tag (`houseFrame().locale`); null keeps en-US (F-866). */
+  locale: string | null;
   /** The house's IANA zone; every `date` above is a day on its clock (ADR 0296). */
   zone: string | null;
 }
