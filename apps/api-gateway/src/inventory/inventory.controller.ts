@@ -31,6 +31,21 @@ import {
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
 
+/**
+ * Whether a line says what the house paid: a cost (a sample's deliberate $0
+ * included) or how the cost was established. A line that leaves both out is
+ * received at an unknown cost, which writes no figure (F-312).
+ */
+function namesACost(line: {
+  costPerBottle?: number | null;
+  costProvenance?: unknown;
+}): boolean {
+  return (
+    (line.costPerBottle !== undefined && line.costPerBottle !== null) ||
+    line.costProvenance !== undefined
+  );
+}
+
 @ApiTags("inventory")
 @Controller("inventory")
 @UseGuards(JwtAuthGuard)
@@ -49,8 +64,16 @@ export class InventoryController {
    * 2026-09-21: price edits are owner/manager only, audited, and every price
    * version names who set it). A session naming nobody is refused before the
    * role is even read.
+   *
+   * What the house paid for a wine is held to the same rule (F-312,
+   * 2026-10-08): a cost typed on add or receive, and an auction lot's hammer
+   * price, become the wine's cost basis, so they pass here too.
    */
-  private async assertMayPrice(userId: string | undefined, restaurantId: string) {
+  private async assertMayPrice(
+    userId: string | undefined,
+    restaurantId: string,
+    action = "change a wine's price",
+  ) {
     if (!userId) {
       throw new HttpException(
         "A price change names the person who made it, and this session names nobody. Nothing was changed.",
@@ -60,7 +83,7 @@ export class InventoryController {
     await this.organizations.assertCanManageRestaurant(
       userId,
       restaurantId,
-      "change a wine's price",
+      action,
     );
   }
 
@@ -91,6 +114,13 @@ export class InventoryController {
       email?: string;
     },
   ): Promise<AuctionLotRecordResponseDto> {
+    // A lot's hammer price and premium are what the house paid: owner or
+    // manager only, like the cost on the wine it produced (F-312).
+    await this.assertMayPrice(
+      user.userId,
+      user.restaurantId,
+      "record what an auction lot cost",
+    );
     const recordedByName = (user.name ?? user.email ?? "").trim();
     return this.auctionLotRecords.create(
       user.restaurantId,
@@ -182,6 +212,11 @@ export class InventoryController {
     if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
+    // So is what the house paid for it (F-312). A wine added with no cost
+    // stays open to everyone: its cost is recorded as unknown.
+    if (namesACost(dto)) {
+      await this.assertMayPrice(user?.userId, restaurantId, "set what a wine cost");
+    }
     try {
       return await this.inventoryService.createInventoryItem(
         restaurantId,
@@ -221,6 +256,9 @@ export class InventoryController {
       )
     ) {
       await this.assertMayPrice(user?.userId, restaurantId);
+    }
+    if ((dto.items ?? []).some(namesACost)) {
+      await this.assertMayPrice(user?.userId, restaurantId, "set what a wine cost");
     }
     try {
       return await this.inventoryService.bulkCreateInventoryItems(

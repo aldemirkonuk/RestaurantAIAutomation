@@ -19,6 +19,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { holdsHouseMoney } from "./documents/document-money-gate";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   CreateOrderDto,
@@ -1166,8 +1167,18 @@ export class ProcurementController {
   @ApiResponse({ status: 200 })
   async dismissDeal(
     @Param("id") orderId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<{ dismissed: boolean; requestsClosed: number }> {
+    // Dismissing a deal closes a waiting request to confirm it and turns down
+    // the vendor's offer, which confirm (the send authority and a seal) and
+    // decline (owner or manager) already guard. Same rule here, by the
+    // token's role (F-314, 2026-10-08).
+    if (!holdsHouseMoney(user?.role ?? null)) {
+      throw new ForbiddenException(
+        "Turning down a vendor's deal is an owner's or a manager's act. Nothing was changed; ask a manager or an owner to do this one.",
+      );
+    }
     try {
       return await this.procurementService.dismissDeal(
         user.restaurantId,

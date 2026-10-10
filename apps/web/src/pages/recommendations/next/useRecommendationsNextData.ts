@@ -461,6 +461,15 @@ export interface RecommendationsData {
    */
   goalBook: GoalBookVM;
   /**
+   * Whether this person may see the house's goal figures and set or edit a
+   * goal: owners and managers (F-299, 2026-10-08). A goal is a money measure
+   * (the founder, round 5, 2026-09-21), so /ask already refuses its targets to
+   * staff and the gateway refuses staff its goal writes. Read from the house
+   * role alone, like `canRuleOutDays`, so the page fails closed while the role
+   * is unread.
+   */
+  canSeeGoals: boolean;
+  /**
    * False when this person's own snoozes could not be read — entries they
    * snoozed for themselves may be standing below, and the page says so.
    */
@@ -739,6 +748,8 @@ export function useRecommendationsNextData(): RecommendationsData {
 
   /** Owners and managers of this house, by the house's own role (see the type). */
   const canRuleOutDays = mayActForTheHouse(activeRole);
+  /** Owners and managers of this house: goal figures and goal writes (F-299). */
+  const canSeeGoals = mayActForTheHouse(activeRole);
 
   /**
    * Rule a day out of the analysis. Returns whether it landed — the caller
@@ -888,6 +899,13 @@ export function useRecommendationsNextData(): RecommendationsData {
     let cancelled = false;
     setGoals(undefined);
     if (!rid) return;
+    // Staff are not sent for the goals at all (F-299): the gateway refuses
+    // them the read, and the page draws none of a goal's figures for them.
+    // An empty list, not a failed one: nothing was asked, so nothing failed.
+    if (!canSeeGoals) {
+      setGoals([]);
+      return;
+    }
     apiClient
       .get<Record<string, unknown>[]>(`/analytics/goals/${rid}?status=active`)
       .then(({ data }) => {
@@ -899,7 +917,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     return () => {
       cancelled = true;
     };
-  }, [rid]);
+  }, [rid, canSeeGoals]);
 
   /**
    * The masthead's margin (sketch 122 direction B): the house's active goals
@@ -909,7 +927,8 @@ export function useRecommendationsNextData(): RecommendationsData {
   useEffect(() => {
     let cancelled = false;
     setGoalBook(undefined);
-    if (!rid) return;
+    // The margin draws the held sentence for staff, never this book (F-299).
+    if (!rid || !canSeeGoals) return;
     apiClient
       .get<Record<string, unknown>>(`/analytics/goals/${rid}/progress?status=active`)
       .then(({ data }) => {
@@ -921,17 +940,17 @@ export function useRecommendationsNextData(): RecommendationsData {
     return () => {
       cancelled = true;
     };
-  }, [rid]);
+  }, [rid, canSeeGoals]);
 
   /** Kept for the goal sheet: a re-read after a failed one, never a second read. */
   const loadGoals = useCallback(() => {
-    if (!rid || goals !== undefined) return;
+    if (!rid || !canSeeGoals || goals !== undefined) return;
     setGoals(null);
     apiClient
       .get<Record<string, unknown>[]>(`/analytics/goals/${rid}?status=active`)
       .then(({ data }) => setGoals(Array.isArray(data) ? data.map(toGoal) : []))
       .catch(() => setGoals(null));
-  }, [rid, goals]);
+  }, [rid, canSeeGoals, goals]);
 
   /* ── the till window, for the ribbon's record marks ──────────────────── */
 
@@ -1289,6 +1308,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     ruleOutDay,
     includeDay,
     canRuleOutDays,
+    canSeeGoals,
     phase,
     entries,
     failure,

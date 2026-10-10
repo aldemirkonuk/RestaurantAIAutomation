@@ -11,11 +11,14 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { AlertTriangle, Check, Trash2, Wine } from 'lucide-react'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
+import { useMayActForTheHouse } from '../../hooks/useMayActForTheHouse'
 import { fmtMoney } from '../../pages/inventory/command/bits'
 import { cn } from '../../lib/utils'
 import type { BulkInventoryLine, WineDraft } from '../../services/api/types'
 
 const GRID = '32px minmax(190px,1.7fr) 76px 104px 172px 96px 34px'
+/** Staff's grid: no cost and no free-sample column (F-312). */
+const GRID_NO_COST = '32px minmax(190px,1.7fr) 76px 172px 34px'
 
 export interface BatchReceiveRow {
   /** Stable client-side key — never sent to the server. */
@@ -147,6 +150,11 @@ export function BatchReceiveGrid({
   className,
 }: BatchReceiveGridProps) {
   const { locations } = useStorageLocations()
+  // What the house paid is an owner's or a manager's to set (F-312): the
+  // gateway refuses a batch naming a cost, or a free sample, from anyone else.
+  // Staff receive the bottles with their cost left unknown.
+  const canSetCost = useMayActForTheHouse()
+  const grid = canSetCost ? GRID : GRID_NO_COST
   const bodyRef = useRef<HTMLDivElement>(null)
   const fillRef = useRef<{ quantity: string; cost: string; locationId: string }>({
     quantity: '',
@@ -220,6 +228,7 @@ export function BatchReceiveGrid({
             aria-label="Quantity for bulk fill"
           />
         </label>
+        {canSetCost && (
         <label className="flex items-center gap-1.5 text-xs text-gray-500">
           Cost
           <input
@@ -233,6 +242,7 @@ export function BatchReceiveGrid({
             aria-label="Cost per bottle for bulk fill"
           />
         </label>
+        )}
         <label className="flex items-center gap-1.5 text-xs text-gray-500">
           Location
           <select
@@ -265,6 +275,7 @@ export function BatchReceiveGrid({
           Fill
         </button>
         <div className="flex-1" />
+        {canSetCost && (
         <button
           type="button"
           disabled={disabled || rows.length === 0}
@@ -279,6 +290,7 @@ export function BatchReceiveGrid({
         >
           {allSamples ? 'Clear free samples' : 'Mark as free samples'}
         </button>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -289,7 +301,7 @@ export function BatchReceiveGrid({
         <div className="flex-1 min-h-0 border border-gray-100 rounded-xl overflow-hidden bg-white flex flex-col">
           <div
             className="grid items-center gap-x-3 px-4 h-9 bg-gray-50 border-b border-gray-100 shrink-0"
-            style={{ gridTemplateColumns: GRID }}
+            style={{ gridTemplateColumns: grid }}
           >
             <div className="flex items-center">
               <input
@@ -304,12 +316,15 @@ export function BatchReceiveGrid({
                 aria-label="Select all rows"
               />
             </div>
-            {['Wine', 'Qty', 'Cost / btl', 'Location', 'Free sample', ''].map((h, i) => (
+            {(canSetCost
+              ? ['Wine', 'Qty', 'Cost / btl', 'Location', 'Free sample', '']
+              : ['Wine', 'Qty', 'Location', '']
+            ).map((h, i) => (
               <div
                 key={h || i}
                 className={cn(
                   'text-[10px] font-bold uppercase tracking-wider text-gray-500',
-                  (i === 1 || i === 2) && 'text-right',
+                  (h === 'Qty' || h === 'Cost / btl') && 'text-right',
                 )}
               >
                 {h}
@@ -325,7 +340,7 @@ export function BatchReceiveGrid({
                   'grid items-center gap-x-3 px-4 py-2 border-b border-gray-50 transition-colors',
                   row.error ? 'bg-rose-50/60' : badKeys.has(row.key) ? 'bg-amber-50/50' : row.selected ? 'bg-wine-50/40' : 'hover:bg-gray-50/60',
                 )}
-                style={{ gridTemplateColumns: GRID }}
+                style={{ gridTemplateColumns: grid }}
               >
                 <div className="flex items-center">
                   <input
@@ -374,6 +389,7 @@ export function BatchReceiveGrid({
                   aria-label={`Quantity for ${row.name}`}
                 />
 
+                {canSetCost && (
                 <div className="relative">
                   <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">$</span>
                   <input
@@ -389,6 +405,7 @@ export function BatchReceiveGrid({
                     aria-label={`Cost per bottle for ${row.name}`}
                   />
                 </div>
+                )}
 
                 <select
                   disabled={disabled}
@@ -403,6 +420,7 @@ export function BatchReceiveGrid({
                   ))}
                 </select>
 
+                {canSetCost && (
                 <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -413,6 +431,7 @@ export function BatchReceiveGrid({
                   />
                   {row.isSample ? <span className="text-amber-700 font-semibold">$0</span> : 'Free'}
                 </label>
+                )}
 
                 <div className="flex justify-end">
                   {allowRemove && (
@@ -441,7 +460,13 @@ export function BatchReceiveGrid({
             {totals.bottles} bottle{totals.bottles !== 1 ? 's' : ''}
             <span className="text-gray-400 font-normal">across {totals.rows} wine{totals.rows !== 1 ? 's' : ''}</span>
           </span>
-          <span className="font-mono font-semibold text-gray-800">{fmtMoney(totals.cost)}</span>
+          {canSetCost ? (
+            <span className="font-mono font-semibold text-gray-800">{fmtMoney(totals.cost)}</span>
+          ) : (
+            <span data-testid="batch-cost-held" className="text-gray-500">
+              What the house paid is entered by a manager or an owner; these go in with the cost unknown.
+            </span>
+          )}
           {totals.samples > 0 && (
             <span className="text-amber-700">{totals.samples} free sample{totals.samples !== 1 ? 's' : ''} — excluded from average cost</span>
           )}

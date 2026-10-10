@@ -78,6 +78,7 @@ import {
   sourceSentence,
 } from '../../../components/documents'
 import { AuthContext } from '@/contexts/AuthContext'
+import { useMayActForTheHouse } from '@/hooks/useMayActForTheHouse'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
 import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
@@ -143,6 +144,13 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const auth = useContext(AuthContext)
   const rid = auth?.activeRestaurantId || auth?.user?.restaurantId || null
+  /**
+   * WHO SETTLES A DELIVERY (F-317, 2026-10-08). Agreeing, verifying and the
+   * positions on the thread decide what the house pays its vendor, and the
+   * gateway refuses them to anyone but an owner or a manager. Staff see the
+   * gates and the thread read-only, with one line saying whose they are.
+   */
+  const maySettleDelivery = useMayActForTheHouse()
 
   const q = useQuery({
     queryKey: ['canonical-document', rid, id],
@@ -552,11 +560,15 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               delivery={eventQ.data}
               busy={writing}
               error={deliveryError}
-              onAgree={() =>
-                deliveryWrite(() => deliveriesApi.agree(soleDelivery.deliveryId))
+              onAgree={
+                maySettleDelivery
+                  ? () => deliveryWrite(() => deliveriesApi.agree(soleDelivery.deliveryId))
+                  : undefined
               }
-              onVerify={() =>
-                deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
+              onVerify={
+                maySettleDelivery
+                  ? () => deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
+                  : undefined
               }
             />
           ) : (
@@ -575,25 +587,45 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             selectedLine={selectedLine}
             busy={writing}
             error={deliveryError}
-            onPropose={(body) =>
-              deliveryWrite(() =>
-                deliveriesApi.propose(soleDelivery.deliveryId, {
-                  ...(body as ProposalBody),
-                  documentId: doc.documentId,
-                }),
-              )
+            onPropose={
+              maySettleDelivery
+                ? (body) =>
+                    deliveryWrite(() =>
+                      deliveriesApi.propose(soleDelivery.deliveryId, {
+                        ...(body as ProposalBody),
+                        documentId: doc.documentId,
+                      }),
+                    )
+                : undefined
             }
-            onCounter={(pid, body) =>
-              deliveryWrite(() =>
-                deliveriesApi.counter(pid, {
-                  ...(body as ProposalBody),
-                  documentId: doc.documentId,
-                }),
-              )
+            onCounter={
+              maySettleDelivery
+                ? (pid, body) =>
+                    deliveryWrite(() =>
+                      deliveriesApi.counter(pid, {
+                        ...(body as ProposalBody),
+                        documentId: doc.documentId,
+                      }),
+                    )
+                : undefined
             }
-            onAccept={(pid) => deliveryWrite(() => deliveriesApi.accept(pid))}
+            onAccept={
+              maySettleDelivery
+                ? (pid) => deliveryWrite(() => deliveriesApi.accept(pid))
+                : undefined
+            }
           />
         </div>
+      )}
+      {soleDelivery && !maySettleDelivery && (
+        <p
+          data-testid="delivery-settle-held"
+          className="cd-no-print"
+          style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}
+        >
+          Agreeing this delivery, verifying it and answering the vendor are for a
+          manager or an owner. The door count and the paper stay yours.
+        </p>
       )}
 
       {showDoorTab && (

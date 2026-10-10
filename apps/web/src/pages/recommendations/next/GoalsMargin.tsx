@@ -27,12 +27,31 @@ export default function GoalsMargin({
   book,
   suggestion,
   onSuggest,
+  canSee,
 }: {
   book: GoalBookVM;
   suggestion: GoalSuggestion | null;
   /** Opens the suggested entry's own goal sheet — the target stays blank. */
   onSuggest: (s: GoalSuggestion) => void;
+  /**
+   * Owners and managers (F-299, 2026-10-08). A goal's figures are money, which
+   * /ask already keeps from staff, and setting one is the gateway's
+   * owner-or-manager act; anyone else is told whose they are, in one line.
+   */
+  canSee: boolean;
 }) {
+  if (!canSee) {
+    return (
+      <aside className="rc-mast-goals" aria-label="The house's goals" data-testid="rc-mast-goals">
+        <div className="rc-mg-label">
+          <span className="rc-micro">The house&rsquo;s goals</span>
+        </div>
+        <p className="rc-why" data-testid="rc-mast-goals-held">
+          The house&rsquo;s goals and their figures are kept for its owners and managers.
+        </p>
+      </aside>
+    );
+  }
   const shown = book ? book.goals.slice(0, MARGIN_ROWS) : [];
   const more = book ? book.total - shown.length : 0;
 

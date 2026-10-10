@@ -169,14 +169,16 @@ describe("PosHubController — sale-unit review routes", () => {
     });
 
     // ADR 0281, the founder's answer to the import-reply fork (2026-10-05):
-    // "Only 'the bell was rung' (Recommended)". Any member of the house,
-    // staff included, can run the file import, so its answer says whether the
-    // owners and managers were told and nothing about who is Away, in quiet
-    // hours or has push switched off.
+    // "Only 'the bell was rung' (Recommended)". The file import's answer says
+    // whether the owners and managers were told and nothing about who is
+    // Away, in quiet hours or has push switched off. Since F-311 (2026-10-08)
+    // only an owner or a manager runs it; a manager runs it here.
+    const MANAGER = { role: "manager" };
+
     it("tells the file import only whether its refused checks reached the bell", async () => {
       posHub.ingest.mockResolvedValue(refusing(note));
 
-      const res: any = await controller.importChecks("rest-1", []);
+      const res: any = await controller.importChecks("rest-1", [], MANAGER);
 
       expect(posHub.ingest).toHaveBeenCalledWith("rest-1", "csv_import", []);
       expect(res.bellNote).toEqual({ filed: true });
@@ -197,13 +199,13 @@ describe("PosHubController — sale-unit review routes", () => {
           notFiledBecause: "the bell write failed",
         }),
       );
-      const res: any = await controller.importChecks("rest-1", []);
+      const res: any = await controller.importChecks("rest-1", [], MANAGER);
       expect(res.bellNote).toEqual({ filed: false });
     });
 
     it("says no note to the file import when nothing was refused", async () => {
       posHub.ingest.mockResolvedValue(refusing(null));
-      const res: any = await controller.importChecks("rest-1", []);
+      const res: any = await controller.importChecks("rest-1", [], MANAGER);
       expect(res.bellNote).toBeNull();
     });
   });

@@ -14,6 +14,8 @@ import {
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Public } from "../auth/decorators/public.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 import { ApiHeader, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
@@ -135,15 +137,26 @@ export class PosHubController {
   async importChecks(
     @Param("restaurantId") restaurantId: string,
     @Body() payload: unknown,
+    @CurrentUser() user?: { role?: string | null },
   ) {
+    // An import writes each check's total, tip, covers and server, so it
+    // rewrites the house's takings and tips. That is an owner's or a
+    // manager's act (ADR 0145's money row, the rule the vendor-document
+    // writes use), refused before anything is read (F-311, 2026-10-08).
+    if (!holdsHouseMoney(user?.role ?? null)) {
+      throw new HttpException(
+        "Importing till checks changes the house's takings and tips, so it is an owner's or a manager's act. Nothing was imported.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
     try {
       const result = await this.posHub.ingest(
         restaurantId,
         "csv_import",
         payload,
       );
-      // ADR 0281, founder 2026-10-05: "Only 'the bell was rung'". Any member
-      // of the house can run this import, so it is told what the till is told.
+      // ADR 0281, founder 2026-10-05: "Only 'the bell was rung'". It is told
+      // what the till is told.
       return { ...result, bellNote: bellNoteForTill(result.bellNote) };
     } catch (error) {
       throw new HttpException(
