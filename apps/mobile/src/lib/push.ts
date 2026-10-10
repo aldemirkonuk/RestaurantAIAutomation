@@ -122,24 +122,40 @@ export function routeForNotification(data: Record<string, any>): string {
  * Also handles the cold-start case: a notification tapped while the app was
  * dead is delivered through `getLastNotificationResponseAsync`, not through
  * the response listener, so without it the tap is silently lost.
+ *
+ * F-679: Expo keeps that last response for the life of the process, and the
+ * listeners re-attach at every sign-in, so the morning's tap was replayed at
+ * the next sign-in — into another account or house, where its order cannot
+ * load. A tap is handled once: its id is remembered, from either path.
  */
+let handledResponseId: string | null = null;
+
+function openTapped(
+  res: Notifications.NotificationResponse,
+  onNavigate: (route: string) => void,
+): void {
+  const id = res.notification.request.identifier ?? null;
+  if (id !== null && id === handledResponseId) return;
+  handledResponseId = id;
+  const data = res.notification.request.content.data ?? {};
+  onNavigate(routeForNotificationData(data as Record<string, any>));
+}
+
 export function attachPushListeners(onNavigate: (route: string) => void): () => void {
   const received = Notifications.addNotificationReceivedListener(() => {
     queryClient.invalidateQueries({ queryKey: [...feedKey] });
     queryClient.invalidateQueries({ queryKey: [...pulseKey] });
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
   });
-  const response = Notifications.addNotificationResponseReceivedListener((res) => {
-    const data = res.notification.request.content.data ?? {};
-    onNavigate(routeForNotificationData(data as Record<string, any>));
-  });
+  const response = Notifications.addNotificationResponseReceivedListener((res) =>
+    openTapped(res, onNavigate),
+  );
 
   let cancelled = false;
   Notifications.getLastNotificationResponseAsync()
     .then((res) => {
       if (cancelled || !res) return;
-      const data = res.notification.request.content.data ?? {};
-      onNavigate(routeForNotificationData(data as Record<string, any>));
+      openTapped(res, onNavigate);
     })
     .catch(() => {});
 

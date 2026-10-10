@@ -8,7 +8,6 @@ import {
   HttpStatus,
   Param,
   Post,
-  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -50,15 +49,12 @@ export class MobileController {
   @ApiOperation({ summary: "Today's sales snapshot + decision counts" })
   async getTodayPulse(
     @CurrentUser() user: { userId: string; restaurantId: string },
-    @Query("start") start?: string,
-    @Query("end") end?: string,
   ): Promise<TodayPulseResponse> {
     try {
+      // "Today" is the house's day (F-674); a phone's `start` is ignored.
       return await this.mobileService.getTodayPulse(
         user.userId,
         user.restaurantId,
-        start,
-        end,
       );
     } catch (error: any) {
       throw new HttpException(

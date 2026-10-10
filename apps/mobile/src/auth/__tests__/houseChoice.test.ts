@@ -2,6 +2,7 @@ import {
   forget,
   hintFor,
   indexEmail,
+  openHouse,
   orderHouses,
   parseEmailIndex,
   parseMemory,
@@ -107,5 +108,26 @@ describe("houseChoice", () => {
       expect(indexEmail(base, null, U)).toBe(base);
       expect(indexEmail(base, "known@example.com", "not-a-uuid")).toBe(base);
     });
+  });
+});
+
+// F-675: a two-house owner had no way to switch on the phone, and no screen
+// named the house that was open.
+describe("openHouse", () => {
+  const houses = [
+    { id: A, name: "Tuzlu Rüzgar", city: "Bodrum" },
+    { id: B, name: "Meyhouse", city: "Istanbul" },
+  ];
+
+  it("names the open house and offers the other one", () => {
+    expect(openHouse(houses, B)).toEqual({ name: "Meyhouse", canSwitch: true });
+  });
+
+  it("offers no switch to a one-house owner", () => {
+    expect(openHouse([houses[0]], A)).toEqual({ name: "Tuzlu Rüzgar", canSwitch: false });
+  });
+
+  it("names nothing before the houses are read", () => {
+    expect(openHouse(undefined, A)).toEqual({ name: null, canSwitch: false });
   });
 });

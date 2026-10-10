@@ -1,6 +1,8 @@
 import {
   DECISIONS_UNREAD_LABEL,
   REVENUE_UNAVAILABLE_MESSAGE,
+  REVENUE_UNAVAILABLE_MESSAGES,
+  readState,
   resolvePulseStripView,
 } from "@/components/today/pulseStripView";
 import type { TodayPulse } from "@/api/types";
@@ -13,7 +15,7 @@ function pulse(overrides: Partial<TodayPulse>): TodayPulse {
     deltaPct: null,
     pendingDecisions: 0,
     criticalCount: 0,
-    windowStart: "2026-09-01T00:00:00.000Z",
+    windowStart: null,
     windowEnd: "2026-09-01T23:59:59.999Z",
     generatedAt: "2026-09-01T12:00:00.000Z",
     ...overrides,
@@ -96,5 +98,117 @@ describe("resolvePulseStripView", () => {
     const view = resolvePulseStripView(pulse({ revenueToday: 100, checksToday: null }));
 
     expect(view.revenue.status === "known" && view.revenue.checksLabel).toBe("sales so far");
+  });
+
+  /**
+   * F-674: a failed read said "Connect Toast" to a house whose register
+   * already feeds it. The message now follows the gateway's `salesState`.
+   */
+  it("never asks a house to connect a register when the read only failed", () => {
+    const unread = resolvePulseStripView(pulse({ salesState: "unread" }));
+    const none = resolvePulseStripView(pulse({ salesState: "no_register" }));
+    const noZone = resolvePulseStripView(pulse({ salesState: "zone_unset" }));
+
+    expect(unread.revenue.status === "unavailable" && unread.revenue.message).toBe(
+      REVENUE_UNAVAILABLE_MESSAGES.unread,
+    );
+    expect(none.revenue.status === "unavailable" && none.revenue.message).toBe(
+      REVENUE_UNAVAILABLE_MESSAGES.no_register,
+    );
+    expect(noZone.revenue.status === "unavailable" && noZone.revenue.message).toBe(
+      REVENUE_UNAVAILABLE_MESSAGES.zone_unset,
+    );
+    for (const v of [unread, none, noZone]) {
+      expect(v.revenue.status === "unavailable" && v.revenue.message).not.toMatch(/Toast/);
+    }
+  });
+
+  it("says one check, not one checks", () => {
+    const view = resolvePulseStripView(pulse({ revenueToday: 40, checksToday: 1 }));
+
+    expect(view.revenue.status === "known" && view.revenue.checksLabel).toBe("1 check");
+  });
+});
+
+/**
+ * F-676: saved figures come back at boot. When the refresh fails, the strip
+ * showed last night's "$4,210 · +12%" as "Tonight", with no time and no
+ * error.
+ */
+describe("resolvePulseStripView freshness (F-676)", () => {
+  const formatTime = (at: Date) => at.toISOString().slice(11, 16);
+  const formatWeekday = () => "Thursday";
+  const opened = Date.parse("2026-10-08T04:00:00.000Z");
+
+  it("names tonight and when the figures are from when they are current", () => {
+    const view = resolvePulseStripView(
+      pulse({ revenueToday: 4210, windowStart: "2026-10-08T04:00:00.000Z" }),
+      {
+        now: opened + 15 * 3_600_000,
+        fetchedAt: opened + 14 * 3_600_000,
+        formatTime,
+        formatWeekday,
+      },
+    );
+
+    expect(view.heading).toBe("Tonight");
+    expect(view.freshness).toBe("As of 18:00");
+    expect(view.stale).toBe(false);
+    expect(view.decisionsLabel).toBe("All clear");
+  });
+
+  it("does not present an earlier night's figures as tonight", () => {
+    const view = resolvePulseStripView(
+      pulse({ revenueToday: 4210, deltaPct: 12, windowStart: "2026-10-08T04:00:00.000Z" }),
+      {
+        now: opened + 33 * 3_600_000,
+        fetchedAt: opened + 23 * 3_600_000,
+        formatTime,
+        formatWeekday,
+      },
+    );
+
+    expect(view.heading).toBe("Thursday night");
+    expect(view.stale).toBe(true);
+    expect(view.decisionsLabel).not.toBe("All clear");
+  });
+
+  it("says the refresh failed, and from when the shown figures are", () => {
+    const view = resolvePulseStripView(
+      pulse({ revenueToday: 4210, windowStart: "2026-10-08T04:00:00.000Z" }),
+      {
+        now: opened + 15 * 3_600_000,
+        fetchedAt: opened + 14 * 3_600_000,
+        refreshFailed: true,
+        formatTime,
+        formatWeekday,
+      },
+    );
+
+    expect(view.freshness).toBe("Couldn't refresh · as of 18:00");
+    expect(view.stale).toBe(true);
+    expect(view.decisionsLabel).toBeNull();
+  });
+});
+
+/**
+ * F-677: a failed Insights read rendered as "nothing yet" or zero. A read
+ * that failed with nothing saved is `failed`, never an empty `ready`.
+ */
+describe("readState", () => {
+  it("is failed, not empty, when the read failed with nothing to show", () => {
+    expect(readState({ isLoading: false, isError: true, data: undefined })).toBe("failed");
+  });
+
+  it("is loading while the first read is in flight", () => {
+    expect(readState({ isLoading: true, isError: false, data: undefined })).toBe("loading");
+  });
+
+  it("is ready for a real empty answer", () => {
+    expect(readState({ isLoading: false, isError: false, data: [] })).toBe("ready");
+  });
+
+  it("keeps saved data on screen when only a refresh failed", () => {
+    expect(readState({ isLoading: false, isError: true, data: [1] })).toBe("ready");
   });
 });

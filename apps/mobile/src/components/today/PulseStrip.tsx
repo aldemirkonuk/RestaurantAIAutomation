@@ -23,7 +23,7 @@ function money(value: number): string {
  */
 export function PulseStrip() {
   const router = useRouter();
-  const { data, isLoading } = useTodayPulse();
+  const { data, isLoading, isError, dataUpdatedAt } = useTodayPulse();
 
   if (isLoading && !data) {
     return (
@@ -37,7 +37,12 @@ export function PulseStrip() {
 
   if (!data) return null;
 
-  const view = resolvePulseStripView(data);
+  // F-676: a failed refresh keeps the saved figures; the strip says so and
+  // says when they are from, rather than presenting them as tonight's.
+  const view = resolvePulseStripView(data, {
+    fetchedAt: dataUpdatedAt || undefined,
+    refreshFailed: isError,
+  });
 
   return (
     <PressableScale onPress={() => router.push("/insights")}>
@@ -52,7 +57,7 @@ export function PulseStrip() {
       >
       <View>
         <AppText variant="caption" tone="tertiary">
-          Tonight
+          {view.heading}
         </AppText>
         {view.revenue.status === "known" ? (
           <>
@@ -71,6 +76,15 @@ export function PulseStrip() {
         {view.decisionsLabel != null ? (
           <AppText variant="headline" style={{ marginTop: space.xs }}>
             {view.decisionsLabel}
+          </AppText>
+        ) : null}
+        {view.freshness != null ? (
+          <AppText
+            variant="caption"
+            tone={view.stale ? undefined : "tertiary"}
+            style={view.stale ? { color: color.danger, marginTop: 2 } : { marginTop: 2 }}
+          >
+            {view.freshness}
           </AppText>
         ) : null}
       </View>

@@ -8,6 +8,8 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { Card, Hairline } from "@/components/ui/Screen";
 import { color, font, radius, space } from "@/design/tokens";
 import { useSession } from "@/state/session";
+import { useHouses } from "@/api/queries";
+import { openHouse } from "@/auth/houseChoice";
 import { clearPersistedQueries } from "@/lib/queryClient";
 import { registerPush, unregisterPush } from "@/lib/push";
 import { trackGuidance } from "@/guidance/analytics";
@@ -18,6 +20,9 @@ export default function SettingsScreen() {
   const user = useSession((s) => s.user);
   const signOut = useSession((s) => s.signOut);
   const guidance = useGuidanceOptional();
+  const houses = useHouses();
+  // F-675: name the open house, and let an owner of several switch.
+  const house = openHouse(houses.data, user?.restaurantId);
 
   useEffect(() => {
     trackGuidance("services_visited", { source: "settings" });
@@ -86,6 +91,33 @@ export default function SettingsScreen() {
                   {user.role}
                 </AppText>
               </View>
+            </>
+          ) : null}
+        </Card>
+
+        <Card style={{ gap: space.sm }}>
+          <AppText variant="caption" tone="tertiary">
+            House
+          </AppText>
+          <AppText variant={house.name ? "headline" : "footnote"} tone={house.name ? "primary" : "secondary"}>
+            {house.name ??
+              (houses.isError
+                ? "Couldn't read your houses just now."
+                : houses.isLoading
+                  ? "Reading your houses…"
+                  : "No house open.")}
+          </AppText>
+          {house.canSwitch ? (
+            <>
+              <Hairline />
+              <PressableScale
+                onPress={() => router.push("/choose-house" as never)}
+                accessibilityRole="button"
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+              >
+                <AppText variant="body">Switch house</AppText>
+                <Ionicons name="chevron-forward" size={18} color={color.inkQuaternary} />
+              </PressableScale>
             </>
           ) : null}
         </Card>

@@ -10,6 +10,7 @@ import type {
   TodayPulse,
 } from "./types";
 import { useSession } from "@/state/session";
+import type { HouseSummary } from "@/auth/houseChoice";
 
 export const feedKey = ["mobile", "feed"] as const;
 export const pulseKey = ["mobile", "pulse"] as const;
@@ -36,15 +37,25 @@ export function useTodayPulse() {
   const { enabled } = useAuthed();
   return useQuery({
     queryKey: [...pulseKey],
-    queryFn: () => {
-      const midnight = new Date();
-      midnight.setHours(0, 0, 0, 0);
-      return api<TodayPulse>(
-        `/mobile/today-pulse?start=${encodeURIComponent(midnight.toISOString())}`,
-      );
-    },
+    // "Tonight" is the house's night, read on the house's clock by the
+    // gateway (F-674) — not this phone's midnight.
+    queryFn: () => api<TodayPulse>("/mobile/today-pulse"),
     enabled,
     refetchInterval: 5 * 60_000,
+  });
+}
+
+/** The houses this person belongs to (the chooser's list; F-675). */
+export function useHouses() {
+  const { enabled, userId } = useAuthed();
+  return useQuery({
+    queryKey: ["auth", "houses", userId],
+    queryFn: async () => {
+      const body = await api<{ houses?: HouseSummary[] }>("/auth/houses");
+      return Array.isArray(body.houses) ? body.houses : [];
+    },
+    enabled,
+    staleTime: 5 * 60_000,
   });
 }
 

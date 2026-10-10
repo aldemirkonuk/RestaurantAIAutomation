@@ -16,6 +16,11 @@ import {
   useTodayPulse,
 } from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
+import {
+  INSIGHTS_READ_FAILED,
+  readState,
+  resolvePulseStripView,
+} from "@/components/today/pulseStripView";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
@@ -51,6 +56,16 @@ export default function InsightsScreen() {
     (g: any) => g.status === "active",
   );
   const topGoalProgress = useGoalProgress(activeGoals[0]?.id);
+  // F-677: a failed read is said as failed, never as "nothing yet" or zero.
+  const insightsRead = readState(insights);
+  const goalsRead = readState(goals);
+  const cellarRead = readState(inventory);
+  const pulseView = pulse.data
+    ? resolvePulseStripView(pulse.data, {
+        fetchedAt: pulse.dataUpdatedAt || undefined,
+        refreshFailed: pulse.isError,
+      })
+    : null;
 
   const analytics = useMemo(() => {
     const items = inventory.data ?? [];
@@ -96,12 +111,16 @@ export default function InsightsScreen() {
               </PressableScale>
             ) : null}
           </View>
-          {insights.isLoading && !insights.data ? (
+          {insightsRead === "loading" ? (
             <View style={{ gap: space.sm }}>
               <Skeleton width="100%" height={15} />
               <Skeleton width="90%" height={15} />
               <Skeleton width="70%" height={15} />
             </View>
+          ) : insightsRead === "failed" ? (
+            <AppText variant="footnote" tone="secondary">
+              {INSIGHTS_READ_FAILED.conclusions}
+            </AppText>
           ) : (insights.data?.length ?? 0) === 0 ? (
             <AppText variant="footnote" tone="tertiary">
               Conclusions appear as sales, pours, and orders accumulate — the
@@ -136,8 +155,12 @@ export default function InsightsScreen() {
           <AppText variant="caption" tone="tertiary">
             Goals
           </AppText>
-          {goals.isLoading && !goals.data ? (
+          {goalsRead === "loading" ? (
             <Skeleton width="100%" height={15} />
+          ) : goalsRead === "failed" ? (
+            <AppText variant="footnote" tone="secondary">
+              {INSIGHTS_READ_FAILED.goals}
+            </AppText>
           ) : activeGoals.length === 0 ? (
             <AppText variant="footnote" tone="tertiary">
               No active goals yet. Create one on the web dashboard — pick a
@@ -194,23 +217,27 @@ export default function InsightsScreen() {
         {/* Sales */}
         <Card style={{ gap: space.md }}>
           <AppText variant="caption" tone="tertiary">
-            Sales tonight
+            {pulseView && pulseView.heading !== "Tonight" ? `Sales, ${pulseView.heading}` : "Sales tonight"}
           </AppText>
           {pulse.isLoading && !pulse.data ? (
             <Skeleton width={170} height={26} />
-          ) : pulse.data?.revenueToday != null ? (
+          ) : !pulseView ? (
+            <AppText variant="footnote" tone="secondary">
+              {pulse.isError ? "Couldn't read tonight's sales just now." : ""}
+            </AppText>
+          ) : pulseView.revenue.status === "known" ? (
             <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
               <View>
-                <AppText variant="display">{money(pulse.data.revenueToday)}</AppText>
+                <AppText variant="display">{money(pulseView.revenue.amount)}</AppText>
                 <AppText variant="footnote" tone="secondary">
-                  {pulse.data.checksToday != null ? `${pulse.data.checksToday} checks` : ""}
+                  {pulseView.revenue.checksLabel}
                 </AppText>
               </View>
-              {pulse.data.deltaPct != null ? (
+              {pulseView.revenue.deltaPct != null ? (
                 <View
                   style={{
                     backgroundColor:
-                      pulse.data.deltaPct >= 0 ? color.successTint : color.dangerTint,
+                      pulseView.revenue.deltaPct >= 0 ? color.successTint : color.dangerTint,
                     paddingHorizontal: space.md,
                     paddingVertical: space.xs,
                     borderRadius: 999,
@@ -219,20 +246,29 @@ export default function InsightsScreen() {
                   <AppText
                     variant="caption"
                     style={{
-                      color: pulse.data.deltaPct >= 0 ? color.success : color.danger,
+                      color: pulseView.revenue.deltaPct >= 0 ? color.success : color.danger,
                     }}
                   >
-                    {pulse.data.deltaPct >= 0 ? "+" : ""}
-                    {pulse.data.deltaPct}% vs last week
+                    {pulseView.revenue.deltaPct >= 0 ? "+" : ""}
+                    {pulseView.revenue.deltaPct}% vs last week
                   </AppText>
                 </View>
               ) : null}
             </View>
           ) : (
             <AppText variant="footnote" tone="tertiary">
-              Connect Toast on the web dashboard to see live sales here.
+              {pulseView.revenue.message}
             </AppText>
           )}
+          {pulseView?.freshness ? (
+            <AppText
+              variant="caption"
+              tone={pulseView.stale ? undefined : "tertiary"}
+              style={pulseView.stale ? { color: color.danger } : undefined}
+            >
+              {pulseView.freshness}
+            </AppText>
+          ) : null}
         </Card>
 
         {/* Cellar value */}
@@ -264,11 +300,15 @@ export default function InsightsScreen() {
           <AppText variant="caption" tone="tertiary">
             Moving fastest
           </AppText>
-          {inventory.isLoading && !inventory.data ? (
+          {cellarRead === "loading" ? (
             <View style={{ gap: space.sm }}>
               <Skeleton width="100%" height={15} />
               <Skeleton width="80%" height={15} />
             </View>
+          ) : cellarRead === "failed" ? (
+            <AppText variant="footnote" tone="secondary">
+              {INSIGHTS_READ_FAILED.cellar}
+            </AppText>
           ) : analytics.movers.length === 0 ? (
             <AppText variant="footnote" tone="tertiary">
               Velocity appears after a few days of pours and sales.
@@ -308,6 +348,16 @@ export default function InsightsScreen() {
           <AppText variant="caption" tone="tertiary">
             Needs attention
           </AppText>
+          {cellarRead !== "ready" ? (
+            cellarRead === "failed" ? (
+              <AppText variant="footnote" tone="secondary">
+                {INSIGHTS_READ_FAILED.cellar}
+              </AppText>
+            ) : (
+              <Skeleton width="100%" height={15} />
+            )
+          ) : (
+          <>
           <Row
             label="Below reorder point"
             value={`${analytics.reorder.length} wine${analytics.reorder.length === 1 ? "" : "s"}`}
@@ -341,6 +391,8 @@ export default function InsightsScreen() {
               </View>
             </>
           ) : null}
+          </>
+          )}
         </Card>
       </ScrollView>
     </Screen>
