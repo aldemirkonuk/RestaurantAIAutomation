@@ -51,6 +51,7 @@ import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import { stopGrantsOnLeaving } from "../integrations/stop-grants-on-leaving";
 import { retireLapsedInvitePlaceholders } from "./invite-placeholders";
+import { positionFromJobRole } from "./roster-position";
 import {
   ChannelPreferences,
   loadChannelOptOuts,
@@ -838,7 +839,7 @@ export class TeamService {
   private async ensureRosterFromAccess(restaurantId: string): Promise<void> {
     const { data: access } = await this.sb
       .from("user_restaurant_access")
-      .select("user_id, role")
+      .select("user_id, role, job_role")
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true);
     if (!access?.length) return;
@@ -905,12 +906,12 @@ export class TeamService {
         email: u?.email ?? null,
         /** Avatars live on `team_members`; `public.users` has no such column. */
         avatar_url: null,
-        position:
-          a.role === "owner"
-            ? "Owner"
-            : a.role === "manager"
-              ? "Manager"
-              : "Staff",
+        /**
+         * The job title, never the access role (F-931): the roster prints the
+         * role beside it, and a copy of the role went stale on the first role
+         * change. The title is the role they tapped on arrival, if any (F-932).
+         */
+        position: positionFromJobRole(a.job_role),
         employment_type: "full_time",
         status: "active",
         /**

@@ -21,6 +21,8 @@ import {
  *          chains their own houses are in, with no count.
  *   F-660  a chain is created in the session house's organisation, so an
  *          owner of two organisations can create one.
+ *   F-935  the organisation row is not enough: a person who no longer owns
+ *          any house of the organisation loses the chain writes.
  */
 
 const ORG = "org-1";
@@ -253,6 +255,20 @@ describe("F-660: a chain is created in the session house's organisation", () => 
         { id: ORG, owner_id: P },
         { id: ORG2, owner_id: P },
       ],
+      user_restaurant_access: [
+        {
+          user_id: P,
+          restaurant_id: "house-1",
+          role: "owner",
+          is_active: true,
+        },
+        {
+          user_id: P,
+          restaurant_id: "house-9",
+          role: "owner",
+          is_active: true,
+        },
+      ],
     });
 
   it("lets an owner of two organisations create a chain from the house they are in", async () => {
@@ -281,5 +297,77 @@ describe("F-660: a chain is created in the session house's organisation", () => 
       service(db).createChain(P, { name: "North" }, "house-9"),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(db.tables.restaurant_chains).toHaveLength(3);
+  });
+});
+
+describe("F-935: an owner demoted or removed in every house of the organisation loses the chain writes", () => {
+  const accessAs = (role: string, is_active = true) =>
+    world({
+      user_restaurant_access: [
+        { user_id: P, restaurant_id: "house-1", role, is_active },
+      ],
+    });
+
+  it("refuses a founder demoted to staff on rename and changes nothing", async () => {
+    const db = accessAs("staff");
+    const err = await settle(service(db).renameChain(P, "chain-a", "Renamed"));
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect((err as ForbiddenException).getResponse()).toMatchObject({
+      code: "NOT_ORGANISATION_OWNER",
+    });
+    expect(
+      db.tables.restaurant_chains.find((c: any) => c.id === "chain-a")?.name,
+    ).toBe("Harbour");
+  });
+
+  it("refuses a founder demoted to manager on delete and detaches nothing", async () => {
+    const db = accessAs("manager");
+    await expect(service(db).deleteChain(P, "chain-a")).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(db.tables.restaurant_chains).toHaveLength(3);
+    expect(
+      db.tables.restaurants.find((r: any) => r.id === "house-1")?.chain_id,
+    ).toBe("chain-a");
+  });
+
+  it("refuses a removed owner, whose access row is no longer active", async () => {
+    const db = accessAs("owner", false);
+    await expect(
+      service(db).createChain(P, { name: "New" }, "house-1"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.restaurant_chains).toHaveLength(3);
+  });
+
+  it("does not count owning a house of ANOTHER organisation", async () => {
+    const db = world({
+      user_restaurant_access: [
+        {
+          user_id: P,
+          restaurant_id: "house-1",
+          role: "staff",
+          is_active: true,
+        },
+        {
+          user_id: P,
+          restaurant_id: "house-9",
+          role: "owner",
+          is_active: true,
+        },
+      ],
+    });
+    await expect(
+      service(db).renameChain(P, "chain-a", "Renamed"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("answers 503, not a refusal, when the house roles cannot be read", async () => {
+    const db = world();
+    db.errors["user_restaurant_access:select"] = {
+      message: "connection reset",
+    };
+    await expect(
+      service(db).renameChain(P, "chain-a", "Renamed"),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
