@@ -1387,6 +1387,14 @@ describe('ProfileNext — the one irreversible act', () => {
     fireEvent.keyDown(hold, { key: 'Enter' });
     expect(deleteAccount).toHaveBeenCalledTimes(1);
   });
+
+  // F-836: handing a house over never clears the organisation refusal, so the
+  // lead must not promise it does.
+  it('says an account that opened a restaurant cannot be deleted yet, and promises no hand-over', () => {
+    draw();
+    expect(screen.getByText(/If you opened a restaurant here, your account cannot be deleted yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/hand ownership over first/)).not.toBeInTheDocument();
+  });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
