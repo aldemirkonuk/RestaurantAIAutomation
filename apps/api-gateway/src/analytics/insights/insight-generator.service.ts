@@ -1484,8 +1484,9 @@ export class InsightGeneratorService {
     // there is no rate to add euros to lira, as COGS says (F-339). Nothing
     // is said about spend then either (F-1015). One named currency is the
     // money every figure below is printed in; an order naming none is read
-    // as the house's, as COGS reads it.
-    const codes = namedCurrencies(bundle.orders);
+    // as the house's, as COGS reads it, so an old no-code order beside a
+    // euro one is two currencies, not one (F-1102).
+    const codes = namedCurrencies(bundle.orders, bundle.currency);
     if (codes.length > 1) return;
     const spendCurrency = codes[0] ?? bundle.currency;
     const rows = bundle.orders.map((o) => ({
