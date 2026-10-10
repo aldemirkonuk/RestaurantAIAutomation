@@ -452,10 +452,10 @@ export function RowExpansion({
       <div className="flex flex-wrap items-center gap-3 mt-3.5 bg-white border border-gray-100 rounded-xl px-4 py-3">
         <button
           onClick={() => setShowSpotCount(true)}
-          title="Count this wine on every shelf at once"
+          title={locations.length > 0 ? 'Count one shelf, or every shelf at once' : 'Count this wine on every shelf at once'}
           className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg"
         >
-          Count every shelf
+          {locations.length > 0 ? 'Count bottles' : 'Count every shelf'}
         </button>
 
         <span className="w-px h-6 bg-gray-200" />
@@ -524,6 +524,7 @@ export function RowExpansion({
       {showSpotCount && (
         <SpotCountPanel
           item={item}
+          houseLocations={locations}
           onClose={() => setShowSpotCount(false)}
           onCommitted={invalidate}
         />

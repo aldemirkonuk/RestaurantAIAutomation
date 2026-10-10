@@ -723,7 +723,7 @@ export class InventoryController {
     summary:
       "Record a spot count (manual, voice-confirmed, or a confirmed photo proposal)",
     description:
-      "ADR 0078: writes a stock_counts row UNCONDITIONALLY through record_stock_count, and applies a stock movement only as a consequence of a non-zero difference. A count that agrees is recorded with variance 0 and a null transactionId — previously it wrote nothing at all, because set_stock_absolute returns NULL on a zero delta and inventory_transactions CHECKs quantity_change <> 0. last_counted_at is still stamped (decision E41), now inside the same transaction. The idempotency key count:{inventoryId}:{clientCountId} (decision E43) now covers the count row as well as the movement, so a retry on flaky signal records one count, not two.",
+      "ADR 0078: writes a stock_counts row UNCONDITIONALLY through record_stock_count, and applies a stock movement only as a consequence of a non-zero difference. A count that agrees is recorded with variance 0 and a null transactionId — previously it wrote nothing at all, because set_stock_absolute returns NULL on a zero delta and inventory_transactions CHECKs quantity_change <> 0. last_counted_at is still stamped (decision E41), now inside the same transaction. The idempotency key count:{inventoryId}:{clientCountId} (decision E43) now covers the count row as well as the movement, so a retry on flaky signal records one count, not two. F-291: an optional locationId counts that one shelf: the expected figure and the correction are that shelf's lots only. Without it the count is of every shelf at once, as before.",
   })
   async recordSpotCount(
     @Param("restaurantId") restaurantId: string,
@@ -736,6 +736,7 @@ export class InventoryController {
       reason?: string;
       /** A queued count's age at send time (F-249); absent for a live count. */
       countedAgoMs?: number;
+      locationId?: string | null;
     },
     @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {

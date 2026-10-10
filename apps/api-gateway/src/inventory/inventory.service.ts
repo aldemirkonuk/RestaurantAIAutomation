@@ -678,6 +678,8 @@ export class InventoryService {
       performedBy?: string | null;
       /** How long ago a queued count was taken, at send time (F-249). */
       countedAgoMs?: number;
+      // F-291: the shelf that was counted. Absent = every shelf at once.
+      locationId?: string | null;
     },
   ) {
     // An age past the epoch is not a time anyone counted at, and one past
@@ -768,6 +770,10 @@ export class InventoryService {
         p_performed_by: dto.performedBy ?? null,
         p_reason: dto.reason ?? "Spot count",
         p_counted_at: countedAt,
+        // F-291: with a shelf, record_stock_count compares and corrects that
+        // shelf only. Sent only when set, so a count of every shelf calls the
+        // function exactly as before.
+        ...(dto.locationId ? { p_location_id: dto.locationId } : {}),
       },
     );
     if (rpcErr) {

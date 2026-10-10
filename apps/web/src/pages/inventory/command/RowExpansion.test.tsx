@@ -12,13 +12,14 @@ const transferStock = vi.hoisted(() => vi.fn())
 const fetchAuctionLotRecords = vi.hoisted(() => vi.fn())
 const adjustStock = vi.hoisted(() => vi.fn())
 const reconcileItem = vi.hoisted(() => vi.fn())
+const recordSpotCount = vi.hoisted(() => vi.fn())
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../../../services/api/inventory', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/inventory')>(
     '../../../services/api/inventory',
   )
-  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem }
+  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, recordSpotCount }
 })
 vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
@@ -261,6 +262,56 @@ describe('RowExpansion — the count panel', () => {
     const scope = screen.getByTestId('spot-count-scope')
     expect(scope).toHaveTextContent(/every bottle of this wine in every room/i)
     expect(scope).toHaveTextContent(/in 2 places/i)
+  })
+
+  // F-291: a count of one shelf names the shelf, so only that shelf changes.
+  it('asks where the count was taken when the house has places, and sends that shelf', async () => {
+    recordSpotCount.mockResolvedValue({ item: null })
+    renderRow(
+      {
+        liveStock: 11,
+        locations: [
+          { locationId: 'loc-cellar', qty: 8, wac: null },
+          { locationId: 'loc-bar', qty: 3, wac: null },
+        ],
+      } as Partial<InventoryItem>,
+      [
+        { id: 'loc-cellar', name: 'Cellar', capacity: null, currentCount: 0, color: '' },
+        { id: 'loc-bar', name: 'Bar', capacity: null, currentCount: 0, color: '' },
+      ],
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /count bottles/i }))
+    const field = screen.getByLabelText(/bottles counted/i)
+    await userEvent.type(field, '6')
+    // Not until the counter says where they counted.
+    expect(screen.getByRole('button', { name: /submit count/i })).toBeDisabled()
+
+    await userEvent.selectOptions(screen.getByLabelText(/where you counted/i), 'loc-cellar')
+    expect(screen.getByTestId('spot-count-scope')).toHaveTextContent(/only cellar changes/i)
+    expect(screen.getByText(/on the books for cellar: 8 bottles/i)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /submit count/i }))
+    expect(recordSpotCount).toHaveBeenCalledWith(
+      'inv-1',
+      expect.objectContaining({ countedQty: 6, locationId: 'loc-cellar' }),
+      undefined,
+    )
+  })
+
+  it('sends no shelf when the counter picks every shelf together', async () => {
+    recordSpotCount.mockResolvedValue({ item: null })
+    renderRow({ liveStock: 11 }, [
+      { id: 'loc-cellar', name: 'Cellar', capacity: null, currentCount: 0, color: '' },
+    ])
+
+    await userEvent.click(screen.getByRole('button', { name: /count bottles/i }))
+    await userEvent.selectOptions(screen.getByLabelText(/where you counted/i), 'Every shelf together')
+    await userEvent.type(screen.getByLabelText(/bottles counted/i), '11')
+    await userEvent.click(screen.getByRole('button', { name: /submit count/i }))
+
+    expect(recordSpotCount).toHaveBeenCalledTimes(1)
+    expect(recordSpotCount.mock.calls[0][1]).not.toHaveProperty('locationId')
   })
 })
 
