@@ -29,7 +29,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { decodeSheet, defaultSheet, encodeSheet, offeredFor } from './useReportsNextData';
+import { decodeSheet, defaultSheet, encodeSheet, keepUnoffered, offeredFor } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS, HOUSE_LAYOUT_TITLE } from './rp-sheet';
 
@@ -1219,6 +1219,35 @@ describe('ReportsNext — what a staff member is offered (F-203)', () => {
     expect(screen.queryByText(/Your role cannot read/)).toBeNull();
     expect(asked.showing).not.toContain('seats');
     expect(asked.showing).not.toContain('service');
+  });
+});
+
+describe('ReportsNext — a trimmed sheet does not decide what it never showed (F-781)', () => {
+  it('keeps The room and Who served it as the stored sheet had them when staff rule off', () => {
+    const stored = {
+      v: 3,
+      blocks: [
+        { i: 'till', x: 0, y: 0, w: 6, h: 8, g: 'area', on: true },
+        { i: 'seats', x: 6, y: 0, w: 6, h: 8, on: true },
+        { i: 'service', on: false },
+      ],
+    };
+    const offered = offeredFor('staff');
+    const arranged = { cuttings: decodeSheet(stored).cuttings.filter((c) => offered.includes(c.id)) };
+    const saved = decodeSheet(encodeSheet(keepUnoffered(arranged, stored, offered)));
+    const ids = saved.cuttings.map((c) => c.id);
+    expect(ids).toContain('seats');
+    expect(saved.cuttings.find((c) => c.id === 'seats')?.slot).toEqual({ x: 6, y: 0, w: 6, h: 8 });
+    expect(ids).not.toContain('service');
+    expect(ids).toContain('till');
+  });
+
+  it('writes an owner\'s own removal as before', () => {
+    const offered = offeredFor('owner');
+    const saved = decodeSheet(
+      encodeSheet(keepUnoffered({ cuttings: [] }, encodeSheet(defaultSheet()), offered)),
+    );
+    expect(saved.cuttings).toEqual([]);
   });
 });
 

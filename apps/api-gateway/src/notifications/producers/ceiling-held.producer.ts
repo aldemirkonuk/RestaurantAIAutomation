@@ -9,6 +9,7 @@ import {
 } from "./producer-ledger.service";
 import { clockIn, dayIn, onShiftPhrase, percent } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
+import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
 import { localMidnight, shiftLocalDate } from "./service-day";
 
 /**
@@ -116,6 +117,9 @@ export class CeilingHeldProducer {
     }
 
     let stillOpen = 0;
+    // The sentence carries the goal's figures, so only the people who may read
+    // goals hear it (F-782). Read once, and only when something is to be said.
+    let readers: ProducerAudience | null = null;
     let tooOld = 0;
     let breached = 0;
 
@@ -185,7 +189,13 @@ export class CeilingHeldProducer {
       const name = String(goal.name || "Untitled goal");
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally, now },
+        {
+          restaurantId,
+          producer: PRODUCER,
+          audience: (readers ??= await goalReaders(client, restaurantId, audience)),
+          tally,
+          now,
+        },
         {
           // The period end, not the target: a ceiling that is reset for the next
           // month is a new period and gets its own line, while re-reading the
@@ -239,6 +249,9 @@ export class CeilingHeldProducer {
       );
     }
 
+    if (tally.emitted === 0 && tally.withheldReason === null && noGoalReader(readers)) {
+      tally.withheldReason = NO_GOAL_READER;
+    }
     if (tally.emitted === 0 && tally.withheldReason === null) {
       const bits = [`${goals.length} ceiling goal(s) with a deadline`];
       if (stillOpen > 0) bits.push(`${stillOpen} whose period has not closed yet`);

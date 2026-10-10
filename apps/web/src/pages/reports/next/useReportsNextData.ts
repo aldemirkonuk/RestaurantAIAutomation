@@ -206,6 +206,19 @@ export function encodeSheet(state: SheetState): StoredSheet {
   };
 }
 
+/**
+ * A reader who is not offered every analysis (`offeredFor`) arranges a trimmed
+ * sheet. The sheet is theirs across restaurants, so ruling it off must not
+ * decide the cuttings they were never shown: those keep whatever the stored
+ * sheet said — on, at their slot, or off — rather than being written `on:false`
+ * by `encodeSheet`, which a later decode would read as "I took them off" at a
+ * house where the same person is the owner (F-781).
+ */
+export function keepUnoffered(next: SheetState, stored: unknown, offered: AnalysisId[]): SheetState {
+  const kept = decodeSheet(stored).cuttings.filter((c) => !offered.includes(c.id));
+  return { cuttings: [...next.cuttings.filter((c) => offered.includes(c.id)), ...kept] };
+}
+
 /* ─────────────────────────────────────────────────────── the hook ──────── */
 
 export interface ReportsNextData {
@@ -316,9 +329,11 @@ export function useReportsNextData(
 
   const saveSheet = useCallback(
     (next: SheetState) => {
-      updatePreferences({ [SHEET_PREF_KEY]: encodeSheet(next) });
+      updatePreferences({
+        [SHEET_PREF_KEY]: encodeSheet(keepUnoffered(next, preferences?.[SHEET_PREF_KEY], offered)),
+      });
     },
-    [updatePreferences],
+    [updatePreferences, preferences, offered],
   );
 
   const refetchAll = useCallback(() => {
