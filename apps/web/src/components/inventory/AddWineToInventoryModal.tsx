@@ -133,7 +133,9 @@ export function AddWineToInventoryModal({
   const { measurementUnit } = useRestaurantSettingsStore();
   // What the house paid for a wine is an owner's or a manager's to set
   // (F-312): the gateway refuses a cost, or a free sample, from anyone else.
-  // Staff add the wine with its cost left unknown.
+  // Staff add the wine with its cost left unknown. A menu price is the same
+  // owner's or manager's act (ADR 0193), so its fields are held the same way
+  // (F-833): offered to staff, they only earned a refusal of the whole add.
   const canSetCost = useMayActForTheHouse();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabType>("search");
@@ -375,12 +377,15 @@ export function AddWineToInventoryModal({
         bottleSizeMl,
         saleType,
         ...(showGlassFields && { pourSizeMl }),
-        ...(showGlassFields && menuPriceGlass !== null && { menuPriceGlass }),
+        ...(canSetCost &&
+          showGlassFields &&
+          menuPriceGlass !== null && { menuPriceGlass }),
         // menuPriceBottle === null means the field was left blank: omit the
         // key entirely so the API writes NULL, not an invented $0.00 house
         // price (round-4 must_fix; mirrors costPerBottle's null handling
         // below). An explicitly typed 0 still sends {menuPriceBottle: 0}.
-        ...(showBottleFields &&
+        ...(canSetCost &&
+          showBottleFields &&
           menuPriceBottle !== null && { menuPriceBottle }),
         // A sample carries a real $0, not an absent cost. The caller turns this flag
         // into costProvenance 'sample', which the WAC rollup excludes by name — so a
@@ -1054,8 +1059,17 @@ export function AddWineToInventoryModal({
                         showBottleFields instead of showGlassFields, same as
                         Glass Menu Price below, but a blank field stays
                         null/omitted here instead of coercing to 0 (round-4
-                        must_fix) — see menuPriceBottle's state comment. */}
-                    {showBottleFields && (
+                        must_fix) — see menuPriceBottle's state comment.
+                        Owners and managers only, like the cost (F-833). */}
+                    {!canSetCost && (showBottleFields || showGlassFields) && (
+                      <p
+                        data-testid="menu-price-held"
+                        className="text-xs text-gray-500"
+                      >
+                        The menu price is set by a manager or an owner.
+                      </p>
+                    )}
+                    {canSetCost && showBottleFields && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Bottle Menu Price
@@ -1079,7 +1093,7 @@ export function AddWineToInventoryModal({
                     )}
 
                     {/* Glass Menu Price (conditional) */}
-                    {showGlassFields && (
+                    {canSetCost && showGlassFields && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Glass Menu Price

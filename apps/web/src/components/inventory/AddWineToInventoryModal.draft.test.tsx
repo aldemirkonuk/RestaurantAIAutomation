@@ -102,4 +102,27 @@ describe("AddWineToInventoryModal — work kept across a refresh or a Back (F-71
     await screen.findByText("Tsantali Rapsani");
     expect(screen.queryByPlaceholderText(/leave blank if unknown/i)).not.toBeInTheDocument();
   });
+
+  // F-833: the add was not awaited, so the sheet closed and this tab's kept
+  // pick was wiped before the write answered. A refused add lost both.
+  it("keeps the sheet open and the kept pick when the add is refused", async () => {
+    const user = userEvent.setup();
+    const onAddWine = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error("nope"), { status: 500 }));
+    renderModal("u-1:house-a", onAddWine);
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.type(screen.getByPlaceholderText(/leave blank if unknown/i), "38.5");
+    await waitFor(() =>
+      expect(window.sessionStorage.getItem(KEY)).toContain("38.5"),
+    );
+
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(
+      (screen.getByPlaceholderText(/leave blank if unknown/i) as HTMLInputElement).value,
+    ).toBe("38.5");
+    expect(window.sessionStorage.getItem(KEY)).toContain("38.5");
+  });
 });
