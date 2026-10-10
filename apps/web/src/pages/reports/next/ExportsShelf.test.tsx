@@ -207,12 +207,20 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     expect(d.request).toHaveBeenCalledWith('ledger', null);
   });
 
-  it('refuses to write up the till over a calendar month in words, rather than as the last N days (F-128)', () => {
+  it('writes up the till over the calendar month it is set to, never as the last N days (F-1013)', () => {
     const d = desk();
-    render(<ExportsShelf desk={d} onSheet={['till'] as never[]} tillDays={30} tillMonth="2026-07" />);
-    expect(screen.getByRole('note')).toHaveTextContent(/A month of the till cannot be written up yet/);
+    render(<ExportsShelf desk={d} onSheet={['till', 'ledger'] as never[]} tillDays={30} tillMonth="2026-07" />);
+    expect(screen.queryByText(/cannot be written up/)).toBeNull();
     expect(screen.queryByText(/over the last 30 days/)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Write it up' })).toBeDisabled();
+    expect(screen.getByText(/^over .*2026, as the till is set$/)).toBeInTheDocument();
+    const write = screen.getByRole('button', { name: 'Write it up' });
+    expect(write).toBeEnabled();
+    fireEvent.click(write);
+    expect(d.request).toHaveBeenLastCalledWith('till', null, '2026-07');
+    // A cutting whose window the server fixes takes no month with it.
+    fireEvent.change(screen.getByLabelText('Cutting to write up'), { target: { value: 'ledger' } });
+    fireEvent.click(write);
+    expect(d.request).toHaveBeenLastCalledWith('ledger', null);
   });
 
   it('a role that cannot export is told so, and is offered no control and no list', () => {
@@ -334,9 +342,11 @@ describe('useReportExports — the desk (OD-81)', () => {
 
     await act(async () => result.current.request('ledger', null));
     await act(async () => result.current.request('till', 7));
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    await act(async () => result.current.request('till', null, '2026-07'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
     expect(api.post).toHaveBeenNthCalledWith(1, '/reports/exports', { cutting: 'ledger' });
     expect(api.post).toHaveBeenNthCalledWith(2, '/reports/exports', { cutting: 'till', days: 7 });
+    expect(api.post).toHaveBeenNthCalledWith(3, '/reports/exports', { cutting: 'till', month: '2026-07' });
   });
 
   it('a refused request is written in the gateway’s words', async () => {
