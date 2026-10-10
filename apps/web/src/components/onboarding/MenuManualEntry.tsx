@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type WineExtractItem, type MenuImportSuccess } from '../../services/api/menus'
+import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../../lib/menuReadWithoutAnswer'
 
 interface WineRow extends WineExtractItem {
   _id: number
@@ -30,6 +31,10 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
+  // Sent with no answer back: it may already be kept as a draft menu, and the
+  // import is not idempotent (each call inserts a new version), so Import is
+  // not offered again here (F-808).
+  const [unanswered, setUnanswered] = useState(false)
 
   const updateRow = (id: number, field: keyof WineRow, value: string) => {
     setRows((prev) =>
@@ -52,6 +57,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
 
   const handleImport = async () => {
     setValidationError(null)
+    if (unanswered) return
     if (validRows.length === 0) {
       setValidationError('Please enter at least one wine name before importing.')
       return
@@ -64,6 +70,11 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
       const result = await importMenu('manual', { items })
       onSuccess(result)
     } catch (e: any) {
+      if (readWithoutAnswer(e)) {
+        setUnanswered(true)
+        setError(READ_WITHOUT_ANSWER)
+        return
+      }
       setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
     } finally {
       setLoading(false)
@@ -186,7 +197,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
 
         <Button
           onClick={handleImport}
-          disabled={loading || validRows.length === 0}
+          disabled={loading || unanswered || validRows.length === 0}
           className="bg-[#1A5E6B] hover:bg-[#14515C] text-white"
         >
           {loading ? (
