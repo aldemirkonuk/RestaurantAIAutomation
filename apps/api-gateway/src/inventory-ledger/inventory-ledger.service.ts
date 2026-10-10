@@ -133,8 +133,18 @@ export class InventoryLedgerService {
         p_source: dto.source,
         p_performed_by: userId,
         p_reason: dto.reason || null,
-        p_unit_cost: dto.unitCost || null,
-        p_location_id: dto.toLocationId || dto.fromLocationId || null,
+        // F-646 c: a price that becomes a lot must say what kind of price it
+        // is (ADR 0078), and the primitive refuses one that does not. This
+        // route is a signed-in person entering it, so it is 'manual' — never
+        // 'invoice', which only a read document may claim.
+        p_unit_cost: dto.unitCost ?? null,
+        p_cost_provenance: dto.unitCost != null ? "manual" : null,
+        // F-646 b: a take-off comes off the place it left FROM (the primitive
+        // drains that place first); bottles coming in go TO theirs.
+        p_location_id:
+          dto.quantityChange < 0
+            ? dto.fromLocationId || dto.toLocationId || null
+            : dto.toLocationId || dto.fromLocationId || null,
         p_order_id: dto.orderId || null,
         p_idempotency_key: dto.idempotencyKey,
         p_reference_type: dto.referenceType || null,

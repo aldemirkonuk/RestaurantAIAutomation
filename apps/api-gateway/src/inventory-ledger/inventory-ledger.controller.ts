@@ -72,8 +72,28 @@ export class InventoryLedgerController {
         error: error.message,
       });
 
+      // A refusal the service already worded (zero change, another house's
+      // item) keeps its own status rather than becoming a 500.
+      if (error instanceof HttpException) throw error;
+
       if (error.message?.includes("Insufficient stock")) {
         throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+      }
+
+      // F-646 a: apply_stock_movement refuses a take-off larger than the
+      // books with 'stock would go negative: <on hand> + <change>'. That is
+      // the person's request, not a server fault — and a queue reads a 5xx as
+      // "try again", so a 500 here retried a refusal forever.
+      const negative = /stock would go negative: (-?\d+) \+ (-?\d+)/.exec(
+        error.message ?? "",
+      );
+      if (negative) {
+        const onHand = Number(negative[1]);
+        const asked = Math.abs(Number(negative[2]));
+        throw new HttpException(
+          `The books show ${onHand} bottle${onHand === 1 ? "" : "s"}, so ${asked} can't come off. Count the shelf first, then try again.`,
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       throw new HttpException(

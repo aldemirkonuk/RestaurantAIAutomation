@@ -468,6 +468,20 @@ export class AnalyticsService {
     const inventoryValue = costCoverage.complete
       ? E.stats.sum(onHand.map((i) => i.inventoryValue as number))
       : null;
+    // F-644: one uncosted bottle (a returned bottle, a never-invoiced wine)
+    // used to blank the house's whole cellar value. The priced wines' own
+    // total is a measurement of those wines, so it is reported under its own
+    // name, beside costCoverage.unpriced — the count of wines it leaves out.
+    // inventoryValue and every ratio built on it stay null: a part is not
+    // the whole, and nothing below divides by this.
+    const pricedInventoryValue =
+      costCoverage.priced > 0
+        ? E.stats.sum(
+            onHand
+              .filter((i) => i.inventoryValue != null)
+              .map((i) => i.inventoryValue as number),
+          )
+        : null;
 
     // `E.stats.sum([])` is 0, and BOTH loaders above degrade a failed query to
     // `[]` (see their comments), so an unconditional sum reported "the query
@@ -595,12 +609,15 @@ export class AnalyticsService {
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
+        pricedInventoryValue:
+          "on-hand qty × unit cost over the on-hand rows that carry a recorded cost only; the rows it leaves out are costCoverage.unpriced; null when no on-hand row carries a cost",
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
           "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
       },
       costCoverage,
       inventoryValue,
+      pricedInventoryValue,
       cogs,
       revenue,
       grossMarginDollars: marginDollars,
