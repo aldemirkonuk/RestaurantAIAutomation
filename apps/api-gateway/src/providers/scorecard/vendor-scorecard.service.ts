@@ -529,7 +529,7 @@ export class VendorScorecardService {
     since: string,
   ): Promise<RegisterRead<ConversationRow>> {
     const COLS =
-      "id, provider_id, direction, status, sent_at, received_at, thread_key, gmail_thread_id, thread_id";
+      "id, provider_id, direction, status, sent_at, received_at, thread_key, gmail_thread_id, thread_id, channel";
     const byColumn = async (col: "sent_at" | "received_at") =>
       this.readAll<ConversationRow>(() => {
         let q = this.client()

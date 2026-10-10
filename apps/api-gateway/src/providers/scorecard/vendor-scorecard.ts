@@ -207,6 +207,8 @@ export interface ConversationRow {
   thread_key: string | null;
   gmail_thread_id: string | null;
   thread_id: string | null;
+  /** 'whatsapp' for a WhatsApp row; mail rows say 'email' or nothing. */
+  channel?: string | null;
 }
 
 /**
@@ -948,6 +950,13 @@ const UNSENT_STATUSES = new Set([
 function threadOf(r: ConversationRow): string | null {
   const gmail = r.gmail_thread_id ? r.gmail_thread_id.trim() : "";
   if (gmail) return `gm:${gmail}`;
+  // A WhatsApp chat with a vendor IS one thread (F-749). Neither the send
+  // mirror nor the inbound row carries a Gmail thread, a subject or a
+  // reply-to, so `set_conversation_thread_key()` keys each one `msg:<own id>`
+  // and our message could never meet their answer: every WhatsApp send read
+  // "no reply yet" for good. Their chat is keyed by the vendor instead.
+  if (String(r.channel ?? "").toLowerCase() === "whatsapp" && r.provider_id)
+    return `wa:${r.provider_id}`;
   return r.thread_key || r.thread_id || null;
 }
 
