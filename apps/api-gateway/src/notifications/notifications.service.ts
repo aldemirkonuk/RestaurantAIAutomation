@@ -1150,11 +1150,20 @@ export class NotificationsService {
     return data?.length || 0;
   }
 
-  async deleteAllRead(userId: string): Promise<number> {
+  /**
+   * Same scope as markAllAsRead: the caller's read notifications in ONE
+   * restaurant. Filtered by user alone, an owner of two houses clearing one
+   * inbox also wiped the other's (F-265).
+   */
+  async deleteAllRead(params: {
+    userId: string;
+    restaurantId: string;
+  }): Promise<number> {
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .delete()
-      .eq("user_id", userId)
+      .eq("user_id", params.userId)
+      .eq("restaurant_id", params.restaurantId)
       .eq("status", "read")
       .select("id");
 

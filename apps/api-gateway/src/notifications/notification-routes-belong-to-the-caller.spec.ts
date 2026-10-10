@@ -191,6 +191,23 @@ describe("writes answer for the caller only", () => {
     expect(service.deleteAllRead).not.toHaveBeenCalled();
   });
 
+  it("[REVERT-FAILS] deleting all read stays in the token's house (F-265)", async () => {
+    const { controller, service } = makeController();
+    await controller.deleteAllRead({ userId: OWN } as any, req());
+    expect(service.deleteAllRead).toHaveBeenCalledWith({
+      userId: OWN,
+      restaurantId: HOUSE,
+    });
+  });
+
+  it("[REVERT-FAILS] deleting all read is refused when the token names no house", async () => {
+    const { controller, service } = makeController();
+    await expect(
+      controller.deleteAllRead({} as any, req(OWN, null)),
+    ).rejects.toThrow(/No active restaurant/);
+    expect(service.deleteAllRead).not.toHaveBeenCalled();
+  });
+
   it("[REVERT-FAILS] a test notification goes only to the caller", async () => {
     const { controller, service } = makeController();
     await expect(
@@ -282,5 +299,18 @@ describe("the service matches a notification by its id AND its owner", () => {
       NotFoundException,
     );
     expect(calls).toContainEqual(["eq", "user_id", OWN]);
+  });
+
+  it("[REVERT-FAILS] deleteAllRead filters on user_id AND restaurant_id (F-265)", async () => {
+    const { q, calls } = chain({ data: [{ id: "n1" }], error: null });
+    const service = Object.create(NotificationsService.prototype);
+    service.databaseService = { supabase: { from: () => q } };
+    service.logger = { error: () => undefined };
+    await expect(
+      service.deleteAllRead({ userId: OWN, restaurantId: HOUSE }),
+    ).resolves.toBe(1);
+    expect(calls).toContainEqual(["eq", "user_id", OWN]);
+    expect(calls).toContainEqual(["eq", "restaurant_id", HOUSE]);
+    expect(calls).toContainEqual(["eq", "status", "read"]);
   });
 });
