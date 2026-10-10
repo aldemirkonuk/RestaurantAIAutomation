@@ -19,13 +19,14 @@ export type BookedCost =
   | { ok: true; booked: number; basis: 'typed_house_cost' | 'same_currency' | 'stated_rate'; lotPerBottle: number }
   | { ok: false; why: string };
 
+import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+
 const cents = (n: number) => Math.round(n * 100) / 100;
 
-function numberOrNull(v: string): number | null {
-  const t = v.trim();
-  if (t === '') return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : Number.NaN;
+/** '' is null; typed text the way the house writes it ("1,35"); anything else NaN. */
+function numberOrNull(v: string, group: GroupMark | null): number | null {
+  if (v.trim() === '') return null;
+  return parseDecimal(v, group) ?? Number.NaN;
 }
 
 export function lotBookedCost(input: {
@@ -38,9 +39,11 @@ export function lotBookedCost(input: {
   exchangeRate: string;
   /** As typed: '' is "not typed". */
   houseCost: string;
+  /** The house's thousands mark, for "1.250" (see `lib/parseDecimal`). */
+  group?: GroupMark | null;
 }): BookedCost {
-  const rate = numberOrNull(input.exchangeRate);
-  const typed = numberOrNull(input.houseCost);
+  const rate = numberOrNull(input.exchangeRate, input.group ?? null);
+  const typed = numberOrNull(input.houseCost, input.group ?? null);
   if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) {
     return { ok: false, why: 'An exchange rate must be a number above zero.' };
   }

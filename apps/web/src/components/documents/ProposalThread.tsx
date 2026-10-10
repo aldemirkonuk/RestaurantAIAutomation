@@ -22,6 +22,8 @@ import { useState } from 'react'
 import type { Proposal, ReasonClass } from '../../services/api/deliveries'
 import { REASON_CLASSES } from '../../services/api/deliveries'
 import { EM, MONO, fmtStamp } from './canonical-format'
+import { parseDecimal } from '../../lib/parseDecimal'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 
 /** The sentence beside each reason, so the picker teaches rather than lists. */
 const REASON_SENTENCES: Record<ReasonClass, string> = {
@@ -93,6 +95,7 @@ export function ProposalThread({
   const [qty, setQty] = useState('')
   const [money, setMoney] = useState('')
   const [note, setNote] = useState('')
+  const group = useHouseGroupMark()
 
   // A FAILED READ IS NOT AN EMPTY THREAD (ADR 0067). "Nobody has disputed
   // anything" is exactly the sentence an agreement would be argued from.
@@ -113,8 +116,8 @@ export function ProposalThread({
       side,
       reason,
       ...(selectedLine != null ? { lineNo: selectedLine + 1 } : {}),
-      ...(qty.trim() ? { qtyProposedBottles: Number(qty.replace(',', '.')) } : {}),
-      ...(money.trim() ? { moneyAtRisk: Number(money.replace(',', '.')) } : {}),
+      ...(qty.trim() ? { qtyProposedBottles: parseDecimal(qty, group) ?? Number.NaN } : {}),
+      ...(money.trim() ? { moneyAtRisk: parseDecimal(money, group) ?? Number.NaN } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
     }
     if (counteringId && onCounter) await onCounter(counteringId, body)
