@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { maskPhone } from "../common/log-mask";
 
 export interface SmsOptions {
   to: string;
@@ -55,7 +56,7 @@ export class SmsService implements OnModuleInit {
    * Send an SMS message
    */
   async sendSms(options: SmsOptions): Promise<SmsResult> {
-    this.logger.log(`Sending SMS to: ${options.to}`);
+    this.logger.log(`Sending SMS to: ${maskPhone(options.to)}`);
 
     if (!this.isConfigured) {
       return this.reportUnsentSms(options);
@@ -226,11 +227,11 @@ Order #${data.orderId.substring(0, 8)}`;
     this.logger.log("=".repeat(50));
     this.logger.log("SMS NOT SENT — no Plivo credentials configured");
     this.logger.log("=".repeat(50));
-    this.logger.log(`Would have gone to: ${options.to}`);
+    this.logger.log(`Would have gone to: ${maskPhone(options.to)}`);
     this.logger.log(`From: ${this.fromNumber || "(no PLIVO_PHONE_NUMBER)"}`);
     this.logger.log("-".repeat(50));
-    this.logger.log(`Message (${options.message.length} chars):`);
-    this.logger.log(options.message);
+    // Length only: the body names people and stays in the host's log store.
+    this.logger.log(`Message (${options.message.length} chars)`);
     this.logger.log("=".repeat(50));
 
     return {

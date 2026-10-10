@@ -251,6 +251,13 @@ export interface AuthContextType {
    * this device are removed — the queue is a cache of their session.
    */
   logout: () => Promise<boolean>;
+  /**
+   * The person deletes their own account (F-703). Runs the sign-out cleanup
+   * only once the server has deleted it; a refused delete changes nothing. No
+   * question about unsent changes: their owner is gone, so they can never be
+   * sent, and the next person on this device must not inherit them.
+   */
+  deleteAccountAndSignOut: () => Promise<void>;
   refreshToken: () => Promise<void>;
   refreshBranches: () => Promise<void>;
   isAuthenticated: boolean;
@@ -1134,6 +1141,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [endSession]);
 
+  const deleteAccountAndSignOut = useCallback(async () => {
+    const who = currentQueueOwner()?.userId ?? null;
+    await api.delete("/api/v1/auth/me");
+    await endSession();
+    if (who) {
+      try {
+        await syncManager.endSessionOf(who);
+      } catch (err) {
+        console.error("Could not clear the deleted account's queue:", err);
+      }
+    }
+  }, [endSession]);
+
   // Delegates to the same single-flight `doRefresh` the axios interceptor and
   // `authStore.ts` use (ADR 0164, item 2/3) — this used to be a fourth,
   // independent refresh implementation with its own copy of the
@@ -1186,6 +1206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginWithMicrosoft,
     resolveSignInMethods,
     logout,
+    deleteAccountAndSignOut,
     refreshToken: refreshTokenFn,
     refreshBranches,
     isAuthenticated: !!user,
