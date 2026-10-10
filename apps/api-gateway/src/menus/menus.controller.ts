@@ -128,6 +128,21 @@ export class MenusController {
         "correct a price on the menu",
       );
     }
+    // A NAME correction is held to the same rule (F-920): it also renames the
+    // house's own wine in stock, and /menu offers Edit only to an owner or a
+    // manager. Checked before anything is written.
+    if (dto.fieldName === "name") {
+      if (!user.userId || !user.restaurantId) {
+        throw new ForbiddenException(
+          "A rename names the person and the house, and this session names neither. Nothing was changed.",
+        );
+      }
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        user.restaurantId,
+        "rename a wine on the menu",
+      );
+    }
     return this.menusService.reviewMenuItem(
       id,
       user.userId,

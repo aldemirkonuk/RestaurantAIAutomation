@@ -47,6 +47,10 @@ function makeFakeSupabase(
     // prove a failed read is said, never taken for "no row".
     const readFails = (): string | undefined =>
       ((tables as any).__readFails?.[0] ?? {})[table];
+    // `tables.__updateFails = [{ <table>: "<message>" }]` makes every UPDATE
+    // of that table fail with the message, and change nothing.
+    const updateFails = (): string | undefined =>
+      ((tables as any).__updateFails?.[0] ?? {})[table];
     const matching = () =>
       (tables[table] || []).filter(
         (r) =>
@@ -115,6 +119,7 @@ function makeFakeSupabase(
       then(resolve: any) {
         if (inserted) return resolve({ data: inserted, error: null });
         if (!updatePatch && readFails()) return resolve({ data: null, error: { message: readFails() } });
+        if (updatePatch && updateFails()) return resolve({ data: null, error: { message: updateFails() } });
         const rows = matching();
         if (updatePatch) for (const row of rows) Object.assign(row, updatePatch);
         resolve({ data: rows, error: null });
@@ -835,6 +840,40 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     } as any);
     expect(calls).toHaveLength(0);
     expect(result.priceSync).toBeUndefined();
+  });
+
+  it("a rename reaches the house's own wine too (F-920)", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [line()],
+      restaurant_menus: [CURRENT()],
+      restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" }],
+    };
+    const service = makeService(tables, { rpc: changed });
+    await service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "name",
+      newValue: "Opus One 2019",
+    } as any);
+    expect(tables.menu_items[0].name).toBe("Opus One 2019");
+    expect(tables.restaurant_inventory[0].wine_name).toBe("Opus One 2019");
+  });
+
+  it("a failed rename of the house's own wine is said, and the menu line is not renamed either (F-920)", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [line()],
+      restaurant_menus: [CURRENT()],
+      restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" }],
+    };
+    (tables as any).__updateFails = [{ restaurant_inventory: "permission denied" }];
+    const service = makeService(tables, { rpc: changed });
+    await expect(
+      service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+        fieldName: "name",
+        newValue: "Opus One 2019",
+      } as any),
+    ).rejects.toThrow(/could not be renamed in your stock.*permission denied/);
+    expect(tables.menu_items[0].name).toBe("Opus One");
+    expect(tables.menu_items[0].status).toBe("approved");
+    expect(tables.restaurant_inventory[0].wine_name).toBe("Opus One");
   });
 });
 

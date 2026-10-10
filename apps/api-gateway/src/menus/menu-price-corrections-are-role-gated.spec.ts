@@ -50,9 +50,33 @@ describe("PATCH /menus/items/:id — a PRICE correction is an owner's or a manag
     expect(review).not.toHaveBeenCalled();
   });
 
-  it("a NAME correction by staff is unchanged by this gate", async () => {
-    const { c, review } = controller("staff");
+  // F-920: a rename also renames the house's own wine in stock, so it is held
+  // to the price rule. Other fields stay open to the house.
+  it.each(["owner", "manager"])("a %s may rename a line", async (role) => {
+    const { c, review } = controller(role);
     await c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, USER);
+    expect(review).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["staff", null])("%s is refused a rename before anything is written (F-920)", async (role) => {
+    const { c, review } = controller(role as string | null);
+    await expect(
+      c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, USER),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(review).not.toHaveBeenCalled();
+  });
+
+  it("a session naming no house cannot rename a line", async () => {
+    const { c, review } = controller("owner");
+    await expect(
+      c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, { userId: "u-1" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(review).not.toHaveBeenCalled();
+  });
+
+  it("a SECTION correction by staff is unchanged by this gate", async () => {
+    const { c, review } = controller("staff");
+    await c.reviewMenuItem("mi-1", { fieldName: "category", newValue: "Red" } as any, USER);
     expect(review).toHaveBeenCalledTimes(1);
   });
 });

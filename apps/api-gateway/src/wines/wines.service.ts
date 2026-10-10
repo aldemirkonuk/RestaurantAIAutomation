@@ -74,6 +74,7 @@ interface WineRow {
   producer: string;
   vintage: number | null;
   price_reference: number | null;
+  price_reference_currency?: string | null;
   retail_price_avg?: number | null;
   primary_type: string | null;
   grape_variety: string | null;
@@ -214,6 +215,9 @@ export class WinesService {
       producer: row.producer,
       vintage: row.vintage ?? undefined,
       price: row.price_reference ?? 0,
+      // The currency `price` was recorded in (F-918). Null: not recorded,
+      // which a page reads as "not comparable", never as this house's.
+      priceCurrency: row.price_reference_currency ?? null,
       // Same field the inventory read model surfaces as marketPrice, so a library
       // row and an inventory row agree on what "market" means. Null until the
       // price-enrichment pipeline populates it.
@@ -688,7 +692,7 @@ export class WinesService {
 
     const client = this.dbService.getClient();
     let suggestions = client.from("master_wine_library").select(
-      "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
+      "id, wine_id, name, display_name, producer, vintage, price_reference, price_reference_currency, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
     );
     suggestions = suggestions.or(
       `name.ilike.${textValue},producer.ilike.${textValue}`,

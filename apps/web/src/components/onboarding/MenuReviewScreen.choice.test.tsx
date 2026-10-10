@@ -9,6 +9,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { MenuReviewScreen } from './MenuReviewScreen'
 import { getMenuPlan, makeMenuCurrent } from '../../services/api/menus'
+import { formatMoney } from '../../lib/currency'
+import { setHouseCurrency } from '../../lib/houseCurrency'
 
 // The choice goes through the plan (ADR 0193 round 3, L13), which reads with react-query.
 function render(ui: ReactElement) {
@@ -130,8 +132,10 @@ describe('MenuReviewScreen — the current-menu choice after a read', () => {
 })
 
 describe('MenuReviewScreen -- a price a lock held is said too (ADR 0193 round 3, L15)', () => {
-  it('the review waits and names the held price', async () => {
+  it('the review waits and names the held price, in the house currency (F-920)', async () => {
     role = 'manager'
+    // A lira house: the held price wears its sign, never a bare 95.00.
+    setHouseCurrency('TRY')
     mockMake.mockResolvedValue({
       outcome: 'made_current', menuId: 'm9', previousMenuIds: [], lines: 1,
       priceSync: { locked: 1 }, flagged: 0, failed: [],
@@ -141,7 +145,7 @@ describe('MenuReviewScreen -- a price a lock held is said too (ADR 0193 round 3,
     render(<MenuReviewScreen result={RESULT} onConfirm={onConfirm} onSkip={vi.fn()} />)
     await chooseThroughThePlan()
     expect(await screen.findByText(/^This is now the current menu/)).toHaveTextContent(
-      'Held by a lock, not changed: Barolo (bottle, locked at 95.00).',
+      `Held by a lock, not changed: Barolo (bottle, locked at ${formatMoney(95, 'TRY').replace(/\s/g, ' ')}).`,
     )
     expect(onConfirm).not.toHaveBeenCalled()
   })

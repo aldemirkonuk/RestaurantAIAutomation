@@ -122,6 +122,12 @@ type WireWine = Wine & {
    * verdict.
    */
   beverageKind?: string;
+  /**
+   * `price_reference_currency`: the currency the library's reference price was
+   * recorded in (F-918). Null or absent: not recorded, which is every row the
+   * library had before the column existed.
+   */
+  priceCurrency?: string | null;
   classificationStatus?: string;
   /**
    * ADR 0160 sec110 Owed #4/#11 — "the wine's own detail". Mirrors the
@@ -225,6 +231,8 @@ export interface BottleVM {
   vintage: number | null;
   /** `price_reference`, with the gateway's 0-sentinel read as "unrecorded". */
   listPrice: number | null;
+  /** The currency `listPrice` was recorded in; null or absent when the library did not record one (F-918). */
+  listCurrency?: string | null;
   /** `retail_price_avg` — null on every row today; never substituted. */
   marketPrice: number | null;
   bottleSizeMl: number | null;
@@ -257,6 +265,7 @@ function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
     style: text(w.category),
     vintage: num(w.vintage),
     listPrice: refPrice(w.price),
+    listCurrency: text(w.priceCurrency),
     marketPrice: num(w.retailPriceAvg),
     // F-664: only a size the house stated. The library's 750 is a default on every row,
     // so a half bottle or a magnum read as 750 ml when it was printed as a fact.
