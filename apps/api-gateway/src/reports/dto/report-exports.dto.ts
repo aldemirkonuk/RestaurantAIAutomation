@@ -88,6 +88,14 @@ export class ReportExportResponseDto {
 
   @ApiProperty({ type: String, nullable: true })
   finishedAt: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The download's file name without its extension: the house, the cutting and its window in the house's own days. Null until the export is written.",
+  })
+  fileStem: string | null;
 }
 
 export class ReportExportListResponseDto {

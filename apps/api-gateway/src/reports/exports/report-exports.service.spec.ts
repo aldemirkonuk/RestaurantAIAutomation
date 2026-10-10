@@ -230,7 +230,8 @@ describe("ReportExportsService — a report export is written, or says why not (
     await queued.settled;
     const csv = await service.downloadExport(HOUSE_A, queued.export.id, "csv");
     expect(csv.contentType).toBe("text/csv; charset=utf-8");
-    expect(csv.filename).toMatch(/^mudavym-ledger-\d{4}-\d{2}-\d{2}\.csv$/);
+    // Meyhouse has no zone in this store: the UTC day, and the name says so (F-413).
+    expect(csv.filename).toMatch(/^mudavym-meyhouse-ledger-as-of-\d{4}-\d{2}-\d{2}-utc\.csv$/);
     expect(csv.body.startsWith("\uFEFFMudavym report export\r\n")).toBe(true);
     const html = await service.downloadExport(HOUSE_A, queued.export.id, "html");
     expect(html.contentType).toBe("text/html; charset=utf-8");
@@ -415,6 +416,35 @@ describe("ReportExportsService — a report export is written, or says why not (
     await dflt.settled;
     expect(dflt.export.windowDays).toBe(30);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(HOUSE_A, 30);
+  });
+
+  it("names a till file by house and window in the house's days, and writes Written on its clock (F-413)", async () => {
+    const { mem, service } = build();
+    mem.rows("restaurants").find((r) => r.id === HOUSE_A)!.timezone = "America/Los_Angeles";
+    const seven = await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till", days: 7 });
+    await seven.settled;
+    const nineties = await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till", days: 90 });
+    await nineties.settled;
+    // 18:00 in Los Angeles is 01:00 UTC the next day: the name keeps the house's day.
+    for (const r of exportsOf(mem)) r.finished_at = "2026-10-10T01:00:00.000Z";
+
+    const a = await service.downloadExport(HOUSE_A, seven.export.id, "csv");
+    const b = await service.downloadExport(HOUSE_A, nineties.export.id, "csv");
+    expect(a.filename).toBe("mudavym-meyhouse-till-2026-10-03-to-2026-10-09.csv");
+    expect(b.filename).toBe("mudavym-meyhouse-till-2026-07-12-to-2026-10-09.csv");
+    expect((await service.getExport(HOUSE_A, seven.export.id)).fileStem).toBe(
+      "mudavym-meyhouse-till-2026-10-03-to-2026-10-09",
+    );
+    const listed = await service.listExports(HOUSE_A);
+    expect(listed.exports.map((e) => e.fileStem).sort()).toEqual([
+      "mudavym-meyhouse-till-2026-07-12-to-2026-10-09",
+      "mudavym-meyhouse-till-2026-10-03-to-2026-10-09",
+    ]);
+    expect(seven.export.fileStem).toBeNull();
+
+    const written = a.body.split("\r\n").find((l) => l.startsWith("Written,"));
+    expect(written).toMatch(/^Written,"\d{4}-\d{2}-\d{2} \d{2}:\d{2}, house time \(America\/Los_Angeles\)"$/);
+    expect(a.body).toContain("Refunds are not taken off.");
   });
 
   it("lists newest first, bounded, with the exact total — and never carries the files", async () => {

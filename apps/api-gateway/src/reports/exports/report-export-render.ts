@@ -29,6 +29,7 @@ import {
   type ExportTable,
   type Unit,
 } from "./report-export-doc";
+import { writtenLabel } from "./report-export-naming";
 
 export interface ExportHeader {
   houseName: string | null;
@@ -38,6 +39,8 @@ export interface ExportHeader {
   windowLabel: string;
   /** ISO instant the export was written. */
   writtenAt: string;
+  /** The house's IANA zone; "Written" is shown on its clock. Null when it has none. */
+  timezone: string | null;
   withheldCount: number;
 }
 
@@ -144,7 +147,7 @@ export function renderCsv(doc: ExportDoc, h: ExportHeader): string {
   push("House", csvText(h.houseName ?? "name not recorded"));
   push("Cutting", csvText(h.title));
   push("Window", csvText(h.windowLabel));
-  push("Written", csvText(h.writtenAt));
+  push("Written", csvText(writtenLabel(h.writtenAt, h.timezone)));
   push(
     "Money",
     csvText(
@@ -310,7 +313,7 @@ function htmlTable(t: ExportTable, currency: string | null): string {
 
 export function renderHtml(doc: ExportDoc, h: ExportHeader): string {
   const house = h.houseName ?? "House name not recorded";
-  const written = h.writtenAt;
+  const written = writtenLabel(h.writtenAt, h.timezone);
   const money = h.currency
     ? `Money in ${h.currency}, the house's reporting currency.`
     : "Money is shown with no currency: this house's reporting currency is not recorded.";

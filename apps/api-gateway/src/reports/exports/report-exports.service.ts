@@ -25,6 +25,8 @@ import {
   type ExportableCutting,
 } from "./report-export-cuttings";
 import { renderCsv, renderHtml } from "./report-export-render";
+import { exportFileStem } from "./report-export-naming";
+import { houseFrame } from "../../common/house-frame";
 
 /** A queued attempt older than this is failed, with that reason, on the next read. */
 export const STALE_QUEUED_MS = 10 * 60_000;
@@ -84,6 +86,12 @@ interface ExportRow {
   requested_at: string;
   started_at: string;
   finished_at: string | null;
+}
+
+/** What a file name needs from the house: its name and the clock its days are on. */
+interface HouseNaming {
+  name: string | null;
+  zone: string | null;
 }
 
 export interface ExportDownload {
@@ -300,8 +308,14 @@ export class ReportExportsService {
       });
       throw error;
     }
+    const rows = (data ?? []) as unknown as ExportRow[];
+    // The house is read only when a row has a file to name: the page polls
+    // this list while anything is queued, and a queued row has no name yet.
+    const house = rows.some((r) => r.status === "ready")
+      ? await this.readHouseNaming(restaurantId)
+      : null;
     return {
-      exports: ((data ?? []) as unknown as ExportRow[]).map((r) => this.toDto(r)),
+      exports: rows.map((r) => this.toDto(r, house)),
       total: count ?? null,
     };
   }
@@ -311,7 +325,9 @@ export class ReportExportsService {
     exportId: string,
   ): Promise<ReportExportResponseDto> {
     await this.failStaleQueued(restaurantId);
-    return this.toDto(await this.readRow(restaurantId, exportId));
+    const row = await this.readRow(restaurantId, exportId);
+    const house = row.status === "ready" ? await this.readHouseNaming(restaurantId) : null;
+    return this.toDto(row, house);
   }
 
   async downloadExport(
@@ -321,7 +337,7 @@ export class ReportExportsService {
   ): Promise<ExportDownload> {
     const { data, error } = await this.db
       .from(REPORT_EXPORTS_TABLE)
-      .select(`id, cutting, status, failure_reason, finished_at, ${format}`)
+      .select(`id, cutting, window_days, status, failure_reason, finished_at, ${format}`)
       .eq("id", exportId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -346,10 +362,18 @@ export class ReportExportsService {
       throw new InternalServerErrorException(
         "This export is marked ready but its file is missing.",
       );
-    const day =
-      typeof row.finished_at === "string" ? row.finished_at.slice(0, 10) : "undated";
+    const house = await this.readHouseNaming(restaurantId);
+    const stem =
+      this.fileStem(
+        {
+          cutting: String(row.cutting),
+          window_days: typeof row.window_days === "number" ? row.window_days : null,
+          finished_at: typeof row.finished_at === "string" ? row.finished_at : null,
+        },
+        house,
+      ) ?? `mudavym-${String(row.cutting)}-undated`;
     return {
-      filename: `mudavym-${String(row.cutting)}-${day}.${format}`,
+      filename: `${stem}.${format}`,
       contentType:
         format === "csv" ? "text/csv; charset=utf-8" : "text/html; charset=utf-8",
       body,
@@ -574,7 +598,7 @@ export class ReportExportsService {
 
       const { data: house, error: houseError } = await this.db
         .from("restaurants")
-        .select("name, currency")
+        .select("name, currency, timezone, country")
         .eq("id", row.restaurant_id)
         .maybeSingle();
       if (houseError)
@@ -588,6 +612,9 @@ export class ReportExportsService {
         title: row.title,
         windowLabel: row.window_label,
         writtenAt: new Date().toISOString(),
+        // The same zone the till files its days on (`readHouseZone`), so
+        // "Written" and the days in the file are one clock (F-413).
+        timezone: houseFrame(house as { timezone?: string | null; country?: string | null }).zone,
         withheldCount,
       };
       csv = renderCsv(doc, header);
@@ -658,7 +685,45 @@ export class ReportExportsService {
       });
   }
 
-  private toDto(row: ExportRow): ReportExportResponseDto {
+  /**
+   * The house's name and zone, for a file name. Read by key; an error fails
+   * the read rather than naming the file on UTC as if it were the house's day.
+   */
+  private async readHouseNaming(restaurantId: string): Promise<HouseNaming> {
+    const { data, error } = await this.db
+      .from("restaurants")
+      .select("name, timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error("Failed to read the house for an export's file name", {
+        restaurantId,
+        error: error.message,
+      });
+      throw error;
+    }
+    const h = (data ?? null) as { name?: unknown; timezone?: string | null; country?: string | null } | null;
+    return {
+      name: typeof h?.name === "string" && h.name ? h.name : null,
+      zone: houseFrame(h).zone,
+    };
+  }
+
+  private fileStem(
+    row: Pick<ExportRow, "cutting" | "window_days" | "finished_at">,
+    house: HouseNaming | null,
+  ): string | null {
+    if (!house) return null;
+    return exportFileStem({
+      cutting: row.cutting,
+      windowDays: row.window_days,
+      finishedAt: row.finished_at,
+      houseName: house.name,
+      zone: house.zone,
+    });
+  }
+
+  private toDto(row: ExportRow, house: HouseNaming | null = null): ReportExportResponseDto {
     return {
       id: row.id,
       cutting: row.cutting,
@@ -674,6 +739,7 @@ export class ReportExportsService {
       requestedAt: row.requested_at,
       startedAt: row.started_at,
       finishedAt: row.finished_at,
+      fileStem: row.status === "ready" ? this.fileStem(row, house) : null,
     };
   }
 }
