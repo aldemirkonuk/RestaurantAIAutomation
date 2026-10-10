@@ -224,6 +224,25 @@ describe('weekFromLink (F-217)', () => {
   });
 });
 
+describe('shift times on the house’s clock (F-1007)', () => {
+  it('the desk prints 24-hour time when the week names a Turkish house', async () => {
+    api.members = [member('m1', 'Ayşe', 'line')];
+    api.week = weekPayload({
+      schedule: { id: 'sch1', restaurant_id: 'r1', week_start: '2026-10-12', status: 'draft', published_at: null },
+      shifts: [shift('m1', '2026-10-13')],
+      country: 'Turkey',
+    });
+    window.history.pushState({}, '', '/team?week=2026-10-12');
+    try {
+      render(<TeamNext />, { wrapper });
+      expect((await screen.findAllByText(/17:00–23:00/)).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/5p–11p/)).toBeNull();
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+});
+
 describe('useTeamNextData derivations', () => {
   it('suggests the free, exact-role member with the fewest hours, with copied times', async () => {
     api.members = [

@@ -70,8 +70,9 @@ import {
   mondayOf,
   weekFromLink,
   WEEKLY_REVIEW_HOURS,
+  houseLocale,
 } from './tm-format';
-import { MutationError } from './tm-bits';
+import { MutationError, ShiftClockProvider } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
 import { RosterSheet, MemberSheet } from './RosterSheet';
 import { CertificationsSheet } from './CertificationsSheet';
@@ -388,6 +389,7 @@ function TeamNextManager({
   const pendingLeave = (data.timeOff ?? []).filter((r) => r.status === 'pending').length;
 
   return (
+    <ShiftClockProvider locale={houseLocale(data.week?.country)}>
     <div className="tm-page mudavym" data-ground={ground === 'charcoal' ? 'charcoal' : undefined}>
       <div className="tm-wrap">
         <header className="tm-head">
@@ -934,5 +936,6 @@ function TeamNextManager({
         />
       )}
     </div>
+    </ShiftClockProvider>
   );
 }

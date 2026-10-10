@@ -194,10 +194,29 @@ export function fmtWeekRange(weekStart: string): string {
   return `${fmtDayShort(weekStart)} ${EM} ${fmtDayShort(addDays(weekStart, 6))}`;
 }
 
-/** "17:00" → "5p", "17:30" → "5:30p". The legacy desk's clock, unchanged. */
-export function fmtTime(t: string): string {
+/** Whether a locale reads the clock in twelve hours ("5 PM") or 24 ("17:00"). */
+function twelveHourClock(locale: string): boolean {
+  try {
+    return new Intl.DateTimeFormat(locale, { hour: 'numeric' })
+      .formatToParts(new Date(Date.UTC(1970, 0, 1, 17)))
+      .some((p) => p.type === 'dayPeriod');
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * A shift time on the house's clock (F-1007, the web half of F-953): a house
+ * on a 24-hour clock (`houseLocale('Turkey')`) reads "17:00"; one on a
+ * 12-hour clock, or with no locale known, keeps the desk's short "5p",
+ * "5:30p".
+ */
+export function fmtTime(t: string, locale?: string): string {
   const [h, m] = t.split(':').map((n) => parseInt(n, 10));
   if (!Number.isFinite(h)) return t;
+  if (locale && !twelveHourClock(locale)) {
+    return `${String(h).padStart(2, '0')}:${String(Number.isFinite(m) ? m : 0).padStart(2, '0')}`;
+  }
   const suffix = h >= 12 ? 'p' : 'a';
   const hh = h % 12 === 0 ? 12 : h % 12;
   return m ? `${hh}:${String(m).padStart(2, '0')}${suffix}` : `${hh}${suffix}`;

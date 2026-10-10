@@ -1109,25 +1109,34 @@ function isoDay(d: string): number {
 export function leaveInWeek(rows: LeaveRow[], weekStart: string): LeaveInWeek {
   const w0 = isoDay(weekStart);
   const w6 = w0 + 6;
-  const paid = new Map<string, number>();
-  let unknownTypeDays = 0;
+  // One person's day is one day, however many approved requests cover it
+  // (F-1006): two overlapping requests used to count it twice. A day any of
+  // them marks paid is paid; else one marked unpaid is unpaid; else unknown.
+  const RANK: Record<string, number> = { unknown: 0, unpaid: 1, paid: 2 };
+  const dayType = new Map<string, Map<number, LeaveType>>();
   for (const r of rows ?? []) {
     if (r?.status !== "approved") continue;
     const a = Math.max(isoDay(r.start_date), w0);
     const b = Math.min(isoDay(r.end_date), w6);
     if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) continue;
-    const days = b - a + 1;
-    const type = (r.leave_type ?? "unknown") as LeaveType;
-    if (type === "paid") {
-      paid.set(r.member_id, (paid.get(r.member_id) ?? 0) + days);
-    } else if (type !== "unpaid") {
-      unknownTypeDays += days;
+    const raw = r.leave_type ?? "unknown";
+    const type: LeaveType =
+      raw === "paid" || raw === "unpaid" ? raw : "unknown";
+    const mine = dayType.get(r.member_id) ?? new Map<number, LeaveType>();
+    dayType.set(r.member_id, mine);
+    for (let d = a; d <= b; d++) {
+      const was = mine.get(d);
+      if (was === undefined || RANK[type] > RANK[was]) mine.set(d, type);
     }
   }
-  const list = [...paid.entries()].map(([memberId, days]) => ({
-    memberId,
-    days,
-  }));
+  const list: { memberId: string; days: number }[] = [];
+  let unknownTypeDays = 0;
+  for (const [memberId, days] of dayType) {
+    const types = [...days.values()];
+    const paidDays = types.filter((t) => t === "paid").length;
+    unknownTypeDays += types.filter((t) => t === "unknown").length;
+    if (paidDays > 0) list.push({ memberId, days: paidDays });
+  }
   return {
     paid: list,
     paidDays: list.reduce((n, p) => n + p.days, 0),

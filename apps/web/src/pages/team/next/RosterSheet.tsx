@@ -43,12 +43,11 @@ import {
   fmtDayShort,
   fmtHours,
   fmtMoneyExact,
-  fmtTime,
   fmtWeekday,
   resolveName,
   workedHours,
 } from './tm-format';
-import { Card, Fact, KV, Mark, MutationError, Tag } from './tm-bits';
+import { Card, Fact, KV, Mark, MutationError, Tag, useShiftTime } from './tm-bits';
 import {
   useSetZoneSetupAccess,
   useZoneSetupAccess,
@@ -146,6 +145,7 @@ function MemberDetail({
   /** Open this person's certificate FILE — the owed act (census 102). */
   onCertificates: () => void;
 }) {
+  const fmtTime = useShiftTime();
   const name = resolveName(member);
   const { user } = useAuth();
   // An owner opening their own row sets their OWN dates: not logged, and the
@@ -1042,6 +1042,7 @@ function ReplaceWithPicker({
   preview: { data?: HandoverPreview; isError: boolean; isFetching: boolean };
   onChoice: (c: HandoverChoice) => void;
 }) {
+  const fmtTime = useShiftTime();
   const others = roster.filter((m) => m.id !== leaving.id);
   const shifts = preview.data?.shifts ?? [];
   const chosen = choice.to ? handoverOf(choice, preview.data) : null;
