@@ -25,6 +25,7 @@ import {
   Barcode,
 } from "lucide-react";
 import { useInventoryPage, type InventoryItem } from "../index";
+import { loadHouseInventory } from "../useInventoryPage";
 import { ContextualInsights } from "../../../components/insights/ContextualInsights";
 import { useStorageLocations } from "../../../hooks/useStorageLocations";
 import { useCreateInventoryItem } from "../../../hooks/queries";
@@ -52,6 +53,7 @@ import { ThemedSelect } from "../../../components/ui/ThemedSelect";
 import { ExportMenu } from "../../../components/ui/ExportMenu";
 import {
   exportTable,
+  fileSafeName,
   type TableExportColumn,
   type TableExportFormat,
 } from "../../../lib/tableExport";
@@ -62,7 +64,6 @@ import { cn } from "../../../lib/utils";
 import { useHouseCurrency } from "../../../hooks/useHouseCurrency";
 import { RestaurantBranchSwitcher } from "../../../components/layout/RestaurantBranchSwitcher";
 import { useAuth } from "../../../contexts/AuthContext";
-import { getInventory } from "../../../services/api/inventory";
 import { watchSpotCountOutbox } from "../../../lib/spotCountOutbox";
 import { toast } from "sonner";
 import {
@@ -178,6 +179,9 @@ export function verifyLinkNotice(
   }
   return { text: `${name} has not been delivered yet, so there is nothing to check.` };
 }
+
+/** Two decimals, kept a number so a spreadsheet can sum the column. */
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function InventoryCommandPage() {
   // Money on this page prints in the house's own currency (sim F-341).
@@ -667,7 +671,7 @@ export function InventoryCommandPage() {
       { header: "Par", value: (i) => i.threshold },
       {
         header: "Velocity/day",
-        value: (i) => (i.velocityPerDay ?? 0).toFixed(2),
+        value: (i) => round2(i.velocityPerDay ?? 0),
       },
       {
         header: "Runway d",
@@ -684,10 +688,10 @@ export function InventoryCommandPage() {
       {
         header: "Value",
         value: (i) =>
-          (
+          round2(
             (i.wac ?? i.price ?? 0) *
-            ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-          ).toFixed(2),
+              ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
+          ),
       },
     ],
     [],
@@ -727,7 +731,7 @@ export function InventoryCommandPage() {
       },
       {
         header: "Velocity/day",
-        value: (i) => (i.velocityPerDay ?? 0).toFixed(2),
+        value: (i) => round2(i.velocityPerDay ?? 0),
       },
       {
         header: "Runway d",
@@ -740,10 +744,10 @@ export function InventoryCommandPage() {
       {
         header: "Value",
         value: (i) =>
-          (
+          round2(
             (i.wac ?? i.price ?? 0) *
-            ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-          ).toFixed(2),
+              ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
+          ),
       },
       { header: "Observation", value: (i) => countObservation(i) },
     ],
@@ -816,12 +820,12 @@ export function InventoryCommandPage() {
       try {
         const merged: { branchName: string; item: InventoryItem }[] = [];
         for (const branch of availableRestaurants) {
-          const items = await getInventory(branch.id);
-          for (const raw of items) {
-            merged.push({
-              branchName: branch.name,
-              item: raw as unknown as InventoryItem,
-            });
+          // Shaped as the page shapes its own rows: the raw gateway row has
+          // none of the keys the columns read, so a cast wrote blank names
+          // and zero stock for every house.
+          const items = await loadHouseInventory(branch.id);
+          for (const item of items) {
+            merged.push({ branchName: branch.name, item });
           }
         }
         await exportTable({
@@ -1985,8 +1989,7 @@ export function InventoryCommandPage() {
                     "csv",
                     [item],
                     valuationColumns,
-                    item.name.replace(/[^\w]+/g, "-").toLowerCase() ||
-                      "inventory-row",
+                    fileSafeName(item.name, "inventory-row"),
                     item.name,
                   );
                   setMenu(null);

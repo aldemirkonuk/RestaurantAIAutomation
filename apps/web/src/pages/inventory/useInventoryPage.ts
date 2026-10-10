@@ -9,6 +9,12 @@ import {
 } from "../../lib/wine-library";
 import { classifyStock } from "../../lib/inventoryStatus";
 import { foldText } from "../../lib/textFold";
+import {
+  getInventory,
+  normalizeInventoryItem,
+} from "../../services/api/inventory";
+import { getWinesByIds } from "../../services/api/wines";
+import type { InventoryItem as ApiInventoryItem } from "../../services/api/types";
 
 export interface InventoryItem extends Wine {
   inventoryId?: string;
@@ -65,6 +71,114 @@ function getDefaultMenuPrice(costPrice: number): number {
 export interface UseInventoryPageOptions {
   /** Hide these `restaurant_inventory.id` rows until the server list no longer contains them */
   excludeInventoryRowIds?: string[];
+}
+
+/**
+ * One gateway inventory row (already through `normalizeInventoryItem`) as the
+ * page shows it: the library wine when it loaded, else the row's own name.
+ * Exported so a read outside this hook -- the all-locations export -- builds
+ * the same row the screen does instead of casting the raw one.
+ */
+export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryItem {
+  const fallback: Wine = wine || {
+    id: item.wineId,
+    sku: undefined,
+    name: item.wineName || "Unknown Wine",
+    producer: item.wineProducer || "Unknown Producer",
+    vintage: null,
+    price: 0,
+    // Was `'red'`. This fallback fires whenever the library wine has not
+    // loaded for an inventory row, and it asserted a colour for the bottle
+    // — 26 of 27 rows on a cocktail bar said Red, a Moët and two rosés
+    // among them (Antalya night). An inventory row we could not resolve has
+    // an UNKNOWN type; that is the fact, and it renders in grey.
+    type: "unknown",
+    grape: "",
+    country: "",
+    region: "",
+    appellation: "",
+    body: "",
+    sweetness: "",
+    acidity: "",
+    alcohol: 0,
+    aromas: [],
+    flavors: [],
+    liveStock: null,
+    threshold: 10,
+    bottleSizeMl: 750,
+    provider: {
+      name: "",
+      contact: "",
+      phone: "",
+      email: undefined,
+      address: undefined,
+    },
+    image: undefined,
+    isActive: true,
+  };
+
+  // F-739: the house item's own kind travels, so a declared keg with no
+  // library row is a beer and not "Unknown", and a beer never wears a
+  // wine colour.
+  const kind = inventoryKindOf(item, wine?.kind);
+
+  return {
+    ...fallback,
+    kind,
+    type: wineTypeForKind(kind, fallback.type),
+    inventoryId: item.id,
+    id: item.wineId,
+    storageLocation: (item as any).storageLocation,
+    location: (item as any).location,
+    liveStock: item.stockLive || 0,
+    shadowStock: item.shadowStock || 0,
+    threshold: item.thresholdMin || fallback.threshold || 10,
+    // Decision E41: measures an actual spot count, not "any field edit"
+    // — stays null until a genuine count exists rather than borrowing
+    // updatedAt, which changes on price/threshold/sale_type edits too.
+    lastCounted: item.lastCountedAt || null,
+    isActive: item.isActive ?? true,
+    bottleSizeMl: item.bottleSizeMl ?? fallback.bottleSizeMl,
+    saleType: item.saleType ?? fallback.saleType,
+    pourSizeMl: item.pourSizeMl ?? fallback.pourSizeMl,
+    menuPriceGlass: item.menuPriceGlass ?? fallback.menuPriceGlass,
+    // The house's own bottle price (ADR 0193: menu_price_current on the
+    // row, `menuPriceBottle` on the wire). Never the library's figure.
+    menuPriceBottle: item.menuPriceBottle ?? undefined,
+    marketPrice: (item as any).retailPriceAvg ?? undefined,
+    wac: (item as any).wac ?? undefined,
+    costProvenance: (item as any).costProvenance ?? undefined,
+    lotLocationCount: (item as any).lotLocationCount ?? undefined,
+    openMl: (item as any).openMl ?? 0,
+    velocityPerDay: (item as any).velocityPerDay ?? undefined,
+    daysOfCover: (item as any).daysOfCover ?? undefined,
+    reorderSuggested: (item as any).reorderSuggested ?? false,
+    abcClass: (item as any).abcClass ?? undefined,
+    deadStock: (item as any).deadStock ?? false,
+    daysSinceSale: (item as any).daysSinceSale ?? undefined,
+    locations: (item as any).locations ?? [],
+    // The library's own name, carried for SEARCH only and never rendered
+    // in place of the house's alias (ADR 0124, the naming rule). Read
+    // through `as any` like every other field on this object that the
+    // shared `InventoryItem` type does not declare -- this file's own
+    // idiom, so the shared type is not widened for one page's filter.
+    libraryName: (item as any).libraryName ?? null,
+  } as InventoryItem;
+}
+
+/**
+ * Every row of one house, shaped as on screen. The page's own read goes
+ * through `useInventoryData` and `useWinesByIds`; this is the same two reads
+ * for a house that is not the active one.
+ */
+export async function loadHouseInventory(restaurantId: string): Promise<InventoryItem[]> {
+  const items = (await getInventory(restaurantId)).map(normalizeInventoryItem);
+  const ids = Array.from(new Set(items.map((i) => i.wineId).filter(Boolean)));
+  const winesById = new Map<string, Wine>();
+  if (ids.length > 0) {
+    mapApiWinesToUiWines(await getWinesByIds(ids)).forEach((w) => winesById.set(w.id, w));
+  }
+  return items.map((item) => toInventoryItem(item, winesById.get(item.wineId)));
 }
 
 export function useInventoryPage(options: UseInventoryPageOptions = {}) {
@@ -159,93 +273,9 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       return [];
     }
 
-    return visibleApiInventory.map((item) => {
-      const wine = winesById.get(item.wineId);
-      const fallback: Wine = wine || {
-        id: item.wineId,
-        sku: undefined,
-        name: item.wineName || "Unknown Wine",
-        producer: item.wineProducer || "Unknown Producer",
-        vintage: null,
-        price: 0,
-        // Was `'red'`. This fallback fires whenever the library wine has not
-        // loaded for an inventory row, and it asserted a colour for the bottle
-        // — 26 of 27 rows on a cocktail bar said Red, a Moët and two rosés
-        // among them (Antalya night). An inventory row we could not resolve has
-        // an UNKNOWN type; that is the fact, and it renders in grey.
-        type: "unknown",
-        grape: "",
-        country: "",
-        region: "",
-        appellation: "",
-        body: "",
-        sweetness: "",
-        acidity: "",
-        alcohol: 0,
-        aromas: [],
-        flavors: [],
-        liveStock: null,
-        threshold: 10,
-        bottleSizeMl: 750,
-        provider: {
-          name: "",
-          contact: "",
-          phone: "",
-          email: undefined,
-          address: undefined,
-        },
-        image: undefined,
-        isActive: true,
-      };
-
-      // F-739: the house item's own kind travels, so a declared keg with no
-      // library row is a beer and not "Unknown", and a beer never wears a
-      // wine colour.
-      const kind = inventoryKindOf(item, wine?.kind);
-
-      return {
-        ...fallback,
-        kind,
-        type: wineTypeForKind(kind, fallback.type),
-        inventoryId: item.id,
-        id: item.wineId,
-        storageLocation: (item as any).storageLocation,
-        location: (item as any).location,
-        liveStock: item.stockLive || 0,
-        shadowStock: item.shadowStock || 0,
-        threshold: item.thresholdMin || fallback.threshold || 10,
-        // Decision E41: measures an actual spot count, not "any field edit"
-        // — stays null until a genuine count exists rather than borrowing
-        // updatedAt, which changes on price/threshold/sale_type edits too.
-        lastCounted: item.lastCountedAt || null,
-        isActive: item.isActive ?? true,
-        bottleSizeMl: item.bottleSizeMl ?? fallback.bottleSizeMl,
-        saleType: item.saleType ?? fallback.saleType,
-        pourSizeMl: item.pourSizeMl ?? fallback.pourSizeMl,
-        menuPriceGlass: item.menuPriceGlass ?? fallback.menuPriceGlass,
-        // The house's own bottle price (ADR 0193: menu_price_current on the
-        // row, `menuPriceBottle` on the wire). Never the library's figure.
-        menuPriceBottle: item.menuPriceBottle ?? undefined,
-        marketPrice: (item as any).retailPriceAvg ?? undefined,
-        wac: (item as any).wac ?? undefined,
-        costProvenance: (item as any).costProvenance ?? undefined,
-        lotLocationCount: (item as any).lotLocationCount ?? undefined,
-        openMl: (item as any).openMl ?? 0,
-        velocityPerDay: (item as any).velocityPerDay ?? undefined,
-        daysOfCover: (item as any).daysOfCover ?? undefined,
-        reorderSuggested: (item as any).reorderSuggested ?? false,
-        abcClass: (item as any).abcClass ?? undefined,
-        deadStock: (item as any).deadStock ?? false,
-        daysSinceSale: (item as any).daysSinceSale ?? undefined,
-        locations: (item as any).locations ?? [],
-        // The library's own name, carried for SEARCH only and never rendered
-        // in place of the house's alias (ADR 0124, the naming rule). Read
-        // through `as any` like every other field on this object that the
-        // shared `InventoryItem` type does not declare -- this file's own
-        // idiom, so the shared type is not widened for one page's filter.
-        libraryName: (item as any).libraryName ?? null,
-      } as InventoryItem;
-    });
+    return visibleApiInventory.map((item) =>
+      toInventoryItem(item, winesById.get(item.wineId)),
+    );
   }, [visibleApiInventory, inventoryLoading, winesById]);
 
   // Computed values

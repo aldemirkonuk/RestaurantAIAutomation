@@ -382,6 +382,37 @@ describe('useReportExports — the desk (OD-81)', () => {
     ).toBe('This export is still being written.');
   });
 
+  it('the downloaded CSV keeps its BOM, so Excel opens Turkish letters as UTF-8 (F-367)', async () => {
+    // What a browser hands back for `responseType: 'text'`: the gateway's BOM
+    // already stripped by the UTF-8 decode.
+    api.get.mockImplementation(async (url: string) =>
+      url === '/reports/exports' ? { data: { exports: [], total: 0 } } : { data: 'House,Tuzlu Rüzgar\r\n' },
+    );
+    const created: Blob[] = [];
+    const urlApi = URL as unknown as { createObjectURL?: unknown; revokeObjectURL?: unknown };
+    const saved = { create: urlApi.createObjectURL, revoke: urlApi.revokeObjectURL };
+    urlApi.createObjectURL = vi.fn((b: Blob) => (created.push(b), 'blob:z'));
+    urlApi.revokeObjectURL = vi.fn();
+    const clicks = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      const { result } = renderHook(() => useReportExports({ queryRoot: 'reports-next' }), { wrapper: wrapper() });
+      await act(async () => result.current.download(base, 'csv'));
+      await waitFor(() => expect(clicks).toHaveBeenCalled());
+      const bytes = await new Promise<Uint8Array>((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(new Uint8Array(r.result as ArrayBuffer));
+        r.readAsArrayBuffer(created[0]);
+      });
+      expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+      // The file follows the BOM directly.
+      expect(bytes[3]).toBe('H'.charCodeAt(0));
+    } finally {
+      clicks.mockRestore();
+      urlApi.createObjectURL = saved.create;
+      urlApi.revokeObjectURL = saved.revoke;
+    }
+  });
+
   it('does not revoke the file’s URL in the tick it clicks — a browser may still be starting the download', () => {
     const urlApi = URL as unknown as { createObjectURL?: unknown; revokeObjectURL?: unknown };
     const saved = { create: urlApi.createObjectURL, revoke: urlApi.revokeObjectURL };
