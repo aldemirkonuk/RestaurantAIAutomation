@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
-import { updateOnboardingProgress } from '../services/api/menus'
+import { listMenuVersions, updateOnboardingProgress } from '../services/api/menus'
 import { pencilledCount, readProof } from '../lib/firstProof'
 import { readLastInvoiceLater, writeLastInvoiceLater } from '../lib/houseLater'
 
@@ -16,6 +16,25 @@ export default function HouseContents() {
   const [error, setError] = useState<string | null>(null)
   const [invoice, setInvoice] = useState(readLastInvoiceLater)
   const [invoiceDropping, setInvoiceDropping] = useState(false)
+  // Whether the menu just read is the house's current one. An import is kept
+  // as a draft, and nothing on the first run said it still had to be made
+  // current, so /vendors went on asking for a menu (F-031).
+  const proofMenuId = proof?.menuId ?? null
+  const [standing, setStanding] = useState<'reading' | 'current' | 'draft' | 'unread'>('reading')
+  useEffect(() => {
+    if (!proofMenuId) return
+    let live = true
+    listMenuVersions()
+      .then((kept) => {
+        if (live) setStanding(kept.current?.menuId === proofMenuId ? 'current' : 'draft')
+      })
+      .catch(() => {
+        if (live) setStanding('unread')
+      })
+    return () => {
+      live = false
+    }
+  }, [proofMenuId])
 
   const saveSupplier = async () => {
     if (!supplier.trim()) return
@@ -62,6 +81,34 @@ export default function HouseContents() {
               </button>
             ) : (
               <p className="mt-2 font-serif text-2xl text-[#6d685f]">No menu read yet.</p>
+            )}
+            {proof && standing === 'draft' && (
+              <p className="mt-2 text-sm text-[#6d685f]">
+                Kept as a draft: it is not the house&apos;s current menu yet, and none of its prices are the
+                house&apos;s.{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate('/menu')}
+                  className="text-[#1a5e6b] underline underline-offset-4"
+                >
+                  Make it current on Menu
+                </button>
+              </p>
+            )}
+            {proof && standing === 'current' && (
+              <p className="mt-2 text-sm text-[#6d685f]">It is the house&apos;s current menu.</p>
+            )}
+            {proof && standing === 'unread' && (
+              <p className="mt-2 text-sm text-[#6d685f]">
+                Whether it is the house&apos;s current menu could not be read.{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate('/menu')}
+                  className="text-[#1a5e6b] underline underline-offset-4"
+                >
+                  Open Menu
+                </button>
+              </p>
             )}
           </div>
 
@@ -149,6 +196,16 @@ export default function HouseContents() {
             </button>
           </p>
         </div>
+
+        {/* The way on. After the supplier step this page had no next step and
+            no way into the house's pages; the only exit led to Settings (F-025). */}
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="mt-10 bg-[#1a5e6b] px-6 py-3 text-white"
+        >
+          Continue to the dashboard
+        </button>
       </main>
     </div>
   )

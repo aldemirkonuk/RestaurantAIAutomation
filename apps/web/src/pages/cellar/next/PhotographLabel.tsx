@@ -258,7 +258,12 @@ export default function PhotographLabel({
     onError: () => setStep('submit-error'),
   });
 
+  // Each capture carries a token; a close or a reset moves it on, so a reading
+  // that lands after the person walked away is dropped, not shown (F-211).
+  const captureToken = useRef(0);
+
   const reset = () => {
+    captureToken.current += 1;
     setStep('camera');
     setWine(null);
     setReadError(null);
@@ -273,12 +278,15 @@ export default function PhotographLabel({
   };
 
   const handleCapture = async (imageBase64: string) => {
+    const token = ++captureToken.current;
     setStep('reading');
     try {
       const detected = await scanWineLabel(imageBase64, restaurantId ?? undefined);
+      if (token !== captureToken.current) return;
       setWine(detected);
       setStep('confirm');
     } catch (err) {
+      if (token !== captureToken.current) return;
       setReadError(err instanceof Error ? err.message : 'The label reader could not be reached');
       setStep('read-error');
     }
@@ -471,7 +479,11 @@ export default function PhotographLabel({
             type="button"
             className="cl-btn cl-focus"
             style={{ marginTop: 10 }}
-            onClick={() => wine && submit.mutate(wine)}
+            onClick={() => {
+              if (!wine) return;
+              setStep('submitting');
+              submit.mutate(wine);
+            }}
           >
             Try again
           </button>
