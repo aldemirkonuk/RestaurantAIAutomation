@@ -43,6 +43,15 @@ function readGroupMark(house: string): Promise<GroupMark | null> {
   return read
 }
 
+/**
+ * The active house's mark outside a component (F-947: a menu CSV upload sends
+ * it, so "1.250" in a Turkish house's file reads as 1250 instead of refusing
+ * the file). Null when unknown, never a guess.
+ */
+export function houseGroupMark(): Promise<GroupMark | null> {
+  return readGroupMark(activeHouse())
+}
+
 export function useHouseGroupMark(): GroupMark | null {
   const [mark, setMark] = useState<GroupMark | null>(null)
   useEffect(() => {

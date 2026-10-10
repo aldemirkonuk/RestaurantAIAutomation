@@ -513,11 +513,11 @@ export class MenusService {
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        read = await this.csvParser.readExcel(dto.data.fileBase64);
+        read = await this.csvParser.readExcel(dto.data.fileBase64, dto.groupMark ?? null);
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
-        read = this.csvParser.read(dto.data.csvContent!);
+        read = this.csvParser.read(dto.data.csvContent!, dto.groupMark ?? null);
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
@@ -2285,6 +2285,7 @@ export class MenusService {
     type HouseRow = {
       id: string;
       master_wine_id?: string;
+      is_active?: boolean | null;
       menu_price_current?: number | string | null;
       menu_price_glass?: number | string | null;
     };
@@ -2298,7 +2299,7 @@ export class MenusService {
       const chunk = wineIds.slice(i, i + CARRY_READ_CHUNK);
       const { data, error } = await this.dbService.supabase
         .from("restaurant_inventory")
-        .select("id, master_wine_id, menu_price_current, menu_price_glass")
+        .select("id, master_wine_id, is_active, menu_price_current, menu_price_glass")
         .eq("restaurant_id", restaurantId)
         .in("master_wine_id", chunk);
       for (const wine of chunk) {
@@ -2353,6 +2354,23 @@ export class MenusService {
         inventoryId = created?.id ?? null;
       }
       if (!inventoryId) return;
+      // F-946: a wine the house removed comes back when a current menu lists
+      // it, as the add form and the bulk add already bring it back. Left
+      // inactive, the menu sold it while /inventory, /cellar, low stock and
+      // reorder never showed it, and a delivery of it landed in a hidden row.
+      if (existing && existing.is_active === false) {
+        const { error: backErr } = await this.dbService.supabase
+          .from("restaurant_inventory")
+          .update({ is_active: true })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", inventoryId);
+        if (backErr) {
+          const message = `this wine was removed from the house's inventory and could not be brought back, so no price was set: ${backErr.message}`;
+          this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
+          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+          return;
+        }
+      }
       result.set(item.id, inventoryId);
       if (!existing) result.created.add(item.id);
       const entry = await this.carryMenuPrice(
@@ -2385,7 +2403,7 @@ export class MenusService {
             ? prefetched.get(wine)!
             : await this.dbService.supabase
                 .from("restaurant_inventory")
-                .select("id, menu_price_current, menu_price_glass")
+                .select("id, is_active, menu_price_current, menu_price_glass")
                 .eq("restaurant_id", restaurantId)
                 .eq("master_wine_id", wine)
                 .maybeSingle();

@@ -1084,6 +1084,21 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(clean.unreadColumns).toEqual([]);
   });
 
+  it("F-947: a CSV price like 1.250 is read by the house's mark it was sent with", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    const file = "name,bottle_price\nOpus One,1.250\n";
+    const r = await service.importMenu(
+      { method: "csv", data: { csvContent: file }, restaurantId: "rest-1", groupMark: "." } as any,
+      "user-1",
+    );
+    expect(tables.menu_items.find((l) => l.menu_id === r.menuId)!.bottle_price).toBe(1250);
+    // Without the mark the same file is still refused, never guessed.
+    await expect(
+      service.importMenu({ method: "csv", data: { csvContent: file }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow(/nothing was imported/);
+  });
+
   it("a source that could not be stored is SAID on the version, and the read is still kept", async () => {
     const tables: Record<string, Row[]> = { ...base(), __storageFails: ["bucket unavailable"] as any };
     const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
@@ -1237,6 +1252,18 @@ describe("MenusService — every menu read is kept as its own version", () => {
         p_menu_id: read.menuId,
       });
       expect(r.madeCurrentAt).toBe("2026-09-21T12:00:00Z");
+      expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
+    });
+
+    // F-946: the house removed the wine; a menu made current lists it again.
+    it("brings back a wine the house removed when the chosen menu lists it", async () => {
+      const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      tables.restaurant_inventory[0].is_active = false;
+      const r = await choose(service, read.menuId);
+
+      expect(r).toMatchObject({ outcome: "made_current", lines: 1, failed: [] });
+      expect(tables.restaurant_inventory).toHaveLength(1);
+      expect(tables.restaurant_inventory[0]).toMatchObject({ id: "inv-1", is_active: true });
       expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
     });
 

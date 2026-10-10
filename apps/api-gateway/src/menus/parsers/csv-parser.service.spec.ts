@@ -2,6 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import * as ExcelJS from "exceljs";
 import {
   CsvParserService,
+  fileGroupMark,
   HEADER_MAP,
   normalizeMenuHeader,
   readPriceCell,
@@ -101,6 +102,49 @@ describe("CsvParserService.parse", () => {
     expect(run).toThrow(BadRequestException);
     expect(run).toThrow(/nothing was imported/);
     expect(run).toThrow(/row 2 \(Malbec\): “₺1.250”/);
+  });
+});
+
+/**
+ * F-947: a Turkish Excel export prices "1.250" (#.##0). Refusing the whole file
+ * when the house's mark, or the file's own other prices, settle the reading
+ * made the owner retype every price.
+ */
+describe("CsvParserService.read — a price like 1.250 is read by the file's marks (F-947)", () => {
+  const parser = new CsvParserService();
+
+  it("reads 1.250 as 1250 in a house that groups by a point", () => {
+    const r = parser.read("name,bottle_price\nMalbec,₺1.250\nSyrah,900\n", ".");
+    expect(r.items.map((i) => i.bottle_price)).toEqual([1250, 900]);
+  });
+
+  it("reads 1.250 as 1250 when the file's own prices say it groups by a point", () => {
+    const r = parser.read('name,glass_price,bottle_price\nMalbec,"85,50",1.250\nSyrah,"60,00","1.250,00"\n');
+    expect(r.items.map((i) => i.bottle_price)).toEqual([1250, 1250]);
+  });
+
+  it("the file's own prices outrank the house's mark", () => {
+    const run = () => parser.read("name,glass_price,bottle_price\nMalbec,12.50,1.250\n", ".");
+    expect(run).toThrow(/row 2 \(Malbec\): “1.250”/);
+  });
+
+  it("still refuses when the file's prices disagree with each other", () => {
+    const run = () =>
+      parser.read('name,glass_price,bottle_price\nMalbec,"12,50",1.250\nSyrah,12.50,900\n', ".");
+    expect(run).toThrow(/nothing was imported/);
+  });
+
+  it("still refuses with no mark from the house or the file", () => {
+    expect(() => parser.read("name,bottle_price\nMalbec,1.250\n")).toThrow(/nothing was imported/);
+  });
+
+  it("names the mark each kind of cell settles", () => {
+    expect(fileGroupMark(["1.250,00", "900"])).toBe(".");
+    expect(fileGroupMark(["12,50"])).toBe(".");
+    expect(fileGroupMark(["1,250.00"])).toBe(",");
+    expect(fileGroupMark(["1.250.000"])).toBe(".");
+    expect(fileGroupMark(["1.250", "900"])).toBeNull();
+    expect(fileGroupMark(["12,50", "12.50"])).toBe("conflict");
   });
 });
 
