@@ -141,6 +141,8 @@ export interface UnverifiedDelivery {
   orderId: string
   orderNumber: string | null
   countedQtyBottles: number
+  /** Counted less what the door sent back (F-837). Absent from an older gateway. */
+  acceptedQtyBottles?: number
   countedAt: string
   ageHours: number
   severity: 'fresh' | 'stale' | 'overdue'

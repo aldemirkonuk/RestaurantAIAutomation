@@ -327,7 +327,16 @@ describe('ReceiptsNext', () => {
     };
     render(<ReceiptsNext />, { wrapper });
     expect(await screen.findByText(/Counted at the door, no paperwork yet/)).toBeInTheDocument();
-    expect(screen.getByText(/PO-9 · 24 counted · 5h ago/)).toBeInTheDocument();
+    expect(screen.getByText(/PO-9 · 24 accepted · 5h ago/)).toBeInTheDocument();
+  });
+
+  it('the door strip says what was accepted, not what was counted (F-837)', async () => {
+    api.unverified = {
+      items: [{ orderId: 'o9', orderNumber: 'PO-9', countedQtyBottles: 24, acceptedQtyBottles: 18, countedAt: '', ageHours: 5, severity: 'fresh' }],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/PO-9 · 18 accepted · 5h ago/)).toBeInTheDocument();
+    expect(container.textContent).not.toContain('24 counted');
   });
 
   it('the door strip says neither "btl" nor a slice of the order id (W38)', async () => {
@@ -335,7 +344,7 @@ describe('ReceiptsNext', () => {
       items: [{ orderId: 'o9abcdef-1234', orderNumber: null, countedQtyBottles: 6, countedAt: '', ageHours: 2, severity: 'fresh' }],
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
-    expect(await screen.findByText(/an order with no number · 6 counted · 2h ago/)).toBeInTheDocument();
+    expect(await screen.findByText(/an order with no number · 6 accepted · 2h ago/)).toBeInTheDocument();
     expect(container.textContent).not.toContain('btl');
     expect(container.textContent).not.toContain('o9abcdef');
   });

@@ -222,10 +222,29 @@ export interface UnverifiedDelivery {
   orderId: string;
   orderNumber: string | null;
   countedQtyBottles: number;
+  /** What the door kept: counted less what it sent back (F-837). */
+  acceptedQtyBottles: number;
   countedAt: string;
   ageHours: number;
   /** Escalation tier — drives how loudly this is surfaced, not whether it is. */
   severity: "fresh" | "stale" | "overdue";
+}
+
+/**
+ * A truck turned away whole (F-748's `refusedWhole`, read back from the event
+ * row): the door refused it and kept nothing. It stays the door's record of
+ * the refusal, but nothing arrived and nothing was booked, so the readers of
+ * "arrived" and "counted, not yet checked" must not list it (F-837).
+ */
+function turnedAwayWhole(e: {
+  outcome?: string | null;
+  counted_qty_bottles?: number | string | null;
+  rejected_qty_bottles?: number | string | null;
+}): boolean {
+  if (e.outcome !== "refused") return false;
+  const accepted =
+    Number(e.counted_qty_bottles ?? 0) - Number(e.rejected_qty_bottles ?? 0);
+  return accepted <= 0;
 }
 
 /** Past this, an uncounted delivery stops being normal and starts being a risk. */
@@ -1102,6 +1121,8 @@ export class ReceivingService {
     const data = await readWholeWindow<{
       order_id: string | null;
       counted_qty_bottles: number | string | null;
+      rejected_qty_bottles: number | string | null;
+      outcome: string | null;
       occurred_at: string;
       stage: string;
     }>(
@@ -1110,9 +1131,12 @@ export class ReceivingService {
         this.db
           .getClient()
           .from("procurement_receipt_events")
-          .select("id, order_id, counted_qty_bottles, occurred_at, stage", {
-            count: "exact",
-          })
+          .select(
+            "id, order_id, counted_qty_bottles, rejected_qty_bottles, outcome, occurred_at, stage",
+            {
+              count: "exact",
+            },
+          )
           .eq("restaurant_id", restaurantId),
     );
     const capped = false;
@@ -1121,6 +1145,7 @@ export class ReceivingService {
       string,
       {
         counted: number;
+        accepted: number;
         at: string;
         verified: boolean;
         caseCountAt: number | null;
@@ -1128,8 +1153,13 @@ export class ReceivingService {
     >();
     for (const e of data) {
       if (!e.order_id) continue;
+      // A truck turned away whole left nothing to check (F-837): skipping its
+      // event keeps an order whose only truck was refused out of the queue,
+      // and lets an earlier truck that was kept stay the one shown.
+      if (e.stage === "case_count" && turnedAwayWhole(e)) continue;
       const cur = byOrder.get(e.order_id) ?? {
         counted: 0,
+        accepted: 0,
         at: e.occurred_at,
         verified: false,
         caseCountAt: null,
@@ -1140,6 +1170,10 @@ export class ReceivingService {
         const t = new Date(e.occurred_at).getTime();
         if (cur.caseCountAt === null || t >= cur.caseCountAt) {
           cur.counted = Number(e.counted_qty_bottles ?? 0);
+          cur.accepted = Math.max(
+            0,
+            cur.counted - Number(e.rejected_qty_bottles ?? 0),
+          );
           cur.at = e.occurred_at;
           cur.caseCountAt = t;
         }
@@ -1191,6 +1225,7 @@ export class ReceivingService {
           orderId,
           orderNumber: numbers.get(orderId)?.number ?? null,
           countedQtyBottles: v.counted,
+          acceptedQtyBottles: v.accepted,
           countedAt: v.at,
           ageHours: Math.round(ageHours),
           severity:
@@ -1238,7 +1273,7 @@ export class ReceivingService {
     const { data, error } = await this.db
       .getClient()
       .from("procurement_receipt_events")
-      .select("order_id, occurred_at")
+      .select("order_id, occurred_at, outcome, counted_qty_bottles, rejected_qty_bottles")
       .eq("restaurant_id", restaurantId)
       .eq("stage", "case_count")
       .gte("occurred_at", start.toISOString())
@@ -1250,9 +1285,11 @@ export class ReceivingService {
 
     // One tick per order: an order counted by more than one truck today still
     // arrived once as far as this line is concerned; keep its latest event.
+    // A truck turned away whole did not arrive (F-837): the order stays open
+    // with the vendor (F-748), so its refusal is not a tick on this line.
     const byOrder = new Map<string, string>();
     for (const e of data ?? []) {
-      if (!e.order_id) continue;
+      if (!e.order_id || turnedAwayWhole(e)) continue;
       if (!byOrder.has(e.order_id)) byOrder.set(e.order_id, e.occurred_at);
     }
     const orderIds = [...byOrder.keys()];

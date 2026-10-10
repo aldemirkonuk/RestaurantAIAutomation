@@ -17,11 +17,19 @@ import {
   parseOperatingHours,
   toJson,
 } from "../common/operating-hours/operating-hours";
+import { houseFrame, ZoneSource } from "../common/house-frame";
 
 export interface OperatingHoursResponse {
   restaurantId: string;
-  /** The venue's IANA zone, or null when it has none. Never defaulted. */
+  /**
+   * The zone the house's day is read in — `houseFrame` (ADR 0207): its own
+   * zone, else its country's only zone, else null. Never UTC by default. The
+   * same rule the dashboard, the exports and the goals read the house by, so
+   * the day line and the dashboard keep one clock (F-838).
+   */
   timezone: string | null;
+  /** Where `timezone` came from: the house's own record, or its country. */
+  timezoneSource: ZoneSource;
   /** null means UNKNOWN — never `{}` and never an all-closed week (ADR 0020). */
   operatingHours: OperatingHours | null;
   updatedAt: string | null;
@@ -94,7 +102,7 @@ export class OperatingHoursService {
 
     const { data, error } = await this.databaseService.supabase
       .from("restaurants")
-      .select("id, timezone, operating_hours, updated_at")
+      .select("id, timezone, country, operating_hours, updated_at")
       .eq("id", restaurantId)
       .maybeSingle();
 
@@ -189,7 +197,7 @@ export class OperatingHoursService {
         updated_at: new Date().toISOString(),
       })
       .eq("id", restaurantId)
-      .select("id, timezone, operating_hours, updated_at")
+      .select("id, timezone, country, operating_hours, updated_at")
       .maybeSingle();
 
     if (error) {
@@ -239,13 +247,16 @@ export class OperatingHoursService {
     restaurantId: string,
     row: {
       timezone?: string | null;
+      country?: string | null;
       operating_hours?: unknown;
       updated_at?: string | null;
     },
   ): OperatingHoursResponse {
+    const frame = houseFrame(row);
     const base: OperatingHoursResponse = {
       restaurantId,
-      timezone: row.timezone ?? null,
+      timezone: frame.zone,
+      timezoneSource: frame.zoneSource,
       operatingHours: null,
       updatedAt: row.updated_at ?? null,
     };

@@ -333,7 +333,9 @@ export function HoursSection({ data }: { data: SettingsNextData }) {
                 readBy: 'the same opening-hours check',
               }}
               consequence={
-                reg.timezone
+                reg.timezone && reg.timezoneSource === 'country'
+                  ? `${reg.timezone}, the only time zone in this house's country — none is recorded for the house itself. Every hour on this page is read in it.`
+                  : reg.timezone
                   ? `${reg.timezone}. Every hour on this page is read in it.`
                   : 'Not recorded. Without a zone the hours above cannot be placed on a clock, and every reader of them answers “timezone unknown”.'
               }
