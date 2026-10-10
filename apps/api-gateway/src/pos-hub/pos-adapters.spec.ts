@@ -316,6 +316,21 @@ describe("generic adapter reads voided strictly (sim F-397)", () => {
   });
 });
 
+describe("toast drops a selection voided off the check (sim F-395)", () => {
+  it("keeps only the selections that were sold", () => {
+    const [check] = toastAdapter.normalize({
+      guid: "t-v",
+      closedDate: "2026-07-18T21:00:00Z",
+      selections: [
+        { displayName: "Sancerre", quantity: 1, price: 60, voided: true },
+        { displayName: "Caymus", quantity: 2, price: 90, voided: false },
+        { displayName: "Barolo", quantity: 1, price: 140 },
+      ],
+    });
+    expect(check.items.map((i) => i.name)).toEqual(["Caymus", "Barolo"]);
+  });
+});
+
 describe("money from a till is read in either locale, never guessed (sim F-396)", () => {
   it.each([
     ["1.250,00", 1250],

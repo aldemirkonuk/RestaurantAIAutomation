@@ -35,6 +35,30 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row[] } = {}) {
         select: () => q,
         eq: () => q,
         in: () => q,
+        // What earlier imports of the check moved, read back from the RPCs
+        // this mock answered (sim wave 8): the void is decided against it.
+        like: async () => ({
+          data:
+            table === "inventory_transactions"
+              ? calls.rpc
+                  .filter((c) => c.name === "apply_stock_movement")
+                  .map((c) => ({
+                    idempotency_key: c.args.p_idempotency_key,
+                    inventory_id: c.args.p_inventory_id,
+                    quantity_change: c.args.p_delta,
+                  }))
+              : table === "pour_events"
+                ? calls.rpc
+                    .filter((c) => c.name === "record_glass_pour")
+                    .map((c) => ({
+                      idempotency_key: c.args.p_idempotency_key,
+                      inventory_id: c.args.p_inventory_id,
+                      pours: c.args.p_pours,
+                      pour_ml: c.args.p_pour_ml,
+                    }))
+                : [],
+          error: null,
+        }),
         maybeSingle: async () => ({ data: null, error: null }),
         single: async () => ({ data: { id: "map-1" }, error: null }),
       };
@@ -458,12 +482,15 @@ describe("glass and bottle still derive correctly", () => {
       inventory: [std750],
     });
 
+    // The sale first: a void returns only what this hub took (F-393).
+    await service.ingest("r1", "generic_webhook", [closedCheck()]);
+    const soldConsumption = calls.consumptionUpserts.length;
     await service.ingest("r1", "generic_webhook", [
       closedCheck({ voided: true }),
     ]);
 
-    expect(moves(calls)[0].args.p_delta).toBe(1);
-    expect(moves(calls)[0].args.p_transaction_type).toBe("return");
-    expect(calls.consumptionUpserts).toHaveLength(0);
+    expect(moves(calls)[1].args.p_delta).toBe(1);
+    expect(moves(calls)[1].args.p_transaction_type).toBe("return");
+    expect(calls.consumptionUpserts).toHaveLength(soldConsumption);
   });
 });
