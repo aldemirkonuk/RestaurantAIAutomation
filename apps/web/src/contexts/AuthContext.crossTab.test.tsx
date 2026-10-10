@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
@@ -32,6 +32,7 @@ import { AuthProvider, useAuth, type AuthContextType } from "./AuthContext";
 const U1 = "11111111-1111-4111-8111-111111111111";
 const U2 = "22222222-2222-4222-8222-222222222222";
 const H1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const H2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 function jwt(claims: Record<string, unknown>): string {
   const b64 = (o: unknown) =>
@@ -74,7 +75,9 @@ async function mountSignedIn() {
             user: { userId: U1, email: "o@house.test", restaurantId: H1, role: "owner", emailVerified: true },
           },
         }
-      : { data: [{ id: H1, name: "Moda" }] },
+      : url === "/api/v1/auth/me/role"
+        ? { data: { role: "owner" } }
+        : { data: [{ id: H1, name: "Moda" }, { id: H2, name: "Harbor" }] },
   );
   queryClient = new QueryClient();
   queryClient.setQueryData(["reports", H1], { takings: 4200 });
@@ -110,6 +113,18 @@ describe("F-212 — sign-out follows every tab", () => {
     expect(ctx().isAuthenticated).toBe(false);
     expect(queryClient.getQueryData(["reports", H1])).toBeUndefined();
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("another tab signing out drops this house's role and any move it made first", async () => {
+    const { token, ctx } = await mountSignedIn();
+    await waitFor(() => expect(ctx().activeRole).toBe("owner"));
+    // The other tab moved to another house, then signed out there.
+    act(() => otherTabWrites("activeRestaurantId", H1, H2));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    act(() => otherTabWrites("accessToken", token, null));
+    await waitFor(() => expect(ctx().user).toBeNull());
+    expect(ctx().activeRole).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("a full clear in another tab signs this tab out too", async () => {
