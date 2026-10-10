@@ -334,6 +334,8 @@ export async function recordSpotCount(
     clientCountId?: string;
     reason?: string;
     performedBy?: string | null;
+    /** A queued count's age at send time (F-249); absent for a live count. */
+    countedAgoMs?: number;
   },
   restaurantId?: string
 ): Promise<{ item: InventoryItem | null }> {

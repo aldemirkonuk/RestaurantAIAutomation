@@ -175,7 +175,7 @@ class SyncManagerService {
     
     // If online, attempt initial sync
     if (this._isOnline) {
-      setTimeout(() => this.syncNow(), 2000)
+      setTimeout(() => void this.sendEverything(), 2000)
     }
     
     console.log('[SyncManager] Initialized', { isOnline: this._isOnline })
@@ -397,6 +397,19 @@ class SyncManagerService {
     return handler(mutation)
   }
 
+  /**
+   * Send every queue this phone holds: the two outboxes, then this manager's
+   * own entries. `syncNow` skips door receipts and spot counts (their outboxes
+   * own them), so the start-up, periodic and back-online passes used to leave
+   * them waiting until someone reopened the door or /inventory screen, while
+   * the bar said "Sending" (F-246). Neither outbox rejects the pass: a failed
+   * outbox flush leaves its entries queued for the next one.
+   */
+  private async sendEverything(options: { ignoreBackoff?: boolean } = {}): Promise<SyncResult> {
+    await Promise.allSettled([flushDoorOutbox(), flushSpotCountOutbox()])
+    return this.syncNow(options)
+  }
+
   // ===========================================================================
   // PERIODIC SYNC
   // ===========================================================================
@@ -417,7 +430,7 @@ class SyncManagerService {
         return
       }
       if (this._isOnline && !this._isSyncing && this._pendingCount > 0) {
-        await this.syncNow()
+        await this.sendEverything()
       }
     }, this.SYNC_INTERVAL)
   }
@@ -446,7 +459,7 @@ class SyncManagerService {
     this.retryTimeoutId = setTimeout(async () => {
       if (this._pendingCount > 0) {
         // The network is back: whatever was waiting out a backoff goes now.
-        await this.syncNow({ ignoreBackoff: true })
+        await this.sendEverything({ ignoreBackoff: true })
       }
     }, 1000)
   }

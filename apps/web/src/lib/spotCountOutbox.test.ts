@@ -175,3 +175,54 @@ describe('flushSpotCountOutbox — a failed mark never ends the flush', () => {
     expect(res).toEqual({ sent: 1, failed: 1, parked: 0 })
   })
 })
+
+describe('F-249: a queued count says how old it is', () => {
+  it('sends the age of a count taken six hours ago, so the house can tell it from a fresh one', async () => {
+    const takenAt = Date.now() - 6 * 60 * 60_000
+    store.getPendingMutationsByType.mockResolvedValue([
+      count('old', 0, {
+        data: {
+          itemId: 'i-old',
+          itemLabel: 'old',
+          restaurantId: H1,
+          body: { countedQty: 12, clientCountId: 'old' },
+          countedAt: new Date(takenAt).toISOString(),
+        },
+      }),
+    ])
+    recordSpotCount.mockResolvedValue({ item: null })
+
+    await flushSpotCountOutbox()
+
+    const body = recordSpotCount.mock.calls[0][1]
+    expect(body.countedQty).toBe(12)
+    expect(body.clientCountId).toBe('old')
+    expect(body.countedAgoMs).toBeGreaterThanOrEqual(6 * 60 * 60_000)
+    expect(body.countedAgoMs).toBeLessThan(6 * 60 * 60_000 + 60_000)
+  })
+
+  it('stamps the moment of the tap on a count it queues', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    store.addPendingMutation.mockResolvedValue('m1')
+    const { submitSpotCount } = await import('./spotCountOutbox')
+    const before = Date.now()
+
+    await submitSpotCount({
+      itemId: 'i1',
+      itemLabel: 'Barolo',
+      body: { countedQty: 4, clientCountId: 'k1' },
+    })
+
+    const queued = store.addPendingMutation.mock.calls[0][0].data
+    expect(Date.parse(queued.countedAt)).toBeGreaterThanOrEqual(before)
+  })
+
+  it('sends a count queued before the stamp existed exactly as before', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([count('legacy')])
+    recordSpotCount.mockResolvedValue({ item: null })
+
+    await flushSpotCountOutbox()
+
+    expect(recordSpotCount.mock.calls[0][1]).toEqual({ countedQty: 3, clientCountId: 'legacy' })
+  })
+})

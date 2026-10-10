@@ -42,6 +42,30 @@ function roundOz(ml: number): number {
   return Math.round((ml / ML_PER_OZ) * 10) / 10;
 }
 
+/**
+ * A queued spot count younger than this is treated as live (F-249): the
+ * phone's own retry of a count that just failed on bad signal should not be
+ * refused for a sale rung up in the same minute.
+ */
+const QUEUED_COUNT_GRACE_MS = 2 * 60_000;
+
+/**
+ * Whether a Postgres error is the request's fault (F-250): a RAISE from the
+ * function itself (P0001), bad data (class 22), a broken constraint (class
+ * 23) or a refused foreign item (42501). Anything else — no code at all (the
+ * connection dropped), a timeout, a deadlock, a server going away — is
+ * transient, and the phone should try again rather than give up.
+ */
+export function isRequestFaultDbError(err: { code?: string } | null | undefined): boolean {
+  const code = err?.code ?? "";
+  return (
+    code === "P0001" ||
+    code === "42501" ||
+    code.startsWith("22") ||
+    code.startsWith("23")
+  );
+}
+
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -424,6 +448,82 @@ export class InventoryService {
   }
 
   /**
+   * F-249. A count queued on a phone with no signal used to be applied when
+   * the phone found signal again, against the stock as it was THEN: count 12
+   * at 14:00, sell 4, sync at 20:00, and the shelf went back to 12 with the
+   * four sales booked as a variance. A count is a statement about one moment,
+   * so a count older than the stock's last movement (or than a newer count)
+   * is refused, in words, for a person to count again. It is refused rather
+   * than re-based on the movements since, because a re-based figure is not
+   * what anyone counted and would be stored as if it were (ADR 0078).
+   *
+   * Only for a queued count (`countedAgoMs` past the grace below): a live
+   * count is sent the moment it is taken. A count that already landed (its
+   * key is on record) skips the check so its retry replays, not refuses.
+   */
+  private async refuseCountOvertakenByStock(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+    stockState: "live" | "shadow",
+    idempotencyKey: string,
+    countedAgoMs: number | undefined,
+  ): Promise<void> {
+    if (countedAgoMs == null || Number(countedAgoMs) <= QUEUED_COUNT_GRACE_MS) {
+      return;
+    }
+    // The server's clock, not the phone's: the phone only says how long ago.
+    const countedAt = new Date(Date.now() - Number(countedAgoMs)).toISOString();
+    const transient = (what: string, err: { message?: string }) => {
+      this.logger.error(`Spot count ${what} read failed: ${err.message}`);
+      return new HttpException(
+        "The count could not be checked against the stock just now. It will be tried again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    };
+
+    const landed = await client
+      .from("stock_counts")
+      .select("id")
+      .eq("idempotency_key", idempotencyKey)
+      .limit(1);
+    if (landed.error) throw transient("replay", landed.error);
+    if ((landed.data ?? []).length > 0) return;
+
+    const newerCount = await client
+      .from("stock_counts")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .eq("stock_state", stockState)
+      .gt("counted_at", countedAt)
+      .limit(1);
+    if (newerCount.error) throw transient("newer-count", newerCount.error);
+    if ((newerCount.data ?? []).length > 0) {
+      throw new HttpException(
+        "This item was counted again after this count was taken, so this older count was not applied.",
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const moved = await client
+      .from("inventory_transactions")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .eq("stock_type", stockState)
+      .gt("transaction_date", countedAt)
+      .limit(1);
+    if (moved.error) throw transient("movement", moved.error);
+    if ((moved.data ?? []).length > 0) {
+      throw new HttpException(
+        "Bottles of this item were sold, received or moved after this count was taken, so it was not applied. Count it again.",
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  /**
    * Spot count (SimPOS testbed plan, decisions E40-E43): per-item count with
    * immediate adjustment.
    *
@@ -447,8 +547,19 @@ export class InventoryService {
       clientCountId: string;
       reason?: string;
       performedBy?: string | null;
+      /** How long ago a queued count was taken, at send time (F-249). */
+      countedAgoMs?: number;
     },
   ) {
+    if (
+      dto.countedAgoMs != null &&
+      !(Number.isFinite(Number(dto.countedAgoMs)) && Number(dto.countedAgoMs) >= 0)
+    ) {
+      throw new HttpException(
+        "countedAgoMs must be a non-negative number of milliseconds",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     if (
       dto.countedQty == null ||
       Number.isNaN(Number(dto.countedQty)) ||
@@ -492,6 +603,14 @@ export class InventoryService {
       "recordSpotCount",
       this.logger,
     );
+    await this.refuseCountOvertakenByStock(
+      client,
+      restaurantId,
+      inventoryId,
+      stockState,
+      idempotencyKey,
+      dto.countedAgoMs,
+    );
     const { data: countResult, error: rpcErr } = await client.rpc(
       "record_stock_count",
       {
@@ -509,7 +628,16 @@ export class InventoryService {
       this.logger.error(
         `Spot count record_stock_count failed: ${rpcErr.message}`,
       );
-      throw new HttpException(rpcErr.message, HttpStatus.BAD_REQUEST);
+      // F-250: only the function's own refusals (bad input, a missing item,
+      // a foreign item) are the request's fault. A dropped connection, a
+      // timeout or a lock that gave up is the house's, and a 400 made the
+      // phone park a queued count as "not sent" instead of trying it again.
+      throw new HttpException(
+        rpcErr.message,
+        isRequestFaultDbError(rpcErr)
+          ? HttpStatus.BAD_REQUEST
+          : HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
 
     // Decision E41 stands but is no longer load-bearing: last_counted_at is
