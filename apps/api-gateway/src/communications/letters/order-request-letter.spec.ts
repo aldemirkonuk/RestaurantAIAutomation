@@ -631,13 +631,10 @@ describe("the prose predicate", () => {
   });
 
   // Not caught, named in ADR 0313:37: fewer than two slashes after a special
-  // scheme's colon, a "://" whose nearest ASCII letter is more than 31
-  // characters back, and a bracket not in OPEN_BRACKETS / CLOSE_BRACKETS.
+  // scheme's colon (a URL parser reads both as "http://x/").
   it.each([
     ["no slash", "Open http:x now."],
     ["one slash", "Open http:/x now."],
-    ["a letter 33 characters back", `See a${"-".repeat(32)}://x now.`],
-    ["a bracket not on the lists", "See evil\u2985.\u2986com for details."],
   ])("does not catch %s (named)", (_label, text) => {
     expect(rules(T(text))).not.toContain("link");
   });
