@@ -48,6 +48,8 @@ from config.settings import Settings, get_settings
 from services.model_clients import get_haiku_client
 from services.order_letter_door import (
     OrderLetterDoorMissing,
+    OrderLetterOrderClosed,
+    closed_order_status,
     live_order_letter_id,
     stage_order_letter,
 )
@@ -476,6 +478,85 @@ class AuditEntry:
     active_promos_referenced: List[str] = field(default_factory=list)
     intent_source: str = ""
     commitment_language_detected: bool = False
+    # What was kept out of the vendor-facing prompt, and why (F-518).
+    withheld_from_prompt: List[Dict[str, str]] = field(default_factory=list)
+
+
+class DraftNotWritten(RuntimeError):
+    """The model call failed and the caller wants no canned stand-in (F-519)."""
+
+
+# The intent fields a vendor letter may be written from (F-518). Everything
+# else in the payload stays out of the prompt: the model may repeat anything it
+# is shown, and the manager approving the draft is busy. approveOrder's payload
+# carries ``max_acceptable_price`` (the house's walk-away price); it stays on
+# the session (``_relay_procurement_response`` reads it there) but never
+# reaches the letter.
+VENDOR_FACING_INTENT_FIELDS: Tuple[str, ...] = (
+    "intent_type",
+    "wine_name",
+    "vintage",
+    "quantity",
+    "target_price",
+    "urgency",
+    "topic",
+    "outreach_type",
+    "channel_preference",
+)
+
+_WITHHELD_WHY = {
+    "max_acceptable_price": "the house's walk-away price; the vendor must never see it",
+    "order_id": "an internal id, not part of a letter",
+    "provider_id": "an internal id, not part of a letter",
+    "restaurant_id": "an internal id, not part of a letter",
+}
+
+# Provider-profile categories that are the house's own read of the vendor, not
+# facts the vendor gave: relationship signals and leverage. They stay out.
+INTERNAL_PROFILE_CATEGORIES: Tuple[str, ...] = ("relationship",)
+
+
+def vendor_facing_intent(
+    intent: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
+    """The intent as a vendor letter may see it, and what was left out (F-518)."""
+    kept = {k: intent[k] for k in VENDOR_FACING_INTENT_FIELDS if k in intent}
+    withheld = [
+        {"field": k, "why": _WITHHELD_WHY.get(k, "not needed to write the letter")}
+        for k in sorted(intent)
+        if k not in kept
+    ]
+    return kept, withheld
+
+
+def vendor_facing_profile(
+    twin: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
+    """The provider profile without the house's own intel (F-518).
+
+    Drops the internal categories, and each entry's ``confidence`` and
+    ``verified`` (how sure the house is of a fact is not the vendor's business).
+    """
+    kept: Dict[str, Any] = {}
+    withheld: List[Dict[str, str]] = []
+    for category, entries in (twin or {}).items():
+        if category in INTERNAL_PROFILE_CATEGORIES:
+            withheld.append(
+                {
+                    "field": f"profile.{category}",
+                    "why": "the house's own read of the vendor, not for the vendor",
+                }
+            )
+            continue
+        kept[category] = [
+            (
+                {k: v for k, v in e.items() if k not in ("confidence", "verified")}
+                if isinstance(e, dict)
+                else e
+            )
+            for e in (entries or [])
+        ]
+    return kept, withheld
 
 
 # =============================================================================
@@ -845,6 +926,27 @@ class ProviderConversationAgent(BaseAgent):
         # stays the authority, because the create-time letter can land between
         # this read and that write.
         is_order_letter = intent_type == "order_inquiry" and bool(order_id)
+
+        # F-516: no letter about an order the house cancelled, turned down or
+        # failed. Read before any model call; for the order letter the staging
+        # door re-reads it under its lock and stays the authority.
+        if order_id and restaurant_id:
+            try:
+                closed = closed_order_status(
+                    self.database.supabase, restaurant_id, order_id
+                )
+            except Exception as exc:
+                closed = None
+                self.logger.warning(
+                    f"Could not read order {order_id}'s status before drafting "
+                    f"({exc}); the staging door still decides."
+                )
+            if closed:
+                self.logger.info(
+                    f"Order {order_id} is {closed}; no {intent_type} letter (F-516)."
+                )
+                return
+
         if is_order_letter and restaurant_id:
             try:
                 existing = live_order_letter_id(
@@ -882,17 +984,39 @@ class ProviderConversationAgent(BaseAgent):
             )
             active_promos = await self._get_active_promos(provider_id, restaurant_id)
 
-            # Generate response
-            message_text, audit = await self._generate_response(
-                provider_id=provider_id,
-                digital_twin=digital_twin,
-                style_profile=style_profile,
-                recent_messages=session.messages[-5:],
-                memories=relevant_memories,
-                intent=payload,
-                active_promos=active_promos,
-                restaurant_id=restaurant_id or "",
-            )
+            # Generate response. A failed model call stages nothing and tells
+            # the manager (F-519): the canned check-in note is no order letter,
+            # and staged as one it would have blocked the real letter.
+            try:
+                message_text, audit = await self._generate_response(
+                    provider_id=provider_id,
+                    digital_twin=digital_twin,
+                    style_profile=style_profile,
+                    recent_messages=session.messages[-5:],
+                    memories=relevant_memories,
+                    intent=payload,
+                    active_promos=active_promos,
+                    restaurant_id=restaurant_id or "",
+                    canned_on_failure=False,
+                )
+            except DraftNotWritten as exc:
+                self.logger.error(
+                    f"The {intent_type} letter for order {order_id} could not be "
+                    f"drafted ({exc}); nothing was staged (F-519)."
+                )
+                vendor = self._vendor_words(await self._get_provider_name(provider_id))
+                wine = payload.get("wine_name") or "this order"
+                await self._notify_manager(
+                    restaurant_id,
+                    "letter_not_drafted",
+                    f"The letter to {vendor} could not be drafted",
+                    f"The letter to {vendor} about {wine} could not be written "
+                    "just now, so nothing is waiting and nothing was sent. "
+                    "Write it yourself from the order, or ask for it again later.",
+                    order_id=order_id,
+                    metadata={"provider_id": provider_id, "intent_type": intent_type},
+                )
+                return
 
             # Store outbound message in memory
             await self._store_conversation_embedding(
@@ -2202,11 +2326,23 @@ class ProviderConversationAgent(BaseAgent):
         intent: Dict[str, Any],
         active_promos: List[Dict[str, Any]],
         restaurant_id: str = "",
+        *,
+        canned_on_failure: bool = True,
     ) -> Tuple[str, AuditEntry]:
-        """Generate a style-adapted, context-rich message for a provider."""
+        """Generate a style-adapted, context-rich message for a provider.
+
+        Only what the letter needs reaches the prompt (F-518): the intent is cut
+        to ``VENDOR_FACING_INTENT_FIELDS`` and the profile loses the house's own
+        intel. What was left out is recorded on ``audit.withheld_from_prompt``.
+
+        ``canned_on_failure=False`` raises ``DraftNotWritten`` when the model
+        call fails, instead of returning the canned mock text (F-519).
+        """
+        prompt_intent, withheld_intent = vendor_facing_intent(intent)
+        prompt_twin, withheld_profile = vendor_facing_profile(digital_twin)
         audit = AuditEntry(
             memories_retrieved=[m.get("message_text", "")[:60] for m in memories[:5]],
-            profile_data_used=list(digital_twin.keys()),
+            profile_data_used=list(prompt_twin.keys()),
             style_adaptations=[
                 f"formality={style_profile.get('formality', 'semi-formal')}",
                 f"language={style_profile.get('language', 'en')}",
@@ -2214,6 +2350,7 @@ class ProviderConversationAgent(BaseAgent):
             ],
             active_promos_referenced=[p.get("name", "") for p in active_promos[:3]],
             intent_source=intent.get("intent_type", "unknown"),
+            withheld_from_prompt=withheld_intent + withheld_profile,
         )
 
         if self.mock_mode:
@@ -2247,7 +2384,7 @@ class ProviderConversationAgent(BaseAgent):
                 tone_instruction = "Use a professional but friendly tone appropriate for a business relationship."
 
             # Build prompt
-            twin_summary = json.dumps(digital_twin, indent=2, default=str)[:2000]
+            twin_summary = json.dumps(prompt_twin, indent=2, default=str)[:2000]
             style_summary = json.dumps(style_profile, indent=2)
             msg_history = "\n".join(
                 f"[{m.get('role', 'unknown')}]: {m.get('text', '')[:200]}"
@@ -2269,7 +2406,7 @@ class ProviderConversationAgent(BaseAgent):
                 style_profile=style_summary,
                 last_5_messages=msg_history or "No prior messages in this session",
                 top_5_relevant_memories=mem_text or "No relevant memories found",
-                intent_description=json.dumps(intent, default=str),
+                intent_description=json.dumps(prompt_intent, default=str),
                 active_promos=promo_text,
                 tone_instruction=tone_instruction,
                 last_3_db_interactions=db_ctx["last_3_db_interactions"],
@@ -2324,6 +2461,8 @@ class ProviderConversationAgent(BaseAgent):
 
         except Exception as e:
             self.logger.error(f"Response generation failed: {e}")
+            if not canned_on_failure:
+                raise DraftNotWritten(str(e)) from e
             return self._mock_generate_response(intent, style_profile), audit
 
     def _mock_generate_response(
@@ -2858,6 +2997,7 @@ class ProviderConversationAgent(BaseAgent):
                         "style_adaptations": audit.style_adaptations,
                         "active_promos_referenced": audit.active_promos_referenced,
                         "intent_source": audit.intent_source,
+                        "withheld_from_prompt": audit.withheld_from_prompt,
                     },
                 },
             }
@@ -2869,6 +3009,13 @@ class ProviderConversationAgent(BaseAgent):
                     conversation_id, staged = stage_order_letter(
                         self.database.supabase, convo_data
                     )
+                except OrderLetterOrderClosed as exc:
+                    # F-516: the order was closed while the letter was drafted.
+                    self.logger.info(
+                        f"Order {order_id} is {exc.order_status}; the "
+                        "approval-time letter was not staged (F-516)."
+                    )
+                    return None
                 except OrderLetterDoorMissing as exc:
                     # Only between this code deploying and its migration
                     # applying: fall through to the plain insert below.
@@ -4250,14 +4397,15 @@ class ProviderConversationAgent(BaseAgent):
                 # Fallback to providers.notes + close_relationship
                 prov = (
                     self.database.supabase.table("providers")
-                    .select("notes, close_relationship")
+                    .select("close_relationship")
                     .eq("id", provider_id)
                     .maybe_single()
                     .execute()
                 )
+                # providers.notes is the house's own note about the vendor,
+                # not a credit term: it stays out of a vendor letter's prompt
+                # (F-518). "No credit terms on record." stands instead.
                 if prov.data:
-                    if prov.data.get("notes"):
-                        ctx["credit_terms"] = f"Notes: {prov.data['notes'][:200]}"
                     ctx["close_relationship"] = bool(
                         prov.data.get("close_relationship", False)
                     )

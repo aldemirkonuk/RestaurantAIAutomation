@@ -34,6 +34,24 @@ ORDER_LETTER_LIVE_STATUSES: Tuple[str, ...] = (
 )
 
 
+# The order states in which ``stage_order_letter`` stages nothing (F-516,
+# migration ``a_closed_order_gets_no_letter``): the house closed the order, so
+# no letter about it may reach the vendor. COMPLETED is not one of them.
+ORDER_LETTER_CLOSED_STATUSES: Tuple[str, ...] = ("CANCELLED", "REJECTED", "FAILED")
+
+
+class OrderLetterOrderClosed(RuntimeError):
+    """The order is closed (cancelled, turned down or failed): no letter.
+
+    Raised by ``stage_order_letter`` when the database door refused, so the
+    caller can tell it from "the order already has its letter" (F-516).
+    """
+
+    def __init__(self, order_status: str):
+        super().__init__(f"the order is {order_status}; no letter was staged")
+        self.order_status = order_status
+
+
 class OrderLetterDoorMissing(RuntimeError):
     """PostgREST does not know ``stage_order_letter`` (PGRST202).
 
@@ -58,9 +76,10 @@ def stage_order_letter(
     already had a live outbound letter (of type ``kind`` when given); the id is
     then that letter's, and nothing was written.
 
-    Raises ``OrderLetterDoorMissing`` when the function is not deployed yet,
-    and lets every other error propagate: a letter that could not be staged
-    must not be reported as staged.
+    Raises ``OrderLetterOrderClosed`` when the order is cancelled, turned down
+    or failed (nothing was written), ``OrderLetterDoorMissing`` when the
+    function is not deployed yet, and lets every other error propagate: a
+    letter that could not be staged must not be reported as staged.
     """
     try:
         result = supabase.rpc(
@@ -73,6 +92,8 @@ def stage_order_letter(
     data = getattr(result, "data", None)
     if isinstance(data, list):
         data = data[0] if data else None
+    if isinstance(data, dict) and not data.get("id") and data.get("order_status"):
+        raise OrderLetterOrderClosed(str(data["order_status"]))
     if not isinstance(data, dict) or not data.get("id"):
         raise RuntimeError(f"stage_order_letter returned no id: {data!r}")
     return str(data["id"]), bool(data.get("staged"))
@@ -98,3 +119,26 @@ def live_order_letter_id(
     )
     rows = getattr(result, "data", None) or []
     return str(rows[0]["id"]) if rows else None
+
+
+def closed_order_status(
+    supabase: Any, restaurant_id: str, order_id: str
+) -> Optional[str]:
+    """Read-only: the order's status when it is closed to letters, else None.
+
+    For an early stop before any model call (F-516): a letter drafted for an
+    order the house already cancelled is wasted work at best. Like
+    ``live_order_letter_id`` it is not a fence; ``stage_order_letter`` re-reads
+    the order under its lock and stays the authority.
+    """
+    result = (
+        supabase.table("procurement_orders")
+        .select("status")
+        .eq("restaurant_id", restaurant_id)
+        .eq("id", order_id)
+        .limit(1)
+        .execute()
+    )
+    rows = getattr(result, "data", None) or []
+    status = str(rows[0].get("status") or "").strip().upper() if rows else ""
+    return status if status in ORDER_LETTER_CLOSED_STATUSES else None
