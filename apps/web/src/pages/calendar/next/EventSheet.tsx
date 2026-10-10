@@ -62,6 +62,10 @@ const ENUM_TYPES = new Set([
 
 const STATUSES: EventStatus[] = ['pending', 'approved', 'completed', 'cancelled', 'dismissed'];
 
+/** The writes a sheet can ask for; its banner speaks only for these. */
+const WRITE_KEYS = ['create', 'update', 'remove', 'createType', 'deleteType'] as const;
+type WriteKey = (typeof WRITE_KEYS)[number];
+
 export type SheetTarget =
   | {
       mode: 'create';
@@ -155,12 +159,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const saving = data.create.isPending || data.update.isPending;
   // Adding or deleting a custom type is a write too; its refusal must reach
   // the same banner (sweep 2026-09-28 row 19 — it used to vanish silently).
-  const failure =
-    data.create.error ??
-    data.update.error ??
-    data.remove.error ??
-    data.createType.error ??
-    data.deleteType.error;
+  // Only writes THIS sheet asked for: a mutation keeps its last error until it
+  // runs again, so an earlier sheet's refusal used to greet a new entry (F-201).
+  const [asked, setAsked] = useState<ReadonlySet<WriteKey>>(() => new Set());
+  const ask = (key: WriteKey) => setAsked((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  const failure = WRITE_KEYS.filter((k) => asked.has(k))
+    .map((k) => data[k].error)
+    .find((err) => err != null);
 
   /**
    * The server owns this entry's reminder from here on, so any copy the legacy
@@ -191,7 +196,16 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
     };
 
     if (editing) {
-      const patch: Partial<CalendarPayload> = { ...base };
+      // An emptied field goes as null, which the gateway writes as a cleared
+      // column; undefined would mean "leave it" and keep the old value (F-196).
+      // All day carries no clock time, so ticking it clears both times.
+      const patch: Partial<CalendarPayload> = {
+        ...base,
+        description: description.trim() || null,
+        eventTime: allDay || !startTime ? null : startTime,
+        eventTimeEnd: allDay || !endTime ? null : endTime,
+        eventDateEnd: allDay ? undefined : endDate || null,
+      };
       if (storedTypeOutside && !typeTouched) delete patch.eventType;
       if (storedStatusOutside && !statusTouched) delete patch.status;
       if (editing.isOccurrence) {
@@ -213,6 +227,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         delete patch.eventDateEnd;
       }
       setOccurrenceRefusal(null);
+      ask('update');
       data.update.mutate(
         { id: editing.seriesId, patch },
         {
@@ -225,6 +240,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       return;
     }
 
+    ask('create');
     data.create.mutate(
       {
         ...base,
@@ -316,7 +332,10 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                       type="button"
                       className="cn-chip cn-ink"
                       aria-label={`Delete the ${t.name} type`}
-                      onClick={() => data.deleteType.mutate(t.id)}
+                      onClick={() => {
+                        ask('deleteType');
+                        data.deleteType.mutate(t.id);
+                      }}
                     >
                       ×
                     </button>
@@ -363,12 +382,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               type="button"
               className="cn-btn cn-ink"
               disabled={!newTypeName.trim() || data.createType.isPending}
-              onClick={() =>
+              onClick={() => {
+                ask('createType');
                 data.createType.mutate(
                   { name: newTypeName.trim(), color: newTypeColor },
                   { onSuccess: () => setNewTypeName('') },
-                )
-              }
+                );
+              }}
             >
               Add
             </button>
@@ -425,6 +445,9 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               />
             </Field>
           </div>
+        )}
+        {!allDay && startTime && endTime && endTime < startTime && (
+          <p className="cn-quiet cn-tight">Ends after midnight, at {endTime} the next morning.</p>
         )}
 
         <Field label="Vendor">
@@ -541,6 +564,11 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               )}
             </div>
           )}
+          {!editing && freq === 'monthly' && Number(date.slice(8, 10)) >= 29 && (
+            <p className="cn-quiet cn-tight">
+              In a shorter month it falls on the last day of that month.
+            </p>
+          )}
         </div>
 
         {/* ── reminders ──────────────────────────────────────────────── */}
@@ -588,7 +616,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
             <HoldToApprove
               label={editing.isRecurring || editing.isOccurrence ? 'Hold to delete the series' : 'Hold to delete'}
               approvedLabel="Deleted"
-              onApprove={() =>
+              onApprove={() => {
+                ask('remove');
                 data.remove.mutate(
                   { id: editing.seriesId, scope: editing.isRecurring ? 'all' : undefined },
                   {
@@ -597,8 +626,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                       onClose();
                     },
                   },
-                )
-              }
+                );
+              }}
             />
           </div>
         )}

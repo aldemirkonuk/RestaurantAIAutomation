@@ -386,14 +386,15 @@ export interface CalendarPayload {
   title: string;
   eventType: string;
   eventDate: string;
-  eventDateEnd?: string;
+  // null on an edit means "clear it" (F-196); undefined means "leave it".
+  eventDateEnd?: string | null;
   allDay?: boolean;
-  eventTime?: string;
-  eventTimeEnd?: string;
+  eventTime?: string | null;
+  eventTimeEnd?: string | null;
   providerId?: string;
   orderId?: string;
   status?: EventStatus;
-  description?: string;
+  description?: string | null;
   color?: string;
   reminderEnabled?: boolean;
   reminderDaysBefore?: number;
@@ -687,6 +688,17 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     onSuccess: invalidate,
   });
 
+  // A drag or resize on the grid writes through its own mutation, so a refused
+  // move is said on the page where it happened and its error never reaches a
+  // sheet opened later (F-201).
+  const move = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Partial<CalendarPayload> }) => {
+      const res = await apiClient.patch<ApiEvent>(`/calendar/events/${id}`, updatablePart(patch));
+      return toCalEvent(res.data);
+    },
+    onSuccess: invalidate,
+  });
+
   const remove = useMutation({
     mutationFn: async ({ id, scope }: { id: string; scope?: 'this' | 'all' }) => {
       await apiClient.delete(`/calendar/events/${id}${scope === 'all' ? '?scope=all' : ''}`);
@@ -798,6 +810,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
 
     create,
     update,
+    move,
     remove,
     createType,
     deleteType,

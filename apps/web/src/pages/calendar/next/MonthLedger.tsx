@@ -259,7 +259,7 @@ export default function MonthLedger({
     const shift = event.endDate
       ? Math.round((parseDayKey(target).getTime() - parseDayKey(event.date).getTime()) / 86_400_000)
       : 0;
-    data.update.mutate({
+    data.move.mutate({
       id: event.seriesId,
       patch: {
         eventDate: target,
