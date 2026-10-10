@@ -19,6 +19,7 @@ import {
   ORDER_NOT_YET_ARRIVED_STATUSES,
   ORDER_SPEND_STATUSES,
 } from "../procurement/order-status";
+import { orderSpend } from "../procurement/order-spend";
 import {
   houseDayBounds,
   houseDayOf,
@@ -37,7 +38,8 @@ import {
  * shaping data and (b) mapping it onto the right formulas.
  *
  * Data-source conventions (documented so numbers are auditable):
- *   • Purchases / COGS   ← procurement_orders (delivered) total_cost|final_price
+ *   • Purchases / COGS   ← procurement_orders (delivered) total_cost; an
+ *                          order with none is unpriced and counted (F-701)
  *   • On-hand & cost     ← restaurant_inventory + inventory_lot_rollup.wac
  *   • Consumption/demand ← wine_consumption_log (quantity, volume_ml)
  *   • Vendor structure   ← procurement_orders.provider_id
@@ -294,7 +296,9 @@ export class AnalyticsService {
     );
     return data.map((o: any) => ({
       providerId: o.provider_id || "unknown",
-      cost: o.total_cost || o.final_price || 0,
+      // Null when the order carries no price (F-701): not $0, and not one
+      // bottle's `final_price` standing in for the whole order.
+      cost: orderSpend(o),
       // The code the order was placed in; null when it names none (F-339).
       currency:
         typeof o.currency === "string" && o.currency.trim()
@@ -630,13 +634,19 @@ export class AnalyticsService {
     // Orders placed in two named currencies have no single COGS: there is no
     // rate to add a €400 order to a ₺12,000 one by (F-339). An order naming
     // no currency is added in, as every order was before the column existed.
+    // A delivered order with no price is left out and counted (F-701), so
+    // the page can say what the figure is missing, as costCoverage does.
     const orderCurrencies = new Set(
       orders.map((o) => o.currency).filter((c): c is string => c !== null),
     );
+    const pricedCosts = orders
+      .map((o) => o.cost)
+      .filter((c): c is number => c != null);
+    const cogsUnpricedCount = orders.length - pricedCosts.length;
     const cogs =
       orders.length === 0 || orderCurrencies.size > 1
         ? null
-        : E.stats.sum(orders.map((o) => o.cost));
+        : E.stats.sum(pricedCosts);
 
     // Revenue basis: sell-price valuation of purchased bottles (proxy until a
     // POS revenue feed lands). Menu price is recorded, so this survives an
@@ -768,7 +778,10 @@ export class AnalyticsService {
             ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window (a failed read refuses the summary rather than landing here), and an empty list is not a measured $0"
             : orderCurrencies.size > 1
               ? `delivered procurement_orders (trailing 365d) — null: the orders were placed in ${Array.from(orderCurrencies).sort().join(", ")}, and with no exchange rate on record they cannot be added into one figure`
-              : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
+              : `delivered procurement_orders (trailing 365d) — ${pricedCosts.length} order${pricedCosts.length === 1 ? "" : "s"} summed` +
+                (cogsUnpricedCount > 0
+                  ? `; ${cogsUnpricedCount} delivered order${cogsUnpricedCount === 1 ? "" : "s"} with no price left out`
+                  : ""),
         revenue:
           inventory.length === 0
             ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
@@ -798,6 +811,7 @@ export class AnalyticsService {
       inventoryValue,
       pricedInventoryValue,
       cogs,
+      cogsUnpricedCount,
       revenue,
       grossMarginDollars: marginDollars,
       grossMargin,
@@ -1008,7 +1022,7 @@ export class AnalyticsService {
     for (const o of orders)
       spendByVendor.set(
         o.providerId,
-        (spendByVendor.get(o.providerId) || 0) + o.cost,
+        (spendByVendor.get(o.providerId) || 0) + (o.cost ?? 0),
       );
     const vendorWeights = Array.from(spendByVendor.values());
     const hhi = E.finance.herfindahlIndex(vendorWeights);

@@ -23,6 +23,7 @@ import {
   ORDER_SPEND_STATUSES,
   hasStatus,
 } from "../procurement/order-status";
+import { orderSpend, sumOrderSpend } from "../procurement/order-spend";
 import { houseFrame } from "../common/house-frame";
 import { isCritical } from "../common/stock-status";
 import {
@@ -287,17 +288,22 @@ export interface SpendInCurrency {
  */
 export function spendByCurrency(
   orders: any[],
-): { total: number | null; byCurrency: SpendInCurrency[] } {
+): { total: number | null; byCurrency: SpendInCurrency[]; unpricedCount: number } {
   const by = new Map<string | null, number>();
+  // An order with no price is left out and counted (F-701): not $0, and not
+  // one bottle's `final_price` standing in for the whole order.
+  let unpricedCount = 0;
   for (const o of orders) {
+    const spend = orderSpend(o);
+    if (spend == null) {
+      unpricedCount += 1;
+      continue;
+    }
     const code =
       typeof o.currency === "string" && o.currency.trim()
         ? o.currency.trim().toUpperCase()
         : null;
-    by.set(
-      code,
-      cents((by.get(code) ?? 0) + (Number(o.total_cost) || Number(o.final_price) || 0)),
-    );
+    by.set(code, cents((by.get(code) ?? 0) + spend));
   }
   const byCurrency = Array.from(by, ([currency, amount]) => ({ currency, amount }));
   const named = byCurrency.filter((c) => c.currency !== null).length;
@@ -305,6 +311,7 @@ export function spendByCurrency(
     total:
       named > 1 ? null : cents(byCurrency.reduce((sum, c) => sum + c.amount, 0)),
     byCurrency,
+    unpricedCount,
   };
 }
 
@@ -911,16 +918,16 @@ export class DashboardService {
           monthlyProcurementSpend: 0,
           totalBottlesDelivered: 0,
           spendByMonth: [],
+          unpricedOrders: 0,
         };
       }
 
       const orders = delivered || [];
 
-      // Total paid to vendors
-      const totalProcurementSpend = orders.reduce(
-        (sum, o) => sum + (o.total_cost || o.final_price || 0),
-        0,
-      );
+      // Total paid to vendors. An order with no price is left out and counted
+      // (F-701), not added as $0 or as one bottle's `final_price`.
+      const { total: totalProcurementSpend, unpricedCount: unpricedOrders } =
+        sumOrderSpend(orders);
       const totalBottlesDelivered = orders.reduce(
         (sum, o) => sum + (o.bottles_total || o.quantity || 0),
         0,
@@ -934,7 +941,7 @@ export class DashboardService {
           const orderDate = o.delivered_at || o.created_at;
           return orderDate && orderDate.startsWith(currentMonth);
         })
-        .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
+        .reduce((sum, o) => sum + (orderSpend(o) ?? 0), 0);
 
       // Spend by month (last 12 months)
       const spendByMonth: {
@@ -949,7 +956,7 @@ export class DashboardService {
         if (!orderDate) continue;
         const month = orderDate.substring(0, 7); // YYYY-MM
         const existing = monthMap.get(month) || { spend: 0, bottles: 0 };
-        existing.spend += o.total_cost || o.final_price || 0;
+        existing.spend += orderSpend(o) ?? 0;
         existing.bottles += o.bottles_total || o.quantity || 0;
         monthMap.set(month, existing);
       }
@@ -968,6 +975,7 @@ export class DashboardService {
         monthlyProcurementSpend,
         totalBottlesDelivered,
         spendByMonth: spendByMonth.slice(-12),
+        unpricedOrders,
       };
     } catch (error) {
       this.logger.warn(`Procurement spend fetch failed: ${error.message}`);
@@ -976,6 +984,7 @@ export class DashboardService {
         monthlyProcurementSpend: 0,
         totalBottlesDelivered: 0,
         spendByMonth: [],
+        unpricedOrders: 0,
       };
     }
   }
@@ -1107,9 +1116,9 @@ export class DashboardService {
         );
         if (!date) continue;
         const day = spend.get(date) ?? { orders: [], bottles: 0, count: 0 };
-        // The method is unchanged: the order's total, else its final price
-        // (summed per currency by `spendByCurrency`); its bottle total, else
-        // its quantity.
+        // The order's total, summed per currency by `spendByCurrency`; an
+        // order with no price adds nothing rather than one bottle's
+        // `final_price` (F-701). Its bottle total, else its quantity.
         day.orders.push(o);
         day.bottles += Number(o.bottles_total) || Number(o.quantity) || 0;
         day.count += 1;
@@ -1294,6 +1303,9 @@ export class DashboardService {
           todayProcurementSpend: null,
           weekProcurementSpend: null,
           monthProcurementSpend: null,
+          todayProcurementUnpriced: null,
+          weekProcurementUnpriced: null,
+          monthProcurementUnpriced: null,
           todayDeliveries: null,
           monthBottlesIn: null,
           timezone: null,
@@ -1310,11 +1322,14 @@ export class DashboardService {
       const weekStartLocal = shiftLocalDate(todayLocal, -6);
       const monthLocal = todayLocal.slice(0, 7);
 
-      // Sums vendor invoices on delivered procurement orders. This was named
-      // `salesFrom` and published as todaySales/weekSales/monthSales, which the
-      // web dashboard rendered as "Total Revenue" — the exact opposite of what
-      // the number is. Nothing here is a sale. Null when the orders were placed
-      // in more than one currency: there is no rate to add them by (F-339).
+      // Sums `total_cost` on delivered procurement orders: the invoiced total
+      // once a priced invoice was verified against the order, the agreed value
+      // until then (F-700). An order with no price is left out and counted
+      // (F-701). This was named `salesFrom` and published as
+      // todaySales/weekSales/monthSales, which the web dashboard rendered as
+      // "Total Revenue" — the exact opposite of what the number is. Nothing
+      // here is a sale. Null when the orders were placed in more than one
+      // currency: there is no rate to add them by (F-339).
       const spendWhere = (items: any[], onDay: (day: string) => boolean) =>
         spendByCurrency(
           items.filter(
@@ -1322,7 +1337,7 @@ export class DashboardService {
               o.delivered_at &&
               onDay(localDateIn(new Date(o.delivered_at), zone)),
           ),
-        ).total;
+        );
 
       const deliveredOrders = orders.filter((o) =>
         hasStatus(o.status, ORDER_SPEND_STATUSES),
@@ -1336,6 +1351,19 @@ export class DashboardService {
             onDay(localDateIn(new Date(o.delivered_at), zone)),
         );
 
+      const todaySpend = spendWhere(
+        deliveredOrders,
+        (day) => day === todayLocal,
+      );
+      const weekSpend = spendWhere(
+        deliveredOrders,
+        (day) => day >= weekStartLocal && day <= todayLocal,
+      );
+      const monthSpend = spendWhere(
+        deliveredOrders,
+        (day) => day.slice(0, 7) === monthLocal,
+      );
+
       return {
         totalWines,
         totalBottles,
@@ -1343,18 +1371,12 @@ export class DashboardService {
         totalVolumeOz,
         lowStockItems,
         pendingOrders,
-        todayProcurementSpend: spendWhere(
-          deliveredOrders,
-          (day) => day === todayLocal,
-        ),
-        weekProcurementSpend: spendWhere(
-          deliveredOrders,
-          (day) => day >= weekStartLocal && day <= todayLocal,
-        ),
-        monthProcurementSpend: spendWhere(
-          deliveredOrders,
-          (day) => day.slice(0, 7) === monthLocal,
-        ),
+        todayProcurementSpend: todaySpend.total,
+        weekProcurementSpend: weekSpend.total,
+        monthProcurementSpend: monthSpend.total,
+        todayProcurementUnpriced: todaySpend.unpricedCount,
+        weekProcurementUnpriced: weekSpend.unpricedCount,
+        monthProcurementUnpriced: monthSpend.unpricedCount,
         todayDeliveries: deliveredOn((day) => day === todayLocal).length,
         monthBottlesIn: deliveredOn((day) => day.slice(0, 7) === monthLocal).reduce(
           (sum, o) => sum + (o.bottles_total || o.quantity || 0),
@@ -1739,7 +1761,7 @@ export class DashboardService {
           bottles: 0,
           glasses: 0,
         };
-        existing.procurementSpend += o.total_cost || o.final_price || 0;
+        existing.procurementSpend += orderSpend(o) ?? 0;
         existing.bottles += o.bottles_total || o.quantity || 0;
         buckets.set(dateKey, existing);
       }

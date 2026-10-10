@@ -23,6 +23,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
 import { KpiRow } from './KpiRow';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { DashboardStats } from '@/services/api/types';
 
 const api = vi.hoisted(() => ({
   get: vi.fn(),
@@ -1446,5 +1447,41 @@ describe('DashboardNext — the day sheet files only what it knows (F-430, F-431
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// F-701: a delivered order with no price is left out of the spend tiles, and
+// each tile says how many instead of reading as a complete total.
+describe('KpiRow — spend left out for want of a price', () => {
+  const stats = (extra: Partial<DashboardStats>): DashboardStats => ({
+    totalWines: 3,
+    totalBottles: 40,
+    totalVolumeMl: 30000,
+    totalVolumeOz: 1014,
+    lowStockItems: 0,
+    pendingOrders: 0,
+    todayProcurementSpend: 120,
+    weekProcurementSpend: 120,
+    monthProcurementSpend: 900,
+    ...extra,
+  });
+  const draw = (s: DashboardStats) =>
+    render(
+      <MemoryRouter>
+        <KpiRow stats={s} pendingCount={0} lowStockCount={0} />
+      </MemoryRouter>,
+    );
+
+  it('names the unpriced deliveries under today and the month', () => {
+    draw(stats({ todayProcurementUnpriced: 1, monthProcurementUnpriced: 3 }));
+    expect(screen.getByText('1 delivery with no price not counted')).toBeInTheDocument();
+    expect(screen.getByText('3 deliveries with no price not counted')).toBeInTheDocument();
+  });
+
+  it('keeps the plain subtitles when every delivery is priced, or the gateway sends no count', () => {
+    draw(stats({ todayProcurementUnpriced: 0 }));
+    expect(screen.getByText('delivered purchase orders')).toBeInTheDocument();
+    expect(screen.getByText('procurement, not sales')).toBeInTheDocument();
+    expect(screen.queryByText(/with no price/)).not.toBeInTheDocument();
   });
 });

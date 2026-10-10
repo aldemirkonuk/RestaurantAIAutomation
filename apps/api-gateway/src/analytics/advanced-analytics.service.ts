@@ -28,6 +28,7 @@ import { deadlineOf, landedVerdict } from "../procurement/delivery-deadline";
 import { overdueStanding } from "../procurement/overdue-order";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
+import { orderSpend, sumOrderSpend } from "../procurement/order-spend";
 import { HouseFrame, houseFrame } from "../common/house-frame";
 import {
   HOUSE_ZONE_UNSET,
@@ -613,23 +614,23 @@ export class AdvancedAnalyticsService {
         }
       }
       const scored = counts.onTime + counts.late;
+      // An order with no price is left out and counted (F-701): not $0, and
+      // not one bottle's `final_price` standing in for the whole order.
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
-          const cost = o.total_cost || o.final_price || 0;
-          return bottles > 0 ? cost / bottles : null;
+          const cost = orderSpend(o);
+          return bottles > 0 && cost != null ? cost / bottles : null;
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
-      const spend = delivered.reduce(
-        (s, o) => s + (o.total_cost || o.final_price || 0),
-        0,
-      );
+      const { total: spend, unpricedCount } = sumOrderSpend(delivered);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
         spend,
+        unpricedCount,
         leadTimeDays: {
           mean: E.mean(leadTimes),
           median: E.median(leadTimes),
@@ -660,6 +661,8 @@ export class AdvancedAnalyticsService {
       concentration: {
         hhi: E.herfindahlIndex(spendShare),
         effectiveVendors: E.effectiveCount(spendShare),
+        // Shares are of priced spend; these deliveries are not in them.
+        unpricedCount: vendors.reduce((n, v) => n + v.unpricedCount, 0),
       },
       note: "Lead-time stdev feeds the King safety-stock formula (leadTimeStdev param on /inventory-science).",
       generatedAt: new Date().toISOString(),
@@ -841,6 +844,7 @@ export class AdvancedAnalyticsService {
     const delivered = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_SPEND_STATUSES),
     );
+    const spendUnpricedCount = sumOrderSpend(delivered).unpricedCount;
     // The windows end TODAY, on the house's own date (F-130). The shared
     // `toDaily` stops at yesterday's UTC date, so every delivery taken in
     // today — and, west of Greenwich, every one after the evening's UTC
@@ -854,7 +858,10 @@ export class AdvancedAnalyticsService {
       const at = o.delivered_at || o.created_at || null;
       const day = zone ? houseDayOf(at, zone) : (at || "").substring(0, 10);
       if (!day) continue;
-      byDay.set(day, (byDay.get(day) || 0) + (o.total_cost || o.final_price || 0));
+      // An order with no price is left out and counted (F-701).
+      const spend = orderSpend(o);
+      if (spend == null) continue;
+      byDay.set(day, (byDay.get(day) || 0) + spend);
     }
     const daily: number[] = [];
     for (let back = 179; back >= 0; back--)
@@ -886,10 +893,8 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    const committed = open.reduce(
-      (s: number, o: any) => s + (o.total_cost || o.final_price || 0),
-      0,
-    );
+    const { total: committed, unpricedCount: committedUnpricedCount } =
+      sumOrderSpend(open);
 
     // Orders in NEITHER figure: approved but not yet with the vendor's
     // confirmation, or partly received and still open (F-130). Neither rule
@@ -933,6 +938,9 @@ export class AdvancedAnalyticsService {
       committedOpenOrders: committed,
       openOrderCount: open.length,
       notCounted,
+      // Orders the two figures above leave out because they carry no price.
+      spendUnpricedCount,
+      committedUnpricedCount,
       generatedAt: new Date().toISOString(),
     };
   }

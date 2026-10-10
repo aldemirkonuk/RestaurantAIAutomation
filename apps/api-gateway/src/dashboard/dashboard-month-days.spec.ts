@@ -328,6 +328,7 @@ describe("F-339 — vendor spend never adds two currencies", () => {
         { currency: "TRY", amount: 12000 },
         { currency: null, amount: 250 },
       ],
+      unpricedCount: 0,
     });
     expect(
       spendByCurrency([

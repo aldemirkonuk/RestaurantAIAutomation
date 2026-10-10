@@ -690,6 +690,13 @@ export interface DashboardStats {
   todayProcurementSpend?: number;
   weekProcurementSpend?: number;
   monthProcurementSpend?: number;
+  /**
+   * Delivered orders with no price, left out of the spend figure beside each
+   * (F-701). Absent from an older gateway, which counted them as $0.
+   */
+  todayProcurementUnpriced?: number | null;
+  weekProcurementUnpriced?: number | null;
+  monthProcurementUnpriced?: number | null;
 }
 
 /** Vendor spend summary returned by `GET /dashboard/summary/:id`. */

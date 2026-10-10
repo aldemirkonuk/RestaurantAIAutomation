@@ -140,6 +140,7 @@ describe("DashboardService — procurement spend is not revenue", () => {
         { month: "2026-07", spend: 1000, bottles: 12 },
         { month: "2026-08", spend: 250, bottles: 6 },
       ],
+      unpricedOrders: 0,
     });
   });
 
@@ -199,5 +200,68 @@ describe("DashboardService — procurement spend is not revenue", () => {
     const spendDay = result.daily.find((d: any) => d.date === "2026-08-09");
     expect(spendDay.procurement_spend).toBe(250);
     expect(spendDay).not.toHaveProperty("revenue");
+  });
+});
+
+// F-701: an order placed with no price is written total_cost 0. It used to add
+// $0 — or, with a `final_price` set, ONE bottle's price as the whole order —
+// and nothing said so. It is now left out of the total and counted.
+describe("DashboardService — a delivery with no price is counted, not summed as $0 (F-701)", () => {
+  let service: DashboardService;
+  const UNPRICED = {
+    status: ProcurementOrderStatus.DELIVERED,
+    total_cost: 0,
+    final_price: 17,
+    bottles_total: 12,
+    quantity: 12,
+    delivered_at: "2026-08-15T09:00:00Z",
+    created_at: "2026-08-14T00:00:00Z",
+  };
+
+  beforeEach(async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-15T12:00:00Z"));
+    const db = {
+      getClient: jest.fn().mockReturnValue(
+        makeClient({
+          procurement_orders: [...DELIVERED_ORDERS, UNPRICED],
+          restaurants: [{ timezone: "UTC" }],
+        }),
+      ),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [DashboardService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    service = module.get<DashboardService>(DashboardService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("the stat cards leave it out of the spend and say how many", async () => {
+    const stats: any = await service.getStats("r1");
+
+    expect(stats.todayProcurementSpend).toBe(0);
+    expect(stats.todayProcurementUnpriced).toBe(1);
+    expect(stats.monthProcurementSpend).toBe(250);
+    expect(stats.monthProcurementUnpriced).toBe(1);
+    expect(stats.weekProcurementUnpriced).toBe(1);
+  });
+
+  it("the spend summary leaves it out and counts it", async () => {
+    const result: any = await service.getDashboardSummary("r1");
+
+    expect(result.procurementSpend.totalProcurementSpend).toBe(1250);
+    expect(result.procurementSpend.monthlyProcurementSpend).toBe(250);
+    expect(result.procurementSpend.unpricedOrders).toBe(1);
+  });
+
+  it("the calendar and the chart add nothing for it, not a bottle's price", async () => {
+    const calendar: any = await service.getCalendarRevenue("r1", 2026, 8);
+    const day = calendar.daily.find((d: any) => d.date === "2026-08-15");
+    expect(day.procurement_spend).toBe(0);
+
+    const points: any[] = await service.getSalesChart("r1", "year");
+    expect(points.find((p) => p.date === "2026-08")?.procurementSpend).toBe(250);
   });
 });

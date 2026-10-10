@@ -1,6 +1,9 @@
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { separableExtremes, type WeekdayProfile } from "./engine/comparisons";
+import { GoalsService } from "./goals.service";
+import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { UnpricedSpendError } from "../procurement/order-spend";
 
 /**
  * Regression guard — three places where analytics answered an ABSENCE with a
@@ -172,6 +175,24 @@ describe("financial never reports an empty result set as $0", () => {
       ],
     }).getFinancialSummary(RESTAURANT);
     expect(one.cogs).toBe(12400);
+  });
+
+  // F-701: an order placed with no price is written total_cost 0. It used to
+  // add $0, or one bottle's `final_price` as the whole order, and say nothing.
+  it("leaves a delivered order with no price out of COGS and counts it", async () => {
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [
+        DELIVERED,
+        { ...DELIVERED, id: "po-2", total_cost: 0, final_price: 17 },
+      ],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(480);
+    expect(out.cogsUnpricedCount).toBe(1);
+    expect(out.basis.cogs).toContain("1 order summed");
+    expect(out.basis.cogs).toContain(
+      "1 delivered order with no price left out",
+    );
   });
 
   it("withholds every ratio that would divide by an absent COGS or revenue", async () => {
@@ -352,5 +373,117 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(typeof out.worstDay).toBe("string");
     expect(out.bestDay).not.toBe(out.worstDay);
     expect(out.basis.extremes).toContain("single weekdays");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-701 on every other purchases reader: an order with no price is not $0
+// ---------------------------------------------------------------------------
+
+describe("every purchases reader leaves an unpriced order out and says so", () => {
+  // `total_cost` 0 is how an order placed with no price is written; the
+  // `final_price` 17 is one bottle's price, the old fallback's whole order.
+  const UNPRICED = { ...DELIVERED, id: "po-2", total_cost: 0, final_price: 17 };
+  const OPEN_UNPRICED = {
+    ...UNPRICED,
+    id: "po-3",
+    status: "IN_TRANSIT",
+    delivered_at: null,
+  };
+
+  it("cashflow counts the unpriced delivery and the unpriced open order", async () => {
+    const out: any = await advanced({
+      procurement_orders: [DELIVERED, UNPRICED, OPEN_UNPRICED],
+    }).getCashflow(RESTAURANT);
+    expect(out.spendLast30d).toBe(480);
+    expect(out.spendUnpricedCount).toBe(1);
+    expect(out.committedOpenOrders).toBe(0);
+    expect(out.committedUnpricedCount).toBe(1);
+  });
+
+  it("the vendor scorecard does not take one bottle's price for the order", async () => {
+    const out: any = await advanced({
+      procurement_orders: [DELIVERED, UNPRICED],
+    }).getVendorScorecard(RESTAURANT);
+    expect(out.vendors).toHaveLength(1);
+    expect(out.vendors[0].spend).toBe(480);
+    expect(out.vendors[0].unpricedCount).toBe(1);
+    expect(out.vendors[0].unitPrice.mean).toBe(40);
+    expect(out.concentration.unpricedCount).toBe(1);
+  });
+
+  const goals = (rows: Rows) =>
+    new GoalsService(
+      { getClient: () => makeClient(rows) } as any,
+      { getStored: async () => [] } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { getFinancialSummary: async () => ({}) } as any,
+    );
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
+  it("the purchase spend goal refuses a total short of an unpriced delivery", async () => {
+    const err = await (
+      goals({ procurement_orders: [DELIVERED, UNPRICED] }) as any
+    )
+      .computeMetricWithSeries(
+        RESTAURANT,
+        "purchase_spend",
+        since,
+        undefined,
+        "UTC",
+      )
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnpricedSpendError);
+    expect((err as Error).message).toContain(
+      "1 delivery in this window carries no price",
+    );
+  });
+
+  it("the purchase spend goal still totals a window where every order is priced", async () => {
+    const out = await (
+      goals({ procurement_orders: [DELIVERED] }) as any
+    ).computeMetricWithSeries(
+      RESTAURANT,
+      "purchase_spend",
+      since,
+      undefined,
+      "UTC",
+    );
+    expect(out.current).toBe(480);
+  });
+
+  const insights = (rows: Rows) =>
+    new InsightGeneratorService(
+      { getClient: () => makeClient(rows) } as any,
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
+      {} as any,
+    );
+
+  it("the insight bundle carries an unpriced order as null, never one bottle's price", async () => {
+    const bundle = await (
+      insights({ procurement_orders: [DELIVERED, UNPRICED] }) as any
+    ).loadBundle(RESTAURANT);
+    expect(bundle.orders.map((o: any) => o.cost).sort()).toEqual(
+      [480, null].sort(),
+    );
+  });
+
+  it("says nothing about purchasing spend while an order in the window is unpriced", () => {
+    const svc = insights({}) as any;
+    const pushed: any[] = [];
+    const bundle = {
+      availability: new Set(["orders"]),
+      excludedDates: new Set<string>(),
+      orders: [
+        { vendorId: "a", vendorName: "A", cost: 480, date: "2026-10-01" },
+        { vendorId: "b", vendorName: "B", cost: null, date: "2026-10-02" },
+      ],
+    };
+    svc.computeOrdersFamily(bundle, (r: any) => pushed.push(r));
+    expect(pushed).toEqual([]);
   });
 });

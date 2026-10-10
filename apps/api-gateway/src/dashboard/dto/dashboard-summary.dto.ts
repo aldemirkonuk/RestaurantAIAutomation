@@ -118,6 +118,12 @@ export class ProcurementSpendSummaryDto {
 
   @ApiProperty({ description: "Vendor spend by month [{month, spend, bottles}]" })
   spendByMonth: any[];
+
+  @ApiProperty({
+    description:
+      "Delivered orders that carry no price, left out of every total above rather than counted as $0 (F-701)",
+  })
+  unpricedOrders: number;
 }
 
 export class ServiceErrorDto {
@@ -193,6 +199,18 @@ export class DashboardStatsDto {
 
   @ApiProperty({ description: "Vendor spend on orders delivered this calendar month, on the house's days; null when withheld for the caller's role", nullable: true, type: Number })
   monthProcurementSpend: number | null;
+
+  // F-701: delivered orders with no price are left out of the three spend
+  // figures above and counted here, so the page can say the total is missing
+  // them instead of reading as complete. Counts, not money: kept for every role.
+  @ApiProperty({ description: "Orders delivered today that carry no price, left out of todayProcurementSpend; null when the house has no time zone", nullable: true, type: Number })
+  todayProcurementUnpriced: number | null;
+
+  @ApiProperty({ description: "Orders delivered in the last 7 days that carry no price, left out of weekProcurementSpend; null when the house has no time zone", nullable: true, type: Number })
+  weekProcurementUnpriced: number | null;
+
+  @ApiProperty({ description: "Orders delivered this calendar month that carry no price, left out of monthProcurementSpend; null when the house has no time zone", nullable: true, type: Number })
+  monthProcurementUnpriced: number | null;
 
   @ApiProperty({ description: "Orders delivered today, on the house's day; null when the house has no time zone", nullable: true, type: Number })
   todayDeliveries: number | null;

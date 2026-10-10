@@ -17,6 +17,7 @@ import {
   InsightEvidence,
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
+import { orderSpend } from "../../procurement/order-spend";
 import { readWholeWindow } from "../../common/read-whole-window";
 import { readHouseCurrency } from "../../common/house-money";
 import {
@@ -1136,7 +1137,8 @@ export class InsightGeneratorService {
       orders: ok<any>(ords).map((o: any) => ({
         vendorId: o.provider_id || "unknown",
         vendorName: o.providers?.name || o.provider_id || "unknown vendor",
-        cost: o.total_cost || o.final_price || 0,
+        // Null when the order carries no price (F-701).
+        cost: orderSpend(o),
         date: dayOf(o.delivered_at || o.created_at || ""),
       })),
       inventory: ok<any>(inv),
@@ -1464,7 +1466,15 @@ export class InsightGeneratorService {
 
   private computeOrdersFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("orders")) return;
-    const rows = bundle.orders.map((o) => ({ date: o.date, value: o.cost }));
+    // A delivery with no price would make the spend trend and the vendor
+    // shares short, and a short figure reads as a real dip or a real share.
+    // Nothing is said about spend until every order in the window is priced
+    // (F-701).
+    if (bundle.orders.some((o) => o.cost == null)) return;
+    const rows = bundle.orders.map((o) => ({
+      date: o.date,
+      value: o.cost as number,
+    }));
     const { dates, values, observed } = this.toDaily(
       rows,
       90,
@@ -1491,7 +1501,7 @@ export class InsightGeneratorService {
     const byVendor = new Map<string, { name: string; total: number }>();
     for (const o of bundle.orders) {
       const e = byVendor.get(o.vendorId) || { name: o.vendorName, total: 0 };
-      e.total += o.cost;
+      e.total += o.cost as number;
       byVendor.set(o.vendorId, e);
     }
     const weights = Array.from(byVendor.values()).map((v) => v.total);
@@ -2676,7 +2686,8 @@ interface Bundle {
   orders: Array<{
     vendorId: string;
     vendorName: string;
-    cost: number;
+    /** Null when the order carries no price (F-701). */
+    cost: number | null;
     date: string;
   }>;
   inventory: any[];

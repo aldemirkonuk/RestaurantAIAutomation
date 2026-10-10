@@ -7951,6 +7951,32 @@ export class ProcurementService {
         match_verified_at: new Date().toISOString(),
         match_verified_by: userId,
       });
+
+      // THE ORDER'S MONEY BECOMES WHAT THE INVOICE CHARGED (F-700). The lot
+      // above was just written at the invoice's landed cost, and every
+      // purchases reader sums `total_cost`; leaving the order at the agreed
+      // value booked one delivery at two prices, so purchases minus the change
+      // in stock at cost stopped reconciling on every price override, every
+      // invoice with freight and every order placed with no price. The agreed
+      // value is kept in `total_estimated_cost` (written by nothing else) the
+      // first time only, so a second verification cannot overwrite the PO
+      // figure with the first invoice's. The total is the numerator of the
+      // lot's `effectiveUnitCost` (invoice-match.ts): invoiced bottles × the
+      // invoice's per-bottle price + the charges the invoice apportions.
+      const invoicedTotal =
+        bottles?.invoiceQty != null && body.invoiceUnitPrice != null
+          ? Math.round(
+              (bottles.invoiceQty * body.invoiceUnitPrice +
+                Math.max(0, body.allocatedCharges ?? 0)) *
+                100,
+            ) / 100
+          : null;
+      if (invoicedTotal != null) {
+        update.total_cost = invoicedTotal;
+        if ((orderRow as any).total_estimated_cost == null) {
+          update.total_estimated_cost = (orderRow as any).total_cost ?? null;
+        }
+      }
     }
 
     // F-349. Compare-and-set on the status read above: a "Counts match" tap
