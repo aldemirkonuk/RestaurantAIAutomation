@@ -26,10 +26,13 @@ import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   COUNTER_VERBS,
+  INFORMATION_ONLY,
+  RECORD_WORD,
   REGISTER_ROOM,
   REGISTER_WORD,
   VERB_SHORT,
   VERB_WORD,
+  actWordFor,
   clockOf,
   countWord,
   counterHead,
@@ -139,7 +142,7 @@ function RegisterBlock({
                 data-yours={r.act === 'yours' ? 'true' : 'false'}
                 onClick={() => onOpen({ register: r, row })}
               >
-                <span className="mdv-counter__verb">{VERB_SHORT[r.verb]}</span>
+                <span className="mdv-counter__verb">{actWordFor(r.key, r.verb, true)}</span>
                 <span className="mdv-counter__main">
                   <span className="mdv-counter__what">{line.what}</span>
                   <span className="mdv-counter__detail">{line.detail}</span>
@@ -178,9 +181,17 @@ export function CounterBody({ state, onOpen }: CounterBodyProps) {
   const byVerb = useMemo(() => {
     const m = new Map<CounterVerb, CounterRegister[]>();
     for (const v of COUNTER_VERBS) m.set(v, []);
-    for (const r of last?.registers ?? []) m.get(r.verb)?.push(r);
+    for (const r of last?.registers ?? []) {
+      if (!INFORMATION_ONLY.has(r.key)) m.get(r.verb)?.push(r);
+    }
     return m;
   }, [last]);
+  // Registers that ask nobody to act sit after the act sections under their
+  // own heading, never under a verb (F-267).
+  const records = useMemo(
+    () => (last?.registers ?? []).filter((r) => INFORMATION_ONLY.has(r.key)),
+    [last],
+  );
 
   let head: string;
   if (!last) head = reading ? 'reading the registers…' : failure ? 'not read' : '—';
@@ -254,6 +265,14 @@ export function CounterBody({ state, onOpen }: CounterBodyProps) {
               </section>
             );
           })}
+        {last && records.length > 0 && (
+          <section className="mdv-counter__sec" aria-label={RECORD_WORD}>
+            <h3 className="mdv-counter__eyebrow">{RECORD_WORD}</h3>
+            {records.map((r) => (
+              <RegisterBlock key={r.key} register={r} read={last} onOpen={onOpen} onReadAgain={readNow} />
+            ))}
+          </section>
+        )}
       </div>
       <section className="mdv-counter__said" aria-label="The house said">
         <h3 className="mdv-counter__eyebrow">

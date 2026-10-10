@@ -22,6 +22,7 @@ import { createContext, useContext } from 'react';
 import {
   REGISTER_WORD,
   VERB_WORD,
+  actWordFor,
   clockOf,
   type CounterRegisterAnswered,
   type HouseCounterRead,
@@ -102,7 +103,7 @@ export function counterPaletteRows(
       out.push({
         id: `counter-${answered.key}-${line.id}`,
         title: line.what,
-        subtitle: `${VERB_WORD[answered.verb]} · ${line.detail}`,
+        subtitle: `${actWordFor(answered.key, answered.verb)} · ${line.detail}`,
         keywords: `${VERB_WORD[answered.verb]} ${REGISTER_WORD[answered.key]}`,
         kind: 'act',
         run: () => openAct({ register: answered, row }),

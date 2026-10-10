@@ -85,12 +85,30 @@ describe("a verb's mark on the tucked strip", () => {
   });
 
   it('marks a page-sized answer as a floor', () => {
-    const regs = [answered('identities', 'decide', 50, { complete: false })];
+    const regs = [answered('invitations', 'decide', 50, { complete: false })];
     expect(verbMark(regs, 'decide')).toEqual({ kind: 'count', count: 50, floor: true });
+  });
+
+  // F-267: identities asks nobody to act while no page decides one, so it adds
+  // nothing to Decide's number — a not_yours register that DOES name an act
+  // (threads, orders for staff) still counts; HouseCounter.test pins "Reply: 0".
+  it('leaves an information-only register out of the verb it sits under', () => {
+    const regs = [
+      answered('identities', 'decide', 3, { act: 'not_yours' }),
+      answered('invitations', 'decide', 1),
+    ];
+    expect(verbMark(regs, 'decide')).toEqual({ kind: 'count', count: 1, floor: false });
+    expect(verbMark([regs[0]], 'decide')).toEqual({ kind: 'absent' });
   });
 });
 
 describe('the dot: something waits on YOU, or cannot say', () => {
+  // F-267: identities asks nobody to act, so failing to read it hides no act.
+  it('an unread information-only register neither lights nor hollows the dot', () => {
+    const regs = [unread('identities', 'decide'), answered('invitations', 'decide', 0)];
+    expect(actsWaiting(regs)).toBe(false);
+  });
+
   it('true when an answered register of yours holds a row', () => {
     expect(actsWaiting(OWNER_ALL)).toBe(true);
   });

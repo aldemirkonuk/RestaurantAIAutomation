@@ -266,3 +266,19 @@ describe('"Open in <Room>" opens the record the act names (DASH-W16e)', () => {
     expect(href()).toBe('/communications?reply=o-9');
   });
 });
+
+describe('an identity candidate asks nothing of the reader (F-267)', () => {
+  it('says what the record is in plain words, and offers no act and no build-log', () => {
+    const register: CounterRegisterAnswered = {
+      key: 'identities', verb: 'decide', state: 'answered', readAt: READ.readAt, ms: 4, count: 1, complete: true, act: 'not_yours',
+      rows: [{ id: 'c-1', subject: 'vendor_products', method: 'name_match', confidence: 0.8, createdAt: null }],
+    };
+    mount({ register, row: register.rows[0] });
+    expect(screen.getByText(/bottles Mudavym thinks may be the same wine/i)).toBeTruthy();
+    expect(screen.getByText(/nothing is needed from you now/i)).toBeTruthy();
+    expect(screen.getByText(/^For the record · /)).toBeTruthy();
+    expect(screen.queryByText(/^Decide · /)).toBeNull();
+    expect(screen.queryByText(/not built|surface|No page decides/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /confirm|reject|hold/i })).toBeNull();
+  });
+});

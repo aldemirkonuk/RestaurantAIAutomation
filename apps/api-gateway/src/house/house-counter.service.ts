@@ -119,7 +119,7 @@ const LABELS: Record<CounterRegisterKey, string> = {
   deliveries: "Deliveries counted by case",
   credits: "Credits promised",
   threads: "Vendor replies waiting",
-  identities: "Identities to decide",
+  identities: "Bottles that may be the same wine",
   invitations: "Invitations",
   proposals: "Mudavym's proposals",
 };
@@ -249,10 +249,15 @@ export class HouseCounterService {
           };
         },
       },
-      // Staff may decide (vendor-intel.controller.ts: the queue and its decide
-      // route carry @Roles("owner","manager","staff")).
+      // The gateway would let staff decide (vendor-intel.controller.ts: the
+      // queue and its decide route carry @Roles("owner","manager","staff")),
+      // but no mounted page decides an identity link: /vendor-prices says it
+      // is "not a place to decide from here" and SightingSheet, which holds
+      // the Confirm/Reject buttons, is mounted nowhere. An act no one can take
+      // is not anyone's to-do, so the register is the house's count only and
+      // lights no dot (F-267). "yours" again when a decide surface is mounted.
       identities: {
-        act: "yours",
+        act: "not_yours",
         load: async () => {
           const all = await this.identity.pending(house, IDENTITY_PAGE);
           return {
