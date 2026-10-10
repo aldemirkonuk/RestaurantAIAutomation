@@ -184,6 +184,13 @@ function makeDb(opts: {
   latestReconciledEvent?: Row | null;
   /** The idempotence check's read of the latest `reconciled` event fails with this. */
   latestReconciledReadError?: { message: string } | null;
+  /**
+   * F-349. The order's status moved after verifyReceipt read it: an update
+   * filtered on `status` matches no row, as PostgREST answers `.single()`.
+   */
+  statusChangedMeanwhile?: boolean;
+  /** F-374. `apply_stock_movement` fails with this. */
+  stockMoveError?: { message: string } | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -208,6 +215,11 @@ function makeDb(opts: {
           if (op === "update") {
             if (opts.updateError)
               return { data: null, error: opts.updateError };
+            if (opts.statusChangedMeanwhile && filters.status !== undefined)
+              return {
+                data: null,
+                error: { code: "PGRST116", message: "0 rows" },
+              };
             return {
               data: {
                 ...(opts.orderRow ?? {}),
@@ -329,6 +341,8 @@ function makeDb(opts: {
     },
     rpc: async (name: string, args: Row) => {
       calls.rpc.push({ name, args });
+      if (name === "apply_stock_movement" && opts.stockMoveError)
+        return { data: null, error: opts.stockMoveError };
       return { data: null, error: null };
     },
     storage: { from: () => ({}) },
@@ -1298,7 +1312,14 @@ describe("verifyReceipt — the verification is an event, not four order columns
     ).rejects.toThrow(/counts could not be recorded .*nothing was changed/);
     expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
     expect(calls.creditInserts).toEqual([]);
-    expect(calls.orderUpdates).toEqual([]);
+    // F-374: the line is written after the order is claimed, so a failed
+    // line puts every claimed column back the way it was read.
+    expect(calls.orderUpdates).toHaveLength(2);
+    expect(calls.orderUpdates[1]).toEqual(
+      Object.fromEntries(
+        Object.keys(calls.orderUpdates[0]).map((k) => [k, (bottleOrder as any)[k] ?? null]),
+      ),
+    );
   });
 });
 
@@ -1389,7 +1410,10 @@ describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
     ).rejects.toThrow(/could not be recorded .*nothing was changed/);
-    expect(calls.orderUpdates).toEqual([]);
+    // F-371: the line is written after the status compare-and-set, so a
+    // failed line puts the order's status back the way it was.
+    expect(calls.orderUpdates).toHaveLength(2);
+    expect(calls.orderUpdates[1].status).toBe(bottleOrder.status);
     expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
   });
 
@@ -1497,5 +1521,148 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     ).rejects.toThrow(/could not be checked.*nothing was changed/);
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-349 — a settled order is not completed by a tap that states no match
+// ---------------------------------------------------------------------------
+describe("verifyReceipt — a check already made is not written over (F-349)", () => {
+  const settled = {
+    ...deliveredOrder,
+    status: "PARTIALLY_RECEIVED",
+    match_status: "short_shipped",
+    match_verified_at: "2026-10-08T10:00:00Z",
+  };
+
+  it("refuses a 'Counts match' tap on an order a match left partly received, and writes nothing", async () => {
+    const { db, calls } = makeDb({ orderRow: settled });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(err.getResponse().message).toMatch(/already checked.*nothing was changed/i);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.receiptEvents).toEqual([]);
+  });
+
+  it("refuses a 'Counts match' tap on a completed order", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, status: "COMPLETED" },
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+
+  it("still lets a newer match move a partly received order", async () => {
+    const { db, calls } = makeDb({ orderRow: settled });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+    } as any);
+    expect(calls.orderUpdates).toHaveLength(1);
+  });
+
+  it("a partly received order nobody has matched yet still takes the tap", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, status: "PARTIALLY_RECEIVED" },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.orderUpdates).toHaveLength(1);
+  });
+
+  it("refuses with a 409 when a match landed between the read and the write", async () => {
+    // The tap read DELIVERED; a manager's match moved the order meanwhile. The
+    // write is compared-and-set on DELIVERED, so it matches no row.
+    const { db } = makeDb({
+      orderRow: deliveredOrder,
+      statusChangedMeanwhile: true,
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(err.getResponse().message).toMatch(/at the same moment/);
+  });
+
+  it("writes no counts-confirmed line when the tap loses the compare-and-set (F-371)", async () => {
+    // The receipt record is append-only: a line written before the lost
+    // compare-and-set could never be taken back.
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      statusChangedMeanwhile: true,
+      latestReconciledEvent: null,
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(calls.receiptEvents).toEqual([]);
+  });
+
+  it("writes no line, no stock move and no credit claim when a full match loses the compare-and-set (F-374)", async () => {
+    // A short delivery at a higher price: the match would write its
+    // `reconciled` line, correct the stock and the cost, and raise a claim.
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      statusChangedMeanwhile: true,
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 10,
+        invoiceUnitPrice: 40,
+        invoiceCurrency: "USD",
+        acceptedQuantity: 8,
+        rejectedQuantity: 2,
+        adjustments: [{ inventoryId: OWN_INVENTORY, delta: -2 }],
+      } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(err.getResponse().message).toMatch(/at the same moment/);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.rpc).toEqual([]);
+    expect(calls.creditInserts).toEqual([]);
+  });
+
+  it("puts the order back when the first stock correction fails after the claim (F-374)", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      stockMoveError: { message: "connection reset" },
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 10,
+        invoiceUnitPrice: 40,
+        invoiceCurrency: "USD",
+        acceptedQuantity: 8,
+        rejectedQuantity: 2,
+      } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(422);
+    expect(calls.orderUpdates).toHaveLength(2);
+    expect(calls.orderUpdates[1].status).toBe("DELIVERED");
+    expect(calls.orderUpdates[1].match_verified_at).toBeNull();
+    expect(calls.creditInserts).toEqual([]);
+  });
+
+  it("moves no stock from an old offline payload when it loses the compare-and-set (F-374)", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      statusChangedMeanwhile: true,
+      latestReconciledEvent: null,
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, {
+        adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3 }],
+      } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(calls.rpc).toEqual([]);
+    expect(calls.receiptEvents).toEqual([]);
   });
 });

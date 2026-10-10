@@ -122,7 +122,35 @@ export class MobileService {
       const notifOrderId = meta.orderId ?? null;
       const type = n.type ?? "";
 
-      if (type === "invoice_received") {
+      // F-349. A delivery discrepancy is filed as `invoice_received` too
+      // (procurement.service.ts verifyReceipt), but it is news about a check
+      // already made, not a delivery to check. As a receipt_verification card
+      // its "Counts match" completed the order over its backorder and owed
+      // invoice. Only the discrepancy notice carries `matchStatus`, so rows
+      // already in the inbox change kind as well as new ones.
+      if (type === "invoice_received" && meta.matchStatus != null) {
+        items.push(
+          this.makeItem({
+            kind: "receipt_discrepancy",
+            entityId: notifOrderId ?? n.id,
+            title: n.title ?? "Delivery discrepancy",
+            subtitle:
+              n.message ?? "The delivery did not match the order or the invoice.",
+            quantity: meta.backorderQty ?? null,
+            priority: "critical",
+            createdAt: n.createdAt ?? n.created_at ?? new Date().toISOString(),
+            orderId: notifOrderId,
+            notificationId: n.id,
+            meta,
+          }),
+        );
+        continue;
+      }
+
+      // F-372. A notice with no order id has no delivery to verify: its
+      // "Counts match" would post to /verify-receipt on an undefined id. It
+      // falls through to an informational alert instead.
+      if (type === "invoice_received" && notifOrderId) {
         items.push(
           this.makeItem({
             kind: "receipt_verification",
@@ -268,6 +296,9 @@ export class MobileService {
     switch (kind) {
       case "receipt_verification":
         base = 95;
+        break;
+      case "receipt_discrepancy":
+        base = 90;
         break;
       case "order_approval":
         base = priority === "critical" ? 92 : 80;

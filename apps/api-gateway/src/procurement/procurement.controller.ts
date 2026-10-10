@@ -280,8 +280,8 @@ export class ProcurementController {
         user.restaurantId,
         orderId,
         dto,
-        // Only to record who ended a standing order's series, when this
-        // change closes the order it repeats.
+        // The actor gates a status or price write (F-300) and records who
+        // ended a standing order's series when this change closes it.
         { actorUserId: user.userId },
       );
     } catch (error) {

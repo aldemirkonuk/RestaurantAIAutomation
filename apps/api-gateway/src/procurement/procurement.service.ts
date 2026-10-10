@@ -3398,8 +3398,17 @@ export class ProcurementService {
       cancelledFromStatus?: ProcurementOrderStatus;
       cancelledAt?: string;
       /**
-       * Who made the change. Read only to record who ended a standing order's
-       * series when this write closes its parent.
+       * F-350. The stored status `cancelOrder` read and checked; the write is
+       * compared-and-set on it, so an approval landing in between is not
+       * overwritten with a cancel whose shadow-stock release was decided from
+       * the state before it.
+       */
+      cancelledFromStoredStatus?: string;
+      /**
+       * F-300. The signed-in person behind `PATCH orders/:id`, from the token,
+       * never the body. A status or price write without one is refused. Also
+       * recorded as who ended a standing order's series when this write
+       * closes its parent.
        */
       actorUserId?: string;
     },
@@ -3441,8 +3450,73 @@ export class ProcurementService {
           "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
       });
     }
+    // F-300. Approving and delivering have their own acts too. Approval is
+    // held to confirm, checked against the house's ceilings and records who
+    // signed; a delivery is booked at the door. Writing either status here
+    // skipped all of that and left `approved_by` empty.
+    const OWN_ACT_WORDS: Partial<Record<ProcurementOrderStatus, string>> = {
+      [ProcurementOrderStatus.APPROVED]:
+        "An order is approved by holding to confirm, which checks the house's limits and records who signed — not by editing its status. Nothing was changed.",
+      [ProcurementOrderStatus.DELIVERED]:
+        "An order is marked delivered when the wine is booked in at the door — not by editing its status. Nothing was changed.",
+    };
+    if (dto.status !== undefined && OWN_ACT_WORDS[dto.status]) {
+      throw new UnprocessableEntityException({
+        reason: "status_through_its_own_act",
+        message: OWN_ACT_WORDS[dto.status],
+      });
+    }
+
+    // F-300. Where an order stands and what it costs are owner/manager acts
+    // (ADR 0253's money rule; ADR 0125 Q1 for the order's state). `cancelOrder`
+    // has already asked the same helper before it calls in here.
+    const writesMoney = dto.finalPrice != null || dto.totalCost != null;
+    const writesStatus = dto.status !== undefined && !opts?.cancelReasonCode;
+    if (writesMoney || writesStatus) {
+      await this.assertMayChangeOrder(
+        restaurantId,
+        opts?.actorUserId,
+        writesMoney ? "change what an order costs" : "change where an order stands",
+      );
+    }
+
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
       await this.assertStatusTransition(restaurantId, orderId, dto.status);
+    }
+
+    // F-300. The price is set while the order is still PENDING. After the
+    // seal it is the figure the manager approved (and the one a standing
+    // order copies into every repeat), so it is not edited in place. Read
+    // here and compared-and-set on the write, so an approval landing between
+    // the two cannot be repriced after the fact.
+    let pricedFromStatus: string | null = null;
+    if (writesMoney) {
+      const { data: current, error: readError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("status")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .maybeSingle();
+      if (readError) {
+        throw new InternalServerErrorException(
+          `This order could not be read (${readError.message}), so its price was not changed.`,
+        );
+      }
+      if (!current) {
+        throw new NotFoundException(
+          "No order with that id belongs to this restaurant, so there was nothing to change.",
+        );
+      }
+      const status = (current as { status: string }).status;
+      if (readOrderStatus(status) !== ProcurementOrderStatus.PENDING) {
+        throw new UnprocessableEntityException({
+          reason: "price_set_before_approval",
+          message:
+            "An order's price can only be changed before it is approved. This one has moved on, so the price stays as it was approved. Nothing was changed.",
+        });
+      }
+      pricedFromStatus = status;
     }
 
     // D-06: Block location assignment while order is in a pending state.
@@ -3497,14 +3571,45 @@ export class ProcurementService {
       cancelled_at: opts?.cancelledAt ?? undefined,
     };
 
-    const { data, error } = await this.databaseService.supabase
+    let write = this.databaseService.supabase
       .from("procurement_orders")
       .update(updatePayload)
       .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
+      .eq("id", orderId);
+    if (pricedFromStatus !== null) write = write.eq("status", pricedFromStatus);
+    const cancelFrom = opts?.cancelledFromStoredStatus ?? null;
+    if (cancelFrom !== null) write = write.eq("status", cancelFrom);
+    const { data, error } = await write
       .select("*, inventory:inventory_id(wine_name)")
       .single();
 
+    if (error && cancelFrom !== null && error.code === "PGRST116") {
+      // Read again only to say where the order now stands. A failed read
+      // still refuses; it just cannot name the state.
+      const { data: now, error: nowError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("status")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+      const nowStatus = nowError
+        ? null
+        : readOrderStatus((now as { status?: string } | null)?.status);
+      throw new ConflictException({
+        reason: "order_changed_while_cancelling",
+        message: nowStatus
+          ? `This order became ${statusInWords(nowStatus)} while it was being cancelled, so it was not cancelled. Open the order again and cancel it from there if you still want to.`
+          : "This order changed while it was being cancelled, so it was not cancelled. Open the order again to see where it stands.",
+      });
+    }
+
+    if (error && pricedFromStatus !== null && error.code === "PGRST116") {
+      throw new ConflictException({
+        reason: "order_changed_while_pricing",
+        message:
+          "This order was approved or changed while its price was being edited, so the new price was not written.",
+      });
+    }
     if (error) {
       this.logger.error("Failed to update procurement order", {
         restaurantId,
@@ -3652,6 +3757,30 @@ export class ProcurementService {
       restaurantId,
       "cancel an order",
     );
+  }
+
+  /**
+   * F-300. The same rule for `PATCH orders/:id` when it writes a status or a
+   * price. Refuses, rather than allows, when the caller named nobody or the
+   * helper is not wired — the same posture as `assertMayCancelOrder`.
+   */
+  private async assertMayChangeOrder(
+    restaurantId: string,
+    userId: string | undefined,
+    action: string,
+  ): Promise<void> {
+    if (!userId) {
+      throw new ForbiddenException(
+        `Who is making this change could not be established, so nothing was changed. Only a manager or an owner of this restaurant can ${action}.`,
+      );
+    }
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may change an order could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(userId, restaurantId, action);
   }
 
   /**
@@ -3880,6 +4009,7 @@ export class ProcurementService {
         cancelledFromStatus: preStatus,
         cancelledAt: cancelledAtIso,
         actorUserId: userId,
+        cancelledFromStoredStatus: (preRow as { status: string }).status,
       },
     );
 
@@ -4076,7 +4206,7 @@ export class ProcurementService {
       // closed on the write either way; what it did not do was say so.
       const { data: inv, error: invError } = await this.databaseService.supabase
         .from("restaurant_inventory")
-        .select("shadow_stock, in_transit_quantity")
+        .select("shadow_stock")
         .eq("restaurant_id", restaurantId)
         .eq("id", inventoryId)
         .maybeSingle();
@@ -4096,7 +4226,6 @@ export class ProcurementService {
 
       {
         const currentShadow = (inv as any).shadow_stock ?? 0;
-        const currentInTransit = (inv as any).in_transit_quantity ?? 0;
         const release = Math.min(quantity, currentShadow);
         if (release > 0) {
           const { error } = await this.databaseService.supabase.rpc(
@@ -4116,13 +4245,7 @@ export class ProcurementService {
           );
           if (error) throw new Error(error.message);
         }
-        await this.databaseService.supabase
-          .from("restaurant_inventory")
-          .update({
-            in_transit_quantity: Math.max(0, currentInTransit - quantity),
-          })
-          .eq("restaurant_id", restaurantId)
-          .eq("id", inventoryId);
+        await this.moveInTransit(restaurantId, inventoryId, -quantity);
         this.logger.log(
           `Released ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
         );
@@ -4160,26 +4283,43 @@ export class ProcurementService {
       );
       if (error) throw new Error(error.message);
 
-      const { data: inv } = await this.databaseService.supabase
-        .from("restaurant_inventory")
-        .select("in_transit_quantity")
-        .eq("restaurant_id", restaurantId)
-        .eq("id", inventoryId)
-        .single();
-      await this.databaseService.supabase
-        .from("restaurant_inventory")
-        .update({
-          in_transit_quantity:
-            ((inv as any)?.in_transit_quantity ?? 0) + quantity,
-        })
-        .eq("restaurant_id", restaurantId)
-        .eq("id", inventoryId);
+      await this.moveInTransit(restaurantId, inventoryId, quantity);
       this.logger.log(
         `Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
       );
     } catch (e: any) {
       this.logger.warn(`reserveOrderShadowStock failed: ${e?.message}`);
     }
+  }
+
+  /**
+   * F-351. Move the in-transit display counter by `delta` in one statement
+   * (`move_in_transit_by_delta`, floored at 0). It used to be read here and
+   * written back as an absolute figure, so an approval and another order's
+   * release or delivery on the same item at once lost one of the two changes.
+   * Never throws: the counter is a display figure, and a stock move that
+   * already happened must not be reported as failed because of it.
+   */
+  private async moveInTransit(
+    restaurantId: string,
+    inventoryId: string,
+    delta: number,
+  ): Promise<string | null> {
+    const { error } = await this.databaseService.supabase.rpc(
+      "move_in_transit_by_delta",
+      {
+        p_restaurant_id: restaurantId,
+        p_inventory_id: inventoryId,
+        p_delta: delta,
+      },
+    );
+    if (error) {
+      this.logger.warn(
+        `The in-transit figure for item ${inventoryId} was not moved by ${delta} (${error.message}).`,
+      );
+      return error.message;
+    }
+    return null;
   }
 
   /**
@@ -4229,9 +4369,29 @@ export class ProcurementService {
     userId: string,
     challenge?: string | null,
   ): Promise<OrderResponseDto> {
+    // F-301. The state is read FIRST, so an order that was already approved —
+    // a second manager's hold, a stale tab — is told so before any seal is
+    // spent. `canTransition` lets APPROVED re-enter itself (it is not
+    // terminal), so the same-state case is refused here by name: a second
+    // approval overwrote `approved_by`, reserved the shadow stock twice and
+    // asked for a second vendor letter.
+    const { row: current } = await this.assertStatusTransition(
+      restaurantId,
+      orderId,
+      ProcurementOrderStatus.APPROVED,
+    );
+    if (readOrderStatus(current.status) === ProcurementOrderStatus.APPROVED) {
+      throw new ConflictException({
+        reason: "order_already_approved",
+        message:
+          "This order is already approved, so there is nothing to approve again. Nothing was changed.",
+      });
+    }
     await this.assertApprovalAllowed(restaurantId, orderId, userId);
     await this.redeemOrderSeal(restaurantId, orderId, userId, challenge);
 
+    // Compare-and-set on the state read above: two holds that both passed the
+    // read cannot both win. The second matches no row and is refused below.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
@@ -4241,9 +4401,17 @@ export class ProcurementService {
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
+      .eq("status", current.status)
       .select("*, inventory:inventory_id(wine_name)")
-      .single();
+      .maybeSingle();
 
+    if (!error && !data) {
+      throw new ConflictException({
+        reason: "order_changed_while_approving",
+        message:
+          "Someone else changed this order while it was being approved, so this approval was not written. Open the order again to see where it stands.",
+      });
+    }
     if (error) {
       this.logger.error("Failed to approve procurement order", {
         restaurantId,
@@ -5430,7 +5598,7 @@ export class ProcurementService {
             await this.databaseService.supabase
               .from("restaurant_inventory")
               .select(
-                "master_wine_id, wine_name, display_name, shadow_stock, in_transit_quantity",
+                "master_wine_id, wine_name, display_name, shadow_stock",
               )
               .eq("restaurant_id", restaurantId)
               .eq("id", inventoryId)
@@ -5453,8 +5621,6 @@ export class ProcurementService {
               typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
             itemName = nameOf(itemRow.wine_name) ?? nameOf(itemRow.display_name);
             const currentShadow = Number(itemRow.shadow_stock ?? 0) || 0;
-            const currentInTransit =
-              Number(itemRow.in_transit_quantity ?? 0) || 0;
             const shadowRelease = Math.min(receivedBottles, currentShadow);
 
             // WHAT KIND OF PRICE THIS IS.
@@ -5533,20 +5699,14 @@ export class ProcurementService {
               stockNotMoved = live.error.message ?? String(live.error);
             } else {
               // in_transit_quantity is a separate denormalized display counter.
-              const { error: inTransitError } =
-                await this.databaseService.supabase
-                  .from("restaurant_inventory")
-                  .update({
-                    in_transit_quantity: Math.max(
-                      0,
-                      currentInTransit - receivedBottles,
-                    ),
-                  })
-                  .eq("restaurant_id", restaurantId)
-                  .eq("id", inventoryId);
+              const inTransitError = await this.moveInTransit(
+                restaurantId,
+                inventoryId,
+                -receivedBottles,
+              );
               if (inTransitError)
                 this.logger.warn(
-                  `markDelivered: order ${orderId} booked, but the in-transit display counter was not lowered (${inTransitError.message})`,
+                  `markDelivered: order ${orderId} booked, but the in-transit display counter was not lowered (${inTransitError})`,
                 );
             }
           }
@@ -6317,6 +6477,26 @@ export class ProcurementService {
       throw new NotFoundException(`Order ${orderId} not found`);
     }
 
+    // F-349. A receipt that states no match (the mobile "Counts match" tap,
+    // an old offline payload) completes the order. On an order a match has
+    // already settled — COMPLETED, or PARTIALLY_RECEIVED with a recorded match
+    // (a backorder or an invoice still owed) — that erased the backorder and
+    // the open three-way match. Only a newer match may move such an order.
+    const verifiedStatus = readOrderStatus((orderRow as any).status);
+    const alreadySettled =
+      verifiedStatus === ProcurementOrderStatus.COMPLETED ||
+      (verifiedStatus === ProcurementOrderStatus.PARTIALLY_RECEIVED &&
+        (orderRow as any).match_verified_at != null);
+    if (alreadySettled && !hasMatchFields) {
+      throw new ConflictException({
+        reason: "receipt_already_checked",
+        message:
+          verifiedStatus === ProcurementOrderStatus.COMPLETED
+            ? "This delivery was already checked and the order is complete, so nothing was changed."
+            : "This delivery was already checked against the invoice and is still owed bottles or a bill, so nothing was changed. Open the order to see what is outstanding.",
+      });
+    }
+
     /*
      * ITEM A — STOCK PROCEEDS; THE PRICE IS REFUSED (founder, 2026-09-06 batch
      * 64: *"stock proceeds refuse the price at receving, and let them approve if
@@ -6555,42 +6735,6 @@ export class ProcurementService {
       );
     }
 
-    // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
-    // 2026-09-21). What the desk accepted, rejected and was invoiced for used
-    // to be written onto four `procurement_orders` columns — accepted and
-    // rejected in the COUNTED unit, backorder in bottles — and overwritten by
-    // the next verification. They are now one `reconciled` receipt event, all
-    // in BOTTLES (the unit `computeMatch` compared them in), written BEFORE
-    // anything else moves: if the facts cannot be recorded, nothing is changed.
-    // "Accepted" is then the ledger's own count (the correction below moves
-    // it), "rejected" the door's plus the desk's, "invoiced" this row's, and
-    // "backorder" what was ordered less what the ledger holds
-    // (`shelf-received.ts`). The four columns are no longer written or read;
-    // `scripts/check_no_quantity_received_column.py` holds that line.
-    if (match && bottles) {
-      const { error: eventError } = await this.databaseService.supabase
-        .from("procurement_receipt_events")
-        .insert({
-          restaurant_id: restaurantId,
-          order_id: orderId,
-          stage: "reconciled",
-          counted_qty: bottles.acceptedQty,
-          counted_uom: "bottle",
-          counted_qty_bottles: bottles.acceptedQty,
-          rejected_qty: bottles.rejectedQty,
-          rejected_qty_bottles: bottles.rejectedQty,
-          invoice_qty_bottles: hasInvoice ? bottles.invoiceQty : null,
-          received_by: userId,
-          notes: body.rejectedReason ?? null,
-        });
-      if (eventError) {
-        throw new InternalServerErrorException(
-          `This verification's counts could not be recorded (${eventError.message}), so nothing was changed: ` +
-            "no stock was corrected and the order is as it was. Try again.",
-        );
-      }
-    }
-
     // A VERIFICATION THAT STATES NO COUNT STILL LEAVES A HISTORY LINE (ADR
     // 0192, fifth amendment; founder, 2026-09-26, round 6, verbatim option:
     // "Yes, keep last invoice (Recommended) — It writes a history line with
@@ -6606,8 +6750,8 @@ export class ProcurementService {
     // refusal, and `outcome = 'accepted'` (`COUNTS_CONFIRMED_OUTCOME`), the word
     // that tells the desk's readers this line restates nothing: the invoice and
     // the refusal stay read from the latest event that states them
-    // (`shelf-received.ts`). Written before anything moves, like the full
-    // verification's event: if it cannot be recorded, nothing is changed.
+    // (`shelf-received.ts`). Decided here, before anything moves, but written
+    // only once the order's status compare-and-set has won (F-371).
     //
     // Every legacy adjustment's item is proven to be this house's FIRST, so a
     // refused adjustment (403) leaves no line claiming a verification happened.
@@ -6620,15 +6764,19 @@ export class ProcurementService {
     // reports success, the order's status write below still runs, and an
     // earlier full check's rejected count and invoice stay exactly as they
     // were, read from that same still-latest row.
+    //
+    // F-374: on the match path too, so a refused extra (403) is refused
+    // before the order is claimed below and nothing is written.
+    for (const adj of adjustments)
+      await assertInventoryBelongsToRestaurant(
+        this.databaseService.supabase,
+        restaurantId,
+        adj.inventoryId,
+        `verifyReceipt on order ${orderId}`,
+        this.logger,
+      );
+    let countsConfirmedEvent: Record<string, unknown> | null = null;
     if (!hasMatchFields) {
-      for (const adj of adjustments)
-        await assertInventoryBelongsToRestaurant(
-          this.databaseService.supabase,
-          restaurantId,
-          adj.inventoryId,
-          `verifyReceipt on order ${orderId}`,
-          this.logger,
-        );
       const orderedItem: string | null = (orderRow as any).inventory_id ?? null;
       let confirmedBottles: number | null = null;
       if (orderedItem) {
@@ -6671,75 +6819,26 @@ export class ProcurementService {
       }
       const latestReconciled = latestReconciledRows?.[0] ?? null;
 
+      // F-371. The line is written AFTER the status compare-and-set below,
+      // not here: the receipt record is append-only (ADR 0227), so a line
+      // written before a lost compare-and-set (409) could never be taken back
+      // and would claim a check that was not the one that landed.
       if (!repeatsTheLatestConfirmation(latestReconciled, confirmedBottles)) {
-        const { error: confirmError } = await this.databaseService.supabase
-          .from("procurement_receipt_events")
-          .insert({
-            restaurant_id: restaurantId,
-            order_id: orderId,
-            stage: "reconciled",
-            outcome: COUNTS_CONFIRMED_OUTCOME,
-            counted_qty: confirmedBottles,
-            counted_uom: "bottle",
-            counted_qty_bottles: confirmedBottles,
-            rejected_qty: 0,
-            rejected_qty_bottles: 0,
-            invoice_qty_bottles: null,
-            received_by: userId,
-            notes: null,
-          });
-        if (confirmError) {
-          throw new InternalServerErrorException(
-            `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
-              "no stock was corrected and the order is as it was. Try again.",
-          );
-        }
+        countsConfirmedEvent = {
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          stage: "reconciled",
+          outcome: COUNTS_CONFIRMED_OUTCOME,
+          counted_qty: confirmedBottles,
+          counted_uom: "bottle",
+          counted_qty_bottles: confirmedBottles,
+          rejected_qty: 0,
+          rejected_qty_bottles: 0,
+          invoice_qty_bottles: null,
+          received_by: userId,
+          notes: null,
+        };
       }
-    }
-
-    // Correct the ordered line to the accepted count, then apply any unlisted extras.
-    //
-    // The gate used to be `match.ledgerDelta !== 0` alone, which silently
-    // dropped the entire point of the three-way match: when the count was right
-    // and only the PRICE was wrong — the commonest discrepancy there is, and
-    // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
-    // and the verified landed cost never reached the books. A verified price is
-    // now reason enough to write, on its own.
-    if (
-      match &&
-      (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
-      (orderRow as any).inventory_id
-    ) {
-      await this.applyReceiptAdjustment(
-        restaurantId,
-        orderId,
-        (orderRow as any).inventory_id,
-        match.ledgerDelta,
-        `receipt verification for order ${orderId}: ${match.summary}`,
-        // Verified landed cost, so the corrected lot carries what the bottle
-        // really cost rather than what we expected it to.
-        match.effectiveUnitCost,
-        userId,
-      );
-    }
-
-    for (const adj of adjustments) {
-      // Skip the ordered line when the match already corrected it.
-      if (match && adj.inventoryId === (orderRow as any).inventory_id) continue;
-      await this.applyReceiptAdjustment(
-        restaurantId,
-        orderId,
-        adj.inventoryId,
-        adj.delta,
-        adj.reason ||
-          `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
-        // No unit cost: a free-form adjustment is a count correction on an item
-        // the invoice line does not describe, so there is no verified price to
-        // put on it. Passing one would be inventing the number the whole of
-        // this change exists to stop inventing.
-        null,
-        userId,
-      );
     }
 
     // Accepting less than was ordered keeps the order open, so the outstanding bottles stay
@@ -6771,7 +6870,8 @@ export class ProcurementService {
     // ledger correction and the credit claim above have already been written, so
     // a PGRST204 here leaves the order permanently half-verified: status,
     // match_status, the invoice price and the price history below never land,
-    // and the retry fails identically.
+    // and the retry fails identically. [F-374: the correction and the claim
+    // are now written after this update, never before it.]
     //
     // Appended rather than assigned. A note left at the door and a note left at
     // verification are two different observations of the same delivery, and the
@@ -6852,6 +6952,162 @@ export class ProcurementService {
       });
     }
 
+    // F-349. Compare-and-set on the status read above: a "Counts match" tap
+    // and a manager's match arriving together cannot both win, and a queued
+    // tap sent after the match landed matches no row.
+    //
+    // F-374. This is the CLAIM, and it comes before every other write: the
+    // `reconciled` line, the stock corrections and the credit claim all
+    // follow it. The receipt record is append-only (ADR 0227) and a stock
+    // move is a ledger row, so a check that loses here (409) must not have
+    // written either — it would leave a line or a move behind for a check
+    // that never landed.
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .update(update)
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .eq("status", (orderRow as any).status)
+      .select("*, inventory:inventory_id(wine_name)")
+      .single();
+
+    if (error && error.code === "PGRST116") {
+      throw new ConflictException({
+        reason: "receipt_checked_meanwhile",
+        message:
+          "Someone else checked this delivery at the same moment, so this check was not written over theirs. Open the order to see where it stands.",
+      });
+    }
+    if (error) {
+      this.logger.error(`verifyReceipt status update failed: ${error.message}`);
+      throw error;
+    }
+
+    // F-371 / F-374. Puts the order back the way it was read (compare-and-set
+    // on the status just written) when a write after the claim fails before
+    // any stock has moved, so the check can be retried and "nothing changes"
+    // still holds. Returns whether it was put back.
+    let stockMoved = false;
+    const putBack = async (): Promise<boolean> => {
+      const prior: Record<string, any> = {};
+      for (const key of Object.keys(update))
+        prior[key] = (orderRow as any)[key] ?? null;
+      const { error: undoError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .update(prior)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .eq("status", status)
+        .select("id")
+        .single();
+      if (undoError) {
+        this.logger.error(
+          `verifyReceipt could not put order ${orderId} back after a failed write: ${undoError.message}`,
+        );
+        return false;
+      }
+      return true;
+    };
+
+    // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
+    // 2026-09-21). What the desk accepted, rejected and was invoiced for used
+    // to be written onto four `procurement_orders` columns — accepted and
+    // rejected in the COUNTED unit, backorder in bottles — and overwritten by
+    // the next verification. They are now one `reconciled` receipt event, all
+    // in BOTTLES (the unit `computeMatch` compared them in), written BEFORE
+    // any stock moves: if the facts cannot be recorded, the order is put back
+    // and nothing is changed. [F-374: written right after the claim above,
+    // not before it; a line written before a lost claim could not be taken
+    // back.] "Accepted" is then the ledger's own count (the correction below
+    // moves it), "rejected" the door's plus the desk's, "invoiced" this row's,
+    // and "backorder" what was ordered less what the ledger holds
+    // (`shelf-received.ts`). The four columns are no longer written or read;
+    // `scripts/check_no_quantity_received_column.py` holds that line.
+    if (match && bottles) {
+      const { error: eventError } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .insert({
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          stage: "reconciled",
+          counted_qty: bottles.acceptedQty,
+          counted_uom: "bottle",
+          counted_qty_bottles: bottles.acceptedQty,
+          rejected_qty: bottles.rejectedQty,
+          rejected_qty_bottles: bottles.rejectedQty,
+          invoice_qty_bottles: hasInvoice ? bottles.invoiceQty : null,
+          received_by: userId,
+          notes: body.rejectedReason ?? null,
+        });
+      if (eventError) {
+        if (await putBack())
+          throw new InternalServerErrorException(
+            `This verification's counts could not be recorded (${eventError.message}), so nothing was changed: ` +
+              "no stock was corrected and the order is as it was. Try again.",
+          );
+        throw new InternalServerErrorException(
+          `The delivery is marked as checked, but its counts could not be saved to the order's history (${eventError.message}). No stock was corrected.`,
+        );
+      }
+    }
+
+    // Correct the ordered line to the accepted count, then apply any unlisted extras.
+    //
+    // The gate used to be `match.ledgerDelta !== 0` alone, which silently
+    // dropped the entire point of the three-way match: when the count was right
+    // and only the PRICE was wrong — the commonest discrepancy there is, and
+    // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
+    // and the verified landed cost never reached the books. A verified price is
+    // now reason enough to write, on its own.
+    //
+    // F-374: after the claim. If the first correction fails before any stock
+    // has moved, the order is put back so the check can be retried; once
+    // stock has moved it is not (a retry would move it a second time).
+    try {
+      if (
+        match &&
+        (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
+        (orderRow as any).inventory_id
+      ) {
+        await this.applyReceiptAdjustment(
+          restaurantId,
+          orderId,
+          (orderRow as any).inventory_id,
+          match.ledgerDelta,
+          `receipt verification for order ${orderId}: ${match.summary}`,
+          // Verified landed cost, so the corrected lot carries what the bottle
+          // really cost rather than what we expected it to.
+          match.effectiveUnitCost,
+          userId,
+        );
+        stockMoved = true;
+      }
+
+      for (const adj of adjustments) {
+        // Skip the ordered line when the match already corrected it.
+        if (match && adj.inventoryId === (orderRow as any).inventory_id)
+          continue;
+        await this.applyReceiptAdjustment(
+          restaurantId,
+          orderId,
+          adj.inventoryId,
+          adj.delta,
+          adj.reason ||
+            `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
+          // No unit cost: a free-form adjustment is a count correction on an item
+          // the invoice line does not describe, so there is no verified price to
+          // put on it. Passing one would be inventing the number the whole of
+          // this change exists to stop inventing.
+          null,
+          userId,
+        );
+        stockMoved = true;
+      }
+    } catch (e) {
+      if (!stockMoved) await putBack();
+      throw e;
+    }
+
     // Raise a vendor credit claim when the match found money owed back.
     // Best-effort: a failure here must not strand a delivery that has already
     // been counted, and the claim can be raised again from the discrepancy queue.
@@ -6864,17 +7120,26 @@ export class ProcurementService {
         orderRow as { provider_id?: string | null; currency?: string | null },
       );
 
-    const { data, error } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .update(update)
-      .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .select("*, inventory:inventory_id(wine_name)")
-      .single();
-
-    if (error) {
-      this.logger.error(`verifyReceipt status update failed: ${error.message}`);
-      throw error;
+    // F-371. Only the tap whose compare-and-set won writes its history line.
+    // If the line then cannot be written, the order is put back the way it
+    // was, so the tap can be retried and "nothing changes" still holds. An
+    // old offline payload whose adjustments already moved stock is NOT put
+    // back: a retry would move that stock a second time.
+    if (countsConfirmedEvent) {
+      const { error: confirmError } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .insert(countsConfirmedEvent);
+      if (confirmError) {
+        if (!stockMoved && (await putBack())) {
+          throw new InternalServerErrorException(
+            `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
+              "no stock was corrected and the order is as it was. Try again.",
+          );
+        }
+        throw new InternalServerErrorException(
+          `The delivery is marked as checked, but its count could not be saved to the order's history (${confirmError.message}).`,
+        );
+      }
     }
 
     // Resolve the pinned notification for every member.
