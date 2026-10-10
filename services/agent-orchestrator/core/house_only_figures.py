@@ -10,8 +10,7 @@ The agent uses it only for its own accept test
 reach the drafting prompt too, because the whole intent was json-dumped
 into RESPONSE_SYSTEM_PROMPT's {intent_description}. On 2026-10-08 the F-106
 production dry run found a waiting draft that told the vendor both the
-target and the ceiling. That draft was never sent (tech-debt.d
-2026-10-08-data-f106-reconcile-pending-drafts).
+target and the ceiling. That draft was never sent (found by PR #679).
 
 There are two layers here:
   1. `vendor_safe_intent` removes the house-only keys before the prompt is

@@ -6,7 +6,7 @@ Found by the F-106 production dry run, 2026-10-08: a waiting draft said
 "My target price ... is around $1,090 per bottle, with a maximum acceptable
 price of $1,199." It was never sent. The cause was that
 RESPONSE_SYSTEM_PROMPT received the whole intent, max_acceptable_price
-included (tech-debt.d 2026-10-08-data-f106-reconcile-pending-drafts).
+included (found by PR #679).
 """
 
 import logging

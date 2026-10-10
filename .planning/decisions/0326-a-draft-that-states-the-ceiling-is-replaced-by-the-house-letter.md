@@ -4,7 +4,7 @@
 - **Date:** 2026-10-10
 - **Decider:** the coordinator, under the delegation below. Built on `fix/withhold-price-ceiling-from-vendor-drafts` (PR #680).
 - **Keywords:** max_acceptable_price, price ceiling, house-only figure, vendor_safe_intent, withheld_figures_in, order_letter_without_ceiling, withheld_figure_dropped, draft_generated, decision log, Level 4, F-106, RESPONSE_SYSTEM_PROMPT, replace vs refuse
-- **Links:** [[0266-an-orders-vendor-letter-is-staged-once]] (the one-letter door the replacement is staged through); `services/agent-orchestrator/core/house_only_figures.py`; `services/agent-orchestrator/tests/test_house_only_figures.py`; `tech-debt.d/2026-10-08-fix-withhold-price-ceiling-from-vendor-drafts.md` (the fix, its tests and what it does not cover); the OPEN entry it closes, `tech-debt.d/2026-10-08-data-f106-reconcile-pending-drafts.md` on PR #679 (not on `main` yet); the review comments on PR #680 (at f16882e, 600a1f3, 065868d, a1cd765, and the CI review at a0c2db3, PR comment 6087212540).
+- **Links:** [[0266-an-orders-vendor-letter-is-staged-once]] (the one-letter door the replacement is staged through); `services/agent-orchestrator/core/house_only_figures.py`; `services/agent-orchestrator/tests/test_house_only_figures.py`; `tech-debt.d/2026-10-08-fix-withhold-price-ceiling-from-vendor-drafts.md` (the fix, its tests and what it does not cover); PR #679 (the F-106 dry run that found the defect and filed an OPEN entry for it); the review comments on PR #680 (at f16882e, 600a1f3, 065868d, a1cd765, and the CI review at a0c2db3, PR comment 6087212540).
 
 ## Context
 
@@ -35,7 +35,7 @@ Nothing here changes a feature the founder picked. The OPEN entry's "refuse at s
 
 ### Fork 3: the Level-4 `draft_generated` decision-log entry for a replaced draft
 
-No ADR in `.planning/decisions/` governs Level-4 decision-log coverage (a grep for "Level-4", "Level 4", "draft_generated" and "decision log" on 2026-10-10 finds only unrelated uses). So this is a fork of its own.
+On 2026-10-10, a grep of `.planning/decisions/` for "Level-4", "Level 4", "draft_generated" and "decision log" found no ADR governing Level-4 decision-log coverage, only unrelated uses. That is a dated observation, not a standing claim; an ADR that later rules on that coverage supersedes fork 3. On that evidence this was treated as a fork of its own.
 
 1. **Skip the entry for a replaced draft** (the a0c2db3 code: an early `return`). Rejected. The log would go silent on exactly the branch where the guard fires.
 2. **Log the model's draft as before.** Rejected. Its preview would copy the ceiling into `decision_log`.
