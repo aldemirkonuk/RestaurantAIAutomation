@@ -29,6 +29,32 @@ import {
   ReleaseLockDto,
   SetTargetMarginDto,
 } from "./dto/pricing.dto";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
+
+/**
+ * THE LOCKS AS THIS ROLE MAY READ THEM (F-619). Everyone of the house reads
+ * the locks (L8): the held price is what the floor sells at. The advice is
+ * not: its sentence states today's margin and the house's target ("today's
+ * margin is 58%, your target is 70%"), and the price times one minus that
+ * margin is what the house paid. A reader who does not hold the house's
+ * money (`holdsHouseMoney`, ADR 0145) gets each lock without `advice`, without
+ * `adviceUnknownReason` (it can name the recorded cost) and without the two
+ * markers computed from them, and `amountsWithheld: true` at the root so a
+ * page can say why. Every other marker, the prices and the counts stay.
+ */
+export function locksForRole(readout: LockReadout, role: string | null | undefined): LockReadout {
+  if (holdsHouseMoney(role ?? null)) return readout;
+  return {
+    ...readout,
+    amountsWithheld: true,
+    locks: (readout.locks ?? []).map((l) => ({
+      ...l,
+      advice: null,
+      adviceUnknownReason: null,
+      markers: l.markers.filter((m) => m !== "off_target" && m !== "advice_unknown"),
+    })),
+  };
+}
 
 /**
  * A house's target margin, and price advice toward it (ADR 0193).
@@ -45,7 +71,8 @@ import {
  * "the manager or owner".
  *
  * PRICE LOCKS (ADR 0193 round 3; the founder, 2026-09-21: "add a section to
- * that where you can lock price"). Anyone of the house may READ the locks;
+ * that where you can lock price"). Anyone of the house may READ the locks
+ * (staff without the margin advice, `locksForRole`);
  * setting, changing, moving and releasing one runs the same
  * `assertCanManageRestaurant` gate BEFORE any write (L8), evaluated at the
  * time of the act, and the lock row itself is the audit (L9).
@@ -156,8 +183,12 @@ export class PricingController {
     description:
       "ADR 0193 L17/L23. Grouped by whether the wine is on the current menu (a lock whose wine left the menu stays, dormant, and is listed as 'locked, not on the current menu'); removed wines are listed. Each lock carries its age and facts computed now (off target, advice unknown and why, author no longer manages the house, not on the current menu, wine removed, the current menu reads another price). Nothing expires. A failed read answers readable: false with the reason, never an empty list.",
   })
-  async getLocks(@CurrentUser("restaurantId") restaurantId: string): Promise<LockReadout> {
-    return this.locks.list(this.requireHouse(restaurantId, "there are no locks to read"));
+  async getLocks(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("role") role?: string | null,
+  ): Promise<LockReadout> {
+    const house = this.requireHouse(restaurantId, "there are no locks to read");
+    return locksForRole(await this.locks.list(house), role);
   }
 
   @Post("locks")

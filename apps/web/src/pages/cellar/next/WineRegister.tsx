@@ -75,12 +75,20 @@ const MenuScannerModal = lazy(() =>
   import('../../../components/wines/MenuScannerModal').then((m) => ({ default: m.MenuScannerModal })),
 );
 
-type SortKey = 'name' | 'style' | 'vintage' | 'country' | 'format' | 'list' | 'market' | 'onhand';
+type SortKey = 'name' | 'style' | 'vintage' | 'country' | 'format' | 'house' | 'list' | 'market' | 'onhand';
 type Cellar = 'all' | 'in' | 'out' | 'par';
 
 /**
  * The register's columns. A UI vocabulary, not a table of rows — `kind` says
  * whether the cell is a figure (right-aligned, tabular mono) or a word.
+ *
+ * F-617: the library's `price_reference` was headed "List", which read as
+ * this house's list price; an owner who set Yakut to 95 on Inventory still
+ * read "List 38" here. It is headed with the founder's own name for it, the
+ * one the bottle leaf uses ("Market average", 2026-09-19), and the house's
+ * own bottle price (`menu_price_current`, ADR 0193) has its own column, under
+ * the name Inventory gives it. "Market" becomes "Market price", as on the
+ * leaf, so the two market figures are never one word apart.
  */
 const COLUMNS: { id: SortKey; label: string; kind: 'figure' | 'word' }[] = [
   { id: 'name', label: 'Bottle', kind: 'word' },
@@ -88,8 +96,9 @@ const COLUMNS: { id: SortKey; label: string; kind: 'figure' | 'word' }[] = [
   { id: 'vintage', label: 'Vintage', kind: 'figure' },
   { id: 'country', label: 'Origin', kind: 'word' },
   { id: 'format', label: 'Format', kind: 'figure' },
-  { id: 'list', label: 'List', kind: 'figure' },
-  { id: 'market', label: 'Market', kind: 'figure' },
+  { id: 'house', label: 'Your price', kind: 'figure' },
+  { id: 'list', label: 'Market average', kind: 'figure' },
+  { id: 'market', label: 'Market price', kind: 'figure' },
   { id: 'onhand', label: 'On hand', kind: 'figure' },
 ];
 
@@ -100,6 +109,7 @@ function sortValue(b: BottleVM, key: SortKey): string | number | null {
     case 'vintage': return b.vintage;
     case 'country': return b.country?.toLowerCase() ?? null;
     case 'format': return b.bottleSizeMl;
+    case 'house': return b.cellar?.menuPriceBottle ?? null;
     case 'list': return b.listPrice;
     case 'market': return b.marketPrice;
     case 'onhand': return b.cellar ? b.cellar.stockLive : null;
@@ -619,7 +629,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                   <span className="cl-dim cl-index-row-meta">
                     <span>{[b.style, year(b.vintage)].filter(Boolean).join(' · ') || EM}</span>
                     <span className="cl-num">
-                      {b.cellar ? `${b.cellar.stockLive} on hand` : money(b.listPrice)}
+                      {b.cellar ? `${b.cellar.stockLive} on hand` : b.listPrice === null ? EM : `market average ${money(b.listPrice)}`}
                     </span>
                   </span>
                 </button>
@@ -670,7 +680,13 @@ export default function WineRegister({ data }: { data: CellarData }) {
                   </span>
                   <span className="cl-num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                     <span>{year(b.vintage)}</span>
-                    <span>{money(b.listPrice)}</span>
+                    {b.cellar?.menuPriceBottle != null ? (
+                      <span title="Your price, as on Inventory">{money(b.cellar.menuPriceBottle)}</span>
+                    ) : (
+                      <span className="cl-dim" title="Market average — not this house’s price">
+                        {b.listPrice === null ? EM : `avg ${money(b.listPrice)}`}
+                      </span>
+                    )}
                     <span>{b.cellar ? `${b.cellar.stockLive} on hand` : EM}</span>
                   </span>
                 </button>
@@ -729,7 +745,14 @@ export default function WineRegister({ data }: { data: CellarData }) {
                       <td className="cl-num" style={{ textAlign: 'right' }}>
                         {volume(b.bottleSizeMl)}
                       </td>
-                      <td className="cl-num" style={{ textAlign: 'right' }}>
+                      <td className="cl-num" style={{ textAlign: 'right' }} data-testid="wine-house-price">
+                        {!data.cellarKnown || !b.cellar ? (
+                          <span className="cl-dim">{EM}</span>
+                        ) : (
+                          money(b.cellar.menuPriceBottle)
+                        )}
+                      </td>
+                      <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {money(b.listPrice)}
                       </td>
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>

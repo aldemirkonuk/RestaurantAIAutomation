@@ -158,6 +158,12 @@ export function overviewForRole(o: Lens, role?: string | null): Lens {
       : o.inventory,
   });
 }
+import {
+  actionRowsForRole,
+  insightsForRole,
+  inventoryScienceForRole,
+  recommendationsForRole,
+} from "./money-for-role";
 
 /**
  * Analytics Controller — the quantitative API surface.
@@ -355,12 +361,17 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Query("serviceLevel") serviceLevelStr?: string,
     @Query("leadTimeDays") leadTimeStr?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.analyticsService.getInventoryScience(restaurantId, {
-        serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
-        leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
-      });
+      // F-602: staff read the reorder register without what the house paid.
+      return inventoryScienceForRole(
+        await this.analyticsService.getInventoryScience(restaurantId, {
+          serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
+          leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
+        }),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute inventory science",
@@ -585,7 +596,11 @@ export class AnalyticsController {
         limitStr,
         candidateKey,
       );
-      return await this.forViewer(restaurantId, user, answer);
+      // F-603: a card that states an amount is an owner's or a manager's.
+      return insightsForRole(
+        await this.forViewer(restaurantId, user, answer),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch insights",
@@ -1434,9 +1449,9 @@ export class AnalyticsController {
     @Query("recordImpressions") recordImpressions?: string,
   ) {
     try {
-      const feed = await this.recommendationsService.getRecommendations(
-        restaurantId,
-        {
+      // F-603: an entry that states an amount is an owner's or a manager's.
+      const feed = recommendationsForRole(
+        await this.recommendationsService.getRecommendations(restaurantId, {
           includeHidden: includeHidden === "true",
           // F-257: a read that is not a sighting must not log one — every
           // impression row also dates "how long has this stood".
@@ -1444,7 +1459,8 @@ export class AnalyticsController {
           // The person's own snoozes (ADR 0191 round 3) hide cards from them
           // alone; the digest calls this service with no viewer.
           viewerId: actorOf(user).userId,
-        },
+        }),
+        user?.role,
       );
       // A goal's card names the goal and its progress: owners' and
       // managers' only, like the goal routes (F-814).
@@ -1514,13 +1530,23 @@ export class AnalyticsController {
       // receipt when this was a rule-wide act (null otherwise), the history
       // receipt, what the write was recorded as, and — when it became the
       // caller's own snooze — that snooze instead of a house row.
+      // F-603: the echoed row carries the stored words of the card, which a
+      // note (a pin, a rating) by staff would otherwise read back with its
+      // amounts; the same cut as the tabs.
+      const [row] = actionRowsForRole(
+        [out.row ?? { ruleKey: body.ruleKey }],
+        user?.role,
+      ).items;
+      const [personal] = out.personal
+        ? actionRowsForRole([out.personal], user?.role).items
+        : [out.personal];
       return {
-        ...(out.row ?? { ruleKey: body.ruleKey }),
+        ...row,
         audit: out.audit,
         history: out.history,
         noteAudit: out.noteAudit,
         recordedAs: out.recordedAs,
-        personal: out.personal,
+        personal,
       };
     } catch (error) {
       if (error instanceof RuleWideActForbidden)
@@ -1607,11 +1633,11 @@ export class AnalyticsController {
       );
       // A put-away goal card keeps the goal's name and progress in its
       // snapshot: owners' and managers' only, like the feed (F-814).
-      return {
-        items: mayReadGoals(user)
-          ? items
-          : items.filter((r) => !isAboutAGoal(r)),
-      };
+      // F-603: an amount in the stored words is withheld, as on the feed.
+      return actionRowsForRole(
+        mayReadGoals(user) ? items : items.filter((r) => !isAboutAGoal(r)),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to list recommendation actions",
@@ -1636,11 +1662,11 @@ export class AnalyticsController {
         actorOf(user).userId ?? "",
       );
       // The same goal-card rule as the feed (F-814).
-      return {
-        items: mayReadGoals(user)
-          ? items
-          : items.filter((r) => !isAboutAGoal(r)),
-      };
+      // F-603: an amount in the stored words is withheld, as on the feed.
+      return actionRowsForRole(
+        mayReadGoals(user) ? items : items.filter((r) => !isAboutAGoal(r)),
+        user?.role,
+      );
     } catch (error) {
       if (error instanceof ActRefused)
         throw new HttpException(error.message, HttpStatus.FORBIDDEN);
@@ -1687,11 +1713,11 @@ export class AnalyticsController {
     try {
       const items = await this.recommendationActions.listHistory(restaurantId);
       // The same goal-card rule as the feed (F-814).
-      return {
-        items: mayReadGoals(user)
-          ? items
-          : items.filter((r) => !isAboutAGoal(r)),
-      };
+      // F-603: an amount in the stored words is withheld, as on the feed.
+      return actionRowsForRole(
+        mayReadGoals(user) ? items : items.filter((r) => !isAboutAGoal(r)),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to load recommendation history",

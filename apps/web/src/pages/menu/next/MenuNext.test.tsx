@@ -180,6 +180,42 @@ describe('MenuNext — reading', () => {
   });
 });
 
+describe("MenuNext — a line price that is not the house's own (F-618)", () => {
+  it("shows the house's price under a line price that differs, and counts the lines", async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        housePricesReadable: true,
+        items: [
+          line({ id: 'a', name: 'Yakut', bottle_price: 80, by_glass_price: 14, inventory_item_id: 'inv-1', house_bottle_price: 95, house_glass_price: 14 }),
+          line({ id: 'b', name: 'Same', bottle_price: 60, by_glass_price: null, inventory_item_id: 'inv-2', house_bottle_price: 60, house_glass_price: null }),
+        ],
+      }),
+    );
+    mount();
+    const rows = await screen.findAllByTestId('menu-row');
+    expect(rows[0].querySelector('[data-testid="menu-house-price-bottle"]')?.textContent).toMatch(/your price .*95/);
+    expect(rows[0].querySelector('[data-testid="menu-house-price-glass"]')).toBeNull();
+    expect(rows[1].querySelector('[data-testid^="menu-house-price"]')).toBeNull();
+    expect(screen.getByTestId('menu-house-prices-differ')).toHaveTextContent('1 line prints a price');
+  });
+
+  it("shows the kept house price beside a blank line price", async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({ items: [line({ bottle_price: null, by_glass_price: null, inventory_item_id: 'inv-1', house_bottle_price: 95, house_glass_price: null, price_flag: 'blank_kept_last_known' })] }),
+    );
+    mount();
+    const row = (await screen.findAllByTestId('menu-row'))[0];
+    expect(row.querySelector('[data-testid="menu-house-price-bottle"]')?.textContent).toMatch(/95/);
+  });
+
+  it("says when the house's prices could not be read, rather than marking nothing", async () => {
+    mockGetMenu.mockResolvedValue(menu({ housePricesReadable: false, housePricesReason: "This house's own prices could not be read (timeout)." }));
+    mount();
+    expect(await screen.findByTestId('menu-house-prices-unread')).toHaveTextContent('timeout');
+    expect(screen.queryByTestId('menu-house-prices-differ')).not.toBeInTheDocument();
+  });
+});
+
 describe('MenuNext — money states its own house currency', () => {
   it('prints the HOUSE currency, never a bare dollar sign', async () => {
     mockCurrency.mockResolvedValue(currency({ code: 'TRY' }));

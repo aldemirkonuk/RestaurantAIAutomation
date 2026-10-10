@@ -228,6 +228,40 @@ describe("MenusService.getMenu", () => {
     const result = await service.getMenu("rest-1");
     expect(result.items.map((i: any) => i.id)).toEqual(["mi-1"]);
   });
+
+  // F-618: the line keeps its own price (ADR 0193 item 3); the house's price
+  // is sent beside it, from this house only, so the page can mark a difference.
+  const pricedMenu = () => ({
+    restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" }],
+    menu_items: [
+      { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Yakut", bottle_price: 80, by_glass_price: 14, inventory_item_id: "inv-1" },
+      { id: "mi-2", menu_id: "menu-1", restaurant_id: "rest-1", name: "Unlinked", bottle_price: 40, inventory_item_id: null },
+      { id: "mi-3", menu_id: "menu-1", restaurant_id: "rest-1", name: "Foreign", bottle_price: 50, inventory_item_id: "inv-9" },
+    ],
+    restaurant_inventory: [
+      { id: "inv-1", restaurant_id: "rest-1", menu_price_current: 95, menu_price_glass: null },
+      { id: "inv-9", restaurant_id: "rest-2", menu_price_current: 999, menu_price_glass: 99 },
+    ],
+  });
+
+  it("sends each linked line this house's own price beside the line's, and nothing for another house's row", async () => {
+    const result: any = await makeService(pricedMenu()).getMenu("rest-1");
+    const byId = Object.fromEntries(result.items.map((i: any) => [i.id, i]));
+    expect(byId["mi-1"]).toMatchObject({ bottle_price: 80, house_bottle_price: 95, house_glass_price: null });
+    expect(byId["mi-2"]).not.toHaveProperty("house_bottle_price");
+    expect(byId["mi-3"]).not.toHaveProperty("house_bottle_price");
+    expect(result.housePricesReadable).toBe(true);
+  });
+
+  it("says when the house's prices could not be read, and sends no house price", async () => {
+    const tables: any = pricedMenu();
+    tables.__readFails = [{ restaurant_inventory: "timeout" }];
+    const result: any = await makeService(tables).getMenu("rest-1");
+    expect(result.items).toHaveLength(3);
+    expect(result.items.some((i: any) => "house_bottle_price" in i)).toBe(false);
+    expect(result.housePricesReadable).toBe(false);
+    expect(result.housePricesReason).toContain("timeout");
+  });
 });
 
 /**
@@ -364,7 +398,8 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   it("getMenu: the exact root keys and the same withholding, and a call that names no view withholds", async () => {
     const { service } = house();
     for (const r of [await service.getMenu("rest-1"), await service.getMenu("rest-1", { rawLine: false })] as any[]) {
-      expect(Object.keys(r).sort()).toEqual([...ROOT_KEYS, "rawLineWithheld"].sort());
+      // F-618: getMenu also says whether the house's own prices were read.
+      expect(Object.keys(r).sort()).toEqual([...ROOT_KEYS, "rawLineWithheld", "housePricesReadable", "housePricesReason"].sort());
       expect(r.rawLineWithheld).toBe(true);
       expect(Object.keys(byName(r.items, "Barolo")).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
       expect(byName(r.items, "Tiramisu").kitchen_line).toBe(true);
@@ -372,7 +407,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
       for (const secret of SECRETS) expect(text).not.toContain(secret);
     }
     const holder: any = await service.getMenu("rest-1", { rawLine: true });
-    expect(Object.keys(holder).sort()).toEqual([...ROOT_KEYS].sort());
+    expect(Object.keys(holder).sort()).toEqual([...ROOT_KEYS, "housePricesReadable", "housePricesReason"].sort());
   });
 
   it("a getVersion call that names no view withholds", async () => {
