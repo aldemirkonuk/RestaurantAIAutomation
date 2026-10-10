@@ -32,9 +32,12 @@ type Row = Record<string, unknown>;
 
 function harness(opts: {
   total?: string | null;
+  status?: string;
   seals?: Row[];
   role?: string | null;
   requiredRole?: "owner" | "manager" | null;
+  /** The order row keeps what the UPDATE wrote, and honours `.eq("status")`. */
+  persist?: boolean;
 }) {
   const seals = opts.seals ?? [];
   const updates: Row[] = [];
@@ -45,7 +48,7 @@ function harness(opts: {
     provider_id: "anadolu",
     inventory_id: null,
     final_price: null,
-    status: "pending",
+    status: opts.status ?? "pending",
   };
 
   const chain = (result: { data: unknown; error: null }) => {
@@ -76,7 +79,9 @@ function harness(opts: {
             return scoped;
           };
           const answer = () => ({
-            data: house === null || house === HOUSE ? order : null,
+            // A copy, as PostgREST hands back: a later write must not reach
+            // into a row a caller already read.
+            data: house === null || house === HOUSE ? { ...order } : null,
             error: null as null,
           });
           scoped.maybeSingle = () => Promise.resolve(answer());
@@ -86,11 +91,33 @@ function harness(opts: {
           return {
             ...scoped,
             update: (patch: Row) => {
-              updates.push(patch);
-              return chain({
-                data: { ...order, ...patch, inventory: null },
-                error: null,
-              });
+              if (!opts.persist) {
+                updates.push(patch);
+                return chain({
+                  data: { ...order, ...patch, inventory: null },
+                  error: null,
+                });
+              }
+              // Compare-and-set, the way PostgREST answers it: a row whose
+              // status no longer matches the filter is not updated.
+              let statusIs: unknown = undefined;
+              const cas: Record<string, unknown> = {};
+              cas.eq = (col: string, value: unknown) => {
+                if (col === "status") statusIs = value;
+                return cas;
+              };
+              cas.select = () => cas;
+              const settle = () => {
+                if (statusIs !== undefined && statusIs !== order.status) {
+                  return Promise.resolve({ data: null, error: null });
+                }
+                updates.push(patch);
+                Object.assign(order, patch);
+                return Promise.resolve({ data: { ...order, inventory: null }, error: null });
+              };
+              cas.maybeSingle = settle;
+              cas.single = settle;
+              return cas;
             },
           };
         }
@@ -305,6 +332,50 @@ describe("ProcurementService.approveOrder — the seal is redeemed, not asserted
     const h = harness({});
     const out = await h.service.issueOrderSealChallenge(HOUSE, ORDER, MANAGER);
     await h.service.approveOrder(HOUSE, ORDER, MANAGER, out.challenge);
+    expect(h.updates).toHaveLength(1);
+  });
+});
+
+/**
+ * F-301. Before this, `approveOrder` never read the order's state: an already
+ * approved order approved again, overwriting who signed, reserving the shadow
+ * stock twice and asking for a second vendor letter.
+ */
+describe("ProcurementService.approveOrder — an order is approved once", () => {
+  const SECOND = "33333333-3333-4333-8333-333333333333";
+
+  it("refuses to approve an order that is already approved, and spends no seal", async () => {
+    const h = harness({ status: "APPROVED", seals: [unspentSeal()] });
+    const err = await h.service
+      .approveOrder(HOUSE, ORDER, MANAGER, "tok")
+      .catch((e) => e);
+    expect(err.getStatus()).toBe(409);
+    expect(String(err.message?.message ?? err.message)).toMatch(/already approved/);
+    expect(h.updates).toHaveLength(0);
+    expect(h.seals[0].redeemed_at).toBeFalsy();
+  });
+
+  it("lets only one of two holds on the same order win", async () => {
+    const h = harness({
+      persist: true,
+      seals: [
+        unspentSeal(),
+        unspentSeal({
+          id: "seal-2",
+          actor_user_id: SECOND,
+          token_hash: hashSealToken("tok2"),
+        }),
+      ],
+    });
+    const results = await Promise.allSettled([
+      h.service.approveOrder(HOUSE, ORDER, MANAGER, "tok"),
+      h.service.approveOrder(HOUSE, ORDER, SECOND, "tok2"),
+    ]);
+    const won = results.filter((r) => r.status === "fulfilled");
+    const lost = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect(lost[0].reason.getStatus()).toBe(409);
     expect(h.updates).toHaveLength(1);
   });
 });
