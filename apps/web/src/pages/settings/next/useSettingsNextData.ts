@@ -193,6 +193,12 @@ export interface ChainRow {
    * to a wrong date.
    */
   updated_at?: string | null;
+  /**
+   * How many branches the chain really holds (F-659). The gateway counts only
+   * for an owner of the chain's organisation; anyone else gets `null`, and the
+   * page then counts the reader's own branches in it and says so.
+   */
+  location_count?: number | null;
 }
 
 /**

@@ -39,6 +39,16 @@ import { branchUpdatedAt, type SettingsNextData } from './useSettingsNextData';
 const NO_BRANCH_DATE =
   'this branch reached your session without one — reload to fetch it again';
 
+/**
+ * What a chain row says about its size. The gateway's count covers every branch
+ * in the chain and is sent only to an owner of it; anyone else is told how many
+ * of THEIR branches are in it, never a number that reads as the whole (F-659).
+ */
+function chainSizeLine(total: number | null | undefined, mine: number): string {
+  if (typeof total === 'number') return total === 1 ? '1 branch in this chain.' : `${total} branches in this chain.`;
+  return mine === 1 ? '1 of your branches is in this chain.' : `${mine} of your branches are in this chain.`;
+}
+
 export function LocationsSection({ data }: { data: SettingsNextData }) {
   const { chains, locations, restaurantId, isOwner, refreshBranches } = data;
   const [adding, setAdding] = useState(false);
@@ -73,12 +83,12 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
           <>
             {rows.length === 0 && <Note role="status">No chain exists. Every branch below stands on its own.</Note>}
             {rows.map((c) => {
-              const count = locations.filter((b) => b.chain_id === c.id).length;
+              const mine = locations.filter((b) => b.chain_id === c.id).length;
               return (
                 <Row
                   key={c.id}
                   label={c.name}
-                  consequence={count === 1 ? '1 branch in this chain.' : `${count} branches in this chain.`}
+                  consequence={chainSizeLine(c.location_count, mine)}
                   provenance={{
                     kept: 'restaurant',
                     when: c.updated_at ?? null,
@@ -145,7 +155,7 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
         <EditLocationChainDialog
           open
           branch={editing}
-          chains={(chains.data ?? []).map((c) => ({ ...c, locationCount: locations.filter((b) => b.chain_id === c.id).length }))}
+          chains={(chains.data ?? []).map((c) => ({ ...c, locationCount: c.location_count ?? undefined }))}
           onClose={() => setEditing(null)}
           onSaved={async () => { await refreshBranches(); setEditing(null); }}
         />

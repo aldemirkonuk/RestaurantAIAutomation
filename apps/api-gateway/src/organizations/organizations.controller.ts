@@ -29,6 +29,7 @@ import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 
 interface AuthenticatedUser {
   userId: string;
+  restaurantId?: string | null;
 }
 
 @Controller("organizations")
@@ -70,7 +71,12 @@ export class OrganizationsController {
     const userId: string = (req.user as AuthenticatedUser)?.userId;
     if (!userId) throw new UnauthorizedException("Missing user identity");
     this.logger.debug(`Creating chain '${body.name}' for user ${userId}`);
-    return this.organizationsService.createChain(userId, body);
+    // The session's house names the organisation the chain goes into (F-660).
+    return this.organizationsService.createChain(
+      userId,
+      body,
+      (req.user as AuthenticatedUser)?.restaurantId ?? null,
+    );
   }
 
   @Patch("chains/:id")

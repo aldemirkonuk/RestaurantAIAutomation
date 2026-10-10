@@ -151,6 +151,15 @@ export interface RestaurantChain {
    * therefore stamps it explicitly; see the note there (p4 audit BLOCKER 2).
    */
   updated_at: string | null;
+  /**
+   * How many houses this chain holds, counted over every house in it.
+   *
+   * Set only for a chain in an organisation the caller owns. Anyone else is
+   * shown a chain only because one of their own houses is in it, and is not
+   * told how many other houses that is (F-659): `null` there, and the page
+   * counts the reader's own houses instead.
+   */
+  location_count: number | null;
 }
 
 /** The settings-log action a house's state or country change files (ADR 0289). */
@@ -197,40 +206,94 @@ export class OrganizationsService {
     @Optional() private readonly settingsAudit?: SettingsAuditService,
   ) {}
 
-  private async getUserOrgIds(userId: string): Promise<string[]> {
+  /**
+   * The person's `organization_members` rows. A failed read throws 503 rather
+   * than answering "no organisation": until F-658 it returned `[]`, and the
+   * chain register printed an outage as "No chain exists" (ADR 0020).
+   */
+  private async getUserOrgRows(
+    userId: string,
+  ): Promise<{ organization_id: string; role: string | null }[]> {
     const { data: memberships, error } = await this.databaseService.supabase
       .from("organization_members")
-      .select("organization_id")
+      .select("organization_id, role")
       .eq("user_id", userId);
-    if (error || !memberships) return [];
-    return memberships.map((m) => m.organization_id);
+    if (error) {
+      this.logger.error(
+        `Could not read the organisations of user ${userId}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your organisation. Nothing was changed; try again.",
+      );
+    }
+    return memberships ?? [];
+  }
+
+  private async getUserOrgIds(userId: string): Promise<string[]> {
+    return (await this.getUserOrgRows(userId)).map((m) => m.organization_id);
+  }
+
+  /**
+   * The organisations this person owns: the same rule `createLocation` uses
+   * (organizations/org-role.ts). Chain create, rename and delete are gated on
+   * it (F-313), as the Settings page has always said they were.
+   */
+  private async getOwnedOrgIds(userId: string): Promise<string[]> {
+    return (await this.getUserOrgRows(userId))
+      .filter((m) => m.role === ORG_OWNER)
+      .map((m) => m.organization_id);
   }
 
   /**
    * Returns the org IDs for a user. If no org membership row exists (legacy users
    * who registered before the org system), derives org from the user's restaurant_id
-   * and repairs the missing membership row.
+   * and, on a write path, repairs the missing membership row.
+   *
+   * `repair: false` is for reads (F-658): a GET must never write, and a
+   * person removed from their house could otherwise have their organisation
+   * row restored just by opening Settings.
    */
-  private async getUserOrgIdsWithFallback(userId: string): Promise<string[]> {
+  private async getUserOrgIdsWithFallback(
+    userId: string,
+    { repair }: { repair: boolean } = { repair: true },
+  ): Promise<string[]> {
     let orgIds = await this.getUserOrgIds(userId);
     if (orgIds.length > 0) return orgIds;
 
     this.logger.debug(
       `No org memberships found for user ${userId} — trying restaurant_id fallback`,
     );
-    const { data: user } = await this.databaseService.supabase
+    const { data: user, error: userError } = await this.databaseService.supabase
       .from("users")
       .select("restaurant_id")
       .eq("user_id", userId)
       .maybeSingle();
+    if (userError) {
+      this.logger.error(
+        `Could not read the home house of user ${userId}: ${userError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your organisation. Nothing was changed; try again.",
+      );
+    }
     if (user?.restaurant_id) {
-      const { data: rest } = await this.databaseService.supabase
-        .from("restaurants")
-        .select("organization_id")
-        .eq("id", user.restaurant_id)
-        .maybeSingle();
+      const { data: rest, error: restError } =
+        await this.databaseService.supabase
+          .from("restaurants")
+          .select("organization_id")
+          .eq("id", user.restaurant_id)
+          .maybeSingle();
+      if (restError) {
+        this.logger.error(
+          `Could not read the organisation of restaurant ${user.restaurant_id}: ${restError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not read your organisation. Nothing was changed; try again.",
+        );
+      }
       if (rest?.organization_id) {
         orgIds = [rest.organization_id];
+        if (!repair) return orgIds;
         // Repair missing membership so future calls skip this fallback.
         // Default to 'member' — never silently escalate a legacy user to 'owner'.
         await this.databaseService.supabase.from("organization_members").upsert(
@@ -396,7 +459,9 @@ export class OrganizationsService {
     stateProvince: string | null;
     callerRole: string | null;
   }> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    const orgIds = await this.getUserOrgIdsWithFallback(userId, {
+      repair: false,
+    });
     if (orgIds.length === 0)
       throw new ForbiddenException("User has no organization");
 
@@ -575,13 +640,26 @@ export class OrganizationsService {
       }
     }
 
+    // The chain must belong to this house's own organisation (F-657). Any
+    // organisation the caller belongs to was the test until then, so someone
+    // in two organisations could file a house of one under a chain of the
+    // other, and its staff would see the other organisation's chain name.
     if (dto.chainId !== undefined && dto.chainId !== null) {
-      const { data: chain } = await this.databaseService.supabase
-        .from("restaurant_chains")
-        .select("organization_id")
-        .eq("id", dto.chainId)
-        .in("organization_id", orgIds)
-        .maybeSingle();
+      const { data: chain, error: chainError } =
+        await this.databaseService.supabase
+          .from("restaurant_chains")
+          .select("organization_id")
+          .eq("id", dto.chainId)
+          .eq("organization_id", rest.organization_id)
+          .maybeSingle();
+      if (chainError) {
+        this.logger.error(
+          `updateLocation could not read chain ${dto.chainId}: ${chainError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "This chain could not be read, so nothing was changed. Try again.",
+        );
+      }
       if (!chain)
         throw new NotFoundException("Chain not found or access denied");
     }
@@ -657,16 +735,8 @@ export class OrganizationsService {
     chainId: string,
     name: string,
   ): Promise<void> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0)
-      throw new ForbiddenException("User has no organization");
-
-    const { data: existing } = await this.databaseService.supabase
-      .from("restaurant_chains")
-      .select("id")
-      .eq("id", chainId)
-      .in("organization_id", orgIds)
-      .maybeSingle();
+    const orgIds = await this.ownedOrgIdsOrRefuse(userId, "rename a chain");
+    const existing = await this.readChainIn(chainId, orgIds);
     if (!existing)
       throw new NotFoundException("Chain not found or access denied");
 
@@ -684,16 +754,8 @@ export class OrganizationsService {
   }
 
   async deleteChain(userId: string, chainId: string): Promise<void> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0)
-      throw new ForbiddenException("User has no organization");
-
-    const { data: existing } = await this.databaseService.supabase
-      .from("restaurant_chains")
-      .select("id")
-      .eq("id", chainId)
-      .in("organization_id", orgIds)
-      .maybeSingle();
+    const orgIds = await this.ownedOrgIdsOrRefuse(userId, "delete a chain");
+    const existing = await this.readChainIn(chainId, orgIds);
     if (!existing)
       throw new NotFoundException("Chain not found or access denied");
 
@@ -710,6 +772,45 @@ export class OrganizationsService {
       .eq("id", chainId)
       .in("organization_id", orgIds);
     if (error) throw new InternalServerErrorException("Failed to delete chain");
+  }
+
+  /**
+   * The organisations the caller owns, or a 403 when they own none (F-313).
+   * Until then any organisation member, invited staff included, could create,
+   * rename or delete a chain.
+   */
+  private async ownedOrgIdsOrRefuse(
+    userId: string,
+    action: string,
+  ): Promise<string[]> {
+    const owned = await this.getOwnedOrgIds(userId);
+    if (owned.length === 0) {
+      throw new ForbiddenException({
+        message: `Only an owner of the organisation can ${action}.`,
+        code: "NOT_ORGANISATION_OWNER",
+      });
+    }
+    return owned;
+  }
+
+  /** A chain in one of these organisations, or null; a failed read is a 503. */
+  private async readChainIn(
+    chainId: string,
+    orgIds: string[],
+  ): Promise<{ id: string } | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("restaurant_chains")
+      .select("id")
+      .eq("id", chainId)
+      .in("organization_id", orgIds)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`Could not read chain ${chainId}: ${error.message}`);
+      throw new ServiceUnavailableException(
+        "This chain could not be read, so nothing was changed. Try again.",
+      );
+    }
+    return data ?? null;
   }
 
   /**
@@ -761,28 +862,93 @@ export class OrganizationsService {
     return [...byId.values()];
   }
 
+  /**
+   * The chain register.
+   *
+   * An owner of an organisation sees every chain in it, each with the number
+   * of houses it really holds. Anyone else sees only the chains one of their
+   * own active houses is in, with no count (F-659): until then every member
+   * saw every chain in the organisation, labelled with a count of their own
+   * houses, so a manager read "0 branches" under a chain of five.
+   *
+   * Every read refuses on error (F-658), the way `getBranchesForUser` does:
+   * an empty answer here prints "No chain exists", so "could not read" must
+   * never look like "you have none". And the read never writes.
+   */
   async getChainsForUser(userId: string): Promise<RestaurantChain[]> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    const orgIds = await this.getUserOrgIdsWithFallback(userId, {
+      repair: false,
+    });
     if (orgIds.length === 0) return [];
+    const owned = new Set(await this.getOwnedOrgIds(userId));
 
-    const { data: chains, error } = await this.databaseService.supabase
+    const supabase = this.databaseService.supabase;
+    const unreadable = (what: string, message: string) => {
+      this.logger.error(
+        `Failed to read ${what} for the chains of user ${userId}: ${message}`,
+      );
+      return new ServiceUnavailableException("Could not read chains");
+    };
+
+    const { data: chains, error } = await supabase
       .from("restaurant_chains")
-      .select("id, name, cuisine_type, updated_at")
+      .select("id, name, cuisine_type, updated_at, organization_id")
       .in("organization_id", orgIds)
       .order("name");
+    if (error) throw unreadable("restaurant_chains", error.message);
+    const all = chains ?? [];
 
-    if (error || !chains) {
-      this.logger.error(
-        `Failed to fetch chains for user ${userId}: ${error?.message}`,
+    // The chains the caller's own houses are in, for the ones they do not own.
+    const myChainIds = new Set<string>();
+    if (all.some((c) => !owned.has(c.organization_id))) {
+      const { data: access, error: accessError } = await supabase
+        .from("user_restaurant_access")
+        .select("restaurant_id")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+      if (accessError)
+        throw unreadable("user_restaurant_access", accessError.message);
+      const houseIds = (access ?? []).map(
+        (r: { restaurant_id: string }) => r.restaurant_id,
       );
-      return [];
+      if (houseIds.length > 0) {
+        const { data: houses, error: housesError } = await supabase
+          .from("restaurants")
+          .select("id, chain_id")
+          .in("id", houseIds);
+        if (housesError) throw unreadable("restaurants", housesError.message);
+        for (const h of houses ?? [])
+          if (h.chain_id) myChainIds.add(h.chain_id);
+      }
     }
 
-    return chains.map((c) => ({
+    const visible = all.filter(
+      (c) => owned.has(c.organization_id) || myChainIds.has(c.id),
+    );
+
+    // Real house counts, for the chains the caller owns.
+    const counts = new Map<string, number>();
+    const ownedChainIds = visible
+      .filter((c) => owned.has(c.organization_id))
+      .map((c) => c.id);
+    if (ownedChainIds.length > 0) {
+      const { data: members, error: membersError } = await supabase
+        .from("restaurants")
+        .select("chain_id")
+        .in("chain_id", ownedChainIds);
+      if (membersError) throw unreadable("restaurants", membersError.message);
+      for (const r of members ?? [])
+        counts.set(r.chain_id, (counts.get(r.chain_id) ?? 0) + 1);
+    }
+
+    return visible.map((c) => ({
       id: c.id,
       name: c.name,
       cuisine_type: c.cuisine_type ?? null,
       updated_at: c.updated_at ?? null,
+      location_count: owned.has(c.organization_id)
+        ? (counts.get(c.id) ?? 0)
+        : null,
     }));
   }
 
@@ -794,22 +960,48 @@ export class OrganizationsService {
       description?: string;
       restaurantId?: string;
     },
+    sessionRestaurantId?: string | null,
   ): Promise<RestaurantChain> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0)
-      throw new ForbiddenException("User has no organization");
+    const ownedOrgIds = await this.ownedOrgIdsOrRefuse(
+      userId,
+      "create a chain",
+    );
 
-    const { data: ownedOrg } = await this.databaseService.supabase
-      .from("organizations")
-      .select("id")
-      .eq("owner_id", userId)
-      .maybeSingle();
-    // Fall back to the single org the user belongs to (member/manager); only throw when truly ambiguous
-    const organizationId =
-      ownedOrg?.id ?? (orgIds.length === 1 ? orgIds[0] : null);
-    if (!organizationId) {
+    // The chain goes into the organisation of the house it is made from: the
+    // one named in the request, else the house the session is working in
+    // (F-660). Until then it read `organizations.owner_id` with
+    // `.maybeSingle()`, which errors on two rows, so a person who owned two
+    // organisations could never create a chain at all.
+    const houseId = dto.restaurantId ?? sessionRestaurantId ?? null;
+    let organizationId: string;
+    if (houseId) {
+      const { data: house, error: houseError } =
+        await this.databaseService.supabase
+          .from("restaurants")
+          .select("organization_id")
+          .eq("id", houseId)
+          .maybeSingle();
+      if (houseError) {
+        this.logger.error(
+          `createChain could not read restaurant ${houseId}: ${houseError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not read this house. Nothing was created; try again.",
+        );
+      }
+      if (!house || !ownedOrgIds.includes(house.organization_id)) {
+        throw new ForbiddenException({
+          message:
+            "Only an owner of this house's organisation can create a chain for it.",
+          code: "NOT_ORGANISATION_OWNER",
+        });
+      }
+      organizationId = house.organization_id;
+    } else if (ownedOrgIds.length === 1) {
+      organizationId = ownedOrgIds[0];
+    } else {
       throw new BadRequestException(
-        "Cannot determine target organization — please specify organizationId",
+        "You own more than one organisation. Open one of its houses first, so it is clear which one the chain belongs to.",
       );
     }
 
@@ -844,6 +1036,8 @@ export class OrganizationsService {
       name: chain.name,
       cuisine_type: chain.cuisine_type ?? null,
       updated_at: chain.updated_at ?? null,
+      // Not counted here; the page reloads the register after a create.
+      location_count: null,
     };
   }
 
