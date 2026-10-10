@@ -146,6 +146,10 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // manager can disconnect a till (POST connections/:restaurantId/:provider)
     // with @Roles("owner", "manager"); ADR 0164 ("Keep managers in") names
     // no route owner alone. The F-387 writes keep their owner/manager gate.
+    // ProcurementController joined with sim F-905 (wave 66): its one new
+    // route, GET orders/open/by-provider (the /vendors open-order counts),
+    // names all three house roles under RolesGuard; every route it already
+    // had is JwtAuthGuard-only and is recorded "open", unchanged.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -162,6 +166,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "pos-hub/pos-hub.controller.ts",
       "price-index/price-index.controller.ts",
       "procurement/documents/credits.controller.ts",
+      "procurement/procurement.controller.ts",
       "procurement/receiving.controller.ts",
       "promotions/promotions.controller.ts",
       "providers/provider-intelligence.controller.ts",

@@ -297,6 +297,22 @@ const PENDING_APPROVAL_STATUSES = new Set<string>([
 ]);
 
 /**
+ * "Open" business with a vendor: not yet delivered, not closed. The same
+ * stages the /vendors card counted in the browser
+ * (`apps/web/src/pages/providers/next/useProvidersNextData.ts` OPEN_STAGES,
+ * after `canonicalStatus`), in the gateway's own vocabulary.
+ */
+export const OPEN_ORDER_STATUSES: string[] = [
+  ProcurementOrderStatus.PENDING,
+  ProcurementOrderStatus.APPROVAL_NEEDED,
+  ProcurementOrderStatus.NEGOTIATING,
+  ProcurementOrderStatus.APPROVED,
+  ProcurementOrderStatus.CONFIRMED,
+  ProcurementOrderStatus.IN_TRANSIT,
+  ProcurementOrderStatus.PARTIALLY_RECEIVED,
+];
+
+/**
 /** How many earlier orders to one vendor the first-order test reads (F-731). */
 const FIRST_ORDER_PAGE = 50;
 
@@ -8828,6 +8844,48 @@ export class ProcurementService {
    */
   async countPendingOrders(restaurantId: string): Promise<number> {
     return (await this.readPendingOrderRows(restaurantId)).length;
+  }
+
+  /**
+   * `GET /procurement/orders/open/by-provider` — how many open orders the
+   * house has with each vendor, for the /vendors cards (F-905). Counted here,
+   * over the house's whole book, so the page no longer pages every order into
+   * the browser to count a few columns. One read of `provider_id` over the
+   * open rows; it pages on only past PostgREST's row cap (1,000), so a cap is
+   * never mistaken for the end. A vendor with no open order is absent, not 0.
+   * A failed read is a 503, never `{}` (which would read as "nothing open").
+   */
+  async countOpenOrdersByProvider(
+    restaurantId: string,
+  ): Promise<Record<string, number>> {
+    const PAGE = 1000;
+    const MAX_PAGES = 100;
+    const counts: Record<string, number> = {};
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const from = page * PAGE;
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("provider_id")
+        .eq("restaurant_id", restaurantId)
+        .in("status", OPEN_ORDER_STATUSES)
+        .not("provider_id", "is", null)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) {
+        this.logger.error("Failed to count open orders by provider", {
+          restaurantId,
+          error: error.message,
+        });
+        throw new ServiceUnavailableException("Could not read open orders");
+      }
+      const rows = (data ?? []) as { provider_id: string | null }[];
+      for (const r of rows) {
+        if (!r.provider_id) continue;
+        counts[r.provider_id] = (counts[r.provider_id] ?? 0) + 1;
+      }
+      if (rows.length < PAGE) return counts;
+    }
+    throw new ServiceUnavailableException("Too many open orders to count");
   }
 
   /**
