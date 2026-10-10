@@ -147,7 +147,7 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
     const csv = await call("GET", `/reports/exports/${body.id}/download?format=csv`);
     expect(csv.status).toBe(200);
     expect(csv.headers.get("content-type")).toBe("text/csv; charset=utf-8");
-    expect(csv.headers.get("content-disposition")).toMatch(/^attachment; filename="mudavym-ledger-\d{4}-\d{2}-\d{2}\.csv"$/);
+    expect(csv.headers.get("content-disposition")).toMatch(/^attachment; filename="mudavym-[a-z0-9-]+-ledger-as-of-\d{4}-\d{2}-\d{2}(-utc)?\.csv"$/);
     expect(csv.headers.get("cache-control")).toBe("private, no-store");
     expect(await csv.text()).toContain("Cost of goods (365d),withheld,TRY,");
 
