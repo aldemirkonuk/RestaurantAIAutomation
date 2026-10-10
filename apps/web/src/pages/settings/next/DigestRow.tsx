@@ -49,7 +49,7 @@
 
 import { useState } from 'react';
 import { Action, Row } from './SectionKit';
-import { EM, MONO, SANS } from './st-format';
+import { EM, SANS } from './st-format';
 import { digestCert } from './certaintyTally';
 import type { SettingsNextData } from './useSettingsNextData';
 
@@ -125,12 +125,9 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
         when: answered ? reg.lastSentAt : null,
         whenUnknown: 'never written',
         verb: 'last sent',
-        readBy: (
-          <>
-            <code style={{ fontFamily: MONO }}>analytics/insights-scheduler</code> — feature-flagged, not yet
-            scheduled by house (<code style={{ fontFamily: MONO }}>analytics.controller.ts:1143-1178</code>)
-          </>
-        ),
+        // read by: analytics/insights-scheduler — feature-flagged, not yet
+        // scheduled by house (analytics.controller.ts:1143-1178).
+        readBy: 'the recommendations mail, which is not switched on for houses yet',
       }}
       consequence={
         answered

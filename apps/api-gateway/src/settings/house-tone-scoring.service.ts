@@ -31,6 +31,9 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
 
 export const TONE_SCORING_AUDIT_ACTION = "vendor_tone_scoring_changed" as const;
 
+/** Filed by `HouseDataTermsService.accept`; carries the switch move when it turned Jev on. */
+const DATA_TERMS_ACCEPTED_ACTION = "house_data_terms_accepted";
+
 export interface HouseToneScoringReadout {
   restaurantId: string;
   /** Null only when the row could not be read. */
@@ -138,19 +141,34 @@ export class HouseToneScoringService {
     at: string | null;
     by: { userId: string | null; name: string | null } | null;
   }> {
+    // Two acts move this switch: this service's own write, and an owner's
+    // first acceptance of the data terms (`house-data-terms.service.ts`
+    // `turnSwitchOn`), which files `house_data_terms_accepted` with the
+    // switch's move in its fields. Reading only the first left a switch an
+    // acceptance turned on reading "never changed — it is off" (F-055). A
+    // later acceptance that left the switch alone files the same action
+    // without that field, so it is skipped.
     const { data, error } = await this.databaseService.client
       .from("system_audit_log")
-      .select("actor_id, created_at")
+      .select("actor_id, action, changes, created_at")
       .eq("restaurant_id", restaurantId)
-      .eq("action", TONE_SCORING_AUDIT_ACTION)
+      .in("action", [TONE_SCORING_AUDIT_ACTION, DATA_TERMS_ACCEPTED_ACTION])
       .order("created_at", { ascending: false })
-      .limit(1);
-    if (error || !Array.isArray(data) || data.length === 0)
-      return { at: null, by: null };
-    const row = data[0] as {
-      actor_id: string | null;
-      created_at: string | null;
-    };
+      .limit(20);
+    if (error || !Array.isArray(data)) return { at: null, by: null };
+    const row = (
+      data as {
+        actor_id: string | null;
+        action: string;
+        changes: { fields?: Record<string, unknown> } | null;
+        created_at: string | null;
+      }[]
+    ).find(
+      (r) =>
+        r.action === TONE_SCORING_AUDIT_ACTION ||
+        r.changes?.fields?.vendor_tone_scoring_enabled !== undefined,
+    );
+    if (!row) return { at: null, by: null };
     let name: string | null = null;
     if (row.actor_id) {
       const who = await this.databaseService.client

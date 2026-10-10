@@ -38,6 +38,8 @@ function mount(opts: { isOwner: boolean; requiredRole: 'owner' | 'manager' }) {
     saveThreshold: vi.fn(),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     thresholds: { status: 'ok', data: register(opts.requiredRole), error: null, reload: vi.fn(), set: vi.fn() },
+    // F-057 reads the house currency for the ceiling's mark; not answered here.
+    houseCurrency: { status: 'loading', data: null, error: null, reload: vi.fn() },
   } as unknown as SettingsNextData;
   render(<ThresholdsSection data={data} />);
 }

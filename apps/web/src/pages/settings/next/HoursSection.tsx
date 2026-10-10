@@ -277,13 +277,8 @@ export function HoursSection({ data }: { data: SettingsNextData }) {
                 kept: 'restaurant',
                 when: reg.updatedAt,
                 whenUnknown: PROVENANCE_UNKNOWN.neverWritten,
-                readBy: (
-                  <>
-                    every service-day read across the product —{' '}
-                    <code style={{ fontFamily: MONO }}>common/operating-hours/operating-hours.ts</code>{' '}
-                    (<code style={{ fontFamily: MONO }}>isOpenAt</code>, <code style={{ fontFamily: MONO }}>serviceWindows</code>)
-                  </>
-                ),
+                // read by: common/operating-hours/operating-hours.ts (isOpenAt, serviceWindows)
+                readBy: 'everything that asks whether the house is open',
               }}
               consequence={
                 known
@@ -296,14 +291,10 @@ export function HoursSection({ data }: { data: SettingsNextData }) {
               label="Which clock does it keep?"
               cert={hoursTimezoneCert(reg, houseTimeZone)}
               provenance={{
-                kept: 'restaurant', when: null, whenUnknown: 'restaurants.timezone carries no changed-at of its own',
-                readBy: (
-                  <>
-                    the same hours reader —{' '}
-                    <code style={{ fontFamily: MONO }}>common/operating-hours/operating-hours.ts</code>{' '}
-                    (<code style={{ fontFamily: MONO }}>assertZone</code>)
-                  </>
-                ),
+                // restaurants.timezone has no changed-at column; read by
+                // common/operating-hours/operating-hours.ts (assertZone).
+                kept: 'restaurant', when: null, whenUnknown: 'the date is shown under Time zone',
+                readBy: 'the same opening-hours check',
               }}
               consequence={
                 reg.timezone
