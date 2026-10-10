@@ -588,6 +588,9 @@ export class NotificationsService {
           action_url: actionUrl,
           priority: data.priority ?? "medium",
           metadata: data.metadata ?? {},
+          // The house it belongs to (F-522): every socket of this person
+          // joins user:<id> whatever house it is in, so the page decides.
+          restaurant_id: data.restaurantId,
         },
         timestamp: new Date().toISOString(),
       });
@@ -797,6 +800,10 @@ export class NotificationsService {
             action_url: payload.actionUrl,
             priority: payload.priority ?? "medium",
             metadata: payload.metadata ?? {},
+            // The house it belongs to (F-522). A targeted write goes to
+            // user:<id> rooms, which a person's socket joins in every house,
+            // so a page in another house must be able to tell it is not its own.
+            restaurant_id: restaurantId,
           },
           timestamp: now,
         });
@@ -823,6 +830,9 @@ export class NotificationsService {
             type: payload.type,
             actionUrl: payload.actionUrl ?? null,
             ...(opts.pushData ?? payload.metadata ?? {}),
+            // Last, so no caller's data can name another house (F-523): the
+            // phone switches to this house before it opens what was tapped.
+            restaurantId,
           },
         });
       }

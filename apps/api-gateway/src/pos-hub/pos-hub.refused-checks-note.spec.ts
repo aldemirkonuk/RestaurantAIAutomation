@@ -2318,6 +2318,8 @@ describe("the phone push carries the note's id and count, never the till's text"
       actionUrl: "/connections",
       noteId: rows[0].metadata.noteId,
       refused: 2,
+      // The house, so the phone opens it there (F-523).
+      restaurantId: HOUSE,
     });
     expect(JSON.stringify(pushes[0].message.data)).not.toMatch(
       /c-till|03\.10\.2026|0555/,
@@ -2341,6 +2343,7 @@ describe("the phone push carries the note's id and count, never the till's text"
       type: "inventory",
       actionUrl: null,
       inventoryId: "inv-1",
+      restaurantId: HOUSE,
     });
   });
 });

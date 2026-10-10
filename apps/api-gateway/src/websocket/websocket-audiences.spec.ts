@@ -721,3 +721,50 @@ describe("safeActionPath", () => {
     expect(notificationsTo(staff)[0].payload.data.action_url).toBeUndefined();
   });
 });
+
+describe("every live notice and phone push names its house (F-522, F-523)", () => {
+  // A person in two houses has one user:<id> room for both, so the page and
+  // the phone can only keep house A's notice off house B's screen if the
+  // notice says which house it is.
+  it("the person's own row names its house", async () => {
+    const w = world();
+    const staff = await w.connect(STAFF);
+    const svc = new NotificationsService(w.gateway, { get: () => undefined } as any, w.databaseService);
+    await svc.createNotification({
+      userId: STAFF,
+      restaurantId: HOUSE,
+      type: "calendar_reminder",
+      title: "Tasting at 4",
+      message: "m",
+    });
+    expect(notificationsTo(staff)[0].payload.data.restaurant_id).toBe(HOUSE);
+  });
+
+  it("a house-wide and a role notice name their house", async () => {
+    const w = world();
+    const owner = await w.connect(OWNER);
+    w.gateway.emitRestaurantNotification(HOUSE, { id: "n1", title: "t", message: "m", type: "info" });
+    await w.gateway.emitRoleNotification(HOUSE, ["owner"], { id: "n2", title: "t", message: "m", type: "info" });
+    expect(notificationsTo(owner).map((n) => n.payload.data.restaurant_id)).toEqual([HOUSE, HOUSE]);
+  });
+
+  it("a targeted write names its house on the socket and in the push, whatever the caller's data says", async () => {
+    const w = world();
+    const owner = await w.connect(OWNER);
+    const pushes: any[] = [];
+    const expo = { sendToUsers: async (_ids: string[], msg: any) => void pushes.push(msg) };
+    const db = {
+      ...w.databaseService,
+      getRestaurantMemberIds: async () => [OWNER, MANAGER, STAFF],
+    };
+    const svc = new NotificationsService(w.gateway, { get: () => undefined } as any, db, undefined, expo as any);
+    await svc.persistForRestaurant(
+      HOUSE,
+      { type: "delivery_overdue", title: "Delivery overdue", message: "m", priority: "high", actionUrl: "/orders/o1" },
+      { onlyUserIds: [OWNER], pushData: { orderId: "o1", restaurantId: OTHER_HOUSE } },
+    );
+    expect(notificationsTo(owner)[0].payload.data.restaurant_id).toBe(HOUSE);
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].data).toMatchObject({ orderId: "o1", restaurantId: HOUSE });
+  });
+});

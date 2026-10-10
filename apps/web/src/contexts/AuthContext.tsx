@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
 } from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
@@ -20,6 +21,7 @@ import {
   type SignInMethodsResult,
 } from "../lib/identityProviders";
 import {
+  cachedHouseName,
   clearHouseEnded,
   goToChooser,
   lastHouseHintFor,
@@ -34,6 +36,7 @@ import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
+import { HouseMovedElsewhere } from "./HouseMovedElsewhere";
 
 /** How long sign-out waits for the read-cache clear before finishing anyway. */
 export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
@@ -367,9 +370,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [availableRestaurants, setAvailableRestaurants] = useState<
     RestaurantBranch[]
   >([]);
-  const [activeRole, setActiveRole] = useState<
-    "owner" | "manager" | "staff" | null
-  >(null);
+  // The role is read for ONE house and is that house's only (F-192): it is
+  // kept beside the house it was read for, so the moment the page moves to
+  // another house the old role stops answering, instead of lending the last
+  // house's desk to /team and Settings until /auth/me/role replies.
+  const [roleRead, setRoleRead] = useState<{
+    house: string;
+    role: "owner" | "manager" | "staff";
+  } | null>(null);
+  const activeRole =
+    roleRead && roleRead.house === activeRestaurantId ? roleRead.role : null;
+  // The house another tab moved the session to, while this tab shows another.
+  const [houseMovedTo, setHouseMovedTo] = useState<string | null>(null);
   const branchFetchSeq = React.useRef(0);
   // Optional on purpose: the app nests this provider inside
   // QueryClientProvider (App.tsx), but `useQueryClient()` throws without one.
@@ -602,13 +614,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user) {
-      setActiveRole(null);
+      setRoleRead(null);
       return;
     }
     const tid = activeRestaurantId;
     const token = localStorage.getItem("accessToken");
     if (!tid || !token || !isUuid(tid)) {
-      setActiveRole(null);
+      setRoleRead(null);
       return;
     }
     let cancelled = false;
@@ -620,10 +632,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         const r = data.role as string | null | undefined;
         if (r && ["owner", "manager", "staff"].includes(r)) {
-          setActiveRole(r as "owner" | "manager" | "staff");
-        } else setActiveRole(null);
+          setRoleRead({ house: tid, role: r as "owner" | "manager" | "staff" });
+        } else setRoleRead(null);
       } catch {
-        if (!cancelled) setActiveRole(null);
+        if (!cancelled) setRoleRead(null);
       }
     })();
     return () => {
@@ -642,7 +654,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) {
       setAvailableRestaurants([]);
       setActiveRestaurantIdState(null);
-      setActiveRole(null);
+      setRoleRead(null);
       return;
     }
 
@@ -694,13 +706,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // OPS-03). Same tick as the state below, so no read lands between.
         forgetHouseReads(queryClient);
         setHouseReadsForgotten((n) => n + 1);
+        setHouseMovedTo(null);
         setActiveRestaurantIdState(house);
         api.defaults.headers.common["X-Restaurant-Id"] = house;
         // Sync Zustand store so all consumers (Providers, Dashboard, etc.) re-render immediately
         useAuthStore.getState().setActiveRestaurantId(house);
 
         // The role is the role in THIS house now; `/auth/me` reads it from the
-        // new session.
+        // new session. Until it answers, `user` below carries no role (F-192).
         const me = await api.get("/api/v1/auth/me");
         setUser(userFrom(me.data.user, accessToken));
         return true;
@@ -715,6 +728,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [queryClient],
   );
+
+  // F-244: every tab of this browser shares one session, so a switch in
+  // another tab moves THIS tab's reads and writes to the new house too, while
+  // this tab still shows the last one. The tab is never moved silently: it
+  // stops, says where the person went, and opens that house on their word
+  // (decision: p4-scratch/sim-run/bulletproof/reconcile/house-switch-decisions.md).
+  // A storage event fires only in the OTHER tabs, never in the one that wrote.
+  const shownHouse = useRef<string | null>(null);
+  shownHouse.current = activeRestaurantId;
+  const signedIn = !!user;
+  useEffect(() => {
+    if (!signedIn) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "activeRestaurantId") return;
+      const moved = e.newValue;
+      const here = shownHouse.current;
+      // Signed out or in no house elsewhere: the session's own guards answer.
+      if (!moved || !isUuid(moved) || !here) return;
+      // Back to this tab's house: nothing moved after all.
+      setHouseMovedTo(moved === here ? null : moved);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [signedIn]);
 
   // After a switch forgot the last house's reads, read again what is still
   // on screen. Child effects run before this one, so a component whose key
@@ -1100,7 +1137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       delete api.defaults.headers.common["Authorization"];
       delete api.defaults.headers.common["X-Restaurant-Id"];
       setUser(null);
-      setActiveRole(null);
+      setRoleRead(null);
     }
   }, [queryClient]);
 
@@ -1165,8 +1202,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearError = useCallback(() => setError(null), []);
 
+  // `/auth/me`'s role is the role in the house it was read in. Between a
+  // switch and the new house's `/auth/me`, the person is in the new house
+  // with the last one's role: it is not lent to the new house (F-192), so
+  // `activeRole ?? user.role` says "not known yet" instead of the old desk.
+  const shownUser = useMemo(
+    () =>
+      user &&
+      user.role != null &&
+      activeRestaurantId &&
+      user.restaurantId &&
+      user.restaurantId !== activeRestaurantId
+        ? { ...user, role: null }
+        : user,
+    [user, activeRestaurantId],
+  );
+
   const value: AuthContextType = {
-    user,
+    user: shownUser,
     loading,
     error,
     clearError,
@@ -1191,7 +1244,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!user,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {houseMovedTo && (
+        <HouseMovedElsewhere
+          to={
+            availableRestaurants.find((b) => b.id === houseMovedTo)?.name ??
+            cachedHouseName(houseMovedTo)
+          }
+          from={
+            availableRestaurants.find((b) => b.id === activeRestaurantId)
+              ?.name ?? null
+          }
+          onOpen={() => window.location.reload()}
+        />
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

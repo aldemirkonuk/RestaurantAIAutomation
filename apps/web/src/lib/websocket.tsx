@@ -194,6 +194,8 @@ export interface NotificationEvent {
     message: string
     type: 'info' | 'success' | 'warning' | 'error'
     action_url?: string
+    /** The house the notification belongs to (F-522). */
+    restaurant_id?: string
   }
   timestamp: string
 }
@@ -694,6 +696,21 @@ export function WebSocketProvider({
         | undefined
       const kind = String(nested?.type ?? flat?.type ?? 'info')
 
+      // F-522: a person in two houses gets both houses' notifications on this
+      // one socket. One for a house this tab is not in is never toasted here,
+      // unlabelled and with a View link into that house under this house's
+      // name; it waits in that house's bell. A notice that names no house is
+      // shown as before.
+      const houseOf = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : null)
+      const flatData =
+        flat?.data && typeof flat.data === 'object' ? (flat.data as Record<string, unknown>) : null
+      const house =
+        houseOf((nested as { restaurant_id?: unknown } | null)?.restaurant_id) ??
+        houseOf(flat?.restaurant_id) ??
+        houseOf(flatData?.restaurantId) ??
+        houseOf(flatData?.restaurant_id)
+      const elsewhere = house !== null && !!resolvedRestaurantId && house !== resolvedRestaurantId
+
       const toastFn =
         kind === 'error' || kind === 'critical'
           ? toast.error
@@ -703,17 +720,18 @@ export function WebSocketProvider({
               ? toast.warning
               : toast.info
 
-      toastFn(title, {
-        description: message || undefined,
-        action: actionUrl
-          ? {
-              label: 'View',
-              onClick: () => {
-                window.location.href = actionUrl
-              },
-            }
-          : undefined,
-      })
+      if (!elsewhere)
+        toastFn(title, {
+          description: message || undefined,
+          action: actionUrl
+            ? {
+                label: 'View',
+                onClick: () => {
+                  window.location.href = actionUrl
+                },
+              }
+            : undefined,
+        })
 
       // Force active queries to refetch even when staleTime hasn't elapsed
       void queryClient.invalidateQueries({

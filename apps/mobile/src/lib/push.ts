@@ -1,11 +1,12 @@
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { api } from "@/api/client";
 import { queryClient } from "@/lib/queryClient";
 import { feedKey, pulseKey } from "@/api/queries";
-import { routeForNotificationData } from "@/lib/notificationRoute";
+import { openNotificationTap, routeForNotificationData } from "@/lib/notificationRoute";
+import { useSession } from "@/state/session";
 import { color } from "@/design/tokens";
 import { beforeSignOutRequest } from "@/state/session";
 
@@ -124,6 +125,15 @@ export function routeForNotification(data: Record<string, any>): string {
  * the response listener, so without it the tap is silently lost.
  */
 export function attachPushListeners(onNavigate: (route: string) => void): () => void {
+  // A push of another of the person's houses opens there, never under this
+  // one (F-523).
+  const open = (data: Record<string, any>) =>
+    void openNotificationTap(data, {
+      currentHouse: useSession.getState().user?.restaurantId,
+      chooseHouse: (houseId) => useSession.getState().chooseHouse(houseId),
+      navigate: onNavigate,
+      refused: (message) => Alert.alert("Not opened", message),
+    });
   const received = Notifications.addNotificationReceivedListener(() => {
     queryClient.invalidateQueries({ queryKey: [...feedKey] });
     queryClient.invalidateQueries({ queryKey: [...pulseKey] });
@@ -131,7 +141,7 @@ export function attachPushListeners(onNavigate: (route: string) => void): () => 
   });
   const response = Notifications.addNotificationResponseReceivedListener((res) => {
     const data = res.notification.request.content.data ?? {};
-    onNavigate(routeForNotificationData(data as Record<string, any>));
+    open(data as Record<string, any>);
   });
 
   let cancelled = false;
@@ -139,7 +149,7 @@ export function attachPushListeners(onNavigate: (route: string) => void): () => 
     .then((res) => {
       if (cancelled || !res) return;
       const data = res.notification.request.content.data ?? {};
-      onNavigate(routeForNotificationData(data as Record<string, any>));
+      open(data as Record<string, any>);
     })
     .catch(() => {});
 
