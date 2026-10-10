@@ -382,6 +382,49 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       );
       expect(messages.join(" ")).not.toMatch(/inv-|bottles \(min/);
     });
+
+    // F-217: every alert opens a place the page reads. `?highlight=` was
+    // read by no page, so the person landed on the whole cellar.
+    it("opens the wine by its name, and an overdue order by its id", async () => {
+      db.getClient.mockReturnValue(
+        makeClient({
+          v_low_stock_items: [
+            { id: "inv-1", stock_live: 1, threshold_min: 6, wine_name: "1er Cru Montmains", vintage: 2023 },
+          ],
+          procurement_orders: [
+            { id: "po-7", status: "SENT", expected_delivery_date: "2020-01-01", created_at: "2019-12-20T00:00:00Z" },
+          ],
+          restaurant_inventory: [
+            {
+              id: "inv-2",
+              display_name: null,
+              wine_name: null,
+              stock_live: 0,
+              updated_at: "2026-09-30T10:00:00Z",
+              master_wine_library: { name: "Sancerre", vintage: 2022 },
+            },
+            {
+              id: "inv-3",
+              display_name: null,
+              wine_name: null,
+              stock_live: 0,
+              updated_at: "2026-09-30T10:00:00Z",
+              master_wine_library: null,
+            },
+          ],
+        }),
+      );
+
+      const alerts = await service.getAlerts("r1");
+      const urls = Object.fromEntries(alerts.map((a) => [a.id, a.actionUrl]));
+
+      expect(urls).toEqual({
+        "low-stock-inv-1": "/inventory?wine=1er%20Cru%20Montmains",
+        "overdue-po-7": "/orders?order=po-7",
+        "out-of-stock-inv-2": "/inventory?wine=Sancerre",
+        "out-of-stock-inv-3": "/inventory",
+      });
+    });
   });
 
   describe("DASH-W8 — the stats call reads only what it uses", () => {

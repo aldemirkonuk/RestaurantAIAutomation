@@ -147,7 +147,7 @@ describe("deliveryArrived — today only, and counts what its label says", () =>
         id: "delivery-o-today",
         at: "2026-09-21T16:00:00.000Z",
         label: "Order ORD-1 — counted at the door",
-        href: "/orders?highlight=o-today",
+        href: "/orders?order=o-today",
       },
     ]);
   });

@@ -599,15 +599,28 @@ export function ActionCard({
         <p className="mt-1 text-[11px] text-inkm-2">{blocked}</p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {action.actionUrl && (
-          <Link
-            to={action.actionUrl.startsWith('/') ? action.actionUrl : `/${action.actionUrl}`}
-            className="dn-ink inline-flex items-center gap-1.5 rounded border border-seal-ring px-2 py-1 text-[11px] text-seal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
-          >
-            Go and do it
-            <ArrowRight size={12} strokeWidth={1.75} aria-hidden />
-          </Link>
-        )}
+        {action.actionUrl &&
+          // A place outside Mudavym (the sheet takes https:// links) opens in
+          // a new tab; prefixing "/" sent it to the in-app 404 (F-218).
+          (/^https?:\/\//i.test(action.actionUrl) ? (
+            <a
+              href={action.actionUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="dn-ink inline-flex items-center gap-1.5 rounded border border-seal-ring px-2 py-1 text-[11px] text-seal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+            >
+              Go and do it
+              <ArrowRight size={12} strokeWidth={1.75} aria-hidden />
+            </a>
+          ) : (
+            <Link
+              to={action.actionUrl.startsWith('/') ? action.actionUrl : `/${action.actionUrl}`}
+              className="dn-ink inline-flex items-center gap-1.5 rounded border border-seal-ring px-2 py-1 text-[11px] text-seal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+            >
+              Go and do it
+              <ArrowRight size={12} strokeWidth={1.75} aria-hidden />
+            </Link>
+          ))}
         {onEdit && (
           <button
             type="button"

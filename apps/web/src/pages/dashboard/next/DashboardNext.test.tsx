@@ -19,7 +19,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -381,6 +381,28 @@ describe('DashboardNext', () => {
       today.click();
       expect(await screen.findByText('Chablis Les Clos')).toBeInTheDocument();
       expect(screen.queryByText('Sancerre Monts Damnés')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // F-221: the greeting followed the clock only at mount, so a dashboard
+  // left open across 11:00 kept saying good morning all afternoon.
+  it('moves the greeting on with the clock while the page stays open', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: new Date('2026-09-10T10:59:00Z') });
+    try {
+      routeGets({
+        '/dashboard/stats/': {
+          totalWines: 0, totalBottles: 0, lowStockItems: 0, pendingOrders: 0,
+          totalVolumeMl: 0, totalVolumeOz: 0, timezone: 'UTC',
+        },
+      });
+      mount();
+      expect(await screen.findByText(/Good morning/)).toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(90_000);
+      });
+      expect(await screen.findByText(/Good afternoon/)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

@@ -179,7 +179,8 @@ export class HouseDayService {
             id: `delivery-${d.orderId}`,
             at: d.countedAt,
             label: d.orderNumber ? `Order ${d.orderNumber} — counted at the door` : "Counted at the door",
-            href: `/orders?highlight=${d.orderId}`,
+            // `order` is what /orders opens on; `highlight` was read by no page (F-217).
+            href: `/orders?order=${encodeURIComponent(d.orderId)}`,
           })),
         };
       },

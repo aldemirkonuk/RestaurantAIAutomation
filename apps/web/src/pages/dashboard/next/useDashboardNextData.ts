@@ -229,9 +229,25 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
     undefined,
   );
   const [alerts, setAlerts] = useState<AlertItem[] | undefined>(undefined);
-  const alive = useRef(true);
+  // Each read takes a number; only the latest one may land. One shared
+  // `alive` flag was set true again by the next house's effect before the
+  // last house's reads came back, so they landed (F-220).
+  const seq = useRef(0);
+
+  // Another house: nothing of the last one stays on screen while its own
+  // figures are read.
+  const [spineHouse, setSpineHouse] = useState(restaurantId);
+  if (spineHouse !== restaurantId) {
+    setSpineHouse(restaurantId);
+    setStats(undefined);
+    setPending(undefined);
+    setLowStock(undefined);
+    setActivity(undefined);
+    setAlerts(undefined);
+  }
 
   const refetch = useCallback(async () => {
+    const mine = ++seq.current;
     if (!restaurantId) {
       // AuthContext resolves activeRestaurantId a beat after login; until it
       // does, "loading" is the honest state — flipping to "unknown" here made
@@ -245,7 +261,7 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
       settle(dashboardApi.getRecentActivity(12, restaurantId)),
       settle(dashboardApi.getAlerts(restaurantId)),
     ]);
-    if (!alive.current) return;
+    if (mine !== seq.current) return;
     setStats(s);
     setPending(Array.isArray(p) ? p : null);
     setLowStock(Array.isArray(l) ? l : null);
@@ -254,10 +270,10 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
   }, [restaurantId]);
 
   useEffect(() => {
-    alive.current = true;
     refetch();
     return () => {
-      alive.current = false;
+      // Unmounted or another house: whatever is still on its way is dropped.
+      seq.current++;
     };
   }, [refetch]);
 
