@@ -187,10 +187,20 @@ describe("the courtesy line (F2)", () => {
     // (240 + 10 = 250 code units over the cap of 240) drops the second.
     expect(courtesyLineOrNull("\u200B".repeat(230) + "Thank you.")).toBe("Thank you.");
     expect(courtesyLineOrNull("\u200B".repeat(240) + "Thank you.")).toBeNull();
+    // Exact boundary, raw: 240 code units are kept, 241 are dropped.
+    expect(courtesyLineOrNull("Thanks" + " ".repeat(234))).toBe("Thanks");
+    expect(courtesyLineOrNull("Thanks" + " ".repeat(235))).toBeNull();
     // U+FDFA is the longest NFKC expansion: two million of them, unread.
     const t0 = Date.now();
     expect(courtesyLineOrNull("\uFDFA".repeat(2_000_000))).toBeNull();
     expect(Date.now() - t0).toBeLessThan(100);
+  });
+
+  it("drops a sentence over 240 code units after NFKC (gate note at aff7c87)", () => {
+    // 100 U+FDFA are 100 raw code units, under the raw cap; NFKC makes them
+    // 1,800, over the cap after normalising.
+    expect("\uFDFA".repeat(100).normalize("NFKC").length).toBe(1800);
+    expect(courtesyLineOrNull("\uFDFA".repeat(100))).toBeNull();
   });
 
   it.each([
@@ -480,6 +490,12 @@ describe("the prose predicate", () => {
     expect(rules(T("Open x\u001Cjavascript:alert now."))).toContain("link");
   });
 
+  // Gate notes at aff7c87: shapes that only one strip catches.
+  it("refuses a mark and a control character before the dot (only copy 1 strips both)", () => {
+    expect(rules(T("See evil\u034F\u001C.com for details."))).toContain("link");
+    expect(courtesyLineOrNull("Thanks from evil\u034F\u001C.com as ever.")).toBeNull();
+  });
+
   // The scheme view: a browser's URL parser drops tab and newline from an
   // href, so a scheme split by one, with nothing joined before it, is refused.
   it.each([
@@ -492,19 +508,40 @@ describe("the prose predicate", () => {
     // Only the scheme view strips the control character before joining the tab.
     ["a control character and a tab", "java\u001C\tscript:alert"],
     ["a tab inside https", "ht\ttps://x"],
+    // Only the scheme view strips the format character between the tabs.
+    ["a tab, a format character and a tab", "java\t\u200B\tscript:alert"],
+    // Gate notes at aff7c87: a tab or line break around the slashes.
+    ["a tab between the colon and //", "https:\t//x"],
+    ["a tab between the slashes", "http:/\t/x"],
+    ["a line feed between the slashes", "http:/\n/evil"],
+    ["a carriage return between the slashes", "https:/\r/x"],
+    ["a tab after the colon and a line feed between the slashes", "http:\t/\n/x"],
   ])("refuses a scheme split by %s", (_label, link) => {
     expect(rules(T(`Open ${link} now.`))).toContain("link");
     expect(courtesyLineOrNull(`Open ${link} now.`)).toBeNull();
   });
 
-  // Named in ADR 0313:37: a tab or line break next to a scheme's colon is
-  // left, because a line ending in "Data:" is prose. These stay kept.
+  // Named in ADR 0313:37: a tab or line break right after a scheme's colon,
+  // with no "/" after it, is left, because a line ending in "Data:" is prose.
+  // These stay kept.
   it.each([
     ["a line break after the colon", "javascript:\nalert"],
-    ["a tab between the colon and //", "https:\t//x"],
     ["a line ending in a scheme word and a colon", "Delivery data:\nPlease send it."],
+    ["a line after a colon starting with one slash", "Sizes:\n/ small / large"],
   ])("does not refuse %s (named gap / prose)", (_label, text) => {
     expect(rules(T(text))).not.toContain("link");
+  });
+
+  it("refuses a line ending in a colon and a line starting with // (fail closed)", () => {
+    expect(rules(T("Note:\n// see below"))).toContain("link");
+  });
+
+  // Adversary note 1 at aff7c87, named in ADR 0313:37: the link test reads
+  // the prose with each token replaced by a space, but the render joins the
+  // block onto the prose. Must be closed before houses edit templates
+  // (PR-4a-ii).
+  it("does not catch a link made with a fact block (named gap)", () => {
+    expect(rules(T("See {{signer}}.com for details."))).not.toContain("link");
   });
 
   it("keeps two lines that only the scheme view joins", () => {
@@ -625,6 +662,13 @@ describe("the prose predicate", () => {
     expect(rules(atCap)).not.toContain("too_long");
     expect(Date.now() - t1).toBeLessThan(750);
     expect(rules(atCap + "x")).toEqual(["too_long"]);
+  });
+
+  it("puts the template cap exactly at 16,384 code units (gate note at aff7c87)", () => {
+    const pad = (n: number) => T("a".repeat(n - T("").length));
+    expect(pad(16_384).length).toBe(16_384);
+    expect(rules(pad(16_384))).toEqual([]);
+    expect(rules(pad(16_385))).toEqual(["too_long"]);
   });
 
   it("leaves the shipped defaults far under the length cap", () => {

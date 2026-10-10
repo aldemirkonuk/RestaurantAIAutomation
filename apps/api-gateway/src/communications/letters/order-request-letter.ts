@@ -318,8 +318,15 @@ const CURRENCY_WORD_RE = word([
  *     backslash, tab or line break that no view shows whole with no letter,
  *     digit or "_" right before it ("x\u034Fjava\u034Fscript:alert",
  *     "x\tjava\tscript:alert"; see `linkViews`), and a tab or line break
- *     next to a scheme's colon ("javascript:\nalert", "https:\t//x"; see
- *     `schemeView`).
+ *     right after a scheme's colon when no "/" follows it
+ *     ("javascript:\nalert"; see `schemeView`). A tab or line break between
+ *     the colon and "//" or between the two slashes ("https:\t//x",
+ *     "http:/\t/x") is caught by the scheme view;
+ *   - a link made with a fact block: the test reads the prose with each
+ *     "{{token}}" replaced by a space, so "see {{signer}}.com" is clean here
+ *     and renders as "see Acme.com". The shipped templates hold each token on
+ *     its own line and no house can edit a template yet; this must be closed
+ *     before houses edit templates (PR-4a-ii, ADR 0313:37).
  *
  * Speed: the "://" alternative reads at most 35 characters from any start,
  * and the bare-domain alternative starts only at the first character of a
@@ -437,6 +444,8 @@ const VIEW2_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
 const VIEW3_SPACE_RE = /[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu;
 const SCHEME_VIEW_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
 const SCHEME_VIEW_JOIN_RE = /(?<=[\p{L}\p{N}])[\t\n\r\u2028\u2029]+(?=[\p{L}\p{N}])/gu;
+const SCHEME_VIEW_SLASH_JOIN_RE =
+  /(?<=:[\t\n\r\u2028\u2029]*\/)[\t\n\r\u2028\u2029]+(?=\/)|(?<=:)[\t\n\r\u2028\u2029]+(?=\/[\t\n\r\u2028\u2029]*\/)/gu;
 /**
  * The three copies of the prose the link test reads (the courtesy line and
  * the house's words keep their own characters). `holdsLink` is given the
@@ -459,6 +468,10 @@ const SCHEME_VIEW_JOIN_RE = /(?<=[\p{L}\p{N}])[\t\n\r\u2028\u2029]+(?=[\p{L}\p{N
  * and "x\u200Bjavascript:alert" read "xjavascript:alert" in copy 1, which the
  * scheme's lookbehind lets through); copy 2 keeps a mark or backslash as the
  * separator, copy 3 a format character, control character or filler.
+ * Copy 2 is defence in depth: the scheme view also keeps marks and
+ * backslashes and strips format and control characters, and copy 1 strips
+ * more around a dot. No spec fails without copy 2, and no input has been
+ * found that only copy 2 refuses (ADR 0313:37).
  * `holdsLink` refuses when any copy matches `URL_RE`, or the scheme view
  * (`schemeView`) matches `SCHEME_RE`.
  * Not caught: a scheme word that is itself split by a mark, format or
@@ -487,13 +500,22 @@ function linkViews(text: string): string[] {
  * "java\u001Cscript:alert". Only `SCHEME_RE` is tested on it: joining two
  * lines can make a bare domain ("Thank you.\nBest" would read "you.Best"), so
  * the domain, "www." and "@" alternatives are not.
- * Not caught: such a run next to a character that is not a letter or digit,
- * as right after the colon ("javascript:\nalert") or before "//"
- * ("https:\t//x"), because there a line break separates prose ("Data:" at a
- * line's end, the next line below it). Pinned by a spec (ADR 0313:37).
+ * Such a run is also removed between a colon and a "/" that has another "/"
+ * after it (with only such runs between them), and between those two
+ * slashes, so "https:\t//x", "http:/\t/x" and "http:\t/\n/x" read
+ * "https://x" / "http://x". So a line ending in a colon followed by a line
+ * starting with "//" is refused (fail closed, pinned by a spec).
+ * Not caught: such a run next to any other character that is not a letter
+ * or digit, as right after the colon with no "/" after it
+ * ("javascript:\nalert"), because there a line break separates prose
+ * ("Data:" at a line's end, the next line below it). Pinned by a spec
+ * (ADR 0313:37).
  */
 function schemeView(text: string): string {
-  return text.replace(SCHEME_VIEW_STRIP_RE, "").replace(SCHEME_VIEW_JOIN_RE, "");
+  return text
+    .replace(SCHEME_VIEW_STRIP_RE, "")
+    .replace(SCHEME_VIEW_JOIN_RE, "")
+    .replace(SCHEME_VIEW_SLASH_JOIN_RE, "");
 }
 function holdsLink(text: string): boolean {
   return linkViews(text).some((v) => URL_RE.test(v)) || SCHEME_RE.test(schemeView(text));
