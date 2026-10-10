@@ -82,7 +82,8 @@ export default function TodayScreen() {
     setLocallyGone((prev) => new Set(prev).add(item.id));
   }, []);
 
-  // A permanent server rejection resurrects its card with a warning row.
+  // A permanent server rejection resurrects its card with a warning row; a
+  // refused receipt's card stays hidden while its row shows (F-1028).
   const legacyQueueCount = entries.filter(
     (e) => !e.actorUserId || !e.restaurantId,
   ).length;

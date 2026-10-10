@@ -14,6 +14,22 @@
 export interface HouseMoneyFrame {
   currency: string | null;
   locale: string | null;
+  /** The house's zone, for its dates (F-1029); null/absent = the phone's. */
+  timeZone?: string | null;
+}
+
+/** The house's frame off a `/mobile/today-pulse` answer; all null until it comes. */
+export function houseFrameOfPulse(
+  pulse:
+    | { currency?: string | null; locale?: string | null; timezone?: string | null }
+    | null
+    | undefined,
+): Required<HouseMoneyFrame> {
+  return {
+    currency: pulse?.currency ?? null,
+    locale: pulse?.locale ?? null,
+    timeZone: pulse?.timezone ?? null,
+  };
 }
 
 export function houseMoney(

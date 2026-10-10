@@ -455,6 +455,23 @@ it("keeps a card hidden while its action waits, also after a restart (F-951)", (
   expect(waitingFeedItems(entries, null).size).toBe(0);
 });
 
+it("keeps a card hidden while its refused receipt is shown on Today (F-1028)", () => {
+  const receipt = "/procurement/orders/o1/verify-receipt";
+  const entries = [
+    // Shown on Today with Try again: its card stays away.
+    { id: "a", actorUserId: "alice", restaurantId: "r1", status: "failed", path: receipt, feedItemId: "card-1" },
+    // Another house's refused receipt is not shown here: no reason to hold.
+    { id: "b", actorUserId: "alice", restaurantId: "r2", status: "failed", path: receipt, feedItemId: "card-2" },
+    // A refused action that is not a receipt still brings its card back.
+    { id: "c", actorUserId: "alice", restaurantId: "r1", status: "failed", path: "/procurement/orders/o3/approve", feedItemId: "card-3" },
+    // Somebody else's refusal.
+    { id: "d", actorUserId: "bob", restaurantId: "r1", status: "failed", path: receipt, feedItemId: "card-4" },
+  ] as any;
+  expect([...waitingFeedItems(entries, { id: "alice", restaurantId: "r1" })]).toEqual(["card-1"]);
+  // Dismissing the row gives the card back.
+  expect(waitingFeedItems(entries.slice(1), { id: "alice", restaurantId: "r1" }).size).toBe(0);
+});
+
 it("counts what signing out leaves on this phone and says so (F-952, F-1026)", () => {
   const entries = [
     { id: "a", actorUserId: "alice", restaurantId: "r1", status: "pending" },

@@ -2,6 +2,7 @@ import {
   houseClock,
   houseDay,
   houseDecimal,
+  houseFrameOfPulse,
   houseMoney,
   idleStockWords,
   readHousePrice,
@@ -178,6 +179,18 @@ describe("houseDay — a date in the house's zone and words (F-1029)", () => {
     expect(houseDay(lateNight, null, null, { day: "numeric" })).toBe(own);
     expect(houseDay(null, "tr-TR", null, { day: "numeric" })).toBe("");
     expect(houseDay("not a date", "tr-TR", null, { day: "numeric" })).toBe("");
+  });
+  it("dates an order letter on the house's day from the pulse's zone (F-1029b)", () => {
+    const frame = houseFrameOfPulse(
+      pulse({ locale: "tr-TR", timezone: "Europe/Istanbul" }),
+    );
+    expect(frame.timeZone).toBe("Europe/Istanbul");
+    expect(
+      houseDay(lateNight, frame.locale, frame.timeZone, { month: "short", day: "numeric" }),
+    ).toBe("10 Eki");
+    // Before the pulse answers, or from an older gateway: the phone's zone.
+    expect(houseFrameOfPulse(undefined)).toEqual({ currency: null, locale: null, timeZone: null });
+    expect(houseFrameOfPulse(pulse({})).timeZone).toBeNull();
   });
 });
 

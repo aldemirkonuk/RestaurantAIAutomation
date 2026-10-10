@@ -86,22 +86,28 @@ export function usableLocale(tag: string | null | undefined): string {
 /**
  * The house's money and its number formats, for the sentences above:
  * `restaurants.currency` (an ISO code, else null), and the formats tag
- * `houseFrame` derives from `restaurants.country` (else the zone's region).
+ * `houseFrame` derives from `restaurants.country` (else the zone's region),
+ * and the house's zone from the same row, so a date is the house's day
+ * (F-1029).
  *
- * Never throws: a failed read answers both null — a figure with no symbol,
+ * Never throws: a failed read answers all null — a figure with no symbol,
  * grouped en-US, as before the house said anything.
  */
 export async function readHouseMoney(
   client: { from: (table: string) => any } | null | undefined,
   restaurantId: string,
-): Promise<{ currency: string | null; locale: string | null }> {
+): Promise<{
+  currency: string | null;
+  locale: string | null;
+  zone: string | null;
+}> {
   try {
     const { data, error } = await client!
       .from("restaurants")
       .select("currency, country, timezone")
       .eq("id", restaurantId)
       .limit(1);
-    if (error) return { currency: null, locale: null };
+    if (error) return { currency: null, locale: null, zone: null };
     const row = (Array.isArray(data) ? data[0] : data) as
       | {
           currency?: unknown;
@@ -111,14 +117,16 @@ export async function readHouseMoney(
       | null
       | undefined;
     const code = row?.currency;
+    const frame = houseFrame(row ?? null);
     return {
       currency:
         typeof code === "string" && /^[A-Za-z]{3}$/.test(code.trim())
           ? code.trim().toUpperCase()
           : null,
-      locale: houseFrame(row ?? null).locale,
+      locale: frame.locale,
+      zone: frame.zone,
     };
   } catch {
-    return { currency: null, locale: null };
+    return { currency: null, locale: null, zone: null };
   }
 }

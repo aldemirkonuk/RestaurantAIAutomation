@@ -101,4 +101,9 @@ export interface TodayPulseResponse {
    */
   currency: string | null;
   locale: string | null;
+  /**
+   * The house's zone (`houseFrame().zone`), so the phone dates a letter or an
+   * event on the house's day, not its own (F-1029). null = not recorded.
+   */
+  timezone: string | null;
 }

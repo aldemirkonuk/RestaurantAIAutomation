@@ -327,6 +327,7 @@ export class MobileService {
       generatedAt: new Date().toISOString(),
       currency: house.currency,
       locale: house.locale,
+      timezone: house.zone,
     };
   }
 

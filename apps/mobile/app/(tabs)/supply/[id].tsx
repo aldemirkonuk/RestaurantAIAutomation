@@ -246,9 +246,8 @@ export default function OrderDetailScreen() {
                           ? "You / AI"
                           : (c.providers?.name ?? "Vendor")}
                         {c.created_at
-                          ? // The house's words (F-1029); the house's zone is
-                            // not on this screen's reads yet, so the phone's.
-                            `  ·  ${houseDay(c.created_at, house.locale, null, {
+                          ? // The house's day, in its zone and words (F-1029).
+                            `  ·  ${houseDay(c.created_at, house.locale, house.timeZone, {
                               month: "short",
                               day: "numeric",
                             })}`

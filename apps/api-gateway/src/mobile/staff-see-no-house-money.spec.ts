@@ -42,6 +42,7 @@ const PULSE: TodayPulseResponse = {
   generatedAt: "2026-10-11T18:00:00.000Z",
   currency: "TRY",
   locale: "tr-TR",
+  timezone: "Europe/Istanbul",
 };
 
 function mobile() {

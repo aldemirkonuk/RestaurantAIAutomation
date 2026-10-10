@@ -184,9 +184,10 @@ export const useOutbox = create<OutboxState>((set, get) => ({
 
   retryFailed: (id) => {
     // THE SECOND-RECEIPT GUARD HOLDS ON TRY AGAIN TOO (F-1028). While this
-    // entry was parked its card came back, and a newer count for the same
-    // order may now wait; sending the old one as well would book the same
-    // bottles twice, or write the older count over the newer one.
+    // entry was parked a newer count for the same order may have been taken
+    // (the order screen, or a card from before F-1028b); sending the old one
+    // as well would book the same bottles twice, or write the older count
+    // over the newer one.
     const parked = get().entries.find((e) => e.id === id);
     if (
       parked?.path.endsWith("/verify-receipt") &&
@@ -242,15 +243,26 @@ export function waitingWork(
  * Feed items whose action is still waiting on this phone (F-951). The card
  * stays hidden while its entry waits, also after the app restarts: the feed is
  * saved to disk and so is the outbox, but the in-memory "hidden" set is not.
+ *
+ * A refused receipt keeps its card hidden too while Today shows the refusal in
+ * this house (F-1028): the row's Try again is the one place to act on that
+ * count. A card back beside it took a second count for the same delivery.
+ * Dismissing the row gives the card back.
  */
 export function waitingFeedItems(
   entries: OutboxEntry[],
-  user: { id?: string } | null,
+  user: { id?: string; restaurantId?: string } | null,
 ): Set<string> {
   const ids = new Set<string>();
   for (const e of entries) {
-    if (e.status === "failed" || !e.feedItemId || !user?.id) continue;
-    if (e.actorUserId === user.id) ids.add(e.feedItemId);
+    if (!e.feedItemId || !user?.id || e.actorUserId !== user.id) continue;
+    if (e.status !== "failed") ids.add(e.feedItemId);
+    else if (
+      e.path?.endsWith("/verify-receipt") &&
+      e.restaurantId === user.restaurantId
+    ) {
+      ids.add(e.feedItemId);
+    }
   }
   return ids;
 }
