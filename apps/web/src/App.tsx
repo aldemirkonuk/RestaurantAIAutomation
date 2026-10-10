@@ -557,8 +557,10 @@ function App() {
                   <Route path="/sommelier" element={<Navigate to="/ask" replace state={{ from: 'sommelier' }} />} />
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
-                  {/* Dev/Test Pages */}
-                  <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole={['owner', 'manager']}><DevSandbox /></ProtectedRoute>} />
+                  {/* Dev/Test Pages. The sandbox invents wines and totals, so a
+                      production build sends everyone home, like /simpos (F-287);
+                      the gateway also refuses its events in production. */}
+                  <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole={['owner', 'manager']}>{import.meta.env.PROD ? <Navigate to="/" replace /> : <DevSandbox />}</ProtectedRoute>} />
 
                   {/*
                     Catch-all, NESTED under DashboardLayout on purpose (sketch

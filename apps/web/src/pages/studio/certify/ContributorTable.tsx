@@ -23,9 +23,11 @@ interface ContributorTableProps {
   contributors: Contributor[]
   onRevoke: (userId: string) => Promise<void>
   onToggleEnable: (userId: string, enabled: boolean) => Promise<void>
+  /** False for a role the server refuses revoke/enable/disable to (F-289). */
+  canManage?: boolean
 }
 
-export function ContributorTable({ contributors, onRevoke, onToggleEnable }: ContributorTableProps) {
+export function ContributorTable({ contributors, onRevoke, onToggleEnable, canManage = true }: ContributorTableProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   /** NEW-564: the ⋮ button had no handler and onRevoke was destructured unused. */
   const [menuFor, setMenuFor] = useState<string | null>(null)
@@ -137,6 +139,9 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
                   </div>
                 </td>
                 <td className="px-4 py-3 min-w-[80px]">
+                  {!canManage ? (
+                    <Badge variant={isActive ? 'success' : 'secondary'} size="sm">{isActive ? 'Active' : 'Disabled'}</Badge>
+                  ) : (
                   <button
                     onClick={() => handleToggle(c)}
                     disabled={loadingId === c.user_id}
@@ -149,6 +154,7 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
                       isActive ? 'translate-x-5' : 'translate-x-1'
                     }`} />
                   </button>
+                  )}
                 </td>
                 <td className="px-4 py-3 min-w-[100px]">
                   <span className="text-xs text-slate-500">
@@ -171,6 +177,7 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
                       className="absolute right-2 top-10 z-30 w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-1"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {canManage && (
                       <button
                         onClick={() => { setMenuFor(null); handleToggle(c) }}
                         className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 rounded-lg"
@@ -178,6 +185,7 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
                         <Power className="w-4 h-4 text-slate-400" />
                         {isActive ? 'Disable access' : 'Enable access'}
                       </button>
+                      )}
                       <button
                         onClick={() => {
                           navigator.clipboard?.writeText(c.email ?? c.user_id)
@@ -188,6 +196,7 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
                         <Copy className="w-4 h-4 text-slate-400" />
                         Copy {c.email ? 'email' : 'user id'}
                       </button>
+                      {canManage && (
                       <button
                         onClick={() => handleRevoke(c)}
                         className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 rounded-lg"
@@ -195,6 +204,7 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
                         <UserX className="w-4 h-4 text-rose-500" />
                         Revoke contributor
                       </button>
+                      )}
                     </div>
                   )}
                 </td>
