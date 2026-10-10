@@ -758,7 +758,7 @@ interface Cursor {
 
 /**
  * A cursor is an ISO-8601 instant or nothing. It is normalised to UTC `Z`
- * form because it is spliced into a PostgREST `or=` filter, where a `+`
+ * form, at the precision it was sent in, because it is spliced into a PostgREST `or=` filter, where a `+`
  * offset would be read as a space; and a cursor that does not parse is a
  * client error said as one, never a silent "start from the top" — that
  * would hand a caller page one again while telling it this was page two.
@@ -771,7 +771,14 @@ function parseCursor(raw: string | undefined): string | null {
       `before must be an ISO-8601 timestamp; got ${JSON.stringify(raw)}`,
     );
   }
-  return new Date(t).toISOString();
+  // toISOString keeps milliseconds only, while Postgres stamps microseconds:
+  // a cursor of `.123456` re-written as `.123` sits BEFORE every row of its
+  // own batch, so `<=` dropped the rest of a same-transaction batch for good
+  // (F-906). An offset is whole minutes, so the fraction the caller sent is
+  // the fraction in UTC too — splice it back as given.
+  const iso = new Date(t).toISOString();
+  const frac = /T\d{2}:\d{2}:\d{2}\.(\d{4,9})/.exec(raw)?.[1];
+  return frac ? iso.replace(/\.\d{3}Z$/, `.${frac}Z`) : iso;
 }
 
 /**

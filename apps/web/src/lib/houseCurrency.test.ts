@@ -5,7 +5,13 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { formatHouseMoney, getHouseCurrency, setHouseCurrency } from './houseCurrency';
+import {
+  formatHouseMoney,
+  getHouseCurrency,
+  localeOfCountry,
+  setHouseCurrency,
+  setHouseLocale,
+} from './houseCurrency';
 import { formatMoney } from './utils';
 import { fmtMoney, fmtMoneyExact } from '../pages/inventory/command/bits';
 import { money } from '../pages/cellar/next/cellar-format';
@@ -62,6 +68,7 @@ describe('useHouseCurrency', () => {
   beforeEach(() => {
     houseCurrency.mockReset();
     setHouseCurrency(undefined);
+    setHouseLocale(null);
     window.localStorage.setItem('activeRestaurantId', 'house-1');
   });
 
@@ -71,7 +78,8 @@ describe('useHouseCurrency', () => {
     const { result } = renderHook(() => useHouseCurrency());
     await waitFor(() => expect(result.current).toBe('EUR'));
     expect(getHouseCurrency()).toBe('EUR');
-    expect(money(5)).toBe('€5.00');
+    // A house in France groups its money the French way (F-908).
+    expect(money(5)).toBe(new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(5));
   });
 
   it('an unreadable answer is not a currency', async () => {
@@ -82,5 +90,25 @@ describe('useHouseCurrency', () => {
     await waitFor(() => expect(houseCurrency).toHaveBeenCalled());
     expect(getHouseCurrency()).toBeUndefined();
     expect(money(5)).toBe('5.00');
+  });
+});
+
+describe('money groups the house’s way (F-908)', () => {
+  beforeEach(() => setHouseLocale(null));
+
+  it('a house in Türkiye reads its money with "." grouping and "," decimals, as its print-out does', () => {
+    setHouseCurrency('TRY');
+    setHouseLocale(localeOfCountry('Türkiye'));
+    expect(localeOfCountry('Türkiye')).toBe('tr-TR');
+    expect(formatHouseMoney(12400.5)).toBe(new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(12400.5));
+    expect(formatHouseMoney(12400.5)).toMatch(/12\.400,50/);
+    // Compact keeps its English K and takes the house's decimal mark.
+    expect(formatMoney(29000, 'compact')).toMatch(/29,0K/);
+  });
+
+  it('a house with no recorded country keeps en-US', () => {
+    setHouseCurrency('USD');
+    setHouseLocale(localeOfCountry(null));
+    expect(formatHouseMoney(12400.5)).toBe('$12,400.50');
   });
 });

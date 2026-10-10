@@ -27,7 +27,7 @@
  *    days, both enforced server-side, so `total` and `pageCount` already
  *    reflect the store after both, not the shelf's own idea of a limit.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -113,6 +113,16 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  // A switch leaves nothing of the last house's shelf on this one (F-910):
+  // its page 3 is not this house's page 3, and its failure is not this one's.
+  const [shelfOf, setShelfOf] = useState(activeRestaurantId);
+  if (shelfOf !== activeRestaurantId) {
+    setShelfOf(activeRestaurantId);
+    setPage(1);
+    setError(null);
+  }
+  const houseNow = useRef(activeRestaurantId);
+  houseNow.current = activeRestaurantId;
 
   // The gateway also admits `admin`; the web's role type has no such value.
   const canExport = activeRole === 'owner' || activeRole === 'manager';
@@ -156,7 +166,9 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
         await fn();
         if (after) refresh();
       } catch (err: unknown) {
-        setError(`${what} did not go through: ${reasonOf(err)}`);
+        // A failure that lands after a switch belongs to the house it was asked in.
+        if (houseNow.current === activeRestaurantId)
+          setError(`${what} did not go through: ${reasonOf(err)}`);
         refresh();
       } finally {
         setBusy(null);

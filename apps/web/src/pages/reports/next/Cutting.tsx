@@ -55,6 +55,7 @@ import type { ArrangeApi } from './rp-arrange';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
 import { monthLabel, thisMonth } from './rp-registers-trade';
+import { houseToday } from '@/lib/houseZone';
 import type { Register } from './useReportsNextData';
 
 /**
@@ -90,19 +91,22 @@ export function TillWindowPicker({
   month = null,
   onChange,
   onMonth,
+  zone = null,
 }: {
   days: number;
   month?: string | null;
   onChange: (d: number) => void;
   onMonth?: (m: string | null) => void;
+  /** The house's zone: the months offered end at the HOUSE's month (F-909). */
+  zone?: string | null;
 }) {
   const options = useMemo(() => [7, 30, 90], []);
   const months = useMemo(() => {
-    const now = new Date();
+    const now = houseToday(zone);
     return Array.from({ length: 12 }, (_, i) =>
       thisMonth(new Date(now.getFullYear(), now.getMonth() - i, 1)),
     );
-  }, []);
+  }, [zone]);
   return (
     <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
       {options.map((d) => (
@@ -294,7 +298,13 @@ export default function Cutting({
             </button>
           </div>
         ) : spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} month={ctx.month} onChange={onDays} onMonth={onMonth} />
+          <TillWindowPicker
+            days={ctx.days}
+            month={ctx.month}
+            zone={ctx.zone}
+            onChange={onDays}
+            onMonth={onMonth}
+          />
         ) : null}
       </div>
 

@@ -46,7 +46,9 @@ export interface ExportHeader {
    * The house's formats tag (`houseFrame().locale`, ADR 0207). The printed
    * file groups its figures this way — a lira house reads "1.240,50", where
    * en-US printed "1,240.50", 1.24 by its own mark (F-889). Null or absent
-   * keeps en-US. The CSV stays bare numbers, for a spreadsheet to read.
+   * keeps en-US. The CSV stays bare numbers, but in the house's marks: a
+   * house whose decimal mark is "," gets ";" between cells and "12,5" for
+   * twelve and a half, which is what Excel there opens as columns (F-907).
    */
   locale?: string | null;
   withheldCount: number;
@@ -86,9 +88,9 @@ function unitSuffix(unit: Unit, currency: string | null): string {
 }
 
 /** A number as data: integers as-is, fractions to six places, no separators. */
-function rawNumber(n: number): string {
+function rawNumber(n: number, decimal = "."): string {
   if (Number.isInteger(n)) return String(n);
-  return String(Math.round(n * 1e6) / 1e6);
+  return String(Math.round(n * 1e6) / 1e6).replace(".", decimal);
 }
 
 /** Distinct withheld reasons in a table, keyed by column, for its footnote. */
@@ -110,17 +112,40 @@ function withheldReasons(t: ExportTable): string[] {
 
 const FORMULA_LEAD = /^[=+\-@\t\r]/;
 
-function csvText(s: string): string {
-  const safe = FORMULA_LEAD.test(s) ? `'${s}` : s;
-  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+/**
+ * The cell separator and decimal mark the file is written in. Excel splits a
+ * double-clicked .csv on the system list separator, which is ";" wherever the
+ * decimal mark is "," (Türkiye, most of Europe). A comma-joined file opened
+ * there as one column of text, and "12.5" as text or a date (F-907). A
+ * `sep=` line would fix the split but makes Excel drop the BOM, so the marks
+ * follow the house's formats tag instead.
+ */
+interface CsvMarks {
+  sep: "," | ";";
+  decimal: string;
 }
 
-function csvCell(c: Cell): string {
+function csvMarks(locale: string | null | undefined): CsvMarks {
+  const decimal =
+    new Intl.NumberFormat(usableLocale(locale)).formatToParts(1.5).find((p) => p.type === "decimal")
+      ?.value ?? ".";
+  return decimal === "," ? { sep: ";", decimal } : { sep: ",", decimal: "." };
+}
+
+function quoteIfNeeded(s: string, m: CsvMarks): string {
+  return s.includes(m.sep) || /["\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function csvTextIn(s: string, m: CsvMarks): string {
+  return quoteIfNeeded(FORMULA_LEAD.test(s) ? `'${s}` : s, m);
+}
+
+function csvCell(c: Cell, m: CsvMarks): string {
   if (c === null) return "";
-  if (typeof c === "number") return Number.isFinite(c) ? rawNumber(c) : WITHHELD_WORD;
-  if (typeof c === "string") return csvText(c);
+  if (typeof c === "number") return Number.isFinite(c) ? rawNumber(c, m.decimal) : WITHHELD_WORD;
+  if (typeof c === "string") return csvTextIn(c, m);
   if (isWithheld(c)) return WITHHELD_WORD;
-  if (isTyped(c)) return rawNumber(c.n);
+  if (isTyped(c)) return rawNumber(c.n, m.decimal);
   return "";
 }
 
@@ -131,25 +156,23 @@ function csvCell(c: Cell): string {
  * unit in the cell — otherwise a spreadsheet reader could not tell 12.5 dollars
  * from 12.5 percent.
  */
-function csvTableCell(c: Cell, columnUnit: Unit, currency: string | null): string {
+function csvTableCell(c: Cell, columnUnit: Unit, currency: string | null, m: CsvMarks): string {
   if (columnUnit === "text" && isTyped(c)) {
     // Built from a number, not from text anyone typed, so there is no formula
     // to neutralise — a leading minus is a negative figure. Quoted when the
-    // unit word carries a comma ("share, 0–1").
+    // unit word carries the separator ("share, 0–1").
     const word = unitWord(c.unit, currency);
-    const s = word ? `${rawNumber(c.n)} ${word}` : rawNumber(c.n);
-    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const n = rawNumber(c.n, m.decimal);
+    return quoteIfNeeded(word ? `${n} ${word}` : n, m);
   }
-  return csvCell(c);
-}
-
-function csvLine(cells: string[]): string {
-  return cells.join(",");
+  return csvCell(c, m);
 }
 
 export function renderCsv(doc: ExportDoc, h: ExportHeader): string {
+  const m = csvMarks(h.locale);
+  const csvText = (s: string) => csvTextIn(s, m);
   const lines: string[] = [];
-  const push = (...cells: string[]) => lines.push(csvLine(cells));
+  const push = (...cells: string[]) => lines.push(cells.join(m.sep));
 
   push(csvText("Mudavym report export"));
   push("House", csvText(h.houseName ?? "name not recorded"));
@@ -184,7 +207,7 @@ export function renderCsv(doc: ExportDoc, h: ExportHeader): string {
       const unit = isTyped(fig.value) ? fig.value.unit : fig.unit;
       push(
         csvText(fig.label),
-        csvCell(fig.value),
+        csvCell(fig.value, m),
         csvText(unitWord(unit, h.currency)),
         isWithheld(fig.value) ? csvText(fig.value.why) : "",
       );
@@ -196,7 +219,7 @@ export function renderCsv(doc: ExportDoc, h: ExportHeader): string {
     push(csvText(t.title));
     push(...t.columns.map((c) => csvText(`${c.label}${unitSuffix(c.unit, h.currency)}`)));
     for (const row of t.rows)
-      push(...t.columns.map((col, i) => csvTableCell(row[i] ?? null, col.unit, h.currency)));
+      push(...t.columns.map((col, i) => csvTableCell(row[i] ?? null, col.unit, h.currency, m)));
     if (t.note) push("Note", csvText(t.note));
     for (const reason of withheldReasons(t)) push("Withheld", csvText(reason));
   }

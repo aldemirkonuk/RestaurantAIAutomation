@@ -325,10 +325,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     () => ({
       days: tillDays,
       month: tillMonth,
+      zone,
       goals: data.goalsDesk,
       goalsNow: goalsNowFrom(data.registers.goals?.data),
     }),
-    [data.goalsDesk, tillDays, tillMonth, data.registers.goals?.data],
+    [data.goalsDesk, tillDays, tillMonth, zone, data.registers.goals?.data],
   );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({

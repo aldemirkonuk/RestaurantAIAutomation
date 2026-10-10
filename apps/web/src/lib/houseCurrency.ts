@@ -20,8 +20,15 @@
  * prints money calls it once at the top so it re-renders when the answer lands.
  */
 import { CURRENCY_NOT_RECORDED, currencyMinorUnits } from './currency';
+import { countryByName } from './countries';
 
 let current: string | null | undefined = undefined;
+/**
+ * The house's formats tag, from its recorded country — the gateway's
+ * `houseFrame().locale`, which the print page and the insight lines already
+ * group by. Until it is known, en-US, as before (F-908).
+ */
+let currentLocale = 'en-US';
 const listeners = new Set<() => void>();
 
 /** What the money helpers fall back to when a caller passes no currency. */
@@ -34,6 +41,29 @@ export function setHouseCurrency(code: string | null | undefined): void {
   const next = typeof code === 'string' && /^[A-Z]{3}$/.test(code) ? code : code === null ? null : undefined;
   if (next === current) return;
   current = next;
+  listeners.forEach((l) => l());
+}
+
+/**
+ * The formats tag for a recorded country: `Türkiye` → `tr-TR`, the same tag
+ * the gateway's `localeFor` builds. en-US when the country is unknown.
+ */
+export function localeOfCountry(country: string | null | undefined): string {
+  const code = countryByName(country ?? null)?.code;
+  if (!code) return 'en-US';
+  try {
+    const tag = `${new Intl.Locale(`und-${code}`).maximize().language}-${code}`;
+    return Intl.NumberFormat.supportedLocalesOf([tag]).length > 0 ? tag : 'en-US';
+  } catch {
+    return 'en-US';
+  }
+}
+
+/** Written by `useHouseCurrency` (and tests), from the same read as the code. */
+export function setHouseLocale(locale: string | null | undefined): void {
+  const next = typeof locale === 'string' && locale ? locale : 'en-US';
+  if (next === currentLocale) return;
+  currentLocale = next;
   listeners.forEach((l) => l());
 }
 
@@ -72,12 +102,25 @@ export function formatHouseMoney(
     maximumFractionDigits: max,
     ...(compact ? { notation: 'compact' as const } : {}),
   };
-  const bare = amount.toLocaleString('en-US', base);
+  // Grouped the house's way: a lira house reads "₺12.400,50", where en-US
+  // printed "TRY 12,400.50" — 12.4 by the house's own mark (F-908). A compact
+  // figure keeps its English K/M and takes only the house's decimal mark, as
+  // the gateway's insight lines do.
+  const fmt = (o: Intl.NumberFormatOptions): string => {
+    if (!compact) return new Intl.NumberFormat(currentLocale, o).format(amount);
+    const s = new Intl.NumberFormat('en-US', o).format(amount);
+    return decimalMarkOf(currentLocale) === ',' ? s.replace('.', ',') : s;
+  };
+  const bare = fmt(base);
   if (code === undefined) return bare;
   if (typeof code !== 'string' || !/^[A-Z]{3}$/.test(code)) return `${bare} (${CURRENCY_NOT_RECORDED})`;
   try {
-    return new Intl.NumberFormat('en-US', { ...base, style: 'currency', currency: code }).format(amount);
+    return fmt({ ...base, style: 'currency', currency: code });
   } catch {
     return `${bare} ${code}`;
   }
+}
+
+function decimalMarkOf(locale: string): string {
+  return new Intl.NumberFormat(locale).formatToParts(1.5).find((p) => p.type === 'decimal')?.value ?? '.';
 }
