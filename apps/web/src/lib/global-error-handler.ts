@@ -1,4 +1,4 @@
-import { errorTracking } from './error-tracking'
+import { errorTracking, scrubUrl } from './error-tracking'
 
 interface ErrorContext {
   type: 'window_error' | 'unhandled_rejection' | 'resource_error'
@@ -101,9 +101,13 @@ function handleResourceError(event: Event) {
     return
   }
 
+  // Cut at the source: an <img> of a stored receipt is a signed storage URL
+  // whose query IS the credential, and its failing to load (a HEIC photo, an
+  // expired link) is expected — the page shows its own note (F-733).
+  const rawUrl: unknown = (target as any).src || (target as any).href
   const context: ErrorContext = {
     type: 'resource_error',
-    url: (target as any).src || (target as any).href,
+    url: typeof rawUrl === 'string' ? scrubUrl(rawUrl) : undefined,
   }
 
   logError(context)

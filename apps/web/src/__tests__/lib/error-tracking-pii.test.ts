@@ -175,6 +175,25 @@ describe('error tracking — what reaches Sentry', () => {
       expect(event.contexts.account).toEqual({ plan: 'pro' })
     })
 
+    // F-733: a resource error's `url` is an ordinary key, so the key-name
+    // scrub let a signed receipt link through with its token.
+    it('strips a signed-URL token from a string in extra, whatever its key', async () => {
+      const { scrubSentryEvent } = await freshModule()
+
+      const event = scrubSentryEvent({
+        message: 'Resource failed to load',
+        extra: {
+          type: 'resource_error',
+          url: 'https://x.supabase.co/storage/v1/object/sign/docs/r-1/a.heic?token=eyJSECRET',
+          tagName: 'IMG',
+        },
+      } as never) as Record<string, any>
+
+      expect(JSON.stringify(event)).not.toContain('eyJSECRET')
+      expect(event.extra.url).toBe('https://x.supabase.co/storage/v1/object/sign/docs/r-1/a.heic')
+      expect(event.extra.tagName).toBe('IMG')
+    })
+
     it('leaves an event with nothing to scrub untouched', async () => {
       const { scrubSentryEvent } = await freshModule()
 

@@ -11,7 +11,10 @@
  * The outer boundary (App.tsx) is untouched: if the SHELL itself throws —
  * the header, the rail, the counter — there is no chrome left standing to
  * render this inside, so its own plain screen is what a person sees. This
- * screen is only ever for a PAGE that crashed with the shell still up.
+ * screen is only ever for a PAGE that crashed with the shell still up — or,
+ * `standalone`, for a page that has no shell around it (the door, the vendor
+ * portal, get-started, studio, authorize: `PageBoundary`), where the copy
+ * cannot point at rooms and a counter that are not there (F-735).
  */
 
 import { AlertTriangle, Lock, RefreshCw, Server, WifiOff } from 'lucide-react';
@@ -47,25 +50,50 @@ const COPY_FOR = {
   },
 } as const;
 
-export function HouseErrorScreen({ error, errorCategory, retry, reset }: ErrorBoundaryFallbackInfo) {
+/** The body for a page with no shell around it; the headlines stay the same. */
+const STANDALONE_BODY_FOR = {
+  network: 'Check the connection, then try again.',
+  auth: 'Sign in again, then come back to this page.',
+  server: 'This has been recorded. Try again in a moment.',
+  unknown: 'Try again. If it keeps happening, reload the page.',
+} as const;
+
+interface HouseErrorScreenProps extends ErrorBoundaryFallbackInfo {
+  /** No shell around this page: say nothing about rooms or a counter. */
+  standalone?: boolean;
+  /** Offer "Back to Dashboard" — not to a visitor who has no dashboard. */
+  showHome?: boolean;
+}
+
+export function HouseErrorScreen({
+  error,
+  errorCategory,
+  retry,
+  reset,
+  standalone = false,
+  showHome = true,
+}: HouseErrorScreenProps) {
   const Icon = ICON_FOR[errorCategory];
   const copy = COPY_FOR[errorCategory];
+  const body = standalone ? STANDALONE_BODY_FOR[errorCategory] : copy.body;
 
   return (
     <div className="mdv-errscreen mudavym" role="alert">
       <Icon className="mdv-errscreen__icon" aria-hidden />
       <p className="mdv-errscreen__eyebrow">{copy.eyebrow}</p>
       <h2 className="mdv-errscreen__headline">{copy.headline}</h2>
-      <p className="mdv-errscreen__body">{copy.body}</p>
+      <p className="mdv-errscreen__body">{body}</p>
       {error && <p className="mdv-errscreen__detail">{error.message}</p>}
       <div className="mdv-errscreen__actions">
         <button type="button" className="mdv-errscreen__retry" onClick={retry}>
           <RefreshCw size={14} aria-hidden />
           Try again
         </button>
-        <button type="button" className="mdv-link" onClick={reset}>
-          Back to Dashboard
-        </button>
+        {showHome && (
+          <button type="button" className="mdv-link" onClick={reset}>
+            Back to Dashboard
+          </button>
+        )}
       </div>
     </div>
   );

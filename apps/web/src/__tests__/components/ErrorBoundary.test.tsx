@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { ErrorBoundary, categorizeError } from '../../components/ErrorBoundary';
 
 // Mock error tracking
 vi.mock('../../lib/error-tracking', () => ({
@@ -131,7 +132,7 @@ describe('ErrorBoundary', () => {
 
   it('a render-function fallback receives the SAME categorisation as the built-in screen', () => {
     const ThrowNetwork = () => {
-      throw new Error('network request failed');
+      throw Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' });
     };
     let category = '';
     render(
@@ -165,5 +166,97 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByRole('button', { name: /reload page/i })).toBeInTheDocument();
+  });
+
+  // F-734: a link to the same page (only the query differs) must clear the error.
+  it('a new resetKey clears the error and renders the children again', () => {
+    let shouldThrow = true;
+    const Flaky = () => {
+      if (shouldThrow) throw new Error('flaky');
+      return <div>recovered</div>;
+    };
+    const { rerender } = render(
+      <ErrorBoundary resetKey="a" fallback={<div>crashed</div>}>
+        <Flaky />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText('crashed')).toBeInTheDocument();
+    shouldThrow = false;
+    rerender(
+      <ErrorBoundary resetKey="a" fallback={<div>crashed</div>}>
+        <Flaky />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText('crashed')).toBeInTheDocument(); // same key: stays
+    rerender(
+      <ErrorBoundary resetKey="b" fallback={<div>crashed</div>}>
+        <Flaky />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText('recovered')).toBeInTheDocument();
+  });
+
+  // F-737: Try again must not re-render the same cached rows that just threw.
+  it('retry empties the crashed page\'s cached queries, so it refetches instead of re-throwing', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['rows'], { wrong: 'shape' }); // what the page crashed on
+    const Page = () => {
+      const { data } = useQuery({
+        queryKey: ['rows'],
+        queryFn: async () => ({ rows: ['ok'] }),
+      });
+      if (!data) return <div>loading</div>;
+      return <div>{(data as { rows: string[] }).rows.map((r) => r.toUpperCase()).join()}</div>;
+    };
+    render(
+      <QueryClientProvider client={client}>
+        <ErrorBoundary fallback={({ retry }) => <button onClick={retry}>try again</button>}>
+          <Page />
+        </ErrorBoundary>
+      </QueryClientProvider>
+    );
+    fireEvent.click(screen.getByText('try again'));
+    expect(await screen.findByText('OK')).toBeInTheDocument();
+  });
+
+  it('retry leaves the queries a mounted part of the screen still watches', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['shell'], 'still here');
+    const Shell = () => {
+      const { data } = useQuery({ queryKey: ['shell'], queryFn: () => new Promise<string>(() => {}) });
+      return <div>{data}</div>;
+    };
+    render(
+      <QueryClientProvider client={client}>
+        <Shell />
+        <ErrorBoundary fallback={({ retry }) => <button onClick={retry}>try again</button>}>
+          <ThrowError shouldThrow={true} />
+        </ErrorBoundary>
+      </QueryClientProvider>
+    );
+    fireEvent.click(screen.getByText('try again'));
+    expect(client.getQueryData(['shell'])).toBe('still here');
+  });
+});
+
+// F-736: the category comes from typed fields, never from words in the message.
+describe('categorizeError', () => {
+  it('reads an HTTP status, wherever the client put it', () => {
+    expect(categorizeError(Object.assign(new Error('x'), { status: 401 }))).toBe('auth');
+    expect(categorizeError(Object.assign(new Error('x'), { statusCode: 403 }))).toBe('auth');
+    expect(categorizeError(Object.assign(new Error('x'), { response: { status: 503 } }))).toBe('server');
+    expect(categorizeError(Object.assign(new Error('x'), { status: 404 }))).toBe('unknown');
+  });
+
+  it('reads a network error by its name or code', () => {
+    expect(categorizeError(Object.assign(new Error('x'), { name: 'NetworkError' }))).toBe('network');
+    expect(categorizeError(Object.assign(new Error('x'), { code: 'ECONNABORTED' }))).toBe('network');
+  });
+
+  it('a page bug whose message happens to say "connection" or "author" is not a lost network or session', () => {
+    expect(categorizeError(new TypeError("Cannot read properties of undefined (reading 'connection')"))).toBe('unknown');
+    expect(categorizeError(new TypeError("Cannot read properties of null (reading 'author')"))).toBe('unknown');
+    expect(categorizeError(new Error('server returned 500'))).toBe('unknown');
+    expect(categorizeError(null)).toBe('unknown');
   });
 });

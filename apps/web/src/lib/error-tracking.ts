@@ -348,6 +348,16 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     }
   }
   scrubPiiKeys(event.extra as Record<string, any>)
+  // `extra` was scrubbed by key name only, so a URL under an ordinary key —
+  // the resource-error handler's `url`, a signed receipt link with its token —
+  // went through whole (F-733). Top-level strings only: the bag is assembled by
+  // our own callers, and a nested object may be frozen.
+  if (event.extra) {
+    const extra = event.extra as Record<string, unknown>
+    for (const key of Object.keys(extra)) {
+      if (typeof extra[key] === 'string') extra[key] = scrubText(extra[key] as string)
+    }
+  }
   if (event.contexts) {
     for (const ctx of Object.values(event.contexts)) {
       scrubPiiKeys(ctx as Record<string, any>)

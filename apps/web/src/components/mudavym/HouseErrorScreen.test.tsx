@@ -46,4 +46,29 @@ describe('HouseErrorScreen', () => {
     });
     expect(new Set(headlines).size).toBe(categories.length);
   });
+
+  // F-735: a page with no shell around it (the door, the vendor portal …).
+  it('standalone, it says nothing about a shell, rooms or a counter that are not there', () => {
+    render(
+      <HouseErrorScreen error={null} errorCategory="unknown" retry={vi.fn()} reset={vi.fn()} standalone />,
+    );
+    expect(screen.getByText('This page ran into a problem.')).toBeTruthy();
+    expect(screen.queryByText(/shell|rooms|counter/i)).toBeNull();
+    expect(screen.getByText('Try again. If it keeps happening, reload the page.')).toBeTruthy();
+  });
+
+  it('offers no way to a dashboard when showHome is off', () => {
+    render(
+      <HouseErrorScreen
+        error={null}
+        errorCategory="unknown"
+        retry={vi.fn()}
+        reset={vi.fn()}
+        standalone
+        showHome={false}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Back to Dashboard' })).toBeNull();
+  });
 });
