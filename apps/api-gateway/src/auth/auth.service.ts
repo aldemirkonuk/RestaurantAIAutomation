@@ -67,6 +67,7 @@ import {
 } from "./unproven-address";
 import { normalizeEmail } from "../passkeys/sign-in-codes.service";
 import {
+  ORG_OWNER,
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
 } from "../organizations/org-role";
@@ -4588,6 +4589,51 @@ export class AuthService {
       if ((count ?? 0) <= 1) {
         throw new BadRequestException(
           "Transfer ownership of all restaurants before deleting your account.",
+        );
+      }
+    }
+
+    // F-750: the same guard one level up. Only an organisation owner may open
+    // a new location (ADR 0164, organizations/org-role.ts), and deleting the
+    // users row cascades the organization_members row away and nulls
+    // organizations.owner_id, so the last owner going would leave nobody who
+    // ever could. There is no route that makes someone else an organisation
+    // owner yet, so this refuses rather than inventing a hand-over. A read
+    // that fails refuses too: it cannot be told apart from "not an owner".
+    const { data: orgOwnerRows, error: orgOwnerError } =
+      await this.databaseService.supabase
+        .from("organization_members")
+        .select("organization_id, role")
+        .eq("user_id", userId)
+        .eq("role", ORG_OWNER);
+    if (orgOwnerError) {
+      this.logger.error(
+        `deleteAccount could not read ${userId}'s organisations: ${orgOwnerError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not check who owns your organisation. Nothing was deleted; try again.",
+      );
+    }
+    for (const row of orgOwnerRows ?? []) {
+      const { count, error: countError } = await this.databaseService.supabase
+        .from("organization_members")
+        .select("*", { count: "exact", head: true })
+        .eq("organization_id", row.organization_id)
+        .eq("role", ORG_OWNER);
+      if (countError) {
+        this.logger.error(
+          `deleteAccount could not count the owners of organisation ` +
+            `${row.organization_id}: ${countError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not check who owns your organisation. Nothing was deleted; try again.",
+        );
+      }
+      if ((count ?? 0) <= 1) {
+        throw new BadRequestException(
+          "You are the only owner of your organisation. If your account goes, " +
+            "nobody could open a new location in it, so it can't be deleted yet. " +
+            "Nothing was deleted.",
         );
       }
     }

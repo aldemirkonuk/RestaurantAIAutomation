@@ -10,7 +10,7 @@ export type FormatMode = 'compact' | 'full' | 'table'
 /**
  * Format monetary values with context-appropriate display:
  * - compact: KPI cards, badges, calendar ($1.4K, $2.3M)
- * - full: default display ($845.50, $14,523)
+ * - full: default display ($845.50, $14,523, never $845.5)
  * - table: data tables, modals ($845.50, $14,523.80)
  */
 export function formatMoney(value: number, mode: FormatMode = 'full'): string {
@@ -28,8 +28,10 @@ export function formatMoney(value: number, mode: FormatMode = 'full'): string {
     return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
-  // 'full' -- general display
-  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+  // 'full' -- general display. Whole amounts drop the ".00"; an amount with
+  // cents keeps both digits, so $39,302.50 never reads "$39,302.5" (F-753).
+  const hasCents = Math.round(Math.abs(value) * 100) % 100 !== 0
+  return `$${value.toLocaleString('en-US', { minimumFractionDigits: hasCents ? 2 : 0, maximumFractionDigits: 2 })}`
 }
 
 /**
