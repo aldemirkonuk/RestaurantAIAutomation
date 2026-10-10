@@ -497,15 +497,19 @@ class EmailIntelAgent(BaseAgent):
                 email_subject, email_body, restaurant_id=restaurant_id or None
             )
 
-        # Dedup check: SHA256(vendor_email + product_name + today)
+        # Dedup check: SHA256(house + vendor_email + product_name + today). The
+        # house is in the key because one distributor blast reaches several
+        # houses, and each house keeps its own copy of the deal (F-535); the
+        # table's unique key is (restaurant_id, dedup_hash) to match.
         today_str = date.today().isoformat()
-        raw_hash = f"{vendor_email}{details.product_name}{today_str}"
+        raw_hash = f"{restaurant_id}{vendor_email}{details.product_name}{today_str}"
         dedup_hash = hashlib.sha256(raw_hash.encode()).hexdigest()
 
         try:
             existing = (
                 self.database.supabase.table("vendor_promotions")
                 .select("id")
+                .eq("restaurant_id", restaurant_id)
                 .eq("dedup_hash", dedup_hash)
                 .execute()
             )
@@ -893,28 +897,28 @@ class EmailIntelAgent(BaseAgent):
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        Insert in-app notification directly to Supabase notifications table (D-03).
-        NOT an HTTP call to NestJS NotificationsService — direct DB insert per RESEARCH.md Q2.
+        In-app notification to the house's members, direct to Supabase (D-03),
+        NOT an HTTP call to NestJS NotificationsService.
+
+        Routed through core.notifications. The direct insert this replaced
+        omitted recipient_id, notification_type and channels (all NOT NULL, no
+        default), so the "New message from" and "Deal:" bells never landed
+        (F-535) -- the same defect _notify_unknown_sender had.
         """
         if not restaurant_id:
             return
-        try:
-            insert_payload: Dict[str, Any] = {
-                "restaurant_id": restaurant_id,
-                "type": notification_type,
-                "title": title,
-                "message": message,
-                "priority": priority,
-                "action_url": action_url,
-                "status": "unread",
-            }
-            if metadata:
-                insert_payload["metadata"] = metadata
-            self.database.supabase.table("notifications").insert(
-                insert_payload
-            ).execute()
-        except Exception as e:
-            self.logger.warning(f"Notification insert failed (non-critical): {e}")
+        await notify_restaurant(
+            self.database,
+            self.logger,
+            restaurant_id,
+            notification_type,
+            # notifications.title is varchar(255).
+            title[:255],
+            message,
+            priority=priority,
+            action_url=action_url,
+            metadata=metadata,
+        )
 
     # =========================================================================
     # UNKNOWN SENDER DETECTION (PROVINT-04)
@@ -930,25 +934,38 @@ class EmailIntelAgent(BaseAgent):
         PROVINT-04: Check if sender email exists as a known provider contact.
         Returns True if sender is unknown (not in providers or provider_contacts tables).
         Fails open — a lookup failure returns False to avoid blocking email processing.
+
+        The house's providers are matched on `contact_email`; secondary
+        contacts have no house column, so they are matched through the house's
+        providers. (The old reads named `providers.email` and
+        `provider_contacts.restaurant_id`, neither of which exists, so every
+        check raised and failed open to "known" -- F-535.)
         """
+        address = sender_email.strip().lower()
         try:
             result = (
                 self.database.supabase.table("providers")
-                .select("id")
+                .select("id, contact_email")
                 .eq("restaurant_id", restaurant_id)
-                .ilike("email", sender_email.strip().lower())
-                .limit(1)
                 .execute()
             )
-            if result.data:
+            house_providers = result.data or []
+            if any(
+                (p.get("contact_email") or "").strip().lower() == address
+                for p in house_providers
+            ):
                 return False  # known provider
 
-            # Also check provider_contacts table (secondary contacts)
+            provider_ids = [p["id"] for p in house_providers if p.get("id")]
+            if not provider_ids:
+                return True
+
+            # Also check provider_contacts (secondary contacts of the house's providers)
             contact_result = (
                 self.database.supabase.table("provider_contacts")
                 .select("id")
-                .eq("restaurant_id", restaurant_id)
-                .ilike("email", sender_email.strip().lower())
+                .in_("provider_id", provider_ids)
+                .ilike("email", address)
                 .limit(1)
                 .execute()
             )

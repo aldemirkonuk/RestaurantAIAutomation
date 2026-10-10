@@ -387,10 +387,9 @@ async def test_unknown_sender_returns_true_when_email_not_in_providers(email_age
 @pytest.mark.asyncio
 async def test_known_sender_returns_false(email_agent):
     """PROVINT-04: sender is in providers table → _detect_unknown_sender returns False."""
-    known_chain = MagicMock()
-    known_chain.execute.return_value = MagicMock(data=[{"id": "prov-1"}])
-    email_agent.database.supabase.table.return_value.select.return_value.eq.return_value.ilike.return_value.limit.return_value = (
-        known_chain
+    # The house's providers, matched on contact_email (F-535: not `email`).
+    email_agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{"id": "prov-1", "contact_email": "Known@Distributor.com"}]
     )
 
     result = await email_agent._detect_unknown_sender("rest1", "known@distributor.com")
