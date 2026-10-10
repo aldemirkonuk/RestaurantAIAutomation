@@ -20,6 +20,12 @@ export interface ViewCtx {
    */
   month?: string | null;
   /**
+   * The house's IANA zone (`useHouseZone`): "this month" and the months the
+   * till offers are the house's, not the reader's device's (F-909). Null or
+   * absent falls back to the device's calendar.
+   */
+  zone?: string | null;
+  /**
    * The one register on this sheet that WRITES.
    *
    * Every other analysis is a pure function of a payload, which is what makes

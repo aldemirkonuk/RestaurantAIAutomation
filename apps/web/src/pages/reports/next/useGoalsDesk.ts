@@ -167,7 +167,9 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
           (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
           (err as { message?: string })?.message ??
           'the request failed';
-        setError(`${what} did not go through: ${detail}`);
+        // A failure that lands after a switch belongs to the house it was
+        // asked in, not the one now on screen (F-910).
+        if (houseNow.current === activeRestaurantId) setError(`${what} did not go through: ${detail}`);
       } finally {
         setBusy(null);
       }

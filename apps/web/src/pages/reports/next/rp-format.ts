@@ -147,8 +147,15 @@ export interface Failure {
 
 export function failureOf(error: unknown): Failure | null {
   if (!error) return null;
-  const status = num((error as { response?: { status?: unknown } })?.response?.status);
-  const message = (error as { message?: string })?.message || 'the request failed';
+  const response = (error as { response?: { status?: unknown; data?: unknown } })?.response;
+  const status = num(response?.status);
+  // A refusal the gateway explained (a 4xx with a sentence) is said in its
+  // words, not as "Request failed with status code 400" (F-909).
+  const said = (response?.data as { message?: unknown } | undefined)?.message;
+  const message =
+    status !== null && status >= 400 && status < 500 && typeof said === 'string' && said
+      ? said
+      : (error as { message?: string })?.message || 'the request failed';
   return { status, message, forbidden: status === 403 || status === 401 };
 }
 

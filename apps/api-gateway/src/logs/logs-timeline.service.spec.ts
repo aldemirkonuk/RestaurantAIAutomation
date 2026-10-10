@@ -655,6 +655,24 @@ describe("LogsTimelineService.getTimeline", () => {
       expect(asked[0].or[0]).toContain(".lte.2026-09-01T08:00:00.000Z,");
     });
 
+    it("keeps a microsecond cursor whole, so the rest of a same-transaction batch is not dropped (F-906)", async () => {
+      // Postgres stamps a 112-line count with one microsecond instant. A
+      // cursor cut to milliseconds sits before every row of that batch.
+      const asked: Asked[] = [];
+      await service(EMPTY, asked).getTimeline("r1", {
+        limit: 3,
+        before: "2026-10-09T12:00:00.123456+00:00",
+      });
+      expect(asked[0].or[0]).toContain(".lte.2026-10-09T12:00:00.123456Z,");
+
+      const shifted: Asked[] = [];
+      await service(EMPTY, shifted).getTimeline("r1", {
+        limit: 3,
+        before: "2026-10-09T15:00:00.123456+03:00",
+      });
+      expect(shifted[0].or[0]).toContain(".lte.2026-10-09T12:00:00.123456Z,");
+    });
+
     it("says a page with no dated event cannot advance, rather than calling it the end", async () => {
       const tables = {
         ...EMPTY,

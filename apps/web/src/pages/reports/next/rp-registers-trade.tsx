@@ -31,6 +31,7 @@ import {
 } from './rp-format';
 import { AMOUNTS_WITHHELD } from './rp-registers-house';
 import { analysis, arr, obj, str, type AnalysisSpec } from './rp-spec';
+import { houseToday } from '@/lib/houseZone';
 import type { Cat, Cell } from './rp-view';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
@@ -127,7 +128,11 @@ export function monthLabel(month: string): string {
     : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
-/** This month on the reader's calendar, as YYYY-MM. */
+/**
+ * This month as YYYY-MM, on the calendar of the Date given. Pass
+ * `houseToday(zone)` for the house's month: the gateway refuses a month that
+ * has not begun on the house's clock (F-909).
+ */
 export function thisMonth(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -302,7 +307,7 @@ const till: AnalysisSpec = {
   ...trailingTill,
   window: (ctx) =>
     ctx.month
-      ? `${monthLabel(ctx.month)} of POS checks${ctx.month === thisMonth() ? ', so far' : ''}, by the house’s days`
+      ? `${monthLabel(ctx.month)} of POS checks${ctx.month === thisMonth(houseToday(ctx.zone)) ? ', so far' : ''}, by the house’s days`
       : trailingTill.window(ctx),
   path: (rid, ctx) =>
     ctx.month ? `/analytics/pos-revenue/${rid}?month=${ctx.month}` : trailingTill.path!(rid, ctx),

@@ -99,6 +99,26 @@ describe("renderCsv (OD-81)", () => {
   });
 });
 
+describe("renderCsv in the house's marks (F-907)", () => {
+  it("writes ';' between cells and ',' decimals for a house whose decimal mark is ','", () => {
+    const lira = renderCsv(DOC, { ...HEADER, locale: "tr-TR" })
+      .replace(/^\uFEFF/, "")
+      .split("\r\n");
+    const table = lira.indexOf("The list");
+    expect(lira[table + 1]).toBe("Wine;Margin per bottle (TRY);Change");
+    expect(lira[table + 2]).toBe(`"'=HYPERLINK(""http://evil"")";withheld;-3,25 %`);
+    // A comma inside a cell needs no quotes now; a ';' inside one does.
+    expect(lira[table + 3].endsWith(";-12,5;0,4 share, 0–1")).toBe(true);
+    expect(lira).toContain('Window;"365 days of COGS; the cellar as it stands today"');
+    expect(lira).toContain("Sell-price valuation;5400;TRY;");
+  });
+
+  it("keeps ',' and '.' for an en-US house or one with no formats tag", () => {
+    expect(renderCsv(DOC, { ...HEADER, locale: "en-US" })).toBe(renderCsv(DOC, HEADER));
+    expect(renderCsv(DOC, HEADER)).toContain(",-12.5,");
+  });
+});
+
 describe("renderHtml (OD-81)", () => {
   const html = renderHtml(DOC, HEADER);
 
