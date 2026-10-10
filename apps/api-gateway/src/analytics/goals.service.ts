@@ -10,7 +10,12 @@ import {
   goalPaceHolds,
 } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
-import { UnpricedSpendError, sumOrderSpend } from "../procurement/order-spend";
+import {
+  MixedCurrencySpendError,
+  UnpricedSpendError,
+  namedCurrencies,
+  sumOrderSpend,
+} from "../procurement/order-spend";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
   HOUSE_ZONE_UNSET,
@@ -1144,7 +1149,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             let q = client
               .from("procurement_orders")
               .select(
-                "id, total_cost, final_price, delivered_at, created_at, status",
+                "id, total_cost, final_price, currency, delivered_at, created_at, status",
                 { count: "exact" },
               )
               .eq("restaurant_id", restaurantId)
@@ -1163,6 +1168,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         // or one bottle's `final_price` as the whole order (F-701).
         const { unpricedCount } = sumOrderSpend(orders.map(({ row }) => row));
         if (unpricedCount > 0) throw new UnpricedSpendError(unpricedCount);
+        // Orders paid in two currencies have no one total (F-1015, as COGS
+        // under F-339); an order naming none is added in.
+        const codes = namedCurrencies(orders.map(({ row }) => row));
+        if (codes.length > 1) throw new MixedCurrencySpendError(codes);
         for (const { row: o, day } of orders) add(day, Number(o.total_cost));
       } else if (metricKey === "bottles_sold") {
         // Read whole or refused (ADR 0292): an unranged select stopped at
@@ -1306,6 +1315,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       if (err instanceof UnmeasuredGoalError) throw err;
       // And for a spend total that would leave out unpriced deliveries.
       if (err instanceof UnpricedSpendError) throw err;
+      // And for one that would add lira to euros.
+      if (err instanceof MixedCurrencySpendError) throw err;
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 

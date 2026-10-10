@@ -17,7 +17,11 @@ import {
   InsightEvidence,
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
-import { orderSpend } from "../../procurement/order-spend";
+import {
+  namedCurrencies,
+  orderCurrency,
+  orderSpend,
+} from "../../procurement/order-spend";
 import { readWholeWindow } from "../../common/read-whole-window";
 import { readHouseMoney } from "../../common/house-money";
 import { goalSchedule, goalWindow } from "../goal-window";
@@ -1043,7 +1047,7 @@ export class InsightGeneratorService {
           // an empty order list, and the entire purchasing insight family went
           // permanently silent. The vendor label comes from the provider_id FK.
           .select(
-            "provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            "provider_id, providers(name), total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
           )
           .eq("restaurant_id", restaurantId)
           .in("status", ORDER_SPEND_STATUSES)
@@ -1141,6 +1145,8 @@ export class InsightGeneratorService {
         vendorName: o.providers?.name || o.provider_id || "unknown vendor",
         // Null when the order carries no price (F-701).
         cost: orderSpend(o),
+        // The code the order was paid in; null when it names none (F-1015).
+        currency: orderCurrency(o),
         date: dayOf(o.delivered_at || o.created_at || ""),
       })),
       inventory: ok<any>(inv),
@@ -1474,6 +1480,14 @@ export class InsightGeneratorService {
     // Nothing is said about spend until every order in the window is priced
     // (F-701).
     if (bundle.orders.some((o) => o.cost == null)) return;
+    // Orders paid in two currencies have no one spend line and no shares:
+    // there is no rate to add euros to lira, as COGS says (F-339). Nothing
+    // is said about spend then either (F-1015). One named currency is the
+    // money every figure below is printed in; an order naming none is read
+    // as the house's, as COGS reads it.
+    const codes = namedCurrencies(bundle.orders);
+    if (codes.length > 1) return;
+    const spendCurrency = codes[0] ?? bundle.currency;
     const rows = bundle.orders.map((o) => ({
       date: o.date,
       value: o.cost as number,
@@ -1493,7 +1507,7 @@ export class InsightGeneratorService {
       measure: "purchase_spend",
       measureLabel: "purchasing spend",
       unit: "currency",
-      currency: bundle.currency,
+      currency: spendCurrency,
       locale: bundle.locale,
       dimension: "overall",
       category: "purchasing",
@@ -1519,7 +1533,7 @@ export class InsightGeneratorService {
         entity: "vendors",
         measureLabel: "purchasing spend",
         unit: "currency",
-        currency: bundle.currency,
+        currency: spendCurrency,
         locale: bundle.locale,
         topShare: sorted[0].total / total,
         topCount: 1,
@@ -2707,6 +2721,8 @@ interface Bundle {
     vendorName: string;
     /** Null when the order carries no price (F-701). */
     cost: number | null;
+    /** The code the order was paid in; null when it names none (F-1015). */
+    currency?: string | null;
     date: string;
   }>;
   inventory: any[];
