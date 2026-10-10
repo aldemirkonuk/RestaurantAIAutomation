@@ -15,12 +15,32 @@
  * change it into warn all four to allow double booking"): the owner's switch,
  * off by default. Off, "Replace with" on the remove dialog refuses a shift
  * that overlaps one the chosen person already has; on, it only warns.
+ *
+ * The labour target box starts EMPTY when nobody has set a target (F-352). It
+ * started at '28', so Settings showed a figure nobody chose while /team said
+ * none was on file, and focusing the box and leaving it saved that 28. A
+ * stored 28 nobody chose (the column default) is shown empty too, by the same
+ * rule /team reads it with, and leaving the box untouched sends nothing.
  */
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { getTeamSettings, updateTeamSettings, type TeamSettings } from '../../services/api/team'
+import { getTeamSettings, updateTeamSettings, type TeamSettings as SharedTeamSettings } from '../../services/api/team'
 import { useAuth } from '../../contexts/AuthContext'
+import { readLabourTarget } from '../../pages/team/next/useTeamNextData'
+
+/**
+ * The settings as the gateway answers them, with `labor_target_chosen`: whether
+ * anyone ever set the target (F-352); `null` when that could not be read.
+ */
+type TeamSettings = SharedTeamSettings & { labor_target_chosen?: boolean | null }
+
+/** The target as the box shows it: '' when there is none to speak of. */
+function shownTarget(s: Pick<TeamSettings, 'labor_target_pct' | 'labor_target_chosen'> | undefined): string {
+  const raw = s?.labor_target_pct
+  const pct = readLabourTarget(raw == null ? null : Number(raw), s?.labor_target_chosen === true).pct
+  return pct === null ? '' : String(pct)
+}
 
 function Toggle({
   on,
@@ -58,33 +78,29 @@ function Toggle({
 export function TeamLaborSettings() {
   const { activeRestaurantId } = useAuth()
   const qc = useQueryClient()
-  const { data, isLoading, isError, error } = useQuery<TeamSettings>({
+  const { data, isLoading, isError } = useQuery<TeamSettings>({
     queryKey: ['team', 'settings', activeRestaurantId],
     queryFn: () => getTeamSettings(),
     enabled: !!activeRestaurantId,
   })
-  const [targetPct, setTargetPct] = useState<string>('28')
+  const [targetPct, setTargetPct] = useState<string>('')
 
   useEffect(() => {
-    if (data?.labor_target_pct != null) {
-      setTargetPct(String(data.labor_target_pct))
-    }
-  }, [data?.labor_target_pct])
+    setTargetPct(shownTarget(data))
+  }, [data?.labor_target_pct, data?.labor_target_chosen])
 
   const save = useMutation({
     mutationFn: (patch: Record<string, unknown>) => updateTeamSettings(patch),
     onSuccess: (saved) => {
       toast.success('Team preferences saved')
-      if (saved?.labor_target_pct != null) {
-        setTargetPct(String(saved.labor_target_pct))
-      }
+      if (saved) setTargetPct(shownTarget(saved))
       qc.invalidateQueries({ queryKey: ['team', 'settings'] })
       qc.invalidateQueries({ queryKey: ['team', 'week'] })
     },
     onError: (err: unknown) => {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || 'Could not update preferences — check Supabase team_settings'
+          ?.message || 'Your team preferences could not be saved. Please try again.'
       toast.error(msg)
     },
   })
@@ -100,9 +116,8 @@ export function TeamLaborSettings() {
   if (isError || !data) {
     return (
       <div className="mb-5 p-4 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800">
-        Couldn’t load labor settings
-        {error instanceof Error ? `: ${error.message}` : ''}. Labor target won’t persist until the API can reach{' '}
-        <code className="font-mono">team_settings</code>.
+        Your labour settings could not be loaded, so they cannot be changed right now. Please try again
+        in a moment.
       </div>
     )
   }
@@ -114,13 +129,19 @@ export function TeamLaborSettings() {
 
   const commitTarget = () => {
     if (!may.target) return
+    const shown = shownTarget(data)
+    // Left empty, or left as it was: nothing was chosen, so nothing is sent.
+    if (targetPct.trim() === '' || targetPct === shown) {
+      setTargetPct(shown)
+      return
+    }
     const n = Number(targetPct)
     if (!Number.isFinite(n) || n < 1 || n > 100) {
       toast.error('Labor target must be between 1 and 100')
-      setTargetPct(String(data.labor_target_pct))
+      setTargetPct(shown)
       return
     }
-    if (n === Number(data.labor_target_pct)) return
+    if (shown !== '' && n === Number(shown)) return
     save.mutate({ laborTargetPct: n })
   }
 
@@ -159,7 +180,9 @@ export function TeamLaborSettings() {
             <div className="text-sm font-medium text-gray-800">Labor target %</div>
             <div className="text-xs text-gray-400">
               {may.target
-                ? 'Saved to Supabase · used on Service Pulse'
+                ? shownTarget(data) === ''
+                  ? 'No target set. Type the share of sales you aim to spend on staff.'
+                  : 'The share of sales you aim to spend on staff.'
                 : 'Only the owner can change the labour target.'}
             </div>
           </div>
@@ -169,6 +192,7 @@ export function TeamLaborSettings() {
             max={100}
             step={0.5}
             value={targetPct}
+            placeholder="—"
             disabled={save.isPending || !may.target}
             onChange={(e) => setTargetPct(e.target.value)}
             onBlur={commitTarget}

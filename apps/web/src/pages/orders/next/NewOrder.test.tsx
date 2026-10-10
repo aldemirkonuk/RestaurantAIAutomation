@@ -110,6 +110,32 @@ describe('the shape and the primitive', () => {
   });
 });
 
+describe('a vendor but an empty shelf (F-353)', () => {
+  it('says the shelf is empty and offers the cellar, instead of a search that matches nothing', () => {
+    shelf.value = { data: [], isLoading: false, isError: false, error: null };
+    const onClose = vi.fn();
+    draw({ onClose });
+    expect(screen.getByTestId('new-order-shelf-empty')).toHaveTextContent(/Nothing is on your shelf yet/);
+    expect(screen.queryByText(/Search the register above/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('new-order-search'), { target: { value: 'Banfi' } });
+    expect(screen.queryByText(/Nothing on the shelf matches/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('new-order-to-cellar'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('does not call a shelf that could not be read empty', () => {
+    shelf.value = { data: undefined as unknown as unknown[], isLoading: false, isError: true, error: { message: 'boom' } };
+    draw();
+    expect(screen.queryByTestId('new-order-shelf-empty')).not.toBeInTheDocument();
+  });
+
+  it('does not call a shelf that is still loading empty', () => {
+    shelf.value = { data: undefined as unknown as unknown[], isLoading: true, isError: false, error: null };
+    draw();
+    expect(screen.queryByTestId('new-order-shelf-empty')).not.toBeInTheDocument();
+  });
+});
+
 describe('the act — the cart the rebuilt page could not build', () => {
   it('places one order per line and names the order each became', async () => {
     api.post

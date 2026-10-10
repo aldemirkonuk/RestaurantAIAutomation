@@ -244,30 +244,18 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getPromoSavings(restaurantId: string) {
-    const { data, error } = await this.databaseService.supabase
-      .from("provider_promotions")
-      .select("provider_id, savings_realized, times_used, providers(name)")
-      .eq("restaurant_id", restaurantId)
-      .gt("savings_realized", 0)
-      .order("savings_realized", { ascending: false });
-
-    if (error) {
-      this.logger.error("Failed to fetch promo savings", {
-        error: error.message,
-      });
-      throw error;
-    }
-
-    const totalSavings = (data || []).reduce(
-      (sum, p) => sum + (parseFloat(p.savings_realized) || 0),
-      0,
-    );
-
-    return {
-      totalSavings,
-      byProvider: data || [],
-    };
+  /**
+   * Savings from promotions: nothing records them, so there is no figure.
+   *
+   * This selected `savings_realized` and `times_used` from
+   * `provider_promotions`, columns that table does not have (baseline
+   * `CREATE TABLE public.provider_promotions`, no later migration adds them),
+   * so every call failed and logged an error (F-347). `null` says "no figure"
+   * and keeps the dashboard's Total Savings header hidden; a total is never
+   * made up from something else.
+   */
+  async getPromoSavings(_restaurantId: string): Promise<null> {
+    return null;
   }
 
   async comparePromotions(restaurantId: string) {

@@ -354,13 +354,20 @@ describe('the labour target is read against its column default', () => {
   it('reads a stored 28 with no provenance as no target at all', () => {
     const r = readLabourTarget(28, false);
     expect(r.pct).toBeNull();
-    expect(r.why).toMatch(/column's own default/);
+    expect(r.why).toMatch(/nobody here has chosen it/);
+    // Plain words for an owner: no column, type or table names (F-352).
+    expect(r.why).not.toMatch(/team_settings|numeric|DEFAULT|column/);
+  });
+
+  it('reads a 28 someone chose as a 28% target (F-352)', () => {
+    const r = readLabourTarget(28, true);
+    expect(r.pct).toBe(28);
   });
 
   it('reads a chosen figure as a target, and says nothing records who set it', () => {
     const r = readLabourTarget(31, false);
     expect(r.pct).toBe(31);
-    expect(r.why).toMatch(/No column records who set it/);
+    expect(r.why).toMatch(/Set for this restaurant in Settings → Team/);
   });
 
   it('renders "No target set" on screen for a stored 28 with no provenance', async () => {
@@ -398,11 +405,11 @@ describe('the labour target is read against its column default', () => {
     // different state and would let this test pass for the wrong reason.
     // TWO matches on purpose: the register row states it, and the labour panel
     // repeats it where the figure would otherwise have been measured against.
-    expect(await screen.findAllByText(/column's own default/)).toHaveLength(2);
+    expect(await screen.findAllByText(/nobody here has chosen it/)).toHaveLength(2);
     const section = screen.getByRole('region', { name: 'How this desk is configured' });
     expect(within(section).getByText('Labour target')).toBeInTheDocument();
     expect(within(section).getByText(/No target set/)).toBeInTheDocument();
-    expect(within(section).getByText(/column's own default/)).toBeInTheDocument();
+    expect(within(section).getByText(/nobody here has chosen it/)).toBeInTheDocument();
     // The VALUE column is an em dash, not the stored figure — nowhere in the
     // register does 28 appear as a number this house set.
     expect(within(section).queryByText('28%')).not.toBeInTheDocument();
@@ -436,12 +443,41 @@ describe('the labour target is read against its column default', () => {
       },
     });
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/No column records who set it/);
+    await screen.findByText(/Set for this restaurant in Settings → Team/);
     const section = screen.getByRole('region', { name: 'How this desk is configured' });
     expect(within(section).getByText('31%')).toBeInTheDocument();
     expect(
-      within(section).getByText(/No column records who set it/),
+      within(section).getByText(/Set for this restaurant in Settings → Team/),
     ).toBeInTheDocument();
+  });
+
+  it("renders an owner's chosen 28 as 28% (F-352)", async () => {
+    api.week = weekPayload({
+      labor: {
+        enabled: true,
+        totalHours: 40,
+        totalCost: 1200,
+        costComplete: true,
+        pricedShifts: 4,
+        unpricedShifts: 0,
+        targetPct: 28,
+        overtime: [],
+        moneyVisible: true,
+      },
+      settings: {
+        restaurant_id: 'r1',
+        labor_tracking_enabled: true,
+        labor_target_pct: 28,
+        configured: true,
+        labor_target_chosen: true,
+        updated_at: '2026-09-01T08:00:00Z',
+      },
+    });
+    render(<TeamNext />, { wrapper });
+    await screen.findByText(/Set for this restaurant in Settings → Team/);
+    const section = screen.getByRole('region', { name: 'How this desk is configured' });
+    expect(within(section).getByText('28%')).toBeInTheDocument();
+    expect(screen.queryByText(/No target set/)).not.toBeInTheDocument();
   });
 
   it('renders every stated value with where it is kept and why there is no author', async () => {
