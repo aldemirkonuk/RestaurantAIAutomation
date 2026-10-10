@@ -26,7 +26,9 @@
  *     computed in the gateway with their own basis sentences, so the page
  *     prints them rather than deriving a comparison of its own.
  *  2. **Each goal against its own baseline** — `baseline_value` is where the
- *     house stood when the goal was set, `current_value` is where it stands.
+ *     house stood when the goal was set; "now" is the Goals cutting's own
+ *     progress read (`ctx.goalsNow`, F-816), or the stored `current_value`,
+ *     labelled as such, where that read did not answer.
  *     Three columns, printed side by side, and NO delta computed here: both
  *     operands are on screen and the reader can see the distance without this
  *     page making a claim about it.
@@ -42,9 +44,10 @@
  */
 
 import { EM, countOf, figure, money, num, pct } from './rp-format';
-import { analysis, arr, obj, str } from './rp-spec';
+import { analysis, arr, obj, str, type ViewCtx } from './rp-spec';
 
 export interface BenchGoalRow {
+  id: string;
   name: string;
   metricKey: string;
   baseline: number | null;
@@ -106,6 +109,7 @@ export const bench = analysis<BenchRegister>({
         n: num(w.n),
       })),
       goals: arr(d.activeGoals).map((g) => ({
+        id: str(g.id),
         name: str(g.name) || 'Untitled goal',
         metricKey: str(g.metric_key),
         baseline: num(g.baseline_value),
@@ -124,7 +128,7 @@ export const bench = analysis<BenchRegister>({
       >,
     };
   },
-  view: (b) => {
+  view: (b, ctx: ViewCtx) => {
     const noPeers =
       'No other house is in this comparison. Mudavym holds only this restaurant’s books, so there is no market median to stand beside these figures — every one of them is this house against its own past. The one median the engine does publish, over this house’s own list, is drawn as the crosshair on “Margin against movement”.';
 
@@ -203,16 +207,24 @@ export const bench = analysis<BenchRegister>({
           '',
         ],
       });
-    for (const g of b.goals)
+    // "Now" is the Goals cutting's own reading of the goal where it answered,
+    // so the two cuttings on one sheet print one figure (F-816). Where it did
+    // not, the overview's stored value is printed and the row says so.
+    let storedNow = false;
+    for (const g of b.goals) {
+      const fresh = !!ctx.goalsNow && g.id !== '' && g.id in ctx.goalsNow;
+      const now = fresh ? ctx.goalsNow![g.id] : g.current;
+      if (!fresh) storedNow = true;
       rows.push({
-        key: `goal-${g.name}`,
+        key: `goal-${g.id || g.name}`,
         cells: [
-          `${g.name} — since it was set`,
+          fresh ? `${g.name} — since it was set` : `${g.name} — since it was set (now: last stored)`,
           g.baseline === null ? EM : figure(g.baseline, 'compact'),
-          g.current === null ? EM : figure(g.current, 'compact'),
+          now === null ? EM : figure(now, 'compact'),
           g.target === null ? EM : figure(g.target, 'compact'),
         ],
       });
+    }
 
     return {
       cats: bothWindows
@@ -253,6 +265,9 @@ export const bench = analysis<BenchRegister>({
         b.seasonalityMissing
           ? 'The weekday lens did not answer inside the overview call.'
           : null,
+        storedNow
+          ? 'A goal marked “last stored” shows the figure saved for it the last time it was worked out, not a fresh count, so it can trail the Goals cutting. Open the Goals cutting for where it stands right now.'
+          : null,
         b.goals.length === 0 && !b.goalsWithheld
           ? 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
           : null,
@@ -261,3 +276,18 @@ export const bench = analysis<BenchRegister>({
     };
   },
 });
+
+/**
+ * The Goals register's payload as the bench reads it: goal id → its current
+ * figure. Read structurally so the two register files do not import each
+ * other. `undefined` until the Goals register has answered.
+ */
+export function goalsNowFrom(goalsData: unknown): Record<string, number | null> | undefined {
+  if (!goalsData) return undefined;
+  const out: Record<string, number | null> = {};
+  for (const g of arr(obj(goalsData).goals)) {
+    const id = str(g.id);
+    if (id) out[id] = typeof g.current === 'number' && Number.isFinite(g.current) ? g.current : null;
+  }
+  return out;
+}

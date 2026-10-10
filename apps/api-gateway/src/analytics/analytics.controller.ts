@@ -122,6 +122,18 @@ function mayReadGoals(user?: { role?: string | null }): boolean {
   return role === "owner" || role === "manager";
 }
 
+/**
+ * An insight or a recommendation about a goal names the goal and how far
+ * along it is (F-814): the goals-category insights, and the per-goal
+ * `goal_behind_<id>` card. Feeds that everyone reads leave them out for any
+ * role `mayReadGoals` refuses, rather than the whole answer.
+ */
+function isAboutAGoal(item: unknown): boolean {
+  const r = (item ?? {}) as { category?: unknown; ruleKey?: unknown };
+  if (r.category === "goals") return true;
+  return typeof r.ruleKey === "string" && r.ruleKey.startsWith("goal_behind_");
+}
+
 function refusedAct(error: ActRefused): HttpException {
   const status = error.forbidden
     ? HttpStatus.FORBIDDEN
@@ -453,7 +465,7 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       const answer = await this.readInsights(
@@ -483,15 +495,19 @@ export class AnalyticsController {
    */
   private async forViewer<T extends { insights?: unknown }>(
     restaurantId: string,
-    user: { userId?: string } | undefined,
+    user: { userId?: string; role?: string } | undefined,
     answer: T,
   ): Promise<T & { hiddenForYou?: number; personalSnoozesReadable?: boolean }> {
     const list = (answer as { insights?: unknown }).insights;
     if (!Array.isArray(list)) return answer;
+    // Goal insights only for those who may read the goals (F-814).
+    const readable = mayReadGoals(user)
+      ? (list as unknown[])
+      : (list as unknown[]).filter((i) => !isAboutAGoal(i));
     const view = await this.recommendationActions.viewFor(
       restaurantId,
       actorOf(user).userId,
-      list as unknown[],
+      readable,
       insightRowTarget,
     );
     return {
@@ -1248,10 +1264,10 @@ export class AnalyticsController {
   async getRecommendations(
     @Param("restaurantId") restaurantId: string,
     @Query("includeHidden") includeHidden?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
-      return await this.recommendationsService.getRecommendations(
+      const feed = await this.recommendationsService.getRecommendations(
         restaurantId,
         {
           includeHidden: includeHidden === "true",
@@ -1260,6 +1276,14 @@ export class AnalyticsController {
           viewerId: actorOf(user).userId,
         },
       );
+      // A goal's card names the goal and its progress: owners' and
+      // managers' only, like the goal routes (F-814).
+      if (mayReadGoals(user) || !Array.isArray(feed?.recommendations))
+        return feed;
+      return {
+        ...feed,
+        recommendations: feed.recommendations.filter((r) => !isAboutAGoal(r)),
+      };
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute recommendations",

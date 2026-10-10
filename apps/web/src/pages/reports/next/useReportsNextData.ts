@@ -288,6 +288,10 @@ export function useReportsNextData(
     const ids = (showing ?? sheet.cuttings.map((c) => c.id)).filter(
       (id) => CATALOGUE[id].path !== null && offered.includes(id),
     );
+    // The bench prints each goal's "now" from the Goals register's own read
+    // (F-816), so that register is fetched whenever the bench is, for a
+    // reader it is offered to — one query, shared with the Goals cutting.
+    if (ids.includes('bench') && !ids.includes('goals') && offered.includes('goals')) ids.push('goals');
     return ids.includes('reading') ? ids : ['reading', ...ids];
   }, [sheet, showing, offered]);
 

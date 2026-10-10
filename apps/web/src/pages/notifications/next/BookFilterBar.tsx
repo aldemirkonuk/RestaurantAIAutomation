@@ -30,7 +30,7 @@
 
 import { EyeOff, ListFilter, Search, X } from 'lucide-react';
 import type { BookFilters } from './useNotificationsNextData';
-import { TYPE_CHOICES } from './nt-book';
+import { typeChoicesFor, type TYPE_CHOICES } from './nt-book';
 import { MONO, SANS, iconForKind } from './nt-format';
 
 
@@ -53,6 +53,8 @@ export interface BookFilterBarProps {
   /** How many the register says exist under the register-side filters. */
   registerTotal: number | null;
   searchRef?: React.Ref<HTMLInputElement>;
+  /** The register choices this reader is offered (`typeChoicesFor`). */
+  typeChoices?: typeof TYPE_CHOICES;
 }
 
 function Pill({
@@ -97,6 +99,7 @@ export function BookFilterBar({
   matching,
   registerTotal,
   searchRef,
+  typeChoices = typeChoicesFor(null),
 }: BookFilterBarProps) {
   return (
     <section aria-labelledby="nt-narrow" className="mb-4">
@@ -115,7 +118,7 @@ export function BookFilterBar({
         <Pill on={filters.type === null} onClick={() => onFilters({ ...filters, type: null })}>
           All
         </Pill>
-        {TYPE_CHOICES.map((c) => {
+        {typeChoices.map((c) => {
           const Mark = iconForKind(c.kind);
           const on = filters.type === c.type;
           return (
