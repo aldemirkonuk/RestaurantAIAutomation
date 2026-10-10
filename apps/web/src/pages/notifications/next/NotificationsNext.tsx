@@ -71,7 +71,8 @@ import { HouseBand } from './HouseBand';
 import { HeldBand } from './HeldBand';
 import { useHeldLowStock } from './useHeldLowStock';
 import { matchesQuery } from './nt-book';
-import { DURATIONS } from './nt-snooze';
+import { DURATIONS, snoozeUntil } from './nt-snooze';
+import { useHouseZone } from '@/lib/houseZone';
 import {
   EM,
   KIND_ORDER,
@@ -174,6 +175,7 @@ export interface NotificationsNextProps {
 
 export default function NotificationsNext({ ground }: NotificationsNextProps) {
   const data = useNotificationsNextData();
+  const zone = useHouseZone();
   /** The held low-stock queue — its own read, its own three states. */
   const held = useHeldLowStock();
   const location = useLocation();
@@ -388,7 +390,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
         case 's':
           if (!row || String(row.status) !== 'unread') return;
           e.preventDefault();
-          data.snooze(row.id, DURATIONS[0].ms);
+          data.snooze(row.id, snoozeUntil(DURATIONS[0].key, zone));
           break;
         case 'Enter':
         case 'o':
@@ -405,7 +407,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [walk, cursor, move, data]);
+  }, [walk, cursor, move, data, zone]);
 
   // A cursor pointing at a line that has left the page is no cursor at all.
   useEffect(() => {
@@ -637,7 +639,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                     rowRef={(el) => rowRefs.current.set(n.id, el)}
                     onToggle={() => setOpenId(openId === n.id ? null : n.id)}
                     onRuleOff={() => data.markRead(n.id)}
-                    onSnooze={(ms) => data.snooze(n.id, ms)}
+                    onSnooze={(key) => data.snooze(n.id, snoozeUntil(key, zone))}
                     onArchive={() => data.archive(n.id)}
                     onDelete={() => data.remove(n.id)}
                   />
@@ -755,6 +757,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                       open={openId === n.id}
                       subdued
                       asleepUntil={dueBack.get(n.id) ?? null}
+                      zone={zone}
                       onToggle={() => setOpenId(openId === n.id ? null : n.id)}
                       onWake={() => data.wake(n.id)}
                       onRuleOff={() => data.markRead(n.id)}

@@ -225,8 +225,11 @@ export interface NotificationsNextData {
   archive: (id: string) => void;
   remove: (id: string) => void;
   markAllRead: () => void;
-  /** Put a line down for `ms`. It wakes on its own — see `nt-snooze.ts`. */
-  snooze: (id: string, ms: number) => void;
+  /**
+   * Put a line down until `until` (epoch ms; `snoozeUntil` in `nt-snooze.ts`
+   * turns a choice into the house's instant). It wakes on its own.
+   */
+  snooze: (id: string, until: number) => void;
   wake: (id: string) => void;
   wakeAll: () => void;
   /** The register filters this reader is offered (F-817). */
@@ -599,12 +602,12 @@ export function useNotificationsNextData(): NotificationsNextData {
    * yet).
    */
   const snooze = useCallback(
-    (id: string, ms: number) => {
+    (id: string, until: number) => {
       const row = (rowsRef.current ?? []).find((r) => r.id === id);
       const stamped = row ? new Date(row.timestamp ?? row.createdAt).getTime() : 0;
       const rec: SnoozeRecord = {
         id,
-        until: Date.now() + ms,
+        until,
         seenAt: Number.isFinite(stamped) ? stamped : 0,
         seenFolded: foldedRef.current[id] ?? 0,
       };

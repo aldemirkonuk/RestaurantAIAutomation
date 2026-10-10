@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import type { Notification } from '@/services/api/notifications';
 import type { FoldFreshness } from './nt-book';
-import { DURATIONS, sleepsFor } from './nt-snooze';
+import { DURATIONS, sleepsFor, type SnoozeKey } from './nt-snooze';
 import {
   EM,
   MONO,
@@ -64,12 +64,14 @@ export interface BookRowProps {
   onReopen?: () => void;
   onArchive?: () => void;
   onDelete?: () => void;
-  /** Put the line down for `ms`; it wakes on its own. Per browser. */
-  onSnooze?: (ms: number) => void;
+  /** Put the line down for that choice; it wakes on its own. Per browser. */
+  onSnooze?: (key: SnoozeKey) => void;
   /** Bring a sleeping line back now. */
   onWake?: () => void;
   /** Epoch ms this line is due back, when it is asleep. */
   asleepUntil?: number | null;
+  /** The house's zone, so "back in 3d" counts the house's days. */
+  zone?: string | null;
 }
 
 function Control({
@@ -118,6 +120,7 @@ export function BookRow({
   onSnooze,
   onWake,
   asleepUntil = null,
+  zone = null,
 }: BookRowProps) {
   const facts = factsFrom(row);
   const wines = belowParFrom(row);
@@ -196,7 +199,7 @@ export function BookRow({
             style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--seal-deep)' }}
           >
             <AlarmClock size={10} strokeWidth={1.75} aria-hidden />
-            back in {sleepsFor(asleepUntil)}
+            back in {sleepsFor(asleepUntil, Date.now(), zone)}
           </span>
         )}
         <span
@@ -386,7 +389,7 @@ export function BookRow({
                     <button
                       key={d.key}
                       type="button"
-                      onClick={() => onSnooze(d.ms)}
+                      onClick={() => onSnooze(d.key)}
                       className="nt-ink rounded-full px-2.5 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
                       style={{
                         fontFamily: SANS,
