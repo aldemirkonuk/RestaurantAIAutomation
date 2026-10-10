@@ -12,11 +12,20 @@
   ],
   "GET /analytics/insights/:restaurantId (AnalyticsController.getInsights)": "open",
   "GET /analytics/insight-prefs/:restaurantId (AnalyticsController.getInsightPrefs)": "open",
-  "PUT /analytics/insight-prefs/:restaurantId/:category (AnalyticsController.setInsightPref)": "open",
+  "PUT /analytics/insight-prefs/:restaurantId/:category (AnalyticsController.setInsightPref)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/tables/:restaurantId (AnalyticsController.listTables)": "open",
-  "POST /analytics/tables/:restaurantId (AnalyticsController.upsertTable)": "open",
+  "POST /analytics/tables/:restaurantId (AnalyticsController.upsertTable)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/venue/:restaurantId (AnalyticsController.getVenue)": "open",
-  "PUT /analytics/venue/:restaurantId (AnalyticsController.setVenue)": "open",
+  "PUT /analytics/venue/:restaurantId (AnalyticsController.setVenue)": [
+    "owner",
+    "manager"
+  ],
   "PATCH /analytics/tables/:restaurantId/:tableId (AnalyticsController.renameOrHideTable)": [
     "owner",
     "manager"
@@ -29,15 +38,30 @@
   "POST /analytics/goal-scenarios/requests/:restaurantId (AnalyticsController.requestGoalScenario)": "open",
   "GET /analytics/goal-scenarios/requests (AnalyticsController.listGoalScenarioRequests)": "open",
   "GET /analytics/goals/:restaurantId (AnalyticsController.listGoals)": "open",
-  "POST /analytics/goals/:restaurantId (AnalyticsController.createGoal)": "open",
+  "POST /analytics/goals/:restaurantId (AnalyticsController.createGoal)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/goals/:restaurantId/progress (AnalyticsController.listGoalsWithProgress)": "open",
-  "PATCH /analytics/goals/:restaurantId/:goalId (AnalyticsController.updateGoal)": "open",
+  "PATCH /analytics/goals/:restaurantId/:goalId (AnalyticsController.updateGoal)": [
+    "owner",
+    "manager"
+  ],
   "POST /analytics/goals/:restaurantId/:goalId/cutting-spec (AnalyticsController.proposeGoalCuttingSpec)": "open",
   "GET /analytics/goals/:restaurantId/:goalId/progress (AnalyticsController.getGoalProgress)": "open",
-  "PUT /analytics/goals/:restaurantId/:goalId/status (AnalyticsController.updateGoalStatus)": "open",
+  "PUT /analytics/goals/:restaurantId/:goalId/status (AnalyticsController.updateGoalStatus)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/consultants/:restaurantId (AnalyticsController.getConsultants)": "open",
-  "PUT /analytics/consultants/:restaurantId/toggle (AnalyticsController.toggleConsultants)": "open",
-  "POST /analytics/consult/:restaurantId (AnalyticsController.consult)": "open",
+  "PUT /analytics/consultants/:restaurantId/toggle (AnalyticsController.toggleConsultants)": [
+    "owner",
+    "manager"
+  ],
+  "POST /analytics/consult/:restaurantId (AnalyticsController.consult)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/menu-engineering/:restaurantId (AnalyticsController.getMenuEngineering)": "open",
   "GET /analytics/vendor-scorecard/:restaurantId (AnalyticsController.getVendorScorecard)": "open",
   "GET /analytics/seasonality/:restaurantId (AnalyticsController.getSeasonality)": "open",
