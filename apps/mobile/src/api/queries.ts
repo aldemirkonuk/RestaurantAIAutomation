@@ -10,6 +10,7 @@ import type {
   TodayPulse,
 } from "./types";
 import { useSession } from "@/state/session";
+import { houseDateKey, mondayOfKey } from "@/lib/houseDate";
 
 export const feedKey = ["mobile", "feed"] as const;
 export const pulseKey = ["mobile", "pulse"] as const;
@@ -161,29 +162,43 @@ export function useUpcomingSchedule() {
   });
 }
 
-/** Monday of the current week, YYYY-MM-DD (the Team domain's week key). */
-export function currentWeekStart(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
+/**
+ * Monday of the house's current week, YYYY-MM-DD (the Team domain's week key).
+ * Read in the house's zone once a week reply has named it (F-252).
+ */
+export function currentWeekStart(timeZone?: string | null): string {
+  return mondayOfKey(houseDateKey(new Date(), timeZone));
 }
 
-export function useTeamWeek() {
+/** The full rota: owners and managers only (`assertAccess(..., "manager")`). */
+export function useTeamWeek(timeZone: string | null, allowed: boolean) {
   const { enabled, restaurantId } = useAuthed();
-  const weekStart = currentWeekStart();
+  const weekStart = currentWeekStart(timeZone);
   return useQuery({
     queryKey: ["team", "week", restaurantId, weekStart],
     queryFn: () =>
       api<any>(`/restaurants/${restaurantId}/team/week?weekStart=${weekStart}`),
-    enabled: enabled && !!restaurantId,
+    enabled: enabled && !!restaurantId && allowed,
     refetchInterval: 10 * 60_000,
     retry: false,
   });
 }
 
-export function useTeamMembers() {
+/** The caller's own shifts this week, open to every role (F-251). */
+export function useMyTeamWeek(timeZone: string | null, allowed: boolean) {
+  const { enabled, restaurantId } = useAuthed();
+  const weekStart = currentWeekStart(timeZone);
+  return useQuery({
+    queryKey: ["team", "my-week", restaurantId, weekStart],
+    queryFn: () =>
+      api<any>(`/restaurants/${restaurantId}/team/my-week?weekStart=${weekStart}`),
+    enabled: enabled && !!restaurantId && allowed,
+    refetchInterval: 10 * 60_000,
+    retry: false,
+  });
+}
+
+export function useTeamMembers(allowed: boolean) {
   const { enabled, restaurantId } = useAuthed();
   return useQuery({
     queryKey: ["team", "members", restaurantId],
@@ -191,7 +206,7 @@ export function useTeamMembers() {
       const body = await api<any>(`/restaurants/${restaurantId}/team/members`);
       return (body.members ?? body.data ?? body) as any[];
     },
-    enabled: enabled && !!restaurantId,
+    enabled: enabled && !!restaurantId && allowed,
     staleTime: 10 * 60_000,
     retry: false,
   });

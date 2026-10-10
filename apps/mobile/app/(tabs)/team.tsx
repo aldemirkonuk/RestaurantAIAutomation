@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { AppText } from "@/components/ui/AppText";
 import { Card, Hairline, Screen } from "@/components/ui/Screen";
@@ -6,11 +6,14 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, FreshnessLabel } from "@/components/ui/StateViews";
 import { color, space } from "@/design/tokens";
 import {
+  useMyTeamWeek,
   useTeamMembers,
   useTeamWeek,
   useTodaySchedule,
   useUpcomingSchedule,
 } from "@/api/queries";
+import { readsFullRota, resolveTonight, seesFullRota } from "@/components/team/teamTonight";
+import { useSession } from "@/state/session";
 
 function fmtTime(value?: string): string {
   if (!value) return "";
@@ -28,8 +31,20 @@ function fmtTime(value?: string): string {
 }
 
 export default function TeamScreen() {
-  const week = useTeamWeek();
-  const members = useTeamMembers();
+  const role = useSession((s) => s.user?.role);
+  // The house's zone, once a week reply names it; until then the phone's own
+  // date (F-252). A changed zone can move the week, which re-keys the read.
+  const [houseZone, setHouseZone] = useState<string | null>(null);
+  const week = useTeamWeek(houseZone, seesFullRota(role));
+  const fullRota = readsFullRota(role, week.error);
+  // Staff are refused the full rota, so they read their own week (F-251).
+  const mine = useMyTeamWeek(houseZone, !fullRota);
+  const members = useTeamMembers(fullRota);
+  const replyZone: string | null =
+    (fullRota ? week.data?.timezone : mine.data?.timezone) ?? null;
+  useEffect(() => {
+    if (replyZone && replyZone !== houseZone) setHouseZone(replyZone);
+  }, [replyZone, houseZone]);
   const todayEvents = useTodaySchedule();
   const upcoming = useUpcomingSchedule();
 
@@ -44,47 +59,37 @@ export default function TeamScreen() {
     return map;
   }, [members.data]);
 
-  const todayKey = new Date().toISOString().slice(0, 10);
-  const todaysShifts = useMemo(() => {
-    const shifts: any[] = week.data?.shifts ?? [];
-    return shifts
-      .filter((s) => String(s.shift_date ?? "").slice(0, 10) === todayKey)
-      .sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
-  }, [week.data, todayKey]);
-
-  // The Team domain is new; if the week endpoint isn't reachable yet the tab
-  // still lives on real calendar data.
-  const teamAvailable = !week.isError;
+  const tonight = resolveTonight({ role, week, mine, now: new Date() });
+  const ownName: string | undefined = mine.data?.member?.display_name ?? undefined;
 
   return (
     <Screen>
       <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.md }}>
         <AppText variant="title">Team</AppText>
-        <FreshnessLabel updatedAt={week.dataUpdatedAt || todayEvents.dataUpdatedAt || null} />
+        <FreshnessLabel
+          updatedAt={
+            (fullRota ? week.dataUpdatedAt : mine.dataUpdatedAt) || todayEvents.dataUpdatedAt || null
+          }
+        />
       </View>
 
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: 0, gap: space.md, paddingBottom: space.huge }}>
         {/* Who's on tonight */}
         <Card style={{ gap: space.sm }}>
           <AppText variant="caption" tone="tertiary">
-            On tonight
+            {tonight.caption}
           </AppText>
-          {week.isLoading && !week.data ? (
+          {tonight.kind === "loading" ? (
             <View style={{ gap: space.sm }}>
               <Skeleton width={190} height={15} />
               <Skeleton width={150} height={15} />
             </View>
-          ) : !teamAvailable ? (
+          ) : tonight.kind === "error" || tonight.kind === "none" ? (
             <AppText variant="footnote" tone="tertiary">
-              Shift schedules arrive here as soon as this restaurant's team space is set up on the
-              web dashboard.
-            </AppText>
-          ) : todaysShifts.length === 0 ? (
-            <AppText variant="footnote" tone="tertiary">
-              No shifts scheduled today.
+              {tonight.message}
             </AppText>
           ) : (
-            todaysShifts.map((s, i) => (
+            tonight.shifts.map((s, i) => (
               <View key={s.id ?? i}>
                 {i > 0 ? <Hairline /> : null}
                 <View
@@ -97,7 +102,7 @@ export default function TeamScreen() {
                 >
                   <View style={{ flex: 1, paddingRight: space.md }}>
                     <AppText variant="bodyMedium" numberOfLines={1}>
-                      {memberName.get(s.member_id ?? s.user_id) ??
+                      {(tonight.own ? ownName : memberName.get(s.member_id ?? s.user_id)) ??
                         s.member_name ??
                         "Unassigned"}
                     </AppText>
@@ -114,6 +119,11 @@ export default function TeamScreen() {
               </View>
             ))
           )}
+          {tonight.note ? (
+            <AppText variant="caption" tone="tertiary">
+              {tonight.note}
+            </AppText>
+          ) : null}
         </Card>
 
         {/* Today at the restaurant */}
@@ -180,7 +190,7 @@ export default function TeamScreen() {
           </Card>
         ) : null}
 
-        {!teamAvailable && (todayEvents.data ?? []).length === 0 && (upcoming.data ?? []).length === 0 ? (
+        {tonight.kind === "error" && (todayEvents.data ?? []).length === 0 && (upcoming.data ?? []).length === 0 ? (
           <EmptyState
             title="Quiet in here"
             message="Schedule shifts and events from the web dashboard; they show up here live."
