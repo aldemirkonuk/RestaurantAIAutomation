@@ -4,7 +4,7 @@
  * today's page) with the learned detail held back for the sheet (the virtue
  * of the redesign). The card gets at most three facts, all real:
  *
- *   open orders    — counted from the orders book (pending/approved/ordered);
+ *   open orders    — counted over the whole orders book (pending/approved/ordered);
  *   lead time      — the provider's own leadTimeDays, EM when unrecorded;
  *   last contact   — lastContactDate, said plainly when absent.
  *
@@ -15,7 +15,7 @@
 
 import { useMemo } from 'react';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
-import { useOrders } from '../../../hooks/queries/useOrderQueries';
+import { useEveryOrder } from '../../../hooks/queries/useOrderQueries';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Provider } from '../../../services/api/providers';
 import { canonicalStatus } from '../../../lib/mudavym/status';
@@ -48,7 +48,9 @@ const OPEN_STAGES = new Set([
 export function useProvidersNextData() {
   const { activeRestaurantId } = useAuth();
   const providersQ = useProviders(activeRestaurantId ?? '');
-  const ordersQ = useOrders();
+  // The whole book, not the newest 50 (F-905): a count over one page was
+  // wrong for any house past fifty orders, and the sort followed it.
+  const ordersQ = useEveryOrder();
 
   const openByProvider = useMemo(() => {
     if (!ordersQ.data) return null;

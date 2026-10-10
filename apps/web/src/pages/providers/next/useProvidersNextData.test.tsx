@@ -16,7 +16,7 @@ vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useProviders: () => ({ data: providersData.current, isError: false, error: null, refetch: vi.fn() }),
 }));
 vi.mock('../../../hooks/queries/useOrderQueries', () => ({
-  useOrders: () => ({ data: ordersData.current, refetch: vi.fn() }),
+  useEveryOrder: () => ({ data: ordersData.current, refetch: vi.fn() }),
 }));
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r1' }),

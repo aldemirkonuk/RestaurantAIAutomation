@@ -334,8 +334,14 @@ export function offerStateWord(o: OfferDto, todayIso: string): { word: string; s
   if (o.state === 'passed') return { word: 'ended', soon: false };
   if (!o.end_date) return { word: 'no end date', soon: false };
   const days = Math.ceil((Date.parse(o.end_date) - Date.parse(todayIso)) / 86_400_000);
-  if (days <= 7) return { word: `${o.end_date} · ${Math.max(days, 0)} d`, soon: true };
-  return { word: o.end_date, soon: false };
+  // The state is the last server read; the house's day rolls over on the
+  // page. An end day already behind the house's today has ended, whatever the
+  // read said — never "0 d" and amber for an offer that is over (F-904).
+  if (days < 0) return { word: 'ended', soon: false };
+  if (days === 0) return { word: 'ends today', soon: true };
+  if (days === 1) return { word: 'ends tomorrow', soon: true };
+  if (days <= 7) return { word: `ends ${dayWord(o.end_date)} · ${days} days left`, soon: true };
+  return { word: `ends ${dayWord(o.end_date)}`, soon: false };
 }
 
 /* ── the discount claim, as the mail stated it (never the grade) ────────── */
@@ -579,7 +585,7 @@ export function houseToday(zone: string | null | undefined, at: Date = new Date(
 }
 
 /** When the page was read, on the house's clock when it has one (F-175). */
-function readWhen(read: PromotionsReadDto): string {
+export function readWhen(read: PromotionsReadDto): string {
   const at = new Date(read.read_at);
   if (read.time_zone) {
     try {
@@ -597,6 +603,16 @@ function dayWord(iso: string): string {
   return Number.isNaN(d.getTime())
     ? iso
     : d.toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * The house's calendar day a moment fell on, in words ("Oct 9, 2026") — a
+ * timestamp's UTC date is the wrong day for a house east or west of it
+ * (F-902). No zone recorded: UTC's date, as `houseToday` does.
+ */
+export function houseDayWord(at: string, zone: string | null | undefined): string {
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? at : dayWord(houseToday(zone, d));
 }
 
 export function standingLine(read: PromotionsReadDto): string {

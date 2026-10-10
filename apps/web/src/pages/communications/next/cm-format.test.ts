@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { failedReadWords, failedReadsSentence, fmtAsOf, readAgainFailed } from './cm-format';
+import { failedReadWords, failedReadsSentence, fmtAsOf, fmtWhen, readAgainFailed } from './cm-format';
 
 const today = (h: number, m: number) => {
   const d = new Date();
@@ -67,5 +67,25 @@ describe('the banner sentence', () => {
     ).toBe(
       'Part of this page could not be read: the conversation book, the letters waiting for a manager and the drafted letters. What you see is as it was at 08:00. That does not mean there is nothing there.',
     );
+  });
+});
+
+describe('fmtWhen on the house clock (F-903)', () => {
+  const now = new Date('2026-10-10T12:00:00Z');
+  it('a letter from last October carries its year; one from this year does not', () => {
+    expect(fmtWhen('2025-10-10T09:00:00Z', 'Europe/Istanbul', now)).toBe('10 Oct 2025');
+    expect(fmtWhen('2026-03-04T09:00:00Z', 'Europe/Istanbul', now)).toBe('4 Mar');
+  });
+  it('names the house day, not the device or UTC one', () => {
+    // 22:30 UTC on Oct 8 is 01:30 on Oct 9 in Istanbul.
+    expect(fmtWhen('2026-10-08T22:30:00Z', 'Europe/Istanbul', now)).toBe('9 Oct');
+    expect(fmtWhen('2026-10-08T22:30:00Z', 'America/Detroit', now)).toBe('8 Oct');
+  });
+  it('says the time for the house’s today', () => {
+    expect(fmtWhen('2026-10-09T22:30:00Z', 'Europe/Istanbul', now)).toBe('01:30');
+  });
+  it('an unknown zone or a missing moment never throws', () => {
+    expect(fmtWhen(null, 'Europe/Istanbul', now)).toBe('—');
+    expect(fmtWhen('2025-01-02T12:00:00Z', 'Not/AZone', now)).toMatch(/2025/);
   });
 });

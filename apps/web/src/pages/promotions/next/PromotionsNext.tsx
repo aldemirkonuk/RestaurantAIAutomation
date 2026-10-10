@@ -73,6 +73,8 @@ import {
   rankOffers,
   standingLine,
   houseToday,
+  houseDayWord,
+  readWhen,
   ungradableOffers,
   type OfferDto,
   type RankedOffer,
@@ -123,10 +125,22 @@ export interface PromotionsNextProps {
 export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
   const [showPutAway, setShowPutAway] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { data, isLoading, isError, error } = usePromotionsRead(true);
+  const { data, isLoading, isError, error, refetch } = usePromotionsRead(true);
   // The house's date, the one the gateway read every offer's state against (F-260).
   const now = useNow();
   const today = houseToday(data?.time_zone, now);
+  // Each offer's state is the gateway's, read on the day it was read. When the
+  // house's day turns over on an open page, read again so yesterday's last-day
+  // offer leaves the table rather than waiting for a focus (F-904).
+  const [readOn, setReadOn] = useState<string | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    if (readOn === null) setReadOn(today);
+    else if (readOn !== today) {
+      setReadOn(today);
+      void refetch();
+    }
+  }, [data, today, readOn, refetch]);
   const dismiss = useDismissOffer();
   const restore = useRestoreOffer();
 
@@ -190,7 +204,7 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
                 <b>{standingLine(data)}</b>
               </p>
               <p className="pn-readat">
-                Read {new Date(data.read_at).toLocaleString()} · {data.ledger.paid_lines} paid lines,{' '}
+                Read {readWhen(data)} · {data.ledger.paid_lines} paid lines,{' '}
                 {data.ledger.house_sightings} house sightings, {data.ledger.market_sightings} market sightings over{' '}
                 {data.ledger.window_days} days
                 {data.ledger.skipped_sightings > 0 ? ` (${data.ledger.skipped_sightings} register rows skipped — no pack size or volume, or an outlier)` : ''}.
@@ -223,7 +237,7 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
               data.house && (
                 <p className="pn-coverage" data-testid="pn-coverage">
                   &ldquo;On my menu&rdquo; reads {menus.length === 1 ? 'your current menu' : `your ${menus.length} current menus`}
-                  {menus[0].read_at ? `, current since ${menus[0].read_at.slice(0, 10)}` : ''} ·{' '}
+                  {menus[0].read_at ? `, current since ${houseDayWord(menus[0].read_at, data.time_zone)}` : ''} ·{' '}
                   {data.house.coverage.linked} of {data.house.coverage.drinkLines} drink line
                   {data.house.coverage.drinkLines === 1 ? '' : 's'} linked to a wine
                   {data.house.coverage.notLinked > 0
@@ -376,7 +390,7 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
                         <span className="pn-card__vendor">{o.provider_name ?? 'Unnamed vendor'}</span>
                       </div>
                       <span className="pn-mono" style={{ fontSize: 11, color: 'var(--ink-4)' }}>
-                        put away {o.dismissed_at ? new Date(o.dismissed_at).toLocaleDateString() : ''}
+                        put away {o.dismissed_at ? houseDayWord(o.dismissed_at, data.time_zone) : ''}
                       </span>
                       <button type="button" className="pn-btn pn-btn--quiet" disabled={busy} onClick={() => restore.mutate(o.id)}>
                         Restore

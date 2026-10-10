@@ -365,6 +365,28 @@ describe('ProvidersNext', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('a ?vendor= link to a vendor not in this house drops the link, says so, and lets later sheets reach the address (F-901)', async () => {
+    window.history.replaceState({}, '', '/vendors?vendor=gone');
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    expect(await screen.findByRole('status')).toHaveTextContent('isn’t in this house’s book');
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('vendor')).toBeNull());
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    await screen.findByRole('dialog');
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('vendor')).toBe('p1'));
+  });
+
+  it('keeps a ?vendor= link waiting while the vendor book has not answered', () => {
+    window.history.replaceState({}, '', '/vendors?vendor=p1');
+    mockData.current = { ...base, hasData: false, cards: [] };
+    render(<ProvidersNext />);
+    expect(new URLSearchParams(window.location.search).get('vendor')).toBe('p1');
+    expect(screen.queryByText(/isn’t in this house’s book/)).not.toBeInTheDocument();
+  });
+
   /**
    * F-550: the command palette's "Add vendor" sends `?add=1`; no page read it,
    * so the person landed on the list with nothing opened.

@@ -328,14 +328,25 @@ export default function ProvidersNext() {
   // The deep link is honoured ONCE. Without the latch, closing the sheet on a
   // page reached by `?vendor=` would reopen it on the next render.
   const asked = useRef(vendorFromUrl());
+  // A link to a vendor this house's book does not hold (removed since, or one
+  // of another house's) used to open nothing, say nothing and keep the latch —
+  // so no sheet opened afterwards ever reached the address (F-901). Once the
+  // book has answered without it, the link is spent: drop it and say so.
+  const [askedMissing, setAskedMissing] = useState(false);
   useEffect(() => {
     if (!asked.current) return;
     const found = data.cards.find((vm) => vm.provider.id === asked.current);
-    if (!found) return;
+    if (!found) {
+      if (!data.hasData || data.isError) return;
+      asked.current = null;
+      setAskedMissing(true);
+      writeVendorToUrl(null, "sheet");
+      return;
+    }
     asked.current = null;
     setOpenedForCurrency(openedAtFromHistory());
     setOpenProvider(found.provider);
-  }, [data.cards]);
+  }, [data.cards, data.hasData, data.isError]);
   // Not while a deep link is still waiting for the cards: clearing it then
   // would lose it to a reload during the read.
   useEffect(() => {
@@ -532,6 +543,21 @@ export default function ProvidersNext() {
             }}
           >
             No vendors yet — the book is open and empty.
+          </p>
+        )}
+
+        {askedMissing && !openProvider && (
+          <p
+            role="status"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              color: "var(--ink-4, #665D50)",
+              margin: "0 0 10px",
+            }}
+          >
+            The vendor that link pointed to isn’t in this house’s book. It may
+            have been removed, or it belongs to another of your houses.
           </p>
         )}
 
