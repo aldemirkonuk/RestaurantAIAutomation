@@ -87,6 +87,7 @@ vi.mock('../../../services/api/textSenders', () => ({
 }));
 
 import ConnectionsNext from './ConnectionsNext';
+import { apiClient } from '../../../services/api/client';
 
 /**
  * A register as the page consumes it.
@@ -326,21 +327,21 @@ function base(): Fixture {
     // Resolves a token by default, so a test that completes the gesture without
     // caring about the seal does not silently exercise the failure path.
     grantSeal: vi.fn(async () => 'tok-default'),
-    grantTool: { mutate: vi.fn(), isPending: false },
+    grantTool: { mutateAsync: vi.fn(async () => undefined), isPending: false },
     revokeTool: { mutate: vi.fn(), isPending: false },
     probeServer,
     // Same rule as `grantSeal`: resolves a token by default so a test that
     // completes a payment gesture does not silently take the failure path.
     paymentSeal: vi.fn(async () => 'tok-pay'),
     setDefaultPayment: {
-      mutate: vi.fn(),
+      mutateAsync: vi.fn(async () => undefined),
       isPending: false,
       isError: false,
       error: null,
       variables: undefined,
     },
     removePayment: {
-      mutate: vi.fn(),
+      mutateAsync: vi.fn(async () => undefined),
       isPending: false,
       isError: false,
       error: null,
@@ -1104,7 +1105,7 @@ describe('house declares, each person consents', () => {
 
   it('states what changed on a suspended grant, and offers re-consent behind the seal', async () => {
     const d = base();
-    const grantTool = { mutate: vi.fn(), isPending: false };
+    const grantTool = { mutateAsync: vi.fn(async () => undefined), isPending: false };
     const grantSeal = vi.fn(async () => 'tok-reconsent');
     d.grantTool = grantTool;
     d.grantSeal = grantSeal;
@@ -1151,14 +1152,14 @@ describe('house declares, each person consents', () => {
       tool: 'list_checks',
       writes: true,
     });
-    expect(grantTool.mutate).not.toHaveBeenCalled();
+    expect(grantTool.mutateAsync).not.toHaveBeenCalled();
 
     // Completing the gesture sends the grant, carrying the REDEEMED-ONCE token
     // and no `sealed` flag — whether it was sealed is the gateway's finding,
     // not this page's claim. And it re-grants against what the server says NOW.
     fireEvent.keyDown(button, { key: 'Enter' });
     await waitFor(() =>
-      expect(grantTool.mutate).toHaveBeenCalledWith({
+      expect(grantTool.mutateAsync).toHaveBeenCalledWith({
         id: 's1',
         tool: 'list_checks',
         writes: true,
@@ -1169,7 +1170,7 @@ describe('house declares, each person consents', () => {
 
   it('sends nothing when the seal cannot be issued', async () => {
     const d = base();
-    const grantTool = { mutate: vi.fn(), isPending: false };
+    const grantTool = { mutateAsync: vi.fn(async () => undefined), isPending: false };
     d.grantTool = grantTool;
     // The gateway refused to mint one — the tool is no longer grantable, the
     // role changed, the register is down. Whatever the cause, the honest
@@ -1200,7 +1201,7 @@ describe('house declares, each person consents', () => {
     expect(
       await screen.findByText(/the seal could not be issued — nothing sent/i),
     ).toBeInTheDocument();
-    expect(grantTool.mutate).not.toHaveBeenCalled();
+    expect(grantTool.mutateAsync).not.toHaveBeenCalled();
   });
 
   it('does not dress an unsealed action in the seal', () => {
@@ -1774,7 +1775,7 @@ describe('the payment register acts, and every act is held', () => {
     await waitFor(() => expect(d.paymentSeal).toHaveBeenCalledTimes(1));
     expect(d.paymentSeal).toHaveBeenCalledWith({ act: 'set_default', methodId: 'pm-1' });
     expect(
-      (d.setDefaultPayment as { mutate: ReturnType<typeof vi.fn> }).mutate,
+      (d.setDefaultPayment as { mutateAsync: ReturnType<typeof vi.fn> }).mutateAsync,
     ).not.toHaveBeenCalled();
   });
 
@@ -1788,7 +1789,7 @@ describe('the payment register acts, and every act is held', () => {
     fireEvent.keyDown(charge, { key: 'Enter' });
     await waitFor(() =>
       expect(
-        (d.setDefaultPayment as { mutate: ReturnType<typeof vi.fn> }).mutate,
+        (d.setDefaultPayment as { mutateAsync: ReturnType<typeof vi.fn> }).mutateAsync,
       ).toHaveBeenCalledWith({ methodId: 'pm-1', challenge: 'tok-pay' }),
     );
 
@@ -1812,7 +1813,7 @@ describe('the payment register acts, and every act is held', () => {
       await screen.findByText(/the seal could not be issued — nothing sent/i),
     ).toBeInTheDocument();
     expect(
-      (d.removePayment as { mutate: ReturnType<typeof vi.fn> }).mutate,
+      (d.removePayment as { mutateAsync: ReturnType<typeof vi.fn> }).mutateAsync,
     ).not.toHaveBeenCalled();
   });
 
@@ -1825,7 +1826,7 @@ describe('the payment register acts, and every act is held', () => {
       methods: [instrument(), instrument({ id: 'pm-2', last4: '1881' })],
     });
     d.removePayment = {
-      mutate: vi.fn(),
+      mutateAsync: vi.fn(async () => undefined),
       isPending: false,
       isError: true,
       error: { response: { status: 403, data: { message: refusal } } },
@@ -2040,6 +2041,8 @@ describe('ConnectionsNext — the house sends in its own name', () => {
         ),
       ).toBeInTheDocument(),
     );
+    // Not stopped, so not sealed (F-418): the hold rolls back.
+    expect(screen.queryByText('Sealed')).not.toBeInTheDocument();
     expect(reloadTextSenders).not.toHaveBeenCalled();
     // A refusal must not silently discard what was typed — a manager
     // shouldn't have to reconstruct the reason to try again.
@@ -2069,6 +2072,8 @@ describe('ConnectionsNext — the house sends in its own name', () => {
         ),
       ).toBeInTheDocument(),
     );
+    // Not stopped, so not sealed (F-418): the hold rolls back.
+    expect(screen.queryByText('Sealed')).not.toBeInTheDocument();
     expect(reloadTextSenders).not.toHaveBeenCalled();
   });
 });
@@ -2185,5 +2190,204 @@ describe("the house's own copy of its vendor mail", () => {
     // It must NOT have fallen through to "Never asked", which would tell a
     // manager an outage is a fact about their restaurant.
     expect(screen.queryByText('Never asked')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A failed write is never reported as a sealed one, and never as nothing
+ * (F-418, F-420, F-421 — sim 2026-10-08, S62).
+ *
+ * Every hold here used to call `.mutate` and return void, so `HoldToApprove`
+ * stamped "Sealed" before the write had answered. Consent, Check again and
+ * "Stop the house using it" had nowhere to say a failure at all.
+ */
+describe('a write that failed says so, and is never sealed', () => {
+  const refusal = { response: { status: 503, data: { message: 'The gateway did not answer in time.' } } };
+
+  const reconsentServer = () =>
+    server({
+      consent: { given: true, at: '2026-09-02T00:00:00.000Z', liveCount: 1 },
+      probe: probeWith([listed('list_checks', { readOnlyHint: false })]),
+      toolGrants: [
+        granted('list_checks', {
+          writes: false,
+          declaredRead: true,
+          needsReconsentAt: '2026-09-04T09:00:00.000Z',
+          needsReconsentReason: 'the server changed readOnlyHint true to false',
+        }),
+      ],
+    });
+
+  it('rolls a failed re-consent back instead of sealing it, and names the failure on the row', async () => {
+    const d = base();
+    // `mutate` is still offered: a page that went back to firing-and-forgetting
+    // would call it, seal, and fail this test rather than throwing past it.
+    d.grantTool = {
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(async () => {
+        throw refusal;
+      }),
+      isPending: false,
+      isError: true,
+      error: refusal,
+      variables: { id: 's1', tool: 'list_checks', writes: true },
+    };
+    d.mcp = reg([reconsentServer()]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const hold = screen.getByRole('button', { name: 'Re-consent list_checks as a write' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    await waitFor(() => expect(d.grantSeal).toHaveBeenCalled());
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(
+        (d.grantTool as { mutateAsync: ReturnType<typeof vi.fn> }).mutateAsync,
+      ).toHaveBeenCalled(),
+    );
+    await waitFor(() => expect(hold).toHaveTextContent('Re-consent list_checks as a write'));
+    expect(screen.queryByText('Sealed')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The re-consent was not recorded: The gateway did not answer in time.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says a refused Consent on the row it was refused for', () => {
+    const d = base();
+    d.setConsent = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      error: refusal,
+      variables: { id: 's1', given: true },
+    };
+    d.mcp = reg([server(), server({ id: 's2', name: 'Square bridge' })]);
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+
+    const alerts = container.querySelectorAll('.cx-ctl-alert');
+    expect(alerts.length).toBe(1);
+    expect(alerts[0].textContent).toBe(
+      'Your consent was not recorded: The gateway did not answer in time.',
+    );
+  });
+
+  it('says a failed Check again, and only the latest attempt on the row speaks', () => {
+    const d = base();
+    d.setConsent = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      error: refusal,
+      variables: { id: 's1', given: true },
+      submittedAt: 1,
+    };
+    d.probeServer = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      error: { message: 'Network Error' },
+      variables: 's1',
+      submittedAt: 2,
+    };
+    d.mcp = reg([server()]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('It was not checked: Network Error')).toBeInTheDocument();
+    expect(screen.queryByText(/Your consent was not recorded/)).not.toBeInTheDocument();
+  });
+
+  it('says when "Stop the house using it" did not stop it', () => {
+    const d = base();
+    d.setHouseGrantAccess = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      error: refusal,
+      variables: { connectionId: 'c1', houseUses: false },
+    };
+    d.houseGrants = reg({ grants: [grant()], unattributed: 0 });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(
+        'The house has NOT stopped using it: The gateway did not answer in time.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('does not seal a card removal that failed', async () => {
+    const d = base();
+    d.payments = reg({ provider: { connected: true, reason: null }, methods: [instrument()] });
+    d.removePayment = {
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(async () => {
+        throw refusal;
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+      variables: undefined,
+    };
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const remove = screen.getByRole('button', { name: 'Remove' });
+    fireEvent.keyDown(remove, { key: 'Enter' });
+    await waitFor(() => expect(d.paymentSeal).toHaveBeenCalled());
+    fireEvent.keyDown(remove, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(
+        (d.removePayment as { mutateAsync: ReturnType<typeof vi.fn> }).mutateAsync,
+      ).toHaveBeenCalled(),
+    );
+    await waitFor(() => expect(remove).toHaveTextContent('Remove'));
+    expect(screen.queryByText('Sealed')).not.toBeInTheDocument();
+  });
+
+  it('does not stamp a failed server revoke as approved', async () => {
+    const del = vi.spyOn(apiClient, 'delete').mockRejectedValueOnce(refusal);
+    const d = base();
+    d.mcp = reg([server()]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const hold = screen.getByRole('button', { name: 'Hold to revoke Toast bridge' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    expect(await screen.findByText(/Toast bridge was not revoked/)).toBeInTheDocument();
+    expect(del).toHaveBeenCalledWith('/mcp-connections/s1');
+    expect(screen.queryByText('Approved')).not.toBeInTheDocument();
+    del.mockRestore();
+  });
+
+  it('offers no dead "Connect" on the payment provider, and says how it is switched on', () => {
+    for (const connected of [true, false]) {
+      const d = base();
+      d.provider = reg({
+        connected,
+        mode: connected ? 'test' : null,
+        reason: null,
+        secrets: { secretKey: connected },
+        webhookLastReceivedAt: null,
+        webhookReason: null,
+      });
+      mockData.current = d;
+      const { unmount } = render(<ConnectionsNext />);
+
+      const row = screen.getByText('Payment provider').closest('.cx-row') as HTMLElement;
+      expect(within(row).queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument();
+      expect(
+        within(row).getByText(/Mudavym switches card payments on for every house at once/),
+      ).toBeInTheDocument();
+      unmount();
+    }
   });
 });

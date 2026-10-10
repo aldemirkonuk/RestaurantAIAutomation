@@ -167,6 +167,9 @@ export function HouseServerControls({
       onChanged?.();
     } catch (e) {
       setMsg({ tone: 'error', text: `${serverName} was not revoked — ${getErrorMessage(e)}` });
+      // Rethrown so the hold that asked for this rolls back instead of
+      // stamping "Sealed" beside the line saying it was not (F-418).
+      throw e;
     } finally {
       setRevoking(null);
     }
@@ -335,7 +338,7 @@ export function HouseServerControls({
               </span>
               <HoldToApprove
                 label={`Hold to revoke ${s.name}`}
-                onApprove={() => void revoke(s.id, s.name)}
+                onApprove={() => revoke(s.id, s.name)}
                 disabled={revoking !== null}
               />
             </div>
