@@ -80,16 +80,9 @@ INFERENCE = re.compile(
 # --------------------------------------------------------------------------
 
 # Call sites that pass p_unit_cost with no p_cost_provenance.
-MUTE_PRICE_ALLOWLIST = {
-    # `p_unit_cost: dto.unitCost || null`. `unitCost` is an optional field on
-    # CreateTransactionDto that no client in this repo sets (zero occurrences
-    # across apps/web/src and apps/mobile/src), and production
-    # inventory_transactions holds 4 rows from sources manual and order only,
-    # so no live path reaches it. Owned by a concurrent inventory-ledger
-    # rework; exempted by name rather than hidden by a pattern. Fixing it is
-    # adding one `p_cost_provenance` key.
-    "apps/api-gateway/src/inventory-ledger/inventory-ledger.service.ts",
-}
+# Empty: the inventory-ledger site, the one named exemption, now states
+# p_cost_provenance (fix/sim-counts-cost). Add an entry only with a reason.
+MUTE_PRICE_ALLOWLIST: set[str] = set()
 
 # The only places allowed to assert `'invoice'`: a document was actually read.
 INVOICE_PROVENANCE_ALLOWLIST = {

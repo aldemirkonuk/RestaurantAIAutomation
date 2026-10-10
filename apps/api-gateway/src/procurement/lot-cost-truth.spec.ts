@@ -202,18 +202,9 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
   });
 
   it("every apply_stock_movement call that passes a price also states its provenance", () => {
-    // NAMED GAP, not a hidden one. `inventory-ledger.service.ts` passes
-    // `p_unit_cost: dto.unitCost || null` with no provenance. `unitCost` is an
-    // optional field on CreateTransactionDto that no client in this repo sets
-    // (zero occurrences across apps/web/src and apps/mobile/src), and
-    // production `inventory_transactions` holds 4 rows from sources manual and
-    // order only — so no live path reaches it. That file is owned by a
-    // concurrent inventory-ledger rework, so it is exempted BY EXACT PATH here
-    // and in scripts/check_lot_cost_provenance.py rather than silently
-    // excluded by a pattern. Removing this line is the whole of the follow-up.
-    const OWNED_ELSEWHERE =
-      "apps/api-gateway/src/inventory-ledger/inventory-ledger.service.ts";
-
+    // The inventory-ledger call site (`p_unit_cost: dto.unitCost`) was the
+    // one named exemption; it now states `p_cost_provenance: "manual"`
+    // (fix/sim-counts-cost), so the exemption is gone and no call is excused.
     const offenders = applyStockMovementCalls()
       .filter((c) => /p_unit_cost\s*:/.test(c.body))
       .filter((c) => !/p_cost_provenance\s*:/.test(c.body))
@@ -221,21 +212,7 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
 
     // Pre-fix: procurement.service.ts markDelivered (the PO's own quoted price)
     // and applyReceiptAdjustment (the landed cost) both pass a price mute.
-    expect(offenders.filter((o) => !o.startsWith(OWNED_ELSEWHERE))).toEqual([]);
-    // The exemption is asserted to still be REAL. If the sibling fixes that
-    // call site, this fails and the exemption gets deleted rather than
-    // outliving the reason for it.
-    //
-    // BY PATH, NOT BY PATH:LINE. This asserted `:98` and broke on a merge that
-    // added two lines above the call — the exemption had not changed, only its
-    // position had. A line number is a fact about everything above a call site,
-    // so pinning one makes an unrelated edit look like a fixed bug; the sibling
-    // guard `scripts/check_lot_cost_provenance.py:83` keys on the path alone
-    // for the same reason, and this is the same mistake the stock-writes
-    // allowlist was re-keyed off file:line to escape.
-    expect(offenders.some((o) => o.startsWith(`${OWNED_ELSEWHERE}:`))).toBe(
-      true,
-    );
+    expect(offenders).toEqual([]);
   });
 
   it("markDelivered books the delivery at a stated, non-invoice provenance", async () => {
