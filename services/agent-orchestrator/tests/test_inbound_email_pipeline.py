@@ -22,6 +22,11 @@ Fixing 2 also armed a loop: EmailIntelAgent re-publishes OPERATIONAL mail to
 `email.inbound.received` with `__intel_bypass: True`, and that flag was being SET
 and read NOWHERE. Once this agent listened on the same key it would have received
 its own re-publish and classified forever.
+
+[2026-10-09, sim F-454: EmailParsingAgent is removed. It never ran (self.db
+was never set), and the gateway's RabbitMQ bridge, which hears the same key,
+stores each inbound mail for the house the event names. EmailIntelAgent's
+re-publish now reaches only that bridge; removing it is a named follow-up.]
 """
 
 import inspect
@@ -29,14 +34,14 @@ import inspect
 from core.base_agent import BaseAgent
 
 
-class TestBothAgentsAreRegistered:
-    def test_registry_contains_the_inbound_email_agents(self):
+class TestTheClassifierIsRegistered:
+    def test_registry_contains_the_inbound_email_agent(self):
         from core.orchestrator import AgentOrchestrator
 
         source = inspect.getsource(AgentOrchestrator._register_agent_classes)
 
         assert '"email_intel_agent"' in source
-        assert '"email_parsing_agent"' in source
+        assert '"email_parsing_agent"' not in source
 
 
 class TestRoutingKeys:
@@ -61,20 +66,12 @@ class TestRoutingKeys:
             k != self.DEAD_KEY for _, k in keys
         ), "email.inbound.raw has no publishers; subscribing to it is a dead queue"
 
-    def test_parsing_agent_listens_on_the_same_key(self):
-        from agents.email_parsing_agent import EmailParsingAgent
-
-        keys = EmailParsingAgent.get_subscribed_routing_keys(EmailParsingAgent)
-
-        assert (("email.events", self.LIVE_KEY)) in keys
-
 
 class TestSignatureContract:
     """BaseAgent dispatches process_message(message) — one argument."""
 
     AGENTS = [
         ("agents.email_intel_agent", "EmailIntelAgent"),
-        ("agents.email_parsing_agent", "EmailParsingAgent"),
     ]
 
     def test_base_agent_contract_is_one_argument(self):
@@ -125,14 +122,3 @@ class TestRepublishLoopIsClosed:
         assert source.index("__intel_bypass") < source.index(
             "idempotency_key"
         ), "the bypass check must come before any processing"
-
-    def test_parsing_agent_does_not_skip_bypassed_messages(self):
-        # The flag exists to stop the CLASSIFIER reprocessing, not the parser —
-        # the re-publish is precisely how OPERATIONAL mail reaches the parser.
-        from agents.email_parsing_agent import EmailParsingAgent
-
-        source = inspect.getsource(EmailParsingAgent.process_message)
-
-        assert "return" not in source.split("__intel_bypass")[-1] or (
-            "__intel_bypass" not in source
-        ), "EmailParsingAgent must still parse re-published OPERATIONAL mail"

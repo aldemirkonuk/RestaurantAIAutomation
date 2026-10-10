@@ -73,7 +73,7 @@ class TestCheckIdempotency:
     def test_returns_false_for_new_message(self):
         agent, supabase = make_agent()
         # Supabase returns empty list → message not seen before
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = _make_supabase_result(
             []
         )
 
@@ -84,7 +84,7 @@ class TestCheckIdempotency:
 
     def test_returns_true_for_existing_message(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = _make_supabase_result(
             [{"message_id": "existing-id"}]
         )
 
@@ -95,7 +95,7 @@ class TestCheckIdempotency:
 
     def test_fails_open_on_db_error(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.side_effect = Exception(
             "DB connection lost"
         )
 
@@ -165,7 +165,7 @@ class TestProcessWithRetryIdempotency:
     def test_skips_duplicate_message(self):
         agent, supabase = make_agent()
         # Message already processed
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = _make_supabase_result(
             [{"message_id": "dup-id"}]
         )
 
@@ -179,7 +179,7 @@ class TestProcessWithRetryIdempotency:
     def test_marks_processed_after_success(self):
         agent, supabase = make_agent()
         # Check: not seen before
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = _make_supabase_result(
             []
         )
         # Insert: success
@@ -306,7 +306,7 @@ class TestSendToDlq:
         agent.config.max_retries = 3
 
         # Idempotency check: not seen
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = _make_supabase_result(
             []
         )
         # DLQ insert: success
@@ -335,7 +335,7 @@ class TestCorrelationId:
 
     def test_extracted_from_incoming_message(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = _make_supabase_result(
             []
         )
         supabase.table.return_value.insert.return_value.execute.return_value = (
@@ -352,7 +352,7 @@ class TestCorrelationId:
 
     def test_generated_if_missing_from_message(self):
         agent, supabase = make_agent()
-        supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_supabase_result(
+        supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = _make_supabase_result(
             []
         )
         supabase.table.return_value.insert.return_value.execute.return_value = (

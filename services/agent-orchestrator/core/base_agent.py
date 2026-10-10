@@ -833,13 +833,19 @@ class BaseAgent(ABC):
     # =========================================================================
 
     async def _check_idempotency(self, message_id: str) -> bool:
-        """Check if message was already processed. Fails OPEN (returns False on error)."""
+        """Check if THIS agent already processed the message. Fails OPEN (returns False on error).
+
+        Keyed by (message_id, agent_name), the table's primary key since
+        migration 20270101500000 (sim F-456): one event fans out to several
+        agents, and the first to finish must not make the others skip it.
+        """
         if not message_id:
             return False
         try:
             result = (
                 self.database.supabase.table("idempotency_keys")
                 .select("message_id")
+                .eq("agent_name", self.agent_name)
                 .eq("message_id", message_id)
                 .execute()
             )

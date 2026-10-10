@@ -259,7 +259,7 @@ async def test_failed_broker_cancel_is_retained_and_safe_to_retry():
     racing_delivery = asyncio.create_task(queue.deliver({"number": 1}, "not-accepted"))
     await asyncio.sleep(0)
     assert not racing_delivery.done()  # no hot requeue while cancel is failing
-    assert "not-accepted" not in bus._processed_ids
+    assert "queue.test.test_work:not-accepted" not in bus._processed_ids
     queue.cancel_error = False
     await agent.stop()
     racing = await racing_delivery
@@ -282,7 +282,9 @@ async def test_full_queue_backpressures_without_ack_or_retry_loop(stop):
         await agent.stop()
         msg = await pending
         assert msg.acked == 0 and msg.requeued is True
-        assert "held" not in bus._processed_ids and agent.seen == [1]
+        assert "queue.test.test_work:held" not in bus._processed_ids and agent.seen == [
+            1
+        ]
     else:
         await agent.resume()
         msg = await pending
@@ -316,7 +318,7 @@ async def test_cancel_one_consumer_preserves_other_and_requeues_late_delivery():
     await old_callback(late)
     first.assert_not_awaited()
     assert late.requeued is True and late.acked == 0
-    assert "late" not in bus._processed_ids
+    assert "queue.test.test_work:late" not in bus._processed_ids
     assert (await queue.deliver({"number": 2})).acked == 1
     second.assert_awaited_once()
     await bus.stop_consuming(name, tag2)
