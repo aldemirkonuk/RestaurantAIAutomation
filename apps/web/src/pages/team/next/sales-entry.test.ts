@@ -41,6 +41,10 @@ describe('readFigure', () => {
     expect(readFigure('4.5', true)).toEqual({ ok: false, why: '“4.5” is not a whole number' });
     expect(readFigure('10.125', false).ok).toBe(false);
   });
+  it('reads a decimal comma with one or two digits, which cannot be a thousands mark (F-364)', () => {
+    expect(readFigure('1250,50', false)).toEqual({ ok: true, value: 1250.5 });
+    expect(readFigure('12,5', false)).toEqual({ ok: true, value: 12.5 });
+  });
 });
 
 describe('checkRow', () => {
@@ -120,6 +124,33 @@ describe('readSalesCsv', () => {
     if (!r.ok) throw new Error(r.why);
     expect(r.unnamed).toBe(2);
     expect(r.rows.every((x) => x.memberId === 'm-ana')).toBe(true);
+  });
+  it('reads a semicolon file, as Excel writes it in Türkiye, with decimal commas (F-364)', () => {
+    const r = readSalesCsv('\ufeffdate;name;covers;net_sales\n2026-09-24;Ana Lima;30;1250,50\n', [ANA], '');
+    if (!r.ok) throw new Error(r.why);
+    expect(r.rows[0]).toMatchObject({ memberId: 'm-ana', serviceDate: '2026-09-24', covers: '30', netSales: '1250,50' });
+    expect(checkRow(r.rows[0], TODAY, IDS)).toMatchObject({ ok: true, entry: { netSales: 1250.5 } });
+  });
+  it('keeps a quoted comma inside its cell (F-364)', () => {
+    const named = { ...ANA, display_name: 'Lima, Ana' } as TeamMember;
+    const r = readSalesCsv('date,name,covers,net_sales\n2026-09-24,"Lima, Ana",30,"900"\n', [named], '');
+    if (!r.ok) throw new Error(r.why);
+    expect(r.refused).toEqual([]);
+    expect(r.rows[0]).toMatchObject({ memberId: 'm-ana', covers: '30', netSales: '900' });
+  });
+  it('names the real reason a file or a day cannot be read (F-364)', () => {
+    expect(readSalesCsv('Tarih|Ad|Satış\n09.10.2026|Ana|5\n', [ANA], '')).toEqual({
+      ok: false,
+      why: 'The first row reads as a single column (“Tarih|Ad|Satış”), so the columns could not be told apart. Save the file as CSV with commas or semicolons between the columns.',
+    });
+    expect(readSalesCsv('tarih;ad;satış\n09.10.2026;Ana;5\n', [ANA], '')).toMatchObject({
+      ok: false,
+      why: expect.stringContaining('Its first row names: “tarih”, “ad”, “satış”.'),
+    });
+    expect(checkRow(draft({ serviceDate: '09.10.2026' }), TODAY, IDS)).toEqual({
+      ok: false,
+      why: 'the day “09.10.2026” is not written as year-month-day, like 2026-10-09',
+    });
   });
   it('refuses a file with no day column or no rows', () => {
     expect(readSalesCsv('covers,member_id\n4,m-ana\n', [ANA], '')).toMatchObject({ ok: false });

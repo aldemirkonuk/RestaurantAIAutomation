@@ -48,6 +48,8 @@ import { apiClient, getErrorMessage } from '@/services/api/client';
 import { useInventory } from '@/hooks/queries/useInventoryQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { queryKeys } from '@/lib/query-keys';
+import { parseDecimal } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { CURRENCY_CODES, currencyLabel, currencyToRecord as resolveCurrency } from '@/lib/currency';
 import { EM, MONO, SANS, SERIF, fmtMoney } from './format';
 import {
@@ -179,12 +181,9 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
     setProviderId('');
   }, [restaurantId]);
 
-  const num = (v: string): number | null => {
-    const t = v.trim();
-    if (t === '') return null;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : null;
-  };
+  // Typed text as the house writes it ("12,50", "1.250" where "." groups).
+  const group = useHouseGroupMark();
+  const num = (v: string): number | null => parseDecimal(v, group);
 
   const qty = num(quantity);
   const priceNum = num(price);
@@ -258,7 +257,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
       deposit: fee(deposit),
       freight: fee(freight),
     }),
-    [allowance, deposit, freight],
+    [allowance, deposit, freight, group],
   );
 
   const total = useMemo(
