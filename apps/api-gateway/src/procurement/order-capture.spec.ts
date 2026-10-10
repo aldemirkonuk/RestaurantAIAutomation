@@ -55,6 +55,8 @@ function makeDb(opts: {
   /** ADR 0141: what the ownership probe (`select("id")`) sees. `null` = the
    *  item is not this restaurant's, which is a 403 and not a missing wine. */
   ownedInventory?: Row | null;
+  /** This house's menu lines for the wine (F-661); none by default. */
+  menuItems?: Row[];
 }) {
   const calls: Calls = {
     orderInserts: [],
@@ -99,6 +101,8 @@ function makeDb(opts: {
             return { data: opts.orderRow ?? null, error: null };
           return { data: opts.existingOpenOrders ?? [], error: null };
         }
+        if (table === "menu_items")
+          return { data: opts.menuItems ?? [], error: null };
         if (table === "procurement_order_items" && op === "select")
           return {
             data: shape === "one" ? (opts.orderLine ?? null) : [],
@@ -230,6 +234,26 @@ describe("createOrder — the line table finally gets written", () => {
     expect(line.producer).toBe("Giacomo Conterno");
     expect(line.vintage).toBe(2016);
     expect(line.sku).toBe("INT-9001");
+  });
+
+  it("F-661: does not ask the vendor for the library's year when the house's menu names none", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      menuItems: [{ vintage: null }, { vintage: "NV" }],
+    });
+    await service(db).createOrder("rest-1", USER, caseOrder);
+    expect(calls.lineInserts[0].vintage).toBeNull();
+  });
+
+  it("F-661: keeps the year when the house's menu names one", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      menuItems: [{ vintage: "2016" }],
+    });
+    await service(db).createOrder("rest-1", USER, caseOrder);
+    expect(calls.lineInserts[0].vintage).toBe(2016);
   });
 
   it("never writes total_bottles, which the database generates", async () => {

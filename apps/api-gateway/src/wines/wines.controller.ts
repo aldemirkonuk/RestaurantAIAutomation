@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   HttpException,
@@ -118,6 +119,19 @@ export class WinesController {
     return await this.wineSubmissionsService.listSubmissions(
       query.status,
       query.limit,
+    );
+  }
+
+  /** F-665: the outcome of one of this house's own submissions. */
+  @Get("submissions/:id")
+  @ApiOperation({ summary: "Outcome of one of this house's submissions" })
+  async getSubmissionOutcome(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return await this.wineSubmissionsService.getOwnSubmissionOutcome(
+      user.restaurantId,
+      id,
     );
   }
 

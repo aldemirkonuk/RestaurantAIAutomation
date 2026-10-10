@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
@@ -21,6 +21,27 @@ type SubmissionRow = {
   status: string;
   matched_master_id?: string | null;
 };
+
+/**
+ * Whether a library candidate is close enough to link without a person.
+ *
+ * F-661. `match_library_wine` takes only 10 points off when ONE side has a
+ * vintage and the other has none, so an exact name and producer score 90 and
+ * clear the floor. A menu line with no year then linked to whichever vintage
+ * the library happened to rank first, and that year went out on purchase
+ * orders. A year on one side only is not the same bottle claim, so it is
+ * never linked automatically: the worker sends it to review and the menu
+ * import makes a provisional row, the same as any other near miss.
+ */
+export function autoLinksTo(
+  best: { confidence: number; vintage?: number | null } | undefined,
+  queryVintage: number | null,
+  floor: number,
+): boolean {
+  if (!best || best.confidence < floor) return false;
+  const libraryHasYear = (best.vintage ?? null) !== null;
+  return libraryHasYear === (queryVintage !== null);
+}
 
 /**
  * Structural subset shared by CreateWineSubmissionDto and menu-import items.
@@ -180,6 +201,28 @@ export class WineSubmissionsService {
     return data;
   }
 
+  /**
+   * F-665. What became of ONE of this house's own submissions, for the page
+   * that sent it: a confirm only queues the wine, and the worker decides
+   * later. Scoped to the house — another house's submission reads as not
+   * found, exactly like one that does not exist.
+   */
+  async getOwnSubmissionOutcome(restaurantId: string, id: string) {
+    const { data, error } = await this.dbService.supabase
+      .from("master_wine_library_submissions")
+      .select("id, status, matched_master_id")
+      .eq("id", id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new NotFoundException("No such submission");
+    return {
+      id: data.id as string,
+      status: data.status as string,
+      matchedMasterId: (data.matched_master_id as string | null) ?? null,
+    };
+  }
+
   async listSubmissions(status?: string, limit = 50) {
     let query = this.dbService.supabase
       .from("master_wine_library_submissions")
@@ -293,14 +336,15 @@ export class WineSubmissionsService {
       // wine depending on which door it came through, which is what put
       // primary_type in the signature and split the key space in the first
       // place.
+      const queryVintage =
+        typeof identity.vintage === "string"
+          ? parseInt(identity.vintage, 10) || null
+          : (identity.vintage ?? null);
       const { data: candidates, error: matchError } =
         await this.dbService.supabase.rpc("match_library_wine", {
           p_name: identity.name,
           p_producer: identity.producer ?? null,
-          p_vintage:
-            typeof identity.vintage === "string"
-              ? parseInt(identity.vintage, 10) || null
-              : (identity.vintage ?? null),
+          p_vintage: queryVintage,
           p_country: identity.country ?? null,
           p_region: identity.region ?? null,
           p_grape_variety: identity.grapeVariety ?? null,
@@ -320,8 +364,11 @@ export class WineSubmissionsService {
       const best = (candidates ?? [])[0];
 
       if (
-        best &&
-        best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+        autoLinksTo(
+          best,
+          queryVintage,
+          WineSubmissionsService.AUTO_LINK_CONFIDENCE,
+        )
       ) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
@@ -506,8 +553,11 @@ export class WineSubmissionsService {
 
     const best = (candidates ?? [])[0];
     if (
-      best &&
-      best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+      autoLinksTo(
+        best,
+        parsedVintage,
+        WineSubmissionsService.AUTO_LINK_CONFIDENCE,
+      )
     ) {
       return {
         masterWineId: best.id,
@@ -820,8 +870,11 @@ export class WineSubmissionsService {
       const best = byIndex.get(idx);
       if (
         isSpecific[idx] &&
-        best &&
-        best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+        autoLinksTo(
+          best,
+          parseVintage(items[idx].vintage),
+          WineSubmissionsService.AUTO_LINK_CONFIDENCE,
+        )
       ) {
         results[idx] = {
           masterWineId: best.id,

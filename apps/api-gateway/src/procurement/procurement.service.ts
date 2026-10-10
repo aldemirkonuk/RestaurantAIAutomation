@@ -1520,6 +1520,37 @@ export class ProcurementService {
       sku = row?.sku ?? null;
       producer = mw?.producer ?? null;
       vintage = mw?.vintage ?? null;
+
+      // F-661. The year above is the LIBRARY row's; the house row has no
+      // vintage column of its own. When this house's own menu lists the wine
+      // and no line of it names a year, the house never asked for one, so
+      // the vendor is not asked for the library's year either.
+      if (vintage !== null) {
+        const { data: menuLines, error: menuErr } =
+          await this.databaseService.supabase
+            .from("menu_items")
+            .select("vintage")
+            .eq("restaurant_id", restaurantId)
+            .eq("inventory_item_id", dto.inventoryId)
+            .limit(50);
+        if (menuErr) {
+          this.logger.warn(
+            "Order line kept the library vintage: menu lines unreadable",
+            {
+              restaurantId,
+              orderId,
+              inventoryId: dto.inventoryId,
+              error: menuErr.message,
+            },
+          );
+        } else {
+          const lines = (menuLines ?? []) as Array<{ vintage?: unknown }>;
+          const namesAYear = lines.some((l) =>
+            /\b(1[89]\d{2}|2[01]\d{2})\b/.test(String(l.vintage ?? "")),
+          );
+          if (lines.length > 0 && !namesAYear) vintage = null;
+        }
+      }
     } catch (e: any) {
       // A lookup failure must not strand the order, but it must not be silent
       // either: a line with no master_wine_id is a line no invoice can be

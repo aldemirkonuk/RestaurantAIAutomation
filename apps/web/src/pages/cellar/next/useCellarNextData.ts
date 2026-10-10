@@ -167,6 +167,13 @@ export interface CellarRow {
    * default), which is the read-before-this-field behaviour, never worse.
    */
   analyticsReadable: boolean;
+  /**
+   * The bottle size THIS HOUSE stated on its own row (`restaurant_inventory.bottle_size_ml`),
+   * null when it stated none. Never the library's 750: that is a column default on every
+   * library row, not a measurement (`cellar-columns.ts` rule 2), and the gateway fills it in
+   * as `bottleSizeMl`, so this reads the raw column the row carries beside it.
+   */
+  bottleSizeMl?: number | null;
 }
 
 /**
@@ -250,7 +257,9 @@ function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
     vintage: num(w.vintage),
     listPrice: refPrice(w.price),
     marketPrice: num(w.retailPriceAvg),
-    bottleSizeMl: num(w.bottleSizeMl),
+    // F-664: only a size the house stated. The library's 750 is a default on every row,
+    // so a half bottle or a magnum read as 750 ml when it was printed as a fact.
+    bottleSizeMl: inv.get(w.id)?.bottleSizeMl ?? null,
     description: text(w.description),
     tastingNotes: text(w.tastingNotes),
     pairingNotes: text(w.pairingNotes),
@@ -1370,6 +1379,7 @@ export function useCellarNextData() {
         velocityPerDay: num(it.velocityPerDay),
         daysSinceSale: num(it.daysSinceSale),
         analyticsReadable: it.analyticsReadable ?? true,
+        bottleSizeMl: num((it as { bottle_size_ml?: unknown }).bottle_size_ml),
       });
     }
     return m;

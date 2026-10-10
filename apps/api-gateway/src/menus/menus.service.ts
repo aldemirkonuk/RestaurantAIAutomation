@@ -134,7 +134,7 @@ export interface PlanLine {
   flag: PriceFlag | null;
   /** A locked wine that was not on the menu being replaced comes back with this one (L18). */
   returned: boolean;
-  /** Both vintages are years and they differ: look before trusting the link (L18). */
+  /** The vintages differ, a year against no year included: look before trusting the link (L18, F-661). */
   vintageMismatch: boolean;
 }
 
@@ -1372,7 +1372,8 @@ export class MenusService {
         glass,
         flag,
         returned: !current && locked && (!replacing || !onReplaced.has(String(wineId))),
-        vintageMismatch: locked && readYear !== null && typeof libVintage === "number" && readYear !== libVintage,
+        // F-661: a year against no year differs too ("Yakut" read beside the house's Yakut 2019).
+        vintageMismatch: locked && readYear !== (typeof libVintage === "number" ? libVintage : null),
       };
     });
 

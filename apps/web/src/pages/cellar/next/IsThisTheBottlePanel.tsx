@@ -113,6 +113,20 @@ export function readingRefusals(r: BottleReading): Record<string, string> {
   return out;
 }
 
+/**
+ * A vintage as a person typed it. A four-digit year is that year; empty or
+ * "NV" is no vintage (null). Anything else is not a vintage at all and comes
+ * back `undefined`, so the panel refuses it in words. It never falls back to
+ * the engine's year: that is how an NV Champagne went in as the 2015 the
+ * engine read.
+ */
+export function typedVintage(typed: string): number | null | undefined {
+  const t = typed.trim();
+  if (t === '' || /^(n\.?\s?v\.?|non[-\s]?vintage)$/i.test(t)) return null;
+  if (/^\d{4}$/.test(t)) return Number(t);
+  return undefined;
+}
+
 export interface IsThisTheBottlePanelProps {
   open: boolean;
   /** The engine's reading. Null closes the question. */
@@ -144,14 +158,7 @@ export function IsThisTheBottlePanel({
       ...reading,
       name: mine.name ?? reading.name,
       producer: mine.producer ?? reading.producer,
-      vintage:
-        v === undefined
-          ? reading.vintage
-          : v.trim() === ''
-            ? null
-            : Number.isFinite(Number(v))
-              ? Number(v)
-              : reading.vintage,
+      vintage: v === undefined ? reading.vintage : (typedVintage(v) ?? null),
       type: (mine.type as BottleReading['type']) ?? reading.type,
       region: mine.region ?? reading.region,
       country: mine.country ?? reading.country,
@@ -159,10 +166,14 @@ export function IsThisTheBottlePanel({
     };
   }, [reading, mine]);
 
-  const refusals = useMemo(
-    () => (answered ? readingRefusals(answered) : {}),
-    [answered],
-  );
+  const refusals = useMemo(() => {
+    if (!answered) return {};
+    const out = readingRefusals(answered);
+    if (mine.vintage !== undefined && typedVintage(mine.vintage) === undefined) {
+      out.vintage = 'A four-digit year such as 2019, or NV for a wine with no vintage.';
+    }
+    return out;
+  }, [answered, mine.vintage]);
   const clean = Object.keys(refusals).length === 0;
   const changed = Object.keys(mine);
 
@@ -312,6 +323,7 @@ export function IsThisTheBottlePanel({
                       className="cl-field"
                       aria-label={label}
                       value={shown}
+                      placeholder={key === 'vintage' ? '2019, or NV' : undefined}
                       data-testid={`bottle-input-${key}`}
                       onChange={(e) => setMine((m) => ({ ...m, [key]: e.target.value }))}
                     />

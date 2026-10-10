@@ -1,3 +1,4 @@
+import { NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash } from "crypto";
 import { DatabaseService } from "../database/database.service";
@@ -172,3 +173,52 @@ describe("WineSubmissionsService normalization contract", () => {
 /** Captured from the live database — see the test that uses it. */
 const EXPECTED_CRISTAL_HASH =
   "da01ebb089a30f45b7e24e1cda543ca341c0af65bb79a94ab4e3a7dfdec1e227";
+
+describe("F-665: a house reads the outcome of its own submission, and only its own", () => {
+  const ROWS = [
+    { id: "sub-1", restaurant_id: "rest-a", status: "merged", matched_master_id: "mw-9" },
+    { id: "sub-2", restaurant_id: "rest-b", status: "pending", matched_master_id: null },
+  ];
+
+  async function make() {
+    const filters: Record<string, unknown> = {};
+    const q: any = {
+      select: () => q,
+      eq: (col: string, val: unknown) => {
+        filters[col] = val;
+        return q;
+      },
+      maybeSingle: async () => ({
+        data:
+          ROWS.find((r) =>
+            Object.entries(filters).every(([k, v]) => (r as any)[k] === v),
+          ) ?? null,
+        error: null,
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        WineSubmissionsService,
+        { provide: DatabaseService, useValue: { supabase: { from: () => q } } },
+      ],
+    }).compile();
+    return { service: moduleRef.get(WineSubmissionsService), filters };
+  }
+
+  it("says what the worker decided", async () => {
+    const { service } = await make();
+    await expect(service.getOwnSubmissionOutcome("rest-a", "sub-1")).resolves.toEqual({
+      id: "sub-1",
+      status: "merged",
+      matchedMasterId: "mw-9",
+    });
+  });
+
+  it("reads another house's submission as not found", async () => {
+    const { service, filters } = await make();
+    await expect(service.getOwnSubmissionOutcome("rest-a", "sub-2")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(filters.restaurant_id).toBe("rest-a");
+  });
+});
