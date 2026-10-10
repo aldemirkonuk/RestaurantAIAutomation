@@ -446,6 +446,42 @@ describe("recordDoorReceipt", () => {
     expect(r.stockDelta).toBe(0);
   });
 
+  it("leaves a truck refused whole open with the vendor: no status, no delivery time (F-748)", async () => {
+    // A refused truck used to move the order to PARTIALLY_RECEIVED and date
+    // its delivered_at, so the scorecard counted it as landed on time, and
+    // PARTIALLY_RECEIVED cannot be cancelled as never arrived.
+    const { db, calls } = makeDb({ order: { ...packTwelve, status: "CONFIRMED" } });
+
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 3,
+      countedUom: "case",
+      rejectedQtyInCountedUom: 3,
+      outcome: "refused",
+      refusalReason: "wrong_wine",
+    });
+
+    expect(calls.eventInserts[0].outcome).toBe("refused");
+    expect(calls.orderUpdates).toHaveLength(0);
+    expect(r.alreadyRecorded).toBe(false);
+  });
+
+  it("still marks the order received when a refusal kept some of the truck", async () => {
+    // Only a refusal of the WHOLE truck stays open; one that kept bottles landed.
+    const { db, calls } = makeDb({ order: packTwelve });
+
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 3,
+      countedUom: "case",
+      rejectedQtyInCountedUom: 2,
+      outcome: "refused",
+    });
+
+    expect(calls.orderUpdates[0].status).toBe("PARTIALLY_RECEIVED");
+    expect(calls.orderUpdates.some((u: any) => "delivered_at" in u)).toBe(true);
+  });
+
   it("converts a broken box through the same conversion as the count", async () => {
     // One broken box out of fourteen at pack 12: 168 - 12 = 156 on the shelf.
     // Unconverted, `168 - 1` booked 167 — eleven bottles that do not exist,

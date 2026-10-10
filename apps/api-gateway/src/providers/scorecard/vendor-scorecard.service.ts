@@ -386,6 +386,45 @@ export class VendorScorecardService {
         .order("id", { ascending: true }),
     );
     if (!events.ok) return events;
+    // A truck the house refused — a delivery REJECTED as sent to the wrong
+    // restaurant — is a refused verdict on its order, the same as a refusal
+    // at the door (F-669). Nothing moves a REJECTED delivery afterwards, so
+    // its last write is when it was refused. A truck with no order names its
+    // vendor itself, and counts against that vendor on its own line.
+    const refused = await this.readAll<{
+      id: string;
+      order_id: string | null;
+      provider_id: string | null;
+      updated_at: string;
+    }>(() =>
+      this.client()
+        .from("deliveries")
+        .select("id, order_id, provider_id, updated_at")
+        .eq("restaurant_id", house)
+        .eq("state", "REJECTED")
+        .gte("updated_at", since)
+        .order("id", { ascending: true }),
+    );
+    if (!refused.ok) return refused;
+    const ownVendor = new Map<string, string>();
+    events.rows.push(
+      ...refused.rows
+        .filter((d) => d.order_id || d.provider_id)
+        .map((d) => {
+          if (d.provider_id) ownVendor.set(d.id, d.provider_id);
+          return {
+            id: d.id,
+            order_id: d.order_id,
+            stage: null,
+            outcome: "refused",
+            refusal_reason: "sent to the wrong restaurant",
+            rejected_qty: null,
+            damage_photo_path: null,
+            occurred_at: d.updated_at,
+            table: "deliveries",
+          };
+        }),
+    );
     // The event names its order; the order names its vendor. The order read is
     // house-scoped too — an event can never borrow another house's vendor.
     const ids = [
@@ -421,12 +460,14 @@ export class VendorScorecardService {
     if (!collected.ok) return collected;
     return {
       ok: true,
-      collected: collected.any,
+      collected: collected.any || refused.rows.length > 0,
       rows: events.rows.map((e) => ({
         ...e,
         provider_id: e.order_id
           ? (orders.get(e.order_id)?.provider_id ?? null)
-          : null,
+          : e.table === "deliveries"
+            ? (ownVendor.get(e.id) ?? null)
+            : null,
         order_number: e.order_id
           ? (orders.get(e.order_id)?.order_number ?? null)
           : null,
@@ -488,7 +529,7 @@ export class VendorScorecardService {
     since: string,
   ): Promise<RegisterRead<ConversationRow>> {
     const COLS =
-      "id, provider_id, direction, status, sent_at, received_at, thread_key, gmail_thread_id, thread_id";
+      "id, provider_id, direction, status, sent_at, received_at, thread_key, gmail_thread_id, thread_id, channel";
     const byColumn = async (col: "sent_at" | "received_at") =>
       this.readAll<ConversationRow>(() => {
         let q = this.client()

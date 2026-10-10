@@ -693,13 +693,25 @@ export class ReceivingService {
     // booked. So it is logged loudly and the order is left as it was, which is
     // exactly what happened before, minus the silence. Anything else is a
     // failed write a retry can fix, and says so.
-    const { error: statusErr } = await this.db
-      .getClient()
-      .from("procurement_orders")
-      .update({ status: "PARTIALLY_RECEIVED", received_by: input.userId })
-      .eq("restaurant_id", input.restaurantId)
-      .eq("id", input.orderId);
-    let statusWritten = true;
+    //
+    // (0) A TRUCK TURNED AWAY WHOLE DID NOT DELIVER (F-748). Nothing entered
+    // the building, so the order is not received and has no delivery time:
+    // it stays open with the vendor (ADR 0125 Q3 — a vendor's miss goes back
+    // to them, never closed), where it shows as overdue once its date passes
+    // and can still be cancelled as never arrived. Writing PARTIALLY_RECEIVED
+    // and `delivered_at` here made a refused truck an on-time landing on the
+    // vendor scorecard, for good, since PARTIALLY_RECEIVED cannot be
+    // cancelled. The event row above is still the door's record of the refusal.
+    const refusedWhole = input.outcome === "refused" && acceptedBottles === 0;
+    const { error: statusErr } = refusedWhole
+      ? { error: null }
+      : await this.db
+          .getClient()
+          .from("procurement_orders")
+          .update({ status: "PARTIALLY_RECEIVED", received_by: input.userId })
+          .eq("restaurant_id", input.restaurantId)
+          .eq("id", input.orderId);
+    let statusWritten = !refusedWhole;
     if (statusErr) {
       if (String(statusErr.code ?? "").startsWith("23")) {
         statusWritten = false;

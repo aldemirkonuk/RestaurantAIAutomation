@@ -418,6 +418,193 @@ describe("DeliveryService", () => {
       expect((upd?.payload as { state: string }).state).toBe("REJECTED");
     });
 
+    describe("a refusal or the house's dispute reaches the order and the credits (F-669)", () => {
+      const ORDER = "ord-7";
+      const writesTo = (table: string, verb: string) =>
+        db.writes.filter((w) => w.table === table && w.verb === verb);
+
+      it("a refused truck marks its order rejected, with the reason in its notes", async () => {
+        db.answers.deliveries = {
+          data: deliveryRow({ order_id: ORDER }),
+          error: null,
+        };
+        db.updateAnswers.deliveries = {
+          data: deliveryRow({ order_id: ORDER, state: "REJECTED" }),
+          error: null,
+        };
+        db.answers.procurement_orders = {
+          data: {
+            id: ORDER,
+            provider_id: "prov-1",
+            currency: "TRY",
+            match_status: null,
+            discrepancy_notes: null,
+          },
+          error: null,
+        };
+        const res = await service.propose(REST, DEL, "u1", {
+          side: "restaurant",
+          reason: "WRONG_VENUE",
+        });
+        expect(res.ok).toBe(true);
+        const [upd] = writesTo("procurement_orders", "update");
+        expect(upd?.payload).toMatchObject({
+          match_status: "rejected",
+          discrepancy_notes: expect.stringMatching(/another restaurant/),
+        });
+        // No money named, so no claim.
+        expect(writesTo("procurement_credits", "insert")).toEqual([]);
+      });
+
+      const refuseOn = (status: string, trucks: Record<string, unknown>[]) => {
+        db.answers.deliveries = {
+          data: [deliveryRow({ order_id: ORDER }), ...trucks],
+          error: null,
+        };
+        db.updateAnswers.deliveries = {
+          data: deliveryRow({ order_id: ORDER, state: "REJECTED" }),
+          error: null,
+        };
+        db.answers.procurement_orders = {
+          data: {
+            id: ORDER,
+            provider_id: "prov-1",
+            currency: "TRY",
+            status,
+            match_status: "matched",
+            discrepancy_notes: null,
+          },
+          error: null,
+        };
+        return service.propose(REST, DEL, "u1", {
+          side: "restaurant",
+          reason: "WRONG_VENUE",
+        });
+      };
+      const statusWrites = () =>
+        writesTo("procurement_orders", "update")
+          .map((w) => (w.payload as { status?: string }).status)
+          .filter(Boolean);
+
+      it.each(["DELIVERED", "PARTIALLY_RECEIVED"])(
+        "a refused truck takes a %s order out of the purchase totals: it becomes FAILED",
+        async (status) => {
+          const res = await refuseOn(status, []);
+          expect(res.ok).toBe(true);
+          expect(statusWrites()).toEqual(["FAILED"]);
+        },
+      );
+
+      it.each(["CONFIRMED", "IN_TRANSIT", "COMPLETED"])(
+        "a refused truck leaves a %s order's state alone (note only)",
+        async (status) => {
+          await refuseOn(status, []);
+          expect(statusWrites()).toEqual([]);
+        },
+      );
+
+      it("a refused truck leaves the order alone when another truck on it was kept", async () => {
+        await refuseOn("DELIVERED", [{ id: "del-2" }]);
+        expect(statusWrites()).toEqual([]);
+      });
+
+      it("a damaged line with money at risk opens a credit claim against the order's vendor and currency", async () => {
+        db.answers.deliveries = {
+          data: deliveryRow({ order_id: ORDER }),
+          error: null,
+        };
+        db.updateAnswers.deliveries = {
+          data: deliveryRow({ order_id: ORDER, state: "RECONCILING" }),
+          error: null,
+        };
+        db.answers.procurement_orders = {
+          data: {
+            id: ORDER,
+            provider_id: "prov-1",
+            currency: "TRY",
+            match_status: "matched",
+            discrepancy_notes: null,
+          },
+          error: null,
+        };
+        db.answers.procurement_credits = { data: [], error: null };
+        await service.propose(REST, DEL, "u1", {
+          side: "restaurant",
+          reason: "DAMAGED",
+          documentId: null,
+          lineNo: 2,
+          moneyAtRisk: 180,
+        });
+        const [claim] = writesTo("procurement_credits", "insert");
+        expect(claim?.payload).toMatchObject({
+          restaurant_id: REST,
+          order_id: ORDER,
+          provider_id: "prov-1",
+          reason: "damaged",
+          claimed_amount: 180,
+          currency: "TRY",
+          state: "open",
+          opened_by: "u1",
+          evidence: { deliveryId: DEL, line: ":2", reason: "DAMAGED" },
+        });
+        expect(
+          writesTo("procurement_orders", "update")[0]?.payload,
+        ).toMatchObject({ match_status: "rejected" });
+      });
+
+      it("a newer position on the same line moves the open claim instead of opening a second", async () => {
+        db.answers.procurement_credits = {
+          data: [{ id: "claim-1", state: "open" }],
+          error: null,
+        };
+        await service.propose(REST, DEL, "u1", {
+          side: "restaurant",
+          reason: "SHORT_SHIP",
+          lineNo: 1,
+          moneyAtRisk: 90,
+        });
+        expect(writesTo("procurement_credits", "insert")).toEqual([]);
+        expect(
+          writesTo("procurement_credits", "update")[0]?.payload,
+        ).toMatchObject({ claimed_amount: 90 });
+      });
+
+      it("leaves a claim alone once it has been asked for", async () => {
+        db.answers.procurement_credits = {
+          data: [{ id: "claim-1", state: "requested" }],
+          error: null,
+        };
+        await service.propose(REST, DEL, "u1", {
+          side: "restaurant",
+          reason: "SHORT_SHIP",
+          lineNo: 1,
+          moneyAtRisk: 90,
+        });
+        expect(
+          db.writes.filter((w) => w.table === "procurement_credits"),
+        ).toEqual([]);
+      });
+
+      it("the vendor's own short-ship position opens no claim and touches no order", async () => {
+        db.answers.deliveries = {
+          data: deliveryRow({ order_id: ORDER }),
+          error: null,
+        };
+        await service.propose(REST, DEL, "u1", {
+          side: "vendor",
+          reason: "SHORT_SHIP",
+          moneyAtRisk: 142,
+        });
+        expect(
+          db.writes.filter(
+            (w) =>
+              w.table === "procurement_credits" ||
+              w.table === "procurement_orders",
+          ),
+        ).toEqual([]);
+      });
+    });
+
     it("tells the restaurant when the VENDOR puts a position on the record (D8)", async () => {
       await service.propose(REST, DEL, "u1", {
         side: "vendor",
@@ -1114,7 +1301,9 @@ describe("DeliveryService", () => {
       // And nothing moved. A refusal that still wrote AGREED would be worse
       // than no gate at all.
       expect(
-        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
+        db.writes.filter(
+          (w) => w.table === "deliveries" && w.verb === "update",
+        ),
       ).toEqual([]);
     });
 
@@ -1193,7 +1382,9 @@ describe("DeliveryService", () => {
         expect(res.error).toMatch(/could not run/i);
       }
       expect(
-        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
+        db.writes.filter(
+          (w) => w.table === "deliveries" && w.verb === "update",
+        ),
       ).toEqual([]);
     });
 

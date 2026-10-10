@@ -173,8 +173,10 @@ describe("an id from another house reads back nothing of that house", () => {
     const tables = {
       procurement_credits: [claim],
       procurement_documents: [
-        { id: "doc-a", restaurant_id: A },
-        { id: "doc-b", restaurant_id: B },
+        // Both are credit memos, so only the house tells them apart (F-672
+        // also checks the paper's type).
+        { id: "doc-a", restaurant_id: A, doc_type: "credit_memo" },
+        { id: "doc-b", restaurant_id: B, doc_type: "credit_memo" },
       ],
     };
     const { client, writes } = fakeClient(tables);

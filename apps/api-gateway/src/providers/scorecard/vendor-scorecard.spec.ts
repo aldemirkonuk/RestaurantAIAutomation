@@ -665,6 +665,37 @@ describe("lines as ordered — the door's verdicts", () => {
     expect(lines[0].source.id).toBe(later.id);
   });
 
+  it("five trucks refused whole are not '100% on time' (F-748)", () => {
+    // The door leaves a truck refused whole open with the vendor: no
+    // PARTIALLY_RECEIVED, no delivered_at. Five of them, dates passed, nobody
+    // has said "Not yet": none is an on-time landing, and all five are
+    // refused lines.
+    const orders = [1, 2, 3, 4, 5].map((d) =>
+      arrival("", `2026-09-0${d}`, {
+        id: `ord-ref-${d}`,
+        status: "CONFIRMED",
+        delivered_at: null,
+      }),
+    );
+    const doors = orders.map((o, i) =>
+      door("refused", `2026-09-0${i + 1}T10:00:00Z`, {
+        order_id: o.id,
+        refusal_reason: "wrong_wine",
+      }),
+    );
+    const built = build(regs({ arrivals: ok(orders), door: ok(doors) }));
+    const onTime = measure(built.card, "onTime");
+    expect(onTime.hits ?? 0).toBe(0);
+    expect(onTime.percent).not.toBe("100%");
+    expect(
+      built.entries.filter((e) => e.measure === "onTime" && e.hit === true),
+    ).toHaveLength(0);
+    expect(measure(built.card, "linesAsOrdered")).toMatchObject({
+      sample: 5,
+      hits: 0,
+    });
+  });
+
   it("does not attribute a door event with no order to any vendor", () => {
     const built = build(
       regs({
@@ -815,6 +846,53 @@ describe("reply time — our message to their next reply, same thread", () => {
       value: 3,
       open: 0,
     });
+  });
+
+  it("pairs a WhatsApp send with the vendor's WhatsApp answer, as mail pairs by thread (F-749)", () => {
+    // Neither WhatsApp writer stores a Gmail thread, a subject or a reply-to,
+    // so the database keys every row `msg:<own id>`. Five sends, each
+    // answered 20 minutes later, used to read "5 messages have no reply yet".
+    const rows = [0, 1, 2, 3, 4].flatMap((i) => {
+      const out = msg("outbound", `2026-09-0${i + 1}T08:00:00Z`, null, {
+        channel: "whatsapp",
+      });
+      const back = msg("inbound", `2026-09-0${i + 1}T08:20:00Z`, null, {
+        channel: "whatsapp",
+      });
+      return [
+        { ...out, thread_key: `msg:${out.id}` },
+        { ...back, thread_key: `msg:${back.id}` },
+      ];
+    });
+    const m = measure(build(regs({ mail: ok(rows) })).card, "replyTime");
+    expect(m).toMatchObject({ outcome: "answered", sample: 5, open: 0 });
+    expect(m.value).toBeCloseTo(1 / 3);
+  });
+
+  it("pairs each channel within itself: mail by its thread, WhatsApp by the vendor's chat", () => {
+    const rows = [
+      // mail: 2 h, 4 h, 6 h, each in its own Gmail thread
+      ...[2, 4, 6].flatMap((h, i) => [
+        msg("outbound", `2026-09-0${i + 1}T08:00:00Z`, null, {
+          gmail_thread_id: `m${i}`,
+          channel: "email",
+        }),
+        msg("inbound", `2026-09-0${i + 1}T${String(8 + h).padStart(2, "0")}:00:00Z`, null, {
+          gmail_thread_id: `m${i}`,
+          channel: "email",
+        }),
+      ]),
+      // WhatsApp: 1 h and 3 h, then a send still waiting
+      msg("outbound", "2026-09-05T08:00:00Z", "msg:w1", { channel: "whatsapp" }),
+      msg("inbound", "2026-09-05T09:00:00Z", "msg:w2", { channel: "whatsapp" }),
+      msg("outbound", "2026-09-06T08:00:00Z", "msg:w3", { channel: "whatsapp" }),
+      msg("inbound", "2026-09-06T11:00:00Z", "msg:w4", { channel: "whatsapp" }),
+      msg("outbound", "2026-09-07T08:00:00Z", "msg:w5", { channel: "whatsapp" }),
+    ];
+    const m = measure(build(regs({ mail: ok(rows) })).card, "replyTime");
+    expect(m).toMatchObject({ outcome: "answered", sample: 5, open: 1 });
+    expect(m.value).toBe(3); // median of 1, 2, 3, 4, 6
+    expect(m.slowestHours).toBe(6);
   });
 
   it("counts an auto-sent message as ours — AUTO_SENT is a send the house recorded", () => {

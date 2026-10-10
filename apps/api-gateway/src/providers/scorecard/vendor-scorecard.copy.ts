@@ -318,6 +318,7 @@ export const COPY = {
 
   entry: {
     order: (id: string): string => `Order ${id.slice(0, 8)}`,
+    delivery: (id: string): string => `Delivery ${id.slice(0, 8)}, no order`,
     claim: (id: string, reason: string | null): string =>
       `Claim ${id.slice(0, 8)}${reason ? ` · ${reason.replace(/_/g, " ")}` : ""}`,
     ourMessage: "Our message",
