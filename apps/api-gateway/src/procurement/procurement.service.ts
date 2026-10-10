@@ -78,6 +78,7 @@ import {
 } from "./booked-order-quantity";
 import {
   COUNTS_CONFIRMED_OUTCOME,
+  decideCloseShort,
   readOneShelfReceived,
   readShelfReceived,
   RECEIVED_IS_NOT_TYPED_IN,
@@ -3564,7 +3565,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "id, status, total_cost, provider_id, inventory_id, quantity, expected_delivery_date",
+        "id, status, total_cost, provider_id, inventory_id, quantity, unit_type, bottles_total, expected_delivery_date",
       )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -3601,9 +3602,10 @@ export class ProcurementService {
     dto: UpdateOrderDto,
     /**
      * Set by a caller that has ALREADY run `assertStatusTransition` for this
-     * exact move (today: `cancelOrder`). Not a way to opt out of the rule — a
-     * caller that sets it without having checked is writing an unchecked state
-     * change, and there is exactly one such caller, named here.
+     * exact move (today: `cancelOrder` and `closeOrderShort`). Not a way to
+     * opt out of the rule — a caller that sets it without having checked is
+     * writing an unchecked state change, and there are exactly two such
+     * callers, named here.
      */
     opts?: {
       statusTransitionAlreadyChecked?: boolean;
@@ -3711,7 +3713,27 @@ export class ProcurementService {
     }
 
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
-      await this.assertStatusTransition(restaurantId, orderId, dto.status);
+      const { from } = await this.assertStatusTransition(
+        restaurantId,
+        orderId,
+        dto.status,
+      );
+      // F-826 — closing a partly received order is `closeOrderShort`'s act: a
+      // manager's or owner's, with a reason, and only while bottles are still
+      // owed and the invoice has been checked. A PATCH carrying COMPLETED
+      // skipped all of that, so a fully delivered order still waiting on its
+      // invoice could be closed by anyone, after which the invoice could never
+      // be checked.
+      if (
+        from === ProcurementOrderStatus.PARTIALLY_RECEIVED &&
+        dto.status === ProcurementOrderStatus.COMPLETED
+      ) {
+        throw new UnprocessableEntityException({
+          reason: "close_short_through_its_own_act",
+          message:
+            "A partly received order is closed through its own act, which a manager or owner gives with a reason once the invoice is checked and bottles are still owed — not by editing its status. Nothing was changed.",
+        });
+      }
     }
 
     // F-300. The price is set while the order is still PENDING. After the
@@ -4353,6 +4375,11 @@ export class ProcurementService {
    * No seal: closing moves no money and books no stock — it stops waiting for
    * goods, as the never-arrived credit claim opens a record without one. Only a
    * PARTIALLY_RECEIVED order may be closed short; any other is refused in words.
+   *
+   * And only one that is actually short (F-826): a door count leaves every
+   * order partly received, full ones too, and a closed order can no longer be
+   * checked against its invoice. `decideCloseShort` asks the shelf whether
+   * bottles are still owed and whether the invoice has been checked.
    */
   async closeOrderShort(
     restaurantId: string,
@@ -4377,7 +4404,7 @@ export class ProcurementService {
       "close an order short",
     );
 
-    const { from } = await this.assertStatusTransition(
+    const { from, row } = await this.assertStatusTransition(
       restaurantId,
       orderId,
       ProcurementOrderStatus.COMPLETED,
@@ -4388,6 +4415,15 @@ export class ProcurementService {
         message:
           `Only an order that is partly received can be closed short. This one is ` +
           `${statusInWords(from)}. Nothing was changed.`,
+      });
+    }
+    const short = decideCloseShort(
+      await readOneShelfReceived(this.databaseService.supabase, restaurantId, row as any),
+    );
+    if (!short.allowed) {
+      throw new UnprocessableEntityException({
+        reason: short.reason,
+        message: short.sentence,
       });
     }
 

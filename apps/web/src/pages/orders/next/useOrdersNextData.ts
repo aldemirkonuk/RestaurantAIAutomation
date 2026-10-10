@@ -183,6 +183,35 @@ export interface OrderRowVM {
    * amount and no "not stated" sentence about one.
    */
   amountsWithheld?: boolean;
+  /**
+   * Bottles still to come, when this order may be closed short (F-826); null
+   * or absent when it may not. See `closeShortOwed`.
+   */
+  closeShortOwedBottles?: number | null;
+}
+
+/**
+ * The bottles still to come on an order that may be closed short, or null
+ * (F-826). The gateway's `decideCloseShort` decides; this mirrors it so the
+ * page offers the act only where it can succeed.
+ *
+ * Partly received is not enough: a door count leaves EVERY order partly
+ * received, full ones too, and so does waiting for an invoice. So it is
+ * offered only when bottles are still owed — ordered, less the shelf, less
+ * what was sent back — and the delivery has been checked against its invoice,
+ * since a closed order can no longer be checked. A reading that does not say
+ * (unread, or an older gateway without the keys) is null, never an offer.
+ */
+export function closeShortOwed(
+  status: OrderStatus,
+  received: Order['received'] | undefined,
+): number | null {
+  if (status !== 'partially_received' || !received || received.readable !== true) return null;
+  const backorder = received.backorderBottles;
+  if (typeof backorder !== 'number' || received.invoicedBottles == null) return null;
+  const owed =
+    backorder - (received.rejectedAtDoorBottles ?? 0) - (received.rejectedAtDeskBottles ?? 0);
+  return owed > 0 ? owed : null;
 }
 
 export interface MonthFigure {
@@ -515,6 +544,7 @@ export function toRow(
     deliveredAt: o.deliveredAt ?? null,
     notes: null,
     amountsWithheld: o.amountsWithheld === true,
+    closeShortOwedBottles: closeShortOwed(status, o.received),
   };
 }
 
