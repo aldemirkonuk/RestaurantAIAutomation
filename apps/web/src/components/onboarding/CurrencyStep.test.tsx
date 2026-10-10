@@ -1,5 +1,5 @@
 /**
- * The sign-up currency step — ADR 0117 Q25, founder 2026-09-05:
+ * The house-opening currency step — ADR 0117 Q25, founder 2026-09-05:
  * *"correct three rows now, ask each house in onboarding, but set a default
  * based on location"*.
  *
@@ -27,11 +27,15 @@
  * The step is asserted through its own component rather than by driving the
  * four sign-up sections in front of it: the wizard's navigation is a different
  * subject, and a test that spends its length getting there tests that instead.
+ *
+ * MOVED 2026-10-10 (F-900). This was `pages/__tests__/Register.currencyStep
+ * .test.tsx`, written for /register's restaurant step. That step stopped
+ * being reachable when the house moved to /get-started (ADR 0213) and is
+ * deleted; the step itself lives on there, so its proof stays, here.
  */
-
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { CurrencyStep } from '../../components/onboarding/CurrencyStep'
+import { CurrencyStep } from './CurrencyStep'
 import { currencyToRecord } from '../../lib/currency'
 
 function step(country: string, choice: string | null = null) {
@@ -98,7 +102,7 @@ describe('the sign-up currency step', () => {
 /**
  * The resolver the form submits through, exercised directly.
  *
- * It is the SAME function the step and `Register.tsx` call — not a copy of the
+ * It is the SAME function the step and `GetStarted.tsx` call — not a copy of the
  * expression. A test that restates the logic it checks passes whatever the
  * component does.
  */

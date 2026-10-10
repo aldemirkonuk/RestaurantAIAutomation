@@ -539,6 +539,24 @@ describe("createFirstHouse", () => {
     expect(free.logLog).not.toHaveBeenCalled();
   });
 
+  it("keeps the role they tapped on their access row, and none when they tapped none (F-899)", async () => {
+    const tapped = makeService();
+    await tapped.svc.createFirstHouse("user-1", {
+      ...HOUSE,
+      jobRole: "beverage_lead",
+    });
+    const access = (run: ReturnType<typeof makeService>) =>
+      run.inserts.find((i) => i.table === "user_restaurant_access")!.row;
+    expect(access(tapped)).toMatchObject({
+      role: "owner",
+      job_role: "beverage_lead",
+    });
+
+    const none = makeService();
+    await none.svc.createFirstHouse("user-1", HOUSE);
+    expect(access(none)).toMatchObject({ role: "owner", job_role: null });
+  });
+
   it("re-inserts without the id when the place is taken after the look-up (E1b)", async () => {
     const run = makeService({
       single: {

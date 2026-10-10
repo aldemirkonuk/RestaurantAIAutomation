@@ -46,6 +46,31 @@ describe("arrival registration contract", () => {
     ).toBe(true);
   });
 
+  it("takes the step-01 role as one of four, and nothing else (F-899)", async () => {
+    const house = {
+      restaurantName: "Meyhane",
+      address: "1 House Street",
+      city: "Istanbul",
+      country: "Türkiye",
+    };
+    const tapped = Object.assign(new CreateFirstHouseDto(), {
+      ...house,
+      jobRole: "general_manager",
+    });
+    expect(
+      await validate(tapped, { whitelist: true, forbidNonWhitelisted: true }),
+    ).toHaveLength(0);
+    expect(tapped.jobRole).toBe("general_manager");
+
+    const unknown = Object.assign(new CreateFirstHouseDto(), {
+      ...house,
+      jobRole: "sommelier",
+    });
+    expect(
+      (await validate(unknown)).some((e) => e.property === "jobRole"),
+    ).toBe(true);
+  });
+
   it("uses a validated token DTO for Google registration", async () => {
     expect(
       (await validate(Object.assign(new RegisterGoogleAccountDto(), {}))).some(
