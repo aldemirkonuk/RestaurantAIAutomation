@@ -383,11 +383,15 @@ export class AnalyticsService {
     listedAt: string | null | undefined,
     rows: Array<{ date: string }>,
     sinceDays: number,
+    /** With a zone, today is the house's, as `toDailySeries` ends on. */
+    zone: string | null = null,
   ): number {
     if (!listedAt) return sinceDays;
     let first = String(listedAt).slice(0, 10);
     for (const r of rows) if (r.date && r.date < first) first = r.date;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = zone
+      ? houseToday(zone)
+      : new Date().toISOString().slice(0, 10);
     const days =
       Math.floor((Date.parse(today) - Date.parse(first)) / 86400000) + 1;
     return Number.isFinite(days)
@@ -837,10 +841,17 @@ export class AnalyticsService {
     const serviceLevel = opts.serviceLevel ?? 0.95;
     const leadTime = opts.leadTimeDays ?? 7;
     const sinceDays = 90;
+    // Days are the house's (F-324, F-928), as the forecast's are: on UTC's an
+    // evening's pours in a US house sat on tomorrow and today read empty. No
+    // zone keeps UTC's days, as before.
+    const { zone } = await readHouseZone(
+      this.dbService.getClient(),
+      restaurantId,
+    );
 
     const [allInventory, consumption] = await Promise.all([
       this.loadInventory(restaurantId),
-      this.loadConsumption(restaurantId, sinceDays),
+      this.loadConsumption(restaurantId, sinceDays, zone),
     ]);
     const inventory = this.activeOnly(allInventory);
 
@@ -865,8 +876,8 @@ export class AnalyticsService {
       // order that cannot be counted adds nothing, and says so (onOrder null).
       const position = i.qty + (i.onOrder ?? 0);
       const rows = demandByWine.get(i.masterWineId || "") || [];
-      const demandDays = this.daysOnList(i.listedAt, rows, sinceDays);
-      const { values } = this.toDailySeries(rows, demandDays);
+      const demandDays = this.daysOnList(i.listedAt, rows, sinceDays, zone);
+      const { values } = this.toDailySeries(rows, demandDays, zone);
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
         stdev: 0,
@@ -1010,10 +1021,15 @@ export class AnalyticsService {
   // =========================================================================
 
   async getRiskProfile(restaurantId: string) {
+    // The demand days are the house's (F-928), as in getInventoryScience.
+    const { zone } = await readHouseZone(
+      this.dbService.getClient(),
+      restaurantId,
+    );
     const [allInventory, orders, consumption] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
-      this.loadConsumption(restaurantId, 90),
+      this.loadConsumption(restaurantId, 90, zone),
     ]);
     const inventory = this.activeOnly(allInventory);
 
@@ -1043,7 +1059,7 @@ export class AnalyticsService {
         date: c.date,
         value: c.qty as number, // bottles/day as the "return-generating" flow
       }));
-    const { values: dailyDemand } = this.toDailySeries(revRows, 90);
+    const { values: dailyDemand } = this.toDailySeries(revRows, 90, zone);
     const returns: number[] = [];
     for (let i = 1; i < dailyDemand.length; i++) {
       if (dailyDemand[i - 1] > 0)

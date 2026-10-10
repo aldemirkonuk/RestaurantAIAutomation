@@ -5,7 +5,7 @@ import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService, LEVEL_GOAL_METRICS } from "./goals.service";
 import { DatabaseService } from "../database/database.service";
-import { readHouseZone } from "../common/house-day";
+import { houseToday, readHouseZone } from "../common/house-day";
 import {
   RecommendationActionsService,
   RecommendationStatus,
@@ -101,21 +101,25 @@ export function goalBehindPace(
  * is recent; it is earned only by a day that is.
  *
  *   - age 0–1 → `now`: the newest day the series can hold (`toDaily` ends at
- *     yesterday, UTC), so tonight is the next shift after it;
+ *     the house's yesterday), so tonight is the next shift after it;
  *   - age 2–7 → `this_week`: the same weekday comes round within the week;
  *   - age over 7, or an age that cannot be read → `this_month`: by then the
  *     same weekday has come round again with nothing on record for it, which
  *     is the rule's own comparator saying the read is stale. An unknown age
  *     never earns `now`.
  *
- * The age is counted in whole UTC days — the clock `toDaily` cuts its series
- * on — so "yesterday" here is the same day the generator calls yesterday.
+ * The age is counted in whole house days — the generator's `toDaily` files
+ * each sale on the house's clock (ADR 0296) — so "yesterday" here is the same
+ * day the generator calls yesterday (F-926). Counted on UTC, a US house's
+ * yesterday read two days old every evening and lost "Tonight". With no zone
+ * the generator files no day at all, so the UTC count left for that case is
+ * only a fallback.
  */
 export interface SalesDipWhen {
   urgency: Recommendation["urgency"];
   /** The day the dip is about ("2026-08-15"), when the period key names one. */
   date: string | null;
-  /** Whole UTC days from that day to today. Null when it cannot be read. */
+  /** Whole house days from that day to today. Null when it cannot be read. */
   ageDays: number | null;
 }
 
@@ -125,6 +129,7 @@ export const SALES_DIP_WEEK_DAYS = 7;
 export function salesDipWhen(
   periodKey: string | null | undefined,
   now: Date = new Date(),
+  zone: string | null = null,
 ): SalesDipWhen {
   const unread: SalesDipWhen = {
     urgency: "this_month",
@@ -142,11 +147,9 @@ export function salesDipWhen(
     new Date(dayMs).toISOString().slice(0, 10) !== date
   )
     return unread;
-  const todayMs = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-  );
+  const todayMs = zone
+    ? Date.parse(`${houseToday(zone, now)}T00:00:00Z`)
+    : Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const ageDays = Math.round((todayMs - dayMs) / 86400000);
   // A day after today is not an age; it is a clock or data fault.
   if (ageDays < 0) return unread;
@@ -168,12 +171,13 @@ export function salesDipWhen(
 export function freshestSalesDip<T extends { periodKey?: string | null }>(
   dips: readonly T[],
   now: Date = new Date(),
+  zone: string | null = null,
 ): T | undefined {
   let best: T | undefined;
   let bestAge = Number.POSITIVE_INFINITY;
   for (const dip of dips) {
     const age =
-      salesDipWhen(dip.periodKey ?? null, now).ageDays ??
+      salesDipWhen(dip.periodKey ?? null, now, zone).ageDays ??
       Number.POSITIVE_INFINITY;
     // Strictly newer only: a tie keeps the higher-ranked dip.
     if (best === undefined || age < bestAge) {
@@ -454,6 +458,18 @@ export class RecommendationsService {
       ),
     );
 
+    // The house's zone (null when unset or unread). The sales dip ages its day
+    // on it (F-926), and the firing keys below are keyed on it (F-384).
+    let zone: string | null = null;
+    try {
+      zone = (await readHouseZone(this.dbService.getClient(), restaurantId))
+        .zone;
+    } catch (err: any) {
+      this.logger.warn(
+        `house zone unread; firing periods keyed on UTC: ${err?.message ?? err}`,
+      );
+    }
+
     const ctx = {
       financial: ok(financial),
       risk: ok(risk),
@@ -530,11 +546,13 @@ export class RecommendationsService {
           i.category === "sales" &&
           (i.effectPct ?? 0) < -0.08,
       ),
+      undefined,
+      zone,
     );
     // Urgent only when the day is recent: the comparison reads the newest day
     // it observed, which can be weeks old (ADR 0291).
     const salesDip = salesBaseline
-      ? salesDipWhen(salesBaseline.periodKey ?? null)
+      ? salesDipWhen(salesBaseline.periodKey ?? null, undefined, zone)
       : null;
     rule("sales_below_weekday_baseline", !!salesBaseline, () => ({
       observation: restated(salesBaseline),
@@ -948,16 +966,8 @@ export class RecommendationsService {
     // Los Angeles afternoon came back at 17:00. A house with no zone, or a
     // zone that cannot be read, keys on UTC as before: a key is not a figure,
     // and a failed read must not take the whole feed down with it.
+    // `zone` is read before the rules: the sales dip ages its day on it too.
     const firedAt = new Date();
-    let zone: string | null = null;
-    try {
-      zone = (await readHouseZone(this.dbService.getClient(), restaurantId))
-        .zone;
-    } catch (err: any) {
-      this.logger.warn(
-        `house zone unread; firing periods keyed on UTC: ${err?.message ?? err}`,
-      );
-    }
     for (const r of recs) {
       const keyed = withFiring(
         {

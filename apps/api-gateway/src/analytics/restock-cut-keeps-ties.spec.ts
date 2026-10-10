@@ -47,7 +47,18 @@ function cellar(): Sku[] {
 }
 
 async function reorderList(skus: Sku[]) {
-  const service = new AnalyticsService({ getClient: () => null } as any);
+  const service = new AnalyticsService({
+    // The house's zone read (F-928) answers "no zone": days stay UTC's.
+    getClient: () => ({
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+          }),
+        }),
+      }),
+    }),
+  } as any);
   jest.spyOn(service as any, "loadInventory").mockResolvedValue(
     skus.map((s) => ({
       id: s.id,
