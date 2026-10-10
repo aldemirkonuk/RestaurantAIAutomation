@@ -1,5 +1,5 @@
 import type { TodayPulse } from "@/api/types";
-import { houseClock, usableLocale } from "@/lib/houseMoney";
+import { houseClock, houseDay } from "@/lib/houseMoney";
 
 /**
  * Pure view model for `PulseStrip`. Split out so the honesty rule below can
@@ -94,11 +94,13 @@ export function resolvePulseStripView(
 ): PulseStripView {
   const now = fetch.now ?? Date.now();
   // The house's clock and weekday names (F-953): "as of 19:30" in a Turkish
-  // house. No locale on the pulse keeps the old en-US wording.
-  const formatTime = fetch.formatTime ?? ((at: Date) => houseClock(at, data.locale));
+  // house. No locale on the pulse keeps the old en-US wording. Both read the
+  // house's zone when the pulse names one, not the phone's (F-1074).
+  const formatTime =
+    fetch.formatTime ?? ((at: Date) => houseClock(at, data.locale, data.timezone));
   const formatWeekday =
     fetch.formatWeekday ??
-    ((at: Date) => at.toLocaleDateString(usableLocale(data.locale), { weekday: "long" }));
+    ((at: Date) => houseDay(at, data.locale, data.timezone, { weekday: "long" }));
 
   // F-676: saved figures come back at boot. A night that opened a day or more
   // ago is not tonight, whatever the last refresh did; it is named by its day.

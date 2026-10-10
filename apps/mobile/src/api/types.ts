@@ -198,14 +198,21 @@ export interface ProcurementOrder {
   isEmergency?: boolean;
 }
 
+/**
+ * Mirrors the gateway's `mapCalendarEvent`
+ * (apps/api-gateway/src/calendar/calendar.service.ts) — camelCase only (F-1071).
+ * `eventDate` is the house's date (YYYY-MM-DD); `eventTime` a wall-clock
+ * "HH:MM[:SS]" on the house's clock.
+ */
 export interface CalendarEvent {
   id: string;
   title?: string;
-  event_type?: string;
-  start_time?: string;
-  end_time?: string;
-  all_day?: boolean;
-  metadata?: Record<string, any>;
+  eventType?: string;
+  eventDate?: string;
+  eventDateEnd?: string;
+  allDay?: boolean;
+  eventTime?: string;
+  eventTimeEnd?: string;
   [key: string]: any;
 }
 

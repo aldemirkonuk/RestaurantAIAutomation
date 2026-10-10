@@ -14,8 +14,10 @@ import {
   useUpcomingSchedule,
 } from "@/api/queries";
 import { readsFullRota, resolveTonight, seesFullRota } from "@/components/team/teamTonight";
+import { eventDayLabel, eventTimeLabel, eventTitle } from "@/components/team/teamEvents";
 import { useSession } from "@/state/session";
-import { houseClock, houseDay } from "@/lib/houseMoney";
+import { houseClock } from "@/lib/houseMoney";
+import { houseDateKey } from "@/lib/houseDate";
 
 export default function TeamScreen() {
   const role = useSession((s) => s.user?.role);
@@ -30,6 +32,10 @@ export default function TeamScreen() {
   // Staff are refused the full rota, so they read their own week (F-251).
   const mine = useMyTeamWeek(houseZone, !fullRota);
   const members = useTeamMembers(fullRota);
+  // On a Monday, Sunday's late shift is still on and sits in last week (F-1075).
+  const monday = new Date(`${houseDateKey(new Date(), houseZone)}T12:00:00Z`).getUTCDay() === 1;
+  const weekBefore = useTeamWeek(houseZone, monday && fullRota, 1);
+  const mineBefore = useMyTeamWeek(houseZone, monday && !fullRota, 1);
   const replyZone: string | null =
     (fullRota ? week.data?.timezone : mine.data?.timezone) ?? null;
   useEffect(() => {
@@ -49,7 +55,14 @@ export default function TeamScreen() {
     return map;
   }, [members.data]);
 
-  const tonight = resolveTonight({ role, week, mine, now: new Date() });
+  const tonight = resolveTonight({
+    role,
+    week,
+    mine,
+    weekBefore: monday ? weekBefore : undefined,
+    mineBefore: monday ? mineBefore : undefined,
+    now: new Date(),
+  });
   const ownName: string | undefined = mine.data?.member?.display_name ?? undefined;
 
   return (
@@ -133,11 +146,11 @@ export default function TeamScreen() {
                 {i > 0 ? <Hairline /> : null}
                 <View style={{ paddingVertical: space.sm }}>
                   <AppText variant="bodyMedium" numberOfLines={1}>
-                    {e.title ?? e.event_type ?? "Event"}
+                    {eventTitle(e)}
                   </AppText>
-                  {e.start_time ? (
+                  {eventTimeLabel(e, locale) ? (
                     <AppText variant="caption" tone="tertiary">
-                      {e.all_day ? "All day" : fmtTime(e.start_time)}
+                      {eventTimeLabel(e, locale)}
                     </AppText>
                   ) : null}
                 </View>
@@ -163,16 +176,12 @@ export default function TeamScreen() {
                   }}
                 >
                   <AppText variant="body" numberOfLines={1} style={{ flex: 1, paddingRight: space.md }}>
-                    {e.title ?? e.event_type ?? "Event"}
+                    {eventTitle(e)}
                   </AppText>
-                  {e.start_time ? (
+                  {eventDayLabel(e, locale) ? (
                     <AppText variant="caption" tone="tertiary">
-                      {/* The house's day, in its zone and words (F-1029). */}
-                      {houseDay(e.start_time, locale, houseZone, {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {/* The house's day, as the gateway dates it (F-1029, F-1071). */}
+                      {eventDayLabel(e, locale)}
                     </AppText>
                   ) : null}
                 </View>
