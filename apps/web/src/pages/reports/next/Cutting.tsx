@@ -54,6 +54,7 @@ import { Grip, PlacingBar } from './Placing';
 import type { ArrangeApi } from './rp-arrange';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
+import { monthLabel, thisMonth } from './rp-registers-trade';
 import type { Register } from './useReportsNextData';
 
 /**
@@ -76,15 +77,32 @@ function GraphIcon({ graph }: { graph: GraphType }) {
   return <Icon size={13} strokeWidth={1.6} color="var(--ink-4)" aria-hidden />;
 }
 
-/** Window picker for the till — the only period control on the whole sheet. */
+/**
+ * Window picker for the till — the only period control on the whole sheet.
+ *
+ * A trailing window (7, 30 or 90 days) or one calendar month (F-128): a month
+ * is how a close and an accountant's period are cut, and "the last 30 days"
+ * read on 2 October cannot isolate July. The twelve months up to this one are
+ * offered; picking a trailing window again leaves the month.
+ */
 export function TillWindowPicker({
   days,
+  month = null,
   onChange,
+  onMonth,
 }: {
   days: number;
+  month?: string | null;
   onChange: (d: number) => void;
+  onMonth?: (m: string | null) => void;
 }) {
   const options = useMemo(() => [7, 30, 90], []);
+  const months = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 12 }, (_, i) =>
+      thisMonth(new Date(now.getFullYear(), now.getMonth() - i, 1)),
+    );
+  }, []);
   return (
     <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
       {options.map((d) => (
@@ -92,12 +110,27 @@ export function TillWindowPicker({
           key={d}
           type="button"
           className="rp-chip rp-ink rp-focus rp-no-drag"
-          aria-pressed={days === d}
+          aria-pressed={!month && days === d}
           onClick={() => onChange(d)}
         >
           {d}d
         </button>
       ))}
+      {onMonth && (
+        <select
+          className="rp-select rp-focus rp-no-drag"
+          aria-label="Calendar month"
+          value={month ?? ''}
+          onChange={(e) => onMonth(e.target.value || null)}
+        >
+          <option value="">A month…</option>
+          {months.map((m) => (
+            <option key={m} value={m}>
+              {monthLabel(m)}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
@@ -202,6 +235,8 @@ export interface CuttingProps {
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
   onDays: (d: number) => void;
+  /** Sets the till to one calendar month, or back to its trailing window. */
+  onMonth?: (m: string | null) => void;
 }
 
 export default function Cutting({
@@ -216,6 +251,7 @@ export default function Cutting({
   onSwap,
   onRemove,
   onDays,
+  onMonth,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
   const drawn = graphOrDefault(id, graph);
@@ -258,7 +294,7 @@ export default function Cutting({
             </button>
           </div>
         ) : spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} onChange={onDays} />
+          <TillWindowPicker days={ctx.days} month={ctx.month} onChange={onDays} onMonth={onMonth} />
         ) : null}
       </div>
 

@@ -109,7 +109,14 @@ function Action({
 export default function ReportsNext({ ground }: ReportsNextProps) {
   // Money on this page prints in the house's own currency (sim F-341).
   useHouseCurrency();
-  const [tillDays, setTillDays] = useState(30);
+  const [tillDays, setDays] = useState(30);
+  /** One calendar month instead of the trailing window (F-128); null = trailing. */
+  const [tillMonth, setTillMonth] = useState<string | null>(null);
+  /** Choosing a trailing window leaves the month: the till reads one or the other. */
+  const setTillDays = useCallback((d: number) => {
+    setDays(d);
+    setTillMonth(null);
+  }, []);
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -126,7 +133,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => placeRef.current(cut),
     [],
   );
-  const data = useReportsNextData(tillDays, setTillDays, showing, place);
+  const data = useReportsNextData(tillDays, setTillDays, showing, place, tillMonth);
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
@@ -315,10 +322,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const ctx = useMemo(
     () => ({
       days: tillDays,
+      month: tillMonth,
       goals: data.goalsDesk,
       goalsNow: goalsNowFrom(data.registers.goals?.data),
     }),
-    [data.goalsDesk, tillDays, data.registers.goals?.data],
+    [data.goalsDesk, tillDays, tillMonth, data.registers.goals?.data],
   );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
@@ -337,6 +345,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
         onDays={setTillDays}
+        onMonth={setTillMonth}
       />
     ),
   }));
@@ -461,6 +470,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             desk={data.exportDesk}
             onSheet={view.cuttings.map((c) => c.id)}
             tillDays={tillDays}
+            tillMonth={tillMonth}
           />
         )}
 

@@ -29,7 +29,7 @@ import {
   weekStart,
   weekdayIndex,
 } from './rp-format';
-import { analysis, arr, obj, str } from './rp-spec';
+import { analysis, arr, obj, str, type AnalysisSpec } from './rp-spec';
 import type { Cat, Cell } from './rp-view';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
@@ -118,6 +118,19 @@ export interface TillWindow {
   dailySeries: Array<{ date: string; revenue: number }>;
 }
 
+/** "July 2026" for 2026-07, in the reader's language. */
+export function monthLabel(month: string): string {
+  const d = new Date(`${month}-01T12:00:00`);
+  return Number.isNaN(d.getTime())
+    ? month
+    : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+/** This month on the reader's calendar, as YYYY-MM. */
+export function thisMonth(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
  *  column rather than a week that quietly does not exist. */
 function weekColumns(from: string, to: string): string[] {
@@ -135,7 +148,7 @@ function weekColumns(from: string, to: string): string[] {
   return cols;
 }
 
-const till = analysis<TillWindow>({
+const trailingTill = analysis<TillWindow>({
   title: 'Through the till',
   register: 'till register',
   answers: 'What guests actually paid, day by day',
@@ -274,6 +287,21 @@ const till = analysis<TillWindow>({
     };
   },
 });
+
+/**
+ * The till over one calendar month when the reader picked one (F-128),
+ * otherwise the trailing window above, unchanged — the export desk pins that
+ * one against its own catalogue, and it still writes only a trailing window.
+ */
+const till: AnalysisSpec = {
+  ...trailingTill,
+  window: (ctx) =>
+    ctx.month
+      ? `${monthLabel(ctx.month)} of POS checks${ctx.month === thisMonth() ? ', so far' : ''}, by the house’s days`
+      : trailingTill.window(ctx),
+  path: (rid, ctx) =>
+    ctx.month ? `/analytics/pos-revenue/${rid}?month=${ctx.month}` : trailingTill.path!(rid, ctx),
+};
 
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 

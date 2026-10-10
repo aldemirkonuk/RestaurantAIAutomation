@@ -16,6 +16,11 @@
  * asking may say whether the days are paid leave; whoever approves the request
  * decides, and their word replaces this one. Left to the manager, the request
  * is filed as not yet said.
+ *
+ * ANY DAYS, AND THE ANSWER (F-191). A request names its own first and last
+ * day — one day, a long weekend, three weeks — not the week on screen. The
+ * person's own requests are listed with where each stands (the gateway lists
+ * only their own to staff), and a decision also reaches them as a notice.
  */
 
 import { useState } from 'react';
@@ -27,6 +32,7 @@ import {
   assignCover,
   createTimeOff,
   getMyWeek,
+  getTimeOff,
   getTeamNotes,
   openTeamNote,
   type LeaveType,
@@ -49,6 +55,7 @@ import {
   weekDays,
 } from './tm-format';
 import { MutationError } from './tm-bits';
+import type { TimeOffRow } from './useTeamNextData';
 import './team-next.css';
 
 /**
@@ -61,6 +68,13 @@ function takenByWords(e: unknown): string | null {
   const m = r.data?.message;
   return typeof m === 'string' && m.trim() ? m : 'Someone else has already taken this shift.';
 }
+
+/** Where a request stands, in the person's words. */
+const DECISION: Record<string, string> = {
+  pending: 'waiting for your manager',
+  approved: 'approved',
+  denied: 'turned down',
+};
 
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
@@ -116,18 +130,37 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
 
   /** What the person says about pay; `unknown` = left to whoever approves. */
   const [leaveType, setLeaveType] = useState<LeaveType>('unknown');
+  /** The days asked for, first and last inclusive. Starts as this week. */
+  const [offFrom, setOffFrom] = useState(() => weekStart);
+  const [offTo, setOffTo] = useState(() => addDays(weekStart, 6));
+  const rangeOk = offFrom !== '' && offTo !== '' && offFrom <= offTo;
+  /** The range last sent, so the same days are not filed twice by a second press. */
+  const [sentKey, setSentKey] = useState<string | null>(null);
+  const rangeKey = `${offFrom}|${offTo}`;
+  /** The gateway lists a staff member's own requests only (ADR 0088). */
+  const mineQ = useQuery({
+    queryKey: ['team-next-my-time-off', rid],
+    queryFn: () => getTimeOff() as Promise<TimeOffRow[]>,
+    enabled: rid !== null,
+    staleTime: 30_000,
+  });
   const askOff = useMutation({
     mutationFn: (memberId: string) =>
       createTimeOff({
         memberId,
-        startDate: days[0],
-        endDate: days[6],
+        startDate: offFrom,
+        endDate: offTo,
         reason: 'Requested from My Shifts',
         ...(leaveType !== 'unknown' ? { leaveType } : {}),
       }),
+    onSuccess: () => {
+      setSentKey(rangeKey);
+      void qc.invalidateQueries({ queryKey: ['team-next-my-time-off', rid] });
+    },
   });
 
   const memberId = payload?.member?.id ?? null;
+  const myRequests = (mineQ.data ?? []).filter((r) => !memberId || r.member_id === memberId);
 
   return (
     <div className="tm-page mudavym" data-ground={ground === 'charcoal' ? 'charcoal' : undefined}>
@@ -220,11 +253,11 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           </p>
         )}
 
-        {askOff.isSuccess && (
+        {askOff.isSuccess && sentKey === rangeKey && (
           <p className="tm-quiet" style={{ marginBottom: 14 }}>
-            Your request went to your manager just now. You will see it decided on their
-            desk, not here — nothing on this page reads the request file back. Whoever
-            approves it decides whether the days are paid.
+            Your request went to your manager just now. It is listed below until they
+            decide, and you will get a notice when they do. Whoever approves it decides
+            whether the days are paid.
           </p>
         )}
 
@@ -368,7 +401,32 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
         </section>
 
         {memberId ? (
-          <div className="tm-actions" style={{ marginTop: 18 }}>
+          <div className="tm-actions" style={{ marginTop: 18, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="tm-label" style={{ margin: 0 }}>
+                First day off
+              </span>
+              <input
+                type="date"
+                className="tm-input"
+                value={offFrom}
+                disabled={askOff.isPending}
+                onChange={(e) => setOffFrom(e.target.value)}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="tm-label" style={{ margin: 0 }}>
+                Last day off
+              </span>
+              <input
+                type="date"
+                className="tm-input"
+                value={offTo}
+                min={offFrom || undefined}
+                disabled={askOff.isPending}
+                onChange={(e) => setOffTo(e.target.value)}
+              />
+            </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="tm-label" style={{ margin: 0 }}>
                 Paid or unpaid?
@@ -387,11 +445,22 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             <button
               type="button"
               className="tm-ctl tm-ctl--quiet"
-              disabled={askOff.isPending}
+              disabled={askOff.isPending || !rangeOk || sentKey === rangeKey}
               onClick={() => askOff.mutate(memberId)}
             >
-              {askOff.isPending ? 'Sending…' : 'Ask for this week off'}
+              {askOff.isPending
+                ? 'Sending…'
+                : sentKey === rangeKey
+                  ? 'Asked'
+                  : offFrom === offTo
+                    ? 'Ask for this day off'
+                    : 'Ask for these days off'}
             </button>
+            {!rangeOk && (
+              <p className="tm-alert" role="alert" style={{ margin: 0, flexBasis: '100%' }}>
+                The last day off comes before the first. Pick the days again.
+              </p>
+            )}
           </div>
         ) : (
           weekKnown && (
@@ -402,6 +471,30 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             </p>
           )
         )}
+
+        {memberId &&
+          (mineQ.isError ? (
+            <p className="tm-alert" role="alert" style={{ marginTop: 14 }}>
+              Your time-off requests could not be read, so whether one is waiting or decided is
+              unknown — not none.
+            </p>
+          ) : myRequests.length > 0 ? (
+            <section className="tm-panel" style={{ marginTop: 14 }}>
+              <h2 className="tm-panel__title">Your time-off requests</h2>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {myRequests.map((r) => (
+                  <li key={r.id} className="tm-note" style={{ paddingTop: 6 }}>
+                    {r.start_date === r.end_date
+                      ? fmtDayShort(r.start_date)
+                      : `${fmtDayShort(r.start_date)} ${EM} ${fmtDayShort(r.end_date)}`}
+                    {' · '}
+                    {DECISION[r.status] ?? r.status}
+                    {r.leave_type === 'paid' ? ' · paid' : r.leave_type === 'unpaid' ? ' · unpaid' : ''}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null)}
       </div>
     </div>
   );

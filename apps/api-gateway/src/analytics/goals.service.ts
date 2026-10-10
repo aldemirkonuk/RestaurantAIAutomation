@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { AnalyticsService } from "./analytics.service";
@@ -1323,20 +1323,46 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * and each check is filed on its house day (ADR 0296). A house with no zone
    * answers `zoneUnset: true` with `null` figures and no window — not UTC
    * days (ADR 0116) — and readers say so and point to Settings.
+   *
+   * `month` (YYYY-MM) reads one calendar month instead (F-128): its first day
+   * to its last, or to the house's today while the month is still running.
+   * A month that has not begun on the house's clock is refused, not read as
+   * an empty month. `days` is then the number of house days the month spans.
    */
   async getPosRevenueWindow(
     restaurantId: string,
     days = 30,
+    month: string | null = null,
   ): Promise<PosRevenueWindow> {
-    const span = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
+    const monthDays = month ? monthBounds(month) : null;
+    if (month && !monthDays)
+      throw new BadRequestException(
+        "A month is written as year and month, like 2026-07.",
+      );
     // Both reads are by key and independent; neither error is swallowed.
     const [connected, house] = await Promise.all([
       this.hasPosHistory(restaurantId),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
     const zone = house.zone;
-    const to = zone ? houseToday(zone) : null;
-    const from = to ? shiftHouseDay(to, -(span - 1)) : null;
+    const today = zone ? houseToday(zone) : null;
+    if (monthDays && today && monthDays.first > today)
+      throw new BadRequestException(
+        `${month} has not begun on this house's clock, so there is nothing to read yet.`,
+      );
+    let from: string | null;
+    let to: string | null;
+    let span: number;
+    if (monthDays) {
+      // A month still running ends on the house's today, not on days to come.
+      to = !today ? null : monthDays.last > today ? today : monthDays.last;
+      from = today ? monthDays.first : null;
+      span = spanOf(monthDays.first, to ?? monthDays.last);
+    } else {
+      span = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
+      to = today;
+      from = to ? shiftHouseDay(to, -(span - 1)) : null;
+    }
     const unread = {
       restaurantId,
       from,
@@ -1377,6 +1403,19 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       })),
     };
   }
+}
+
+/** First and last calendar day of a YYYY-MM month, or null when it is not one. */
+function monthBounds(month: string): { first: string; last: string } | null {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (!m) return null;
+  const lastDay = new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();
+  return { first: `${month}-01`, last: `${month}-${String(lastDay).padStart(2, "0")}` };
+}
+
+/** Inclusive count of calendar days from `from` to `to`, both YYYY-MM-DD. */
+function spanOf(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
 }
 
 /**

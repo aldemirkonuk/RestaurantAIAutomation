@@ -14,6 +14,12 @@ export interface ViewCtx {
   /** The till window the reader picked. Only `till` takes one. */
   days: number;
   /**
+   * A calendar month the till reads instead of `days`, as YYYY-MM (F-128):
+   * a close is done on July 1–31, not on "the last 30 days". Null or absent
+   * means the trailing window.
+   */
+  month?: string | null;
+  /**
    * The one register on this sheet that WRITES.
    *
    * Every other analysis is a pure function of a payload, which is what makes

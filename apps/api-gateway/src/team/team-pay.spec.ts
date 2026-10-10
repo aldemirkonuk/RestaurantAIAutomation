@@ -1023,6 +1023,43 @@ describe("L3 — whoever approves marks leave paid or unpaid; staff may say so",
   });
 });
 
+describe("F-191 — the person who asked for time off hears the answer", () => {
+  it("tells the requester, in their inbox, that their days were approved or turned down", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: "2026-09-08",
+      endDate: "2026-09-10",
+    } as any);
+    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, { status: "denied" } as any);
+    expect(reviewed.requesterNotified).toBe(true);
+    const told = db.tables.notifications.filter((n) => n.user_id === STAFF);
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatchObject({
+      restaurant_id: RID,
+      title: "Your time off was turned down",
+      message: "Your request for 2026-09-08 to 2026-09-10 off was turned down.",
+    });
+  });
+
+  it("keeps the decision when the notice cannot be written, and says it was not sent", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(STAFF, RID, { memberId: "m-staff", startDate: WEEK, endDate: WEEK } as any);
+    db.errors["notifications:insert"] = { message: "boom" };
+    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, { status: "approved" } as any);
+    expect(reviewed.status).toBe("approved");
+    expect(reviewed.requesterNotified).toBe(false);
+  });
+
+  it("sends no notice to a reviewer deciding their own request", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(MANAGER, RID, { memberId: "m-manager", startDate: WEEK, endDate: WEEK } as any);
+    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, { status: "approved" } as any);
+    expect(reviewed.requesterNotified).toBe(false);
+    expect(db.tables.notifications).toHaveLength(0);
+  });
+});
+
 describe("R1 — the retention job: credentials, shifts and leave, then wages, same clock", () => {
   const svcWith = (rpc: jest.Mock) =>
     new WageRecordRetentionService({ supabase: { rpc } } as any);

@@ -197,6 +197,14 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     expect(d.request).toHaveBeenCalledWith('ledger', null);
   });
 
+  it('refuses to write up the till over a calendar month in words, rather than as the last N days (F-128)', () => {
+    const d = desk();
+    render(<ExportsShelf desk={d} onSheet={['till'] as never[]} tillDays={30} tillMonth="2026-07" />);
+    expect(screen.getByRole('note')).toHaveTextContent(/A month of the till cannot be written up yet/);
+    expect(screen.queryByText(/over the last 30 days/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Write it up' })).toBeDisabled();
+  });
+
   it('a role that cannot export is told so, and is offered no control and no list', () => {
     shelf(desk({ canExport: false, readOnlyReason: 'Exports are written for owners and managers. Every figure is still on the sheet above.', exports: undefined }));
     expect(screen.getByRole('note')).toHaveTextContent('Exports are written for owners and managers.');
