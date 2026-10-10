@@ -193,7 +193,11 @@ describe("F-745 — a door photo is filed to its order only when the paper fits"
         (o) => o.table === "procurement_documents" && o.verb === "update",
       );
       expect(String(note?.payload?.notes)).toMatch(/PO-0043/);
-      expect(note?.payload).not.toHaveProperty("status");
+      // What reaches the database: postgrest-js sends JSON.stringify(values),
+      // which leaves an undefined status out of the request.
+      expect(JSON.parse(JSON.stringify(note?.payload))).not.toHaveProperty(
+        "status",
+      );
     },
   );
 

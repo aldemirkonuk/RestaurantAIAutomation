@@ -5810,7 +5810,13 @@ export class ProcurementService {
         if (same.state !== "open") return;
         const { error: restateError } = await this.databaseService.supabase
           .from("procurement_credits")
-          .update({ ...restated, updated_at: now })
+          .update({
+            summary: restated.summary,
+            claimed_amount: restated.claimed_amount,
+            self_evidenced: restated.self_evidenced,
+            evidence: restated.evidence,
+            updated_at: now,
+          })
           .eq("restaurant_id", restaurantId)
           .eq("id", same.id)
           .eq("state", "open");

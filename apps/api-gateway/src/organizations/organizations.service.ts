@@ -1031,7 +1031,8 @@ export class OrganizationsService {
         // F-241: what the first house records, a second house records too —
         // the currency the dialog stated from the country, or nothing.
         currency: dto.currency ?? null,
-        ...point,
+        latitude: point.latitude,
+        longitude: point.longitude,
         organization_id: organizationId,
         chain_id: dto.chainId ?? null,
       })

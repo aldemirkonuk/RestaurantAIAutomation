@@ -1189,7 +1189,11 @@ export class CalendarService {
       );
     }
 
-    let patch: Record<string, unknown> | null = null;
+    let patch: {
+      end_type?: "on_date";
+      end_on_date?: string;
+      end_after_count?: number;
+    } | null = null;
     if (rule.end_type === "after_count") {
       if (kept < rule.end_after_count) patch = { end_after_count: kept };
     } else if (
@@ -1202,7 +1206,13 @@ export class CalendarService {
     if (patch) {
       const { error } = await this.databaseService.supabase
         .from("calendar_recurrence_rules")
-        .update({ ...patch, updated_at: new Date().toISOString() })
+        .update({
+          // undefined is left out of the request: only what changed is sent.
+          end_type: patch.end_type,
+          end_on_date: patch.end_on_date,
+          end_after_count: patch.end_after_count,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", rule.id)
         .eq("restaurant_id", restaurantId);
       if (error) throw error;

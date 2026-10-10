@@ -481,7 +481,9 @@ export class WineSubmissionsService {
         decision_reason: parked
           ? `failed after ${attempts} attempts: ${why}`
           : `retry ${attempts}/${WineSubmissionsService.MAX_ATTEMPTS}: ${why}`,
-        ...(signatureHash ? { signature_hash: signatureHash } : {}),
+        // undefined is left out of the request, so a failure with no hash
+        // keeps the one already on the row.
+        signature_hash: signatureHash || undefined,
       })
       .eq("id", submission.id);
     if (error)
