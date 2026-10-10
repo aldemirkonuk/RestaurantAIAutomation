@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
+import { clientIp } from "./client-ip";
 
 /**
  * Rate limit configuration
@@ -298,15 +299,10 @@ export class RateLimitGuard implements CanActivate {
   }
 
   /**
-   * Get client IP address
+   * Get client IP address: the last `x-forwarded-for` hop, never the
+   * client-typed first one (`client-ip.ts` says why).
    */
   private getClientIp(request: any): string {
-    return (
-      request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-      request.headers["x-real-ip"] ||
-      request.connection?.remoteAddress ||
-      request.ip ||
-      "unknown"
-    );
+    return clientIp(request);
   }
 }

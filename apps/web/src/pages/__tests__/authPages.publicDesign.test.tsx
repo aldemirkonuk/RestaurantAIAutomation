@@ -71,6 +71,7 @@ const h = vi.hoisted(() => {
       error: null as string | null,
     },
     get: vi.fn(),
+    post: vi.fn(),
   }
 })
 
@@ -82,7 +83,7 @@ vi.mock('../../contexts/AuthContext', () => ({
   },
 }))
 
-vi.mock('../../services/api/client', () => ({ apiClient: { get: h.get } }))
+vi.mock('../../services/api/client', () => ({ apiClient: { get: h.get, post: h.post } }))
 
 /* framer-motion animates inline styles on animation frames, so two renders of
    the same state can serialise differently. Its components are replaced with
@@ -163,6 +164,7 @@ beforeEach(() => {
   h.auth.error = null
   h.auth.resolveSignInMethods.mockReset()
   h.get.mockReset()
+  h.post.mockReset()
 })
 
 afterEach(() => {
@@ -213,7 +215,10 @@ async function loginResolved(result: {
   return r.container
 }
 
-/** Answers the two GETs Register makes: the invite preview and the email check. */
+/**
+ * Answers the two reads Register makes: the invite preview (a GET) and the
+ * email check (a POST with the address in the body, F-515).
+ */
 function gateway(opts: { invite?: 'valid' | 'invalid'; emailAvailable?: boolean }) {
   h.get.mockImplementation((url: string) => {
     if (url.startsWith('/auth/invite/')) {
@@ -222,10 +227,13 @@ function gateway(opts: { invite?: 'valid' | 'invalid'; emailAvailable?: boolean 
         data: { valid: true, restaurant: 'Kaya Meyhane', city: 'Fethiye', inviter: 'Ayşe', role: 'manager' },
       })
     }
-    if (url.startsWith('/auth/check-email')) {
+    return Promise.reject(new Error(`unexpected GET ${url}`))
+  })
+  h.post.mockImplementation((url: string) => {
+    if (url === '/auth/check-email') {
       return Promise.resolve({ data: { available: opts.emailAvailable ?? true, email: 'x' } })
     }
-    return Promise.reject(new Error(`unexpected GET ${url}`))
+    return Promise.reject(new Error(`unexpected POST ${url}`))
   })
 }
 
@@ -730,5 +738,23 @@ describe('the invite mail secret reaches the join', () => {
     holdJoin('/invite/ABCDEFGH')
     await joinFrom('/register?invite=abcdefgh')
     await vi.waitFor(() => expect(sessionStorage.getItem(JOIN_HOLD_KEY)).toBeNull())
+  })
+})
+
+/*
+ * F-513 and F-515 (wave 14 sim, 2026-10-09): the join step's "Sign in" link
+ * keeps the invite, and the email check never puts the address in a URL.
+ */
+describe('the invite join step', () => {
+  it('"Sign in" next to an already-registered address comes back to the invite', async () => {
+    await joinAccount(false)
+    const link = screen.getByRole('link', { name: 'Sign in' })
+    expect(link.getAttribute('href')).toBe(`/login?redirect=${encodeURIComponent('/invite/ABCDEFGH')}`)
+  })
+
+  it('checks the address with a POST body, never a query string', async () => {
+    await joinAccount(true)
+    expect(h.post).toHaveBeenCalledWith('/auth/check-email', { email: 'deniz@house.test' })
+    for (const [url] of h.get.mock.calls) expect(String(url)).not.toContain('deniz')
   })
 })

@@ -105,7 +105,8 @@ describe("the table describes the calls the app really makes", () => {
           m[1].replace(/\$\{[^}]*\}/g, ":code"),
         ),
       )
-      // check-email carries its argument in the query string.
+      // No wrapper puts an argument in a query string any more (check-email
+      // moved to a body, F-515); the split stays harmless if one ever does.
       .map((p) => p.split("?")[0]);
 
     const declared = new Set(
@@ -134,7 +135,7 @@ describe("the endpoints are reachable without a session", () => {
     ["Post", "reset-password"],
     ["Post", "sign-in-methods"],
     ["Get", "invite/:code"],
-    ["Get", "check-email"],
+    ["Post", "check-email"],
   ])(
     "%s %s carries no JwtAuthGuard — it is used before sign-in",
     (method, route) => {

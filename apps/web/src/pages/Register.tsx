@@ -177,8 +177,10 @@ export function Register() {
     setEmailCheck({ checking: true, available: null, error: null })
 
     try {
-      const { data } = await apiClient.get<{ available: boolean; email: string }>(
-        `/auth/check-email?email=${encodeURIComponent(email)}`,
+      // A POST so the address stays out of URLs and access logs (F-515).
+      const { data } = await apiClient.post<{ available: boolean; email: string }>(
+        '/auth/check-email',
+        { email },
       )
       setEmailCheck({
         checking: false,
@@ -716,7 +718,9 @@ export function Register() {
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{joinEmailCheck.error}</span>
-                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+                {/* Back to this invite after signing in, as InviteLanding's
+                    own sign-in link does (F-513); a bare /login dropped it. */}
+                <Link to={inviteCode.length === 8 ? `/login?redirect=${encodeURIComponent(`/invite/${inviteCode}`)}` : '/login'} className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
                   Sign in
                 </Link>
               </motion.div>

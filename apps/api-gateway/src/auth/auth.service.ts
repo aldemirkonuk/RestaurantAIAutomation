@@ -72,6 +72,7 @@ import {
 } from "./unproven-address";
 import { normalizeEmail } from "../passkeys/sign-in-codes.service";
 import { escapeLikeWildcards } from "../distributor-discovery/distributor-query";
+import { SignInAttempts } from "./sign-in-attempts";
 import {
   ORG_OWNER,
   ORG_ROW_INSERT_ONLY,
@@ -342,6 +343,13 @@ export class AuthService {
   private microsoftIdTokens = new MicrosoftIdTokenVerifier();
 
   /**
+   * Wrong passwords per address (F-510). A plain field for the same reason
+   * as `microsoftIdTokens`; one per process, shared by every password door
+   * (`validateUser`, and `joinViaInvite` for an existing account).
+   */
+  private signInAttempts = new SignInAttempts();
+
+  /**
    * Closes a person's open sockets whose session a password reset or change
    * just signed out (ADR 0225, `endStaleSessions`), and evicts a person's
    * open sockets from a house's live room the moment `leaveRestaurant` ends
@@ -402,13 +410,34 @@ export class AuthService {
    * Validate user credentials
    */
   async validateUser(email: string, password: string): Promise<any> {
-    const { data: user, error } = await this.databaseService.supabase
+    // One spelling of the address, as every other door uses (F-511):
+    // registerAccount stores it lowercased, and Google, the emailed code,
+    // reset and join all look it up that way.
+    const normalizedEmail = normalizeEmail(email);
+    // Before the lookup, so a locked address answers the same whether or not
+    // it has an account (F-510).
+    this.signInAttempts.assertOpen(normalizedEmail);
+
+    let { data: user, error } = await this.databaseService.supabase
       .from("users")
       .select("*")
-      .eq("email", email)
+      .eq("email", normalizedEmail)
       .single();
 
+    // A row stored with capitals before every door lowercased (path B kept
+    // the address as typed) is still found by the exact spelling it was
+    // typed with, so this change locks nobody out.
+    const typed = typeof email === "string" ? email.trim() : "";
+    if (!user && typed && typed !== normalizedEmail) {
+      ({ data: user, error } = await this.databaseService.supabase
+        .from("users")
+        .select("*")
+        .eq("email", typed)
+        .single());
+    }
+
     if (error || !user) {
+      this.signInAttempts.recordFailure(normalizedEmail);
       throw new UnauthorizedException("Invalid credentials");
     }
 
@@ -478,8 +507,10 @@ export class AuthService {
     // answer nor its timing says the account exists or is unverified. The
     // emailed code still signs in, and fork 6 then removes this password.
     if (!isPasswordValid || unprovenPasswordHasLapsed(user, Date.now())) {
+      this.signInAttempts.recordFailure(normalizedEmail);
       throw new UnauthorizedException("Invalid credentials");
     }
+    this.signInAttempts.clear(normalizedEmail);
 
     // Don't return password
     const { password_hash, ...result } = user;
@@ -3068,6 +3099,22 @@ export class AuthService {
       //
       // An unproven password that has lapsed (ADR 0229 fork 8, item 73) opens
       // nothing here either: this is a password sign-in by another door.
+      // The invite is given back on every refusal here, as on the other
+      // failure branches (F-512): a mistyped password must not cost the
+      // person their invite. Giving it back makes this a password door an
+      // invite holder can retry, so it counts against the same per-address
+      // limit as /auth/login (F-510).
+      const releaseInvite = () =>
+        this.databaseService.supabase
+          .from("organization_invites")
+          .update({ used_at: null, used_by_email: null })
+          .eq("id", invite.id);
+      try {
+        this.signInAttempts.assertOpen(email);
+      } catch (locked) {
+        await releaseInvite();
+        throw locked;
+      }
       const passwordMatches =
         typeof existingUser.password_hash === "string" &&
         existingUser.password_hash.length > 0 &&
@@ -3082,8 +3129,11 @@ export class AuthService {
         // deliberately NOT "that account exists, wrong password" — this is a
         // @Public route, so a distinguishable message would turn it into an
         // account-existence oracle for any invite holder.
+        this.signInAttempts.recordFailure(email);
+        await releaseInvite();
         throw new UnauthorizedException("Invalid credentials");
       }
+      this.signInAttempts.clear(email);
 
       user = existingUser;
       addressProved = existingUser.email_verified === true;
@@ -4417,7 +4467,7 @@ export class AuthService {
    *
    *   1. Account with methods  -> exactly those methods.
    *   2. Account with none     -> `methods: []`, `noSignInMethod: true`. True,
-   *      and the only thing this endpoint confirms that `GET /auth/check-email`
+   *      and the only thing this endpoint confirms that `POST /auth/check-email`
    *      does not already. That population is precisely who this change exists
    *      to unbreak.
    *   3. No such account       -> the standard enabled set, indistinguishable
@@ -4425,7 +4475,7 @@ export class AuthService {
    *      the user falls through to the existing "Invalid credentials".
    *
    * On enumeration: revealing is a deliberate choice, not an accident (ADR
-   * 0024). The leak already exists — `GET /auth/check-email` is `@Public()` and
+   * 0024). The leak already exists — `/auth/check-email` is `@Public()` and
    * answers `available: true/false` to anyone (`POST /auth/register` also
    * replied "Email already registered" until it was closed, 2026-09-18). This makes it intentional, narrower in
    * shape, and rate-limited. `requestPasswordReset` stays enumeration-safe and
