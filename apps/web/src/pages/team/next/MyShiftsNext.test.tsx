@@ -16,15 +16,19 @@ const api = vi.hoisted(() => ({
   assignCover: vi.fn(),
   timeOff: [] as Record<string, unknown>[],
   withdrawTimeOff: vi.fn((..._a: unknown[]) => Promise.resolve({})),
+  acknowledgeSchedule: vi.fn((..._a: unknown[]) => Promise.resolve({ acknowledged: true })),
+  createTimeOff: vi.fn((..._a: unknown[]) => Promise.resolve({})),
+  /** The house's zone once read; `undefined` on the first render, as in life. */
+  zone: null as string | null,
 }));
 
 vi.mock('../../../services/api/team', () => ({
   getMyWeek: () => Promise.resolve(api.myWeek),
   getTeamNotes: () => Promise.resolve({ notes: [], readable: true }),
   openTeamNote: vi.fn(),
-  acknowledgeSchedule: vi.fn(),
+  acknowledgeSchedule: api.acknowledgeSchedule,
   assignCover: api.assignCover,
-  createTimeOff: vi.fn(),
+  createTimeOff: api.createTimeOff,
   getTimeOff: () => Promise.resolve(api.timeOff),
   withdrawTimeOff: api.withdrawTimeOff,
 }));
@@ -43,8 +47,22 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { userId: 'u-1', name: 'Sam' } }),
 }));
 vi.mock('@/components/mudavym', () => ({ Wordmark: () => null }));
+vi.mock('@/lib/houseZone', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/houseZone')>();
+  const React = await import('react');
+  return {
+    ...real,
+    useHouseZone: () => {
+      const [z, setZ] = React.useState<string | null | undefined>(undefined);
+      React.useEffect(() => setZ(api.zone), []);
+      return z;
+    },
+  };
+});
 
 import { MyShiftsNext } from './MyShiftsNext';
+import { houseToday } from '@/lib/houseZone';
+import { todayIso } from './tm-format';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -137,5 +155,106 @@ describe('a time-off request still waiting can be taken back (F-936)', () => {
     fireEvent.click(buttons[0]);
     await vi.waitFor(() => expect(api.withdrawTimeOff).toHaveBeenCalledWith('t-wait'));
     api.timeOff = [];
+  });
+});
+
+describe('"I have seen it" (F-1005)', () => {
+  const week = (member: { id: string; display_name: string } | null) => ({
+    member,
+    schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+    acknowledged: false,
+    mine: [],
+    open: [],
+  });
+
+  it('is not offered to someone with no roster row, who has nothing to confirm', async () => {
+    api.myWeek = week(null);
+    mount();
+    await screen.findAllByText('Off');
+    expect(screen.queryByRole('button', { name: /I have seen it/ })).toBeNull();
+  });
+
+  it('says in the gateway’s words when it was not recorded', async () => {
+    api.myWeek = week({ id: 'm-1', display_name: 'Sam' });
+    api.acknowledgeSchedule.mockRejectedValueOnce({
+      response: { status: 500, data: { message: 'Could not let your manager know you have seen the schedule. Please try again.' } },
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /I have seen it/ }));
+    expect(await screen.findByText(/Could not let your manager know/)).toBeTruthy();
+  });
+});
+
+describe('the same days asked for twice (F-1006)', () => {
+  it('shows the gateway naming the request that already holds them', async () => {
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      acknowledged: true,
+      mine: [],
+      open: [],
+    };
+    api.createTimeOff.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { message: 'These days are already in a request for 2026-09-09 that is waiting for a decision. Nothing new was sent.' },
+      },
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Ask for/ }));
+    expect(await screen.findByText(/already in a request for 2026-09-09/)).toBeTruthy();
+  });
+});
+
+describe('shift times on the house’s clock (F-1007)', () => {
+  const week = (country?: string) => ({
+    member: { id: 'm-1', display_name: 'Sam' },
+    schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+    acknowledged: true,
+    // On the week the page opens on, so its chip is drawn.
+    mine: [shift('sh-1', { member_id: 'm-1', state: 'scheduled', shift_date: todayIso(new Date()) })],
+    open: [],
+    ...(country ? { country } : {}),
+  });
+
+  it('prints 24-hour time in a Turkish house', async () => {
+    api.myWeek = week('Turkey');
+    mount();
+    expect(await screen.findByText('17:00–23:00')).toBeTruthy();
+  });
+
+  it('keeps the short form where no country is known', async () => {
+    api.myWeek = week();
+    mount();
+    expect(await screen.findByText('5p–11p')).toBeTruthy();
+  });
+});
+
+describe('the time-off form opens on the house’s day (F-1008)', () => {
+  it('moves from the device’s day to the house’s once the zone is read', async () => {
+    // Kiritimati and Pago Pago are 25 hours apart: one of them is always on a
+    // different day from the device.
+    const device = todayIso(new Date());
+    const zone = ['Pacific/Kiritimati', 'Pacific/Pago_Pago'].find(
+      (z) => todayIso(houseToday(z)) !== device,
+    )!;
+    api.zone = zone;
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      acknowledged: true,
+      mine: [],
+      open: [],
+    };
+    try {
+      mount();
+      const first = (await screen.findByLabelText('First day off')) as HTMLInputElement;
+      const last = screen.getByLabelText('Last day off') as HTMLInputElement;
+      const house = todayIso(houseToday(zone));
+      await vi.waitFor(() => expect(first.value).toBe(house));
+      expect(last.value).toBe(house);
+    } finally {
+      api.zone = null;
+    }
   });
 });

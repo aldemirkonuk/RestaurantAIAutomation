@@ -6,8 +6,31 @@
  * (decision 0149 row 9).
  */
 
-import type { ReactNode } from 'react';
-import { EM, initialsOf, type ResolvedName } from './tm-format';
+import { createContext, useContext, type ReactNode } from 'react';
+import { EM, fmtTime, initialsOf, type ResolvedName } from './tm-format';
+
+/**
+ * The house's locale for shift times (F-1007): set once where the week is
+ * read, so every chip, card and sheet below prints "17:00" in a Turkish house
+ * without each one being handed it. Unset, the desk's "5p" stands.
+ */
+const ShiftClock = createContext<string | undefined>(undefined);
+
+export function ShiftClockProvider({
+  locale,
+  children,
+}: {
+  locale: string | undefined;
+  children: ReactNode;
+}) {
+  return <ShiftClock.Provider value={locale}>{children}</ShiftClock.Provider>;
+}
+
+/** `fmtTime` on the house's clock, for whatever is inside a ShiftClockProvider. */
+export function useShiftTime(): (t: string) => string {
+  const locale = useContext(ShiftClock);
+  return (t) => fmtTime(t, locale);
+}
 
 /** Initials, or an em dash when there is no name to shorten. */
 export function Mark({

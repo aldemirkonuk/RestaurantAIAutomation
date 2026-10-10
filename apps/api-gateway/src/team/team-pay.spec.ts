@@ -701,6 +701,41 @@ describe("F-923 — a time-off request runs forward", () => {
     expect((db.tables.time_off_requests ?? []).length).toBe(before);
   });
 
+  // F-1006: the page's guard lasted one session; a reload filed the days again.
+  it("refuses days already in the person's own waiting or approved request, naming it", async () => {
+    const db = seed();
+    await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: "2026-11-03",
+      endDate: "2026-11-05",
+    } as any);
+    // The table's own default; the stub has none.
+    db.tables.time_off_requests[0].status = "pending";
+    const err = await teamOf(db)
+      .createTimeOff(STAFF, RID, {
+        memberId: "m-staff",
+        startDate: "2026-11-05",
+        endDate: "2026-11-06",
+      } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toMatch(/2026-11-03 to 2026-11-05/);
+    expect(db.tables.time_off_requests).toHaveLength(1);
+    // Days next to it, and days once covered by a withdrawn request, still file.
+    await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: "2026-11-06",
+      endDate: "2026-11-06",
+    } as any);
+    db.tables.time_off_requests[0].status = "withdrawn";
+    await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: "2026-11-04",
+      endDate: "2026-11-04",
+    } as any);
+    expect(db.tables.time_off_requests).toHaveLength(3);
+  });
+
   it("still files a past day, which sick leave needs", async () => {
     const db = seed();
     const req = await teamOf(db).createTimeOff(STAFF, RID, {
@@ -771,6 +806,54 @@ describe("pay-rules", () => {
       WEEK,
     );
     expect(r).toEqual({ paid: [{ memberId: "a", days: 2 }], paidDays: 2, unknownTypeDays: 0 });
+  });
+
+  it("counts a person's day once when two approved requests cover it (F-1006)", () => {
+    const r = leaveInWeek(
+      [
+        {
+          member_id: "a",
+          start_date: "2026-09-09",
+          end_date: "2026-09-09",
+          status: "approved",
+          leave_type: "paid",
+        },
+        {
+          member_id: "a",
+          start_date: "2026-09-09",
+          end_date: "2026-09-10",
+          status: "approved",
+          leave_type: "paid",
+        },
+        {
+          member_id: "b",
+          start_date: "2026-09-11",
+          end_date: "2026-09-11",
+          status: "approved",
+          leave_type: "unknown",
+        },
+        {
+          member_id: "b",
+          start_date: "2026-09-11",
+          end_date: "2026-09-11",
+          status: "approved",
+          leave_type: null,
+        },
+        {
+          member_id: "c",
+          start_date: "2026-09-11",
+          end_date: "2026-09-11",
+          status: "approved",
+          leave_type: "unknown",
+        },
+      ],
+      WEEK,
+    );
+    expect(r).toEqual({
+      paid: [{ memberId: "a", days: 2 }],
+      paidDays: 2,
+      unknownTypeDays: 2,
+    });
   });
 });
 

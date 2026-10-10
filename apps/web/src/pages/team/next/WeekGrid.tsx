@@ -51,7 +51,6 @@ import {
   fmtDayShort,
   fmtHours,
   fmtMoneyWhole,
-  fmtTime,
   recordedBreakMinutes,
   resolveName,
   todayIso,
@@ -59,7 +58,7 @@ import {
   weekDays,
   workedHours,
 } from './tm-format';
-import { Card, Fact, KV, Mark } from './tm-bits';
+import { Card, Fact, KV, Mark, useShiftTime } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
 import type { ShiftSheetTarget } from './ShiftSheet';
 
@@ -115,6 +114,7 @@ export function WeekGrid({
   onEditShift,
   onChanged,
 }: GridProps) {
+  const fmtTime = useShiftTime();
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const today = todayIso();
   const [selected, setSelected] = useState<string | null>(null);
@@ -628,6 +628,7 @@ function ShiftDetail({
   moneyVisible: boolean;
   money: HouseMoney | null;
 }) {
+  const fmtTime = useShiftTime();
   const name = resolveName(member);
   return (
     <div className="tm-expand">

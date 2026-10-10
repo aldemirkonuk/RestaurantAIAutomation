@@ -739,7 +739,8 @@ export function TimeOffSheet({
             person withdrew it, it is no longer yours to decide.
           </MutationError>
           <MutationError when={add.isError}>
-            The request was not filed. Nothing is on the manager&apos;s desk.
+            {serverMessage(add.error) ??
+              "The request was not filed. Nothing is on the manager's desk."}
           </MutationError>
           {failed ? (
             <p className="tm-alert" role="alert">

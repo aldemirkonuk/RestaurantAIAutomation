@@ -225,7 +225,7 @@ export class ScheduleService {
       labor,
       receipts,
       settings,
-      timezone: await this.houseZone(restaurantId),
+      ...(await this.houseFrame(restaurantId)),
       // The currency travels with the money, and only to whoever gets the
       // money: /team printed every figure in US dollars (ADR 0215).
       ...(seesMoney(viewer)
@@ -236,22 +236,26 @@ export class ScheduleService {
 
   /**
    * The house's own time zone, so a phone elsewhere still reads "tonight" as
-   * the house's night (F-252). `null` when none is stated or it could not be
-   * read; the client then falls back to its own clock.
+   * the house's night (F-252), and its country, so a shift time prints on the
+   * house's clock — "17:00" in a Turkish house, not "5p" (F-1007). The country
+   * is not money and goes to every viewer. `null` when none is stated or it
+   * could not be read; the client then falls back to its own clock.
    */
-  private async houseZone(restaurantId: string): Promise<string | null> {
+  private async houseFrame(
+    restaurantId: string,
+  ): Promise<{ timezone: string | null; country: string | null }> {
     const { data, error } = await this.sb
       .from("restaurants")
-      .select("timezone")
+      .select("timezone, country")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
       this.logger.warn(
-        `houseZone: could not read the time zone of ${restaurantId}: ${error.message}`,
+        `houseFrame: could not read the time zone of ${restaurantId}: ${error.message}`,
       );
-      return null;
+      return { timezone: null, country: null };
     }
-    return data?.timezone ?? null;
+    return { timezone: data?.timezone ?? null, country: data?.country ?? null };
   }
 
   /**
@@ -367,7 +371,7 @@ export class ScheduleService {
       mine,
       open,
       acknowledged,
-      timezone: await this.houseZone(restaurantId),
+      ...(await this.houseFrame(restaurantId)),
     };
   }
 
@@ -710,22 +714,40 @@ export class ScheduleService {
   /** Staff opening a published schedule records a read receipt. */
   async acknowledge(userId: string, restaurantId: string, scheduleId: string) {
     await this.team.assertAccess(userId, restaurantId);
-    const { data: schedule } = await this.sb
+    // F-1005: every step is checked, so "seen" is only said once the receipt
+    // is written. A database hiccup is not "Schedule not found", and a person
+    // with no roster row is told why nothing was recorded.
+    const unrecorded = (what: string, message: string): never => {
+      this.logger.error(
+        `acknowledge: could not ${what} for schedule ${scheduleId} in ` +
+          `restaurant ${restaurantId}: ${message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not let your manager know you have seen the schedule. Please try again.",
+      );
+    };
+    const { data: schedule, error: scheduleErr } = await this.sb
       .from("schedules")
       .select("id")
       .eq("id", scheduleId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (scheduleErr) unrecorded("read the schedule", scheduleErr.message);
     if (!schedule) throw new NotFoundException("Schedule not found");
 
-    const { data: member } = await this.sb
+    const { data: member, error: memberErr } = await this.sb
       .from("team_members")
       .select("id")
       .eq("restaurant_id", restaurantId)
       .eq("user_id", userId)
       .maybeSingle();
-    if (!member) return { acknowledged: false };
-    await this.sb.from("schedule_receipts").upsert(
+    if (memberErr) unrecorded("read your roster row", memberErr.message);
+    if (!member) {
+      throw new ConflictException(
+        "You are not on this restaurant's team list yet, so there is no schedule to confirm. Ask your manager to add you.",
+      );
+    }
+    const { error: upsertErr } = await this.sb.from("schedule_receipts").upsert(
       {
         schedule_id: scheduleId,
         member_id: member.id,
@@ -733,6 +755,7 @@ export class ScheduleService {
       },
       { onConflict: "schedule_id,member_id" },
     );
+    if (upsertErr) unrecorded("write the read receipt", upsertErr.message);
     return { acknowledged: true };
   }
 

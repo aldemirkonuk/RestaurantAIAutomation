@@ -204,6 +204,8 @@ export interface WeekPayload {
   settings: TeamSettings
   /** Owner only. */
   money?: HouseMoney
+  /** The house's country, to every viewer: shift times print on its clock (F-1007). */
+  country?: string | null
 }
 
 export interface MyWeekPayload {
@@ -212,6 +214,8 @@ export interface MyWeekPayload {
   mine: Shift[]
   open: Shift[]
   acknowledged?: boolean
+  /** The house's country: shift times print on its clock (F-1007). */
+  country?: string | null
 }
 
 export interface Certification {

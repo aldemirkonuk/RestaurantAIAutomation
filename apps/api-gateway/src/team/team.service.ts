@@ -2320,6 +2320,36 @@ export class TeamService {
       }
     }
 
+    // The same days asked for twice (F-1006): the page's own guard lasted one
+    // session, so a reload or a second device filed them again, and two
+    // approved copies counted the days twice. A request that overlaps one of
+    // the person's own still waiting or approved is refused, and named.
+    const { data: overlap, error: overlapErr } = await this.sb
+      .from("time_off_requests")
+      .select("id, start_date, end_date, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", dto.memberId)
+      .in("status", ["pending", "approved"])
+      .lte("start_date", dto.endDate.slice(0, 10))
+      .gte("end_date", dto.startDate.slice(0, 10))
+      .limit(1);
+    if (overlapErr) {
+      throw new InternalServerErrorException(
+        "Could not check this person's other requests, so nothing was sent.",
+      );
+    }
+    const clash = (overlap ?? [])[0];
+    if (clash) {
+      const from = String(clash.start_date).slice(0, 10);
+      const to = String(clash.end_date).slice(0, 10);
+      const days = from === to ? from : `${from} to ${to}`;
+      throw new ConflictException(
+        `These days are already in a request for ${days} that is ` +
+          `${clash.status === "approved" ? "approved" : "waiting for a decision"}. ` +
+          "Nothing new was sent.",
+      );
+    }
+
     const { data, error } = await this.sb
       .from("time_off_requests")
       .insert({

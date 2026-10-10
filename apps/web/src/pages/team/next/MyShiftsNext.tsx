@@ -52,6 +52,7 @@ import {
   fmtDayShort,
   fmtTime,
   fmtWeekRange,
+  houseLocale,
   mondayOf,
   todayIso,
   weekFromLink,
@@ -154,6 +155,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
    */
   const [offFrom, setOffFrom] = useState(() => todayIso(houseToday(zone)));
   const [offTo, setOffTo] = useState(() => todayIso(houseToday(zone)));
+  // F-1008: seeded before the house's zone is read, so on the device's day;
+  // once it is known, days still on that day move to the house's.
+  useSettleOnHouseDay(zone, todayIso, setOffFrom);
+  useSettleOnHouseDay(zone, todayIso, setOffTo);
   const rangeOk = offFrom !== '' && offTo !== '' && offFrom <= offTo;
   /** The range last sent, so the same days are not filed twice by a second press. */
   const [sentKey, setSentKey] = useState<string | null>(null);
@@ -189,6 +194,8 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   });
 
   const memberId = payload?.member?.id ?? null;
+  /** Shift times on the house's clock: "17:00" in a Turkish house (F-1007). */
+  const clock = houseLocale(payload?.country);
   const myRequests = (mineQ.data ?? []).filter((r) => !memberId || r.member_id === memberId);
   /**
    * A week its manager has not published is still being drawn (F-506). The
@@ -250,20 +257,24 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
         )}
 
         <MutationError when={ack.isError}>
-          Your manager was not told you have seen this week. Try again.
+          {serverMessage(ack.error) ??
+            'Your manager was not told you have seen this week. Try again.'}
         </MutationError>
         <MutationError when={claim.isError}>
           {claimTakenBy ?? serverMessage(claim.error) ?? 'The shift was not claimed. Try again.'}
         </MutationError>
         <MutationError when={askOff.isError}>
-          The request did not reach your manager. Nothing is on their desk.
+          {serverMessage(askOff.error) ??
+            'The request did not reach your manager. Nothing is on their desk.'}
         </MutationError>
         <MutationError when={withdraw.isError}>
           {serverMessage(withdraw.error) ??
             'The request was not withdrawn. It is still waiting for your manager.'}
         </MutationError>
 
-        {payload?.schedule?.status === 'published' && !payload.acknowledged && (
+        {/* F-1005: with no roster row there is nothing to confirm against; the
+            button only ever failed, so it is not offered. */}
+        {payload?.schedule?.status === 'published' && !payload.acknowledged && memberId && (
           <div className="tm-banner">
             <span>
               The week of {fmtDayShort(payload.schedule.week_start)} is published. Telling your manager
@@ -364,7 +375,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                   {mine.map((s) => (
                     <span key={s.id} className="tm-chip" data-state={s.state}>
                       <span className="tm-chip__t">
-                        {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
+                        {fmtTime(s.start_time, clock)}–{fmtTime(s.end_time, clock)}
                       </span>
                       <span className="tm-chip__m">{s.role ?? s.shift_type}</span>
                     </span>
@@ -387,7 +398,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                 <div className="tm-day__body">
                   <span style={{ fontSize: 12.5 }}>
                     {DOW[days.indexOf(s.shift_date)] ?? ''} {dayNum(s.shift_date)} ·{' '}
-                    {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
+                    {fmtTime(s.start_time, clock)}–{fmtTime(s.end_time, clock)}
                     {s.role ? ` · ${s.role}` : ''}
                   </span>
                   <button
