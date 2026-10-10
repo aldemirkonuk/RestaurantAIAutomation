@@ -8,12 +8,17 @@
  * own colours, landing once on the group, at a fraction of the stamp's
  * energy, while the rows underneath simply settle.
  *
+ * Keyboard and assistive tech take the same paths as HoldToApprove (F-319):
+ * Enter/Space arms and a second press approves, holding the key for the pour
+ * approves, and a bare click from a screen reader (`detail === 0`) arms and
+ * then approves. A mouse click is never a confirm.
+ *
  * Wired to the real approve mutation, one order at a time, and honest about
  * the split: refused orders are counted, named as still pending, and stay
  * selected.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Seal } from '@/components/mudavym';
 import { animate, pour, sealTiming, stamp, tuck, useReducedMotion } from '@/lib/mudavym/motion';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
@@ -70,6 +75,10 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   } | null>(null);
 
   const fillRef = useRef<HTMLDivElement | null>(null);
+  const meterRef = useRef<HTMLSpanElement | null>(null);
+  const statusId = useId();
+  const keyHoldRef = useRef(false);
+  const swallowClickRef = useRef(false);
   const embossRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef(0);
   const startRef = useRef(0);
@@ -144,6 +153,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
 
   const setFill = (p: number) => {
     if (fillRef.current) fillRef.current.style.transform = `scaleX(${p})`;
+    meterRef.current?.setAttribute('aria-valuenow', String(Math.round(p * 100)));
     progressRef.current = p;
   };
 
@@ -318,18 +328,71 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     startHold();
   };
 
+  /* Holding the key runs the pour on top of the arm; letting go early leaves
+     it armed, so the next press approves. */
+  const startKeyHold = () => {
+    keyHoldRef.current = true;
+    startRef.current = performance.now();
+    const tick = (now: number) => {
+      if (!keyHoldRef.current) return;
+      const p = Math.min(1, (now - startRef.current) / pour.ms);
+      setFill(p);
+      if (p >= 1) {
+        keyHoldRef.current = false;
+        void run();
+      } else rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  const endKeyHold = () => {
+    if (!keyHoldRef.current) return;
+    keyHoldRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+    if (!runningRef.current) setFill(0);
+  };
+
+  const swallowNextClick = () => {
+    swallowClickRef.current = true;
+    setTimeout(() => {
+      swallowClickRef.current = false;
+    }, 0);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (phase === 'running' || phase === 'done' || count === 0) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (!e.repeat) stepConfirm();
+      swallowNextClick();
+      if (e.repeat) return;
+      const wasArmed = phase === 'armed';
+      stepConfirm();
+      if (!wasArmed && !reduced) startKeyHold();
     } else if (e.key === 'Escape' && phase === 'armed') {
       // Esc disarms only — it must not travel on and close a Sheet (F-726).
       e.preventDefault();
       e.nativeEvent.stopPropagation();
+      endKeyHold();
       if (armTimerRef.current) clearTimeout(armTimerRef.current);
       setPhase('idle');
     }
+  };
+
+  const onKeyUp = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    swallowNextClick();
+    endKeyHold();
+  };
+
+  /* A bare click (`detail === 0`) is a screen reader or voice control pressing
+     the button: two steps, like the keyboard. A pointer click is ignored. */
+  const onClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (swallowClickRef.current) {
+      swallowClickRef.current = false;
+      return;
+    }
+    if (e.detail !== 0 || phase === 'running' || phase === 'done' || count === 0) return;
+    stepConfirm();
   };
 
   if (count === 0 && phase !== 'done') return null;
@@ -388,8 +451,12 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
             onPointerUp={releaseHold}
             onPointerCancel={releaseHold}
             onKeyDown={onKeyDown}
+            onKeyUp={onKeyUp}
+            onBlur={endKeyHold}
+            onClick={onClick}
             disabled={phase === 'running'}
             aria-label={`Hold to approve ${count} orders with one dry impression`}
+            aria-describedby={statusId}
             className="relative flex-1 overflow-hidden rounded-lg px-4"
             style={{
               minHeight: 40,
@@ -452,7 +519,16 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
         </button>
       </div>
 
-      <div aria-live="polite" style={{ minHeight: 16, marginTop: 2, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+      <span
+        ref={meterRef}
+        className="sr-only"
+        role="progressbar"
+        aria-label="How far the hold has gone"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={0}
+      />
+      <div id={statusId} aria-live="polite" style={{ minHeight: 16, marginTop: 2, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
         {sealNote ?? note ?? (phase === 'armed' ? 'Press Enter again to approve — Esc cancels.' : '')}
       </div>
 

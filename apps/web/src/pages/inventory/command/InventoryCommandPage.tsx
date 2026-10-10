@@ -868,13 +868,23 @@ export function InventoryCommandPage() {
           t.tagName === "TEXTAREA" ||
           t.tagName === "SELECT" ||
           t.isContentEditable);
+      // A dialog owns its own keys, including the ones RowExpansion opens
+      // itself (spot count) that `anyModalOpen` cannot see (F-320).
+      const inDialog = !!t?.closest?.(
+        '[role="dialog"], [role="alertdialog"], dialog, [aria-modal="true"]',
+      );
+      // Enter and Space press a focused button or link; the row must not
+      // take them (F-320: Enter on "Spot count" folded the row away).
+      const onControl = !!t?.closest?.(
+        'button, a[href], summary, [role="button"], [role="link"], [role="checkbox"], [role="menuitem"], [role="tab"], [role="switch"]',
+      );
       if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
-        if (typing || anyModalOpen) return;
+        if (typing || inDialog || anyModalOpen) return;
         e.preventDefault();
         setSelected(new Set(rows.map((r) => r.inventoryId!).filter(Boolean)));
         return;
       }
-      if (e.metaKey || e.ctrlKey || typing || anyModalOpen) return;
+      if (e.metaKey || e.ctrlKey || typing || inDialog || anyModalOpen) return;
       if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
@@ -885,6 +895,7 @@ export function InventoryCommandPage() {
         return;
       }
       if (rows.length === 0) return;
+      if ((e.key === "Enter" || e.key === " ") && onControl) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setFocusedIndex((i) => Math.min(rows.length - 1, (i < 0 ? -1 : i) + 1));

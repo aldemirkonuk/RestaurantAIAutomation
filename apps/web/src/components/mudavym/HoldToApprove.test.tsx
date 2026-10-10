@@ -16,7 +16,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { HoldToApprove } from './HoldToApprove';
 
 const press = () =>
@@ -133,5 +134,118 @@ describe('HoldToApprove with a challenge', () => {
     press();
     press();
     await waitFor(() => expect(onApprove).toHaveBeenCalledWith('tok-2'));
+  });
+});
+
+/*
+ * F-319 — the paths that are not a pointer. A screen reader in browse mode,
+ * VoiceOver, TalkBack and voice control press a button with a bare click
+ * (`detail === 0`), and a keyboard user may hold the key the way a pointer
+ * holds. Neither is a one-press approve.
+ */
+describe('HoldToApprove without a pointer', () => {
+  const button = () => screen.getByRole('button', { name: 'Approve' });
+
+  it('a screen-reader click arms, and a second one approves', async () => {
+    const onApprove = vi.fn();
+    render(<HoldToApprove onApprove={onApprove} label="Approve" />);
+
+    fireEvent.click(button()); // detail 0: no pointer, no key behind it
+    expect(onApprove).not.toHaveBeenCalled();
+    expect(button()).toHaveTextContent('Enter again to approve');
+
+    fireEvent.click(button());
+    await waitFor(() => expect(onApprove).toHaveBeenCalledTimes(1));
+  });
+
+  it('a mouse click is never a confirm — the pointer has to hold', () => {
+    const onApprove = vi.fn();
+    render(<HoldToApprove onApprove={onApprove} label="Approve" />);
+
+    fireEvent.click(button(), { detail: 1 });
+    fireEvent.click(button(), { detail: 1 });
+    expect(onApprove).not.toHaveBeenCalled();
+    expect(button()).toHaveTextContent('Approve');
+  });
+
+  it('Enter then Enter approves once, and the key click is not counted again', async () => {
+    const user = userEvent.setup();
+    const onApprove = vi.fn();
+    render(<HoldToApprove onApprove={onApprove} label="Approve" />);
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    expect(onApprove).not.toHaveBeenCalled();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onApprove).toHaveBeenCalledTimes(1));
+  });
+
+  it('a tapped Space arms but does not approve', async () => {
+    const user = userEvent.setup();
+    const onApprove = vi.fn();
+    render(<HoldToApprove onApprove={onApprove} label="Approve" />);
+
+    button().focus();
+    await user.keyboard(' ');
+    expect(onApprove).not.toHaveBeenCalled();
+    expect(button()).toHaveTextContent('Enter again to approve');
+  });
+
+  it('holding Space for the hold time approves, and shows how far it has gone', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'],
+    });
+    try {
+      const onApprove = vi.fn();
+      render(<HoldToApprove onApprove={onApprove} label="Approve" holdMs={600} />);
+      const meter = screen.getByRole('progressbar');
+
+      button().focus();
+      fireEvent.keyDown(button(), { key: ' ', code: 'Space' });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onApprove).not.toHaveBeenCalled();
+      expect(Number(meter.getAttribute('aria-valuenow'))).toBeGreaterThan(0);
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(onApprove).toHaveBeenCalledTimes(1);
+      fireEvent.keyUp(button(), { key: ' ', code: 'Space' });
+      expect(onApprove).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('letting go of the key early sends nothing and empties the fill', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'],
+    });
+    try {
+      const onApprove = vi.fn();
+      render(<HoldToApprove onApprove={onApprove} label="Approve" holdMs={600} />);
+
+      button().focus();
+      fireEvent.keyDown(button(), { key: ' ', code: 'Space' });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      fireEvent.keyUp(button(), { key: ' ', code: 'Space' });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(onApprove).not.toHaveBeenCalled();
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is named, and described by its status line', async () => {
+    render(<HoldToApprove onApprove={vi.fn()} label="Approve" />);
+    fireEvent.click(button());
+    expect(button()).toHaveAccessibleDescription('Press Enter again to approve — Esc cancels.');
   });
 });

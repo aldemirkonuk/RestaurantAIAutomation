@@ -41,7 +41,9 @@ describe('sealed consent presentation', () => {
   it('requests a challenge at arm, binds displayed words, and does not authorize on a tap', async () => {
     render(consentPage())
     const hold = await screen.findByRole('button', { name: /Hold to continue to Google/ })
-    fireEvent.click(hold)
+    // A pointer tap (detail 1). A bare click (detail 0) is a screen reader
+    // pressing the button, which arms like Enter does (F-319).
+    fireEvent.click(hold, { detail: 1 })
     expect(integrationsApi.consentChallenge).not.toHaveBeenCalled()
     fireEvent.keyDown(hold, { key: 'Enter' })
     await waitFor(() => expect(integrationsApi.consentChallenge).toHaveBeenCalledTimes(1))

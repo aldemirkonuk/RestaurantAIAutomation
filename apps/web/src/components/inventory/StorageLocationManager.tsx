@@ -3,7 +3,7 @@
  * Allows managers to define and manage custom storage locations for wines
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useId, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -30,6 +30,7 @@ import {
 import { useStorageLocations, useZoneSetupAccess } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
 import { nestZones, parentChoices, zonesInside, rolledUpTotals, rollupLabel } from './zoneNesting'
+import { useModalDialog } from '../../hooks/useModalDialog'
 export type { StorageLocation }
 
 interface StorageLocationManagerProps {
@@ -351,6 +352,9 @@ export function StorageLocationManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, defaultEditLocationId])
 
+  const dialogRef = useModalDialog(isOpen, onClose)
+  const titleId = useId()
+
   if (!isOpen) return null
 
   return (
@@ -367,7 +371,12 @@ export function StorageLocationManager({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col"
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col focus:outline-none"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-emerald-50 to-teal-50">
@@ -376,15 +385,16 @@ export function StorageLocationManager({
                 <MapPin className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Storage Locations</h2>
+                <h2 id={titleId} className="text-xl font-bold text-gray-900">Storage Locations</h2>
                 <p className="text-sm text-gray-500">Manage wine storage areas</p>
               </div>
             </div>
             <button
               onClick={onClose}
+              aria-label="Close"
               className="p-2 hover:bg-white/50 rounded-lg transition-colors"
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <X className="w-5 h-5 text-gray-500" aria-hidden />
             </button>
           </div>
 

@@ -13,15 +13,20 @@
  *
  * Paths:
  * - Pointer: press and hold for `holdMs`.
- * - Keyboard: Enter arms it ("Enter again to approve"), Enter again within
- *   3s approves; Escape or the timeout disarms. The second press must come
- *   at least `sealTiming.confirmGapMs` after the first, so a double-tap cannot
- *   approve, and a held key's repeats never do.
+ * - Keyboard: Enter or Space arms it ("Enter again to approve"), Enter again
+ *   within 3s approves; Escape or the timeout disarms. The second press must
+ *   come at least `sealTiming.confirmGapMs` after the first, so a double-tap
+ *   cannot approve, and a held key's repeats never do. Holding the key down
+ *   for `holdMs` approves too, the same timed hold the pointer makes (F-319).
+ * - Assistive tech: a screen reader in browse mode, VoiceOver, TalkBack and
+ *   voice control press a button with a bare click (no pointer, no key). That
+ *   click is the same two-step confirm: the first arms, the second approves.
+ *   A pointer click is never a confirm — the pointer has to hold.
  * - Reduced motion: the timed hold collapses to the same two-step confirm as
  *   the keyboard path — press once to arm, press again to approve, instantly.
  */
 
-import { CSSProperties, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { CSSProperties, ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   animate,
   ink,
@@ -165,6 +170,14 @@ export function HoldToApprove({
   const [sealedSummary, setSealedSummary] = useState<ReactNode>();
 
   const fillRef = useRef<HTMLDivElement | null>(null);
+  /* The fill drawn for assistive technology: a progressbar beside the button
+     (a button's children are presentational, so it cannot live inside). */
+  const meterRef = useRef<HTMLSpanElement | null>(null);
+  const statusId = useId();
+  /** A key is being held down on top of the arm (keyboard hold). */
+  const keyHoldRef = useRef(false);
+  /** The browser's own click after a key we already handled. */
+  const swallowClickRef = useRef(false);
   const sealRef = useRef<HTMLDivElement | null>(null);
   const boundRef = useRef<HTMLDivElement | null>(null);
   /* `boundSummary` is usually a freshly-created element on every render; read
@@ -190,6 +203,7 @@ export function HoldToApprove({
 
   const setFill = (p: number) => {
     if (fillRef.current) fillRef.current.style.transform = `scaleX(${p})`;
+    meterRef.current?.setAttribute('aria-valuenow', String(Math.round(p * 100)));
     progressRef.current = p;
   };
 
@@ -347,6 +361,39 @@ export function HoldToApprove({
     rafRef.current = requestAnimationFrame(tick);
   };
 
+  /* The key-held version of the pointer hold. It runs on top of the arm the
+     key press already made, so letting go early leaves it armed (the next press
+     approves) rather than reporting a release. */
+  const startKeyHold = () => {
+    keyHoldRef.current = true;
+    holdStartRef.current = performance.now();
+    if (fillRef.current) fillRef.current.style.transition = 'none';
+    const tick = (now: number) => {
+      if (!keyHoldRef.current) return;
+      const p = Math.min(1, (now - holdStartRef.current) / holdMs);
+      setFill(p);
+      if (p >= 1) {
+        keyHoldRef.current = false;
+        commit();
+      } else rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  const endKeyHold = () => {
+    if (!keyHoldRef.current) return;
+    keyHoldRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+    if (!committedRef.current) setFill(0);
+  };
+
+  const swallowNextClick = () => {
+    swallowClickRef.current = true;
+    setTimeout(() => {
+      swallowClickRef.current = false;
+    }, 0);
+  };
+
   const releaseHold = () => {
     if (committedRef.current || phase !== 'holding') return;
     cancelAnimationFrame(rafRef.current);
@@ -380,15 +427,40 @@ export function HoldToApprove({
     if (disabled || committedRef.current) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault(); // suppress the synthesized click
-      if (!e.repeat) stepConfirm();
+      swallowNextClick();
+      if (e.repeat) return;
+      const wasArmed = phase === 'armed';
+      stepConfirm();
+      if (!wasArmed && !reduced) startKeyHold();
     } else if (e.key === 'Escape' && phase === 'armed') {
       // Esc disarms the seal and nothing else: the Sheet around it listens on
       // window, so the key must not travel on and close it too (F-726).
       e.preventDefault();
       e.nativeEvent.stopPropagation();
+      endKeyHold();
       if (armTimerRef.current) clearTimeout(armTimerRef.current);
       setPhase('idle');
     }
+  };
+
+  const onKeyUp = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    // Space presses a button on key-up; that click was this key, not a confirm.
+    swallowNextClick();
+    endKeyHold();
+  };
+
+  /* A bare click with no pointer and no key behind it (`detail === 0`) is how
+     a screen reader or voice control presses a button. It takes the same two
+     steps as the keyboard, never one. A mouse or touch click (`detail >= 1`)
+     is ignored: the pointer path is the hold, and a tap stays a release. */
+  const onClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (swallowClickRef.current) {
+      swallowClickRef.current = false;
+      return;
+    }
+    if (e.detail !== 0 || disabled || committedRef.current) return;
+    stepConfirm();
   };
 
   const sealed = phase === 'sealed';
@@ -435,10 +507,14 @@ export function HoldToApprove({
         aria-disabled={inert || undefined}
         aria-busy={pending}
         aria-label={typeof label === 'string' ? label : 'Hold to approve'}
+        aria-describedby={statusId}
         onPointerDown={onPointerDown}
         onPointerUp={releaseHold}
         onPointerCancel={releaseHold}
         onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
+        onBlur={endKeyHold}
+        onClick={onClick}
       >
         {/* fill — İznik pouring in under the label */}
         <div
@@ -465,6 +541,15 @@ export function HoldToApprove({
           </span>
         )}
       </button>
+      <span
+        ref={meterRef}
+        className="sr-only"
+        role="progressbar"
+        aria-label="How far the hold has gone"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={0}
+      />
       {/* What the seal bound (1d). Only after the wax lands, and only when the
           caller gave something to read back — a heading over nothing would be
           a receipt for a write nobody described. */}
@@ -476,6 +561,7 @@ export function HoldToApprove({
       ) : null}
       {/* status line — honest, and reserved so nothing jumps */}
       <div
+        id={statusId}
         aria-live="polite"
         style={{
           minHeight: 18,
