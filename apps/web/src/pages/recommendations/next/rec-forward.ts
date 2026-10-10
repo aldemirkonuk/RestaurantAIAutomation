@@ -147,19 +147,22 @@ const RULE_GOAL: Record<string, RuleGoal> = {
     basis:
       'The rule fires on a week-over-week fall in whole-check sales through the till, in bottles sold, or in one wine’s bottles. The entry’s own sentence says which. A goal cannot be held on whole-check sales, so this one is held on wine revenue, the figure the prescription (a staff tasting on high-margin slow movers, a pairing prompt) moves. It records part of what fell, not all of it.',
   },
+  // F-638: these two goals count the whole house — wine revenue on every
+  // day, bottles sold of every wine — so the name says that, not the subset
+  // the rule is aimed at.
   weekday_gap: {
     metricKey: 'wine_revenue',
     direction: 'at_least',
-    name: (s) => (s ? `Lift ${s} wine revenue` : 'Lift the quiet day’s wine revenue'),
+    name: (s) => (s ? `Wine revenue, every day, after the ${s} offer` : 'Wine revenue, every day, after the quiet-day offer'),
     basis:
-      'The rule prescribes an offer on the weakest weekday; what it would move is wine revenue.',
+      'The rule prescribes an offer on the weakest weekday; what it would move is wine revenue. A goal cannot be held on one weekday, so this one counts wine revenue on every day of the period, not that day alone.',
   },
   dead_stock_capital: {
     metricKey: 'bottles_sold',
     direction: 'at_least',
-    name: () => 'Move the idle bottles',
+    name: () => 'Bottles sold, every wine, after the idle-stock push',
     basis:
-      'The rule asks you to convert idle stock back into cash. Bottles sold is the metric that records bottles leaving the shelf; the capital figure itself is not one the gateway will hold a goal on.',
+      'The rule asks you to convert idle stock back into cash. Bottles sold is the metric that records bottles leaving the shelf, and it counts every bottle sold, not only the idle ones; the capital figure itself is not one the gateway will hold a goal on.',
   },
   plowhorse_repricing: {
     metricKey: 'wine_revenue',

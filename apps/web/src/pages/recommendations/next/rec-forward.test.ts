@@ -116,6 +116,20 @@ describe('rec-forward — the goal door', () => {
     expect(week.plan.name).toBe('Wine revenue, after a soft week');
   });
 
+  // F-638: the goal counts the whole house, so its name must not claim the
+  // one weekday or the idle bottles the rule was aimed at.
+  it('names the weekday-gap and idle-stock goals for what they count', () => {
+    const gap = goalOfferFor(e({ ruleKey: 'weekday_gap', subject: 'Tuesday' }));
+    if (gap.kind !== 'plan') throw new Error('expected a plan');
+    expect(gap.plan.name).toBe('Wine revenue, every day, after the Tuesday offer');
+    expect(gap.plan.name).not.toMatch(/^Lift Tuesday/);
+    expect(gap.plan.basis).toMatch(/every day of the period, not that day alone/);
+    const idle = goalOfferFor(e({ ruleKey: 'dead_stock_capital' }));
+    if (idle.kind !== 'plan') throw new Error('expected a plan');
+    expect(idle.plan.name).toBe('Bottles sold, every wine, after the idle-stock push');
+    expect(idle.plan.basis).toMatch(/every bottle sold, not only the idle ones/);
+  });
+
   // ADR 0291 (AW20, A-022). The dip rule fires on whole-check sales from the
   // till (overall.revenue) or on bottles sold (overall.bottles); the weekly
   // slide also on one wine's bottles. Neither reads wine revenue, so a basis

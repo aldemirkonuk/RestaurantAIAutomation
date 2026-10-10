@@ -17,6 +17,19 @@ vi.mock('../../../services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : 'unknown'),
 }));
 
+const terms = vi.hoisted(() => ({ current: { isPending: false, isError: false, error: null, data: null as unknown } }));
+vi.mock('../../../hooks/queries/useDataTerms', () => ({ useDataTerms: () => terms.current }));
+vi.mock('../../../components/settings/DataTermsAcceptSheet', () => ({ DataTermsAcceptSheet: () => null }));
+
+function readout(over: Record<string, unknown> = {}) {
+  return {
+    readable: true, reason: null, version: 2, digest: 'd', statements: [], subprocessors: [], changedSince: {},
+    acceptance: { version: 2, acceptedAt: '2026-09-22T10:00:00.000Z', acceptedBy: { userId: 'u1', name: 'Aldemir' } },
+    current: true, yours: { current: true }, jev: { enabled: true, effective: true, pausedBecause: null },
+    ...over,
+  };
+}
+
 import { CONSENT_SWITCHES, ConsentPanelOpener, NOT_SWITCHES } from './ConsentPanel';
 
 function remote(data: unknown) {
@@ -29,6 +42,8 @@ function settingsData(over: Record<string, unknown> = {}) {
     saveAskTraining: vi.fn(() => Promise.resolve(true)),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     houseAskTraining: remote({ restaurantId: 'r1', optedOut: false, readable: true, reason: null, statedAt: null, statedBy: null }),
+    houseToneScoring: remote({ restaurantId: 'r1', enabled: true, readable: true, reason: null, statedAt: null, statedBy: null }),
+    saveToneScoring: vi.fn(() => Promise.resolve(true)),
     ...over,
   } as unknown as SettingsNextData;
 }
@@ -51,6 +66,7 @@ beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
   http.get.mockResolvedValue({ data: trail() });
+  terms.current = { isPending: false, isError: false, error: null, data: readout() };
 });
 
 describe('the consent panel', () => {
@@ -62,15 +78,39 @@ describe('the consent panel', () => {
       </QueryClientProvider>,
     );
     expect(http.get).not.toHaveBeenCalled();
-    expect(screen.getByText(/One consent this house gives, with who changed it and when\./)).toBeInTheDocument();
+    expect(screen.getByText(/3 consents this house gives, with who changed each and when\./)).toBeInTheDocument();
   });
 
-  it('holds only switches the product reads: today, the training opt-out', async () => {
-    expect(CONSENT_SWITCHES.map((s) => s.key)).toEqual(['ask-training']);
+  it('holds only consents the product reads: the training opt-out, Jev and the data terms', async () => {
+    expect(CONSENT_SWITCHES.map((s) => s.key)).toEqual(['ask-training', 'tone-scoring', 'data-terms']);
     draw();
     const section = await screen.findByTestId('consent-ask-training');
     expect(within(section).getByRole('switch', { name: /Use this house’s questions to improve Mudavym/ })).toBeInTheDocument();
     expect(http.get).toHaveBeenCalledWith('/settings-audit?register=ask-training&limit=10');
+  });
+
+  // F-626: the panel said tone scoring was "not built yet" while the same
+  // page carried the switch, and left out the terms acceptance that turns it on.
+  it('carries the Jev switch and the data-terms acceptance, each with its own trail', async () => {
+    draw();
+    const jev = await screen.findByTestId('consent-tone-scoring');
+    expect(within(jev).getByRole('button', { name: 'Turn off' })).toBeInTheDocument();
+    const accepted = screen.getByTestId('consent-data-terms');
+    expect(within(accepted).getByText(/Version 2 accepted by Aldemir on .*That is the current version\./)).toBeInTheDocument();
+    expect(http.get).toHaveBeenCalledWith('/settings-audit?register=tone-scoring&limit=10');
+    expect(http.get).toHaveBeenCalledWith('/settings-audit?register=data-terms&limit=10');
+    expect(screen.queryByText(/not built yet/)).not.toBeInTheDocument();
+    expect(NOT_SWITCHES.map((n) => n.title)).not.toContain('Vendor tone scoring');
+  });
+
+  it('says terms nobody has accepted, and a terms read that failed, differently', async () => {
+    terms.current = { isPending: false, isError: false, error: null, data: readout({ acceptance: null, current: false }) };
+    draw();
+    expect(await screen.findByText(/No owner has accepted this house’s data and privacy terms yet\./)).toBeInTheDocument();
+    cleanup();
+    terms.current = { isPending: false, isError: false, error: null, data: readout({ readable: false, reason: 'store offline' }) };
+    draw();
+    expect(await screen.findByText(/could not be read — store offline\. That is not the same as not accepted\./)).toBeInTheDocument();
   });
 
   it('is owner only: a manager sees the switch disabled and why', async () => {
