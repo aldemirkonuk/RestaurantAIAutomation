@@ -57,3 +57,20 @@ describe('Figures of record — one uncosted wine does not blank the cellar', ()
     expect(v.figures?.[0]).toMatchObject({ label: 'Cellar at cost', value: EM });
   });
 });
+
+// F-1054: Cost of goods blanked because the orders were in two currencies says
+// so; the "no delivered order" sentence is kept for the empty window only.
+describe('Figures of record — Cost of goods in two currencies', () => {
+  const cogsOf = (raw: Record<string, unknown>) =>
+    view(raw).figures?.find((x) => x.label === 'Cost of goods (365d)');
+  const ORDERED =
+    'Ordered in EUR and TRY: with no exchange rate on record these cannot be added into one figure.';
+
+  it('gives the two currencies as the reason', () => {
+    expect(cogsOf({ ...base, cogsNote: ORDERED })).toMatchObject({ value: EM, note: ORDERED });
+  });
+
+  it('keeps the no-orders sentence for an empty window', () => {
+    expect(cogsOf({ ...base, cogsNote: null })?.note).toBe('No delivered order came back for the window');
+  });
+});

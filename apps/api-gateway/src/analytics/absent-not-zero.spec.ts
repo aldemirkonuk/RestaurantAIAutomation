@@ -171,6 +171,10 @@ describe("financial never reports an empty result set as $0", () => {
     }).getFinancialSummary(RESTAURANT);
     expect(out.cogs).toBeNull();
     expect(out.basis.cogs).toContain("placed in EUR, TRY");
+    // F-1054: the page says the currencies, not "no delivered order".
+    expect(out.cogsNote).toBe(
+      "Ordered in EUR and TRY: with no exchange rate on record these cannot be added into one figure.",
+    );
     // One named currency (plus an order that names none) still sums.
     const one: any = await analytics({
       restaurant_inventory: [STOCKED],
@@ -180,6 +184,7 @@ describe("financial never reports an empty result set as $0", () => {
       ],
     }).getFinancialSummary(RESTAURANT);
     expect(one.cogs).toBe(12400);
+    expect(one.cogsNote).toBeNull();
   });
 
   // F-701: an order placed with no price is written total_cost 0. It used to

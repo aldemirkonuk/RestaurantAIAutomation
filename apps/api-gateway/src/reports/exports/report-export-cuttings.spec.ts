@@ -474,3 +474,81 @@ describe("the buying files carry the caveats the screen prints (F-1009)", () => 
     );
   });
 });
+
+// F-1053 / F-1054: a house that bought in two currencies has blank money
+// figures for that reason, and the file says it — not "nothing was bought".
+describe("two currencies are said in the file, not read as an empty window (F-1053, F-1054)", () => {
+  const SPEND =
+    "Paid in EUR and TRY: with no exchange rate on record they cannot be added into one figure, so the 30-day buying figures and the pace are left blank.";
+  const ORDERED =
+    "Ordered in EUR and TRY: with no exchange rate on record these cannot be added into one figure.";
+  const why = (doc: ExportDoc, label: string) =>
+    (figure(doc, label) as { why: string }).why;
+
+  it("spend pacing says the two currencies, not that no order was delivered", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(
+      {
+        ...(PAYLOADS.pacing as object),
+        spendLast30d: null,
+        spendPrev30d: null,
+        paceDeltaPct: null,
+        spendNote: SPEND,
+        committedOpenOrders: null,
+        committedNote: ORDERED,
+        notCounted: {
+          approved: 2,
+          partlyReceived: 0,
+          other: 0,
+          orderValue: null,
+          orderValueNote: ORDERED,
+          unpriced: 0,
+        },
+      },
+      { days: null },
+    );
+    expect(doc.say).toBe(SPEND);
+    expect(why(doc, "Paid out, the last 30 days")).toBe(SPEND);
+    expect(why(doc, "Paid out, the 30 days before")).toBe(SPEND);
+    expect(why(doc, "Pace")).toBe(SPEND);
+    expect(why(doc, "Committed, not yet delivered")).toBe(ORDERED);
+    expect(why(doc, "Not in either figure, at order value")).toBe(ORDERED);
+    expect(doc.notes.join(" ")).not.toContain("Both windows came back at zero");
+  });
+
+  it("against ourselves gives the two currencies as the reason its buying figures are blank", () => {
+    const bench = PAYLOADS.bench as { cashflow: object };
+    const doc = EXPORT_CUTTINGS.bench.write(
+      {
+        ...bench,
+        cashflow: {
+          ...bench.cashflow,
+          spendLast30d: null,
+          spendPrev30d: null,
+          paceDeltaPct: null,
+          spendNote: SPEND,
+          committedOpenOrders: null,
+          committedNote: ORDERED,
+        },
+      },
+      { days: null },
+    );
+    expect(why(doc, "Bought, the last 30 days")).toBe(SPEND);
+    expect(why(doc, "Bought, the 30 before")).toBe(SPEND);
+    expect(why(doc, "Pace against last month")).toBe(SPEND);
+    expect(why(doc, "Committed, not yet delivered")).toBe(ORDERED);
+    expect(doc.notes).toContain(SPEND);
+    expect(doc.notes).toContain(ORDERED);
+  });
+
+  it("figures of record gives the two currencies as the reason Cost of goods is blank", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      { ...(PAYLOADS.ledger as object), cogs: null, cogsNote: ORDERED },
+      { days: null },
+    );
+    expect(why(doc, "Cost of goods (365d)")).toBe(ORDERED);
+    const empty = EXPORT_CUTTINGS.ledger.write(PAYLOADS.ledger, { days: null });
+    expect(why(empty, "Cost of goods (365d)")).toContain(
+      "No delivered order came back",
+    );
+  });
+});

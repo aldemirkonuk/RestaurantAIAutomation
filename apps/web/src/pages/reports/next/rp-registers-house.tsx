@@ -226,6 +226,8 @@ export interface LedgerRegister {
   cogs: number | null;
   /** Delivered orders with no price, left out of `cogs` (F-701). */
   cogsUnpricedCount?: number;
+  /** Why `cogs` is blank when the orders were in two currencies (F-1054). */
+  cogsNote?: string | null;
   revenue: number | null;
   grossMargin: number | null;
   cogsRatio: number | null;
@@ -256,6 +258,7 @@ const ledger = analysis<LedgerRegister>({
       pricedInventoryValue: num(d.pricedInventoryValue),
       cogs: num(d.cogs),
       cogsUnpricedCount: num(d.cogsUnpricedCount) ?? undefined,
+      cogsNote: typeof d.cogsNote === 'string' ? d.cogsNote : null,
       revenue: num(d.revenue),
       grossMargin: num(d.grossMargin),
       cogsRatio: num(d.cogsRatio),
@@ -285,7 +288,7 @@ const ledger = analysis<LedgerRegister>({
       {
         label: 'Cost of goods (365d)',
         value: money(f.cogs),
-        note: 'No delivered order came back for the window',
+        note: f.cogsNote ?? 'No delivered order came back for the window',
       },
       {
         label: 'Sell-price valuation',
