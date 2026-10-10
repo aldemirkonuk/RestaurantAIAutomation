@@ -1,4 +1,9 @@
-import { heldApproval, OFFLINE_REFUSAL, UNCERTAIN_APPROVAL } from "../heldApproval";
+import {
+  approveOrSettle,
+  heldApproval,
+  OFFLINE_REFUSAL,
+  UNCERTAIN_APPROVAL,
+} from "../heldApproval";
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => jest.useRealTimers());
 it("issues at the start, cancels on early release and never approves later", async () => {
@@ -90,4 +95,50 @@ it("does not claim 'not approved' when the connection drops after sending", asyn
   control.begin();
   await jest.advanceTimersByTimeAsync(1000);
   expect(state).toHaveBeenLastCalledWith("idle", UNCERTAIN_APPROVAL);
+});
+
+// F-830: a second hold on an order someone already approved read as an error
+// and left the stale list on screen.
+function refusal(status: number, body: unknown) {
+  return Object.assign(new Error("refused"), { status, body });
+}
+
+it("treats an 'already approved' 409 as done: refreshes and shows no error", async () => {
+  const settle = jest.fn();
+  const state = jest.fn();
+  const control = heldApproval({
+    issue: async () => "proof",
+    approve: () =>
+      approveOrSettle(async () => {
+        throw refusal(409, {
+          reason: "order_already_approved",
+          message: "This order is already approved.",
+        });
+      }, settle),
+    state,
+  });
+  control.begin();
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(settle).toHaveBeenCalledTimes(1);
+  expect(state).toHaveBeenLastCalledWith("approved");
+});
+
+it("still shows any other 409 as the refusal it is", async () => {
+  const settle = jest.fn();
+  const state = jest.fn();
+  const control = heldApproval({
+    issue: async () => "proof",
+    approve: () =>
+      approveOrSettle(async () => {
+        throw refusal(409, {
+          reason: "order_changed_while_approving",
+          message: "The order changed while you were approving it.",
+        });
+      }, settle),
+    state,
+  });
+  control.begin();
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(settle).not.toHaveBeenCalled();
+  expect(state).toHaveBeenLastCalledWith("idle", "refused");
 });
