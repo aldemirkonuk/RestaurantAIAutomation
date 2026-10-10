@@ -19,7 +19,9 @@
  *    whose start_date it would overwrite; see the note in `submit`.
  *
  * Deleting is the one irreversible act on this page, so it is the one place
- * that spends the house ceremony: HoldToApprove, completing into the seal.
+ * that spends the house ceremony: HoldToApprove, completing into the seal. A
+ * repeating entry opened on a later date also offers to END the series from
+ * that date, which keeps every earlier date (F-607).
  *
  * REMINDERS MOVED SERVER-SIDE, 2026-09-03. This sheet no longer enqueues into
  * the browser's localStorage queue; it writes `reminderEnabled` /
@@ -63,7 +65,7 @@ const ENUM_TYPES = new Set([
 const STATUSES: EventStatus[] = ['pending', 'approved', 'completed', 'cancelled', 'dismissed'];
 
 /** The writes a sheet can ask for; its banner speaks only for these. */
-const WRITE_KEYS = ['create', 'update', 'remove', 'createType', 'deleteType'] as const;
+const WRITE_KEYS = ['create', 'update', 'remove', 'endSeries', 'createType', 'deleteType'] as const;
 type WriteKey = (typeof WRITE_KEYS)[number];
 
 export type SheetTarget =
@@ -267,6 +269,10 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   /** The stored row can carry a value the gateway's own enum does not hold. */
   const storedTypeOutside = !!editing && !ENUM_TYPES.has(editing.type);
   const storedStatusOutside = !!editing && !STATUSES.includes(editing.status);
+
+  /** A later date of a series: ending from it still keeps the dates before. */
+  const canEndFrom =
+    !!editing?.isOccurrence && !!editing.seriesStart && editing.date > editing.seriesStart;
 
   const linkedProvider = editing?.providerId
     ? data.providersById?.get(editing.providerId)?.name
@@ -579,7 +585,11 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
           errorMessage={data.reminderJob.errorMessage}
           enabled={remindOn}
           daysBefore={remindDays}
-          alreadySent={editing?.reminderSent === true}
+          // A repeating entry is reminded date by date, so one stamp on the
+          // series row says nothing about this date (F-605).
+          alreadySent={
+            editing?.reminderSent === true && !editing.isRecurring && !editing.isOccurrence
+          }
           onChange={(next) => {
             setRemindOn(next.enabled);
             setRemindDays(next.daysBefore);
@@ -605,12 +615,35 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
           </button>
         </div>
 
+        {editing && canEndFrom && (
+          <div style={{ marginTop: 18 }}>
+            <div className="cn-rule2" />
+            <p className="cn-quiet" style={{ marginTop: 0 }}>
+              Ending the series from {longDay(editing.date)} takes that date and every later one
+              off the book. Every date before it stays.
+            </p>
+            <HoldToApprove
+              label={`Hold to end the series from ${longDay(editing.date)}`}
+              approvedLabel="Ended"
+              onApprove={() => {
+                ask('endSeries');
+                data.endSeries.mutate(
+                  { id: editing.seriesId, fromDate: editing.date },
+                  { onSuccess: onClose },
+                );
+              }}
+            />
+          </div>
+        )}
+
         {editing && (
           <div style={{ marginTop: 18 }}>
             <div className="cn-rule2" />
             <p className="cn-quiet" style={{ marginTop: 0 }}>
               {editing.isRecurring || editing.isOccurrence
-                ? 'Deleting removes the whole repeating series — every occurrence, past and future.'
+                ? `Deleting removes the whole repeating series — every occurrence, past and future.${
+                    canEndFrom ? ' To keep the earlier dates, end the series from this date above.' : ''
+                  }`
                 : 'Deleting removes this entry. It cannot be undone.'}
             </p>
             <HoldToApprove

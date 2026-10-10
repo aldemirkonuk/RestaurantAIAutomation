@@ -19,6 +19,10 @@
  * The ruler runs the whole day, 00–24, and opens scrolled to 06:00 (or to the
  * earliest entry, if one starts sooner), so a 05:00 bread drop is never above
  * reach. An end earlier than the start runs past midnight (F-197).
+ *
+ * Entries that overlap share the column side by side, one lane each, so every
+ * one of them is visible and can be opened (F-604). Two 10:00 deliveries used
+ * to be drawn one on top of the other, and only the top one could be clicked.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -78,6 +82,47 @@ export function placed(e: CalEvent): { start: number; end: number } | null {
         ? rawEnd
         : rawEnd + END_MIN;
   return { start, end };
+}
+
+/** The shortest a block is drawn, in minutes: 22px on a 44px hour. */
+const MIN_DRAWN_MIN = 30;
+
+/**
+ * Side-by-side lanes for one day's timed entries (F-604). Entries that overlap
+ * on the ruler, directly or through a chain, form a group; each takes the first
+ * lane free at its start, and the group shares the column width evenly.
+ * Overlap is read on the DRAWN block (at least MIN_DRAWN_MIN, cut at midnight),
+ * so two blocks that touch on screen never cover each other.
+ */
+export function laneLayout(entries: CalEvent[]): Map<string, { lane: number; lanes: number }> {
+  const spans = entries
+    .map((e) => ({ id: e.id, p: placed(e) }))
+    .filter((x): x is { id: string; p: { start: number; end: number } } => x.p !== null)
+    .map(({ id, p }) => ({
+      id,
+      start: p.start,
+      end: Math.max(Math.min(END_MIN, p.end), p.start + MIN_DRAWN_MIN),
+    }))
+    .sort((a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id));
+  const out = new Map<string, { lane: number; lanes: number }>();
+  let group: Array<{ id: string; lane: number }> = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -1;
+  const close = () => {
+    for (const g of group) out.set(g.id, { lane: g.lane, lanes: laneEnds.length });
+    group = [];
+    laneEnds = [];
+  };
+  for (const s of spans) {
+    if (s.start >= groupEnd) close();
+    let lane = laneEnds.findIndex((end) => end <= s.start);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = s.end;
+    group.push({ id: s.id, lane });
+    groupEnd = Math.max(groupEnd, s.end);
+  }
+  close();
+  return out;
 }
 
 /** A clock time for a minute count that may run past midnight. */
@@ -197,6 +242,8 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
     setDrag({ id: event.id, mode, dMin: 0, dDay: 0 });
   };
 
+  const lanesByDay = new Map(keys.map((key) => [key, laneLayout(data.byDay.get(key) ?? [])]));
+
   return (
     <div className="cn-time">
       <div className="cn-time-head" style={{ gridTemplateColumns: template }}>
@@ -260,6 +307,7 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
             {(data.byDay.get(key) ?? []).map((e) => {
               const p = placed(e);
               if (!p) return null;
+              const slot = lanesByDay.get(key)?.get(e.id) ?? { lane: 0, lanes: 1 };
               const d = drag && drag.id === e.id ? drag : null;
               const resizing = d?.mode === 'resize';
               const start = d && !resizing ? p.start + d.dMin : p.start;
@@ -279,7 +327,16 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
                   style={{
                     top,
                     height,
-                    transform: d && d.dDay ? `translateX(${d.dDay * 100}%)` : undefined,
+                    // Its own lane of the column; the class's 2px/4px insets kept.
+                    left: `calc(${(slot.lane / slot.lanes) * 100}% + 2px)`,
+                    right: 'auto',
+                    width: `calc(${100 / slot.lanes}% - 6px)`,
+                    // A whole column per day moved: the lane's width plus its
+                    // insets, times the lanes sharing the column.
+                    transform:
+                      d && d.dDay
+                        ? `translateX(calc(${d.dDay * slot.lanes} * (100% + 6px)))`
+                        : undefined,
                     // tuck — the block settling back into the grid after a
                     // commit. Suppressed while the finger is down, where the
                     // motion must be un-eased.
