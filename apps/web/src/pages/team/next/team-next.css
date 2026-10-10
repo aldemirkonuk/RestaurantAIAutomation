@@ -242,6 +242,21 @@
 .tm-membercell:hover {
   background: var(--paper-2);
 }
+/* The name column holds still while the days scroll under it (F-399): at
+   phone width the grid is wider than the screen, and a chip shows only a time
+   and a station, so without its row's name it says nothing about who. Both
+   carry an opaque paper background, so nothing scrolls through them. */
+.tm-membercell,
+.tm-row > .tm-dayhead:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+@media (max-width: 639px) {
+  .tm-row {
+    grid-template-columns: 132px repeat(7, minmax(96px, 1fr));
+  }
+}
 .tm-mark {
   flex: none;
   display: grid;

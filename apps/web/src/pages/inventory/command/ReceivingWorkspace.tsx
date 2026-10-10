@@ -250,6 +250,7 @@ function Stepper({
   disabled,
   tone = 'default',
   uxKey,
+  label,
 }: {
   value: number
   onChange: (n: number) => void
@@ -257,6 +258,8 @@ function Stepper({
   tone?: 'default' | 'warn'
   /** Stable agent-facing name. Steppers are where miscounts happen, so which one is being fought with matters. */
   uxKey?: string
+  /** What is being counted, said to a screen reader: a bare "-" and "+" name nothing (F-402). */
+  label: string
 }) {
   return (
     <div
@@ -270,17 +273,23 @@ function Stepper({
       <button
         type="button"
         disabled={disabled}
+        aria-label={`Decrease ${label}`}
         onClick={() => onChange(Math.max(0, value - 1))}
         className="w-7 h-7 text-gray-500 hover:bg-gray-50 disabled:hover:bg-white"
       >
         -
       </button>
-      <span className="w-9 text-center font-mono text-sm font-bold text-gray-800 leading-7 border-x border-gray-100">
+      <span
+        aria-live="polite"
+        aria-label={`${label}: ${value}`}
+        className="w-9 text-center font-mono text-sm font-bold text-gray-800 leading-7 border-x border-gray-100"
+      >
         {value}
       </span>
       <button
         type="button"
         disabled={disabled}
+        aria-label={`Increase ${label}`}
         onClick={() => onChange(value + 1)}
         className="w-7 h-7 text-gray-500 hover:bg-gray-50 disabled:hover:bg-white"
       >
@@ -709,8 +718,8 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-            <X className="w-4 h-4 text-gray-500" />
+          <button type="button" onClick={onClose} aria-label="Close" className="p-2 hover:bg-gray-100 rounded-lg">
+            <X className="w-4 h-4 text-gray-500" aria-hidden="true" />
           </button>
         </div>
 
@@ -814,10 +823,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               />
             </div>
             <div className="flex justify-center">
-              <Stepper value={acceptedQty} onChange={setAcceptedQty} disabled={readOnly} uxKey="receiving:accepted-qty" />
+              <Stepper value={acceptedQty} onChange={setAcceptedQty} disabled={readOnly} uxKey="receiving:accepted-qty" label="quantity accepted" />
             </div>
             <div className="flex justify-center">
-              <Stepper value={rejectedQty} onChange={setRejectedQty} disabled={readOnly} tone="warn" uxKey="receiving:rejected-qty" />
+              <Stepper value={rejectedQty} onChange={setRejectedQty} disabled={readOnly} tone="warn" uxKey="receiving:rejected-qty" label="quantity rejected" />
             </div>
             <div
               className={cn(
@@ -1069,6 +1078,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 <Stepper
                   value={l.countedQty}
                   disabled={readOnly}
+                  label={`quantity counted of ${l.label}`}
                   onChange={(n) =>
                     setExtras((ls) => ls.map((x, i) => (i === idx ? { ...x, countedQty: n } : x)))
                   }
