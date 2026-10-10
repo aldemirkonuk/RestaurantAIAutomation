@@ -722,6 +722,24 @@ describe("InventoryService", () => {
 
       expect(mockLimit).toHaveBeenCalledTimes(1);
       expect(countRpcCalls()).toBe(1);
+      // The replay gate reads this house's counts only.
+      const before = mockLimit.mock.invocationCallOrder[0];
+      const from = mockSupabaseChain.from.mock;
+      const after = Math.max(
+        ...from.calls
+          .map((c, i) => (c[0] === "stock_counts" ? from.invocationCallOrder[i] : 0))
+          .filter((o) => o < before),
+      );
+      const gateFilters = mockSupabaseChain.eq.mock.calls.filter((_c, i) => {
+        const at = mockSupabaseChain.eq.mock.invocationCallOrder[i];
+        return at > after && at < before;
+      });
+      expect(gateFilters).toEqual(
+        expect.arrayContaining([
+          ["restaurant_id", "rest-1"],
+          ["idempotency_key", "count:inv-1:queued-4"],
+        ]),
+      );
     });
 
     it("does not check a live count", async () => {
@@ -777,6 +795,22 @@ describe("InventoryService", () => {
       );
       expect(status).toBe(400);
     });
+
+    it.each([1e20, Number.MAX_VALUE])(
+      "refuses an age too large to be a time (%s) with 400, not a 500",
+      async (countedAgoMs) => {
+        const status = await statusOf(
+          service.recordSpotCount("rest-1", "inv-1", {
+            countedQty: 8,
+            clientCountId: "t5",
+            countedAgoMs,
+          }),
+        );
+        expect(status).toBe(400);
+        expect(countRpcCalls()).toBe(0);
+        mockMaybeSingle.mockReset();
+      },
+    );
 
     it("refuses a negative age before touching anything", async () => {
       const status = await statusOf(

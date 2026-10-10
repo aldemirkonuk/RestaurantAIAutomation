@@ -485,6 +485,7 @@ export class InventoryService {
     const landed = await client
       .from("stock_counts")
       .select("id")
+      .eq("restaurant_id", restaurantId)
       .eq("idempotency_key", idempotencyKey)
       .limit(1);
     if (landed.error) throw transient("replay", landed.error);
@@ -551,12 +552,19 @@ export class InventoryService {
       countedAgoMs?: number;
     },
   ) {
+    // An age past the epoch is not a time anyone counted at, and one past
+    // Date's range made the replay check throw a RangeError (a 500) instead
+    // of refusing the request.
     if (
       dto.countedAgoMs != null &&
-      !(Number.isFinite(Number(dto.countedAgoMs)) && Number(dto.countedAgoMs) >= 0)
+      !(
+        Number.isFinite(Number(dto.countedAgoMs)) &&
+        Number(dto.countedAgoMs) >= 0 &&
+        Number(dto.countedAgoMs) <= Date.now()
+      )
     ) {
       throw new HttpException(
-        "countedAgoMs must be a non-negative number of milliseconds",
+        "The time this count was taken could not be read, so it was not applied. Count the item again.",
         HttpStatus.BAD_REQUEST,
       );
     }
