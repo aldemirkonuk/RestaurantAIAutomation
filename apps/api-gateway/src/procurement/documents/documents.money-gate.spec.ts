@@ -333,8 +333,10 @@ describe("POST /procurement/documents answers a non-holder without the money", (
     expect(res.documentId).toBe(DOC);
     expect(res.amountsWithheld).toBe(true);
     expect(res.vendor).toEqual(VENDOR);
+    // Plus how many doubts the reading carried — a number, never their words
+    // (F-744: the door does not pre-fill from a doubtful reading).
     expect(Object.keys(res.document).sort()).toEqual(
-      [...DOOR_ECHO_DOCUMENT_KEYS].sort(),
+      [...DOOR_ECHO_DOCUMENT_KEYS, "warningCount"].sort(),
     );
     expect(Object.keys(res.document.lines[0]).sort()).toEqual(
       [...DOOR_ECHO_LINE_KEYS].sort(),
@@ -344,6 +346,7 @@ describe("POST /procurement/documents answers a non-holder without the money", (
       docType: "invoice",
       docNumber: "INV-7",
       lines: [{ lineNo: 1, qty: 2, uom: "case", packSize: 6, qtyBottles: 12 }],
+      warningCount: 1,
     });
     // And no figure survives anywhere in the answer, by key or by value.
     const wire = JSON.stringify(res);

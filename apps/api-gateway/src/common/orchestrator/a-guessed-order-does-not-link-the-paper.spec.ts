@@ -610,6 +610,14 @@ describe("document intake's linking, which this change leaves as it was", () => 
     const client = answeringClient((table, calls, inserted) => {
       if (inserted) return { data: null, error: null };
       if (table === "procurement_orders") {
+        // The order an upload names, read back to check the paper fits it
+        // (F-745). It is in this house and prints no number to disagree with.
+        const byId = calls.find((c) => c[0] === "eq" && c[1] === "id");
+        if (byId)
+          return {
+            data: { id: byId[2], order_number: null, provider_id: null },
+            error: null,
+          };
         const n = calls.find((c) => c[0] === "eq" && c[1] === "order_number");
         const id = n ? orderByNumber[String(n[2])] : undefined;
         return { data: id ? { id } : null, error: null };

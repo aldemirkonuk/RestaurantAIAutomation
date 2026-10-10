@@ -35,6 +35,7 @@ import {
   VendorResolution,
   VendorResolutionService,
 } from "../vendor-identity/vendor-resolution.service";
+import { normalizeTaxId } from "../vendor-identity/tax-identity";
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -103,6 +104,21 @@ export interface IntakeResult {
    * unable to tell either from "resolution never ran".
    */
   vendor?: VendorResolution;
+  /**
+   * What happened to the order the upload named (F-745). Present only when an
+   * `orderId` came with the upload. `linked: false` carries the sentence that
+   * says why the paper was NOT filed to that order — it printed another order's
+   * number, or it is from another vendor — and the same sentence is on the
+   * document's own notes for the desk.
+   */
+  orderLink?: OrderLinkAnswer;
+}
+
+export interface OrderLinkAnswer {
+  orderId: string;
+  linked: boolean;
+  /** Null when the paper fits the order. Otherwise a sentence for the owner. */
+  conflict: string | null;
 }
 
 /** What the extraction door reports back beyond the document itself. */
@@ -487,12 +503,24 @@ export class DocumentIntakeService {
       const existing = await this.db
         .getClient()
         .from("procurement_documents")
-        .select("id")
+        .select("id, provider_id, extracted")
         .eq("restaurant_id", input.restaurantId)
         .eq("sha256", sha256)
         .maybeSingle();
+      // The same bytes again (F-747). Still filed to the order it was sent
+      // with, and answered with what was read the first time — "nothing
+      // legible" would be a claim about a paper we read perfectly well.
       if (existing.data?.id)
-        return { documentId: existing.data.id, parsed: null, duplicate: true };
+        return this.answerDuplicate(input, existing.data);
+
+      const parsed = await this.route(input, bytes);
+
+      // The same paper in other bytes — a second photo of an invoice already
+      // on file (F-746). Found before the insert, because a second document
+      // claims every order line a second time and its vendor write then hits
+      // the unique index on (provider, type, number) in silence.
+      const samePaper = await this.findSamePaper(input, parsed);
+      if (samePaper) return this.answerDuplicate(input, samePaper);
 
       // Decision E47 — the photo and upload channels arrive as a `buffer`
       // with no `storagePath` of their own (the email channel already has
@@ -503,7 +531,6 @@ export class DocumentIntakeService {
       const stored = await this.persistOriginalBytes(input, sha256, bytes);
       const resolvedInput: IntakeInput = { ...input, storagePath: stored.path };
 
-      const parsed = await this.route(input, bytes);
       // A failed upload travels on the document's own warnings, so it reaches
       // `notes` on the row and the canonical page's read-notes strip. It is
       // NOT folded into `error`: the document itself was read and stored, and
@@ -536,12 +563,25 @@ export class DocumentIntakeService {
           )
         : null;
 
+      // After resolution, so the vendor the paper printed can be held against
+      // the order's own (F-745).
+      const orderLink = documentId
+        ? await this.linkAndMatch(
+            documentId,
+            input.restaurantId,
+            input.orderId ?? null,
+            parsedWithStorage,
+            vendor?.state === "matched" ? vendor.providerId : null,
+          )
+        : null;
+
       return {
         documentId,
         parsed: parsedWithStorage,
         duplicate: false,
         ...(stored.failure ? { storageError: stored.failure } : {}),
         ...(vendor ? { vendor } : {}),
+        ...(orderLink ? { orderLink } : {}),
       };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
@@ -1172,13 +1212,8 @@ export class DocumentIntakeService {
         `document ${documentId} stored but its lines failed: ${lineErr.message}`,
       );
 
-    await this.linkAndMatch(
-      documentId,
-      input.restaurantId,
-      input.orderId ?? null,
-      parsed,
-    );
-
+    // Linking to an order and pairing lines run in `ingest`, after the vendor
+    // is resolved, so a paper from another vendor is not filed to this order.
     return documentId;
   }
 
@@ -1230,11 +1265,21 @@ export class DocumentIntakeService {
         existingProviderId: input.providerId ?? null,
         actorUserId,
       });
-      await this.vendorResolution.applyToDocument(
+      const applyError = await this.vendorResolution.applyToDocument(
         input.restaurantId,
         documentId,
         resolution,
       );
+      // A vendor found but not written onto the document is not `matched`
+      // (F-746): the row stays unfiled, so the answer says so.
+      if (applyError)
+        return {
+          state: "unavailable",
+          providerId: null,
+          source: null,
+          identity: resolution.identity,
+          reason: `The vendor was found, but this document could not be filed under it: ${applyError}`,
+        };
       return resolution;
     } catch (err: any) {
       // A THROW here is our own failure, not the document's, so it is reported
@@ -1364,11 +1409,23 @@ export class DocumentIntakeService {
     documentId: string,
     restaurantId: string,
     orderId: string | null,
-    parsed: ParsedDocument,
-  ): Promise<void> {
-    if (orderId)
-      await this.link(documentId, orderId, restaurantId, "manual", 1);
-    else await this.autoLink(documentId, restaurantId, parsed);
+    parsed: ParsedDocument | null,
+    vendorProviderId: string | null = null,
+  ): Promise<OrderLinkAnswer | null> {
+    let answer: OrderLinkAnswer | null = null;
+    if (orderId) {
+      // An order sent with the upload is the receiver's word, not proof
+      // (F-745). The paper is filed to it only when what it printed fits.
+      const conflict = await this.orderConflict(
+        orderId,
+        restaurantId,
+        parsed,
+        vendorProviderId,
+      );
+      if (conflict) await this.noteOnDocument(documentId, restaurantId, conflict);
+      else await this.link(documentId, orderId, restaurantId, "manual", 1);
+      answer = { orderId, linked: !conflict, conflict };
+    } else if (parsed) await this.autoLink(documentId, restaurantId, parsed);
 
     try {
       await this.matchDocumentLines(documentId, restaurantId);
@@ -1377,6 +1434,197 @@ export class DocumentIntakeService {
         `line matching failed for document ${documentId}: ${err?.message}`,
       );
     }
+    return answer;
+  }
+
+  /**
+   * Why this paper must NOT be filed to the order it was sent with, or null
+   * when it fits (F-745). The same check #661 gave the mail channel, at the
+   * door: a paper that prints order numbers must print this order's, and a
+   * paper whose printed tax identity matched a vendor on file must be from
+   * this order's vendor. Only a `matched` vendor counts — one created from the
+   * paper may be this order's vendor whose tax id was never recorded.
+   *
+   * A failed read of the order is not a fit, but it is not a conflict either:
+   * the door already confirmed the order exists in this house, so the paper is
+   * filed as before and the failure is logged.
+   */
+  private async orderConflict(
+    orderId: string,
+    restaurantId: string,
+    parsed: ParsedDocument | null,
+    vendorProviderId: string | null,
+  ): Promise<string | null> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("id, order_number, provider_id")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `order ${orderId} could not be read to check the paper against it: ${error.message}`,
+      );
+      return null;
+    }
+    if (!data)
+      return "This paper was sent with an order that is not one of this house's, so it was not filed to that order.";
+
+    const order = data as {
+      order_number: string | null;
+      provider_id: string | null;
+    };
+    // One invoice may bill several orders, so any order number it prints that
+    // is this one's makes it fit.
+    const printed = [
+      parsed?.poNumber,
+      ...(parsed?.lines ?? []).map((l) => l.poNumber),
+    ].filter((p): p is string => typeof p === "string" && p.trim() !== "");
+    if (
+      printed.length > 0 &&
+      order.order_number &&
+      !printed.some((p) => samePo(p) === samePo(order.order_number!))
+    )
+      return `This paper prints order ${printed[0].trim()}, not ${order.order_number}, so it was not filed to ${order.order_number}. Check which delivery it came with.`;
+    if (
+      vendorProviderId &&
+      order.provider_id &&
+      vendorProviderId !== order.provider_id
+    )
+      return `This paper is from a different vendor than order ${order.order_number ?? "this order"}, so it was not filed to it. Check which delivery it came with.`;
+    return null;
+  }
+
+  /** Add a sentence to the document's notes and put it in front of a person. */
+  private async noteOnDocument(
+    documentId: string,
+    restaurantId: string,
+    sentence: string,
+  ): Promise<void> {
+    const client = this.db.getClient();
+    const { data, error } = await client
+      .from("procurement_documents")
+      .select("notes")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `document ${documentId}: could not read its notes to record "${sentence}": ${error.message}`,
+      );
+      return;
+    }
+    const before = (data as { notes: string | null } | null)?.notes ?? null;
+    if (before?.includes(sentence)) return;
+    const { error: writeErr } = await client
+      .from("procurement_documents")
+      .update({
+        notes: before ? `${before}\n${sentence}` : sentence,
+        status: "needs_review",
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (writeErr)
+      this.logger.warn(
+        `document ${documentId}: could not record "${sentence}": ${writeErr.message}`,
+      );
+  }
+
+  /**
+   * The answer for a paper already on file (F-746, F-747): its id, what was
+   * read from it the first time, and — when an order came with the upload —
+   * the same filing the first upload would have had, checked the same way.
+   */
+  private async answerDuplicate(
+    input: IntakeInput,
+    existing: { id: string; provider_id?: string | null; extracted?: unknown },
+  ): Promise<IntakeResult> {
+    const stored =
+      existing.extracted && typeof existing.extracted === "object"
+        ? (existing.extracted as ParsedDocument)
+        : null;
+    const orderLink = input.orderId
+      ? await this.linkAndMatch(
+          existing.id,
+          input.restaurantId,
+          input.orderId,
+          stored,
+          existing.provider_id ?? null,
+        )
+      : null;
+    return {
+      documentId: existing.id,
+      parsed: stored,
+      duplicate: true,
+      ...(orderLink ? { orderLink } : {}),
+    };
+  }
+
+  /**
+   * An earlier document that is this same paper: same type, same printed
+   * number, and the same vendor — by the provider the caller named, by the one
+   * provider on file carrying the printed tax id, or by the tax id the earlier
+   * read printed. A number alone is not enough; two vendors can both print
+   * "INV-1001". Superseded documents do not count. A failed read is logged
+   * and the paper is stored, which is what happened before this check existed.
+   */
+  private async findSamePaper(
+    input: IntakeInput,
+    parsed: ParsedDocument,
+  ): Promise<{ id: string; provider_id: string | null; extracted: unknown } | null> {
+    const number = parsed.docNumber?.trim();
+    if (!number || parsed.docType === "unknown") return null;
+    const client = this.db.getClient();
+
+    const { data, error } = await client
+      .from("procurement_documents")
+      .select("id, provider_id, extracted, status")
+      .eq("restaurant_id", input.restaurantId)
+      .eq("doc_type", parsed.docType)
+      .eq("doc_number", number);
+    if (error) {
+      this.logger.warn(
+        `could not look for an earlier copy of ${parsed.docType} ${number}: ${error.message}`,
+      );
+      return null;
+    }
+    const rows = (
+      (data ?? []) as {
+        id: string;
+        provider_id: string | null;
+        extracted: unknown;
+        status: string | null;
+      }[]
+    ).filter((r) => r.status !== "superseded");
+    if (!rows.length) return null;
+
+    const country = parsed.vendorCountry ?? null;
+    const tax = normalizeTaxId(parsed.vendorTaxId ?? null, country);
+    const vendors = new Set<string>();
+    if (input.providerId) vendors.add(input.providerId);
+    if (tax.ok) {
+      const p = await client
+        .from("providers")
+        .select("id")
+        .eq("restaurant_id", input.restaurantId)
+        .eq("tax_id_normalized", tax.identity.normalized)
+        .is("deleted_at", null);
+      const found = (p.data ?? []) as { id: string }[];
+      if (!p.error && found.length === 1) vendors.add(found[0].id);
+    }
+
+    const hit = rows.find((r) => {
+      if (r.provider_id && vendors.has(r.provider_id)) return true;
+      if (!tax.ok) return false;
+      const ex = (r.extracted ?? {}) as {
+        vendorTaxId?: string | null;
+        vendorCountry?: string | null;
+      };
+      const was = normalizeTaxId(ex.vendorTaxId ?? null, ex.vendorCountry ?? country);
+      return was.ok && was.identity.normalized === tax.identity.normalized;
+    });
+    return hit ?? null;
   }
 
   /**
@@ -2691,4 +2939,9 @@ export function isDocumentLike(
   if (m.startsWith("text/") && /invoice|packing|credit|statement/.test(n))
     return true;
   return false;
+}
+
+/** Order numbers compared as printed, ignoring case and spacing. */
+function samePo(po: string): string {
+  return po.replace(/\s+/g, "").toUpperCase();
 }
