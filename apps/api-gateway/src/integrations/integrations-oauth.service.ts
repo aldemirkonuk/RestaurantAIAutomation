@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -58,7 +59,12 @@ const HEX_256_PATTERN = /^[a-f0-9]{64}$/;
  * READ is not a refusal: three causes, three reasons on the return URL.
  */
 class ConsentMembershipRefusal extends Error {
-  constructor(readonly reason: "membership_refused" | "membership_unreadable") {
+  constructor(
+    readonly reason:
+      | "membership_refused"
+      | "membership_unreadable"
+      | "held_by_another_house",
+  ) {
     super(reason);
     this.name = "ConsentMembershipRefusal";
   }
@@ -306,6 +312,22 @@ export class IntegrationsOauthService {
       );
     }
     const frontendOrigin = this.consentFrontendOrigin(consent.frontendOrigin);
+
+    // F-459: one grant per person per integration, recorded in one house. The
+    // upsert in `storeConnection` would move it here and take it away from
+    // the house that has it, silently. Asked BEFORE the Google round trip, and
+    // answered with that house's name.
+    const heldBy = await this.heldByAnotherHouse(
+      params.userId,
+      params.integrationId,
+      params.restaurantId,
+    );
+    if (heldBy) {
+      const house = await this.houseName(heldBy);
+      throw new ConflictException(
+        `Your ${definition.label} is connected for ${house}. One connection like this can serve one restaurant, so connecting it here would take it away from ${house} without telling anyone there. Disconnect it while working in ${house} first, or ask someone here to connect their own. Nothing was changed.`,
+      );
+    }
 
     // The receipt is filed BEFORE the state row: a provider flow must never be
     // open for a consent the house has no record of.
@@ -621,6 +643,17 @@ export class IntegrationsOauthService {
         : null;
 
       await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
+      // F-459, again after the round trip: another tab may have connected the
+      // same grant in another house since this flow started.
+      if (
+        await this.heldByAnotherHouse(
+          stateRow.user_id,
+          definition.id,
+          stateRow.restaurant_id,
+        )
+      ) {
+        throw new ConsentMembershipRefusal("held_by_another_house");
+      }
       await this.storeConnection({
         userId: stateRow.user_id,
         restaurantId: stateRow.restaurant_id,
@@ -675,6 +708,74 @@ export class IntegrationsOauthService {
       // anything unexpected: the standing is UNKNOWN, which is not a refusal.
       throw new ConsentMembershipRefusal("membership_unreadable");
     }
+  }
+
+  /**
+   * The house that would lose this person's grant if it were connected in
+   * `restaurantId`, or null when none would (F-459).
+   *
+   * A grant is UNIQUE (user_id, integration_id) and recorded in one house, so
+   * connecting it again elsewhere rewrites its house. That is refused while
+   * the grant is live in another house the person still works in. A grant
+   * with no house, or in a house the person has left, takes nothing from
+   * anyone by moving (`getAccessToken` already refuses a leaver's grant), so
+   * it is not held against them. A failed read throws; it is never "free".
+   */
+  private async heldByAnotherHouse(
+    userId: string,
+    integrationId: string,
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("restaurant_id")
+      .eq("user_id", userId)
+      .eq("integration_id", integrationId)
+      .is("revoked_at", null)
+      .maybeSingle();
+    if (error) {
+      throw new ServiceUnavailableException(
+        "Your existing connections could not be read, so nothing was started. Try again.",
+      );
+    }
+    const held = (data?.restaurant_id as string | null | undefined) ?? null;
+    if (!held || held.toLowerCase() === restaurantId.toLowerCase()) return null;
+    return (await this.worksIn(userId, held)) ? held : null;
+  }
+
+  /** A house's name for a sentence, or a plain stand-in when it cannot be read. */
+  private async houseName(restaurantId: string): Promise<string> {
+    const { data, error } = await this.db.client
+      .from("restaurants")
+      .select("name")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    const name = error ? null : ((data?.name as string | null) ?? null);
+    return name?.trim() || "another restaurant you work in";
+  }
+
+  /**
+   * Whether the person still works in the house: an active access row whose
+   * `valid_until` has not passed (ADR 0164, membership only; read the way
+   * `CalendarLinksService.roleOf` reads it). A failed read throws — it is
+   * never "not a member", and never "still a member".
+   */
+  private async worksIn(userId: string, restaurantId: string): Promise<boolean> {
+    const { data, error } = await this.db.client
+      .from("user_restaurant_access")
+      .select("user_id, valid_until")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
+    if (error) {
+      throw new ServiceUnavailableException(
+        "Whether this person still works in the restaurant could not be read, so their connection was not used. Try again.",
+      );
+    }
+    const now = Date.now();
+    return ((data ?? []) as Array<{ valid_until?: string | null }>).some(
+      (r) => !r.valid_until || new Date(r.valid_until).getTime() > now,
+    );
   }
 
   private resultUrl(
@@ -1401,6 +1502,18 @@ export class IntegrationsOauthService {
       const record = cut.get(String(data.id))!;
       throw new ForbiddenException(
         `This house has stopped using that ${definition.label} grant${record.reason ? `: ${record.reason}` : "."} The grant itself is untouched and still belongs to the person who made it.`,
+      );
+    }
+
+    // F-458, defence in depth: a grant is this house's to use only while the
+    // person who made it still works here. Every removal door stops the grant
+    // (`stop-grants-on-leaving.ts`); this catches a membership that ended
+    // anywhere else (a lapsed `valid_until`, a hand-run SQL change). Every
+    // mail path — letters at queue and at send, the inbox reader, the archive
+    // — asks for its token here, so this one check covers them all.
+    if (!(await this.worksIn(userId, restaurantId))) {
+      throw new ForbiddenException(
+        `The person who connected this ${definition.label} no longer works in this restaurant, so this restaurant has stopped using it. Nothing was sent or read with it. Someone who works here can connect their own.`,
       );
     }
 
