@@ -62,8 +62,11 @@ DECLARE
 BEGIN
   -- Candidates: only a producer or name holding ı can key differently now. The
   -- old tokenizer turned ı into a separator, so the old key is reproduced
-  -- exactly as the new key over the text with ı replaced by a space.
-  CREATE TEMP TABLE bev_refold ON COMMIT DROP AS
+  -- exactly as the new key over the text with ı replaced by a space. No ON
+  -- COMMIT DROP: the DROP TABLE below runs on every normal exit and an error
+  -- rolls the CREATE back, and the lockdown guard cannot name a table followed
+  -- by ON.
+  CREATE TEMP TABLE bev_refold AS
   SELECT b.id,
          b.identity_key AS stored_key,
          public.beverage_identity_key(b.producer, b.name) AS new_key,

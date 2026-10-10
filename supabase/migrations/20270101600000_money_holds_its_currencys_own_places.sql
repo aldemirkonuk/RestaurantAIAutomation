@@ -116,6 +116,9 @@ alter table public.price_history
 -- 20260905072000_the_header_price_echoes_the_line.sql with one change each:
 -- `v_line_price numeric(10,2)` is now `numeric`, so the echo carries the line's
 -- price at whatever scale the column holds instead of rounding it to two.
+-- Each is revoked again right after it: CREATE OR REPLACE keeps the old grants,
+-- but the lockdown guard asks the file that re-issues a SECURITY DEFINER
+-- function to close it itself.
 create or replace function public.procurement_line_price_echoes_to_header()
 returns trigger
 language plpgsql
@@ -160,6 +163,9 @@ begin
   return null;
 end $$;
 
+revoke all on function public.procurement_line_price_echoes_to_header() from public;
+revoke all on function public.procurement_line_price_echoes_to_header() from anon, authenticated;
+
 create or replace function public.procurement_header_price_is_an_echo()
 returns trigger
 language plpgsql
@@ -203,6 +209,9 @@ begin
 
   return new;
 end $$;
+
+revoke all on function public.procurement_header_price_is_an_echo() from public;
+revoke all on function public.procurement_header_price_is_an_echo() from anon, authenticated;
 
 create trigger trg_procurement_line_price_echoes_to_header
   after insert or delete or update of final_unit_price, line_no, order_id
