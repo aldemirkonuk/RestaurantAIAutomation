@@ -212,9 +212,12 @@ describe("EventsController", () => {
       const result = await controller.listEvents(query, mockUser);
 
       expect(result).toEqual(expectedResponse);
+      // The caller's role rides along so staff get no house money (F-1089);
+      // this user carries none.
       expect(mockEventsService.listEvents).toHaveBeenCalledWith(
         mockUser.restaurantId,
         query,
+        null,
       );
     });
 
@@ -238,9 +241,12 @@ describe("EventsController", () => {
 
       await controller.listEvents(query, mockUser);
 
+      // The caller's role rides along so staff get no house money (F-1089);
+      // this user carries none.
       expect(mockEventsService.listEvents).toHaveBeenCalledWith(
         mockUser.restaurantId,
         query,
+        null,
       );
     });
 
