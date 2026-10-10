@@ -18,6 +18,11 @@
 -- 'ORDER_REQUEST_V2') is kept, not silently dropped; a literal that is not
 -- letters, digits and "_" stops the migration instead of being rebuilt.
 --
+-- ONLY A PLAIN MEMBERSHIP TEST IS REBUILT. The definition must be the column
+-- (optionally OR IS NULL) = ANY of an array of literals; anything else (an
+-- extra condition such as direction = 'outbound') stops the migration, since
+-- the rebuild keeps only the literals and would drop the condition.
+--
 -- NOT VALID, THEN VALIDATE. The new CHECK is added NOT VALID and validated by
 -- a separate statement. Limit: a migration file runs in one transaction, so
 -- the ACCESS EXCLUSIVE lock DROP/ADD takes is held until commit and VALIDATE
@@ -33,6 +38,7 @@ DECLARE
   kinds text[];
   wanted text := 'ORDER_REQUEST';
   rebuilt text;
+  skeleton text;
 BEGIN
   SELECT pg_catalog.pg_get_constraintdef(c.oid) INTO existing_def
     FROM pg_catalog.pg_constraint c
@@ -42,6 +48,28 @@ BEGIN
   IF existing_def IS NULL THEN
     RAISE EXCEPTION
       'chk_outbound_email_type is absent: this migration extends a constraint that must already exist (the_house_writes_its_own_mail)';
+  END IF;
+
+  -- The definition must be a plain membership test and nothing else: the
+  -- column (optionally OR IS NULL) = ANY of an array of literals. The rebuild
+  -- below keeps only the literals, so any other condition (an extra
+  -- "direction = 'outbound' AND ...") would be dropped and its literals
+  -- admitted as kinds. Every literal, with its ::text or ::character varying
+  -- cast, becomes #K#; the runs of #K# become #KLIST#; what is left must be one of
+  -- the four shapes pg_get_constraintdef prints for that test.
+  skeleton := pg_catalog.regexp_replace(
+    pg_catalog.regexp_replace(existing_def,
+      '''(?:[^'']|'''')*''(?:::(?:text|character varying))?', '#K#', 'g'),
+    '#K#(?:, #K#)*', '#KLIST#', 'g');
+  IF skeleton NOT IN (
+    'CHECK (((outbound_email_type IS NULL) OR ((outbound_email_type)::text = ANY (ARRAY[#KLIST#]))))',
+    'CHECK (((outbound_email_type IS NULL) OR ((outbound_email_type)::text = ANY ((ARRAY[#KLIST#])::text[]))))',
+    'CHECK (((outbound_email_type)::text = ANY (ARRAY[#KLIST#])))',
+    'CHECK (((outbound_email_type)::text = ANY ((ARRAY[#KLIST#])::text[])))'
+  ) THEN
+    RAISE EXCEPTION
+      'chk_outbound_email_type is not a plain membership test of outbound_email_type ("%") - refusing to rebuild it, which would drop its other conditions',
+      existing_def;
   END IF;
 
   -- Every quoted literal in the definition, whatever its characters ('' is an

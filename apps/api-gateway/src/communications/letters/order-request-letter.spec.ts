@@ -182,8 +182,9 @@ describe("optional blocks", () => {
 });
 
 describe("the courtesy line (F2)", () => {
-  it("drops a sentence over 240 raw characters before NFKC or the link test reads it (CI BLOCK 3bdd750, N5)", () => {
-    // 250 format characters normalise away, so only the raw count drops this.
+  it("drops a sentence over 240 raw UTF-16 code units before NFKC or the link test reads it (CI BLOCK 3bdd750, N5)", () => {
+    // The U+200B format characters normalise away, so only the raw count
+    // (240 + 10 = 250 code units over the cap of 240) drops the second.
     expect(courtesyLineOrNull("\u200B".repeat(230) + "Thank you.")).toBe("Thank you.");
     expect(courtesyLineOrNull("\u200B".repeat(240) + "Thank you.")).toBeNull();
     // U+FDFA is the longest NFKC expansion: two million of them, unread.
@@ -445,8 +446,9 @@ describe("the prose predicate", () => {
   });
 
   // Finding 1, named in ADR 0313:37: a scheme word split by a mark, format
-  // character or backslash that no copy shows whole with nothing joined
-  // before it. No mail client reads a split scheme as one.
+  // or control character, backslash, tab or line break that no view shows
+  // whole with nothing joined before it. No mail client reads a split scheme
+  // as one.
   it.each([
     "x\u034Fjava\u034Fscript:alert",
     "x\u034Fda\u034Fta:text",
@@ -454,8 +456,62 @@ describe("the prose predicate", () => {
     "xjava\u034Fscript:alert",
     "x\u200Bjava\u200Bscript:alert",
     "x\u200Bjava\u0301script:alert",
+    "x\u001Cjava\u001Cscript:alert",
+    "x\tjava\tscript:alert",
   ])("does not catch a split scheme joined to a letter (named gap): %s", (text) => {
     expect(rules(T(`Open ${text} now.`))).not.toContain("link");
+  });
+
+  // Session gate plan at 3208a92: control characters are stripped in copies
+  // 1 and 2, like format characters.
+  it.each([
+    ["U+001C", "\u001C"],
+    ["U+001E", "\u001E"],
+    ["U+001F", "\u001F"],
+    ["U+0000", "\u0000"],
+    ["U+007F", "\u007F"],
+    ["U+009F", "\u009F"],
+  ])("refuses a link with the control character %s before the dot", (_label, c) => {
+    expect(rules(T(`See evil${c}.com for details.`))).toContain("link");
+    expect(courtesyLineOrNull(`Thanks from evil${c}.com as ever.`)).toBeNull();
+  });
+
+  it("refuses a scheme with a control character before it, as copy 3 reads it", () => {
+    expect(rules(T("Open x\u001Cjavascript:alert now."))).toContain("link");
+  });
+
+  // The scheme view: a browser's URL parser drops tab and newline from an
+  // href, so a scheme split by one, with nothing joined before it, is refused.
+  it.each([
+    ["a tab", "java\tscript:alert"],
+    ["a line feed", "java\nscript:alert"],
+    ["a carriage return", "java\rscript:alert"],
+    ["U+2028", "jav\u2028ascript:alert"],
+    ["U+2029", "jav\u2029ascript:alert"],
+    ["a control character", "java\u001Cscript:alert"],
+    // Only the scheme view strips the control character before joining the tab.
+    ["a control character and a tab", "java\u001C\tscript:alert"],
+    ["a tab inside https", "ht\ttps://x"],
+  ])("refuses a scheme split by %s", (_label, link) => {
+    expect(rules(T(`Open ${link} now.`))).toContain("link");
+    expect(courtesyLineOrNull(`Open ${link} now.`)).toBeNull();
+  });
+
+  // Named in ADR 0313:37: a tab or line break next to a scheme's colon is
+  // left, because a line ending in "Data:" is prose. These stay kept.
+  it.each([
+    ["a line break after the colon", "javascript:\nalert"],
+    ["a tab between the colon and //", "https:\t//x"],
+    ["a line ending in a scheme word and a colon", "Delivery data:\nPlease send it."],
+  ])("does not refuse %s (named gap / prose)", (_label, text) => {
+    expect(rules(T(text))).not.toContain("link");
+  });
+
+  it("keeps two lines that only the scheme view joins", () => {
+    expect(rules(T("Thank you.\nBest regards"))).toEqual([]);
+    // Joined, "e.g" + newline + "the" reads "e.gthe", a bare domain; the
+    // scheme view is tested for schemes only, so it is kept.
+    expect(rules(T("See e.g\nthe list below."))).toEqual([]);
   });
 
   it("refuses a split scheme that one copy shows whole: a mark before, a format character inside", () => {
@@ -552,8 +608,9 @@ describe("the prose predicate", () => {
   });
 
   it("refuses a template over the raw length cap before NFKC reads it (CI BLOCK 3bdd750, N5)", () => {
-    // U+FDFA is the longest NFKC expansion (18 characters). A million of them
-    // uncapped is seconds of scanning; capped, it is refused on its length.
+    // U+FDFA is the longest NFKC expansion (one code point to 18). A million
+    // of them, uncapped, is seconds of scanning; capped, it is refused on its
+    // length.
     const huge = T("\uFDFA".repeat(1_000_000));
     const t0 = Date.now();
     const refused = orderRequestProseRefusals(huge);

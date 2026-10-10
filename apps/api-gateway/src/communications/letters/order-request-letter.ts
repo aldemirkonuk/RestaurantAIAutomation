@@ -283,7 +283,8 @@ const CURRENCY_WORD_RE = word([
 ]);
 /**
  * A link (ADR 0313:37). `holdsLink` refuses the prose when `URL_RE` matches
- * any of the three views `linkViews` makes of it. `URL_RE` matches:
+ * any of the three link views `linkViews` makes of it, or `SCHEME_RE` the
+ * scheme view `schemeView` makes. `URL_RE` matches:
  *   - one ASCII letter and up to 31 more letters, digits, "+", "." or "-",
  *     followed by "//" after a colon ("https://"). Nothing is required before
  *     the letter, so "-https://x", "+http://a", ".https://x" and "…https://x"
@@ -313,9 +314,12 @@ const CURRENCY_WORD_RE = word([
  *     `OPEN_BRACKETS` / `CLOSE_BRACKETS`;
  *   - a scheme not in `LINK_SCHEMES` without "//" ("foo:bar"), and a "://"
  *     whose nearest ASCII letter before it is more than 31 characters back;
- *   - a scheme word split by a mark, format character, filler or backslash
- *     that no copy shows whole with nothing joined before it
- *     ("x\u034Fjava\u034Fscript:alert"; see `linkViews`).
+ *   - a scheme word split by a mark, format or control character, filler,
+ *     backslash, tab or line break that no view shows whole with no letter,
+ *     digit or "_" right before it ("x\u034Fjava\u034Fscript:alert",
+ *     "x\tjava\tscript:alert"; see `linkViews`), and a tab or line break
+ *     next to a scheme's colon ("javascript:\nalert", "https:\t//x"; see
+ *     `schemeView`).
  *
  * Speed: the "://" alternative reads at most 35 characters from any start,
  * and the bare-domain alternative starts only at the first character of a
@@ -324,11 +328,17 @@ const CURRENCY_WORD_RE = word([
  * quadratic, 1.4-6 s at 100 KB).
  */
 const LINK_SCHEMES = ["javascript", "vbscript", "data", "mailto", "tel", "sms", "ftp", "file"];
+const SCHEME_SOURCES = [
+  "[a-z][a-z0-9+.-]{0,31}:\\/\\/",
+  `(?<![\\p{L}\\p{N}_])(?:${LINK_SCHEMES.join("|")}):(?=\\S)`,
+];
+/** The two scheme alternatives of `URL_RE`, alone, for `schemeView`. */
+const SCHEME_RE = new RegExp(SCHEME_SOURCES.join("|"), "iu");
 const URL_RE = new RegExp(
   [
-    "[a-z][a-z0-9+.-]{0,31}:\\/\\/",
+    SCHEME_SOURCES[0],
     "www\\.",
-    `(?<![\\p{L}\\p{N}_])(?:${LINK_SCHEMES.join("|")}):(?=\\S)`,
+    SCHEME_SOURCES[1],
     "(?<![\\p{L}\\p{N}_-])[\\p{L}\\p{N}_-]+\\.\\p{L}[\\p{L}\\p{N}_-]+",
     "@",
   ].join("|"),
@@ -416,6 +426,18 @@ function foldDots(text: string): string {
     .replace(OPEN_AFTER_DOT_RE, ".");
 }
 /**
+ * Control characters (`\p{Cc}`) a reader does not see as a space or a line
+ * break: U+0000-U+0008, U+000E-U+001F, U+007F-U+0084 and U+0086-U+009F. Tab,
+ * line feed, U+000B, U+000C, carriage return and U+0085 (NEL) are left out:
+ * they are whitespace here, and the line breaks among them separate lines.
+ */
+const CONTROLS = "\\u0000-\\u0008\\u000E-\\u001F\\u007F-\\u0084\\u0086-\\u009F";
+const VIEW1_STRIP_RE = new RegExp(`[\\p{M}\\p{Cf}\\\\${CONTROLS}]`, "gu");
+const VIEW2_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
+const VIEW3_SPACE_RE = /[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu;
+const SCHEME_VIEW_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
+const SCHEME_VIEW_JOIN_RE = /(?<=[\p{L}\p{N}])[\t\n\r\u2028\u2029]+(?=[\p{L}\p{N}])/gu;
+/**
  * The three copies of the prose the link test reads (the courtesy line and
  * the house's words keep their own characters). `holdsLink` is given the
  * prose after NFKC only, before `normaliseProse` strips format characters.
@@ -429,28 +451,52 @@ function foldDots(text: string): string {
  *   3. with nothing stripped, and every format character and Hangul filler
  *      (U+115F, U+1160, U+3164, U+FFA0: letters that render as nothing)
  *      turned into a space.
+ * The control characters in `CONTROLS` are stripped in copies 1 and 2, like
+ * format characters, so "evil\u001C.com" reads "evil.com" there. Copy 3
+ * keeps them: a control character is not a letter, digit or "_", so it
+ * already separates a scheme word from a letter before it.
  * Stripping can join a letter onto a scheme word ("x\u0301javascript:alert"
  * and "x\u200Bjavascript:alert" read "xjavascript:alert" in copy 1, which the
  * scheme's lookbehind lets through); copy 2 keeps a mark or backslash as the
- * separator, copy 3 a format character or filler. `holdsLink` refuses when
- * any copy matches `URL_RE`.
- * Not caught: a scheme word that is itself split by a mark, format
- * character, filler or backslash, whenever no copy shows it whole with no
- * letter, digit or "_" right before it. For example
+ * separator, copy 3 a format character, control character or filler.
+ * `holdsLink` refuses when any copy matches `URL_RE`, or the scheme view
+ * (`schemeView`) matches `SCHEME_RE`.
+ * Not caught: a scheme word that is itself split by a mark, format or
+ * control character, filler, backslash, tab or line break, whenever no view
+ * shows it whole with no letter, digit or "_" right before it. For example
  * "x\u034Fjava\u034Fscript:alert", "x\\java\\script:alert",
- * "x\u200Bjava\u200Bscript:alert", "x\u200Bjava\u0301script:alert" and
- * "xjava\u034Fscript:alert". No mail client reads a split scheme as one.
+ * "x\u200Bjava\u200Bscript:alert", "x\u200Bjava\u0301script:alert",
+ * "xjava\u034Fscript:alert", "x\u001Cjava\u001Cscript:alert" and
+ * "x\tjava\tscript:alert". No mail client reads a split scheme as one.
  * Pinned by a spec (ADR 0313:37).
  */
 function linkViews(text: string): string[] {
   return [
-    foldDots(text.replace(/[\p{M}\p{Cf}\\]/gu, "")),
-    foldDots(text.replace(/\p{Cf}/gu, "")),
-    foldDots(text.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, " ")),
+    foldDots(text.replace(VIEW1_STRIP_RE, "")),
+    foldDots(text.replace(VIEW2_STRIP_RE, "")),
+    foldDots(text.replace(VIEW3_SPACE_RE, " ")),
   ];
 }
+/**
+ * The scheme view: the prose with every format character and every control
+ * character in `CONTROLS` removed, and then every run of ASCII tab, line
+ * feed, carriage return, U+2028 or U+2029 that has a letter or digit on both
+ * sides. A browser's URL parser removes tab, line feed and carriage return
+ * from anywhere in an href, so "java\tscript:alert" is "javascript:alert" to
+ * it; here it reads so too, and so do "jav\u2028ascript:alert" and
+ * "java\u001Cscript:alert". Only `SCHEME_RE` is tested on it: joining two
+ * lines can make a bare domain ("Thank you.\nBest" would read "you.Best"), so
+ * the domain, "www." and "@" alternatives are not.
+ * Not caught: such a run next to a character that is not a letter or digit,
+ * as right after the colon ("javascript:\nalert") or before "//"
+ * ("https:\t//x"), because there a line break separates prose ("Data:" at a
+ * line's end, the next line below it). Pinned by a spec (ADR 0313:37).
+ */
+function schemeView(text: string): string {
+  return text.replace(SCHEME_VIEW_STRIP_RE, "").replace(SCHEME_VIEW_JOIN_RE, "");
+}
 function holdsLink(text: string): boolean {
-  return linkViews(text).some((v) => URL_RE.test(v));
+  return linkViews(text).some((v) => URL_RE.test(v)) || SCHEME_RE.test(schemeView(text));
 }
 /** EN + TR money-and-terms words (ADR 0313; adversary change 3). */
 const MONEY_TERMS_EN_RE = word([
@@ -512,17 +558,18 @@ const NUMBER_WORDS_TR_RE = new RegExp(
 const COMMITMENT_RES = COMMITMENT_PATTERN_SOURCES.map((s) => new RegExp(s, "i"));
 
 /**
- * The most characters a letter template may hold, counted on the raw text
- * before NFKC. NFKC can lengthen a character up to eighteen times (U+FDFA
- * becomes an 18-character phrase), so every scan after it is bounded by
- * 18 x this. The shipped defaults are under 600 characters.
+ * The most UTF-16 code units (`template.length`) a letter template may hold,
+ * counted on the raw text before NFKC. NFKC turns one code point into at most
+ * eighteen (U+FDFA becomes an 18-letter phrase), so every scan after it is
+ * bounded by a fixed multiple of this. The shipped defaults are under 600
+ * code units.
  */
 export const ORDER_REQUEST_TEMPLATE_MAX_CHARS = 16_384;
 
 /**
- * The most characters the AI's courtesy sentence may hold, raw and after
- * normalising. The raw count is taken first, so an over-long sentence is
- * dropped before NFKC or the link test reads it.
+ * The most UTF-16 code units (`length`) the AI's courtesy sentence may hold,
+ * raw and after normalising. The raw count is taken first, so an over-long
+ * sentence is dropped before NFKC or the link test reads it.
  */
 const COURTESY_MAX_CHARS = 240;
 
@@ -530,7 +577,7 @@ const COURTESY_MAX_CHARS = 240;
  * Every reason the house's prose in `template` may not be used, empty when it
  * may. "Prose" is everything outside the tokens. Run over the default here, and
  * at save and publish in 4a-ii. A template over
- * ORDER_REQUEST_TEMPLATE_MAX_CHARS raw characters is refused as too_long
+ * ORDER_REQUEST_TEMPLATE_MAX_CHARS raw UTF-16 code units is refused as too_long
  * alone, before NFKC or any pattern reads it.
  */
 export function orderRequestProseRefusals(template: string): ProseRefusal[] {
