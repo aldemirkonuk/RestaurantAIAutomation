@@ -18,6 +18,7 @@ import {
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
+import { readHouseCurrency } from "../../common/house-money";
 import {
   BottleHow,
   UnitsLabel,
@@ -250,8 +251,12 @@ export const BASKET_MIN_LIFT = 1.3;
  *       [2026-10-08, merge of `origin/main` at 8b22448dc: #626 (ADR 0297)
  *       landed 11 on `main` first, so this change is 12, one past every
  *       value on `main`; no row was ever written at 11 for this change.]
+ *  13 — 2026-10-09 (F-341): a currency figure prints in the house's own
+ *       money (`restaurants.currency`), and with no symbol when none is
+ *       recorded; it printed `$` for every house. A row below 13 may say
+ *       dollars about lira or pounds, so it is recomputed, not served.
  */
-export const INSIGHT_GENERATOR_VERSION = 12;
+export const INSIGHT_GENERATOR_VERSION = 13;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -842,7 +847,13 @@ export class InsightGeneratorService {
     // The manager's own exclusions — closures, buyouts, outages. Loaded with
     // the data, not after it, because every daily series below is built
     // through `toDaily` and every one of them must honour the same list.
-    const exclusions = await this.dayExclusions.load(restaurantId);
+    // Beside them, the house's own money, so every currency figure in a
+    // sentence prints in it (F-341). It never rejects: null prints the figure
+    // with no symbol, never as dollars.
+    const [exclusions, currency] = await Promise.all([
+      this.dayExclusions.load(restaurantId),
+      readHouseCurrency(client, restaurantId),
+    ]);
 
     // The two window reads go through `readWholeWindow` (ADR 0292). Unranged,
     // they stopped at PostgREST's 1,000 rows: the sales-dip rule then read
@@ -984,6 +995,7 @@ export class InsightGeneratorService {
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
       unread,
+      currency,
     };
 
     if (bundle.consumption.length) bundle.availability.add("consumption");
@@ -1273,6 +1285,7 @@ export class InsightGeneratorService {
       measure: "purchase_spend",
       measureLabel: "purchasing spend",
       unit: "currency",
+      currency: bundle.currency,
       dimension: "overall",
       category: "purchasing",
       periodWindow: 30,
@@ -1297,6 +1310,7 @@ export class InsightGeneratorService {
         entity: "vendors",
         measureLabel: "purchasing spend",
         unit: "currency",
+        currency: bundle.currency,
         topShare: sorted[0].total / total,
         topCount: 1,
         hhi,
@@ -1452,6 +1466,7 @@ export class InsightGeneratorService {
       measure: "revenue",
       measureLabel: "sales",
       unit: "currency",
+      currency: bundle.currency,
       dimension: "overall",
       category: "sales",
     });
@@ -1630,6 +1645,7 @@ export class InsightGeneratorService {
               entity: "tables",
               measureLabel: "average check",
               unit: "currency",
+              currency: bundle.currency,
               r: best.r,
               attribute: best.name,
             };
@@ -1693,6 +1709,7 @@ export class InsightGeneratorService {
             const evd: InsightEvidence = {
               measureLabel: "average check",
               unit: "currency",
+              currency: bundle.currency,
               drivers,
             };
             push(
@@ -1719,6 +1736,7 @@ export class InsightGeneratorService {
             entity: t?.label ? `Table ${t.label}` : "Top table",
             measureLabel: "average check",
             unit: "currency",
+            currency: bundle.currency,
             value: top.value,
             rank: 1,
             peerCount: standings.length,
@@ -1774,6 +1792,7 @@ export class InsightGeneratorService {
             entity: top.entity,
             measureLabel: "average check",
             unit: "currency",
+            currency: bundle.currency,
             value: top.value,
             rank: 1,
             peerCount: standings.length,
@@ -1872,6 +1891,7 @@ export class InsightGeneratorService {
           entity: t?.label ? `Table ${t.label}` : "A table",
           measureLabel: "spend",
           unit: "currency",
+          currency: bundle.currency,
           value: c.total || 0,
           z,
           surgeMinutes: Math.round(minutes),
@@ -1951,6 +1971,8 @@ export class InsightGeneratorService {
     measure: string;
     measureLabel: string;
     unit: InsightEvidence["unit"];
+    /** The house's currency for a `currency` unit (F-341). */
+    currency?: string | null;
     dimension: string;
     category: InsightCategory;
     periodWindow?: number;
@@ -1963,6 +1985,7 @@ export class InsightGeneratorService {
       measure,
       measureLabel,
       unit,
+      currency,
       dimension,
       category,
     } = params;
@@ -2005,6 +2028,7 @@ export class InsightGeneratorService {
             entity: E.WEEKDAY_NAMES[weekday],
             measureLabel,
             unit,
+            currency,
             value: cmp.value,
             baseline: cmp.baselineMean,
             deltaPct: cmp.deltaPct,
@@ -2046,6 +2070,7 @@ export class InsightGeneratorService {
       const ev: InsightEvidence = {
         measureLabel,
         unit,
+        currency,
         value: cmp.current,
         baseline: cmp.previous,
         deltaPct: cmp.deltaPct,
@@ -2078,6 +2103,7 @@ export class InsightGeneratorService {
       const ev: InsightEvidence = {
         measureLabel,
         unit,
+        currency,
         trendPctPerWeek: trend * 7,
         n: trendSeries.length,
       };
@@ -2108,6 +2134,7 @@ export class InsightGeneratorService {
         const ev: InsightEvidence = {
           measureLabel,
           unit,
+          currency,
           value: values[i],
           z,
           date: dates[i],
@@ -2397,4 +2424,6 @@ interface Bundle {
    * slice, asks `readWasRefused` first.
    */
   unread: string[];
+  /** `restaurants.currency`; null when not recorded or not readable (F-341). */
+  currency: string | null;
 }

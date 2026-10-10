@@ -100,6 +100,22 @@ function num(v: string | undefined | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * An offer amount with its currency: `€20`, `£15`, `$50`. Any other code
+ * prints as itself (`TRY 500`), and a promo whose text named no currency
+ * prints the bare figure — never a defaulted dollar (F-341).
+ */
+export function promoMoney(
+  currency: string | null | undefined,
+  amount: number | string,
+): string {
+  const code = typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  if (code === "EUR") return `€${amount}`;
+  if (code === "GBP") return `£${amount}`;
+  if (code === "USD") return `$${amount}`;
+  return code ? `${code} ${amount}` : `${amount}`;
+}
+
 /** Best-effort validity date → ISO (YYYY-MM-DD). Handles "Month DD", "M/D[/YY]", weekday, this week(end). */
 function parseValidUntil(
   text: string,
@@ -303,13 +319,13 @@ export function extractPromotion(
   if (discount_pct != null) parts.push(`${discount_pct}% off`);
   if (discount_amount != null)
     parts.push(
-      `${currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"}${discount_amount} off`,
+      `${promoMoney(currency, discount_amount)} off`,
     );
   if (free_shipping) parts.push("free shipping");
   if (threshold_qty != null) parts.push(`on ${threshold_qty}+`);
   if (threshold_amount != null)
     parts.push(
-      `over ${currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"}${threshold_amount}`,
+      `over ${promoMoney(currency, threshold_amount)}`,
     );
   if (valid_until) parts.push(`until ${valid_until}`);
   const summary = parts.length
