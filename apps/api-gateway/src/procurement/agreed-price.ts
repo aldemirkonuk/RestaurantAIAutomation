@@ -42,7 +42,7 @@
  * to attributable.
  */
 
-import { currencyCode } from "../common/iso-4217";
+import { currencyCode, roundMoney } from "../common/iso-4217";
 import { Uom, normalizeUom } from "./documents/document-types";
 
 /**
@@ -385,7 +385,11 @@ export function agreedOrderTotal(input: {
   unitType: Uom;
   /** `resolveOrderUnits().opaque` — true when bottlesTotal is not a bottle count. */
   opaque: boolean;
-  /** The money the price is in (F-341); absent says "currency not recorded". */
+  /**
+   * The money the price is in (F-341); absent says "currency not recorded".
+   * The total rounds to THIS currency's minor unit (F-452): three places for
+   * a dinar, none for dong. Absent rounds to two, as before.
+   */
   currency?: string | null;
 }): AgreedTotalResolution {
   const price = Number(input.price);
@@ -419,7 +423,7 @@ export function agreedOrderTotal(input: {
   const priceUnitsBought = input.bottlesTotal / pricePackSize;
   return {
     ok: true,
-    total: Math.round(safePrice * priceUnitsBought * 100) / 100,
+    total: roundMoney(safePrice * priceUnitsBought, input.currency),
     note:
       pricePackSize === 1
         ? `Totalled as ${input.bottlesTotal} × ${moneyIn(safePrice, input.currency)} per ${priceUom}.`
@@ -583,11 +587,11 @@ function unitsSaid(units: number): string {
   return rounded === units ? String(units) : `about ${rounded}`;
 }
 
-function feeAmount(v: unknown): number | null {
+function feeAmount(v: unknown, currency?: string | null): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isFinite(n) || n < 0) return null;
-  return Math.round(n * 100) / 100;
+  return roundMoney(n, currency);
 }
 
 /**
@@ -607,12 +611,14 @@ export function readAgreementFees(
       }
     | null
     | undefined,
+  /** The agreement's currency; each fee rounds to its minor unit (F-452). */
+  currency?: string | null,
 ): AgreementFees {
   if (!row) return { ...NO_AGREEMENT_FEES };
   return {
-    allowance: feeAmount(row.allowance),
-    deposit: feeAmount(row.deposit),
-    freight: feeAmount(row.freight),
+    allowance: feeAmount(row.allowance, currency),
+    deposit: feeAmount(row.deposit, currency),
+    freight: feeAmount(row.freight, currency),
   };
 }
 
@@ -655,23 +661,26 @@ export function agreementLineTotal(input: {
   unitType: Uom;
   opaque: boolean;
   fees: AgreementFees;
-  /** The money the price and the fees are in (F-341); absent says "currency not recorded". */
+  /**
+   * The money the price and the fees are in (F-341); absent says "currency not
+   * recorded". Goods and total round to its minor unit (F-452).
+   */
   currency?: string | null;
 }): AgreementLineTotal {
   const goodsResolution = agreedOrderTotal(input);
   if (!goodsResolution.ok) return goodsResolution;
 
-  const goods = Math.round(goodsResolution.total * 100) / 100;
+  const goods = roundMoney(goodsResolution.total, input.currency);
   const { allowance, deposit, freight } = input.fees;
 
   if (!hasStatedFees(input.fees)) {
     return { ok: true, goods, total: goods, working: goodsResolution.note };
   }
 
-  const total =
-    Math.round(
-      (goods - (allowance ?? 0) + (deposit ?? 0) + (freight ?? 0)) * 100,
-    ) / 100;
+  const total = roundMoney(
+    goods - (allowance ?? 0) + (deposit ?? 0) + (freight ?? 0),
+    input.currency,
+  );
 
   const m = (n: number) => moneyIn(n, input.currency);
   const parts: string[] = [`Goods ${m(goods)}`];

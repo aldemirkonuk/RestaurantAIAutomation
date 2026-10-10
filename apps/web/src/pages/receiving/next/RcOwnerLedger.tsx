@@ -1,6 +1,6 @@
 /**
- * RcOwnerLedger — the owner rendering: one number, and it is only ever money
- * that actually came back.
+ * RcOwnerLedger — the owner rendering: one number per currency, and it is only
+ * ever money that actually came back.
  *
  * The legacy accounting rule is kept verbatim: `recovered` is money a
  * distributor actually credited, evidenced by a credit memo. Money asked for
@@ -15,17 +15,8 @@
  */
 
 import { RcTally } from './RcTally';
-import {
-  GE,
-  MONO,
-  SANS,
-  SERIF,
-  capStyle,
-  fmtMoney,
-  fmtMoneyWhole,
-  fmtMoneyWholeFloor,
-} from './rc-format';
-import { SERVER_WINDOWS, type RecoveryData } from './useReceivingNextData';
+import { GE, MONO, SANS, SERIF, capStyle, fmtMoneyIn } from './rc-format';
+import { SERVER_WINDOWS, type RecoveredLine, type RecoveryData } from './useReceivingNextData';
 
 function Figure({
   label,
@@ -58,11 +49,82 @@ function Figure({
   );
 }
 
+/**
+ * One figure kept apart by currency: `€400 · ₺12,000`, never their sum. A
+ * currency with no figure (only the settled list named it) is left out here,
+ * and no line at all is the dash.
+ */
+function perCurrency(
+  lines: RecoveredLine[],
+  key: 'outstanding' | 'promised' | 'rejected',
+  atFloor: boolean,
+): string {
+  const parts = lines
+    .filter((l) => l[key] !== null)
+    .map((l) => fmtMoneyIn(l[key], l.currency, { atFloor }));
+  return parts.length === 0 ? fmtMoneyIn(null, null) : parts.join(' · ');
+}
+
+/** The headline and its month-on-month trend, for one currency. */
+function RecoveredRow({
+  line,
+  statsAtFloor,
+  trendAtFloor,
+}: {
+  line: RecoveredLine | null;
+  statsAtFloor: boolean;
+  trendAtFloor: boolean;
+}) {
+  const code = line?.currency ?? null;
+  const thisMonth = line?.thisMonth ?? null;
+  const lastMonth = line?.lastMonth ?? null;
+  const trendKnown = thisMonth !== null && lastMonth !== null;
+  const trendDelta = trendKnown ? thisMonth! - lastMonth! : null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
+      <RcTally
+        value={line ? line.recovered : null}
+        format={(n) => fmtMoneyIn(n, code, { whole: true, atFloor: statsAtFloor })}
+        style={{
+          fontFamily: MONO,
+          fontSize: 38,
+          fontWeight: 700,
+          letterSpacing: '-0.02em',
+          color: 'var(--seal-deep, #14515C)',
+        }}
+      />
+      {/* the trend — real settle dates, never estimated */}
+      <span
+        title={
+          trendAtFloor
+            ? `At least this much. The settled-claims list is served oldest-first and capped at ${SERVER_WINDOWS.CREDITS_LIST} rows, so the most recent settlements can fall outside it.`
+            : undefined
+        }
+        style={{
+          fontFamily: MONO,
+          fontSize: 12.5,
+          fontVariantNumeric: 'tabular-nums',
+          color: 'var(--ink-2, #4F473C)',
+        }}
+      >
+        this month {fmtMoneyIn(thisMonth, code, { whole: true, atFloor: trendAtFloor })} · last month{' '}
+        {fmtMoneyIn(lastMonth, code, { whole: true, atFloor: trendAtFloor })}
+        {trendKnown && trendDelta !== 0 && (
+          <span style={{ color: 'var(--seal-deep, #14515C)' }}>
+            {' '}
+            ({trendDelta! > 0 ? '+' : '−'}
+            {fmtMoneyIn(Math.abs(trendDelta!), code, { whole: true })})
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 export function RcOwnerLedger({ data }: { data: RecoveryData }) {
   const {
     stats,
-    creditedThisMonth,
-    creditedLastMonth,
+    byCurrency,
     trendIsError,
     trendFailure,
     statsAtFloor,
@@ -74,9 +136,6 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
   } = data;
   const settlement =
     stats?.settlementRate == null ? null : Math.round(stats.settlementRate * 100);
-
-  const trendKnown = creditedThisMonth !== null && creditedLastMonth !== null;
-  const trendDelta = trendKnown ? creditedThisMonth! - creditedLastMonth! : null;
 
   const statsFloorNote = `At least this much. /credits/stats reads at most ${SERVER_WINDOWS.RECOVERY_STATS} credit rows with no ordering, so a restaurant past that cap has claims outside the figure entirely.`;
 
@@ -91,43 +150,22 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
         }}
       >
         <span style={capStyle}>Recovered from vendors</span>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
-          <RcTally
-            value={stats ? stats.recovered : null}
-            format={(n) => fmtMoneyWholeFloor(n, statsAtFloor)}
-            style={{
-              fontFamily: MONO,
-              fontSize: 38,
-              fontWeight: 700,
-              letterSpacing: '-0.02em',
-              color: 'var(--seal-deep, #14515C)',
-            }}
-          />
-          {/* the trend — real settle dates, never estimated */}
-          <span
-            title={
-              trendAtFloor
-                ? `At least this much. The settled-claims list is served oldest-first and capped at ${SERVER_WINDOWS.CREDITS_LIST} rows, so the most recent settlements can fall outside it.`
-                : undefined
-            }
-            style={{
-              fontFamily: MONO,
-              fontSize: 12.5,
-              fontVariantNumeric: 'tabular-nums',
-              color: 'var(--ink-2, #4F473C)',
-            }}
-          >
-            this month {fmtMoneyWholeFloor(creditedThisMonth, trendAtFloor)} · last month{' '}
-            {fmtMoneyWholeFloor(creditedLastMonth, trendAtFloor)}
-            {trendKnown && trendDelta !== 0 && (
-              <span style={{ color: 'var(--seal-deep, #14515C)' }}>
-                {' '}
-                ({trendDelta! > 0 ? '+' : '−'}
-                {fmtMoneyWhole(Math.abs(trendDelta!))})
-              </span>
-            )}
-          </span>
-        </div>
+        {/* One line per currency the claims are in (F-453). Nothing converts,
+            so lira and euros are never added into one figure; a house that
+            claims in one currency sees exactly one line, as before. Before
+            either read answers there is no currency to name, so one dash. */}
+        {byCurrency.length === 0 ? (
+          <RecoveredRow line={null} statsAtFloor={statsAtFloor} trendAtFloor={trendAtFloor} />
+        ) : (
+          byCurrency.map((line) => (
+            <RecoveredRow
+              key={line.currency}
+              line={line}
+              statsAtFloor={statsAtFloor}
+              trendAtFloor={trendAtFloor}
+            />
+          ))
+        )}
         <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
           Credit memos actually issued. Money asked for is not counted here.
         </p>
@@ -213,7 +251,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
               <Figure
                 label="Still owed"
                 title={statsFloorNote}
-                value={statsAtFloor ? `${GE}${fmtMoney(stats.outstanding)}` : fmtMoney(stats.outstanding)}
+                value={perCurrency(byCurrency, 'outstanding', statsAtFloor)}
                 hint={`${GE}${stats.openClaims} open claim${stats.openClaims === 1 ? '' : 's'}${
                   stats.oldestOpenDays != null ? `, oldest ${stats.oldestOpenDays}d` : ''
                 }`}
@@ -221,13 +259,13 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
               <Figure
                 label="Promised"
                 title={statsFloorNote}
-                value={statsAtFloor ? `${GE}${fmtMoney(stats.promised)}` : fmtMoney(stats.promised)}
+                value={perCurrency(byCurrency, 'promised', statsAtFloor)}
                 hint="Their word, not yet their memo"
               />
               <Figure
                 label="They refused"
                 title={statsFloorNote}
-                value={statsAtFloor ? `${GE}${fmtMoney(stats.rejected)}` : fmtMoney(stats.rejected)}
+                value={perCurrency(byCurrency, 'rejected', statsAtFloor)}
                 // `settlementRate` used to sit here, and it is settled ÷ ALL
                 // RESOLVED claims — not a property of the refused ones. Correct
                 // number, wrong population implied. It now stands on its own

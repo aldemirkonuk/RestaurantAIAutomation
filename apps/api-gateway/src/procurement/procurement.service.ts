@@ -14,7 +14,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
-import { currencyCode, isIso4217 } from "../common/iso-4217";
+import { currencyCode, isIso4217, roundMoney } from "../common/iso-4217";
 import { DatabaseService } from "../database/database.service";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import { EventsService } from "../events/events.service";
@@ -1123,11 +1123,19 @@ export class ProcurementService {
     // 2026-09-05). Absent stays absent: a NULL allowance is "the agreement said
     // nothing about one", and turning that into 0.00 would record that the
     // vendor granted none.
-    const fees = readAgreementFees({
-      allowance: dto.allowance,
-      deposit: dto.deposit,
-      freight: dto.freight,
-    });
+    //
+    // The currency is read here, before any money is rounded: a fee and a
+    // total round to the currency's own minor unit (F-452) — three places for
+    // a dinar, none for dong — not to a flat two. B2 below explains the code.
+    const placedCurrency = this.readStatedCurrency(dto.currency);
+    const fees = readAgreementFees(
+      {
+        allowance: dto.allowance,
+        deposit: dto.deposit,
+        freight: dto.freight,
+      },
+      placedCurrency,
+    );
 
     const finalPrice = dto.finalPrice ?? dto.quotedPrice ?? 0;
     const bottlesTotal = units.bottlesTotal;
@@ -1147,7 +1155,7 @@ export class ProcurementService {
       unitType: units.unitType,
       opaque: units.opaque,
       fees,
-      currency: currencyCode(dto.currency),
+      currency: placedCurrency,
     });
     if (!agreedTotal.ok) {
       this.logger.warn("Refused an order whose value cannot be worked out", {
@@ -1322,9 +1330,8 @@ export class ProcurementService {
      * currency, never taken from the client: a writer's label about itself is a
      * claim, and this one decides whether a manager later reads "we suggested
      * it" or "somebody chose it". `orderCurrencySource`'s header says why the
-     * `typed` arm is honest.
+     * `typed` arm is honest. (`placedCurrency` itself is read above, with the fees.)
      */
-    const placedCurrency = this.readStatedCurrency(dto.currency);
     const vendorUsual = await this.readVendorUsualCurrency(
       restaurantId,
       dto.providerId,
@@ -1611,6 +1618,10 @@ export class ProcurementService {
     // incomputable shape before reaching this method — but it is handled rather
     // than cast away, because an unreachable branch that silently returns a
     // number is how a wrong total gets written the day it becomes reachable.
+    // The line records the same code the header does (`dto.currency`, read
+    // through the same normaliser), and its total rounds to that currency's
+    // own minor unit (F-452).
+    const lineCurrency = this.readStatedCurrency(dto.currency);
     const lineTotalResolution = Number.isFinite(finalPrice)
       ? agreementLineTotal({
           price: finalPrice,
@@ -1620,12 +1631,12 @@ export class ProcurementService {
           unitType: units.unitType,
           opaque: units.opaque === true,
           fees,
-          currency: currencyCode(dto.currency),
+          currency: lineCurrency,
         })
       : null;
     const lineTotal =
       lineTotalResolution && lineTotalResolution.ok
-        ? Math.round(lineTotalResolution.total * 100) / 100
+        ? roundMoney(lineTotalResolution.total, lineCurrency)
         : null;
 
     const line = {
@@ -1915,7 +1926,9 @@ export class ProcurementService {
           // and so `identity_id` never arrives by way of a conditional spread.
           identity_id: identity.identityId,
           provider_id: args.providerId,
-          price: Math.round(price * 100) / 100,
+          // A dinar keeps its third place (F-452); every other price keeps the
+          // two it always had — a unit price, so yen are not cut to whole ones.
+          price: roundMoney(price, seriesCurrency.code, 2),
           quantity: args.quantity ?? 1,
           // The unit this price is in, STATED — ADR 0119 Q4, founder
           // 2026-09-05. It was the hardcoded literal `'BOTTLE'` until this
@@ -10084,8 +10097,9 @@ export class ProcurementService {
       opts.finalPrice ?? order?.final_price ?? order?.negotiated_price ?? order?.quoted_price,
     );
     const qty = Number(opts.quantity ?? order?.quantity);
-    const value = Number.isFinite(price) && Number.isFinite(qty) ? Math.round(price * qty * 100) / 100 : null;
     const currency = typeof order?.currency === "string" && order.currency.trim() ? order.currency.trim().toUpperCase() : null;
+    // Rounded to the order's own minor unit (F-452): a 1.255-dinar deal is not a 1.26 one.
+    const value = Number.isFinite(price) && Number.isFinite(qty) ? roundMoney(price * qty, currency) : null;
     return { value, currency };
   }
 

@@ -87,8 +87,7 @@ const creditDraftsData: CreditDraftsData = {
 
 const ownerData: RecoveryData = {
   stats: null,
-  creditedThisMonth: null,
-  creditedLastMonth: null,
+  byCurrency: [],
   trendIsError: false,
   trendFailure: null,
   statsAtFloor: false,

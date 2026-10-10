@@ -5,6 +5,8 @@
  * dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
+import { formatMoney } from '@/lib/currency';
+
 export const EM = '—';
 
 /**
@@ -68,8 +70,8 @@ export function fmtIntFloor(v: number | null | undefined, atFloor: boolean): str
 /**
  * Whole-money form of the same, with the floor marker. A summed window is a
  * lower bound on the sum. `currency` is optional and defaults to the page's
- * legacy hardcoded USD formatting (RcOwnerLedger's stats, not yet audited for
- * currency — fixer review, 2026-09-18); a caller that knows the row's own
+ * legacy hardcoded USD formatting; RcOwnerLedger no longer uses it (F-453 moved
+ * it to `fmtMoneyIn`, one line per currency); a caller that knows the row's own
  * currency (RcManagerQueue's per-currency "At risk" total) passes it so the
  * floor marker never sits in front of the wrong symbol.
  */
@@ -82,6 +84,23 @@ export function fmtMoneyWholeFloor(
   if (n === null) return EM;
   const body = currency === undefined ? moneyWhole.format(n) : fmtMoneyWholeCcy(n, currency);
   return atFloor ? `${GE}${body}` : body;
+}
+
+/**
+ * Money in the claim's OWN currency, through `lib/currency.ts formatMoney`
+ * (F-453): the currency's own decimals, or whole units with `whole`; a code
+ * that names no currency (`UNRECORDED`, null) prints the number with "currency
+ * not recorded" rather than borrowing dollars. Unknown is still a dash.
+ */
+export function fmtMoneyIn(
+  v: number | null | undefined,
+  currency: string | null,
+  opts: { whole?: boolean; atFloor?: boolean } = {},
+): string {
+  const n = num(v);
+  if (n === null) return EM;
+  const body = formatMoney(n, currency, opts.whole ? { maximumFractionDigits: 0 } : {});
+  return opts.atFloor ? `${GE}${body}` : body;
 }
 
 const moneyWholeByCurrency = new Map<string, Intl.NumberFormat>();
