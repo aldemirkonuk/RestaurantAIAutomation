@@ -163,7 +163,7 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
           const note = editPriceNote(c.field, r);
           if (note) out.notes.push(note);
         } catch (e) {
-          out.failed = { field: c.field, reason: e instanceof Error ? e.message : 'no reason given' };
+          out.failed = { field: c.field, reason: refusalReason(e) };
           break;
         }
       }
@@ -181,6 +181,22 @@ type EditOutcome = {
   notes: { tone: 'alert' | 'said'; text: string }[]
   failed: { field: EditableMenuItemField; reason: string } | null
 };
+
+/**
+ * Why the gateway refused a field, in its own words (F-920). The catch used to
+ * print the request's own message, so a refused rename read "Request failed
+ * with status code 500" and the gateway's reason (the stock row was not
+ * renamed) never reached the page.
+ */
+export function refusalReason(err: unknown): string {
+  const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
+  const m = e?.response?.data?.message;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m) && m.length) return String(m[0]);
+  if (e?.response?.status === 403) return 'only an owner or a manager can change this line';
+  if (e?.response) return 'the server could not save it and gave no reason; try again';
+  return e?.message || 'no reason given';
+}
 
 /** A field of a line, in the words the page uses for it. */
 const FIELD_WORDS: Record<string, string> = {

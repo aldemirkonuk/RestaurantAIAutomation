@@ -16,7 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import MenuNext from './MenuNext';
+import MenuNext, { refusalReason } from './MenuNext';
 import { housePriceNote } from './menu-price-note';
 import {
   getMenu,
@@ -550,6 +550,52 @@ describe('MenuNext — edit a line in place (F-065)', () => {
     const said = await screen.findByTestId('menu-edit-said');
     expect(said).toHaveTextContent('Bottle price was not saved (the gateway refused). Saved: Section.');
     expect(screen.getByTestId('menu-edit-row')).toBeInTheDocument();
+  });
+
+  // F-920: a refused rename shows the gateway's reason, not the request's own
+  // "Request failed with status code ..." words.
+  const refused = (status: number, message?: unknown) =>
+    Object.assign(new Error(`Request failed with status code ${status}`), {
+      response: { status, data: message === undefined ? {} : { message } },
+    });
+
+  it('F-920: a rename refused with a 403 shows the gateway\'s reason', async () => {
+    auth.role = 'manager';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockRejectedValueOnce(refused(403, 'Only managers and owners can rename a wine on the menu'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Name of Turkish coffee'), { target: { value: 'Türk kahvesi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const said = await screen.findByTestId('menu-edit-said');
+    expect(said).toHaveTextContent(
+      'Name was not saved (Only managers and owners can rename a wine on the menu). Nothing was changed.',
+    );
+    expect(said).not.toHaveTextContent('status code');
+  });
+
+  it('F-920: a rename refused with a 500 shows why the stock was not renamed', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockRejectedValueOnce(
+      refused(500, 'The wine could not be renamed in your stock, so the menu line was not renamed either: timeout'),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Name of Turkish coffee'), { target: { value: 'Türk kahvesi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const said = await screen.findByTestId('menu-edit-said');
+    expect(said).toHaveTextContent(
+      'Name was not saved (The wine could not be renamed in your stock, so the menu line was not renamed either: timeout).',
+    );
+    expect(said).not.toHaveTextContent('status code');
+  });
+
+  it('F-920: a 403 or a 500 with no words of its own is said plainly, never as a status code', () => {
+    expect(refusalReason(refused(403))).toBe('only an owner or a manager can change this line');
+    expect(refusalReason(refused(500))).toBe('the server could not save it and gave no reason; try again');
+    expect(refusalReason(refused(400, ['name must be text']))).toBe('name must be text');
+    expect(refusalReason(new Error('the gateway refused'))).toBe('the gateway refused');
   });
 
   it('F-878: the line edit reads "45,50" the way the house writes it, from a text field', async () => {
