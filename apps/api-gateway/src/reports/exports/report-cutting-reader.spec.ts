@@ -15,9 +15,14 @@ import { EXPORTABLE_CUTTINGS, type ExportableCutting } from "./report-export-cut
  * and asserts the two answer identically for every cutting, using the query
  * string the page's catalogue sends. A horizon, window, limit or status that
  * drifts on either side changes an argument, and so the answer, and fails here.
+ *
+ * Only the owner and the manager may export (`ReportExportsController`), and
+ * the goals read is kept for them too (F-299), so the goals page is asked as an
+ * OWNER: a reader the page refuses can never reach the export either.
  */
 
 const RID = "11111111-1111-4111-8111-111111111111";
+const OWNER = { role: "owner" };
 
 /** Each service method answers with its own name and arguments. */
 function echo(name: string) {
@@ -106,7 +111,7 @@ const PAGE: Record<
 > = {
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
   till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
-  goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined) },
+  goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, OWNER) },
   bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID) },
   pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
@@ -131,6 +136,13 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       .join("\n");
     for (const [id, p] of Object.entries(PAGE))
       expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+  });
+
+  it("goals: the page still refuses staff, so asking it as the owner weakens nothing", async () => {
+    const { controller } = build();
+    await expect(controller.listGoalsWithProgress(RID, undefined, { role: "staff" })).rejects.toMatchObject({
+      status: 403,
+    });
   });
 
   for (const id of EXPORTABLE_CUTTINGS) {
