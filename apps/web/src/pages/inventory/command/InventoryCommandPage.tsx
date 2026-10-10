@@ -574,25 +574,28 @@ export function InventoryCommandPage() {
   // F-370: mirror the filters into the URL (replace, so Back leaves the page
   // rather than stepping through every keystroke). Defaults are left out, and
   // a param this page does not own — `verify`, `wine` — is never touched.
+  // Only a real change navigates: react-router's functional `prev` is this
+  // render's URL, not one another effect just replaced, so writing it back
+  // unchanged undid `?add=1`'s removal (F-550) in the same pass.
+  const latestParams = useRef(searchParams);
+  latestParams.current = searchParams;
   useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        const put = (k: string, v: string | null, dflt: string | null) => {
-          if (v === null || v === dflt || v === "") next.delete(k);
-          else next.set(k, v);
-        };
-        put("q", searchQuery, "");
-        put("type", filterType, "all");
-        put("loc", selectedLocationFilter, null);
-        put("flag", activeFlag, null);
-        put("sort", sort, "runway");
-        put("dir", sortDir, "asc");
-        put("view", view, "table");
-        return next.toString() === prev.toString() ? prev : next;
-      },
-      { replace: true },
-    );
+    const prev = latestParams.current;
+    const next = new URLSearchParams(prev);
+    const put = (k: string, v: string | null, dflt: string | null) => {
+      if (v === null || v === dflt || v === "") next.delete(k);
+      else next.set(k, v);
+    };
+    put("q", searchQuery, "");
+    put("type", filterType, "all");
+    put("loc", selectedLocationFilter, null);
+    put("flag", activeFlag, null);
+    put("sort", sort, "runway");
+    put("dir", sortDir, "asc");
+    put("view", view, "table");
+    if (next.toString() !== prev.toString()) {
+      setSearchParams(next, { replace: true });
+    }
   }, [
     searchQuery,
     filterType,
