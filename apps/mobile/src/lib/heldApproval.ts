@@ -18,6 +18,33 @@ function isConnectionFailure(error: unknown): boolean {
   );
 }
 
+/**
+ * F-830 (the phone's half of F-775): the gateway answers 409 with reason
+ * `order_already_approved` when a second manager or a stale screen holds an
+ * order someone already approved. The order IS approved — the outcome the
+ * person wanted — so this is settled, not an error. Read structurally: a
+ * proxy can answer 409 with a page, and only the named reason is believed.
+ */
+export function isAlreadyApproved(error: unknown): boolean {
+  const e = error as { status?: unknown; body?: unknown } | null;
+  if (!e || e.status !== 409) return false;
+  const body = e.body as { reason?: unknown } | null | undefined;
+  return !!body && typeof body === "object" && body.reason === "order_already_approved";
+}
+
+/** Send the approval; an "already approved" refusal settles the same way. */
+export async function approveOrSettle(
+  send: () => Promise<unknown>,
+  settle: () => Promise<void> | void,
+): Promise<void> {
+  try {
+    await send();
+  } catch (error) {
+    if (!isAlreadyApproved(error)) throw error;
+  }
+  await settle();
+}
+
 /** A seal is issued when review begins; cancelling never submits it. */
 export function heldApproval(
   deps: {

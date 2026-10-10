@@ -3,7 +3,7 @@ import { AccessibilityInfo, Alert, AppState, View } from "react-native";
 import { api, type RequestScope } from "@/api/client";
 import { useSession } from "@/state/session";
 import { queryClient } from "@/lib/queryClient";
-import { heldApproval } from "@/lib/heldApproval";
+import { approveOrSettle, heldApproval } from "@/lib/heldApproval";
 import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { color, radius, space } from "@/design/tokens";
@@ -45,15 +45,19 @@ export function OrderApprovalSeal({
         );
         return result.challenge;
       },
-      approve: async (challenge) => {
-        await api(`/procurement/orders/${orderId}/approve`, {
-          method: "POST",
-          scope,
-          sealChallenge: challenge,
-        });
-        await queryClient.invalidateQueries({ queryKey: ["orders"] });
-        onApproved();
-      },
+      approve: (challenge) =>
+        approveOrSettle(
+          () =>
+            api(`/procurement/orders/${orderId}/approve`, {
+              method: "POST",
+              scope,
+              sealChallenge: challenge,
+            }),
+          async () => {
+            await queryClient.invalidateQueries({ queryKey: ["orders"] });
+            onApproved();
+          },
+        ),
       state: (next, message) => {
         setPhase(next);
         setError(message);
