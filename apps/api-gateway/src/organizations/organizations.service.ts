@@ -10,7 +10,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { ORG_OWNER } from "./org-role";
+import { ORG_OWNER, ORG_ROW_INSERT_ONLY } from "./org-role";
 import { DatabaseService } from "../database/database.service";
 import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
 import {
@@ -232,15 +232,25 @@ export class OrganizationsService {
       if (rest?.organization_id) {
         orgIds = [rest.organization_id];
         // Repair missing membership so future calls skip this fallback.
-        // Default to 'member' — never silently escalate a legacy user to 'owner'.
-        await this.databaseService.supabase.from("organization_members").upsert(
-          {
-            organization_id: rest.organization_id,
-            user_id: userId,
-            role: "member",
-          },
-          { onConflict: "organization_id,user_id" },
-        );
+        // Default to 'staff' — never silently escalate a legacy user to
+        // 'owner'. `organization_members_role_check` allows only owner,
+        // manager and staff (baseline :4111), so the old 'member' was refused
+        // on every call and the row was never repaired (F-556).
+        const { error: repairError } = await this.databaseService.supabase
+          .from("organization_members")
+          .upsert(
+            {
+              organization_id: rest.organization_id,
+              user_id: userId,
+              role: "staff",
+            },
+            ORG_ROW_INSERT_ONLY,
+          );
+        if (repairError) {
+          this.logger.warn(
+            `Could not repair org membership for user ${userId}: ${repairError.message}`,
+          );
+        }
       }
     }
     return orgIds;

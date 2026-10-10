@@ -128,7 +128,8 @@ interface ProviderRow {
   // recorded the same finding). `primary_business_type` (20261116100200) is
   // the real column; kept nullable, no default, never assumed.
   primary_business_type: string | null;
-  known_personnel: string[] | null;
+  // `known_personnel` was declared here, written on update and read back,
+  // against a column no migration has ever created (F-559). Removed.
   catalogue_vendor_id?: string | null;
 }
 
@@ -664,7 +665,6 @@ export class ProvidersService {
       primary_business_type: normalizeBusinessType(
         dto.primaryBusinessType ?? dto.type ?? undefined,
       ),
-      known_personnel: (dto as any).knownPersonnel ?? undefined,
     };
     // Remove undefined keys so Supabase doesn't null-out untouched columns
     Object.keys(updatePayload).forEach(
@@ -1032,7 +1032,10 @@ export class ProvidersService {
       // (comma, parentheses, period) to prevent filter-injection via the .or() string.
       const safeQ = params.q.replace(/[,().]/g, "");
       query = query.or(
-        `name.ilike.%${safeQ}%,company_name.ilike.%${safeQ}%,contact_name.ilike.%${safeQ}%`,
+        // `providers` has no `contact_name` (baseline :4854-4901); the
+        // contact's name lives in two columns, and naming the phantom one
+        // failed every search with a 500 (F-558).
+        `name.ilike.%${safeQ}%,company_name.ilike.%${safeQ}%,contact_first_name.ilike.%${safeQ}%,contact_last_name.ilike.%${safeQ}%`,
       );
     }
 
@@ -1808,7 +1811,6 @@ export class ProvidersService {
       isCustom: (row as any).is_custom ?? true,
       paymentTerms: row.payment_terms ?? undefined,
       primaryBusinessType: row.primary_business_type ?? undefined,
-      knownPersonnel: row.known_personnel ?? undefined,
     };
   }
 

@@ -629,6 +629,22 @@ describe("the PATCH route is held to the same table", () => {
     expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
     expect(h.order.manager_notes).toBe("call the rep");
   });
+
+  // F-557: procurement_orders has no location column, so `locationId` used
+  // to reach the UPDATE as `location_id` and fail the whole edit with a 500.
+  it("refuses a locationId in words, and writes nothing", async () => {
+    const h = await makeService();
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, {
+        managerNotes: "call the rep",
+        locationId: "loc-1",
+      } as any),
+    );
+    expect(err.getStatus()).toBe(400);
+    expect(h.updates).toHaveLength(0);
+    expect(h.order.manager_notes).toBeUndefined();
+    expect("location_id" in h.order).toBe(false);
+  });
 });
 
 

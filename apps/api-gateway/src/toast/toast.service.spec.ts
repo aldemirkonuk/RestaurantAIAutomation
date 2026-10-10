@@ -31,9 +31,16 @@ function toastConnectedHouse(guid: string | null = "toast-guid-1"): any {
 
 type Row = Record<string, any>;
 
-function makeSupabase(opts: { mapping?: Row | null; inventory?: Row | null }) {
+type Opts = {
+  mapping?: Row | null;
+  inventory?: Row | null;
+  eventsError?: Row | null;
+};
+
+function makeSupabase(opts: Opts) {
   const calls = {
     rpc: [] as any[],
+    eventInserts: [] as any[],
     unresolvedInserts: [] as any[],
     mappingQueries: [] as any[],
   };
@@ -52,12 +59,18 @@ function makeSupabase(opts: { mapping?: Row | null; inventory?: Row | null }) {
             calls.unresolvedInserts.push(row);
             return { error: null };
           }
-          if (table === "events")
+          if (table === "events") {
+            calls.eventInserts.push(row);
+            const error = opts.eventsError ?? null;
             return {
               select: () => ({
-                single: async () => ({ data: { id: "evt-1" }, error: null }),
+                single: async () =>
+                  error
+                    ? { data: null, error }
+                    : { data: { id: "evt-1" }, error: null },
               }),
             };
+          }
           return { error: null };
         },
         maybeSingle: async () => {
@@ -86,7 +99,7 @@ function makeSupabase(opts: { mapping?: Row | null; inventory?: Row | null }) {
   return { client, calls };
 }
 
-function makeService(opts: { mapping?: Row | null; inventory?: Row | null }) {
+function makeService(opts: Opts) {
   const { client, calls } = makeSupabase(opts);
   const configService: any = {
     get: (key: string, fallback?: any) => {
@@ -226,6 +239,110 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
     expect(calls.unresolvedInserts).toHaveLength(1);
     expect(calls.unresolvedInserts[0].source).toBe("toast");
     expect(calls.unresolvedInserts[0].external_item_id).toBe("item-1");
+  });
+});
+
+/** Members of a Postgres enum as the migrations declare them. */
+function enumMembers(name: string): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require("fs");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require("path");
+  const dir = path.resolve(__dirname, "../../../../supabase/migrations");
+  const members = new Set<string>();
+  for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith(".sql"))) {
+    const sql: string = fs.readFileSync(path.join(dir, f), "utf8");
+    const create = new RegExp(
+      `CREATE TYPE public\\.${name} AS ENUM \\(([^)]*)\\)`,
+    ).exec(sql);
+    if (create) for (const m of create[1].matchAll(/'([^']+)'/g)) members.add(m[1]);
+    const add = new RegExp(
+      `ALTER TYPE public\\.${name} ADD VALUE(?: IF NOT EXISTS)? '([^']+)'`,
+      "g",
+    );
+    for (const m of sql.matchAll(add)) members.add(m[1]);
+  }
+  return [...members];
+}
+
+describe("F-554: Toast webhooks log events the enums accept, and a failed log never blocks the sale", () => {
+  const eventTypes = enumMembers("event_type");
+  const sourcePages = enumMembers("source_page");
+
+  it("reads the enums from the migrations", () => {
+    expect(eventTypes).toContain("system_event");
+    expect(sourcePages).toContain("system");
+  });
+
+  it.each([
+    ToastWebhookEventType.ORDER_CLOSED,
+    ToastWebhookEventType.ORDER_CREATED,
+  ])("an order webhook (%s) writes valid enum values", async (et) => {
+    const { service, calls } = makeService({ mapping: null, inventory: null });
+    await service.processWebhook(webhookDto(et), "{}", null, null);
+    expect(calls.eventInserts).toHaveLength(1);
+    expect(eventTypes).toContain(calls.eventInserts[0].event_type);
+    expect(sourcePages).toContain(calls.eventInserts[0].source_page);
+    expect(calls.eventInserts[0].payload.pos_event).toBe(
+      et === ToastWebhookEventType.ORDER_CLOSED
+        ? "pos_order_closed"
+        : "pos_order_created",
+    );
+  });
+
+  it("a stock webhook writes valid enum values", async () => {
+    const { service, calls } = makeService({});
+    await service.processWebhook(
+      {
+        eventId: "evt-s",
+        eventType: ToastWebhookEventType.STOCK_UPDATED,
+        restaurantGuid: "toast-rest-1",
+        timestamp: new Date().toISOString(),
+        stock: { itemGuid: "item-1", itemName: "Caymus", quantity: 3 },
+      } as unknown as ToastWebhookDto,
+      "{}",
+      null,
+      null,
+    );
+    expect(calls.eventInserts).toHaveLength(1);
+    expect(eventTypes).toContain(calls.eventInserts[0].event_type);
+    expect(sourcePages).toContain(calls.eventInserts[0].source_page);
+  });
+
+  it("a menu webhook writes valid enum values", async () => {
+    const { service, calls } = makeService({});
+    await service.processWebhook(
+      {
+        eventId: "evt-m",
+        eventType: ToastWebhookEventType.MENU_UPDATED,
+        restaurantGuid: "toast-rest-1",
+        timestamp: new Date().toISOString(),
+        menu: { menuGuid: "menu-1", menuName: "Wine" },
+      } as unknown as ToastWebhookDto,
+      "{}",
+      null,
+      null,
+    );
+    expect(calls.eventInserts).toHaveLength(1);
+    expect(eventTypes).toContain(calls.eventInserts[0].event_type);
+    expect(sourcePages).toContain(calls.eventInserts[0].source_page);
+  });
+
+  it("still takes the sale off stock when the event log insert fails", async () => {
+    const { service, calls } = makeService({
+      inventory: { id: "inv-1" },
+      mapping: { inventory_id: "inv-1", sale_unit: "bottle", item_name: "Caymus" },
+      eventsError: { code: "22P02", message: "invalid input value for enum" },
+    });
+    await service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_PAID),
+      "{}",
+      null,
+      null,
+    );
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+    expect(calls.rpc[0].args.p_delta).toBe(-2);
   });
 });
 

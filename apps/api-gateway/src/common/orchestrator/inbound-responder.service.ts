@@ -1779,7 +1779,8 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         channels: ["in_app"],
         restaurant_id: restaurantId,
         type: n.type,
-        title: n.title.slice(0, 500),
+        // notifications.title is varchar(255); a longer title fails the insert (F-560).
+        title: n.title.slice(0, 255),
         message: n.message,
         priority: n.priority ?? "medium",
         status: "unread",
@@ -1787,7 +1788,15 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         metadata: n.metadata ?? {},
         created_at: now,
       }));
-      await this.databaseService.supabase.from("notifications").insert(rows);
+      // supabase-js RESOLVES with { error }; unread, a refused insert was silent.
+      const { error } = await this.databaseService.supabase
+        .from("notifications")
+        .insert(rows);
+      if (error) {
+        this.logger.warn(
+          `persistManagerNotification failed for restaurant ${restaurantId}: ${error.message}`,
+        );
+      }
     } catch (e: any) {
       this.logger.warn(
         `persistManagerNotification failed for restaurant ${restaurantId}: ${e?.message}`,
