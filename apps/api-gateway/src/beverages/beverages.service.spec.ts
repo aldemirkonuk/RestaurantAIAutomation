@@ -18,7 +18,18 @@ type TableResult = { data?: unknown[]; error?: unknown; count?: number };
 
 function chain(result: TableResult) {
   const self: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "neq", "is", "in", "gt", "or", "ilike", "order", "limit"]) {
+  for (const m of [
+    "select",
+    "eq",
+    "neq",
+    "is",
+    "in",
+    "gt",
+    "or",
+    "ilike",
+    "order",
+    "limit",
+  ]) {
     self[m] = jest.fn(() => self);
   }
   self.then = (resolve: (v: unknown) => unknown) =>
@@ -53,7 +64,9 @@ const RID = "550e8400-e29b-41d4-a716-446655440000";
 describe("BeveragesService.listBeverages", () => {
   it("labels the rows as a shared reference catalogue, not as this house's stock", async () => {
     const service = await serviceWith({
-      beverages: [{ data: [{ id: "b1", name: "Efes Pilsen", beverage_type: "beer" }] }],
+      beverages: [
+        { data: [{ id: "b1", name: "Efes Pilsen", beverage_type: "beer" }] },
+      ],
     });
     const out = await service.listBeverages(RID, { limit: 200 });
     expect(out.scope).toBe("global-reference");
@@ -76,9 +89,16 @@ describe("BeveragesService.listBeverages", () => {
     // heading "soft drinks". A filter that degrades to "no filter" answers a
     // question it cannot answer.
     const service = await serviceWith({
-      beverages: [{ data: [{ id: "b1", name: "Lagavulin 16", beverage_type: "whiskey" }] }],
+      beverages: [
+        {
+          data: [{ id: "b1", name: "Lagavulin 16", beverage_type: "whiskey" }],
+        },
+      ],
     });
-    const out = await service.listBeverages(RID, { register: "soft_drinks", limit: 3 });
+    const out = await service.listBeverages(RID, {
+      register: "soft_drinks",
+      limit: 3,
+    });
     expect(out.rows).toEqual([]);
     expect(out.count).toBe(0);
     expect(out.servedByThisTable).toBe(false);
@@ -88,7 +108,13 @@ describe("BeveragesService.listBeverages", () => {
   it("passes a search term to or() only as a value (F-595)", async () => {
     const ors: string[] = [];
     const service = await serviceWith({ beverages: [{ data: [] }] });
-    const db = (service as unknown as { dbService: { getClient: () => { from: (t: string) => Record<string, jest.Mock> } } }).dbService;
+    const db = (
+      service as unknown as {
+        dbService: {
+          getClient: () => { from: (t: string) => Record<string, jest.Mock> };
+        };
+      }
+    ).dbService;
     const from = db.getClient().from;
     jest.spyOn(db, "getClient").mockReturnValue({
       from: (t: string) => {
@@ -100,7 +126,10 @@ describe("BeveragesService.listBeverages", () => {
         return c;
       },
     });
-    await service.listBeverages(RID, { search: "Johnnie Walker, Black", limit: 10 });
+    await service.listBeverages(RID, {
+      search: "Johnnie Walker, Black",
+      limit: 10,
+    });
     expect(ors).toEqual([
       'name.ilike."%Johnnie Walker, Black%",producer.ilike."%Johnnie Walker, Black%"',
     ]);
@@ -108,11 +137,20 @@ describe("BeveragesService.listBeverages", () => {
 
   it("names the beverage_type values a served register resolved to", async () => {
     const service = await serviceWith({
-      beverages: [{ data: [{ id: "b1", name: "Lagavulin 16", beverage_type: "whiskey" }] }],
+      beverages: [
+        {
+          data: [{ id: "b1", name: "Lagavulin 16", beverage_type: "whiskey" }],
+        },
+      ],
     });
-    const out = await service.listBeverages(RID, { register: "whiskey", limit: 3 });
+    const out = await service.listBeverages(RID, {
+      register: "whiskey",
+      limit: 3,
+    });
     expect(out.servedByThisTable).toBe(true);
-    expect(out.matchedTypes).toEqual(expect.arrayContaining(["whiskey", "bourbon"]));
+    expect(out.matchedTypes).toEqual(
+      expect.arrayContaining(["whiskey", "bourbon"]),
+    );
   });
 
   it("explains a missing table in words rather than returning an empty list", async () => {
@@ -128,10 +166,7 @@ describe("BeveragesService.listBeverages", () => {
 describe("BeveragesService.listCocktails", () => {
   it("returns only this house's rows and counts unattributed reference rows apart", async () => {
     const service = await serviceWith({
-      cocktails: [
-        { data: [{ id: "c1", name: "Negroni" }] },
-        { count: 55 },
-      ],
+      cocktails: [{ data: [{ id: "c1", name: "Negroni" }] }, { count: 55 }],
     });
     const out = await service.listCocktails(RID, { limit: 200 });
     expect(out.scope).toBe("tenant");
@@ -162,8 +197,19 @@ type Term = { data?: unknown; error?: unknown };
 function writeChain(result: Term) {
   const self: Record<string, unknown> = {};
   for (const m of [
-    "select", "eq", "neq", "is", "in", "gt", "or", "ilike", "order", "limit",
-    "insert", "update", "delete",
+    "select",
+    "eq",
+    "neq",
+    "is",
+    "in",
+    "gt",
+    "or",
+    "ilike",
+    "order",
+    "limit",
+    "insert",
+    "update",
+    "delete",
   ]) {
     self[m] = jest.fn(() => self);
   }
@@ -243,7 +289,9 @@ describe("BeveragesService.readRegister", () => {
     const { service } = await richService({
       rpc: { error: { code: "42883", message: "function does not exist" } },
       tables: {
-        beverages: [{ data: [{ id: "b1", name: "Efes Pilsen", beverage_type: "beer" }] }],
+        beverages: [
+          { data: [{ id: "b1", name: "Efes Pilsen", beverage_type: "beer" }] },
+        ],
       },
     });
     const out = await service.readRegister(RID, "beer", {
@@ -272,7 +320,14 @@ describe("BeveragesService.readRegister", () => {
                     { id: "b1", name: "Absolut", beverage_type: "vodka" },
                     { id: "b2", name: "Beefeater", beverage_type: "gin" },
                   ]
-                : [{ id: "b9", name: "Yeni Rakı", producer: "Mey", beverage_type: "raki" }],
+                : [
+                    {
+                      id: "b9",
+                      name: "Yeni Rakı",
+                      producer: "Mey",
+                      beverage_type: "raki",
+                    },
+                  ],
           });
           c.or = jest.fn((f: string) => {
             ors.push(f);
@@ -462,7 +517,10 @@ describe("BeveragesService cocktail writes", () => {
           );
           self.then = (resolve: (v: unknown) => unknown) =>
             Promise.resolve({
-              data: table === "cocktail_ingredients" ? [{ id: "i1" }, { id: "i2" }] : [],
+              data:
+                table === "cocktail_ingredients"
+                  ? [{ id: "i1" }, { id: "i2" }]
+                  : [],
               error: null,
             }).then(resolve);
           return self;
@@ -477,14 +535,30 @@ describe("BeveragesService cocktail writes", () => {
       .setCocktailIngredients(RID, COCKTAIL_ID, {
         lines: [
           { beverageId: "b-1", quantity: 30, unit: "ml" },
-          { freeText: "fresh lime juice", quantity: 20, unit: "ml", sortOrder: 5 },
+          {
+            freeText: "fresh lime juice",
+            quantity: 20,
+            unit: "ml",
+            sortOrder: 5,
+          },
         ],
       });
 
-    expect(out).toEqual({ cocktailId: COCKTAIL_ID, lines: 2, recipesAvailable: true });
+    expect(out).toEqual({
+      cocktailId: COCKTAIL_ID,
+      lines: 2,
+      recipesAvailable: true,
+    });
     const rows = inserted[0] as Record<string, unknown>[];
-    expect(rows[0]).toMatchObject({ cocktail_id: COCKTAIL_ID, beverage_id: "b-1", sort_order: 0 });
-    expect(rows[1]).toMatchObject({ free_text: "fresh lime juice", sort_order: 5 });
+    expect(rows[0]).toMatchObject({
+      cocktail_id: COCKTAIL_ID,
+      beverage_id: "b-1",
+      sort_order: 0,
+    });
+    expect(rows[1]).toMatchObject({
+      free_text: "fresh lime juice",
+      sort_order: 5,
+    });
   });
 
   /* F-473: replace writes the new lines first and removes the old ones after,
@@ -503,7 +577,10 @@ describe("BeveragesService cocktail writes", () => {
         from: (table: string) => {
           const self: Record<string, unknown> = {};
           let verb = "select";
-          let result: { data: unknown; error: unknown } = { data: [], error: null };
+          let result: { data: unknown; error: unknown } = {
+            data: [],
+            error: null,
+          };
           for (const m of ["eq", "is", "order"]) self[m] = jest.fn(() => self);
           self.select = jest.fn(() => {
             if (verb === "select") {
@@ -534,7 +611,11 @@ describe("BeveragesService cocktail writes", () => {
             Promise.resolve({ data: { id: COCKTAIL_ID }, error: null }),
           );
           self.then = (resolve: (v: unknown) => unknown) =>
-            Promise.resolve(table === "cocktail_ingredients" ? result : { data: [], error: null }).then(resolve);
+            Promise.resolve(
+              table === "cocktail_ingredients"
+                ? result
+                : { data: [], error: null },
+            ).then(resolve);
           return self;
         },
       }),
@@ -546,12 +627,17 @@ describe("BeveragesService cocktail writes", () => {
   }
 
   it("writes the new recipe before removing the old one, and removes only the old lines", async () => {
-    const { service, log } = await recipeService({ oldIds: ["old-1", "old-2"] });
+    const { service, log } = await recipeService({
+      oldIds: ["old-1", "old-2"],
+    });
     const out = await service.setCocktailIngredients(RID, COCKTAIL_ID, {
       lines: [{ freeText: "30 ml gin" }],
     });
     expect(out.lines).toBe(1);
-    expect(log).toEqual([["insert", 1], ["delete", "old-1", "old-2"]]);
+    expect(log).toEqual([
+      ["insert", 1],
+      ["delete", "old-1", "old-2"],
+    ]);
   });
 
   it("keeps the old recipe when the new lines cannot be written, and says so", async () => {
@@ -560,7 +646,9 @@ describe("BeveragesService cocktail writes", () => {
       insertError: { message: "value too long" },
     });
     await expect(
-      service.setCocktailIngredients(RID, COCKTAIL_ID, { lines: [{ freeText: "x" }] }),
+      service.setCocktailIngredients(RID, COCKTAIL_ID, {
+        lines: [{ freeText: "x" }],
+      }),
     ).rejects.toThrow(/Nothing was changed: the recipe you had is still there/);
     // Nothing was deleted.
     expect(log).toEqual([["insert", 1]]);
@@ -572,9 +660,15 @@ describe("BeveragesService cocktail writes", () => {
       clearError: { message: "timeout" },
     });
     await expect(
-      service.setCocktailIngredients(RID, COCKTAIL_ID, { lines: [{ freeText: "x" }] }),
+      service.setCocktailIngredients(RID, COCKTAIL_ID, {
+        lines: [{ freeText: "x" }],
+      }),
     ).rejects.toThrow(/new lines were taken back out\. Nothing was changed/);
-    expect(log).toEqual([["insert", 1], ["delete", "old-1"], ["delete", "new-0"]]);
+    expect(log).toEqual([
+      ["insert", 1],
+      ["delete", "old-1"],
+      ["delete", "new-0"],
+    ]);
   });
 
   it("never claims nothing changed when both the clear and the undo fail", async () => {
@@ -637,7 +731,8 @@ function tillQuery(
     let rows: Record<string, unknown>[];
     if (fn === "house_till_names") {
       const count = new Map<string, number>();
-      for (const l of lines) count.set(l.item_name, (count.get(l.item_name) ?? 0) + 1);
+      for (const l of lines)
+        count.set(l.item_name, (count.get(l.item_name) ?? 0) + 1);
       rows = [...count].map(([item_name, n]) => ({ item_name, lines: n }));
     } else {
       const names = args.p_names as string[] | null;
@@ -649,7 +744,9 @@ function tillQuery(
     }
     if (call.order) {
       const col = call.order;
-      rows = [...rows].sort((a, b) => (String(a[col]) < String(b[col]) ? -1 : 1));
+      rows = [...rows].sort((a, b) =>
+        String(a[col]) < String(b[col]) ? -1 : 1,
+      );
     }
     if (call.limit !== null) rows = rows.slice(0, call.limit);
     return Promise.resolve({ data: rows, error: null });
@@ -658,8 +755,10 @@ function tillQuery(
     gt: (col: string, v: string) => ((call.gt = [col, v]), q),
     order: (col: string) => ((call.order = col), q),
     limit: (n: number) => ((call.limit = n), q),
-    then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-      settle().then(resolve, reject),
+    then: (
+      resolve: (v: unknown) => unknown,
+      reject?: (e: unknown) => unknown,
+    ) => settle().then(resolve, reject),
   };
   return q;
 }
@@ -744,7 +843,9 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     const pos = out.books.find((b) => b.book === "pos");
     expect(pos?.readable).toBe(true);
     expect(pos?.rows).toBe(2);
-    expect(pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort()).toEqual([
+    expect(
+      pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort(),
+    ).toEqual([
       ["Yeni Rakı (single)", 2, "contains"],
       ["Yeni Rakı 35cl", 1, "contains"],
     ]);
@@ -791,7 +892,9 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
   });
 
   it("reads all 2,152 lines of a row across three pages, with no sample cap (A-015)", async () => {
-    const lines = Array.from({ length: 2152 }, (_, i) => tillLine(i + 1, "Lions Milk", 1, 17));
+    const lines = Array.from({ length: 2152 }, (_, i) =>
+      tillLine(i + 1, "Lions Milk", 1, 17),
+    );
     const { service, calls } = await tillService(lines);
 
     const out = await service.readRowRecord(RID, "Lions Milk");
@@ -864,13 +967,17 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
   });
 
   it("does not invent a till series, nor read lines, when no name the till rang matches", async () => {
-    const { service, calls } = await tillService([tillLine(1, "House Cabernet", 1, 14)]);
+    const { service, calls } = await tillService([
+      tillLine(1, "House Cabernet", 1, 14),
+    ]);
     const out = await service.readRowRecord(RID, "Turkish Coffee");
     const pos = out.books.find((b) => b.book === "pos");
     expect(pos?.readable).toBe(true);
     expect(pos?.rows).toBe(0);
     expect(pos?.ledger).toEqual([]);
-    expect(pos?.reason).toContain("Every line of every check that was not voided");
+    expect(pos?.reason).toContain(
+      "Every line of every check that was not voided",
+    );
     expect(calls.filter((c) => c.fn === "house_till_lines")).toHaveLength(0);
   });
 
@@ -879,26 +986,36 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     const out = await service.readRowRecord(RID, "Ayran");
     const pos = out.books.find((b) => b.book === "pos");
     expect(pos?.rows).toBe(1);
-    expect(pos?.ledger[0]).toMatchObject({ qty: null, unitPrice: null, total: null });
+    expect(pos?.ledger[0]).toMatchObject({
+      qty: null,
+      unitPrice: null,
+      total: null,
+    });
   });
 
-  it.each([
-    ["house_till_names"],
-    ["house_till_lines"],
-  ])("leaves the book unreadable, not empty, when %s fails", async (fn) => {
-    const { service } = await tillService([tillLine(1, "Ayran", 1, 2)], {
-      [fn]: { code: "57014", message: "canceling statement due to statement timeout" },
-    });
-    const out = await service.readRowRecord(RID, "Ayran");
-    const pos = out.books.find((b) => b.book === "pos");
-    expect(pos?.readable).toBe(false);
-    expect(pos?.rows).toBeNull();
-    expect(pos?.reason).toBe("canceling statement due to statement timeout");
-  });
+  it.each([["house_till_names"], ["house_till_lines"]])(
+    "leaves the book unreadable, not empty, when %s fails",
+    async (fn) => {
+      const { service } = await tillService([tillLine(1, "Ayran", 1, 2)], {
+        [fn]: {
+          code: "57014",
+          message: "canceling statement due to statement timeout",
+        },
+      });
+      const out = await service.readRowRecord(RID, "Ayran");
+      const pos = out.books.find((b) => b.book === "pos");
+      expect(pos?.readable).toBe(false);
+      expect(pos?.rows).toBeNull();
+      expect(pos?.reason).toBe("canceling statement due to statement timeout");
+    },
+  );
 
   it("names the migration when the till's functions are not on this database", async () => {
     const { service } = await tillService([], {
-      house_till_names: { code: "PGRST202", message: "Could not find the function" },
+      house_till_names: {
+        code: "PGRST202",
+        message: "Could not find the function",
+      },
     });
     const out = await service.readRowRecord(RID, "Ayran");
     const pos = out.books.find((b) => b.book === "pos");
@@ -942,10 +1059,15 @@ function filteringQuery(served: Served, error: unknown) {
   };
   on("select", (cols: string) => (select = cols));
   // A dotted filter names an embedded table; the fake does not model embeds.
-  on("eq", (c: string, v: unknown) => !c.includes(".") && keep.push((r) => r[c] === v));
+  on(
+    "eq",
+    (c: string, v: unknown) => !c.includes(".") && keep.push((r) => r[c] === v),
+  );
   on("neq", (c: string, v: unknown) => keep.push((r) => r[c] !== v));
   on("in", (c: string, vs: unknown[]) => keep.push((r) => vs.includes(r[c])));
-  on("gt", (c: string, v: unknown) => keep.push((r) => String(r[c]) > String(v)));
+  on("gt", (c: string, v: unknown) =>
+    keep.push((r) => String(r[c]) > String(v)),
+  );
   // `or` / `ilike` are recorded, not modelled: no row here depends on them.
   for (const m of ["is", "or", "ilike"]) on(m);
   on("order", (c: string) => (orderBy = c));
@@ -1023,7 +1145,9 @@ describe("BeveragesService.readRowRecord — the invoice book names its vendor l
     const embed = select.slice(select.indexOf("procurement_documents!inner("));
     // Two foreign keys join these tables (provider_id, and
     // providers.created_from_document_id), so a bare embed 400s the read.
-    expect(embed).toContain("providers!procurement_documents_provider_id_fkey(name)");
+    expect(embed).toContain(
+      "providers!procurement_documents_provider_id_fkey(name)",
+    );
     expect(embed).not.toMatch(/(^|[\s,(])providers\(/);
     expect(embed).toContain("doc_number");
   });
@@ -1069,7 +1193,9 @@ describe("BeveragesService.readRowRecord — the menu book reads the CURRENT men
     const { service, readsOf } = await filteringService({
       restaurant_menus: { rows: menus },
       // The same line on the current menu, its archived copy and a draft.
-      menu_items: { rows: [line("mi-1", "live"), line("mi-2", "old"), line("mi-3", "scan")] },
+      menu_items: {
+        rows: [line("mi-1", "live"), line("mi-2", "old"), line("mi-3", "scan")],
+      },
     });
     const out = await service.readRowRecord(RID, "Yeni Raki 70cl");
     const menu = out.books.find((b) => b.book === "menu");
@@ -1099,7 +1225,9 @@ describe("BeveragesService.readRowRecord — the menu book reads the CURRENT men
 
   it("says the menu book is unread — not empty — when the current menu cannot be read", async () => {
     const { service } = await filteringService({
-      restaurant_menus: { error: { code: "57014", message: "statement timeout" } },
+      restaurant_menus: {
+        error: { code: "57014", message: "statement timeout" },
+      },
     });
     const out = await service.readRowRecord(RID, "Yeni Raki 70cl");
     const menu = out.books.find((b) => b.book === "menu");

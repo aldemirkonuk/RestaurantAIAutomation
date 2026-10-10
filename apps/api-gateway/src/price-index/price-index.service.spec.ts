@@ -24,11 +24,21 @@ interface QueryCtx {
  * limit must return the builder too.
  */
 function makeDb(
-  handler: (ctx: QueryCtx) => { data?: unknown[]; count?: number; error?: unknown },
+  handler: (ctx: QueryCtx) => {
+    data?: unknown[];
+    count?: number;
+    error?: unknown;
+  },
 ): DatabaseService {
   const client = {
     from(table: string) {
-      const ctx: QueryCtx = { table, columns: "", opts: undefined, eqs: [], ors: [] };
+      const ctx: QueryCtx = {
+        table,
+        columns: "",
+        opts: undefined,
+        eqs: [],
+        ors: [],
+      };
       const builder: Record<string, unknown> = {
         select(columns: string, opts?: { count?: string; head?: boolean }) {
           ctx.columns = columns;
@@ -184,7 +194,9 @@ describe("PriceIndexService.forHouse — resolves the caller's own state", () =>
     const svc = new PriceIndexService(
       makeDb((ctx) => {
         if (ctx.table === "restaurants")
-          return { data: [{ state_province: "California", country: "United States" }] };
+          return {
+            data: [{ state_province: "California", country: "United States" }],
+          };
         return isCount(ctx) ? { count: 1 } : { data: [CA_ROW] };
       }),
     );
@@ -223,9 +235,7 @@ describe("PriceIndexService.forHouse — resolves the caller's own state", () =>
 describe("PriceIndexService.status", () => {
   it("reports every source, marking Michigan withheld and the rest by armed/rows", async () => {
     delete process.env.PRICE_INDEX_FETCH_ENABLED;
-    const svc = new PriceIndexService(
-      makeDb(() => ({ data: [], count: 0 })),
-    );
+    const svc = new PriceIndexService(makeDb(() => ({ data: [], count: 0 })));
     const status = await svc.status();
     expect(status.armed).toBe(false);
     expect(status.flag).toBe("PRICE_INDEX_FETCH_ENABLED");

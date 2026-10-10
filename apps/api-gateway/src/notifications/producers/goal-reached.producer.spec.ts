@@ -23,9 +23,24 @@ const AUDIENCE = { ready: [...MEMBERS], deferred: [] as string[] };
 function build(progress: any) {
   const db = new FakeDb();
   db.tables.user_restaurant_access = [
-    { restaurant_id: TENANT, user_id: "user-1", role: "owner", is_active: true },
-    { restaurant_id: TENANT, user_id: "user-2", role: "manager", is_active: true },
-    { restaurant_id: TENANT, user_id: "user-3", role: "staff", is_active: true },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-1",
+      role: "owner",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-2",
+      role: "manager",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-3",
+      role: "staff",
+      is_active: true,
+    },
   ];
   const database = fakeDatabase(db, MEMBERS);
   const notifications = fakeNotifications(MEMBERS);
@@ -128,21 +143,26 @@ describe("GoalReachedProducer", () => {
     lira.db.tables.analytics_goals.push(goalRow());
     seedCrossing(lira.db);
     await lira.producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
-    expect(lira.notifications.persistForRestaurant.calls[0][1].message).toContain(
-      "stands at ₺10.450,00 against a target of ₺10.000,00",
-    );
+    expect(
+      lira.notifications.persistForRestaurant.calls[0][1].message,
+    ).toContain("stands at ₺10.450,00 against a target of ₺10.000,00");
   });
 
   it("[REVERT-FAILS] a lira house's count goal groups the house's way, not en-US (F-888)", async () => {
-    const lira = build({ ...REACHED, current: 1240.5, target: 1200, unit: "bottles" });
+    const lira = build({
+      ...REACHED,
+      current: 1240.5,
+      target: 1200,
+      unit: "bottles",
+    });
     lira.db.tables.restaurants[0].currency = "TRY";
     lira.db.tables.restaurants[0].country = "TR";
     lira.db.tables.analytics_goals.push(goalRow({ target_value: 1200 }));
     seedCrossing(lira.db);
     await lira.producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
-    expect(lira.notifications.persistForRestaurant.calls[0][1].message).toContain(
-      "stands at 1.240,5 against a target of 1.200.",
-    );
+    expect(
+      lira.notifications.persistForRestaurant.calls[0][1].message,
+    ).toContain("stands at 1.240,5 against a target of 1.200.");
   });
 
   it("[REVERT-FAILS] counts and percents take the house's formats, en-US when unknown (F-888)", () => {
@@ -195,9 +215,9 @@ describe("GoalReachedProducer", () => {
     db.tables.analytics_goals.push(goalRow());
     seedCrossing(db);
     db.failures.user_restaurant_access = "permission denied";
-    await expect(producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW)).rejects.toThrow(
-      /user_restaurant_access/,
-    );
+    await expect(
+      producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW),
+    ).rejects.toThrow(/user_restaurant_access/);
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
   });
 
@@ -300,7 +320,9 @@ describe("GoalReachedProducer", () => {
     );
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
-    expect(tally.withheldReason).toMatch(/ceilings this producer does not report/);
+    expect(tally.withheldReason).toMatch(
+      /ceilings this producer does not report/,
+    );
   });
 
   it("with no active goal it says so rather than reporting an empty sweep", async () => {
@@ -328,7 +350,11 @@ describe("GoalReachedProducer", () => {
   it("[REVERT-FAILS] does not call an average reached while its window is still open", async () => {
     const { db, notifications, goals, producer } = build(AVERAGE);
     db.tables.analytics_goals.push(
-      goalRow({ name: "Average check", metric_key: "avg_check", target_value: 85 }),
+      goalRow({
+        name: "Average check",
+        metric_key: "avg_check",
+        target_value: 85,
+      }),
     );
     seedCrossing(db);
     seedShift(db);
@@ -423,7 +449,15 @@ describe("shift-window (the smallest read there was not one of)", () => {
     expect(w.end.toISOString()).toBe("2026-09-02T14:00:00.000Z");
     // Read as 24 hours, this row would name m1 at 23:00 that night.
     const on = onShiftAt(
-      [{ member_id: "m1", shift_date: "2026-09-02", start_time: "10:00", end_time: "10:00", state: "scheduled" }],
+      [
+        {
+          member_id: "m1",
+          shift_date: "2026-09-02",
+          start_time: "10:00",
+          end_time: "10:00",
+          state: "scheduled",
+        },
+      ],
       new Date("2026-09-03T03:00:00Z"),
       ZONE,
     );
@@ -432,9 +466,27 @@ describe("shift-window (the smallest read there was not one of)", () => {
 
   it("[REVERT-FAILS] an open or called-out shift is the absence of a person", () => {
     const rows = [
-      { member_id: "m1", shift_date: "2026-09-02", start_time: "17:00", end_time: "23:59", state: "open" },
-      { member_id: "m2", shift_date: "2026-09-02", start_time: "17:00", end_time: "23:59", state: "callout" },
-      { member_id: "m3", shift_date: "2026-09-02", start_time: "17:00", end_time: "23:59", state: "covered" },
+      {
+        member_id: "m1",
+        shift_date: "2026-09-02",
+        start_time: "17:00",
+        end_time: "23:59",
+        state: "open",
+      },
+      {
+        member_id: "m2",
+        shift_date: "2026-09-02",
+        start_time: "17:00",
+        end_time: "23:59",
+        state: "callout",
+      },
+      {
+        member_id: "m3",
+        shift_date: "2026-09-02",
+        start_time: "17:00",
+        end_time: "23:59",
+        state: "covered",
+      },
     ];
     const on = onShiftAt(rows, new Date("2026-09-03T02:00:00Z"), ZONE);
     expect(on.map((p) => p.memberId)).toEqual(["m3"]);
@@ -442,8 +494,20 @@ describe("shift-window (the smallest read there was not one of)", () => {
 
   it("the window is half-open, so a handover is not two people", () => {
     const rows = [
-      { member_id: "m1", shift_date: "2026-09-02", start_time: "11:00", end_time: "17:00", state: "scheduled" },
-      { member_id: "m2", shift_date: "2026-09-02", start_time: "17:00", end_time: "23:00", state: "scheduled" },
+      {
+        member_id: "m1",
+        shift_date: "2026-09-02",
+        start_time: "11:00",
+        end_time: "17:00",
+        state: "scheduled",
+      },
+      {
+        member_id: "m2",
+        shift_date: "2026-09-02",
+        start_time: "17:00",
+        end_time: "23:00",
+        state: "scheduled",
+      },
     ];
     // 17:00 New York on 2 September = 21:00 UTC.
     const on = onShiftAt(rows, new Date("2026-09-02T21:00:00Z"), ZONE);
@@ -452,8 +516,22 @@ describe("shift-window (the smallest read there was not one of)", () => {
 
   it("a member with two overlapping rows is one person", () => {
     const rows = [
-      { member_id: "m1", shift_date: "2026-09-02", start_time: "17:00", end_time: "23:00", role: "bar", state: "scheduled" },
-      { member_id: "m1", shift_date: "2026-09-02", start_time: "18:00", end_time: "22:00", role: "floor", state: "covered" },
+      {
+        member_id: "m1",
+        shift_date: "2026-09-02",
+        start_time: "17:00",
+        end_time: "23:00",
+        role: "bar",
+        state: "scheduled",
+      },
+      {
+        member_id: "m1",
+        shift_date: "2026-09-02",
+        start_time: "18:00",
+        end_time: "22:00",
+        role: "floor",
+        state: "covered",
+      },
     ];
     const on = onShiftAt(rows, new Date("2026-09-02T23:00:00Z"), ZONE);
     expect(on).toEqual([{ memberId: "m1", role: "bar" }]);

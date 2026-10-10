@@ -122,8 +122,7 @@ export class SaleRecordProducer {
       restaurantId,
       PRODUCER,
       new Date(
-        now.getTime() -
-          (SaleRecordProducer.RECOVERY_DAYS + 1) * 24 * 3_600_000,
+        now.getTime() - (SaleRecordProducer.RECOVERY_DAYS + 1) * 24 * 3_600_000,
       ),
     );
 
@@ -274,7 +273,11 @@ export class SaleRecordProducer {
       revenue += Number(check.total) || 0;
 
       const covers = check.covers;
-      if (covers !== null && covers !== undefined && Number.isFinite(Number(covers))) {
+      if (
+        covers !== null &&
+        covers !== undefined &&
+        Number.isFinite(Number(covers))
+      ) {
         coverSum += Number(covers);
         coverReported += 1;
       }

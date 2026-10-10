@@ -22,7 +22,10 @@ type Answer = { data: unknown; error: { message: string } | null };
 
 /** The minter's row in the house: an active manager unless a case says otherwise. */
 const MINTER = "33333333-3333-4333-8333-333333333333";
-const ACTIVE_MANAGER: Answer = { data: { role: "manager", is_active: true }, error: null };
+const ACTIVE_MANAGER: Answer = {
+  data: { role: "manager", is_active: true },
+  error: null,
+};
 
 /**
  * A Supabase double whose `maybeSingle` is programmable per table: `answer`
@@ -135,7 +138,9 @@ describe("McpCredentialsService.verify", () => {
       error: null,
     };
     const refusedFor = async (access: Answer, key: Answer = liveKey) => {
-      const outcome = await new McpCredentialsService(db(key, access).service).verify(secret);
+      const outcome = await new McpCredentialsService(
+        db(key, access).service,
+      ).verify(secret);
       expect(outcome.ok).toBe(false);
       return outcome.ok === false ? outcome.reason : "";
     };
@@ -147,33 +152,45 @@ describe("McpCredentialsService.verify", () => {
     });
 
     it("refuses once the minter's access is switched off", async () => {
-      expect(await refusedFor({ data: { role: "manager", is_active: false }, error: null })).toContain(
-        "stopped working with them",
-      );
+      expect(
+        await refusedFor({
+          data: { role: "manager", is_active: false },
+          error: null,
+        }),
+      ).toContain("stopped working with them");
     });
 
     it("refuses once the minter is moved down to staff", async () => {
-      expect(await refusedFor({ data: { role: "staff", is_active: true }, error: null })).toContain(
+      expect(
+        await refusedFor({
+          data: { role: "staff", is_active: true },
+          error: null,
+        }),
+      ).toContain("no longer runs this house");
+    });
+
+    it("refuses a key whose minter's account is gone", async () => {
+      const orphan: Answer = {
+        data: { ...(liveKey.data as object), created_by: null },
+        error: null,
+      };
+      expect(await refusedFor(ACTIVE_MANAGER, orphan)).toContain(
         "no longer runs this house",
       );
     });
 
-    it("refuses a key whose minter's account is gone", async () => {
-      const orphan: Answer = { data: { ...(liveKey.data as object), created_by: null }, error: null };
-      expect(await refusedFor(ACTIVE_MANAGER, orphan)).toContain("no longer runs this house");
-    });
-
     it("an owner's key keeps working", async () => {
       const outcome = await new McpCredentialsService(
-        db(liveKey, { data: { role: "owner", is_active: true }, error: null }).service,
+        db(liveKey, { data: { role: "owner", is_active: true }, error: null })
+          .service,
       ).verify(secret);
       expect(outcome.ok).toBe(true);
     });
 
     it("a member list that does not answer is not reported as a dead key", async () => {
-      expect(await refusedFor({ data: null, error: { message: "timeout" } })).toContain(
-        "not a statement about the key",
-      );
+      expect(
+        await refusedFor({ data: null, error: { message: "timeout" } }),
+      ).toContain("not a statement about the key");
     });
   });
 
@@ -238,7 +255,8 @@ describe("McpCredentialAuthGuard", () => {
     const credentials = {
       verify: jest.fn().mockResolvedValue({
         ok: false,
-        reason: "That key was revoked on 2026-09-05T12:00:00.000Z. Mint a new one on /connections.",
+        reason:
+          "That key was revoked on 2026-09-05T12:00:00.000Z. Mint a new one on /connections.",
       }),
     } as unknown as McpCredentialsService;
     const guard = new McpCredentialAuthGuard(credentials);

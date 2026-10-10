@@ -95,7 +95,9 @@ describe("C1 — POST /communications/sms is gone", () => {
         (RelayEmailController.prototype as any).sendEmail,
       ),
     ).toBe("email");
-    expect((CommunicationsController.prototype as any).sendEmail).toBeUndefined();
+    expect(
+      (CommunicationsController.prototype as any).sendEmail,
+    ).toBeUndefined();
   });
 });
 

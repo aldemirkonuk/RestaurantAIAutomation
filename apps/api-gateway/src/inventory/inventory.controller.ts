@@ -255,9 +255,7 @@ export class InventoryController {
     summary:
       "Inventory of every house the caller owns or manages, for the all-locations export",
   })
-  async getInventoryAcrossHouses(
-    @CurrentUser() user: { userId?: string },
-  ) {
+  async getInventoryAcrossHouses(@CurrentUser() user: { userId?: string }) {
     if (!user?.userId) {
       throw new HttpException(
         "This sign-in names nobody, so there are no houses to read.",
@@ -294,7 +292,12 @@ export class InventoryController {
         this.inventoryService.readHouseCurrency(branch.id),
         this.inventoryService.getRestaurantInventory(branch.id),
       ]);
-      houses.push({ restaurantId: branch.id, name: branch.name, currency, items });
+      houses.push({
+        restaurantId: branch.id,
+        name: branch.name,
+        currency,
+        items,
+      });
     }
     return { houses, notIncluded };
   }
@@ -354,7 +357,11 @@ export class InventoryController {
     // So is what the house paid for it (F-312). A wine added with no cost
     // stays open to everyone: its cost is recorded as unknown.
     if (namesACost(dto)) {
-      await this.assertMayPrice(user?.userId, restaurantId, "set what a wine cost");
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "set what a wine cost",
+      );
     }
     try {
       return inventoryItemForRole(
@@ -394,13 +401,18 @@ export class InventoryController {
     // manager's, refused whole before any line is received otherwise.
     if (
       (dto.items ?? []).some(
-        (l) => l.menuPriceBottle !== undefined || l.menuPriceGlass !== undefined,
+        (l) =>
+          l.menuPriceBottle !== undefined || l.menuPriceGlass !== undefined,
       )
     ) {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
     if ((dto.items ?? []).some(namesACost)) {
-      await this.assertMayPrice(user?.userId, restaurantId, "set what a wine cost");
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "set what a wine cost",
+      );
     }
     try {
       return await this.inventoryService.bulkCreateInventoryItems(
@@ -708,7 +720,9 @@ export class InventoryController {
         dto,
         user?.userId ?? null,
       );
-      return out && { ...out, item: inventoryItemForRole(out.item, user?.role) };
+      return (
+        out && { ...out, item: inventoryItemForRole(out.item, user?.role) }
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -751,7 +765,9 @@ export class InventoryController {
         // reads as evidence.
         { ...dto, performedBy: user?.userId ?? null },
       );
-      return out && { ...out, item: inventoryItemForRole(out.item, user?.role) };
+      return (
+        out && { ...out, item: inventoryItemForRole(out.item, user?.role) }
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -792,7 +808,9 @@ export class InventoryController {
   // person is the JWT's, never the body's. Each answers the item's open
   // stock-out (or null) and its last ten.
   @Get(":restaurantId/item/:itemId/stock-out")
-  @ApiOperation({ summary: "Whether an item is sold out (86'd), and its recent stock-outs" })
+  @ApiOperation({
+    summary: "Whether an item is sold out (86'd), and its recent stock-outs",
+  })
   async getStockOuts(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
@@ -835,8 +853,14 @@ export class InventoryController {
     summary: "Soft delete an inventory item (set is_active = false)",
   })
   @ApiResponse({ status: 200, description: "Item soft-deleted" })
-  @ApiResponse({ status: 403, description: "Only managers and owners may remove a wine" })
-  @ApiResponse({ status: 409, description: "The wine still has bottles on the books" })
+  @ApiResponse({
+    status: 403,
+    description: "Only managers and owners may remove a wine",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "The wine still has bottles on the books",
+  })
   async deleteInventoryItem(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,

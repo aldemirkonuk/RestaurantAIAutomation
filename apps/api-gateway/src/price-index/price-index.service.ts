@@ -250,7 +250,8 @@ export class PriceIndexService {
         heldBooks: 0,
         heldBookHoldHours: ESCALATION_HOURS,
         carriedBooks: [],
-        silence: "No active restaurant on this session, so no state to scope the index to.",
+        silence:
+          "No active restaurant on this session, so no state to scope the index to.",
         countryNotRecorded: false,
       };
     }
@@ -374,9 +375,7 @@ export class PriceIndexService {
       // it. The predicate is now applied BY the register's one enforcement
       // point rather than spelled here (ADR 0117 addendum).
       let query = scopePriceRegisterRead(
-        this.db.client
-          .from("price_index_postings")
-          .select(SELECT_COLUMNS),
+        this.db.client.from("price_index_postings").select(SELECT_COLUMNS),
         PRICE_INDEX_POSTINGS,
         { kind: "openMarketOnly" },
       )
@@ -489,7 +488,8 @@ export class PriceIndexService {
       // and a wine house reading only the upload sentence would wait for lines
       // that will never fill from it. (2026-09-05, ADR 0126)
       const byRequest = withheld.filter((s) => s.intake === "foia");
-      const embargo = byRequest[0]?.standingRequest?.statutoryEmbargoDays ?? null;
+      const embargo =
+        byRequest[0]?.standingRequest?.statutoryEmbargoDays ?? null;
       const requestClause =
         byRequest.length === 0
           ? ""
@@ -509,7 +509,10 @@ export class PriceIndexService {
     // is a different fact from "we could not fetch it", and the market
     // sentence is the one that explains it. (2026-09-05)
     const silent = sourcesForState.filter((s) => s.silent);
-    if (silent.length > 0 && silent.length + withheld.length === sourcesForState.length) {
+    if (
+      silent.length > 0 &&
+      silent.length + withheld.length === sourcesForState.length
+    ) {
       const market = marketSilenceFor(state);
       const named = silent
         .map((s) => `${s.issuer}: ${s.silent!.reason}`)
@@ -710,13 +713,18 @@ export class PriceIndexService {
         .order("fetched_at", { ascending: false })
         .limit(1);
       if (error) throw error;
-      const last = data && data.length ? (data[0] as { fetched_at: string }).fetched_at : null;
+      const last =
+        data && data.length
+          ? (data[0] as { fetched_at: string }).fetched_at
+          : null;
       return { rows: count ?? 0, lastFetchedAt: last };
     } catch (err) {
       // A failed read is not an empty source: returning 0 here made the
       // masthead say "0 of N sources holding rows" while the table was
       // unreachable (F-544). null carries "unknown" to the page.
-      this.logger.warn(`price index status read failed for ${sourceKey}: ${(err as Error)?.message ?? err}`);
+      this.logger.warn(
+        `price index status read failed for ${sourceKey}: ${(err as Error)?.message ?? err}`,
+      );
       return { rows: null, lastFetchedAt: null };
     }
   }

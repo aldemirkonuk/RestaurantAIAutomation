@@ -121,7 +121,10 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
       data: { id: DEL, state: "DELIVERED", order_id: "order-1" },
       error: null,
     };
-    db.answers.procurement_orders = { data: { inventory_id: ITEM }, error: null };
+    db.answers.procurement_orders = {
+      data: { inventory_id: ITEM },
+      error: null,
+    };
     db.answers.procurement_document_lines = {
       data: [
         line({ line_no: 1, inventory_id: null }),
@@ -140,7 +143,10 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
     expect(res.value.notBooked).toHaveLength(2);
     expect(res.value.notBooked[0].reason).toMatch(/names no item/);
     // The page switches on the code, never on the reason's words.
-    expect(res.value.notBooked.map((l) => l.code)).toEqual(["no_item", "no_item"]);
+    expect(res.value.notBooked.map((l) => l.code)).toEqual([
+      "no_item",
+      "no_item",
+    ]);
   });
 
   // F-730 — two lines of the same item in one count add up. Before, the
@@ -149,20 +155,26 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
   it.each([
     [6, 6, 12],
     [6, 4, 10],
-  ])("two lines of one item, %i and %i, book %i bottles", async (a, b, total) => {
-    db.answers.procurement_document_lines = {
-      data: [line({ line_no: 1, qty_bottles: a }), line({ line_no: 2, qty_bottles: b })],
-      error: null,
-    };
-    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
-    expect(res.ok).toBe(true);
-    if (!res.ok) return;
-    expect(res.value.bottlesMoved).toBe(total);
-    const moves = db.rpcCalls.filter((c) => c.fn === "apply_stock_movement");
-    expect(moves.map((c) => c.args.p_delta)).toEqual([total]);
-    expect(res.value.notBooked).toEqual([]);
-    expect(res.value.booked.map((l) => l.delta)).toEqual([total, 0]);
-  });
+  ])(
+    "two lines of one item, %i and %i, book %i bottles",
+    async (a, b, total) => {
+      db.answers.procurement_document_lines = {
+        data: [
+          line({ line_no: 1, qty_bottles: a }),
+          line({ line_no: 2, qty_bottles: b }),
+        ],
+        error: null,
+      };
+      const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.value.bottlesMoved).toBe(total);
+      const moves = db.rpcCalls.filter((c) => c.fn === "apply_stock_movement");
+      expect(moves.map((c) => c.args.p_delta)).toEqual([total]);
+      expect(res.value.notBooked).toEqual([]);
+      expect(res.value.booked.map((l) => l.delta)).toEqual([total, 0]);
+    },
+  );
 
   it("a failed read of what is already booked books NOTHING (ADR 0067)", async () => {
     db.answers.inventory_transactions = {
@@ -213,18 +225,39 @@ describe("DeliveryStockService — the door queues research for a wine the libra
     db = makeMockDb();
     db.reset();
     service = new DeliveryStockService(db.client as unknown as DatabaseService);
-    db.answers.deliveries = { data: { id: DEL, state: "DELIVERED", order_id: "o-1" }, error: null };
+    db.answers.deliveries = {
+      data: { id: DEL, state: "DELIVERED", order_id: "o-1" },
+      error: null,
+    };
     db.answers.procurement_document_lines = {
-      data: [{ document_id: DOC, line_no: 1, inventory_id: ITEM, qty_bottles: 10, unit_price: null, description: "x", vendor_sku: null }],
+      data: [
+        {
+          document_id: DOC,
+          line_no: 1,
+          inventory_id: ITEM,
+          qty_bottles: 10,
+          unit_price: null,
+          description: "x",
+          vendor_sku: null,
+        },
+      ],
       error: null,
     };
     db.answers.inventory_transactions = { data: [], error: null };
     db.rpcAnswers.apply_stock_movement = { data: "txn-1", error: null };
   });
-  const researchWrites = () => db.writes.filter((w) => w.table === "house_item_research");
+  const researchWrites = () =>
+    db.writes.filter((w) => w.table === "house_item_research");
 
   it("an item with no library wine is queued by its id after the booking, from 'receiving'", async () => {
-    db.answers.restaurant_inventory = { data: { master_wine_id: null, wine_name: "Doluca Kav 2018", display_name: null }, error: null };
+    db.answers.restaurant_inventory = {
+      data: {
+        master_wine_id: null,
+        wine_name: "Doluca Kav 2018",
+        display_name: null,
+      },
+      error: null,
+    };
     db.answers.house_item_research = { data: null, error: null };
     const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
     expect(res.ok).toBe(true);
@@ -232,10 +265,19 @@ describe("DeliveryStockService — the door queues research for a wine the libra
     expect(researchWrites()).toEqual([
       expect.objectContaining({
         verb: "insert",
-        payload: expect.objectContaining({ inventory_id: ITEM, status: "queued", queued_from: "receiving", source_order_id: "o-1", queued_by: USER, classified_name: "Doluca Kav 2018" }),
+        payload: expect.objectContaining({
+          inventory_id: ITEM,
+          status: "queued",
+          queued_from: "receiving",
+          source_order_id: "o-1",
+          queued_by: USER,
+          classified_name: "Doluca Kav 2018",
+        }),
       }),
     ]);
-    expect(res.value.research).toEqual([{ inventoryId: ITEM, status: "queued" }]);
+    expect(res.value.research).toEqual([
+      { inventoryId: ITEM, status: "queued" },
+    ]);
     // The booking came first.
     const bookedAt = db.verbs.indexOf("restaurant_inventory.select");
     expect(db.rpcCalls.some((c) => c.fn === "apply_stock_movement")).toBe(true);
@@ -243,24 +285,48 @@ describe("DeliveryStockService — the door queues research for a wine the libra
   });
 
   it("a library wine is not queued", async () => {
-    db.answers.restaurant_inventory = { data: { master_wine_id: "mw-1", wine_name: "Barolo" }, error: null };
+    db.answers.restaurant_inventory = {
+      data: { master_wine_id: "mw-1", wine_name: "Barolo" },
+      error: null,
+    };
     const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
     expect(res.ok && res.value.research).toEqual([]);
     expect(researchWrites()).toHaveLength(0);
   });
 
   it("an item that cannot be read is listed with the reason; the booking stands", async () => {
-    db.answers.restaurant_inventory = { data: null, error: { message: "connection reset" } };
+    db.answers.restaurant_inventory = {
+      data: null,
+      error: { message: "connection reset" },
+    };
     const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value.bottlesMoved).toBe(10);
-    expect(res.value.research).toEqual([{ inventoryId: ITEM, error: "the item could not be read (connection reset)" }]);
+    expect(res.value.research).toEqual([
+      {
+        inventoryId: ITEM,
+        error: "the item could not be read (connection reset)",
+      },
+    ]);
   });
 
   it("a retry that moves nothing queues nothing", async () => {
-    db.answers.inventory_transactions = { data: [{ delivery_id: DEL, inventory_id: ITEM, quantity_change: 10, idempotency_key: `delivery-line:${DEL}:${DOC}:1` }], error: null };
-    db.answers.restaurant_inventory = { data: { master_wine_id: null, wine_name: "Doluca Kav 2018" }, error: null };
+    db.answers.inventory_transactions = {
+      data: [
+        {
+          delivery_id: DEL,
+          inventory_id: ITEM,
+          quantity_change: 10,
+          idempotency_key: `delivery-line:${DEL}:${DOC}:1`,
+        },
+      ],
+      error: null,
+    };
+    db.answers.restaurant_inventory = {
+      data: { master_wine_id: null, wine_name: "Doluca Kav 2018" },
+      error: null,
+    };
     const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
     expect(res.ok && res.value.bottlesMoved).toBe(0);
     expect(researchWrites()).toHaveLength(0);
@@ -346,15 +412,24 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
       error: null,
     };
     const stamped = () =>
-      db.writes.filter((w) => w.table === "inventory_lots" && w.verb === "update");
+      db.writes.filter(
+        (w) => w.table === "inventory_lots" && w.verb === "update",
+      );
 
     it("stamps the invoice's currency on the delivery's lots", async () => {
       db.answers.procurement_document_lines = invoiceLine;
-      db.answers.procurement_documents = { data: [{ currency: "eur" }], error: null };
+      db.answers.procurement_documents = {
+        data: [{ currency: "eur" }],
+        error: null,
+      };
       const res = await service.finaliseAtVerified(REST, DEL, USER);
       expect(res.ok).toBe(true);
       expect(stamped()).toEqual([
-        { table: "inventory_lots", verb: "update", payload: { unit_cost_currency: "EUR" } },
+        {
+          table: "inventory_lots",
+          verb: "update",
+          payload: { unit_cost_currency: "EUR" },
+        },
       ]);
     });
 
@@ -364,11 +439,21 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
         error: null,
       };
       db.answers.procurement_document_lines = invoiceLine;
-      db.answers.procurement_documents = { data: [{ currency: null }], error: null };
-      db.answers.procurement_orders = { data: { currency: "TRY" }, error: null };
+      db.answers.procurement_documents = {
+        data: [{ currency: null }],
+        error: null,
+      };
+      db.answers.procurement_orders = {
+        data: { currency: "TRY" },
+        error: null,
+      };
       await service.finaliseAtVerified(REST, DEL, USER);
       expect(stamped()).toEqual([
-        { table: "inventory_lots", verb: "update", payload: { unit_cost_currency: "TRY" } },
+        {
+          table: "inventory_lots",
+          verb: "update",
+          payload: { unit_cost_currency: "TRY" },
+        },
       ]);
     });
 
@@ -451,7 +536,9 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
       error: null,
     };
     db.answers.delivery_proposals = {
-      data: [{ document_id: "door-1", line_no: 1, unit_price_proposed: 118.75 }],
+      data: [
+        { document_id: "door-1", line_no: 1, unit_price_proposed: 118.75 },
+      ],
       error: null,
     };
     const res = await service.finaliseAtVerified(REST, DEL, USER);
@@ -530,9 +617,9 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     if (!res.ok) return;
     expect(res.value.finalised).toEqual([]);
     expect(res.value.stillProvisional[0].reason).toMatch(/no agreed price/);
-    expect(db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost")).toEqual(
-      [],
-    );
+    expect(
+      db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost"),
+    ).toEqual([]);
   });
 });
 
@@ -575,10 +662,7 @@ describe("A5 — the two legacy paths are no longer second writers", () => {
       data: [{ delivery_id: DEL }, { delivery_id: DEL }, { delivery_id: null }],
       error: null,
     };
-    const res = await deliveryHasBookedOrder(
-      db.client.getClient(),
-      "order-1",
-    );
+    const res = await deliveryHasBookedOrder(db.client.getClient(), "order-1");
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value).toEqual({ booked: true, deliveryIds: [DEL] });

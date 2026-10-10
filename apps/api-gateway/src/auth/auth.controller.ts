@@ -51,8 +51,7 @@ import { Request } from "express";
 import { createHash } from "crypto";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * How a log line names an invite (F-514): a short hash, never the code. A

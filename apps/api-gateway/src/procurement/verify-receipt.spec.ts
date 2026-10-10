@@ -256,7 +256,11 @@ function makeDb(opts: {
         if (table === "procurement_order_items")
           return { data: opts.orderLineRow ?? null, error: null };
 
-        if (table === "procurement_receipt_events" && op === "insert" && opts.receiptEventError)
+        if (
+          table === "procurement_receipt_events" &&
+          op === "insert" &&
+          opts.receiptEventError
+        )
           return { data: null, error: opts.receiptEventError };
 
         // The idempotence check's read of the latest `reconciled` event,
@@ -505,12 +509,20 @@ describe("verifyReceipt — only an arrived, still-open order is checked (F-349,
     async (status, words) => {
       const { db, calls } = makeDb({ orderRow: { ...deliveredOrder, status } });
       const attempt = service(db).verifyReceipt(REST, ORDER, USER, {
-        adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "extras" }],
+        adjustments: [
+          { inventoryId: OWN_INVENTORY, delta: 3, reason: "extras" },
+        ],
       } as any);
       await expect(attempt).rejects.toMatchObject({
-        response: { reason: "order_not_checkable", status, message: expect.stringMatching(words) },
+        response: {
+          reason: "order_not_checkable",
+          status,
+          message: expect.stringMatching(words),
+        },
       });
-      expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+      expect(
+        calls.rpc.filter((c) => c.name === "apply_stock_movement"),
+      ).toEqual([]);
       expect(calls.orderUpdates).toHaveLength(0);
     },
   );
@@ -599,7 +611,9 @@ describe("verifyReceipt — a correction that books a wine the library lacks que
     });
 
     await service(db).verifyReceipt(REST, ORDER, USER, {
-      adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" }],
+      adjustments: [
+        { inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" },
+      ],
     } as any);
 
     expect(calls.researchInserts).toHaveLength(1);
@@ -622,10 +636,14 @@ describe("verifyReceipt — a correction that books a wine the library lacks que
     });
 
     await service(db).verifyReceipt(REST, ORDER, USER, {
-      adjustments: [{ inventoryId: OWN_INVENTORY, delta: -2, reason: "breakage" }],
+      adjustments: [
+        { inventoryId: OWN_INVENTORY, delta: -2, reason: "breakage" },
+      ],
     } as any);
 
-    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+    expect(
+      calls.rpc.filter((c) => c.name === "apply_stock_movement"),
+    ).toHaveLength(1);
     expect(calls.researchInserts).toEqual([]);
   });
 
@@ -636,10 +654,14 @@ describe("verifyReceipt — a correction that books a wine the library lacks que
     });
 
     await service(db).verifyReceipt(REST, ORDER, USER, {
-      adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" }],
+      adjustments: [
+        { inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" },
+      ],
     } as any);
 
-    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+    expect(
+      calls.rpc.filter((c) => c.name === "apply_stock_movement"),
+    ).toHaveLength(1);
     expect(calls.researchInserts).toEqual([]);
   });
 });
@@ -696,12 +718,32 @@ describe("markDelivered — books what arrived, and writes no received column (A
 
   it("books five cases as sixty bottles and converts an explicitly case-priced agreement once", async () => {
     const { db, calls } = makeDb({
-      orderRow: { ...pendingOrder, quantity: 5, bottles_total: 60, unit_type: "case", final_price: 360 },
-      orderLineRow: { id: "line", unit_type: "case", bottles_per_unit: 12, price_uom: "case", price_pack_size: 12, final_unit_price: 360 },
+      orderRow: {
+        ...pendingOrder,
+        quantity: 5,
+        bottles_total: 60,
+        unit_type: "case",
+        final_price: 360,
+      },
+      orderLineRow: {
+        id: "line",
+        unit_type: "case",
+        bottles_per_unit: 12,
+        price_uom: "case",
+        price_pack_size: 12,
+        final_unit_price: 360,
+      },
     });
     await service(db).markDelivered(REST, ORDER, USER);
-    const live = calls.rpc.find(c => c.name === "apply_stock_movement" && c.args.p_stock_state === "live");
-    expect(live?.args).toMatchObject({ p_delta: 60, p_unit_cost: 30, p_cost_provenance: "estimated" });
+    const live = calls.rpc.find(
+      (c) =>
+        c.name === "apply_stock_movement" && c.args.p_stock_state === "live",
+    );
+    expect(live?.args).toMatchObject({
+      p_delta: 60,
+      p_unit_cost: 30,
+      p_cost_provenance: "estimated",
+    });
     // Five cases book SIXTY bottles, and no order-unit "5" is written anywhere.
     expect("quantity_received" in calls.orderUpdates[0]).toBe(false);
   });
@@ -873,7 +915,9 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
     // Agreed 22 EUR, billed 770 TRY. Before, this 422'd on "Billed TRY 770.00
     // against an agreed €22.00" — a difference across two moneys that means
     // nothing — and the same figure in TRY wrote price_verified = true.
-    const { db, calls } = makeDb({ orderRow: { ...caseOrder, currency: "EUR" } });
+    const { db, calls } = makeDb({
+      orderRow: { ...caseOrder, currency: "EUR" },
+    });
 
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 24,
@@ -1161,7 +1205,10 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
     } as any);
 
     expect(calls.orderUpdates[0].match_status).toBe("matched");
-    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 24, invoice_qty_bottles: 24 });
+    expect(calls.receiptEvents[0]).toMatchObject({
+      counted_qty_bottles: 24,
+      invoice_qty_bottles: 24,
+    });
   });
 
   it("still honours a payload that carries only the old unitless names", async () => {
@@ -1177,7 +1224,10 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
       rejectedQuantity: 2,
     } as any);
 
-    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 22, rejected_qty_bottles: 2 });
+    expect(calls.receiptEvents[0]).toMatchObject({
+      counted_qty_bottles: 22,
+      rejected_qty_bottles: 2,
+    });
     expect(calls.orderUpdates[0].match_status).toBe("rejected");
   });
 });
@@ -1366,7 +1416,12 @@ describe("verifyReceipt — a part-pack derived count verifies in bottles", () =
 });
 
 describe("verifyReceipt — the verification is an event, not four order columns (ADR 0192 amendment)", () => {
-  const SIBLINGS = ["accepted_quantity", "rejected_quantity", "backorder_quantity", "invoice_quantity"];
+  const SIBLINGS = [
+    "accepted_quantity",
+    "rejected_quantity",
+    "backorder_quantity",
+    "invoice_quantity",
+  ];
   const bottleOrder = {
     id: ORDER,
     order_number: "ORD-2026-00006",
@@ -1409,7 +1464,9 @@ describe("verifyReceipt — the verification is an event, not four order columns
 
   it("a verification with no invoice records no invoice quantity, not zero", async () => {
     const { db, calls } = makeDb({ orderRow: bottleOrder });
-    await service(db).verifyReceipt(REST, ORDER, USER, { acceptedQuantity: 24 } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      acceptedQuantity: 24,
+    } as any);
     expect(calls.receiptEvents[0]).toMatchObject({ invoice_qty_bottles: null });
   });
 
@@ -1426,14 +1483,19 @@ describe("verifyReceipt — the verification is an event, not four order columns
         acceptedQuantity: 20,
       } as any),
     ).rejects.toThrow(/counts could not be recorded .*nothing was changed/);
-    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual(
+      [],
+    );
     expect(calls.creditInserts).toEqual([]);
     // F-374: the line is written after the order is claimed, so a failed
     // line puts every claimed column back the way it was read.
     expect(calls.orderUpdates).toHaveLength(2);
     expect(calls.orderUpdates[1]).toEqual(
       Object.fromEntries(
-        Object.keys(calls.orderUpdates[0]).map((k) => [k, (bottleOrder as any)[k] ?? null]),
+        Object.keys(calls.orderUpdates[0]).map((k) => [
+          k,
+          (bottleOrder as any)[k] ?? null,
+        ]),
       ),
     );
   });
@@ -1541,7 +1603,9 @@ describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 
 
   it("writes one reconciled line with the booked bottles, no invoice, no refusal, and the confirmation's word", async () => {
     const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.receiptEvents).toEqual([
       expect.objectContaining({
         restaurant_id: REST,
@@ -1558,12 +1622,16 @@ describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 
     ]);
     // Still the one-tap it was: the order completes and nothing moves.
     expect(calls.orderUpdates[0]).toMatchObject({ status: "COMPLETED" });
-    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual(
+      [],
+    );
   });
 
   it("a full verification never carries the confirmation's word", async () => {
     const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
-    await service(db).verifyReceipt(REST, ORDER, USER, { acceptedQuantity: 24 } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      acceptedQuantity: 24,
+    } as any);
     expect(calls.receiptEvents).toHaveLength(1);
     expect(calls.receiptEvents[0].outcome).toBeUndefined();
   });
@@ -1571,24 +1639,43 @@ describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 
   it("an old offline payload that corrects the ordered line records the bottles after its correction", async () => {
     const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
     await service(db).verifyReceipt(REST, ORDER, USER, {
-      adjustments: [{ inventoryId: OWN_INVENTORY, delta: -2, reason: "two broken" }],
+      adjustments: [
+        { inventoryId: OWN_INVENTORY, delta: -2, reason: "two broken" },
+      ],
     } as any);
     expect(calls.receiptEvents).toEqual([
-      expect.objectContaining({ outcome: "accepted", counted_qty_bottles: 22, invoice_qty_bottles: null }),
+      expect.objectContaining({
+        outcome: "accepted",
+        counted_qty_bottles: 22,
+        invoice_qty_bottles: null,
+      }),
     ]);
-    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+    expect(
+      calls.rpc.filter((c) => c.name === "apply_stock_movement"),
+    ).toHaveLength(1);
   });
 
   it("an order with no item still leaves its line, with no count rather than a guessed one", async () => {
-    const { db, calls } = makeDb({ orderRow: { ...bottleOrder, inventory_id: null } });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    const { db, calls } = makeDb({
+      orderRow: { ...bottleOrder, inventory_id: null },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.receiptEvents).toEqual([
-      expect.objectContaining({ outcome: "accepted", counted_qty: null, counted_qty_bottles: null }),
+      expect.objectContaining({
+        outcome: "accepted",
+        counted_qty: null,
+        counted_qty_bottles: null,
+      }),
     ]);
   });
 
   it("a refused adjustment leaves no line claiming a verification happened", async () => {
-    const { db, calls } = makeDb({ orderRow: bottleOrder, ownedInventoryIds: [OWN_INVENTORY] });
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      ownedInventoryIds: [OWN_INVENTORY],
+    });
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, {
         adjustments: [{ inventoryId: FOREIGN_INVENTORY, delta: 5 }],
@@ -1610,11 +1697,16 @@ describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 
     // failed line puts the order's status back the way it was.
     expect(calls.orderUpdates).toHaveLength(2);
     expect(calls.orderUpdates[1].status).toBe(bottleOrder.status);
-    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual(
+      [],
+    );
   });
 
   it("an unreadable ledger records no line and changes nothing, rather than a zero", async () => {
-    const { db, calls } = makeDb({ orderRow: bottleOrder, ledgerReadError: true });
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      ledgerReadError: true,
+    });
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
     ).rejects.toThrow(/could not be read/);
@@ -1647,8 +1739,12 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
 
   it("a double-tap — the same request twice in a row — writes exactly one line", async () => {
     const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.receiptEvents).toHaveLength(1);
     expect(calls.receiptEvents[0]).toMatchObject({
       outcome: "accepted",
@@ -1662,23 +1758,35 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
 
   it("a third identical tap still writes nothing, beyond the second", async () => {
     const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.receiptEvents).toHaveLength(1);
   });
 
   it("a tap that follows a ledger change is not a repeat, and writes its own line", async () => {
     const fixture = { orderRow: bottleOrder, bookedBottles: 24 };
     const { db, calls } = makeDb(fixture);
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     // Two more bottles landed on the shelf between taps (a delivery, or a
     // desk correction) — the ledger the second tap reads is not the ledger
     // the first one did, so this is not the same fact restated.
     fixture.bookedBottles = 26;
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.receiptEvents).toHaveLength(2);
-    expect(calls.receiptEvents.map((e) => e.counted_qty_bottles)).toEqual([24, 26]);
+    expect(calls.receiptEvents.map((e) => e.counted_qty_bottles)).toEqual([
+      24, 26,
+    ]);
   });
 
   it("a tap after a full verification that already states the same accepted count is also a repeat", async () => {
@@ -1689,9 +1797,14 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     const { db, calls } = makeDb({
       orderRow: bottleOrder,
       bookedBottles: 24,
-      latestReconciledEvent: { counted_qty_bottles: 24, invoice_qty_bottles: 22 },
+      latestReconciledEvent: {
+        counted_qty_bottles: 24,
+        invoice_qty_bottles: 22,
+      },
     });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.receiptEvents).toEqual([]);
     // The order still completes; only the events table saw nothing new.
     expect(calls.orderUpdates).toHaveLength(1);
@@ -1699,9 +1812,15 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
   });
 
   it("a repeat on an order with no item is still a repeat: 'no count recorded' twice is not new information", async () => {
-    const { db, calls } = makeDb({ orderRow: { ...bottleOrder, inventory_id: null } });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    const { db, calls } = makeDb({
+      orderRow: { ...bottleOrder, inventory_id: null },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.receiptEvents).toHaveLength(1);
     expect(calls.receiptEvents[0].counted_qty_bottles).toBeNull();
   });
@@ -1737,7 +1856,9 @@ describe("verifyReceipt — a check already made is not written over (F-349)", (
       .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
       .catch((e) => e);
     expect(err.getStatus?.()).toBe(409);
-    expect(err.getResponse().message).toMatch(/already checked.*nothing was changed/i);
+    expect(err.getResponse().message).toMatch(
+      /already checked.*nothing was changed/i,
+    );
     expect(calls.orderUpdates).toEqual([]);
     expect(calls.receiptEvents).toEqual([]);
   });
@@ -1770,7 +1891,9 @@ describe("verifyReceipt — a check already made is not written over (F-349)", (
     const { db, calls } = makeDb({
       orderRow: { ...deliveredOrder, status: "PARTIALLY_RECEIVED" },
     });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.orderUpdates).toHaveLength(1);
   });
 
@@ -1870,16 +1993,28 @@ describe("verifyReceipt — the discrepancy line is house money, and clears when
   const MANAGER = "manager-1";
   const withBell = (db: DatabaseService) => {
     const notifications = {
-      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 2, ids: [] }),
+      persistForRestaurant: jest
+        .fn()
+        .mockResolvedValue({ inserted: 2, ids: [] }),
     };
     const authority = {
-      ownersAndManagers: jest.fn().mockResolvedValue({ owners: [OWNER], managers: [MANAGER] }),
+      ownersAndManagers: jest
+        .fn()
+        .mockResolvedValue({ owners: [OWNER], managers: [MANAGER] }),
     };
     const svc = new ProcurementService(
-      db, events, ledger,
-      undefined, undefined, undefined, undefined, undefined,
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       notifications as any,
-      undefined, undefined, undefined,
+      undefined,
+      undefined,
+      undefined,
       authority as any,
     );
     return { svc, notifications };
@@ -1897,20 +2032,34 @@ describe("verifyReceipt — the discrepancy line is house money, and clears when
     } as any);
 
     const discrepancy = notifications.persistForRestaurant.mock.calls.find(
-      ([, payload]: any[]) => payload.groupKey === `receipt_discrepancy:${ORDER}`,
+      ([, payload]: any[]) =>
+        payload.groupKey === `receipt_discrepancy:${ORDER}`,
     );
     expect(discrepancy).toBeDefined();
     const [, , opts] = discrepancy as any[];
     expect(opts.onlyUserIds).toEqual([OWNER, MANAGER]);
-    expect(Object.keys(opts.pushData).sort()).toEqual(["matchStatus", "orderId"]);
+    expect(Object.keys(opts.pushData).sort()).toEqual([
+      "matchStatus",
+      "orderId",
+    ]);
   });
 
   it("writes no money line at all when the owners and managers cannot be named", async () => {
     const { db } = makeDb({ orderRow: deliveredOrder });
-    const notifications = { persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 0, ids: [] }) };
+    const notifications = {
+      persistForRestaurant: jest
+        .fn()
+        .mockResolvedValue({ inserted: 0, ids: [] }),
+    };
     const svc = new ProcurementService(
-      db, events, ledger,
-      undefined, undefined, undefined, undefined, undefined,
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       notifications as any,
     );
 
@@ -1923,7 +2072,8 @@ describe("verifyReceipt — the discrepancy line is house money, and clears when
 
     expect(
       notifications.persistForRestaurant.mock.calls.some(
-        ([, payload]: any[]) => payload.groupKey === `receipt_discrepancy:${ORDER}`,
+        ([, payload]: any[]) =>
+          payload.groupKey === `receipt_discrepancy:${ORDER}`,
       ),
     ).toBe(false);
   });

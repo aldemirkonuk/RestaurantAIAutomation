@@ -68,7 +68,10 @@ function fakeSupabase(tables: Record<string, Row[]>, calls: Call[]) {
             case "maybeSingle":
               return () =>
                 Promise.resolve({
-                  data: (tables[table] ?? []).find((r) => preds.every((p) => p(r))) ?? null,
+                  data:
+                    (tables[table] ?? []).find((r) =>
+                      preds.every((p) => p(r)),
+                    ) ?? null,
                   error: null,
                 });
             case "then":
@@ -76,7 +79,10 @@ function fakeSupabase(tables: Record<string, Row[]>, calls: Call[]) {
                 const matched = (tables[table] ?? [])
                   .filter((r) => preds.every((p) => p(r)))
                   .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-                const rows = matched.slice(offset, offset + Math.min(limit, MAX_ROWS));
+                const rows = matched.slice(
+                  offset,
+                  offset + Math.min(limit, MAX_ROWS),
+                );
                 resolve({ data: rows, error: null, count: matched.length });
               };
             default:
@@ -135,8 +141,15 @@ function shelf(id: string, name: string, key: string, over: Row = {}): Row {
 }
 
 function service(tables: Record<string, Row[]>, calls: Call[] = []) {
-  const db = { supabase: fakeSupabase(tables, calls) } as unknown as DatabaseService;
-  const menus = new MenusService(db, undefined as any, undefined as any, undefined as any);
+  const db = {
+    supabase: fakeSupabase(tables, calls),
+  } as unknown as DatabaseService;
+  const menus = new MenusService(
+    db,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+  );
   return new PromotionsService(db, menus);
 }
 
@@ -150,30 +163,93 @@ describe("readForHouse — On my menu means the CURRENT menu, read whole", () =>
         offerRow({ id: "o-arch", applicable_wines: ["Öküzgözü"] }),
         offerRow({ id: "o-live", applicable_wines: ["Kalecik Karası"] }),
       ],
-      restaurant_inventory: [shelf("i1", "Narince", "mw-n"), shelf("i2", "Öküzgözü", "mw-o"), shelf("i3", "Kalecik Karası", "mw-k")],
+      restaurant_inventory: [
+        shelf("i1", "Narince", "mw-n"),
+        shelf("i2", "Öküzgözü", "mw-o"),
+        shelf("i3", "Kalecik Karası", "mw-k"),
+      ],
       restaurant_menus: [
-        { id: "m-draft", restaurant_id: HOUSE, status: "draft", name: "Scan of Sept" },
-        { id: "m-arch", restaurant_id: HOUSE, status: "archived", name: "Summer" },
-        { id: "m-live", restaurant_id: HOUSE, status: "active", name: "Autumn", made_current_at: "2026-09-10T00:00:00Z" },
+        {
+          id: "m-draft",
+          restaurant_id: HOUSE,
+          status: "draft",
+          name: "Scan of Sept",
+        },
+        {
+          id: "m-arch",
+          restaurant_id: HOUSE,
+          status: "archived",
+          name: "Summer",
+        },
+        {
+          id: "m-live",
+          restaurant_id: HOUSE,
+          status: "active",
+          name: "Autumn",
+          made_current_at: "2026-09-10T00:00:00Z",
+        },
       ],
       menu_items: [
-        { id: "l1", menu_id: "m-draft", restaurant_id: HOUSE, status: "active", name: "Narince", category: "Whites", wine_library_id: "mw-n" },
-        { id: "l2", menu_id: "m-arch", restaurant_id: HOUSE, status: "active", name: "Öküzgözü", category: "Reds", wine_library_id: "mw-o" },
-        { id: "l3", menu_id: "m-live", restaurant_id: HOUSE, status: "active", name: "Kalecik Karası", category: "Reds", wine_library_id: "mw-k" },
+        {
+          id: "l1",
+          menu_id: "m-draft",
+          restaurant_id: HOUSE,
+          status: "active",
+          name: "Narince",
+          category: "Whites",
+          wine_library_id: "mw-n",
+        },
+        {
+          id: "l2",
+          menu_id: "m-arch",
+          restaurant_id: HOUSE,
+          status: "active",
+          name: "Öküzgözü",
+          category: "Reds",
+          wine_library_id: "mw-o",
+        },
+        {
+          id: "l3",
+          menu_id: "m-live",
+          restaurant_id: HOUSE,
+          status: "active",
+          name: "Kalecik Karası",
+          category: "Reds",
+          wine_library_id: "mw-k",
+        },
       ],
     });
     const read = await svc.readForHouse(HOUSE, { now: NOW });
-    const by = Object.fromEntries(read.offers.map((o) => [o.id, o.scope.scope]));
-    expect(by).toEqual({ "o-draft": "stock", "o-arch": "stock", "o-live": "menu" });
-    expect(read.house.menus).toEqual([{ menu_id: "m-live", name: "Autumn", read_at: "2026-09-10T00:00:00Z" }]);
+    const by = Object.fromEntries(
+      read.offers.map((o) => [o.id, o.scope.scope]),
+    );
+    expect(by).toEqual({
+      "o-draft": "stock",
+      "o-arch": "stock",
+      "o-live": "menu",
+    });
+    expect(read.house.menus).toEqual([
+      { menu_id: "m-live", name: "Autumn", read_at: "2026-09-10T00:00:00Z" },
+    ]);
   });
 
   it("a discarded line on the current menu is not on my menu", async () => {
     const read = await service({
-      provider_promotions: [offerRow({ id: "o1", applicable_wines: ["Narince"] })],
+      provider_promotions: [
+        offerRow({ id: "o1", applicable_wines: ["Narince"] }),
+      ],
       restaurant_inventory: [shelf("i1", "Narince", "mw-n")],
       restaurant_menus: [{ id: "m1", restaurant_id: HOUSE, status: "active" }],
-      menu_items: [{ id: "l1", menu_id: "m1", restaurant_id: HOUSE, status: "discarded", name: "Narince", wine_library_id: "mw-n" }],
+      menu_items: [
+        {
+          id: "l1",
+          menu_id: "m1",
+          restaurant_id: HOUSE,
+          status: "discarded",
+          name: "Narince",
+          wine_library_id: "mw-n",
+        },
+      ],
     }).readForHouse(HOUSE, { now: NOW });
     expect(read.offers[0].scope.scope).toBe("stock");
   });
@@ -189,7 +265,9 @@ describe("readForHouse — On my menu means the CURRENT menu, read whole", () =>
       wine_library_id: `mw-${i}`,
     }));
     const read = await service({
-      provider_promotions: [offerRow({ id: "o1", applicable_wines: ["Wine 1499"] })],
+      provider_promotions: [
+        offerRow({ id: "o1", applicable_wines: ["Wine 1499"] }),
+      ],
       restaurant_inventory: [shelf("i1", "Wine 1499", "mw-1499")],
       restaurant_menus: [{ id: "m1", restaurant_id: HOUSE, status: "active" }],
       menu_items: lines,
@@ -204,27 +282,61 @@ describe("readForHouse — On my menu means the CURRENT menu, read whole", () =>
         offerRow({ id: "o1", applicable_wines: ["Narince"] }),
         offerRow({ id: "o2", applicable_wines: ["Efes"] }),
       ],
-      restaurant_inventory: [shelf("i1", "Narince", "mw-n"), shelf("i2", "Efes", "mw-e", { master_wine_library: { beverage_kind: "beer" } })],
+      restaurant_inventory: [
+        shelf("i1", "Narince", "mw-n"),
+        shelf("i2", "Efes", "mw-e", {
+          master_wine_library: { beverage_kind: "beer" },
+        }),
+      ],
       restaurant_menus: [
         { id: "m1", restaurant_id: HOUSE, status: "active", name: "Wine list" },
         { id: "m2", restaurant_id: HOUSE, status: "active", name: "Bar" },
       ],
       menu_items: [
-        { id: "l1", menu_id: "m1", restaurant_id: HOUSE, status: "active", name: "Narince", category: "Whites", wine_library_id: "mw-n" },
-        { id: "l2", menu_id: "m2", restaurant_id: HOUSE, status: "active", name: "Efes draft", category: "Beer", wine_library_id: "mw-e" },
+        {
+          id: "l1",
+          menu_id: "m1",
+          restaurant_id: HOUSE,
+          status: "active",
+          name: "Narince",
+          category: "Whites",
+          wine_library_id: "mw-n",
+        },
+        {
+          id: "l2",
+          menu_id: "m2",
+          restaurant_id: HOUSE,
+          status: "active",
+          name: "Efes draft",
+          category: "Beer",
+          wine_library_id: "mw-e",
+        },
       ],
     }).readForHouse(HOUSE, { now: NOW });
     expect(read.offers.map((o) => o.scope.scope)).toEqual(["menu", "menu"]);
     expect(read.house.menus.map((m) => m.menu_id).sort()).toEqual(["m1", "m2"]);
-    expect(read.offers.find((o) => o.id === "o2")?.scope.menuMatches[0].menuLine).toBe("Efes draft");
+    expect(
+      read.offers.find((o) => o.id === "o2")?.scope.menuMatches[0].menuLine,
+    ).toBe("Efes draft");
   });
 
   it("no active menu: every rung below All is empty of menu offers, and the wire says no menu was read", async () => {
     const read = await service({
-      provider_promotions: [offerRow({ id: "o1", applicable_wines: ["Narince"] })],
+      provider_promotions: [
+        offerRow({ id: "o1", applicable_wines: ["Narince"] }),
+      ],
       restaurant_inventory: [shelf("i1", "Narince", "mw-n")],
       restaurant_menus: [{ id: "m1", restaurant_id: HOUSE, status: "draft" }],
-      menu_items: [{ id: "l1", menu_id: "m1", restaurant_id: HOUSE, status: "active", name: "Narince", wine_library_id: "mw-n" }],
+      menu_items: [
+        {
+          id: "l1",
+          menu_id: "m1",
+          restaurant_id: HOUSE,
+          status: "active",
+          name: "Narince",
+          wine_library_id: "mw-n",
+        },
+      ],
     }).readForHouse(HOUSE, { now: NOW });
     expect(read.house.menus).toEqual([]);
     expect(read.offers[0].scope.scope).toBe("stock");
@@ -233,10 +345,14 @@ describe("readForHouse — On my menu means the CURRENT menu, read whole", () =>
 
 describe("readForHouse — no silent caps (F12) and the house's own rows only", () => {
   it("reads a shelf past 1000 rows: a wine on row 1400 still places the offer", async () => {
-    const rows = Array.from({ length: 1400 }, (_, i) => shelf(`i${pad(i)}`, `Filler ${i}`, `mw-f${i}`));
+    const rows = Array.from({ length: 1400 }, (_, i) =>
+      shelf(`i${pad(i)}`, `Filler ${i}`, `mw-f${i}`),
+    );
     rows.push(shelf("i99999", "Narince", "mw-n"));
     const read = await service({
-      provider_promotions: [offerRow({ id: "o1", applicable_wines: ["Narince"] })],
+      provider_promotions: [
+        offerRow({ id: "o1", applicable_wines: ["Narince"] }),
+      ],
       restaurant_inventory: rows,
       restaurant_menus: [],
       menu_items: [],
@@ -246,8 +362,15 @@ describe("readForHouse — no silent caps (F12) and the house's own rows only", 
   });
 
   it("reads more than 1000 offers, whole", async () => {
-    const offers = Array.from({ length: 1200 }, (_, i) => offerRow({ id: `o${pad(i)}` }));
-    const read = await service({ provider_promotions: offers, restaurant_inventory: [], restaurant_menus: [], menu_items: [] }).readForHouse(HOUSE, {
+    const offers = Array.from({ length: 1200 }, (_, i) =>
+      offerRow({ id: `o${pad(i)}` }),
+    );
+    const read = await service({
+      provider_promotions: offers,
+      restaurant_inventory: [],
+      restaurant_menus: [],
+      menu_items: [],
+    }).readForHouse(HOUSE, {
       now: NOW,
     });
     expect(read.offers).toHaveLength(1200);
@@ -279,13 +402,21 @@ describe("readForHouse — no silent caps (F12) and the house's own rows only", 
   it("grades every paid line under the cap, past the 1000 one response holds (F-258)", async () => {
     const read = await readPaid(1500);
     expect(read.ledger.paid_lines).toBe(1500);
-    expect(read.ledger.caps.paid_lines).toEqual({ cap: PAID_LINES_CAP, reached: false, total: 1500 });
+    expect(read.ledger.caps.paid_lines).toEqual({
+      cap: PAID_LINES_CAP,
+      reached: false,
+      total: 1500,
+    });
   });
 
   it("says the cap was reached, and of how many, when the window holds more than the cap (F-258)", async () => {
     const read = await readPaid(PAID_LINES_CAP + 1);
     expect(read.ledger.paid_lines).toBe(PAID_LINES_CAP);
-    expect(read.ledger.caps.paid_lines).toEqual({ cap: PAID_LINES_CAP, reached: true, total: PAID_LINES_CAP + 1 });
+    expect(read.ledger.caps.paid_lines).toEqual({
+      cap: PAID_LINES_CAP,
+      reached: true,
+      total: PAID_LINES_CAP + 1,
+    });
   });
 
   it("a window exactly at the cap is whole, not reached", async () => {
@@ -299,20 +430,45 @@ describe("readForHouse — no silent caps (F12) and the house's own rows only", 
     const calls: Call[] = [];
     const read = await service(
       {
-        provider_promotions: [offerRow({ id: "mine", applicable_wines: ["Narince"] }), offerRow({ id: "theirs", restaurant_id: OTHER, applicable_wines: ["Narince"] })],
-        restaurant_inventory: [shelf("i1", "Narince", "mw-n", { restaurant_id: OTHER })],
-        restaurant_menus: [{ id: "m-other", restaurant_id: OTHER, status: "active" }],
-        menu_items: [{ id: "l1", menu_id: "m-other", restaurant_id: OTHER, status: "active", name: "Narince", wine_library_id: "mw-n" }],
+        provider_promotions: [
+          offerRow({ id: "mine", applicable_wines: ["Narince"] }),
+          offerRow({
+            id: "theirs",
+            restaurant_id: OTHER,
+            applicable_wines: ["Narince"],
+          }),
+        ],
+        restaurant_inventory: [
+          shelf("i1", "Narince", "mw-n", { restaurant_id: OTHER }),
+        ],
+        restaurant_menus: [
+          { id: "m-other", restaurant_id: OTHER, status: "active" },
+        ],
+        menu_items: [
+          {
+            id: "l1",
+            menu_id: "m-other",
+            restaurant_id: OTHER,
+            status: "active",
+            name: "Narince",
+            wine_library_id: "mw-n",
+          },
+        ],
       },
       calls,
     ).readForHouse(HOUSE, { now: NOW });
     expect(read.offers.map((o) => o.id)).toEqual(["mine"]);
     expect(read.offers[0].scope.scope).toBe("other");
     expect(read.house.menus).toEqual([]);
-    for (const table of ["provider_promotions", "restaurant_inventory", "restaurant_menus"]) {
+    for (const table of [
+      "provider_promotions",
+      "restaurant_inventory",
+      "restaurant_menus",
+    ]) {
       const reads = calls.filter((c) => c.table === table);
       expect(reads.length).toBeGreaterThan(0);
-      for (const c of reads) expect(c.eqs).toContainEqual(["restaurant_id", HOUSE]);
+      for (const c of reads)
+        expect(c.eqs).toContainEqual(["restaurant_id", HOUSE]);
     }
   });
 });
@@ -344,7 +500,10 @@ describe("readForHouse — the per-wine minimum reaches the grade through the of
           applicable_wines: ["Narince", "Öküzgözü"],
         }),
       ],
-      restaurant_inventory: [shelf("i1", "Narince", "mw-n"), shelf("i2", "Öküzgözü", "mw-o")],
+      restaurant_inventory: [
+        shelf("i1", "Narince", "mw-n"),
+        shelf("i2", "Öküzgözü", "mw-o"),
+      ],
       restaurant_menus: [],
       menu_items: [],
       price_history: ledgerRows([
@@ -359,9 +518,16 @@ describe("readForHouse — the per-wine minimum reaches the grade through the of
   it("with no such words, the same orders do not qualify per wine", async () => {
     const read = await service({
       provider_promotions: [
-        offerRow({ id: "o1", conditions: { min_qty: 12, min_qty_unit: "bottle" }, applicable_wines: ["Narince", "Öküzgözü"] }),
+        offerRow({
+          id: "o1",
+          conditions: { min_qty: 12, min_qty_unit: "bottle" },
+          applicable_wines: ["Narince", "Öküzgözü"],
+        }),
       ],
-      restaurant_inventory: [shelf("i1", "Narince", "mw-n"), shelf("i2", "Öküzgözü", "mw-o")],
+      restaurant_inventory: [
+        shelf("i1", "Narince", "mw-n"),
+        shelf("i2", "Öküzgözü", "mw-o"),
+      ],
       restaurant_menus: [],
       menu_items: [],
       price_history: ledgerRows([
@@ -381,7 +547,9 @@ describe("readForHouse — an offer's end is read on the house's own day (F-481)
 
   it("an offer ending today is still open on the house's evening, though the UTC day has turned", async () => {
     const read = await service({
-      restaurants: [{ id: HOUSE, timezone: "America/Los_Angeles", country: "US" }],
+      restaurants: [
+        { id: HOUSE, timezone: "America/Los_Angeles", country: "US" },
+      ],
       provider_promotions: [endsOn25th],
     }).readForHouse(HOUSE, { now: LATE_EVENING });
     expect(read.offers.map((o) => o.state)).toEqual(["open"]);
@@ -389,7 +557,9 @@ describe("readForHouse — an offer's end is read on the house's own day (F-481)
 
   it("the same offer has passed once the house's own day has turned", async () => {
     const read = await service({
-      restaurants: [{ id: HOUSE, timezone: "America/Los_Angeles", country: "US" }],
+      restaurants: [
+        { id: HOUSE, timezone: "America/Los_Angeles", country: "US" },
+      ],
       provider_promotions: [endsOn25th],
     }).readForHouse(HOUSE, { now: new Date("2026-09-26T08:00:00Z") });
     expect(read.offers.map((o) => o.state)).toEqual(["passed"]);

@@ -58,8 +58,7 @@ function makeClient(rowsByTable: Rows) {
       const rows =
         rowsByTable[table] ?? (table === "restaurants" ? HOUSE_ROW : []);
       const builder: any = {};
-      for (const m of passthrough)
-        builder[m] = (..._args: any[]) => builder;
+      for (const m of passthrough) builder[m] = (..._args: any[]) => builder;
       builder.maybeSingle = () =>
         Promise.resolve({ data: rows[0] ?? null, error: null });
       builder.single = () =>
@@ -119,7 +118,13 @@ function generatorFor(s: Scenario) {
     restaurant_tables: [],
     restaurant_venue_profiles: [],
     analytics_goals: [],
-    restaurants: [{ timezone: "UTC", country: null, currency: s.currency === undefined ? "USD" : s.currency }],
+    restaurants: [
+      {
+        timezone: "UTC",
+        country: null,
+        currency: s.currency === undefined ? "USD" : s.currency,
+      },
+    ],
   });
   return new InsightGeneratorService(
     { getClient: () => client, supabase: client } as any,
@@ -152,13 +157,15 @@ function generatorFor(s: Scenario) {
  * yesterday — that same weekday — came in soft. This is the shape the founder's
  * sentence describes when it is TRUE.
  */
-function tradingHistory(opts: {
-  yesterday?: number | null;
-  weekdayRate?: number;
-  otherRate?: number;
-  /** Day-back offsets to leave with no records at all. */
-  blank?: number[];
-} = {}) {
+function tradingHistory(
+  opts: {
+    yesterday?: number | null;
+    weekdayRate?: number;
+    otherRate?: number;
+    /** Day-back offsets to leave with no records at all. */
+    blank?: number[];
+  } = {},
+) {
   const weekdayRate = opts.weekdayRate ?? 1000;
   const otherRate = opts.otherRate ?? 800;
   const target = weekdayOf(dayBack(1));
@@ -418,7 +425,11 @@ describe("a dismissal the generator honours", () => {
 
   it("insight scope leaves the same rule about another subject standing", async () => {
     const key = buildSuppressionKey(
-      { ruleId, subject: "a-weekday-that-is-not-this-one", periodKey: `d:${dayBack(1)}` },
+      {
+        ruleId,
+        subject: "a-weekday-that-is-not-this-one",
+        periodKey: `d:${dayBack(1)}`,
+      },
       "insight",
     );
     const out = await run([key]);
@@ -532,7 +543,9 @@ describe("the trend sentence counts open days and keeps calendar time (F-708)", 
       if (wd === 0 || wd === 1) continue;
       revenue.set(b, 1000 + 20 * (90 - b));
     }
-    const out = await generatorFor({ revenue }).generate("r1", { persist: false });
+    const out = await generatorFor({ revenue }).generate("r1", {
+      persist: false,
+    });
     const hit = out.insights.find(
       (i) => i.candidateKey === "overall.revenue.trend_direction",
     );

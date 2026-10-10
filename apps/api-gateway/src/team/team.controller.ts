@@ -536,7 +536,8 @@ export class TeamController {
     const may = (channel: "inbox" | "push" | "email" | "sms"): boolean =>
       // A gate a caller can open is not a gate: neither removed channel is
       // permitted however it is asked for.
-      !NO_SENDER.includes(channel as "email" | "sms") && allowed.includes(channel);
+      !NO_SENDER.includes(channel as "email" | "sms") &&
+      allowed.includes(channel);
 
     const roster = await this.team.listMembers(userId, rid);
     const targets = named
@@ -568,7 +569,11 @@ export class TeamController {
     if (this.awayHold && heldChannels.length > 0) {
       awayUntil = await this.awayHold.awayToday(rid);
     }
-    const split = splitForAway(targets, (m: any) => m.user_id, awayUntil ?? new Map());
+    const split = splitForAway(
+      targets,
+      (m: any) => m.user_id,
+      awayUntil ?? new Map(),
+    );
     let held = split.held;
     let holdFailed = false;
     if (held.length > 0) {
@@ -621,7 +626,9 @@ export class TeamController {
     // runs for BOTH audiences (`reachNow`, not gated on `named`). Without
     // this, the funnel pushed a second, unfiltered time, whichever audience
     // was addressed.
-    const inboxOpts: { onlyUserIds: string[]; skipMobilePush?: boolean } = { onlyUserIds: userIds };
+    const inboxOpts: { onlyUserIds: string[]; skipMobilePush?: boolean } = {
+      onlyUserIds: userIds,
+    };
     inboxOpts.skipMobilePush = true;
     if (may("inbox"))
       await this.notifications.persistForRestaurant(
@@ -679,7 +686,9 @@ export class TeamController {
     // Counted, not sent: how many people COULD have been reached on a removed
     // channel is the size of what this decision withholds, and reporting 0
     // would hide it.
-    const allEmails = targets.filter((m: any) => m.email || m.linkedUser?.email);
+    const allEmails = targets.filter(
+      (m: any) => m.email || m.linkedUser?.email,
+    );
     const allPhones = targets.filter((m: any) => m.phone);
 
     // Three different reasons a person did not get something, kept apart.
@@ -730,7 +739,9 @@ export class TeamController {
       suppressed,
       withheldByCaller,
       withheldByProduct,
-      channels: allowed.filter((c) => !NO_SENDER.includes(c as "email" | "sms")),
+      channels: allowed.filter(
+        (c) => !NO_SENDER.includes(c as "email" | "sms"),
+      ),
       preferencesUnavailable,
       notified,
       addressedForPush: pushIds.length,

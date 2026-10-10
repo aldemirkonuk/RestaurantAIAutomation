@@ -8,13 +8,21 @@ import {
   Put,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { SetHouseLocationDto } from "./dto/house-location.dto";
-import { HouseLocationService, type HouseLocationReadout } from "./house-location.service";
+import {
+  HouseLocationService,
+  type HouseLocationReadout,
+} from "./house-location.service";
 
 /**
  * The house's address and map point (F-174). The calendar's weather reads the
@@ -43,7 +51,9 @@ export class HouseLocationController {
       "`latitude: null` means no map point is recorded, so the calendar can read no forecast. Both numbers or neither: a half pair reads as none. `readable: false` means the row could not be READ, which is a different state and says so in words.",
   })
   @ApiResponse({ status: 200, description: "The location readout" })
-  async read(@CurrentUser("restaurantId") restaurantId: string): Promise<HouseLocationReadout> {
+  async read(
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<HouseLocationReadout> {
     if (!restaurantId) {
       throw new HttpException(
         "This session is not attached to a restaurant, so there is no address to read.",

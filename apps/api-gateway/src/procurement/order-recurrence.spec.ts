@@ -118,7 +118,10 @@ describe("what an anchor means for each frequency", () => {
   });
 
   it("treats an absent anchor as a real answer, not an error", () => {
-    expect(validateAnchorDay("weekly", null)).toEqual({ ok: true, value: null });
+    expect(validateAnchorDay("weekly", null)).toEqual({
+      ok: true,
+      value: null,
+    });
     expect(validateAnchorDay("daily", undefined)).toEqual({
       ok: true,
       value: null,
@@ -237,7 +240,9 @@ describe("the next occurrence", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toBe("unknown_frequency");
-      expect(r.message).toContain("daily, weekly, biweekly, monthly, quarterly");
+      expect(r.message).toContain(
+        "daily, weekly, biweekly, monthly, quarterly",
+      );
     }
   });
 
@@ -457,7 +462,10 @@ describe("planning a whole recurrence", () => {
         { frequency: "monthly", anchorDay: 32, startsOn: "2026-09-05" },
         "anchor_out_of_range",
       ],
-      [{ frequency: "daily", anchorDay: 2, startsOn: "2026-09-05" }, "anchor_not_applicable"],
+      [
+        { frequency: "daily", anchorDay: 2, startsOn: "2026-09-05" },
+        "anchor_not_applicable",
+      ],
       [{ frequency: "weekly", startsOn: "5 September" }, "date_not_calendar"],
     ];
     for (const [input, reason] of cases) {

@@ -310,7 +310,8 @@ export class WeatherService {
     }
 
     const newest = stored.reduce<string | null>(
-      (acc, row) => (acc === null || row.fetched_at > acc ? row.fetched_at : acc),
+      (acc, row) =>
+        acc === null || row.fetched_at > acc ? row.fetched_at : acc,
       null,
     );
     const ageMs = newest ? Date.now() - new Date(newest).getTime() : null;
@@ -336,7 +337,13 @@ export class WeatherService {
       } catch (error) {
         if (error instanceof WeatherUnavailableError) {
           if (rows.length === 0) {
-            return this.empty(from, to, error.message, error.reason, coordinate);
+            return this.empty(
+              from,
+              to,
+              error.message,
+              error.reason,
+              coordinate,
+            );
           }
           // There are real readings; they are just old. Say how old rather than
           // discarding them, and never imply they are current.
@@ -376,7 +383,11 @@ export class WeatherService {
     let observationRefusal: string | null = null;
 
     if (from <= obsTo) {
-      const storedObs = await this.readStoredObservations(restaurantId, from, obsTo);
+      const storedObs = await this.readStoredObservations(
+        restaurantId,
+        from,
+        obsTo,
+      );
       if (storedObs === null) {
         observationRefusal = "The observation register could not be read.";
       } else {
@@ -386,7 +397,8 @@ export class WeatherService {
           null,
         );
         const obsFresh =
-          newestObs !== null && Date.now() - new Date(newestObs).getTime() < MAX_AGE_MS;
+          newestObs !== null &&
+          Date.now() - new Date(newestObs).getTime() < MAX_AGE_MS;
 
         if (!obsFresh) {
           try {
@@ -398,7 +410,11 @@ export class WeatherService {
               obsTo,
             );
             await this.keepObservations(restaurantId, coordinate, measured);
-            const again = await this.readStoredObservations(restaurantId, from, obsTo);
+            const again = await this.readStoredObservations(
+              restaurantId,
+              from,
+              obsTo,
+            );
             if (again !== null) observations = again;
           } catch (error) {
             const message =
@@ -420,7 +436,8 @@ export class WeatherService {
     }
 
     const newestAfter = rows.reduce<string | null>(
-      (acc, row) => (acc === null || row.fetched_at > acc ? row.fetched_at : acc),
+      (acc, row) =>
+        acc === null || row.fetched_at > acc ? row.fetched_at : acc,
       null,
     );
 

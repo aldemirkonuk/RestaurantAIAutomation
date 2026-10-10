@@ -169,13 +169,15 @@ export class CreateOrderDto {
   })
   @IsString()
   @Matches(/^[A-Z]{3}$/, {
-    message: "currency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
+    message:
+      "currency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
   })
   // Membership as well as shape (2026-09-06): three capitals is not a
   // currency, and `ZZZ` on an agreement line is a denomination the
   // invoice-versus-agreement check would compare a vendor's real money against.
   @IsIn(ISO_4217_CODES as string[], {
-    message: "$value is three letters but names no currency, so nothing was recorded. Send a code this product knows — the currency picker lists them.",
+    message:
+      "$value is three letters but names no currency, so nothing was recorded. Send a code this product knows — the currency picker lists them.",
   })
   @IsOptional()
   currency?: string;
@@ -467,7 +469,8 @@ export class VerifyReceiptDto {
   shippedUom?: string;
 
   @ApiPropertyOptional({
-    description: "Bottles in one shipped unit. Required when shippedUom multiplies.",
+    description:
+      "Bottles in one shipped unit. Required when shippedUom multiplies.",
     minimum: 1,
   })
   @IsInt()
@@ -487,7 +490,8 @@ export class VerifyReceiptDto {
   countedUom?: string;
 
   @ApiPropertyOptional({
-    description: "Bottles in one counted unit. Required when countedUom multiplies.",
+    description:
+      "Bottles in one counted unit. Required when countedUom multiplies.",
     minimum: 1,
   })
   @IsInt()
@@ -534,7 +538,8 @@ export class VerifyReceiptDto {
   // `price_history.currency` and the price register; a code naming no money
   // there is a wrong denomination in the ladder that nobody can see.
   @IsIn(ISO_4217_CODES as string[], {
-    message: "$value is three letters but names no currency, so nothing was recorded. Send a code this product knows — the currency picker lists them.",
+    message:
+      "$value is three letters but names no currency, so nothing was recorded. Send a code this product knows — the currency picker lists them.",
   })
   @IsOptional()
   invoiceCurrency?: string;
@@ -857,7 +862,8 @@ export class OrderFilterDto {
  */
 export class ShelfReceivedDto {
   @ApiProperty({
-    description: "false = a read failed; every other field is then null and why says which.",
+    description:
+      "false = a read failed; every other field is then null and why says which.",
   })
   readable!: boolean;
 
@@ -877,7 +883,8 @@ export class ShelfReceivedDto {
     type: String,
     nullable: true,
     example: "bottle",
-    description: "restaurant_inventory.uom for the order's item. bottle for wine.",
+    description:
+      "restaurant_inventory.uom for the order's item. bottle for wine.",
   })
   stockUom!: string | null;
 
@@ -885,7 +892,8 @@ export class ShelfReceivedDto {
     type: String,
     nullable: true,
     example: "case",
-    description: "The order's multiplying unit (case, pack, split_case) when the count is shown in packs.",
+    description:
+      "The order's multiplying unit (case, pack, split_case) when the count is shown in packs.",
   })
   packUnit!: string | null;
 
@@ -893,11 +901,17 @@ export class ShelfReceivedDto {
     type: Number,
     nullable: true,
     example: 12,
-    description: "Bottles in one packUnit, exact. null = the order does not state one, so no pack view.",
+    description:
+      "Bottles in one packUnit, exact. null = the order does not state one, so no pack view.",
   })
   packSize!: number | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 5, description: "Whole packUnits in the count." })
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 5,
+    description: "Whole packUnits in the count.",
+  })
   packs!: number | null;
 
   @ApiProperty({
@@ -915,7 +929,8 @@ export class ShelfReceivedDto {
     type: Number,
     nullable: true,
     example: 1,
-    description: "Bottles refused at the door, from procurement_receipt_events.rejected_qty_bottles.",
+    description:
+      "Bottles refused at the door, from procurement_receipt_events.rejected_qty_bottles.",
   })
   rejectedAtDoorBottles!: number | null;
 
@@ -937,16 +952,21 @@ export class ShelfReceivedDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "What the verified invoice billed, in bottles. null = no invoice verified, or unreadable.",
+    description:
+      "What the verified invoice billed, in bottles. null = no invoice verified, or unreadable.",
   })
   invoicedBottles!: number | null;
 
-  @ApiPropertyOptional({ nullable: true, description: "When the latest verification was recorded." })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "When the latest verification was recorded.",
+  })
   verifiedAt!: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "The order's quantity in bottles, exactly; null when its pack size is not known exactly.",
+    description:
+      "The order's quantity in bottles, exactly; null when its pack size is not known exactly.",
   })
   orderedBottles!: number | null;
 
@@ -1369,12 +1389,15 @@ export class OrderListResponseDto {
  * to no bottles.
  */
 export class NameDeliveredItemDto {
-  @ApiProperty({ description: "The house item's id (restaurant_inventory.id)." })
+  @ApiProperty({
+    description: "The house item's id (restaurant_inventory.id).",
+  })
   @IsUUID()
   inventoryId: string;
 
   @ApiPropertyOptional({
-    description: "Bottles that came in; required when the delivery resolved to zero bottles.",
+    description:
+      "Bottles that came in; required when the delivery resolved to zero bottles.",
   })
   @IsOptional()
   @IsInt()

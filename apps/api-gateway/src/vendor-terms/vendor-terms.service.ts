@@ -265,8 +265,20 @@ function num(v: string | number | null | undefined): number | null {
 @Injectable()
 export class VendorTermsService {
   /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
-  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
-    return restoreArrivalEntry(this.databaseService, "vendor_terms", restaurantId, actorId, batchId, rowId);
+  restoreArrival(
+    restaurantId: string,
+    actorId: string,
+    batchId: string,
+    rowId: string,
+  ) {
+    return restoreArrivalEntry(
+      this.databaseService,
+      "vendor_terms",
+      restaurantId,
+      actorId,
+      batchId,
+      rowId,
+    );
   }
 
   private readonly logger = new Logger(VendorTermsService.name);
@@ -355,7 +367,11 @@ export class VendorTermsService {
     providerId: string,
     dto: SetVendorTermsDto,
     actorUserId: string | null,
-  ): Promise<{ readout: VendorTermsReadout; audited: boolean; auditReason: string | null }> {
+  ): Promise<{
+    readout: VendorTermsReadout;
+    audited: boolean;
+    auditReason: string | null;
+  }> {
     const provider = await this.requireProvider(restaurantId, providerId);
     const before = await this.readStatedOne(restaurantId, providerId);
 
@@ -368,8 +384,10 @@ export class VendorTermsService {
     const has = (k: keyof SetVendorTermsDto) =>
       Object.prototype.hasOwnProperty.call(dto, k);
 
-    if (has("deliveryWeekdays")) patch.delivery_weekdays = dto.deliveryWeekdays ?? null;
-    if (has("orderCutoffTime")) patch.order_cutoff_time = dto.orderCutoffTime ?? null;
+    if (has("deliveryWeekdays"))
+      patch.delivery_weekdays = dto.deliveryWeekdays ?? null;
+    if (has("orderCutoffTime"))
+      patch.order_cutoff_time = dto.orderCutoffTime ?? null;
     if (has("orderCutoffOffsetDays"))
       patch.order_cutoff_offset_days = dto.orderCutoffOffsetDays ?? null;
     if (has("minimumOrderAmount"))
@@ -429,7 +447,9 @@ export class VendorTermsService {
     const author: StatedBy | null = stated
       ? {
           userId: stated.stated_by,
-          name: stated.stated_by ? (actors.get(stated.stated_by) ?? null) : null,
+          name: stated.stated_by
+            ? (actors.get(stated.stated_by) ?? null)
+            : null,
         }
       : null;
 
@@ -444,8 +464,22 @@ export class VendorTermsService {
       lastOrderedAt: link?.last_order_date ?? null,
       deliveryWeekdays: this.weekdayCell(stated, inferred, author, unreadable),
       orderCutoff: this.cutoffCell(stated, inferred, author, unreadable),
-      minimumOrder: this.minimumCell(provider, link, stated, inferred, author, unreadable),
-      leadTimeDays: this.leadTimeCell(provider, link, stated, inferred, author, unreadable),
+      minimumOrder: this.minimumCell(
+        provider,
+        link,
+        stated,
+        inferred,
+        author,
+        unreadable,
+      ),
+      leadTimeDays: this.leadTimeCell(
+        provider,
+        link,
+        stated,
+        inferred,
+        author,
+        unreadable,
+      ),
       paymentTerms: this.paymentCell(provider, stated, author),
       notes: stated?.notes ?? null,
       statedBy: author,
@@ -473,7 +507,8 @@ export class VendorTermsService {
             : null,
       };
     }
-    if (unreadable) return { value: null, source: "unknown", reason: unreadable };
+    if (unreadable)
+      return { value: null, source: "unknown", reason: unreadable };
     if (!f.known) return { value: null, source: "unknown", reason: f.reason };
     return {
       value: f.weekdays,
@@ -502,14 +537,17 @@ export class VendorTermsService {
         statedBy: author,
         statedAt: stated.stated_at,
         contradiction:
-          f.known && f.notAfterMinute !== null &&
+          f.known &&
+          f.notAfterMinute !== null &&
           minutesOf(String(stated.order_cutoff_time)) !== null &&
-          (minutesOf(String(stated.order_cutoff_time)) as number) > f.notAfterMinute
+          (minutesOf(String(stated.order_cutoff_time)) as number) >
+            f.notAfterMinute
             ? `an order placed at ${hhmm(f.notAfterMinute)} already missed the fastest turnaround, which is earlier than the stated cutoff`
             : null,
       };
     }
-    if (unreadable) return { value: null, source: "unknown", reason: unreadable };
+    if (unreadable)
+      return { value: null, source: "unknown", reason: unreadable };
     if (!f.known) return { value: null, source: "unknown", reason: f.reason };
     return {
       value: {
@@ -563,7 +601,8 @@ export class VendorTermsService {
         column: "providers.minimum_order",
       };
     }
-    if (unreadable) return { value: null, source: "unknown", reason: unreadable };
+    if (unreadable)
+      return { value: null, source: "unknown", reason: unreadable };
     const f = inferred.minimumOrder;
     if (!f.known) return { value: null, source: "unknown", reason: f.reason };
     return {
@@ -628,7 +667,8 @@ export class VendorTermsService {
         column: "providers.lead_time_days",
       };
     }
-    if (unreadable) return { value: null, source: "unknown", reason: unreadable };
+    if (unreadable)
+      return { value: null, source: "unknown", reason: unreadable };
     if (!f.known) return { value: null, source: "unknown", reason: f.reason };
     return {
       value: f.medianDays,
@@ -675,9 +715,7 @@ export class VendorTermsService {
 
   /* ── Reads ─────────────────────────────────────────────────────────────── */
 
-  private async readHouse(
-    restaurantId: string,
-  ): Promise<{
+  private async readHouse(restaurantId: string): Promise<{
     zone: ZoneUse;
     currency: { code: string | null; isColumnDefault: boolean };
   }> {
@@ -752,26 +790,35 @@ export class VendorTermsService {
         return { rows: [], status: unreadable(error) };
       }
       const rows = (data ?? []) as unknown as ProviderRow[];
-      return { rows, status: { readable: true, reason: null, rows: rows.length } };
+      return {
+        rows,
+        status: { readable: true, reason: null, rows: rows.length },
+      };
     } catch (err) {
       return { rows: [], status: unreadable(err) };
     }
   }
 
-  private async readLinks(
-    restaurantId: string,
-  ): Promise<{ rows: Map<string, RestaurantProviderRow>; status: SourceStatus }> {
+  private async readLinks(restaurantId: string): Promise<{
+    rows: Map<string, RestaurantProviderRow>;
+    status: SourceStatus;
+  }> {
     const rows = new Map<string, RestaurantProviderRow>();
     try {
       const { data, error } = await this.databaseService.client
         .from("restaurant_providers")
-        .select("provider_id, custom_lead_time_days, custom_minimum_order, last_order_date")
+        .select(
+          "provider_id, custom_lead_time_days, custom_minimum_order, last_order_date",
+        )
         .eq("restaurant_id", restaurantId);
       if (error) return { rows, status: unreadable(error) };
       for (const r of (data ?? []) as unknown as RestaurantProviderRow[]) {
         rows.set(r.provider_id, r);
       }
-      return { rows, status: { readable: true, reason: null, rows: rows.size } };
+      return {
+        rows,
+        status: { readable: true, reason: null, rows: rows.size },
+      };
     } catch (err) {
       return { rows, status: unreadable(err) };
     }
@@ -792,7 +839,10 @@ export class VendorTermsService {
       for (const r of (data ?? []) as unknown as StatedTermsRow[]) {
         rows.set(r.provider_id, r);
       }
-      return { rows, status: { readable: true, reason: null, rows: rows.size } };
+      return {
+        rows,
+        status: { readable: true, reason: null, rows: rows.size },
+      };
     } catch (err) {
       return { rows, status: unreadable(err) };
     }
@@ -865,17 +915,15 @@ export class VendorTermsService {
       // 365 days" and `sources.orders.rows` printed 1000. Every inference here
       // buckets or sorts its own values, so the id order it comes back in is
       // harmless.
-      const rows = await readWholeWindow<OrderRow>(
-        "This year's orders",
-        () =>
-          this.databaseService.client
-            .from("procurement_orders")
-            .select(
-              "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status",
-              { count: "exact" },
-            )
-            .eq("restaurant_id", restaurantId)
-            .gte("requested_at", since),
+      const rows = await readWholeWindow<OrderRow>("This year's orders", () =>
+        this.databaseService.client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("requested_at", since),
       );
       return {
         rows,
@@ -916,7 +964,10 @@ export class VendorTermsService {
         .select("user_id, name")
         .in("user_id", ids);
       if (error) return { names: new Map(), status: unreadable(error) };
-      for (const r of (data ?? []) as Array<{ user_id: string; name: string | null }>) {
+      for (const r of (data ?? []) as Array<{
+        user_id: string;
+        name: string | null;
+      }>) {
         names.set(r.user_id, r.name ?? null);
       }
       return {
@@ -987,7 +1038,15 @@ function sameDays(a: readonly number[], b: readonly number[]): boolean {
 }
 
 function dayList(days: readonly Weekday[]): string {
-  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const names = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
   return days.map((d) => names[d]).join(", ") || "no day at all";
 }
 

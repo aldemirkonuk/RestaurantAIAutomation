@@ -181,9 +181,14 @@ export async function noticeToHouseLeads(
     // tells nobody, logged below.
     let leadIds: string[];
     try {
-      leadIds = await houseMembersInRoles(sb, n.restaurantId, ["owner", "manager"]);
+      leadIds = await houseMembersInRoles(sb, n.restaurantId, [
+        "owner",
+        "manager",
+      ]);
     } catch (err: any) {
-      logger.error(`${n.metadata.action}: could not read who to tell — ${err?.message}`);
+      logger.error(
+        `${n.metadata.action}: could not read who to tell — ${err?.message}`,
+      );
       return told;
     }
     const leads = leadIds.filter((u) => u !== n.exceptUserId);
@@ -207,7 +212,9 @@ export async function noticeToHouseLeads(
         created_at: new Date().toISOString(),
       });
       if (insErr) {
-        logger.error(`${n.metadata.action}: ${userId} was not told — ${insErr.message}`);
+        logger.error(
+          `${n.metadata.action}: ${userId} was not told — ${insErr.message}`,
+        );
       } else {
         told.push(userId);
       }

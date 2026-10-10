@@ -148,8 +148,20 @@ function requireHouse(restaurantId: string | null | undefined): void {
 @Injectable()
 export class ProvidersService {
   /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
-  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
-    return restoreArrivalEntry(this.databaseService, "vendor_currency", restaurantId, actorId, batchId, rowId);
+  restoreArrival(
+    restaurantId: string,
+    actorId: string,
+    batchId: string,
+    rowId: string,
+  ) {
+    return restoreArrivalEntry(
+      this.databaseService,
+      "vendor_currency",
+      restaurantId,
+      actorId,
+      batchId,
+      rowId,
+    );
   }
 
   private readonly logger = new Logger(ProvidersService.name);
@@ -439,7 +451,10 @@ export class ProvidersService {
         skip("Not one of this house's vendors.");
         continue;
       }
-      if (row.catalogue_vendor_id && haveCatalogue.has(row.catalogue_vendor_id)) {
+      if (
+        row.catalogue_vendor_id &&
+        haveCatalogue.has(row.catalogue_vendor_id)
+      ) {
         skip("Already on that house's list.");
         continue;
       }
@@ -695,7 +710,9 @@ export class ProvidersService {
         providerId,
         restaurantId,
       });
-      throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
+      throw new NotFoundException(
+        "That vendor is not in this house's book; it may have been removed.",
+      );
     }
 
     const provider = this.mapProviderRow(data as ProviderRow);
@@ -1554,13 +1571,14 @@ export class ProvidersService {
     // written. The old order demoted every other primary first and only then
     // found the id was wrong, so a PATCH with a stale id answered 404 and had
     // still taken the primary mark off the vendor's real branch.
-    const { data: found, error: findError } = await this.databaseService.supabase
-      .from("provider_locations")
-      .select("id, address")
-      .eq("id", locationId)
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId)
-      .maybeSingle();
+    const { data: found, error: findError } =
+      await this.databaseService.supabase
+        .from("provider_locations")
+        .select("id, address")
+        .eq("id", locationId)
+        .eq("provider_id", providerId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
     if (findError) {
       this.logger.error("Failed to read provider location", {
         locationId,
@@ -1581,7 +1599,8 @@ export class ProvidersService {
     }
 
     const hasPair = dto.latitude !== undefined && dto.longitude !== undefined;
-    const newAddress = dto.address !== undefined ? dto.address || null : undefined;
+    const newAddress =
+      dto.address !== undefined ? dto.address || null : undefined;
     const addressMoved =
       newAddress !== undefined &&
       newAddress !== ((found as { address?: string | null }).address ?? null);
@@ -1689,7 +1708,10 @@ export class ProvidersService {
       });
       throw error;
     }
-    const out = (data ?? {}) as { removed?: boolean; promotedId?: string | null };
+    const out = (data ?? {}) as {
+      removed?: boolean;
+      promotedId?: string | null;
+    };
     if (out.removed !== true) {
       throw new NotFoundException(
         "That branch is no longer on this vendor; it may have been removed.",
@@ -1896,7 +1918,10 @@ export class ProvidersService {
         `This vendor's usual currency could not be read (${error.message}). That is a failed read, not an empty field — nothing here says the vendor has stated no currency.`,
       );
     }
-    if (!data) throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
+    if (!data)
+      throw new NotFoundException(
+        "That vendor is not in this house's book; it may have been removed.",
+      );
 
     const row = data as unknown as {
       name?: string | null;
@@ -1955,7 +1980,9 @@ export class ProvidersService {
         this.logger.warn(
           `The person who stated ${providerId}'s usual currency could not be read (${personError.message}); the sentence names no author.`,
         );
-      else setByName = ((person as { name?: string | null })?.name ?? null) || null;
+      else
+        setByName =
+          ((person as { name?: string | null })?.name ?? null) || null;
     }
 
     // The house's clock (VEN-W23), read by the token's house id only and NEVER
@@ -2065,7 +2092,9 @@ export class ProvidersService {
       );
     }
     if (!data)
-      throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
+      throw new NotFoundException(
+        "That vendor is not in this house's book; it may have been removed.",
+      );
 
     return {
       code: (data as { usual_currency: string }).usual_currency,
@@ -2148,11 +2177,10 @@ export class ProvidersService {
       deleted_at?: string | null;
     }[];
 
-    const live = rows.filter(
-      (r) => r.is_active !== false && !r.deleted_at,
-    );
+    const live = rows.filter((r) => r.is_active !== false && !r.deleted_at);
 
-    const unstated: { id: string; name: string; recorded: string | null }[] = [];
+    const unstated: { id: string; name: string; recorded: string | null }[] =
+      [];
     let stated = 0;
     let fromInvoices = 0;
     for (const r of live) {

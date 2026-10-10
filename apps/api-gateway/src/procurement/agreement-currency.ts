@@ -49,10 +49,7 @@ import { isIso4217, notACurrencyBecause } from "../common/iso-4217";
  */
 const isCurrency = isIso4217;
 
-export type AgreementCurrencyBasis =
-  | "vendor_usual"
-  | "vendor_paper"
-  | "house";
+export type AgreementCurrencyBasis = "vendor_usual" | "vendor_paper" | "house";
 
 /**
  * What is WRITTEN on the order beside the code, from
@@ -377,5 +374,7 @@ export function orderCurrencySource(args: {
 }): OrderCurrencySource | null {
   const code = normalise(args.recorded);
   if (!code) return null;
-  return code === normalise(args.vendorUsualCurrency) ? "vendor_usual" : "typed";
+  return code === normalise(args.vendorUsualCurrency)
+    ? "vendor_usual"
+    : "typed";
 }

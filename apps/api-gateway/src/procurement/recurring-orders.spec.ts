@@ -464,7 +464,9 @@ describe("a schedule still set to approve itself (F-306)", () => {
       AUTO_APPROVE_REFUSED,
     );
 
-    const update = plainToInstance(UpdateRecurringOrderDto, { auto_approve: true });
+    const update = plainToInstance(UpdateRecurringOrderDto, {
+      auto_approve: true,
+    });
     const updateErrors = await validate(update);
     expect(updateErrors.map((e) => e.property)).toContain("auto_approve");
 

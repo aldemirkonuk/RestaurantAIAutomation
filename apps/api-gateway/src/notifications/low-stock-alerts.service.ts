@@ -1191,12 +1191,20 @@ export class LowStockAlertsService {
         .eq("status", "unread")
         .limit(5000);
       if (error) {
-        this.logger.warn(`low-stock bell lines could not be read to clear recovered ones: ${error.message}`);
+        this.logger.warn(
+          `low-stock bell lines could not be read to clear recovered ones: ${error.message}`,
+        );
         return;
       }
       const recovered: string[] = [];
-      for (const row of (data ?? []) as Array<{ id: string; restaurant_id: string; metadata: any }>) {
-        const wines = Array.isArray(row.metadata?.wines) ? row.metadata.wines : [];
+      for (const row of (data ?? []) as Array<{
+        id: string;
+        restaurant_id: string;
+        metadata: any;
+      }>) {
+        const wines = Array.isArray(row.metadata?.wines)
+          ? row.metadata.wines
+          : [];
         if (wines.length === 0) continue; // a line that names nothing is never guessed clear
         const low = byRestaurant.get(row.restaurant_id) ?? [];
         const stillLow = new Set(low.flatMap((r) => [r.inventoryId, r.wineId]));
@@ -1214,11 +1222,15 @@ export class LowStockAlertsService {
           .in("id", recovered.slice(i, i + 200))
           .eq("status", "unread");
         if (updateError) {
-          this.logger.warn(`recovered low-stock bell lines were not cleared: ${updateError.message}`);
+          this.logger.warn(
+            `recovered low-stock bell lines were not cleared: ${updateError.message}`,
+          );
         }
       }
     } catch (e: any) {
-      this.logger.warn(`clearing recovered low-stock bell lines failed: ${e?.message}`);
+      this.logger.warn(
+        `clearing recovered low-stock bell lines failed: ${e?.message}`,
+      );
     }
   }
 

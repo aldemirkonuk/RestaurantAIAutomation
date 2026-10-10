@@ -49,7 +49,9 @@ describe("ProvidersController", () => {
           // A manager by default, so VEN-W30's vendor write gate lets the
           // write-route tests below reach the service; the refusals have
           // their own spec (vendor-write-gate.spec.ts).
-          useValue: { resolveRestaurantRole: jest.fn().mockResolvedValue("manager") },
+          useValue: {
+            resolveRestaurantRole: jest.fn().mockResolvedValue("manager"),
+          },
         },
       ],
     })
@@ -85,7 +87,8 @@ describe("ProvidersController", () => {
           // verdict for a fixture that names no phone_type.
           reach: "unstated" as const,
           phoneTypeStated: false,
-          reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
+          reachSays:
+            "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
         },
         {
           id: "contact-2",
@@ -100,7 +103,8 @@ describe("ProvidersController", () => {
           // verdict for a fixture that names no phone_type.
           reach: "unstated" as const,
           phoneTypeStated: false,
-          reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
+          reachSays:
+            "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
         },
       ];
 
@@ -167,7 +171,8 @@ describe("ProvidersController", () => {
         // verdict for a fixture that names no phone_type.
         reach: "unstated" as const,
         phoneTypeStated: false,
-        reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
+        reachSays:
+          "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
       };
 
       mockProvidersService.addProviderContact.mockResolvedValue(
@@ -223,7 +228,8 @@ describe("ProvidersController", () => {
         // verdict for a fixture that names no phone_type.
         reach: "unstated" as const,
         phoneTypeStated: false,
-        reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
+        reachSays:
+          "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
       };
 
       mockProvidersService.updateProviderContact.mockResolvedValue(
@@ -390,11 +396,7 @@ describe("ProvidersController", () => {
 
       mockProvidersService.getRecommendations.mockResolvedValue({});
 
-      await controller.getProviderRecommendations(
-        providerId,
-        wineId,
-        mockUser,
-      );
+      await controller.getProviderRecommendations(providerId, wineId, mockUser);
 
       expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(
         mockUser.restaurantId,
@@ -518,9 +520,9 @@ describe("ProvidersController", () => {
         new Error("Import failed"),
       );
 
-      await expect(controller.importProviders(bulkImportDto, mockUser)).rejects.toThrow(
-        HttpException,
-      );
+      await expect(
+        controller.importProviders(bulkImportDto, mockUser),
+      ).rejects.toThrow(HttpException);
     });
   });
 });

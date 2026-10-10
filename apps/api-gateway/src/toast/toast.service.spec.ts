@@ -269,9 +269,13 @@ describe("F-639: a Toast signature is good only near its own time", () => {
         return fallback;
       },
     };
-    return new ToastService(configService, {} as any, {
-      supabase: {},
-    } as unknown as DatabaseService);
+    return new ToastService(
+      configService,
+      {} as any,
+      {
+        supabase: {},
+      } as unknown as DatabaseService,
+    );
   }
 
   it("accepts a fresh signature and refuses the same body signed six minutes ago", () => {
@@ -284,12 +288,20 @@ describe("F-639: a Toast signature is good only near its own time", () => {
     const old = new Date(Date.now() - 6 * 60 * 1000).toISOString();
 
     expect(
-      service.verifyWebhookSignature(body, signed("toast-secret", now, body), now),
+      service.verifyWebhookSignature(
+        body,
+        signed("toast-secret", now, body),
+        now,
+      ),
     ).toBe(true);
     // Before: the timestamp was signed over but never aged, so a captured
     // webhook replayed forever.
     expect(
-      service.verifyWebhookSignature(body, signed("toast-secret", old, body), old),
+      service.verifyWebhookSignature(
+        body,
+        signed("toast-secret", old, body),
+        old,
+      ),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(
@@ -309,12 +321,15 @@ function enumMembers(name: string): string[] {
   const path = require("path");
   const dir = path.resolve(__dirname, "../../../../supabase/migrations");
   const members = new Set<string>();
-  for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith(".sql"))) {
+  for (const f of fs
+    .readdirSync(dir)
+    .filter((x: string) => x.endsWith(".sql"))) {
     const sql: string = fs.readFileSync(path.join(dir, f), "utf8");
     const create = new RegExp(
       `CREATE TYPE public\\.${name} AS ENUM \\(([^)]*)\\)`,
     ).exec(sql);
-    if (create) for (const m of create[1].matchAll(/'([^']+)'/g)) members.add(m[1]);
+    if (create)
+      for (const m of create[1].matchAll(/'([^']+)'/g)) members.add(m[1]);
     const add = new RegExp(
       `ALTER TYPE public\\.${name} ADD VALUE(?: IF NOT EXISTS)? '([^']+)'`,
       "g",
@@ -390,7 +405,11 @@ describe("F-554: Toast webhooks log events the enums accept, and a failed log ne
   it("still takes the sale off stock when the event log insert fails", async () => {
     const { service, calls, posHub } = makeService({
       inventory: { id: "inv-1" },
-      mapping: { inventory_id: "inv-1", sale_unit: "bottle", item_name: "Caymus" },
+      mapping: {
+        inventory_id: "inv-1",
+        sale_unit: "bottle",
+        item_name: "Caymus",
+      },
       eventsError: { code: "22P02", message: "invalid input value for enum" },
     });
     await service.processWebhook(
@@ -592,7 +611,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
   };
 
   const orderDto: any = {
-    items: [{ itemGuid: "item-1", name: "Opus One", quantity: 1, unitPrice: 4500 }],
+    items: [
+      { itemGuid: "item-1", name: "Opus One", quantity: 1, unitPrice: 4500 },
+    ],
     tableName: "Table 5",
     serverName: "Alex",
   };
@@ -877,7 +898,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
   };
 
   const orderDto: any = {
-    items: [{ itemGuid: "item-1", name: "Opus One", quantity: 1, unitPrice: 4500 }],
+    items: [
+      { itemGuid: "item-1", name: "Opus One", quantity: 1, unitPrice: 4500 },
+    ],
     tableName: "Table 5",
     serverName: "Alex",
   };

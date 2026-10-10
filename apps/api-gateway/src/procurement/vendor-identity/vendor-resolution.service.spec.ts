@@ -258,7 +258,11 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
 
     it("a malformed tax id — the check digit refuses it", async () => {
       const r = await resolve({
-        seller: { name: "SYNTHETIC Vendor", taxId: "1234567891", country: "TR" },
+        seller: {
+          name: "SYNTHETIC Vendor",
+          taxId: "1234567891",
+          country: "TR",
+        },
       });
       expect(r.state).toBe("unresolved");
       expect(r.reason).toMatch(/check digit/);

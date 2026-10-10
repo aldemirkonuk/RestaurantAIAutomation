@@ -143,7 +143,11 @@ export class SettingsController {
     // `public.users.user_id` — never an `auth.users` id: the two tables are
     // disjoint in this database and `system_audit_log.actor_id` has no FK, so a
     // wrong id would insert cleanly and never resolve to a person.
-    return this.settingsService.updateFeatureFlags(restaurantId, updateDto, userId);
+    return this.settingsService.updateFeatureFlags(
+      restaurantId,
+      updateDto,
+      userId,
+    );
   }
 
   @Get("approval-thresholds")
@@ -213,7 +217,10 @@ export class SettingsController {
     // needs a manager, or name an owner on one (that only tightens it); after
     // that, only an owner moves it. A policy that could not be read is not
     // proof the rule is a manager's, so a manager is refused then too.
-    const role = await this.organizations.resolveRestaurantRole(userId, restaurantId);
+    const role = await this.organizations.resolveRestaurantRole(
+      userId,
+      restaurantId,
+    );
     if (role !== "owner") {
       const current = await this.thresholds.read(restaurantId);
       const before = current.thresholds.find((t) => t.rule === dto.rule);
@@ -228,7 +235,9 @@ export class SettingsController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
-        error instanceof Error ? error.message : "Failed to record the threshold",
+        error instanceof Error
+          ? error.message
+          : "Failed to record the threshold",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -248,7 +257,7 @@ export class SettingsController {
   @ApiOperation({
     summary: "The house's reporting currency, and who last stated it",
     description:
-      "`code: null` means nobody has stated one — every money figure renders as \"currency not recorded\". `readable: false` means the row could not be READ, which is a different state and says so in words. `country` is returned so the page can offer the default its own country table derives, which is shown as a sentence before anything is recorded; the gateway never derives one and never writes on a read.",
+      '`code: null` means nobody has stated one — every money figure renders as "currency not recorded". `readable: false` means the row could not be READ, which is a different state and says so in words. `country` is returned so the page can offer the default its own country table derives, which is shown as a sentence before anything is recorded; the gateway never derives one and never writes on a read.',
   })
   @ApiResponse({ status: 200, description: "The currency readout" })
   async getHouseCurrency(
@@ -331,7 +340,8 @@ export class SettingsController {
   @Put("carrying-cost")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "State what holding stock costs this house — owner or manager only",
+    summary:
+      "State what holding stock costs this house — owner or manager only",
     description:
       "The value must be between 0.01 and 25 percent a month, which is exactly what `restaurants_carrying_cost_is_a_plausible_percent` allows, so a value this route accepts is a value the database accepts. Those bounds are a UNITS check: 0.0075 (the fraction spelling) and 75 (percent-a-year typed as percent-a-month) are both refused with a sentence saying which spelling the field wants. The value, the author and the moment are written as one fact and the database's CHECK refuses any two of the three. The response carries `audited` and `auditReason`.",
   })
@@ -495,9 +505,8 @@ export class SettingsController {
       );
     }
     if (dto.enabled) {
-      const acceptance = await this.houseDataTerms.effectiveAcceptance(
-        restaurantId,
-      );
+      const acceptance =
+        await this.houseDataTerms.effectiveAcceptance(restaurantId);
       if (!acceptance.ok) {
         throw new HttpException(
           `Whether the data terms have been accepted could not be read (${acceptance.reason}), so nothing was turned on.`,
@@ -546,7 +555,8 @@ export class SettingsController {
 
   @Post("data-terms/seal-challenge")
   @ApiOperation({
-    summary: "Mint the one-time seal an acceptance has to carry back — owner only",
+    summary:
+      "Mint the one-time seal an acceptance has to carry back — owner only",
   })
   async issueDataTermsSealChallenge(
     @CurrentUser("restaurantId") restaurantId: string,
@@ -564,7 +574,8 @@ export class SettingsController {
   @Post("data-terms/acceptances")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Accept the house's data terms — owner only, sealed, one row per owner. The house's first acceptance turns Jev on.",
+    summary:
+      "Accept the house's data terms — owner only, sealed, one row per owner. The house's first acceptance turns Jev on.",
   })
   @ApiResponse({
     status: 403,

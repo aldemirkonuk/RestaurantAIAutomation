@@ -1,7 +1,11 @@
 import { ForbiddenException } from "@nestjs/common";
 import { HouseDayService, DAY_REGISTER_TIMEOUT_MS } from "./house-day.service";
 import { wallToInstant } from "../common/operating-hours/operating-hours";
-import type { DayRegister, DayRegisterKey, HouseDayResponse } from "./house-day.types";
+import type {
+  DayRegister,
+  DayRegisterKey,
+  HouseDayResponse,
+} from "./house-day.types";
 
 /**
  * The day line's one read (sketch 119 §E; the founder's pick of 2026-09-21;
@@ -198,7 +202,9 @@ describe("deliveryArrived — today only, and counts what its label says", () =>
 
   it("an empty house has an answered, empty register — not a refusal", async () => {
     const { svc } = build(
-      sources({ arrivedToday: jest.fn(async () => ({ rows: [], capped: false })) }),
+      sources({
+        arrivedToday: jest.fn(async () => ({ rows: [], capped: false })),
+      }),
     );
     const res = await svc.read(HOUSE, USER);
     expect(reg(res, "deliveryArrived")).toMatchObject({
@@ -257,7 +263,10 @@ describe("calendar and reminders — one read, two keys", () => {
   it("an all-day event gets no tick — missing is not a time", async () => {
     const { svc } = build();
     const res = await svc.read(HOUSE, USER);
-    const all = [...(reg(res, "calendar") as any).ticks, ...(reg(res, "reminders") as any).ticks];
+    const all = [
+      ...(reg(res, "calendar") as any).ticks,
+      ...(reg(res, "reminders") as any).ticks,
+    ];
     expect(all.some((t: { id: string }) => t.id === "e-allday")).toBe(false);
   });
 
@@ -277,20 +286,34 @@ describe("calendar and reminders — one read, two keys", () => {
       }),
     );
     const res = await svc.read(HOUSE, USER);
-    expect(reg(res, "calendar")).toMatchObject({ state: "unreadable", status: 500 });
-    expect(reg(res, "reminders")).toMatchObject({ state: "unreadable", status: 500 });
+    expect(reg(res, "calendar")).toMatchObject({
+      state: "unreadable",
+      status: 500,
+    });
+    expect(reg(res, "reminders")).toMatchObject({
+      state: "unreadable",
+      status: 500,
+    });
     expect(JSON.stringify(res)).not.toContain("statement timeout");
   });
 
   it("a source that hangs is unreadable after the timeout; it does not hold the line", async () => {
     const { svc } = build(
-      sources({ listEvents: jest.fn(() => new Promise<never>(() => undefined)) }),
+      sources({
+        listEvents: jest.fn(() => new Promise<never>(() => undefined)),
+      }),
     );
     const pending = svc.read(HOUSE, USER);
     await jest.advanceTimersByTimeAsync(DAY_REGISTER_TIMEOUT_MS + 1);
     const res = await pending;
-    expect(reg(res, "calendar")).toMatchObject({ state: "unreadable", status: null });
-    expect(reg(res, "reminders")).toMatchObject({ state: "unreadable", status: null });
+    expect(reg(res, "calendar")).toMatchObject({
+      state: "unreadable",
+      status: null,
+    });
+    expect(reg(res, "reminders")).toMatchObject({
+      state: "unreadable",
+      status: null,
+    });
     // A register that hung did not hold the ONE that answered fine.
     expect(reg(res, "deliveryArrived").state).toBe("answered");
   });

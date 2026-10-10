@@ -38,7 +38,8 @@ function stampFormatter(zone: string): Intl.DateTimeFormat {
 /** `YYYY-MM-DD HH:MM` on `zone`'s wall clock. */
 function wallClock(instant: Date, zone: string): string {
   const p: Record<string, string> = {};
-  for (const part of stampFormatter(zone).formatToParts(instant)) p[part.type] = part.value;
+  for (const part of stampFormatter(zone).formatToParts(instant))
+    p[part.type] = part.value;
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
@@ -99,7 +100,10 @@ export function exportFileStem(input: ExportNameInput): string | null {
     ? houseDayOf(input.finishedAt, input.zone)
     : houseDayOf(input.finishedAt, "UTC");
   if (!day) return null;
-  const till = input.cutting === "till" && input.windowDays != null && input.windowDays >= 1;
+  const till =
+    input.cutting === "till" &&
+    input.windowDays != null &&
+    input.windowDays >= 1;
   if (!input.zone) {
     // No house days to name: the till read nothing (ADR 0296), so the name
     // carries the span asked for and the UTC day, marked as UTC.

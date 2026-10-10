@@ -161,13 +161,15 @@ describe("the insight cache carries its arithmetic", () => {
     };
     const svc = new InsightGeneratorService(
       { getClient: () => client, supabase: client } as any,
-      { load: async () => ({ dates: new Set(), readable: true, problem: null }) } as any,
+      {
+        load: async () => ({ dates: new Set(), readable: true, problem: null }),
+      } as any,
       {
         readState: async () => ({
-        book: stateBookFrom([]),
-        readable: true,
-        problem: null,
-      }),
+          book: stateBookFrom([]),
+          readable: true,
+          problem: null,
+        }),
       } as any,
     );
     expect(await svc.getStored("r1")).toEqual([]);
@@ -203,7 +205,10 @@ describe("the insight cache carries its arithmetic", () => {
         row(),
         row({ category: "purchasing" }),
         row({ restaurant_id: "r2", category: "inventory" }),
-        row({ generator_version: INSIGHT_GENERATOR_VERSION, category: "staff" }),
+        row({
+          generator_version: INSIGHT_GENERATOR_VERSION,
+          category: "staff",
+        }),
       ],
     });
     const stale = await svc.staleVersionCategories();
@@ -305,7 +310,8 @@ describe("the hourly sweep stamps a run only when it saved, and only the run (F-
       { getClient: () => client } as any,
       {
         generate: async () => ({ insights: [], persisted }),
-        staleVersionCategories: async () => new Map([["r1", new Set(["sales"])]]),
+        staleVersionCategories: async () =>
+          new Map([["r1", new Set(["sales"])]]),
       } as any,
     );
     return { svc, client };

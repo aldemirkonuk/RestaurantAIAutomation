@@ -31,14 +31,41 @@ const STAFF = "u-staff";
 
 type Row = Record<string, any>;
 
-function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: string | null } = {}) {
+function build(
+  opts: {
+    order?: Row;
+    item?: Row;
+    ask?: Row | null;
+    liveError?: string | null;
+  } = {},
+) {
   const db = new FakeDb();
   db.tables.procurement_orders = [
-    { id: ORDER, restaurant_id: HOUSE, status: "DELIVERED", inventory_id: ITEM, order_number: "PO-7", ...(opts.order ?? {}) },
+    {
+      id: ORDER,
+      restaurant_id: HOUSE,
+      status: "DELIVERED",
+      inventory_id: ITEM,
+      order_number: "PO-7",
+      ...(opts.order ?? {}),
+    },
   ];
   db.tables.restaurant_inventory = [
-    { id: ITEM, restaurant_id: HOUSE, master_wine_id: null, wine_name: "Kavaklıdere Yakut 2019", shadow_stock: 0, in_transit_quantity: 0, ...(opts.item ?? {}) },
-    { id: OTHER_ITEM, restaurant_id: "another-house", master_wine_id: null, wine_name: "Theirs" },
+    {
+      id: ITEM,
+      restaurant_id: HOUSE,
+      master_wine_id: null,
+      wine_name: "Kavaklıdere Yakut 2019",
+      shadow_stock: 0,
+      in_transit_quantity: 0,
+      ...(opts.item ?? {}),
+    },
+    {
+      id: OTHER_ITEM,
+      restaurant_id: "another-house",
+      master_wine_id: null,
+      wine_name: "Theirs",
+    },
   ];
   db.tables.delivery_item_to_name =
     opts.ask === null
@@ -67,8 +94,13 @@ function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: st
   const movements: Row[] = [];
   db.rpcHandlers.apply_stock_movement = (args) => {
     movements.push(args);
-    if (args.p_stock_state === "live" && opts.liveError) return { data: null, error: { message: opts.liveError } };
-    if (!db.tables.inventory_transactions.some((r) => r.idempotency_key === args.p_idempotency_key)) {
+    if (args.p_stock_state === "live" && opts.liveError)
+      return { data: null, error: { message: opts.liveError } };
+    if (
+      !db.tables.inventory_transactions.some(
+        (r) => r.idempotency_key === args.p_idempotency_key,
+      )
+    ) {
       db.tables.inventory_transactions.push({
         restaurant_id: args.p_restaurant_id,
         order_id: args.p_order_id,
@@ -87,10 +119,15 @@ function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: st
   db.rpcHandlers.move_in_transit_by_delta = (args) => {
     inTransitMoves.push(args);
     const row = db.tables.restaurant_inventory.find(
-      (r) => r.id === args.p_inventory_id && r.restaurant_id === args.p_restaurant_id,
+      (r) =>
+        r.id === args.p_inventory_id &&
+        r.restaurant_id === args.p_restaurant_id,
     );
     if (!row) return { data: null, error: null };
-    row.in_transit_quantity = Math.max(0, Number(row.in_transit_quantity ?? 0) + args.p_delta);
+    row.in_transit_quantity = Math.max(
+      0,
+      Number(row.in_transit_quantity ?? 0) + args.p_delta,
+    );
     return { data: row.in_transit_quantity, error: null };
   };
   const roles: Record<string, string> = { [OWNER]: "owner", [STAFF]: "staff" };
@@ -99,7 +136,8 @@ function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: st
     client: db as any,
     logger: { error: () => undefined, warn: () => undefined },
     isOwnerOrManager: async (userId: string) => {
-      if (roleReadFails) throw new Error("user_restaurant_access: connection reset");
+      if (roleReadFails)
+        throw new Error("user_restaurant_access: connection reset");
       return ["owner", "manager"].includes(roles[userId] ?? "");
     },
   };
@@ -115,7 +153,14 @@ function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: st
   };
 }
 
-const name = (t: ReturnType<typeof build>, over: Partial<{ userId: string; inventoryId: string; bottles: number | null }> = {}) =>
+const name = (
+  t: ReturnType<typeof build>,
+  over: Partial<{
+    userId: string;
+    inventoryId: string;
+    bottles: number | null;
+  }> = {},
+) =>
   nameDeliveredItem(t.deps, {
     restaurantId: HOUSE,
     orderId: ORDER,
@@ -129,32 +174,79 @@ describe("the ask: one per delivered order, raised after the delivery", () => {
   it("raises one ask per order; a second raise finds the first", async () => {
     const t = build({ ask: null });
     expect(
-      await raiseDeliveryItemToName(t.db, { restaurantId: HOUSE, orderId: ORDER, why: "zero_bottles", bottlesResolved: 0, raisedBy: STAFF }),
+      await raiseDeliveryItemToName(t.db, {
+        restaurantId: HOUSE,
+        orderId: ORDER,
+        why: "zero_bottles",
+        bottlesResolved: 0,
+        raisedBy: STAFF,
+      }),
     ).toEqual({ ok: true, created: true });
     expect(
-      await raiseDeliveryItemToName(t.db, { restaurantId: HOUSE, orderId: ORDER, why: "zero_bottles", bottlesResolved: 0, raisedBy: STAFF }),
+      await raiseDeliveryItemToName(t.db, {
+        restaurantId: HOUSE,
+        orderId: ORDER,
+        why: "zero_bottles",
+        bottlesResolved: 0,
+        raisedBy: STAFF,
+      }),
     ).toEqual({ ok: true, created: false });
     expect(t.db.tables.delivery_item_to_name).toHaveLength(1);
-    expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({ order_id: ORDER, why: "zero_bottles", bottles_resolved: 0, raised_by: STAFF });
+    expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({
+      order_id: ORDER,
+      why: "zero_bottles",
+      bottles_resolved: 0,
+      raised_by: STAFF,
+    });
   });
 
   it("an ask that cannot be written is said, never dropped", async () => {
     const t = build({ ask: null });
     t.db.failures.delivery_item_to_name = "permission denied";
-    const out = await raiseDeliveryItemToName(t.db, { restaurantId: HOUSE, orderId: ORDER, why: "no_item", bottlesResolved: 6, raisedBy: STAFF });
-    expect(out).toEqual({ ok: false, error: expect.stringMatching(/could not be recorded \(permission denied\)/) });
-    expect(nameAskWords(out)).toMatch(/could not be asked to name it.*Nothing books this delivery's stock until it is named/);
+    const out = await raiseDeliveryItemToName(t.db, {
+      restaurantId: HOUSE,
+      orderId: ORDER,
+      why: "no_item",
+      bottlesResolved: 6,
+      raisedBy: STAFF,
+    });
+    expect(out).toEqual({
+      ok: false,
+      error: expect.stringMatching(
+        /could not be recorded \(permission denied\)/,
+      ),
+    });
+    expect(nameAskWords(out)).toMatch(
+      /could not be asked to name it.*Nothing books this delivery's stock until it is named/,
+    );
   });
 
   it("the list is this house's open asks; a failed read throws, never an empty list", async () => {
     const t = build();
-    t.db.tables.delivery_item_to_name.push({ id: "ask-x", restaurant_id: "another-house", order_id: "o-x", why: "zero_bottles", bottles_resolved: 0, status: "open", raised_at: "2026-09-22T09:00:00Z" });
+    t.db.tables.delivery_item_to_name.push({
+      id: "ask-x",
+      restaurant_id: "another-house",
+      order_id: "o-x",
+      why: "zero_bottles",
+      bottles_resolved: 0,
+      status: "open",
+      raised_at: "2026-09-22T09:00:00Z",
+    });
     const list = await readOpenDeliveryItemsToName(t.db, HOUSE);
     expect(list).toEqual([
-      { orderId: ORDER, orderNumber: "PO-7", why: "zero_bottles", bottlesResolved: 0, orderInventoryId: ITEM, raisedAt: "2026-09-22T08:00:00Z" },
+      {
+        orderId: ORDER,
+        orderNumber: "PO-7",
+        why: "zero_bottles",
+        bottlesResolved: 0,
+        orderInventoryId: ITEM,
+        raisedAt: "2026-09-22T08:00:00Z",
+      },
     ]);
     t.db.failures.delivery_item_to_name = "connection reset";
-    await expect(readOpenDeliveryItemsToName(t.db, HOUSE)).rejects.toThrow(/could not be read \(connection reset\)/);
+    await expect(readOpenDeliveryItemsToName(t.db, HOUSE)).rejects.toThrow(
+      /could not be read \(connection reset\)/,
+    );
   });
 });
 
@@ -179,16 +271,35 @@ describe("naming it books the stock then — once, on the record", () => {
       bottles_booked: 6,
     });
     expect(t.db.tables.system_audit_log).toEqual([
-      expect.objectContaining({ action: "delivery_item_named", actor_id: OWNER, entity_id: ORDER, restaurant_id: HOUSE }),
+      expect.objectContaining({
+        action: "delivery_item_named",
+        actor_id: OWNER,
+        entity_id: ORDER,
+        restaurant_id: HOUSE,
+      }),
     ]);
     expect(t.db.tables.inventory_events).toEqual([
-      expect.objectContaining({ event_type: "order_delivered", idempotency_key: `order-delivered:${ORDER}`, quantity_change: 6 }),
+      expect.objectContaining({
+        event_type: "order_delivered",
+        idempotency_key: `order-delivered:${ORDER}`,
+        quantity_change: 6,
+      }),
     ]);
     // The wine library lacks this item: research, by its id (answer 4).
     expect(t.db.tables.house_item_research).toEqual([
-      expect.objectContaining({ inventory_id: ITEM, status: "queued", queued_from: "delivery", source_order_id: ORDER, classified_name: "Kavaklıdere Yakut 2019" }),
+      expect.objectContaining({
+        inventory_id: ITEM,
+        status: "queued",
+        queued_from: "delivery",
+        source_order_id: ORDER,
+        classified_name: "Kavaklıdere Yakut 2019",
+      }),
     ]);
-    expect(out).toMatchObject({ bottlesBooked: 6, audited: true, research: { ok: true, status: "queued" } });
+    expect(out).toMatchObject({
+      bottlesBooked: 6,
+      audited: true,
+      research: { ok: true, status: "queued" },
+    });
     expect(out.says).toBe(
       "The delivery's item was named and 6 bottles were booked. This wine is not in the wine library yet, so it is queued for research.",
     );
@@ -206,7 +317,9 @@ describe("naming it books the stock then — once, on the record", () => {
       return book(args);
     };
     await name(t);
-    expect(t.inTransitMoves).toEqual([{ p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: -6 }]);
+    expect(t.inTransitMoves).toEqual([
+      { p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: -6 },
+    ]);
     expect(read.in_transit_quantity).toBe(8);
   });
 
@@ -228,7 +341,9 @@ describe("naming it books the stock then — once, on the record", () => {
 
   it("a staff member may not name it; nothing is written", async () => {
     const t = build();
-    await expect(name(t, { userId: STAFF })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(name(t, { userId: STAFF })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(t.live()).toHaveLength(0);
     expect(t.db.tables.delivery_item_to_name[0].status).toBe("open");
   });
@@ -236,20 +351,31 @@ describe("naming it books the stock then — once, on the record", () => {
   it("a role that cannot be read refuses; nothing is written", async () => {
     const t = build();
     t.failRoleRead();
-    await expect(name(t)).rejects.toThrow(/could not be read \(user_restaurant_access: connection reset\)/);
+    await expect(name(t)).rejects.toThrow(
+      /could not be read \(user_restaurant_access: connection reset\)/,
+    );
     expect(t.live()).toHaveLength(0);
   });
 
   it("a zero-bottle delivery must say how many came in", async () => {
     const t = build();
-    await expect(name(t, { bottles: null })).rejects.toThrow(/say how many bottles came in/);
-    await expect(name(t, { bottles: 0 })).rejects.toThrow(/whole number from 1/);
+    await expect(name(t, { bottles: null })).rejects.toThrow(
+      /say how many bottles came in/,
+    );
+    await expect(name(t, { bottles: 0 })).rejects.toThrow(
+      /whole number from 1/,
+    );
     expect(t.live()).toHaveLength(0);
   });
 
   it("a delivery that resolved to bottles books that count; another number is refused", async () => {
-    const t = build({ ask: { why: "no_item", bottles_resolved: 12 }, order: { inventory_id: null } });
-    await expect(name(t, { bottles: 11 })).rejects.toThrow(/resolved to 12 bottles; 11 is not that number/);
+    const t = build({
+      ask: { why: "no_item", bottles_resolved: 12 },
+      order: { inventory_id: null },
+    });
+    await expect(name(t, { bottles: 11 })).rejects.toThrow(
+      /resolved to 12 bottles; 11 is not that number/,
+    );
     expect(t.live()).toHaveLength(0);
     const out = await name(t, { bottles: null });
     expect(out.bottlesBooked).toBe(12);
@@ -259,14 +385,26 @@ describe("naming it books the stock then — once, on the record", () => {
 
   it("an item other than the order's own is refused", async () => {
     const t = build({ item: {} });
-    t.db.tables.restaurant_inventory.push({ id: "item-b", restaurant_id: HOUSE, master_wine_id: null, wine_name: "B" });
-    await expect(name(t, { inventoryId: "item-b" })).rejects.toThrow(/order is for another item/);
+    t.db.tables.restaurant_inventory.push({
+      id: "item-b",
+      restaurant_id: HOUSE,
+      master_wine_id: null,
+      wine_name: "B",
+    });
+    await expect(name(t, { inventoryId: "item-b" })).rejects.toThrow(
+      /order is for another item/,
+    );
     expect(t.live()).toHaveLength(0);
   });
 
   it("another house's item is refused", async () => {
-    const t = build({ ask: { why: "no_item", bottles_resolved: 6 }, order: { inventory_id: null } });
-    await expect(name(t, { inventoryId: OTHER_ITEM })).rejects.toThrow(/not an item of this house/);
+    const t = build({
+      ask: { why: "no_item", bottles_resolved: 6 },
+      order: { inventory_id: null },
+    });
+    await expect(name(t, { inventoryId: OTHER_ITEM })).rejects.toThrow(
+      /not an item of this house/,
+    );
     expect(t.live()).toHaveLength(0);
     expect(t.db.tables.procurement_orders[0].inventory_id).toBeNull();
   });
@@ -277,12 +415,19 @@ describe("naming it books the stock then — once, on the record", () => {
     // proactive close (receiving.service.ts, delivery-stock.service.ts) is
     // covered below, on the primitive itself.
     const t = build();
-    t.db.tables.inventory_transactions.push({ order_id: ORDER, delivery_id: "d-1", idempotency_key: "delivery-line:d-1:doc:1" });
-    await expect(name(t)).rejects.toThrow(/receiving door has booked this order's stock/);
+    t.db.tables.inventory_transactions.push({
+      order_id: ORDER,
+      delivery_id: "d-1",
+      idempotency_key: "delivery-line:d-1:doc:1",
+    });
+    await expect(name(t)).rejects.toThrow(
+      /receiving door has booked this order's stock/,
+    );
     expect(t.live()).toHaveLength(0);
     expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({
       status: "booked_elsewhere",
-      closed_reason: "The receiving door booked this order's stock before its item was named.",
+      closed_reason:
+        "The receiving door booked this order's stock before its item was named.",
     });
     expect(t.db.tables.delivery_item_to_name[0].closed_at).toBeTruthy();
   });
@@ -298,13 +443,24 @@ describe("naming it books the stock then — once, on the record", () => {
       delivery_id: null,
       idempotency_key: "door-receipt:evt-1",
     });
-    await expect(name(t)).rejects.toThrow(/booked since it was delivered \(at the door, at its verification, or by an earlier delivery\)/);
+    await expect(name(t)).rejects.toThrow(
+      /booked since it was delivered \(at the door, at its verification, or by an earlier delivery\)/,
+    );
     expect(t.live()).toHaveLength(0);
-    expect(t.db.tables.delivery_item_to_name[0].status).toBe("booked_elsewhere");
+    expect(t.db.tables.delivery_item_to_name[0].status).toBe(
+      "booked_elsewhere",
+    );
   });
 
   it("an ask already closed as booked_elsewhere says why naming refuses, instead of the generic 'already named' 409", async () => {
-    const t = build({ ask: { status: "booked_elsewhere", closed_at: "2026-09-22T09:00:00Z", closed_reason: "A verification booked this order's stock before its item was named." } });
+    const t = build({
+      ask: {
+        status: "booked_elsewhere",
+        closed_at: "2026-09-22T09:00:00Z",
+        closed_reason:
+          "A verification booked this order's stock before its item was named.",
+      },
+    });
     let thrown: any;
     try {
       await name(t);
@@ -313,7 +469,9 @@ describe("naming it books the stock then — once, on the record", () => {
     }
     expect(thrown?.getStatus?.()).toBe(409);
     expect(thrown.getResponse().reason).toBe("delivery_item_booked_elsewhere");
-    expect(thrown.getResponse().message).toContain("A verification booked this order's stock before its item was named.");
+    expect(thrown.getResponse().message).toContain(
+      "A verification booked this order's stock before its item was named.",
+    );
     expect(t.live()).toHaveLength(0);
   });
 
@@ -326,9 +484,20 @@ describe("naming it books the stock then — once, on the record", () => {
   });
 
   it("a refused booking puts the ask back to open, and a no-item order is unlinked again", async () => {
-    const t = build({ ask: { why: "no_item", bottles_resolved: 6 }, order: { inventory_id: null }, liveError: "item is not an item of restaurant" });
-    await expect(name(t, { bottles: null })).rejects.toMatchObject({ status: 422 });
-    expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({ status: "open", named_by: null, named_inventory_id: null, bottles_booked: null });
+    const t = build({
+      ask: { why: "no_item", bottles_resolved: 6 },
+      order: { inventory_id: null },
+      liveError: "item is not an item of restaurant",
+    });
+    await expect(name(t, { bottles: null })).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({
+      status: "open",
+      named_by: null,
+      named_inventory_id: null,
+      bottles_booked: null,
+    });
     expect(t.db.tables.procurement_orders[0].inventory_id).toBeNull();
     expect(t.db.tables.system_audit_log).toHaveLength(0);
   });
@@ -355,7 +524,9 @@ describe("naming it books the stock then — once, on the record", () => {
   });
 
   it("a library wine is booked and not queued for research", async () => {
-    const t = build({ item: { master_wine_id: "55555555-5555-4555-8555-555555555555" } });
+    const t = build({
+      item: { master_wine_id: "55555555-5555-4555-8555-555555555555" },
+    });
     const out = await name(t);
     expect(out.research).toBeNull();
     expect(t.db.tables.house_item_research).toHaveLength(0);
@@ -365,16 +536,25 @@ describe("naming it books the stock then — once, on the record", () => {
 describe("closeDeliveryItemToNameBookedElsewhere — the ask closes itself (founder, 2026-09-22, round 6z, verbatim pick 2)", () => {
   it("closes an open ask, once, with the reason for whichever door called it", async () => {
     const t = build();
-    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "receiving_door" });
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, {
+      restaurantId: HOUSE,
+      orderId: ORDER,
+      via: "receiving_door",
+    });
     expect(out).toEqual({ ok: true, closed: true });
     expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({
       status: "booked_elsewhere",
-      closed_reason: "The receiving door booked this order's stock before its item was named.",
+      closed_reason:
+        "The receiving door booked this order's stock before its item was named.",
     });
 
     // A second call (e.g. a verification correction on the same already-closed
     // order) is a no-op, not a second close and not an overwritten reason.
-    const again = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "verification" });
+    const again = await closeDeliveryItemToNameBookedElsewhere(t.db, {
+      restaurantId: HOUSE,
+      orderId: ORDER,
+      via: "verification",
+    });
     expect(again).toEqual({ ok: true, closed: false });
     expect(t.db.tables.delivery_item_to_name[0].closed_reason).toBe(
       "The receiving door booked this order's stock before its item was named.",
@@ -383,13 +563,29 @@ describe("closeDeliveryItemToNameBookedElsewhere — the ask closes itself (foun
 
   it("an order with no ask at all is a no-op, not an error", async () => {
     const t = build({ ask: null });
-    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "verification" });
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, {
+      restaurantId: HOUSE,
+      orderId: ORDER,
+      via: "verification",
+    });
     expect(out).toEqual({ ok: true, closed: false });
   });
 
   it("a named ask is left alone — naming already happened; this never re-closes it", async () => {
-    const t = build({ ask: { status: "named", named_by: OWNER, named_at: "2026-09-22T08:05:00Z", named_inventory_id: ITEM, bottles_booked: 6 } });
-    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "receiving_door" });
+    const t = build({
+      ask: {
+        status: "named",
+        named_by: OWNER,
+        named_at: "2026-09-22T08:05:00Z",
+        named_inventory_id: ITEM,
+        bottles_booked: 6,
+      },
+    });
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, {
+      restaurantId: HOUSE,
+      orderId: ORDER,
+      via: "receiving_door",
+    });
     expect(out).toEqual({ ok: true, closed: false });
     expect(t.db.tables.delivery_item_to_name[0].status).toBe("named");
   });
@@ -397,7 +593,14 @@ describe("closeDeliveryItemToNameBookedElsewhere — the ask closes itself (foun
   it("a failed write is said, never thrown — the booking that triggered it already happened", async () => {
     const t = build();
     t.db.failures.delivery_item_to_name = "connection reset";
-    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "verification" });
-    expect(out).toEqual({ ok: false, error: expect.stringMatching(/could not be closed \(connection reset\)/) });
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, {
+      restaurantId: HOUSE,
+      orderId: ORDER,
+      via: "verification",
+    });
+    expect(out).toEqual({
+      ok: false,
+      error: expect.stringMatching(/could not be closed \(connection reset\)/),
+    });
   });
 });

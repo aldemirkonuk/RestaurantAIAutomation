@@ -116,7 +116,10 @@ export class CreateInventoryItemDto {
   // every margin and valuation already reads (one bottle-price column, not
   // two). Founder, 2026-09-19: "we're going to add a per house bottle price";
   // 2026-09-21: "it should be changed whenever the manager wants".
-  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  @ApiPropertyOptional({
+    description:
+      "Menu price per bottle (this house's own price, not the library's)",
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -231,7 +234,10 @@ export class UpdateInventoryItemDto {
   // every margin and valuation already reads (one bottle-price column, not
   // two). Founder, 2026-09-19: "we're going to add a per house bottle price";
   // 2026-09-21: "it should be changed whenever the manager wants".
-  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  @ApiPropertyOptional({
+    description:
+      "Menu price per bottle (this house's own price, not the library's)",
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -410,7 +416,10 @@ export class BulkInventoryLineDto {
   // every margin and valuation already reads (one bottle-price column, not
   // two). Founder, 2026-09-19: "we're going to add a per house bottle price";
   // 2026-09-21: "it should be changed whenever the manager wants".
-  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  @ApiPropertyOptional({
+    description:
+      "Menu price per bottle (this house's own price, not the library's)",
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -584,7 +593,10 @@ export class InventoryItemResponseDto {
   @ApiPropertyOptional({ description: "Menu price per glass" })
   menuPriceGlass?: number;
 
-  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  @ApiPropertyOptional({
+    description:
+      "Menu price per bottle (this house's own price, not the library's)",
+  })
   menuPriceBottle?: number;
 
   @ApiPropertyOptional({
@@ -769,7 +781,11 @@ export class AuctionLotRecordResponseDto {
   @ApiProperty()
   bottles: number;
 
-  @ApiPropertyOptional({ nullable: true, description: "The house's currency when the lot was recorded; null on a record written before 2026-09-21." })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The house's currency when the lot was recorded; null on a record written before 2026-09-21.",
+  })
   houseCurrency: string | null;
 
   @ApiPropertyOptional({ nullable: true })
@@ -778,7 +794,11 @@ export class AuctionLotRecordResponseDto {
   @ApiPropertyOptional({ nullable: true })
   houseUnitCost: number | null;
 
-  @ApiPropertyOptional({ nullable: true, description: "What the book was given per bottle, in houseCurrency; null on an older record, which never recorded it." })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "What the book was given per bottle, in houseCurrency; null on an older record, which never recorded it.",
+  })
   bookedUnitCost: number | null;
 
   @ApiProperty()

@@ -270,7 +270,9 @@ export function firingGrain(
   if (!Number.isFinite(t)) throw new Error("a firing needs a real instant");
   // The house's calendar date, held as that date's UTC midnight, so the
   // UTC reads below name the house's day, week and month.
-  const at = zone ? new Date(`${houseToday(zone, instant)}T00:00:00Z`) : instant;
+  const at = zone
+    ? new Date(`${houseToday(zone, instant)}T00:00:00Z`)
+    : instant;
   const y = at.getUTCFullYear();
   if (period === "day")
     return `${FIRING_GRAIN_PREFIX}:day:${y}-${pad2(at.getUTCMonth() + 1)}-${pad2(at.getUTCDate())}`;
@@ -301,7 +303,10 @@ export function withFiring<T extends SuppressionTarget>(
   at: Date,
   zone?: string | null,
 ): T {
-  if (slugSubject(target.subject) !== ANY || safeGrain(target.periodKey) !== ANY)
+  if (
+    slugSubject(target.subject) !== ANY ||
+    safeGrain(target.periodKey) !== ANY
+  )
     return target;
   return { ...target, periodKey: firingGrain(period, at, zone) };
 }

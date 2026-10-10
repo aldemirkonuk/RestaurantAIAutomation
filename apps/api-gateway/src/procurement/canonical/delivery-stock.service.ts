@@ -246,9 +246,11 @@ export class DeliveryStockService {
     if (!already.ok) return already;
 
     // Pass one: which lines can be booked, onto which item, for how many.
-    const countable: { lineNo: number; inventoryId: string; wanted: number }[] = [];
+    const countable: { lineNo: number; inventoryId: string; wanted: number }[] =
+      [];
     for (const line of lines) {
-      const label = line.description ?? line.vendor_sku ?? `line ${line.line_no}`;
+      const label =
+        line.description ?? line.vendor_sku ?? `line ${line.line_no}`;
       if (line.line_no == null) {
         notBooked.push({
           documentId,
@@ -296,14 +298,18 @@ export class DeliveryStockService {
     // keyed on the item's first line. Its later lines report delta 0.
     const wantedPerItem = new Map<string, number>();
     for (const c of countable)
-      wantedPerItem.set(c.inventoryId, (wantedPerItem.get(c.inventoryId) ?? 0) + c.wanted);
+      wantedPerItem.set(
+        c.inventoryId,
+        (wantedPerItem.get(c.inventoryId) ?? 0) + c.wanted,
+      );
 
     // Pass two: book each item once.
     const settled = new Set<string>();
     for (const { lineNo, inventoryId } of countable) {
       const delta = settled.has(inventoryId)
         ? 0
-        : (wantedPerItem.get(inventoryId) ?? 0) - (already.value.get(inventoryId) ?? 0);
+        : (wantedPerItem.get(inventoryId) ?? 0) -
+          (already.value.get(inventoryId) ?? 0);
       settled.add(inventoryId);
       if (delta === 0) {
         booked.push({
@@ -344,7 +350,9 @@ export class DeliveryStockService {
     // the wine library lacks is queued for research by its id, once per item.
     // After the bookings, never undoing them; a failure is listed and logged.
     const research: NonNullable<BookingReceipt["research"]> = [];
-    const bookedInto = [...new Set(booked.filter((b) => b.delta > 0).map((b) => b.inventoryId))];
+    const bookedInto = [
+      ...new Set(booked.filter((b) => b.delta > 0).map((b) => b.inventoryId)),
+    ];
     for (const inventoryId of bookedInto) {
       const queued = await queueResearchIfLibraryLacks(this.db.getClient(), {
         restaurantId,
@@ -372,11 +380,14 @@ export class DeliveryStockService {
     // delivery with no order has no ask keyed to it, so there is none to close.
     const bookedOrderId = delivery.value.orderId;
     if (bookedInto.length > 0 && bookedOrderId) {
-      const closed = await closeDeliveryItemToNameBookedElsewhere(this.db.getClient(), {
-        restaurantId,
-        orderId: bookedOrderId,
-        via: "receiving_door",
-      });
+      const closed = await closeDeliveryItemToNameBookedElsewhere(
+        this.db.getClient(),
+        {
+          restaurantId,
+          orderId: bookedOrderId,
+          via: "receiving_door",
+        },
+      );
       if (!closed.ok) {
         this.logger.error(
           `bookAtTheDoor: delivery ${deliveryId} booked order ${bookedOrderId}, but its stale name-item ask was not closed: ${closed.error}`,
@@ -386,7 +397,14 @@ export class DeliveryStockService {
 
     return {
       ok: true,
-      value: { deliveryId, documentId, booked, notBooked, bottlesMoved, research },
+      value: {
+        deliveryId,
+        documentId,
+        booked,
+        notBooked,
+        bottlesMoved,
+        research,
+      },
     };
   }
 
@@ -447,16 +465,14 @@ export class DeliveryStockService {
         continue;
       }
 
-      const rpc = await this.db
-        .getClient()
-        .rpc("finalise_delivery_cost", {
-          p_delivery_id: deliveryId,
-          p_inventory_id: inventoryId,
-          p_unit_cost: price.unitCost,
-          p_cost_provenance: price.provenance,
-          p_performed_by: userId,
-          p_reason: `delivery ${deliveryId} verified (ADR 0103 A1)`,
-        });
+      const rpc = await this.db.getClient().rpc("finalise_delivery_cost", {
+        p_delivery_id: deliveryId,
+        p_inventory_id: inventoryId,
+        p_unit_cost: price.unitCost,
+        p_cost_provenance: price.provenance,
+        p_performed_by: userId,
+        p_reason: `delivery ${deliveryId} verified (ADR 0103 A1)`,
+      });
       if (rpc.error)
         return {
           ok: false,
@@ -647,7 +663,11 @@ export class DeliveryStockService {
     restaurantId: string,
     deliveryId: string,
   ): Promise<
-    StockResult<{ state: string; orderId: string | null; orderInventoryId: string | null }>
+    StockResult<{
+      state: string;
+      orderId: string | null;
+      orderInventoryId: string | null;
+    }>
   > {
     const read = await this.db
       .getClient()
@@ -662,8 +682,12 @@ export class DeliveryStockService {
         status: 500,
         error: `delivery ${deliveryId} could not be read: ${read.error.message}`,
       };
-    if (!read.data) return { ok: false, status: 404, error: "Delivery not found" };
-    const row = read.data as unknown as { state: string; order_id: string | null };
+    if (!read.data)
+      return { ok: false, status: 404, error: "Delivery not found" };
+    const row = read.data as unknown as {
+      state: string;
+      order_id: string | null;
+    };
 
     let orderInventoryId: string | null = null;
     if (row.order_id) {
@@ -720,7 +744,9 @@ export class DeliveryStockService {
       );
       return;
     }
-    const ids = ((docs.data ?? []) as { document_id: string }[]).map((d) => d.document_id);
+    const ids = ((docs.data ?? []) as { document_id: string }[]).map(
+      (d) => d.document_id,
+    );
     const stated = new Set<string>();
     if (ids.length) {
       const read = await client
@@ -752,7 +778,8 @@ export class DeliveryStockService {
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         .maybeSingle();
-      code = (order.data as { currency?: string | null } | null)?.currency ?? null;
+      code =
+        (order.data as { currency?: string | null } | null)?.currency ?? null;
     }
     if (!code || !/^[A-Z]{3}$/.test(code)) return;
     const write = await client

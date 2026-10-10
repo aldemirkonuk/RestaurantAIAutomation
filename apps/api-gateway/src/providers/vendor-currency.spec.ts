@@ -1,8 +1,5 @@
 import { ForbiddenException } from "@nestjs/common";
-import {
-  readVendorCurrency,
-  vendorCurrencySentence,
-} from "./vendor-currency";
+import { readVendorCurrency, vendorCurrencySentence } from "./vendor-currency";
 import { ProvidersController } from "./providers.controller";
 import {
   orderCurrencyOffer,
@@ -83,7 +80,10 @@ describe("vendorCurrencySentence — the profile says what it is FOR", () => {
     // Rows can hold one: `ZZZ` was writable here until 2026-09-06. Saying the
     // field is empty about a field that plainly reads ZZZ sends a manager
     // looking for something that is not there.
-    const s = vendorCurrencySentence({ code: "ZZZ", vendorName: "Bir Dagitim" });
+    const s = vendorCurrencySentence({
+      code: "ZZZ",
+      vendorName: "Bir Dagitim",
+    });
     expect(s).toContain("recorded as ZZZ");
     expect(s).toContain("does not name a currency");
     expect(s).not.toContain("has not stated a usual currency");

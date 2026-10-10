@@ -196,7 +196,11 @@ describe("VendorComparisonService.belowTrailingAverage", () => {
           const left = [...rows]
             .sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1))
             .filter((r) => after === null || String(r.id) > after);
-          resolve({ data: left.slice(0, Math.min(limit, 1000)), error, count: left.length });
+          resolve({
+            data: left.slice(0, Math.min(limit, 1000)),
+            error,
+            count: left.length,
+          });
         },
       };
       return q;
@@ -225,9 +229,16 @@ describe("VendorComparisonService.belowTrailingAverage", () => {
       yield_factor: 1,
     });
     const old = Array.from({ length: 1500 }, (_, i) =>
-      row(i, 100, new Date(Date.now() - (20 * 86_400_000 - i * 60_000)).toISOString()),
+      row(
+        i,
+        100,
+        new Date(Date.now() - (20 * 86_400_000 - i * 60_000)).toISOString(),
+      ),
     );
-    const { service } = makeService([...old, row(99999, 60, new Date(Date.now() - 3_600_000).toISOString())]);
+    const { service } = makeService([
+      ...old,
+      row(99999, 60, new Date(Date.now() - 3_600_000).toISOString()),
+    ]);
     const out = await service.belowTrailingAverage({ restaurantId: "rest-1" });
     expect(out.scanned.observations).toBe(1501);
   });
@@ -255,7 +266,9 @@ describe("VendorComparisonService.belowTrailingAverage", () => {
     const { service, calls } = makeService([]);
     await service.belowTrailingAverage({ restaurantId: "rest-1" });
     expect(calls.or[0]).toBe(NOT_CONTRIBUTED_ONLY);
-    expect(NOT_CONTRIBUTED_ONLY).toContain("visibility.neq.contributed_aggregate_only");
+    expect(NOT_CONTRIBUTED_ONLY).toContain(
+      "visibility.neq.contributed_aggregate_only",
+    );
   });
 
   it("throws when the register cannot be read, instead of returning an empty box", async () => {

@@ -26,7 +26,9 @@ import {
  *    not; it chose nothing, and `policySet` is the difference.
  */
 
-function row(p: Partial<ThresholdRow> & Pick<ThresholdRow, "rule">): ThresholdRow {
+function row(
+  p: Partial<ThresholdRow> & Pick<ThresholdRow, "rule">,
+): ThresholdRow {
   return {
     enabled: true,
     amountLimit: null,
@@ -39,19 +41,32 @@ function row(p: Partial<ThresholdRow> & Pick<ThresholdRow, "rule">): ThresholdRo
 }
 
 function order(p: Partial<OrderUnderTest> = {}): OrderUnderTest {
-  return { total: null, isFirstOrderToVendor: false, pricePremiumPct: null, ...p };
+  return {
+    total: null,
+    isFirstOrderToVendor: false,
+    pricePremiumPct: null,
+    ...p,
+  };
 }
 
 describe("decideApproval", () => {
   it("fires the ceiling only ABOVE the limit, never at it", () => {
     const policy = [row({ rule: "manager_ceiling", amountLimit: 15000 })];
-    expect(decideApproval(policy, order({ total: 15000 })).requiredRole).toBeNull();
-    expect(decideApproval(policy, order({ total: 15000.01 })).requiredRole).toBe("owner");
+    expect(
+      decideApproval(policy, order({ total: 15000 })).requiredRole,
+    ).toBeNull();
+    expect(
+      decideApproval(policy, order({ total: 15000.01 })).requiredRole,
+    ).toBe("owner");
   });
 
   it("takes the STRONGEST role when two rules fire, not the first", () => {
     const policy = [
-      row({ rule: "manager_ceiling", amountLimit: 100, requiredRole: "manager" }),
+      row({
+        rule: "manager_ceiling",
+        amountLimit: 100,
+        requiredRole: "manager",
+      }),
       row({ rule: "new_vendor", requiredRole: "owner" }),
     ];
     const d = decideApproval(
@@ -79,7 +94,9 @@ describe("decideApproval", () => {
   });
 
   it("ignores a disabled rule but keeps the house's policy non-empty", () => {
-    const policy = [row({ rule: "manager_ceiling", amountLimit: 10, enabled: false })];
+    const policy = [
+      row({ rule: "manager_ceiling", amountLimit: 10, enabled: false }),
+    ];
     const d = decideApproval(policy, order({ total: 9999 }));
     expect(d.requiredRole).toBeNull();
     // The house HAS a policy; it has switched this rule off.
@@ -122,19 +139,25 @@ describe("decideApproval — across currencies and price units (F-648)", () => {
 
   it("keeps the old reading when either currency is unknown", () => {
     expect(
-      decideApproval(ceil, order({ total: 2400, currency: null, ceilingCurrency: "USD" }))
-        .requiredRole,
+      decideApproval(
+        ceil,
+        order({ total: 2400, currency: null, ceilingCurrency: "USD" }),
+      ).requiredRole,
     ).toBeNull();
     expect(
-      decideApproval(ceil, order({ total: 2400, currency: "USD", ceilingCurrency: "USD" }))
-        .requiredRole,
+      decideApproval(
+        ceil,
+        order({ total: 2400, currency: "USD", ceilingCurrency: "USD" }),
+      ).requiredRole,
     ).toBeNull();
   });
 
   it("reports price_jump untestable when the prices cannot be compared", () => {
     const d = decideApproval(
       [row({ rule: "price_jump", percentLimit: 5 })],
-      order({ priceUncomparable: "the last price was in GBP and this one is in USD" }),
+      order({
+        priceUncomparable: "the last price was in GBP and this one is in USD",
+      }),
     );
     expect(d.requiredRole).toBeNull();
     expect(d.untestable).toEqual(["price_jump"]);
@@ -165,14 +188,20 @@ describe("pricePremium", () => {
   it("refuses to compare a keg price with a bottle price", () => {
     const r = pricePremium(
       { price: 38, currency: "USD", priceUnit: null },
-      { price: 200, currency: "USD", priceUnit: { priceUom: "keg", pricePackSize: 1 } },
+      {
+        price: 200,
+        currency: "USD",
+        priceUnit: { priceUom: "keg", pricePackSize: 1 },
+      },
     );
     expect(r.pct).toBeNull();
     expect(r.uncomparable).toMatch(/keg/);
   });
 
   it("has no premium without an earlier price", () => {
-    expect(pricePremium({ price: 38, currency: "USD", priceUnit: null }, null)).toEqual({
+    expect(
+      pricePremium({ price: 38, currency: "USD", priceUnit: null }, null),
+    ).toEqual({
       pct: null,
       uncomparable: null,
     });
@@ -193,10 +222,22 @@ describe("retrospective", () => {
       order({ total: null, isFirstOrderToVendor: false }),
     ];
     const counts = retrospective(policy, orders);
-    expect(counts).toContainEqual({ rule: "manager_ceiling", tested: 3, wouldHaveFired: 1 });
-    expect(counts).toContainEqual({ rule: "new_vendor", tested: 4, wouldHaveFired: 1 });
+    expect(counts).toContainEqual({
+      rule: "manager_ceiling",
+      tested: 3,
+      wouldHaveFired: 1,
+    });
+    expect(counts).toContainEqual({
+      rule: "new_vendor",
+      tested: 4,
+      wouldHaveFired: 1,
+    });
     // A rule the house has not set is counted as tested against nothing.
-    expect(counts).toContainEqual({ rule: "price_jump", tested: 0, wouldHaveFired: 0 });
+    expect(counts).toContainEqual({
+      rule: "price_jump",
+      tested: 0,
+      wouldHaveFired: 0,
+    });
   });
 
   it("counts a DISABLED rule as if it were on, because that is the question being asked", () => {
@@ -204,7 +245,11 @@ describe("retrospective", () => {
       [row({ rule: "manager_ceiling", amountLimit: 100, enabled: false })],
       [order({ total: 500 })],
     );
-    expect(counts[0]).toEqual({ rule: "manager_ceiling", tested: 1, wouldHaveFired: 1 });
+    expect(counts[0]).toEqual({
+      rule: "manager_ceiling",
+      tested: 1,
+      wouldHaveFired: 1,
+    });
   });
 });
 
@@ -231,7 +276,8 @@ function makeDb(
           upserts.push({ table, row });
           return errors[table] ? { error: errors[table] } : { error: null };
         },
-        then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+        then: (resolve: (v: unknown) => unknown) =>
+          Promise.resolve(result).then(resolve),
       };
       return chain;
     },
@@ -289,7 +335,9 @@ describe("ApprovalThresholdsService", () => {
     expect(out.policyEmpty).toBe(true);
     expect(out.enforcement.enforcedBy).toEqual([ENFORCED_AT]);
     expect(out.enforcement.wouldBeEnforcedAt).toBe(ENFORCED_AT);
-    expect(out.enforcement.wouldBeEnforcedAt).toContain("procurement.service.ts");
+    expect(out.enforcement.wouldBeEnforcedAt).toContain(
+      "procurement.service.ts",
+    );
     // The note describes the gate that exists, not the guard that used to be
     // the only thing on the route.
     expect(out.enforcement.note).not.toContain("JwtAuthGuard alone");
@@ -312,8 +360,20 @@ describe("ApprovalThresholdsService", () => {
         },
       ],
       procurement_orders: [
-        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-01T08:00:00Z", total_cost: "500", final_price: "10" },
-        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-02T08:00:00Z", total_cost: "5000", final_price: "13" },
+        {
+          provider_id: "p1",
+          inventory_id: "i1",
+          requested_at: "2026-09-01T08:00:00Z",
+          total_cost: "500",
+          final_price: "10",
+        },
+        {
+          provider_id: "p1",
+          inventory_id: "i1",
+          requested_at: "2026-09-02T08:00:00Z",
+          total_cost: "5000",
+          final_price: "13",
+        },
       ],
       users: [{ user_id: "u-1", name: "Deniz Aksoy" }],
     });
@@ -351,9 +411,36 @@ describe("ApprovalThresholdsService", () => {
       ],
       procurement_orders: [
         // p1: a cancelled draft, then a two-line first cart — one first order.
-        { id: "x", status: "CANCELLED", provider_id: "p1", inventory_id: null, requested_at: "2026-09-01T08:00:00Z", created_at: "2026-09-01T08:00:00Z", total_cost: "10", final_price: null },
-        { id: "a", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z", total_cost: "10", final_price: null },
-        { id: "b", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z", total_cost: "10", final_price: null },
+        {
+          id: "x",
+          status: "CANCELLED",
+          provider_id: "p1",
+          inventory_id: null,
+          requested_at: "2026-09-01T08:00:00Z",
+          created_at: "2026-09-01T08:00:00Z",
+          total_cost: "10",
+          final_price: null,
+        },
+        {
+          id: "a",
+          status: "PENDING",
+          provider_id: "p1",
+          inventory_id: null,
+          requested_at: "2026-09-02T08:00:00Z",
+          created_at: "2026-09-02T08:00:00Z",
+          total_cost: "10",
+          final_price: null,
+        },
+        {
+          id: "b",
+          status: "PENDING",
+          provider_id: "p1",
+          inventory_id: null,
+          requested_at: "2026-09-02T08:00:00Z",
+          created_at: "2026-09-02T08:00:00Z",
+          total_cost: "10",
+          final_price: null,
+        },
       ],
       users: [],
     });
@@ -387,11 +474,30 @@ describe("ApprovalThresholdsService", () => {
       ],
       procurement_orders: [
         // DELIVERED: only a price paid becomes the next comparison (F-479).
-        { provider_id: "p1", inventory_id: "i1", status: "DELIVERED", requested_at: "2026-09-01T08:00:00Z", total_cost: "100", final_price: "10" },
+        {
+          provider_id: "p1",
+          inventory_id: "i1",
+          status: "DELIVERED",
+          requested_at: "2026-09-01T08:00:00Z",
+          total_cost: "100",
+          final_price: "10",
+        },
         // +30% on the same item — over the 12% the house allows.
-        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-02T08:00:00Z", total_cost: "130", final_price: "13" },
+        {
+          provider_id: "p1",
+          inventory_id: "i1",
+          requested_at: "2026-09-02T08:00:00Z",
+          total_cost: "130",
+          final_price: "13",
+        },
         // A different item, so no comparison exists for it yet.
-        { provider_id: "p1", inventory_id: "i2", requested_at: "2026-09-03T08:00:00Z", total_cost: "90", final_price: "9" },
+        {
+          provider_id: "p1",
+          inventory_id: "i2",
+          requested_at: "2026-09-03T08:00:00Z",
+          total_cost: "90",
+          final_price: "9",
+        },
       ],
       users: [],
     });
@@ -423,7 +529,12 @@ describe("ApprovalThresholdsService", () => {
   it("reports a missing table by name rather than as 'no policy'", async () => {
     const { databaseService } = makeDb(
       {},
-      { restaurant_approval_thresholds: { message: "relation does not exist", code: "42P01" } },
+      {
+        restaurant_approval_thresholds: {
+          message: "relation does not exist",
+          code: "42P01",
+        },
+      },
     );
     const out = await new ApprovalThresholdsService(
       databaseService,
@@ -450,11 +561,19 @@ describe("ApprovalThresholdsService", () => {
       users: [],
     });
     const audit = makeAudit();
-    const service = new ApprovalThresholdsService(databaseService, audit.service);
+    const service = new ApprovalThresholdsService(
+      databaseService,
+      audit.service,
+    );
 
     const result = await service.write(
       "rest-1",
-      { rule: "manager_ceiling", enabled: true, amountLimit: 15000, requiredRole: "owner" },
+      {
+        rule: "manager_ceiling",
+        enabled: true,
+        amountLimit: 15000,
+        requiredRole: "owner",
+      },
       "u-4",
     );
 
@@ -470,7 +589,10 @@ describe("ApprovalThresholdsService", () => {
       subject: "manager_ceiling",
       actorUserId: "u-4",
     });
-    expect(audit.filed[0].fields.amount_limit).toEqual({ from: 10000, to: 15000 });
+    expect(audit.filed[0].fields.amount_limit).toEqual({
+      from: 10000,
+      to: 15000,
+    });
     // The role did not move, so it is not in the row.
     expect(audit.filed[0].fields.required_role).toBeUndefined();
     expect(result.audited).toBe(true);
@@ -552,7 +674,12 @@ describe("ApprovalThresholdsService — a failed name lookup is not an unsigned 
 
 describe("the first order to a vendor — one test for the gate, the walk and the count (F-731)", () => {
   const T = "2026-10-01T10:00:00Z";
-  const row = (id: string, status: string, requested_at: string | null, created_at = requested_at) => ({
+  const row = (
+    id: string,
+    status: string,
+    requested_at: string | null,
+    created_at = requested_at,
+  ) => ({
     id,
     status,
     provider_id: "p1",
@@ -583,12 +710,18 @@ describe("the first order to a vendor — one test for the gate, the walk and th
   });
 
   it("an order with no vendor is unknown, never 'not first'", () => {
-    const flags = firstOrderToVendorById([{ ...row("n", "PENDING", T), provider_id: null }]);
+    const flags = firstOrderToVendorById([
+      { ...row("n", "PENDING", T), provider_id: null },
+    ]);
     expect(flags.get("n")).toBeNull();
   });
 
   it("the gate's single-order form agrees with the ledger form", () => {
-    const rows = [row("a", "PENDING", T), row("b", "PENDING", T), row("x", "CANCELLED", "2026-01-01T00:00:00Z")];
+    const rows = [
+      row("a", "PENDING", T),
+      row("b", "PENDING", T),
+      row("x", "CANCELLED", "2026-01-01T00:00:00Z"),
+    ];
     const flags = firstOrderToVendorById(rows);
     for (const r of rows) {
       expect(isFirstOrderToVendorAmong(r, rows)).toBe(flags.get(r.id));
@@ -597,8 +730,26 @@ describe("the first order to a vendor — one test for the gate, the walk and th
 
   it("a page cut short says 'unknown' unless it reached this order", () => {
     const self = row("s", "PENDING", T);
-    expect(isFirstOrderToVendorAmong(self, [row("x", "CANCELLED", "2026-01-01T00:00:00Z")], false)).toBeNull();
-    expect(isFirstOrderToVendorAmong(self, [row("x", "CANCELLED", "2026-01-01T00:00:00Z"), self], false)).toBe(true);
-    expect(isFirstOrderToVendorAmong(self, [row("p", "DELIVERED", "2026-01-01T00:00:00Z")], false)).toBe(false);
+    expect(
+      isFirstOrderToVendorAmong(
+        self,
+        [row("x", "CANCELLED", "2026-01-01T00:00:00Z")],
+        false,
+      ),
+    ).toBeNull();
+    expect(
+      isFirstOrderToVendorAmong(
+        self,
+        [row("x", "CANCELLED", "2026-01-01T00:00:00Z"), self],
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      isFirstOrderToVendorAmong(
+        self,
+        [row("p", "DELIVERED", "2026-01-01T00:00:00Z")],
+        false,
+      ),
+    ).toBe(false);
   });
 });

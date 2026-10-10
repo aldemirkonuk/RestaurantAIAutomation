@@ -210,7 +210,11 @@ function makeService(opts: {
 
   const chain = {
     update: () => chain,
-    then: (resolve: any) => Promise.resolve({ data: opts.stateRow ? [opts.stateRow] : [], error: null }).then(resolve),
+    then: (resolve: any) =>
+      Promise.resolve({
+        data: opts.stateRow ? [opts.stateRow] : [],
+        error: null,
+      }).then(resolve),
     eq: () => chain,
     is: () => chain,
     gt: () => chain,
@@ -254,9 +258,12 @@ function makeService(opts: {
 }
 
 const consentFixture = {
-  sealId: "11111111-1111-4111-8111-111111111111", snapshot: { words: "Reviewed words" },
-  digest: "d".repeat(64), browserProofHash: "a".repeat(64),
-  browserRequestId: "22222222-2222-4222-8222-222222222222", frontendOrigin: "https://app.example.test",
+  sealId: "11111111-1111-4111-8111-111111111111",
+  snapshot: { words: "Reviewed words" },
+  digest: "d".repeat(64),
+  browserProofHash: "a".repeat(64),
+  browserRequestId: "22222222-2222-4222-8222-222222222222",
+  frontendOrigin: "https://app.example.test",
 };
 
 describe("createAuthorizationUrl", () => {
@@ -275,8 +282,13 @@ describe("createAuthorizationUrl", () => {
       returnPath: "//evil.test/steal",
     });
 
-    expect(captured.find(row => row.table === "integration_oauth_states")!.table).toBe("integration_oauth_states");
-    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.return_path).toBe("/settings");
+    expect(
+      captured.find((row) => row.table === "integration_oauth_states")!.table,
+    ).toBe("integration_oauth_states");
+    expect(
+      captured.find((row) => row.table === "integration_oauth_states")!.payload
+        .return_path,
+    ).toBe("/settings");
   });
 
   it.each([
@@ -295,7 +307,10 @@ describe("createAuthorizationUrl", () => {
       returnPath: input as string,
     });
 
-    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.return_path).toBe(expected);
+    expect(
+      captured.find((row) => row.table === "integration_oauth_states")!.payload
+        .return_path,
+    ).toBe(expected);
   });
 
   it("persists a state row whose columns match the migration", async () => {
@@ -311,7 +326,12 @@ describe("createAuthorizationUrl", () => {
 
     // Column names here are the contract the migration has to satisfy; a
     // rename on either side should fail loudly rather than 400 at runtime.
-    expect(Object.keys(captured.find(row => row.table === "integration_oauth_states")!.payload).sort()).toEqual([
+    expect(
+      Object.keys(
+        captured.find((row) => row.table === "integration_oauth_states")!
+          .payload,
+      ).sort(),
+    ).toEqual([
       "browser_proof_hash",
       "browser_request_id",
       "consent_receipt_id",
@@ -325,8 +345,14 @@ describe("createAuthorizationUrl", () => {
       "state",
       "user_id",
     ]);
-    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.provider).toBe("google");
-    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.integration_id).toBe("google_drive");
+    expect(
+      captured.find((row) => row.table === "integration_oauth_states")!.payload
+        .provider,
+    ).toBe("google");
+    expect(
+      captured.find((row) => row.table === "integration_oauth_states")!.payload
+        .integration_id,
+    ).toBe("google_drive");
 
     const url = new URL(authorizationUrl);
     expect(url.origin + url.pathname).toBe(
@@ -335,7 +361,10 @@ describe("createAuthorizationUrl", () => {
     // Google only returns a refresh token with both of these set.
     expect(url.searchParams.get("access_type")).toBe("offline");
     expect(url.searchParams.get("prompt")).toBe("consent");
-    expect(url.searchParams.get("state")).toBe(captured.find(row => row.table === "integration_oauth_states")!.payload.state);
+    expect(url.searchParams.get("state")).toBe(
+      captured.find((row) => row.table === "integration_oauth_states")!.payload
+        .state,
+    );
   });
 
   it("refuses to start the flow when token encryption is unconfigured", async () => {
@@ -343,8 +372,8 @@ describe("createAuthorizationUrl", () => {
     await expect(
       service.createAuthorizationUrl({
         userId: "u1",
-      restaurantId: "r1",
-      consent: consentFixture,
+        restaurantId: "r1",
+        consent: consentFixture,
         integrationId: "google_drive",
       }),
     ).rejects.toThrow(/encryption/i);
@@ -391,8 +420,10 @@ describe("handleCallback", () => {
         provider: "google",
         integration_id: "google_drive",
         return_path: "/settings/integrations",
-        consent_receipt_id: consentFixture.sealId, browser_proof_hash: consentFixture.browserProofHash,
-        browser_request_id: consentFixture.browserRequestId, frontend_origin: consentFixture.frontendOrigin,
+        consent_receipt_id: consentFixture.sealId,
+        browser_proof_hash: consentFixture.browserProofHash,
+        browser_request_id: consentFixture.browserRequestId,
+        frontend_origin: consentFixture.frontendOrigin,
       },
     });
 
@@ -420,8 +451,10 @@ describe("handleCallback", () => {
         provider: "google",
         integration_id: "google_drive",
         return_path: "/settings",
-        consent_receipt_id: consentFixture.sealId, browser_proof_hash: consentFixture.browserProofHash,
-        browser_request_id: consentFixture.browserRequestId, frontend_origin: consentFixture.frontendOrigin,
+        consent_receipt_id: consentFixture.sealId,
+        browser_proof_hash: consentFixture.browserProofHash,
+        browser_request_id: consentFixture.browserRequestId,
+        frontend_origin: consentFixture.frontendOrigin,
       },
     });
 

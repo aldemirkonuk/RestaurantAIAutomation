@@ -21,7 +21,9 @@ function fakeDb(
     const filters: Array<(r: Row) => boolean> = [];
     let patch: Row | null = null;
     const run = () => {
-      const rows = (tables[table] ??= []).filter((r) => filters.every((f) => f(r)));
+      const rows = (tables[table] ??= []).filter((r) =>
+        filters.every((f) => f(r)),
+      );
       if (patch) rows.forEach((r) => Object.assign(r, patch));
       return rows;
     };
@@ -30,19 +32,30 @@ function fakeDb(
       update: (p: Row) => ((patch = p), b),
       eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), b),
       neq: (k: string, v: unknown) => (filters.push((r) => r[k] !== v), b),
-      in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), b),
+      in: (k: string, vs: unknown[]) => (
+        filters.push((r) => vs.includes(r[k])),
+        b
+      ),
       not: (k: string, _op: string, list: string) => (
-        filters.push((r) => !list.includes(String(r[k]))), b
+        filters.push((r) => !list.includes(String(r[k]))),
+        b
       ),
       insert: (row: Row) => ((tables[table] ??= []).push(row), b),
-      is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), b),
+      is: (k: string, v: unknown) => (
+        filters.push((r) => (r[k] ?? null) === v),
+        b
+      ),
       order: () => b,
       limit: () => b,
       maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
       single: async () => ({ data: run()[0] ?? null, error: null }),
       then: (res: any, rej: any) => {
         const rows = run();
-        return Promise.resolve({ data: rows, error: null, count: rows.length }).then(res, rej);
+        return Promise.resolve({
+          data: rows,
+          error: null,
+          count: rows.length,
+        }).then(res, rej);
       },
     };
     return b;
@@ -51,15 +64,24 @@ function fakeDb(
     // HEAD moves the in-transit figure by delta, floored at 0
     // (move_in_transit_by_delta); it is not a stock movement.
     if (name === "move_in_transit_by_delta") {
-      const it = tables.restaurant_inventory.find((r) => r.id === args.p_inventory_id);
-      if (it) it.in_transit_quantity = Math.max(0, (it.in_transit_quantity ?? 0) + args.p_delta);
+      const it = tables.restaurant_inventory.find(
+        (r) => r.id === args.p_inventory_id,
+      );
+      if (it)
+        it.in_transit_quantity = Math.max(
+          0,
+          (it.in_transit_quantity ?? 0) + args.p_delta,
+        );
       return { error: null };
     }
     const refused = refuse(args);
     if (refused) return { error: { message: refused } };
     movements.push(args);
-    const item = tables.restaurant_inventory.find((r) => r.id === args.p_inventory_id);
-    if (item && args.p_stock_state === "shadow") item.shadow_stock += args.p_delta;
+    const item = tables.restaurant_inventory.find(
+      (r) => r.id === args.p_inventory_id,
+    );
+    if (item && args.p_stock_state === "shadow")
+      item.shadow_stock += args.p_delta;
     return { error: null };
   };
   return { supabase: { from, rpc }, movements };
@@ -150,7 +172,10 @@ describe("F-491: an order reserves once and releases what it reserved", () => {
   });
 
   it("an order that never reserved releases nothing, whatever its status", async () => {
-    const { svc, item, movements } = build({ ...bottleOrder, status: "CONFIRMED" });
+    const { svc, item, movements } = build({
+      ...bottleOrder,
+      status: "CONFIRMED",
+    });
     item.shadow_stock = 7; // another order's bottles
     await svc.releaseOrderReservation("r1", "o1");
     expect(movements).toHaveLength(0);
@@ -192,7 +217,8 @@ describe("F-491/F-494: delivery gives back what the order put on order", () => {
 
   it("a shadow release that fails stays on the order's record", async () => {
     const { svc, row, item } = build(bottleOrder, {
-      refuse: (a) => (a.p_stock_state === "shadow" && a.p_delta < 0 ? "busy" : null),
+      refuse: (a) =>
+        a.p_stock_state === "shadow" && a.p_delta < 0 ? "busy" : null,
     });
     await svc.reserveOrderOnce("r1", "o1");
     await svc.markDelivered("r1", "o1", "u1");
@@ -251,14 +277,29 @@ describe("F-492: a vendor's yes approves only inside the house's rules", () => {
   };
   // An earlier order to the same vendor, so `new_vendor` is testable.
   const earlier = [
-    { id: "o0", restaurant_id: "r1", provider_id: "p1", inventory_id: "inv9", status: "DELIVERED" },
+    {
+      id: "o0",
+      restaurant_id: "r1",
+      provider_id: "p1",
+      inventory_id: "inv9",
+      status: "DELIVERED",
+    },
   ];
   const ceiling = [
-    { rule: "manager_ceiling", enabled: true, amountLimit: 500, percentLimit: null, requiredRole: "owner" },
+    {
+      rule: "manager_ceiling",
+      enabled: true,
+      amountLimit: 500,
+      percentLimit: null,
+      requiredRole: "owner",
+    },
   ];
 
   it("under the ceiling: approved by the agent, and the bottles go on order once", async () => {
-    const { svc, row, item } = build(accepted, { rules: ceiling, others: earlier });
+    const { svc, row, item } = build(accepted, {
+      rules: ceiling,
+      others: earlier,
+    });
     const out = await svc.approveAcceptedOrderAsAgent("r1", "o1");
     expect(out).toEqual({ approved: true });
     expect(row.status).toBe("APPROVED");

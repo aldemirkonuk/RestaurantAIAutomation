@@ -72,9 +72,7 @@ function isCurrencyCode(code: string): boolean {
 const wordsSayMoney = (t: string): boolean =>
   SIGN_THEN_FIGURE.test(t) ||
   FIGURE_THEN_SIGN.test(t) ||
-  [...t.matchAll(CODE_BESIDE_FIGURE)].some((m) =>
-    isCurrencyCode(m[1] ?? m[2]),
-  );
+  [...t.matchAll(CODE_BESIDE_FIGURE)].some((m) => isCurrencyCode(m[1] ?? m[2]));
 
 const saysMoney = (...texts: unknown[]): boolean =>
   texts.some((t) => typeof t === "string" && wordsSayMoney(t));
@@ -108,14 +106,21 @@ const ruleOf = (key: unknown): string =>
  * as a shorter feed. A sentence cannot be rewritten without its figure and
  * still say what it found, so the card goes whole.
  */
-export function insightsForRole<T extends Row>(answer: T, role?: string | null): T {
+export function insightsForRole<T extends Row>(
+  answer: T,
+  role?: string | null,
+): T {
   if (holdsHouseMoney(role ?? null)) return answer;
   const list = (answer as Row).insights;
   if (!Array.isArray(list)) return answer;
   const kept = list.filter(
     (i: Row) => !(i?.evidence?.unit === "currency" || saysMoney(i?.sentence)),
   );
-  return { ...answer, insights: kept, withheldForYourRole: list.length - kept.length };
+  return {
+    ...answer,
+    insights: kept,
+    withheldForYourRole: list.length - kept.length,
+  };
 }
 
 /**
@@ -125,15 +130,25 @@ export function insightsForRole<T extends Row>(answer: T, role?: string | null):
  * left out for a reader who does not hold the money; `withheldForYourRole`
  * counts them.
  */
-export function recommendationsForRole<T extends Row>(answer: T, role?: string | null): T {
+export function recommendationsForRole<T extends Row>(
+  answer: T,
+  role?: string | null,
+): T {
   if (holdsHouseMoney(role ?? null)) return answer;
   const list = (answer as Row).recommendations;
   if (!Array.isArray(list)) return answer;
   const kept = list.filter(
     (r: Row) =>
-      !(r?.amounts === true || saysMoney(r?.observation, r?.recommendation, r?.rationale)),
+      !(
+        r?.amounts === true ||
+        saysMoney(r?.observation, r?.recommendation, r?.rationale)
+      ),
   );
-  return { ...answer, recommendations: kept, withheldForYourRole: list.length - kept.length };
+  return {
+    ...answer,
+    recommendations: kept,
+    withheldForYourRole: list.length - kept.length,
+  };
 }
 
 /**

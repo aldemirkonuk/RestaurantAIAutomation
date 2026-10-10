@@ -1084,10 +1084,7 @@ export class DeliveryService {
       // person reading this is a manager, and the key the act needs travels
       // in `openDifferences`, which is what the screen's button sends back.
       const named = answered.value
-        .map(
-          (l) =>
-            `${l.label} (line ${l.lineNo}${l.why ? `: ${l.why}` : ""})`,
-        )
+        .map((l) => `${l.label} (line ${l.lineNo}${l.why ? `: ${l.why}` : ""})`)
         .join("; ");
       return {
         ok: false,
@@ -1900,7 +1897,10 @@ export class DeliveryService {
       // 380-381); counting from the delivery made an invoice that arrived nine
       // days after its goods lapse within the hour, with TTK 21/2 cited for an
       // objection window nobody ever had.
-      const issue = await this.issueDateOf(delivery.restaurant_id, d.documentId);
+      const issue = await this.issueDateOf(
+        delivery.restaurant_id,
+        d.documentId,
+      );
       const r = await this.clocks.schedule({
         restaurantId: delivery.restaurant_id,
         deliveryId: delivery.id,

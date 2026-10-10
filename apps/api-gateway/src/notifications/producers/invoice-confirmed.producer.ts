@@ -52,7 +52,9 @@ const PRODUCER = "invoice_confirmed";
 
 /** `invoice` → `Invoice`, `credit_memo` → `Credit memo`. */
 function docTypeLabel(raw: unknown): string {
-  const t = String(raw ?? "document").replace(/_/g, " ").trim();
+  const t = String(raw ?? "document")
+    .replace(/_/g, " ")
+    .trim();
   if (!t) return "Document";
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
@@ -133,7 +135,9 @@ export class InvoiceConfirmedProducer {
       const label = docTypeLabel(doc.doc_type);
       const number = doc.doc_number ? String(doc.doc_number) : null;
       const total =
-        doc.total === null || doc.total === undefined ? null : Number(doc.total);
+        doc.total === null || doc.total === undefined
+          ? null
+          : Number(doc.total);
       // The document's own money, or null when it states none — never a
       // defaulted USD (F-341, ADR 0117 Q25): the sentence then prints the
       // figure with no symbol.
@@ -161,7 +165,9 @@ export class InvoiceConfirmedProducer {
             message: this.sentence({
               label,
               vendor,
-              total: Number.isFinite(total as number) ? (total as number) : null,
+              total: Number.isFinite(total as number)
+                ? (total as number)
+                : null,
               currency,
               locale,
               tiesOut: doc.ties_out,

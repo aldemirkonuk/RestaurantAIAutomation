@@ -15,20 +15,35 @@ import { CalendarService } from "./calendar.service";
 
 type Call = { method: string; args: unknown[] };
 
-function fakeDb(tables: Record<string, { data: unknown; error: unknown; count?: number }>) {
+function fakeDb(
+  tables: Record<string, { data: unknown; error: unknown; count?: number }>,
+) {
   const calls: Record<string, Call[]> = {};
   const builder = (table: string) => {
     const log: Call[] = (calls[table] = calls[table] ?? []);
     const answer = tables[table] ?? { data: [], error: null };
     const b: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "gte", "lte", "is", "in", "or", "order", "range"]) {
+    for (const m of [
+      "select",
+      "eq",
+      "gte",
+      "lte",
+      "is",
+      "in",
+      "or",
+      "order",
+      "range",
+    ]) {
       b[m] = (...args: unknown[]) => {
         log.push({ method: m, args });
         return b;
       };
     }
     b.then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
-      Promise.resolve({ count: answer.count ?? null, ...answer }).then(resolve, reject);
+      Promise.resolve({ count: answer.count ?? null, ...answer }).then(
+        resolve,
+        reject,
+      );
     return b;
   };
   return { supabase: { from: builder }, calls };
@@ -91,7 +106,10 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
   it("attaches each row's recurrence rule, read from this house only", async () => {
     const db = fakeDb({
       calendar_events: {
-        data: [row(), row({ id: "ev-2", is_recurring: false, recurrence_rule_id: null })],
+        data: [
+          row(),
+          row({ id: "ev-2", is_recurring: false, recurrence_rule_id: null }),
+        ],
         error: null,
         count: 2,
       },
@@ -110,8 +128,14 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
     });
     expect(out.events[1].recurrenceRule).toBeUndefined();
     const ruleCalls = db.calls.calendar_recurrence_rules;
-    expect(ruleCalls).toContainEqual({ method: "eq", args: ["restaurant_id", "r-1"] });
-    expect(ruleCalls).toContainEqual({ method: "in", args: ["id", ["rule-1"]] });
+    expect(ruleCalls).toContainEqual({
+      method: "eq",
+      args: ["restaurant_id", "r-1"],
+    });
+    expect(ruleCalls).toContainEqual({
+      method: "in",
+      args: ["id", ["rule-1"]],
+    });
   });
 
   it("returns a series that began before the window, since it repeats inside it", async () => {
@@ -125,7 +149,10 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
     });
     const ev = db.calls.calendar_events;
     // Nothing may be cut purely for starting before the window…
-    expect(ev).not.toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
+    expect(ev).not.toContainEqual({
+      method: "gte",
+      args: ["start_date", "2026-09-01"],
+    });
     // …except rows that do not repeat. A row marked repeating with no rule
     // (the legacy recurring-order entries) cannot reach into the window, so
     // only a row with a rule is fetched from before it.
@@ -135,7 +162,10 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
         'start_date.gte."2026-09-01",end_date.gte."2026-09-01",and(is_recurring.eq.true,recurrence_rule_id.not.is.null)',
       ],
     });
-    expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
+    expect(ev).toContainEqual({
+      method: "lte",
+      args: ["start_date", "2026-09-30"],
+    });
   });
 
   it("keeps the strict lower bound for callers that count rows as dated entries", async () => {
@@ -143,33 +173,61 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
     // a series master dated last month must not appear in "today" — only an
     // entry whose own dates still reach into the window does (F-198).
     const db = fakeDb({ calendar_events: { data: [], error: null, count: 0 } });
-    await service(db).listEvents("r-1", { startDate: "2026-09-01", endDate: "2026-09-30" });
+    await service(db).listEvents("r-1", {
+      startDate: "2026-09-01",
+      endDate: "2026-09-30",
+    });
     const ev = db.calls.calendar_events;
     expect(ev).toContainEqual({
       method: "or",
       args: ['start_date.gte."2026-09-01",end_date.gte."2026-09-01"'],
     });
-    expect(ev.some((c) => c.method === "or" && String(c.args[0]).includes("is_recurring"))).toBe(false);
-    expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
+    expect(
+      ev.some(
+        (c) => c.method === "or" && String(c.args[0]).includes("is_recurring"),
+      ),
+    ).toBe(false);
+    expect(ev).toContainEqual({
+      method: "lte",
+      args: ["start_date", "2026-09-30"],
+    });
   });
 
   it("returns a multi-day entry that began before the window and runs into it (F-198)", async () => {
     // A three-day festival from Aug 30 to Sep 1 overlaps September; reading
     // only rows that START in the window lost it.
     const db = fakeDb({ calendar_events: { data: [], error: null, count: 0 } });
-    await service(db).listEvents("r-1", { startDate: "2026-09-01", endDate: "2026-09-30" });
+    await service(db).listEvents("r-1", {
+      startDate: "2026-09-01",
+      endDate: "2026-09-30",
+    });
     const ev = db.calls.calendar_events;
-    expect(ev).not.toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
-    expect(ev.some((c) => c.method === "or" && String(c.args[0]).includes('end_date.gte."2026-09-01"'))).toBe(true);
+    expect(ev).not.toContainEqual({
+      method: "gte",
+      args: ["start_date", "2026-09-01"],
+    });
+    expect(
+      ev.some(
+        (c) =>
+          c.method === "or" &&
+          String(c.args[0]).includes('end_date.gte."2026-09-01"'),
+      ),
+    ).toBe(true);
   });
 
   it("fails the read when the rules cannot be read — never a series that stops repeating", async () => {
     const db = fakeDb({
       calendar_events: { data: [row()], error: null, count: 1 },
-      calendar_recurrence_rules: { data: null, error: { message: "rules offline" } },
+      calendar_recurrence_rules: {
+        data: null,
+        error: { message: "rules offline" },
+      },
     });
     await expect(
-      service(db).listEvents("r-1", { startDate: "2026-09-01", endDate: "2026-09-30" }),
+      service(db).listEvents("r-1", {
+        startDate: "2026-09-01",
+        endDate: "2026-09-30",
+      }),
     ).rejects.toMatchObject({ message: "rules offline" });
   });
 

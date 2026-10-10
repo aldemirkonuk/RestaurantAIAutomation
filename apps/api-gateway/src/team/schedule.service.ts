@@ -857,11 +857,16 @@ export class ScheduleService {
         ? await this.weekStartOfSchedule(restaurantId, dto.scheduleId)
         : mondayOf(dto.shiftDate),
     );
-    const cost = await this.laborCost(restaurantId, dto.memberId, {
-      start_time: dto.startTime,
-      end_time: dto.endTime,
-      recorded_break_min: recordedBreak ?? null,
-    }, dto.shiftDate);
+    const cost = await this.laborCost(
+      restaurantId,
+      dto.memberId,
+      {
+        start_time: dto.startTime,
+        end_time: dto.endTime,
+        recorded_break_min: recordedBreak ?? null,
+      },
+      dto.shiftDate,
+    );
     const { data, error } = await this.sb
       .from("shifts")
       .insert({
@@ -1268,7 +1273,9 @@ export class ScheduleService {
 
     const { data: shift } = await this.sb
       .from("shifts")
-      .select("id, member_id, state, schedule_id, shift_date, start_time, end_time")
+      .select(
+        "id, member_id, state, schedule_id, shift_date, start_time, end_time",
+      )
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -1350,8 +1357,7 @@ export class ScheduleService {
     const { data, error } = await claim
       .select("*, shift_breaks(*)")
       .maybeSingle();
-    if (error)
-      throw new InternalServerErrorException("Failed to assign cover");
+    if (error) throw new InternalServerErrorException("Failed to assign cover");
     if (!data) {
       if (role !== "staff")
         throw new InternalServerErrorException("Failed to assign cover");
@@ -1370,7 +1376,11 @@ export class ScheduleService {
           "This shift is no longer open. Refresh to see who has it.",
         );
       }
-      throw await this.takenBy(restaurantId, now?.member_id ?? null, dto.memberId);
+      throw await this.takenBy(
+        restaurantId,
+        now?.member_id ?? null,
+        dto.memberId,
+      );
     }
     // Only the owner sees labor_cost — it is the wage times the hours, so it
     // is the wage (ADR 0215). Staff never did; a manager no longer does.
@@ -1395,7 +1405,9 @@ export class ScheduleService {
         .maybeSingle();
       // Unread, the holder is still someone else — only the name is unknown.
       if (error)
-        this.logger.warn(`could not read shift holder ${holderId}: ${error.message}`);
+        this.logger.warn(
+          `could not read shift holder ${holderId}: ${error.message}`,
+        );
       name = holder?.display_name?.trim() || null;
     }
     return new ConflictException(
@@ -1901,13 +1913,18 @@ function clockAt(zone: string, now: Date): string {
  * times are a moment on its own day, as the feed and the hours read them (F-874).
  */
 function shiftHasEnded(
-  sh: { shift_date?: string | null; start_time?: string | null; end_time?: string | null },
+  sh: {
+    shift_date?: string | null;
+    start_time?: string | null;
+    end_time?: string | null;
+  },
   nowOnClock: string,
 ): boolean {
   if (!sh.shift_date || !sh.end_time || !nowOnClock) return false;
   const end = sh.end_time.slice(0, 5);
   const start = (sh.start_time ?? "").slice(0, 5);
-  const endDay = start && end < start ? addDays(sh.shift_date, 1) : sh.shift_date;
+  const endDay =
+    start && end < start ? addDays(sh.shift_date, 1) : sh.shift_date;
   return `${endDay} ${end}` <= nowOnClock;
 }
 /** A shift's scheduled span, breaks included. */

@@ -721,13 +721,21 @@ export class CalendarDayNoteResponseDto {
 }
 
 export class MyCalendarLinkDto {
-  @ApiProperty({ description: "Whether the caller has a live link in this house." })
+  @ApiProperty({
+    description: "Whether the caller has a live link in this house.",
+  })
   connected: boolean;
 
-  @ApiProperty({ nullable: true, description: "When the caller first connected." })
+  @ApiProperty({
+    nullable: true,
+    description: "When the caller first connected.",
+  })
   createdAt: string | null;
 
-  @ApiProperty({ nullable: true, description: "When the current secret was made." })
+  @ApiProperty({
+    nullable: true,
+    description: "When the current secret was made.",
+  })
   issuedAt: string | null;
 
   @ApiProperty({

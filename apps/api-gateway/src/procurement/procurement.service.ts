@@ -222,7 +222,12 @@ import {
   verdictFor as cancelReasonVerdictFor,
 } from "./cancel-reason";
 import { deadlineOf } from "./delivery-deadline";
-import { type BlanksAtSend, signatureSlotRe, unfilledSlotsRefusal, unfilledTemplateSlots } from "./unfilled-slots";
+import {
+  type BlanksAtSend,
+  signatureSlotRe,
+  unfilledSlotsRefusal,
+  unfilledTemplateSlots,
+} from "./unfilled-slots";
 import { houseFrame } from "../common/house-frame";
 import { readHouseMoney } from "../common/house-money";
 import {
@@ -355,7 +360,9 @@ function pricedOrder(row: {
   return {
     price: toFiniteNumber(row.final_price ?? null),
     currency: row.currency ?? null,
-    priceUnit: foldOrderPriceUnit(embeddedOrderLines(row.procurement_order_items)),
+    priceUnit: foldOrderPriceUnit(
+      embeddedOrderLines(row.procurement_order_items),
+    ),
   };
 }
 
@@ -621,16 +628,23 @@ export function draftSubjectLine(
  *
  * Returns the refusal in the owner's words, or null when the letter may go.
  */
-const ORDER_LETTER_CLOSED_WORDS: Partial<Record<ProcurementOrderStatus, string>> = {
+const ORDER_LETTER_CLOSED_WORDS: Partial<
+  Record<ProcurementOrderStatus, string>
+> = {
   [ProcurementOrderStatus.CANCELLED]: "was cancelled",
   [ProcurementOrderStatus.REJECTED]: "was turned down",
   [ProcurementOrderStatus.FAILED]: "was closed as failed",
 };
 
-export function closedOrderLetterRefusal(status: unknown, tail: string): string | null {
+export function closedOrderLetterRefusal(
+  status: unknown,
+  tail: string,
+): string | null {
   const state = readOrderStatus(status);
   const words = state ? ORDER_LETTER_CLOSED_WORDS[state] : undefined;
-  return words ? `This order ${words}, so its letter cannot go to the vendor. ${tail}` : null;
+  return words
+    ? `This order ${words}, so its letter cannot go to the vendor. ${tail}`
+    : null;
 }
 
 /**
@@ -781,14 +795,21 @@ export class ProcurementService {
     opts: { amount?: ActAmount | null; canAsk: boolean },
   ): Promise<Extract<VendorSendReading, { mode: "send" }>> {
     if (!userId?.trim()) {
-      throw new ForbiddenException("A named person is required to send to a vendor. Nothing was sent.");
+      throw new ForbiddenException(
+        "A named person is required to send to a vendor. Nothing was sent.",
+      );
     }
     if (!this.vendorSendAuthority) {
       throw new InternalServerErrorException(
         "Who may send to a vendor could not be checked (the authority service is not wired into procurement), so nothing was sent. This is a gateway fault, not a decision about this letter.",
       );
     }
-    return this.vendorSendAuthority.assertMaySend(userId, restaurantId, act, opts);
+    return this.vendorSendAuthority.assertMaySend(
+      userId,
+      restaurantId,
+      act,
+      opts,
+    );
   }
 
   /**
@@ -808,7 +829,9 @@ export class ProcurementService {
           "Whether your hold sends could not be read (the authority service is not wired into procurement). Nothing will be sent until it can.",
       };
     }
-    return this.vendorSendAuthority.readout(userId, restaurantId, { canAsk: true });
+    return this.vendorSendAuthority.readout(userId, restaurantId, {
+      canAsk: true,
+    });
   }
 
   /**
@@ -1246,7 +1269,9 @@ export class ProcurementService {
       dto.totalCost !== undefined && dto.totalCost !== null
         ? Number(dto.totalCost)
         : null;
-    const tolerance = fulfilled ? 0.005 * Math.max(bottlesTotal, 1) + 1e-9 : 0.005;
+    const tolerance = fulfilled
+      ? 0.005 * Math.max(bottlesTotal, 1) + 1e-9
+      : 0.005;
     const totalAgrees =
       callerTotal === null ||
       (fulfilled
@@ -2803,15 +2828,18 @@ export class ProcurementService {
   ): Promise<LastAgreement> {
     let vendorName: string | null = null;
     try {
-      const { data: vendor, error: vendorError } = await this.databaseService.supabase
-        .from("providers")
-        .select("name")
-        .eq("id", providerId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
+      const { data: vendor, error: vendorError } =
+        await this.databaseService.supabase
+          .from("providers")
+          .select("name")
+          .eq("id", providerId)
+          .eq("restaurant_id", restaurantId)
+          .maybeSingle();
       // supabase-js resolves a failed read rather than throwing, so the failure
       // is read here explicitly: it costs the noun, never the answer.
-      vendorName = vendorError ? null : (vendor as { name?: string } | null)?.name ?? null;
+      vendorName = vendorError
+        ? null
+        : ((vendor as { name?: string } | null)?.name ?? null);
     } catch {
       // A missing vendor name costs the sentence a noun and nothing else. It is
       // NOT allowed to turn the answer into a failure, because the price is the
@@ -2840,8 +2868,13 @@ export class ProcurementService {
         .eq("provider_id", providerId)
         .eq("procurement_order_items.restaurant_id", restaurantId)
         .eq("procurement_order_items.inventory_id", inventoryId)
-        .in("status", [ProcurementOrderStatus.CONFIRMED, ProcurementOrderStatus.IN_TRANSIT,
-          ProcurementOrderStatus.PARTIALLY_RECEIVED, ProcurementOrderStatus.DELIVERED, ProcurementOrderStatus.COMPLETED])
+        .in("status", [
+          ProcurementOrderStatus.CONFIRMED,
+          ProcurementOrderStatus.IN_TRANSIT,
+          ProcurementOrderStatus.PARTIALLY_RECEIVED,
+          ProcurementOrderStatus.DELIVERED,
+          ProcurementOrderStatus.COMPLETED,
+        ])
         // Order the parent rows themselves. Ordering an embedded relation from
         // the line table did not select the latest agreement.
         .order("requested_at", { ascending: false, nullsFirst: false })
@@ -2852,27 +2885,37 @@ export class ProcurementService {
 
       const parent = Array.isArray(data) ? (data[0] as any) : null;
       if (!parent) return lastAgreementAnswer(null, false, vendorName);
-      const lines = Array.isArray(parent.procurement_order_items) ? parent.procurement_order_items : [parent.procurement_order_items].filter(Boolean);
+      const lines = Array.isArray(parent.procurement_order_items)
+        ? parent.procurement_order_items
+        : [parent.procurement_order_items].filter(Boolean);
       // Zero lines under an `!inner` join on this exact item is a shape the
       // query should not be able to produce — treat it as a failed read, not
       // an empty book. More than one is a real ambiguity, not a failure (lane
       // E audit D9): the order named this item twice, and retrying will not
       // change that.
-      if (lines.length === 0) return lastAgreementAnswer(null, true, vendorName);
-      if (lines.length > 1) return lastAgreementAnswer(null, false, vendorName, true);
+      if (lines.length === 0)
+        return lastAgreementAnswer(null, true, vendorName);
+      if (lines.length > 1)
+        return lastAgreementAnswer(null, false, vendorName, true);
       const row = lines[0];
 
       return lastAgreementAnswer(
         {
           price:
-            typeof row.final_unit_price === "number" ? row.final_unit_price : null,
+            typeof row.final_unit_price === "number"
+              ? row.final_unit_price
+              : null,
           priceUom: row.price_uom ?? null,
           pricePackSize:
-            typeof row.price_pack_size === "number" ? row.price_pack_size : null,
+            typeof row.price_pack_size === "number"
+              ? row.price_pack_size
+              : null,
           currency: row.currency ?? null,
           unitType: row.unit_type ?? null,
           bottlesPerUnit:
-            typeof row.bottles_per_unit === "number" ? row.bottles_per_unit : null,
+            typeof row.bottles_per_unit === "number"
+              ? row.bottles_per_unit
+              : null,
           agreedOn: parent?.requested_at ?? null,
           orderNumber: parent?.order_number ?? null,
         },
@@ -2978,8 +3021,7 @@ export class ProcurementService {
         providerError &&
         (providerError as { code?: string }).code === "42703"
       )
-        ({ data: provider, error: providerError } =
-          await readProvider(false));
+        ({ data: provider, error: providerError } = await readProvider(false));
       if (providerError) {
         // A failed read is not an empty one: the default sentence must not
         // print "the vendor" as if no vendor were known, and it must not print
@@ -3094,25 +3136,30 @@ export class ProcurementService {
       };
     };
 
-    const { data: links, error: linkError } = await this.databaseService.supabase
-      .from("procurement_document_links")
-      .select("document_id")
-      .eq("restaurant_id", restaurantId)
-      .eq("order_id", orderId);
-    if (linkError) return failed("the order's document links", linkError.message);
+    const { data: links, error: linkError } =
+      await this.databaseService.supabase
+        .from("procurement_document_links")
+        .select("document_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId);
+    if (linkError)
+      return failed("the order's document links", linkError.message);
     const ids = [
       ...new Set(
-        (links ?? []).map((l: any) => l.document_id).filter(Boolean) as string[],
+        (links ?? [])
+          .map((l: any) => l.document_id)
+          .filter(Boolean) as string[],
       ),
     ];
 
     let documents: PaperCandidate[] = [];
     if (ids.length) {
-      const { data: docs, error: docError } = await this.databaseService.supabase
-        .from("procurement_documents")
-        .select("id, doc_type, doc_number, doc_date, status")
-        .eq("restaurant_id", restaurantId)
-        .in("id", ids);
+      const { data: docs, error: docError } =
+        await this.databaseService.supabase
+          .from("procurement_documents")
+          .select("id, doc_type, doc_number, doc_date, status")
+          .eq("restaurant_id", restaurantId)
+          .in("id", ids);
       if (docError) return failed("the order's documents", docError.message);
       documents = (docs ?? []) as PaperCandidate[];
     }
@@ -3132,7 +3179,12 @@ export class ProcurementService {
       if (lineError) {
         // The document read worked; only the line did not. Name the paper,
         // and say the line could not be read.
-        const paper = pickReceiptPaper({ orderId, orderLineId: null, documents, lines: [] });
+        const paper = pickReceiptPaper({
+          orderId,
+          orderLineId: null,
+          documents,
+          lines: [],
+        });
         this.logger.warn(
           `Price provenance for order ${orderId}: the invoice's lines could not be read (${lineError.message}); the paper is named without a line.`,
         );
@@ -3232,7 +3284,8 @@ export class ProcurementService {
     return row
       ? {
           conversationMessageId: row.id,
-          sentence: "Read from the vendor's reply this deal was confirmed from.",
+          sentence:
+            "Read from the vendor's reply this deal was confirmed from.",
         }
       : {
           conversationMessageId: null,
@@ -3694,7 +3747,10 @@ export class ProcurementService {
     // the shelf never saw. Refused BEFORE anything is read or written, in
     // words, naming where a delivery is actually recorded. A null says
     // nothing and is let through, as every other field here treats it.
-    if (dto.quantityReceivedInOrderUom != null || dto.quantityReceived != null) {
+    if (
+      dto.quantityReceivedInOrderUom != null ||
+      dto.quantityReceived != null
+    ) {
       throw new BadRequestException({
         reason: RECEIVED_IS_NOT_TYPED_IN,
         message: RECEIVED_IS_THE_LEDGER,
@@ -3780,7 +3836,9 @@ export class ProcurementService {
       await this.assertMayChangeOrder(
         restaurantId,
         opts?.actorUserId,
-        writesMoney ? "change what an order costs" : "change where an order stands",
+        writesMoney
+          ? "change what an order costs"
+          : "change where an order stands",
       );
     }
 
@@ -4165,7 +4223,11 @@ export class ProcurementService {
           "wired into procurement), so nothing was changed.",
       );
     }
-    await this.organizations.assertCanManageRestaurant(userId, restaurantId, action);
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      action,
+    );
   }
 
   /**
@@ -4495,7 +4557,9 @@ export class ProcurementService {
   ): Promise<OrderResponseDto> {
     const spokenReason = (reason ?? "").trim();
     if (spokenReason === "") {
-      throw new BadRequestException(ProcurementService.CLOSE_SHORT_NEEDS_A_REASON);
+      throw new BadRequestException(
+        ProcurementService.CLOSE_SHORT_NEEDS_A_REASON,
+      );
     }
     if (!this.organizations) {
       throw new InternalServerErrorException(
@@ -4524,7 +4588,11 @@ export class ProcurementService {
       });
     }
     const short = decideCloseShort(
-      await readOneShelfReceived(this.databaseService.supabase, restaurantId, row as any),
+      await readOneShelfReceived(
+        this.databaseService.supabase,
+        restaurantId,
+        row as any,
+      ),
     );
     if (!short.allowed) {
       throw new UnprocessableEntityException({
@@ -4590,7 +4658,9 @@ export class ProcurementService {
    * cannot be read. Never a statement about what a vendor charges: callers use
    * it only where the agreement line names no money of its own.
    */
-  private async readHouseCurrency(restaurantId: string): Promise<string | null> {
+  private async readHouseCurrency(
+    restaurantId: string,
+  ): Promise<string | null> {
     const { data, error } = await this.databaseService.supabase
       .from("restaurants")
       .select("currency")
@@ -4823,7 +4893,9 @@ export class ProcurementService {
     try {
       const { data: row, error } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("inventory_id, quantity, unit_type, bottles_total, reserved_bottles")
+        .select(
+          "inventory_id, quantity, unit_type, bottles_total, reserved_bottles",
+        )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         .maybeSingle();
@@ -4839,8 +4911,16 @@ export class ProcurementService {
       const quantity = Number(order.quantity);
       if (!order.inventory_id || !(quantity > 0)) return;
 
-      const units = await this.resolveOrderMatchUnits(restaurantId, orderId, order);
-      const bottles = reservationBottles(quantity, units.unitType, units.bottlesPerUnit);
+      const units = await this.resolveOrderMatchUnits(
+        restaurantId,
+        orderId,
+        order,
+      );
+      const bottles = reservationBottles(
+        quantity,
+        units.unitType,
+        units.bottlesPerUnit,
+      );
       const { data: claimed, error: claimError } =
         await this.databaseService.supabase
           .from("procurement_orders")
@@ -4873,7 +4953,9 @@ export class ProcurementService {
           .eq("reserved_bottles", bottles);
       }
     } catch (e: any) {
-      this.logger.warn(`reserveOrderOnce failed for order ${orderId}: ${e?.message}`);
+      this.logger.warn(
+        `reserveOrderOnce failed for order ${orderId}: ${e?.message}`,
+      );
     }
   }
 
@@ -5406,7 +5488,10 @@ export class ProcurementService {
           .select("id")
           .maybeSingle();
       if (approveError || !approved) {
-        return { approved: false, why: "the order changed while it was being approved" };
+        return {
+          approved: false,
+          why: "the order changed while it was being approved",
+        };
       }
       await this.reserveOrderOnce(restaurantId, orderId);
       return { approved: true };
@@ -5414,7 +5499,10 @@ export class ProcurementService {
       this.logger.warn(
         `approveAcceptedOrderAsAgent failed for order ${orderId}: ${e?.message}`,
       );
-      return { approved: false, why: "the house's approval rules could not be checked" };
+      return {
+        approved: false,
+        why: "the house's approval rules could not be checked",
+      };
     }
   }
 
@@ -5503,7 +5591,8 @@ export class ProcurementService {
 
     await this.parkOrderAwaitingApproval(restaurantId, orderId, row.status);
     await this.tellSealHolders(restaurantId, orderId, {
-      orderNumber: (orderRow as { order_number?: string | null }).order_number ?? null,
+      orderNumber:
+        (orderRow as { order_number?: string | null }).order_number ?? null,
       requiredRole: decision.requiredRole,
       refusedUserId: userId,
     });
@@ -5968,11 +6057,19 @@ export class ProcurementService {
   // ==========================================================================
 
   /** Whether this person is an owner or a manager here. Strict: a failed read THROWS. */
-  private async isOwnerOrManagerHere(userId: string, restaurantId: string): Promise<boolean> {
+  private async isOwnerOrManagerHere(
+    userId: string,
+    restaurantId: string,
+  ): Promise<boolean> {
     if (!this.vendorSendAuthority) {
-      throw new Error("who holds which role here cannot be checked on this server");
+      throw new Error(
+        "who holds which role here cannot be checked on this server",
+      );
     }
-    const reading = await this.vendorSendAuthority.standing(userId, restaurantId);
+    const reading = await this.vendorSendAuthority.standing(
+      userId,
+      restaurantId,
+    );
     const role = (reading.role ?? "").trim().toLowerCase();
     return role === "owner" || role === "manager";
   }
@@ -5984,13 +6081,20 @@ export class ProcurementService {
   async deliveriesToName(
     restaurantId: string,
     userId: string,
-  ): Promise<{ viewer: { mayName: boolean; mayNameReason: string | null }; deliveries: DeliveryItemToNameView[] }> {
-    const deliveries = await readOpenDeliveryItemsToName(this.databaseService.supabase, restaurantId);
+  ): Promise<{
+    viewer: { mayName: boolean; mayNameReason: string | null };
+    deliveries: DeliveryItemToNameView[];
+  }> {
+    const deliveries = await readOpenDeliveryItemsToName(
+      this.databaseService.supabase,
+      restaurantId,
+    );
     let mayName = false;
     let mayNameReason: string | null = null;
     try {
       mayName = await this.isOwnerOrManagerHere(userId, restaurantId);
-      if (!mayName) mayNameReason = "Only an owner or a manager names a delivery's item.";
+      if (!mayName)
+        mayNameReason = "Only an owner or a manager names a delivery's item.";
     } catch (err: any) {
       mayNameReason = `Whether you may name them could not be read (${err?.message ?? String(err)}).`;
     }
@@ -6009,7 +6113,8 @@ export class ProcurementService {
       {
         client: this.databaseService.supabase as any,
         logger: this.logger,
-        isOwnerOrManager: (userId, restaurantId) => this.isOwnerOrManagerHere(userId, restaurantId),
+        isOwnerOrManager: (userId, restaurantId) =>
+          this.isOwnerOrManagerHere(userId, restaurantId),
       },
       input,
     );
@@ -6027,7 +6132,8 @@ export class ProcurementService {
   ): Promise<string[]> {
     if (!this.vendorSendAuthority) return [];
     try {
-      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(restaurantId);
+      const { owners, managers } =
+        await this.vendorSendAuthority.ownersAndManagers(restaurantId);
       return [...new Set(ownersOnly ? owners : [...owners, ...managers])];
     } catch (err: any) {
       this.logger.warn(
@@ -6048,20 +6154,28 @@ export class ProcurementService {
   private async tellSealHolders(
     restaurantId: string,
     orderId: string,
-    input: { orderNumber: string | null; requiredRole: string; refusedUserId: string },
+    input: {
+      orderNumber: string | null;
+      requiredRole: string;
+      refusedUserId: string;
+    },
   ): Promise<void> {
     if (!this.notificationsService) return;
     try {
       const ownersOnly = input.requiredRole === "owner";
-      const audience = (await this.moneyHoldersHere(restaurantId, ownersOnly)).filter(
-        (id) => id !== input.refusedUserId,
-      );
+      const audience = (
+        await this.moneyHoldersHere(restaurantId, ownersOnly)
+      ).filter((id) => id !== input.refusedUserId);
       if (audience.length === 0) {
-        this.logger.warn(`Order ${orderId} waits for a seal, but nobody who may seal it could be told; /orders lists it.`);
+        this.logger.warn(
+          `Order ${orderId} waits for a seal, but nobody who may seal it could be told; /orders lists it.`,
+        );
         return;
       }
       const names = this.vendorSendAuthority
-        ? await this.vendorSendAuthority.namesOf([input.refusedUserId]).catch(() => new Map<string, string>())
+        ? await this.vendorSendAuthority
+            .namesOf([input.refusedUserId])
+            .catch(() => new Map<string, string>())
         : new Map<string, string>();
       const who = names.get(input.refusedUserId) ?? "A member of the team";
       const order = input.orderNumber ?? "An order";
@@ -6083,17 +6197,28 @@ export class ProcurementService {
         { onlyUserIds: audience, dedupeWithinMinutes: 365 * 24 * 60 },
       );
     } catch (err: any) {
-      this.logger.warn(`Order ${orderId} waits for a seal, but the people who may seal it were not told (${err?.message ?? String(err)}).`);
+      this.logger.warn(
+        `Order ${orderId} waits for a seal, but the people who may seal it were not told (${err?.message ?? String(err)}).`,
+      );
     }
   }
 
   /** F-526: the "waits for your seal" line clears once the order is sealed or ended. */
-  private async clearSealLine(restaurantId: string, orderId: string): Promise<void> {
-    const bell = await resolveBellLines(this.databaseService.supabase, restaurantId, {
-      groupKey: `order_awaiting_seal:${orderId}`,
-    });
+  private async clearSealLine(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<void> {
+    const bell = await resolveBellLines(
+      this.databaseService.supabase,
+      restaurantId,
+      {
+        groupKey: `order_awaiting_seal:${orderId}`,
+      },
+    );
     if (!bell.ok) {
-      this.logger.warn(`Order ${orderId}'s "waits for your seal" line was not cleared (${bell.error}).`);
+      this.logger.warn(
+        `Order ${orderId}'s "waits for your seal" line was not cleared (${bell.error}).`,
+      );
     }
   }
 
@@ -6114,10 +6239,13 @@ export class ProcurementService {
       return;
     }
     try {
-      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(restaurantId);
+      const { owners, managers } =
+        await this.vendorSendAuthority.ownersAndManagers(restaurantId);
       const audience = [...new Set([...owners, ...managers])];
       if (audience.length === 0) {
-        this.logger.warn(`markDelivered: order ${orderId} asks for its item, but this house has no owner or manager to tell.`);
+        this.logger.warn(
+          `markDelivered: order ${orderId} asks for its item, but this house has no owner or manager to tell.`,
+        );
         return;
       }
       const order = input.orderNumber ?? "An order";
@@ -6140,7 +6268,9 @@ export class ProcurementService {
         { onlyUserIds: audience, dedupeWithinMinutes: 24 * 60 },
       );
       if (inserted === 0) {
-        this.logger.warn(`markDelivered: order ${orderId} asks for its item, but no bell row was written for its owners and managers.`);
+        this.logger.warn(
+          `markDelivered: order ${orderId} asks for its item, but no bell row was written for its owners and managers.`,
+        );
       }
     } catch (err: any) {
       this.logger.warn(
@@ -6301,7 +6431,10 @@ export class ProcurementService {
     const deliveryAgreement = await this.readAgreedLine(restaurantId, orderId);
     const deliveryPrice = agreedPricePerBottleForDoor({
       price: deliveryAgreement.read
-        ? (deliveryAgreement.stated ? deliveryAgreement.finalUnitPrice ?? (existingOrder as any).final_price : (existingOrder as any).final_price) ?? null
+        ? ((deliveryAgreement.stated
+            ? (deliveryAgreement.finalUnitPrice ??
+              (existingOrder as any).final_price)
+            : (existingOrder as any).final_price) ?? null)
         : null,
       stated: deliveryAgreement.stated,
     });
@@ -6588,9 +6721,7 @@ export class ProcurementService {
           const { data: item, error: itemError } =
             await this.databaseService.supabase
               .from("restaurant_inventory")
-              .select(
-                "master_wine_id, wine_name, display_name, shadow_stock",
-              )
+              .select("master_wine_id, wine_name, display_name, shadow_stock")
               .eq("restaurant_id", restaurantId)
               .eq("id", inventoryId)
               .maybeSingle();
@@ -6610,13 +6741,17 @@ export class ProcurementService {
             // come back on this one read — no second read decided by a value.
             const nameOf = (v: unknown): string | null =>
               typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
-            itemName = nameOf(itemRow.wine_name) ?? nameOf(itemRow.display_name);
+            itemName =
+              nameOf(itemRow.wine_name) ?? nameOf(itemRow.display_name);
             const currentShadow = Number(itemRow.shadow_stock ?? 0) || 0;
             // What THIS order put on order, from its own record (F-491,
             // F-494) — not the bottles that arrived. Releasing the received
             // count drained other orders' reservations whenever an order in
             // cases had reserved its case count, or reserved nothing at all.
-            const reserved = await this.takeOrderReservation(restaurantId, orderId);
+            const reserved = await this.takeOrderReservation(
+              restaurantId,
+              orderId,
+            );
             takenReservation = reserved.bottles;
             const shadowRelease = Math.min(reserved.bottles, currentShadow);
 
@@ -6678,21 +6813,24 @@ export class ProcurementService {
               stockNotMoved = live.error.message ?? String(live.error);
             } else {
               if (shadowRelease > 0) {
-                const shadow = await this.databaseService.supabase.rpc("apply_stock_movement", {
-                  p_inventory_id: inventoryId,
-                  p_stock_state: "shadow",
-                  p_delta: -shadowRelease,
-                  p_transaction_type: "adjustment",
-                  p_source: "order",
-                  p_reason: "shadow released on delivery",
-                  p_order_id: orderId,
-                  p_idempotency_key: `order-delivered-shadow:${orderId}`,
-                  // ADR 0141. `order.inventoryId` comes off the order row, which
-                  // was read scoped to this restaurant — but the COLUMN carries no
-                  // tenant constraint, so the row belonging here does not make the
-                  // item belong here.
-                  p_restaurant_id: restaurantId,
-                });
+                const shadow = await this.databaseService.supabase.rpc(
+                  "apply_stock_movement",
+                  {
+                    p_inventory_id: inventoryId,
+                    p_stock_state: "shadow",
+                    p_delta: -shadowRelease,
+                    p_transaction_type: "adjustment",
+                    p_source: "order",
+                    p_reason: "shadow released on delivery",
+                    p_order_id: orderId,
+                    p_idempotency_key: `order-delivered-shadow:${orderId}`,
+                    // ADR 0141. `order.inventoryId` comes off the order row, which
+                    // was read scoped to this restaurant — but the COLUMN carries no
+                    // tenant constraint, so the row belonging here does not make the
+                    // item belong here.
+                    p_restaurant_id: restaurantId,
+                  },
+                );
                 // The booking stands without it; a shadow figure left reserved
                 // is logged, not hidden, and stays on the order's record.
                 if (shadow?.error) {
@@ -6732,28 +6870,32 @@ export class ProcurementService {
             `markDelivered: order ${orderId}'s stock movement was refused (${stockNotMoved}) — nothing was booked`,
           );
           // Unused: the refusal below throws before the notice is written.
-          booking = { kind: "nothing", why: stockNotMoved ?? "the booking was refused" };
+          booking = {
+            kind: "nothing",
+            why: stockNotMoved ?? "the booking was refused",
+          };
         } else {
           booking = { kind: "booked", bottles: receivedBottles };
 
           // The event records a quantity that MOVED — only ever reached after
           // the live movement succeeded.
           try {
-            const { error: eventWriteError } = await this.databaseService.supabase
-              .from("inventory_events")
-              .insert({
-                restaurant_id: restaurantId,
-                inventory_id: inventoryId,
-                master_wine_id: masterWineId,
-                event_type: "order_delivered",
-                quantity_change: receivedBottles,
-                source: "procurement",
-                idempotency_key: idempotencyKey,
-                metadata: {
-                  orderId,
-                  deliveredAt: order.deliveredAt,
-                },
-              });
+            const { error: eventWriteError } =
+              await this.databaseService.supabase
+                .from("inventory_events")
+                .insert({
+                  restaurant_id: restaurantId,
+                  inventory_id: inventoryId,
+                  master_wine_id: masterWineId,
+                  event_type: "order_delivered",
+                  quantity_change: receivedBottles,
+                  source: "procurement",
+                  idempotency_key: idempotencyKey,
+                  metadata: {
+                    orderId,
+                    deliveredAt: order.deliveredAt,
+                  },
+                });
             // The booking stands (the ledger row is the record); a missing
             // event is logged, never read as written.
             if (eventWriteError) throw eventWriteError;
@@ -6814,16 +6956,18 @@ export class ProcurementService {
     // release above is idempotent on its own key, so a later delivery of the
     // same order does not release it twice.
     if (bookingRefused) {
-      const { data: putBack, error: putBackError } = await this.databaseService.supabase
-        .from("procurement_orders")
-        .update(priorDelivery)
-        .eq("restaurant_id", restaurantId)
-        .eq("id", orderId)
-        .eq("status", ProcurementOrderStatus.DELIVERED)
-        .eq("delivered_at", deliveredAtWritten)
-        .eq("received_by", userId)
-        .select("id");
-      const reverted = !putBackError && Array.isArray(putBack) && putBack.length > 0;
+      const { data: putBack, error: putBackError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .update(priorDelivery)
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .eq("status", ProcurementOrderStatus.DELIVERED)
+          .eq("delivered_at", deliveredAtWritten)
+          .eq("received_by", userId)
+          .select("id");
+      const reverted =
+        !putBackError && Array.isArray(putBack) && putBack.length > 0;
       if (!reverted) {
         this.logger.error(
           `markDelivered: order ${orderId}'s booking was refused and the order could not be put back ` +
@@ -7139,7 +7283,9 @@ export class ProcurementService {
 
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("id, status, cancel_reason_code, provider_id, currency, total_cost")
+      .select(
+        "id, status, cancel_reason_code, provider_id, currency, total_cost",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .maybeSingle();
@@ -7160,7 +7306,10 @@ export class ProcurementService {
       currency: string | null;
       total_cost: string | number | null;
     };
-    if (row.status !== "CANCELLED" || row.cancel_reason_code !== "never_arrived") {
+    if (
+      row.status !== "CANCELLED" ||
+      row.cancel_reason_code !== "never_arrived"
+    ) {
       throw new UnprocessableEntityException(
         "A refund claim follows a never-arrived cancellation. Cancel this order as " +
           "never arrived first, then claim the refund.",
@@ -7225,11 +7374,12 @@ export class ProcurementService {
     };
     if (row.currency) insertRow.currency = row.currency;
 
-    const { data: inserted, error: insertError } = await this.databaseService.supabase
-      .from("procurement_credits")
-      .insert(insertRow)
-      .select("id, claimed_amount, currency, state")
-      .single();
+    const { data: inserted, error: insertError } =
+      await this.databaseService.supabase
+        .from("procurement_credits")
+        .insert(insertRow)
+        .select("id, claimed_amount, currency, state")
+        .single();
     if (insertError) {
       if (insertError.code === "23505") {
         // Raced with another request that won first — read back what it
@@ -7645,8 +7795,8 @@ export class ProcurementService {
         reason: "order_not_checkable",
         status: check.from ?? null,
         message: check.sentence,
-        });
-      }
+      });
+    }
 
     // F-349. A receipt that states no match (the mobile "Counts match" tap,
     // an old offline payload) completes the order. On an order a match has
@@ -7823,8 +7973,7 @@ export class ProcurementService {
       orderedBottlesPerUnit: orderUnits.bottlesPerUnit,
       poUnitPrice,
       // Words only (F-341): each price is said in its own money, never "$".
-      poCurrency:
-        agreedLine.currency ?? (orderRow as any).currency ?? null,
+      poCurrency: agreedLine.currency ?? (orderRow as any).currency ?? null,
       shippedQtyInShippedUom: shippedQuantity ?? null,
       shippedUom: body.shippedUom ?? null,
       shippedBottlesPerUnit: body.shippedBottlesPerUnit ?? null,
@@ -7976,7 +8125,8 @@ export class ProcurementService {
         const held = booked + onTheLine;
         // A count nobody can state in whole bottles is recorded as no count
         // ("no accepted count recorded"), never rounded into one.
-        confirmedBottles = Number.isSafeInteger(held) && held >= 0 ? held : null;
+        confirmedBottles =
+          Number.isSafeInteger(held) && held >= 0 ? held : null;
       }
 
       // IDEMPOTENCE (ADR 0192, sixth amendment; founder, 2026-09-26, round 7,
@@ -8413,18 +8563,12 @@ export class ProcurementService {
     // Best-effort: a failure here must not strand a delivery that has already
     // been counted, and the claim can be raised again from the discrepancy queue.
     if (match)
-      await this.openCreditClaim(
-        restaurantId,
-        orderId,
-        userId,
-        match,
-        {
-          provider_id: (orderRow as any).provider_id ?? null,
-          // The claim is units at the BILLED price, so it is in the invoice's
-          // money; the order's only when the invoice states none (F-341).
-          currency: billedMoney ?? (orderRow as any).currency ?? null,
-        },
-      );
+      await this.openCreditClaim(restaurantId, orderId, userId, match, {
+        provider_id: (orderRow as any).provider_id ?? null,
+        // The claim is units at the BILLED price, so it is in the invoice's
+        // money; the order's only when the invoice states none (F-341).
+        currency: billedMoney ?? (orderRow as any).currency ?? null,
+      });
 
     // F-371. Only the tap whose compare-and-set won writes its history line.
     // If the line then cannot be written, the order is put back the way it
@@ -8615,7 +8759,9 @@ export class ProcurementService {
         { groupKey: `receipt_discrepancy:${orderId}` },
       );
       if (!bell.ok) {
-        this.logger.warn(`verifyReceipt: order ${orderId}'s old discrepancy line was not cleared (${bell.error}).`);
+        this.logger.warn(
+          `verifyReceipt: order ${orderId}'s old discrepancy line was not cleared (${bell.error}).`,
+        );
       }
     }
 
@@ -9034,7 +9180,9 @@ export class ProcurementService {
       // When the three-way match was checked (F-710). The key test: a route
       // that does not read the column sends no key; `null` is "not checked".
       matchVerifiedAt:
-        "match_verified_at" in row ? (row.match_verified_at ?? null) : undefined,
+        "match_verified_at" in row
+          ? (row.match_verified_at ?? null)
+          : undefined,
       // The key test again: `null` is "the row names no currency", absence is
       // "this route did not read the column". `currencyCode` reads membership,
       // so a stored value that names no currency reads as none, not as money.
@@ -9147,7 +9295,9 @@ export class ProcurementService {
     // is refused BEFORE a seal is issued — a seal handed to a person whose hold
     // cannot send teaches that the seal is decoration — and is told to hold
     // again to ASK (founder, 2026-09-21), which `requestDraftSend` records.
-    await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
+    await this.requireSendAuthority(userId, restaurantId, "send this letter", {
+      canAsk: true,
+    });
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), " +
@@ -9157,7 +9307,9 @@ export class ProcurementService {
 
     const { data: pending, error } = await this.databaseService.supabase
       .from("procurement_conversations")
-      .select("id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact), procurement_orders!inner(status)")
+      .select(
+        "id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact), procurement_orders!inner(status)",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("status", "PENDING_APPROVAL")
@@ -9182,24 +9334,43 @@ export class ProcurementService {
     );
     if (closedForSeal) throw new ConflictException(closedForSeal);
 
-    const provider = Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers;
+    const provider = Array.isArray((pending as any).providers)
+      ? (pending as any).providers[0]
+      : (pending as any).providers;
     const recipient = provider?.contact_email;
-    if (provider?.restaurant_id !== restaurantId || !recipient ||
-        recipient.trim().toLowerCase() !== letter.to?.trim().toLowerCase()) {
-      throw new BadRequestException("The vendor address changed or could not be confirmed. Review the draft before holding again.");
+    if (
+      provider?.restaurant_id !== restaurantId ||
+      !recipient ||
+      recipient.trim().toLowerCase() !== letter.to?.trim().toLowerCase()
+    ) {
+      throw new BadRequestException(
+        "The vendor address changed or could not be confirmed. Review the draft before holding again.",
+      );
     }
-    if (!letter.body?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    if (!letter.body?.trim())
+      throw new BadRequestException("An empty letter cannot be sent.");
     // ORD-W7: a template blank the send cannot fill is refused before a seal
     // is issued over it, the same as an empty letter.
-    const blanks = (await this.draftBlanksAtSend(restaurantId, letter.body, provider)).unfillable;
-    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "No seal was issued and nothing was sent."));
+    const blanks = (
+      await this.draftBlanksAtSend(restaurantId, letter.body, provider)
+    ).unfillable;
+    if (blanks.length)
+      throw new BadRequestException(
+        unfilledSlotsRefusal(
+          blanks,
+          "No seal was issued and nothing was sent.",
+        ),
+      );
     const issued = await this.sealChallenges.issue({
       restaurantId,
       actorUserId: userId,
       subjectKind: "procurement_order",
       subjectId: orderId,
       action: ORDER_SEND_DRAFT_ACT,
-      args: { ...draftSealArgs({ body: letter.body, to: recipient, cc: letter.cc }), draftId: pending.id },
+      args: {
+        ...draftSealArgs({ body: letter.body, to: recipient, cc: letter.cc }),
+        draftId: pending.id,
+      },
     });
     return {
       challenge: issued.challenge,
@@ -9235,9 +9406,14 @@ export class ProcurementService {
     dto: ApproveDraftDto,
     challenge: string | null | undefined,
   ): Promise<{ conversationId: string; sentAt: string }> {
-    const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
-      canAsk: true,
-    });
+    const standing = await this.requireSendAuthority(
+      userId,
+      restaurantId,
+      "send this letter",
+      {
+        canAsk: true,
+      },
+    );
     return this.approveDraft(restaurantId, orderId, dto, {
       userId,
       challenge,
@@ -9280,26 +9456,48 @@ export class ProcurementService {
     orderId: string,
     userId: string,
     input: { content: string; ccEmails?: string[] | null },
-  ): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
+  ): Promise<{
+    conversationId: string;
+    requestedAt: string;
+    told: number;
+    says: string;
+  }> {
     const content = input.content ?? "";
-    if (!content.trim()) throw new BadRequestException("An empty letter cannot be asked for. Nothing was asked.");
-    if (!userId?.trim()) throw new ForbiddenException("A named person is required to ask. Nothing was asked.");
+    if (!content.trim())
+      throw new BadRequestException(
+        "An empty letter cannot be asked for. Nothing was asked.",
+      );
+    if (!userId?.trim())
+      throw new ForbiddenException(
+        "A named person is required to ask. Nothing was asked.",
+      );
     if (!this.vendorSendAuthority) {
       throw new InternalServerErrorException(
         "Who may send could not be checked (the authority service is not wired into procurement), so nothing was asked.",
       );
     }
-    const standing = await this.vendorSendAuthority.standing(userId, restaurantId);
+    const standing = await this.vendorSendAuthority.standing(
+      userId,
+      restaurantId,
+    );
     if (standing.mode === "send") {
       throw new ConflictException(
         "You may send this yourself with one hold, so nothing was asked on your behalf.",
       );
     }
     if (!standing.role) {
-      throw new ForbiddenException("You hold no role in this house, so nothing was asked.");
+      throw new ForbiddenException(
+        "You hold no role in this house, so nothing was asked.",
+      );
     }
 
-    const cc = [...new Set((input.ccEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean))].sort();
+    const cc = [
+      ...new Set(
+        (input.ccEmails ?? [])
+          .map((e) => e.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ].sort();
     const requestedAt = new Date().toISOString();
     const request = {
       send_requested_by: userId,
@@ -9308,13 +9506,16 @@ export class ProcurementService {
       send_requested_cc: cc,
     };
 
-    const { data: pending, error: pendingError } = await this.databaseService.supabase
-      .from("procurement_conversations")
-      .select("id, providers!left(name, restaurant_id, contact_first_name, primary_contact)")
-      .eq("restaurant_id", restaurantId)
-      .eq("order_id", orderId)
-      .eq("status", "PENDING_APPROVAL")
-      .maybeSingle();
+    const { data: pending, error: pendingError } =
+      await this.databaseService.supabase
+        .from("procurement_conversations")
+        .select(
+          "id, providers!left(name, restaurant_id, contact_first_name, primary_contact)",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("status", "PENDING_APPROVAL")
+        .maybeSingle();
     if (pendingError) {
       throw new InternalServerErrorException(
         `Whether a draft is waiting on this order could not be read (${pendingError.message}), so nothing was asked.`,
@@ -9323,31 +9524,41 @@ export class ProcurementService {
     // ORD-W7: the letter a manager would release, checked as approveDraft
     // will send it — a blank the send cannot fill is not asked for.
     const refuseBlanks = async (provider: any) => {
-      const blanks = (await this.draftBlanksAtSend(restaurantId, content, provider)).unfillable;
-      if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was asked."));
+      const blanks = (
+        await this.draftBlanksAtSend(restaurantId, content, provider)
+      ).unfillable;
+      if (blanks.length)
+        throw new BadRequestException(
+          unfilledSlotsRefusal(blanks, "Nothing was asked."),
+        );
     };
 
     let conversationId: string;
     let vendorName: string | null;
     if (pending) {
-      await refuseBlanks(Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers);
-      const { data: saved, error: saveError } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .update({
-          content,
-          // Written out (not `...request`): check_order_capture_contract.py
-          // reads insert/update literals to prove every column exists, and a
-          // spread is invisible to it. Same four fields as `request` above.
-          send_requested_by: request.send_requested_by,
-          send_requested_at: request.send_requested_at,
-          send_requested_sha256: request.send_requested_sha256,
-          send_requested_cc: request.send_requested_cc,
-        })
-        .eq("id", (pending as any).id)
-        .eq("restaurant_id", restaurantId)
-        .eq("order_id", orderId)
-        .eq("status", "PENDING_APPROVAL")
-        .select("id");
+      await refuseBlanks(
+        Array.isArray((pending as any).providers)
+          ? (pending as any).providers[0]
+          : (pending as any).providers,
+      );
+      const { data: saved, error: saveError } =
+        await this.databaseService.supabase
+          .from("procurement_conversations")
+          .update({
+            content,
+            // Written out (not `...request`): check_order_capture_contract.py
+            // reads insert/update literals to prove every column exists, and a
+            // spread is invisible to it. Same four fields as `request` above.
+            send_requested_by: request.send_requested_by,
+            send_requested_at: request.send_requested_at,
+            send_requested_sha256: request.send_requested_sha256,
+            send_requested_cc: request.send_requested_cc,
+          })
+          .eq("id", (pending as any).id)
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("status", "PENDING_APPROVAL")
+          .select("id");
       if (saveError) {
         throw new InternalServerErrorException(
           `Your version was not saved (${saveError.message}), so nothing was asked.`,
@@ -9359,70 +9570,91 @@ export class ProcurementService {
         );
       }
       conversationId = (pending as any).id;
-      const provider = Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers;
+      const provider = Array.isArray((pending as any).providers)
+        ? (pending as any).providers[0]
+        : (pending as any).providers;
       vendorName = provider?.name ?? null;
     } else {
       // No draft: the staffer wrote this letter themself. Build the pending
       // row the release will send, threaded the way manualReply threads.
-      const { data: order, error: orderError } = await this.databaseService.supabase
-        .from("procurement_orders")
-        .select("id, provider_id, providers!left(name, contact_email, restaurant_id, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)")
-        .eq("id", orderId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
+      const { data: order, error: orderError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, providers!left(name, contact_email, restaurant_id, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+          )
+          .eq("id", orderId)
+          .eq("restaurant_id", restaurantId)
+          .maybeSingle();
       if (orderError) {
-        throw new InternalServerErrorException(`The order could not be read (${orderError.message}), so nothing was asked.`);
+        throw new InternalServerErrorException(
+          `The order could not be read (${orderError.message}), so nothing was asked.`,
+        );
       }
-      if (!order) throw new NotFoundException(`Order ${orderId} not found in this house. Nothing was asked.`);
+      if (!order)
+        throw new NotFoundException(
+          `Order ${orderId} not found in this house. Nothing was asked.`,
+        );
       if (!(order as any).providers?.contact_email) {
-        throw new BadRequestException("This vendor has no email address on file, so there is nowhere to send. Nothing was asked.");
+        throw new BadRequestException(
+          "This vendor has no email address on file, so there is nowhere to send. Nothing was asked.",
+        );
       }
       await refuseBlanks((order as any).providers);
-      const { data: lastInbound, error: inboundError } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .select("gmail_thread_id, message_id, email_headers")
-        .eq("restaurant_id", restaurantId)
-        .eq("order_id", orderId)
-        .eq("direction", "inbound")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: lastInbound, error: inboundError } =
+        await this.databaseService.supabase
+          .from("procurement_conversations")
+          .select("gmail_thread_id, message_id, email_headers")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("direction", "inbound")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
       if (inboundError) {
         throw new InternalServerErrorException(
           `The vendor's last message could not be read (${inboundError.message}), so the reply could not be threaded and nothing was asked.`,
         );
       }
-      const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<string, any>;
-      const wineName = (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
-      const { data: inserted, error: insertError } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .insert({
-          order_id: orderId,
-          restaurant_id: restaurantId,
-          provider_id: (order as any).provider_id,
-          direction: "outbound",
-          channel: "email",
-          content,
-          message_text: content,
-          ai_generated: false,
-          status: "PENDING_APPROVAL",
-          outbound_email_type: "MANUAL_REPLY",
-          gmail_thread_id: (lastInbound as any)?.gmail_thread_id || null,
-          email_headers: {
-            subject: inHeaders.subject || `Re: Order Request: ${wineName}`,
-            in_reply_to: (lastInbound as any)?.message_id || inHeaders.message_id || null,
-            references: inHeaders.references || null,
-          },
-          // Written out (not `...request`): check_order_capture_contract.py
-          // reads insert/update literals to prove every column exists, and a
-          // spread is invisible to it. Same four fields as `request` above.
-          send_requested_by: request.send_requested_by,
-          send_requested_at: request.send_requested_at,
-          send_requested_sha256: request.send_requested_sha256,
-          send_requested_cc: request.send_requested_cc,
-        })
-        .select("id")
-        .single();
+      const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<
+        string,
+        any
+      >;
+      const wineName =
+        (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
+      const { data: inserted, error: insertError } =
+        await this.databaseService.supabase
+          .from("procurement_conversations")
+          .insert({
+            order_id: orderId,
+            restaurant_id: restaurantId,
+            provider_id: (order as any).provider_id,
+            direction: "outbound",
+            channel: "email",
+            content,
+            message_text: content,
+            ai_generated: false,
+            status: "PENDING_APPROVAL",
+            outbound_email_type: "MANUAL_REPLY",
+            gmail_thread_id: (lastInbound as any)?.gmail_thread_id || null,
+            email_headers: {
+              subject: inHeaders.subject || `Re: Order Request: ${wineName}`,
+              in_reply_to:
+                (lastInbound as any)?.message_id ||
+                inHeaders.message_id ||
+                null,
+              references: inHeaders.references || null,
+            },
+            // Written out (not `...request`): check_order_capture_contract.py
+            // reads insert/update literals to prove every column exists, and a
+            // spread is invisible to it. Same four fields as `request` above.
+            send_requested_by: request.send_requested_by,
+            send_requested_at: request.send_requested_at,
+            send_requested_sha256: request.send_requested_sha256,
+            send_requested_cc: request.send_requested_cc,
+          })
+          .select("id")
+          .single();
       if (insertError || !inserted) {
         throw new InternalServerErrorException(
           `Your letter was not saved (${insertError?.message ?? "no row returned"}), so nothing was asked.`,
@@ -9432,7 +9664,12 @@ export class ProcurementService {
       vendorName = (order as any).providers?.name ?? null;
     }
 
-    const told = await this.tellManagersOfRequest({ restaurantId, orderId, userId, vendorName });
+    const told = await this.tellManagersOfRequest({
+      restaurantId,
+      orderId,
+      userId,
+      vendorName,
+    });
     this.emitConvUpdate(restaurantId, orderId, null, conversationId);
     return {
       conversationId,
@@ -9453,8 +9690,11 @@ export class ProcurementService {
   }): Promise<number> {
     if (!this.notificationsService || !this.vendorSendAuthority) return 0;
     try {
-      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(input.restaurantId);
-      const audience = [...new Set([...owners, ...managers])].filter((id) => id !== input.userId);
+      const { owners, managers } =
+        await this.vendorSendAuthority.ownersAndManagers(input.restaurantId);
+      const audience = [...new Set([...owners, ...managers])].filter(
+        (id) => id !== input.userId,
+      );
       if (audience.length === 0) return 0;
       const names = await this.vendorSendAuthority.namesOf([input.userId]);
       const who = names.get(input.userId) ?? "A member of the team";
@@ -9475,13 +9715,19 @@ export class ProcurementService {
           // 2026-09-21): no names on a locked screen.
           // F-526: cleared for every owner and manager once one of them sends it.
           groupKey: `vendor_send_requested:${input.orderId}`,
-          metadata: { orderId: input.orderId, requestedBy: input.userId, lockScreenText: SEND_REQUEST_PUSH_TEXT },
+          metadata: {
+            orderId: input.orderId,
+            requestedBy: input.userId,
+            lockScreenText: SEND_REQUEST_PUSH_TEXT,
+          },
         },
         { onlyUserIds: audience },
       );
       return inserted;
     } catch (e: any) {
-      this.logger.warn(`A send request could not be told to the managers: ${e?.message}`);
+      this.logger.warn(
+        `A send request could not be told to the managers: ${e?.message}`,
+      );
       return 0;
     }
   }
@@ -9495,10 +9741,16 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
     dto: ApproveDraftDto,
-    actor: { userId: string; challenge: string | null | undefined; grantId: string | null },
+    actor: {
+      userId: string;
+      challenge: string | null | undefined;
+      grantId: string | null;
+    },
   ): Promise<{ conversationId: string; sentAt: string }> {
     if (!actor?.userId?.trim()) {
-      throw new ForbiddenException("A named person is required to send this letter. Nothing was sent.");
+      throw new ForbiddenException(
+        "A named person is required to send this letter. Nothing was sent.",
+      );
     }
     // Fetch conversation + provider email before updating
     const { data: conv, error: fetchError } =
@@ -9545,8 +9797,17 @@ export class ProcurementService {
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
     // ORD-W7: the last door before the mail leaves. Checked before the seal is
     // spent, so a refusal here leaves the hold unspent and nothing sent.
-    const blanks = (await this.draftBlanksAtSend(restaurantId, rawEmailBody, (conv as any).providers)).unfillable;
-    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was sent."));
+    const blanks = (
+      await this.draftBlanksAtSend(
+        restaurantId,
+        rawEmailBody,
+        (conv as any).providers,
+      )
+    ).unfillable;
+    if (blanks.length)
+      throw new BadRequestException(
+        unfilledSlotsRefusal(blanks, "Nothing was sent."),
+      );
     const providerEmail = (conv as any).providers?.contact_email ?? null;
     const rawOrder = (conv as any).procurement_orders;
     const wineName =
@@ -9579,15 +9840,31 @@ export class ProcurementService {
     const conversationId = (conv as any).id as string;
     // THE SEAL, UNCONDITIONALLY (founder, 2026-09-21). No `if`: an absent
     // challenge is redeemed like any other and refused as "absent".
-    if (!this.sealChallenges) throw new InternalServerErrorException("The draft seal cannot be checked. Nothing was sent.");
-    if ((conv as any).providers?.restaurant_id !== restaurantId) throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
+    if (!this.sealChallenges)
+      throw new InternalServerErrorException(
+        "The draft seal cannot be checked. Nothing was sent.",
+      );
+    if ((conv as any).providers?.restaurant_id !== restaurantId)
+      throw new ForbiddenException(
+        "The vendor does not belong to this house. Nothing was sent.",
+      );
     // Bind the actual row and actual recipient used below, immediately before
     // the atomic claim. A stale UI address or replacement draft cannot spend
     // a seal over the earlier letter.
     await this.sealChallenges.redeem({
-      restaurantId, actorUserId: actor.userId, subjectKind: "procurement_order", subjectId: orderId,
+      restaurantId,
+      actorUserId: actor.userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
       action: ORDER_SEND_DRAFT_ACT,
-      args: { ...draftSealArgs({ body: rawEmailBody, to: providerEmail, cc: dto.ccEmails }), draftId: conversationId },
+      args: {
+        ...draftSealArgs({
+          body: rawEmailBody,
+          to: providerEmail,
+          cc: dto.ccEmails,
+        }),
+        draftId: conversationId,
+      },
       challenge: actor.challenge,
     });
     // A send under a grant is a grant event, on the security ledger BEFORE
@@ -9684,7 +9961,9 @@ export class ProcurementService {
         sendError instanceof SendRefusedBeforeSendError &&
         sendError.refusalKind === "header"
       ) {
-        const reason = String(sendError.message ?? "").trim() || "The message could not be built.";
+        const reason =
+          String(sendError.message ?? "").trim() ||
+          "The message could not be built.";
         const closed = await this.closeRefusedDraft(conversationId, reason);
         throw new UnprocessableEntityException({
           reason: DRAFT_SEND_REFUSED,
@@ -9806,12 +10085,18 @@ export class ProcurementService {
     // and manager it went to, not only for the one who sent it. Matched by
     // type and order, so a line written before it carried a group key clears too.
     if (requester) {
-      const bell = await resolveBellLines(this.databaseService.supabase, restaurantId, {
-        type: "vendor_send_requested",
-        orderId,
-      });
+      const bell = await resolveBellLines(
+        this.databaseService.supabase,
+        restaurantId,
+        {
+          type: "vendor_send_requested",
+          orderId,
+        },
+      );
       if (!bell.ok) {
-        this.logger.warn(`The letter for order ${orderId} went, but its "asks you to send" line was not cleared (${bell.error}).`);
+        this.logger.warn(
+          `The letter for order ${orderId} went, but its "asks you to send" line was not cleared (${bell.error}).`,
+        );
       }
     }
     if (requester && requester !== actor.userId) {
@@ -9823,7 +10108,8 @@ export class ProcurementService {
         vendorName: (conv as any).providers?.name ?? null,
         asWritten:
           !!(conv as any).send_requested_sha256 &&
-          (conv as any).send_requested_sha256 === letterVersionHash(rawEmailBody),
+          (conv as any).send_requested_sha256 ===
+            letterVersionHash(rawEmailBody),
       });
     }
 
@@ -9840,7 +10126,9 @@ export class ProcurementService {
   }): Promise<void> {
     if (!this.notificationsService || !this.vendorSendAuthority) return;
     try {
-      const names = await this.vendorSendAuthority.namesOf([input.senderUserId]);
+      const names = await this.vendorSendAuthority.namesOf([
+        input.senderUserId,
+      ]);
       const sender = names.get(input.senderUserId) ?? "A manager";
       await this.notificationsService.persistForRestaurant(
         input.restaurantId,
@@ -9860,12 +10148,18 @@ export class ProcurementService {
           // per-order deep link, so none is claimed. The order is in metadata.
           actionUrl: "/orders",
           actionLabel: "See the thread",
-          metadata: { orderId: input.orderId, sentBy: input.senderUserId, asWritten: input.asWritten },
+          metadata: {
+            orderId: input.orderId,
+            sentBy: input.senderUserId,
+            asWritten: input.asWritten,
+          },
         },
         { onlyUserIds: [input.requester] },
       );
     } catch (e: any) {
-      this.logger.warn(`The requester could not be told their letter went: ${e?.message}`);
+      this.logger.warn(
+        `The requester could not be told their letter went: ${e?.message}`,
+      );
     }
   }
 
@@ -9917,21 +10211,31 @@ export class ProcurementService {
    * owns. Returns whether it closed; a failed write is logged and the row
    * stays SENDING, which is not re-approvable either.
    */
-  private async closeRefusedDraft(conversationId: string, reason: string): Promise<boolean> {
+  private async closeRefusedDraft(
+    conversationId: string,
+    reason: string,
+  ): Promise<boolean> {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_conversations")
-        .update({ status: "SEND_REFUSED", send_refusal_reason: reason.slice(0, 2000) })
+        .update({
+          status: "SEND_REFUSED",
+          send_refusal_reason: reason.slice(0, 2000),
+        })
         .eq("id", conversationId)
         .eq("status", "SENDING")
         .select("id");
       if (error) {
-        this.logger.error(`Could not close refused draft ${conversationId}: ${error.message}. Row remains SENDING.`);
+        this.logger.error(
+          `Could not close refused draft ${conversationId}: ${error.message}. Row remains SENDING.`,
+        );
         return false;
       }
       return Array.isArray(data) && data.length > 0;
     } catch (e: any) {
-      this.logger.error(`Could not close refused draft ${conversationId}: ${e?.message}. Row remains SENDING.`);
+      this.logger.error(
+        `Could not close refused draft ${conversationId}: ${e?.message}. Row remains SENDING.`,
+      );
       return false;
     }
   }
@@ -10017,10 +10321,7 @@ export class ProcurementService {
     // A template body or branding name — data, so escaped (ADR 0170).
     const sig = escapeHtml((senderName || "").trim());
     // Replace any leftover [Manager Name] / [Your Name] / [Name] / [Signature] placeholder.
-    out = out.replace(
-      signatureSlotRe(),
-      () => sig,
-    );
+    out = out.replace(signatureSlotRe(), () => sig);
     return out;
   }
 
@@ -10037,19 +10338,27 @@ export class ProcurementService {
     fill: { firstName?: string; senderName?: string },
   ): BlanksAtSend {
     // escapeHtml leaves "[" and "]" alone; only an apostrophe inside a slot changes.
-    const readBack = (html: string) => unfilledTemplateSlots(html.replace(/&#39;/g, "'"));
-    const greeted = this.personalizeGreeting(this.buildEmailHtml(body), fill.firstName);
+    const readBack = (html: string) =>
+      unfilledTemplateSlots(html.replace(/&#39;/g, "'"));
+    const greeted = this.personalizeGreeting(
+      this.buildEmailHtml(body),
+      fill.firstName,
+    );
     const sender = (fill.senderName ?? "").trim();
     // An empty sender name turns a signature blank into nothing at all. That
     // is not a fill, so the blank stays standing and is refused.
-    const sent = sender ? greeted.replace(signatureSlotRe(), () => escapeHtml(sender)) : greeted;
+    const sent = sender
+      ? greeted.replace(signatureSlotRe(), () => escapeHtml(sender))
+      : greeted;
     const unfillable = readBack(sent);
     const afterGreeting = readBack(greeted);
     const fills = unfilledTemplateSlots(body)
       .filter((slot) => !unfillable.includes(slot))
       .map((slot) => ({
         slot,
-        value: afterGreeting.includes(slot) ? sender : (fill.firstName ?? "").trim(),
+        value: afterGreeting.includes(slot)
+          ? sender
+          : (fill.firstName ?? "").trim(),
       }));
     return { unfillable, fills };
   }
@@ -10165,7 +10474,7 @@ export class ProcurementService {
         throw new SendRefusedBeforeSendError(
           result.refusal.kind === "header"
             ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
-              "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address)."
+                "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address)."
             : result.refusal.kind === "rejected"
               ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
                 "The mail service rejected the request, so nothing was sent. Check the vendor's address and approve again."
@@ -10364,33 +10673,50 @@ export class ProcurementService {
           senderName: sweepSender,
         }).unfillable;
         if (sweepBlanks.length) {
-          await this.revertScheduledToDraft(row.id, `unfilled blanks: ${sweepBlanks.join(", ")}`);
-          const held = unfilledSlotsRefusal(sweepBlanks, "Mudavym held it unsent; fill the blanks on the order's card, then approve it.");
+          await this.revertScheduledToDraft(
+            row.id,
+            `unfilled blanks: ${sweepBlanks.join(", ")}`,
+          );
+          const held = unfilledSlotsRefusal(
+            sweepBlanks,
+            "Mudavym held it unsent; fill the blanks on the order's card, then approve it.",
+          );
           try {
-            this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
-              id: row.id,
-              title: "A scheduled reply was held — it still has blanks",
-              message: held,
-              type: "warning",
-              action_url: `/orders?order=${row.order_id}`,
-            });
-            void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
-              type: "vendor_reply",
-              title: "A scheduled reply was held — it still has blanks",
-              message: held,
-              priority: "high",
-              actionUrl: `/orders?order=${row.order_id}`,
-              metadata: {
-                order_id: row.order_id,
-                draft_id: row.id,
-                provider_id: row.provider_id,
-                reason: "unfilled_blanks",
+            this.websocketGateway?.emitRestaurantNotification(
+              row.restaurant_id,
+              {
+                id: row.id,
+                title: "A scheduled reply was held — it still has blanks",
+                message: held,
+                type: "warning",
+                action_url: `/orders?order=${row.order_id}`,
               },
-            });
+            );
+            void this.inboundResponder?.persistManagerNotification(
+              row.restaurant_id,
+              {
+                type: "vendor_reply",
+                title: "A scheduled reply was held — it still has blanks",
+                message: held,
+                priority: "high",
+                actionUrl: `/orders?order=${row.order_id}`,
+                metadata: {
+                  order_id: row.order_id,
+                  draft_id: row.id,
+                  provider_id: row.provider_id,
+                  reason: "unfilled_blanks",
+                },
+              },
+            );
           } catch {
             /* best-effort */
           }
-          this.emitConvUpdate(row.restaurant_id, row.order_id, row.provider_id, row.id);
+          this.emitConvUpdate(
+            row.restaurant_id,
+            row.order_id,
+            row.provider_id,
+            row.id,
+          );
           continue;
         }
 
@@ -10571,7 +10897,8 @@ export class ProcurementService {
    */
   private refuseManualReplyBlanks(content: string, nothing: string): void {
     const blanks = this.blanksAtSend(content, {}).unfillable;
-    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, nothing));
+    if (blanks.length)
+      throw new BadRequestException(unfilledSlotsRefusal(blanks, nothing));
   }
 
   /**
@@ -10586,25 +10913,42 @@ export class ProcurementService {
     userId: string,
     letter: { content: string; ccEmails?: string[] | null },
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
-    await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
-    if (!letter.content?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    await this.requireSendAuthority(userId, restaurantId, "send this letter", {
+      canAsk: true,
+    });
+    if (!letter.content?.trim())
+      throw new BadRequestException("An empty letter cannot be sent.");
     // ORD-W7 (founder, 2026-10-01: "Add sweep + manual").
-    this.refuseManualReplyBlanks(letter.content, "No seal was issued and nothing was sent.");
+    this.refuseManualReplyBlanks(
+      letter.content,
+      "No seal was issued and nothing was sent.",
+    );
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), so nothing can be sent.",
       );
     }
-    const { providerEmail } = await this.manualReplyTarget(restaurantId, orderId);
+    const { providerEmail } = await this.manualReplyTarget(
+      restaurantId,
+      orderId,
+    );
     const issued = await this.sealChallenges.issue({
       restaurantId,
       actorUserId: userId,
       subjectKind: "procurement_order",
       subjectId: orderId,
       action: ORDER_SEND_MANUAL_REPLY_ACT,
-      args: draftSealArgs({ body: letter.content, to: providerEmail, cc: letter.ccEmails ?? [] }),
+      args: draftSealArgs({
+        body: letter.content,
+        to: providerEmail,
+        cc: letter.ccEmails ?? [],
+      }),
     });
-    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
   }
 
   /**
@@ -10630,18 +10974,33 @@ export class ProcurementService {
     if (!content || !content.trim()) {
       throw new BadRequestException("Reply content cannot be empty");
     }
-    const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
-      canAsk: true,
-    });
+    const standing = await this.requireSendAuthority(
+      userId,
+      restaurantId,
+      "send this letter",
+      {
+        canAsk: true,
+      },
+    );
     // Before the seal is spent, so a refusal leaves it unspent and nothing sent.
     this.refuseManualReplyBlanks(content, "Nothing was sent.");
 
-    const { order, providerEmail, wineName } = await this.manualReplyTarget(restaurantId, orderId);
-    if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
-      throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
+    const { order, providerEmail, wineName } = await this.manualReplyTarget(
+      restaurantId,
+      orderId,
+    );
+    if (
+      (order as any)?.providers?.restaurant_id &&
+      (order as any).providers.restaurant_id !== restaurantId
+    ) {
+      throw new ForbiddenException(
+        "The vendor does not belong to this house. Nothing was sent.",
+      );
     }
     if (!this.sealChallenges) {
-      throw new InternalServerErrorException("The reply's seal cannot be checked. Nothing was sent.");
+      throw new InternalServerErrorException(
+        "The reply's seal cannot be checked. Nothing was sent.",
+      );
     }
     // Spent BEFORE the send: a refused seal means nothing left the building,
     // and a second request with the same token is refused as "spent".
@@ -10651,15 +11010,22 @@ export class ProcurementService {
       subjectKind: "procurement_order",
       subjectId: orderId,
       action: ORDER_SEND_MANUAL_REPLY_ACT,
-      args: draftSealArgs({ body: content, to: providerEmail, cc: ccEmails ?? [] }),
+      args: draftSealArgs({
+        body: content,
+        to: providerEmail,
+        cc: ccEmails ?? [],
+      }),
       challenge,
     });
-    await this.vendorSendAuthority?.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
-      userId,
-      restaurantId,
-      act: ORDER_SEND_MANUAL_REPLY_ACT,
-      subject: `procurement_order:${orderId}`,
-    });
+    await this.vendorSendAuthority?.witnessGrantUse(
+      standing.basis === "grant" ? standing.grant.id : null,
+      {
+        userId,
+        restaurantId,
+        act: ORDER_SEND_MANUAL_REPLY_ACT,
+        subject: `procurement_order:${orderId}`,
+      },
+    );
 
     // Thread to the vendor's latest inbound message if there is one — this
     // house's, or the reply would carry another house's subject and headers.
@@ -10717,7 +11083,8 @@ export class ProcurementService {
           references: references || null,
         },
         sent_by_user_id: userId,
-        sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
+        sent_under_grant_id:
+          standing.basis === "grant" ? standing.grant.id : null,
       })
       .select("id, sent_at")
       .single();
@@ -11017,7 +11384,10 @@ export class ProcurementService {
   }
 
   /** The order a deal confirmation commits, read the same way for the mint and the act. */
-  private async dealTarget(restaurantId: string, orderId: string): Promise<any> {
+  private async dealTarget(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<any> {
     const { data: order, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
@@ -11046,12 +11416,21 @@ export class ProcurementService {
     opts: { finalPrice?: number; quantity?: number },
   ): ActAmount {
     const price = Number(
-      opts.finalPrice ?? order?.final_price ?? order?.negotiated_price ?? order?.quoted_price,
+      opts.finalPrice ??
+        order?.final_price ??
+        order?.negotiated_price ??
+        order?.quoted_price,
     );
     const qty = Number(opts.quantity ?? order?.quantity);
-    const currency = typeof order?.currency === "string" && order.currency.trim() ? order.currency.trim().toUpperCase() : null;
+    const currency =
+      typeof order?.currency === "string" && order.currency.trim()
+        ? order.currency.trim().toUpperCase()
+        : null;
     // Rounded to the order's own minor unit (F-452): a 1.255-dinar deal is not a 1.26 one.
-    const value = Number.isFinite(price) && Number.isFinite(qty) ? roundMoney(price * qty, currency) : null;
+    const value =
+      Number.isFinite(price) && Number.isFinite(qty)
+        ? roundMoney(price * qty, currency)
+        : null;
     return { value, currency };
   }
 
@@ -11074,11 +11453,22 @@ export class ProcurementService {
     const unitPrice = Number(opts.finalPrice);
     await this.assertApprovalAllowed(restaurantId, orderId, userId, {
       total: this.dealAmount(order, opts).value,
-      unitPrice: opts.finalPrice != null && Number.isFinite(unitPrice) ? unitPrice : null,
+      unitPrice:
+        opts.finalPrice != null && Number.isFinite(unitPrice)
+          ? unitPrice
+          : null,
     });
   }
 
-  private dealSeal(orderId: string, order: any, opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean }) {
+  private dealSeal(
+    orderId: string,
+    order: any,
+    opts: {
+      finalPrice?: number;
+      quantity?: number;
+      sendConfirmation?: boolean;
+    },
+  ) {
     return dealSealArgs({
       orderId,
       finalPrice: opts.finalPrice ?? null,
@@ -11098,7 +11488,11 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
     userId: string,
-    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+    opts: {
+      finalPrice?: number;
+      quantity?: number;
+      sendConfirmation?: boolean;
+    },
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
     const order = await this.dealTarget(restaurantId, orderId);
     // canAsk: a staff member whose hold cannot confirm may ASK a manager
@@ -11108,7 +11502,13 @@ export class ProcurementService {
       canAsk: true,
     });
     // Everything that would refuse the confirmation refuses the SEAL, first.
-    await this.assertDealConfirmable(restaurantId, orderId, userId, order, opts);
+    await this.assertDealConfirmable(
+      restaurantId,
+      orderId,
+      userId,
+      order,
+      opts,
+    );
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), so nothing can be confirmed.",
@@ -11122,7 +11522,11 @@ export class ProcurementService {
       action: ORDER_CONFIRM_DEAL_ACT,
       args: this.dealSeal(orderId, order, opts),
     });
-    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
   }
 
   /**
@@ -11138,8 +11542,17 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
     userId: string,
-    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
-  ): Promise<{ requestId: string; requestedAt: string; told: number; says: string }> {
+    opts: {
+      finalPrice?: number;
+      quantity?: number;
+      sendConfirmation?: boolean;
+    },
+  ): Promise<{
+    requestId: string;
+    requestedAt: string;
+    told: number;
+    says: string;
+  }> {
     if (!this.vendorSendRequests) {
       throw new InternalServerErrorException(
         "Requests could not be recorded (the requests service is not wired into procurement), so nothing was asked.",
@@ -11170,7 +11583,12 @@ export class ProcurementService {
       requestId: row.id,
       orderId,
     });
-    this.emitConvUpdate(restaurantId, orderId, (order as any)?.provider_id ?? null, orderId);
+    this.emitConvUpdate(
+      restaurantId,
+      orderId,
+      (order as any)?.provider_id ?? null,
+      orderId,
+    );
     return {
       requestId: row.id,
       requestedAt: row.requested_at,
@@ -11201,7 +11619,9 @@ export class ProcurementService {
     }
     const order = await this.dealTarget(restaurantId, orderId);
     const [waiting, standing] = await Promise.all([
-      this.vendorSendRequests.waiting(restaurantId, "confirm_deal", { orderId }),
+      this.vendorSendRequests.waiting(restaurantId, "confirm_deal", {
+        orderId,
+      }),
       this.vendorSendAuthority.readout(userId, restaurantId, {
         canAsk: true,
         amount: this.dealAmount(order, opts),
@@ -11220,15 +11640,24 @@ export class ProcurementService {
    * (409, `decline`/`withdraw`'s own `assertStillWaiting`) — filtering to
    * `waiting` first would flatten both into the same bare 404.
    */
-  private async waitingDealRequestOrThrow(restaurantId: string, orderId: string) {
+  private async waitingDealRequestOrThrow(
+    restaurantId: string,
+    orderId: string,
+  ) {
     if (!this.vendorSendRequests) {
       throw new InternalServerErrorException(
         "Requests could not be read (the requests service is not wired into procurement). Nothing was changed.",
       );
     }
-    const row = await this.vendorSendRequests.latestForOrder(restaurantId, orderId, "confirm_deal");
+    const row = await this.vendorSendRequests.latestForOrder(
+      restaurantId,
+      orderId,
+      "confirm_deal",
+    );
     if (!row) {
-      throw new NotFoundException("No deal request is waiting on this order. Nothing was changed.");
+      throw new NotFoundException(
+        "No deal request is waiting on this order. Nothing was changed.",
+      );
     }
     return row;
   }
@@ -11256,8 +11685,17 @@ export class ProcurementService {
       userId,
       reason,
     });
-    this.emitConvUpdate(restaurantId, orderId, waiting.provider_id ?? null, orderId);
-    return { id: row.id, state: row.state, says: "Declined. The person who asked was told why, and nothing was confirmed." };
+    this.emitConvUpdate(
+      restaurantId,
+      orderId,
+      waiting.provider_id ?? null,
+      orderId,
+    );
+    return {
+      id: row.id,
+      state: row.state,
+      says: "Declined. The person who asked was told why, and nothing was confirmed.",
+    };
   }
 
   /**
@@ -11278,8 +11716,17 @@ export class ProcurementService {
       kind: "confirm_deal",
       userId,
     });
-    this.emitConvUpdate(restaurantId, orderId, waiting.provider_id ?? null, orderId);
-    return { id: row.id, state: row.state, says: "Withdrawn. It no longer waits for a manager, and nothing was confirmed." };
+    this.emitConvUpdate(
+      restaurantId,
+      orderId,
+      waiting.provider_id ?? null,
+      orderId,
+    );
+    return {
+      id: row.id,
+      state: row.state,
+      says: "Withdrawn. It no longer waits for a manager, and nothing was confirmed.",
+    };
   }
 
   /**
@@ -11318,17 +11765,35 @@ export class ProcurementService {
       );
     }
 
-    const standing = await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
-      amount: this.dealAmount(order, opts),
-      canAsk: true,
-    });
-    if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
-      throw new ForbiddenException("The vendor does not belong to this house. Nothing was confirmed.");
+    const standing = await this.requireSendAuthority(
+      userId,
+      restaurantId,
+      "confirm this deal",
+      {
+        amount: this.dealAmount(order, opts),
+        canAsk: true,
+      },
+    );
+    if (
+      (order as any)?.providers?.restaurant_id &&
+      (order as any).providers.restaurant_id !== restaurantId
+    ) {
+      throw new ForbiddenException(
+        "The vendor does not belong to this house. Nothing was confirmed.",
+      );
     }
     // Before the seal is spent: a refusal here commits nothing and mails nothing.
-    await this.assertDealConfirmable(restaurantId, orderId, userId, order, opts);
+    await this.assertDealConfirmable(
+      restaurantId,
+      orderId,
+      userId,
+      order,
+      opts,
+    );
     if (!this.sealChallenges) {
-      throw new InternalServerErrorException("The deal's seal cannot be checked. Nothing was confirmed.");
+      throw new InternalServerErrorException(
+        "The deal's seal cannot be checked. Nothing was confirmed.",
+      );
     }
     // Spent BEFORE the first write: a refused seal means nothing was committed
     // and nothing was mailed.
@@ -11341,12 +11806,15 @@ export class ProcurementService {
       args: this.dealSeal(orderId, order, opts),
       challenge,
     });
-    await this.vendorSendAuthority?.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
-      userId,
-      restaurantId,
-      act: ORDER_CONFIRM_DEAL_ACT,
-      subject: `procurement_order:${orderId}`,
-    });
+    await this.vendorSendAuthority?.witnessGrantUse(
+      standing.basis === "grant" ? standing.grant.id : null,
+      {
+        userId,
+        restaurantId,
+        act: ORDER_CONFIRM_DEAL_ACT,
+        subject: `procurement_order:${orderId}`,
+      },
+    );
 
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
     const greetName =
@@ -11638,7 +12106,8 @@ export class ProcurementService {
                 : {}),
             },
             sent_by_user_id: userId,
-            sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
+            sent_under_grant_id:
+              standing.basis === "grant" ? standing.grant.id : null,
           });
         sentConfirmation = true;
       } catch (e: any) {
@@ -11710,7 +12179,11 @@ export class ProcurementService {
     // leaving a request that blocks the next ask on this order (founder answer
     // 3's request flow; `closeWaitingDeal`).
     const requestsClosed = this.vendorSendRequests
-      ? await this.vendorSendRequests.closeWaitingDeal(restaurantId, orderId, "deal_dismissed")
+      ? await this.vendorSendRequests.closeWaitingDeal(
+          restaurantId,
+          orderId,
+          "deal_dismissed",
+        )
       : 0;
     await this.resolveLatestDealProposal(restaurantId, orderId, "dismissed");
     this.emitConvUpdate(restaurantId, orderId, null, orderId);
@@ -11828,7 +12301,9 @@ export class ProcurementService {
       .single();
 
     if (error && error.code !== "PGRST116") {
-      throw new InternalServerErrorException("The pending draft could not be read. Nothing was sent.");
+      throw new InternalServerErrorException(
+        "The pending draft could not be read. Nothing was sent.",
+      );
     }
     if (error) return null;
     if (!data) return null;
@@ -11844,7 +12319,11 @@ export class ProcurementService {
     } = row;
     // The first-name columns are read for `at_send` only; the page gets the
     // vendor's name and address as before, never its whole primary_contact.
-    const { contact_first_name: _first, primary_contact: _contact, ...vendor } = row.providers ?? {};
+    const {
+      contact_first_name: _first,
+      primary_contact: _contact,
+      ...vendor
+    } = row.providers ?? {};
     return {
       ...rest,
       providers: row.providers ? vendor : row.providers,
@@ -11857,7 +12336,11 @@ export class ProcurementService {
       send_request: request,
       // ORD-W7: which blanks the send fills (and with what) and which it
       // cannot, so the card refuses only those (founder, 2026-10-01).
-      at_send: await this.draftBlanksAtSend(restaurantId, content ?? "", row.providers),
+      at_send: await this.draftBlanksAtSend(
+        restaurantId,
+        content ?? "",
+        row.providers,
+      ),
     };
   }
 
@@ -11880,7 +12363,9 @@ export class ProcurementService {
     const asked = rows.filter((r) => r.send_requested_at);
     if (asked.length > 0 && this.vendorSendAuthority) {
       try {
-        names = await this.vendorSendAuthority.namesOf(asked.map((r) => r.send_requested_by));
+        names = await this.vendorSendAuthority.namesOf(
+          asked.map((r) => r.send_requested_by),
+        );
       } catch (e: any) {
         this.logger.warn(`Requesters' names could not be read: ${e?.message}`);
       }
@@ -11889,7 +12374,9 @@ export class ProcurementService {
       r.send_requested_at
         ? {
             requestedBy: r.send_requested_by ?? null,
-            requestedByName: r.send_requested_by ? (names.get(r.send_requested_by) ?? null) : null,
+            requestedByName: r.send_requested_by
+              ? (names.get(r.send_requested_by) ?? null)
+              : null,
             requestedAt: r.send_requested_at,
             current:
               !!r.send_requested_sha256 &&
@@ -11948,7 +12435,10 @@ export class ProcurementService {
     }
 
     const requests = await this.sendRequestViews(
-      (data || []).map((row: any) => ({ ...row, content: row.content ?? row.message_text ?? null })),
+      (data || []).map((row: any) => ({
+        ...row,
+        content: row.content ?? row.message_text ?? null,
+      })),
     );
     return (data || []).map((row: any, i: number) => {
       const wineName = row.procurement_orders?.inventory?.wine_name ?? null;
@@ -12210,7 +12700,10 @@ export class ProcurementService {
     if (this.vendorSendAuthority) {
       try {
         people = await this.vendorSendAuthority.namesOf(
-          (data || []).flatMap((r: any) => [r.sent_by_user_id, r.send_requested_by]),
+          (data || []).flatMap((r: any) => [
+            r.sent_by_user_id,
+            r.send_requested_by,
+          ]),
         );
       } catch (e: any) {
         this.logger.warn(`Senders' names could not be read: ${e?.message}`);
@@ -12223,10 +12716,14 @@ export class ProcurementService {
       // SEND_REFUSED's own sentence (founder answer 6, 2026-09-21).
       refusalReason: row.send_refusal_reason ?? null,
       sentBy: row.sent_by_user_id ?? null,
-      sentByName: row.sent_by_user_id ? (people.get(row.sent_by_user_id) ?? null) : null,
+      sentByName: row.sent_by_user_id
+        ? (people.get(row.sent_by_user_id) ?? null)
+        : null,
       sentUnderGrant: !!row.sent_under_grant_id,
       requestedBy: row.send_requested_by ?? null,
-      requestedByName: row.send_requested_by ? (people.get(row.send_requested_by) ?? null) : null,
+      requestedByName: row.send_requested_by
+        ? (people.get(row.send_requested_by) ?? null)
+        : null,
       // DB stores direction lowercase ('inbound'/'outbound'); the UI compares
       // against uppercase, so normalize here or inbound replies render as rounds.
       direction: String(row.direction ?? "outbound").toUpperCase() as

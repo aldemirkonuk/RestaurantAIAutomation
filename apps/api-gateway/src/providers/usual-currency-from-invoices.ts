@@ -116,8 +116,7 @@ export function printedCurrencyOf(extracted: {
   filedCode?: string | null;
 }): string | null {
   const seen = iso(extracted.seenCode);
-  const file =
-    extracted.filedKind === "file" ? iso(extracted.filedCode) : null;
+  const file = extracted.filedKind === "file" ? iso(extracted.filedCode) : null;
   if (seen && file && seen !== file) return null; // contradicts itself
   return seen ?? file;
 }
@@ -139,7 +138,13 @@ export function decideUsualCurrency(args: {
     .sort((a, b) => b.invoices - a.invoices || a.code.localeCompare(b.code));
   const counted = printed.length;
 
-  const base = { write: null, refreshCount: null, counts, counted, clash: null };
+  const base = {
+    write: null,
+    refreshCount: null,
+    counts,
+    counted,
+    clash: null,
+  };
   const rawOnFile = (args.onFile.code ?? "").trim().toUpperCase();
   const onFile = iso(rawOnFile);
 
@@ -165,7 +170,11 @@ export function decideUsualCurrency(args: {
     if (newest && newest !== onFile) {
       let run = 0;
       while (run < printed.length && printed[run] === newest) run += 1;
-      return { ...base, state: "C", clash: { code: newest, lastInvoices: run } };
+      return {
+        ...base,
+        state: "C",
+        clash: { code: newest, lastInvoices: run },
+      };
     }
     return { ...base, state: "stated" };
   }
@@ -294,7 +303,9 @@ export async function readUsualCurrencyFromInvoices(
 ): Promise<UsualCurrencyReading | null> {
   const { data, error } = await client
     .from("providers")
-    .select("usual_currency, usual_currency_source, usual_currency_invoice_count")
+    .select(
+      "usual_currency, usual_currency_source, usual_currency_invoice_count",
+    )
     .eq("id", providerId)
     .eq("restaurant_id", restaurantId)
     .maybeSingle();
@@ -323,7 +334,11 @@ export async function readUsualCurrencyFromInvoices(
     restaurantId,
     providerId,
   );
-  return { onFile, evidence, decision: decideUsualCurrency({ evidence, onFile }) };
+  return {
+    onFile,
+    evidence,
+    decision: decideUsualCurrency({ evidence, onFile }),
+  };
 }
 
 export type LearnOutcome =
@@ -359,7 +374,8 @@ export async function learnUsualCurrencyFromInvoices(
       restaurantId,
       providerId,
     );
-    if (!reading) return { kind: "failed", because: "the vendor is not in this house" };
+    if (!reading)
+      return { kind: "failed", because: "the vendor is not in this house" };
     const { decision } = reading;
 
     if (decision.write) {
@@ -393,7 +409,11 @@ export async function learnUsualCurrencyFromInvoices(
         .select("id");
       if (error) return { kind: "failed", because: error.message };
       if (!data || (data as unknown[]).length === 0) return { kind: "raced" };
-      return { kind: "count-refreshed", code, invoiceCount: decision.refreshCount };
+      return {
+        kind: "count-refreshed",
+        code,
+        invoiceCount: decision.refreshCount,
+      };
     }
 
     return { kind: "left", state: decision.state };

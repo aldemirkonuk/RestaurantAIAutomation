@@ -79,16 +79,28 @@ function fakeDb(tables: Record<string, Row[] | { error: string }>) {
       const b: any = {
         select: () => b,
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), b),
-        gte: (c: string, v: string) => (filters.push((r) => String(r[c]) >= v), b),
-        lt: (c: string, v: string) => (filters.push((r) => String(r[c]) < v), b),
-        gt: (c: string, v: string) => (filters.push((r) => String(r[c]) > v), b),
+        gte: (c: string, v: string) => (
+          filters.push((r) => String(r[c]) >= v),
+          b
+        ),
+        lt: (c: string, v: string) => (
+          filters.push((r) => String(r[c]) < v),
+          b
+        ),
+        gt: (c: string, v: string) => (
+          filters.push((r) => String(r[c]) > v),
+          b
+        ),
         in: () => b,
         order: () => b,
         limit: (n: number) => ((cap = n), b),
         then(resolve: (v: unknown) => void) {
           const t = tables[table] ?? [];
-          if (!Array.isArray(t)) return resolve({ data: null, error: { message: t.error } });
-          const data = t.filter((r) => filters.every((f) => f(r))).slice(0, cap);
+          if (!Array.isArray(t))
+            return resolve({ data: null, error: { message: t.error } });
+          const data = t
+            .filter((r) => filters.every((f) => f(r)))
+            .slice(0, cap);
           resolve({ data, error: null });
         },
       };
@@ -111,8 +123,15 @@ const HOUSE = { id: "r-1", timezone: "America/New_York", country: "US" };
 // 19:00 on 2026-10-09 in New York.
 const NOW = new Date("2026-10-09T23:00:00Z");
 
-function check(id: string, closedAt: string, subtotal: number, voided = false): Row {
-  const opened = new Date(new Date(closedAt).getTime() - 3_600_000).toISOString();
+function check(
+  id: string,
+  closedAt: string,
+  subtotal: number,
+  voided = false,
+): Row {
+  const opened = new Date(
+    new Date(closedAt).getTime() - 3_600_000,
+  ).toISOString();
   return {
     id,
     restaurant_id: "r-1",
@@ -157,11 +176,10 @@ describe("today pulse reads the house's register (F-674)", () => {
   });
 
   it("says no register when the house has never sent a check", async () => {
-    const pulse = await buildWithDb({ restaurants: [HOUSE], pos_checks: [] }).getTodayPulse(
-      "u-1",
-      "r-1",
-      NOW,
-    );
+    const pulse = await buildWithDb({
+      restaurants: [HOUSE],
+      pos_checks: [],
+    }).getTodayPulse("u-1", "r-1", NOW);
 
     expect(pulse.salesState).toBe("no_register");
     expect(pulse.revenueToday).toBeNull();
@@ -201,7 +219,12 @@ describe("today pulse carries the house's money (F-885)", () => {
   it("sends a lira house's currency and its formats tag", async () => {
     const pulse = await buildWithDb({
       restaurants: [
-        { id: "r-1", timezone: "Europe/Istanbul", country: "TR", currency: "TRY" },
+        {
+          id: "r-1",
+          timezone: "Europe/Istanbul",
+          country: "TR",
+          currency: "TRY",
+        },
       ],
       pos_checks: [],
     }).getTodayPulse("u-1", "r-1", NOW);

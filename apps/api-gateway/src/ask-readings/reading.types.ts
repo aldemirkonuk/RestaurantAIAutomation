@@ -3,24 +3,65 @@ import type { DataClass } from "./reading-data-classes";
 
 /** Wire values are proof, not model-authored prose (ADR 0145). */
 export type ReadingId =
-  | "inventory.position" | "inventory.low_stock" | "inventory.in_transit"
-  | "inventory.locations" | "inventory.movements" | "orders.open"
-  | "orders.lines" | "orders.late_deliveries" | "receipts.verified_line"
-  | "sales.check_activity" | "sales.consumption" | "calendar.upcoming"
-  | "vendors.active" | "documents.waiting" | "goals.targets" | "orders.due_today";
+  | "inventory.position"
+  | "inventory.low_stock"
+  | "inventory.in_transit"
+  | "inventory.locations"
+  | "inventory.movements"
+  | "orders.open"
+  | "orders.lines"
+  | "orders.late_deliveries"
+  | "receipts.verified_line"
+  | "sales.check_activity"
+  | "sales.consumption"
+  | "calendar.upcoming"
+  | "vendors.active"
+  | "documents.waiting"
+  | "goals.targets"
+  | "orders.due_today";
 
-export type QuestionClass = ReadingId | "forecast" | "landed_cost" | "sales_revenue"
-  | "lot_expiry" | "general_knowledge" | "unrecognized";
-export type AskDisposition = { kind: "reading"; id: ReadingId } | { kind: "not_built" }
-  | { kind: "model_knowledge" } | { kind: "no_reading_matched" };
-export type ReadingOutcome = "read" | "not_in_your_books" | "requirements_unsatisfied"
-  | "could_not_read" | "not_built" | "no_reading_matched" | "clarify";
-export type ReadingReason = "empty_register" | "missing_subject" | "ambiguous_subject"
-  | "subject_not_found" | "missing_window" | "invalid_window" | "missing_unit"
-  | "missing_verified_link" | "missing_currency_provenance" | "missing_pack"
-  | "query_failed" | "invalid_source_result" | "scope_mismatch" | "source_changed"
-  | "source_limit" | "unrecorded_figure" | "unknown_reading_version"
-  | "unsupported_recurrence" | "unimplemented_question" | "no_matching_question"
+export type QuestionClass =
+  | ReadingId
+  | "forecast"
+  | "landed_cost"
+  | "sales_revenue"
+  | "lot_expiry"
+  | "general_knowledge"
+  | "unrecognized";
+export type AskDisposition =
+  | { kind: "reading"; id: ReadingId }
+  | { kind: "not_built" }
+  | { kind: "model_knowledge" }
+  | { kind: "no_reading_matched" };
+export type ReadingOutcome =
+  | "read"
+  | "not_in_your_books"
+  | "requirements_unsatisfied"
+  | "could_not_read"
+  | "not_built"
+  | "no_reading_matched"
+  | "clarify";
+export type ReadingReason =
+  | "empty_register"
+  | "missing_subject"
+  | "ambiguous_subject"
+  | "subject_not_found"
+  | "missing_window"
+  | "invalid_window"
+  | "missing_unit"
+  | "missing_verified_link"
+  | "missing_currency_provenance"
+  | "missing_pack"
+  | "query_failed"
+  | "invalid_source_result"
+  | "scope_mismatch"
+  | "source_changed"
+  | "source_limit"
+  | "unrecorded_figure"
+  | "unknown_reading_version"
+  | "unsupported_recurrence"
+  | "unimplemented_question"
+  | "no_matching_question"
   | "undeclared_field"
   /**
    * A source did not answer, and WHY is withheld from the asking role (founder,
@@ -75,7 +116,10 @@ export interface BoundCell {
   provenance: Provenance;
   sourceRelations: string[];
 }
-export interface FindingRow { key: string; cells: BoundCell[] }
+export interface FindingRow {
+  key: string;
+  cells: BoundCell[];
+}
 export interface Finding {
   kind: "finding";
   readingId: ReadingId;

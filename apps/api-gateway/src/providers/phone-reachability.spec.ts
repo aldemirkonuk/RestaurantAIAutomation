@@ -54,7 +54,9 @@ describe("the column's own default is not an answer", () => {
     // did. If this ever flips to true, every untouched row in the book starts
     // reporting a manager's decision that was never made.
     expect(r.stated).toBe(false);
-    expect(r.says).toMatch(/Nobody has said what kind of number this is, so it shows as a main line/i);
+    expect(r.says).toMatch(
+      /Nobody has said what kind of number this is, so it shows as a main line/i,
+    );
   });
 
   it("the default this reading is built on is still the column's default", () => {
@@ -73,7 +75,9 @@ describe("the column's own default is not an answer", () => {
       ),
       "utf8",
     ) as string;
-    expect(sql).toContain(`phone_type text DEFAULT '${PHONE_TYPE_COLUMN_DEFAULT}'`);
+    expect(sql).toContain(
+      `phone_type text DEFAULT '${PHONE_TYPE_COLUMN_DEFAULT}'`,
+    );
   });
 
   it("landline is the SAFE direction: an unchosen value withholds a text", () => {

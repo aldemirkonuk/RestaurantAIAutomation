@@ -213,7 +213,11 @@ describe("reconciliationLine", () => {
     // A closure that reads as a quiet day is the single most damaging input a
     // demand model can be given.
     expect(
-      reconciliationLine(day({ excluded: true, exclusionReason: "Labor Day" }), true, true),
+      reconciliationLine(
+        day({ excluded: true, exclusionReason: "Labor Day" }),
+        true,
+        true,
+      ),
     ).toContain("Closed — Labor Day");
   });
 
@@ -231,9 +235,13 @@ describe("reconciliationLine", () => {
     expect(line).toBe(
       "The sales register could not be read, so this day's trading is not known.",
     );
-    expect(line).not.toMatch(/No sales register is connected|Nothing was recorded/);
+    expect(line).not.toMatch(
+      /No sales register is connected|Nothing was recorded/,
+    );
     // The weather half is still said: it does not depend on the register.
-    expect(reconciliationLine(null, true, null, 1.11)).toContain("out by 1.1 °C");
+    expect(reconciliationLine(null, true, null, 1.11)).toContain(
+      "out by 1.1 °C",
+    );
     // and `false` still means no register at all
     expect(reconciliationLine(null, false, false)).toContain(
       "No sales register is connected",
@@ -415,7 +423,9 @@ describe("DayRecordService", () => {
     expect(row.accuracy_score).toBeNull();
     // NULL because nothing observed, and the row SAYS which half was missing —
     // a null with no reason beside it is the absence-as-health shape again.
-    expect(row.context.withheld).toBe("no station observed a high for this day");
+    expect(row.context.withheld).toBe(
+      "no station observed a high for this day",
+    );
     expect(row.actual_value.covers).toBe(41);
     expect(row.predicted_value.temperatureHigh).toBe(75);
     expect(row.context.businessDate).toBe(YESTERDAY);
@@ -470,7 +480,10 @@ describe("DayRecordService", () => {
 
   it("keeps the two registers' refusals apart", async () => {
     const { service } = makeService({
-      recorded: LEDGER({ refusal: "The sales register could not be read.", days: [] }),
+      recorded: LEDGER({
+        refusal: "The sales register could not be read.",
+        days: [],
+      }),
       weather: WEATHER({
         refusal: "No location is set for this house",
         forecastInAdvance: [],
@@ -528,7 +541,13 @@ describe("DayRecordService", () => {
     // "today" filed the LA evening still running as a passed day.
     jest.useFakeTimers({
       now: new Date("2026-10-10T03:00:00Z"),
-      doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "setTimeout",
+        "setInterval",
+        "queueMicrotask",
+      ],
     });
     try {
       const { service } = makeService({
@@ -550,7 +569,12 @@ describe("DayRecordService", () => {
         weather: WEATHER({ forecastInAdvance: [] }),
         timezone: "America/Los_Angeles",
       });
-      const out = await service.windowFor("r1", "2026-10-09", "2026-10-09", OWNER);
+      const out = await service.windowFor(
+        "r1",
+        "2026-10-09",
+        "2026-10-09",
+        OWNER,
+      );
       expect(out.days).toHaveLength(0);
     } finally {
       jest.useRealTimers();
@@ -618,11 +642,15 @@ describe("reconciliationLine — the weather half", () => {
   };
 
   it("states the error in words when there is one", () => {
-    expect(reconciliationLine(day, true, true, 1.11)).toContain("out by 1.1 °C");
+    expect(reconciliationLine(day, true, true, 1.11)).toContain(
+      "out by 1.1 °C",
+    );
   });
 
   it("says a forecast that landed exactly, landed exactly", () => {
-    expect(reconciliationLine(day, true, true, 0)).toContain("called the high exactly");
+    expect(reconciliationLine(day, true, true, 0)).toContain(
+      "called the high exactly",
+    );
   });
 
   it("says nothing about the weather when the score was withheld", () => {
@@ -701,7 +729,9 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
     const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
 
     expect(out.days[0].forecastErrorC).toBeNull();
-    expect(out.days[0].scoreWithheld).toBe("no station observed a high for this day");
+    expect(out.days[0].scoreWithheld).toBe(
+      "no station observed a high for this day",
+    );
     expect(inserted[0][0].accuracy_score).toBeNull();
     expect(inserted[0][0].context.withheld).toBe(
       "no station observed a high for this day",
@@ -717,7 +747,9 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
 
     const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.days[0].forecastErrorC).toBeNull();
-    expect(out.days[0].scoreWithheld).toBe("no forecast high stood before this day");
+    expect(out.days[0].scoreWithheld).toBe(
+      "no forecast high stood before this day",
+    );
     // and nothing is written: a forecast is the thing being scored.
     expect(out.pairsWritten).toBe(0);
   });
@@ -1227,7 +1259,13 @@ describe("DayRecordService — net takings and the house currency", () => {
     async (hour) => {
       jest.useFakeTimers({
         now: new Date(Date.UTC(2026, 9, 10, hour, 30)),
-        doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+        doNotFake: [
+          "nextTick",
+          "setImmediate",
+          "setTimeout",
+          "setInterval",
+          "queueMicrotask",
+        ],
       });
       try {
         await expectUnreadableCurrencyKeptApart();

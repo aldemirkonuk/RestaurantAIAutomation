@@ -3,7 +3,10 @@ import {
   RecommendationActionRow,
   RecommendationActionsService,
 } from "./recommendation-actions.service";
-import { RecommendationsService, firingPeriodOf } from "./recommendations.service";
+import {
+  RecommendationsService,
+  firingPeriodOf,
+} from "./recommendations.service";
 import { AnalyticsController } from "./analytics.controller";
 import {
   InsightGeneratorService,
@@ -51,7 +54,8 @@ const NOW = Date.parse("2026-09-21T12:00:00.000Z"); // a Monday, ISO 2026-W39
 const LATER = new Date(Date.now() + 7 * 86_400_000).toISOString();
 const RULE = "vendor_concentration";
 const FIRING = `${RULE}#*#fire:month:2026-09`;
-const FINDING = "insight:overall.revenue.vs_same_weekday#wednesday#d:2026-09-16";
+const FINDING =
+  "insight:overall.revenue.vs_same_weekday#wednesday#d:2026-09-16";
 
 const STAFF = { userId: "u-staff", role: "staff", leadsAreas: [] };
 const MANAGER = { userId: "u-manager", role: "manager", leadsAreas: [] };
@@ -71,8 +75,12 @@ describe("answer 1: each firing is one card", () => {
   it("names the firing on the house's calendar when given its zone (F-384)", () => {
     // Sunday 27 Sept, 18:00 in Los Angeles: Monday 28 Sept, ISO W40, in UTC.
     const at = new Date("2026-09-28T01:00:00Z");
-    expect(firingGrain("day", at, "America/Los_Angeles")).toBe("fire:day:2026-09-27");
-    expect(firingGrain("week", at, "America/Los_Angeles")).toBe("fire:week:2026-W39");
+    expect(firingGrain("day", at, "America/Los_Angeles")).toBe(
+      "fire:day:2026-09-27",
+    );
+    expect(firingGrain("week", at, "America/Los_Angeles")).toBe(
+      "fire:week:2026-W39",
+    );
     expect(firingGrain("day", at)).toBe("fire:day:2026-09-28");
     expect(firingGrain("week", at)).toBe("fire:week:2026-W40");
   });
@@ -117,7 +125,14 @@ describe("answer 1: each firing is one card", () => {
 
   it("dismissed this month, it is back when the rule fires next month", () => {
     const book = stateBookFrom(
-      [{ ruleKey: FIRING, status: "dismissed", reason: "disagree", snoozeUntil: null }],
+      [
+        {
+          ruleKey: FIRING,
+          status: "dismissed",
+          reason: "disagree",
+          snoozeUntil: null,
+        },
+      ],
       NOW,
     );
     const september = withFiring({ ruleId: RULE }, "month", new Date(NOW));
@@ -170,15 +185,23 @@ describe("the generator keys a subject-less, period-less type by its firing week
       "insight:overall.revenue.trend_direction#*#fire:week:2026-W39",
     );
     expect(rec.suppression.scope).toBe("insight");
-    expect(rec.suppression.keys.rule).toBe("insight:overall.revenue.trend_direction");
+    expect(rec.suppression.keys.rule).toBe(
+      "insight:overall.revenue.trend_direction",
+    );
   });
 
   it("a type with its own period keeps it", () => {
-    const rec = gen().record("overall.revenue.trend_direction", "sales", "trend", trend, {
-      effectPct: 0.12,
-      n: 28,
-      periodKey: "t28:2026-09-20",
-    });
+    const rec = gen().record(
+      "overall.revenue.trend_direction",
+      "sales",
+      "trend",
+      trend,
+      {
+        effectPct: 0.12,
+        n: 28,
+        periodKey: "t28:2026-09-20",
+      },
+    );
     expect(keyOnFiring(rec, new Date(), "America/Los_Angeles")).toBe(rec);
     expect(rec.periodKey).toBe("t28:2026-09-20");
   });
@@ -191,7 +214,12 @@ describe("the generator keys a subject-less, period-less type by its firing week
 describe("answers 3 and 4: where one write goes", () => {
   it("'Already handled' is recorded as done, with no label", () => {
     expect(
-      planAct({ status: "dismissed", reason: "already_handled" }, STAFF, [], NOW),
+      planAct(
+        { status: "dismissed", reason: "already_handled" },
+        STAFF,
+        [],
+        NOW,
+      ),
     ).toEqual({
       to: "house",
       status: "done",
@@ -222,16 +250,19 @@ describe("answers 3 and 4: where one write goes", () => {
   });
 
   it("a staff snooze is theirs alone; an owner's or manager's is the house's", () => {
-    const snooze = { status: "snoozed", snoozeUntil: "2026-09-28T12:00:00.000Z" };
+    const snooze = {
+      status: "snoozed",
+      snoozeUntil: "2026-09-28T12:00:00.000Z",
+    };
     expect(planAct(snooze, STAFF, [], NOW).to).toBe("personal");
     expect(planAct(snooze, MANAGER, [], NOW)).toMatchObject({
       to: "house",
       status: "snoozed",
       recordedAs: "snoozed_for_everyone",
     });
-    expect(
-      planAct({ ...snooze, snoozeFor: "me" }, MANAGER, [], NOW).to,
-    ).toBe("personal");
+    expect(planAct({ ...snooze, snoozeFor: "me" }, MANAGER, [], NOW).to).toBe(
+      "personal",
+    );
   });
 
   it("staff asking to snooze for everyone is refused, not quietly narrowed", () => {
@@ -247,10 +278,20 @@ describe("answers 3 and 4: where one write goes", () => {
 
   it("a malformed audience or a snooze for me with no future instant is a 400", () => {
     expect(
-      planAct({ status: "snoozed", snoozeUntil: LATER, snoozeFor: "all" }, STAFF, [], NOW),
+      planAct(
+        { status: "snoozed", snoozeUntil: LATER, snoozeFor: "all" },
+        STAFF,
+        [],
+        NOW,
+      ),
     ).toMatchObject({ to: "refused", forbidden: false });
     expect(
-      planAct({ status: "snoozed", snoozeUntil: "2020-01-01T00:00:00Z" }, STAFF, [], NOW),
+      planAct(
+        { status: "snoozed", snoozeUntil: "2020-01-01T00:00:00Z" },
+        STAFF,
+        [],
+        NOW,
+      ),
     ).toMatchObject({ to: "refused", forbidden: false });
   });
 
@@ -305,8 +346,16 @@ describe("answers 3 and 4: where one write goes", () => {
 
 describe("answer 4: the personal view hides a card from its one person", () => {
   const items = [
-    { candidateKey: "overall.revenue.vs_same_weekday", subject: "Wednesday", periodKey: "d:2026-09-16" },
-    { candidate_key: "vendor.purchase_spend.concentration", subject: null, period_key: "fire:week:2026-W39" },
+    {
+      candidateKey: "overall.revenue.vs_same_weekday",
+      subject: "Wednesday",
+      periodKey: "d:2026-09-16",
+    },
+    {
+      candidate_key: "vendor.purchase_spend.concentration",
+      subject: null,
+      period_key: "fire:week:2026-W39",
+    },
   ];
 
   it("drops what the person snoozed, counts it, and keeps the rest", () => {
@@ -357,7 +406,11 @@ function db(
     personal?: Array<{ rule_key: string; snooze_until: string }>;
     personalReadError?: string;
     /** Rows a read of the history answers (round 4: who made the act). */
-    history?: Array<{ rule_key: string; actor_id: string | null; status_to: string }>;
+    history?: Array<{
+      rule_key: string;
+      actor_id: string | null;
+      status_to: string;
+    }>;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -366,7 +419,8 @@ function db(
       const b: any = {};
       let op = "read";
       let payload: any = null;
-      for (const m of ["eq", "in", "gt", "lte", "order", "limit"]) b[m] = () => b;
+      for (const m of ["eq", "in", "gt", "lte", "order", "limit"])
+        b[m] = () => b;
       b.select = () => b;
       b.delete = () => {
         op = "delete";
@@ -409,15 +463,17 @@ function db(
               : { data: opts.personal ?? [], error: null },
           ).then(resolve, reject);
         if (table === "recommendation_action_history")
-          return Promise.resolve({ data: opts.history ?? [], error: null }).then(
-            resolve,
-            reject,
-          );
+          return Promise.resolve({
+            data: opts.history ?? [],
+            error: null,
+          }).then(resolve, reject);
         return Promise.resolve({
-          data: Object.entries(opts.current ?? {}).map(([rule_key, status]) => ({
-            rule_key,
-            status,
-          })),
+          data: Object.entries(opts.current ?? {}).map(
+            ([rule_key, status]) => ({
+              rule_key,
+              status,
+            }),
+          ),
           error: null,
         }).then(resolve, reject);
       };
@@ -428,7 +484,9 @@ function db(
 }
 
 const house = (calls: Call[]) =>
-  calls.filter((c) => c.table === "recommendation_actions" && c.op === "upsert");
+  calls.filter(
+    (c) => c.table === "recommendation_actions" && c.op === "upsert",
+  );
 const kept = (calls: Call[]) =>
   calls.filter((c) => c.table === "recommendation_action_history");
 const mine = (calls: Call[]) =>
@@ -544,7 +602,10 @@ describe("answer 4 at the door: a staff snooze is 'Only them'", () => {
       snoozedForYou: 2,
     });
     expect(house(calls)).toEqual([]);
-    expect(mine(calls).map((c) => c.payload.rule_key)).toEqual([FIRING, FINDING]);
+    expect(mine(calls).map((c) => c.payload.rule_key)).toEqual([
+      FIRING,
+      FINDING,
+    ]);
   });
 
   it("a bulk snooze for everyone by staff is refused whole", async () => {
@@ -569,7 +630,10 @@ describe("answer 4 at the door: a staff snooze is 'Only them'", () => {
     );
     expect(out).toEqual({ woke: true });
     expect(
-      calls.filter((c) => c.table === "recommendation_personal_snoozes" && c.op === "delete"),
+      calls.filter(
+        (c) =>
+          c.table === "recommendation_personal_snoozes" && c.op === "delete",
+      ),
     ).toHaveLength(1);
   });
 
@@ -577,8 +641,14 @@ describe("answer 4 at the door: a staff snooze is 'Only them'", () => {
     const { db: d } = db({ personalReadError: "timeout" });
     const svc = new RecommendationActionsService(d);
     await expect(svc.listForMe(RID, "u-staff")).rejects.toThrow(/timeout/);
-    const view = await svc.viewFor(RID, "u-staff", [1, 2], () => ({ ruleId: "x" }));
-    expect(view).toEqual({ kept: [1, 2], hiddenForYou: 0, personalSnoozesReadable: false });
+    const view = await svc.viewFor(RID, "u-staff", [1, 2], () => ({
+      ruleId: "x",
+    }));
+    expect(view).toEqual({
+      kept: [1, 2],
+      hiddenForYou: 0,
+      personalSnoozesReadable: false,
+    });
   });
 
   it("the personal view hides what this person snoozed, and only for them", async () => {
@@ -646,7 +716,10 @@ function personalTable(
         const hit = table.filter((r) => filters.every((f) => f(r)));
         if (op === "delete")
           for (const h of hit) table.splice(table.indexOf(h), 1);
-        return Promise.resolve({ data: hit, error: null }).then(resolve, reject);
+        return Promise.resolve({ data: hit, error: null }).then(
+          resolve,
+          reject,
+        );
       };
       return b;
     },
@@ -659,7 +732,10 @@ describe("answer 4: a snooze for me is read, applied and woken for me alone", ()
   const B = "u-staff-b";
   const OTHER_HOUSE = "r-2";
   const cardA = { ruleId: RULE, periodKey: "fire:month:2026-09" };
-  const cardB = { ruleId: "stockout_imminent", periodKey: "fire:day:2026-09-21" };
+  const cardB = {
+    ruleId: "stockout_imminent",
+    periodKey: "fire:day:2026-09-21",
+  };
   const rows = () => [
     { restaurant_id: RID, user_id: A, rule_key: FIRING, snooze_until: LATER },
     {
@@ -688,7 +764,12 @@ describe("answer 4: a snooze for me is read, applied and woken for me alone", ()
     const svc = new RecommendationActionsService(d);
     const forA = await svc.viewFor(RID, A, [cardA, cardB], (x) => x);
     const forB = await svc.viewFor(RID, B, [cardA, cardB], (x) => x);
-    const forManager = await svc.viewFor(RID, "u-manager", [cardA, cardB], (x) => x);
+    const forManager = await svc.viewFor(
+      RID,
+      "u-manager",
+      [cardA, cardB],
+      (x) => x,
+    );
     expect(forA.kept).toEqual([cardB]);
     expect(forB.kept).toEqual([cardA]);
     expect(forManager.kept).toEqual([cardA, cardB]);
@@ -700,7 +781,11 @@ describe("answer 4: a snooze for me is read, applied and woken for me alone", ()
       ...rows(),
       { restaurant_id: RID, user_id: B, rule_key: FIRING, snooze_until: LATER },
     ]);
-    const out = await new RecommendationActionsService(d).wakeForMe(RID, A, FIRING);
+    const out = await new RecommendationActionsService(d).wakeForMe(
+      RID,
+      A,
+      FIRING,
+    );
     expect(out).toEqual({ woke: true });
     expect(
       table.filter((r) => r.rule_key === FIRING).map((r) => r.user_id),
@@ -739,7 +824,9 @@ describe("answer 2: every house act is kept — who, when, what it lifted, its l
     // staff undo only their own acts.
     const { db: d, calls } = db({
       current: { [FIRING]: "dismissed" },
-      history: [{ rule_key: FIRING, actor_id: "u-staff", status_to: "dismissed" }],
+      history: [
+        { rule_key: FIRING, actor_id: "u-staff", status_to: "dismissed" },
+      ],
     });
     await new RecommendationActionsService(d).setActionAs(
       RID,
@@ -783,7 +870,10 @@ describe("answer 2: every house act is kept — who, when, what it lifted, its l
       STAFF,
     );
     expect(house(calls)).toHaveLength(1);
-    expect(out.history).toEqual({ recorded: false, reason: "permission denied" });
+    expect(out.history).toEqual({
+      recorded: false,
+      reason: "permission denied",
+    });
   });
 
   it("a pin, a rating or an assignment is a note, not an act — nothing kept", async () => {
@@ -847,7 +937,8 @@ function feed(opts: {
   const supabase = {
     from: (table: string) => {
       const b: any = {};
-      for (const m of ["select", "order", "limit", "insert", "eq"]) b[m] = () => b;
+      for (const m of ["select", "order", "limit", "insert", "eq"])
+        b[m] = () => b;
       b.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: [], error: null }).then(resolve, reject);
       if (table === "restaurants" && opts.zone)
@@ -860,7 +951,12 @@ function feed(opts: {
   };
   const actions = {
     readDispositions: async () => ({ map, readable: true, problem: null }),
-    viewFor: async (_rid: string, viewer: string | null, items: any[], targetOf: any) => {
+    viewFor: async (
+      _rid: string,
+      viewer: string | null,
+      items: any[],
+      targetOf: any,
+    ) => {
       viewers.push(viewer);
       const book = personalBookFrom(
         (opts.personal ?? []).map((k) => ({ ruleKey: k, snoozeUntil: LATER })),
@@ -923,15 +1019,17 @@ describe("the feed keys a subject-less rule by its firing", () => {
   it("keys the firing on the house's clock, not UTC's", async () => {
     jest.setSystemTime(Date.parse("2026-10-01T03:00:00.000Z"));
     try {
-      const la = await feed({ zone: "America/Los_Angeles" }).svc.getRecommendations(RID);
-      expect(la.recommendations.find((r) => r.ruleKey === RULE)!.periodKey).toBe(
-        "fire:month:2026-09",
-      );
+      const la = await feed({
+        zone: "America/Los_Angeles",
+      }).svc.getRecommendations(RID);
+      expect(
+        la.recommendations.find((r) => r.ruleKey === RULE)!.periodKey,
+      ).toBe("fire:month:2026-09");
       // No zone to read: UTC, as before.
       const utc = await feed({}).svc.getRecommendations(RID);
-      expect(utc.recommendations.find((r) => r.ruleKey === RULE)!.periodKey).toBe(
-        "fire:month:2026-10",
-      );
+      expect(
+        utc.recommendations.find((r) => r.ruleKey === RULE)!.periodKey,
+      ).toBe("fire:month:2026-10");
     } finally {
       jest.setSystemTime(NOW);
     }
@@ -945,7 +1043,9 @@ describe("the feed keys a subject-less rule by its firing", () => {
 
   it("the viewer's own snooze hides the card from them, counted, and the digest (no viewer) still sees it", async () => {
     const mineFeed = feed({ personal: [FIRING] });
-    const out = await mineFeed.svc.getRecommendations(RID, { viewerId: "u-staff" });
+    const out = await mineFeed.svc.getRecommendations(RID, {
+      viewerId: "u-staff",
+    });
     expect(out.recommendations.map((r) => r.ruleKey)).not.toContain(RULE);
     expect(out.hiddenForYou).toBe(1);
     expect(out.personalSnoozesReadable).toBe(true);
@@ -1026,7 +1126,12 @@ describe("the controller's doors, round 3", () => {
     const out = await proto.setRecommendationAction.call(
       self,
       RID,
-      { ruleKey: FIRING, status: "snoozed", snoozeUntil: LATER, snoozeFor: "me" },
+      {
+        ruleKey: FIRING,
+        status: "snoozed",
+        snoozeUntil: LATER,
+        snoozeFor: "me",
+      },
       { userId: "u-staff", role: "staff" },
     );
     expect(seen[0][2]).toMatchObject({ snoozeFor: "me" });
@@ -1042,8 +1147,16 @@ describe("the controller's doors, round 3", () => {
     self.insightGenerator = {
       readStored: async () => ({
         rows: [
-          { candidate_key: "overall.revenue.vs_same_weekday", subject: "Wednesday", period_key: "d:2026-09-16" },
-          { candidate_key: "vendor.purchase_spend.concentration", subject: null, period_key: "fire:week:2026-W39" },
+          {
+            candidate_key: "overall.revenue.vs_same_weekday",
+            subject: "Wednesday",
+            period_key: "d:2026-09-16",
+          },
+          {
+            candidate_key: "vendor.purchase_spend.concentration",
+            subject: null,
+            period_key: "fire:week:2026-W39",
+          },
         ],
         read: 2,
         withheld: { dismissed: 0, snoozed: 0, done: 0 },
@@ -1052,15 +1165,32 @@ describe("the controller's doors, round 3", () => {
     };
     const asked: Array<string | null> = [];
     self.recommendationActions = {
-      viewFor: async (_r: string, viewer: string | null, items: any[], targetOf: any) => {
+      viewFor: async (
+        _r: string,
+        viewer: string | null,
+        items: any[],
+        targetOf: any,
+      ) => {
         asked.push(viewer);
-        const book = personalBookFrom([{ ruleKey: FINDING, snoozeUntil: LATER }]);
-        return { ...personalView(items, targetOf, book), personalSnoozesReadable: true };
+        const book = personalBookFrom([
+          { ruleKey: FINDING, snoozeUntil: LATER },
+        ]);
+        return {
+          ...personalView(items, targetOf, book),
+          personalSnoozesReadable: true,
+        };
       },
     };
-    const out = await self.getInsights(RID, undefined, undefined, undefined, undefined, {
-      userId: "u-staff",
-    });
+    const out = await self.getInsights(
+      RID,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        userId: "u-staff",
+      },
+    );
     expect(asked).toEqual(["u-staff"]);
     expect(out.insights).toHaveLength(1);
     expect(out.hiddenForYou).toBe(1);
@@ -1078,7 +1208,9 @@ describe("the controller's doors, round 3", () => {
         },
       },
     };
-    await proto.getRecommendations.call(self, RID, undefined, { userId: "u-staff" });
+    await proto.getRecommendations.call(self, RID, undefined, {
+      userId: "u-staff",
+    });
     expect(seen[0][1]).toMatchObject({ viewerId: "u-staff" });
   });
 });

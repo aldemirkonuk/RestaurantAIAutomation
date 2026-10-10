@@ -511,15 +511,15 @@ export class DocumentsController {
     restaurantId: string,
     path: string,
   ): Promise<Record<string, unknown>> {
-    const { layer1 } = await this.readCanonicalForSeal(documentId, restaurantId);
+    const { layer1 } = await this.readCanonicalForSeal(
+      documentId,
+      restaurantId,
+    );
     const parsed = splitPath(path);
     const spec = parsed ? CORRECTABLE_PATHS[parsed.template] : undefined;
     const envelope =
       parsed && spec
-        ? spec.read(
-            layer1 as Parameters<typeof spec.read>[0],
-            parsed.line,
-          )
+        ? spec.read(layer1 as Parameters<typeof spec.read>[0], parsed.line)
         : null;
     return documentFieldVerifySealArgs({
       documentId,
@@ -1267,9 +1267,7 @@ export class DocumentsController {
    * the list says what the sheet says (walk-through RECEIPTS-W48b, 2026-10-02).
    * A "lines not read" state of its own is a follow-up in the tech-debt fragment.
    */
-  private async tieOutsAsRuledNow(
-    rows: Record<string, unknown>[],
-  ): Promise<
+  private async tieOutsAsRuledNow(rows: Record<string, unknown>[]): Promise<
     Map<
       string,
       {
@@ -1677,18 +1675,20 @@ export class DocumentsController {
 
   @Post(":id/lines/:lineId/link-item")
   @ApiOperation({
-    summary: "Link this line to a shelf, and remember the pairing for this vendor",
+    summary:
+      "Link this line to a shelf, and remember the pairing for this vendor",
     description:
       "ADR 0104 D12 slice 4. A person names the restaurant item this line is about; the line carries it from then on (`procurement_document_lines.inventory_id`), which is what lets a VERIFIED delivery finalise the cost for that item (ADR 0103 A1/A12). " +
       "The act is also APPENDED to the mapping memory, so the next document from the same vendor carries the shelf as a PROPOSAL — a tick a person gives, never a booking and never a number. " +
       "`source` says whether the person accepted what the memory proposed (`remembered`) or chose the shelf themselves (`chosen`). " +
-      "Pass `inventoryId: null` for \"not this one\": the line is cleared AND the memory FORGETS the pairing — it is not averaged away, it is gone, because a majority of wrong ticks is still the wrong shelf. " +
+      'Pass `inventoryId: null` for "not this one": the line is cleared AND the memory FORGETS the pairing — it is not averaged away, it is gone, because a majority of wrong ticks is still the wrong shelf. ' +
       "Nothing here books stock or writes a cost.",
   })
   async linkLineToItem(
     @Param("id") documentId: string,
     @Param("lineId") lineId: string,
-    @Body() body: { inventoryId?: string | null; source?: "chosen" | "remembered" },
+    @Body()
+    body: { inventoryId?: string | null; source?: "chosen" | "remembered" },
     @CurrentUser() user: AuthedUser,
   ) {
     requireUuid(documentId, "document id");
@@ -1705,7 +1705,8 @@ export class DocumentsController {
         source: body?.source === "remembered" ? "remembered" : "chosen",
       });
     } catch (error) {
-      const msg: string = error?.message ?? "Failed to link the line to an item";
+      const msg: string =
+        error?.message ?? "Failed to link the line to an item";
       if (msg === "NOT_FOUND")
         throw new HttpException(
           "Document or line not found",
@@ -1724,7 +1725,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Who linked which line to which shelf on this document, and when",
     description:
-      "The append-only log behind the mapping memory (ADR 0104 D5/D12). Newest first. An `unlinked` row is a person saying \"not this one\" — a real act, kept, not a gap.",
+      'The append-only log behind the mapping memory (ADR 0104 D5/D12). Newest first. An `unlinked` row is a person saying "not this one" — a real act, kept, not a gap.',
   })
   async lineMappings(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     requireUuid(id, "document id");
@@ -1999,7 +2000,9 @@ export class DocumentsController {
    * `assertCanManageRestaurant`'s does not say what the caller IS, that nothing
    * was written, or what to do next.
    */
-  private async assertMayRestateCurrency(user: AuthedUser): Promise<string | null> {
+  private async assertMayRestateCurrency(
+    user: AuthedUser,
+  ): Promise<string | null> {
     // WHO THIS PERSON IS HERE. `null` means "not proven to hold any role" —
     // a read that failed and a person with no row are indistinguishable at this
     // layer, and neither may pass (`order-approval-gate.ts`'s header).
@@ -2043,7 +2046,9 @@ export class DocumentsController {
      * saying a manager had decided it. `common/iso-4217.ts` holds the list and
      * is mirrored against the web's own picker by a spec.
      */
-    const next = String(body?.currency ?? "").trim().toUpperCase();
+    const next = String(body?.currency ?? "")
+      .trim()
+      .toUpperCase();
     if (!isIso4217(next))
       throw new HttpException(
         `${notACurrencyBecause(body?.currency)} Nothing was changed: this route re-files an invoice's money under the code it is given, and money cannot be denominated in something that is not a currency.`,
@@ -2080,7 +2085,9 @@ export class DocumentsController {
     const { data: doc, error: readError } = await this.db
       .getClient()
       .from("procurement_documents")
-      .select("id, restaurant_id, provider_id, doc_type, currency, status, extracted, total")
+      .select(
+        "id, restaurant_id, provider_id, doc_type, currency, status, extracted, total",
+      )
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
       .maybeSingle();
@@ -2171,8 +2178,9 @@ export class DocumentsController {
       );
     }
     const pricedLines = preview
-      ? preview.lines.filter((l) => l.unit_price != null || l.line_total != null)
-          .length
+      ? preview.lines.filter(
+          (l) => l.unit_price != null || l.line_total != null,
+        ).length
       : 0;
 
     // THE LOG FIRST. A restatement nobody recorded is the thing this rule
@@ -2278,7 +2286,10 @@ export class DocumentsController {
      * failures, and they are logged here.
      */
     const docVendor = (doc as { provider_id?: string | null }).provider_id;
-    if ((doc as { doc_type?: string | null }).doc_type === "invoice" && docVendor) {
+    if (
+      (doc as { doc_type?: string | null }).doc_type === "invoice" &&
+      docVendor
+    ) {
       try {
         const learned = await learnUsualCurrencyFromInvoices(
           this.db.getClient(),

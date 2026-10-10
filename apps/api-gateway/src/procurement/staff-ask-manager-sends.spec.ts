@@ -41,18 +41,39 @@ const STAFF = "u-staff";
 const GRANTEE = "u-grantee";
 const VENDOR = "vendor@kavaklidere.example";
 const ENGINE_WORDS = "Dear Hasan,\n\nWe can take six cases at 2,400.\n\nBest";
-const STAFF_WORDS = "Dear Hasan,\n\nWe can take six cases at 2,400, delivered Tuesday.\n\nAyse";
+const STAFF_WORDS =
+  "Dear Hasan,\n\nWe can take six cases at 2,400, delivered Tuesday.\n\nAyse";
 
 function seed(db: FakeDb) {
   db.tables.users = [
-    { user_id: OWNER, name: "Olcay Owner", restaurant_id: HOUSE, role: "owner" },
-    { user_id: MANAGER, name: "Mert Manager", restaurant_id: HOUSE, role: "manager" },
+    {
+      user_id: OWNER,
+      name: "Olcay Owner",
+      restaurant_id: HOUSE,
+      role: "owner",
+    },
+    {
+      user_id: MANAGER,
+      name: "Mert Manager",
+      restaurant_id: HOUSE,
+      role: "manager",
+    },
     { user_id: STAFF, name: "Ayse Staff", restaurant_id: HOUSE, role: "staff" },
-    { user_id: GRANTEE, name: "Gul Grantee", restaurant_id: HOUSE, role: "staff" },
+    {
+      user_id: GRANTEE,
+      name: "Gul Grantee",
+      restaurant_id: HOUSE,
+      role: "staff",
+    },
   ];
   db.tables.user_restaurant_access = [
     { user_id: OWNER, restaurant_id: HOUSE, role: "owner", is_active: true },
-    { user_id: MANAGER, restaurant_id: HOUSE, role: "manager", is_active: true },
+    {
+      user_id: MANAGER,
+      restaurant_id: HOUSE,
+      role: "manager",
+      is_active: true,
+    },
     { user_id: STAFF, restaurant_id: HOUSE, role: "staff", is_active: true },
     { user_id: GRANTEE, restaurant_id: HOUSE, role: "staff", is_active: true },
   ];
@@ -68,8 +89,15 @@ function seed(db: FakeDb) {
       gmail_thread_id: null,
       message_id: null,
       email_headers: { subject: "Re: Order" },
-      providers: { name: "Kavaklidere", contact_email: VENDOR, restaurant_id: HOUSE },
-      procurement_orders: { order_number: "ORD-1", inventory: { wine_name: "Yakut" } },
+      providers: {
+        name: "Kavaklidere",
+        contact_email: VENDOR,
+        restaurant_id: HOUSE,
+      },
+      procurement_orders: {
+        order_number: "ORD-1",
+        inventory: { wine_name: "Yakut" },
+      },
     },
   ];
   db.tables.authority_grants = [];
@@ -89,7 +117,11 @@ function build() {
       rfc822MessageId: opts.messageIdHeader,
     })),
   };
-  const notifications = fakeNotifications([OWNER, MANAGER, STAFF, GRANTEE], undefined, db);
+  const notifications = fakeNotifications(
+    [OWNER, MANAGER, STAFF, GRANTEE],
+    undefined,
+    db,
+  );
   const seal = new SealChallengeService(database);
   const authority = new VendorSendAuthorityService(database);
   const service = new ProcurementService(
@@ -111,18 +143,32 @@ function build() {
     (service as any).logger[level] = () => undefined;
     (seal as any).logger[level] = () => undefined;
   }
-  const draft = () => db.tables.procurement_conversations.find((r) => r.id === "draft-1")!;
+  const draft = () =>
+    db.tables.procurement_conversations.find((r) => r.id === "draft-1")!;
   const mint = (userId: string, body: string, cc: string[] = []) =>
     service.issueDraftSendSeal(HOUSE, ORDER, userId, { body, to: VENDOR, cc });
-  const send = (userId: string, body: string, challenge: string | null | undefined, cc: string[] = []) =>
-    service.sendDraftedReply(HOUSE, ORDER, userId, { modifiedContent: body, ccEmails: cc }, challenge);
+  const send = (
+    userId: string,
+    body: string,
+    challenge: string | null | undefined,
+    cc: string[] = [],
+  ) =>
+    service.sendDraftedReply(
+      HOUSE,
+      ORDER,
+      userId,
+      { modifiedContent: body, ccEmails: cc },
+      challenge,
+    );
   return { db, gmail, notifications, service, draft, mint, send };
 }
 
 describe("the seal is required on every draft send (the REQUIRE_DRAFT_SEND_SEAL grace is gone)", () => {
   it("a manager's send with NO seal is refused as absent, and nothing reaches the vendor", async () => {
     const t = build();
-    await expect(t.send(MANAGER, ENGINE_WORDS, undefined)).rejects.toThrow(/seal/i);
+    await expect(t.send(MANAGER, ENGINE_WORDS, undefined)).rejects.toThrow(
+      /seal/i,
+    );
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
     expect(t.draft().status).toBe("PENDING_APPROVAL");
   });
@@ -132,7 +178,11 @@ describe("the seal is required on every draft send (the REQUIRE_DRAFT_SEND_SEAL 
     const { challenge } = await t.mint(MANAGER, ENGINE_WORDS);
     await t.send(MANAGER, ENGINE_WORDS, challenge);
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
-    expect(t.draft()).toMatchObject({ status: "SENT", sent_by_user_id: MANAGER, sent_under_grant_id: null });
+    expect(t.draft()).toMatchObject({
+      status: "SENT",
+      sent_by_user_id: MANAGER,
+      sent_under_grant_id: null,
+    });
   });
 
   it("the same seal cannot send twice", async () => {
@@ -140,7 +190,9 @@ describe("the seal is required on every draft send (the REQUIRE_DRAFT_SEND_SEAL 
     const { challenge } = await t.mint(OWNER, ENGINE_WORDS);
     await t.send(OWNER, ENGINE_WORDS, challenge);
     t.draft().status = "PENDING_APPROVAL";
-    await expect(t.send(OWNER, ENGINE_WORDS, challenge)).rejects.toThrow(/already been used|spent/i);
+    await expect(t.send(OWNER, ENGINE_WORDS, challenge)).rejects.toThrow(
+      /already been used|spent/i,
+    );
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
   });
 });
@@ -149,10 +201,20 @@ describe("a staff member's hold becomes a request, not a 403", () => {
   it("the readout tells staff their hold asks, before they hold", async () => {
     const t = build();
     const readout = await t.service.sendOrAskFor(STAFF, HOUSE);
-    expect(readout).toMatchObject({ readable: true, maySend: false, mode: "ask" });
+    expect(readout).toMatchObject({
+      readable: true,
+      maySend: false,
+      mode: "ask",
+    });
     expect(readout.sentence).toMatch(/Your hold will ask a manager/);
     const manager = await t.service.sendOrAskFor(MANAGER, HOUSE);
-    expect(manager).toMatchObject({ readable: true, maySend: true, mode: "send", basis: "manager", sentence: null });
+    expect(manager).toMatchObject({
+      readable: true,
+      maySend: true,
+      mode: "send",
+      basis: "manager",
+      sentence: null,
+    });
   });
 
   it("saves the staffer's exact words as the version, records who asked, keeps it waiting and tells owners and managers", async () => {
@@ -177,8 +239,12 @@ describe("a staff member's hold becomes a request, not a 403", () => {
 
   it("the staffer cannot SEND: the mint and the send both refuse and point at the request", async () => {
     const t = build();
-    await expect(t.mint(STAFF, ENGINE_WORDS)).rejects.toThrow(/Hold again to ask a manager/);
-    await expect(t.send(STAFF, ENGINE_WORDS, "anything")).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(t.mint(STAFF, ENGINE_WORDS)).rejects.toThrow(
+      /Hold again to ask a manager/,
+    );
+    await expect(
+      t.send(STAFF, ENGINE_WORDS, "anything"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(t.db.tables.mcp_seal_challenges).toHaveLength(0);
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
@@ -186,7 +252,9 @@ describe("a staff member's hold becomes a request, not a 403", () => {
   it("a manager does not ask — 409, nothing written", async () => {
     const t = build();
     await expect(
-      t.service.requestDraftSend(HOUSE, ORDER, MANAGER, { content: STAFF_WORDS }),
+      t.service.requestDraftSend(HOUSE, ORDER, MANAGER, {
+        content: STAFF_WORDS,
+      }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(t.draft().content).toBe(ENGINE_WORDS);
     expect(t.draft().send_requested_by).toBeUndefined();
@@ -194,7 +262,10 @@ describe("a staff member's hold becomes a request, not a 403", () => {
 
   it("the draft readout shows the request, current, with the requester's name and copies", async () => {
     const t = build();
-    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS, ccEmails: ["ops@house.example"] });
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+      ccEmails: ["ops@house.example"],
+    });
     const pending = await t.service.getPendingDraft(HOUSE, ORDER);
     expect(pending?.content).toBe(STAFF_WORDS);
     expect(pending?.send_request).toMatchObject({
@@ -204,12 +275,17 @@ describe("a staff member's hold becomes a request, not a 403", () => {
       ccEmails: ["ops@house.example"],
     });
     const active = await t.service.getActiveConversations(HOUSE);
-    expect(active[0].sendRequest).toMatchObject({ requestedByName: "Ayse Staff", current: true });
+    expect(active[0].sendRequest).toMatchObject({
+      requestedByName: "Ayse Staff",
+      current: true,
+    });
   });
 
   it("a later edit makes the request read as no longer the staffer's version", async () => {
     const t = build();
-    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+    });
     await t.service.editDraft(HOUSE, ORDER, "Somebody else's words entirely");
     const pending = await t.service.getPendingDraft(HOUSE, ORDER);
     expect(pending?.send_request?.current).toBe(false);
@@ -235,12 +311,20 @@ describe("a staff member's hold becomes a request, not a 403", () => {
         id: ORDER,
         restaurant_id: HOUSE,
         provider_id: "prov-1",
-        providers: { name: "Kavaklidere", contact_email: VENDOR, restaurant_id: HOUSE },
+        providers: {
+          name: "Kavaklidere",
+          contact_email: VENDOR,
+          restaurant_id: HOUSE,
+        },
         restaurant_inventory: { wine_name: "Yakut" },
       },
     ];
-    const out = await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
-    const row = t.db.tables.procurement_conversations.find((r) => r.id === out.conversationId)!;
+    const out = await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+    });
+    const row = t.db.tables.procurement_conversations.find(
+      (r) => r.id === out.conversationId,
+    )!;
     expect(row).toMatchObject({
       status: "PENDING_APPROVAL",
       direction: "outbound",
@@ -256,47 +340,69 @@ describe("a staff member's hold becomes a request, not a 403", () => {
 describe("a manager releases the request with one hold over that exact text", () => {
   it("sends exactly the requested version, names the sender, and tells the staffer who sent it", async () => {
     const t = build();
-    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS, ccEmails: ["ops@house.example"] });
-    const { challenge } = await t.mint(MANAGER, STAFF_WORDS, ["ops@house.example"]);
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+      ccEmails: ["ops@house.example"],
+    });
+    const { challenge } = await t.mint(MANAGER, STAFF_WORDS, [
+      "ops@house.example",
+    ]);
     await t.send(MANAGER, STAFF_WORDS, challenge, ["ops@house.example"]);
 
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
     const mail = t.gmail.sendEmail.calls[0][0];
     expect(mail.html).toContain("delivered Tuesday");
     expect(mail.cc).toEqual(["ops@house.example"]);
-    expect(t.draft()).toMatchObject({ status: "SENT", sent_by_user_id: MANAGER, send_requested_by: STAFF });
+    expect(t.draft()).toMatchObject({
+      status: "SENT",
+      sent_by_user_id: MANAGER,
+      send_requested_by: STAFF,
+    });
 
-    const told = t.notifications.persistForRestaurant.calls.find((c) => c[1].type === "vendor_send_released");
+    const told = t.notifications.persistForRestaurant.calls.find(
+      (c) => c[1].type === "vendor_send_released",
+    );
     expect(told).toBeDefined();
     expect(told![2].onlyUserIds).toEqual([STAFF]);
-    expect(told![1].message).toMatch(/Mert Manager sent your letter to Kavaklidere, as you wrote it\./);
+    expect(told![1].message).toMatch(
+      /Mert Manager sent your letter to Kavaklidere, as you wrote it\./,
+    );
   });
 
   it("an edit after the hold is a new version and is refused — nothing is sent", async () => {
     const t = build();
-    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+    });
     const { challenge } = await t.mint(MANAGER, STAFF_WORDS);
-    await expect(t.send(MANAGER, STAFF_WORDS.replace("six", "sixty"), challenge)).rejects.toThrow(
-      /changed|different/i,
-    );
+    await expect(
+      t.send(MANAGER, STAFF_WORDS.replace("six", "sixty"), challenge),
+    ).rejects.toThrow(/changed|different/i);
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
     expect(t.draft().status).toBe("PENDING_APPROVAL");
   });
 
   it("an edited release needs its own seal, and the staffer is told it went with changes", async () => {
     const t = build();
-    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+    });
     const edited = STAFF_WORDS.replace("Tuesday", "Wednesday");
     const { challenge } = await t.mint(MANAGER, edited);
     await t.send(MANAGER, edited, challenge);
     expect(t.gmail.sendEmail.calls[0][0].html).toContain("Wednesday");
-    const told = t.notifications.persistForRestaurant.calls.find((c) => c[1].type === "vendor_send_released");
+    const told = t.notifications.persistForRestaurant.calls.find(
+      (c) => c[1].type === "vendor_send_released",
+    );
     expect(told![1].message).toMatch(/with their own changes/);
   });
 });
 
 describe("a person an owner has granted sends with one hold", () => {
-  function grant(t: ReturnType<typeof build>, over: Record<string, unknown> = {}) {
+  function grant(
+    t: ReturnType<typeof build>,
+    over: Record<string, unknown> = {},
+  ) {
     t.db.tables.authority_grants.push({
       id: "grant-1",
       restaurant_id: HOUSE,
@@ -326,20 +432,33 @@ describe("a person an owner has granted sends with one hold", () => {
     });
     const { challenge } = await t.mint(GRANTEE, ENGINE_WORDS);
     await t.send(GRANTEE, ENGINE_WORDS, challenge);
-    expect(t.draft()).toMatchObject({ status: "SENT", sent_by_user_id: GRANTEE, sent_under_grant_id: "grant-1" });
+    expect(t.draft()).toMatchObject({
+      status: "SENT",
+      sent_by_user_id: GRANTEE,
+      sent_under_grant_id: "grant-1",
+    });
     // The send under a grant is on the security ledger (ADR 0112 F12; founder
     // answer 4, 2026-09-21), written before anything left.
-    expect(t.db.tables.security_events.map((e) => [e.kind, e.actor_user_id, e.subject_id])).toEqual([
-      ["grant_relied_on", GRANTEE, "grant-1"],
-    ]);
+    expect(
+      t.db.tables.security_events.map((e) => [
+        e.kind,
+        e.actor_user_id,
+        e.subject_id,
+      ]),
+    ).toEqual([["grant_relied_on", GRANTEE, "grant-1"]]);
   });
 
   it("a send under a grant the ledger cannot record is refused, and nothing leaves", async () => {
     const t = build();
     grant(t);
-    t.db.rpcHandlers.authority_grant_relied_on = () => ({ data: null, error: { message: "ledger unavailable" } });
+    t.db.rpcHandlers.authority_grant_relied_on = () => ({
+      data: null,
+      error: { message: "ledger unavailable" },
+    });
     const { challenge } = await t.mint(GRANTEE, ENGINE_WORDS);
-    await expect(t.send(GRANTEE, ENGINE_WORDS, challenge)).rejects.toThrow(/security ledger/);
+    await expect(t.send(GRANTEE, ENGINE_WORDS, challenge)).rejects.toThrow(
+      /security ledger/,
+    );
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
     expect(t.draft().status).toBe("PENDING_APPROVAL");
   });
@@ -347,21 +466,26 @@ describe("a person an owner has granted sends with one hold", () => {
   it("a grant whose owner went (latched) does not send, even if that owner is an owner again", async () => {
     const t = build();
     grant(t, { suspended_at: "2026-09-21T09:00:00.000Z" });
-    await expect(t.mint(GRANTEE, ENGINE_WORDS)).rejects.toThrow(/waits for a current owner to re-approve/);
+    await expect(t.mint(GRANTEE, ENGINE_WORDS)).rejects.toThrow(
+      /waits for a current owner to re-approve/,
+    );
   });
 
   it("an expired grant is refused at the act, and nothing is sent", async () => {
     const t = build();
     grant(t, { expires_at: new Date(Date.now() - 1000).toISOString() });
     await expect(t.mint(GRANTEE, ENGINE_WORDS)).rejects.toThrow(/has expired/);
-    await expect(t.send(GRANTEE, ENGINE_WORDS, "x")).rejects.toThrow(/has expired/);
+    await expect(t.send(GRANTEE, ENGINE_WORDS, "x")).rejects.toThrow(
+      /has expired/,
+    );
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
 
   it("a grant from an owner who is no longer an owner does not count", async () => {
     const t = build();
     grant(t);
-    t.db.tables.user_restaurant_access.find((r) => r.user_id === OWNER)!.role = "manager";
+    t.db.tables.user_restaurant_access.find((r) => r.user_id === OWNER)!.role =
+      "manager";
     const readout = await t.service.sendOrAskFor(GRANTEE, HOUSE);
     expect(readout).toMatchObject({ maySend: false, mode: "ask" });
     expect(readout.sentence).toMatch(/no longer an owner/);
@@ -373,31 +497,47 @@ describe("a standing that cannot be read is an error, never a quiet answer", () 
     const t = build();
     t.db.failures.user_restaurant_access = "permission denied";
     const readout = await t.service.sendOrAskFor(MANAGER, HOUSE);
-    expect(readout).toMatchObject({ readable: false, maySend: false, mode: null });
+    expect(readout).toMatchObject({
+      readable: false,
+      maySend: false,
+      mode: null,
+    });
     expect(readout.sentence).toMatch(/could not be read/);
   });
 
   it("a failed role read refuses the send with a 500, and nothing is sent", async () => {
     const t = build();
     t.db.failures.user_restaurant_access = "permission denied";
-    await expect(t.send(MANAGER, ENGINE_WORDS, "x")).rejects.toThrow(/could not be read/);
+    await expect(t.send(MANAGER, ENGINE_WORDS, "x")).rejects.toThrow(
+      /could not be read/,
+    );
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
 
   it("a failed grant read refuses a staff member's send rather than treating them as ungranted", async () => {
     const t = build();
     t.db.failures.authority_grants = "relation does not exist";
-    await expect(t.service.sendOrAskFor(GRANTEE, HOUSE)).resolves.toMatchObject({ readable: false });
+    await expect(t.service.sendOrAskFor(GRANTEE, HOUSE)).resolves.toMatchObject(
+      { readable: false },
+    );
   });
 });
 
 describe("the ask clears from every owner's and manager's bell once one of them sends it (F-526)", () => {
   it("the manager sends; the owner's copy of the ask is no longer unread", async () => {
     const t = build();
-    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+    });
     const asks = () =>
-      (t.db.tables.notifications ?? []).filter((r: any) => r.type === "vendor_send_requested");
-    expect(asks().map((r: any) => r.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+      (t.db.tables.notifications ?? []).filter(
+        (r: any) => r.type === "vendor_send_requested",
+      );
+    expect(
+      asks()
+        .map((r: any) => r.user_id)
+        .sort(),
+    ).toEqual([MANAGER, OWNER].sort());
     for (const r of asks()) r.status = "unread";
 
     const { challenge } = await t.mint(MANAGER, STAFF_WORDS);
@@ -409,7 +549,9 @@ describe("the ask clears from every owner's and manager's bell once one of them 
 
   it("an ask written before it carried a group key still clears, by its order", async () => {
     const t = build();
-    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, {
+      content: STAFF_WORDS,
+    });
     (t.db.tables.notifications ??= []).push({
       id: "old-ask",
       restaurant_id: HOUSE,
@@ -422,6 +564,8 @@ describe("the ask clears from every owner's and manager's bell once one of them 
     const { challenge } = await t.mint(MANAGER, STAFF_WORDS);
     await t.send(MANAGER, STAFF_WORDS, challenge);
 
-    expect(t.db.tables.notifications.find((r: any) => r.id === "old-ask")?.status).toBe("read");
+    expect(
+      t.db.tables.notifications.find((r: any) => r.id === "old-ask")?.status,
+    ).toBe("read");
   });
 });

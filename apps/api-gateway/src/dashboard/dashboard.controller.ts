@@ -229,7 +229,10 @@ export class DashboardController {
   ): Promise<DashboardStatsDto> {
     try {
       // DASH-W22: staff keep the counts, not the spend.
-      return statsForRole(await this.dashboardService.getStats(restaurantId), user?.role);
+      return statsForRole(
+        await this.dashboardService.getStats(restaurantId),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch dashboard stats",
@@ -280,11 +283,7 @@ export class DashboardController {
     }
     try {
       const limit = limitStr ? parseInt(limitStr, 10) : 20;
-      return await this.dashboardService.getActivity(
-        restaurantId,
-        limit,
-        date,
-      );
+      return await this.dashboardService.getActivity(restaurantId, limit, date);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

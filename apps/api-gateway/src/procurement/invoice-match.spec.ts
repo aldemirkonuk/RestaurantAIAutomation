@@ -144,7 +144,9 @@ describe("computeMatch", () => {
         invoiceUnitPrice: 24,
       });
 
-      expect(check(r, "price").detail).toMatch(/^Agreed \$22\.00, billed €24\.00\. /);
+      expect(check(r, "price").detail).toMatch(
+        /^Agreed \$22\.00, billed €24\.00\. /,
+      );
     });
   });
 
@@ -157,12 +159,18 @@ describe("computeMatch", () => {
       "and nothing here converts one into the other. You decide whether this price is right.";
 
     it("does not call the same figure in another money a match", () => {
-      const r = computeMatch({ ...base, poCurrency: "USD", invoiceCurrency: "EUR" });
+      const r = computeMatch({
+        ...base,
+        poCurrency: "USD",
+        invoiceCurrency: "EUR",
+      });
 
       expect(r.verdict).toBe("currency_differs");
       expect(r.priceVerified).toBe(false);
       expect(check(r, "price").ok).toBeNull();
-      expect(r.summary).toBe(`All 24 accepted. Agreed $22.00, billed €22.00. ${notCompared}`);
+      expect(r.summary).toBe(
+        `All 24 accepted. Agreed $22.00, billed €22.00. ${notCompared}`,
+      );
       expect(r.summary).not.toContain("at the agreed price");
       expect(isDiscrepancy(r.verdict)).toBe(true);
       expect(isClaimable(r.verdict)).toBe(false);
@@ -178,7 +186,9 @@ describe("computeMatch", () => {
 
       expect(r.requiresOverride).toBe(false);
       expect(r.verdict).toBe("currency_differs");
-      expect(check(r, "price").detail).toBe(`Agreed $22.00, billed €24.00. ${notCompared}`);
+      expect(check(r, "price").detail).toBe(
+        `Agreed $22.00, billed €24.00. ${notCompared}`,
+      );
     });
 
     it("still says the price was held when a quantity problem headlines", () => {
@@ -190,7 +200,9 @@ describe("computeMatch", () => {
       });
 
       expect(r.verdict).toBe("qty_short");
-      expect(r.summary).toBe(`Billed for 24 but only 22 arrived — 2 short. ${notCompared}`);
+      expect(r.summary).toBe(
+        `Billed for 24 but only 22 arrived — 2 short. ${notCompared}`,
+      );
     });
 
     // F-776: currency_differs outranked partial, so 22 of 24 billed in another
@@ -206,12 +218,18 @@ describe("computeMatch", () => {
 
       expect(r.verdict).toBe("partial");
       expect(r.backorderQty).toBe(2);
-      expect(r.summary).toBe(`22 of 24 accepted, 2 still outstanding. ${notCompared}`);
+      expect(r.summary).toBe(
+        `22 of 24 accepted, 2 still outstanding. ${notCompared}`,
+      );
       expect(r.summary).not.toContain("All 22 accepted");
     });
 
     it("compares as before when either money is not recorded", () => {
-      const r = computeMatch({ ...base, poCurrency: "USD", invoiceUnitPrice: 24 });
+      const r = computeMatch({
+        ...base,
+        poCurrency: "USD",
+        invoiceUnitPrice: 24,
+      });
 
       expect(r.verdict).toBe("price_variance");
       expect(r.requiresOverride).toBe(true);
@@ -604,7 +622,10 @@ describe("computeMatch", () => {
     };
     it.each([
       ["short shipment", { ...priced, acceptedQty: 10, rejectedQty: 0 }],
-      ["refused bottles billed", { ...priced, acceptedQty: 10, rejectedQty: 2 }],
+      [
+        "refused bottles billed",
+        { ...priced, acceptedQty: 10, rejectedQty: 2 },
+      ],
       [
         "overbilled against their slip",
         { ...priced, shippedQty: 10, acceptedQty: 10, rejectedQty: 0 },
@@ -620,9 +641,7 @@ describe("computeMatch", () => {
       expect(r.creditAmount).toBe(40); // 2 x $20 owed back
       // The kept bottles cost the agreed $20 (plus their share of freight),
       // not $24 — the $40 is already on the claim.
-      expect(r.effectiveUnitCost).toBeCloseTo(
-        20 + charges / 10,
-      );
+      expect(r.effectiveUnitCost).toBeCloseTo(20 + charges / 10);
       expect(
         (r.creditAmount as number) + (r.effectiveUnitCost as number) * 10,
       ).toBeCloseTo(12 * 20 + charges);

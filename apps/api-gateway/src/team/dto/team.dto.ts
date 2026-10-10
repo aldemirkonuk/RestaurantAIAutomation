@@ -241,7 +241,10 @@ export class CreateTeamNoteDto {
   @IsDateString() weekStart: string;
   @IsString() @IsNotEmpty() body: string;
   /** Required and non-empty: a note that names nobody reaches nobody. */
-  @IsArray() @ArrayNotEmpty() @IsUUID("all", { each: true }) memberIds: string[];
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID("all", { each: true })
+  memberIds: string[];
   @IsOptional() @IsUUID() scheduleId?: string;
 }
 

@@ -215,9 +215,9 @@ describe("wineSignatureHashOrNull", () => {
         region: "Champagne",
       },
     };
-    expect(
-      wineSignatureHashOrNull(wineSignatureInputFromPayload(camel)),
-    ).toBe(wineSignatureHashOrNull(wineSignatureInputFromPayload(snake)));
+    expect(wineSignatureHashOrNull(wineSignatureInputFromPayload(camel))).toBe(
+      wineSignatureHashOrNull(wineSignatureInputFromPayload(snake)),
+    );
   });
 });
 

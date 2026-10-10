@@ -31,15 +31,26 @@ import { parseFao } from "./parse-fao";
 /** The recorded FAO fixture: 40 monthly observations, 2023-05 … 2026-08. */
 const VALUES = parseFao(
   readFileSync(
-    join(__dirname, "__fixtures__", "fao-food-price-index-2026-09-05.sample.csv"),
+    join(
+      __dirname,
+      "__fixtures__",
+      "fao-food-price-index-2026-09-05.sample.csv",
+    ),
     "utf8",
   ),
-  { seriesKey: "fao.food_price_index.all", fetchedAt: "2026-09-05T12:00:00.000Z" },
+  {
+    seriesKey: "fao.food_price_index.all",
+    fetchedAt: "2026-09-05T12:00:00.000Z",
+  },
 )
   .observations.sort((a, b) => a.periodStart.localeCompare(b.periodStart))
   .map((o) => o.value);
 
-function run(firesPerYear: number, horizon = 3, mode?: "in_sample" | "walk_forward") {
+function run(
+  firesPerYear: number,
+  horizon = 3,
+  mode?: "in_sample" | "walk_forward",
+) {
   const out = backtestCadence(VALUES, {
     firesPerYear,
     periodGrain: "month",
@@ -144,7 +155,7 @@ describe("the recorded 40-observation window, measured", () => {
     expect(r.evaluated).toBe(24);
     expect(r.fires).toBe(8);
     expect(r.riseThreshold).toBeCloseTo(0.0309566, 6);
-    expect(r.stepGuard).toBeCloseTo(0.0254980, 6);
+    expect(r.stepGuard).toBeCloseTo(0.025498, 6);
     expect(r.hits).toBe(5);
     expect(r.hitRate).toBeCloseTo(0.625, 6);
     expect(r.meanGrossFraction).toBeCloseTo(0.0121541, 6);
@@ -279,9 +290,9 @@ describe("money is withheld by name, never defaulted", () => {
   it("walks the remaining refusals in order", () => {
     const withPhi = { ...NO_HOUSE, passThrough: 1 };
     expect(valueBacktest(r(), withPhi).withheld).toBe("no_house_spend");
-    expect(
-      valueBacktest(r(), { ...withPhi, periodSpend: 1000 }).withheld,
-    ).toBe("no_currency");
+    expect(valueBacktest(r(), { ...withPhi, periodSpend: 1000 }).withheld).toBe(
+      "no_currency",
+    );
     expect(
       valueBacktest(r(), { ...withPhi, periodSpend: 1000, currency: "USD" })
         .withheld,
@@ -462,26 +473,33 @@ describe("the alert sentence has three money states and only three", () => {
       ["negative Infinity", Number.NEGATIVE_INFINITY],
     ];
 
-    it.each(notACost)("%s is refused, and no money figure is printed", (_label, value) => {
-      const v = valueBacktest(run(), { ...HOUSE, carryPerPeriod: value });
-      expect(moneyState(v)).toBe("unmeasured");
-      expect(v.withheld).toBe("no_carrying_cost_typed");
-      expect(v.carryFraction).toBeNull();
-      expect(v.moneyPerFire).toBeNull();
-      expect(v.breakEvenPassThrough).toBeNull();
-      // The sentence must not carry a currency or a two-decimal figure, which
-      // is what "a page may not claim a write it never makes" means for money.
-      const clause = valueClause(v);
-      expect(clause).toContain("UNMEASURED");
-      expect(clause).not.toMatch(/TRY/);
-      expect(clause).not.toMatch(/[0-9]+\.[0-9]{2}/);
-    });
+    it.each(notACost)(
+      "%s is refused, and no money figure is printed",
+      (_label, value) => {
+        const v = valueBacktest(run(), { ...HOUSE, carryPerPeriod: value });
+        expect(moneyState(v)).toBe("unmeasured");
+        expect(v.withheld).toBe("no_carrying_cost_typed");
+        expect(v.carryFraction).toBeNull();
+        expect(v.moneyPerFire).toBeNull();
+        expect(v.breakEvenPassThrough).toBeNull();
+        // The sentence must not carry a currency or a two-decimal figure, which
+        // is what "a page may not claim a write it never makes" means for money.
+        const clause = valueClause(v);
+        expect(clause).toContain("UNMEASURED");
+        expect(clause).not.toMatch(/TRY/);
+        expect(clause).not.toMatch(/[0-9]+\.[0-9]{2}/);
+      },
+    );
 
     it("says a number IS on file, which null does not say", () => {
       const zero = valueBacktest(run(), { ...HOUSE, carryPerPeriod: 0 });
       const none = valueBacktest(run(), { ...HOUSE, carryPerPeriod: null });
-      expect(zero.withheldDetail).toContain("a carrying cost of 0 is not a cost");
-      expect(none.withheldDetail).not.toContain("a carrying cost of 0 is not a cost");
+      expect(zero.withheldDetail).toContain(
+        "a carrying cost of 0 is not a cost",
+      );
+      expect(none.withheldDetail).not.toContain(
+        "a carrying cost of 0 is not a cost",
+      );
       // Same withheld reason, different detail: one house has a field to fix,
       // the other has a field to fill.
       expect(zero.withheld).toBe(none.withheld);
@@ -545,19 +563,30 @@ describe("the alert sentence has three money states and only three", () => {
     const clause = valueClause(v, "tr-TR");
     expect(clause).toContain("saved about ₺199,02 on average");
     expect(clause).not.toMatch(/199\.02|TRY/);
-    if (v.lossRate !== null) expect(clause).toMatch(/wrong way on %[0-9]+,[0-9] of past fires/);
+    if (v.lossRate !== null)
+      expect(clause).toMatch(/wrong way on %[0-9]+,[0-9] of past fires/);
     const sentence = commodityAlertSentence({ ...FACTS, locale: "tr-TR" }, v);
     expect(sentence).toContain("%36 above its twelve-observation median");
     expect(sentence).toContain("saved about ₺199,02");
 
-    const small = valueBacktest(run(), { ...HOUSE, periodSpend: 30, locale: "tr-TR" });
+    const small = valueBacktest(run(), {
+      ...HOUSE,
+      periodSpend: 30,
+      locale: "tr-TR",
+    });
     expect(valueClause(small, "tr-TR")).toContain(
       "spends about ₺30 a period on this item, and a fire only repays the ₺8 it costs to read above about ₺39.",
     );
   });
 
   it("an en-US house reads its dollars grouped, symbol first (F-889)", () => {
-    const v = valueBacktest(run(), { ...HOUSE, periodSpend: 100000, currency: "USD" });
-    expect(valueClause(v, "en-US")).toMatch(/saved about \$[0-9]{1,3}(,[0-9]{3})+\.[0-9]{2} on average/);
+    const v = valueBacktest(run(), {
+      ...HOUSE,
+      periodSpend: 100000,
+      currency: "USD",
+    });
+    expect(valueClause(v, "en-US")).toMatch(
+      /saved about \$[0-9]{1,3}(,[0-9]{3})+\.[0-9]{2} on average/,
+    );
   });
 });

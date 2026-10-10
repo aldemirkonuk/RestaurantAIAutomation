@@ -43,7 +43,10 @@ export interface StubDb {
    * A table not named here is not capped.
    */
   rowCap?: Record<string, number>;
-  supabase: { from: (table: string) => any; rpc?: (fn: string, args: any) => any };
+  supabase: {
+    from: (table: string) => any;
+    rpc?: (fn: string, args: any) => any;
+  };
   /** Convenience: the ops that touched `table` with operation `op`. */
   opsOn(table: string, op?: RecordedOp["op"]): RecordedOp[];
 }
@@ -126,7 +129,12 @@ export function makeStubDb(
  * unmodelled rpc fails loudly instead of answering nothing.
  */
 export function defaultRpc(db: StubDb, fn: string, args: any) {
-  db.ops.push({ table: `rpc:${fn}`, op: "select", filters: [], payload: args } as RecordedOp);
+  db.ops.push({
+    table: `rpc:${fn}`,
+    op: "select",
+    filters: [],
+    payload: args,
+  } as RecordedOp);
   const forced = db.errors[`rpc:${fn}`];
   if (forced) return { data: null, error: forced };
   if (fn === "account_delete_blockers") {

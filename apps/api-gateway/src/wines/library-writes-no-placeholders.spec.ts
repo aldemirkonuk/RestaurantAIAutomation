@@ -157,20 +157,32 @@ describe("master_wine_library writes carry no fabricated provenance", () => {
       RESTAURANT_ID,
     );
     expect(venue.inserted[0].source).toBe("venue_provisional");
-    expect(venue.inserted[0].data_enrichment).toEqual({ menu_category: "beer" });
+    expect(venue.inserted[0].data_enrichment).toEqual({
+      menu_category: "beer",
+    });
 
     const shared = makeService();
     await (shared.service as any).resolveOrCreateLibraryWine(
-      { name: "Akakies", producer: "Kir-Yianni", country: "Greece", menuCategory: "red" },
+      {
+        name: "Akakies",
+        producer: "Kir-Yianni",
+        country: "Greece",
+        menuCategory: "red",
+      },
       RESTAURANT_ID,
     );
     expect(shared.inserted[0].source).toBe("menu_import");
-    expect(shared.inserted[0].data_enrichment).toEqual({ menu_category: "red" });
+    expect(shared.inserted[0].data_enrichment).toEqual({
+      menu_category: "red",
+    });
   });
 
   it("writes no category at all when the line gives none", async () => {
     const { service, inserted } = makeService();
-    await (service as any).resolveOrCreateLibraryWine({ name: "Efe Black" }, RESTAURANT_ID);
+    await (service as any).resolveOrCreateLibraryWine(
+      { name: "Efe Black" },
+      RESTAURANT_ID,
+    );
     expect(inserted[0].data_enrichment).toBeNull();
   });
 });

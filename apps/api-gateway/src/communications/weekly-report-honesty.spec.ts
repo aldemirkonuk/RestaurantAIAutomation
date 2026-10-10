@@ -243,7 +243,9 @@ describe("scheduled inbox rows — no emoji, and no fact lost with it", () => {
   it("carries no emoji on any title or message line", () => {
     const offences = SOURCE.split("\n")
       .map((text, i) => ({ line: i + 1, text }))
-      .filter(({ text }) => /\b(title|message)\s*:/.test(text) && EMOJI.test(text));
+      .filter(
+        ({ text }) => /\b(title|message)\s*:/.test(text) && EMOJI.test(text),
+      );
     expect(offences).toEqual([]);
   });
 });

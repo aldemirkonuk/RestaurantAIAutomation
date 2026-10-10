@@ -297,7 +297,11 @@ describe("F-339 — vendor spend never adds two currencies", () => {
     });
 
   it("leaves the day and the month without a sum, and carries each currency", async () => {
-    const month = await serviceOver(mixed()).getCalendarRevenue(HOUSE, 2026, 10);
+    const month = await serviceOver(mixed()).getCalendarRevenue(
+      HOUSE,
+      2026,
+      10,
+    );
     expect(day(month, "2026-10-02")).toMatchObject({
       procurement_spend: null,
       procurement_spend_by_currency: [

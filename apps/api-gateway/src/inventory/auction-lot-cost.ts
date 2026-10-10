@@ -52,11 +52,22 @@ export function lotBookedCost(input: {
   houseUnitCost?: number | null;
 }): LotCostAnswer {
   const { hammer, premium, bottles } = input;
-  if (!Number.isFinite(hammer) || hammer < 0 || !Number.isFinite(premium) || premium < 0) {
-    return { ok: false, why: "The hammer price and the premium must be stated as amounts of zero or more." };
+  if (
+    !Number.isFinite(hammer) ||
+    hammer < 0 ||
+    !Number.isFinite(premium) ||
+    premium < 0
+  ) {
+    return {
+      ok: false,
+      why: "The hammer price and the premium must be stated as amounts of zero or more.",
+    };
   }
   if (!Number.isInteger(bottles) || bottles < 1) {
-    return { ok: false, why: "Say how many bottles were in the lot, as a whole number." };
+    return {
+      ok: false,
+      why: "Say how many bottles were in the lot, as a whole number.",
+    };
   }
   // Whole cents, added once, and the per-bottle figure rounded once. A stated
   // rate scales the EXACT per-bottle figure, so the cents rounding is not
@@ -71,25 +82,47 @@ export function lotBookedCost(input: {
     return { ok: false, why: "An exchange rate must be a number above zero." };
   }
   if (typed !== null && (!Number.isFinite(typed) || typed < 0)) {
-    return { ok: false, why: "A per-bottle cost must be an amount of zero or more." };
+    return {
+      ok: false,
+      why: "A per-bottle cost must be an amount of zero or more.",
+    };
   }
   const house = (input.houseCurrency ?? "").trim().toUpperCase() || null;
   const lot = input.currency.trim().toUpperCase();
   if (!house) {
     return {
       ok: false,
-      why:
-        "This house has not stated the currency it keeps its books in (Settings, Currency), so a lot's cost cannot be booked in it. Nothing is inferred.",
+      why: "This house has not stated the currency it keeps its books in (Settings, Currency), so a lot's cost cannot be booked in it. Nothing is inferred.",
     };
   }
-  if (typed !== null) return { ok: true, booked: cents(typed), basis: "typed_house_cost", lotPerBottle };
+  if (typed !== null)
+    return {
+      ok: true,
+      booked: cents(typed),
+      basis: "typed_house_cost",
+      lotPerBottle,
+    };
   if (lot === house) {
     if (rate !== null) {
-      return { ok: false, why: `The lot is already in ${house}, the house's own currency, so there is no exchange rate to state.` };
+      return {
+        ok: false,
+        why: `The lot is already in ${house}, the house's own currency, so there is no exchange rate to state.`,
+      };
     }
-    return { ok: true, booked: lotPerBottle, basis: "same_currency", lotPerBottle };
+    return {
+      ok: true,
+      booked: lotPerBottle,
+      basis: "same_currency",
+      lotPerBottle,
+    };
   }
-  if (rate !== null) return { ok: true, booked: cents(exactPerBottle * rate), basis: "stated_rate", lotPerBottle };
+  if (rate !== null)
+    return {
+      ok: true,
+      booked: cents(exactPerBottle * rate),
+      basis: "stated_rate",
+      lotPerBottle,
+    };
   return {
     ok: false,
     why: `The lot is in ${lot} and this house keeps its books in ${house}: state the exchange rate you used, or type what each bottle cost in ${house}. Nothing is inferred.`,

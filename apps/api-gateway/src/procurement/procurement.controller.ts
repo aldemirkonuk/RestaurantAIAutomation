@@ -74,7 +74,9 @@ export function parseDeliveredQuantity(
   const value = Number(text);
 
   if (!Number.isFinite(value))
-    throw new BadRequestException(`${paramName} must be a number; got "${text}".`);
+    throw new BadRequestException(
+      `${paramName} must be a number; got "${text}".`,
+    );
   if (!Number.isInteger(value))
     throw new BadRequestException(
       `${paramName} must be a whole number of units; got "${text}".`,
@@ -248,7 +250,11 @@ export class ProcurementController {
   @ApiResponse({ status: 200, type: [OrderResponseDto] })
   async listPendingOrders(
     @CurrentUser()
-    user: { userId: string; restaurantId: string; role?: string | null },
+    user: {
+      userId: string;
+      restaurantId: string;
+      role?: string | null;
+    },
   ): Promise<OrderForRole[]> {
     try {
       // Staff read the queue's counts, names and states, never its amounts
@@ -341,7 +347,8 @@ export class ProcurementController {
 
   @Post("orders/:id/cancel-seal-challenge")
   @ApiOperation({
-    summary: "Mint the one-time seal this order's cancellation has to carry back",
+    summary:
+      "Mint the one-time seal this order's cancellation has to carry back",
   })
   @ApiResponse({
     status: 201,
@@ -430,7 +437,8 @@ export class ProcurementController {
   @Post("orders/:id/close-short")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Close a partly received order short — manager or owner, with a reason",
+    summary:
+      "Close a partly received order short — manager or owner, with a reason",
   })
   @ApiResponse({ status: 200, type: OrderResponseDto })
   @ApiResponse({ status: 400, description: "No reason was given." })
@@ -540,11 +548,15 @@ export class ProcurementController {
    */
   @Get("agreement-currency")
   @ApiOperation({
-    summary: "The currency to offer on a new agreement line, and the evidence for it",
+    summary:
+      "The currency to offer on a new agreement line, and the evidence for it",
     description:
       "Resolves in order: what this vendor last billed this house in (procurement_documents.currency, by the document's own date), then the house's own reporting currency (restaurants.currency), then nothing. `basis` names which rung answered so the sheet can show the evidence rather than just the suggestion; `code: null` means the person must choose or the line records no currency at all. Nothing is converted anywhere.",
   })
-  @ApiResponse({ status: 200, description: "The offered default and its basis" })
+  @ApiResponse({
+    status: 200,
+    description: "The offered default and its basis",
+  })
   async agreementCurrency(
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Query("providerId") providerId?: string,
@@ -581,8 +593,14 @@ export class ProcurementController {
   })
   @ApiQuery({ name: "providerId", required: true })
   @ApiQuery({ name: "inventoryId", required: true })
-  @ApiResponse({ status: 200, description: "The last agreement, or why there is none" })
-  @ApiResponse({ status: 400, description: "providerId and inventoryId are both required" })
+  @ApiResponse({
+    status: 200,
+    description: "The last agreement, or why there is none",
+  })
+  @ApiResponse({
+    status: 400,
+    description: "providerId and inventoryId are both required",
+  })
   async lastAgreement(
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Query("providerId") providerId?: string,
@@ -639,7 +657,9 @@ export class ProcurementController {
   }
 
   @Post("orders/:id/approve")
-  @ApiOperation({ summary: "Approve procurement order, behind a redeemed seal" })
+  @ApiOperation({
+    summary: "Approve procurement order, behind a redeemed seal",
+  })
   @ApiResponse({ status: 200, type: OrderResponseDto })
   @ApiResponse({
     status: 403,
@@ -735,8 +755,13 @@ export class ProcurementController {
    */
   @Get("items-to-name")
   @ApiOperation({ summary: "Deliveries waiting for their item to be named" })
-  async deliveriesToName(@CurrentUser() user: { userId: string; restaurantId: string }) {
-    return this.procurementService.deliveriesToName(user.restaurantId, user.userId);
+  async deliveriesToName(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.deliveriesToName(
+      user.restaurantId,
+      user.userId,
+    );
   }
 
   /**
@@ -744,7 +769,10 @@ export class ProcurementController {
    * booked then, once, and the naming is audited.
    */
   @Post("orders/:id/name-item")
-  @ApiOperation({ summary: "Name the item of a delivery that booked nothing, booking its stock once" })
+  @ApiOperation({
+    summary:
+      "Name the item of a delivery that booked nothing, booking its stock once",
+  })
   async nameDeliveredItem(
     @Param("id", new ParseUUIDPipe()) orderId: string,
     @Body() dto: NameDeliveredItemDto,
@@ -778,7 +806,8 @@ export class ProcurementController {
   async verifyReceipt(
     @Param("id") orderId: string,
     @Body() body: VerifyReceiptDto,
-    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<OrderResponseDto> {
     // F-802 (rehit of F-466): the invoice price becomes the lots' landed cost
     // and the price series, and the override reason accepts a price that
@@ -869,8 +898,14 @@ export class ProcurementController {
     description:
       "Bound to this actor, this order, the act `send_draft`, and the LETTER as it stands — its words normalised, its recipient and its copies. A seal minted to approve an order's money cannot be spent to send its mail, and a seal minted over one paragraph cannot be spent after the paragraph changes. 404 when no draft is waiting; 500 (never a seal) when whether one is waiting could not be read.",
   })
-  @ApiResponse({ status: 201, description: "`challenge`, `expiresAt` and `act`" })
-  @ApiResponse({ status: 404, description: "No draft is waiting on this order" })
+  @ApiResponse({
+    status: 201,
+    description: "`challenge`, `expiresAt` and `act`",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "No draft is waiting on this order",
+  })
   async issueDraftSendSeal(
     @Param("id") orderId: string,
     @Body() body: DraftSealChallengeDto,
@@ -952,18 +987,38 @@ export class ProcurementController {
    */
   @Post("orders/:id/draft-send-request")
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Ask a manager to send this letter (a staff member's hold)" })
-  @ApiResponse({ status: 201, description: "Asked: the version, when, how many were told, and the sentence" })
-  @ApiResponse({ status: 409, description: "The caller may send it themself, or the draft went while they held" })
+  @ApiOperation({
+    summary: "Ask a manager to send this letter (a staff member's hold)",
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      "Asked: the version, when, how many were told, and the sentence",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "The caller may send it themself, or the draft went while they held",
+  })
   async requestDraftSend(
     @Param("id") orderId: string,
     @Body() body: DraftSendRequestDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
-    return this.procurementService.requestDraftSend(user.restaurantId, orderId, user.userId, {
-      content: body.content,
-      ccEmails: body.ccEmails ?? [],
-    });
+  ): Promise<{
+    conversationId: string;
+    requestedAt: string;
+    told: number;
+    says: string;
+  }> {
+    return this.procurementService.requestDraftSend(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      {
+        content: body.content,
+        ccEmails: body.ccEmails ?? [],
+      },
+    );
   }
 
   @Post("orders/:id/generate-ai-reply")
@@ -1015,16 +1070,24 @@ export class ProcurementController {
    */
   @Post("orders/:id/manual-reply-seal-challenge")
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Mint the one-time seal a hand-written reply's send has to carry back" })
+  @ApiOperation({
+    summary:
+      "Mint the one-time seal a hand-written reply's send has to carry back",
+  })
   async issueManualReplySeal(
     @Param("id") orderId: string,
     @Body() body: ManualReplyDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
-    return this.procurementService.issueManualReplySeal(user.restaurantId, orderId, user.userId, {
-      content: body.content,
-      ccEmails: body.ccEmails ?? [],
-    });
+    return this.procurementService.issueManualReplySeal(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      {
+        content: body.content,
+        ccEmails: body.ccEmails ?? [],
+      },
+    );
   }
 
   /**
@@ -1035,11 +1098,13 @@ export class ProcurementController {
   @Post("orders/:id/manual-reply")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: "Send a hand-written threaded reply to the provider, behind a redeemed seal",
+    summary:
+      "Send a hand-written threaded reply to the provider, behind a redeemed seal",
   })
   @ApiResponse({
     status: 200,
-    description: "Manual reply sent and recorded on the thread, with its sender",
+    description:
+      "Manual reply sent and recorded on the thread, with its sender",
   })
   @ApiResponse({
     status: 403,
@@ -1151,17 +1216,24 @@ export class ProcurementController {
    */
   @Post("orders/:id/confirm-deal-seal-challenge")
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Mint the one-time seal a deal confirmation has to carry back" })
+  @ApiOperation({
+    summary: "Mint the one-time seal a deal confirmation has to carry back",
+  })
   async issueConfirmDealSeal(
     @Param("id") orderId: string,
     @Body() body: ConfirmDealDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
-    return this.procurementService.issueConfirmDealSeal(user.restaurantId, orderId, user.userId, {
-      finalPrice: body?.finalPrice,
-      quantity: body?.quantity,
-      sendConfirmation: body?.sendConfirmation,
-    });
+    return this.procurementService.issueConfirmDealSeal(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      {
+        finalPrice: body?.finalPrice,
+        quantity: body?.quantity,
+        sendConfirmation: body?.sendConfirmation,
+      },
+    );
   }
 
   /**
@@ -1170,35 +1242,58 @@ export class ProcurementController {
    */
   @Post("orders/:id/confirm-deal-request")
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Ask an owner or a manager to confirm this deal on the terms given; nothing is committed" })
-  @ApiResponse({ status: 409, description: "The caller may confirm it themself, or a request is already waiting" })
+  @ApiOperation({
+    summary:
+      "Ask an owner or a manager to confirm this deal on the terms given; nothing is committed",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "The caller may confirm it themself, or a request is already waiting",
+  })
   async requestConfirmDeal(
     @Param("id", new ParseUUIDPipe()) orderId: string,
     @Body() body: ConfirmDealDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
-    return this.procurementService.requestConfirmDeal(user.restaurantId, orderId, user.userId, {
-      finalPrice: body?.finalPrice,
-      quantity: body?.quantity,
-      sendConfirmation: body?.sendConfirmation,
-    });
+    return this.procurementService.requestConfirmDeal(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      {
+        finalPrice: body?.finalPrice,
+        quantity: body?.quantity,
+        sendConfirmation: body?.sendConfirmation,
+      },
+    );
   }
 
   /** The waiting deal request, and whether this person's hold confirms or asks. */
   @Get("orders/:id/deal-request")
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "The deal request waiting on this order, if any, and the caller's standing to confirm it" })
+  @ApiOperation({
+    summary:
+      "The deal request waiting on this order, if any, and the caller's standing to confirm it",
+  })
   async dealRequest(
     @Param("id", new ParseUUIDPipe()) orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Query("finalPrice") finalPrice?: string,
     @Query("quantity") quantity?: string,
   ) {
-    const num = (v?: string) => (v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
-    return this.procurementService.dealRequestReadout(user.restaurantId, orderId, user.userId, {
-      finalPrice: num(finalPrice),
-      quantity: num(quantity),
-    });
+    const num = (v?: string) =>
+      v === undefined || v === "" || !Number.isFinite(Number(v))
+        ? undefined
+        : Number(v);
+    return this.procurementService.dealRequestReadout(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      {
+        finalPrice: num(finalPrice),
+        quantity: num(quantity),
+      },
+    );
   }
 
   /**
@@ -1209,16 +1304,33 @@ export class ProcurementController {
   @Post("orders/:id/deal-request/decline")
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Decline the deal request waiting on this order, saying why; nothing is confirmed" })
-  @ApiResponse({ status: 403, description: "The caller is not an owner or a manager" })
-  @ApiResponse({ status: 404, description: "No deal request is waiting on this order" })
-  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  @ApiOperation({
+    summary:
+      "Decline the deal request waiting on this order, saying why; nothing is confirmed",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or a manager",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "No deal request is waiting on this order",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "The request was already released or closed",
+  })
   async declineDealRequest(
     @Param("id", new ParseUUIDPipe()) orderId: string,
     @Body() dto: DeclineDealRequestDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
-    return this.procurementService.declineDealRequest(user.restaurantId, orderId, user.userId, dto.reason);
+    return this.procurementService.declineDealRequest(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      dto.reason,
+    );
   }
 
   /**
@@ -1229,15 +1341,28 @@ export class ProcurementController {
   @Post("orders/:id/deal-request/withdraw")
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Withdraw your own deal request waiting on this order; nothing is confirmed" })
+  @ApiOperation({
+    summary:
+      "Withdraw your own deal request waiting on this order; nothing is confirmed",
+  })
   @ApiResponse({ status: 403, description: "The caller did not ask for it" })
-  @ApiResponse({ status: 404, description: "No deal request is waiting on this order" })
-  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  @ApiResponse({
+    status: 404,
+    description: "No deal request is waiting on this order",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "The request was already released or closed",
+  })
   async withdrawDealRequest(
     @Param("id", new ParseUUIDPipe()) orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
-    return this.procurementService.withdrawDealRequest(user.restaurantId, orderId, user.userId);
+    return this.procurementService.withdrawDealRequest(
+      user.restaurantId,
+      orderId,
+      user.userId,
+    );
   }
 
   @Post("orders/:id/confirm-deal")

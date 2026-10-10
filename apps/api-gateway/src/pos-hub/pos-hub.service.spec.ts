@@ -333,10 +333,15 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       .mockImplementation(() => undefined);
 
     expect(
-      service.verifyWebhookSignature(body, "anything", {
-        provider: "generic_webhook",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        "anything",
+        {
+          provider: "generic_webhook",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(false);
 
     // Logged once, and it says the door is advertised — generic_webhook is
@@ -348,10 +353,15 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
 
     // Repeat calls stay rejected; the log does not repeat.
     expect(
-      service.verifyWebhookSignature(body, "anything", {
-        provider: "generic_webhook",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        "anything",
+        {
+          provider: "generic_webhook",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(errors).toHaveBeenCalledTimes(1);
   });
@@ -379,10 +389,15 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       .mockImplementation(() => undefined);
 
     expect(
-      service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
-        provider: "generic_webhook",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        hmac("legacy-secret", body),
+        {
+          provider: "generic_webhook",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(true);
 
     expect(warn).toHaveBeenCalledTimes(1);
@@ -403,17 +418,27 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
     );
 
     expect(
-      service.verifyWebhookSignature(body, sigForGeneric, {
-        provider: "generic_webhook",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        sigForGeneric,
+        {
+          provider: "generic_webhook",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(true);
     // Same tenant, same bytes, provider A's key — must not open provider B.
     expect(
-      service.verifyWebhookSignature(body, sigForGeneric, {
-        provider: "toast",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        sigForGeneric,
+        {
+          provider: "toast",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(false);
   });
 
@@ -425,16 +450,26 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
     const sigForA = scopedSig("secret-generic", "generic_webhook", R_A, body);
 
     expect(
-      service.verifyWebhookSignature(body, sigForA, {
-        provider: "generic_webhook",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        sigForA,
+        {
+          provider: "generic_webhook",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(true);
     expect(
-      service.verifyWebhookSignature(body, sigForA, {
-        provider: "generic_webhook",
-        restaurantId: R_B,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        sigForA,
+        {
+          provider: "generic_webhook",
+          restaurantId: R_B,
+        },
+        TS,
+      ),
     ).toBe(false);
   });
 
@@ -449,25 +484,40 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
 
     const sigA = scopedSig("secret-a", "generic_webhook", R_A, body);
     expect(
-      service.verifyWebhookSignature(body, sigA, {
-        provider: "generic_webhook",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        sigA,
+        {
+          provider: "generic_webhook",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(true);
     expect(
-      service.verifyWebhookSignature(body, sigA, {
-        provider: "generic_webhook",
-        restaurantId: R_B,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        sigA,
+        {
+          provider: "generic_webhook",
+          restaurantId: R_B,
+        },
+        TS,
+      ),
     ).toBe(false);
 
     // A scoped secret is the cutover switch: the legacy key no longer opens
     // this door, on either the legacy scheme or the scoped one.
     expect(
-      service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
-        provider: "generic_webhook",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        hmac("legacy-secret", body),
+        {
+          provider: "generic_webhook",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(
@@ -485,16 +535,26 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
     const good = hmac("legacy-secret", body);
 
     expect(
-      service.verifyWebhookSignature(body, good, {
-        provider: "not_a_real_pos",
-        restaurantId: R_A,
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        good,
+        {
+          provider: "not_a_real_pos",
+          restaurantId: R_A,
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(
-      service.verifyWebhookSignature(body, good, {
-        provider: "generic_webhook",
-        restaurantId: "  ",
-      }, TS),
+      service.verifyWebhookSignature(
+        body,
+        good,
+        {
+          provider: "generic_webhook",
+          restaurantId: "  ",
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(body, good, undefined as any, TS),

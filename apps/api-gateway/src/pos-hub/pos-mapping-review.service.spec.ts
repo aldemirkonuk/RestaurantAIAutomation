@@ -565,7 +565,10 @@ const HOUSE_ITEMS: Row[] = [{ id: "inv-1", restaurant_id: RESTAURANT }];
 
 describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   it("writes the unit the human sent, and only that column", async () => {
-    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
+    const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
+      mappings: [mapping()],
+    });
 
     const result = await service.setSaleUnit(RESTAURANT, "map-1", "glass");
 
@@ -600,7 +603,10 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   // rejected is input that is malformed rather than merely unusual — a blank
   // label renders as "mapped" in this very UI while meaning nothing.
   it("accepts an open label, and still rejects a malformed one", async () => {
-    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
+    const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
+      mappings: [mapping()],
+    });
 
     await expect(
       service.setSaleUnit(RESTAURANT, "map-1", "half_bottle" as any),
@@ -629,7 +635,10 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   });
 
   it("refuses an unknown mapping id instead of creating a row", async () => {
-    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
+    const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
+      mappings: [mapping()],
+    });
 
     await expect(
       service.setSaleUnit(RESTAURANT, "map-missing", "bottle"),

@@ -152,7 +152,9 @@ describe("dashboard day sheet", () => {
 
       expect(client.from).not.toHaveBeenCalledWith("restaurants");
       for (const table of ["procurement_orders", "events"]) {
-        const methods = client.filters[table][0].map((a) => (a as unknown[])[0]);
+        const methods = client.filters[table][0].map(
+          (a) => (a as unknown[])[0],
+        );
         expect(methods).not.toContain("gte");
       }
     });

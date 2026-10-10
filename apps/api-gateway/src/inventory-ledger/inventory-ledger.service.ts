@@ -235,16 +235,20 @@ export class InventoryLedgerService {
     // delta) can be receiving a wine the library lacks. Never blocks the
     // response; a failure is logged.
     if (dto.quantityChange > 0) {
-      const research = await queueResearchIfLibraryLacks(this.databaseService.supabase, {
-        restaurantId,
-        inventoryId: dto.inventoryId,
-        queuedFrom: "receiving",
-        sourceOrderId: dto.orderId || null,
-        queuedBy: userId,
-      });
+      const research = await queueResearchIfLibraryLacks(
+        this.databaseService.supabase,
+        {
+          restaurantId,
+          inventoryId: dto.inventoryId,
+          queuedFrom: "receiving",
+          sourceOrderId: dto.orderId || null,
+          queuedBy: userId,
+        },
+      );
       if (research && !research.ok) {
         this.logger.error({
-          message: "Inventory transaction booked, but the item was not queued for research",
+          message:
+            "Inventory transaction booked, but the item was not queued for research",
           restaurantId,
           inventoryId: dto.inventoryId,
           error: research.error,

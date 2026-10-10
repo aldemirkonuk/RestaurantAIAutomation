@@ -347,8 +347,12 @@ export class VendorIntelController {
   // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
   // admitted managers; the label now says so. A lone "owner" now means owner.
   @Roles("owner", "manager")
-  @ApiOperation({ summary: "Run the outlier re-judge now over the whole register" })
-  async runOutlierRejudge(@Body() body: { dryRun?: boolean; windowDays?: number }) {
+  @ApiOperation({
+    summary: "Run the outlier re-judge now over the whole register",
+  })
+  async runOutlierRejudge(
+    @Body() body: { dryRun?: boolean; windowDays?: number },
+  ) {
     if (!this.rejudge.armed()) {
       return { success: false, ran: false, ...this.rejudge.status() };
     }
@@ -434,7 +438,9 @@ export class VendorIntelController {
    * before the lookup so a mis-typed code is told apart from an unknown one.
    */
   @Get("identity/lookup")
-  @ApiOperation({ summary: "Look one bottle identity up by GTIN, LWIN or source code" })
+  @ApiOperation({
+    summary: "Look one bottle identity up by GTIN, LWIN or source code",
+  })
   async identityLookup(
     @Query("namespace") namespace?: string,
     @Query("value") value?: string,
@@ -444,14 +450,19 @@ export class VendorIntelController {
         "Give both a namespace (gtin, lwin, or source:<key>) and a value.",
       );
     }
-    return { success: true, ...(await this.identity.lookupByKey(namespace, value)) };
+    return {
+      success: true,
+      ...(await this.identity.lookupByKey(namespace, value)),
+    };
   }
 
   /**
    * Suggestions for a described bottle. Writes nothing and links nothing.
    */
   @Post("identity/suggest")
-  @ApiOperation({ summary: "Suggest register identities for a described bottle" })
+  @ApiOperation({
+    summary: "Suggest register identities for a described bottle",
+  })
   async identitySuggest(
     @Body()
     body: {
@@ -478,7 +489,8 @@ export class VendorIntelController {
       "Record a bottle identity, attributed to this person and house (provisional until curated)",
   })
   async identityAssert(
-    @CurrentUser() user: { userId?: string; id?: string; restaurantId?: string },
+    @CurrentUser()
+    user: { userId?: string; id?: string; restaurantId?: string },
     @Body()
     body: {
       producer?: string;
@@ -600,7 +612,8 @@ export class VendorIntelController {
   @Post("identity/decisions/undo")
   @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Undo one identity decision (manager only; the undo is logged too)",
+    summary:
+      "Undo one identity decision (manager only; the undo is logged too)",
   })
   async identityUndo(
     @CurrentUser()
@@ -684,7 +697,9 @@ export class VendorIntelController {
       success: true,
       ...(await this.identity.lwinSearch(
         q,
-        Number.isFinite(n) && (n as number) > 0 ? Math.min(n as number, 100) : 20,
+        Number.isFinite(n) && (n as number) > 0
+          ? Math.min(n as number, 100)
+          : 20,
       )),
     };
   }
@@ -746,10 +761,12 @@ export class VendorIntelController {
   @Post("identity/nominate")
   @Roles("owner", "manager", "staff")
   @ApiOperation({
-    summary: "Nominate a wine by hand — a named, provisional identity assertion",
+    summary:
+      "Nominate a wine by hand — a named, provisional identity assertion",
   })
   async identityNominate(
-    @CurrentUser() user: { userId?: string; id?: string; restaurantId?: string },
+    @CurrentUser()
+    user: { userId?: string; id?: string; restaurantId?: string },
     @Body()
     body: {
       producer?: string;
@@ -796,7 +813,9 @@ export class VendorIntelController {
   async identitySweepSubjects(@CurrentUser() user: { restaurantId?: string }) {
     return {
       success: true,
-      ...(await this.identity.confirmedIdentityCount(user?.restaurantId ?? null)),
+      ...(await this.identity.confirmedIdentityCount(
+        user?.restaurantId ?? null,
+      )),
     };
   }
 

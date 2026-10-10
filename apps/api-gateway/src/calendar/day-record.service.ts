@@ -252,10 +252,10 @@ export function scoreForecast(
       withheld: "no station observed a high for this day",
     };
   }
-  const error =
-    Math.abs(
-      toCelsius(forecastHigh, forecastUnit) - toCelsius(observedHigh, observedUnit),
-    );
+  const error = Math.abs(
+    toCelsius(forecastHigh, forecastUnit) -
+      toCelsius(observedHigh, observedUnit),
+  );
   return { errorC: Math.round(error * 100) / 100, withheld: null };
 }
 
@@ -375,8 +375,14 @@ export class DayRecordService {
    * A failed read of the house record throws (`readHouseZone`), never folded
    * into "no zone".
    */
-  async houseToday(restaurantId: string, now: Date = new Date()): Promise<string> {
-    const { zone } = await readHouseZone(this.databaseService.supabase, restaurantId);
+  async houseToday(
+    restaurantId: string,
+    now: Date = new Date(),
+  ): Promise<string> {
+    const { zone } = await readHouseZone(
+      this.databaseService.supabase,
+      restaurantId,
+    );
     return zone ? houseToday(zone, now) : now.toISOString().slice(0, 10);
   }
 
@@ -472,7 +478,12 @@ export class DayRecordService {
           : null,
         forecastErrorC: errorC,
         scoreWithheld: withheld,
-        line: reconciliationLine(record, advance !== null, posConnected, errorC),
+        line: reconciliationLine(
+          record,
+          advance !== null,
+          posConnected,
+          errorC,
+        ),
       };
     });
 

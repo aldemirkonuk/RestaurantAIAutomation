@@ -61,7 +61,10 @@ function makeDb(order: Row) {
           };
         }
         if (table === "inventory_transactions")
-          return { data: ledger.filter((r) => r.order_id === eq.order_id), error: null };
+          return {
+            data: ledger.filter((r) => r.order_id === eq.order_id),
+            error: null,
+          };
         if (table === "procurement_credits") {
           if (op === "insert") {
             const clash = credits.some(
@@ -72,17 +75,31 @@ function makeDb(order: Row) {
                 c.document_id == null &&
                 c.document_line_id == null,
             );
-            if (clash) return { data: null, error: { code: "23505", message: "dup" } };
-            credits.push({ id: `claim-${++creditSeq}`, document_id: null, document_line_id: null, notes: null, ...payload });
+            if (clash)
+              return { data: null, error: { code: "23505", message: "dup" } };
+            credits.push({
+              id: `claim-${++creditSeq}`,
+              document_id: null,
+              document_line_id: null,
+              notes: null,
+              ...payload,
+            });
             return { data: null, error: null };
           }
           const hit = credits.filter(matches);
           if (op === "update") for (const c of hit) Object.assign(c, payload);
-          return { data: shape === "many" ? hit : (hit[0] ?? null), error: null };
+          return {
+            data: shape === "many" ? hit : (hit[0] ?? null),
+            error: null,
+          };
         }
         if (table === "restaurant_inventory") {
-          if (selected.trim() === "id") return { data: { id: eq.id }, error: null };
-          return { data: { master_wine_id: "lib-1", wine_name: "Barolo" }, error: null };
+          if (selected.trim() === "id")
+            return { data: { id: eq.id }, error: null };
+          return {
+            data: { master_wine_id: "lib-1", wine_name: "Barolo" },
+            error: null,
+          };
         }
         return { data: shape === "many" ? [] : null, error: null };
       };
@@ -125,14 +142,16 @@ function makeDb(order: Row) {
         },
         single: async () => settle("one"),
         maybeSingle: async () => settle("one"),
-        then: (res: any, rej: any) => Promise.resolve(settle("many")).then(res, rej),
+        then: (res: any, rej: any) =>
+          Promise.resolve(settle("many")).then(res, rej),
       };
       return q;
     },
     rpc: async (name: string, args: Row) => {
       if (name === "apply_stock_movement") {
         // The real primitive: a key it has seen returns the old movement.
-        if (seenKeys.has(args.p_idempotency_key)) return { data: null, error: null };
+        if (seenKeys.has(args.p_idempotency_key))
+          return { data: null, error: null };
         seenKeys.add(args.p_idempotency_key);
         ledger.push({
           id: `m-${ledger.length + 1}`,
@@ -147,14 +166,23 @@ function makeDb(order: Row) {
     storage: { from: () => ({}) },
   };
 
-  const db = { supabase, getClient: () => supabase, client: supabase } as unknown as DatabaseService;
+  const db = {
+    supabase,
+    getClient: () => supabase,
+    client: supabase,
+  } as unknown as DatabaseService;
   const shelf = () => ledger.reduce((s, r) => s + r.quantity_change, 0);
   return { db, ledger, credits, shelf };
 }
 
-const events = { createEvent: jest.fn().mockResolvedValue({}) } as unknown as EventsService;
-const ledgerSvc = { recordTransaction: jest.fn().mockResolvedValue({}) } as unknown as InventoryLedgerService;
-const service = (db: DatabaseService) => new ProcurementService(db, events, ledgerSvc);
+const events = {
+  createEvent: jest.fn().mockResolvedValue({}),
+} as unknown as EventsService;
+const ledgerSvc = {
+  recordTransaction: jest.fn().mockResolvedValue({}),
+} as unknown as InventoryLedgerService;
+const service = (db: DatabaseService) =>
+  new ProcurementService(db, events, ledgerSvc);
 
 function twelveBottleOrder(): Row {
   return {
@@ -193,31 +221,73 @@ const MANAGER = { role: "manager" };
 describe("F-464 — each verification moves stock; a replay does not", () => {
   it("truck one 6, truck two 12: the shelf holds 12", async () => {
     const { db, shelf } = makeDb(twelveBottleOrder());
-    await service(db).verifyReceipt(REST, ORDER, USER, count(6) as any, MANAGER);
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      count(6) as any,
+      MANAGER,
+    );
     expect(shelf()).toBe(6);
-    await service(db).verifyReceipt(REST, ORDER, USER, count(12) as any, MANAGER);
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      count(12) as any,
+      MANAGER,
+    );
     expect(shelf()).toBe(12);
   });
 
   it("a re-check that finds one more broken bottle moves the shelf down by one", async () => {
     const { db, shelf } = makeDb(twelveBottleOrder());
-    await service(db).verifyReceipt(REST, ORDER, USER, count(12) as any, MANAGER);
-    await service(db).verifyReceipt(REST, ORDER, USER, count(11) as any, MANAGER);
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      count(12) as any,
+      MANAGER,
+    );
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      count(11) as any,
+      MANAGER,
+    );
     expect(shelf()).toBe(11);
   });
 
   it("back and forth (6, 12, 6, 12) never drops a movement", async () => {
     const { db, shelf } = makeDb(twelveBottleOrder());
     for (const n of [6, 12, 6, 12]) {
-      await service(db).verifyReceipt(REST, ORDER, USER, count(n) as any, MANAGER);
+      await service(db).verifyReceipt(
+        REST,
+        ORDER,
+        USER,
+        count(n) as any,
+        MANAGER,
+      );
       expect(shelf()).toBe(n);
     }
   });
 
   it("the same verification sent twice moves stock once", async () => {
     const { db, shelf, ledger } = makeDb(twelveBottleOrder());
-    await service(db).verifyReceipt(REST, ORDER, USER, count(6) as any, MANAGER);
-    await service(db).verifyReceipt(REST, ORDER, USER, count(6) as any, MANAGER);
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      count(6) as any,
+      MANAGER,
+    );
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      count(6) as any,
+      MANAGER,
+    );
     expect(shelf()).toBe(6);
     expect(ledger).toHaveLength(1);
   });
@@ -245,7 +315,13 @@ describe("F-465 — one open claim per order and reason; a later check restates 
   it("a later check that is shorter by less restates the open claim's amount", async () => {
     const { db, credits } = makeDb(twelveBottleOrder());
     await service(db).verifyReceipt(REST, ORDER, USER, desk(8) as any, MANAGER);
-    await service(db).verifyReceipt(REST, ORDER, USER, desk(10) as any, MANAGER);
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      desk(10) as any,
+      MANAGER,
+    );
     expect(credits).toHaveLength(1);
     expect(credits[0]).toMatchObject({ state: "open", claimed_amount: 80 });
   });
@@ -253,7 +329,13 @@ describe("F-465 — one open claim per order and reason; a later check restates 
   it("truck two brings the four: the clean check writes the open claim off, saying why", async () => {
     const { db, credits } = makeDb(twelveBottleOrder());
     await service(db).verifyReceipt(REST, ORDER, USER, desk(8) as any, MANAGER);
-    await service(db).verifyReceipt(REST, ORDER, USER, desk(12) as any, MANAGER);
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      desk(12) as any,
+      MANAGER,
+    );
     expect(credits).toHaveLength(1);
     expect(credits[0].state).toBe("written_off");
     expect(credits[0].notes).toMatch(/later check of this delivery/);
@@ -263,7 +345,13 @@ describe("F-465 — one open claim per order and reason; a later check restates 
   it("a count with no invoice closes nothing: it cannot say what is owed", async () => {
     const { db, credits } = makeDb(twelveBottleOrder());
     await service(db).verifyReceipt(REST, ORDER, USER, desk(8) as any, MANAGER);
-    await service(db).verifyReceipt(REST, ORDER, USER, count(8) as any, MANAGER);
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      count(8) as any,
+      MANAGER,
+    );
     expect(credits).toHaveLength(1);
     expect(credits[0].state).toBe("open");
   });
@@ -280,40 +368,73 @@ describe("F-465 — one open claim per order and reason; a later check restates 
 
 describe("F-466 — staff record the count; the money is an owner's or a manager's", () => {
   const moneyPayloads: [string, Row][] = [
-    ["the invoice price", { ...count(12), invoiceUom: "bottle", invoiceUnitPrice: 40, invoiceCurrency: "USD" }],
-    ["the invoice quantity", { ...count(12), invoiceUom: "bottle", invoiceQuantityInInvoiceUom: 12 }],
-    ["the invoice quantity (old name)", { ...count(12), invoiceUom: "bottle", invoiceQuantity: 12 }],
-    ["an override reason", { ...count(12), priceOverrideReason: "agreed on the phone" }],
+    [
+      "the invoice price",
+      {
+        ...count(12),
+        invoiceUom: "bottle",
+        invoiceUnitPrice: 40,
+        invoiceCurrency: "USD",
+      },
+    ],
+    [
+      "the invoice quantity",
+      { ...count(12), invoiceUom: "bottle", invoiceQuantityInInvoiceUom: 12 },
+    ],
+    [
+      "the invoice quantity (old name)",
+      { ...count(12), invoiceUom: "bottle", invoiceQuantity: 12 },
+    ],
+    [
+      "an override reason",
+      { ...count(12), priceOverrideReason: "agreed on the phone" },
+    ],
     ["delivery charges", { ...count(12), allocatedCharges: 15 }],
   ];
 
-  it.each(moneyPayloads)("staff posting %s is refused and nothing is written", async (_label, body) => {
-    const order = twelveBottleOrder();
-    const { db, ledger, credits } = makeDb(order);
-    const run = service(db).verifyReceipt(REST, ORDER, USER, body as any, { role: "staff" });
-    await expect(run).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(run).rejects.toThrow(/owner's or a manager's job, so nothing was saved/);
-    expect(ledger).toHaveLength(0);
-    expect(credits).toHaveLength(0);
-    expect(order.status).toBe("DELIVERED");
-  });
+  it.each(moneyPayloads)(
+    "staff posting %s is refused and nothing is written",
+    async (_label, body) => {
+      const order = twelveBottleOrder();
+      const { db, ledger, credits } = makeDb(order);
+      const run = service(db).verifyReceipt(REST, ORDER, USER, body as any, {
+        role: "staff",
+      });
+      await expect(run).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(run).rejects.toThrow(
+        /owner's or a manager's job, so nothing was saved/,
+      );
+      expect(ledger).toHaveLength(0);
+      expect(credits).toHaveLength(0);
+      expect(order.status).toBe("DELIVERED");
+    },
+  );
 
   it("a session with no role at the house is refused the money too", async () => {
     const { db } = makeDb(twelveBottleOrder());
     await expect(
-      service(db).verifyReceipt(REST, ORDER, USER, desk(8) as any, { role: null }),
+      service(db).verifyReceipt(REST, ORDER, USER, desk(8) as any, {
+        role: null,
+      }),
     ).rejects.toThrow(/could not be shown to hold a role/);
   });
 
   it("staff may still record the bottle count", async () => {
     const { db, shelf } = makeDb(twelveBottleOrder());
-    await service(db).verifyReceipt(REST, ORDER, USER, count(12) as any, { role: "staff" });
+    await service(db).verifyReceipt(REST, ORDER, USER, count(12) as any, {
+      role: "staff",
+    });
     expect(shelf()).toBe(12);
   });
 
-  it.each(["owner", "manager", "admin"])("%s may record the invoice and open the claim", async (role) => {
-    const { db, credits } = makeDb(twelveBottleOrder());
-    await service(db).verifyReceipt(REST, ORDER, USER, desk(8) as any, { role });
-    expect(credits).toHaveLength(1);
-  });
+  it.each(["owner", "manager", "admin"])(
+    "%s may record the invoice and open the claim",
+    async (role) => {
+      const { db, credits } = makeDb(twelveBottleOrder());
+      await service(db).verifyReceipt(REST, ORDER, USER, desk(8) as any, {
+        role,
+      });
+      expect(credits).toHaveLength(1);
+    },
+  );
 });

@@ -55,7 +55,8 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         },
         // `.is(col, null)` — the open half of the pos_checks read (F-261).
         is(col: string, val: any) {
-          if (val !== null) throw new Error(`fake client cannot parse is(${col}, ${val})`);
+          if (val !== null)
+            throw new Error(`fake client cannot parse is(${col}, ${val})`);
           nullFilters.push([col, true]);
           return api;
         },
@@ -906,15 +907,35 @@ describe("LogsTimelineService.getTimeline", () => {
   describe("a row names who did it, from this house only", () => {
     const PEOPLE = {
       users: [
-        { user_id: "u-ayse", name: "Ayşe Demir", email: "a@x", restaurant_id: "r1" },
-        { user_id: "u-mert", name: "Mert Kaya", email: "m@x", restaurant_id: "r9" },
-        { user_id: "u-elif", name: "Elif Ak", email: "e@x", restaurant_id: "r9" },
+        {
+          user_id: "u-ayse",
+          name: "Ayşe Demir",
+          email: "a@x",
+          restaurant_id: "r1",
+        },
+        {
+          user_id: "u-mert",
+          name: "Mert Kaya",
+          email: "m@x",
+          restaurant_id: "r9",
+        },
+        {
+          user_id: "u-elif",
+          name: "Elif Ak",
+          email: "e@x",
+          restaurant_id: "r9",
+        },
       ],
       // Elif's home is another house but she holds access to this one.
       user_restaurant_access: [{ user_id: "u-elif", restaurant_id: "r1" }],
     };
 
-    function audit(id: string, action: string, actorId: string | null, changes: Row | null): Row {
+    function audit(
+      id: string,
+      action: string,
+      actorId: string | null,
+      changes: Row | null,
+    ): Row {
       return {
         id,
         restaurant_id: "r1",
@@ -932,17 +953,23 @@ describe("LogsTimelineService.getTimeline", () => {
 
     function svc(tables: Record<string, Row[]>) {
       const client = makeFakeClient({ ...EMPTY, ...PEOPLE, ...tables });
-      return new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+      return new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
     }
 
     it("prints 'Name: act (field: from → to)' for an audit row", async () => {
       const { events } = await svc({
         system_audit_log: [
-          audit("a1", "member_role_changed", "u-ayse", { role: { from: "staff", to: "manager" } }),
+          audit("a1", "member_role_changed", "u-ayse", {
+            role: { from: "staff", to: "manager" },
+          }),
         ],
       }).getTimeline("r1", { role: "owner" });
 
-      expect(events[0].summary).toBe("Ayşe Demir: member role changed (role: staff → manager)");
+      expect(events[0].summary).toBe(
+        "Ayşe Demir: member role changed (role: staff → manager)",
+      );
       expect(events[0].detail).toMatchObject({
         actorId: "u-ayse",
         actorName: "Ayşe Demir",
@@ -953,7 +980,10 @@ describe("LogsTimelineService.getTimeline", () => {
     it("names a person who holds access to this house, and never names someone from another house", async () => {
       const { events } = await svc({
         system_audit_log: [
-          { ...audit("a1", "house_area_changed", "u-elif", null), created_at: "2026-09-20T10:00:00Z" },
+          {
+            ...audit("a1", "house_area_changed", "u-elif", null),
+            created_at: "2026-09-20T10:00:00Z",
+          },
           audit("a2", "house_area_changed", "u-mert", null),
         ],
       }).getTimeline("r1", { role: "owner" });
@@ -973,9 +1003,16 @@ describe("LogsTimelineService.getTimeline", () => {
       const realFrom = client.from;
       (client as any).from = (t: string) =>
         t === "users"
-          ? { select: () => ({ in: () => Promise.resolve({ data: null, error: { message: "down" } }) }) }
+          ? {
+              select: () => ({
+                in: () =>
+                  Promise.resolve({ data: null, error: { message: "down" } }),
+              }),
+            }
           : realFrom(t);
-      const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
 
       const page = await service.getTimeline("r1", { role: "owner" });
       expect(page.failedSources).toEqual([]);
@@ -1003,7 +1040,10 @@ describe("LogsTimelineService.getTimeline", () => {
       }).getTimeline("r1", { role: "staff" });
 
       expect(events[0].summary).toBe("Stock count (manual): -2 by Ayşe Demir");
-      expect(events[0].detail).toMatchObject({ performedBy: "u-ayse", performedByName: "Ayşe Demir" });
+      expect(events[0].detail).toMatchObject({
+        performedBy: "u-ayse",
+        performedByName: "Ayşe Demir",
+      });
     });
 
     // The ADR 0218 round-4 ruling keeps /logs' staff withholding to the two
@@ -1016,12 +1056,22 @@ describe("LogsTimelineService.getTimeline", () => {
         }),
       ];
 
-      const staff = await svc({ system_audit_log: rows }).getTimeline("r1", { role: "staff" });
-      expect(staff.events[0].summary).toBe("Someone: area lead granted (lead: no → yes)");
-      expect(staff.events[0].detail).toMatchObject({ actorId: null, actorName: null, subject: null });
+      const staff = await svc({ system_audit_log: rows }).getTimeline("r1", {
+        role: "staff",
+      });
+      expect(staff.events[0].summary).toBe(
+        "Someone: area lead granted (lead: no → yes)",
+      );
+      expect(staff.events[0].detail).toMatchObject({
+        actorId: null,
+        actorName: null,
+        subject: null,
+      });
       expect(JSON.stringify(staff.events)).not.toMatch(/Ayşe|Mert|u-ayse/);
 
-      const owner = await svc({ system_audit_log: rows }).getTimeline("r1", { role: "owner" });
+      const owner = await svc({ system_audit_log: rows }).getTimeline("r1", {
+        role: "owner",
+      });
       expect(owner.events[0].summary).toBe(
         "Ayşe Demir: area lead granted — Mert Kaya (lead: no → yes)",
       );
@@ -1048,16 +1098,28 @@ describe("LogsTimelineService.getTimeline", () => {
     it("says 'voided' in the summary and the detail, and 'closed' for a sale", async () => {
       const client = makeFakeClient({
         ...EMPTY,
-        pos_checks: [check("c1", true), { ...check("c2", false), opened_at: "2026-09-20T19:00:00Z", closed_at: "2026-09-20T19:30:00Z" }],
+        pos_checks: [
+          check("c1", true),
+          {
+            ...check("c2", false),
+            opened_at: "2026-09-20T19:00:00Z",
+            closed_at: "2026-09-20T19:30:00Z",
+          },
+        ],
       });
-      const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
 
       const { events } = await service.getTimeline("r1");
       expect(events.map((e) => e.summary)).toEqual([
         "POS check C1 voided by Ali (simpos)",
         "POS check C2 closed by Ali (simpos)",
       ]);
-      expect(events[0].detail).toMatchObject({ voided: true, serverName: "Ali" });
+      expect(events[0].detail).toMatchObject({
+        voided: true,
+        serverName: "Ali",
+      });
       expect(events[1].detail).toMatchObject({ voided: false });
     });
   });

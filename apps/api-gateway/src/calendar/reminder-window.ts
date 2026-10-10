@@ -53,7 +53,14 @@ export function wallMinutesIn(instant: Date, timeZone: string): number {
  */
 export function zoneOffsetMs(instant: Date, timeZone: string): number {
   const p = zoneParts(instant, timeZone);
-  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const asUtc = Date.UTC(
+    p.year,
+    p.month - 1,
+    p.day,
+    p.hour,
+    p.minute,
+    p.second,
+  );
   // `instant` carries ms; strip them so the difference is a whole-second offset.
   return asUtc - Math.floor(instant.getTime() / 1000) * 1000;
 }
@@ -134,9 +141,7 @@ export function eventStartInstant(
 }
 
 /** The entry's own date and wall-clock minutes, before any zone is applied. */
-function eventWall(
-  row: ReminderEventShape,
-): {
+function eventWall(row: ReminderEventShape): {
   date: { year: number; month: number; day: number };
   minutes: number;
 } | null {

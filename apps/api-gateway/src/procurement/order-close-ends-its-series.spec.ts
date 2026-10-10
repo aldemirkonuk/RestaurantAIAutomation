@@ -34,7 +34,10 @@ function makeDb(stored: Row) {
         if (table === "system_audit_log") auditInserts.push(body);
         return q;
       },
-      single: async () => ({ data: { ...stored, ...(payload ?? {}) }, error: null }),
+      single: async () => ({
+        data: { ...stored, ...(payload ?? {}) },
+        error: null,
+      }),
       maybeSingle: async () => ({ data: { id: stored.id }, error: null }),
       then: (resolve: any) => resolve({ data: null, error: null }),
     };
@@ -99,7 +102,10 @@ describe("closing the order a series repeats ends the series (F-302)", () => {
   });
 
   it("a paused series is ended too", async () => {
-    const { db, orderUpdates } = makeDb({ ...PARENT, recurrence_status: "paused" });
+    const { db, orderUpdates } = makeDb({
+      ...PARENT,
+      recurrence_status: "paused",
+    });
     await service(db).updateOrder(
       "rest-1",
       "ord-1",
@@ -113,7 +119,9 @@ describe("closing the order a series repeats ends the series (F-302)", () => {
     // Delivered is not a closing status, so it never ends a series. It is also
     // no longer set by editing the status (booked in at the door instead), so
     // the edit is refused and nothing at all is written.
-    expect(ORDER_ENDS_ITS_SERIES_STATUSES).not.toContain(ProcurementOrderStatus.DELIVERED);
+    expect(ORDER_ENDS_ITS_SERIES_STATUSES).not.toContain(
+      ProcurementOrderStatus.DELIVERED,
+    );
     const { db, orderUpdates, auditInserts } = makeDb(PARENT);
     await expect(
       service(db).updateOrder(
@@ -122,7 +130,9 @@ describe("closing the order a series repeats ends the series (F-302)", () => {
         { status: ProcurementOrderStatus.DELIVERED } as any,
         { statusTransitionAlreadyChecked: true, actorUserId: USER },
       ),
-    ).rejects.toMatchObject({ response: { reason: "status_through_its_own_act" } });
+    ).rejects.toMatchObject({
+      response: { reason: "status_through_its_own_act" },
+    });
     expect(orderUpdates).toHaveLength(0);
     expect(auditInserts).toHaveLength(0);
   });

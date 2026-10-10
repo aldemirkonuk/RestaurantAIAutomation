@@ -31,7 +31,10 @@ function makeService(readBack: { data: any; error: any }) {
     from: () => chain(),
     rpc: async () => ({ data: [], error: null }),
   };
-  return new WineSubmissionsService({ supabase, getClient: () => supabase } as any);
+  return new WineSubmissionsService({
+    supabase,
+    getClient: () => supabase,
+  } as any);
 }
 
 const LINE = { name: "Akakies", producer: "Kir-Yianni", country: "Greece" };
@@ -59,7 +62,10 @@ describe("a failed shared-library read-back says so", () => {
       error: null,
     });
 
-    const result = await service.resolveOrCreateLibraryWine(LINE, RESTAURANT_ID);
+    const result = await service.resolveOrCreateLibraryWine(
+      LINE,
+      RESTAURANT_ID,
+    );
 
     expect(result.masterWineId).toBe("mw-winner");
     expect(result.matched).toBe(true);

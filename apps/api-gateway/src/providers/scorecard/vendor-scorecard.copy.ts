@@ -162,8 +162,7 @@ export const COPY = {
     credits: ["claim", "claims"],
   } as Record<Key, [string, string]>,
 
-  alerting:
-    "These figures send no alerts.",
+  alerting: "These figures send no alerts.",
 
   notCollected: {
     onTime:

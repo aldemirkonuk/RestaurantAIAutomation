@@ -144,8 +144,14 @@ function stubDb(opts: {
       filters.push(["eq", col, val]);
       return builder;
     },
-    in: (col: string, val: unknown) => { filters.push(["in", col, val]); return builder; },
-    order: (col: string, options: unknown) => { filters.push(["order", col, options]); return builder; },
+    in: (col: string, val: unknown) => {
+      filters.push(["in", col, val]);
+      return builder;
+    },
+    order: (col: string, options: unknown) => {
+      filters.push(["order", col, options]);
+      return builder;
+    },
     limit: () =>
       opts.error
         ? Promise.resolve({ data: null, error: { message: opts.error } })
@@ -178,7 +184,11 @@ async function callLastAgreement(db: ReturnType<typeof stubDb>) {
   const { ProcurementService } = await import("./procurement.service");
   const self: any = {
     databaseService: { supabase: db.supabase },
-    logger: { warn: () => undefined, error: () => undefined, log: () => undefined },
+    logger: {
+      warn: () => undefined,
+      error: () => undefined,
+      log: () => undefined,
+    },
   };
   return ProcurementService.prototype.lastAgreementFor.call(
     self,
@@ -192,7 +202,9 @@ describe("ProcurementService.lastAgreementFor", () => {
   it("scopes by restaurant, vendor and item — all three", async () => {
     const db = stubDb({ rows: [], vendorName: "Kavaklıdere" });
     await callLastAgreement(db);
-    const eqs = db.filters.filter((f) => f[0] === "eq").map((f) => `${f[1]}=${f[2]}`);
+    const eqs = db.filters
+      .filter((f) => f[0] === "eq")
+      .map((f) => `${f[1]}=${f[2]}`);
     expect(eqs).toContain("restaurant_id=rest-A");
     expect(eqs).toContain("procurement_order_items.inventory_id=inv-9");
     expect(eqs).toContain("provider_id=prov-1");
@@ -200,14 +212,26 @@ describe("ProcurementService.lastAgreementFor", () => {
   });
 
   it("orders the parent agreements by their own date, excluding unconfirmed requests", async () => {
-    const db = stubDb({ rows: [] }); await callLastAgreement(db);
-    expect(db.filters).toContainEqual(["order", "requested_at", { ascending: false, nullsFirst: false }]);
-    const statuses = db.filters.find((f) => f[0] === "in" && f[1] === "status")?.[2] as string[];
-    expect(statuses).toContain("CONFIRMED"); expect(statuses).not.toContain("PENDING"); expect(statuses).not.toContain("CANCELLED");
+    const db = stubDb({ rows: [] });
+    await callLastAgreement(db);
+    expect(db.filters).toContainEqual([
+      "order",
+      "requested_at",
+      { ascending: false, nullsFirst: false },
+    ]);
+    const statuses = db.filters.find(
+      (f) => f[0] === "in" && f[1] === "status",
+    )?.[2] as string[];
+    expect(statuses).toContain("CONFIRMED");
+    expect(statuses).not.toContain("PENDING");
+    expect(statuses).not.toContain("CANCELLED");
   });
 
   it("answers 'unreadable' when the read fails — never 'none'", async () => {
-    const db = stubDb({ error: "relation does not exist", vendorName: "Banfi" });
+    const db = stubDb({
+      error: "relation does not exist",
+      vendorName: "Banfi",
+    });
     const a = await callLastAgreement(db);
     expect(a.state).toBe("unreadable");
     expect(a.price).toBeUndefined();
@@ -228,10 +252,16 @@ describe("ProcurementService.lastAgreementFor", () => {
     };
 
     const asObject = await callLastAgreement(
-      stubDb({ rows: [{ ...parent, procurement_order_items: line }], vendorName: "Banfi" }),
+      stubDb({
+        rows: [{ ...parent, procurement_order_items: line }],
+        vendorName: "Banfi",
+      }),
     );
     const asArray = await callLastAgreement(
-      stubDb({ rows: [{ ...parent, procurement_order_items: [line] }], vendorName: "Banfi" }),
+      stubDb({
+        rows: [{ ...parent, procurement_order_items: [line] }],
+        vendorName: "Banfi",
+      }),
     );
 
     for (const a of [asObject, asArray]) {
@@ -257,7 +287,10 @@ describe("ProcurementService.lastAgreementFor", () => {
           {
             order_number: "PO-77",
             requested_at: "2026-07-04T00:00:00.000Z",
-            procurement_order_items: [line, { ...line, final_unit_price: 2500 }],
+            procurement_order_items: [
+              line,
+              { ...line, final_unit_price: 2500 },
+            ],
           },
         ],
         vendorName: "Banfi",

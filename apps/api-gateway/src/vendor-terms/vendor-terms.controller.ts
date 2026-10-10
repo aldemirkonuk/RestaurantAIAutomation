@@ -9,12 +9,20 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { TenantGuard } from "../common/tenant/tenant.guard";
 import { SetVendorTermsDto } from "./dto/vendor-terms.dto";
-import { VendorTermsService, type VendorTermsReadout } from "./vendor-terms.service";
+import {
+  VendorTermsService,
+  type VendorTermsReadout,
+} from "./vendor-terms.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { assertVendorWriter } from "../providers/vendor-write-gate";
 
@@ -67,7 +75,9 @@ export class VendorTermsController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
-        error instanceof Error ? error.message : "Failed to read the vendor terms",
+        error instanceof Error
+          ? error.message
+          : "Failed to read the vendor terms",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -109,16 +119,13 @@ export class VendorTermsController {
     try {
       // The author comes from the JWT and nowhere else. `public.users.user_id`,
       // never `auth.users` — the two are disjoint and no FK would catch it.
-      return await this.terms.write(
-        restaurantId,
-        providerId,
-        dto,
-        author,
-      );
+      return await this.terms.write(restaurantId, providerId, dto, author);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
-        error instanceof Error ? error.message : "Failed to record the vendor terms",
+        error instanceof Error
+          ? error.message
+          : "Failed to record the vendor terms",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

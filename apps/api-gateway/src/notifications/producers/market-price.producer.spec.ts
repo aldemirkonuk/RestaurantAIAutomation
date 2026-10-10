@@ -205,7 +205,9 @@ describe("MarketPriceProducer", () => {
       const { db, notifications, sweepAt } = build([rankedItem()], {}, startAt);
       bought(db);
       const first = await sweepAt(startAt);
-      const inside = await sweepAt(new Date(startAt.getTime() + 3 * 86_400_000));
+      const inside = await sweepAt(
+        new Date(startAt.getTime() + 3 * 86_400_000),
+      );
       const after = await sweepAt(new Date(startAt.getTime() + 8 * 86_400_000));
       return {
         writes: notifications.persistForRestaurant.calls.length,
@@ -229,7 +231,9 @@ describe("MarketPriceProducer", () => {
     for (const stamp of [...past.claimedAt, ...future.claimedAt]) {
       expect(stamp.slice(0, 10)).not.toBe(today);
     }
-    expect(past.claimedAt.every((t: string) => t.startsWith("2025-"))).toBe(true);
+    expect(past.claimedAt.every((t: string) => t.startsWith("2025-"))).toBe(
+      true,
+    );
     expect(future.claimedAt.every((t: string) => t.startsWith("2027-"))).toBe(
       true,
     );
@@ -266,12 +270,22 @@ describe("MarketPriceProducer", () => {
     });
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
-    expect(tally.withheldReason).toMatch(/No order line with a library identity/);
+    expect(tally.withheldReason).toMatch(
+      /No order line with a library identity/,
+    );
   });
 
   it("[REVERT-FAILS] refuses a drop so large it reads as a bad parse, and says why", async () => {
     const { db, notifications, producer } = build([
-      rankedItem({ fractionBelow: 0.92, latest: { unitPrice: 4.1, observedAt: "2026-09-03T09:00:00Z", vendorName: "Scraped Co", sourceType: "website_scrape" } }),
+      rankedItem({
+        fractionBelow: 0.92,
+        latest: {
+          unitPrice: 4.1,
+          observedAt: "2026-09-03T09:00:00Z",
+          vendorName: "Scraped Co",
+          sourceType: "website_scrape",
+        },
+      }),
     ]);
     bought(db);
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);

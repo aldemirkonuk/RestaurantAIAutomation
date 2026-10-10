@@ -132,7 +132,7 @@ export class CommunicationsController {
   @ApiResponse({
     status: 200,
     description:
-      "`scope: \"deployment\"` means one mailbox shared by every restaurant on this deployment. No credential is returned in any shape.",
+      '`scope: "deployment"` means one mailbox shared by every restaurant on this deployment. No credential is returned in any shape.',
   })
   senderIdentity(): {
     address: string | null;
@@ -297,7 +297,9 @@ export class CommunicationsController {
   async sendDailySummary(
     @Body() dto: DailySummaryDto,
   ): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending daily summary to: ${maskPhone(dto.recipientPhone)}`);
+    this.logger.log(
+      `Sending daily summary to: ${maskPhone(dto.recipientPhone)}`,
+    );
 
     return this.communicationsService.sendDailySummary({
       recipientPhone: dto.recipientPhone,
@@ -331,7 +333,9 @@ export class CommunicationsController {
     this.logger.log("Wine: Chateau Margaux 2015");
     this.logger.log("Current Stock: 2 bottles");
     this.logger.log("Threshold: 12 bottles");
-    this.logger.log(`Recipients: ${this.managerEmails.map(maskEmail).join(", ")}`);
+    this.logger.log(
+      `Recipients: ${this.managerEmails.map(maskEmail).join(", ")}`,
+    );
     this.logger.log("=".repeat(60));
 
     const testPayload: LowStockAlertDto = {
@@ -388,7 +392,9 @@ export class CommunicationsController {
   })
   @ApiResponse({ status: 200, type: CommunicationResultDto })
   async testEmail(): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending test email to: ${this.managerEmails.map(maskEmail).join(", ")}`);
+    this.logger.log(
+      `Sending test email to: ${this.managerEmails.map(maskEmail).join(", ")}`,
+    );
 
     const result = await this.gmailService.sendEmail({
       to: this.managerEmails,

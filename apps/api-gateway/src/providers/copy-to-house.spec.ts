@@ -40,9 +40,14 @@ function makeDb(seed: { providers: Row[]; catalogue?: Row[] }) {
     const q: any = {
       select: () => q,
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
-      in: (c: string, v: unknown[]) => (filters.push((r) => v.includes(r[c])), q),
-      is: (c: string, v: unknown) =>
-        (filters.push((r) => (r[c] ?? null) === v), q),
+      in: (c: string, v: unknown[]) => (
+        filters.push((r) => v.includes(r[c])),
+        q
+      ),
+      is: (c: string, v: unknown) => (
+        filters.push((r) => (r[c] ?? null) === v),
+        q
+      ),
       update: () => q,
       insert: (row: Row) => ((insertRow = row), q),
       single: async () => {
@@ -53,7 +58,9 @@ function makeDb(seed: { providers: Row[]; catalogue?: Row[] }) {
           return { data: row, error: null };
         }
         const [first] = rows();
-        return first ? { data: first, error: null } : { data: null, error: { message: "none" } };
+        return first
+          ? { data: first, error: null }
+          : { data: null, error: { message: "none" } };
       },
       maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
       then: (res: any) => res({ data: rows(), error: null }),
@@ -77,12 +84,37 @@ describe("copyProvidersToHouse (F-586)", () => {
   it("adds into the TARGET house and answers each vendor", async () => {
     const { db, inserted } = makeDb({
       providers: [
-        { id: "p1", restaurant_id: HOUSE_1, name: "Local Farm", contact_email: null, catalogue_vendor_id: null, contact_phone: "+15550001111" },
-        { id: "p2", restaurant_id: HOUSE_1, name: "Breakthru", contact_email: "b@x.com", catalogue_vendor_id: "cat-1" },
+        {
+          id: "p1",
+          restaurant_id: HOUSE_1,
+          name: "Local Farm",
+          contact_email: null,
+          catalogue_vendor_id: null,
+          contact_phone: "+15550001111",
+        },
+        {
+          id: "p2",
+          restaurant_id: HOUSE_1,
+          name: "Breakthru",
+          contact_email: "b@x.com",
+          catalogue_vendor_id: "cat-1",
+        },
       ],
-      catalogue: [{ id: "cat-1", name: "Breakthru", is_active: true, type: "distributor" }],
+      catalogue: [
+        {
+          id: "cat-1",
+          name: "Breakthru",
+          is_active: true,
+          type: "distributor",
+        },
+      ],
     });
-    const results = await svc(db).copyProvidersToHouse(HOUSE_1, HOUSE_2, ["p1", "p2"], "u1");
+    const results = await svc(db).copyProvidersToHouse(
+      HOUSE_1,
+      HOUSE_2,
+      ["p1", "p2"],
+      "u1",
+    );
 
     expect(results.map((r) => [r.providerId, r.outcome])).toEqual([
       ["p1", "added"],
@@ -90,21 +122,76 @@ describe("copyProvidersToHouse (F-586)", () => {
     ]);
     expect(inserted).toHaveLength(2);
     expect(inserted.every((r) => r.restaurant_id === HOUSE_2)).toBe(true);
-    expect(inserted[0]).toMatchObject({ name: "Local Farm", contact_phone: "+15550001111", is_custom: true });
-    expect(inserted[1]).toMatchObject({ catalogue_vendor_id: "cat-1", is_custom: false });
+    expect(inserted[0]).toMatchObject({
+      name: "Local Farm",
+      contact_phone: "+15550001111",
+      is_custom: true,
+    });
+    expect(inserted[1]).toMatchObject({
+      catalogue_vendor_id: "cat-1",
+      is_custom: false,
+    });
   });
 
   it("skips what the target already has, and anything not this house's, with the reason", async () => {
     const { db, inserted } = makeDb({
       providers: [
-        { id: "p1", restaurant_id: HOUSE_1, name: "Local Farm", contact_email: null, catalogue_vendor_id: null },
-        { id: "p2", restaurant_id: HOUSE_1, name: "Breakthru", contact_email: null, catalogue_vendor_id: "cat-1" },
-        { id: "p3", restaurant_id: HOUSE_1, name: "Wine Co", contact_email: "Orders@WineCo.com", catalogue_vendor_id: null },
-        { id: "p4", restaurant_id: HOUSE_1, name: "local farm ", contact_email: null, catalogue_vendor_id: null },
-        { id: "other", restaurant_id: "house-9", name: "Elsewhere", contact_email: null, catalogue_vendor_id: null },
-        { id: "t1", restaurant_id: HOUSE_2, name: "LOCAL FARM", contact_email: null, catalogue_vendor_id: null },
-        { id: "t2", restaurant_id: HOUSE_2, name: "Breakthru Beverage", contact_email: null, catalogue_vendor_id: "cat-1" },
-        { id: "t3", restaurant_id: HOUSE_2, name: "Another name", contact_email: "orders@wineco.com", catalogue_vendor_id: null },
+        {
+          id: "p1",
+          restaurant_id: HOUSE_1,
+          name: "Local Farm",
+          contact_email: null,
+          catalogue_vendor_id: null,
+        },
+        {
+          id: "p2",
+          restaurant_id: HOUSE_1,
+          name: "Breakthru",
+          contact_email: null,
+          catalogue_vendor_id: "cat-1",
+        },
+        {
+          id: "p3",
+          restaurant_id: HOUSE_1,
+          name: "Wine Co",
+          contact_email: "Orders@WineCo.com",
+          catalogue_vendor_id: null,
+        },
+        {
+          id: "p4",
+          restaurant_id: HOUSE_1,
+          name: "local farm ",
+          contact_email: null,
+          catalogue_vendor_id: null,
+        },
+        {
+          id: "other",
+          restaurant_id: "house-9",
+          name: "Elsewhere",
+          contact_email: null,
+          catalogue_vendor_id: null,
+        },
+        {
+          id: "t1",
+          restaurant_id: HOUSE_2,
+          name: "LOCAL FARM",
+          contact_email: null,
+          catalogue_vendor_id: null,
+        },
+        {
+          id: "t2",
+          restaurant_id: HOUSE_2,
+          name: "Breakthru Beverage",
+          contact_email: null,
+          catalogue_vendor_id: "cat-1",
+        },
+        {
+          id: "t3",
+          restaurant_id: HOUSE_2,
+          name: "Another name",
+          contact_email: "orders@wineco.com",
+          catalogue_vendor_id: null,
+        },
       ],
     });
     const results = await svc(db).copyProvidersToHouse(
@@ -127,13 +214,33 @@ describe("copyProvidersToHouse (F-586)", () => {
   it("does not add two copies when the selection itself repeats a name", async () => {
     const { db, inserted } = makeDb({
       providers: [
-        { id: "p1", restaurant_id: HOUSE_1, name: "Suvla", contact_email: null, catalogue_vendor_id: null },
-        { id: "p2", restaurant_id: HOUSE_1, name: "Suvla", contact_email: null, catalogue_vendor_id: null },
+        {
+          id: "p1",
+          restaurant_id: HOUSE_1,
+          name: "Suvla",
+          contact_email: null,
+          catalogue_vendor_id: null,
+        },
+        {
+          id: "p2",
+          restaurant_id: HOUSE_1,
+          name: "Suvla",
+          contact_email: null,
+          catalogue_vendor_id: null,
+        },
       ],
     });
-    const results = await svc(db).copyProvidersToHouse(HOUSE_1, HOUSE_2, ["p1", "p2"], "u1");
+    const results = await svc(db).copyProvidersToHouse(
+      HOUSE_1,
+      HOUSE_2,
+      ["p1", "p2"],
+      "u1",
+    );
     expect(inserted).toHaveLength(1);
-    expect(results[1]).toMatchObject({ outcome: "skipped", reason: "That house already has a vendor by this name." });
+    expect(results[1]).toMatchObject({
+      outcome: "skipped",
+      reason: "That house already has a vendor by this name.",
+    });
   });
 
   it("refuses the whole copy when the target cannot be read for duplicates", async () => {
@@ -145,7 +252,8 @@ describe("copyProvidersToHouse (F-586)", () => {
     (db.supabase as any).from = (t: string) => {
       const q = realFrom(t);
       if (t === "providers" && ++call === 2) {
-        q.then = (res: any) => res({ data: null, error: { message: "timeout" } });
+        q.then = (res: any) =>
+          res({ data: null, error: { message: "timeout" } });
       }
       return q;
     };
@@ -167,12 +275,18 @@ function makeOrgs(opts: {
     const q: any = {
       select: () => q,
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
-      in: (c: string, v: unknown[]) => (filters.push((r) => v.includes(r[c])), q),
+      in: (c: string, v: unknown[]) => (
+        filters.push((r) => v.includes(r[c])),
+        q
+      ),
       maybeSingle: async () => {
         if (table === "user_restaurant_access") {
-          if (opts.roleReadFails) return { data: null, error: { message: "down" } };
+          if (opts.roleReadFails)
+            return { data: null, error: { message: "down" } };
           const house = Object.keys(opts.roles).find((h) =>
-            filters.every((f) => f({ restaurant_id: h, user_id: "u1", is_active: true })),
+            filters.every((f) =>
+              f({ restaurant_id: h, user_id: "u1", is_active: true }),
+            ),
           );
           const role = house ? opts.roles[house] : null;
           return { data: role ? { role } : null, error: null };
@@ -181,13 +295,18 @@ function makeOrgs(opts: {
       },
       then: (res: any) =>
         res({
-          data: table === "restaurants" ? opts.houses.filter((r) => filters.every((f) => f(r))) : [],
+          data:
+            table === "restaurants"
+              ? opts.houses.filter((r) => filters.every((f) => f(r)))
+              : [],
           error: null,
         }),
     };
     return q;
   };
-  return new OrganizationsService({ supabase: { from } } as unknown as DatabaseService);
+  return new OrganizationsService({
+    supabase: { from },
+  } as unknown as DatabaseService);
 }
 
 const SAME_ORG = [
@@ -197,14 +316,20 @@ const SAME_ORG = [
 
 describe("assertOwnsBothHousesInOneOrganisation (F-586)", () => {
   it("passes an owner of both houses in one organisation and names the target", async () => {
-    const orgs = makeOrgs({ roles: { [HOUSE_1]: "owner", [HOUSE_2]: "Owner" }, houses: SAME_ORG });
+    const orgs = makeOrgs({
+      roles: { [HOUSE_1]: "owner", [HOUSE_2]: "Owner" },
+      houses: SAME_ORG,
+    });
     await expect(
       orgs.assertOwnsBothHousesInOneOrganisation("u1", HOUSE_1, HOUSE_2),
     ).resolves.toEqual({ toHouseName: "Uptown" });
   });
 
   it("refuses a manager of the target house", async () => {
-    const orgs = makeOrgs({ roles: { [HOUSE_1]: "owner", [HOUSE_2]: "manager" }, houses: SAME_ORG });
+    const orgs = makeOrgs({
+      roles: { [HOUSE_1]: "owner", [HOUSE_2]: "manager" },
+      houses: SAME_ORG,
+    });
     await expect(
       orgs.assertOwnsBothHousesInOneOrganisation("u1", HOUSE_1, HOUSE_2),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -246,8 +371,15 @@ describe("POST /providers/copy-to-house (F-586)", () => {
       { assertOwnsBothHousesInOneOrganisation: assert } as any,
     );
     await expect(
-      controller.copyToHouse({ targetRestaurantId: HOUSE_2, providerIds: ["p1"] }, user),
-    ).resolves.toEqual({ targetRestaurantId: HOUSE_2, targetName: "Uptown", results: [] });
+      controller.copyToHouse(
+        { targetRestaurantId: HOUSE_2, providerIds: ["p1"] },
+        user,
+      ),
+    ).resolves.toEqual({
+      targetRestaurantId: HOUSE_2,
+      targetName: "Uptown",
+      results: [],
+    });
     expect(assert).toHaveBeenCalledWith("u1", HOUSE_1, HOUSE_2);
     expect(copy).toHaveBeenCalledWith(HOUSE_1, HOUSE_2, ["p1"], "u1");
   });
@@ -263,7 +395,10 @@ describe("POST /providers/copy-to-house (F-586)", () => {
       } as any,
     );
     await expect(
-      controller.copyToHouse({ targetRestaurantId: HOUSE_2, providerIds: ["p1"] }, user),
+      controller.copyToHouse(
+        { targetRestaurantId: HOUSE_2, providerIds: ["p1"] },
+        user,
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(copy).not.toHaveBeenCalled();
   });

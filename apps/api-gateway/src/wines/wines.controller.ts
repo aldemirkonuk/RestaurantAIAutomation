@@ -186,8 +186,13 @@ export class WinesController {
    * (`PLATFORM_ADMIN_USER_IDS`), fail-closed on an unset or empty list.
    */
   @Post("submissions/process")
-  @ApiOperation({ summary: "Process pending submissions (dedup worker); platform admin only" })
-  @ApiResponse({ status: 403, description: "The caller is not a platform admin" })
+  @ApiOperation({
+    summary: "Process pending submissions (dedup worker); platform admin only",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not a platform admin",
+  })
   async processSubmissions(
     @Body() dto: ProcessSubmissionsDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
@@ -199,7 +204,9 @@ export class WinesController {
   }
 
   private assertPlatformAdmin(userId: string): void {
-    const allow = (this.configService.get<string>("PLATFORM_ADMIN_USER_IDS") || "")
+    const allow = (
+      this.configService.get<string>("PLATFORM_ADMIN_USER_IDS") || ""
+    )
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);

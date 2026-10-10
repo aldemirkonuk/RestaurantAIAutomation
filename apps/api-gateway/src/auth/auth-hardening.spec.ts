@@ -32,9 +32,15 @@ function makeService(tables: Record<string, any[]>) {
   });
   const svc = new AuthService(
     { sign: () => "tok", signAsync: async () => "tok" } as any,
-    { get: (k: string) => (k === "JWT_SECRET" ? "test-secret-value" : undefined) } as any,
+    {
+      get: (k: string) =>
+        k === "JWT_SECRET" ? "test-secret-value" : undefined,
+    } as any,
     asDatabaseService(db),
-    { isBlacklisted: async () => false, blacklist: async () => undefined } as any,
+    {
+      isBlacklisted: async () => false,
+      blacklist: async () => undefined,
+    } as any,
     { sendEmail: async () => undefined } as any,
   );
   (svc as any).signIn = jest
@@ -43,7 +49,9 @@ function makeService(tables: Record<string, any[]>) {
   (svc as any).generateTokens = jest
     .fn()
     .mockResolvedValue({ accessToken: "a", refreshToken: "r" });
-  (svc as any).claimTeamMemberFromInvite = jest.fn().mockResolvedValue(undefined);
+  (svc as any).claimTeamMemberFromInvite = jest
+    .fn()
+    .mockResolvedValue(undefined);
   return { svc, db };
 }
 
@@ -51,7 +59,13 @@ describe("F-510: wrong passwords are limited per address", () => {
   it("locks an address after MAX_FAILURES wrong passwords, even for the right one", async () => {
     const email = "owner@house.test";
     const { svc } = makeService({
-      users: [{ user_id: "u1", email, password_hash: await bcrypt.hash("right-one", 4) }],
+      users: [
+        {
+          user_id: "u1",
+          email,
+          password_hash: await bcrypt.hash("right-one", 4),
+        },
+      ],
     });
     for (let i = 0; i < SignInAttempts.MAX_FAILURES; i++) {
       await expect(svc.validateUser(email, `wrong-${i}`)).rejects.toThrow(
@@ -71,11 +85,14 @@ describe("F-510: wrong passwords are limited per address", () => {
         UnauthorizedException,
       );
     }
-    const err: HttpException = await svc
-      .validateUser(stranger, "x")
-      .then(() => null as any, (e) => e);
+    const err: HttpException = await svc.validateUser(stranger, "x").then(
+      () => null as any,
+      (e) => e,
+    );
     expect(err.getStatus()).toBe(429);
-    expect((err.getResponse() as any).message).toMatch(/Too many wrong passwords/);
+    expect((err.getResponse() as any).message).toMatch(
+      /Too many wrong passwords/,
+    );
   });
 
   it("counts by the normalised address, so changing case does not reset it", () => {
@@ -90,7 +107,8 @@ describe("F-510: wrong passwords are limited per address", () => {
   it("opens again once the window has passed", () => {
     let now = 1_000_000;
     const a = new SignInAttempts(() => now);
-    for (let i = 0; i < SignInAttempts.MAX_FAILURES; i++) a.recordFailure("a@b.c");
+    for (let i = 0; i < SignInAttempts.MAX_FAILURES; i++)
+      a.recordFailure("a@b.c");
     expect(() => a.assertOpen("a@b.c")).toThrow(HttpException);
     now += SignInAttempts.WINDOW_MS + 1;
     expect(() => a.assertOpen("a@b.c")).not.toThrow();
@@ -105,13 +123,15 @@ describe("F-510: the per-IP key is not a client-typed header", () => {
   });
 
   it("falls back to the socket when there is no header", () => {
-    expect(clientIp({ headers: {}, socket: { remoteAddress: "10.0.0.1" } })).toBe(
-      "10.0.0.1",
-    );
+    expect(
+      clientIp({ headers: {}, socket: { remoteAddress: "10.0.0.1" } }),
+    ).toBe("10.0.0.1");
   });
 
   it("rotating the first entry does not buy a fresh /auth/ limit", async () => {
-    const guard = new RateLimitGuard(new Reflector(), { get: jest.fn() } as any);
+    const guard = new RateLimitGuard(new Reflector(), {
+      get: jest.fn(),
+    } as any);
     try {
       const ctx = (first: string) =>
         ({
@@ -127,9 +147,13 @@ describe("F-510: the per-IP key is not a client-typed header", () => {
           getClass: () => AuthController,
         }) as any;
       for (let i = 0; i < 10; i++) {
-        await expect(guard.canActivate(ctx(`198.51.100.${i}`))).resolves.toBe(true);
+        await expect(guard.canActivate(ctx(`198.51.100.${i}`))).resolves.toBe(
+          true,
+        );
       }
-      await expect(guard.canActivate(ctx("198.51.100.99"))).rejects.toMatchObject({
+      await expect(
+        guard.canActivate(ctx("198.51.100.99")),
+      ).rejects.toMatchObject({
         status: 429,
       });
     } finally {
@@ -142,10 +166,17 @@ describe("F-511: password sign-in ignores the address's case", () => {
   it("signs in with capitals and spaces typed into a lowercased address", async () => {
     const { svc } = makeService({
       users: [
-        { user_id: "u1", email: "deniz@house.test", email_verified: true, password_hash: await bcrypt.hash("pw-1234567", 4) },
+        {
+          user_id: "u1",
+          email: "deniz@house.test",
+          email_verified: true,
+          password_hash: await bcrypt.hash("pw-1234567", 4),
+        },
       ],
     });
-    await expect(svc.validateUser("  Deniz@House.TEST ", "pw-1234567")).resolves.toMatchObject({
+    await expect(
+      svc.validateUser("  Deniz@House.TEST ", "pw-1234567"),
+    ).resolves.toMatchObject({
       user_id: "u1",
     });
   });
@@ -153,10 +184,17 @@ describe("F-511: password sign-in ignores the address's case", () => {
   it("still finds an older row stored with capitals by its exact spelling", async () => {
     const { svc } = makeService({
       users: [
-        { user_id: "u2", email: "Old@House.test", email_verified: true, password_hash: await bcrypt.hash("pw-1234567", 4) },
+        {
+          user_id: "u2",
+          email: "Old@House.test",
+          email_verified: true,
+          password_hash: await bcrypt.hash("pw-1234567", 4),
+        },
       ],
     });
-    await expect(svc.validateUser("Old@House.test", "pw-1234567")).resolves.toMatchObject({
+    await expect(
+      svc.validateUser("Old@House.test", "pw-1234567"),
+    ).resolves.toMatchObject({
       user_id: "u2",
     });
   });
@@ -177,12 +215,25 @@ describe("F-512: a wrong password on an invite join gives the invite back", () =
     };
     const { svc, db } = makeService({
       organization_invites: [invite],
-      users: [{ user_id: "u1", email, password_hash: await bcrypt.hash("right-one", 4) }],
+      users: [
+        {
+          user_id: "u1",
+          email,
+          password_hash: await bcrypt.hash("right-one", 4),
+        },
+      ],
     });
     await expect(
-      svc.joinViaInvite({ code: "ABCDEFGH", email, name: "X", password: "wrong" } as any),
+      svc.joinViaInvite({
+        code: "ABCDEFGH",
+        email,
+        name: "X",
+        password: "wrong",
+      } as any),
     ).rejects.toThrow(UnauthorizedException);
-    const row = db.tables.organization_invites.find((r: any) => r.id === "inv-1");
+    const row = db.tables.organization_invites.find(
+      (r: any) => r.id === "inv-1",
+    );
     expect(row?.used_at).toBeNull();
     expect(row?.used_by_email).toBeNull();
   });
@@ -216,7 +267,13 @@ describe("F-515: check-email follows the sign-in-methods rule", () => {
 
   it("carries the same 10-per-10-minutes limit as sign-in-methods", () => {
     const own = reflector.get("rateLimit", handler);
-    const peer = reflector.get("rateLimit", AuthController.prototype.signInMethods);
-    expect(own).toMatchObject({ limit: peer.limit, windowSeconds: peer.windowSeconds });
+    const peer = reflector.get(
+      "rateLimit",
+      AuthController.prototype.signInMethods,
+    );
+    expect(own).toMatchObject({
+      limit: peer.limit,
+      windowSeconds: peer.windowSeconds,
+    });
   });
 });

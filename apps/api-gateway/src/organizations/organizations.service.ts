@@ -344,9 +344,7 @@ export class OrganizationsService {
     const role = await this.resolveRestaurantRole(userId, restaurantId);
 
     if (role !== "owner" && role !== "manager") {
-      throw new ForbiddenException(
-        `Only managers and owners can ${action}`,
-      );
+      throw new ForbiddenException(`Only managers and owners can ${action}`);
     }
   }
 
@@ -375,9 +373,14 @@ export class OrganizationsService {
     userId: string,
     restaurantId: string,
   ): Promise<string | null> {
-    return readRestaurantRole(this.databaseService.supabase, userId, restaurantId, {
-      strict: false,
-    });
+    return readRestaurantRole(
+      this.databaseService.supabase,
+      userId,
+      restaurantId,
+      {
+        strict: false,
+      },
+    );
   }
 
   /**

@@ -15,17 +15,28 @@ import { ReceivingService } from "./receiving.service";
 type Row = Record<string, any>;
 const REST = "rest-1";
 
-function fakeDb(tables: Record<string, Row[]>, errors: Record<string, string> = {}) {
+function fakeDb(
+  tables: Record<string, Row[]>,
+  errors: Record<string, string> = {},
+) {
   const from = (table: string) => {
     const filters: Array<(r: Row) => boolean> = [];
     const run = () =>
       errors[table]
         ? { data: null, error: { message: errors[table] } }
-        : { data: (tables[table] ?? []).filter((r) => filters.every((f) => f(r))), error: null };
+        : {
+            data: (tables[table] ?? []).filter((r) =>
+              filters.every((f) => f(r)),
+            ),
+            error: null,
+          };
     const q: any = {
       select: () => q,
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
-      in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
+      in: (c: string, vs: unknown[]) => (
+        filters.push((r) => vs.includes(r[c])),
+        q
+      ),
       order: () => q,
       range: async () => run(),
       maybeSingle: async () => {
@@ -70,7 +81,13 @@ const base = (over: Record<string, Row[]> = {}) => ({
   procurement_orders: [order()],
   restaurant_inventory: [{ id: "inv1", restaurant_id: REST, uom: "bottle" }],
   procurement_order_items: [
-    { id: "l1", restaurant_id: REST, order_id: "o1", unit_type: "case", bottles_per_unit: 12 },
+    {
+      id: "l1",
+      restaurant_id: REST,
+      order_id: "o1",
+      unit_type: "case",
+      bottles_per_unit: 12,
+    },
   ],
   inventory_transactions: [],
   procurement_receipt_events: [],
@@ -101,7 +118,10 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
       fakeDb(
         base({
           inventory_transactions: [booked(24, "door-receipt:e1")],
-          procurement_receipt_events: [doorEvent("e1", 24), doorEvent("e2", 36)],
+          procurement_receipt_events: [
+            doorEvent("e1", 24),
+            doorEvent("e2", 36),
+          ],
         }),
       ),
     );
@@ -119,7 +139,11 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     // running total that added the one-tap's 60 would read "10 of 10 with the
     // earlier 5" for a 5-case count and hide a short truck. ADR 0062 D3.
     const svc = new ReceivingService(
-      fakeDb(base({ inventory_transactions: [booked(60, "order-delivered-live:o1")] })),
+      fakeDb(
+        base({
+          inventory_transactions: [booked(60, "order-delivered-live:o1")],
+        }),
+      ),
     );
     const r = await svc.doorReceivedSoFar(REST, "o1");
     expect(r.receivedQtyBottles).toBe(0);
@@ -137,7 +161,12 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     rejected_qty_bottles: 0,
     created_at: at,
   });
-  const doorAt = (id: string, counted: number, at: string, rejected = 0): Row => ({
+  const doorAt = (
+    id: string,
+    counted: number,
+    at: string,
+    rejected = 0,
+  ): Row => ({
     ...doorEvent(id, counted, rejected),
     created_at: at,
   });
@@ -151,7 +180,11 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     // cannot be read does not stop the door (ADR 0192).
     const svc = new ReceivingService(
       fakeDb(
-        base({ procurement_receipt_events: [checked("v1", 72, "2026-10-01T10:00:00Z")] }),
+        base({
+          procurement_receipt_events: [
+            checked("v1", 72, "2026-10-01T10:00:00Z"),
+          ],
+        }),
         { inventory_transactions: "down" },
       ),
     );
@@ -171,8 +204,13 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     const svc = new ReceivingService(
       fakeDb(
         base({
-          inventory_transactions: [booked(72, "receipt-verify:o1:inv1"), booked(-2, "adjust:o1")],
-          procurement_receipt_events: [checked("v1", 72, "2026-10-01T10:00:00Z")],
+          inventory_transactions: [
+            booked(72, "receipt-verify:o1:inv1"),
+            booked(-2, "adjust:o1"),
+          ],
+          procurement_receipt_events: [
+            checked("v1", 72, "2026-10-01T10:00:00Z"),
+          ],
         }),
       ),
     );
@@ -207,7 +245,12 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     const at = "2026-10-01T09:00:00Z";
     const svc = new ReceivingService(
       fakeDb(
-        base({ procurement_receipt_events: [checked("b", 58, at), doorAt("a", 60, at)] }),
+        base({
+          procurement_receipt_events: [
+            checked("b", 58, at),
+            doorAt("a", 60, at),
+          ],
+        }),
       ),
     );
     const r = await svc.doorReceivedSoFar(REST, "o1");
@@ -233,7 +276,9 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
         }),
       ),
     );
-    await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow(/could not be read/);
+    await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow(
+      /could not be read/,
+    );
   });
 
   it("states no boxes — null, never 0 — when the order states no pack", async () => {
@@ -272,6 +317,8 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     const svc = new ReceivingService(
       fakeDb(base(), { procurement_receipt_events: "connection reset" }),
     );
-    await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow("connection reset");
+    await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow(
+      "connection reset",
+    );
   });
 });

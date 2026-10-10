@@ -60,9 +60,11 @@ function build(rows: Record<string, Record<string, unknown>[]>) {
         error: null,
       });
     self.then = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({ data, error: null, count: Array.isArray(data) ? data.length : 0 }).then(
-        resolve,
-      );
+      Promise.resolve({
+        data,
+        error: null,
+        count: Array.isArray(data) ? data.length : 0,
+      }).then(resolve);
     return self;
   };
 
@@ -173,7 +175,9 @@ describe("the house's own access to a person's grant", () => {
   it("shows a manager every grant recorded against the house, with its owner", async () => {
     const { service } = build({
       integration_oauth_connections: [grant],
-      users: [{ user_id: "u-selin", name: "Selin Kara", email: "selin@example.test" }],
+      users: [
+        { user_id: "u-selin", name: "Selin Kara", email: "selin@example.test" },
+      ],
       restaurant_personal_grant_access: [],
       user_restaurant_access: [],
     });
@@ -195,7 +199,11 @@ describe("the house's own access to a person's grant", () => {
       integration_oauth_connections: [grant],
       users: [
         { user_id: "u-selin", name: "Selin Kara", email: "selin@example.test" },
-        { user_id: "u-hasan", name: "Hasan Demir", email: "hasan@example.test" },
+        {
+          user_id: "u-hasan",
+          name: "Hasan Demir",
+          email: "hasan@example.test",
+        },
       ],
       restaurant_personal_grant_access: [
         {
@@ -220,7 +228,11 @@ describe("the house's own access to a person's grant", () => {
   it("REFUSES a token for a grant the house has let go of", async () => {
     const { service } = build({
       integration_oauth_connections: [
-        { ...grant, access_token_encrypted: "v1.tok", refresh_token_encrypted: null },
+        {
+          ...grant,
+          access_token_encrypted: "v1.tok",
+          refresh_token_encrypted: null,
+        },
       ],
       restaurant_personal_grant_access: [
         {

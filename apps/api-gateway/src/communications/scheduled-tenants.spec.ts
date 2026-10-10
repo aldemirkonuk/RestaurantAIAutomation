@@ -165,8 +165,8 @@ describe("ScheduledTenantsService — an unset zone is an absence, not New York"
   it("TIMEZONE_NOT_SET is not a zone any consumer will accept", () => {
     // The whole mechanism rests on this: `Intl` rejects it, so
     // `isKnownTimeZone` is false and both consumers take their loud UTC path.
-    expect(() =>
-      new Intl.DateTimeFormat("en-US", { timeZone: TIMEZONE_NOT_SET }),
+    expect(
+      () => new Intl.DateTimeFormat("en-US", { timeZone: TIMEZONE_NOT_SET }),
     ).toThrow();
   });
 
@@ -521,7 +521,12 @@ describe("scheduled jobs — a failed recipient lookup is a FAILED run, not an e
     const base = makeClient(
       {
         user_restaurant_access: [
-          { user_id: "u1", role: "manager", restaurant_id: "r1", is_active: true },
+          {
+            user_id: "u1",
+            role: "manager",
+            restaurant_id: "r1",
+            is_active: true,
+          },
         ],
         users: [{ user_id: "u1", email: "manager@one.test" }],
         notification_preferences: [],

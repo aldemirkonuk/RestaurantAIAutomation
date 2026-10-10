@@ -22,17 +22,28 @@ function fakeSupabase(tables: Record<string, Row[]>) {
         get(_t, prop: string) {
           switch (prop) {
             case "eq":
-              return (c: string, v: unknown) => (preds.push((r) => r[c] === v), api);
+              return (c: string, v: unknown) => (
+                preds.push((r) => r[c] === v),
+                api
+              );
             case "is":
-              return (c: string, v: unknown) => (preds.push((r) => (r[c] ?? null) === v), api);
+              return (c: string, v: unknown) => (
+                preds.push((r) => (r[c] ?? null) === v),
+                api
+              );
             case "gt":
-              return (c: string, v: unknown) => (preds.push((r) => String(r[c]) > String(v)), api);
+              return (c: string, v: unknown) => (
+                preds.push((r) => String(r[c]) > String(v)),
+                api
+              );
             case "limit":
               return (n: number) => ((limit = n), api);
             case "then":
               return (resolve: any) =>
                 resolve({
-                  data: (tables[table] ?? []).filter((r) => preds.every((p) => p(r))).slice(0, limit),
+                  data: (tables[table] ?? [])
+                    .filter((r) => preds.every((p) => p(r)))
+                    .slice(0, limit),
                   error: null,
                 });
             default:
@@ -50,7 +61,12 @@ const HOUSE = "house-1";
 
 function service(tables: Record<string, Row[]>) {
   const db = { supabase: fakeSupabase(tables) } as unknown as DatabaseService;
-  const menus = new MenusService(db, undefined as any, undefined as any, undefined as any);
+  const menus = new MenusService(
+    db,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+  );
   return new PromotionsService(db, menus);
 }
 
@@ -131,7 +147,9 @@ describe("promotions — how far back the house's own prices go (F-175)", () => 
   });
 
   it("says no paid line was read rather than inventing a date", async () => {
-    const read = await service({ restaurants: [{ id: HOUSE, timezone: null }] }).readForHouse(HOUSE, {
+    const read = await service({
+      restaurants: [{ id: HOUSE, timezone: null }],
+    }).readForHouse(HOUSE, {
       now: EVENING_IN_LA,
     });
     expect(read.ledger.oldest_paid).toBeNull();

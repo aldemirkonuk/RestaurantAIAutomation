@@ -10,7 +10,11 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { CsvParserService, type MenuRead, type MenuReadNotes } from "./parsers/csv-parser.service";
+import {
+  CsvParserService,
+  type MenuRead,
+  type MenuReadNotes,
+} from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
@@ -25,7 +29,11 @@ import {
   type HeldKind,
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
-import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
+import {
+  readOpenLocks,
+  readPeople,
+  type OpenLock,
+} from "../pricing/price-locks";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
@@ -45,7 +53,11 @@ const CARRY_READ_CHUNK = 100;
 const CARRY_CONCURRENCY = 12;
 
 /** Run `work` over `items`, at most `size` at once. Never throws past `work`. */
-async function inPool<T>(items: T[], size: number, work: (item: T) => Promise<void>): Promise<void> {
+async function inPool<T>(
+  items: T[],
+  size: number,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
   let next = 0;
   const lane = async () => {
     while (next < items.length) await work(items[next++]);
@@ -132,7 +144,12 @@ export interface PlanKind {
    */
   setAfterRead: boolean;
   /** The lock that holds this kind, when one does. */
-  lock: { lockId: string; lockedPrice: number; lockedBy: PlanPerson; lockedAt: string } | null;
+  lock: {
+    lockId: string;
+    lockedPrice: number;
+    lockedBy: PlanPerson;
+    lockedAt: string;
+  } | null;
 }
 
 export interface PlanLine {
@@ -144,7 +161,11 @@ export interface PlanLine {
   wineLibraryId: string | null;
   inventoryId: string | null;
   /** The house's own row for this wine, beside the line as read (L18). */
-  house: { wineName: string | null; vintage: number | null; active: boolean } | null;
+  house: {
+    wineName: string | null;
+    vintage: number | null;
+    active: boolean;
+  } | null;
   bottle: PlanKind;
   glass: PlanKind;
   /** The flag the line will carry once this menu is current. */
@@ -226,7 +247,8 @@ function linePrice(v: unknown): number | null {
 
 /** A four-digit year out of a vintage as the menu reads it, or null ("NV", blank, anything else). */
 function yearOf(v: unknown): number | null {
-  if (typeof v === "number" && Number.isInteger(v) && v >= 1800 && v <= 2200) return v;
+  if (typeof v === "number" && Number.isInteger(v) && v >= 1800 && v <= 2200)
+    return v;
   const m = /\b(1[89]\d{2}|2[01]\d{2})\b/.exec(String(v ?? ""));
   return m ? Number(m[1]) : null;
 }
@@ -245,7 +267,10 @@ function readMomentOf(row: Record<string, unknown>): string | null {
  * (`import`) is not a person's, and an unknown moment on either side is not
  * "after".
  */
-function setByAPersonAfter(set: { at: string | null; source: string | null }, readAt: string | null): boolean {
+function setByAPersonAfter(
+  set: { at: string | null; source: string | null },
+  readAt: string | null,
+): boolean {
   if (set.source !== "manual" && set.source !== "agent_accepted") return false;
   if (!set.at || !readAt) return false;
   const a = Date.parse(set.at);
@@ -269,7 +294,12 @@ export interface MenuVersion {
   menuDate: string | null;
   menuDatePrecision: "day" | "month" | null;
   sourceMethod: "scan" | "csv" | "manual" | null;
-  source: { kept: boolean; mime: string | null; bytes: number | null; failure: string | null };
+  source: {
+    kept: boolean;
+    mime: string | null;
+    bytes: number | null;
+    failure: string | null;
+  };
   linesExtracted: number | null;
   extractedAt: string | null;
   extractedBy: { userId: string; name: string | null } | null;
@@ -322,14 +352,24 @@ function discardSubject(
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
-  if (bytes.subarray(0, 4).toString("latin1") === "%PDF") return { mime: "application/pdf", ext: "pdf" };
-  if (bytes[0] === 0x89 && bytes.subarray(1, 4).toString("latin1") === "PNG") return { mime: "image/png", ext: "png" };
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) return { mime: "image/jpeg", ext: "jpg" };
-  if (bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP")
+  if (bytes.subarray(0, 4).toString("latin1") === "%PDF")
+    return { mime: "application/pdf", ext: "pdf" };
+  if (bytes[0] === 0x89 && bytes.subarray(1, 4).toString("latin1") === "PNG")
+    return { mime: "image/png", ext: "png" };
+  if (bytes[0] === 0xff && bytes[1] === 0xd8)
+    return { mime: "image/jpeg", ext: "jpg" };
+  if (
+    bytes.subarray(0, 4).toString("latin1") === "RIFF" &&
+    bytes.subarray(8, 12).toString("latin1") === "WEBP"
+  )
     return { mime: "image/webp", ext: "webp" };
-  if (bytes.subarray(0, 3).toString("latin1") === "GIF") return { mime: "image/gif", ext: "gif" };
+  if (bytes.subarray(0, 3).toString("latin1") === "GIF")
+    return { mime: "image/gif", ext: "gif" };
   if (bytes[0] === 0x50 && bytes[1] === 0x4b)
-    return { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext: "xlsx" };
+    return {
+      mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ext: "xlsx",
+    };
   return { mime: "application/octet-stream", ext: "bin" };
 }
 
@@ -340,11 +380,19 @@ export function parseMenuDate(
   // null as well: @IsOptional() admits it, and "no date" is not a malformed one.
   if (raw === undefined || raw === null) return null;
   const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(raw);
-  if (!m) throw new BadRequestException("menuDate is a day (YYYY-MM-DD) or a month (YYYY-MM). Nothing was read.");
+  if (!m)
+    throw new BadRequestException(
+      "menuDate is a day (YYYY-MM-DD) or a month (YYYY-MM). Nothing was read.",
+    );
   const day = m[3] ?? "01";
   const d = new Date(`${m[1]}-${m[2]}-${day}T00:00:00Z`);
-  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== `${m[1]}-${m[2]}-${day}`) {
-    throw new BadRequestException(`${raw} is not a date on the calendar. Nothing was read.`);
+  if (
+    Number.isNaN(d.getTime()) ||
+    d.toISOString().slice(0, 10) !== `${m[1]}-${m[2]}-${day}`
+  ) {
+    throw new BadRequestException(
+      `${raw} is not a date on the calendar. Nothing was read.`,
+    );
   }
   return { date: `${m[1]}-${m[2]}-${day}`, precision: m[3] ? "day" : "month" };
 }
@@ -513,7 +561,10 @@ export class MenusService {
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        read = await this.csvParser.readExcel(dto.data.fileBase64, dto.groupMark ?? null);
+        read = await this.csvParser.readExcel(
+          dto.data.fileBase64,
+          dto.groupMark ?? null,
+        );
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
@@ -545,7 +596,14 @@ export class MenusService {
         : null;
 
     // 3. A new version, in draft: kept whether or not it is ever made current.
-    const menu = await this.createVersion(restaurantId, userId, dto, items, kept, menuDate);
+    const menu = await this.createVersion(
+      restaurantId,
+      userId,
+      dto,
+      items,
+      kept,
+      menuDate,
+    );
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
     // governance submission trail. NOT current, so no inventory or price.
@@ -587,10 +645,13 @@ export class MenusService {
         : binary
           ? await this.csvParser.readExcel(content)
           : this.csvParser.read(content);
-    const items = read ? read.items : await this.scanParser.parse(content, restaurantId, true);
+    const items = read
+      ? read.items
+      : await this.scanParser.parse(content, restaurantId, true);
     if (!items.length)
       throw new BadRequestException(
-        read?.emptyCause ?? "No supported beverage items were extracted. Nothing was imported.",
+        read?.emptyCause ??
+          "No supported beverage items were extracted. Nothing was imported.",
       );
     if (items.length > 500)
       throw new BadRequestException(
@@ -642,7 +703,13 @@ export class MenusService {
     restaurantId: string,
     bytes: Buffer,
     type: { mime: string; ext: string },
-  ): Promise<{ path: string | null; sha256: string; mime: string; bytes: number; failure: string | null }> {
+  ): Promise<{
+    path: string | null;
+    sha256: string;
+    mime: string;
+    bytes: number;
+    failure: string | null;
+  }> {
     const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
     const path = `${restaurantId}/menus/${sha256}.${type.ext}`;
     try {
@@ -650,9 +717,21 @@ export class MenusService {
         .from(SOURCE_BUCKET)
         .upload(path, bytes, { contentType: type.mime, upsert: true });
       if (error) {
-        return { path: null, sha256, mime: type.mime, bytes: bytes.length, failure: `the source file was not kept: ${error.message}` };
+        return {
+          path: null,
+          sha256,
+          mime: type.mime,
+          bytes: bytes.length,
+          failure: `the source file was not kept: ${error.message}`,
+        };
       }
-      return { path, sha256, mime: type.mime, bytes: bytes.length, failure: null };
+      return {
+        path,
+        sha256,
+        mime: type.mime,
+        bytes: bytes.length,
+        failure: null,
+      };
     } catch (err: any) {
       return {
         path: null,
@@ -669,7 +748,13 @@ export class MenusService {
     userId: string,
     dto: ImportMenuDto,
     items: WineExtractItem[],
-    kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
+    kept: {
+      path: string | null;
+      sha256: string;
+      mime: string;
+      bytes: number;
+      failure: string | null;
+    } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
   ): Promise<{ id: string }> {
     const { data, error } = await this.dbService.supabase
@@ -749,7 +834,9 @@ export class MenusService {
       .maybeSingle();
 
     if (menuErr) {
-      throw new Error(`Could not read the menu ${dto.menuId}: ${menuErr.message}`);
+      throw new Error(
+        `Could not read the menu ${dto.menuId}: ${menuErr.message}`,
+      );
     }
     if (!menu || menu.restaurant_id !== callerRestaurantId) {
       throw new NotFoundException("Menu not found");
@@ -835,7 +922,9 @@ export class MenusService {
   ): Promise<{ menuItemId: string; status: "discarded"; audited: boolean }> {
     const { data: row, error: readErr } = await this.dbService.supabase
       .from("menu_items")
-      .select("id, restaurant_id, status, menu_id, name, by_glass_price, bottle_price")
+      .select(
+        "id, restaurant_id, status, menu_id, name, by_glass_price, bottle_price",
+      )
       .eq("id", menuItemId)
       .maybeSingle();
 
@@ -984,7 +1073,9 @@ export class MenusService {
    * see them and put one back (F-268). Same paged read as getMenu, the other
    * half of the status split; no current menu means none.
    */
-  async getDiscardedLines(restaurantId: string): Promise<{ items: Array<Record<string, unknown>> }> {
+  async getDiscardedLines(
+    restaurantId: string,
+  ): Promise<{ items: Array<Record<string, unknown>> }> {
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
       .select("id")
@@ -1007,14 +1098,19 @@ export class MenusService {
         .eq("restaurant_id", restaurantId)
         .eq("status", "discarded");
       if (after) q = q.gt("id", after);
-      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
-      if (error) throw new Error(`Failed to load the discarded lines: ${error.message}`);
+      const { data, error } = await q
+        .order("id", { ascending: true })
+        .limit(PAGE_ROWS);
+      if (error)
+        throw new Error(`Failed to load the discarded lines: ${error.message}`);
       const rows = (data ?? []) as Array<Record<string, unknown>>;
       items.push(...rows);
       if (rows.length < PAGE_ROWS) break;
       after = String(rows[rows.length - 1].id);
     }
-    items.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")));
+    items.sort((a, b) =>
+      String(a.name ?? "").localeCompare(String(b.name ?? "")),
+    );
     return { items };
   }
 
@@ -1084,7 +1180,8 @@ export class MenusService {
     // renamed FIRST, and its error is read: if it fails, nothing is written
     // and the person is told, rather than a renamed line beside a stock row
     // that silently kept the old name (F-920).
-    const renamesStock = dto.fieldName === "name" && Boolean(menuItem.inventory_item_id);
+    const renamesStock =
+      dto.fieldName === "name" && Boolean(menuItem.inventory_item_id);
     if (renamesStock) {
       const { error: renameErr } = await this.dbService.supabase
         .from("restaurant_inventory")
@@ -1131,19 +1228,21 @@ export class MenusService {
     let priceHeld: HeldKind[] = [];
     let lineMenuCurrent = false;
     if (isPrice) {
-      const { data: lineMenu, error: lineMenuErr } = await this.dbService.supabase
-        .from("restaurant_menus")
-        .select("status")
-        .eq("id", menuItem.menu_id)
-        .eq("restaurant_id", callerRestaurantId)
-        .maybeSingle();
+      const { data: lineMenu, error: lineMenuErr } =
+        await this.dbService.supabase
+          .from("restaurant_menus")
+          .select("status")
+          .eq("id", menuItem.menu_id)
+          .eq("restaurant_id", callerRestaurantId)
+          .maybeSingle();
       if (lineMenuErr) {
         // The line is already corrected; whether the house price should
         // follow is unknown, and that is said, not guessed.
         priceSync = "failed";
         priceSyncError = `the line's menu could not be read, so the house price was not updated: ${lineMenuErr.message}`;
       } else {
-        lineMenuCurrent = (lineMenu as { status?: string } | null)?.status === "active";
+        lineMenuCurrent =
+          (lineMenu as { status?: string } | null)?.status === "active";
       }
     }
     if (isPrice && priceSync === undefined) {
@@ -1203,7 +1302,9 @@ export class MenusService {
       menuItemId,
       fieldName: dto.fieldName,
       newValue: dto.newValue,
-      ...(priceSync !== undefined ? { priceSync, priceSyncError, priceHeld } : {}),
+      ...(priceSync !== undefined
+        ? { priceSync, priceSyncError, priceHeld }
+        : {}),
     };
   }
 
@@ -1235,7 +1336,8 @@ export class MenusService {
 
     if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
     const withheld = view.rawLine ? {} : { rawLineWithheld: true as const };
-    if (!menu) return { menuId: null, name: null, status: null, items: [], ...withheld };
+    if (!menu)
+      return { menuId: null, name: null, status: null, items: [], ...withheld };
 
     // A discarded line (migration 20260922230100, ADR 0160 sec110 item 7) is
     // a soft remove: the row stays for the record, but this read path must
@@ -1270,7 +1372,11 @@ export class MenusService {
   private async readHousePrices(
     restaurantId: string,
     items: Array<Record<string, unknown>>,
-  ): Promise<{ items: Array<Record<string, unknown>>; readable: boolean; reason: string | null }> {
+  ): Promise<{
+    items: Array<Record<string, unknown>>;
+    readable: boolean;
+    reason: string | null;
+  }> {
     const ids = [
       ...new Set(
         items
@@ -1279,8 +1385,14 @@ export class MenusService {
       ),
     ];
     if (ids.length === 0) return { items, readable: true, reason: null };
-    const prices = new Map<string, { bottle: number | null; glass: number | null }>();
-    const num = (v: unknown) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+    const prices = new Map<
+      string,
+      { bottle: number | null; glass: number | null }
+    >();
+    const num = (v: unknown) =>
+      v === null || v === undefined || !Number.isFinite(Number(v))
+        ? null
+        : Number(v);
     for (let k = 0; k < ids.length; k += 200) {
       const { data, error } = await this.dbService.supabase
         .from("restaurant_inventory")
@@ -1295,13 +1407,21 @@ export class MenusService {
         };
       }
       for (const r of (data ?? []) as Array<Record<string, unknown>>) {
-        prices.set(String(r.id), { bottle: num(r.menu_price_current), glass: num(r.menu_price_glass) });
+        prices.set(String(r.id), {
+          bottle: num(r.menu_price_current),
+          glass: num(r.menu_price_glass),
+        });
       }
     }
     return {
       items: items.map((i) => {
-        const p = typeof i.inventory_item_id === "string" ? prices.get(i.inventory_item_id) : undefined;
-        return p ? { ...i, house_bottle_price: p.bottle, house_glass_price: p.glass } : i;
+        const p =
+          typeof i.inventory_item_id === "string"
+            ? prices.get(i.inventory_item_id)
+            : undefined;
+        return p
+          ? { ...i, house_bottle_price: p.bottle, house_glass_price: p.glass }
+          : i;
       }),
       readable: true,
       reason: null,
@@ -1322,7 +1442,11 @@ export class MenusService {
    * own date — never a draft's `created_at` (F8).
    */
   async readCurrentMenus(restaurantId: string): Promise<{
-    menus: Array<{ menuId: string; name: string | null; readAt: string | null }>;
+    menus: Array<{
+      menuId: string;
+      name: string | null;
+      readAt: string | null;
+    }>;
     lines: Array<Record<string, unknown> & { menu_id: string }>;
   }> {
     const { data, error } = await this.dbService.supabase
@@ -1330,7 +1454,10 @@ export class MenusService {
       .select("id, name, made_current_at, extracted_at, menu_date")
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
-    if (error) throw new Error(`The current menu (restaurant_menus) could not be read: ${error.message}`);
+    if (error)
+      throw new Error(
+        `The current menu (restaurant_menus) could not be read: ${error.message}`,
+      );
     const actives = (data ?? []) as Array<{
       id: string;
       name: string | null;
@@ -1343,11 +1470,20 @@ export class MenusService {
         `Restaurant ${restaurantId} has ${actives.length} active menus; reading their lines as one union`,
       );
     }
-    const menus: Array<{ menuId: string; name: string | null; readAt: string | null }> = [];
+    const menus: Array<{
+      menuId: string;
+      name: string | null;
+      readAt: string | null;
+    }> = [];
     const lines: Array<Record<string, unknown> & { menu_id: string }> = [];
     for (const m of actives) {
-      menus.push({ menuId: m.id, name: m.name ?? null, readAt: m.made_current_at ?? m.extracted_at ?? m.menu_date ?? null });
-      for (const line of await this.readLines(m.id, restaurantId)) lines.push({ ...line, menu_id: m.id });
+      menus.push({
+        menuId: m.id,
+        name: m.name ?? null,
+        readAt: m.made_current_at ?? m.extracted_at ?? m.menu_date ?? null,
+      });
+      for (const line of await this.readLines(m.id, restaurantId))
+        lines.push({ ...line, menu_id: m.id });
     }
     return { menus, lines };
   }
@@ -1375,17 +1511,21 @@ export class MenusService {
         .eq("restaurant_id", restaurantId)
         .neq("status", "discarded");
       if (after) q = q.gt("id", after);
-      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      const { data, error } = await q
+        .order("id", { ascending: true })
+        .limit(PAGE_ROWS);
       if (error) throw new Error(`Failed to load menu items: ${error.message}`);
       const rows = (data ?? []) as Array<Record<string, unknown>>;
       out.push(...rows);
       if (rows.length < PAGE_ROWS) break;
       after = String(rows[rows.length - 1].id);
     }
-    const key = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+    const key = (v: unknown) =>
+      v === null || v === undefined ? "" : String(v);
     out.sort(
       (a, b) =>
-        key(a.category).localeCompare(key(b.category)) || key(a.name).localeCompare(key(b.name)),
+        key(a.category).localeCompare(key(b.category)) ||
+        key(a.name).localeCompare(key(b.name)),
     );
     return out.map((row) => lineForViewer(row, view));
   }
@@ -1415,9 +1555,13 @@ export class MenusService {
         .select(VERSION_SELECT)
         .eq("restaurant_id", restaurantId);
       if (after) q = q.gt("id", after);
-      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      const { data, error } = await q
+        .order("id", { ascending: true })
+        .limit(PAGE_ROWS);
       if (error) {
-        throw new InternalServerErrorException(`The house's menus could not be read: ${error.message}`);
+        throw new InternalServerErrorException(
+          `The house's menus could not be read: ${error.message}`,
+        );
       }
       const page = (data ?? []) as Array<Record<string, any>>;
       rows.push(...page);
@@ -1429,18 +1573,27 @@ export class MenusService {
     );
     const versions = rows
       .map((r) => this.toVersion(r, names))
-      .sort((a, b) => String(b.extractedAt ?? b.createdAt ?? "").localeCompare(String(a.extractedAt ?? a.createdAt ?? "")));
+      .sort((a, b) =>
+        String(b.extractedAt ?? b.createdAt ?? "").localeCompare(
+          String(a.extractedAt ?? a.createdAt ?? ""),
+        ),
+      );
     const current = versions.find((v) => v.current) ?? null;
     const lastUsed =
       versions
         .filter((v) => v.status === "archived" && v.retiredAt)
-        .sort((a, b) => String(b.retiredAt).localeCompare(String(a.retiredAt)))[0] ?? null;
+        .sort((a, b) =>
+          String(b.retiredAt).localeCompare(String(a.retiredAt)),
+        )[0] ?? null;
     return {
       current,
       lastUsed,
       versions,
       namesReadable: namesError === null,
-      namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
+      namesReason:
+        namesError === null
+          ? null
+          : `who read or chose these menus could not be named: ${namesError}`,
       timezone: await this.houseZone(restaurantId),
     };
   }
@@ -1478,12 +1631,19 @@ export class MenusService {
     rawLineWithheld?: true;
   }> {
     const row = await this.readVersionRow(restaurantId, menuId);
-    const { names, error } = await this.namesOf([row.extracted_by, row.made_current_by, row.retired_by]);
+    const { names, error } = await this.namesOf([
+      row.extracted_by,
+      row.made_current_by,
+      row.retired_by,
+    ]);
     return {
       version: this.toVersion(row, names),
       items: await this.readLines(menuId, restaurantId, view),
       namesReadable: error === null,
-      namesReason: error === null ? null : `who read or chose this menu could not be named: ${error}`,
+      namesReason:
+        error === null
+          ? null
+          : `who read or chose this menu could not be named: ${error}`,
       ...(view.rawLine ? {} : { rawLineWithheld: true as const }),
     };
   }
@@ -1515,7 +1675,11 @@ export class MenusService {
         `A link to this menu's source could not be made: ${error?.message ?? "no link returned"}`,
       );
     }
-    return { url: data.signedUrl, expiresInSeconds: SOURCE_URL_SECONDS, mime: row.source_mime ?? null };
+    return {
+      url: data.signedUrl,
+      expiresInSeconds: SOURCE_URL_SECONDS,
+      mime: row.source_mime ?? null,
+    };
   }
 
   /**
@@ -1530,8 +1694,17 @@ export class MenusService {
    */
   async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
     const row = await this.readVersionRow(restaurantId, menuId);
-    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
-    const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
+    const lines = (await this.readLines(
+      menuId,
+      restaurantId,
+    )) as unknown as InsertedMenuItem[];
+    const plan = await this.computePlan(
+      restaurantId,
+      menuId,
+      row.status === "active",
+      lines,
+      readMomentOf(row),
+    );
     // Names are for reading the plan; they never decide it (the fingerprint
     // leaves them out). A failed read is said.
     const ids = new Set<string>();
@@ -1541,9 +1714,13 @@ export class MenusService {
         if (k.lock?.lockedBy.userId) ids.add(k.lock.lockedBy.userId);
       }
     }
-    for (const d of plan.dormantLocks) if (d.lockedBy.userId) ids.add(d.lockedBy.userId);
+    for (const d of plan.dormantLocks)
+      if (d.lockedBy.userId) ids.add(d.lockedBy.userId);
     const { names, error } = await this.namesOf([...ids]);
-    const named = (p: PlanPerson): PlanPerson => ({ userId: p.userId, name: p.userId ? (names.get(p.userId) ?? null) : null });
+    const named = (p: PlanPerson): PlanPerson => ({
+      userId: p.userId,
+      name: p.userId ? (names.get(p.userId) ?? null) : null,
+    });
     for (const l of plan.lines) {
       for (const k of [l.bottle, l.glass]) {
         if (k.lastSet) k.lastSet.by = named(k.lastSet.by);
@@ -1554,7 +1731,10 @@ export class MenusService {
     return {
       ...plan,
       namesReadable: error === null,
-      namesReason: error === null ? null : `the people named in this plan could not be named: ${error}`,
+      namesReason:
+        error === null
+          ? null
+          : `the people named in this plan could not be named: ${error}`,
       timezone: await this.houseZone(restaurantId),
     };
   }
@@ -1586,13 +1766,18 @@ export class MenusService {
       for (;;) {
         let q = client
           .from("restaurant_inventory")
-          .select("id, master_wine_id, wine_name, is_active, deleted_at, menu_price_current, menu_price_glass, master_wine_library(vintage)")
+          .select(
+            "id, master_wine_id, wine_name, is_active, deleted_at, menu_price_current, menu_price_glass, master_wine_library(vintage)",
+          )
           .eq("restaurant_id", restaurantId);
         if (after) q = q.gt("id", after);
-        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+        const { data, error } = await q
+          .order("id", { ascending: true })
+          .limit(PAGE_ROWS);
         if (error) fail("the house's wines", error.message);
         const rows = (data ?? []) as Array<Record<string, any>>;
-        for (const r of rows) if (r.master_wine_id) house.set(String(r.master_wine_id), r);
+        for (const r of rows)
+          if (r.master_wine_id) house.set(String(r.master_wine_id), r);
         if (rows.length < PAGE_ROWS) break;
         after = String(rows[rows.length - 1].id);
       }
@@ -1601,12 +1786,18 @@ export class MenusService {
     for (const r of house.values()) byInventory.set(String(r.id), r);
 
     const lockRead = await readOpenLocks(client, restaurantId);
-    if (lockRead.error !== null) fail("the house's price locks", lockRead.error);
-    const locks = new Map<string, OpenLock>(lockRead.locks.map((l) => [`${l.inventoryId}:${l.kind}`, l]));
+    if (lockRead.error !== null)
+      fail("the house's price locks", lockRead.error);
+    const locks = new Map<string, OpenLock>(
+      lockRead.locks.map((l) => [`${l.inventoryId}:${l.kind}`, l]),
+    );
     const lockedWines = new Set(lockRead.locks.map((l) => l.inventoryId));
 
     // Who set each price now in effect (the open version row).
-    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null }>();
+    const lastSet = new Map<
+      string,
+      { by: string | null; at: string | null; source: string | null }
+    >();
     {
       let after: string | null = null;
       for (;;) {
@@ -1616,7 +1807,9 @@ export class MenusService {
           .eq("restaurant_id", restaurantId)
           .is("effective_to", null);
         if (after) q = q.gt("id", after);
-        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+        const { data, error } = await q
+          .order("id", { ascending: true })
+          .limit(PAGE_ROWS);
         if (error) fail("who set the house's prices", error.message);
         const rows = (data ?? []) as Array<Record<string, any>>;
         for (const r of rows) {
@@ -1645,7 +1838,8 @@ export class MenusService {
         if (m.id === menuId) continue;
         replacing = true;
         for (const line of await this.readLines(m.id, restaurantId)) {
-          if (line.wine_library_id) onReplaced.add(String(line.wine_library_id));
+          if (line.wine_library_id)
+            onReplaced.add(String(line.wine_library_id));
         }
       }
     }
@@ -1660,26 +1854,50 @@ export class MenusService {
       const menuG = linePrice(line.by_glass_price);
       const houseB = row ? linePrice(row.menu_price_current) : null;
       const houseG = row ? linePrice(row.menu_price_glass) : null;
-      const kindPlan = (kind: "bottle" | "glass", menuPrice: number | null, housePrice: number | null): PlanKind => {
+      const kindPlan = (
+        kind: "bottle" | "glass",
+        menuPrice: number | null,
+        housePrice: number | null,
+      ): PlanKind => {
         const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
         let result: PlanResult;
         if (!wineId) result = "not_linked";
-        else if (!row) result = menuPrice === null ? "blank_never_priced" : "new_wine";
-        else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
+        else if (!row)
+          result = menuPrice === null ? "blank_never_priced" : "new_wine";
+        else if (menuPrice === null)
+          result = housePrice === null ? "blank_never_priced" : "blank_kept";
         else if (lock) result = "held_by_lock";
-        else if (housePrice !== null && Math.abs(menuPrice - housePrice) < 0.005) result = "unchanged";
+        else if (
+          housePrice !== null &&
+          Math.abs(menuPrice - housePrice) < 0.005
+        )
+          result = "unchanged";
         else result = "change";
         counts[result] += 1;
-        const set = row && result === "change" ? (lastSet.get(String(row.id)) ?? null) : null;
+        const set =
+          row && result === "change"
+            ? (lastSet.get(String(row.id)) ?? null)
+            : null;
         return {
           kind,
           menuPrice,
           housePrice,
           result,
-          lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source } : null,
+          lastSet: set
+            ? {
+                by: { userId: set.by, name: null },
+                at: set.at,
+                source: set.source,
+              }
+            : null,
           setAfterRead: !!set && setByAPersonAfter(set, readAt),
           lock: lock
-            ? { lockId: lock.lockId, lockedPrice: lock.lockedPrice, lockedBy: { userId: lock.lockedBy, name: null }, lockedAt: lock.lockedAt }
+            ? {
+                lockId: lock.lockId,
+                lockedPrice: lock.lockedPrice,
+                lockedBy: { userId: lock.lockedBy, name: null },
+                lockedAt: lock.lockedAt,
+              }
             : null,
         };
       };
@@ -1688,8 +1906,18 @@ export class MenusService {
       // The same rule the carry writes (carryMenuPrice): answer 3, then answer 4.
       let flag: PriceFlag | null = null;
       if (wineId) {
-        if ((menuB === null && houseB !== null) || (menuG === null && houseG !== null)) flag = "blank_kept_last_known";
-        else if (menuB === null && menuG === null && houseB === null && houseG === null) flag = "blank_no_house_price";
+        if (
+          (menuB === null && houseB !== null) ||
+          (menuG === null && houseG !== null)
+        )
+          flag = "blank_kept_last_known";
+        else if (
+          menuB === null &&
+          menuG === null &&
+          houseB === null &&
+          houseG === null
+        )
+          flag = "blank_no_house_price";
       }
       const locked = !!row && lockedWines.has(String(row.id));
       const libVintage = row?.master_wine_library?.vintage ?? null;
@@ -1711,9 +1939,12 @@ export class MenusService {
         bottle,
         glass,
         flag,
-        returned: !current && locked && (!replacing || !onReplaced.has(String(wineId))),
+        returned:
+          !current && locked && (!replacing || !onReplaced.has(String(wineId))),
         // F-661: a year against no year differs too ("Yakut" read beside the house's Yakut 2019).
-        vintageMismatch: locked && readYear !== (typeof libVintage === "number" ? libVintage : null),
+        vintageMismatch:
+          locked &&
+          readYear !== (typeof libVintage === "number" ? libVintage : null),
       };
     });
 
@@ -1746,9 +1977,16 @@ export class MenusService {
         .eq("status", "active")
         .neq("id", menuId);
       if (othersErr) fail("the menu that is current now", othersErr.message);
-      for (const m of (others ?? []) as Array<{ id: string; name: string | null }>) {
+      for (const m of (others ?? []) as Array<{
+        id: string;
+        name: string | null;
+      }>) {
         const onIt = await this.readLines(String(m.id), restaurantId);
-        retiring.push({ menuId: String(m.id), name: m.name ?? null, lines: onIt.length });
+        retiring.push({
+          menuId: String(m.id),
+          name: m.name ?? null,
+          lines: onIt.length,
+        });
       }
     }
 
@@ -1759,8 +1997,18 @@ export class MenusService {
         .map((l) => [
           l.menuItemId,
           l.inventoryId,
-          [l.bottle.result, l.bottle.menuPrice, l.bottle.housePrice, l.bottle.lock?.lockId ?? null],
-          [l.glass.result, l.glass.menuPrice, l.glass.housePrice, l.glass.lock?.lockId ?? null],
+          [
+            l.bottle.result,
+            l.bottle.menuPrice,
+            l.bottle.housePrice,
+            l.bottle.lock?.lockId ?? null,
+          ],
+          [
+            l.glass.result,
+            l.glass.menuPrice,
+            l.glass.housePrice,
+            l.glass.lock?.lockId ?? null,
+          ],
         ]),
       dormant: dormantLocks.map((d) => d.lockId).sort(),
       retiring: retiring.map((m) => m.menuId).sort(),
@@ -1770,7 +2018,10 @@ export class MenusService {
       current,
       readAt,
       generatedAt: new Date().toISOString(),
-      fingerprint: crypto.createHash("sha256").update(JSON.stringify(decisive)).digest("hex"),
+      fingerprint: crypto
+        .createHash("sha256")
+        .update(JSON.stringify(decisive))
+        .digest("hex"),
       lines: planLines,
       counts,
       dormantLocks,
@@ -1835,7 +2086,10 @@ export class MenusService {
     // choosing it again answered "already_current" with zero lines: a switch
     // that could never be finished, reported as one that had been. Now a failed
     // read throws here and nothing is changed.
-    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
+    const lines = (await this.readLines(
+      menuId,
+      restaurantId,
+    )) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
     // A menu with no lines would empty the house's menu (F-681); the database
     // refuses it too (make_menu_current), this says why before the plan.
@@ -1844,30 +2098,49 @@ export class MenusService {
         "This menu has no lines, so making it current would empty the house's menu. Nothing was changed.",
       );
     }
-    const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
+    const plan = await this.computePlan(
+      restaurantId,
+      menuId,
+      version.status === "active",
+      lines,
+      readMomentOf(version),
+    );
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
       );
     }
-    const { data, error } = await this.dbService.supabase.rpc("make_menu_current", {
-      p_restaurant_id: restaurantId,
-      p_menu_id: menuId,
-      p_actor: userId,
-    });
+    const { data, error } = await this.dbService.supabase.rpc(
+      "make_menu_current",
+      {
+        p_restaurant_id: restaurantId,
+        p_menu_id: menuId,
+        p_actor: userId,
+      },
+    );
     if (error) {
       const code = (error as { code?: string }).code;
-      if (code === "P0002") throw new NotFoundException("No menu of this restaurant by that id. Nothing was changed.");
+      if (code === "P0002")
+        throw new NotFoundException(
+          "No menu of this restaurant by that id. Nothing was changed.",
+        );
       if (code === "22023") throw new BadRequestException(error.message);
-      throw new InternalServerErrorException(`The menu was not made current: ${error.message}`);
+      throw new InternalServerErrorException(
+        `The menu was not made current: ${error.message}`,
+      );
     }
-    const r = (data ?? {}) as { outcome?: string; previous_menu_ids?: string[]; made_current_at?: string | null };
+    const r = (data ?? {}) as {
+      outcome?: string;
+      previous_menu_ids?: string[];
+      made_current_at?: string | null;
+    };
     if (r.outcome !== "made_current" && r.outcome !== "already_current") {
       throw new InternalServerErrorException(
         "The menu switch returned no outcome; whether this menu is current is unknown.",
       );
     }
-    const madeCurrentAt = typeof r.made_current_at === "string" ? r.made_current_at : null;
+    const madeCurrentAt =
+      typeof r.made_current_at === "string" ? r.made_current_at : null;
     const empty = {
       menuId,
       previousMenuIds: r.previous_menu_ids ?? [],
@@ -1879,29 +2152,41 @@ export class MenusService {
       held: [],
       returned: [],
     };
-    if (r.outcome === "already_current") return { outcome: "already_current", ...empty };
+    if (r.outcome === "already_current")
+      return { outcome: "already_current", ...empty };
 
     if (!madeCurrentAt) {
       // The menu IS current, and its prices cannot be dated by the choice. Said
       // on every line, never dated by something else.
-      const why = "the menu switch did not say when it happened, so no price was dated or carried";
+      const why =
+        "the menu switch did not say when it happened, so no price was dated or carried";
       return {
         outcome: "made_current",
         ...empty,
         lines: lines.length,
         priceSync: lines.length ? { failed: lines.length } : {},
-        failed: lines.map((l) => ({ menuItemId: l.id, name: l.name, error: why })),
+        failed: lines.map((l) => ({
+          menuItemId: l.id,
+          name: l.name,
+          error: why,
+        })),
       };
     }
 
-    const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId, {
-      effectiveFrom: madeCurrentAt,
-      menuId,
-    });
+    const { inventoryMap, priceSync } = await this.addToInventory(
+      lines,
+      restaurantId,
+      userId,
+      {
+        effectiveFrom: madeCurrentAt,
+        menuId,
+      },
+    );
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
     const counts: Record<string, number> = {};
-    const failed: Array<{ menuItemId: string; name: string; error: string }> = [];
+    const failed: Array<{ menuItemId: string; name: string; error: string }> =
+      [];
     const held: Array<{
       menuItemId: string;
       name: string;
@@ -1917,12 +2202,19 @@ export class MenusService {
       const outcome = entry?.outcome ?? "not_linked";
       counts[outcome] = (counts[outcome] ?? 0) + 1;
       if (entry?.flag) flagged += 1;
-      for (const h of entry?.held ?? []) held.push({ menuItemId: line.id, name: line.name, ...h });
+      for (const h of entry?.held ?? [])
+        held.push({ menuItemId: line.id, name: line.name, ...h });
       if (entry?.outcome === "failed" || entry?.flagError) {
-        failed.push({ menuItemId: line.id, name: line.name, error: entry.error ?? entry.flagError ?? "" });
+        failed.push({
+          menuItemId: line.id,
+          name: line.name,
+          error: entry.error ?? entry.flagError ?? "",
+        });
       }
     }
-    const returned = plan.lines.filter((l) => l.returned).map((l) => ({ menuItemId: l.menuItemId, name: l.name }));
+    const returned = plan.lines
+      .filter((l) => l.returned)
+      .map((l) => ({ menuItemId: l.menuItemId, name: l.name }));
     return {
       outcome: "made_current",
       ...empty,
@@ -1935,21 +2227,33 @@ export class MenusService {
     };
   }
 
-  private async readVersionRow(restaurantId: string, menuId: string): Promise<Record<string, any>> {
+  private async readVersionRow(
+    restaurantId: string,
+    menuId: string,
+  ): Promise<Record<string, any>> {
     const { data, error } = await this.dbService.supabase
       .from("restaurant_menus")
       .select(VERSION_SELECT)
       .eq("id", menuId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    if (error) throw new InternalServerErrorException(`The menu could not be read: ${error.message}`);
-    if (!data) throw new NotFoundException("No menu of this restaurant by that id.");
+    if (error)
+      throw new InternalServerErrorException(
+        `The menu could not be read: ${error.message}`,
+      );
+    if (!data)
+      throw new NotFoundException("No menu of this restaurant by that id.");
     return data as Record<string, any>;
   }
 
-  private toVersion(r: Record<string, any>, names: Map<string, string | null>): MenuVersion {
-    const who = (id: string | null | undefined) => (id ? { userId: id, name: names.get(id) ?? null } : null);
-    const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  private toVersion(
+    r: Record<string, any>,
+    names: Map<string, string | null>,
+  ): MenuVersion {
+    const who = (id: string | null | undefined) =>
+      id ? { userId: id, name: names.get(id) ?? null } : null;
+    const num = (v: unknown) =>
+      v === null || v === undefined ? null : Number(v);
     return {
       menuId: r.id,
       name: r.name ?? null,
@@ -1990,7 +2294,10 @@ export class MenusService {
     const { people, error } = await readPeople(this.dbService.supabase, ids);
     const names = new Map<string, string | null>();
     for (const [id, p] of people) names.set(id, p.name);
-    if (error) this.logger.warn(`The people behind this house's menus could not be named: ${error}`);
+    if (error)
+      this.logger.warn(
+        `The people behind this house's menus could not be named: ${error}`,
+      );
     return { names, error };
   }
 
@@ -2099,7 +2406,9 @@ export class MenusService {
     const { data, error: menuItemsErr } = await this.dbService.supabase
       .from("menu_items")
       .insert(menuItemRows)
-      .select("id, wine_library_id, name, by_glass_price, bottle_price, created_at");
+      .select(
+        "id, wine_library_id, name, by_glass_price, bottle_price, created_at",
+      );
 
     if (menuItemsErr) {
       this.logger.error(`Failed to insert menu_items: ${menuItemsErr.message}`);
@@ -2118,7 +2427,10 @@ export class MenusService {
     // A line added to the CURRENT menu is dated now (the writer's default)
     // and names its menu (ADR 0193 round 3, L11).
     const { inventoryMap, priceSync } = current
-      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId })
+      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, {
+          effectiveFrom: null,
+          menuId,
+        })
       : {
           inventoryMap: Object.assign(new Map<string, string>(), {
             created: new Set<string>(),
@@ -2126,7 +2438,13 @@ export class MenusService {
           priceSync: new Map<string, PriceSyncEntry>(
             insertedMenuItems.map((m) => [
               m.id,
-              { outcome: "not_current", error: null, flag: null, flagNote: null, held: [] },
+              {
+                outcome: "not_current",
+                error: null,
+                flag: null,
+                flagNote: null,
+                held: [],
+              },
             ]),
           ),
         };
@@ -2183,7 +2501,9 @@ export class MenusService {
           ? (priceSync.get(menuItem.id)?.error ?? null)
           : null,
         priceFlag: menuItem ? (priceSync.get(menuItem.id)?.flag ?? null) : null,
-        priceFlagNote: menuItem ? (priceSync.get(menuItem.id)?.flagNote ?? null) : null,
+        priceFlagNote: menuItem
+          ? (priceSync.get(menuItem.id)?.flagNote ?? null)
+          : null,
         priceHeld: menuItem ? (priceSync.get(menuItem.id)?.held ?? []) : [],
       };
     });
@@ -2289,17 +2609,24 @@ export class MenusService {
       menu_price_current?: number | string | null;
       menu_price_glass?: number | string | null;
     };
-    type HouseRead = { data: HouseRow | null; error: { message: string } | null };
+    type HouseRead = {
+      data: HouseRow | null;
+      error: { message: string } | null;
+    };
 
     // The house's rows for the menu's wines, read in sets (F-448). Each wine's
     // answer, or the read's failure, is kept for its first line.
-    const wineIds = [...new Set(validItems.map((i) => i.wine_library_id as string))];
+    const wineIds = [
+      ...new Set(validItems.map((i) => i.wine_library_id as string)),
+    ];
     const prefetched = new Map<string, HouseRead>();
     for (let i = 0; i < wineIds.length; i += CARRY_READ_CHUNK) {
       const chunk = wineIds.slice(i, i + CARRY_READ_CHUNK);
       const { data, error } = await this.dbService.supabase
         .from("restaurant_inventory")
-        .select("id, master_wine_id, is_active, menu_price_current, menu_price_glass")
+        .select(
+          "id, master_wine_id, is_active, menu_price_current, menu_price_glass",
+        )
         .eq("restaurant_id", restaurantId)
         .in("master_wine_id", chunk);
       for (const wine of chunk) {
@@ -2307,7 +2634,13 @@ export class MenusService {
           wine,
           error
             ? { data: null, error }
-            : { data: ((data ?? []) as HouseRow[]).find((r) => r.master_wine_id === wine) ?? null, error: null },
+            : {
+                data:
+                  ((data ?? []) as HouseRow[]).find(
+                    (r) => r.master_wine_id === wine,
+                  ) ?? null,
+                error: null,
+              },
         );
       }
     }
@@ -2322,7 +2655,13 @@ export class MenusService {
       if (existingErr) {
         const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${existingErr.message}`;
         this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
-        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+        priceSync.set(item.id, {
+          outcome: "failed",
+          error: message,
+          flag: null,
+          flagNote: null,
+          held: [],
+        });
         return;
       }
 
@@ -2347,8 +2686,16 @@ export class MenusService {
           // Still non-fatal for the menu, but said on the line: "not_linked"
           // means the menu matched no wine, never that the house's row failed.
           const message = `the wine could not be added to the house's inventory, so no price was set: ${error.message}`;
-          this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`);
-          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+          this.logger.warn(
+            `inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`,
+          );
+          priceSync.set(item.id, {
+            outcome: "failed",
+            error: message,
+            flag: null,
+            flagNote: null,
+            held: [],
+          });
           return;
         }
         inventoryId = created?.id ?? null;
@@ -2366,8 +2713,16 @@ export class MenusService {
           .eq("id", inventoryId);
         if (backErr) {
           const message = `this wine was removed from the house's inventory and could not be brought back, so no price was set: ${backErr.message}`;
-          this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
-          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+          this.logger.error(
+            `menu line ${item.id} ("${item.name}"): ${message}`,
+          );
+          priceSync.set(item.id, {
+            outcome: "failed",
+            error: message,
+            flag: null,
+            flagNote: null,
+            held: [],
+          });
           return;
         }
       }
@@ -2396,20 +2751,24 @@ export class MenusService {
       const wine = item.wine_library_id as string;
       byWine.set(wine, [...(byWine.get(wine) ?? []), item]);
     }
-    await inPool([...byWine.entries()], CARRY_CONCURRENCY, async ([wine, group]) => {
-      for (const [n, item] of group.entries()) {
-        const read: HouseRead =
-          n === 0
-            ? prefetched.get(wine)!
-            : await this.dbService.supabase
-                .from("restaurant_inventory")
-                .select("id, is_active, menu_price_current, menu_price_glass")
-                .eq("restaurant_id", restaurantId)
-                .eq("master_wine_id", wine)
-                .maybeSingle();
-        await carryLine(item, read);
-      }
-    });
+    await inPool(
+      [...byWine.entries()],
+      CARRY_CONCURRENCY,
+      async ([wine, group]) => {
+        for (const [n, item] of group.entries()) {
+          const read: HouseRead =
+            n === 0
+              ? prefetched.get(wine)!
+              : await this.dbService.supabase
+                  .from("restaurant_inventory")
+                  .select("id, is_active, menu_price_current, menu_price_glass")
+                  .eq("restaurant_id", restaurantId)
+                  .eq("master_wine_id", wine)
+                  .maybeSingle();
+          await carryLine(item, read);
+        }
+      },
+    );
 
     return { inventoryMap: result, priceSync };
   }
@@ -2419,13 +2778,18 @@ export class MenusService {
    * choice left). A failed write is logged loudly and returned on the entry;
    * the price outcome itself is already decided.
    */
-  private async writeLineFlag(menuItemId: string, entry: PriceSyncEntry): Promise<void> {
+  private async writeLineFlag(
+    menuItemId: string,
+    entry: PriceSyncEntry,
+  ): Promise<void> {
     const { error } = await this.dbService.supabase
       .from("menu_items")
       .update({ price_flag: entry.flag, price_flag_note: entry.flagNote })
       .eq("id", menuItemId);
     if (error) {
-      this.logger.error(`menu line ${menuItemId}: its price flag was not written: ${error.message}`);
+      this.logger.error(
+        `menu line ${menuItemId}: its price flag was not written: ${error.message}`,
+      );
       entry.flagError = error.message;
     }
   }
@@ -2467,12 +2831,21 @@ export class MenusService {
     const knownBottle = price(house.bottle);
     const knownGlass = price(house.glass);
     const kept: string[] = [];
-    if (bottle === null && knownBottle !== null) kept.push(`bottle price ${knownBottle.toFixed(2)}`);
-    if (glass === null && knownGlass !== null) kept.push(`glass price ${knownGlass.toFixed(2)}`);
+    if (bottle === null && knownBottle !== null)
+      kept.push(`bottle price ${knownBottle.toFixed(2)}`);
+    if (glass === null && knownGlass !== null)
+      kept.push(`glass price ${knownGlass.toFixed(2)}`);
     const noPriceAnywhere =
-      bottle === null && glass === null && knownBottle === null && knownGlass === null;
+      bottle === null &&
+      glass === null &&
+      knownBottle === null &&
+      knownGlass === null;
     const flag: PriceFlag | null =
-      kept.length > 0 ? "blank_kept_last_known" : noPriceAnywhere ? "blank_no_house_price" : null;
+      kept.length > 0
+        ? "blank_kept_last_known"
+        : noPriceAnywhere
+          ? "blank_no_house_price"
+          : null;
     // Kind-neutral words (F-066): a menu line is a beer, a cocktail or a tea
     // as often as a wine. The price is set on /menu itself, Edit on the line
     // (F-065), which also clears this note.
@@ -2486,7 +2859,8 @@ export class MenusService {
         : noPriceAnywhere
           ? "The menu line shows no price, and the house had no price for it either, so it stands on the menu unpriced. An owner or a manager can set one here, with Edit on this line."
           : null;
-    if (bottle === null && glass === null) return { outcome: "no_price", error: null, flag, flagNote, held: [] };
+    if (bottle === null && glass === null)
+      return { outcome: "no_price", error: null, flag, flagNote, held: [] };
     try {
       const r = await setHouseMenuPrice(this.dbService.supabase, {
         restaurantId,
@@ -2526,18 +2900,22 @@ export class MenusService {
   ): Promise<void> {
     // Side by side, CARRY_CONCURRENCY at a time (F-448): one write per line,
     // never one line after another for a 2,000-line menu.
-    await inPool([...menuItemToValue.entries()], CARRY_CONCURRENCY, async ([menuItemId, value]) => {
-      const { error } = await this.dbService.supabase
-        .from("menu_items")
-        .update({ [column]: value })
-        .eq("id", menuItemId);
+    await inPool(
+      [...menuItemToValue.entries()],
+      CARRY_CONCURRENCY,
+      async ([menuItemId, value]) => {
+        const { error } = await this.dbService.supabase
+          .from("menu_items")
+          .update({ [column]: value })
+          .eq("id", menuItemId);
 
-      if (error) {
-        this.logger.warn(
-          `Failed to backfill ${column} for menu_item ${menuItemId}: ${error.message}`,
-        );
-      }
-    });
+        if (error) {
+          this.logger.warn(
+            `Failed to backfill ${column} for menu_item ${menuItemId}: ${error.message}`,
+          );
+        }
+      },
+    );
   }
 
   private async markMenuUploaded(restaurantId: string): Promise<void> {
@@ -2594,7 +2972,9 @@ export class MenusService {
    */
   async getOnboardingProgress(userId: string, restaurantId: string | null) {
     if (!restaurantId)
-      throw new NotFoundException("Onboarding progress not found for this house");
+      throw new NotFoundException(
+        "Onboarding progress not found for this house",
+      );
     const { data, error } = await this.dbService.supabase
       .from("user_onboarding_progress")
       .select("*")

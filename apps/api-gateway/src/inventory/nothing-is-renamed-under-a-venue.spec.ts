@@ -73,11 +73,11 @@ describe("bulk receive keeps the venue's own label", () => {
             resolveOrCreateLibraryWine: async (item: Record<string, any>) => {
               resolvedDrafts.push(item);
               return {
-              masterWineId: LIBRARY_ID,
-              matched: false,
-              provisional: true,
-              libraryTier: 3,
-              confidence: null,
+                masterWineId: LIBRARY_ID,
+                matched: false,
+                provisional: true,
+                libraryTier: 3,
+                confidence: null,
               };
             },
           },
@@ -124,7 +124,9 @@ describe("bulk receive keeps the venue's own label", () => {
   // nothing for the classifier to read and a beer stayed 'unknown'.
   it("hands the draft's kind to the library as its menu category", async () => {
     await service.bulkCreateInventoryItems(RESTAURANT, {
-      items: [{ wineDraft: { name: "Efes Pilsen", category: "beer" }, stockLive: 24 }],
+      items: [
+        { wineDraft: { name: "Efes Pilsen", category: "beer" }, stockLive: 24 },
+      ],
     } as any);
 
     expect(resolvedDrafts[0].menuCategory).toBe("beer");

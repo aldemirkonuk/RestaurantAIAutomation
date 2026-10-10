@@ -116,7 +116,9 @@ function houseClient(opts: { mappings?: Row[]; proposals?: Row[] } = {}) {
         upsert: (row: Row) => {
           calls.mappingUpserts.push(row);
           return {
-            select: () => ({ single: async () => ({ data: row, error: null }) }),
+            select: () => ({
+              single: async () => ({ data: row, error: null }),
+            }),
           };
         },
         insert: async (row: Row) => {

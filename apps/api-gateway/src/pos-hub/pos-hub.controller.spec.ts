@@ -474,7 +474,12 @@ describe("PosHubController — sale-unit review routes", () => {
     it("returns each provider's switch for the house", async () => {
       const body = {
         connections: [
-          { provider: "toast", providerName: "Toast", enabled: false, changedAt: null },
+          {
+            provider: "toast",
+            providerName: "Toast",
+            enabled: false,
+            changedAt: null,
+          },
         ],
       };
       posHub.listConnections.mockResolvedValue(body);

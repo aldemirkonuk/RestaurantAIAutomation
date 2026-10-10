@@ -229,7 +229,9 @@ export class McpCredentialsService {
     const digest = McpCredentialsService.hash(secret);
     const { data, error } = await this.databaseService.supabase
       .from("mcp_server_credentials")
-      .select("id, restaurant_id, label, scopes, token_hash, revoked_at, created_by")
+      .select(
+        "id, restaurant_id, label, scopes, token_hash, revoked_at, created_by",
+      )
       .eq("token_hash", digest)
       .maybeSingle();
 
@@ -316,9 +318,15 @@ export class McpCredentialsService {
       this.logger.error(`MCP key minter lookup failed: ${error.message}`);
       return "Could not check the credential — the house's member list did not answer. This is not a statement about the key.";
     }
-    const access = data as { role?: string | null; is_active?: boolean | null } | null;
+    const access = data as {
+      role?: string | null;
+      is_active?: boolean | null;
+    } | null;
     const role = String(access?.role ?? "").toLowerCase();
-    if (access?.is_active === true && (role === "owner" || role === "manager")) {
+    if (
+      access?.is_active === true &&
+      (role === "owner" || role === "manager")
+    ) {
       return "holds";
     }
     return leftReason;

@@ -38,7 +38,13 @@ const VENDOR = "vendor@kavaklidere.example";
  */
 function thresholds(rows: ThresholdRow[]) {
   return {
-    read: async () => ({ restaurantId: HOUSE, thresholds: rows, policyEmpty: rows.length === 0, readable: true, reason: null }),
+    read: async () => ({
+      restaurantId: HOUSE,
+      thresholds: rows,
+      policyEmpty: rows.length === 0,
+      readable: true,
+      reason: null,
+    }),
   };
 }
 
@@ -57,14 +63,34 @@ function ownerCeiling(amount: number): ThresholdRow {
 function build(rules: ThresholdRow[] = []) {
   const db = new FakeDb();
   db.tables.users = [
-    { user_id: OWNER, name: "Olcay Owner", restaurant_id: HOUSE, role: "owner" },
-    { user_id: MANAGER, name: "Mert Manager", restaurant_id: HOUSE, role: "manager" },
+    {
+      user_id: OWNER,
+      name: "Olcay Owner",
+      restaurant_id: HOUSE,
+      role: "owner",
+    },
+    {
+      user_id: MANAGER,
+      name: "Mert Manager",
+      restaurant_id: HOUSE,
+      role: "manager",
+    },
     { user_id: STAFF, name: "Ayse Staff", restaurant_id: HOUSE, role: "staff" },
-    { user_id: GRANTEE, name: "Gul Grantee", restaurant_id: HOUSE, role: "staff" },
+    {
+      user_id: GRANTEE,
+      name: "Gul Grantee",
+      restaurant_id: HOUSE,
+      role: "staff",
+    },
   ];
   db.tables.user_restaurant_access = [
     { user_id: OWNER, restaurant_id: HOUSE, role: "owner", is_active: true },
-    { user_id: MANAGER, restaurant_id: HOUSE, role: "manager", is_active: true },
+    {
+      user_id: MANAGER,
+      restaurant_id: HOUSE,
+      role: "manager",
+      is_active: true,
+    },
     { user_id: STAFF, restaurant_id: HOUSE, role: "staff", is_active: true },
     { user_id: GRANTEE, restaurant_id: HOUSE, role: "staff", is_active: true },
   ];
@@ -121,7 +147,9 @@ function build(rules: ThresholdRow[] = []) {
     {
       // The role in this house, from the same access rows the authority reads.
       resolveRestaurantRole: async (userId: string) =>
-        db.tables.user_restaurant_access.find((r: any) => r.user_id === userId && r.is_active)?.role ?? null,
+        db.tables.user_restaurant_access.find(
+          (r: any) => r.user_id === userId && r.is_active,
+        )?.role ?? null,
     } as any,
     seal,
     authority,
@@ -138,7 +166,9 @@ function build(rules: ThresholdRow[] = []) {
 describe("manual-reply: sealed, gated and named", () => {
   it("sends nothing without a seal — the door that had none", async () => {
     const t = build();
-    await expect(t.service.manualReply(HOUSE, ORDER, MANAGER, "Hi Hasan", [], undefined)).rejects.toThrow(/seal/i);
+    await expect(
+      t.service.manualReply(HOUSE, ORDER, MANAGER, "Hi Hasan", [], undefined),
+    ).rejects.toThrow(/seal/i);
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
     expect(t.db.tables.procurement_conversations).toHaveLength(0);
   });
@@ -146,22 +176,36 @@ describe("manual-reply: sealed, gated and named", () => {
   it("refuses a staff member before any seal is issued, and points at the request", async () => {
     const t = build();
     await expect(
-      t.service.issueManualReplySeal(HOUSE, ORDER, STAFF, { content: "Hi Hasan" }),
+      t.service.issueManualReplySeal(HOUSE, ORDER, STAFF, {
+        content: "Hi Hasan",
+      }),
     ).rejects.toThrow(/Hold again to ask a manager/);
-    await expect(t.service.manualReply(HOUSE, ORDER, STAFF, "Hi Hasan", [], "x")).rejects.toThrow(
-      /Hold again to ask a manager/,
-    );
+    await expect(
+      t.service.manualReply(HOUSE, ORDER, STAFF, "Hi Hasan", [], "x"),
+    ).rejects.toThrow(/Hold again to ask a manager/);
     expect(t.db.tables.mcp_seal_challenges).toHaveLength(0);
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
 
   it("a manager's sealed reply goes and the row records who sent it", async () => {
     const t = build();
-    const { challenge } = await t.service.issueManualReplySeal(HOUSE, ORDER, MANAGER, {
-      content: "Hi Hasan, Tuesday works.",
-      ccEmails: ["ops@house.example"],
-    });
-    await t.service.manualReply(HOUSE, ORDER, MANAGER, "Hi Hasan, Tuesday works.", ["ops@house.example"], challenge);
+    const { challenge } = await t.service.issueManualReplySeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      {
+        content: "Hi Hasan, Tuesday works.",
+        ccEmails: ["ops@house.example"],
+      },
+    );
+    await t.service.manualReply(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      "Hi Hasan, Tuesday works.",
+      ["ops@house.example"],
+      challenge,
+    );
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
     expect(t.db.tables.procurement_conversations[0]).toMatchObject({
       status: "SENT",
@@ -173,18 +217,42 @@ describe("manual-reply: sealed, gated and named", () => {
 
   it("words changed after the hold are refused, and nothing is sent", async () => {
     const t = build();
-    const { challenge } = await t.service.issueManualReplySeal(HOUSE, ORDER, MANAGER, { content: "Six cases." });
+    const { challenge } = await t.service.issueManualReplySeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      { content: "Six cases." },
+    );
     await expect(
-      t.service.manualReply(HOUSE, ORDER, MANAGER, "Sixty cases.", [], challenge),
+      t.service.manualReply(
+        HOUSE,
+        ORDER,
+        MANAGER,
+        "Sixty cases.",
+        [],
+        challenge,
+      ),
     ).rejects.toThrow(/changed|different/i);
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
 
   it("a copy added after the hold is refused", async () => {
     const t = build();
-    const { challenge } = await t.service.issueManualReplySeal(HOUSE, ORDER, MANAGER, { content: "Six cases." });
+    const { challenge } = await t.service.issueManualReplySeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      { content: "Six cases." },
+    );
     await expect(
-      t.service.manualReply(HOUSE, ORDER, MANAGER, "Six cases.", ["x@else.example"], challenge),
+      t.service.manualReply(
+        HOUSE,
+        ORDER,
+        MANAGER,
+        "Six cases.",
+        ["x@else.example"],
+        challenge,
+      ),
     ).rejects.toThrow(/changed|different/i);
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
@@ -199,10 +267,15 @@ describe("manual-reply: sealed, gated and named", () => {
       content: "Six cases.",
       providers: { contact_email: VENDOR, restaurant_id: HOUSE },
     });
-    const { challenge } = await t.service.issueDraftSendSeal(HOUSE, ORDER, MANAGER, { body: "Six cases.", to: VENDOR });
-    await expect(t.service.manualReply(HOUSE, ORDER, MANAGER, "Six cases.", [], challenge)).rejects.toThrow(
-      /different act|different/i,
+    const { challenge } = await t.service.issueDraftSendSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      { body: "Six cases.", to: VENDOR },
     );
+    await expect(
+      t.service.manualReply(HOUSE, ORDER, MANAGER, "Six cases.", [], challenge),
+    ).rejects.toThrow(/different act|different/i);
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
 });
@@ -212,7 +285,9 @@ describe("confirm-deal: sealed, gated by money, and named", () => {
 
   it("commits nothing and mails nothing without a seal", async () => {
     const t = build();
-    await expect(t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, undefined)).rejects.toThrow(/seal/i);
+    await expect(
+      t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, undefined),
+    ).rejects.toThrow(/seal/i);
     expect(t.order().status).toBe("NEGOTIATING");
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
@@ -220,44 +295,83 @@ describe("confirm-deal: sealed, gated by money, and named", () => {
   it("refuses a staff member's confirmation, and points at the request they may make instead", async () => {
     // Founder answer 3 (2026-09-21): staff may ASK a manager to confirm a deal.
     const t = build();
-    await expect(t.service.issueConfirmDealSeal(HOUSE, ORDER, STAFF, terms)).rejects.toThrow(
-      /Hold again to ask a manager instead/,
-    );
-    await expect(t.service.confirmDeal(HOUSE, ORDER, STAFF, terms, "x")).rejects.toThrow(/ask a manager/);
+    await expect(
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, STAFF, terms),
+    ).rejects.toThrow(/Hold again to ask a manager instead/);
+    await expect(
+      t.service.confirmDeal(HOUSE, ORDER, STAFF, terms, "x"),
+    ).rejects.toThrow(/ask a manager/);
     expect(t.order().status).toBe("NEGOTIATING");
   });
-
 
   it("a grantee whose grant names no money limit cannot commit money", async () => {
     const t = build();
     t.db.tables.authority_grants.push({
-      id: "g-1", restaurant_id: HOUSE, grantor_user_id: OWNER, grantee_user_id: GRANTEE, scope: "vendor_send",
-      limit_amount: null, limit_currency: null, expires_at: null, created_at: "2026-09-20T00:00:00Z", revoked_at: null,
-      vouched_by_user_id: OWNER, suspended_at: null, deleted_at: null,
+      id: "g-1",
+      restaurant_id: HOUSE,
+      grantor_user_id: OWNER,
+      grantee_user_id: GRANTEE,
+      scope: "vendor_send",
+      limit_amount: null,
+      limit_currency: null,
+      expires_at: null,
+      created_at: "2026-09-20T00:00:00Z",
+      revoked_at: null,
+      vouched_by_user_id: OWNER,
+      suspended_at: null,
+      deleted_at: null,
     });
-    await expect(t.service.issueConfirmDealSeal(HOUSE, ORDER, GRANTEE, terms)).rejects.toThrow(/covers letters only/);
+    await expect(
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, GRANTEE, terms),
+    ).rejects.toThrow(/covers letters only/);
   });
 
   it("a grantee over their limit is refused; within it, the seal is issued", async () => {
     const t = build();
     t.db.tables.authority_grants.push({
-      id: "g-1", restaurant_id: HOUSE, grantor_user_id: OWNER, grantee_user_id: GRANTEE, scope: "vendor_send",
-      limit_amount: "1000.00", limit_currency: "TRY", expires_at: null, created_at: "2026-09-20T00:00:00Z", revoked_at: null,
-      vouched_by_user_id: OWNER, suspended_at: null, deleted_at: null,
+      id: "g-1",
+      restaurant_id: HOUSE,
+      grantor_user_id: OWNER,
+      grantee_user_id: GRANTEE,
+      scope: "vendor_send",
+      limit_amount: "1000.00",
+      limit_currency: "TRY",
+      expires_at: null,
+      created_at: "2026-09-20T00:00:00Z",
+      revoked_at: null,
+      vouched_by_user_id: OWNER,
+      suspended_at: null,
+      deleted_at: null,
     });
     // 190 x 6 = 1,140 TRY > 1,000
-    await expect(t.service.issueConfirmDealSeal(HOUSE, ORDER, GRANTEE, terms)).rejects.toThrow(/over the limit/);
+    await expect(
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, GRANTEE, terms),
+    ).rejects.toThrow(/over the limit/);
     // 150 x 6 = 900 TRY <= 1,000
     await expect(
-      t.service.issueConfirmDealSeal(HOUSE, ORDER, GRANTEE, { ...terms, finalPrice: 150 }),
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, GRANTEE, {
+        ...terms,
+        finalPrice: 150,
+      }),
     ).resolves.toMatchObject({ act: "confirm_deal" });
   });
 
   it("terms changed after the hold are refused before anything is written", async () => {
     const t = build();
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
     await expect(
-      t.service.confirmDeal(HOUSE, ORDER, MANAGER, { ...terms, finalPrice: 19 }, challenge),
+      t.service.confirmDeal(
+        HOUSE,
+        ORDER,
+        MANAGER,
+        { ...terms, finalPrice: 19 },
+        challenge,
+      ),
     ).rejects.toThrow(/changed|different/i);
     expect(t.order().status).toBe("NEGOTIATING");
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
@@ -265,12 +379,31 @@ describe("confirm-deal: sealed, gated by money, and named", () => {
 
   it("a manager's sealed confirmation commits the order in their name and names the letter's sender", async () => {
     const t = build();
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
-    const out = await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
+    const out = await t.service.confirmDeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+      challenge,
+    );
     expect(out.confirmed).toBe(true);
-    expect(t.order()).toMatchObject({ status: "APPROVED", approved_by: MANAGER });
-    const letter = t.db.tables.procurement_conversations.find((r) => r.outbound_email_type === "ORDER_CONFIRMATION");
-    expect(letter).toMatchObject({ sent_by_user_id: MANAGER, sent_under_grant_id: null });
+    expect(t.order()).toMatchObject({
+      status: "APPROVED",
+      approved_by: MANAGER,
+    });
+    const letter = t.db.tables.procurement_conversations.find(
+      (r) => r.outbound_email_type === "ORDER_CONFIRMATION",
+    );
+    expect(letter).toMatchObject({
+      sent_by_user_id: MANAGER,
+      sent_under_grant_id: null,
+    });
   });
 });
 
@@ -280,14 +413,18 @@ describe("confirm-deal runs the house's approval rules, like approve (F-386)", (
 
   it("a manager over the owner's ceiling is refused at the seal, and nothing is minted", async () => {
     const t = build([ownerCeiling(1000)]);
-    await expect(t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms)).rejects.toThrow(/owner/i);
+    await expect(
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms),
+    ).rejects.toThrow(/owner/i);
     expect(t.db.tables.mcp_seal_challenges).toHaveLength(0);
     expect(t.order().status).toBe("NEGOTIATING");
   });
 
   it("a manager over the ceiling is refused at confirm too, and nothing is committed or mailed", async () => {
     const t = build([ownerCeiling(1000)]);
-    await expect(t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, "any-seal")).rejects.toThrow(/owner/i);
+    await expect(
+      t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, "any-seal"),
+    ).rejects.toThrow(/owner/i);
     expect(t.order().status).toBe("NEGOTIATING");
     expect(t.order().approved_by).toBeUndefined();
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
@@ -297,16 +434,28 @@ describe("confirm-deal runs the house's approval rules, like approve (F-386)", (
     const t = build([ownerCeiling(1000)]);
     // 150 x 6 = 900 passes; 150 x 12 = 1,800 does not.
     await expect(
-      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, { ...terms, finalPrice: 150 }),
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, {
+        ...terms,
+        finalPrice: 150,
+      }),
     ).resolves.toMatchObject({ act: "confirm_deal" });
     await expect(
-      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, { ...terms, finalPrice: 150, quantity: 12 }),
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, {
+        ...terms,
+        finalPrice: 150,
+        quantity: 12,
+      }),
     ).rejects.toThrow(/owner/i);
   });
 
   it("the owner confirms the same deal", async () => {
     const t = build([ownerCeiling(1000)]);
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, OWNER, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      OWNER,
+      terms,
+    );
     await t.service.confirmDeal(HOUSE, ORDER, OWNER, terms, challenge);
     expect(t.order()).toMatchObject({ status: "APPROVED", approved_by: OWNER });
   });
@@ -330,15 +479,27 @@ describe("staff ask a manager to confirm a deal (founder answer 3, 2026-09-21)",
     ]);
     expect(t.order().status).toBe("NEGOTIATING");
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
-    const notices = t.db.tables.notifications.filter((n) => n.type === "vendor_deal_requested");
-    expect(notices.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+    const notices = t.db.tables.notifications.filter(
+      (n) => n.type === "vendor_deal_requested",
+    );
+    expect(notices.map((n) => n.user_id).sort()).toEqual(
+      [MANAGER, OWNER].sort(),
+    );
     // Bell only, and a push could only ever say the nameless sentence (founder answer 5).
-    expect(notices.every((n) => n.priority === "low" && n.metadata.lockScreenText === "A letter is waiting for your approval")).toBe(true);
+    expect(
+      notices.every(
+        (n) =>
+          n.priority === "low" &&
+          n.metadata.lockScreenText === "A letter is waiting for your approval",
+      ),
+    ).toBe(true);
   });
 
   it("a person who may confirm is not asked on their behalf", async () => {
     const t = build();
-    await expect(t.service.requestConfirmDeal(HOUSE, ORDER, MANAGER, terms)).rejects.toThrow(/yourself with one hold/);
+    await expect(
+      t.service.requestConfirmDeal(HOUSE, ORDER, MANAGER, terms),
+    ).rejects.toThrow(/yourself with one hold/);
     expect(t.db.tables.vendor_send_requests).toHaveLength(0);
   });
 
@@ -353,34 +514,63 @@ describe("staff ask a manager to confirm a deal (founder answer 3, 2026-09-21)",
       if (table === "vendor_send_requests") {
         const orig = (q as any).insert.bind(q);
         (q as any).insert = (row: any) => {
-          if (t.db.tables.vendor_send_requests.some((r) => r.state === "waiting" && r.order_id === row.order_id)) {
-            return { select: () => ({ single: async () => ({ data: null, error: { code: "23505", message: "duplicate" } }) }) };
+          if (
+            t.db.tables.vendor_send_requests.some(
+              (r) => r.state === "waiting" && r.order_id === row.order_id,
+            )
+          ) {
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: null,
+                  error: { code: "23505", message: "duplicate" },
+                }),
+              }),
+            };
           }
           return orig(row);
         };
       }
       return q;
     };
-    await expect(t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, { ...terms, finalPrice: 180 })).rejects.toThrow(
-      /already waiting/,
-    );
+    await expect(
+      t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, {
+        ...terms,
+        finalPrice: 180,
+      }),
+    ).rejects.toThrow(/already waiting/);
     expect(t.db.tables.vendor_send_requests).toHaveLength(1);
   });
 
   it("a manager's sealed confirmation releases the waiting request, and the staffer is told it went on their terms", async () => {
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
-    const readout = await t.service.dealRequestReadout(HOUSE, ORDER, MANAGER, terms);
-    expect(readout.request).toMatchObject({ requestedBy: { userId: STAFF, name: "Ayse Staff" }, payload: terms });
+    const readout = await t.service.dealRequestReadout(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
+    expect(readout.request).toMatchObject({
+      requestedBy: { userId: STAFF, name: "Ayse Staff" },
+      payload: terms,
+    });
     expect(readout.standing).toMatchObject({ maySend: true, mode: "send" });
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
     await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
     expect(t.db.tables.vendor_send_requests[0]).toMatchObject({
       state: "released",
       released_by: MANAGER,
       released_as_written: true,
     });
-    const told = t.db.tables.notifications.find((n) => n.type === "vendor_deal_released");
+    const told = t.db.tables.notifications.find(
+      (n) => n.type === "vendor_deal_released",
+    );
     expect(told).toMatchObject({ user_id: STAFF });
     expect(told?.message).toMatch(/as you set it/);
   });
@@ -389,10 +579,21 @@ describe("staff ask a manager to confirm a deal (founder answer 3, 2026-09-21)",
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
     const changed = { ...terms, finalPrice: 185 };
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, changed);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      changed,
+    );
     await t.service.confirmDeal(HOUSE, ORDER, MANAGER, changed, challenge);
-    expect(t.db.tables.vendor_send_requests[0]).toMatchObject({ state: "released", released_as_written: false });
-    expect(t.db.tables.notifications.find((n) => n.type === "vendor_deal_released")?.message).toMatch(/with their own changes/);
+    expect(t.db.tables.vendor_send_requests[0]).toMatchObject({
+      state: "released",
+      released_as_written: false,
+    });
+    expect(
+      t.db.tables.notifications.find((n) => n.type === "vendor_deal_released")
+        ?.message,
+    ).toMatch(/with their own changes/);
   });
 
   it("a dismissed deal closes the waiting request, so it stops waiting and the staffer can ask again", async () => {
@@ -400,10 +601,22 @@ describe("staff ask a manager to confirm a deal (founder answer 3, 2026-09-21)",
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
     const out = await t.service.dismissDeal(HOUSE, ORDER);
     expect(out).toEqual({ dismissed: true, requestsClosed: 1 });
-    expect(t.db.tables.vendor_send_requests[0]).toMatchObject({ state: "closed", closed_reason: "deal_dismissed" });
-    expect((await t.service.dealRequestReadout(HOUSE, ORDER, MANAGER, terms)).request).toBeNull();
-    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, { ...terms, finalPrice: 180 });
-    expect(t.db.tables.vendor_send_requests.map((r) => r.state)).toEqual(["closed", "waiting"]);
+    expect(t.db.tables.vendor_send_requests[0]).toMatchObject({
+      state: "closed",
+      closed_reason: "deal_dismissed",
+    });
+    expect(
+      (await t.service.dealRequestReadout(HOUSE, ORDER, MANAGER, terms))
+        .request,
+    ).toBeNull();
+    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, {
+      ...terms,
+      finalPrice: 180,
+    });
+    expect(t.db.tables.vendor_send_requests.map((r) => r.state)).toEqual([
+      "closed",
+      "waiting",
+    ]);
   });
 
   it("a dismissal whose request cannot be closed is refused, and the request still waits", async () => {
@@ -414,33 +627,54 @@ describe("staff ask a manager to confirm a deal (founder answer 3, 2026-09-21)",
       const q = from(table);
       if (table === "vendor_send_requests") {
         (q as any).update = () => {
-          const failed: any = { eq: () => failed, select: async () => ({ data: null, error: { message: "timeout" } }) };
+          const failed: any = {
+            eq: () => failed,
+            select: async () => ({ data: null, error: { message: "timeout" } }),
+          };
           return failed;
         };
       }
       return q;
     };
-    await expect(t.service.dismissDeal(HOUSE, ORDER)).rejects.toThrow(/could not be closed \(timeout\), so the deal was not dismissed/);
-    expect(t.db.tables.vendor_send_requests[0]).toMatchObject({ state: "waiting" });
+    await expect(t.service.dismissDeal(HOUSE, ORDER)).rejects.toThrow(
+      /could not be closed \(timeout\), so the deal was not dismissed/,
+    );
+    expect(t.db.tables.vendor_send_requests[0]).toMatchObject({
+      state: "waiting",
+    });
   });
 
   it("the readout tells a staff member their hold asks, before they hold", async () => {
     const t = build();
-    const readout = await t.service.dealRequestReadout(HOUSE, ORDER, STAFF, terms);
+    const readout = await t.service.dealRequestReadout(
+      HOUSE,
+      ORDER,
+      STAFF,
+      terms,
+    );
     expect(readout.standing).toMatchObject({ maySend: false, mode: "ask" });
-    expect(readout.standing.sentence).toMatch(/^Your hold will ask a manager to confirm this deal/);
+    expect(readout.standing.sentence).toMatch(
+      /^Your hold will ask a manager to confirm this deal/,
+    );
   });
 });
 
-describe("a waiting deal request may be declined or withdrawn, exactly like a letter (founder, 2026-09-22, round 6z, verbatim pick 1: \"Yes, same as letters (Recommended)\")", () => {
+describe('a waiting deal request may be declined or withdrawn, exactly like a letter (founder, 2026-09-22, round 6z, verbatim pick 1: "Yes, same as letters (Recommended)")', () => {
   const terms = { finalPrice: 190, quantity: 6, sendConfirmation: true };
-  const request = (t: ReturnType<typeof build>) => t.db.tables.vendor_send_requests[0];
-  const noticesOf = (t: ReturnType<typeof build>, type: string) => t.db.tables.notifications.filter((n) => n.type === type);
+  const request = (t: ReturnType<typeof build>) =>
+    t.db.tables.vendor_send_requests[0];
+  const noticesOf = (t: ReturnType<typeof build>, type: string) =>
+    t.db.tables.notifications.filter((n) => n.type === type);
 
   it("an owner or a manager declines with a reason: closed on the record, the staffer told why, and it no longer waits", async () => {
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
-    const out = await t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "We already ordered from them this week.");
+    const out = await t.service.declineDealRequest(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      "We already ordered from them this week.",
+    );
     expect(out).toMatchObject({ id: request(t).id, state: "closed" });
     expect(request(t)).toMatchObject({
       state: "closed",
@@ -456,14 +690,21 @@ describe("a waiting deal request may be declined or withdrawn, exactly like a le
     expect(told[0].message).toBe(
       "Mert Manager declined your request to confirm a deal. Why: We already ordered from them this week. Nothing was confirmed.",
     );
-    expect((await t.service.dealRequestReadout(HOUSE, ORDER, MANAGER, terms)).request).toBeNull();
+    expect(
+      (await t.service.dealRequestReadout(HOUSE, ORDER, MANAGER, terms))
+        .request,
+    ).toBeNull();
   });
 
   it("staff and grantees may not decline a deal request; an owner may", async () => {
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
-    await expect(t.service.declineDealRequest(HOUSE, ORDER, GRANTEE, "no")).rejects.toThrow(/Only an owner or a manager may decline/);
-    await expect(t.service.declineDealRequest(HOUSE, ORDER, STAFF, "no")).rejects.toThrow(/Only an owner or a manager may decline/);
+    await expect(
+      t.service.declineDealRequest(HOUSE, ORDER, GRANTEE, "no"),
+    ).rejects.toThrow(/Only an owner or a manager may decline/);
+    await expect(
+      t.service.declineDealRequest(HOUSE, ORDER, STAFF, "no"),
+    ).rejects.toThrow(/Only an owner or a manager may decline/);
     expect(request(t).state).toBe("waiting");
     await t.service.declineDealRequest(HOUSE, ORDER, OWNER, "Not now.");
     expect(request(t)).toMatchObject({ state: "closed", closed_by: OWNER });
@@ -472,7 +713,9 @@ describe("a waiting deal request may be declined or withdrawn, exactly like a le
   it("a decline without a reason is refused and changes nothing", async () => {
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
-    await expect(t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "   ")).rejects.toThrow(/A decline says why/);
+    await expect(
+      t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "   "),
+    ).rejects.toThrow(/A decline says why/);
     expect(request(t).state).toBe("waiting");
   });
 
@@ -481,33 +724,54 @@ describe("a waiting deal request may be declined or withdrawn, exactly like a le
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
     const out = await t.service.withdrawDealRequest(HOUSE, ORDER, STAFF);
     expect(out).toMatchObject({ state: "closed" });
-    expect(request(t)).toMatchObject({ state: "closed", closed_how: "withdrawn", closed_by: STAFF });
+    expect(request(t)).toMatchObject({
+      state: "closed",
+      closed_how: "withdrawn",
+      closed_by: STAFF,
+    });
     const told = noticesOf(t, "vendor_deal_withdrawn");
     expect(told.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
-    expect(told[0].message).toBe("Ayse Staff withdrew their request to confirm a deal. It no longer waits for you, and nothing was confirmed.");
+    expect(told[0].message).toBe(
+      "Ayse Staff withdrew their request to confirm a deal. It no longer waits for you, and nothing was confirmed.",
+    );
   });
 
   it("nobody but the person who asked may withdraw it — a manager declines instead", async () => {
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
-    await expect(t.service.withdrawDealRequest(HOUSE, ORDER, MANAGER)).rejects.toThrow(/Only the person who asked may withdraw/);
+    await expect(
+      t.service.withdrawDealRequest(HOUSE, ORDER, MANAGER),
+    ).rejects.toThrow(/Only the person who asked may withdraw/);
     expect(request(t).state).toBe("waiting");
   });
 
   it("a released request cannot be declined or withdrawn after the fact", async () => {
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
     await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
-    await expect(t.service.declineDealRequest(HOUSE, ORDER, OWNER, "late")).rejects.toThrow(/already released, so it was not declined/);
-    await expect(t.service.withdrawDealRequest(HOUSE, ORDER, STAFF)).rejects.toThrow(/already released, so it was not withdrawn/);
+    await expect(
+      t.service.declineDealRequest(HOUSE, ORDER, OWNER, "late"),
+    ).rejects.toThrow(/already released, so it was not declined/);
+    await expect(
+      t.service.withdrawDealRequest(HOUSE, ORDER, STAFF),
+    ).rejects.toThrow(/already released, so it was not withdrawn/);
     expect(request(t).state).toBe("released");
   });
 
   it("no waiting deal request on this order is a 404, whether declining or withdrawing", async () => {
     const t = build();
-    await expect(t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "no")).rejects.toMatchObject({ status: 404 });
-    await expect(t.service.withdrawDealRequest(HOUSE, ORDER, STAFF)).rejects.toMatchObject({ status: 404 });
+    await expect(
+      t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "no"),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      t.service.withdrawDealRequest(HOUSE, ORDER, STAFF),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -534,17 +798,29 @@ describe("a deal proposal is resolved only inside the caller's house (#482 merge
       proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
     );
     await t.service.dismissDeal(HOUSE, ORDER);
-    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
-    expect(byId("conv-own")?.conversation_context).toMatchObject({ deal_resolution: "dismissed" });
-    expect(byId("conv-foreign")?.conversation_context?.deal_resolved_at).toBeUndefined();
-    expect(byId("conv-foreign")?.conversation_context?.deal_resolution).toBeUndefined();
+    const byId = (id: string) =>
+      t.db.tables.procurement_conversations.find((r) => r.id === id);
+    expect(byId("conv-own")?.conversation_context).toMatchObject({
+      deal_resolution: "dismissed",
+    });
+    expect(
+      byId("conv-foreign")?.conversation_context?.deal_resolved_at,
+    ).toBeUndefined();
+    expect(
+      byId("conv-foreign")?.conversation_context?.deal_resolution,
+    ).toBeUndefined();
   });
 
   it("dismissDeal resolves nothing when the only proposal on the order id is another house's", async () => {
     const t = build();
-    t.db.tables.procurement_conversations.push(proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"));
+    t.db.tables.procurement_conversations.push(
+      proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+    );
     await t.service.dismissDeal(HOUSE, ORDER);
-    expect(t.db.tables.procurement_conversations[0].conversation_context?.deal_resolved_at).toBeUndefined();
+    expect(
+      t.db.tables.procurement_conversations[0].conversation_context
+        ?.deal_resolved_at,
+    ).toBeUndefined();
   });
 
   it("confirmDeal resolves and discards only this house's rows", async () => {
@@ -553,14 +829,38 @@ describe("a deal proposal is resolved only inside the caller's house (#482 merge
     t.db.tables.procurement_conversations.push(
       proposal("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
       proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
-      { id: "draft-own", order_id: ORDER, restaurant_id: HOUSE, direction: "outbound", status: "PENDING_APPROVAL", created_at: "2026-09-20T11:00:00Z" },
-      { id: "draft-foreign", order_id: ORDER, restaurant_id: FOREIGN, direction: "outbound", status: "PENDING_APPROVAL", created_at: "2026-09-21T11:00:00Z" },
+      {
+        id: "draft-own",
+        order_id: ORDER,
+        restaurant_id: HOUSE,
+        direction: "outbound",
+        status: "PENDING_APPROVAL",
+        created_at: "2026-09-20T11:00:00Z",
+      },
+      {
+        id: "draft-foreign",
+        order_id: ORDER,
+        restaurant_id: FOREIGN,
+        direction: "outbound",
+        status: "PENDING_APPROVAL",
+        created_at: "2026-09-21T11:00:00Z",
+      },
     );
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
     await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
-    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
-    expect(byId("conv-own")?.conversation_context).toMatchObject({ deal_resolution: "confirmed" });
-    expect(byId("conv-foreign")?.conversation_context?.deal_resolved_at).toBeUndefined();
+    const byId = (id: string) =>
+      t.db.tables.procurement_conversations.find((r) => r.id === id);
+    expect(byId("conv-own")?.conversation_context).toMatchObject({
+      deal_resolution: "confirmed",
+    });
+    expect(
+      byId("conv-foreign")?.conversation_context?.deal_resolved_at,
+    ).toBeUndefined();
     expect(byId("draft-own")?.status).toBe("DISCARDED");
     expect(byId("draft-foreign")?.status).toBe("PENDING_APPROVAL");
   });
@@ -577,7 +877,12 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
   // picks it first; each case also carries this house's own row, so a path
   // that simply did nothing would fail.
   const FOREIGN = "house-2";
-  const inbound = (id: string, house: string, created_at: string, extra: Record<string, any> = {}) => ({
+  const inbound = (
+    id: string,
+    house: string,
+    created_at: string,
+    extra: Record<string, any> = {},
+  ) => ({
     id,
     order_id: ORDER,
     restaurant_id: house,
@@ -587,27 +892,50 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     detected_intent: "counter_offer",
     gmail_thread_id: `thread-${id}`,
     message_id: `<${id}@mail.example>`,
-    email_headers: { subject: `Re: ${id}`, references: `<${id}-ref@mail.example>` },
+    email_headers: {
+      subject: `Re: ${id}`,
+      references: `<${id}-ref@mail.example>`,
+    },
     ...extra,
   });
-  const proposal = { deal_proposal: { finalPrice: 190, quantity: 6, sourceQuote: "190 per bottle" } };
+  const proposal = {
+    deal_proposal: {
+      finalPrice: 190,
+      quantity: 6,
+      sourceQuote: "190 per bottle",
+    },
+  };
 
   it("getDealProposal shows this house's proposal, never another house's newer one on the same order id", async () => {
     const t = build();
     t.db.tables.procurement_conversations.push(
-      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", { conversation_context: proposal }),
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", {
+        conversation_context: proposal,
+      }),
       inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", {
-        conversation_context: { deal_proposal: { finalPrice: 99, quantity: 60, sourceQuote: "another house's terms" } },
+        conversation_context: {
+          deal_proposal: {
+            finalPrice: 99,
+            quantity: 60,
+            sourceQuote: "another house's terms",
+          },
+        },
       }),
     );
     const shown = await t.service.getDealProposal(HOUSE, ORDER);
-    expect(shown).toMatchObject({ conversationId: "conv-own", finalPrice: 190, sourceQuote: "190 per bottle" });
+    expect(shown).toMatchObject({
+      conversationId: "conv-own",
+      finalPrice: 190,
+      sourceQuote: "190 per bottle",
+    });
   });
 
   it("getDealProposal answers null when the only proposal on the order id is another house's", async () => {
     const t = build();
     t.db.tables.procurement_conversations.push(
-      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", { conversation_context: proposal }),
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", {
+        conversation_context: proposal,
+      }),
     );
     await expect(t.service.getDealProposal(HOUSE, ORDER)).resolves.toBeNull();
   });
@@ -617,11 +945,37 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     t.db.tables.procurement_conversations.push(
       inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
       inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
-      { id: "draft-own", order_id: ORDER, restaurant_id: HOUSE, direction: "outbound", status: "AUTO_SEND_SCHEDULED", created_at: "2026-09-20T11:00:00Z" },
-      { id: "draft-foreign", order_id: ORDER, restaurant_id: FOREIGN, direction: "outbound", status: "AUTO_SEND_SCHEDULED", created_at: "2026-09-21T11:00:00Z" },
+      {
+        id: "draft-own",
+        order_id: ORDER,
+        restaurant_id: HOUSE,
+        direction: "outbound",
+        status: "AUTO_SEND_SCHEDULED",
+        created_at: "2026-09-20T11:00:00Z",
+      },
+      {
+        id: "draft-foreign",
+        order_id: ORDER,
+        restaurant_id: FOREIGN,
+        direction: "outbound",
+        status: "AUTO_SEND_SCHEDULED",
+        created_at: "2026-09-21T11:00:00Z",
+      },
     );
-    const { challenge } = await t.service.issueManualReplySeal(HOUSE, ORDER, MANAGER, { content: "Tuesday works." });
-    await t.service.manualReply(HOUSE, ORDER, MANAGER, "Tuesday works.", [], challenge);
+    const { challenge } = await t.service.issueManualReplySeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      { content: "Tuesday works." },
+    );
+    await t.service.manualReply(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      "Tuesday works.",
+      [],
+      challenge,
+    );
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
     expect(t.gmail.sendEmail.calls[0][0]).toMatchObject({
       subject: "Re: conv-own",
@@ -629,7 +983,8 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
       inReplyTo: "<conv-own@mail.example>",
       references: "<conv-own-ref@mail.example>",
     });
-    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
+    const byId = (id: string) =>
+      t.db.tables.procurement_conversations.find((r) => r.id === id);
     expect(byId("draft-own")?.status).toBe("DISCARDED");
     expect(byId("draft-foreign")?.status).toBe("AUTO_SEND_SCHEDULED");
   });
@@ -638,10 +993,19 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     const t = build();
     const terms = { finalPrice: 190, quantity: 6, sendConfirmation: true };
     t.db.tables.procurement_conversations.push(
-      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", { conversation_context: proposal }),
-      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", { conversation_context: proposal }),
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", {
+        conversation_context: proposal,
+      }),
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", {
+        conversation_context: proposal,
+      }),
     );
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
     await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
     expect(t.gmail.sendEmail.calls[0][0]).toMatchObject({
@@ -720,9 +1084,20 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     held.db.tables.procurement_conversations.push(
       inbound("conv-own", HOUSE, justNow(), { detected_intent: null }),
     );
-    const heldSeal = await held.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    const heldSeal = await held.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
     await expect(
-      held.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, heldSeal.challenge),
+      held.service.confirmDeal(
+        HOUSE,
+        ORDER,
+        MANAGER,
+        terms,
+        heldSeal.challenge,
+      ),
     ).rejects.toThrow(/still reading it/);
     expect(held.order().status).toBe("NEGOTIATING");
 
@@ -730,8 +1105,15 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     t.db.tables.procurement_conversations.push(
       inbound("conv-foreign", FOREIGN, justNow(), { detected_intent: null }),
     );
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
-    await expect(t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge)).resolves.toMatchObject({
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
+    await expect(
+      t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge),
+    ).resolves.toMatchObject({
       confirmed: true,
     });
     expect(t.order().status).toBe("APPROVED");
@@ -745,7 +1127,12 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
       (t.service as any).inboundResponder = {
         analyzeAndDraftReply: async (args: any) => {
           asked.push(args);
-          return { drafted: true, draftId: "d-1", needsApproval: true, autoSendScheduled: false };
+          return {
+            drafted: true,
+            draftId: "d-1",
+            needsApproval: true,
+            autoSendScheduled: false,
+          };
         },
       };
       return t;
@@ -767,8 +1154,12 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     });
 
     const only = withResponder();
-    only.db.tables.procurement_conversations.push(inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"));
-    await expect(only.service.generateAiReply(HOUSE, ORDER)).resolves.toMatchObject({
+    only.db.tables.procurement_conversations.push(
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+    );
+    await expect(
+      only.service.generateAiReply(HOUSE, ORDER),
+    ).resolves.toMatchObject({
       triggered: false,
       reason: "No inbound vendor reply found for this order",
     });
@@ -795,7 +1186,10 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
       inbound("conv-own", HOUSE, "2026-09-20T08:30:00Z"),
     );
     await held.service.processScheduledAutoSends();
-    expect(held.db.tables.procurement_conversations.find((r) => r.id === "auto-1")?.status).toBe("PENDING_APPROVAL");
+    expect(
+      held.db.tables.procurement_conversations.find((r) => r.id === "auto-1")
+        ?.status,
+    ).toBe("PENDING_APPROVAL");
     expect(held.gmail.sendEmail.calls).toHaveLength(0);
 
     const t = build();
@@ -804,7 +1198,10 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
       inbound("conv-foreign", FOREIGN, "2026-09-20T08:30:00Z"),
     );
     await t.service.processScheduledAutoSends();
-    expect(t.db.tables.procurement_conversations.find((r) => r.id === "auto-1")?.status).toBe("AUTO_SENT");
+    expect(
+      t.db.tables.procurement_conversations.find((r) => r.id === "auto-1")
+        ?.status,
+    ).toBe("AUTO_SENT");
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
   });
 
@@ -823,7 +1220,10 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
       created_at: "2026-09-20T08:00:00Z",
     });
     await t.service.processScheduledAutoSends();
-    expect(t.db.tables.procurement_conversations.find((r) => r.id === "auto-2")?.status).toBe("PENDING_APPROVAL");
+    expect(
+      t.db.tables.procurement_conversations.find((r) => r.id === "auto-2")
+        ?.status,
+    ).toBe("PENDING_APPROVAL");
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
 });

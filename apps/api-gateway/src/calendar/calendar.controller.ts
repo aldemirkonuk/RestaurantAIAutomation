@@ -837,7 +837,9 @@ export class CalendarController {
       res.setHeader("Retry-After", "300");
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-store");
-      res.send("The calendar could not be read just now. Your calendar app will try again.");
+      res.send(
+        "The calendar could not be read just now. Your calendar app will try again.",
+      );
       return;
     }
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
@@ -870,7 +872,10 @@ export class CalendarController {
   } {
     const configured = process.env.API_PUBLIC_URL;
     if (configured && configured.trim()) {
-      return { origin: configured.trim().replace(/\/+$/, ""), source: "config" };
+      return {
+        origin: configured.trim().replace(/\/+$/, ""),
+        source: "config",
+      };
     }
 
     const host = req?.headers?.host;
@@ -900,7 +905,9 @@ export class CalendarController {
       // registration Apple Calendar and Outlook bind to. Clicking an https://
       // .ics link opens a browser download; clicking the webcal:// form opens
       // the calendar app's subscribe dialog.
-      webcalUrl: absolute ? absolute.replace(/^https?:\/\//, "webcal://") : null,
+      webcalUrl: absolute
+        ? absolute.replace(/^https?:\/\//, "webcal://")
+        : null,
       originSource: source,
     };
   }

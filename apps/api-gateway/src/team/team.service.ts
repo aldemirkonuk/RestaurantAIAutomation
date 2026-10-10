@@ -118,7 +118,12 @@ export interface Handover {
 interface HandoverReview {
   to: string;
   given: HandoverShift[];
-  give: { id: string; shift_date: string; start_time: string; labor_cost: number | null }[];
+  give: {
+    id: string;
+    shift_date: string;
+    start_time: string;
+    labor_cost: number | null;
+  }[];
   giveRests: { id: string; labor_cost: number | null }[];
   checks: Map<string, HandoverCheck[]>;
   allowDoubleBooking: boolean;
@@ -321,19 +326,21 @@ export class TeamService {
       ),
     ];
     if (userIds.length === 0) return new Map();
-    const [{ data: members, error: membersError }, { data: house, error: houseError }] =
-      await Promise.all([
-        this.sb
-          .from("team_members")
-          .select("id, user_id")
-          .eq("restaurant_id", restaurantId)
-          .in("user_id", userIds),
-        this.sb
-          .from("restaurants")
-          .select("timezone")
-          .eq("id", restaurantId)
-          .maybeSingle(),
-      ]);
+    const [
+      { data: members, error: membersError },
+      { data: house, error: houseError },
+    ] = await Promise.all([
+      this.sb
+        .from("team_members")
+        .select("id, user_id")
+        .eq("restaurant_id", restaurantId)
+        .in("user_id", userIds),
+      this.sb
+        .from("restaurants")
+        .select("timezone")
+        .eq("id", restaurantId)
+        .maybeSingle(),
+    ]);
     if (membersError) {
       this.logger.warn(
         `formerOwnerPeriodsOf: could not read the roster rows of former ` +
@@ -583,19 +590,21 @@ export class TeamService {
     const userIds = [
       ...new Set(roster.map((m: any) => m.user_id).filter(Boolean)),
     ];
-    const [{ data: access, error: accessError }, { data: users, error: usersError }] =
-      await Promise.all([
-        this.sb
-          .from("user_restaurant_access")
-          .select("user_id, role, is_active")
-          .eq("restaurant_id", restaurantId),
-        userIds.length
-          ? this.sb
-              .from("users")
-              .select("user_id, name, email")
-              .in("user_id", userIds)
-          : Promise.resolve({ data: [] as any[], error: null }),
-      ]);
+    const [
+      { data: access, error: accessError },
+      { data: users, error: usersError },
+    ] = await Promise.all([
+      this.sb
+        .from("user_restaurant_access")
+        .select("user_id, role, is_active")
+        .eq("restaurant_id", restaurantId),
+      userIds.length
+        ? this.sb
+            .from("users")
+            .select("user_id, name, email")
+            .in("user_id", userIds)
+        : Promise.resolve({ data: [] as any[], error: null }),
+    ]);
     if (accessError || usersError) {
       this.logger.error(
         `listMembers could not read member identities for ${restaurantId}: ` +
@@ -609,7 +618,8 @@ export class TeamService {
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
     // The owner is the one who switches a manager's pay access, so only the
     // owner's roster carries it; `null` on a row = the switch could not be read.
-    const switches = role === "owner" ? await this.payAccessByUser(restaurantId) : null;
+    const switches =
+      role === "owner" ? await this.payAccessByUser(restaurantId) : null;
 
     return roster.map((m: any) => {
       const memberRole = m.user_id ? (roleMap.get(m.user_id) ?? null) : null;
@@ -651,7 +661,10 @@ export class TeamService {
       return null;
     }
     return new Map(
-      (data ?? []).map((a: any) => [a.user_id as string, a.team_pay_access === true]),
+      (data ?? []).map((a: any) => [
+        a.user_id as string,
+        a.team_pay_access === true,
+      ]),
     );
   }
 
@@ -706,7 +719,13 @@ export class TeamService {
     }
     const before = access.team_pay_access === true;
     if (before === payAccess) {
-      return { memberId, payAccess, changed: false, audited: false, notified: false };
+      return {
+        memberId,
+        payAccess,
+        changed: false,
+        audited: false,
+        notified: false,
+      };
     }
     const { error: writeErr } = await this.sb
       .from("user_restaurant_access")
@@ -747,7 +766,10 @@ export class TeamService {
   }
 
   /** A pay switch whose before-state cannot be read is not written. */
-  private cannotReadPaySwitch(memberId: string, err: { message: string }): never {
+  private cannotReadPaySwitch(
+    memberId: string,
+    err: { message: string },
+  ): never {
     this.logger.error(
       `setPayAccess could not read member ${memberId}: ${err.message}`,
     );
@@ -768,7 +790,11 @@ export class TeamService {
    * "if owner taking money, manager can't see it"; see `wageWriteRefusal`.]**
    */
   private assertMayWriteWage(
-    viewer: { role: Role; payAccess: boolean; ownerMembers?: ReadonlySet<string> },
+    viewer: {
+      role: Role;
+      payAccess: boolean;
+      ownerMembers?: ReadonlySet<string>;
+    },
     targetMemberId: string | null,
   ): void {
     const refusal = wageWriteRefusal(viewer, targetMemberId);
@@ -1605,7 +1631,11 @@ export class TeamService {
     if (review) {
       released.handedTo = review.to;
       released.handedOver = [
-        ...review.give.map((g) => ({ id: g.id, row: g.id, part: "whole" as const })),
+        ...review.give.map((g) => ({
+          id: g.id,
+          row: g.id,
+          part: "whole" as const,
+        })),
         ...review.giveRests.map((g) => ({
           id: g.id,
           row: rests.get(g.id) ?? null,
@@ -1645,7 +1675,8 @@ export class TeamService {
     );
     const now = new Date();
     const from = leavingShiftsFrom(now, clock);
-    if (!from) throw new InternalServerErrorException("Failed to remove member");
+    if (!from)
+      throw new InternalServerErrorException("Failed to remove member");
 
     const { data: theirs, error: readErr } = await this.sb
       .from("shifts")
@@ -1668,7 +1699,8 @@ export class TeamService {
         .eq("id", memberId)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
-      if (wageErr) refuse("read their wage to re-price the worked part", wageErr);
+      if (wageErr)
+        refuse("read their wage to re-price the worked part", wageErr);
       plan = planLeavingShifts(rows, clock, now, m?.hourly_wage ?? null);
     }
     return { clock, rows, plan };
@@ -1702,7 +1734,8 @@ export class TeamService {
       .eq("id", to)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    if (targetErr) refuse("read the person chosen to take the shifts", targetErr);
+    if (targetErr)
+      refuse("read the person chosen to take the shifts", targetErr);
     if (!target)
       throw new NotFoundException(
         "The person you chose is not on this house's roster. Nobody was removed.",
@@ -1710,7 +1743,12 @@ export class TeamService {
 
     const byId = new Map(rows.map((r) => [r.id, r]));
     const given: HandoverShift[] = [];
-    const give: { id: string; shift_date: string; start_time: string; labor_cost: number | null }[] = [];
+    const give: {
+      id: string;
+      shift_date: string;
+      start_time: string;
+      labor_cost: number | null;
+    }[] = [];
     const giveRests: { id: string; labor_cost: number | null }[] = [];
     for (const id of new Set(shiftIds)) {
       const whole = plan.open.find((o) => o.id === id);
@@ -1756,7 +1794,9 @@ export class TeamService {
     const until = addDaysIso(mondayOf(dates[dates.length - 1]), 6);
     const { data: theirs, error: theirsErr } = await this.sb
       .from("shifts")
-      .select("id, shift_date, start_time, end_time, state, recorded_break_min, shift_breaks(duration_min)")
+      .select(
+        "id, shift_date, start_time, end_time, state, recorded_break_min, shift_breaks(duration_min)",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("member_id", to)
       .gte("shift_date", from)
@@ -1771,7 +1811,10 @@ export class TeamService {
       .lte("start_date", dates[dates.length - 1])
       .gte("end_date", dates[0]);
     if (leaveErr) refuse("read the chosen person's time off", leaveErr);
-    const allowDoubleBooking = await this.doubleBookingAllowed(restaurantId, refuse);
+    const allowDoubleBooking = await this.doubleBookingAllowed(
+      restaurantId,
+      refuse,
+    );
 
     return {
       to,
@@ -1883,7 +1926,9 @@ export class TeamService {
     } else {
       if (to) {
         if (to === memberId)
-          throw new BadRequestException("Choose someone other than the person leaving.");
+          throw new BadRequestException(
+            "Choose someone other than the person leaving.",
+          );
         await this.assertMemberInRestaurant(restaurantId, to);
       }
       allow = await this.doubleBookingAllowed(restaurantId, refuse);
@@ -1924,7 +1969,11 @@ export class TeamService {
     restaurantId: string,
   ): Promise<{
     retentionYears: number;
-    money: { currency: string | null; country: string | null; readable: boolean };
+    money: {
+      currency: string | null;
+      country: string | null;
+      readable: boolean;
+    };
     people: any[];
   }> {
     await this.assertAccess(userId, restaurantId, "owner");
@@ -1964,7 +2013,11 @@ export class TeamService {
 
     const ids = (departures ?? []).map((d: any) => d.member_id as string);
     if (ids.length === 0) {
-      return { retentionYears: FORMER_STAFF_RETENTION_YEARS, money, people: [] };
+      return {
+        retentionYears: FORMER_STAFF_RETENTION_YEARS,
+        money,
+        people: [],
+      };
     }
 
     const [shiftsQ, leaveQ, wagesQ, certsQ, removalsQ] = await Promise.all([
@@ -1982,13 +2035,17 @@ export class TeamService {
         .order("start_date", { ascending: false }),
       this.sb
         .from("team_member_wage_changes")
-        .select("member_id, old_wage, new_wage, currency, changed_by_role, changed_at")
+        .select(
+          "member_id, old_wage, new_wage, currency, changed_by_role, changed_at",
+        )
         .eq("restaurant_id", restaurantId)
         .in("member_id", ids)
         .order("changed_at", { ascending: false }),
       this.sb
         .from("team_certifications")
-        .select("id, member_id, cert_type, issued_at, expires_at, doc_url, status")
+        .select(
+          "id, member_id, cert_type, issued_at, expires_at, doc_url, status",
+        )
         .eq("restaurant_id", restaurantId)
         .in("member_id", ids)
         .order("expires_at", { ascending: true }),
@@ -2038,7 +2095,9 @@ export class TeamService {
       const hours = worked.reduce((n: number, s: any) => n + workedHours(s), 0);
       const unpriced = worked.filter((s: any) => s.labor_cost == null).length;
       const keptUntil = new Date(d.left_at);
-      keptUntil.setUTCFullYear(keptUntil.getUTCFullYear() + FORMER_STAFF_RETENTION_YEARS);
+      keptUntil.setUTCFullYear(
+        keptUntil.getUTCFullYear() + FORMER_STAFF_RETENTION_YEARS,
+      );
       return {
         memberId: id,
         name,
@@ -2066,7 +2125,10 @@ export class TeamService {
             unpriced > 0
               ? null
               : Math.round(
-                  worked.reduce((n: number, s: any) => n + Number(s.labor_cost), 0) * 100,
+                  worked.reduce(
+                    (n: number, s: any) => n + Number(s.labor_cost),
+                    0,
+                  ) * 100,
                 ) / 100,
           unpricedShifts: unpriced,
         },
@@ -2572,7 +2634,9 @@ export class TeamService {
     const role = dto.role.trim().toLowerCase();
     const twin = (onFile ?? []).find(
       (r: any) =>
-        String(r.role ?? "").trim().toLowerCase() === role &&
+        String(r.role ?? "")
+          .trim()
+          .toLowerCase() === role &&
         (r.day_of_week ?? null) === (dto.dayOfWeek ?? null) &&
         r.shift_period === dto.shiftPeriod,
     );
@@ -2748,7 +2812,8 @@ export class TeamService {
       target:
         saves && labourSettingsRefusal(role, { laborTargetPct: 1 }) === null,
       doubleBooking:
-        saves && doubleBookingRefusal(role, { allowDoubleBooking: true }) === null,
+        saves &&
+        doubleBookingRefusal(role, { allowDoubleBooking: true }) === null,
     };
   }
 

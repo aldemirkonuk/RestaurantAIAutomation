@@ -12,7 +12,10 @@
  */
 import { WineSubmissionsService } from "./wine-submissions.service";
 
-function fluentQuery(result: { data: any[] | null; error: { message: string } | null }) {
+function fluentQuery(result: {
+  data: any[] | null;
+  error: { message: string } | null;
+}) {
   const q: any = {};
   q.select = jest.fn(() => q);
   q.eq = jest.fn(() => q);
@@ -21,7 +24,10 @@ function fluentQuery(result: { data: any[] | null; error: { message: string } | 
   return q;
 }
 
-function build(result: { data: any[] | null; error: { message: string } | null }) {
+function build(result: {
+  data: any[] | null;
+  error: { message: string } | null;
+}) {
   const query = fluentQuery(result);
   const dbService = { supabase: { from: jest.fn(() => query) } } as any;
   const service = new WineSubmissionsService(dbService);
@@ -34,7 +40,9 @@ describe("WineSubmissionsService.scheduledProcessPendingSubmissions", () => {
   it("calls the same worker the route calls, and logs the count when it settled something", async () => {
     const t = build({ data: [], error: null });
     await t.service.scheduledProcessPendingSubmissions();
-    expect(t.dbService.supabase.from).toHaveBeenCalledWith("master_wine_library_submissions");
+    expect(t.dbService.supabase.from).toHaveBeenCalledWith(
+      "master_wine_library_submissions",
+    );
     // Nothing pending: processed 0, so nothing is logged (a quiet run is not
     // worth a line every five minutes forever).
     expect(t.logger.log).not.toHaveBeenCalled();
@@ -42,8 +50,12 @@ describe("WineSubmissionsService.scheduledProcessPendingSubmissions", () => {
 
   it("a failed run is logged, never thrown — an unhandled rejection would take the scheduler queue down with it", async () => {
     const t = build({ data: null, error: { message: "connection reset" } });
-    await expect(t.service.scheduledProcessPendingSubmissions()).resolves.toBeUndefined();
-    expect(t.logger.error).toHaveBeenCalledWith(expect.stringContaining("connection reset"));
+    await expect(
+      t.service.scheduledProcessPendingSubmissions(),
+    ).resolves.toBeUndefined();
+    expect(t.logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("connection reset"),
+    );
   });
 });
 

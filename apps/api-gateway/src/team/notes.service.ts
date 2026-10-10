@@ -165,14 +165,18 @@ export class NotesService {
     // Names come from the roster, which resolves a linked account's name — the
     // stored `display_name` is the gateway's own placeholder on any row
     // backfilled before 2026-09-04 and is not a name.
-    const roster = await this.team.listMembers(userId, restaurantId).catch(() => null);
+    const roster = await this.team
+      .listMembers(userId, restaurantId)
+      .catch(() => null);
     const nameOf = new Map<string, string>();
     for (const m of roster ?? []) {
       nameOf.set(m.id, m.linkedUser?.name?.trim() || m.display_name);
     }
 
     const isStaff = role === "staff";
-    const mine = isStaff ? await this.team.ownMemberId(userId, restaurantId) : null;
+    const mine = isStaff
+      ? await this.team.ownMemberId(userId, restaurantId)
+      : null;
     // A staff caller gets back only their OWN recipient and delivery rows. The
     // full list told every waiter when each colleague opened the note and how
     // it reached them (an "Away until …" hold included), and the page, handed
@@ -183,10 +187,14 @@ export class NotesService {
       .filter((n: any) =>
         // A staff caller with no roster row is addressed by nothing — it is not
         // a licence to read every note.
-        isStaff ? recipients.some((r) => r.note_id === n.id && r.member_id === mine) : true,
+        isStaff
+          ? recipients.some((r) => r.note_id === n.id && r.member_id === mine)
+          : true,
       )
       .map((n: any) => {
-        const to = recipients.filter((r) => r.note_id === n.id && visible(r.member_id));
+        const to = recipients.filter(
+          (r) => r.note_id === n.id && visible(r.member_id),
+        );
         return {
           id: n.id,
           weekStart: n.week_start,
@@ -265,7 +273,8 @@ export class NotesService {
     const senders = await this.text.readout(restaurantId);
     const textChannels: Array<"whatsapp" | "sms"> = [];
     if (senders.readable) {
-      if (senders.whatsapp?.state === "connected") textChannels.push("whatsapp");
+      if (senders.whatsapp?.state === "connected")
+        textChannels.push("whatsapp");
       if (senders.sms?.state === "connected") textChannels.push("sms");
     }
     const channels = ["inbox", "push", ...textChannels];
@@ -291,9 +300,9 @@ export class NotesService {
     // Recipients BEFORE delivery: a note that reached people but recorded
     // nobody is worse than one that recorded people and failed to reach them,
     // because only the second is visible afterwards.
-    const { error: rErr } = await this.sb.from("team_note_recipients").insert(
-      targets.map((m: any) => ({ note_id: note.id, member_id: m.id })),
-    );
+    const { error: rErr } = await this.sb
+      .from("team_note_recipients")
+      .insert(targets.map((m: any) => ({ note_id: note.id, member_id: m.id })));
     if (rErr) {
       this.logger.error(`create note recipients failed: ${rErr.message}`);
       throw new InternalServerErrorException(
@@ -314,8 +323,14 @@ export class NotesService {
      * to everyone, as before) and says so in `away.readable`; a hold that
      * cannot be written is delivered now instead of dropped.
      */
-    const awayUntil = this.awayHold ? await this.awayHold.awayToday(restaurantId) : new Map<string, string>();
-    const split = splitForAway(targets, (m: any) => m.user_id, awayUntil ?? new Map());
+    const awayUntil = this.awayHold
+      ? await this.awayHold.awayToday(restaurantId)
+      : new Map<string, string>();
+    const split = splitForAway(
+      targets,
+      (m: any) => m.user_id,
+      awayUntil ?? new Map(),
+    );
     let present: any[] = split.now;
     let held = split.held;
     let holdFailed = false;
@@ -377,7 +392,9 @@ export class NotesService {
         .insert(receipts);
       if (dErr) {
         receiptsError = dErr.message;
-        this.logger.error(`note ${note.id} receipts not written: ${dErr.message}`);
+        this.logger.error(
+          `note ${note.id} receipts not written: ${dErr.message}`,
+        );
       } else {
         receiptsWritten = true;
       }
@@ -414,8 +431,7 @@ export class NotesService {
           failed: tally("failed"),
           heldAway: tally("held_away"),
         },
-        note:
-          "One row per person per channel, written whether or not anything was delivered. `acceptedByService` is not a delivery, and `readFailed` is a fact about this system rather than about the crew.",
+        note: "One row per person per channel, written whether or not anything was delivered. `acceptedByService` is not a delivery, and `readFailed` is a fact about this system rather than about the crew.",
       },
       /**
        * Who the note waits for (ADR 0218): the sender is told each one's last
@@ -456,7 +472,10 @@ export class NotesService {
      * person with an account 0 is a failed write, never "nobody wanted it".
      */
     opts: { strictInbox?: boolean } = {},
-  ): Promise<{ receipts: DeliveryReceipt[]; delivered: { inbox: boolean; push: number } }> {
+  ): Promise<{
+    receipts: DeliveryReceipt[];
+    delivered: { inbox: boolean; push: number };
+  }> {
     const receipts: DeliveryReceipt[] = [];
     let delivered = { inbox: false, push: 0 };
     if (targets.length === 0) return { receipts, delivered };
@@ -467,9 +486,14 @@ export class NotesService {
       state: DeliveryState,
       detail: string,
     ) => {
-      receipts.push({ note_id: noteId, member_id: member.id, channel, state, detail });
+      receipts.push({
+        note_id: noteId,
+        member_id: member.id,
+        channel,
+        state,
+        detail,
+      });
     };
-
 
     // ── inbox ────────────────────────────────────────────────────────────
     let inboxError: string | null = null;
@@ -491,14 +515,27 @@ export class NotesService {
       delivered = { ...delivered, inbox: true };
     } catch (e: any) {
       inboxError = e?.message ?? "the inbox write threw without a message";
-      this.logger.warn(`note ${noteId} not delivered to the inbox: ${inboxError}`);
+      this.logger.warn(
+        `note ${noteId} not delivered to the inbox: ${inboxError}`,
+      );
     }
-    if (opts.strictInbox && userIds.length > 0 && (inboxError !== null || !inboxWritten)) {
-      throw new Error(`the inbox row was not written${inboxError ? `: ${inboxError}` : ""}`);
+    if (
+      opts.strictInbox &&
+      userIds.length > 0 &&
+      (inboxError !== null || !inboxWritten)
+    ) {
+      throw new Error(
+        `the inbox row was not written${inboxError ? `: ${inboxError}` : ""}`,
+      );
     }
     for (const m of targets) {
       if (inboxError) {
-        push(m, "inbox", "failed", `The in-app inbox write failed: ${inboxError}.`);
+        push(
+          m,
+          "inbox",
+          "failed",
+          `The in-app inbox write failed: ${inboxError}.`,
+        );
       } else if (!m.user_id) {
         // A roster entry with no linked account has no inbox to land in. This
         // is the case that used to vanish: `onlyUserIds` simply skipped them.
@@ -519,7 +556,11 @@ export class NotesService {
     // phone.
     const devices = await this.push.devicesByUser(userIds);
     let pushDetail = "";
-    if (userIds.length && devices !== null && [...devices.values()].some((n) => n > 0)) {
+    if (
+      userIds.length &&
+      devices !== null &&
+      [...devices.values()].some((n) => n > 0)
+    ) {
       const outcome = await this.push.sendToUsers(userIds, {
         title: "A note from your manager",
         body,
@@ -649,16 +690,22 @@ export class NotesService {
         .eq("restaurant_id", restaurantId)
         .maybeSingle(),
     ]);
-    if (noteRes.error) throw new Error(`team_notes could not be read: ${noteRes.error.message}`);
-    if (memberRes.error) throw new Error(`team_members could not be read: ${memberRes.error.message}`);
+    if (noteRes.error)
+      throw new Error(`team_notes could not be read: ${noteRes.error.message}`);
+    if (memberRes.error)
+      throw new Error(
+        `team_members could not be read: ${memberRes.error.message}`,
+      );
     // Both keys cascade to the hold, so a missing row here is a race with a
     // delete that is already removing the hold: nothing is owed.
-    if (!noteRes.data || !memberRes.data) return { delivered: false, receipts: 0 };
+    if (!noteRes.data || !memberRes.data)
+      return { delivered: false, receipts: 0 };
 
     const senders = await this.text.readout(restaurantId);
     const textChannels: Array<"whatsapp" | "sms"> = [];
     if (senders.readable) {
-      if (senders.whatsapp?.state === "connected") textChannels.push("whatsapp");
+      if (senders.whatsapp?.state === "connected")
+        textChannels.push("whatsapp");
       if (senders.sms?.state === "connected") textChannels.push("sms");
     }
     const { receipts } = await this.deliver(
@@ -712,12 +759,18 @@ export class NotesService {
     }
     const { error: leftErr } = await this.sb
       .from("team_note_deliveries")
-      .update({ state: "no_sender", detail: NO_SENDER_ON_RETURN, recorded_at: recordedAt })
+      .update({
+        state: "no_sender",
+        detail: NO_SENDER_ON_RETURN,
+        recorded_at: recordedAt,
+      })
       .eq("note_id", noteId)
       .eq("member_id", memberId)
       .eq("state", "held_away");
     if (leftErr) {
-      this.logger.error(`note ${noteId} left-over held receipts not closed: ${leftErr.message}`);
+      this.logger.error(
+        `note ${noteId} left-over held receipts not closed: ${leftErr.message}`,
+      );
     }
     return { delivered: true, receipts: receipts.length };
   }
@@ -726,15 +779,25 @@ export class NotesService {
    * The person a note waited for left the house before coming back: their
    * `held_away` receipts are closed as `failed`, with the reason.
    */
-  async closeHeldForLeaver(noteId: string, memberId: string, detail: string): Promise<void> {
+  async closeHeldForLeaver(
+    noteId: string,
+    memberId: string,
+    detail: string,
+  ): Promise<void> {
     const { error } = await this.sb
       .from("team_note_deliveries")
-      .update({ state: "failed", detail, recorded_at: new Date().toISOString() })
+      .update({
+        state: "failed",
+        detail,
+        recorded_at: new Date().toISOString(),
+      })
       .eq("note_id", noteId)
       .eq("member_id", memberId)
       .eq("state", "held_away");
     if (error) {
-      this.logger.error(`note ${noteId} held receipts not closed for ${memberId}: ${error.message}`);
+      this.logger.error(
+        `note ${noteId} held receipts not closed for ${memberId}: ${error.message}`,
+      );
     }
   }
 

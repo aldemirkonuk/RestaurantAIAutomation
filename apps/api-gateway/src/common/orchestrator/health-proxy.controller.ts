@@ -58,7 +58,8 @@ const count = (value: unknown): number | null =>
 export function publicAgentHealth(value: unknown) {
   const row = record(value);
   return {
-    agent_name: typeof row.agent_name === "string" ? row.agent_name : "Unnamed agent",
+    agent_name:
+      typeof row.agent_name === "string" ? row.agent_name : "Unnamed agent",
     version: typeof row.version === "string" ? row.version : null,
     status:
       typeof row.status === "string" &&
@@ -135,7 +136,8 @@ export function publicAgentDetail(value: unknown) {
       typeof breaker.state === "string" && /^[a-z_]{1,32}$/.test(breaker.state)
         ? {
             state: breaker.state,
-            available: typeof breaker.available === "boolean" ? breaker.available : null,
+            available:
+              typeof breaker.available === "boolean" ? breaker.available : null,
           }
         : null,
   };
@@ -156,8 +158,14 @@ export class HealthProxyController {
   async getAllAgentsHealth() {
     try {
       const result = await this.orchestratorService.getAgentHealthAll();
-      if (!Array.isArray(result?.agents)) throw new Error("Invalid health response");
-      return { agents: result.agents.map(publicAgentHealth), count: result.agents.length, observedAt: new Date().toISOString(), scope: "platform" };
+      if (!Array.isArray(result?.agents))
+        throw new Error("Invalid health response");
+      return {
+        agents: result.agents.map(publicAgentHealth),
+        count: result.agents.length,
+        observedAt: new Date().toISOString(),
+        scope: "platform",
+      };
     } catch {
       throw new ServiceUnavailableException("Agent health could not be read.");
     }
@@ -171,7 +179,9 @@ export class HealthProxyController {
   @UseGuards(OwnerOrPlatformOperatorGuard)
   async getAgentHealth(@Param("name") name: string) {
     try {
-      return publicAgentDetail(await this.orchestratorService.getAgentHealthByName(name));
+      return publicAgentDetail(
+        await this.orchestratorService.getAgentHealthByName(name),
+      );
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw new BadRequestException("Invalid agent name.");

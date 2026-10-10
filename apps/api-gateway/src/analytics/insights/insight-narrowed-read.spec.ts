@@ -188,9 +188,9 @@ describe("a read narrowed to one catalogue type (ADR 0191)", () => {
       candidateKeys: [hidden.candidateKey],
       persist: true,
     });
-    expect(client.writes.filter((w) => w.table === "analytics_insights")).toEqual(
-      [],
-    );
+    expect(
+      client.writes.filter((w) => w.table === "analytics_insights"),
+    ).toEqual([]);
 
     // The control: the same read, un-narrowed, DOES write — so the empty list
     // above is the narrowing, not a harness that cannot see writes.

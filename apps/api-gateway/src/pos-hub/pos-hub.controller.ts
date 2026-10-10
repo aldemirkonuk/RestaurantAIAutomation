@@ -196,7 +196,8 @@ export class PosHubController {
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Which POS providers' checks this restaurant takes or refuses (owner or manager)",
+    summary:
+      "Which POS providers' checks this restaurant takes or refuses (owner or manager)",
   })
   async listConnections(@Param("restaurantId") restaurantId: string) {
     try {
@@ -220,7 +221,8 @@ export class PosHubController {
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Take or refuse a POS provider's checks for this restaurant (owner or manager)",
+    summary:
+      "Take or refuse a POS provider's checks for this restaurant (owner or manager)",
     description:
       "Body: { enabled: boolean }. enabled=false makes the webhook refuse this provider's checks for this restaurant with 409 until it is set back to true.",
   })

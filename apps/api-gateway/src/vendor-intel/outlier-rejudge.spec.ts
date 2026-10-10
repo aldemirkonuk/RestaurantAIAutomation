@@ -144,9 +144,7 @@ describe("planRejudge", () => {
     expect(verdict.get(flagged.id)).toBe(false);
 
     const after = priceBelowAverage(
-      rows
-        .filter((r) => !(verdict.get(r.id) ?? r.is_outlier))
-        .map(toReaderRow),
+      rows.filter((r) => !(verdict.get(r.id) ?? r.is_outlier)).map(toReaderRow),
     );
     expect(after.items).toHaveLength(1);
     expect(after.items[0].latest.unitPrice).toBeCloseTo(95, 6);
@@ -165,7 +163,9 @@ describe("planRejudge", () => {
     expect(plan.groups[0].updates).toHaveLength(0);
     expect(plan.groups[0].silence?.reason).toBe("thin_window");
     // Not "clean". The sentence has to refuse the inference.
-    expect(GROUP_SILENCE_SENTENCE.thin_window).toMatch(/none of them is claimed to be clean/);
+    expect(GROUP_SILENCE_SENTENCE.thin_window).toMatch(
+      /none of them is claimed to be clean/,
+    );
   });
 
   it("never sets a quoted price beside a public-site one", () => {
@@ -282,7 +282,10 @@ function makeService(
       limit: () => b,
       range: (lo: number, hi: number) => {
         reads.push([lo, hi]);
-        page = rows.slice(lo, Math.min(hi + 1, lo + (opts.serverMaxRows ?? Infinity)));
+        page = rows.slice(
+          lo,
+          Math.min(hi + 1, lo + (opts.serverMaxRows ?? Infinity)),
+        );
         return b;
       },
       // The sweep reads through `scopePriceRegisterRead` (ADR 0117 addendum),
@@ -338,7 +341,9 @@ describe("OutlierRejudgeService", () => {
     expect(s.cron).toBe(REJUDGE_CRON);
     expect(s.lastRun).toBeNull();
     expect(s.sentence).toMatch(/switched off/);
-    expect(s.sentence).toMatch(/every flag on the register is the one its writer set/);
+    expect(s.sentence).toMatch(
+      /every flag on the register is the one its writer set/,
+    );
   });
 
   it("names its cross-house scope, and still excludes the third visibility state", async () => {
@@ -383,11 +388,26 @@ describe("OutlierRejudgeService", () => {
 
   it("one product's failed write never stops the others", async () => {
     const other = [
-      rrow({ master_wine_id: "22222222-2222-2222-2222-222222222222", raw_price: 50 }),
-      rrow({ master_wine_id: "22222222-2222-2222-2222-222222222222", raw_price: 50.5 }),
-      rrow({ master_wine_id: "22222222-2222-2222-2222-222222222222", raw_price: 49.5 }),
-      rrow({ master_wine_id: "22222222-2222-2222-2222-222222222222", raw_price: 50.2 }),
-      rrow({ master_wine_id: "22222222-2222-2222-2222-222222222222", raw_price: 50.1 }),
+      rrow({
+        master_wine_id: "22222222-2222-2222-2222-222222222222",
+        raw_price: 50,
+      }),
+      rrow({
+        master_wine_id: "22222222-2222-2222-2222-222222222222",
+        raw_price: 50.5,
+      }),
+      rrow({
+        master_wine_id: "22222222-2222-2222-2222-222222222222",
+        raw_price: 49.5,
+      }),
+      rrow({
+        master_wine_id: "22222222-2222-2222-2222-222222222222",
+        raw_price: 50.2,
+      }),
+      rrow({
+        master_wine_id: "22222222-2222-2222-2222-222222222222",
+        raw_price: 50.1,
+      }),
     ];
     const { svc, updates } = makeService([...cluster, ...other], {
       flag: "true",
@@ -398,7 +418,9 @@ describe("OutlierRejudgeService", () => {
     expect(summary.groupsFailed).toBe(1);
     expect(summary.failures[0].message).toMatch(/write refused/);
     // The second product was still judged and written in full.
-    expect(updates.filter((u) => other.some((o) => o.id === u.id))).toHaveLength(5);
+    expect(
+      updates.filter((u) => other.some((o) => o.id === u.id)),
+    ).toHaveLength(5);
     expect(summary.rowsJudged).toBe(5);
   });
 

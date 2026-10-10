@@ -121,7 +121,11 @@ describe("SaleRecordProducer", () => {
     const { db, notifications, producer } = build();
     db.tables.pos_checks.push(check());
     db.tables.pos_checks.push(
-      check({ covers: 2, total: 96, items: [{ name: "Sancerre 2022", qty: 1, price: 62 }] }),
+      check({
+        covers: 2,
+        total: 96,
+        items: [{ name: "Sancerre 2022", qty: 1, price: 62 }],
+      }),
     );
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
 
@@ -143,7 +147,13 @@ describe("SaleRecordProducer", () => {
     const { db, notifications, producer } = build();
     db.tables.pos_checks.push(check());
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
-    const second = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
+    const second = await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      AUDIENCE,
+      NOW,
+      true,
+    );
     expect(notifications.persistForRestaurant.calls).toHaveLength(1);
     expect(second.emitted).toBe(0);
     expect(second.alreadyClaimed).toBeGreaterThan(0);
@@ -183,7 +193,9 @@ describe("SaleRecordProducer", () => {
     db.tables.pos_checks.push(check({ covers: null, total: 50 }));
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
     const call = notifications.persistForRestaurant.calls[0][1];
-    expect(call.message).toContain("4 covers across the 1 checks that reported one; 1 did not.");
+    expect(call.message).toContain(
+      "4 covers across the 1 checks that reported one; 1 did not.",
+    );
     expect(call.metadata.checksWithoutCovers).toBe(1);
   });
 
@@ -201,7 +213,13 @@ describe("SaleRecordProducer", () => {
     db.tables.pos_checks.push(check());
     // 2026-09-03 08:00 UTC = 04:00 New York, before the 06:00 margin.
     const early = new Date("2026-09-03T08:00:00Z");
-    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, early, true);
+    const tally = await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      AUDIENCE,
+      early,
+      true,
+    );
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
     expect(tally.withheldReason).toMatch(/not settled until/);
   });
@@ -239,8 +257,13 @@ describe("service-day — when a day's data is in", () => {
 
   it("known hours settle an hour after the last window ends", () => {
     const hours = {
-      mon: [], tue: [], wed: [{ open: "17:00", close: "23:00" }],
-      thu: [], fri: [], sat: [], sun: [],
+      mon: [],
+      tue: [],
+      wed: [{ open: "17:00", close: "23:00" }],
+      thu: [],
+      fri: [],
+      sat: [],
+      sun: [],
     };
     // 2026-09-02 is a Wednesday. 23:00 New York = 03:00 UTC on the 3rd; +1h.
     const verdict = serviceDaySettled(hours, ZONE, "2026-09-02", NOW);
@@ -251,7 +274,13 @@ describe("service-day — when a day's data is in", () => {
 
   it("[REVERT-FAILS] a day the venue is closed is a verdict, not 'not settled yet'", () => {
     const hours = {
-      mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [],
+      mon: [],
+      tue: [],
+      wed: [],
+      thu: [],
+      fri: [],
+      sat: [],
+      sun: [],
     };
     const verdict = serviceDaySettled(hours, ZONE, "2026-09-02", NOW);
     expect(verdict.rule).toBe("closed_day");

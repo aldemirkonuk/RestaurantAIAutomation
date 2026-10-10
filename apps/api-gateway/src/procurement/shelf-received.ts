@@ -116,7 +116,9 @@ export function repeatsTheLatestConfirmation(
 ): boolean {
   if (!latest) return false;
   const latestCounted =
-    latest.counted_qty_bottles == null ? null : Number(latest.counted_qty_bottles);
+    latest.counted_qty_bottles == null
+      ? null
+      : Number(latest.counted_qty_bottles);
   if (latestCounted !== null && !Number.isFinite(latestCounted)) return false;
   return latestCounted === confirmedBottles;
 }
@@ -132,7 +134,11 @@ export const RECEIVED_IS_THE_LEDGER =
   "count follows from the stock that actually moved.";
 
 /** Units whose one-of-them is several bottles. The same set the door and verify use. */
-const MULTIPLYING: ReadonlySet<Uom> = new Set<Uom>(["case", "pack", "split_case"]);
+const MULTIPLYING: ReadonlySet<Uom> = new Set<Uom>([
+  "case",
+  "pack",
+  "split_case",
+]);
 
 /** Door-accepted bottles can only be set against a ledger kept in one of these. */
 const BOTTLE_LIKE = new Set(["bottle", "each"]);
@@ -273,7 +279,9 @@ export function shelfWords(input: {
     return `${quantity} ${unitNoun(stockUom, quantity)}`;
   }
   const whole = `${packs} ${unitNoun(packUnit, packs)}`;
-  return loose === 0 ? whole : `${whole} + ${loose} ${unitNoun(stockUom, loose)}`;
+  return loose === 0
+    ? whole
+    : `${whole} + ${loose} ${unitNoun(stockUom, loose)}`;
 }
 
 /**
@@ -287,7 +295,9 @@ export function besideTheShelf(received: ShelfReceived): string {
   const parts: string[] = [];
   const rejected = received.rejectedAtDoorBottles;
   if (rejected > 0)
-    parts.push(`${rejected} ${unitNoun("bottle", rejected)} rejected at the door`);
+    parts.push(
+      `${rejected} ${unitNoun("bottle", rejected)} rejected at the door`,
+    );
   const pending = received.countedNotBookedBottles;
   if (pending !== null && pending > 0)
     parts.push(
@@ -353,7 +363,10 @@ export function orderPack(
   const unit: Uom | null = rawUnit === "" ? "bottle" : normalizeUom(rawUnit);
   if (line) {
     const size = Number(line.bottles_per_unit);
-    return { unit, size: Number.isSafeInteger(size) && size >= 1 ? size : null };
+    return {
+      unit,
+      size: Number.isSafeInteger(size) && size >= 1 ? size : null,
+    };
   }
   const quantity = Number(order.quantity);
   const bottles = Number(order.bottles_total);
@@ -398,7 +411,8 @@ export function composeShelfReceived(input: {
   let quantity = 0;
   let notDesk = 0;
   for (const row of input.ledger) {
-    if (row.order_id !== order.id || row.inventory_id !== order.inventory_id) continue;
+    if (row.order_id !== order.id || row.inventory_id !== order.inventory_id)
+      continue;
     const change = Number(row.quantity_change);
     if (row.quantity_change == null || !Number.isSafeInteger(change)) {
       return shelfUnreadable(
@@ -406,7 +420,9 @@ export function composeShelfReceived(input: {
       );
     }
     quantity += change;
-    if (!String(row.idempotency_key ?? "").startsWith(DESK_CORRECTION_KEY_PREFIX))
+    if (
+      !String(row.idempotency_key ?? "").startsWith(DESK_CORRECTION_KEY_PREFIX)
+    )
       notDesk += change;
   }
   if (!Number.isSafeInteger(quantity) || quantity < 0) {
@@ -434,7 +450,8 @@ export function composeShelfReceived(input: {
     if (e.stage === "reconciled") {
       if (later(desk, e)) desk = e;
       if (!isCountsConfirmation(e) && later(deskRefusal, e)) deskRefusal = e;
-      if (e.invoice_qty_bottles != null && later(deskInvoice, e)) deskInvoice = e;
+      if (e.invoice_qty_bottles != null && later(deskInvoice, e))
+        deskInvoice = e;
       continue;
     }
     const counted = Number(e.counted_qty_bottles ?? 0);
@@ -452,9 +469,16 @@ export function composeShelfReceived(input: {
   let invoicedBottles: number | null = null;
   if (desk) {
     // Only confirmations so far: the desk verified and refused nothing.
-    const rejected = deskRefusal ? Number(deskRefusal.rejected_qty_bottles ?? 0) : 0;
-    const invoiced = deskInvoice ? Number(deskInvoice.invoice_qty_bottles) : null;
-    if (!Number.isFinite(rejected) || (invoiced !== null && !Number.isFinite(invoiced))) {
+    const rejected = deskRefusal
+      ? Number(deskRefusal.rejected_qty_bottles ?? 0)
+      : 0;
+    const invoiced = deskInvoice
+      ? Number(deskInvoice.invoice_qty_bottles)
+      : null;
+    if (
+      !Number.isFinite(rejected) ||
+      (invoiced !== null && !Number.isFinite(invoiced))
+    ) {
       return shelfUnreadable(
         "The verification on this order holds a number that cannot be read, so what it rejected or was invoiced was not added up.",
       );
@@ -472,13 +496,14 @@ export function composeShelfReceived(input: {
   // rounded guess — a backorder computed from one would be a number nobody
   // counted.
   const orderedQty = Number(order.quantity);
-  const orderedBottles: number | null = !Number.isSafeInteger(orderedQty) || orderedQty < 0
-    ? null
-    : pack.unit === "bottle" || pack.unit === "each"
-      ? orderedQty
-      : pack.unit !== null && MULTIPLYING.has(pack.unit) && pack.size !== null
-        ? orderedQty * pack.size
-        : null;
+  const orderedBottles: number | null =
+    !Number.isSafeInteger(orderedQty) || orderedQty < 0
+      ? null
+      : pack.unit === "bottle" || pack.unit === "each"
+        ? orderedQty
+        : pack.unit !== null && MULTIPLYING.has(pack.unit) && pack.size !== null
+          ? orderedQty * pack.size
+          : null;
   const packView =
     stockUom === "bottle" &&
     pack.unit !== null &&
@@ -585,7 +610,9 @@ export async function readShelfReceived(
         readAll("The stock ledger", (from, to) =>
           db
             .from("inventory_transactions")
-            .select("id, order_id, inventory_id, quantity_change, idempotency_key")
+            .select(
+              "id, order_id, inventory_id, quantity_change, idempotency_key",
+            )
             .eq("restaurant_id", restaurantId)
             .in("order_id", ids)
             .eq("stock_type", "live")
@@ -626,7 +653,10 @@ export async function readShelfReceived(
         ),
       ]);
       const uomByItem = new Map<string, string | null>(
-        items.map((r: any) => [String(r.id), r.uom == null ? null : String(r.uom)]),
+        items.map((r: any) => [
+          String(r.id),
+          r.uom == null ? null : String(r.uom),
+        ]),
       );
       for (const order of batch) {
         out.set(

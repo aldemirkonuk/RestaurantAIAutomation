@@ -94,8 +94,14 @@ function cappedDb(
       },
       eq: (c: string, v: any) => (filters.push((r) => pathGet(r, c) === v), q),
       neq: (c: string, v: any) => (filters.push((r) => pathGet(r, c) !== v), q),
-      is: (c: string, v: any) => (filters.push((r) => (pathGet(r, c) ?? null) === v), q),
-      in: (c: string, vs: any[]) => (filters.push((r) => vs.includes(pathGet(r, c))), q),
+      is: (c: string, v: any) => (
+        filters.push((r) => (pathGet(r, c) ?? null) === v),
+        q
+      ),
+      in: (c: string, vs: any[]) => (
+        filters.push((r) => vs.includes(pathGet(r, c))),
+        q
+      ),
       gte: (c: string, v: any) => (filters.push((r) => pathGet(r, c) >= v), q),
       lte: (c: string, v: any) => (filters.push((r) => pathGet(r, c) <= v), q),
       gt: (c: string, v: any) => (filters.push((r) => pathGet(r, c) > v), q),
@@ -107,10 +113,14 @@ function cappedDb(
       // Only `col.ilike.pattern` clauses are modelled. Any other `or` (the
       // price register's tenancy clause) is not a filter these rows test.
       or: (expr: string) => {
-        const clauses = expr.split(",").map((c) => /^([\w.]+)\.ilike\.(.*)$/.exec(c));
+        const clauses = expr
+          .split(",")
+          .map((c) => /^([\w.]+)\.ilike\.(.*)$/.exec(c));
         if (clauses.every(Boolean)) {
           filters.push((r) =>
-            clauses.some((m) => likeToRegex(m![2]).test(String(pathGet(r, m![1]) ?? ""))),
+            clauses.some((m) =>
+              likeToRegex(m![2]).test(String(pathGet(r, m![1]) ?? "")),
+            ),
           );
         }
         return q;
@@ -174,7 +184,10 @@ describe("F-330 — Settings → POS status counts every check of the 30 days", 
   });
 
   it("a failed page is 'unavailable', never a count", async () => {
-    const { db } = cappedDb({ pos_checks: checks }, { pos_checks: { message: "boom" } });
+    const { db } = cappedDb(
+      { pos_checks: checks },
+      { pos_checks: { message: "boom" } },
+    );
     const out: any = await new PosHubService(db).getStatus(R);
     expect(out.unavailable).toBe(true);
     expect(out.totalChecks).toBeNull();
@@ -247,7 +260,9 @@ describe("F-331 — /orders' approval gate judges the newest pending orders", ()
         reason: null,
       }),
     } as any;
-    const orgs = { resolveRestaurantRole: jest.fn().mockResolvedValue("manager") } as any;
+    const orgs = {
+      resolveRestaurantRole: jest.fn().mockResolvedValue("manager"),
+    } as any;
     const svc = new ProcurementService(
       db,
       { createEvent: jest.fn() } as any,
@@ -305,9 +320,9 @@ describe("F-332 — COGS-365 and the purchase-spend goal sum the whole year", ()
       { procurement_orders: deliveredOrders },
       { procurement_orders: { message: "boom" } },
     );
-    await expect(new AnalyticsService(db).getFinancialSummary(R)).rejects.toBeInstanceOf(
-      WholeReadError,
-    );
+    await expect(
+      new AnalyticsService(db).getFinancialSummary(R),
+    ).rejects.toBeInstanceOf(WholeReadError);
   });
 
   const goals = (db: any) =>
@@ -333,7 +348,13 @@ describe("F-332 — COGS-365 and the purchase-spend goal sum the whole year", ()
       { procurement_orders: { message: "boom" } },
     );
     await expect(
-      (goals(db) as any).computeMetricWithSeries(R, "purchase_spend", since, undefined, "UTC"),
+      (goals(db) as any).computeMetricWithSeries(
+        R,
+        "purchase_spend",
+        since,
+        undefined,
+        "UTC",
+      ),
     ).rejects.toBeInstanceOf(WholeReadError);
   });
 });
@@ -363,7 +384,9 @@ describe("F-333 — a cellar row's order book finds a drink past the first 400 l
   it("1,200 other lines first, then the house's beer: the beer is ordered", async () => {
     const items = [
       ...Array.from({ length: 1200 }, (_, i) => orderItem(i, `House Red ${i}`)),
-      ...Array.from({ length: 5 }, (_, i) => orderItem(1200 + i, "Pilsen", "Efes")),
+      ...Array.from({ length: 5 }, (_, i) =>
+        orderItem(1200 + i, "Pilsen", "Efes"),
+      ),
     ];
     const { db } = cappedDb({ procurement_order_items: items });
     const out = await new BeveragesService(db).readRowRecord(R, "Efes Pilsen");
@@ -375,7 +398,9 @@ describe("F-333 — a cellar row's order book finds a drink past the first 400 l
   });
 
   it("past 400 matching lines it says it read the newest only", async () => {
-    const items = Array.from({ length: 450 }, (_, i) => orderItem(i, "Efes Pilsen"));
+    const items = Array.from({ length: 450 }, (_, i) =>
+      orderItem(i, "Efes Pilsen"),
+    );
     const { db } = cappedDb({ procurement_order_items: items });
     const out = await new BeveragesService(db).readRowRecord(R, "Efes Pilsen");
     const order = out.books.find((b) => b.book === "order")!;
@@ -389,7 +414,9 @@ describe("F-333 — a cellar row's order book finds a drink past the first 400 l
   it("a capped read that matched nothing never says 'never ordered'", async () => {
     // Wider in SQL than `matchLine`: "Efes-Pilsen" asks for efes…pilsen, and
     // "Efes Pilsen" is not the same words, so 401 candidates match none.
-    const items = Array.from({ length: 401 }, (_, i) => orderItem(i, "Efes Pilsen"));
+    const items = Array.from({ length: 401 }, (_, i) =>
+      orderItem(i, "Efes Pilsen"),
+    );
     const { db } = cappedDb({ procurement_order_items: items });
     const out = await new BeveragesService(db).readRowRecord(R, "Efes-Pilsen");
     const order = out.books.find((b) => b.book === "order")!;
@@ -413,7 +440,9 @@ describe("F-334 — an item's movement chart keeps its newest days", () => {
       transaction_type: "pour",
       // The first 1,200 sit 27..15 days back; the last 300 in the last hour.
       created_at:
-        i < 1200 ? daysAgo(27, i * 800_000) : daysAgo(0, -3_600_000 + (i - 1200) * 1000),
+        i < 1200
+          ? daysAgo(27, i * 800_000)
+          : daysAgo(0, -3_600_000 + (i - 1200) * 1000),
     }));
     const { db } = cappedDb({ inventory_transactions: tx });
     const out: any = await new InventoryService(db).getItemActivity(R, "inv-1");

@@ -86,7 +86,8 @@ export function actorOf(user?: {
   role?: string;
 }): RecommendationActor {
   return {
-    userId: typeof user?.userId === "string" && user.userId ? user.userId : null,
+    userId:
+      typeof user?.userId === "string" && user.userId ? user.userId : null,
     role: typeof user?.role === "string" && user.role ? user.role : null,
     leadsAreas: [],
   };
@@ -368,7 +369,8 @@ export class RecommendationActionsService {
         });
       }
     } catch (err: any) {
-      const problem = err?.message || "recommendation_actions could not be read";
+      const problem =
+        err?.message || "recommendation_actions could not be read";
       this.logger.warn(`readDispositions failed: ${problem}`);
       return { map, readable: false, problem };
     }
@@ -391,7 +393,8 @@ export class RecommendationActionsService {
     readable: boolean;
     problem: string | null;
   }> {
-    const { map, readable, problem } = await this.readDispositions(restaurantId);
+    const { map, readable, problem } =
+      await this.readDispositions(restaurantId);
     const keys = new Set<string>();
     for (const [key, row] of map) if (row.status === "dismissed") keys.add(key);
     return { keys, readable, problem };
@@ -412,7 +415,8 @@ export class RecommendationActionsService {
     readable: boolean;
     problem: string | null;
   }> {
-    const { map, readable, problem } = await this.readDispositions(restaurantId);
+    const { map, readable, problem } =
+      await this.readDispositions(restaurantId);
     return { book: stateBookFrom(map.values()), readable, problem };
   }
 
@@ -646,7 +650,11 @@ export class RecommendationActionsService {
     // What the toggle lifts or replaces, for the append-only history (round
     // 3, "Keep every label"). A failed read refuses the toggle: the history
     // is the record, and a row it cannot place is not written blind.
-    const { current } = await this.ruleWideStatus([ruleKey], restaurantId, patch);
+    const { current } = await this.ruleWideStatus(
+      [ruleKey],
+      restaurantId,
+      patch,
+    );
     const row = await this.setAction(
       restaurantId,
       ruleKey,
@@ -718,7 +726,8 @@ export class RecommendationActionsService {
   ): Promise<ActWriteResult> {
     if (!ruleKey?.trim()) throw new Error("ruleKey is required");
     const route = planAct(patch, actor, this.cardAreasOf(ruleKey), Date.now());
-    if (route.to === "refused") throw new ActRefused(route.why, route.forbidden);
+    if (route.to === "refused")
+      throw new ActRefused(route.why, route.forbidden);
     if (route.to === "personal") {
       const personal = await this.snoozeForMe(
         restaurantId,
@@ -749,7 +758,12 @@ export class RecommendationActionsService {
     const noteFields = notesTouchedBy(housePatch);
     const notesBefore =
       noteFields.length > 0
-        ? await this.assertMayTouchNotes(restaurantId, ruleKey, noteFields, actor)
+        ? await this.assertMayTouchNotes(
+            restaurantId,
+            ruleKey,
+            noteFields,
+            actor,
+          )
         : NO_NOTES;
     const row = await this.setAction(
       restaurantId,
@@ -1042,7 +1056,8 @@ export class RecommendationActionsService {
     const refused: Array<{ key: string; unknown: boolean }> = [];
     for (const [k, row] of held) {
       const madeBy = authorOf(row, latest.get(k));
-      if (!mayUndo(actor, madeBy)) refused.push({ key: k, unknown: madeBy === null });
+      if (!mayUndo(actor, madeBy))
+        refused.push({ key: k, unknown: madeBy === null });
     }
     if (refused.length === 0) return;
     throw new ActRefused(
@@ -1168,7 +1183,10 @@ export class RecommendationActionsService {
   }
 
   /** One field's (isSet, owner) pair, as `mayTouchNote` reads it. */
-  private fieldState(o: NoteOwnership, field: NoteField): [boolean, string | null] {
+  private fieldState(
+    o: NoteOwnership,
+    field: NoteField,
+  ): [boolean, string | null] {
     if (field === "pinned") return [o.pinned, o.pinnedBy];
     if (field === "feedback") return [o.hasFeedback, o.ratedBy];
     if (field === "acted") return [o.acted, o.actedBy];
@@ -1316,10 +1334,7 @@ export class RecommendationActionsService {
     patch: RecommendationActionPatch,
     actor: RecommendationActor,
   ): void {
-    if (
-      (patch.status !== undefined || touchesNotes(patch)) &&
-      !actor.userId
-    )
+    if ((patch.status !== undefined || touchesNotes(patch)) && !actor.userId)
       throw new ActRefused(
         "A signed-in user is required — every dismiss, restore, done, snooze and note (pin, rating, assignment, briefing) is kept with who made it.",
         true,
@@ -1359,7 +1374,8 @@ export class RecommendationActionsService {
             act,
             status_from: from,
             status_to: patch.status,
-            reason: patch.status === "dismissed" ? (patch.reason ?? null) : null,
+            reason:
+              patch.status === "dismissed" ? (patch.reason ?? null) : null,
             snooze_until:
               patch.status === "snoozed" ? (patch.snoozeUntil ?? null) : null,
             rule_wide: isRuleWideKey(ruleKey),
@@ -1461,8 +1477,7 @@ export class RecommendationActionsService {
     userId: string,
     ruleKey: string,
   ): Promise<{ woke: boolean }> {
-    if (!userId)
-      throw new ActRefused("A signed-in user is required.", true);
+    if (!userId) throw new ActRefused("A signed-in user is required.", true);
     if (!ruleKey?.trim()) throw new Error("ruleKey is required");
     const { data, error } = await this.dbService
       .getClient()
@@ -1481,8 +1496,7 @@ export class RecommendationActionsService {
     restaurantId: string,
     userId: string,
   ): Promise<PersonalSnoozeRow[]> {
-    if (!userId)
-      throw new ActRefused("A signed-in user is required.", true);
+    if (!userId) throw new ActRefused("A signed-in user is required.", true);
     const { data, error } = await this.dbService
       .getClient()
       .from("recommendation_personal_snoozes")
@@ -1502,7 +1516,11 @@ export class RecommendationActionsService {
   async readPersonalBook(
     restaurantId: string,
     userId: string,
-  ): Promise<{ book: PersonalBook; readable: boolean; problem: string | null }> {
+  ): Promise<{
+    book: PersonalBook;
+    readable: boolean;
+    problem: string | null;
+  }> {
     try {
       const rows = await this.listForMe(restaurantId, userId);
       return { book: personalBookFrom(rows), readable: true, problem: null };
@@ -1531,7 +1549,10 @@ export class RecommendationActionsService {
   }> {
     if (!userId)
       return { kept: items, hiddenForYou: 0, personalSnoozesReadable: false };
-    const { book, readable } = await this.readPersonalBook(restaurantId, userId);
+    const { book, readable } = await this.readPersonalBook(
+      restaurantId,
+      userId,
+    );
     const view = personalView(items, targetOf, book);
     return { ...view, personalSnoozesReadable: readable };
   }
@@ -1627,7 +1648,9 @@ export class RecommendationActionsService {
     restaurantId: string,
     status: RecommendationStatus | "all",
     viewer?: RecommendationActor,
-  ): Promise<Array<RecommendationActionRow & { undoableByYou?: boolean | null }>> {
+  ): Promise<
+    Array<RecommendationActionRow & { undoableByYou?: boolean | null }>
+  > {
     let q = this.dbService
       .getClient()
       .from("recommendation_actions")
@@ -1650,7 +1673,10 @@ export class RecommendationActionsService {
       });
     if (!viewer) return rows;
     const undoable = await this.undoableFor(restaurantId, rows, viewer, now);
-    return rows.map((r) => ({ ...r, undoableByYou: undoable.get(r.ruleKey) ?? null }));
+    return rows.map((r) => ({
+      ...r,
+      undoableByYou: undoable.get(r.ruleKey) ?? null,
+    }));
   }
 
   /** `undoableByYou` for each row — see `listByStatus`. Never throws. */
@@ -1683,7 +1709,9 @@ export class RecommendationActionsService {
         out.set(r.ruleKey, mayUndo(viewer, madeBy));
       }
     } catch (err: any) {
-      this.logger.warn(`undoableFor: the history could not be read: ${err?.message}`);
+      this.logger.warn(
+        `undoableFor: the history could not be read: ${err?.message}`,
+      );
       for (const r of held) out.set(r.ruleKey, null);
     }
     return out;

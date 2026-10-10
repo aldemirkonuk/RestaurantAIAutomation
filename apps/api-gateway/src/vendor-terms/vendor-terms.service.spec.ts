@@ -1,4 +1,7 @@
-import { VendorTermsService, PROVIDER_COLUMN_DEFAULTS } from "./vendor-terms.service";
+import {
+  VendorTermsService,
+  PROVIDER_COLUMN_DEFAULTS,
+} from "./vendor-terms.service";
 
 /**
  * The register's own rules, pinned.
@@ -20,7 +23,10 @@ type Rows = Record<string, unknown[]>;
  * at `.maybeSingle()`. Records the tables it was asked for so tenant scoping
  * can be asserted on the filters rather than on faith.
  */
-function makeDb(rows: Rows, errors: Record<string, { message: string; code?: string }> = {}) {
+function makeDb(
+  rows: Rows,
+  errors: Record<string, { message: string; code?: string }> = {},
+) {
   const filters: Array<{ table: string; column: string; value: unknown }> = [];
   const upserts: Array<{ table: string; row: any; options: unknown }> = [];
 
@@ -49,7 +55,8 @@ function makeDb(rows: Rows, errors: Record<string, { message: string; code?: str
             ? { data: null, error: errors[table] }
             : { data: (rows[table] ?? [])[0] ?? null, error: null },
         single: async () => result,
-        then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+        then: (resolve: (v: unknown) => unknown) =>
+          Promise.resolve(result).then(resolve),
       };
       return chain;
     },
@@ -112,7 +119,10 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
       users: [],
     });
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
 
     const v = out.vendors[0];
     expect(v.leadTimeDays).toMatchObject({
@@ -148,7 +158,10 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
       users: [],
     });
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
 
     const v = out.vendors[0];
     expect(v.leadTimeDays.value).toBeNull();
@@ -162,7 +175,13 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
     const { databaseService } = makeDb({
       restaurants: HOUSE,
       providers: [
-        { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: 3, payment_terms: "Net 15" },
+        {
+          id: PID,
+          name: "Anadolu",
+          minimum_order: null,
+          lead_time_days: 3,
+          payment_terms: "Net 15",
+        },
       ],
       restaurant_providers: [],
       restaurant_vendor_terms: [],
@@ -170,7 +189,10 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
       users: [],
     });
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
 
     expect(out.vendors[0].leadTimeDays).toMatchObject({
       value: 3,
@@ -196,14 +218,22 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
         },
       ],
       restaurant_providers: [
-        { provider_id: PID, custom_lead_time_days: 2, custom_minimum_order: 500, last_order_date: "2026-09-01" },
+        {
+          provider_id: PID,
+          custom_lead_time_days: 2,
+          custom_minimum_order: 500,
+          last_order_date: "2026-09-01",
+        },
       ],
       restaurant_vendor_terms: [],
       procurement_orders: [],
       users: [],
     });
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
 
     expect(out.vendors[0].leadTimeDays).toMatchObject({
       value: 2,
@@ -219,8 +249,12 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
 describe("VendorTermsService — a stated term carries its author, and its contradiction", () => {
   it("names who stated it and when, and flags a delivery pattern that disagrees", async () => {
     const orders = [
-      "2026-09-02", "2026-09-09", "2026-09-16", "2026-09-23",
-      "2026-09-30", "2026-10-07",
+      "2026-09-02",
+      "2026-09-09",
+      "2026-09-16",
+      "2026-09-23",
+      "2026-09-30",
+      "2026-10-07",
     ].map((d) => ({
       provider_id: PID,
       requested_at: `${d}T08:00:00Z`,
@@ -233,7 +267,13 @@ describe("VendorTermsService — a stated term carries its author, and its contr
     const { databaseService } = makeDb({
       restaurants: HOUSE,
       providers: [
-        { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: 7, payment_terms: null },
+        {
+          id: PID,
+          name: "Anadolu",
+          minimum_order: null,
+          lead_time_days: 7,
+          payment_terms: null,
+        },
       ],
       restaurant_providers: [],
       restaurant_vendor_terms: [
@@ -256,12 +296,18 @@ describe("VendorTermsService — a stated term carries its author, and its contr
       users: [{ user_id: "user-9", name: "Selin Kara" }],
     });
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
     const v = out.vendors[0];
 
     expect(v.deliveryWeekdays.source).toBe("stated");
     expect(v.deliveryWeekdays.value).toEqual([2, 5]);
-    expect(v.deliveryWeekdays.statedBy).toEqual({ userId: "user-9", name: "Selin Kara" });
+    expect(v.deliveryWeekdays.statedBy).toEqual({
+      userId: "user-9",
+      name: "Selin Kara",
+    });
     // Every one of those six receipts landed on a Wednesday.
     expect(v.deliveryWeekdays.contradiction).toContain("Wednesday");
 
@@ -276,7 +322,13 @@ describe("VendorTermsService — an unreadable source is never an empty one", ()
       {
         restaurants: HOUSE,
         providers: [
-          { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: 3, payment_terms: null },
+          {
+            id: PID,
+            name: "Anadolu",
+            minimum_order: null,
+            lead_time_days: 3,
+            payment_terms: null,
+          },
         ],
         restaurant_providers: [],
         restaurant_vendor_terms: [],
@@ -285,13 +337,18 @@ describe("VendorTermsService — an unreadable source is never an empty one", ()
       { procurement_orders: { message: "connection reset" } },
     );
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
 
     expect(out.sources.orders.readable).toBe(false);
     // Never 0 — an unreadable source has an unknown row count.
     expect(out.sources.orders.rows).toBeNull();
     expect(out.vendors[0].deliveryWeekdays.source).toBe("unknown");
-    expect(out.vendors[0].deliveryWeekdays.reason).toContain("could not be read");
+    expect(out.vendors[0].deliveryWeekdays.reason).toContain(
+      "could not be read",
+    );
   });
 
   it("reports a missing terms table by name rather than as 'no terms recorded'", async () => {
@@ -303,12 +360,22 @@ describe("VendorTermsService — an unreadable source is never an empty one", ()
         procurement_orders: [],
         users: [],
       },
-      { restaurant_vendor_terms: { message: "relation does not exist", code: "42P01" } },
+      {
+        restaurant_vendor_terms: {
+          message: "relation does not exist",
+          code: "42P01",
+        },
+      },
     );
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
     expect(out.sources.statedTerms.readable).toBe(false);
-    expect(out.sources.statedTerms.reason).toContain("not present on this database");
+    expect(out.sources.statedTerms.reason).toContain(
+      "not present on this database",
+    );
   });
 });
 
@@ -341,8 +408,14 @@ describe("VendorTermsService — the house's own zone and currency", () => {
       users: [],
     });
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
-    expect(out.zone).toEqual({ zone: "America/Los_Angeles", isColumnDefault: false });
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
+    expect(out.zone).toEqual({
+      zone: "America/Los_Angeles",
+      isColumnDefault: false,
+    });
     // A stored USD is still FLAGGED rather than believed, and deliberately so:
     // the migration dropped the default but did NOT clear the ten US houses that
     // already carried its value, so nothing can yet tell a chosen USD from an
@@ -362,8 +435,14 @@ describe("VendorTermsService — the house's own zone and currency", () => {
       users: [],
     });
     const audit = makeAudit();
-    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
-    expect(out.zone).toEqual({ zone: "America/Los_Angeles", isColumnDefault: true });
+    const out = await new VendorTermsService(
+      databaseService,
+      audit.service,
+    ).read(RID);
+    expect(out.zone).toEqual({
+      zone: "America/Los_Angeles",
+      isColumnDefault: true,
+    });
     // CHANGED BY ADR 0117 Q25 (2026-09-05). This asserted `code: "USD"` while
     // the row's currency was NULL — the reader supplied the fallback, so a house
     // nobody had asked and a house in Ohio produced the same readout. There is
@@ -378,7 +457,13 @@ describe("VendorTermsService — writing states, and the write is filed", () => 
     const { databaseService, filters, upserts } = makeDb({
       restaurants: HOUSE,
       providers: [
-        { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: 7, payment_terms: null },
+        {
+          id: PID,
+          name: "Anadolu",
+          minimum_order: null,
+          lead_time_days: 7,
+          payment_terms: null,
+        },
       ],
       restaurant_providers: [],
       restaurant_vendor_terms: [
@@ -411,8 +496,16 @@ describe("VendorTermsService — writing states, and the write is filed", () => 
 
     // The provider was looked up under THIS restaurant before anything was
     // written, so a guessed provider id from another house cannot be reached.
-    expect(filters).toContainEqual({ table: "providers", column: "restaurant_id", value: RID });
-    expect(filters).toContainEqual({ table: "providers", column: "id", value: PID });
+    expect(filters).toContainEqual({
+      table: "providers",
+      column: "restaurant_id",
+      value: RID,
+    });
+    expect(filters).toContainEqual({
+      table: "providers",
+      column: "id",
+      value: PID,
+    });
 
     const written = upserts.find((u) => u.table === "restaurant_vendor_terms");
     expect(written?.row).toMatchObject({
@@ -443,7 +536,13 @@ describe("VendorTermsService — writing states, and the write is filed", () => 
     const { databaseService, upserts } = makeDb({
       restaurants: HOUSE,
       providers: [
-        { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: 7, payment_terms: null },
+        {
+          id: PID,
+          name: "Anadolu",
+          minimum_order: null,
+          lead_time_days: 7,
+          payment_terms: null,
+        },
       ],
       restaurant_providers: [],
       restaurant_vendor_terms: [
@@ -472,7 +571,10 @@ describe("VendorTermsService — writing states, and the write is filed", () => 
     expect(written?.row).toHaveProperty("payment_terms", null);
     // An untouched key is absent from the patch entirely, not sent as null.
     expect(written?.row).not.toHaveProperty("delivery_weekdays");
-    expect(audit.filed[0].fields.payment_terms).toEqual({ from: "Net 30", to: null });
+    expect(audit.filed[0].fields.payment_terms).toEqual({
+      from: "Net 30",
+      to: null,
+    });
   });
 
   it("refuses a provider that does not belong to this restaurant", async () => {
@@ -503,7 +605,10 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
    */
   const MAX_ROWS = 1000;
 
-  function cappedOrders(rows: Record<string, any>[], error?: { message: string; code?: string }) {
+  function cappedOrders(
+    rows: Record<string, any>[],
+    error?: { message: string; code?: string },
+  ) {
     return () => {
       const filters: Array<(r: Record<string, any>) => boolean> = [];
       const orders: Array<{ col: string; asc: boolean }> = [];
@@ -527,16 +632,22 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
         };
       };
       const q: any = {
-        select: (_c: string, o?: { count?: string }) => ((counted = o?.count === "exact"), q),
+        select: (_c: string, o?: { count?: string }) => (
+          (counted = o?.count === "exact"),
+          q
+        ),
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
         gte: (c: string, v: any) => (filters.push((r) => r[c] >= v), q),
         gt: (c: string, v: any) => (filters.push((r) => r[c] > v), q),
         order: (col: string, o?: { ascending?: boolean }) => (
-          orders.push({ col, asc: o?.ascending !== false }), q
+          orders.push({ col, asc: o?.ascending !== false }),
+          q
         ),
         limit: (n: number) => ((limitN = n), q),
-        then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-          Promise.resolve(settle()).then(resolve, reject),
+        then: (
+          resolve: (v: unknown) => unknown,
+          reject?: (e: unknown) => unknown,
+        ) => Promise.resolve(settle()).then(resolve, reject),
       };
       return q;
     };
@@ -546,8 +657,20 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
     const { databaseService } = makeDb({
       restaurants: HOUSE,
       providers: [
-        { id: "prov-old", name: "Ege", minimum_order: null, lead_time_days: null, payment_terms: null },
-        { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: null, payment_terms: null },
+        {
+          id: "prov-old",
+          name: "Ege",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+        },
+        {
+          id: PID,
+          name: "Anadolu",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+        },
       ],
       restaurant_providers: [],
       restaurant_vendor_terms: [],
@@ -556,13 +679,15 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
     const inner = databaseService.client;
     return {
       client: {
-        from: (table: string) => (table === "procurement_orders" ? orders() : inner.from(table)),
+        from: (table: string) =>
+          table === "procurement_orders" ? orders() : inner.from(table),
       },
     } as any;
   }
 
   const day = 86_400_000;
-  const at = (daysAgo: number) => new Date(Date.now() - daysAgo * day).toISOString();
+  const at = (daysAgo: number) =>
+    new Date(Date.now() - daysAgo * day).toISOString();
 
   /**
    * 1,500 orders in the year. "Ege" was the house's vendor for the first 500
@@ -603,10 +728,17 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
   ];
 
   it("counts every order of the year, not the newest 1,000", async () => {
-    const out = await new VendorTermsService(houseWith(cappedOrders(YEAR)), makeAudit().service).read(RID);
+    const out = await new VendorTermsService(
+      houseWith(cappedOrders(YEAR)),
+      makeAudit().service,
+    ).read(RID);
 
     expect(out.windowDays).toBe(365);
-    expect(out.sources.orders).toEqual({ readable: true, reason: null, rows: 1500 });
+    expect(out.sources.orders).toEqual({
+      readable: true,
+      reason: null,
+      rows: 1500,
+    });
     const byId = new Map(out.vendors.map((v) => [v.providerId, v]));
     expect(byId.get(PID)!.ordersInWindow).toBe(1000);
     // The vendor whose orders were all older than the newest 1,000 read as
@@ -616,19 +748,34 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
 
   it("a refused page keeps the database's own words, and is never a count", async () => {
     const out = await new VendorTermsService(
-      houseWith(cappedOrders(YEAR, { message: "connection reset", code: "08006" })),
+      houseWith(
+        cappedOrders(YEAR, { message: "connection reset", code: "08006" }),
+      ),
       makeAudit().service,
     ).read(RID);
-    expect(out.sources.orders).toEqual({ readable: false, reason: "connection reset", rows: null });
+    expect(out.sources.orders).toEqual({
+      readable: false,
+      reason: "connection reset",
+      rows: null,
+    });
     expect(out.vendors.every((v) => v.ordersInWindow === 0)).toBe(true);
-    expect(out.vendors[0].deliveryWeekdays.reason).toContain("could not be read");
+    expect(out.vendors[0].deliveryWeekdays.reason).toContain(
+      "could not be read",
+    );
   });
 
   it("a missing order table is named as missing, as before", async () => {
     const out = await new VendorTermsService(
-      houseWith(cappedOrders(YEAR, { message: "relation does not exist", code: "42P01" })),
+      houseWith(
+        cappedOrders(YEAR, {
+          message: "relation does not exist",
+          code: "42P01",
+        }),
+      ),
       makeAudit().service,
     ).read(RID);
-    expect(out.sources.orders.reason).toBe("the table is not present on this database");
+    expect(out.sources.orders.reason).toBe(
+      "the table is not present on this database",
+    );
   });
 });

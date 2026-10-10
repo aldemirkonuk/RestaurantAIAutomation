@@ -23,8 +23,12 @@ describe("goalBehindPace (F-383)", () => {
 
   it("paces from the house date the goal was set on, not the UTC instant", () => {
     // One day of eleven is 10 expected; 8 is under 90% of that.
-    expect(goalBehindPace({ ...setLate, current_value: 8 }, LA, anHourLater)).toBe(true);
-    expect(goalBehindPace({ ...setLate, current_value: 10 }, LA, anHourLater)).toBe(false);
+    expect(
+      goalBehindPace({ ...setLate, current_value: 8 }, LA, anHourLater),
+    ).toBe(true);
+    expect(
+      goalBehindPace({ ...setLate, current_value: 10 }, LA, anHourLater),
+    ).toBe(false);
   });
 
   const halfway = {
@@ -37,29 +41,49 @@ describe("goalBehindPace (F-383)", () => {
 
   it("an at-most goal under its share of the limit is not behind", () => {
     expect(
-      goalBehindPace({ ...halfway, direction: "at_most", current_value: 100 }, LA, midMonth),
+      goalBehindPace(
+        { ...halfway, direction: "at_most", current_value: 100 },
+        LA,
+        midMonth,
+      ),
     ).toBe(false);
   });
 
   it("an at-most goal over its share of the limit is behind", () => {
     expect(
-      goalBehindPace({ ...halfway, direction: "at_most", current_value: 700 }, LA, midMonth),
+      goalBehindPace(
+        { ...halfway, direction: "at_most", current_value: 700 },
+        LA,
+        midMonth,
+      ),
     ).toBe(true);
   });
 
   it("an at-least goal under its share is behind, over it is not", () => {
-    expect(goalBehindPace({ ...halfway, current_value: 300 }, LA, midMonth)).toBe(true);
-    expect(goalBehindPace({ ...halfway, current_value: 600 }, LA, midMonth)).toBe(false);
+    expect(
+      goalBehindPace({ ...halfway, current_value: 300 }, LA, midMonth),
+    ).toBe(true);
+    expect(
+      goalBehindPace({ ...halfway, current_value: 600 }, LA, midMonth),
+    ).toBe(false);
   });
 
   it("a goal not yet measured is not judged — never read as 0% done", () => {
-    expect(goalBehindPace({ ...halfway, current_value: null }, LA, midMonth)).toBe(false);
+    expect(
+      goalBehindPace({ ...halfway, current_value: null }, LA, midMonth),
+    ).toBe(false);
   });
 
   it("a house with no zone, or a goal with no deadline, is not judged", () => {
-    expect(goalBehindPace({ ...halfway, current_value: 0 }, null, midMonth)).toBe(false);
     expect(
-      goalBehindPace({ ...halfway, deadline: null, current_value: 0 }, LA, midMonth),
+      goalBehindPace({ ...halfway, current_value: 0 }, null, midMonth),
+    ).toBe(false);
+    expect(
+      goalBehindPace(
+        { ...halfway, deadline: null, current_value: 0 },
+        LA,
+        midMonth,
+      ),
     ).toBe(false);
   });
 });

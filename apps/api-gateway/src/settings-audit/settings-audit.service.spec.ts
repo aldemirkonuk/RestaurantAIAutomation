@@ -47,7 +47,8 @@ function makeDb(
           inserted.push({ table, row });
           return errors[table] ? { error: errors[table] } : { error: null };
         },
-        then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+        then: (resolve: (v: unknown) => unknown) =>
+          Promise.resolve(result).then(resolve),
       };
       return chain;
     },
@@ -76,7 +77,9 @@ const CHANGE = {
 describe("SettingsAuditService.record", () => {
   it("writes the actor id it was given, on the row, as actor_type user", async () => {
     const { databaseService, inserted } = makeDb({});
-    const receipt = await new SettingsAuditService(databaseService).record(CHANGE);
+    const receipt = await new SettingsAuditService(databaseService).record(
+      CHANGE,
+    );
 
     expect(receipt).toEqual({ recorded: true, reason: null });
     expect(inserted).toHaveLength(1);
@@ -119,14 +122,21 @@ describe("SettingsAuditService.record", () => {
   });
 
   it("never throws, and reports the failure back rather than swallowing it", async () => {
-    const { databaseService } = makeDb({}, { system_audit_log: { message: "denied" } });
-    const receipt = await new SettingsAuditService(databaseService).record(CHANGE);
+    const { databaseService } = makeDb(
+      {},
+      { system_audit_log: { message: "denied" } },
+    );
+    const receipt = await new SettingsAuditService(databaseService).record(
+      CHANGE,
+    );
     expect(receipt).toEqual({ recorded: false, reason: "denied" });
   });
 
   it("never throws even when the client itself blows up", async () => {
     const { databaseService } = makeDb({}, {}, { throwOn: "system_audit_log" });
-    const receipt = await new SettingsAuditService(databaseService).record(CHANGE);
+    const receipt = await new SettingsAuditService(databaseService).record(
+      CHANGE,
+    );
     expect(receipt.recorded).toBe(false);
     expect(receipt.reason).toMatch(/connection went away/);
   });
@@ -198,7 +208,10 @@ describe("SettingsAuditService.list", () => {
   });
 
   it("says the log could not be READ instead of returning an empty trail", async () => {
-    const { databaseService } = makeDb({}, { system_audit_log: { message: "connection reset" } });
+    const { databaseService } = makeDb(
+      {},
+      { system_audit_log: { message: "connection reset" } },
+    );
     const out = await new SettingsAuditService(databaseService).list("rest-1");
     expect(out.readable).toBe(false);
     expect(out.reason).toBe("connection reset");
@@ -208,7 +221,9 @@ describe("SettingsAuditService.list", () => {
   it("names a missing table as missing, not as silence", async () => {
     const { databaseService } = makeDb(
       {},
-      { system_audit_log: { message: "relation does not exist", code: "42P01" } },
+      {
+        system_audit_log: { message: "relation does not exist", code: "42P01" },
+      },
     );
     const out = await new SettingsAuditService(databaseService).list("rest-1");
     expect(out.readable).toBe(false);
@@ -220,7 +235,11 @@ describe("SettingsAuditService.list", () => {
       system_audit_log: ROWS,
       users: [{ user_id: "u-1", name: "Deniz Aksoy", email: null }],
     });
-    const out = await new SettingsAuditService(databaseService).list("rest-1", 50, "features");
+    const out = await new SettingsAuditService(databaseService).list(
+      "rest-1",
+      50,
+      "features",
+    );
     expect(out.entries).toHaveLength(1);
     expect(out.entries[0].register).toBe("features");
   });
@@ -251,17 +270,40 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
   const ROWS = [
     AWAY_ROW,
     { ...AWAY_ROW, id: "w2", action: "away_ended_for_member" },
-    { ...AWAY_ROW, id: "w3", action: "area_member_added", entity_type: "team_member" },
-    { ...AWAY_ROW, id: "w4", action: "area_member_removed", entity_type: "team_member" },
-    { ...AWAY_ROW, id: "w5", action: "area_lead_granted", entity_type: "team_member" },
-    { ...AWAY_ROW, id: "w6", action: "area_lead_removed", entity_type: "team_member" },
+    {
+      ...AWAY_ROW,
+      id: "w3",
+      action: "area_member_added",
+      entity_type: "team_member",
+    },
+    {
+      ...AWAY_ROW,
+      id: "w4",
+      action: "area_member_removed",
+      entity_type: "team_member",
+    },
+    {
+      ...AWAY_ROW,
+      id: "w5",
+      action: "area_lead_granted",
+      entity_type: "team_member",
+    },
+    {
+      ...AWAY_ROW,
+      id: "w6",
+      action: "area_lead_removed",
+      entity_type: "team_member",
+    },
     {
       id: "h1",
       actor_id: "u-mgr",
       action: "house_area_changed",
       entity_type: "house_area",
       entity_id: "bar",
-      changes: { subject: "Bar", fields: { name: { from: "Bar", to: "Terrace bar" } } },
+      changes: {
+        subject: "Bar",
+        fields: { name: { from: "Bar", to: "Terrace bar" } },
+      },
       created_at: "2026-09-21T09:00:00Z",
     },
     {
@@ -294,7 +336,9 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
           limit: () => chain,
           then: (resolve: (v: unknown) => unknown) => {
             const all = table === "system_audit_log" ? ROWS : [];
-            const data = allow ? all.filter((r: any) => allow!.has(r.action)) : all;
+            const data = allow
+              ? all.filter((r: any) => allow!.has(r.action))
+              : all;
             return Promise.resolve({ data, error: null }).then(resolve);
           },
         };
@@ -308,7 +352,12 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
     "a %p reader gets no row about a colleague's Away or area, and not even the query asks for one",
     async (role) => {
       const { asked, databaseService } = honouringDb();
-      const out = await new SettingsAuditService(databaseService).list("rest-1", 50, undefined, role);
+      const out = await new SettingsAuditService(databaseService).list(
+        "rest-1",
+        50,
+        undefined,
+        role,
+      );
       const actions = out.entries.map((e) => e.action);
       for (const withheld of STAFF_WITHHELD_ACTIONS) {
         expect(actions).not.toContain(withheld);
@@ -324,7 +373,12 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
     "a %p reader still reads the whole trail, the upcoming Away included",
     async (role) => {
       const { databaseService } = honouringDb();
-      const out = await new SettingsAuditService(databaseService).list("rest-1", 50, undefined, role);
+      const out = await new SettingsAuditService(databaseService).list(
+        "rest-1",
+        50,
+        undefined,
+        role,
+      );
       expect(out.entries.map((e) => e.id)).toEqual(ROWS.map((r) => r.id));
       expect(out.entries[0].fields).toEqual({
         away: { from: null, to: "2026-10-03 to 2026-10-10" },
@@ -345,7 +399,8 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
         "zone_setup_access_changed",
       ].sort(),
     );
-    for (const a of STAFF_WITHHELD_ACTIONS) expect(READ_BACK_ACTIONS).toContain(a);
+    for (const a of STAFF_WITHHELD_ACTIONS)
+      expect(READ_BACK_ACTIONS).toContain(a);
     expect(readBackActionsFor("manager")).toEqual([...READ_BACK_ACTIONS]);
   });
 });
@@ -371,7 +426,8 @@ describe("SettingsAuditService.list — a labour setting change reads back (F-37
           select: () => chain,
           eq: () => chain,
           in: (column: string, values: string[]) => {
-            if (table === "system_audit_log" && column === "action") allow = new Set(values);
+            if (table === "system_audit_log" && column === "action")
+              allow = new Set(values);
             return chain;
           },
           order: () => chain,
@@ -381,7 +437,9 @@ describe("SettingsAuditService.list — a labour setting change reads back (F-37
               table === "system_audit_log"
                 ? [LABOUR_ROW]
                 : [{ user_id: "u-owner", name: "Ayla Tuzlu", email: null }];
-            const data = allow ? all.filter((r: any) => allow!.has(r.action)) : all;
+            const data = allow
+              ? all.filter((r: any) => allow!.has(r.action))
+              : all;
             return Promise.resolve({ data, error: null }).then(resolve);
           },
         };

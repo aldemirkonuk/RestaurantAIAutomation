@@ -20,7 +20,9 @@ describe("lotBookedCost", () => {
   });
 
   it("a foreign lot with a stated rate books the per-bottle cost times the rate, rounded to cents once", () => {
-    expect(lotBookedCost({ ...LOT, houseCurrency: "EUR", exchangeRate: 1.17 })).toMatchObject({
+    expect(
+      lotBookedCost({ ...LOT, houseCurrency: "EUR", exchangeRate: 1.17 }),
+    ).toMatchObject({
       ok: true,
       booked: 243.75,
       basis: "stated_rate",
@@ -29,15 +31,35 @@ describe("lotBookedCost", () => {
 
   it("a stated rate scales the exact per-bottle cost, so cents are rounded once (F-342)", () => {
     expect(
-      lotBookedCost({ hammer: 90, premium: 10, bottles: 3, currency: "GBP", houseCurrency: "TRY", exchangeRate: 35 }),
+      lotBookedCost({
+        hammer: 90,
+        premium: 10,
+        bottles: 3,
+        currency: "GBP",
+        houseCurrency: "TRY",
+        exchangeRate: 35,
+      }),
     ).toMatchObject({ ok: true, booked: 1166.67, lotPerBottle: 33.33 });
     expect(
-      lotBookedCost({ hammer: 100.1, premium: 20.02, bottles: 1, currency: "GBP", houseCurrency: "GBP" }),
+      lotBookedCost({
+        hammer: 100.1,
+        premium: 20.02,
+        bottles: 1,
+        currency: "GBP",
+        houseCurrency: "GBP",
+      }),
     ).toMatchObject({ ok: true, booked: 120.12, lotPerBottle: 120.12 });
   });
 
   it("a typed house cost wins over a stated rate — people round", () => {
-    expect(lotBookedCost({ ...LOT, houseCurrency: "EUR", exchangeRate: 1.17, houseUnitCost: 245 })).toMatchObject({
+    expect(
+      lotBookedCost({
+        ...LOT,
+        houseCurrency: "EUR",
+        exchangeRate: 1.17,
+        houseUnitCost: 245,
+      }),
+    ).toMatchObject({
       ok: true,
       booked: 245,
       basis: "typed_house_cost",
@@ -45,30 +67,44 @@ describe("lotBookedCost", () => {
   });
 
   it("a typed house cost wins over the lot's own figure, even in the same currency", () => {
-    expect(lotBookedCost({ ...LOT, houseCurrency: "GBP", houseUnitCost: 210 })).toMatchObject({ booked: 210 });
+    expect(
+      lotBookedCost({ ...LOT, houseCurrency: "GBP", houseUnitCost: 210 }),
+    ).toMatchObject({ booked: 210 });
   });
 
   it("a foreign lot with neither is refused, and the refusal says what to state", () => {
     const out = lotBookedCost({ ...LOT, houseCurrency: "EUR" });
     expect(out.ok).toBe(false);
-    expect(!out.ok && out.why).toMatch(/state the exchange rate you used, or type what each bottle cost in EUR/);
+    expect(!out.ok && out.why).toMatch(
+      /state the exchange rate you used, or type what each bottle cost in EUR/,
+    );
   });
 
   it("nothing is inferred when the house has not stated its currency", () => {
-    const out = lotBookedCost({ ...LOT, houseCurrency: null, exchangeRate: 1.2 });
+    const out = lotBookedCost({
+      ...LOT,
+      houseCurrency: null,
+      exchangeRate: 1.2,
+    });
     expect(out.ok).toBe(false);
     expect(!out.ok && out.why).toMatch(/has not stated the currency/);
   });
 
   it("a rate on a same-currency lot is refused rather than silently applied", () => {
-    expect(lotBookedCost({ ...LOT, houseCurrency: "GBP", exchangeRate: 1.1 }).ok).toBe(false);
+    expect(
+      lotBookedCost({ ...LOT, houseCurrency: "GBP", exchangeRate: 1.1 }).ok,
+    ).toBe(false);
   });
 
   it.each([0, -1, Number.NaN])("a rate of %p is refused", (rate) => {
-    expect(lotBookedCost({ ...LOT, houseCurrency: "EUR", exchangeRate: rate }).ok).toBe(false);
+    expect(
+      lotBookedCost({ ...LOT, houseCurrency: "EUR", exchangeRate: rate }).ok,
+    ).toBe(false);
   });
 
   it("the currency comparison is case-blind", () => {
-    expect(lotBookedCost({ ...LOT, currency: "gbp", houseCurrency: "GBP" })).toMatchObject({ ok: true, basis: "same_currency" });
+    expect(
+      lotBookedCost({ ...LOT, currency: "gbp", houseCurrency: "GBP" }),
+    ).toMatchObject({ ok: true, basis: "same_currency" });
   });
 });

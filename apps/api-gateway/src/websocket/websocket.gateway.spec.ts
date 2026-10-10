@@ -80,7 +80,9 @@ function makeFailingSupabaseStub(message: string) {
 
 function makeDeps(supabase: ReturnType<typeof makeSupabaseStub>) {
   const jwtService = { verify: jest.fn() } as any;
-  const configService = { get: jest.fn().mockReturnValue("test-secret") } as any;
+  const configService = {
+    get: jest.fn().mockReturnValue("test-secret"),
+  } as any;
   const databaseService = { supabase } as any;
   return { jwtService, configService, databaseService };
 }
@@ -101,7 +103,11 @@ describe("WebsocketGateway — a houseless or non-member socket cannot join a re
       makeSupabaseStub({}),
     );
     jwtService.verify.mockReturnValue({ sub: "user-1" }); // no restaurantId claim
-    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    const gateway = new WebsocketGateway(
+      jwtService,
+      configService,
+      databaseService,
+    );
     const socket = makeSocket("s1");
 
     await gateway.handleConnection(socket);
@@ -119,8 +125,15 @@ describe("WebsocketGateway — a houseless or non-member socket cannot join a re
     const { jwtService, configService, databaseService } = makeDeps(
       makeSupabaseStub({}), // no active rows anywhere — membership ended
     );
-    jwtService.verify.mockReturnValue({ sub: "user-1", restaurantId: "house-A" });
-    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    jwtService.verify.mockReturnValue({
+      sub: "user-1",
+      restaurantId: "house-A",
+    });
+    const gateway = new WebsocketGateway(
+      jwtService,
+      configService,
+      databaseService,
+    );
     const socket = makeSocket("s2");
 
     await gateway.handleConnection(socket);
@@ -138,8 +151,15 @@ describe("WebsocketGateway — a houseless or non-member socket cannot join a re
     const { jwtService, configService, databaseService } = makeDeps(
       makeFailingSupabaseStub("connection reset") as any,
     );
-    jwtService.verify.mockReturnValue({ sub: "user-1", restaurantId: "house-A" });
-    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    jwtService.verify.mockReturnValue({
+      sub: "user-1",
+      restaurantId: "house-A",
+    });
+    const gateway = new WebsocketGateway(
+      jwtService,
+      configService,
+      databaseService,
+    );
     const socket = makeSocket("s3");
 
     await gateway.handleConnection(socket);
@@ -157,8 +177,15 @@ describe("WebsocketGateway — a houseless or non-member socket cannot join a re
     const { jwtService, configService, databaseService } = makeDeps(
       makeSupabaseStub({ "user-1:house-A": true }),
     );
-    jwtService.verify.mockReturnValue({ sub: "user-1", restaurantId: "house-A" });
-    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    jwtService.verify.mockReturnValue({
+      sub: "user-1",
+      restaurantId: "house-A",
+    });
+    const gateway = new WebsocketGateway(
+      jwtService,
+      configService,
+      databaseService,
+    );
     const socket = makeSocket("s4");
 
     await gateway.handleConnection(socket);
@@ -173,8 +200,15 @@ describe("WebsocketGateway — a houseless or non-member socket cannot join a re
     const { jwtService, configService, databaseService } = makeDeps(
       makeSupabaseStub({ "user-1:house-A": true }),
     );
-    jwtService.verify.mockReturnValue({ sub: "user-1", restaurantId: "house-A" });
-    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    jwtService.verify.mockReturnValue({
+      sub: "user-1",
+      restaurantId: "house-A",
+    });
+    const gateway = new WebsocketGateway(
+      jwtService,
+      configService,
+      databaseService,
+    );
     const socketsLeave = jest.fn();
     (gateway as any).server = { in: jest.fn(() => ({ socketsLeave })) };
     const socket = makeSocket("s5");
@@ -214,8 +248,15 @@ describe("WebsocketGateway — scheduled jobs on the /ws namespace (F-173)", () 
     const { jwtService, configService, databaseService } = makeDeps(
       makeSupabaseStub({ "user-1:house-A": true }),
     );
-    jwtService.verify.mockReturnValue({ sub: "user-1", restaurantId: "house-A" });
-    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    jwtService.verify.mockReturnValue({
+      sub: "user-1",
+      restaurantId: "house-A",
+    });
+    const gateway = new WebsocketGateway(
+      jwtService,
+      configService,
+      databaseService,
+    );
     const socket = makeSocket("quiet-phone");
     await gateway.handleConnection(socket);
 

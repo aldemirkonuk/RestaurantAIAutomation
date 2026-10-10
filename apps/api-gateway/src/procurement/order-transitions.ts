@@ -212,9 +212,7 @@ export const ORDER_ENDS_ITS_SERIES_STATUSES: readonly ProcurementOrderStatus[] =
   );
 
 /** Parse a stored value into a member, or `null`. Never guesses. */
-export function readOrderStatus(
-  value: unknown,
-): ProcurementOrderStatus | null {
+export function readOrderStatus(value: unknown): ProcurementOrderStatus | null {
   if (typeof value !== "string") return null;
   const upper = value.trim().toUpperCase();
   return (Object.values(ProcurementOrderStatus) as string[]).includes(upper)
@@ -472,7 +470,9 @@ export function decideReceiptCheck(rawCurrent: unknown): TransitionVerdict {
  */
 export function orderTransitionEdges(): string[] {
   const out: string[] = [];
-  for (const from of Object.keys(ORDER_TRANSITIONS) as ProcurementOrderStatus[]) {
+  for (const from of Object.keys(
+    ORDER_TRANSITIONS,
+  ) as ProcurementOrderStatus[]) {
     for (const to of ORDER_TRANSITIONS[from]) out.push(`${from}>${to}`);
   }
   return out.sort();

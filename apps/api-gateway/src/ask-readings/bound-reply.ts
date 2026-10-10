@@ -10,7 +10,13 @@ import {
   unbuiltClassOf,
   withholdFailureDetail,
 } from "./reading-data-classes";
-import { Finding, ReadingId, ReadingOutcome, ReadingReason, WITHHELD_FOR_YOUR_ROLE } from "./reading.types";
+import {
+  Finding,
+  ReadingId,
+  ReadingOutcome,
+  ReadingReason,
+  WITHHELD_FOR_YOUR_ROLE,
+} from "./reading.types";
 
 declare const knowledgeText: unique symbol;
 export type ModelKnowledgeText = string & { readonly [knowledgeText]: true };
@@ -64,7 +70,9 @@ export const MODEL_FAILURE_REASONS: readonly ModelFailureReason[] = [
  * give money or sensitive incentives like sales etc to the staff"). A role
  * refusal never carries a Finding: the books were never queried.
  */
-export type RoleRestrictedReason = "class_not_visible" | "answer_kind_not_permitted";
+export type RoleRestrictedReason =
+  | "class_not_visible"
+  | "answer_kind_not_permitted";
 /**
  * [REBUILT 2026-09-21, founder's option "Rules in code, label rows": the one
  * reason `owner_manager_only` became two, because the gate is now a policy
@@ -72,7 +80,10 @@ export type RoleRestrictedReason = "class_not_visible" | "answer_kind_not_permit
  * classes the role's row does not see; `answer_kind_not_permitted` names the
  * answer kind (a Reading, or model knowledge) the row is not given.]
  */
-export const ROLE_RESTRICTED_REASONS: readonly RoleRestrictedReason[] = ["class_not_visible", "answer_kind_not_permitted"];
+export const ROLE_RESTRICTED_REASONS: readonly RoleRestrictedReason[] = [
+  "class_not_visible",
+  "answer_kind_not_permitted",
+];
 
 type CellId = Finding["rows"][number]["cells"][number]["id"];
 export type BoundReply =
@@ -83,18 +94,46 @@ export type BoundReply =
       sourceLabel: "Not from the house's books";
       text: ModelKnowledgeText;
     }
-  | { kind: "could_not_answer"; reason: ModelFailureReason; finding?: Finding; earlierCallPaid?: true }
-  | { kind: "not_permitted"; reason: "class_not_visible"; readingId: ReadingId; classes: DataClass[]; line: string }
+  | {
+      kind: "could_not_answer";
+      reason: ModelFailureReason;
+      finding?: Finding;
+      earlierCallPaid?: true;
+    }
+  | {
+      kind: "not_permitted";
+      reason: "class_not_visible";
+      readingId: ReadingId;
+      classes: DataClass[];
+      line: string;
+    }
   /** An unbuilt question class whose data class the role does not see (round 6r, "Classify now"). */
-  | { kind: "not_permitted"; reason: "class_not_visible"; questionClass: ClassifiedUnbuiltQuestion; classes: DataClass[]; line: string }
-  | { kind: "not_permitted"; reason: "answer_kind_not_permitted"; answerKind: AnswerKind; readingId?: ReadingId; line: string }
+  | {
+      kind: "not_permitted";
+      reason: "class_not_visible";
+      questionClass: ClassifiedUnbuiltQuestion;
+      classes: DataClass[];
+      line: string;
+    }
+  | {
+      kind: "not_permitted";
+      reason: "answer_kind_not_permitted";
+      answerKind: AnswerKind;
+      readingId?: ReadingId;
+      line: string;
+    }
   /**
    * `line` is present when the reply is shaped for a `source_only` role
    * (round 6r): the one line a person is told when the reason is withheld
    * (`could_not_read`) or when an empty register carries no cells
    * (`not_in_your_books`). A withheld reason never travels without it.
    */
-  | { kind: Exclude<ReadingOutcome, "read">; reason: ReadingReason; finding?: Finding; line?: string };
+  | {
+      kind: Exclude<ReadingOutcome, "read">;
+      reason: ReadingReason;
+      finding?: Finding;
+      line?: string;
+    };
 
 const KNOWLEDGE_LABEL = "Not from the house's books";
 const NON_READING_KINDS: ReadonlyArray<Exclude<ReadingOutcome, "read">> = [
@@ -114,7 +153,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 /** A composer may SELECT measured cells, never write a house claim. */
 export function bindReadingReply(raw: unknown, finding: Finding): BoundReply {
   if (!isPlainObject(raw)) throw new Error("invalid_bound_reply");
-  const onlyKnownKeys = Object.keys(raw).every(key => key === "kind" || key === "focus");
+  const onlyKnownKeys = Object.keys(raw).every(
+    (key) => key === "kind" || key === "focus",
+  );
   if (
     raw.kind !== "reading" ||
     !onlyKnownKeys ||
@@ -126,7 +167,9 @@ export function bindReadingReply(raw: unknown, finding: Finding): BoundReply {
   }
 
   // Every selected id must name a cell the runner minted for THIS Finding, once.
-  const minted = new Set(finding.rows.flatMap(row => row.cells.map(cell => cell.id)));
+  const minted = new Set(
+    finding.rows.flatMap((row) => row.cells.map((cell) => cell.id)),
+  );
   const picked = new Set<string>();
   for (const id of raw.focus) {
     if (typeof id !== "string" || !minted.has(id) || picked.has(id)) {
@@ -134,13 +177,19 @@ export function bindReadingReply(raw: unknown, finding: Finding): BoundReply {
     }
     picked.add(id);
   }
-  return { kind: "reading", finding, focus: [...picked].map(cellId => ({ cellId })) };
+  return {
+    kind: "reading",
+    finding,
+    focus: [...picked].map((cellId) => ({ cellId })),
+  };
 }
 
 /** The immutable source marker is minted here, with no house input or cell lane. */
 export function bindKnowledgeReply(raw: unknown): BoundReply {
   if (!isPlainObject(raw)) throw new Error("invalid_knowledge_reply");
-  const onlyKnownKeys = Object.keys(raw).every(key => key === "kind" || key === "text");
+  const onlyKnownKeys = Object.keys(raw).every(
+    (key) => key === "kind" || key === "text",
+  );
   if (
     raw.kind !== "model_knowledge" ||
     !onlyKnownKeys ||
@@ -167,23 +216,67 @@ export function bindKnowledgeReply(raw: unknown): BoundReply {
  * reason and no size). Keyed by ReadingId, so a new Reading does not compile
  * without its lines. Owners and managers are given the reason instead.
  */
-export const READING_BOOK: Readonly<Record<ReadingId, { book: string; empty: string }>> = {
-  "inventory.position": { book: "the stock records", empty: "No stock recorded for this item yet." },
-  "inventory.low_stock": { book: "the stock records", empty: "No stock items recorded yet." },
-  "inventory.in_transit": { book: "the stock records", empty: "No stock items recorded yet." },
-  "inventory.locations": { book: "the stock records", empty: "No stock lots recorded for this item yet." },
-  "inventory.movements": { book: "the stock movement record", empty: "No stock movements recorded for this item in this period." },
+export const READING_BOOK: Readonly<
+  Record<ReadingId, { book: string; empty: string }>
+> = {
+  "inventory.position": {
+    book: "the stock records",
+    empty: "No stock recorded for this item yet.",
+  },
+  "inventory.low_stock": {
+    book: "the stock records",
+    empty: "No stock items recorded yet.",
+  },
+  "inventory.in_transit": {
+    book: "the stock records",
+    empty: "No stock items recorded yet.",
+  },
+  "inventory.locations": {
+    book: "the stock records",
+    empty: "No stock lots recorded for this item yet.",
+  },
+  "inventory.movements": {
+    book: "the stock movement record",
+    empty: "No stock movements recorded for this item in this period.",
+  },
   "orders.open": { book: "the order book", empty: "No orders recorded yet." },
   "orders.lines": { book: "the order book", empty: "No orders recorded yet." },
-  "orders.late_deliveries": { book: "the order book", empty: "No orders recorded yet." },
-  "orders.due_today": { book: "the order book", empty: "No orders recorded yet." },
-  "receipts.verified_line": { book: "the receipt register", empty: "No verified receipts recorded yet." },
-  "sales.check_activity": { book: "the check record", empty: "No closed checks recorded in this period." },
-  "sales.consumption": { book: "the consumption record", empty: "No consumption recorded for this item in this period." },
-  "calendar.upcoming": { book: "the house calendar", empty: "No calendar entries recorded yet." },
-  "vendors.active": { book: "the vendor list", empty: "No vendors recorded yet." },
-  "documents.waiting": { book: "the document register", empty: "No documents recorded yet." },
-  "goals.targets": { book: "the posted targets", empty: "No goals posted yet." },
+  "orders.late_deliveries": {
+    book: "the order book",
+    empty: "No orders recorded yet.",
+  },
+  "orders.due_today": {
+    book: "the order book",
+    empty: "No orders recorded yet.",
+  },
+  "receipts.verified_line": {
+    book: "the receipt register",
+    empty: "No verified receipts recorded yet.",
+  },
+  "sales.check_activity": {
+    book: "the check record",
+    empty: "No closed checks recorded in this period.",
+  },
+  "sales.consumption": {
+    book: "the consumption record",
+    empty: "No consumption recorded for this item in this period.",
+  },
+  "calendar.upcoming": {
+    book: "the house calendar",
+    empty: "No calendar entries recorded yet.",
+  },
+  "vendors.active": {
+    book: "the vendor list",
+    empty: "No vendors recorded yet.",
+  },
+  "documents.waiting": {
+    book: "the document register",
+    empty: "No documents recorded yet.",
+  },
+  "goals.targets": {
+    book: "the posted targets",
+    empty: "No goals posted yet.",
+  },
 };
 const UNNAMED_BOOK = "the house's records";
 export const couldNotReadLine = (readingId?: ReadingId) =>
@@ -195,16 +288,33 @@ export const couldNotReadLine = (readingId?: ReadingId) =>
  * would say why a read failed (`withholdFailureDetail`), and the reply carries
  * the one line that role is told instead of a reason.
  */
-export function findingReply(finding: Finding, detail: FailureDetail = "full"): BoundReply {
+export function findingReply(
+  finding: Finding,
+  detail: FailureDetail = "full",
+): BoundReply {
   if (finding.outcome === "read") throw new Error("reading_requires_binding");
   if (detail === "source_only") {
     const shaped = withholdFailureDetail(finding, detail);
     if (shaped.outcome === "could_not_read")
-      return { kind: "could_not_read", reason: WITHHELD_FOR_YOUR_ROLE, finding: shaped, line: couldNotReadLine(shaped.readingId) };
+      return {
+        kind: "could_not_read",
+        reason: WITHHELD_FOR_YOUR_ROLE,
+        finding: shaped,
+        line: couldNotReadLine(shaped.readingId),
+      };
     if (shaped.outcome === "not_in_your_books")
-      return { kind: "not_in_your_books", reason: shaped.reason || "empty_register", finding: shaped, line: READING_BOOK[shaped.readingId].empty };
+      return {
+        kind: "not_in_your_books",
+        reason: shaped.reason || "empty_register",
+        finding: shaped,
+        line: READING_BOOK[shaped.readingId].empty,
+      };
   }
-  return { kind: finding.outcome, reason: finding.reason || "query_failed", finding };
+  return {
+    kind: finding.outcome,
+    reason: finding.reason || "query_failed",
+    finding,
+  };
 }
 
 /**
@@ -212,19 +322,43 @@ export function findingReply(finding: Finding, detail: FailureDetail = "full"): 
  * `full`: `query_failed`, as before. `source_only`: the reason is withheld and
  * the one line is given; an attached Finding is shaped the same way.
  */
-export function couldNotReadReply(detail: FailureDetail, readingId?: ReadingId, finding?: Finding): BoundReply {
-  if (detail === "full") return { kind: "could_not_read", reason: "query_failed", ...(finding ? { finding } : {}) };
-  return { kind: "could_not_read", reason: WITHHELD_FOR_YOUR_ROLE, line: couldNotReadLine(readingId ?? finding?.readingId),
-    ...(finding ? { finding: withholdFailureDetail(finding, detail) } : {}) };
+export function couldNotReadReply(
+  detail: FailureDetail,
+  readingId?: ReadingId,
+  finding?: Finding,
+): BoundReply {
+  if (detail === "full")
+    return {
+      kind: "could_not_read",
+      reason: "query_failed",
+      ...(finding ? { finding } : {}),
+    };
+  return {
+    kind: "could_not_read",
+    reason: WITHHELD_FOR_YOUR_ROLE,
+    line: couldNotReadLine(readingId ?? finding?.readingId),
+    ...(finding ? { finding: withholdFailureDetail(finding, detail) } : {}),
+  };
 }
 
 /** A model-side failure, carrying the Finding when the books were already read, and whether an earlier call was paid. */
-export function modelFailureReply(reason: ModelFailureReason, finding?: Finding, earlierCallPaid = false): BoundReply {
-  return { kind: "could_not_answer", reason, ...(finding ? { finding } : {}), ...(earlierCallPaid ? { earlierCallPaid: true as const } : {}) };
+export function modelFailureReply(
+  reason: ModelFailureReason,
+  finding?: Finding,
+  earlierCallPaid = false,
+): BoundReply {
+  return {
+    kind: "could_not_answer",
+    reason,
+    ...(finding ? { finding } : {}),
+    ...(earlierCallPaid ? { earlierCallPaid: true as const } : {}),
+  };
 }
 
 const joinNames = (names: string[]) =>
-  names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  names.length < 2
+    ? names.join("")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
 /**
  * The one line a role refusal carries (founder, 2026-09-21, round 6: money,
@@ -232,15 +366,20 @@ const joinNames = (names: string[]) =>
  * names every class the role does not see -- never a bare `not_permitted`.
  */
 export function classRefusalLine(classes: readonly DataClass[]): string {
-  return `Refused for your role: this answer shows ${joinNames(classes.map(c => CLASS_LABEL[c]))}.`;
+  return `Refused for your role: this answer shows ${joinNames(classes.map((c) => CLASS_LABEL[c]))}.`;
 }
 const ANSWER_KIND_LINE: Readonly<Record<AnswerKind, string>> = {
-  reading: "Refused for your role: it is not given answers from the house's books.",
-  model_knowledge: "Refused for your role: it is not given general-knowledge answers.",
+  reading:
+    "Refused for your role: it is not given answers from the house's books.",
+  model_knowledge:
+    "Refused for your role: it is not given general-knowledge answers.",
 };
 /** A refusal line is one short line of text, whatever it says. */
 export const isRefusalLine = (line: unknown): line is string =>
-  typeof line === "string" && line.trim() !== "" && line.length <= 300 && !/[\r\n]/.test(line);
+  typeof line === "string" &&
+  line.trim() !== "" &&
+  line.length <= 300 &&
+  !/[\r\n]/.test(line);
 
 /**
  * A reading the caller's role refused. Minted BEFORE the runner is
@@ -249,9 +388,19 @@ export const isRefusalLine = (line: unknown): line is string =>
  * would otherwise spend are never paid (same zero-cost-refusal shape as the
  * `ASK_LAUNCHED` gate in `BoundAskService.submit`).
  */
-export function notPermittedReply(readingId: ReadingId, classes: DataClass[]): BoundReply {
-  if (!classes.length) throw new Error("a class refusal names the classes it withholds");
-  return { kind: "not_permitted", reason: "class_not_visible", readingId, classes: [...classes], line: classRefusalLine(classes) };
+export function notPermittedReply(
+  readingId: ReadingId,
+  classes: DataClass[],
+): BoundReply {
+  if (!classes.length)
+    throw new Error("a class refusal names the classes it withholds");
+  return {
+    kind: "not_permitted",
+    reason: "class_not_visible",
+    readingId,
+    classes: [...classes],
+    line: classRefusalLine(classes),
+  };
 }
 
 /**
@@ -259,14 +408,33 @@ export function notPermittedReply(readingId: ReadingId, classes: DataClass[]): B
  * 2026-09-21, round 6r, "Classify now, forecast=sales (Recommended)"): the same
  * one-line refusal a built Reading of that class gets, never "not built".
  */
-export function unbuiltNotPermittedReply(questionClass: ClassifiedUnbuiltQuestion, classes: DataClass[]): BoundReply {
-  if (!classes.length) throw new Error("a class refusal names the classes it withholds");
-  return { kind: "not_permitted", reason: "class_not_visible", questionClass, classes: [...classes], line: classRefusalLine(classes) };
+export function unbuiltNotPermittedReply(
+  questionClass: ClassifiedUnbuiltQuestion,
+  classes: DataClass[],
+): BoundReply {
+  if (!classes.length)
+    throw new Error("a class refusal names the classes it withholds");
+  return {
+    kind: "not_permitted",
+    reason: "class_not_visible",
+    questionClass,
+    classes: [...classes],
+    line: classRefusalLine(classes),
+  };
 }
 
 /** An answer kind the caller's ROLE_POLICY row is not given. Minted before any model call for it. */
-export function answerKindNotPermittedReply(answerKind: AnswerKind, readingId?: ReadingId): BoundReply {
-  return { kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind, ...(readingId ? { readingId } : {}), line: ANSWER_KIND_LINE[answerKind] };
+export function answerKindNotPermittedReply(
+  answerKind: AnswerKind,
+  readingId?: ReadingId,
+): BoundReply {
+  return {
+    kind: "not_permitted",
+    reason: "answer_kind_not_permitted",
+    answerKind,
+    ...(readingId ? { readingId } : {}),
+    line: ANSWER_KIND_LINE[answerKind],
+  };
 }
 
 /**
@@ -275,18 +443,31 @@ export function answerKindNotPermittedReply(answerKind: AnswerKind, readingId?: 
  */
 export function isBoundReply(raw: unknown): raw is BoundReply {
   if (!isPlainObject(raw)) return false;
-  const attachedFindingOk = raw.finding === undefined || (isPlainObject(raw.finding) && raw.finding.kind === "finding");
+  const attachedFindingOk =
+    raw.finding === undefined ||
+    (isPlainObject(raw.finding) && raw.finding.kind === "finding");
 
   if (raw.kind === "model_knowledge") {
-    return raw.source === "model_knowledge" && raw.sourceLabel === KNOWLEDGE_LABEL && typeof raw.text === "string";
+    return (
+      raw.source === "model_knowledge" &&
+      raw.sourceLabel === KNOWLEDGE_LABEL &&
+      typeof raw.text === "string"
+    );
   }
   if (raw.kind === "reading") {
     const finding = raw.finding as Finding | undefined;
-    if (!isPlainObject(finding) || finding.kind !== "finding" || !Array.isArray(finding.rows)) return false;
+    if (
+      !isPlainObject(finding) ||
+      finding.kind !== "finding" ||
+      !Array.isArray(finding.rows)
+    )
+      return false;
     if (!Array.isArray(raw.focus)) return false;
     try {
       // Re-run the same binding the composer's answer went through.
-      const focus = (raw.focus as Array<{ cellId?: unknown }>).map(entry => entry?.cellId);
+      const focus = (raw.focus as Array<{ cellId?: unknown }>).map(
+        (entry) => entry?.cellId,
+      );
       bindReadingReply({ kind: "reading", focus }, finding);
       return true;
     } catch {
@@ -294,26 +475,36 @@ export function isBoundReply(raw: unknown): raw is BoundReply {
     }
   }
   if (raw.kind === "could_not_answer") {
-    return MODEL_FAILURE_REASONS.includes(raw.reason as ModelFailureReason) && attachedFindingOk &&
-      (raw.earlierCallPaid === undefined || (raw.earlierCallPaid === true && raw.reason === "spend_ceiling"));
+    return (
+      MODEL_FAILURE_REASONS.includes(raw.reason as ModelFailureReason) &&
+      attachedFindingOk &&
+      (raw.earlierCallPaid === undefined ||
+        (raw.earlierCallPaid === true && raw.reason === "spend_ceiling"))
+    );
   }
   if (raw.kind === "not_permitted") {
     // Never carries a Finding -- the books were never queried for a refusal
     // decided before the runner exists.
-    if (raw.finding !== undefined || !ROLE_RESTRICTED_REASONS.includes(raw.reason as RoleRestrictedReason)) return false;
+    if (
+      raw.finding !== undefined ||
+      !ROLE_RESTRICTED_REASONS.includes(raw.reason as RoleRestrictedReason)
+    )
+      return false;
     // Never a bare refusal: the saved answer carries its one-line reason (round 6).
     if (!isRefusalLine(raw.line)) return false;
     if (raw.reason === "class_not_visible") {
       // Either a built Reading, or an unbuilt question class that has a data
       // class (round 6r) -- exactly one of the two, never both, never neither.
-      const names = raw.questionClass === undefined
-        ? isReadingId(raw.readingId)
-        : raw.readingId === undefined && unbuiltClassOf(raw.questionClass) !== null;
+      const names =
+        raw.questionClass === undefined
+          ? isReadingId(raw.readingId)
+          : raw.readingId === undefined &&
+            unbuiltClassOf(raw.questionClass) !== null;
       return (
         names &&
         Array.isArray(raw.classes) &&
         raw.classes.length > 0 &&
-        raw.classes.every(c => DATA_CLASSES.includes(c as DataClass))
+        raw.classes.every((c) => DATA_CLASSES.includes(c as DataClass))
       );
     }
     return (
@@ -324,7 +515,11 @@ export function isBoundReply(raw: unknown): raw is BoundReply {
   // A withheld reason is only ever a failed read's, and never travels without
   // the one line the person is told instead (round 6r). A line, when present,
   // is one short line.
-  if (raw.reason === WITHHELD_FOR_YOUR_ROLE && (raw.kind !== "could_not_read" || !isRefusalLine(raw.line))) return false;
+  if (
+    raw.reason === WITHHELD_FOR_YOUR_ROLE &&
+    (raw.kind !== "could_not_read" || !isRefusalLine(raw.line))
+  )
+    return false;
   if (raw.line !== undefined && !isRefusalLine(raw.line)) return false;
   return (
     NON_READING_KINDS.includes(raw.kind as Exclude<ReadingOutcome, "read">) &&

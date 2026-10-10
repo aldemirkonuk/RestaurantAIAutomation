@@ -37,10 +37,15 @@ function service(price: number | null) {
           writes.push(row);
           return self;
         });
-        self.single = jest.fn(() => Promise.resolve({ data: { id: CID }, error: null }));
+        self.single = jest.fn(() =>
+          Promise.resolve({ data: { id: CID }, error: null }),
+        );
         self.maybeSingle = jest.fn(() => {
           if (patch) writes.push(patch);
-          return Promise.resolve({ data: patch ? { id: CID } : { price }, error: null });
+          return Promise.resolve({
+            data: patch ? { id: CID } : { price },
+            error: null,
+          });
         });
         return self;
       },
@@ -50,14 +55,17 @@ function service(price: number | null) {
 }
 
 describe("cocktail price and retire — owner or manager only (F-270)", () => {
-  it.each(["staff", null])("%s is refused a NEW price, and nothing is written", async (role) => {
-    const { svc, writes } = service(14);
-    const c = new BeveragesController(svc, orgs(role as string | null));
-    await expect(c.updateCocktail(RID, CID, { price: 18 }, USER)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
-    expect(writes).toHaveLength(0);
-  });
+  it.each(["staff", null])(
+    "%s is refused a NEW price, and nothing is written",
+    async (role) => {
+      const { svc, writes } = service(14);
+      const c = new BeveragesController(svc, orgs(role as string | null));
+      await expect(
+        c.updateCocktail(RID, CID, { price: 18 }, USER),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(writes).toHaveLength(0);
+    },
+  );
 
   it("staff may amend the method when the page sends the price unchanged", async () => {
     const { svc, writes } = service(14);
@@ -74,17 +82,25 @@ describe("cocktail price and retire — owner or manager only (F-270)", () => {
     expect(writes[0]).toMatchObject({ price: 18 });
   });
 
-  it.each(["staff", null])("%s may not take a cocktail off the list", async (role) => {
-    const { svc, writes } = service(14);
-    const c = new BeveragesController(svc, orgs(role as string | null));
-    await expect(c.deleteCocktail(RID, CID, USER)).rejects.toBeInstanceOf(ForbiddenException);
-    expect(writes).toHaveLength(0);
-  });
+  it.each(["staff", null])(
+    "%s may not take a cocktail off the list",
+    async (role) => {
+      const { svc, writes } = service(14);
+      const c = new BeveragesController(svc, orgs(role as string | null));
+      await expect(c.deleteCocktail(RID, CID, USER)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(writes).toHaveLength(0);
+    },
+  );
 
   it("a manager may take a cocktail off the list", async () => {
     const { svc } = service(14);
     const c = new BeveragesController(svc, orgs("manager"));
-    await expect(c.deleteCocktail(RID, CID, USER)).resolves.toEqual({ id: CID, retired: true });
+    await expect(c.deleteCocktail(RID, CID, USER)).resolves.toEqual({
+      id: CID,
+      retired: true,
+    });
   });
 
   it("staff may record an unpriced cocktail but not a priced one", async () => {
@@ -101,7 +117,9 @@ describe("cocktail price and retire — owner or manager only (F-270)", () => {
   it("a session naming no one is refused before anything is written", async () => {
     const { svc, writes } = service(14);
     const c = new BeveragesController(svc, orgs("owner"));
-    await expect(c.deleteCocktail(RID, CID, {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(c.deleteCocktail(RID, CID, {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(writes).toHaveLength(0);
   });
 });

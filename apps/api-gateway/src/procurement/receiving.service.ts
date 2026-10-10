@@ -13,7 +13,11 @@ import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "./delivery-item-to-name";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
-import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
+import {
+  packsAndLoose,
+  readOneShelfReceived,
+  readShelfReceived,
+} from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
 import { decideDoorCount } from "./order-transitions";
 import {
@@ -804,11 +808,14 @@ export class ReceivingService {
     // it no longer needs naming. Never blocks the receipt; a failure is
     // logged.
     if (stockBooked && delta > 0) {
-      const closed = await closeDeliveryItemToNameBookedElsewhere(this.db.getClient(), {
-        restaurantId: input.restaurantId,
-        orderId: input.orderId,
-        via: "receiving_door",
-      });
+      const closed = await closeDeliveryItemToNameBookedElsewhere(
+        this.db.getClient(),
+        {
+          restaurantId: input.restaurantId,
+          orderId: input.orderId,
+          via: "receiving_door",
+        },
+      );
       if (!closed.ok) {
         this.logger.error(
           `door receipt for order ${input.orderId} booked, but its stale name-item ask was not closed: ${closed.error}`,
@@ -880,8 +887,10 @@ export class ReceivingService {
       .in("stage", ["case_count", "reconciled"]);
     if (error) throw new Error(error.message);
 
-    const enteredAt = (r: { created_at?: string | null; occurred_at?: string | null }) =>
-      String(r.created_at ?? r.occurred_at ?? "");
+    const enteredAt = (r: {
+      created_at?: string | null;
+      occurred_at?: string | null;
+    }) => String(r.created_at ?? r.occurred_at ?? "");
     // Two events stamped in the same instant fall back to their id, so the
     // checkpoint they fold into is the same on every read (F-862).
     const rows = [...(data ?? [])].sort((a, b) =>
@@ -903,7 +912,9 @@ export class ReceivingService {
         verified = true;
         const checked =
           r.counted_qty_bottles == null ? NaN : Number(r.counted_qty_bottles);
-        receivedBottles = Number.isFinite(checked) ? Math.max(0, checked) : null;
+        receivedBottles = Number.isFinite(checked)
+          ? Math.max(0, checked)
+          : null;
         continue;
       }
       const accepted = Math.max(
@@ -1028,17 +1039,23 @@ export class ReceivingService {
     let cursor: LineHistoryCursor | null = null;
     if (before !== null) {
       cursor = parseLineHistoryCursor(before);
-      if (!cursor) throw new BadRequestException("That page marker is not one this history gave out.");
+      if (!cursor)
+        throw new BadRequestException(
+          "That page marker is not one this history gave out.",
+        );
     }
 
     const { data: order, error: orderErr } = await this.db
       .getClient()
       .from("procurement_orders")
-      .select("id, order_number, inventory_id, provider_id, quantity, bottles_total, unit_type, match_verified_at")
+      .select(
+        "id, order_number, inventory_id, provider_id, quantity, bottles_total, unit_type, match_verified_at",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .maybeSingle();
-    if (orderErr) throw new Error(`This line could not be read (${orderErr.message}).`);
+    if (orderErr)
+      throw new Error(`This line could not be read (${orderErr.message}).`);
     if (!order) throw new NotFoundException("Order not found");
 
     let q = this.db
@@ -1058,7 +1075,10 @@ export class ReceivingService {
       .order("occurred_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(LINE_HISTORY_PAGE + 1);
-    if (rowsErr) throw new Error(`This line's history could not be read (${rowsErr.message}).`);
+    if (rowsErr)
+      throw new Error(
+        `This line's history could not be read (${rowsErr.message}).`,
+      );
 
     const { count, error: countErr } = await this.db
       .getClient()
@@ -1072,7 +1092,11 @@ export class ReceivingService {
     const hasMore = all.length > LINE_HISTORY_PAGE;
 
     const userIds = Array.from(
-      new Set(page.map((r) => r.received_by).filter((v): v is string => typeof v === "string" && v !== "")),
+      new Set(
+        page
+          .map((r) => r.received_by)
+          .filter((v): v is string => typeof v === "string" && v !== ""),
+      ),
     );
     let names = new Map<string, string>();
     let recordedByUnavailable = false;
@@ -1087,7 +1111,9 @@ export class ReceivingService {
       } else {
         names = new Map(
           (people ?? [])
-            .filter((p: any) => typeof p.name === "string" && p.name.trim() !== "")
+            .filter(
+              (p: any) => typeof p.name === "string" && p.name.trim() !== "",
+            )
             .map((p: any) => [p.user_id as string, p.name as string]),
         );
       }
@@ -1100,7 +1126,10 @@ export class ReceivingService {
       entries: page.map((r) => toLineHistoryEntry(r, names)),
       total: countErr ? null : (count ?? null),
       hasMore,
-      nextBefore: hasMore && last ? formatLineHistoryCursor(last as { occurred_at: string; id: string }) : null,
+      nextBefore:
+        hasMore && last
+          ? formatLineHistoryCursor(last as { occurred_at: string; id: string })
+          : null,
       recordedByUnavailable,
       // Verified before #436 made a verification write its own event: the
       // order carries the date, the history has no entry for it. Sent so the
@@ -1150,19 +1179,17 @@ export class ReceivingService {
       outcome: string | null;
       occurred_at: string;
       stage: string;
-    }>(
-      "The deliveries counted at the door",
-      () =>
-        this.db
-          .getClient()
-          .from("procurement_receipt_events")
-          .select(
-            "id, order_id, counted_qty_bottles, rejected_qty_bottles, outcome, occurred_at, stage",
-            {
-              count: "exact",
-            },
-          )
-          .eq("restaurant_id", restaurantId),
+    }>("The deliveries counted at the door", () =>
+      this.db
+        .getClient()
+        .from("procurement_receipt_events")
+        .select(
+          "id, order_id, counted_qty_bottles, rejected_qty_bottles, outcome, occurred_at, stage",
+          {
+            count: "exact",
+          },
+        )
+        .eq("restaurant_id", restaurantId),
     );
     const capped = false;
 
@@ -1292,13 +1319,19 @@ export class ReceivingService {
     start: Date,
     end: Date,
   ): Promise<{
-    rows: Array<{ orderId: string; orderNumber: string | null; countedAt: string }>;
+    rows: Array<{
+      orderId: string;
+      orderNumber: string | null;
+      countedAt: string;
+    }>;
     capped: boolean;
   }> {
     const { data, error } = await this.db
       .getClient()
       .from("procurement_receipt_events")
-      .select("order_id, occurred_at, outcome, counted_qty_bottles, rejected_qty_bottles")
+      .select(
+        "order_id, occurred_at, outcome, counted_qty_bottles, rejected_qty_bottles",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("stage", "case_count")
       .gte("occurred_at", start.toISOString())
@@ -1329,7 +1362,9 @@ export class ReceivingService {
     // is not "no orders arrived" — it must reach the day line as unreadable,
     // not print an empty or numberless queue built from a read that failed.
     if (ordersError) throw new Error(ordersError.message);
-    const numbers = new Map((orders ?? []).map((o) => [o.id, o.order_number ?? null]));
+    const numbers = new Map(
+      (orders ?? []).map((o) => [o.id, o.order_number ?? null]),
+    );
 
     const rows = orderIds
       .map((orderId) => ({
@@ -1338,7 +1373,8 @@ export class ReceivingService {
         countedAt: byOrder.get(orderId) as string,
       }))
       .sort(
-        (a, b) => new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime(),
+        (a, b) =>
+          new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime(),
       );
     return { rows, capped };
   }
@@ -1385,15 +1421,25 @@ export class ReceivingService {
     ]);
     // A failed read is an error, never an empty queue: "nothing to decide"
     // and "the queue could not be read" are opposite facts to a manager.
-    if (ordersError) throw new Error(`The deliveries to decide could not be read (${ordersError.message}).`);
-    if (creditsError) throw new Error(`The open vendor claims could not be read (${creditsError.message}).`);
+    if (ordersError)
+      throw new Error(
+        `The deliveries to decide could not be read (${ordersError.message}).`,
+      );
+    if (creditsError)
+      throw new Error(
+        `The open vendor claims could not be read (${creditsError.message}).`,
+      );
 
     // What is still owed, from the ledger (ADR 0192 amendment, 2026-09-21):
     // the order's bottles less what the shelf holds, in bottles. It used to be
     // `procurement_orders.backorder_quantity`, written once per verification
     // and never moved by a later truck. A failed ledger read reads as
     // unknown on each row it covered, never as zero owed.
-    const shelf = await readShelfReceived(this.db.getClient(), restaurantId, (orders ?? []) as any[]);
+    const shelf = await readShelfReceived(
+      this.db.getClient(),
+      restaurantId,
+      (orders ?? []) as any[],
+    );
 
     // The vendor box (sketch 107, direction A) needs a name to group by — F2 in
     // 06-pages/receiving.md §15: the old hook read `providerName`, which
@@ -1443,7 +1489,13 @@ export class ReceivingService {
           typeof v === "string" && v.trim() !== "" ? v.trim() : null;
         itemNameById = new Map(
           (invRows ?? [])
-            .map((r: any) => [r.id as string, named(r.wine_name) ?? named(r.display_name)] as const)
+            .map(
+              (r: any) =>
+                [
+                  r.id as string,
+                  named(r.wine_name) ?? named(r.display_name),
+                ] as const,
+            )
             .filter((e): e is readonly [string, string] => e[1] !== null),
         );
       }
@@ -1521,10 +1573,13 @@ export class ReceivingService {
         Math.round(((byCurrency.get(ccy) ?? 0) + i.dollarsAtRisk) * 100) / 100,
       );
     }
-    const totalAtRiskByCurrency = Array.from(byCurrency, ([currency, amount]) => ({
-      currency: currency || null,
-      amount,
-    }));
+    const totalAtRiskByCurrency = Array.from(
+      byCurrency,
+      ([currency, amount]) => ({
+        currency: currency || null,
+        amount,
+      }),
+    );
 
     return {
       items,

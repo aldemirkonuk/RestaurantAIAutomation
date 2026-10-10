@@ -39,7 +39,11 @@ import {
   agreementCurrencyDefault,
   agreementCurrencyToRecord,
 } from "./agreement-currency";
-import { A_MANAGER, A_SEAL, GATES_AFTER_LEDGER } from "./testing/passing-vendor-gates";
+import {
+  A_MANAGER,
+  A_SEAL,
+  GATES_AFTER_LEDGER,
+} from "./testing/passing-vendor-gates";
 
 type Row = Record<string, any>;
 
@@ -237,7 +241,10 @@ function makeDb(opts: {
   /** `restaurants.currency`; absent reads as no row. */
   houseCurrency?: string | null;
 }) {
-  const calls = { sightingInserts: [] as Row[], priceHistoryInserts: [] as Row[] };
+  const calls = {
+    sightingInserts: [] as Row[],
+    priceHistoryInserts: [] as Row[],
+  };
 
   const supabase: any = {
     from(table: string) {
@@ -247,7 +254,8 @@ function makeDb(opts: {
 
       const settle = (shape: "one" | "many"): Row => {
         if (table === "procurement_orders") {
-          if (op === "update") return { data: opts.orderRow ?? {}, error: null };
+          if (op === "update")
+            return { data: opts.orderRow ?? {}, error: null };
           return { data: opts.orderRow ?? null, error: null };
         }
         if (table === "procurement_order_items")
@@ -269,7 +277,8 @@ function makeDb(opts: {
           };
         }
         if (table === "vendor_price_observations") {
-          if (selectedColumns.trim() === "id") return { data: null, error: null };
+          if (selectedColumns.trim() === "id")
+            return { data: null, error: null };
           return { data: [], error: null };
         }
         return { data: shape === "many" ? [] : null, error: null };
@@ -277,7 +286,8 @@ function makeDb(opts: {
 
       const q: any = {
         select(cols?: string) {
-          if (op === "select" && typeof cols === "string") selectedColumns = cols;
+          if (op === "select" && typeof cols === "string")
+            selectedColumns = cols;
           return q;
         },
         eq(col: string, value: any) {
@@ -296,7 +306,8 @@ function makeDb(opts: {
         limit: () => q,
         insert(payload: Row) {
           op = "insert";
-          if (table === "price_history") calls.priceHistoryInserts.push(payload);
+          if (table === "price_history")
+            calls.priceHistoryInserts.push(payload);
           if (table === "vendor_price_observations")
             calls.sightingInserts.push(payload);
           return q;
@@ -361,23 +372,27 @@ const statedLine = {
 };
 
 /** The same line, with the currency the desk confirmed on the sheet (Q31). */
-const statedLineInLira = { ...statedLine, currency: "TRY", final_unit_price: 36 };
+const statedLineInLira = {
+  ...statedLine,
+  currency: "TRY",
+  final_unit_price: 36,
+};
 
 describe("price_history records the currency, or records that it has none", () => {
   it("writes the invoice's own code when the desk stated one", async () => {
     const { db, calls } = makeDb({ orderRow: turkishHouseOrder });
 
-    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).verifyReceipt(
-      REST,
-      ORDER,
-      USER,
-      {
-        invoiceQuantity: 10,
-        invoiceUnitPrice: 40,
-        acceptedQuantity: 10,
-        invoiceCurrency: "TRY",
-      } as any,
-    );
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    ).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      acceptedQuantity: 10,
+      invoiceCurrency: "TRY",
+    } as any);
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     expect(calls.priceHistoryInserts[0].currency).toBe("TRY");
@@ -402,16 +417,16 @@ describe("price_history records the currency, or records that it has none", () =
     const { db, calls } = makeDb({ orderRow: turkishHouseOrder });
 
     await expect(
-      new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).verifyReceipt(
-        REST,
-        ORDER,
-        USER,
-        {
-          invoiceQuantity: 10,
-          invoiceUnitPrice: 40,
-          acceptedQuantity: 10,
-        } as any,
-      ),
+      new ProcurementService(
+        db,
+        events,
+        ledger,
+        ...GATES_AFTER_LEDGER,
+      ).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 10,
+        invoiceUnitPrice: 40,
+        acceptedQuantity: 10,
+      } as any),
     ).rejects.toThrow(/A price without a currency is not a price/);
 
     // Nothing on either register, and nothing anywhere else: the refusal is the
@@ -426,17 +441,30 @@ describe("price_history records the currency, or records that it has none", () =
       orderLineRow: statedLine,
     });
 
-    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
-      finalPrice: 36,
-      sendConfirmation: false,
-    }, A_SEAL);
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    ).confirmDeal(
+      REST,
+      ORDER,
+      A_MANAGER,
+      {
+        finalPrice: 36,
+        sendConfirmation: false,
+      },
+      A_SEAL,
+    );
 
     // The unit IS stated on this line, so the series row is written — which is
     // what makes this a test of the currency rule and not of ADR 0119's.
     expect(calls.priceHistoryInserts).toHaveLength(1);
     expect(calls.priceHistoryInserts[0].unit).toBe("bottle");
     expect(calls.priceHistoryInserts[0].currency).toBeNull();
-    expect(calls.priceHistoryInserts[0].notes).toContain("Currency not recorded");
+    expect(calls.priceHistoryInserts[0].notes).toContain(
+      "Currency not recorded",
+    );
     // The register refuses it: NOT NULL leaves no way to say "not recorded".
     expect(calls.sightingInserts).toHaveLength(0);
   });
@@ -444,19 +472,19 @@ describe("price_history records the currency, or records that it has none", () =
   it("names the currency key explicitly even when the value is null", async () => {
     const { db, calls } = makeDb({ orderRow: turkishHouseOrder });
 
-    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).verifyReceipt(
-      REST,
-      ORDER,
-      USER,
-      {
-        invoiceQuantity: 10,
-        invoiceUnitPrice: 40,
-        acceptedQuantity: 10,
-        // A code is now REQUIRED beside a price (batch 67). The key being
-        // named explicitly is what this test is about, not its value.
-        invoiceCurrency: "TRY",
-      } as any,
-    );
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    ).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      acceptedQuantity: 10,
+      // A code is now REQUIRED beside a price (batch 67). The key being
+      // named explicitly is what this test is about, not its value.
+      invoiceCurrency: "TRY",
+    } as any);
 
     // A conditional spread would leave the key off, and the capture-contract
     // guard reads write payloads without executing them: a column it cannot see
@@ -475,10 +503,21 @@ describe("the agreement's own currency reaches both registers", () => {
       orderLineRow: statedLineInLira,
     });
 
-    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
-      finalPrice: 36,
-      sendConfirmation: false,
-    }, A_SEAL);
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    ).confirmDeal(
+      REST,
+      ORDER,
+      A_MANAGER,
+      {
+        finalPrice: 36,
+        sendConfirmation: false,
+      },
+      A_SEAL,
+    );
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     expect(calls.priceHistoryInserts[0].currency).toBe("TRY");
@@ -502,10 +541,21 @@ describe("the agreement's own currency reaches both registers", () => {
       orderLineRow: statedLine,
     });
 
-    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
-      finalPrice: 36,
-      sendConfirmation: false,
-    }, A_SEAL);
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    ).confirmDeal(
+      REST,
+      ORDER,
+      A_MANAGER,
+      {
+        finalPrice: 36,
+        sendConfirmation: false,
+      },
+      A_SEAL,
+    );
 
     expect(calls.priceHistoryInserts[0].currency).toBeNull();
     expect(calls.sightingInserts).toHaveLength(0);
@@ -519,10 +569,21 @@ describe("the agreement's own currency reaches both registers", () => {
       orderLineRow: { ...statedLine, currency: null },
     });
 
-    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
-      finalPrice: 36,
-      sendConfirmation: false,
-    }, A_SEAL);
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    ).confirmDeal(
+      REST,
+      ORDER,
+      A_MANAGER,
+      {
+        finalPrice: 36,
+        sendConfirmation: false,
+      },
+      A_SEAL,
+    );
 
     expect(calls.priceHistoryInserts[0].currency).not.toBe("USD");
     expect(calls.priceHistoryInserts[0].currency).toBeNull();
@@ -539,9 +600,16 @@ describe("the confirmation letter names the price in the agreement's money (F-34
     providers: { name: "Kavaklidere", contact_email: "orders@vendor.test" },
   };
 
-  async function letterBody(opts: Parameters<typeof makeDb>[0]): Promise<string> {
+  async function letterBody(
+    opts: Parameters<typeof makeDb>[0],
+  ): Promise<string> {
     const { db } = makeDb(opts);
-    const svc = new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER);
+    const svc = new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    );
     const send = jest
       .spyOn(svc as any, "sendProviderEmail")
       .mockResolvedValue({ messageId: null, threadId: null });
@@ -620,13 +688,17 @@ describe("agreementCurrencyDefault — the sheet's stated default", () => {
 
   it("refuses a malformed code from either rung rather than passing it on", () => {
     expect(
-      agreementCurrencyDefault({ vendorPaperCurrency: "TL", houseCurrency: "US$" })
-        .code,
+      agreementCurrencyDefault({
+        vendorPaperCurrency: "TL",
+        houseCurrency: "US$",
+      }).code,
     ).toBeNull();
     // A lower-case code off the wire is folded, not rejected.
     expect(
-      agreementCurrencyDefault({ vendorPaperCurrency: " try ", houseCurrency: null })
-        .code,
+      agreementCurrencyDefault({
+        vendorPaperCurrency: " try ",
+        houseCurrency: null,
+      }).code,
     ).toBe("TRY");
   });
 
