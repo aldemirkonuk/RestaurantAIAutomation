@@ -19,10 +19,12 @@ function chain(result: Result) {
 
 const future = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
+const EXPIRES_AT = future();
+
 const LIVE_INVITE = {
   id: "i1",
   role: "staff",
-  expires_at: future(),
+  expires_at: EXPIRES_AT,
   used_at: null,
   target_email: "Invitee@Example.com",
   organizations: { name: "Org" },
@@ -37,6 +39,7 @@ const PREVIEW = {
   city: "Antalya",
   inviter: "Inviter",
   role: "staff",
+  expiresAt: EXPIRES_AT,
 };
 
 function makeService(opts: {

@@ -153,13 +153,14 @@ describe("AuthService#getInvitePreview — a failed read is not a missing invite
   });
 
   it("a live invite: still answers the same preview shape", async () => {
+    const expiresAt = future();
     const { svc } = makeService({
       organization_invites: [
         {
           data: {
             id: "i1",
             role: "manager",
-            expires_at: future(),
+            expires_at: expiresAt,
             used_at: null,
             organizations: { name: "Org" },
             restaurants: { name: "House", city: "Antalya" },
@@ -176,6 +177,8 @@ describe("AuthService#getInvitePreview — a failed read is not a missing invite
       city: "Antalya",
       inviter: "Inviter",
       role: "manager",
+      // What is left of the code, not its full lifetime (F-895).
+      expiresAt,
     });
   });
 });

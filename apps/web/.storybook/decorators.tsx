@@ -70,7 +70,7 @@ export const mockAuthValue: AuthContextType = {
     detailsLoaded: true,
   }),
   registerRestaurant: noop,
-  joinViaInvite: noop,
+  joinViaInvite: async () => ({ detailsLoaded: true }),
   loginWithGoogle: noop,
   loginWithMicrosoft: noop,
   signInWithSession: noop,

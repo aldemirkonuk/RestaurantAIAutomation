@@ -2297,6 +2297,9 @@ export class AuthService {
       city: (invite.restaurants as any)?.city,
       inviter: (invite.users as any)?.name,
       role: invite.role,
+      // When the code stops working, so the join page says what is left of
+      // it rather than the full seven days it was made with (F-895).
+      expiresAt: invite.expires_at,
     };
     const callerEmail = accessToken
       ? await this.invitePreviewCallerEmail(accessToken)
@@ -3100,16 +3103,34 @@ export class AuthService {
     let user: any;
     // Whether the joining account's address is proved right now (fork 13).
     let addressProved: boolean;
+    // The joiner's row in this house that is no longer current, if any: this
+    // invite makes it current again rather than writing a second one (F-898).
+    let endedAccess: { id: string } | null = null;
 
     if (existingUser) {
-      const { data: existingAccess } = await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .select("id")
-        .eq("user_id", existingUser.user_id)
-        .eq("restaurant_id", invite.restaurant_id)
-        .maybeSingle();
+      const { data: existingAccess, error: existingErr } =
+        await this.databaseService.supabase
+          .from("user_restaurant_access")
+          .select("id, is_active, valid_from, valid_until")
+          .eq("user_id", existingUser.user_id)
+          .eq("restaurant_id", invite.restaurant_id)
+          .maybeSingle();
+      if (existingErr) {
+        await this.databaseService.supabase
+          .from("organization_invites")
+          .update({ used_at: null, used_by_email: null })
+          .eq("id", invite.id);
+        throw new ServiceUnavailableException(
+          "Could not check your place in this house. Nothing was done; try again.",
+        );
+      }
 
-      if (existingAccess) {
+      // Only a CURRENT membership is "already a member" — the same rule the
+      // signed-in accept keeps (F-635). A held, switched-off or lapsed row is
+      // brought back by this invite below (F-898).
+      if (existingAccess && !isLiveMembership(existingAccess)) {
+        endedAccess = existingAccess;
+      } else if (existingAccess) {
         await this.databaseService.supabase
           .from("organization_invites")
           .update({ used_at: null, used_by_email: null })
@@ -3224,16 +3245,31 @@ export class AuthService {
     }
 
     const held = membershipIsHeld(addressProved);
-    const { error: uraErr } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .insert({
-        user_id: user.user_id,
-        restaurant_id: invite.restaurant_id,
-        role: invite.role,
-        invited_via: invite.id,
-        is_active: !held,
-        held_since: held ? new Date().toISOString() : null,
-      });
+    const { error: uraErr } = endedAccess
+      ? await this.databaseService.supabase
+          .from("user_restaurant_access")
+          .update({
+            role: invite.role,
+            invited_via: invite.id,
+            is_active: !held,
+            held_since: held ? new Date().toISOString() : null,
+            valid_from: new Date().toISOString(),
+            valid_until: null,
+            deactivated_at: null,
+            deactivated_by: null,
+          })
+          .eq("id", endedAccess.id)
+          .eq("user_id", user.user_id)
+      : await this.databaseService.supabase
+          .from("user_restaurant_access")
+          .insert({
+            user_id: user.user_id,
+            restaurant_id: invite.restaurant_id,
+            role: invite.role,
+            invited_via: invite.id,
+            is_active: !held,
+            held_since: held ? new Date().toISOString() : null,
+          });
 
     if (uraErr) {
       await this.databaseService.supabase

@@ -235,7 +235,11 @@ export interface AuthContextType {
   registerAccountWithGoogle: (token: string) => Promise<void>;
   createFirstHouse: (data: CreateFirstHouseData) => Promise<HouseOpened>;
   registerRestaurant: (data: RegisterRestaurantData) => Promise<void>;
-  joinViaInvite: (data: JoinViaInviteData) => Promise<void>;
+  /**
+   * `detailsLoaded` is false when the join went through and its session is
+   * stored, but the `/auth/me` read after it failed (F-896).
+   */
+  joinViaInvite: (data: JoinViaInviteData) => Promise<{ detailsLoaded: boolean }>;
   loginWithGoogle: (token: string) => Promise<void>;
   loginWithMicrosoft: (token: string) => Promise<void>;
   /**
@@ -1115,20 +1119,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const joinViaInvite = useCallback(async (data: JoinViaInviteData) => {
+    setError(null);
+    setLoading(true);
+    let accessToken: string;
     try {
-      setError(null);
-      setLoading(true);
       const response = await api.post("/api/v1/auth/join", data);
-      const { accessToken, refreshToken: refresh } = response.data;
+      const { accessToken: access, refreshToken: refresh } = response.data;
+      accessToken = access;
       storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+    } catch (err: any) {
+      // The account is already in this house: said in words, not the
+      // gateway's code (F-898).
+      const raw = err.response?.data?.message;
+      const message =
+        raw === "already_member"
+          ? "This account is already in this restaurant. Sign in instead."
+          : raw || "We could not join you to this restaurant. Try again.";
+      setError(message);
+      setLoading(false);
+      throw new Error(message);
+    }
+    // The join went through and the invite is used by here. A failed
+    // `/auth/me` is not a failed join: a second press would only meet a used
+    // code (F-896, as createFirstHouse does for F-006).
+    try {
       const userResponse = await api.get("/api/v1/auth/me");
       setUser(userFrom(userResponse.data.user, accessToken));
-    } catch (err: any) {
-      const message =
-        err.response?.data?.message || "Failed to join restaurant";
-      setError(message);
-      throw new Error(message);
+      return { detailsLoaded: true };
+    } catch (err) {
+      console.warn("joined; /auth/me did not load", err);
+      return { detailsLoaded: false };
     } finally {
       setLoading(false);
     }

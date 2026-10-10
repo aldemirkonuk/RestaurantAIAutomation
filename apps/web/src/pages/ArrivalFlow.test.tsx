@@ -800,7 +800,7 @@ describe('a new owner is told what each step does, and a reload resumes it', () 
     expect(screen.getByLabelText('Restaurant name')).toHaveValue('Meyhane')
     expect(screen.getByLabelText('Address')).toHaveValue('1 House Street')
     expect(screen.getByLabelText('City')).toHaveValue('Istanbul')
-    expect(screen.getByText('Currency · TRY')).toBeInTheDocument()
+    expect(screen.getByLabelText('Currency')).toHaveValue('TRY')
   })
 
   it('keeps the role chip chosen on step 01 across a reload (F-007)', async () => {
@@ -831,9 +831,35 @@ describe('a new owner is told what each step does, and a reload resumes it', () 
     expect(navigate).toHaveBeenCalledWith('/house', { replace: true })
     second.unmount()
 
-    // Skipping on to the house ends the arrival: nothing is resumed after it.
+    // Skipping on to the house ends the arrival; the open house comes back
+    // to read a menu, never to step 01 and its 409 (F-893).
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
+  })
+
+  it('opens an open house straight on the menu step, as /house/menu sends it (F-893)', () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, userId: 'user-1', restaurantId: 'house-1' }
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'This is us' })).not.toBeInTheDocument()
+  })
+
+  it('asks the currency, defaulted from the country, and sends the answer (F-900, ADR 0117 Q25)', async () => {
+    await toRestaurantStep()
+    expect(screen.getByLabelText('Currency')).toHaveValue('TRY')
+    expect(screen.getByTestId('currency-statement')).toHaveTextContent('Defaulted from Türkiye')
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'EUR' } })
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(createFirstHouse).toHaveBeenCalledWith(expect.objectContaining({ currency: 'EUR' }))
+  })
+
+  it('records no currency when the owner says not yet (F-900)', async () => {
+    await toRestaurantStep()
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(createFirstHouse).toHaveBeenCalledWith(expect.objectContaining({ currency: undefined }))
   })
 
   it('never resumes another account\'s half-finished arrival (F-007)', async () => {

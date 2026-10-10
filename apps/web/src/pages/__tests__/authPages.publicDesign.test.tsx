@@ -222,7 +222,9 @@ async function loginResolved(result: {
 function gateway(opts: { invite?: 'valid' | 'invalid'; emailAvailable?: boolean }) {
   h.get.mockImplementation((url: string) => {
     if (url.startsWith('/auth/invite/')) {
-      if (opts.invite === 'invalid') return Promise.reject(new Error('404'))
+      // The gateway answers a bad code with 200 {valid:false}; a thrown read
+      // is a check that got no answer, said apart (F-894).
+      if (opts.invite === 'invalid') return Promise.resolve({ data: { valid: false, reason: 'not_found' } })
       return Promise.resolve({
         data: { valid: true, restaurant: 'Kaya Meyhane', city: 'Fethiye', inviter: 'Ayşe', role: 'manager' },
       })

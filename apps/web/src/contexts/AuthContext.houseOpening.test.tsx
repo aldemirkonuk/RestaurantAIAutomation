@@ -312,3 +312,79 @@ describe("the sentences (F-006)", () => {
       expect(heldPlace.toLowerCase()).not.toContain(word);
   });
 });
+
+describe("joinViaInvite (F-896, F-898)", () => {
+  const JOIN = {
+    code: "ABCD1234",
+    name: "Deniz Kaya",
+    email: "d@house.test",
+    password: "long-enough-1",
+  };
+
+  function joinAnswers(me: "loads" | "fails") {
+    h.instance.post.mockResolvedValue({
+      data: {
+        accessToken: jwt({ sub: U, restaurantId: A, role: "staff" }),
+        refreshToken: "r",
+      },
+    });
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url !== "/api/v1/auth/me") return { data: [] };
+      if (me === "fails")
+        throw Object.assign(new Error("Request failed with status code 500"), {
+          isAxiosError: true,
+          response: { status: 500, data: {} },
+        });
+      return { data: { user: { userId: U, email: JOIN.email, restaurantId: A } } };
+    });
+  }
+
+  it("is a join that went through when only /auth/me fails afterwards", async () => {
+    const auth = await mount();
+    joinAnswers("fails");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    let joined: unknown;
+    await act(async () => {
+      joined = await auth().joinViaInvite(JOIN);
+    });
+
+    expect(joined).toEqual({ detailsLoaded: false });
+    expect(auth().error).toBeNull();
+    expect(localStorage.getItem("accessToken")).not.toBeNull();
+    warn.mockRestore();
+  });
+
+  it("says the details loaded when both answer", async () => {
+    const auth = await mount();
+    joinAnswers("loads");
+
+    let joined: unknown;
+    await act(async () => {
+      joined = await auth().joinViaInvite(JOIN);
+    });
+
+    expect(joined).toEqual({ detailsLoaded: true });
+    expect(auth().user?.userId).toBe(U);
+  });
+
+  it("says an account already in the house in words, not its code", async () => {
+    const auth = await mount();
+    h.instance.post.mockRejectedValue(
+      Object.assign(new Error("Request failed with status code 409"), {
+        isAxiosError: true,
+        response: { status: 409, data: { message: "already_member" } },
+      }),
+    );
+
+    let thrown: unknown;
+    await act(async () => {
+      thrown = await rejection(auth().joinViaInvite(JOIN));
+    });
+
+    expect((thrown as Error).message).toBe(
+      "This account is already in this restaurant. Sign in instead.",
+    );
+    expect(auth().error).not.toContain("already_member");
+  });
+});

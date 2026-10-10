@@ -65,7 +65,24 @@ interface InvitePreview {
   city?: string
   inviter?: string
   role?: string
+  /** When the code stops working (F-895). */
+  expiresAt?: string
   reason?: 'not_found' | 'expired' | 'used'
+}
+
+/**
+ * What is left of an invite, in words: the code was made for seven days, and
+ * one made six days ago has one left (F-895). Null when the gateway did not say.
+ */
+function inviteTimeLeft(expiresAt: string | undefined, now = Date.now()): string | null {
+  const at = expiresAt ? Date.parse(expiresAt) : NaN
+  if (Number.isNaN(at)) return null
+  const hours = Math.floor((at - now) / 3_600_000)
+  const days = Math.floor(hours / 24)
+  if (days >= 2) return `${days} days`
+  if (days === 1) return '1 day'
+  if (hours >= 2) return `${hours} hours`
+  return hours === 1 ? '1 hour' : 'Under an hour'
 }
 
 export function Register() {
@@ -88,6 +105,10 @@ export function Register() {
   const [inviteCode, setInviteCode] = useState('')
   const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null)
   const [validating, setValidating] = useState(false)
+  // A check that got no answer (offline, too many tries, the gateway down) is
+  // not a bad code: it is said apart and can be asked again (F-894).
+  const [inviteCheckFailed, setInviteCheckFailed] = useState(false)
+  const [inviteCheckTry, setInviteCheckTry] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Path A account fields
@@ -231,6 +252,7 @@ export function Register() {
 
   // Inline invite validation — debounced 400ms (D-08)
   useEffect(() => {
+    setInviteCheckFailed(false)
     if (inviteCode.length !== 8) {
       setInvitePreview(null)
       return
@@ -244,7 +266,9 @@ export function Register() {
         )
         setInvitePreview(data)
       } catch {
-        setInvitePreview({ valid: false, reason: 'not_found' })
+        // Only an answer of {valid:false} says the code is bad.
+        setInvitePreview(null)
+        setInviteCheckFailed(true)
       } finally {
         setValidating(false)
       }
@@ -252,7 +276,7 @@ export function Register() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [inviteCode])
+  }, [inviteCode, inviteCheckTry])
 
   // PATH SELECTOR — Desktop: 2-col feature cards | Mobile: bold stacked
   const pathSelector = () => (
@@ -545,11 +569,15 @@ export function Register() {
                 <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Your Role</span>
                 <span className={on ? 'text-[0.8rem] font-bold text-seal' : 'text-[0.8rem] font-bold text-wine-600'}>{invitePreview.role}</span>
               </div>
-              <div className={on ? 'w-px bg-paper-2' : 'w-px bg-gray-100'} />
-              <div className="flex flex-col gap-[2px]">
-                <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Expires</span>
-                <span className={on ? 'text-[0.8rem] font-bold text-inkm-1' : 'text-[0.8rem] font-bold text-gray-900'}>7 days</span>
-              </div>
+              {inviteTimeLeft(invitePreview.expiresAt) && (
+                <>
+                  <div className={on ? 'w-px bg-paper-2' : 'w-px bg-gray-100'} />
+                  <div className="flex flex-col gap-[2px]">
+                    <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Time left</span>
+                    <span className={on ? 'text-[0.8rem] font-bold text-inkm-1' : 'text-[0.8rem] font-bold text-gray-900'}>{inviteTimeLeft(invitePreview.expiresAt)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </motion.div>
         )}
@@ -577,6 +605,25 @@ export function Register() {
         )}
       </AnimatePresence>
 
+      {/* The check got no answer: not a bad code (F-894). */}
+      {!validating && inviteCheckFailed && (
+        <div
+          role="alert"
+          className={on ? 'mdv-ep-note border-red-700' : 'mb-4 flex items-center gap-[9px] bg-red-50 border border-red-200 rounded-lg px-[14px] py-[11px]'}
+        >
+          <span className={on ? 'mdv-ep-note-title !text-red-800' : 'text-[0.8125rem] text-red-600 font-medium'}>
+            We could not check this code just now. Nothing is wrong with it yet.{' '}
+            <button
+              type="button"
+              onClick={() => setInviteCheckTry((n) => n + 1)}
+              className="underline underline-offset-2"
+            >
+              Try again
+            </button>
+          </span>
+        </div>
+      )}
+
       <Button
         className={on ? `w-full h-12 ${HOUSE_BUTTON}` : 'w-full h-12'}
         disabled={!invitePreview?.valid || loading}
@@ -601,16 +648,20 @@ export function Register() {
     setError(null)
     setLoading(true)
     try {
-      await joinViaInvite({
+      const joined = await joinViaInvite({
         code: inviteCode,
-        name: joinName,
+        name: joinName.trim(),
         email: joinEmail,
         password: joinPassword,
         ...(inviteMailSecret ? { emailSecret: inviteMailSecret } : {}),
       })
       // The join itself used the invite: nothing held is left to come back to.
       forgetJoin()
-      navigate('/', { replace: true })
+      // Joined, but the account's details did not load: a fresh load reads
+      // them from the stored session, instead of a form that says it failed
+      // (F-896).
+      if (joined?.detailsLoaded === false) window.location.replace('/')
+      else navigate('/', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to join restaurant')
     } finally {
@@ -658,6 +709,7 @@ export function Register() {
               id="join-name"
               type="text"
               value={joinName}
+              maxLength={100}
               onChange={(e) => setJoinName(e.target.value)}
               placeholder="Jane Smith"
               className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
@@ -790,7 +842,7 @@ export function Register() {
       )}
       <Button
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
-        disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
+        disabled={loading || joinEmailCheck.checking || joinName.trim().length < 2 || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
         onClick={async () => {
           // If debounced check hasn't settled, run immediately before submitting
           let available = joinEmailCheck.available

@@ -7,10 +7,11 @@ import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
+import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { useAuth } from '../contexts/AuthContext'
 import { apiClient } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
-import { currencyForCountry } from '../lib/currency'
+import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
@@ -123,7 +124,10 @@ export default function GetStarted() {
 function GetStartedSteps() {
   const navigate = useNavigate()
   const { user, createFirstHouse, activeRestaurantId } = useAuth()
-  const [step, setStep] = useState<Step>('you')
+  // A person whose house is already open comes here only to read a menu
+  // (/house/menu's "Read a menu"): steps 01-02 would end in "This account
+  // already has a house" (F-893, F-239). They start on the menu step.
+  const [step, setStep] = useState<Step>(() => (user?.restaurantId ? 'menu' : 'you'))
   const [name, setName] = useState(user?.name ?? '')
   const [mobile, setMobile] = useState('')
   const [role, setRole] = useState<Role | null>(() => {
@@ -164,7 +168,13 @@ function GetStartedSteps() {
   // that window is not sent a second time (F-803).
   const unansweredRead = useRef<{ key: string; at: number } | null>(null)
 
-  const currency = useMemo(() => currencyForCountry(country), [country])
+  // The house is asked its currency, defaulted from the address (ADR 0117
+  // Q25): `null` while the stated default stands, '' for "not yet" (F-900).
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null)
+  const currency = useMemo(
+    () => currencyToRecord(currencyChoice, currencyForCountry(country)),
+    [country, currencyChoice],
+  )
   // The browser's own zone, or undefined if it will not say (item 62,
   // 2026-09-27) — never a made-up default. `createHouse` sends exactly this;
   // omitted, the gateway stores NULL rather than inventing a clock.
@@ -444,7 +454,7 @@ function GetStartedSteps() {
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house</p>
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
         <p className="mt-3 max-w-xl text-[#6d685f]">
-          Find the exact place. Its country sets the currency the house keeps its money in.
+          Find the exact place. Its country suggests the currency the house keeps its money in; change it below if that is wrong.
         </p>
         <p className="mt-2 max-w-xl text-sm text-[#6d685f]">
           {isMapsConfigured()
@@ -494,14 +504,14 @@ function GetStartedSteps() {
             </div>
           </div>
           <div className="border-y border-[#211f1b]/15 py-4 text-sm">
-            <span className="mr-6">Timezone · {timezone ?? 'Not detected'}</span>
-            <span>Currency · {currency ?? 'Not inferred yet'}</span>
+            <span>Timezone · {timezone ?? 'Not detected'}</span>
             <p className="mt-2 text-xs text-[#6d685f]">
               {timezone
                 ? "The timezone is this device's clock, not the address's. If the restaurant keeps another, change it in Settings once the house is open."
                 : "This device did not give a timezone. Set the restaurant's in Settings once the house is open."}
             </p>
           </div>
+          <CurrencyStep country={country} choice={currencyChoice} onChange={setCurrencyChoice} />
         </div>
         {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
         <button type="button" onClick={createHouse} disabled={saving} className="mt-8 bg-[#1a5e6b] px-6 py-3 text-white disabled:opacity-40">
