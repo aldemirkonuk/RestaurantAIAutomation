@@ -429,7 +429,10 @@ export class ToastService {
       return undefined;
     }
 
-    // Map Toast event type to internal event type
+    // The Toast kind rides in the payload: `events.event_type` and
+    // `events.source_page` are Postgres enums (baseline :107-119, :240-253)
+    // with no POS members, so a `pos_order_*` / `toast_webhook` insert is
+    // refused with 22P02 (F-554).
     const eventTypeMap: Record<string, string> = {
       [ToastWebhookEventType.ORDER_CREATED]: "pos_order_created",
       [ToastWebhookEventType.ORDER_UPDATED]: "pos_order_updated",
@@ -439,6 +442,7 @@ export class ToastService {
     };
 
     const eventPayload = {
+      pos_event: eventTypeMap[webhookDto.eventType] || "pos_event",
       toast_event_id: webhookDto.eventId,
       toast_order_guid: webhookDto.order.guid,
       order_number: webhookDto.order.orderNumber,
@@ -465,8 +469,8 @@ export class ToastService {
       .from("events")
       .insert({
         restaurant_id: restaurantId,
-        event_type: eventTypeMap[webhookDto.eventType] || "pos_event",
-        source_page: "toast_webhook",
+        event_type: "system_event",
+        source_page: "system",
         payload: eventPayload,
         schema_version: 1,
         idempotency_key: `toast_${webhookDto.eventId}`,
@@ -484,7 +488,12 @@ export class ToastService {
         });
         return undefined;
       }
-      throw error;
+      // The event row is a log line, not the sale. A failed log must never
+      // stop the sale taking stock off the shelf (F-554), so it is said
+      // loudly and the effects below still run.
+      this.logger.error(
+        `Toast order event ${webhookDto.eventId} was not logged: ${error.message}`,
+      );
     }
 
     // Phase 2 POS→pour: a completed sale decrements inventory (glass → pour, bottle → movement).
@@ -729,6 +738,7 @@ export class ToastService {
     }
 
     const eventPayload = {
+      pos_event: `pos_stock_${webhookDto.eventType.split(".")[1]}`,
       toast_event_id: webhookDto.eventId,
       toast_item_guid: webhookDto.stock.itemGuid,
       item_name: webhookDto.stock.itemName,
@@ -743,8 +753,9 @@ export class ToastService {
       .from("events")
       .insert({
         restaurant_id: restaurantId,
-        event_type: `pos_stock_${webhookDto.eventType.split(".")[1]}`,
-        source_page: "toast_webhook",
+        // Valid enum members only (F-554); the Toast kind is in the payload.
+        event_type: "inventory_change",
+        source_page: "system",
         payload: eventPayload,
         schema_version: 1,
         idempotency_key: `toast_${webhookDto.eventId}`,
@@ -781,6 +792,7 @@ export class ToastService {
     await this.cacheService.invalidateByPattern("toast:menus:*");
 
     const eventPayload = {
+      pos_event: webhookDto.eventType.replace(".", "_"),
       toast_event_id: webhookDto.eventId,
       menu_guid: webhookDto.menu?.menuGuid,
       menu_name: webhookDto.menu?.menuName,
@@ -792,8 +804,9 @@ export class ToastService {
       .from("events")
       .insert({
         restaurant_id: restaurantId,
-        event_type: webhookDto.eventType.replace(".", "_"),
-        source_page: "toast_webhook",
+        // Valid enum members only (F-554); the Toast kind is in the payload.
+        event_type: "system_event",
+        source_page: "system",
         payload: eventPayload,
         schema_version: 1,
         idempotency_key: `toast_${webhookDto.eventId}`,

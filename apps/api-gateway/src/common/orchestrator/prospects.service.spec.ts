@@ -97,6 +97,8 @@ describe("ProspectsService.promote", () => {
     expect(insert?.ops.find(([n]) => n === "insert")?.[1][0]).toMatchObject({
       restaurant_id: HOUSE,
       contact_email: "rep@vendor.example",
+      // F-555: providers.primary_contact is jsonb NOT NULL with no default.
+      primary_contact: {},
     });
   });
 

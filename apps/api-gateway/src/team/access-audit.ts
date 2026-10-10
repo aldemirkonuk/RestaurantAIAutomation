@@ -127,7 +127,8 @@ export async function recordAccessChange(
         channels: ["in_app"],
         restaurant_id: change.restaurantId,
         type: "system",
-        title: change.notice.title.slice(0, 500),
+        // notifications.title is varchar(255); a longer title fails the insert (F-560).
+        title: change.notice.title.slice(0, 255),
         message: change.notice.message,
         priority: "high",
         status: "unread",
@@ -195,7 +196,8 @@ export async function noticeToHouseLeads(
         channels: ["in_app"],
         restaurant_id: n.restaurantId,
         type: "system",
-        title: n.title.slice(0, 500),
+        // notifications.title is varchar(255); a longer title fails the insert (F-560).
+        title: n.title.slice(0, 255),
         message: n.message,
         priority: "high",
         status: "unread",
