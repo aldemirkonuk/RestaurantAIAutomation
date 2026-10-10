@@ -270,8 +270,9 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
         bottlesPerUnit: packNum,
         fees,
         currency: currencyToRecord,
+        group,
       }),
-    [priceNum, stated, qty, unitType, packNum, fees, currencyToRecord],
+    [priceNum, stated, qty, unitType, packNum, fees, currencyToRecord, group],
   );
 
   const orderPackMissing = isMultiplying(unitType) && (packNum == null || packNum < 1);

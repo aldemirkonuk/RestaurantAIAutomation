@@ -370,7 +370,7 @@ export function ResponsesSheet({
 
   // Staff: no money came for this order (F-441); the sheet says so once.
   const withheld = row.amountsWithheld === true;
-  const priceLine = describeStatedPrice(row.unitPrice, row.priceUnit.stated, row.currency ?? null);
+  const priceLine = describeStatedPrice(row.unitPrice, row.priceUnit.stated, row.currency ?? null, group);
   const orderedLine = describeOrderedQuantity({
     quantity: row.quantity,
     unitType: row.unitType,

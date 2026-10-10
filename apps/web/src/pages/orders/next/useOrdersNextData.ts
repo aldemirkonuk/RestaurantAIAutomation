@@ -20,6 +20,8 @@ import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
 import { num, sumByCurrency, type MoneyInCurrency } from './format';
 import { settingsApi } from '@/services/api/settings';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import type { GroupMark } from '@/lib/parseDecimal';
 import {
   PRICE_UOMS,
   agreementTotal,
@@ -407,6 +409,8 @@ export function toRow(
   providerNameById: Map<string, string>,
   /** The house's own currency, for an order that names none (F-341). */
   houseCurrency: string | null = null,
+  /** The house's group mark, for the working's figures (F-942). */
+  group: GroupMark | null = null,
 ): OrderRowVM {
   const status = canonicalStatus(o.status);
   const quantity = num(o.quantity);
@@ -479,6 +483,7 @@ export function toRow(
           // zeroes.
           fees: fees.read ? fees.fees : undefined,
           currency,
+          group,
         })
       : null;
   const computedTotal = agreement && agreement.ok ? agreement.total : null;
@@ -599,6 +604,9 @@ export function useOrdersNextData(): OrdersNextData {
       ? houseZoneQuery.data.zone
       : null;
 
+  // The working on each row is said in the house's marks (F-942).
+  const group = useHouseGroupMark();
+
   const providerNameById = useMemo(() => {
     const map = new Map<string, string>();
     (providersQuery.data ?? []).forEach((p) => {
@@ -610,7 +618,7 @@ export function useOrdersNextData(): OrdersNextData {
   return useMemo(() => {
     const raw = ordersQuery.data;
     const known = Array.isArray(raw);
-    const rows = known ? raw.map((o) => toRow(o, providerNameById, houseCurrency)) : [];
+    const rows = known ? raw.map((o) => toRow(o, providerNameById, houseCurrency, group)) : [];
 
     const counts: Record<Stage, number | null> = {
       pending: null,
@@ -681,5 +689,5 @@ export function useOrdersNextData(): OrdersNextData {
       errorMessage: ordersQuery.isError ? readFailureWords(ordersQuery.error) : null,
       refetch: () => void ordersQuery.refetch(),
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, houseCurrency, houseZone, gateQuery.data, gateQuery.isError, gateQuery.error]);
+  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, houseCurrency, group, houseZone, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }
