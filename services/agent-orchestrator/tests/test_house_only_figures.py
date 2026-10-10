@@ -650,3 +650,5 @@ def test_a_long_ceiling_string_is_unreadable_and_fast():
     assert time.thread_time() - start < 0.5
     assert hof._ceiling_values(" " * 30 + "$1199" + " " * 29) == [1199.0]  # 64
     assert hof._ceiling_values(" " * 30 + "$1199" + " " * 30) == []  # 65
+    # The cap counts the normalised text: deleted characters do not count.
+    assert hof._ceiling_values("\u200b" * 5000 + "$1199") == [1199.0]
