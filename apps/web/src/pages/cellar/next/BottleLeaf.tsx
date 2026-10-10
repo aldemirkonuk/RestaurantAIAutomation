@@ -221,13 +221,13 @@ export default function BottleLeaf({
     },
     onError: (e: unknown) =>
       setSaid(
-        `Nothing was sent — the gateway refused it (${e instanceof Error ? e.message : 'no reason given'}).`,
+        `Nothing was sent — the order was refused (${e instanceof Error ? e.message : 'no reason given'}).`,
       ),
   });
 
   const cellar = bottle.cellar;
   const orderBlocked = !cellar
-    ? 'This bottle is not in the cellar yet. An order line is keyed to a cellar row, so bring it in first.'
+    ? 'This bottle is not in the cellar yet. Only a bottle in the cellar can be ordered, so bring it in first.'
     : !vendorId
       ? 'Choose the vendor this order goes to.'
       : null;
@@ -296,9 +296,8 @@ export default function BottleLeaf({
         Market average, above, is a reference price imported with this wine — not something
         Mudavym computes across houses or vendors today, and not this house's own price. A
         daily, cross-house average is planned, not built yet. Market price is{' '}
-        <span className="cl-num">{EM}</span> because nothing writes it: the scoring job that
-        fills <span className="cl-num">retail_price_avg</span> is scheduled but has no deployed
-        worker, so the column is null on every row in the library.
+        <span className="cl-num">{EM}</span> because nothing fills it in yet, so no wine in the
+        library has one.
       </p>
 
       <hr className="cl-rule-thin" style={{ margin: '16px 0' }} />
@@ -340,8 +339,8 @@ export default function BottleLeaf({
           {!cellar ? (
             <>
               <p className="cl-said" style={{ marginBottom: 10 }}>
-                Not in the building. The cellar holds no row for this bottle — which is not the same
-                as holding none of it.
+                Not in the building. This bottle is not on the cellar list — which is not the same as
+                having run out of it.
               </p>
               <div className="cl-row-controls">
                 <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="cl-bring-qty">
@@ -441,12 +440,12 @@ export default function BottleLeaf({
               <SoldOutControl restaurantId={restaurantId} inventoryId={cellar.inventoryId} />
               {cellar.thresholdMin === null || cellar.menuPriceBottle === null || cellar.menuPriceGlass === null ? (
                 <p className="cl-note" style={{ marginTop: 4 }}>
-                  {cellar.thresholdMin === null ? 'No par recorded on this row. ' : ''}
+                  {cellar.thresholdMin === null ? 'No par recorded for this bottle. ' : ''}
                   {cellar.menuPriceBottle === null
-                    ? 'No by-the-bottle price recorded on this row — set one in Inventory to show it here. '
+                    ? 'No by-the-bottle price recorded for this bottle — set one in Inventory to show it here. '
                     : ''}
                   {cellar.menuPriceGlass === null
-                    ? 'No by-the-glass price recorded on this row — set one in Inventory to show it here.'
+                    ? 'No by-the-glass price recorded for this bottle — set one in Inventory to show it here.'
                     : ''}
                 </p>
               ) : null}
@@ -455,9 +454,9 @@ export default function BottleLeaf({
 
               <p className="cl-said" data-testid="bottle-leaf-sold-line" role={cellar.analyticsReadable ? undefined : 'alert'}>
                 {!cellar.analyticsReadable
-                  ? 'Selling pace could not be read — the analytics join failed for this batch. This is a read error, not a row with nothing sold.'
+                  ? 'Selling pace could not be read just now. That is not the same as nothing sold.'
                   : cellar.velocityPerDay === null
-                    ? 'Selling pace: unmeasured — the analytics join has nothing for this row yet.'
+                    ? 'Selling pace: not measured yet — no sales of this bottle have been recorded.'
                     : cellar.daysSinceSale === null
                       ? `Selling ~${cellar.velocityPerDay.toFixed(1)}/day.`
                       : `Selling ~${cellar.velocityPerDay.toFixed(1)}/day · last sold ${cellar.daysSinceSale} ${cellar.daysSinceSale === 1 ? 'day' : 'days'} ago.`}
@@ -466,7 +465,7 @@ export default function BottleLeaf({
               <hr className="cl-rule-thin" style={{ margin: '12px 0' }} />
 
               <dl className="cl-facts" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
-                <Fact label="Vendor on the row">{cellar.providerName ?? EM}</Fact>
+                <Fact label="Vendor">{cellar.providerName ?? EM}</Fact>
                 <Fact label="Last counted">
                   {cellar.lastCountedAt
                     ? new Date(cellar.lastCountedAt).toLocaleDateString('en-US', {

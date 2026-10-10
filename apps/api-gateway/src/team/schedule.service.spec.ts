@@ -499,6 +499,10 @@ describe("ScheduleService — T8: no emoji reaches the inbox", () => {
 });
 
 describe("ScheduleService — F-348: two staff claiming one open shift", () => {
+  // F-507 refuses a claim on a shift that has ended; WEEK is fixed, so the
+  // house clock is pinned before it.
+  beforeAll(() => jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"], now: new Date("2026-09-01T12:00:00Z") }));
+  afterAll(() => jest.useRealTimers());
   const ALI = "user-ali";
   const BEA = "user-bea";
 

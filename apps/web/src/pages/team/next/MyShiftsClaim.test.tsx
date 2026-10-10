@@ -79,7 +79,8 @@ beforeEach(() => {
   api.getMyWeek.mockImplementation(() =>
     Promise.resolve({
       member: { id: 'm-ali', display_name: 'Ali' },
-      schedule: null,
+      // F-506: open shifts are offered only on a published week.
+      schedule: { id: 'sch1', status: 'published', week_start: '2026-09-07' },
       mine: [],
       open: [openShift],
       acknowledged: false,

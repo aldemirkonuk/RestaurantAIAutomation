@@ -322,7 +322,7 @@ describe('F2 — the vendor slot never passes the wine off as a distributor', ()
     )
     harness(StaffBody)
 
-    expect(await screen.findByText(/Distributor not named by the gateway/)).toBeInTheDocument()
+    expect(await screen.findByText(/The order does not name its distributor/)).toBeInTheDocument()
     expect(screen.getByText(/vendor ref prov-123/)).toBeInTheDocument()
   })
 
@@ -919,6 +919,8 @@ describe('F8 — a refusal is not an outage, on all three renderings', () => {
     expect(screen.queryByRole('button', { name: /Try again/ })).not.toBeInTheDocument()
     // The prose that must survive: a 500 still sends them to the paper record.
     expect(alert).toHaveTextContent(/write the delivery down on paper/i)
+    // F-509: the person at the door is told what happened, not which service said it.
+    expect(alert).not.toHaveTextContent(/gateway/i)
   })
 
   it('staff: a 500 keeps the original sentence and the retry', async () => {

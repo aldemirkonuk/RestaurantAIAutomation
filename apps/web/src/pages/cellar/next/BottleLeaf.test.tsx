@@ -174,10 +174,18 @@ describe('BottleLeaf — bottle price vs. the library\'s market average', () => 
     const facts = screen.getByTestId('bottle-leaf-fact-set');
     const bottlePriceDd = within(facts).getByText('Bottle price (this house)').nextElementSibling!;
     expect(bottlePriceDd).toHaveTextContent(EM);
-    expect(screen.getByText(/No by-the-bottle price recorded on this row/)).toBeInTheDocument();
+    expect(screen.getByText(/No by-the-bottle price recorded for this bottle/)).toBeInTheDocument();
     // The glass note is independent: set here, so it must NOT also claim no
     // glass price is recorded — the two facts are not fate-shared.
     expect(screen.queryByText(/No by-the-glass price recorded/)).not.toBeInTheDocument();
+  });
+
+  it('speaks to the bottle, never in the system\'s own words (F-509)', () => {
+    mount(bottle({ cellar: cellarRow({ menuPriceBottle: null, menuPriceGlass: null, thresholdMin: null }) }));
+    const text = document.body.textContent ?? '';
+    for (const word of ['retail_price_avg', 'worker', 'column', 'on this row', 'analytics join', 'gateway']) {
+      expect(text).not.toContain(word);
+    }
   });
 
   it('never uses the library\'s market average as a fallback for an unset house bottle price', () => {

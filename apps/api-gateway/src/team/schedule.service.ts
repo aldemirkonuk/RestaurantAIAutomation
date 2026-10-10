@@ -40,6 +40,7 @@ import {
   PublishScheduleDto,
   UpdateShiftDto,
 } from "./dto/team.dto";
+import { readHouseZone } from "../common/house-day";
 
 /** Minutes since midnight from an "HH:MM" string. */
 function toMinutes(t: string): number {
@@ -280,9 +281,16 @@ export class ScheduleService {
     };
   }
 
-  /** Read-only week for a staff member: only their own shifts. */
+  /**
+   * Read-only week for a staff member: only their own shifts.
+   *
+   * A week its manager has not published is still being drawn (F-506): staff
+   * get the schedule row, so the page can say it is not out yet, but none of
+   * its shifts — neither as theirs nor as open to take. An open shift that has
+   * already ended on the house's clock is not offered either (F-507).
+   */
   async getMyWeek(userId: string, restaurantId: string, weekStart: string) {
-    await this.team.assertAccess(userId, restaurantId);
+    const { role } = await this.team.assertAccess(userId, restaurantId);
     const weekEnd = addDays(weekStart, 6);
     const { data: member } = await this.sb
       .from("team_members")
@@ -311,11 +319,17 @@ export class ScheduleService {
       const { labor_cost: _omit, ...rest } = s;
       return rest;
     };
-    const all = (shifts ?? []).map(strip);
+    const unpublished =
+      role === "staff" && (schedule as any)?.status !== "published";
+    const all = unpublished ? [] : (shifts ?? []).map(strip);
     const mine = member
       ? all.filter((s: any) => s.member_id === member.id)
       : [];
-    const open = all.filter((s: any) => s.state === "open" || !s.member_id);
+    const openAny = all.filter((s: any) => s.state === "open" || !s.member_id);
+    const nowOnClock = openAny.length
+      ? await this.houseClockNow(restaurantId)
+      : "";
+    const open = openAny.filter((s: any) => !shiftHasEnded(s, nowOnClock));
 
     let acknowledged = false;
     if (member && schedule) {
@@ -1173,7 +1187,7 @@ export class ScheduleService {
 
     const { data: shift } = await this.sb
       .from("shifts")
-      .select("id, member_id, state, shift_date, start_time, end_time")
+      .select("id, member_id, state, schedule_id, shift_date, start_time, end_time")
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -1200,6 +1214,26 @@ export class ScheduleService {
       if (!isOpen) {
         throw new ForbiddenException(
           "You can only claim open shifts for yourself",
+        );
+      }
+      // A week still being drawn is not out to staff (F-506), and a shift
+      // that is over cannot be worked, only paid for (F-507).
+      const { data: week } = shift.schedule_id
+        ? await this.sb
+            .from("schedules")
+            .select("status")
+            .eq("id", shift.schedule_id)
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle()
+        : { data: null };
+      if (week?.status !== "published") {
+        throw new ConflictException(
+          "This week's schedule isn't out yet, so its shifts can't be taken. They can be once your manager publishes the week.",
+        );
+      }
+      if (shiftHasEnded(shift, await this.houseClockNow(restaurantId))) {
+        throw new ConflictException(
+          "This shift has already ended, so it can't be taken now.",
         );
       }
     }
@@ -1406,6 +1440,24 @@ export class ScheduleService {
     );
     const reason = [...refused.values()][0];
     if (reason) throw new ConflictException(`${reason} Nothing was saved.`);
+  }
+
+  /**
+   * Now on the house's clock, as "YYYY-MM-DD HH:MM". With no zone known, or
+   * none readable, it is read on the clock furthest behind (UTC-12), so a
+   * shift is only ever called over once it is over everywhere.
+   */
+  private async houseClockNow(restaurantId: string): Promise<string> {
+    let zone: string | null = null;
+    try {
+      zone = (await readHouseZone(this.sb, restaurantId)).zone;
+    } catch (e) {
+      this.logger.warn(
+        `houseClockNow: the time zone of ${restaurantId} could not be read; ` +
+          `shifts are judged over on the latest clock: ${(e as Error).message}`,
+      );
+    }
+    return clockAt(zone ?? "Etc/GMT+12", new Date());
   }
 
   private async recomputeCostForMember(
@@ -1733,6 +1785,34 @@ function mondayOf(date: string): string {
   const diff = dow === 0 ? -6 : 1 - dow;
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().slice(0, 10);
+}
+/** "YYYY-MM-DD HH:MM" on `zone`'s clock at `now`. */
+function clockAt(zone: string, now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
+}
+/**
+ * Whether a shift's end is at or before `nowOnClock` (from `clockAt`). A shift
+ * that ends at or before it starts runs past midnight, into the next day.
+ */
+function shiftHasEnded(
+  sh: { shift_date?: string | null; start_time?: string | null; end_time?: string | null },
+  nowOnClock: string,
+): boolean {
+  if (!sh.shift_date || !sh.end_time || !nowOnClock) return false;
+  const end = sh.end_time.slice(0, 5);
+  const start = (sh.start_time ?? "").slice(0, 5);
+  const endDay = start && end <= start ? addDays(sh.shift_date, 1) : sh.shift_date;
+  return `${endDay} ${end}` <= nowOnClock;
 }
 /** A shift's scheduled span, breaks included. */
 function hoursSpan(sh: any): number {
