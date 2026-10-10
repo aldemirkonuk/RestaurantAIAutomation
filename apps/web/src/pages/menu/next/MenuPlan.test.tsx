@@ -214,6 +214,35 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it('a choice the house never answered is not "nothing changed": the plan is read again and says the menu is current (F-448)', async () => {
+    mockPlan.mockResolvedValueOnce(plan()).mockResolvedValue(plan({ current: true }));
+    mockMake.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 30000ms exceeded' });
+    const { onDone } = mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-plan-unsure')).toHaveTextContent(
+        'The house did not answer in time, but this menu is now current.',
+      ),
+    );
+    expect(mockPlan).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Nothing has changed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/timeout of 30000ms/)).not.toBeInTheDocument();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('a choice the house never answered, read again and still not current, says nothing changed', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ message: 'Network Error' });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-plan-unsure')).toHaveTextContent(
+        'The house did not answer in time, and this menu is not current. Nothing has changed',
+      ),
+    );
+  });
+
   it('a plan that cannot be worked out says so, and offers no choice', async () => {
     mockPlan.mockRejectedValue({ response: { status: 500, data: { message: "the house's price locks could not be read" } } });
     mount(true);

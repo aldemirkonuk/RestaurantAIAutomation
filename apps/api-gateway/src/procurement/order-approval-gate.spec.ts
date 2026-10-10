@@ -79,10 +79,12 @@ function newVendorRule(): ThresholdRow {
 /**
  * Supabase stub that records what the gate tries to write.
  *
- * The gate reads the vendor's orders oldest first for first-order-ness (F-731).
- * `vendorOrders` are those rows as written; `priorOrdersToVendor: n` is shorthand
- * for n placed orders requested before this one. `countErrors` makes that read
- * fail so the "unknown is not false" case can be driven.
+ * The facts builder reads each vendor with the house's orders to it embedded,
+ * oldest first, for first-order-ness (F-731). `vendorOrders` are those rows as
+ * written; `priorOrdersToVendor: n` is shorthand for n placed orders requested
+ * before this one. `countErrors` makes that read fail so the "unknown is not
+ * false" case can be driven. `priorPrices` are the item's earlier orders,
+ * newest first, embedded behind the item the same way (F-449).
  */
 function makeDb(opts: {
   order?: Row | null;
@@ -102,15 +104,52 @@ function makeDb(opts: {
   const supabase: any = {
     from(table: string) {
       let op: "select" | "insert" | "update" = "select";
-      let selectedColumns = "";
       // Filters the prior-price probe applies, honoured here so a stub row the
       // query would never return is not handed back (F-479).
       let statusIn: string[] | null = null;
+      // The vendors or items a set read asks for (F-449).
+      let inIds: string[] = [];
       let pricedOnly = false;
 
       const settle = (shape: "one" | "many") => {
         if (table === "restaurants") {
           return { data: { currency: opts.houseCurrency ?? null }, error: null };
+        }
+        if (table === "providers") {
+          if (opts.countErrors)
+            return { data: null, error: { message: "count failed" } };
+          const prior = Array.from(
+            { length: opts.priorOrdersToVendor ?? 0 },
+            (_, i) => ({
+              id: `prior-${i}`,
+              status: "DELIVERED",
+              requested_at: "2026-01-01T00:00:00Z",
+              created_at: "2026-01-01T00:00:00Z",
+            }),
+          );
+          return {
+            data: inIds.map((id) => ({
+              id,
+              orders: [...prior, ...(opts.vendorOrders ?? [])],
+            })),
+            error: null,
+          };
+        }
+        if (table === "restaurant_inventory") {
+          return {
+            data: inIds.map((id) => ({
+              id,
+              orders: (opts.priorPrices ?? [])
+                .map((r, i): Row => ({ id: `prior-price-${i}`, ...r }))
+                .filter(
+                  (r) =>
+                    (statusIn === null || statusIn.includes(r.status)) &&
+                    (!pricedOnly || r.final_price !== null),
+                )
+                .slice(0, 2),
+            })),
+            error: null,
+          };
         }
         if (table === "system_audit_log") {
           return {
@@ -126,20 +165,6 @@ function makeDb(opts: {
               data: opts.order ? { ...opts.order, status: "APPROVED" } : null,
               error: null,
             };
-          if (selectedColumns === "id, status, requested_at, created_at") {
-            if (opts.countErrors)
-              return { data: null, error: { message: "count failed" } };
-            const prior = Array.from(
-              { length: opts.priorOrdersToVendor ?? 0 },
-              (_, i) => ({
-                id: `prior-${i}`,
-                status: "DELIVERED",
-                requested_at: "2026-01-01T00:00:00Z",
-                created_at: "2026-01-01T00:00:00Z",
-              }),
-            );
-            return { data: [...prior, ...(opts.vendorOrders ?? [])], error: null };
-          }
           if (shape === "one") {
             if (opts.orderReadError)
               return { data: null, error: opts.orderReadError };
@@ -147,18 +172,6 @@ function makeDb(opts: {
           }
           if (opts.ledgerError)
             return { data: null, error: opts.ledgerError };
-          // The prior-price probe selects exactly two columns; the pending
-          // read selects six. Told apart by the projection so one stub can
-          // answer both without either quietly receiving the other's rows.
-          if (selectedColumns.includes("final_price, requested_at"))
-            return {
-              data: (opts.priorPrices ?? []).filter(
-                (r) =>
-                  (statusIn === null || statusIn.includes(r.status)) &&
-                  (!pricedOnly || r.final_price !== null),
-              ),
-              error: null,
-            };
           return { data: opts.ledgerRows ?? [], error: null };
         }
         return { data: shape === "many" ? [] : null, error: null };
@@ -214,21 +227,19 @@ function makeDb(opts: {
 
       const filters: Row = {};
       const q: any = {
-        select: (cols?: string) => {
-          selectedColumns = cols ?? "";
-          return q;
-        },
+        select: () => q,
         eq: (col: string, value: unknown) => {
           filters[col] = value;
           return q;
         },
         neq: () => q,
         in: (col: string, values: string[]) => {
-          if (col === "status") statusIn = values;
+          if (col === "id") inIds = values;
+          if (col === "orders.status") statusIn = values;
           return q;
         },
         not: (col: string, op: string, value: unknown) => {
-          if (col === "final_price" && op === "is" && value === null) pricedOnly = true;
+          if (col === "orders.final_price" && op === "is" && value === null) pricedOnly = true;
           return q;
         },
         gte: () => q,
