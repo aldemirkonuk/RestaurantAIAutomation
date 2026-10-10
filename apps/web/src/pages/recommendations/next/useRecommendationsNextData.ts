@@ -557,8 +557,13 @@ export function useRecommendationsNextData(): RecommendationsData {
     setSourcesUnread(null);
   }
 
+  /**
+   * `sighting` is false for the re-read after an act: the cards were already
+   * on screen, and logging them again as shown would count one look as many
+   * (F-257). The gateway logs an impression only for a sighting.
+   */
   const load = useCallback(
-    async (which: Leaf) => {
+    async (which: Leaf, sighting = true) => {
       const mine = ++seq.current;
       setPhase('loading');
       setFailure(null);
@@ -568,7 +573,11 @@ export function useRecommendationsNextData(): RecommendationsData {
       if (!rid) return; // AuthContext resolves a beat after login — stay loading.
       try {
         if (which === 'standing') {
-          const { data } = await apiClient.get<Record<string, unknown>>(`${BASE}/${rid}`);
+          const { data } = sighting
+            ? await apiClient.get<Record<string, unknown>>(`${BASE}/${rid}`)
+            : await apiClient.get<Record<string, unknown>>(`${BASE}/${rid}`, {
+                params: { recordImpressions: 'false' },
+              });
           if (mine !== seq.current) return;
           const list = Array.isArray(data?.recommendations)
             ? (data.recommendations as Record<string, unknown>[])
@@ -1203,7 +1212,7 @@ export function useRecommendationsNextData(): RecommendationsData {
             ? `Restored to the standing book — but ${miss}.`
             : 'Restored to the standing book.',
         );
-        void load(leaf);
+        void load(leaf, false);
       } catch (err) {
         // A 403 carries the gateway's own sentence: a whole rule is returned
         // by an owner or manager.
@@ -1227,7 +1236,7 @@ export function useRecommendationsNextData(): RecommendationsData {
             ? 'There was no snooze of yours on it — nothing changed.'
             : 'Back in your standing book.',
         );
-        void load(leaf);
+        void load(leaf, false);
       } catch (err) {
         say(`It is still snoozed for you (${failureOf(err).message}).`);
       }
@@ -1266,7 +1275,7 @@ export function useRecommendationsNextData(): RecommendationsData {
         const unkept = data?.history?.missed ?? 0;
         if (unkept > 0) parts.push(`${unkept} not kept in the history.`);
         say(parts.join(' '));
-        void load(leaf);
+        void load(leaf, false);
       } catch (err) {
         setEntries(before);
         say(`Nothing was saved (${failureOf(err).message}) — all ${list.length} entries are back.`);

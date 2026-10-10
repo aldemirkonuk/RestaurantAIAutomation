@@ -159,7 +159,8 @@ function base(rows: Notification[]) {
       hasMore: false,
       pages: 1,
     },
-    stack: { items: rows, foldedById: {}, foldedCount: 0 },
+    stack: { items: rows, foldedById: {}, foldedCount: 0, membersById: {} as Record<string, string[]> },
+    unread: rows.filter((r) => r.status === 'unread').length as number | null,
     lastReadAt: new Date('2026-09-02T18:00:00'),
     refreshing: false,
     asleep: new Set<string>(),
@@ -431,9 +432,9 @@ describe('NotificationsNext — the day-book', () => {
     expect(within(band).getByText(/another device still/)).toBeInTheDocument();
     // the deadline is drawn, not implied
     expect(within(band).getByText(/back in 1h 30m/)).toBeInTheDocument();
-    // and it is NOT in the band that asks for a hand
-    expect(screen.getByText('Nothing is waiting on you. Every line in the book has been ruled off.'))
-      .toBeInTheDocument();
+    // and it is NOT in the band that asks for a hand — but it is not ruled
+    // off either, so the book is not called done (F-254)
+    expect(screen.getByText('Nothing is waiting on you.')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Bring them all back'));
     expect(spies.wakeAll).toHaveBeenCalled();
   });
@@ -935,5 +936,86 @@ describe('NotificationsNext — a till’s refused checks (ADR 0281, founder F7)
     expect(tally.textContent).toMatch(/^Connections\s*2\s*\/\s*2$/);
     expect(within(rail).queryByText('Other')).not.toBeInTheDocument();
     expect(within(rail).queryByText('Vendor mail')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * F-254 — the loaded pages are the newest hundred; only the register's own
+ * unread count may say the whole book is ruled off.
+ */
+describe('the standing sentence stands on the register count', () => {
+  it('says every line is ruled off only when the register count is zero', () => {
+    const done = row({ id: 'n2', status: 'read' });
+    // the same loaded pages, an open line further back: not done
+    mockData.current = { ...base([done]), unread: 1 };
+    const { unmount } = draw();
+    expect(screen.queryByText(/Every line in the book has been ruled off/)).not.toBeInTheDocument();
+    unmount();
+
+    mockData.current = { ...base([done]), unread: 0 };
+    draw();
+    expect(
+      screen.getByText('Nothing is waiting on you. Every line in the book has been ruled off.'),
+    ).toBeInTheDocument();
+  });
+
+  it('names the open lines further back when the newest pages hold none', () => {
+    const done = row({ id: 'n2', status: 'read' });
+    mockData.current = { ...base([done]), unread: 7 };
+    draw();
+    expect(screen.queryByText(/Every line in the book has been ruled off/)).not.toBeInTheDocument();
+    expect(screen.getByText(/the book still holds 7 open lines further back/)).toBeInTheDocument();
+  });
+
+  it('says the count is unknown rather than that the book is done', () => {
+    const done = row({ id: 'n2', status: 'read' });
+    mockData.current = { ...base([done]), unread: null };
+    draw();
+    expect(screen.queryByText(/Every line in the book has been ruled off/)).not.toBeInTheDocument();
+    expect(screen.getByText(/could not be read/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * F-255 — the bell rules a line off as it hands it over, so the line lands in
+ * the Ruled-off band, which starts closed. The page must open that band.
+ */
+describe('a line handed over by the bell', () => {
+  function drawWith(state: unknown) {
+    return render(
+      <MemoryRouter initialEntries={[{ pathname: '/notifications', state }]}>
+        <NotificationsNext />
+      </MemoryRouter>,
+    );
+  }
+
+  it('opens the Ruled-off band when the handed-over line is ruled off', () => {
+    const handed = row({ id: 'n9', status: 'read', title: 'Order delivered', type: 'order_delivered' });
+    mockData.current = { ...base([handed]), unread: 0 };
+    const { container } = drawWith({ selectedNotificationId: 'n9' });
+    expect(container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('true');
+    expect(screen.getByText('Close the account')).toBeInTheDocument();
+  });
+
+  it('opens the band for a row folded under a newer line', () => {
+    const winner = row({ id: 'n9', status: 'read', title: 'Order delivered', type: 'order_delivered' });
+    mockData.current = {
+      ...base([winner]),
+      unread: 0,
+      stack: { items: [winner], foldedById: { n9: 1 }, foldedCount: 1, membersById: { n9: ['n9', 'n3'] } },
+    };
+    const { container } = drawWith({ selectedNotificationId: 'n3' });
+    expect(container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('true');
+  });
+
+  it('leaves the band closed with no hand-over, and opens it only for one', () => {
+    const handled = row({ id: 'n9', status: 'read', title: 'Order delivered', type: 'order_delivered' });
+    mockData.current = { ...base([handled]), unread: 0 };
+    const { container, unmount } = draw();
+    expect(container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('false');
+    unmount();
+
+    const handedOver = drawWith({ selectedNotificationId: 'n9' });
+    expect(handedOver.container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('true');
   });
 });

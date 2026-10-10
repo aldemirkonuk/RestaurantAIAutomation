@@ -115,11 +115,20 @@ function pickStackWinner(group: Notification[], mode: StackMode): Notification {
  * Collapse repetitive notifications:
  * - Below-par bursts → one row, highest count wins
  * - Recurring digests / identical titles → one row, most recent wins
+ *
+ * A folded line stands for every row in its fold, so it is OPEN while any of
+ * them is unread — the winner is drawn as unread even when it alone was ruled
+ * off — and `membersById` names every row an act on the line must reach. Taking
+ * the winner's status alone let one ruled-off row hide hundreds of unread
+ * siblings behind "Nothing is waiting on you" while the bell still counted them
+ * (F-253).
  */
 export function collapseStackedNotifications(notifications: Notification[]): {
   items: Notification[];
   foldedCount: number;
   foldedById: Record<string, number>;
+  /** For a folded line only: the ids of every row it stands for, winner first. */
+  membersById: Record<string, string[]>;
 } {
   const passthrough: Notification[] = [];
   const stacks = new Map<string, { group: Notification[]; mode: StackMode }>();
@@ -141,6 +150,7 @@ export function collapseStackedNotifications(notifications: Notification[]): {
   const collapsed: Notification[] = [];
   let foldedCount = 0;
   const foldedById: Record<string, number> = {};
+  const membersById: Record<string, string[]> = {};
 
   for (const { group, mode } of stacks.values()) {
     if (group.length === 1) {
@@ -148,17 +158,26 @@ export function collapseStackedNotifications(notifications: Notification[]): {
       continue;
     }
     const winner = pickStackWinner(group, mode);
-    collapsed.push(winner);
+    const anyOpen = group.some((n) => String(n.status) === "unread");
+    collapsed.push(
+      anyOpen && String(winner.status) !== "unread"
+        ? ({ ...winner, status: "unread" } as Notification)
+        : winner,
+    );
     const folded = group.length - 1;
     foldedCount += folded;
     foldedById[winner.id] = folded;
+    membersById[winner.id] = [
+      winner.id,
+      ...group.filter((n) => n !== winner).map((n) => n.id),
+    ];
   }
 
   const items = [...passthrough, ...collapsed].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   );
 
-  return { items, foldedCount, foldedById };
+  return { items, foldedCount, foldedById, membersById };
 }
 
 export function stackedNotificationLabel(

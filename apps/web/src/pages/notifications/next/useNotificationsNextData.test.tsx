@@ -37,6 +37,7 @@ vi.mock('@/services/api/client', () => ({
 }));
 
 import { BOOK_PAGE, useNotificationsNextData } from './useNotificationsNextData';
+import { resetSharedUnreadCount } from '@/lib/mudavym/unreadCount';
 
 /** One page of the gateway's `{ data, total, page, limit, hasMore }` envelope. */
 function bookPage(page: number, total: number, restaurantId: string) {
@@ -79,6 +80,9 @@ function serve(total: number, restaurantId = 'rest-A') {
       const page = Number(cfg?.params?.page ?? 1);
       return Promise.resolve({ data: bookPage(page, total, restaurantId) });
     }
+    if (url === '/notifications/unread/count') {
+      return Promise.resolve({ data: { count: total } });
+    }
     if (url === '/one-tap-actions') {
       return Promise.resolve({ data: { actions: [], total: 0, pending: 0, completed: 0 } });
     }
@@ -93,6 +97,7 @@ beforeEach(() => {
   api.post.mockReset().mockResolvedValue({ data: {} });
   api.delete.mockReset().mockResolvedValue({ data: {} });
   window.localStorage.clear();
+  resetSharedUnreadCount();
 });
 
 describe('markAllRead — tenant scope', () => {
@@ -202,7 +207,9 @@ describe('tenant keying', () => {
 
     const urls: string[] = api.get.mock.calls.map((call: unknown[]) => String(call[0]));
     expect(urls).not.toContain('/one-tap-actions');
-    expect(new Set(urls)).toEqual(new Set(['/notifications']));
+    // …plus the register's own unread count, which the standing sentence and
+    // the bell both stand on (F-254, F-256).
+    expect(new Set(urls)).toEqual(new Set(['/notifications', '/notifications/unread/count']));
   });
 });
 
@@ -291,5 +298,127 @@ describe('useNotificationsNextData — the register does the narrowing', () => {
       status: null,
       day: null,
     }));
+  });
+});
+
+/**
+ * F-253 — a folded line is every row it folds. The flood that produced it:
+ * hundreds of identical "Daily AI draft limit (50) reached" rows drawn as one
+ * line, where "Rule it off" ruled off ONE row and the bell kept counting the
+ * rest.
+ */
+describe('a folded line — every act reaches every row it folds', () => {
+  function serveFlood(rows: Array<{ id: string; status: 'read' | 'unread' }>) {
+    api.get.mockImplementation((url: string) => {
+      if (url === '/notifications/unread/count') {
+        return Promise.resolve({
+          data: { count: rows.filter((r) => r.status === 'unread').length },
+        });
+      }
+      return Promise.resolve({
+        data: {
+          data: rows.map((r, i) => ({
+            id: r.id,
+            userId: 'user-1',
+            restaurantId: 'rest-A',
+            type: 'ai_draft_limit',
+            title: 'Daily AI draft limit (50) reached',
+            message: 'x',
+            status: r.status,
+            priority: 'low',
+            metadata: {},
+            timestamp: new Date(2026, 9, 7, 9, i).toISOString(),
+            createdAt: new Date(2026, 9, 7, 9, i).toISOString(),
+          })),
+          total: rows.length,
+          page: 1,
+          limit: BOOK_PAGE,
+          hasMore: false,
+        },
+      });
+    });
+  }
+
+  it('rules off every open row in the fold through the bulk route', async () => {
+    serveFlood([
+      { id: 'f-0', status: 'unread' },
+      { id: 'f-1', status: 'read' },
+      { id: 'f-2', status: 'unread' },
+    ]);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.stack.items).toHaveLength(1));
+    const line = result.current.stack.items[0];
+    expect(line.id).toBe('f-2');
+
+    await act(async () => {
+      result.current.markRead(line.id);
+    });
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    const [url, body] = api.patch.mock.calls[0];
+    expect(url).toBe('/notifications/read/bulk');
+    // The row already ruled off keeps its own stamp; only the open ones move.
+    expect([...(body as { ids: string[] }).ids].sort()).toEqual(['f-0', 'f-2']);
+  });
+
+  it('is still open when only its newest row was ruled off', async () => {
+    serveFlood([
+      { id: 'f-0', status: 'unread' },
+      { id: 'f-1', status: 'read' },
+    ]);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.stack.items).toHaveLength(1));
+    expect(String(result.current.stack.items[0].status)).toBe('unread');
+  });
+
+  it('deletes every row in the fold, so the next one does not take its place', async () => {
+    serveFlood([
+      { id: 'f-0', status: 'unread' },
+      { id: 'f-1', status: 'unread' },
+    ]);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.stack.items).toHaveLength(1));
+
+    await act(async () => {
+      result.current.remove('f-1');
+    });
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalled());
+    const [url, config] = api.delete.mock.calls[0];
+    expect(url).toBe('/notifications/bulk');
+    expect([...(config as { data: { ids: string[] } }).data.ids].sort()).toEqual(['f-0', 'f-1']);
+  });
+
+  it('leaves a single line on the single-row route', async () => {
+    serve(1);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.stack.items).toHaveLength(1));
+    await act(async () => {
+      result.current.markRead(result.current.stack.items[0].id);
+    });
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    expect(api.patch.mock.calls[0][0]).toBe('/notifications/n-rest-A-0/read');
+    // a line that folds nothing names no fold members
+    expect(result.current.stack.membersById).toEqual({});
+  });
+});
+
+/** F-254 — the page knows the register's own unread count, not just its rows. */
+describe('the register’s unread count', () => {
+  it('is read with the page and exposed', async () => {
+    serve(3);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.unread).toBe(3));
+  });
+
+  it('is unknown, not zero, when the count cannot be read', async () => {
+    api.get.mockImplementation((url: string, cfg?: { params?: Record<string, unknown> }) =>
+      url === '/notifications/unread/count'
+        ? Promise.reject(new Error('Network Error'))
+        : Promise.resolve({ data: bookPage(Number(cfg?.params?.page ?? 1), 0, 'rest-A') }),
+    );
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+    expect(result.current.unread).toBeNull();
   });
 });

@@ -1182,16 +1182,26 @@ export class AnalyticsController {
       "Deterministic rule engine translating computed numbers into actions — each item carries the observation, the action, the rationale, the rule key, an urgency, and the manager's stored disposition (pinned/acted/feedback). Dismissed/snoozed/done cards are filtered out unless includeHidden=true.",
   })
   @ApiQuery({ name: "includeHidden", required: false })
+  @ApiQuery({
+    name: "recordImpressions",
+    required: false,
+    description:
+      "'false' reads the feed without logging it as shown — for a glance (the command palette) or a re-read after an act, which are not new sightings.",
+  })
   async getRecommendations(
     @Param("restaurantId") restaurantId: string,
     @Query("includeHidden") includeHidden?: string,
     @CurrentUser() user?: { userId?: string },
+    @Query("recordImpressions") recordImpressions?: string,
   ) {
     try {
       return await this.recommendationsService.getRecommendations(
         restaurantId,
         {
           includeHidden: includeHidden === "true",
+          // F-257: a read that is not a sighting must not log one — every
+          // impression row also dates "how long has this stood".
+          recordImpressions: recordImpressions !== "false",
           // The person's own snoozes (ADR 0191 round 3) hide cards from them
           // alone; the digest calls this service with no viewer.
           viewerId: actorOf(user).userId,

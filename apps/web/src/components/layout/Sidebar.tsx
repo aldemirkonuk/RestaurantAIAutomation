@@ -37,6 +37,7 @@ import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress
 import { LearnPanel } from '../../guidance/components/LearnPanel'
 import { trackGuidance } from '../../guidance/analytics'
 import { useUnreadCount } from '../../hooks/queries/useNotificationQueries'
+import { useSharedUnreadCount } from '../../lib/mudavym/unreadCount'
 import { usePendingOrdersCount } from '../../hooks/queries/useOrderQueries'
 import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
 import { useUIStore } from '../../stores/uiStore'
@@ -303,6 +304,8 @@ interface SidebarNavItemProps {
   pathname: string
   isActive: boolean
   badgeCount: number
+  /** The count behind this badge could not be read — say so, never show 0. */
+  badgeUnknown?: boolean
   onNavigate: () => void
   onHover: (anchor: HTMLElement) => void
   onHoverEnd: () => void
@@ -316,6 +319,7 @@ function SidebarNavItem({
   pathname,
   isActive,
   badgeCount,
+  badgeUnknown = false,
   onNavigate,
   onHover,
   onHoverEnd,
@@ -348,7 +352,13 @@ function SidebarNavItem({
           ? 'border border-wine-100 bg-wine-50 text-wine-700'
           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
       )}
-      aria-label={badgeLabel ? `${item.name}, ${badgeCount} pending` : item.name}
+      aria-label={
+        badgeUnknown
+          ? `${item.name}, the count could not be read`
+          : badgeLabel
+            ? `${item.name}, ${badgeCount} pending`
+            : item.name
+      }
       aria-current={isActive ? 'page' : undefined}
     >
       <span className="relative flex shrink-0 items-center justify-center">
@@ -367,12 +377,28 @@ function SidebarNavItem({
             aria-hidden
           />
         )}
+        {collapsed && badgeUnknown && (
+          <span
+            data-testid="nav-badge-unknown"
+            className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-wine-500 bg-white"
+            aria-hidden
+          />
+        )}
       </span>
 
       {!collapsed && (
         <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
           {item.name}
         </span>
+      )}
+
+      {!collapsed && badgeUnknown && (
+        <span
+          data-testid="nav-badge-unknown"
+          title="The count could not be read"
+          className="absolute right-2.5 h-2.5 w-2.5 rounded-full border border-wine-500"
+          aria-hidden
+        />
       )}
 
       {!collapsed && badgeLabel && (
@@ -403,7 +429,7 @@ export function Sidebar() {
   const checklistButtonRef = useRef<HTMLButtonElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
-  const { user, logout } = useAuth()
+  const { user, logout, activeRestaurantId } = useAuth()
   // One flag read for the one gated entry (ADR 0114). The hook caches per
   // restaurant+flag for the session, so this costs at most one request.
   const connectionsOn = useMudavymDesign('connections')
@@ -484,11 +510,22 @@ export function Sidebar() {
         : typeof (v as any)?.count === 'number'
           ? (v as any).count
           : 0
+  // The unread count is the one the bell and /notifications print (F-256):
+  // whichever of them read it last wins, so ruling a line off anywhere moves
+  // this badge at once. Only when neither is mounted does the rail's own poll
+  // stand in. Either way a failed read is shown as unknown, never as zero.
+  const sharedUnread = useSharedUnreadCount(activeRestaurantId)
+  const unreadCount: number | null = sharedUnread
+    ? sharedUnread.count
+    : unread.isError
+      ? null
+      : num(unread.data)
   const badgeByHref: Record<string, number> = {
     '/orders': num(pendingOrders.data),
-    '/notifications': num(unread.data),
+    '/notifications': unreadCount ?? 0,
     '/inventory': num(lowStock.data),
   }
+  const unknownHref = new Set(unreadCount === null ? ['/notifications'] : [])
 
   const completedCount = progress
     ? [true, progress.menu_uploaded, progress.vendor_added, progress.team_member_invited].filter(
@@ -503,6 +540,14 @@ export function Sidebar() {
 
   const renderNavItem = (item: NavItem) => {
     const badgeCount = item.badge ?? badgeByHref[item.href] ?? 0
+    const badgeUnknown = item.badge === undefined && unknownHref.has(item.href)
+    const hintLabel = badgeUnknown
+      ? 'count unknown'
+      : badgeCount > 99
+        ? '99+'
+        : badgeCount > 0
+          ? String(badgeCount)
+          : null
     return (
       <SidebarNavItem
         key={item.name}
@@ -511,12 +556,11 @@ export function Sidebar() {
         pathname={location.pathname}
         isActive={location.pathname === item.href}
         badgeCount={badgeCount}
+        badgeUnknown={badgeUnknown}
         onNavigate={closeMobileNav}
-        onHover={(anchor) => openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null)}
+        onHover={(anchor) => openTooltip(anchor, item, hintLabel)}
         onHoverEnd={closeTooltip}
-        onKeyboardFocus={(anchor) =>
-          openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null, true)
-        }
+        onKeyboardFocus={(anchor) => openTooltip(anchor, item, hintLabel, true)}
       />
     )
   }

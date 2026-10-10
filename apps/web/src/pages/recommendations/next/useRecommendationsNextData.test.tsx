@@ -697,6 +697,22 @@ describe('useRecommendationsNextData — round 3, the person’s own snoozes', (
     expect(result.current.note).toBe('Back in your standing book.');
   });
 
+  it('re-reads after an act without logging the cards as shown again (F-257)', async () => {
+    api.post.mockResolvedValue({ data: { woke: true } });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    // The first standing read is a sighting: no flag.
+    expect(api.get).toHaveBeenCalledWith('/analytics/recommendations/r1');
+    await act(async () => {
+      await result.current.wake('vendor_concentration#*#fire:month:2026-09');
+    });
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith('/analytics/recommendations/r1', {
+        params: { recordImpressions: 'false' },
+      }),
+    );
+  });
+
   it('a write that became the person’s own snooze offers an undo that wakes it', async () => {
     api.post.mockResolvedValue({ data: { recordedAs: 'snoozed_for_you', audit: null, history: null } });
     const { result } = renderHook(() => useRecommendationsNextData());
