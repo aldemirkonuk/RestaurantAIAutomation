@@ -1903,6 +1903,8 @@ export class AuthService {
           user_id: userId,
           restaurant_id: restaurantId,
           role: "owner",
+          // What they said they do here, if they tapped one (F-899).
+          job_role: dto.jobRole ?? null,
           invited_via: null,
           is_active: true,
         }),

@@ -17,6 +17,20 @@ import {
   PLACE_ID_TOO_LONG,
 } from "../house-opening";
 
+/**
+ * The role a person says they hold here, one tap on get-started step 01
+ * (ADR 0213 row 9: optional, none preselected). It is what they do, not what
+ * they may do: access stays `user_restaurant_access.role`. Kept as
+ * `user_restaurant_access.job_role`, whose CHECK lists these same four.
+ */
+export const JOB_ROLES = [
+  "owner",
+  "general_manager",
+  "beverage_lead",
+  "chef",
+] as const;
+export type JobRole = (typeof JOB_ROLES)[number];
+
 export class CreateFirstHouseDto {
   @IsString() @MaxLength(249, CAP.name) restaurantName: string;
   @IsString() address: string;
@@ -43,6 +57,7 @@ export class CreateFirstHouseDto {
    */
   @IsOptional() @IsString() timezone?: string;
   @IsOptional() @IsIn(ISO_4217_CODES as string[]) currency?: string;
+  @IsOptional() @IsIn(JOB_ROLES as readonly string[]) jobRole?: JobRole;
 
   @IsOptional()
   @Type(() => Number)

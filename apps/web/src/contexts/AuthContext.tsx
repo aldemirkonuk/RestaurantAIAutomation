@@ -193,7 +193,12 @@ export interface CreateFirstHouseData {
   latitude?: number;
   longitude?: number;
   googlePlaceId?: string;
+  /** The role tapped on get-started step 01, if any (F-899). */
+  jobRole?: JobRole;
 }
+
+/** What a person does in a house, as `user_restaurant_access.job_role` keeps it. */
+export type JobRole = "owner" | "general_manager" | "beverage_lead" | "chef";
 
 interface JoinViaInviteData {
   code: string;

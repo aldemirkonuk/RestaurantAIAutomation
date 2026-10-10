@@ -8,7 +8,7 @@ import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth, type JobRole } from '../contexts/AuthContext'
 import { apiClient } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
@@ -24,6 +24,14 @@ type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
 type MenuMethod = 'photo' | 'file' | 'typed' | null
 
 const roles: Role[] = ['Owner', 'General manager', 'Beverage lead', 'Chef']
+
+/** Each chip as the gateway keeps it on the new house (F-899, ADR 0213 row 9). */
+const JOB_ROLE: Record<Role, JobRole> = {
+  Owner: 'owner',
+  'General manager': 'general_manager',
+  'Beverage lead': 'beverage_lead',
+  Chef: 'chef',
+}
 
 /**
  * How long a read with no answer may still be running on the gateway: the
@@ -302,6 +310,7 @@ function GetStartedSteps() {
         latitude: placePoint?.latitude,
         longitude: placePoint?.longitude,
         googlePlaceId: placePoint?.googlePlaceId,
+        jobRole: role ? JOB_ROLE[role] : undefined,
       })
       setNotice(opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER)
       setStep('menu')
