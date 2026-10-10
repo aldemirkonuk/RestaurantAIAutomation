@@ -1830,6 +1830,34 @@ describe('CalendarNext — an all-day entry can span days (F-198)', () => {
       eventDateEnd: '2026-09-13',
     });
   });
+
+  it.each([
+    ['moves', '2026-09-14', '2026-09-14'],
+    ['clears', '', null],
+  ])('%s the end date of an all-day entry on edit (F-870)', (_how, typed, sent) => {
+    const data = mkData({
+      events: [
+        event({
+          id: 'e1',
+          title: 'Harvest festival',
+          date: '2026-09-11',
+          endDate: '2026-09-13',
+          allDay: true,
+          startTime: null,
+          endTime: null,
+        }),
+      ],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Harvest festival'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Ends on (optional)'), { target: { value: typed } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
+    expect(patch.allDay).toBe(true);
+    expect(patch.eventDateEnd).toBe(sent);
+  });
 });
 
 describe("CalendarNext — the house's today (F-571)", () => {
@@ -1866,5 +1894,102 @@ describe("CalendarNext — the house's today (F-571)", () => {
     draw('/calendar?openModal=true&date=today');
     const sheet = await screen.findByRole('dialog');
     expect(within(sheet).getByLabelText('Date')).toHaveValue('2026-09-15');
+  });
+});
+
+/* ── sim findings F-871, F-872, F-873 ────────────────────────────────────── */
+
+describe('CalendarNext — a multi-day entry on its later days', () => {
+  // 10:00 on the 15th to 14:00 on the 17th, listed on all three days (F-198).
+  const festival = () =>
+    event({
+      id: 'e1',
+      title: 'Harvest festival',
+      date: '2026-09-15',
+      endDate: '2026-09-17',
+      startTime: '10:00',
+      endTime: '14:00',
+    });
+  const spread = (e: CalEvent) =>
+    mkData({
+      events: [e],
+      byDay: new Map([
+        ['2026-09-15', [e]],
+        ['2026-09-16', [e]],
+        ['2026-09-17', [e]],
+      ]),
+    });
+
+  it('moves it by the distance from the day its ribbon was grabbed (F-871)', () => {
+    const data = spread(festival());
+    state.current = data;
+    draw();
+    // Grab the ribbon on the 17th, drop it on the 18th: one day later.
+    fireEvent.dragStart(screen.getAllByText('Harvest festival')[2]);
+    const target = screen.getByLabelText(/Friday, September 18/);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    expect((data.move as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith({
+      id: 'e1',
+      patch: { eventDate: '2026-09-16', eventDateEnd: '2026-09-18' },
+    });
+  });
+
+  it('moves it when a later ribbon is dropped on its first day (F-871)', () => {
+    const data = spread(festival());
+    state.current = data;
+    draw();
+    fireEvent.dragStart(screen.getAllByText('Harvest festival')[1]);
+    const target = screen.getByLabelText(/Tuesday, September 15/);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    expect((data.move as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith({
+      id: 'e1',
+      patch: { eventDate: '2026-09-14', eventDateEnd: '2026-09-16' },
+    });
+  });
+
+  it('says Continues and Until, not the start-end clock, on the days it carries into (F-872)', () => {
+    state.current = spread(festival());
+    const { container } = draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
+    const when = Array.from(container.querySelectorAll('.cn-when')).map((n) => n.textContent);
+    expect(when).toEqual(['10:00 – 14:00', 'Continues', 'Until 14:00']);
+  });
+
+  it('says All day on the later days of an all-day entry (F-872)', () => {
+    state.current = spread({ ...festival(), allDay: true, startTime: null, endTime: null });
+    const { container } = draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
+    const when = Array.from(container.querySelectorAll('.cn-when')).map((n) => n.textContent);
+    expect(when).toEqual(['All day', 'All day', 'All day']);
+  });
+});
+
+describe("CalendarNext — the agenda's Today is the house's (F-873)", () => {
+  // 12:00 on Sep 15 in New York is already Sep 16 in Tokyo.
+  beforeEach(() => {
+    forgetHouseZones();
+    localStorage.setItem('activeRestaurantId', 'house-tokyo');
+    houseZone.current = 'Asia/Tokyo';
+  });
+  afterEach(() => {
+    localStorage.removeItem('activeRestaurantId');
+    houseZone.current = null;
+  });
+
+  it("labels the house's day Today and the device's day Yesterday", async () => {
+    state.current = mkData({
+      events: [
+        event({ id: 'e1', title: 'Bread drop', date: '2026-09-15' }),
+        event({ id: 'e2', title: 'Fish drop', date: '2026-09-16' }),
+      ],
+    });
+    const { container } = draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
+    await waitFor(() => {
+      const keys = Array.from(container.querySelectorAll('.cn-agenda-key')).map((n) => n.firstChild?.textContent);
+      expect(keys).toEqual(['Yesterday', 'Today']);
+    });
   });
 });

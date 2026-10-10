@@ -159,4 +159,22 @@ describe("F-507: a shift that is over cannot be taken", () => {
     const out = await service(db).getMyWeek(STAFF, RID, WEEK);
     expect(out.open.map((s: any) => s.id)).toEqual(["sh-open"]);
   });
+
+  it("reads equal start and end times as a moment that day, not a night (F-874)", async () => {
+    // Thu 23:30 in Los Angeles; the open shift is 22:00-22:00 on Thursday, so
+    // it ended at 22:00, as the feed and the hours read it.
+    jest.useFakeTimers({
+      now: new Date("2026-09-11T06:30:00Z"),
+      doNotFake: ["nextTick", "setImmediate"],
+    });
+    const db = seed("published");
+    Object.assign(db.tables.shifts.find((s) => s.id === "sh-open")!, {
+      start_time: "22:00",
+      end_time: "22:00",
+    });
+    const out = await service(db).getMyWeek(STAFF, RID, WEEK);
+    expect(out.open).toEqual([]);
+    const claim = service(db).assignCover(STAFF, RID, "sh-open", { memberId: "m-staff" } as any);
+    await expect(claim).rejects.toThrow(/already ended/);
+  });
 });

@@ -8,16 +8,18 @@
  * the closing line says which.
  */
 
-import { EM, longDay, relDay, span } from './cal-format';
+import { EM, daySpan, longDay, relDay } from './cal-format';
 import { LinkLine } from './MonthLedger';
 import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
 
 export interface AgendaRollProps {
   data: CalendarData;
   onOpenEvent: (e: CalEvent) => void;
+  /** The house's today, so "Today" is the house's day, not the device's (F-873). */
+  today?: Date;
 }
 
-export default function AgendaRoll({ data, onOpenEvent }: AgendaRollProps) {
+export default function AgendaRoll({ data, onOpenEvent, today }: AgendaRollProps) {
   const days = Array.from(data.byDay.keys())
     .filter((k) => k >= data.start && k <= data.end)
     .sort();
@@ -39,7 +41,7 @@ export default function AgendaRoll({ data, onOpenEvent }: AgendaRollProps) {
         return (
           <div key={key} className="cn-agenda-day">
             <div className="cn-agenda-key">
-              {relDay(key)}
+              {relDay(key, today)}
               <small>{longDay(key)}</small>
             </div>
             <div>
@@ -52,7 +54,7 @@ export default function AgendaRoll({ data, onOpenEvent }: AgendaRollProps) {
                   data-ruled={data.isRuledOff(e)}
                   onClick={() => onOpenEvent(e)}
                 >
-                  <span className="cn-when">{span(e.startTime, e.endTime, e.allDay)}</span>
+                  <span className="cn-when">{daySpan(e, key)}</span>
                   <span className="cn-entry">
                     <b>{e.title}</b>
                     <LinkLine event={e} data={data} />

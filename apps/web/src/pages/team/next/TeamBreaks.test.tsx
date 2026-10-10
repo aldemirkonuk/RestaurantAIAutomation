@@ -531,6 +531,43 @@ describe('weekend closes, inactive people and a refused shift', () => {
     expect(screen.getAllByText('2 weekend closes').length).toBeGreaterThan(0);
   });
 
+  it('does not count weekend shifts with equal start and end times as closes (F-874)', () => {
+    const mk = (id: string, shift_date: string) => ({
+      ...baseShift,
+      id,
+      member_id: 'm1',
+      state: 'scheduled',
+      role: 'Bar',
+      shift_type: 'pm',
+      shift_date,
+      start_time: '10:00',
+      end_time: '10:00',
+      // A recorded break, so no break reason stands in front of the closes.
+      recorded_break_min: 60,
+    });
+    render(
+      <WeekGrid
+        weekStart="2026-08-31"
+        shifts={[mk('w1', '2026-09-05'), mk('w2', '2026-09-06')] as never}
+        members={[member('m1', 'Sam', 'active')] as never}
+        membersFailed={false}
+        certs={[]}
+        coverage={[]}
+        weekFailed={false}
+        engineIdle
+        lens="fairness"
+        labourEnabled
+        moneyVisible={false}
+        money={null}
+        scheduleId="sch1"
+        onEditShift={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryAllByText(/weekend closes/)).toHaveLength(0);
+  });
+
   it('does not offer an inactive person a new shift, but keeps them on a shift that is theirs', () => {
     const people = [member('m1', 'Sam', 'active'), member('m2', 'Lucas', 'inactive')];
     const { unmount } = render(

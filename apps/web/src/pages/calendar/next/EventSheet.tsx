@@ -227,7 +227,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         description: description.trim() || null,
         eventTime: allDay || !startTime ? null : startTime,
         eventTimeEnd: allDay || !endTime ? null : endTime,
-        eventDateEnd: allDay ? undefined : endDate || null,
+        eventDateEnd: endDate || null,
       };
       if (storedTypeOutside && !typeTouched) delete patch.eventType;
       if (storedStatusOutside && !statusTouched) delete patch.status;

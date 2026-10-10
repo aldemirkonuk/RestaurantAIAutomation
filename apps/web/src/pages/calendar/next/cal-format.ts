@@ -181,6 +181,23 @@ export function span(start: string | null, end: string | null, allDay: boolean):
   return e === EM ? s : `${s} – ${e}`;
 }
 
+/**
+ * The when-column for an entry on one day of the list. On its first day it is
+ * the entry's own `span`. On a day it carries on into (F-198 lists those days
+ * too) the start-end clock would be false — a 10:00 Mon to 14:00 Wed entry
+ * fills Tuesday whole — so it says "All day", "Until 14:00" on its last day,
+ * or "Continues" (F-872).
+ */
+export function daySpan(
+  e: { date: string; endDate: string | null; startTime: string | null; endTime: string | null; allDay: boolean },
+  key: string,
+): string {
+  if (key === e.date) return span(e.startTime, e.endTime, e.allDay);
+  if (e.allDay) return 'All day';
+  const end = clock(e.endTime);
+  return key === e.endDate && end !== EM ? `Until ${end}` : 'Continues';
+}
+
 /** A count said in words, or nothing at all. Never "0 deliveries". */
 export function countPhrase(n: number, one: string, many: string): string | null {
   if (n <= 0) return null;
