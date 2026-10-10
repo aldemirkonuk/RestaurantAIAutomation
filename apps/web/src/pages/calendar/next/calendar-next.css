@@ -409,6 +409,17 @@
   z-index: 3;
   box-shadow: 0 8px 22px rgba(23, 19, 15, 0.16);
 }
+/* Runs past midnight (F-197, F-821): open at the foot, and says when it ends. */
+.cn-block[data-continues='true'] {
+  border-bottom-style: dashed;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.cn-block-continues {
+  display: block;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
 .cn-block-open {
   display: block;
   width: 100%;

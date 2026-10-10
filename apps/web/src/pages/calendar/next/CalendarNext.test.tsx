@@ -64,7 +64,7 @@ vi.mock('../../../services/api/calendar', async (importOriginal) => {
 });
 
 import CalendarNext from './CalendarNext';
-import { laneLayout } from './TimeGrid';
+import { laneLayout, placed } from './TimeGrid';
 import { SEAL_HEX } from './cal-format';
 import { formatMoney } from '@/lib/currency';
 import type { CalEvent } from './useCalendarNextData';
@@ -650,6 +650,9 @@ describe('CalendarNext — editing clears, the whole day, refusals in place', ()
     fireEvent.change(within(sheet).getByLabelText('Ends'), { target: { value: '10:00' } });
     expect(within(sheet).queryByText(/the next morning/)).toBeNull();
     expect(within(sheet).getByText('Starts and ends at 10:00, so it shows as a single moment.')).toBeInTheDocument();
+    // A later "Ends on" makes equal times a span of days, not a moment (F-821).
+    fireEvent.change(endsOn, { target: { value: '2026-09-16' } });
+    expect(within(sheet).queryByText(/single moment/)).toBeNull();
   });
 
   it('draws an entry that ends when it starts as the shortest block, not an hour (F-820)', () => {
@@ -661,6 +664,52 @@ describe('CalendarNext — editing clears, the whole day, refusals in place', ()
     const block = screen.getByText('Key handover').closest('.cn-block') as HTMLElement;
     expect(parseFloat(block.style.top)).toBe(10 * 44);
     expect(parseFloat(block.style.height)).toBe(22);
+  });
+
+  it('keeps a later end date on the grid: drawn to midnight, says when it ends, moves with the entry (F-821)', () => {
+    // 10:00 on the 15th to 14:00 on the 17th: two whole days and four hours.
+    expect(
+      placed(event({ id: 'x', title: 'X', date: '2026-09-15', startTime: '10:00', endTime: '14:00', endDate: '2026-09-17' })),
+    ).toEqual({ start: 600, end: 2 * 1440 + 840 });
+    // Equal times with a later end date are not a moment: a full day.
+    expect(
+      placed(event({ id: 'y', title: 'Y', date: '2026-09-15', startTime: '10:00', endTime: '10:00', endDate: '2026-09-16' })),
+    ).toEqual({ start: 600, end: 1440 + 600 });
+    // An end date with no end time ends at 23:59, as the feed exports it.
+    expect(
+      placed(event({ id: 'z', title: 'Z', date: '2026-09-15', startTime: '10:00', endTime: null, endDate: '2026-09-16' })),
+    ).toEqual({ start: 600, end: 1440 + 1439 });
+
+    const data = mkData({
+      events: [
+        event({ id: 'e1', title: 'Wine fair', date: '2026-09-15', startTime: '10:00', endTime: '14:00', endDate: '2026-09-17' }),
+      ],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const block = screen.getByText('Wine fair').closest('.cn-block') as HTMLElement;
+    expect(parseFloat(block.style.top)).toBe(10 * 44);
+    expect(parseFloat(block.style.height)).toBe(14 * 44);
+    expect(block.dataset.continues).toBe('true');
+    expect(within(block).getByText('Ends Thu 17, 14:00')).toBeInTheDocument();
+    // Its handle would sit at midnight, not at its end, so it is not offered.
+    expect(screen.queryByRole('button', { name: 'Resize Wine fair' })).toBeNull();
+
+    // A move one hour later keeps the length and carries the end date along.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 756, height: 0, top: 0, left: 0, right: 756, bottom: 0, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.pointerDown(block, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 144 });
+    fireEvent.pointerUp(window);
+    const [{ patch }] = (data.move as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
+    expect(patch).toEqual({
+      eventDate: '2026-09-15',
+      eventTime: '11:00',
+      eventTimeEnd: '15:00',
+      eventDateEnd: '2026-09-17',
+    });
   });
 
   it('says a refused move on the page, and lets it be dismissed (F-201)', () => {
