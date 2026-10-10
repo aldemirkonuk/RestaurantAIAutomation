@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { createHmac, randomInt, timingSafeEqual } from "crypto";
 import { resolveJwtSecret } from "../auth/jwt-secret";
+import { maskEmail } from "../common/log-mask";
 import { DatabaseService } from "../database/database.service";
 import { GmailService } from "../communications/gmail.service";
 import { signInCodeEmailTemplate } from "../communications/email-templates/sign-in-code.template";
@@ -518,9 +519,4 @@ export class SignInCodesService {
   }
 }
 
-/** "m•••@example.com" -- enough to recognise, not enough to harvest. */
-export function maskEmail(email: string): string {
-  const [local, domain] = email.split("@");
-  if (!domain) return "your email address";
-  return `${local.slice(0, 1)}•••@${domain}`;
-}
+export { maskEmail };

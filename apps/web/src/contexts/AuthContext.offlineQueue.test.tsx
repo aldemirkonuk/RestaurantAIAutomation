@@ -278,3 +278,44 @@ describe("founder storage ruling 2026-09-29 — sign-out clears the read cache, 
     await waitFor(() => expect(auth().user).toBeNull());
   }, 10000);
 });
+
+describe("F-703 — deleting the account runs the sign-out cleanup", () => {
+  it("after the server deletes it, clears the houses, the token and that person's changes, without asking", async () => {
+    signInAs(U2, H1);
+    const theirs = await queue("calendar.delete");
+    signInAs(U1, H1);
+    await queue("calendar.delete");
+    const auth = await mountAs(U1, H1);
+    localStorage.setItem("availableRestaurants", JSON.stringify([{ id: H1 }]));
+    h.instance.delete.mockResolvedValue({ data: {} });
+    const confirm = vi.spyOn(window, "confirm");
+    const clear = vi.spyOn(offlineStorage, "clearEntityCache").mockResolvedValue(undefined);
+
+    await act(async () => {
+      await auth().deleteAccountAndSignOut();
+    });
+
+    expect(h.instance.delete).toHaveBeenCalledWith("/api/v1/auth/me");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(localStorage.getItem("accessToken")).toBeNull();
+    expect(localStorage.getItem("availableRestaurants")).toBeNull();
+    expect(localStorage.getItem("activeRestaurantId")).toBeNull();
+    expect(clear).toHaveBeenCalledTimes(1);
+    const left = await offlineStorage.getAllPendingMutationsOnDevice();
+    expect(left.map((m) => m.id)).toEqual([theirs]);
+  });
+
+  it("a refused delete leaves the session and the queue as they were", async () => {
+    signInAs(U1, H1);
+    await queue("calendar.delete");
+    const auth = await mountAs(U1, H1);
+    h.instance.delete.mockRejectedValue(new Error("refused"));
+
+    await act(async () => {
+      await expect(auth().deleteAccountAndSignOut()).rejects.toThrow("refused");
+    });
+
+    expect(localStorage.getItem("accessToken")).not.toBeNull();
+    expect((await ids()).length).toBe(1);
+  });
+});

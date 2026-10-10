@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "node:crypto";
+import { maskEmail } from "../common/log-mask";
 import { google, gmail_v1 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
@@ -246,7 +247,9 @@ export class GmailService implements OnModuleInit {
    * Send an email via Gmail API
    */
   async sendEmail(options: EmailOptions): Promise<EmailResult> {
-    this.logger.log(`Sending email to: ${options.to.join(", ")}`);
+    this.logger.log(
+      `Sending email to: ${options.to.map(maskEmail).join(", ")}`,
+    );
     this.logger.log(`Subject: ${options.subject}`);
 
     if (!(await this.ensureGmailReady())) {
