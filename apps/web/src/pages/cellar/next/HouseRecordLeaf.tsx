@@ -30,6 +30,7 @@ import {
   DOOR_CHECKED_LABEL,
   DOOR_CHECKED_SOURCE,
   EM,
+  catalogueMoney,
   count,
   matchNote,
   money,
@@ -237,7 +238,7 @@ export default function HouseRecordLeaf({
               <Fact label="ABV" value={c.abvPct === null ? EM : `${c.abvPct}%`} />
               <Fact label="Format" value={volume(c.volumeMl)} />
               <Fact label="Package" value={c.packageFormat ?? EM} />
-              <Fact label="Reference price" value={money(c.priceReference)} />
+              <Fact label="Reference price" value={catalogueMoney(c.priceReference)} />
             </div>
           </div>
           {note ? (

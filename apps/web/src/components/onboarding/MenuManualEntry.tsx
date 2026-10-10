@@ -3,9 +3,19 @@ import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type WineExtractItem, type MenuImportSuccess } from '../../services/api/menus'
 import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../../lib/menuReadWithoutAnswer'
+import { displayGroupMark, readOptionalAmount, twoReadingsProblem } from '../../lib/parseDecimal'
+import { CURRENCY_NOT_RECORDED } from '../../lib/currency'
+import { useHouseCurrency } from '../../hooks/useHouseCurrency'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 
-interface WineRow extends WineExtractItem {
+// The prices are kept as typed and read the way the house writes them on
+// Import (F-1000, as /menu's add form does since F-358): a number input made
+// "45,50" an empty value in an English browser, and the wine was imported with
+// no price and no word about it.
+interface WineRow extends Omit<WineExtractItem, 'by_glass_price' | 'bottle_price'> {
   _id: number
+  glass: string
+  bottle: string
 }
 
 let rowCounter = 0
@@ -17,8 +27,8 @@ function emptyRow(): WineRow {
     producer: '',
     vintage: '',
     region: '',
-    by_glass_price: undefined,
-    bottle_price: undefined,
+    glass: '',
+    bottle: '',
   }
 }
 
@@ -35,15 +45,13 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
   // import is not idempotent (each call inserts a new version), so Import is
   // not offered again here (F-808).
   const [unanswered, setUnanswered] = useState(false)
+  const currency = useHouseCurrency()
+  const group = useHouseGroupMark()
+  // The column says whose money it is: a lira house was asked for "Glass ($)".
+  const unit = currency === undefined ? '' : ` (${currency ?? CURRENCY_NOT_RECORDED})`
 
-  const updateRow = (id: number, field: keyof WineRow, value: string) => {
-    setRows((prev) =>
-      prev.map((row) =>
-        row._id === id
-          ? { ...row, [field]: field.includes('price') ? (value === '' ? undefined : parseFloat(value)) : value }
-          : row
-      )
-    )
+  const updateRow = (id: number, field: Exclude<keyof WineRow, '_id'>, value: string) => {
+    setRows((prev) => prev.map((row) => (row._id === id ? { ...row, [field]: value } : row)))
   }
 
   const addRow = () => setRows((prev) => [...prev, emptyRow()])
@@ -54,6 +62,17 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
   }
 
   const validRows = rows.filter((r) => r.name.trim())
+  const typedPrices = validRows.flatMap((r) => [r.glass, r.bottle])
+  const unreadable = typedPrices.find((raw) => !readOptionalAmount(raw, group).ok) ?? null
+  const shown = displayGroupMark()
+  const twoWays =
+    unreadable === null
+      ? typedPrices.map((raw) => twoReadingsProblem(raw, group, shown)).find((p) => p !== null) ?? null
+      : null
+  const priceOf = (raw: string): number | undefined => {
+    const read = readOptionalAmount(raw, group)
+    return read.ok ? (read.value ?? undefined) : undefined
+  }
 
   const handleImport = async () => {
     setValidationError(null)
@@ -62,11 +81,16 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
       setValidationError('Please enter at least one wine name before importing.')
       return
     }
+    if (unreadable !== null || twoWays !== null) return
 
     setLoading(true)
     setError(null)
     try {
-      const items: WineExtractItem[] = validRows.map(({ _id: _discard, ...rest }) => rest)
+      const items: WineExtractItem[] = validRows.map(({ _id: _discard, glass, bottle, ...rest }) => ({
+        ...rest,
+        by_glass_price: priceOf(glass),
+        bottle_price: priceOf(bottle),
+      }))
       const result = await importMenu('manual', { items })
       onSuccess(result)
     } catch (e: any) {
@@ -94,6 +118,16 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
           {validationError}
         </div>
       )}
+      {unreadable !== null && (
+        <div role="alert" className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+          “{unreadable}” is not a price. Write it like 12,50 or 12.50.
+        </div>
+      )}
+      {twoWays !== null && (
+        <div role="alert" className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+          {twoWays}
+        </div>
+      )}
 
       <div className="overflow-auto rounded-xl border border-gray-200 bg-white mb-4">
         <table className="w-full text-sm">
@@ -105,8 +139,8 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[160px]">Producer</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[90px]">Vintage</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[140px]">Region</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">Glass ($)</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">Bottle ($)</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">Glass{unit}</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">Bottle{unit}</th>
               <th className="w-10" />
             </tr>
           </thead>
@@ -151,22 +185,22 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
                 </td>
                 <td className="px-2 py-1.5">
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={row.by_glass_price ?? ''}
-                    onChange={(e) => updateRow(row._id, 'by_glass_price', e.target.value)}
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={`Glass price, row ${idx + 1}`}
+                    value={row.glass}
+                    onChange={(e) => updateRow(row._id, 'glass', e.target.value)}
                     placeholder="14.00"
                     className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
                   />
                 </td>
                 <td className="px-2 py-1.5">
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={row.bottle_price ?? ''}
-                    onChange={(e) => updateRow(row._id, 'bottle_price', e.target.value)}
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={`Bottle price, row ${idx + 1}`}
+                    value={row.bottle}
+                    onChange={(e) => updateRow(row._id, 'bottle', e.target.value)}
                     placeholder="68.00"
                     className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
                   />
@@ -197,7 +231,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
 
         <Button
           onClick={handleImport}
-          disabled={loading || unanswered || validRows.length === 0}
+          disabled={loading || unanswered || validRows.length === 0 || unreadable !== null || twoWays !== null}
           className="bg-[#1A5E6B] hover:bg-[#14515C] text-white"
         >
           {loading ? (

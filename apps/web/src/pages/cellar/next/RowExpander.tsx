@@ -47,7 +47,7 @@
 
 import { useMemo } from 'react';
 import { AlertTriangle, Ban, LineChart } from 'lucide-react';
-import { EM, money, shortDate, type RegisterId } from './cellar-format';
+import { EM, catalogueMoney, money, shortDate, type RegisterId } from './cellar-format';
 import { velocity, whenItSells, type TillLine } from './rowSeries';
 import type { BookRecordVM, RegisterRowVM, RowRecordVM } from './useCellarNextData';
 
@@ -300,7 +300,7 @@ export default function RowExpander({
       >
         <KV k="Last paid, each" v={money(paidUnit)} />
         <KV k="On our list" v={money(listPrice)} />
-        <KV k="Catalogue reference" v={money(reference)} />
+        <KV k="Catalogue reference" v={catalogueMoney(reference)} />
         <KV k="Markup" v={markup === null ? EM : `${markup.toFixed(1)}x`} />
         <p className="cl-note" style={{ marginTop: 6 }}>
           {paidUnit === null

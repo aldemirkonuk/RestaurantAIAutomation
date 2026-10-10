@@ -867,6 +867,23 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(row).not.toHaveTextContent('$');
   });
 
+  // F-998: the catalogue's reference price has no currency on record, so a
+  // lira house read ₺28 and a dollar house $28 for the same row.
+  it('prints the catalogue reference price without borrowing the house currency', () => {
+    mock.currency = 'TRY';
+    mock.current = { ...base, registers: readout() };
+    const r = houseRow();
+    mock.register = {
+      data: registerVM({ rows: [{ ...r, catalogue: { ...r.catalogue, priceReference: 28 } }] }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const fact = within(screen.getByTestId('house-leaf')).getByText('Reference price').parentElement!;
+    expect(fact).toHaveTextContent(/28[.,]00 \(currency not recorded\)/);
+    expect(fact).not.toHaveTextContent('₺');
+  });
+
   // F-269: /beer and /whiskey render the same element, so a search typed on
   // one page used to still be filtering the next.
   it('starts each register with clear filters when moving from one drinks page to the next', () => {

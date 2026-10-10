@@ -19,6 +19,8 @@ import {
   pencilReason,
   readProof,
 } from '../lib/firstProof'
+import { formatHouseMoney } from '../lib/houseCurrency'
+import { useHouseCurrency } from '../hooks/useHouseCurrency'
 
 // A legacy 'wine' line sorts first; every other section is the gateway's own.
 const sectionOrder: string[] = ['wine', ...MENU_KINDS]
@@ -44,10 +46,12 @@ function sectionName(value: string) {
   return names[value] ?? value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+// In the house's money and marks (F-1001): "45.5 glass · 1250 bottle" read bare
+// beside /menu's ₺1.250,00 for the same line.
 function price(item: MenuImportReviewItem) {
   const parts = [
-    item.byGlassPrice != null ? `${item.byGlassPrice} glass` : null,
-    item.bottlePrice != null ? `${item.bottlePrice} bottle` : null,
+    item.byGlassPrice != null ? `${formatHouseMoney(item.byGlassPrice)} glass` : null,
+    item.bottlePrice != null ? `${formatHouseMoney(item.bottlePrice)} bottle` : null,
   ].filter(Boolean)
   return parts.join(' · ')
 }
@@ -80,6 +84,8 @@ function fileSaid(file: MenuFileResult): string {
 export default function HouseMenu() {
   const navigate = useNavigate()
   const { activeRestaurantId } = useAuth()
+  // Read so the prices re-render in the house's money when the answer lands.
+  useHouseCurrency()
   // Only the proof read for THIS house (F-273): after a house switch in the
   // same tab, the other house's proof is not shown.
   const proof = useMemo(() => readProof(activeRestaurantId), [activeRestaurantId])
