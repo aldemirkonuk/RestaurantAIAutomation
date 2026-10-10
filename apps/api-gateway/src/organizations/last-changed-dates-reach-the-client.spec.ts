@@ -111,11 +111,17 @@ function makeService(rows: Rows): {
 // An owner: chains are shown with a house count only to an owner, and only
 // an owner may rename one (F-313, F-659).
 const ORG = [{ organization_id: "org-1", role: "owner" }];
+// ...and an active owner of one of its houses (F-935, F-1035).
+const OWNER_OF_A_HOUSE = {
+  orgMembers: ORG,
+  ura: [{ restaurant_id: "r1" }],
+  restaurants: [{ organization_id: "org-1" }],
+};
 
 describe("chains carry their own last-changed date", () => {
   it("asks for updated_at and hands it to the caller", async () => {
     const { service, probe } = makeService({
-      orgMembers: ORG,
+      ...OWNER_OF_A_HOUSE,
       chains: [
         {
           id: "c1",
@@ -145,7 +151,7 @@ describe("chains carry their own last-changed date", () => {
 
   it("keeps a missing date missing rather than substituting now()", async () => {
     const { service } = makeService({
-      orgMembers: ORG,
+      ...OWNER_OF_A_HOUSE,
       chains: [
         {
           id: "c1",

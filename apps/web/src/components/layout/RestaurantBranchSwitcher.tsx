@@ -20,7 +20,11 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
-  const [refused, setRefused] = useState<string | null>(null)
+  // A refused switch: the house asked for and the house the page was in.
+  const [refused, setRefused] = useState<{ to: string; from: string | null } | null>(null)
+  // F-1036: only the latest switch may report. An earlier one answers "not
+  // opened" when a later pick supersedes it, and that is not a refusal.
+  const switchSeq = useRef(0)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const shell = useMudavymShell()
 
@@ -46,24 +50,30 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
   const initial = (activeBranch?.name ?? 'L')[0].toUpperCase()
 
   const handleSwitch = async (branchId: string) => {
+    const seq = ++switchSeq.current
+    const from = activeRestaurantId
     setIsSwitching(true)
     setOpen(false)
     setRefused(null)
     const ok = await setActiveRestaurantId(branchId)
+    if (seq !== switchSeq.current) return
     setIsSwitching(false)
     // A refused switch stays in this house and says so (ADR 0164, R6); the
     // page used to relabel itself anyway.
-    if (!ok) {
-      const name = availableRestaurants.find((b) => b.id === branchId)?.name ?? 'that house'
-      setRefused(`Couldn't open ${name}. You're still in ${activeBranch?.name ?? 'this house'}.`)
-    }
+    if (!ok) setRefused({ to: branchId, from })
   }
+
+  // Said in the house the page is in now, and dropped once it is elsewhere.
+  const refusal =
+    refused && refused.from === activeRestaurantId
+      ? `Couldn't open ${availableRestaurants.find((b) => b.id === refused.to)?.name ?? 'that house'}. You're still in ${activeBranch?.name ?? 'this house'}.`
+      : null
 
   return (
     <div className={className ?? 'relative'}>
-      {refused && (
+      {refusal && (
         <p role="alert" className="absolute left-0 top-full mt-1 z-50 whitespace-nowrap rounded-lg bg-white px-2 py-1 text-[11px] text-red-700 shadow-sm">
-          {refused}
+          {refusal}
         </p>
       )}
       <button

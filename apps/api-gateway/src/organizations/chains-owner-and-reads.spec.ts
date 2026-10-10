@@ -371,3 +371,53 @@ describe("F-935: an owner demoted or removed in every house of the organisation 
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
+
+describe("F-1035: a founder demoted or removed in every house cannot open a location to win the group writes back", () => {
+  const DTO = { name: "Moda", address: "1 Test St", city: "Istanbul" };
+  const asStaff = () =>
+    world({
+      user_restaurant_access: [
+        {
+          user_id: P,
+          restaurant_id: "house-1",
+          role: "staff",
+          is_active: true,
+        },
+      ],
+    });
+
+  it("refuses a founder demoted to staff and creates no house and no owner row", async () => {
+    const db = asStaff();
+    const err = await settle(
+      service(db).createLocation(P, { ...DTO, chainId: "chain-a" }),
+    );
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(db.tables.restaurants).toHaveLength(4);
+    expect(db.tables.user_restaurant_access).toHaveLength(1);
+    // And so the group writes F-935 took away stay away.
+    await expect(
+      service(db).renameChain(P, "chain-a", "Renamed"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("still lets an active owner of a house in the organisation open one", async () => {
+    const db = world();
+    await service(db).createLocation(P, { ...DTO, chainId: "chain-a" });
+    expect(db.tables.restaurants).toHaveLength(5);
+  });
+
+  it("shows a demoted founder only the groups of their own houses, with no counts", async () => {
+    const chains = await service(asStaff()).getChainsForUser(P);
+    expect(chains.map((c) => [c.id, c.location_count])).toEqual([
+      ["chain-a", null],
+    ]);
+  });
+
+  it("still shows an owner every group of the organisation with its counts", async () => {
+    const chains = await service(world()).getChainsForUser(P);
+    expect(chains.map((c) => [c.id, c.location_count]).sort()).toEqual([
+      ["chain-a", 2],
+      ["chain-b", 1],
+    ]);
+  });
+});

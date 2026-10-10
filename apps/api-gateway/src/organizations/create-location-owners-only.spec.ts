@@ -56,7 +56,12 @@ describe("createLocation: organisation owners only (ADR 0164)", () => {
     const db = world("owner", {
       restaurants: [{ id: "house-existing", organization_id: ORG }],
       user_restaurant_access: [
-        { user_id: P, restaurant_id: "house-existing", is_active: true },
+        {
+          user_id: P,
+          restaurant_id: "house-existing",
+          role: "owner",
+          is_active: true,
+        },
       ],
     });
 
@@ -150,7 +155,12 @@ describe("createLocation: organisation owners only (ADR 0164)", () => {
     const db = world("owner", {
       restaurants: [{ id: "house-existing", organization_id: ORG }],
       user_restaurant_access: [
-        { user_id: P, restaurant_id: "house-existing", is_active: true },
+        {
+          user_id: P,
+          restaurant_id: "house-existing",
+          role: "owner",
+          is_active: true,
+        },
       ],
     });
 
@@ -226,7 +236,12 @@ describe("createLocation: an organisation owner also needs an active house in th
         { id: "house-elsewhere", organization_id: OTHER_ORG, name: "Elsewhere House" },
       ],
       user_restaurant_access: [
-        { user_id: P, restaurant_id: "house-elsewhere", is_active: true },
+        {
+          user_id: P,
+          restaurant_id: "house-elsewhere",
+          role: "owner",
+          is_active: true,
+        },
       ],
     });
 
@@ -248,7 +263,12 @@ describe("createLocation: an organisation owner also needs an active house in th
     const db = world("owner", {
       restaurants: [{ id: "house-in-org", organization_id: ORG, name: "Moda" }],
       user_restaurant_access: [
-        { user_id: P, restaurant_id: "house-in-org", is_active: false },
+        {
+          user_id: P,
+          restaurant_id: "house-in-org",
+          role: "owner",
+          is_active: false,
+        },
       ],
     });
 
@@ -269,7 +289,12 @@ describe("createLocation: an organisation owner also needs an active house in th
     const db = world("owner", {
       restaurants: [{ id: "house-in-org", organization_id: ORG, name: "Moda" }],
       user_restaurant_access: [
-        { user_id: P, restaurant_id: "house-in-org", is_active: true },
+        {
+          user_id: P,
+          restaurant_id: "house-in-org",
+          role: "owner",
+          is_active: true,
+        },
       ],
     });
 
