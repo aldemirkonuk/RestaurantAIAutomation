@@ -45,6 +45,7 @@ import {
   TEAM_TRAIL_ACTIONS,
   type TargetReading,
   type TeamTrail,
+  useActiveRestaurantId,
 } from './useTeamNextData';
 import type { TeamMember } from '../../../services/api/team';
 import { apiClient } from '../../../services/api/client';
@@ -341,9 +342,12 @@ export function TrailSheet({
 
   // The house's clock (ADR 0207 round 3), so "when" is the restaurant's time,
   // not the reader's. Unanswered or unread, `formatVenueTime` says whose clock
-  // it used instead of passing the reader's off as the house's.
+  // it used instead of passing the reader's off as the house's. Keyed by the
+  // house: the gateway answers for whichever house is active, so after a
+  // switch an unkeyed answer would be the previous house's clock.
+  const rid = useActiveRestaurantId();
   const zoneQ = useQuery({
-    queryKey: ['team-next-house-zone'],
+    queryKey: ['team-next-house-zone', rid],
     queryFn: async () => {
       const { data } = await apiClient.get<{ zone?: unknown }>('/settings/time-zone');
       return typeof data?.zone === 'string' ? data.zone : null;

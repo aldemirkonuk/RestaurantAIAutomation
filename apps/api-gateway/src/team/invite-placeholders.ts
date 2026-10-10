@@ -35,24 +35,31 @@ import { Logger } from "@nestjs/common";
  * one is missing here — plus the four `member_id` columns that dropped or never
  * had theirs so the record outlives a removal (shifts and leave `20261201110200`,
  * credentials `20261201110210`, wages `20261201110000`).
+ *
+ * Each entry names its table a second time as a literal `.from("…")`, so
+ * scripts/check_queried_tables_exist.py checks every one of them against the
+ * migrations; a `.from(table)` over this list is a site that guard cannot read.
+ * The spec fails if the two names in an entry ever differ.
  */
-export const HISTORY_COLUMNS: ReadonlyArray<readonly [table: string, column: string]> = [
-  ["shifts", "member_id"],
-  ["time_off_requests", "member_id"],
-  ["team_member_wage_changes", "member_id"],
-  ["team_certifications", "member_id"],
+export const HISTORY_COLUMNS: ReadonlyArray<
+  readonly [table: string, column: string, from: (sb: any) => any]
+> = [
+  ["shifts", "member_id", (sb) => sb.from("shifts")],
+  ["time_off_requests", "member_id", (sb) => sb.from("time_off_requests")],
+  ["team_member_wage_changes", "member_id", (sb) => sb.from("team_member_wage_changes")],
+  ["team_certifications", "member_id", (sb) => sb.from("team_certifications")],
   // Cascade from team_members: a delete would take these with it.
-  ["server_sales", "member_id"],
-  ["schedule_receipts", "member_id"],
-  ["team_availability", "member_id"],
-  ["house_area_members", "member_id"],
-  ["team_note_recipients", "member_id"],
-  ["team_note_deliveries", "member_id"],
-  ["house_away_held", "member_id"],
+  ["server_sales", "member_id", (sb) => sb.from("server_sales")],
+  ["schedule_receipts", "member_id", (sb) => sb.from("schedule_receipts")],
+  ["team_availability", "member_id", (sb) => sb.from("team_availability")],
+  ["house_area_members", "member_id", (sb) => sb.from("house_area_members")],
+  ["team_note_recipients", "member_id", (sb) => sb.from("team_note_recipients")],
+  ["team_note_deliveries", "member_id", (sb) => sb.from("team_note_deliveries")],
+  ["house_away_held", "member_id", (sb) => sb.from("house_away_held")],
   // Set to null by a delete: the record would lose who it was about.
-  ["swap_requests", "from_member_id"],
-  ["swap_requests", "to_member_id"],
-  ["shift_breaks", "covered_by"],
+  ["swap_requests", "from_member_id", (sb) => sb.from("swap_requests")],
+  ["swap_requests", "to_member_id", (sb) => sb.from("swap_requests")],
+  ["shift_breaks", "covered_by", (sb) => sb.from("shift_breaks")],
 ];
 
 export interface DeadInvite {
@@ -150,9 +157,8 @@ export async function retireLapsedInvitePlaceholders(
 
 /** Any record held for this roster row. A read that fails counts as history. */
 async function hasHistory(sb: any, memberId: string): Promise<boolean> {
-  for (const [table, column] of HISTORY_COLUMNS) {
-    const { count, error } = await sb
-      .from(table)
+  for (const [, column, from] of HISTORY_COLUMNS) {
+    const { count, error } = await from(sb)
       .select("*", { count: "exact", head: true })
       .eq(column, memberId);
     if (error || (count ?? 0) > 0) return true;
