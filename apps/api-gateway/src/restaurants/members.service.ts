@@ -325,6 +325,24 @@ export class MembersService {
       }
     }
 
+    // Invites this person issued that the new role could not issue stop being
+    // good now, not at acceptance: until then Settings and /invite/:code kept
+    // showing them live and /team kept their stand-in (F-1066). A promotion
+    // cancels nothing; the role change has happened, so a failed write is
+    // logged, not refused.
+    const grantable = ["owner", "manager", "staff"].filter(
+      (role) => !grantRefusal(newRole, role, "invite"),
+    );
+    if (grantable.length < 3) {
+      await cancelPendingInvitesFrom(
+        this.databaseService.supabase,
+        targetUserId,
+        restaurantId,
+        this.logger,
+        grantable,
+      );
+    }
+
     // The roster's job title is not the access role (F-931). A title that is
     // still the OLD role's word was copied from the role when the row was
     // made, not chosen, and would now print beside the new role and disagree

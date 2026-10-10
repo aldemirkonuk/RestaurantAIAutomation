@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { MembersService } from "./members.service";
+import { retireLapsedInvitePlaceholders } from "../team/invite-placeholders";
 import {
   asDatabaseService,
   makeStubDb,
@@ -973,5 +974,130 @@ describe("MembersService.removeMember — a removal without a roster row is reco
     expect(db.tables.system_audit_log).toHaveLength(1);
     expect(db.tables.system_audit_log[0].changes?.self_leave).toBe(true);
     expect(db.tables.notifications).toEqual([]);
+  });
+});
+
+/**
+ * F-1066: a demoted person's pending invites for roles their new role cannot
+ * grant were still live — listed in Settings, shown on /invite/:code, and
+ * their /team stand-in kept — until someone tried to join with one. The
+ * demotion now cancels exactly those, through the removal paths' own
+ * `cancelPendingInvitesFrom`.
+ */
+describe("MembersService.updateMemberRole — a demotion cancels the invites the new role cannot issue", () => {
+  const MAYA = "user-maya";
+  const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const MINTED = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  function seedIssuer(mayaRole: string): StubDb {
+    const invite = (id: string, role: string, invitedBy = MAYA) => ({
+      id,
+      code: id.toUpperCase(),
+      restaurant_id: RID,
+      role,
+      invited_by: invitedBy,
+      used_at: null,
+      expires_at: FUTURE,
+      created_at: MINTED,
+    });
+    return makeStubDb({
+      user_restaurant_access: [
+        {
+          id: "a1",
+          user_id: OWNER,
+          restaurant_id: RID,
+          role: "owner",
+          is_active: true,
+        },
+        {
+          id: "a2",
+          user_id: SECOND_OWNER,
+          restaurant_id: RID,
+          role: "owner",
+          is_active: true,
+        },
+        {
+          id: "a5",
+          user_id: MAYA,
+          restaurant_id: RID,
+          role: mayaRole,
+          is_active: true,
+        },
+      ],
+      users: [
+        {
+          user_id: OWNER,
+          restaurant_id: RID,
+          role: "owner",
+          email: "ada@example.test",
+        },
+        {
+          user_id: MAYA,
+          restaurant_id: RID,
+          role: mayaRole,
+          email: "maya@example.test",
+        },
+      ],
+      organization_invites: [
+        invite("inv-owner", "owner"),
+        invite("inv-manager", "manager"),
+        invite("inv-staff", "staff"),
+        invite("inv-other", "owner", SECOND_OWNER),
+      ],
+      team_members: [
+        {
+          id: "tm-owner",
+          restaurant_id: RID,
+          user_id: null,
+          invite_id: "inv-owner",
+          created_at: new Date().toISOString(),
+        },
+      ],
+      notifications: [],
+      system_audit_log: [],
+    });
+  }
+
+  const live = async (db: StubDb) =>
+    (await service(db).getInvites(OWNER, RID)).map((i: any) => i.id).sort();
+
+  it("owner to manager: the owner invite stops, the manager and staff ones stay", async () => {
+    const db = seedIssuer("owner");
+    await service(db).updateMemberRole(OWNER, RID, MAYA, "manager");
+
+    expect(await live(db)).toEqual(["inv-manager", "inv-other", "inv-staff"]);
+  });
+
+  it("manager to staff: every invite they issued here stops", async () => {
+    const db = seedIssuer("manager");
+    await service(db).updateMemberRole(OWNER, RID, MAYA, "staff");
+
+    expect(await live(db)).toEqual(["inv-other"]);
+  });
+
+  it("a promotion cancels nothing", async () => {
+    const db = seedIssuer("manager");
+    await service(db).updateMemberRole(OWNER, RID, MAYA, "owner");
+
+    expect(await live(db)).toEqual([
+      "inv-manager",
+      "inv-other",
+      "inv-owner",
+      "inv-staff",
+    ]);
+  });
+
+  it("the cancelled invite's /team stand-in is retired on the next roster read", async () => {
+    const db = seedIssuer("owner");
+    await service(db).updateMemberRole(OWNER, RID, MAYA, "manager");
+
+    const retired = await retireLapsedInvitePlaceholders(
+      asDatabaseService(db).supabase,
+      { warn: () => undefined } as any,
+      RID,
+      db.tables.team_members as any,
+    );
+    expect([...retired]).toEqual(["tm-owner"]);
+    expect(db.tables.team_members).toEqual([]);
   });
 });

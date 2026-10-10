@@ -20,20 +20,29 @@ import { SupabaseClient } from "@supabase/supabase-js";
  * used" answer a genuinely expired code gets. A failed write here is logged,
  * not thrown: the removal itself already happened, and refusing to finish it
  * over a housekeeping step would leave the person still a member.
+ *
+ * A demotion (`MembersService.updateMemberRole`) passes `keepRoles`, the roles
+ * the new role can still grant: those invites stay the issuer's to give, and
+ * every other pending one is cancelled (F-1066). Expiring
+ * them is also what takes them off Settings and /invite/:code, and what lets
+ * the /team read retire their stand-ins (`retireLapsedInvitePlaceholders`).
  */
 export async function cancelPendingInvitesFrom(
   supabase: SupabaseClient,
   invitedBy: string,
   restaurantId: string,
   logger?: { error: (message: string) => void },
+  keepRoles: readonly string[] = [],
 ): Promise<void> {
-  const { error } = await supabase
+  let pending = supabase
     .from("organization_invites")
     .update({ expires_at: new Date().toISOString() })
     .eq("invited_by", invitedBy)
     .eq("restaurant_id", restaurantId)
     .is("used_at", null)
     .gt("expires_at", new Date().toISOString());
+  for (const role of keepRoles) pending = pending.neq("role", role);
+  const { error } = await pending;
 
   if (error) {
     logger?.error(
