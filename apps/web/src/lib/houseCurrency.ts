@@ -109,12 +109,23 @@ export function formatHouseMoney(
   };
   // Grouped the house's way: a lira house reads "₺12.400,50", where en-US
   // printed "TRY 12,400.50" — 12.4 by the house's own mark (F-908). A compact
-  // figure keeps its English K/M and takes only the house's decimal mark, as
-  // the gateway's insight lines do.
+  // figure keeps its English K/M and takes the house's decimal mark and the
+  // house's sign for its money, as the gateway's insight lines do: "₺12,4K",
+  // never "TRY 12,4K" beside a full "₺12.400" (F-1057).
   const fmt = (o: Intl.NumberFormatOptions): string => {
     if (!compact) return new Intl.NumberFormat(currentLocale, o).format(amount);
-    const s = new Intl.NumberFormat('en-US', o).format(amount);
-    return decimalMarkOf(currentLocale) === ',' ? s.replace('.', ',') : s;
+    const mark = decimalMarkOf(currentLocale);
+    const sign = o.currency ? houseSignOf(o.currency) : null;
+    const parts = new Intl.NumberFormat('en-US', o).formatToParts(amount);
+    return parts
+      .map((p, i) => {
+        if (p.type === 'decimal') return mark;
+        if (!sign) return p.value;
+        if (p.type === 'currency') return sign.symbol;
+        const byCurrency = parts[i - 1]?.type === 'currency' || parts[i + 1]?.type === 'currency';
+        return p.type === 'literal' && byCurrency ? sign.gap : p.value;
+      })
+      .join('');
   };
   const bare = fmt(base);
   if (code === undefined) return bare;
@@ -128,4 +139,17 @@ export function formatHouseMoney(
 
 function decimalMarkOf(locale: string): string {
   return new Intl.NumberFormat(locale).formatToParts(1.5).find((p) => p.type === 'decimal')?.value ?? '.';
+}
+
+/** The house's sign for `currency` ("₺" in a lira house) and the space it keeps beside the figure. */
+function houseSignOf(currency: string): { symbol: string; gap: string } | null {
+  try {
+    const parts = new Intl.NumberFormat(currentLocale, { style: 'currency', currency }).formatToParts(1);
+    const at = parts.findIndex((p) => p.type === 'currency');
+    if (at < 0) return null;
+    const near = [parts[at - 1], parts[at + 1]].find((p) => p?.type === 'literal');
+    return { symbol: parts[at].value, gap: near?.value ?? '' };
+  } catch {
+    return null;
+  }
 }

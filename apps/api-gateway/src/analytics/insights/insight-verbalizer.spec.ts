@@ -77,3 +77,68 @@ describe("concentration sentences", () => {
     expect(ev(1, 0.3)).toMatch(/highly concentrated, worth watching\.$/);
   });
 });
+
+describe("a lira house reads its non-money figures with its own decimal mark (F-1058)", () => {
+  const tr = { measureLabel: "covers", locale: "tr-TR" } as const;
+
+  it("percents, units, sigma, r, weights and lift take ',' in tr-TR", () => {
+    expect(
+      verbalize("anomaly", {
+        ...tr,
+        unit: "percent",
+        value: 0.125,
+        z: 2.34,
+        date: "Tue",
+      }),
+    ).toBe("Tue was unusual: covers of 12,5% sits 2,3σ above typical.");
+    expect(
+      verbalize("hot", {
+        ...tr,
+        entity: "Bar",
+        unit: "units",
+        value: 4.5,
+        z: -1.86,
+      }),
+    ).toMatch(/^Bar is surging right now: 4,50, 1,9σ above/);
+    expect(
+      verbalize("correlation", {
+        ...tr,
+        unit: "units",
+        r: 0.62,
+        attribute: "seat count",
+      }),
+    ).toBe("Moderate link (r=0,62): seat count goes with higher covers.");
+    expect(
+      verbalize("driver", {
+        ...tr,
+        unit: "units",
+        drivers: [{ attribute: "rain", weight: -0.25 }],
+      }),
+    ).toContain("rain (−0,25)");
+    expect(
+      verbalize("basket", {
+        ...tr,
+        unit: "units",
+        pairA: "Rakı",
+        pairB: "Meze",
+        lift: 2.4,
+      }),
+    ).toContain("2,4× more than chance");
+    expect(tableAttributeReading("seat count", 0.9, "tr-TR")).toContain(
+      "(r=0,90)",
+    );
+  });
+
+  it("a house with no locale keeps en-US marks", () => {
+    expect(
+      verbalize("anomaly", {
+        measureLabel: "covers",
+        unit: "units",
+        value: 12.25,
+        z: 2.34,
+        date: "Tue",
+      }),
+    ).toBe("Tue was unusual: covers of 12.3 sits 2.3σ above typical.");
+    expect(tableAttributeReading("seat count", 0.9)).toContain("(r=0.90)");
+  });
+});

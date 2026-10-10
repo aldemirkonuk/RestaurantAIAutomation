@@ -50,6 +50,9 @@ import {
   type Promotion,
 } from '../../../services/api/provider-intelligence';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark';
+import { inHouseMarks } from '../../../lib/currency';
+import type { GroupMark } from '../../../lib/parseDecimal';
 import { houseMessage, MONO, SANS } from './pv-format';
 
 interface Props {
@@ -114,9 +117,13 @@ function isPrimitive(v: unknown): v is string | number | boolean {
   return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
 }
 
-function primitiveWords(v: string | number | boolean): string | null {
+/**
+ * A figure is grouped the house's way: "1.500" in a lira house, where en-US
+ * printed "1,500" (F-1080, as F-992). `group` unknown keeps en-US.
+ */
+function primitiveWords(v: string | number | boolean, group: GroupMark | null = null): string | null {
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
-  if (typeof v === 'number') return Number.isFinite(v) ? v.toLocaleString('en-US') : null;
+  if (typeof v === 'number') return Number.isFinite(v) ? inHouseMarks(v.toLocaleString('en-US'), ',', group) : null;
   const t = words(v);
   return t === '' ? null : t;
 }
@@ -126,36 +133,36 @@ function primitiveWords(v: string | number | boolean): string | null {
  * keys. Null is the honest answer — the caller then says a plainer sentence,
  * never `{"days":45}`.
  */
-function phraseValue(v: unknown): string | null {
+function phraseValue(v: unknown, group: GroupMark | null = null): string | null {
   if (v === null || v === undefined) return null;
-  if (isPrimitive(v)) return primitiveWords(v);
+  if (isPrimitive(v)) return primitiveWords(v, group);
   if (Array.isArray(v)) {
     if (v.length === 0 || !v.every(isPrimitive)) return null;
-    const parts = v.map(primitiveWords).filter((p): p is string => p !== null);
+    const parts = v.map((x) => primitiveWords(x, group)).filter((p): p is string => p !== null);
     return parts.length ? parts.join(', ') : null;
   }
   if (typeof v === 'object') {
     const o = v as Record<string, unknown>;
     // The two compound shapes whose meaning does not live in the key name.
     if (isPrimitive(o.amount) && typeof o.currency === 'string' && o.currency.trim()) {
-      const a = primitiveWords(o.amount);
+      const a = primitiveWords(o.amount, group);
       return a ? `${a} ${o.currency.trim().toUpperCase()}` : null;
     }
     if (isPrimitive(o.value) && typeof o.unit === 'string' && o.unit.trim()) {
-      const a = primitiveWords(o.value);
+      const a = primitiveWords(o.value, group);
       return a ? `${a} ${words(o.unit)}` : null;
     }
     const filled = Object.values(o).filter((x) => x !== null && x !== undefined && x !== '');
-    if (filled.length === 1) return phraseValue(filled[0]);
+    if (filled.length === 1) return phraseValue(filled[0], group);
     return null;
   }
   return null;
 }
 
 /** "Payment terms: 45 days" — or the label alone when the value cannot be said. */
-function factSentence(label: string, attributes: unknown): string {
+function factSentence(label: string, attributes: unknown, group: GroupMark | null = null): string {
   const l = words(label);
-  const v = phraseValue(attributes);
+  const v = phraseValue(attributes, group);
   if (!v) return l;
   // The label already says it ("Delivers Tuesday and Friday" + [Tue, Fri]).
   const said = l.toLowerCase();
@@ -165,22 +172,25 @@ function factSentence(label: string, attributes: unknown): string {
 }
 
 /** What an offer gives, in the offer's own currency or saying none was stated. */
-function offerTerms(p: Pick<Promotion, 'discount_value' | 'conditions'>): string | null {
+function offerTerms(
+  p: Pick<Promotion, 'discount_value' | 'conditions'>,
+  group: GroupMark | null = null,
+): string | null {
   const dv = (p.discount_value ?? {}) as Record<string, unknown>;
   const cond = (p.conditions ?? {}) as Record<string, unknown>;
   const currency = typeof dv.currency === 'string' && dv.currency.trim() ? dv.currency.trim().toUpperCase() : null;
   const money = (n: unknown): string | null => {
     if (!isPrimitive(n)) return null;
-    const w = primitiveWords(n);
+    const w = primitiveWords(n, group);
     if (!w) return null;
     return currency ? `${w} ${currency}` : `${w} (currency not stated)`;
   };
   const parts: string[] = [];
-  if (isPrimitive(dv.percent)) parts.push(`${primitiveWords(dv.percent)}% off`);
+  if (isPrimitive(dv.percent)) parts.push(`${primitiveWords(dv.percent, group)}% off`);
   const off = money(dv.amount);
   if (off) parts.push(`${off} off`);
   if (dv.free_shipping === true) parts.push('free delivery');
-  if (isPrimitive(cond.min_qty)) parts.push(`${primitiveWords(cond.min_qty)} or more`);
+  if (isPrimitive(cond.min_qty)) parts.push(`${primitiveWords(cond.min_qty, group)} or more`);
   const atLeast = money(cond.min_amount);
   if (atLeast) parts.push(`on orders of at least ${atLeast}`);
   if (typeof cond.text === 'string' && cond.text.trim()) parts.push(cond.text.trim());
@@ -295,6 +305,7 @@ export function LearnedSection({ providerId, providerName }: Props) {
   // Offers and messages: the same owner/manager standing (F-563, F-986).
   const readsMail = canConfirm;
   const qc = useQueryClient();
+  const group = useHouseGroupMark();
 
   const facts = useQuery({
     queryKey: ['vendor-learned-facts', providerId],
@@ -424,7 +435,7 @@ export function LearnedSection({ providerId, providerName }: Props) {
               <li key={f.id} data-testid="learned-fact" style={ROW}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
                   <span style={{ ...BODY, color: 'var(--ink-1, #211C16)' }}>
-                    {changed ? changeSentence(f.label, changed) : factSentence(f.label, f.attributes)}
+                    {changed ? changeSentence(f.label, changed, group) : factSentence(f.label, f.attributes, group)}
                   </span>
                   {f.verified ? (
                     <span style={{ ...META, color: 'var(--seal-deep, #14515C)', whiteSpace: 'nowrap' }}>
@@ -469,7 +480,7 @@ export function LearnedSection({ providerId, providerName }: Props) {
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {offerList.map((p) => {
-            const terms = offerTerms(p);
+            const terms = offerTerms(p, group);
             const until = fmtDay(p.end_date);
             const from = fmtDay(p.created_at);
             return (
@@ -579,10 +590,10 @@ function dateLine(iso: string | null, verified: boolean): string {
 }
 
 /** "Payment terms: was 30 days, now 45 days" — or a plain sentence, never JSON. */
-function changeSentence(label: string, c: ChangedFact): string {
+function changeSentence(label: string, c: ChangedFact, group: GroupMark | null = null): string {
   const l = words(c.label || label);
-  const was = phraseValue(c.previous_value);
-  const now = phraseValue(c.attributes);
+  const was = phraseValue(c.previous_value, group);
+  const now = phraseValue(c.attributes, group);
   if (was && now) return `${l}: was ${was}, now ${now}`;
   return `${l}: their mail has said two different things`;
 }
