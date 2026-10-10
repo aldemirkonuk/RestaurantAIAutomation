@@ -462,12 +462,12 @@ describe("PosHubController — sale-unit review routes", () => {
   });
 
   describe("POST connections/:restaurantId/:provider (F-643)", () => {
-    it("is the owner's alone", () => {
+    it("admits an owner and a manager, as ADR 0164 keeps managers in", () => {
       const roles = new Reflector().get(
         ROLES_KEY,
         PosHubController.prototype.setConnection,
       );
-      expect(roles).toEqual(["owner"]);
+      expect(roles).toEqual(["owner", "manager"]);
     });
 
     it("writes the switch with the signed-in owner as the actor", async () => {
