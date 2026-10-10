@@ -49,6 +49,9 @@ import { RateLimit } from "../common/rate-limit";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Controller("auth")
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -659,6 +662,29 @@ export class AuthController {
         ? await this.authService.hasEndedMembership(req.user.userId)
         : null;
     return { success: true, houses, held, accessEnded };
+  }
+
+  /**
+   * Which of the person's own houses holds an order (F-245): `/orders` asks
+   * when a link names an order its house does not have, and offers to switch.
+   * `house` is one of `GET /auth/houses` or null; another house's order, a
+   * house the person is not in, and no such order all read as null, so this
+   * never says whether anyone else has it.
+   */
+  @Get("houses/holding")
+  @UseGuards(JwtAuthGuard)
+  async houseHolding(
+    @Req() req: Request & { user: any },
+    @Query("order") order: string,
+  ) {
+    if (typeof order !== "string" || !UUID.test(order)) {
+      throw new BadRequestException("That is not an order link.");
+    }
+    const house = await this.authService.houseHoldingOrder(
+      req.user.userId,
+      order,
+    );
+    return { success: true, house };
   }
 
   /**

@@ -1098,7 +1098,7 @@ export class ScheduleService {
       title: "Shift call-out — cover needed",
       message: `${original.role ?? "A shift"} on ${original.shift_date} ${original.start_time}-${original.end_time} is open.`,
       priority: "critical",
-      actionUrl: `/team?shift=${openShift.id}`,
+      actionUrl: shiftLink(openShift.id, original.shift_date),
       actionLabel: "Find cover",
       metadata: { shiftId: openShift.id, calloutShiftId: shiftId },
     });
@@ -1142,7 +1142,7 @@ export class ScheduleService {
         data: {
           type: "shift_offer",
           shiftId,
-          actionUrl: `/team?shift=${shiftId}`,
+          actionUrl: shiftLink(shiftId, shift.shift_date),
         },
       });
     }
@@ -1714,6 +1714,18 @@ function daysBetween(a: string, b: string): number {
       new Date(a + "T00:00:00Z").getTime()) /
       86_400_000,
   );
+}
+/**
+ * Where a notice about one shift opens: /team on the week that holds it.
+ * /team reads `week` (the Monday) and opened on this week for every link,
+ * so a cover call for next Friday showed a week without it (F-217). `shift`
+ * stays for the phone, which routes on the path.
+ */
+function shiftLink(shiftId: string, shiftDate: unknown): string {
+  const base = `/team?shift=${encodeURIComponent(shiftId)}`;
+  return typeof shiftDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(shiftDate)
+    ? `${base}&week=${mondayOf(shiftDate)}`
+    : base;
 }
 function mondayOf(date: string): string {
   const d = new Date(date + "T00:00:00Z");

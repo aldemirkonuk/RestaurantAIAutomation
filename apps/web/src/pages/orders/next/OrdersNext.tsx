@@ -31,6 +31,7 @@ import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
 import { NewOrderSheet } from './NewOrderSheet';
+import { OrderHeldElsewhere } from './OrderHeldElsewhere';
 import { VendorFirstPanel } from './VendorFirstPanel';
 import { RecurrenceSheet } from './RecurrenceSheet';
 import { ReceiptSheet } from './ReceiptSheet';
@@ -496,6 +497,7 @@ export default function OrdersNext() {
             Order {targetOrderId} was not among the {data.rows.length} most recently loaded
             orders — it may exist further back, or belong to a different house. Showing every
             loaded order below instead.
+            {targetOrderId && <OrderHeldElsewhere orderId={targetOrderId} />}
           </div>
         )}
 

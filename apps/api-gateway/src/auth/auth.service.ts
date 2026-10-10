@@ -583,6 +583,41 @@ export class AuthService {
   }
 
   /**
+   * Which of this person's own houses holds an order (F-245): a link to an
+   * order opened while the session is in another house. The read is filtered
+   * to `memberHouses`, so it answers only with a house the person is already
+   * in, and an order held anywhere else reads exactly like one that does not
+   * exist: null. A failed read is a 503, never null.
+   */
+  async houseHoldingOrder(
+    userId: string,
+    orderId: string,
+  ): Promise<HouseSummary | null> {
+    const houses = await this.memberHouses(userId);
+    if (houses.length === 0) return null;
+
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("restaurant_id")
+      .eq("id", orderId)
+      .in(
+        "restaurant_id",
+        houses.map((h) => h.id),
+      )
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `houseHoldingOrder could not read order ${orderId} for ${userId}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not look for that order in your houses. Try again.",
+      );
+    }
+    const holder = (data as { restaurant_id?: string } | null)?.restaurant_id;
+    return houses.find((h) => h.id === holder) ?? null;
+  }
+
+  /**
    * Whether someone else ended a membership of this person's: a row in
    * `house_memberships_ended` (a trigger writes one whenever an active
    * `user_restaurant_access` row is deleted or deactivated, migration

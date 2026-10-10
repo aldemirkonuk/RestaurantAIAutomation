@@ -171,6 +171,7 @@
   "POST /auth/resend-verification (AuthController.resendVerification)": "open",
   "POST /auth/switch-restaurant (AuthController.switchRestaurant)": "open",
   "GET /auth/houses (AuthController.houses)": "open",
+  "GET /auth/houses/holding (AuthController.houseHolding)": "open",
   "POST /auth/held-memberships/accept (AuthController.acceptHeldMembership)": "open",
   "GET /auth/check-email (AuthController.checkEmail)": "open",
   "POST /auth/sign-in-methods (AuthController.signInMethods)": "open",
