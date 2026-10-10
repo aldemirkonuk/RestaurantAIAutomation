@@ -441,6 +441,13 @@ export class CalendarService {
     if (dto.eventTime !== undefined) updatePayload.start_time = dto.eventTime;
     if (dto.eventTimeEnd !== undefined)
       updatePayload.end_time = dto.eventTimeEnd;
+    // null is a cleared field and is written as such (F-196). An all-day
+    // entry has no clock time, so making one all day clears both times
+    // rather than leaving "All day · 18:00 recorded".
+    if (dto.allDay === true) {
+      updatePayload.start_time = null;
+      updatePayload.end_time = null;
+    }
     if (dto.color !== undefined) updatePayload.color = dto.color;
     if (dto.status !== undefined) updatePayload.status = dto.status;
     if (dto.reminderEnabled !== undefined)
@@ -500,10 +507,23 @@ export class CalendarService {
               : existing.description,
           event_type: dto.eventType ?? existing.eventType,
           start_date: occurrenceDate,
-          end_date: dto.eventDateEnd ?? existing.eventDateEnd ?? null,
+          end_date:
+            dto.eventDateEnd !== undefined
+              ? dto.eventDateEnd
+              : (existing.eventDateEnd ?? null),
           all_day: dto.allDay !== undefined ? dto.allDay : existing.allDay,
-          start_time: dto.eventTime ?? existing.eventTime ?? null,
-          end_time: dto.eventTimeEnd ?? existing.eventTimeEnd ?? null,
+          start_time:
+            dto.allDay === true
+              ? null
+              : dto.eventTime !== undefined
+                ? dto.eventTime
+                : (existing.eventTime ?? null),
+          end_time:
+            dto.allDay === true
+              ? null
+              : dto.eventTimeEnd !== undefined
+                ? dto.eventTimeEnd
+                : (existing.eventTimeEnd ?? null),
           color: dto.color !== undefined ? dto.color : (existing.color ?? null),
           source: existing.source || "manual",
           status: dto.status ?? existing.status ?? "pending",

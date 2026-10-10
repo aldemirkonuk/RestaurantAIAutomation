@@ -118,12 +118,17 @@ function plan(anchor: number, rule: SeriesRule): Plan {
   const wom = rule.weekOfMonth as number | undefined;
   const moy = (rule.monthOfYear as number | undefined) ?? a.getUTCMonth() + 1;
 
+  // "Every month" on a day past the month's end (31 in April, 29-31 in
+  // February) falls on that month's last day instead of skipping it (F-199).
+  // A yearly Feb 29 still waits for a leap year. Kept identical to
+  // calendar-occurrences.ts.
   const monthDay = (d: Date) =>
     wom != null
       ? Math.floor((d.getUTCDate() - 1) / 7) + 1 === wom &&
         weekdays.includes(d.getUTCDay()) &&
         (rule.dayOfMonth == null || d.getUTCDate() === rule.dayOfMonth)
-      : d.getUTCDate() === dom;
+      : d.getUTCDate() ===
+        (freq === 'monthly' ? Math.min(dom, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()) : dom);
 
   const qualifies = (n: number) => {
     const d = new Date(n * DAY);
