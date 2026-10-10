@@ -359,6 +359,39 @@ export class ProcurementController {
   }
 
   /**
+   * Close a partly received order for good (F-104). Manager or owner, with a
+   * reason; no seal, since closing books no stock and moves no money.
+   */
+  @Post("orders/:id/close-short")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Close a partly received order short — manager or owner, with a reason",
+  })
+  @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({ status: 400, description: "No reason was given." })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not a manager or an owner of this restaurant.",
+  })
+  @ApiResponse({
+    status: 422,
+    description: "The order is not partly received. `message` names its state.",
+  })
+  async closeOrderShort(
+    @Param("id") orderId: string,
+    // `{ reason }` only; the service answers a missing or empty one in words.
+    @Body("reason") reason: unknown,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    return this.procurementService.closeOrderShort(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      typeof reason === "string" ? reason : undefined,
+    );
+  }
+
+  /**
    * The founder's box on the never-arrived cancel (ADR 0207 round 5, question
    * 20, round 6z): "Add the box (Recommended)" — "We paid for this, we are
    * owed {total}". Manager or owner, the same register that may cancel the

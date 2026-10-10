@@ -559,6 +559,24 @@ export interface DoorFacts {
   rejectedQtyInCountedUom: number;
 }
 
+/**
+ * What THIS truck is expected to bring, in boxes: the order less what earlier
+ * trucks brought (F-468). Sending the whole order announced the truck that
+ * completes a split delivery as "arrived short" by the earlier trucks' bottles,
+ * while this screen said it was complete. Exact, never rounded — a remainder
+ * that is not whole boxes travels as the fraction it is. Null when the earlier
+ * trucks could not be read, or cannot be put in boxes: no expectation is better
+ * than one that accuses the vendor of a shortfall nobody measured.
+ */
+export function stillExpectedBoxes(order: DoorOrderVM, prior: PriorReading): number | null {
+  if (order.expectedBoxes === null) return null;
+  if (prior === 'unread') return null;
+  if (!prior || prior.bottles <= 0) return order.expectedBoxes;
+  const pack = doorPack(order, prior);
+  if (pack === null) return null;
+  return Math.max(0, order.expectedBoxes * pack - prior.bottles) / pack;
+}
+
 export function doorFacts(input: DoorNotesInput): DoorFacts {
   return {
     outcome: input.outcome,
@@ -568,7 +586,9 @@ export function doorFacts(input: DoorNotesInput): DoorFacts {
     // Only when the order's own unit is cases. `expectedBoxes` is already null
     // otherwise — normalizeDoorOrder never derives it — and a null here is the
     // door declining to state an expectation it cannot compare against.
-    expectedQtyInCountedUom: input.order?.expectedBoxes ?? null,
+    expectedQtyInCountedUom: input.order
+      ? stillExpectedBoxes(input.order, input.alreadyReceived ?? null)
+      : null,
     // A refusal takes nothing in; otherwise only the visibly broken. Both in
     // BOXES, the unit the door counts in, which is what the field name says.
     rejectedQtyInCountedUom: input.outcome === 'refused' ? input.counted : input.broken,

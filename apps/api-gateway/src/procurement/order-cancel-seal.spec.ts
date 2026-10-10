@@ -643,3 +643,51 @@ describe("ending an order is a manager's or an owner's act", () => {
     expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
   });
 });
+
+/**
+ * F-104 — an owner can close a short delivery for good. Before this, nothing a
+ * person could do reached PARTIALLY_RECEIVED -> COMPLETED, so a short-shipped
+ * order sat open forever. REVERT-FAILS: `closeOrderShort` did not exist.
+ */
+describe("closing a short order (F-104)", () => {
+  it("closes a partly received order, with the reason on the audit row", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
+    await h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "vendor is out of the 2010");
+    expect(h.order.status).toBe(ProcurementOrderStatus.COMPLETED);
+    const audit = h.audits.find((a) => a.action === "order_closed_short");
+    expect(audit).toBeDefined();
+    expect(audit!.reason).toBe("vendor is out of the 2010");
+    expect(audit!.changes.from).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+    expect(roleGate.calls[0].action).toBe("close an order short");
+  });
+
+  it("refuses without a reason, and changes nothing", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "  "));
+    expect(err.getStatus()).toBe(400);
+    expect(String(err.message)).toMatch(/has to say why/);
+    expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+    expect(h.audits).toHaveLength(0);
+  });
+
+  it("refuses an order that is not partly received, in words", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.DELIVERED });
+    const err = await refusal(() =>
+      h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done with it"),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(JSON.stringify(err.getResponse())).toMatch(/Only an order that is partly received/);
+    expect(h.order.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(h.audits).toHaveLength(0);
+  });
+
+  it("is a manager's or owner's act", async () => {
+    roleGate.allow = false;
+    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
+    const err = await refusal(() =>
+      h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short shipped"),
+    );
+    expect(err.getStatus()).toBe(403);
+    expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+  });
+});

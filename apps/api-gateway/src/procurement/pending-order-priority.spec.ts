@@ -37,7 +37,7 @@ const USER = "22222222-2222-4222-8222-222222222222";
 
 interface DbOpts {
   pending?: Row[];
-  /** `count` on the gate's first-order-to-vendor probe, or a failed read. */
+  /** Earlier placed orders the gate's first-order-to-vendor read finds (F-731), or a failed read. */
   priorOrdersToVendor?: number | "error";
   /** `final_price` of the last other order for the item, none, or a failed read. */
   priorPrice?: number | null | "error";
@@ -53,7 +53,6 @@ function makeDb(opts: DbOpts) {
   const supabase: any = {
     from(table: string) {
       let cols = "";
-      let head = false;
       let op: "select" | "update" | "insert" = "select";
       let id: string | null = null;
       const orders: Array<[string, { ascending?: boolean } | undefined]> = [];
@@ -62,11 +61,20 @@ function makeDb(opts: DbOpts) {
         if (table !== "procurement_orders" || op !== "select") {
           return { data: null, error: null };
         }
-        if (head) {
+        if (cols === "id, status, requested_at, created_at") {
           log.countReads += 1;
-          return opts.priorOrdersToVendor === "error"
-            ? { data: null, count: null, error: { message: "count failed" } }
-            : { data: null, count: opts.priorOrdersToVendor ?? 1, error: null };
+          if (opts.priorOrdersToVendor === "error") {
+            return { data: null, error: { message: "count failed" } };
+          }
+          return {
+            data: Array.from({ length: opts.priorOrdersToVendor ?? 1 }, (_, i) => ({
+              id: `prior-${i}`,
+              status: "DELIVERED",
+              requested_at: "2026-01-01T00:00:00Z",
+              created_at: "2026-01-01T00:00:00Z",
+            })),
+            error: null,
+          };
         }
         if (cols.startsWith("final_price")) {
           log.priceReads += 1;
@@ -99,9 +107,8 @@ function makeDb(opts: DbOpts) {
       };
 
       const q: any = {
-        select(c?: string, o?: { head?: boolean }) {
+        select(c?: string) {
           cols = c ?? "";
-          head = Boolean(o?.head);
           if (table === "procurement_orders" && cols.startsWith("*")) {
             log.listSelects.push(cols);
           }
@@ -114,6 +121,7 @@ function makeDb(opts: DbOpts) {
         neq: () => q,
         in: () => q,
         gte: () => q,
+        lte: () => q,
         limit: () => q,
         order(col: string, o?: { ascending?: boolean }) {
           orders.push([col, o]);
