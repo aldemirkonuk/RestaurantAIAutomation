@@ -31,6 +31,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useWines } from '../../hooks/queries'
 import { useProviders } from '../../hooks/queries/useProviderQueries'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
+import { useUnsavedWorkGuard } from '../../hooks/useUnsavedWorkGuard'
 import { persistBatchToInventory, type MenuScannerPersistResult } from '../../lib/menuScannerPersistence'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
@@ -67,6 +68,14 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // A refresh or a Back used to drop the typed rows without a word (F-712).
+  useUnsavedWorkGuard(
+    isOpen && (rows.length > 0 || isSaving),
+    isSaving
+      ? 'This receipt is still being saved. Leave now and some lines may not be written.'
+      : 'This receipt has lines that are not saved. Leave and lose them?',
+  )
 
   const { data: searchResults = [], isFetching: isSearching } = useWines({
     search: search.trim().length >= 2 ? search.trim() : undefined,

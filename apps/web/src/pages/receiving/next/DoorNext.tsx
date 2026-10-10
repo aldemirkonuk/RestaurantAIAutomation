@@ -56,6 +56,13 @@ import {
   type DroppedDoorReceipt,
 } from '@/lib/doorOutbox';
 import { useActiveRestaurantId } from './useReceivingNextData';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  clearSessionDraft,
+  readSessionDraft,
+  useUnsavedWorkGuard,
+  writeSessionDraft,
+} from '@/hooks/useUnsavedWorkGuard';
 import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
 import {
   composeDoorNotes,
@@ -81,6 +88,29 @@ import DoorMatch from './DoorMatch';
 import DoorCredit from './DoorCredit';
 
 type Step = 'paper' | 'count' | 'done';
+
+/**
+ * What the porter has done so far, kept for this tab, this house and this
+ * order (F-712) — a refresh or a swipe-back no longer throws the count away.
+ * The idempotency key travels with it: a seal that went out just before the
+ * page died must not book the stock twice when it is sent again.
+ */
+interface DoorDraft {
+  step: Step;
+  counted: number;
+  broken: number;
+  touched: boolean;
+  /** The count still stands as the paper read it, untouched by a person (F-744). */
+  paperHeld?: boolean;
+  outcomeChoice: DoorOutcome | null;
+  reason: RefusalReason | null;
+  initials: string;
+  driverName: string;
+  documentId: string | null;
+  reading: PaperReading | null;
+  paperLine: string | null;
+  idem: string;
+}
 
 /** Thumb-sized. 56px is the smallest a cold, gloved hand hits reliably. */
 const TAP = 'min-h-[56px] min-w-[56px]';
@@ -139,12 +169,24 @@ const DOOR_CSS = `
 export default function DoorNext() {
   const { orderId = '' } = useParams();
   const navigate = useNavigate();
+  // The house this delivery is taken at: stamped onto the queued receipt, and
+  // the scope of the drop record. A door tablet is shared between houses.
+  const rid = useActiveRestaurantId();
+  const { availableRestaurants } = useAuth();
+  const houseName = availableRestaurants?.find((r) => r.id === rid)?.name ?? null;
+  const draftKey = `mdv:door-draft:${rid}:${orderId}`;
+  const [kept] = useState(() => readSessionDraft<DoorDraft>(draftKey));
 
-  const [step, setStep] = useState<Step>('paper');
+  const [step, setStep] = useState<Step>(kept?.step === 'count' ? 'count' : 'paper');
 
   /* ── the order — fetched live, degrading honestly (point 1) ───────────── */
   const [order, setOrder] = useState<DoorOrderVM | null>(null);
-  const [orderState, setOrderState] = useState<'loading' | 'ok' | 'unreachable'>('loading');
+  /* `missing` is the gateway's 404: no such order in THIS house (another
+     house's, removed, or mistyped). It is not a blip — nothing here can be
+     recorded against it, so the screen stops before the count (F-711). */
+  const [orderState, setOrderState] = useState<'loading' | 'ok' | 'unreachable' | 'missing'>(
+    'loading',
+  );
   /* What earlier trucks on this order already brought, in BOTTLES with the pack
      beside them (ADR 0192) — never a rounded box count. `null` while loading;
      `'unread'` when the read failed, which the match line and the credit letter
@@ -153,25 +195,25 @@ export default function DoorNext() {
 
   /* ── the photograph (point 2) ─────────────────────────────────────────── */
   const [uploading, setUploading] = useState(false);
-  const [documentId, setDocumentId] = useState<string | null>(null);
-  const [reading, setReading] = useState<PaperReading | null>(null);
-  const [paperLine, setPaperLine] = useState<string | null>(null);
+  const [documentId, setDocumentId] = useState<string | null>(kept?.documentId ?? null);
+  const [reading, setReading] = useState<PaperReading | null>(kept?.reading ?? null);
+  const [paperLine, setPaperLine] = useState<string | null>(kept?.paperLine ?? null);
 
   /* ── the count (the loved thing) ──────────────────────────────────────── */
-  const [counted, setCounted] = useState(1);
-  const [broken, setBroken] = useState(0);
-  const touchedRef = useRef(false); // has a human moved the count?
+  const [counted, setCounted] = useState(kept?.counted ?? 1);
+  const [broken, setBroken] = useState(kept?.broken ?? 0);
+  const touchedRef = useRef(kept?.touched ?? false); // has a human moved the count?
+  // The count was put there by the paper and no person has stood by it yet.
+  // A machine reading is not a count, so the seal waits for a touch (F-744).
+  const [paperHeld, setPaperHeld] = useState(kept?.paperHeld ?? false);
 
   /* ── outcome · reason · signature (points 3 and 6) ────────────────────── */
-  const [outcomeChoice, setOutcomeChoice] = useState<DoorOutcome | null>(null);
-  const [reason, setReason] = useState<RefusalReason | null>(null);
-  const [initials, setInitials] = useState('');
-  const [driverName, setDriverName] = useState('');
+  const [outcomeChoice, setOutcomeChoice] = useState<DoorOutcome | null>(kept?.outcomeChoice ?? null);
+  const [reason, setReason] = useState<RefusalReason | null>(kept?.reason ?? null);
+  const [initials, setInitials] = useState(kept?.initials ?? '');
+  const [driverName, setDriverName] = useState(kept?.driverName ?? '');
 
   /* ── sealing + the outbox (point 5) ───────────────────────────────────── */
-  // The house this delivery is taken at: stamped onto the queued receipt, and
-  // the scope of the drop record. A door tablet is shared between houses.
-  const rid = useActiveRestaurantId();
   const [submitting, setSubmitting] = useState(false);
   const [queued, setQueued] = useState(false);
   const [stockIssue, setStockIssue] = useState<string | null>(null);
@@ -215,7 +257,7 @@ export default function DoorNext() {
   // One key per screen, not per attempt: a retry of the same delivery must
   // reuse it so a request that landed before the connection dropped cannot
   // book the stock twice (doorOutbox's whole design).
-  const idem = useRef(newIdempotencyKey(orderId));
+  const idem = useRef(kept?.idem ?? newIdempotencyKey(orderId));
 
   // One quiet entrance for the header — settle, 6px, once.
   useEffect(() => {
@@ -242,8 +284,11 @@ export default function DoorNext() {
         setOrder(vm);
         setOrderState(vm ? 'ok' : 'unreachable');
       })
-      .catch(() => {
-        if (alive) setOrderState('unreachable');
+      .catch((e) => {
+        if (!alive) return;
+        // A 404 is an answer, not a failure to get one (F-711).
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        setOrderState(status === 404 ? 'missing' : 'unreachable');
       });
     // Separate call, separate failure. An order that cannot say what it already
     // received must still be countable — the count stands on its own.
@@ -359,7 +404,16 @@ export default function DoorNext() {
    * photo is not queued, and the screen no longer claims it was.
    */
   async function handlePhoto(file: File) {
+    if (orderState === 'loading' || orderState === 'missing') return;
     setStep('count');
+    // The paper is filed under the order it names, so it is only sent once
+    // this house has confirmed that order exists (F-711, F-309).
+    if (orderState === 'unreachable') {
+      setPaperLine(
+        'The order could not be checked, so this photo is not sent. Keep the paper for the desk, and count the boxes yourself.',
+      );
+      return;
+    }
     if (!navigator.onLine) {
       setPaperLine(
         'No signal — this photo cannot be sent and is not saved. Keep the paper for the desk, and count the boxes yourself.',
@@ -376,19 +430,43 @@ export default function DoorNext() {
         orderId,
         source: 'photo',
       });
+      // The paper names another order or another vendor (F-745): it is on
+      // file, but not with this delivery, and nothing on it is used here.
+      if (res.orderLink && !res.orderLink.linked) {
+        setDocumentId(null);
+        setReading(null);
+        setPaperLine(
+          `${res.orderLink.conflict ?? 'This paper was not filed to this order.'} Count the boxes yourself.`,
+        );
+        return;
+      }
       setDocumentId(res.documentId);
       const r = readPaper(res.document);
       setReading(r);
-      if (r?.boxes != null) {
+      // The same paper again (F-747): say it was already here, and where it is filed now.
+      const onFile = res.duplicate
+        ? `This paper is already on file, now filed to ${order?.orderNumber ?? 'this order'}. `
+        : '';
+      const boxesWord = (n: number) => `${n} ${n === 1 ? 'box' : 'boxes'}`;
+      if (r?.boxes != null && r.prefill) {
         if (!touchedRef.current) {
           setCounted(r.boxes);
-          setPaperLine(`The paper reads ${r.boxes} ${r.boxes === 1 ? 'box' : 'boxes'} — confirm or correct.`);
+          setPaperHeld(true);
+          setPaperLine(`${onFile}The paper reads ${boxesWord(r.boxes)}. Count them, then confirm or correct.`);
         } else {
           // A human number beats a machine number. State, don't overwrite.
-          setPaperLine(`The paper reads ${r.boxes} ${r.boxes === 1 ? 'box' : 'boxes'}.`);
+          setPaperLine(`${onFile}The paper reads ${boxesWord(r.boxes)}.`);
         }
+      } else if (r?.boxes != null) {
+        // A hint, never a count: a credit note, lines not in boxes, or a
+        // reading with doubts (F-744).
+        setPaperLine(`${onFile}The paper may read ${boxesWord(r.boxes)}, but ${r.doubt} — count them yourself.`);
       } else {
-        setPaperLine('Paper attached — nothing legible enough to pre-fill. Count by hand.');
+        setPaperLine(
+          onFile
+            ? `${onFile}Nothing on it was legible enough to pre-fill. Count by hand.`
+            : 'Paper attached — nothing legible enough to pre-fill. Count by hand.',
+        );
       }
     } catch {
       // Losing the photo is bad; blocking the delivery over it is worse.
@@ -420,12 +498,14 @@ export default function DoorNext() {
 
   const initialsOk = initials.trim().length >= 2;
   const reasonOk = outcome !== 'refused' || reason !== null;
-  const sealDisabled = submitting || !initialsOk || !reasonOk;
-  const sealHint = !initialsOk
-    ? 'Add your initials first — when a case goes missing, who signed is the question.'
-    : !reasonOk
-      ? 'Say why it was refused — the reason is what the credit stands on.'
-      : undefined;
+  const sealDisabled = submitting || !initialsOk || !reasonOk || paperHeld;
+  const sealHint = paperHeld
+    ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
+    : !initialsOk
+      ? 'Add your initials first — when a case goes missing, who signed is the question.'
+      : !reasonOk
+        ? 'Say why it was refused — the reason is what the credit stands on.'
+        : undefined;
 
   async function seal() {
     setSubmitting(true);
@@ -495,6 +575,36 @@ export default function DoorNext() {
       void pendingDoorCount().then(setPendingQueue);
     }
   }
+
+  // Keep the draft while the count is open; drop it once the delivery is
+  // recorded or the order turned out not to be in this house.
+  useEffect(() => {
+    if (step === 'done' || orderState === 'missing') {
+      clearSessionDraft(draftKey);
+      return;
+    }
+    if (step !== 'count') return;
+    writeSessionDraft(draftKey, {
+      step,
+      counted,
+      broken,
+      touched: touchedRef.current,
+      paperHeld,
+      outcomeChoice,
+      reason,
+      initials,
+      driverName,
+      documentId,
+      reading,
+      paperLine,
+      idem: idem.current,
+    } satisfies DoorDraft);
+  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine]);
+
+  useUnsavedWorkGuard(
+    orderState !== 'missing' && (step === 'count' || submitting),
+    'This delivery is not recorded yet. Leave anyway? The count stays on this phone until you come back to it.',
+  );
 
   const orderLabel = order?.wineName ?? order?.orderNumber ?? 'Delivery';
 
@@ -614,7 +724,27 @@ export default function DoorNext() {
         </p>
       )}
 
-      {step === 'paper' && (
+      {orderState === 'missing' && step !== 'done' && (
+        <Panel
+          title={houseName ? `This order is not in ${houseName}` : 'This order is not in this house'}
+          hint="It may belong to another house, it may have been removed, or the link is mistyped. Nothing has been counted or sent."
+        >
+          <p data-ux-key="door:order-missing" className="mb-5 text-sm text-inkm-2">
+            Check the order number on the driver's paper. If the order belongs to another house,
+            switch to that house and open the delivery from Receiving there.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/receiving')}
+            data-ux-key="door:order-missing-back"
+            className={`${TAP} w-full rounded-2xl border border-white/10 bg-white/5 text-sm font-semibold text-inkm-1 active:bg-white/10`}
+          >
+            Back to Receiving
+          </button>
+        </Panel>
+      )}
+
+      {orderState !== 'missing' && step === 'paper' && (
         <Panel
           title="Photograph the paper"
           hint="Whatever the driver handed you. If it reads clean, it will count the boxes for you."
@@ -634,11 +764,17 @@ export default function DoorNext() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
+            // The paper is filed under this order, so the order is found first.
+            disabled={orderState === 'loading'}
             data-ux-key="door:photo"
-            className="flex w-full flex-col items-center justify-center gap-3 rounded-3xl border border-seal-ring bg-seal-tint py-14 text-lg font-bold text-inkm-1 active:bg-white/10"
+            className="flex w-full flex-col items-center justify-center gap-3 rounded-3xl border border-seal-ring bg-seal-tint py-14 text-lg font-bold text-inkm-1 active:bg-white/10 disabled:opacity-50"
           >
-            <Camera className="h-10 w-10 text-seal" />
-            Take photo
+            {orderState === 'loading' ? (
+              <Loader2 className="h-10 w-10 animate-spin text-seal" />
+            ) : (
+              <Camera className="h-10 w-10 text-seal" />
+            )}
+            {orderState === 'loading' ? 'Finding the order…' : 'Take photo'}
           </button>
 
           {/* An escape hatch, because sometimes there genuinely is no paper. */}
@@ -653,7 +789,7 @@ export default function DoorNext() {
         </Panel>
       )}
 
-      {step === 'count' && (
+      {orderState !== 'missing' && step === 'count' && (
         <Panel title="How many boxes" hint="Count the boxes, not the bottles. Someone opens them later, at a desk.">
           {/* what the photograph is doing / did — honest at every stage */}
           {(uploading || paperLine) && (
@@ -672,11 +808,25 @@ export default function DoorNext() {
             value={counted}
             onChange={(v) => {
               touchedRef.current = true;
+              setPaperHeld(false);
               setCounted(v);
             }}
             label="Boxes delivered"
             uxKey="door:cases"
           />
+          {paperHeld && (
+            <button
+              type="button"
+              onClick={() => {
+                touchedRef.current = true;
+                setPaperHeld(false);
+              }}
+              data-ux-key="door:confirm-paper-count"
+              className={`${TAP} mt-4 w-full rounded-2xl border border-white/15 text-sm font-semibold text-inkm-1`}
+            >
+              That's my count — {counted} {counted === 1 ? 'box' : 'boxes'}
+            </button>
+          )}
 
           {/* the match, live, while the driver is still here (point 1) */}
           <DoorMatch match={match} orderUnreachable={orderState === 'unreachable'} />

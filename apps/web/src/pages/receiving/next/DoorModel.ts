@@ -310,7 +310,17 @@ export interface PaperReading {
   docNumber: string | null;
   lineCount: number;
   warnings: number;
+  /**
+   * The reading may stand in the count box (F-744): a delivery paper, every
+   * line read as boxes, and no doubts. Even then the receiver confirms it.
+   */
+  prefill: boolean;
+  /** Why it may not, in the receiver's words. Null when it may, or read nothing. */
+  doubt: string | null;
 }
+
+/** The papers that say what came off the truck. A credit note or our own order copy does not. */
+const DELIVERY_PAPERS = new Set(['invoice', 'packing_slip', 'delivery_note', 'delivery_receipt']);
 
 /**
  * Spec point 2: the photograph does work. The upload response carries the
@@ -325,6 +335,7 @@ export function readPaper(doc: UploadedDocument['document']): PaperReading | nul
   let boxesKnown = false;
   let bottles = 0;
   let bottlesKnown = false;
+  let unread = 0;
   for (const raw of lines) {
     const l = raw as { qty?: unknown; uom?: unknown; packSize?: unknown; qtyBottles?: unknown };
     const qty = num(l?.qty);
@@ -335,24 +346,45 @@ export function readPaper(doc: UploadedDocument['document']): PaperReading | nul
       bottles += qtyBottles;
       bottlesKnown = true;
     }
-    if (qty !== null && uom !== null) {
-      if (uom === 'case' || uom === 'pack') {
-        boxes += qty;
-        boxesKnown = true;
-      } else if (uom === 'bottle' && pack !== null && pack > 1) {
-        boxes += qty / pack;
-        boxesKnown = true;
-      }
-      // Kegs, liters, split cases: not boxes. Contribute nothing.
+    if (qty !== null && uom !== null && (uom === 'case' || uom === 'pack')) {
+      boxes += qty;
+      boxesKnown = true;
+    } else if (qty !== null && uom === 'bottle' && pack !== null && pack > 1) {
+      boxes += qty / pack;
+      boxesKnown = true;
+    } else {
+      // Kegs, liters, split cases, a bottle with no pack: not boxes. They add
+      // nothing — and the sum is then not the paper's total.
+      unread += 1;
     }
   }
+  const docType = typeof doc.docType === 'string' ? doc.docType : null;
+  // The money-holder gets the warnings; the door's cut gets only their count.
+  const warnings = Array.isArray(doc.warnings)
+    ? doc.warnings.length
+    : typeof doc.warningCount === 'number'
+      ? doc.warningCount
+      : 0;
+  const boxesRead = boxesKnown && boxes > 0 ? Math.round(boxes) : null;
+  const doubt =
+    boxesRead === null
+      ? null
+      : !docType || !DELIVERY_PAPERS.has(docType)
+        ? 'this is not a delivery paper'
+        : unread > 0
+          ? `${unread === 1 ? 'one line is' : `${unread} lines are`} not in boxes`
+          : warnings > 0
+            ? 'the reading is unsure'
+            : null;
   return {
-    boxes: boxesKnown && boxes > 0 ? Math.round(boxes) : null,
+    boxes: boxesRead,
     bottles: bottlesKnown && bottles > 0 ? Math.round(bottles) : null,
-    docType: typeof doc.docType === 'string' ? doc.docType : null,
+    docType,
     docNumber: doc.docNumber ?? null,
     lineCount: lines.length,
-    warnings: Array.isArray(doc.warnings) ? doc.warnings.length : 0,
+    warnings,
+    prefill: boxesRead !== null && doubt === null,
+    doubt,
   };
 }
 

@@ -356,6 +356,34 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
       expect(chain.is).toHaveBeenCalledWith("provider_id", null);
     });
 
+    it("applyToDocument that fails says so in the log, so `matched` is not the last word (F-746)", async () => {
+      answers.procurement_documents = {
+        data: null,
+        error: {
+          message: "duplicate key value violates unique constraint",
+          code: "23505",
+        },
+      };
+      const err = await service.applyToDocument(RESTAURANT, DOCUMENT, {
+        state: "matched",
+        providerId: "prov-A",
+        source: "matched_tax_id",
+        identity: null,
+        reason: "x",
+      });
+      expect(err).toMatch(/duplicate key/);
+      expect(resolutionRows()).toHaveLength(1);
+      expect(resolutionRows()[0].payload).toMatchObject({
+        document_id: DOCUMENT,
+        restaurant_id: RESTAURANT,
+        state: "unavailable",
+        provider_id: null,
+      });
+      expect(String(resolutionRows()[0].payload.reason)).toMatch(
+        /could not be filed under it/,
+      );
+    });
+
     it("applyToDocument writes NOTHING on a refusal", async () => {
       await service.applyToDocument(RESTAURANT, DOCUMENT, {
         state: "unresolved",

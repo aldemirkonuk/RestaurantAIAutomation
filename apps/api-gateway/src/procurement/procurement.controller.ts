@@ -243,6 +243,8 @@ export class ProcurementController {
     try {
       return await this.procurementService.getOrder(user.restaurantId, orderId);
     } catch (error) {
+      // A 404 stays a 404: "not in this house" is not a server fault.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch order",
         HttpStatus.INTERNAL_SERVER_ERROR,

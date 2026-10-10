@@ -164,8 +164,15 @@ export interface UploadedDocument {
     tiesOut?: boolean | null
     confidence?: number
     warnings?: string[]
+    /** How many doubts the reading carried, sent when `warnings` is withheld. */
+    warningCount?: number
     lines: unknown[]
   } | null
+  /**
+   * Present when the upload named an order (F-745): whether the paper was
+   * filed to it, and the sentence that says why not.
+   */
+  orderLink?: { orderId: string; linked: boolean; conflict: string | null }
 }
 
 /**
