@@ -575,8 +575,9 @@ describe('CellarNext — the wine register', () => {
     expect(cells.getByText('Friuli, Italy')).toBeInTheDocument();
     expect(cells.getByText('750ml')).toBeInTheDocument();
     expect(cells.getByText('$92.00')).toBeInTheDocument();
-    // market price has no producer — a dash, never a number, never a zero
-    expect(cells.getByText('—')).toBeInTheDocument();
+    // market price has no producer, and a bottle this house does not stock
+    // has no house price (F-617): two dashes, never a number, never a zero
+    expect(cells.getAllByText('—')).toHaveLength(2);
     // and a catalogue-only bottle is not given a fabricated stock of 0
     expect(cells.getByText('not in the cellar')).toBeInTheDocument();
     expect(cells.queryByText('0')).not.toBeInTheDocument();

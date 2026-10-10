@@ -184,6 +184,14 @@ export interface MenuLine {
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null
   created_at: string
+  /**
+   * This house's own price for the linked wine (`menu_price_current` /
+   * `menu_price_glass`) -- what Inventory, Reports and the till read. Absent
+   * when the line links no wine of this house or the prices were not read;
+   * null when the house has none. It can differ from the line's (F-618).
+   */
+  house_bottle_price?: number | null
+  house_glass_price?: number | null
 }
 
 export interface ActiveMenu {
@@ -191,6 +199,9 @@ export interface ActiveMenu {
   name: string | null
   status: string | null
   items: MenuLine[]
+  /** false = this house's own prices could not be read, so no difference is marked. */
+  housePricesReadable?: boolean
+  housePricesReason?: string | null
 }
 
 /**

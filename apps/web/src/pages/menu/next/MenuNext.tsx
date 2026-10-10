@@ -217,6 +217,41 @@ function AddItemForm({ onAdd, adding, error }: {
   );
 }
 
+/**
+ * F-618. The line keeps its own price (ADR 0193 item 3), and three acts move
+ * the house's own price without touching it ("Your price" on Inventory,
+ * accepted advice, a lock's change). Inventory, Reports and the till read the
+ * house's. Where the two differ the cell shows both; neither is picked here.
+ * A blank line price beside a known house price shows that price too.
+ */
+function housePriceDiffers(linePrice: number | null, housePrice: number | null | undefined): boolean {
+  if (housePrice === null || housePrice === undefined) return false;
+  return linePrice === null || Math.abs(linePrice - housePrice) >= 0.005;
+}
+
+function PriceCell({ linePrice, housePrice, currency, kind }: {
+  linePrice: number | null
+  housePrice: number | null | undefined
+  currency: string | null
+  kind: 'glass' | 'bottle'
+}) {
+  return (
+    <td className="cl-num">
+      {money(linePrice, currency)}
+      {housePriceDiffers(linePrice, housePrice) ? (
+        <span
+          className="cl-note"
+          style={{ display: 'block' }}
+          data-testid={`menu-house-price-${kind}`}
+          title="This house's own price, the one Inventory, Reports and the till use. The menu line prints another."
+        >
+          your price {money(housePrice ?? null, currency)}
+        </span>
+      ) : null}
+    </td>
+  );
+}
+
 function MenuRow({ line, currency, onDiscard, discarding }: {
   line: MenuLine
   currency: string | null
@@ -228,8 +263,8 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <td className="cl-num">{money(line.by_glass_price, currency)}</td>
-      <td className="cl-num">{money(line.bottle_price, currency)}</td>
+      <PriceCell linePrice={line.by_glass_price} housePrice={line.house_glass_price} currency={currency} kind="glass" />
+      <PriceCell linePrice={line.bottle_price} housePrice={line.house_bottle_price} currency={currency} kind="bottle" />
       <td>
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
           {line.status.replace('_', ' ')}
@@ -363,6 +398,26 @@ export default function MenuNext() {
                 </tbody>
               </table>
             </div>
+            {(() => {
+              const differ = q.data.items.filter(
+                (l) =>
+                  housePriceDiffers(l.bottle_price, l.house_bottle_price) ||
+                  housePriceDiffers(l.by_glass_price, l.house_glass_price),
+              ).length;
+              if (q.data.housePricesReadable === false)
+                return (
+                  <p className="cl-note" role="alert" style={{ marginTop: 8 }} data-testid="menu-house-prices-unread">
+                    {q.data.housePricesReason ?? "This house's own prices could not be read, so a line whose price differs from them is not marked."}
+                  </p>
+                );
+              return differ > 0 ? (
+                <p className="cl-note" style={{ marginTop: 8 }} data-testid="menu-house-prices-differ">
+                  {differ} {differ === 1 ? 'line prints a price' : 'lines print a price'} that is not this
+                  house&rsquo;s own. Inventory, Reports and the till use your price, shown under the
+                  line&rsquo;s. Nothing was changed.
+                </p>
+              ) : null;
+            })()}
             {discard.isError ? (
               <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
                 That line was not discarded (

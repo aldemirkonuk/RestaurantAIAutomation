@@ -260,3 +260,49 @@ describe('WineRegister — sketch 121, the record opens beside a narrowed index'
     expect(document.activeElement).toBe(rowAfterClose);
   });
 });
+
+describe("WineRegister — the house's own price, and the catalogue's named for what it is (F-617)", () => {
+  const cellar = (over: Record<string, unknown> = {}) =>
+    ({
+      inventoryId: 'inv-1',
+      stockLive: 6,
+      thresholdMin: null,
+      providerId: null,
+      providerName: null,
+      lastCountedAt: null,
+      glassesPerBottle: 5,
+      menuPriceGlass: null,
+      menuPriceBottle: 95,
+      velocityPerDay: null,
+      daysSinceSale: null,
+      analyticsReadable: true,
+      ...over,
+    }) as BottleVM['cellar'];
+
+  it('heads the library figure "Market average", never "List", and shows the house price under "Your price"', () => {
+    mount([bottle({ listPrice: 38, cellar: cellar() }), bottle({ id: 'w2', name: 'Barolo Riserva', listPrice: 62 })]);
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toContain('Your price');
+    expect(heads).toContain('Market average');
+    expect(heads).not.toContain('List');
+    const priceOf = (name: string) =>
+      within(screen.getByText(name).closest('tr')!).getByTestId('wine-house-price');
+    const stocked = priceOf('Boğazkere 2021');
+    const notStocked = priceOf('Barolo Riserva');
+    expect(stocked).toHaveTextContent('$95.00');
+    expect(stocked).not.toHaveTextContent('38');
+    expect(notStocked).toHaveTextContent('—');
+  });
+
+  it('sorts by the house price when "Your price" is chosen, not by the catalogue figure', async () => {
+    const user = userEvent.setup();
+    // By name, and by the catalogue figure, the dear wine comes first; by the
+    // house's own price the cheap one does.
+    mount([
+      bottle({ id: 'a', name: 'A dear here', listPrice: 10, cellar: cellar({ inventoryId: 'i-a', menuPriceBottle: 120 }) }),
+      bottle({ id: 'b', name: 'B cheap here', listPrice: 90, cellar: cellar({ inventoryId: 'i-b', menuPriceBottle: 40 }) }),
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Sort by Your price' }));
+    expect(screen.getAllByTestId('wine-house-price').map((c) => c.textContent)).toEqual(['$40.00', '$120.00']);
+  });
+});

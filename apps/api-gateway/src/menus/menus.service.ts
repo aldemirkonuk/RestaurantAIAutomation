@@ -961,6 +961,8 @@ export class MenusService {
     status: string | null;
     items: Array<Record<string, unknown>>;
     rawLineWithheld?: true;
+    housePricesReadable?: boolean;
+    housePricesReason?: string | null;
   }> {
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
@@ -978,13 +980,69 @@ export class MenusService {
     // not keep serving it as live. Read in pages: PostgREST stops at 1000
     // rows without saying so, and a long wine list is exactly that long.
     const items = await this.readLines(menu.id, restaurantId, view);
+    const house = await this.readHousePrices(restaurantId, items);
 
     return {
       menuId: menu.id,
       name: menu.name,
       status: menu.status,
-      items,
+      items: house.items,
       ...withheld,
+      housePricesReadable: house.readable,
+      housePricesReason: house.reason,
+    };
+  }
+
+  /**
+   * F-618. The menu line keeps its own price (ADR 0193 item 3), but the
+   * house's price (`menu_price_current` / `menu_price_glass`) is what
+   * /inventory, the reports, the POS and the advice read, and three acts move
+   * it without touching the line ("Your price", accepted advice, a lock's
+   * change). So each linked line is sent the house's price beside its own:
+   * `house_bottle_price` / `house_glass_price`, null when the house has none.
+   * Neither is chosen over the other here; the page shows both when they
+   * differ. Read in this house only. A failed read sends no house price and
+   * says `housePricesReadable: false` with the reason -- never a line that
+   * looks like it agrees.
+   */
+  private async readHousePrices(
+    restaurantId: string,
+    items: Array<Record<string, unknown>>,
+  ): Promise<{ items: Array<Record<string, unknown>>; readable: boolean; reason: string | null }> {
+    const ids = [
+      ...new Set(
+        items
+          .map((i) => i.inventory_item_id)
+          .filter((v): v is string => typeof v === "string" && v !== ""),
+      ),
+    ];
+    if (ids.length === 0) return { items, readable: true, reason: null };
+    const prices = new Map<string, { bottle: number | null; glass: number | null }>();
+    const num = (v: unknown) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+    for (let k = 0; k < ids.length; k += 200) {
+      const { data, error } = await this.dbService.supabase
+        .from("restaurant_inventory")
+        .select("id, menu_price_current, menu_price_glass")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids.slice(k, k + 200));
+      if (error) {
+        return {
+          items,
+          readable: false,
+          reason: `This house's own prices could not be read, so a line whose price differs from them is not marked (${error.message}).`,
+        };
+      }
+      for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+        prices.set(String(r.id), { bottle: num(r.menu_price_current), glass: num(r.menu_price_glass) });
+      }
+    }
+    return {
+      items: items.map((i) => {
+        const p = typeof i.inventory_item_id === "string" ? prices.get(i.inventory_item_id) : undefined;
+        return p ? { ...i, house_bottle_price: p.bottle, house_glass_price: p.glass } : i;
+      }),
+      readable: true,
+      reason: null,
     };
   }
 

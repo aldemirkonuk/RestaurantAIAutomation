@@ -52,6 +52,11 @@ import {
 import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { Persona } from "./metric-registry";
+import {
+  insightsForRole,
+  inventoryScienceForRole,
+  recommendationsForRole,
+} from "./money-for-role";
 
 /**
  * Analytics Controller — the quantitative API surface.
@@ -208,12 +213,17 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Query("serviceLevel") serviceLevelStr?: string,
     @Query("leadTimeDays") leadTimeStr?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.analyticsService.getInventoryScience(restaurantId, {
-        serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
-        leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
-      });
+      // F-602: staff read the reorder register without what the house paid.
+      return inventoryScienceForRole(
+        await this.analyticsService.getInventoryScience(restaurantId, {
+          serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
+          leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
+        }),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute inventory science",
@@ -428,7 +438,7 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       const answer = await this.readInsights(
@@ -438,7 +448,11 @@ export class AnalyticsController {
         limitStr,
         candidateKey,
       );
-      return await this.forViewer(restaurantId, user, answer);
+      // F-603: a card that states an amount is an owner's or a manager's.
+      return insightsForRole(
+        await this.forViewer(restaurantId, user, answer),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch insights",
@@ -1185,17 +1199,21 @@ export class AnalyticsController {
   async getRecommendations(
     @Param("restaurantId") restaurantId: string,
     @Query("includeHidden") includeHidden?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
-      return await this.recommendationsService.getRecommendations(
-        restaurantId,
-        {
-          includeHidden: includeHidden === "true",
-          // The person's own snoozes (ADR 0191 round 3) hide cards from them
-          // alone; the digest calls this service with no viewer.
-          viewerId: actorOf(user).userId,
-        },
+      // F-603: an entry that states an amount is an owner's or a manager's.
+      return recommendationsForRole(
+        await this.recommendationsService.getRecommendations(
+          restaurantId,
+          {
+            includeHidden: includeHidden === "true",
+            // The person's own snoozes (ADR 0191 round 3) hide cards from them
+            // alone; the digest calls this service with no viewer.
+            viewerId: actorOf(user).userId,
+          },
+        ),
+        user?.role,
       );
     } catch (error) {
       throw new HttpException(

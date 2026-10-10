@@ -98,6 +98,8 @@ export interface LockReadout {
   /** Whether every marker could be computed; when not, the missing ones are not guessed. */
   markersReadable: boolean;
   markersReason: string | null;
+  /** Set when the reader does not hold the house's money: each lock's advice was left out (F-619). */
+  amountsWithheld?: true;
 }
 
 export interface LockActResult {
