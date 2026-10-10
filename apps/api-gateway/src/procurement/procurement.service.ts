@@ -140,11 +140,14 @@ import {
 import { ApprovalThresholdsService } from "../settings/approval-thresholds.service";
 import {
   decideApproval,
+  firstOrderToVendorById,
+  isFirstOrderToVendorAmong,
   pricePremium,
   type ApprovalDecision,
   type OrderUnderTest,
   type PricedOrder,
   type ThresholdRow,
+  type VendorOrderStamp,
 } from "../settings/approval-thresholds";
 import { OrganizationsService } from "../organizations/organizations.service";
 import {
@@ -279,6 +282,8 @@ const PENDING_APPROVAL_STATUSES = new Set<string>([
  * judged over a different one would make that number a different question.
  */
 const APPROVAL_GATE_WINDOW_DAYS = 365;
+/** How many earlier orders to one vendor the first-order test reads (F-731). */
+const FIRST_ORDER_PAGE = 50;
 
 /**
  * The facts handed to `decideApproval` when the house has no rule switched on:
@@ -1125,7 +1130,23 @@ export class ProcurementService {
         message: agreedTotal.message,
       });
     }
-    const totalCost = dto.totalCost ?? agreedTotal.total;
+    // The total is worked out here, never taken on the caller's word (F-732):
+    // the owner's ceiling and the seal both read `total_cost`, so a $1 total on
+    // 600 × $50 slipped a $30,000 order under a $2,500 ceiling. A caller total
+    // that agrees to the cent is accepted; one that does not is refused.
+    if (
+      dto.totalCost !== undefined &&
+      dto.totalCost !== null &&
+      Math.abs(dto.totalCost - agreedTotal.total) >= 0.005
+    ) {
+      throw new BadRequestException({
+        reason: "total_disagrees_with_price",
+        message:
+          `The total sent with this order ($${Number(dto.totalCost).toFixed(2)}) is not what the quantity at the agreed price comes to ($${agreedTotal.total.toFixed(2)}). ` +
+          "Nothing was ordered. Send it again without a total and it is worked out from the price.",
+      });
+    }
+    const totalCost = agreedTotal.total;
 
     // Dedup guard: a price/quantity change for the same wine+vendor should
     // update the existing open order, not spawn a second one. Match on
@@ -4493,7 +4514,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, total_cost, provider_id, inventory_id, final_price, status, currency, procurement_order_items(price_uom, price_pack_size)",
+          "id, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, currency, procurement_order_items(price_uom, price_pack_size)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -4525,6 +4546,8 @@ export class ProcurementService {
       inventory_id: string | null;
       final_price: string | number | null;
       status: string | null;
+      requested_at?: string | null;
+      created_at?: string | null;
       currency?: string | null;
       procurement_order_items?: unknown;
     };
@@ -4740,6 +4763,11 @@ export class ProcurementService {
   /**
    * Has this house ordered from this vendor before THIS order?
    *
+   * Answered by `isFirstOrderToVendorAmong`, the test the /orders walk and the
+   * /settings retrospective use too (F-731): any other order to the vendor
+   * used to count, so a cancelled order, or the second line of the first cart,
+   * made the vendor "known" and the rule never fired.
+   *
    * `null` when it cannot be told — no vendor on the row, or a read that failed.
    * Never `false`: `decideApproval` treats `null` as untestable and refuses to
    * fire `new_vendor` on it, which is the difference between a rule and a rule
@@ -4748,18 +4776,40 @@ export class ProcurementService {
   private async isFirstOrderToVendor(
     restaurantId: string,
     orderId: string,
-    providerId: string | null,
+    row: {
+      provider_id: string | null;
+      status?: string | null;
+      requested_at?: string | null;
+      created_at?: string | null;
+    },
   ): Promise<boolean | null> {
-    if (!providerId) return null;
+    if (!row.provider_id) return null;
+    const self = {
+      id: orderId,
+      status: row.status ?? null,
+      requested_at: row.requested_at ?? null,
+      created_at: row.created_at ?? null,
+    };
     try {
-      const { count, error } = await this.databaseService.supabase
+      // Oldest first, in the helper's own order, so whatever came before this
+      // order is read before the page runs out.
+      let q = this.databaseService.supabase
         .from("procurement_orders")
-        .select("id", { count: "exact", head: true })
+        .select("id, status, requested_at, created_at")
         .eq("restaurant_id", restaurantId)
-        .eq("provider_id", providerId)
-        .neq("id", orderId);
-      if (error || count === null || count === undefined) return null;
-      return count === 0;
+        .eq("provider_id", row.provider_id);
+      if (self.requested_at) q = q.lte("requested_at", self.requested_at);
+      const { data, error } = await q
+        .order("requested_at", { ascending: true })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(FIRST_ORDER_PAGE);
+      if (error || !Array.isArray(data)) return null;
+      return isFirstOrderToVendorAmong(
+        self,
+        data as VendorOrderStamp[],
+        data.length < FIRST_ORDER_PAGE,
+      );
     } catch {
       return null;
     }
@@ -4783,6 +4833,9 @@ export class ProcurementService {
       provider_id: string | null;
       inventory_id: string | null;
       final_price: string | number | null;
+      status?: string | null;
+      requested_at?: string | null;
+      created_at?: string | null;
       currency?: string | null;
       procurement_order_items?: unknown;
     },
@@ -4791,7 +4844,7 @@ export class ProcurementService {
     const isFirstOrderToVendor = await this.isFirstOrderToVendor(
       restaurantId,
       orderId,
-      row.provider_id,
+      row,
     );
     const premium = await this.readPricePremium(
       restaurantId,
@@ -4906,7 +4959,7 @@ export class ProcurementService {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, status, provider_id, inventory_id, requested_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
+          "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
         )
         .eq("restaurant_id", restaurantId)
         .gte("requested_at", since)
@@ -4915,7 +4968,11 @@ export class ProcurementService {
       if (error) {
         return { rows: [], readable: false, reason: error.message };
       }
-      const seenVendors = new Set<string>();
+      // The gate's own first-order test (F-731), so the line the page marks as
+      // held is the line the gate holds.
+      const firstById = firstOrderToVendorById(
+        (data ?? []) as Array<VendorOrderStamp & { provider_id: string | null }>,
+      );
       const lastPriceByItem = new Map<string, PricedOrder>();
       const rows: Array<{
         id: string;
@@ -4932,9 +4989,7 @@ export class ProcurementService {
         currency?: string | null;
         procurement_order_items?: unknown;
       }>) {
-        const vendor = raw.provider_id;
-        const isFirst = vendor ? !seenVendors.has(vendor) : null;
-        if (vendor) seenVendors.add(vendor);
+        const isFirst = firstById.get(raw.id) ?? null;
 
         // The gate's own per-bottle, one-currency comparison (F-648), so this
         // courtesy list and the refusal cannot disagree.

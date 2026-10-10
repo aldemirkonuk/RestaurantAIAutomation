@@ -6,6 +6,7 @@ import {
 } from "../settings-audit/settings-audit.service";
 import {
   APPROVAL_RULES,
+  firstOrderToVendorById,
   pricePremium,
   retrospective,
   type ApprovalRule,
@@ -127,6 +128,9 @@ interface ThresholdDbRow {
 }
 
 interface OrderRow {
+  id: string;
+  status: string | null;
+  created_at?: string | null;
   provider_id: string | null;
   inventory_id: string | null;
   requested_at: string | null;
@@ -330,7 +334,7 @@ export class ApprovalThresholdsService {
       const { data, error } = await this.databaseService.client
         .from("procurement_orders")
         .select(
-          "provider_id, inventory_id, requested_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
+          "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
         )
         .eq("restaurant_id", restaurantId)
         .gte("requested_at", since)
@@ -355,7 +359,9 @@ export class ApprovalThresholdsService {
       };
     }
 
-    const seenVendors = new Set<string>();
+    // The approve gate's own first-order test (F-731): the count beside the
+    // rule is the number of orders the gate would have held.
+    const firstById = firstOrderToVendorById(rows);
     const lastPriceByItem = new Map<string, PricedOrder>();
     const tests: OrderUnderTest[] = [];
     const ceilingCurrency = await this.readCeilingCurrency(restaurantId);
@@ -363,9 +369,7 @@ export class ApprovalThresholdsService {
     // Ascending, so "first" and "last price" mean what they say as the walk
     // moves forward through the year.
     for (const r of rows) {
-      const vendor = r.provider_id;
-      const isFirst = vendor ? !seenVendors.has(vendor) : null;
-      if (vendor) seenVendors.add(vendor);
+      const isFirst = firstById.get(r.id) ?? null;
 
       // Per bottle and in one currency, as the gate compares (F-648).
       const priced: PricedOrder = {

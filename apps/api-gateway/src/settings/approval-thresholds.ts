@@ -116,6 +116,92 @@ export interface OrderUnderTest {
   priceUncomparable?: string | null;
 }
 
+/**
+ * "The first order to a vendor", in ONE place (F-731). The approve gate, the
+ * /orders walk and the /settings retrospective all ask it here, so the hold,
+ * the line marked as held and the count beside the rule cannot disagree.
+ *
+ * An order is first when no order to the same vendor came BEFORE it — earlier
+ * `requested_at`, then earlier `created_at`, then the smaller id, so two lines
+ * of one cart never both claim to be first. A cancelled or turned-down order
+ * never happened as far as the vendor is concerned and does not count. A
+ * missing time sorts last, as Postgres sorts ascending.
+ *
+ * Only the earliest line of a first cart is held: whether every line of a
+ * first cart should wait until one is sealed is not decided.
+ */
+export interface VendorOrderStamp {
+  id: string;
+  status: string | null;
+  requested_at?: string | null;
+  created_at?: string | null;
+}
+
+const NEVER_PLACED_STATUSES = new Set(["CANCELLED", "REJECTED"]);
+
+function compareTime(a: string | null | undefined, b: string | null | undefined): number {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+  if (Number.isNaN(ta)) return 1;
+  if (Number.isNaN(tb)) return -1;
+  return ta - tb;
+}
+
+/** Negative when `a` was requested before `b`. */
+export function compareVendorOrders(a: VendorOrderStamp, b: VendorOrderStamp): number {
+  return (
+    compareTime(a.requested_at, b.requested_at) ||
+    compareTime(a.created_at, b.created_at) ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+}
+
+/** Whether this order counts as one the house placed with the vendor. */
+export function countsAsPlacedWithVendor(status: string | null | undefined): boolean {
+  return !NEVER_PLACED_STATUSES.has((status ?? "").toUpperCase());
+}
+
+/**
+ * Whether `self` is the first order to its vendor among `sameVendor` (any
+ * order, self included or not). `complete: false` says `sameVendor` may be
+ * cut short: then an answer that rests on what was NOT seen is `null`.
+ */
+export function isFirstOrderToVendorAmong(
+  self: VendorOrderStamp,
+  sameVendor: VendorOrderStamp[],
+  complete = true,
+): boolean | null {
+  let sawSelf = false;
+  for (const o of sameVendor) {
+    if (o.id === self.id) {
+      sawSelf = true;
+      continue;
+    }
+    if (countsAsPlacedWithVendor(o.status) && compareVendorOrders(o, self) < 0) {
+      return false;
+    }
+  }
+  return complete || sawSelf ? true : null;
+}
+
+/**
+ * The same answer for every order in a ledger at once, by id. `null` for an
+ * order with no vendor.
+ */
+export function firstOrderToVendorById(
+  rows: Array<VendorOrderStamp & { provider_id: string | null }>,
+): Map<string, boolean | null> {
+  const out = new Map<string, boolean | null>();
+  const seen = new Set<string>();
+  for (const r of [...rows].sort(compareVendorOrders)) {
+    const vendor = r.provider_id;
+    out.set(r.id, vendor ? !seen.has(vendor) : null);
+    if (vendor && countsAsPlacedWithVendor(r.status)) seen.add(vendor);
+  }
+  return out;
+}
+
 /** One order's agreed price, as far as the `price_jump` rule needs it. */
 export interface PricedOrder {
   /** `procurement_orders.final_price`, in the unit `priceUnit` names. */

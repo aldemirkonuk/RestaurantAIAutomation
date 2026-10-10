@@ -77,14 +77,16 @@ function newVendorRule(): ThresholdRow {
 /**
  * Supabase stub that records what the gate tries to write.
  *
- * `priorOrdersToVendor` is returned as the `count` on the head query the gate
- * uses for first-order-ness; `countErrors` makes that read fail so the
- * "unknown is not false" case can be driven.
+ * The gate reads the vendor's orders oldest first for first-order-ness (F-731).
+ * `vendorOrders` are those rows as written; `priorOrdersToVendor: n` is shorthand
+ * for n placed orders requested before this one. `countErrors` makes that read
+ * fail so the "unknown is not false" case can be driven.
  */
 function makeDb(opts: {
   order?: Row | null;
   orderReadError?: { message: string } | null;
   priorOrdersToVendor?: number;
+  vendorOrders?: Row[];
   countErrors?: boolean;
   priorPrices?: Row[];
   ledgerRows?: Row[];
@@ -98,7 +100,6 @@ function makeDb(opts: {
   const supabase: any = {
     from(table: string) {
       let op: "select" | "insert" | "update" = "select";
-      let head = false;
       let selectedColumns = "";
 
       const settle = (shape: "one" | "many") => {
@@ -119,10 +120,19 @@ function makeDb(opts: {
               data: opts.order ? { ...opts.order, status: "APPROVED" } : null,
               error: null,
             };
-          if (head) {
+          if (selectedColumns === "id, status, requested_at, created_at") {
             if (opts.countErrors)
-              return { data: null, count: null, error: { message: "count failed" } };
-            return { data: null, count: opts.priorOrdersToVendor ?? 0, error: null };
+              return { data: null, error: { message: "count failed" } };
+            const prior = Array.from(
+              { length: opts.priorOrdersToVendor ?? 0 },
+              (_, i) => ({
+                id: `prior-${i}`,
+                status: "DELIVERED",
+                requested_at: "2026-01-01T00:00:00Z",
+                created_at: "2026-01-01T00:00:00Z",
+              }),
+            );
+            return { data: [...prior, ...(opts.vendorOrders ?? [])], error: null };
           }
           if (shape === "one") {
             if (opts.orderReadError)
@@ -190,14 +200,14 @@ function makeDb(opts: {
       }
 
       const q: any = {
-        select: (cols?: string, o?: { head?: boolean }) => {
+        select: (cols?: string) => {
           selectedColumns = cols ?? "";
-          if (o?.head) head = true;
           return q;
         },
         eq: () => q,
         neq: () => q,
         gte: () => q,
+        lte: () => q,
         order: () => q,
         limit: () => q,
         update(payload: Row) {
@@ -533,6 +543,76 @@ describe("approveOrder — an unknown fact never fires a rule", () => {
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+  });
+});
+
+describe("approveOrder — the first order to a vendor, one test everywhere (F-731)", () => {
+  const AT = "2026-10-01T10:00:00Z";
+  const FIRST_LINE = { ...ORDER_ROW, requested_at: AT, created_at: AT };
+
+  it("[REVERT-FAILS] the earliest line of a first cart is held although its sibling exists", async () => {
+    // /orders posts one order per cart line. The sibling used to make the
+    // vendor "known", so no line of a first cart was ever held.
+    const { db, calls } = makeDb({
+      order: FIRST_LINE,
+      vendorOrders: [
+        { id: ORDER, status: "PENDING", requested_at: AT, created_at: AT },
+        { id: "99999999-9999-4999-8999-999999999999", status: "PENDING", requested_at: AT, created_at: "2026-10-01T10:00:01Z" },
+      ],
+    });
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      /first order this house has placed with this vendor/,
+    );
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+  });
+
+  it("[REVERT-FAILS] a cancelled earlier order does not make the vendor known", async () => {
+    const { db } = makeDb({
+      order: FIRST_LINE,
+      vendorOrders: [
+        { id: "o-cancelled", status: "CANCELLED", requested_at: "2026-09-01T00:00:00Z", created_at: "2026-09-01T00:00:00Z" },
+        { id: "o-rejected", status: "rejected", requested_at: "2026-09-02T00:00:00Z", created_at: "2026-09-02T00:00:00Z" },
+        { id: ORDER, status: "PENDING", requested_at: AT, created_at: AT },
+      ],
+    });
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      /first order this house has placed with this vendor/,
+    );
+  });
+
+  it("the later line of the same cart is not first — only the earliest is held", async () => {
+    const LATER = { ...ORDER_ROW, requested_at: AT, created_at: "2026-10-01T10:00:01Z" };
+    const { db, calls } = makeDb({
+      order: LATER,
+      vendorOrders: [
+        { id: "00000000-0000-4000-8000-000000000001", status: "PENDING", requested_at: AT, created_at: AT },
+        { id: ORDER, status: "PENDING", requested_at: AT, created_at: LATER.created_at },
+      ],
+    });
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+
+    await sealedApprove(svc);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+  });
+
+  it("[REVERT-FAILS] the /orders walk marks the same line the gate holds", async () => {
+    const { db } = makeDb({
+      ledgerRows: [
+        { id: "o-cancelled", status: "CANCELLED", provider_id: "p1", inventory_id: null, requested_at: "2026-09-01T00:00:00Z", created_at: "2026-09-01T00:00:00Z", total_cost: 10, final_price: null },
+        { id: "o-b", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: AT, created_at: AT, total_cost: 10, final_price: null },
+        { id: "o-a", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: AT, created_at: AT, total_cost: 10, final_price: null },
+      ],
+    });
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+
+    const gate = await svc.approvalGate(REST, USER);
+    const held = gate.orders.filter((o) => !o.mayApprove).map((o) => o.orderId);
+    // Same time, same created_at: the smaller id is the earlier line.
+    expect(held).toEqual(["o-a"]);
   });
 });
 
