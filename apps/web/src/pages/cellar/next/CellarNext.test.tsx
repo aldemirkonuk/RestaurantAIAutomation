@@ -51,6 +51,8 @@ const mock = vi.hoisted(() => ({
   beverages: { data: null, loading: false, error: null } as Record<string, unknown>,
   cocktails: { data: null, loading: false, error: null } as Record<string, unknown>,
   register: { data: null, loading: false, error: null, refetch: () => {} } as Record<string, unknown>,
+  // The same register read with a search term (F-592); unused unless a test sets it.
+  registerSearch: null as Record<string, unknown> | null,
   recipe: { data: null, loading: false, error: null } as Record<string, unknown>,
   writes: {} as Record<string, unknown>,
   // Owner or manager of the house (F-270); a test turns it off for staff.
@@ -86,7 +88,8 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useCellarNextData: () => mock.current,
   useBeverageRegister: () => mock.beverages,
   useCocktailRegister: () => mock.cocktails,
-  useRegister: () => mock.register,
+  useRegister: (_id: unknown, search?: string) =>
+    search ? (mock.registerSearch ?? mock.register) : mock.register,
   useCocktailRecipe: () => mock.recipe,
   useCocktailWrites: () => mock.writes,
   useMayPriceCocktails: () => mock.mayPrice,
@@ -212,6 +215,8 @@ const base = {
   bookLimit: 500,
   loadingMoreBook: false,
   loadMoreBook: vi.fn(),
+  searchBook: vi.fn(),
+  bookSearch: null,
   booking: false,
   bookError: null as string | null,
   cellarKnown: true,
@@ -774,8 +779,52 @@ function registerVM(over: Record<string, unknown> = {}) {
 describe('CellarNext — the registers that are not wines', () => {
   beforeEach(() => {
     mock.register = { data: null, loading: false, error: null, refetch: () => {} };
+    mock.registerSearch = null;
     mock.recipe = { data: null, loading: false, error: null };
     mock.writes = {};
+  });
+
+  it('finds "Yeni Rakı" when "raki" is typed (F-593)', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({ rows: [houseRow({ key: 'r1', name: 'Yeni Rakı', producer: 'Mey' })] }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    fireEvent.change(screen.getByLabelText('Search this register'), { target: { value: 'raki' } });
+    expect(screen.getByText('Yeni Rakı')).toBeInTheDocument();
+  });
+
+  describe('a capped catalogue is searched whole (F-592)', () => {
+    const capped = () =>
+      registerVM({
+        catalogue: {
+          readable: true, reason: null, rows: 400, truncated: true, limit: 400,
+          matchedTypes: ['beer'], servedByThisTable: true,
+        },
+      });
+
+    it('does not say "no match" while the whole catalogue has not answered', async () => {
+      mock.current = { ...base, registers: readout() };
+      mock.register = { data: capped(), loading: false, error: null, refetch: () => {} };
+      mock.registerSearch = { data: null, loading: true, error: null, refetch: () => {} };
+      draw({ category: 'beer' });
+      fireEvent.change(screen.getByLabelText('Search this register'), { target: { value: 'Yakut' } });
+      expect(screen.getByTestId('register-empty')).toHaveTextContent('Looking through the whole catalogue');
+      expect(screen.queryByText(/No row in this register matches/)).toBeNull();
+    });
+
+    it('lists a row the search found past the cap', async () => {
+      mock.current = { ...base, registers: readout() };
+      mock.register = { data: capped(), loading: false, error: null, refetch: () => {} };
+      mock.registerSearch = {
+        data: registerVM({ rows: [houseRow({ key: 'b401', name: 'Bomonti Filtresiz', house: null })] }),
+        loading: false, error: null, refetch: () => {},
+      };
+      draw({ category: 'beer' });
+      fireEvent.change(screen.getByLabelText('Search this register'), { target: { value: 'bomonti' } });
+      expect(await screen.findByText('Bomonti Filtresiz')).toBeInTheDocument();
+    });
   });
 
   it('puts this house’s own record on the row — first bought, paid, poured', () => {

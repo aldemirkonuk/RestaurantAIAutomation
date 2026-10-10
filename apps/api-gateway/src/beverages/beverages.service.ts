@@ -35,6 +35,8 @@ import type {
   SetCocktailIngredientsDto,
   UpdateCocktailDto,
 } from "./dto/beverages.dto";
+import { ilikeValue } from "../wines/wines.service";
+import { accentBlindLike, fold } from "../providers/vendor-wine-search";
 // The price register's one enforcement point (ADR 0117 addendum, 2026-09-05).
 import {
   VENDOR_PRICE_OBSERVATIONS,
@@ -75,6 +77,11 @@ const MISSING_RELATION_CODES = new Set(["42P01", "PGRST205", "PGRST202"]);
  * browser renders names the migration rather than a table.
  */
 const MISSING_FUNCTION_CODES = new Set(["42883", "PGRST202", "PGRST203"]);
+
+/** How many characters of a LIKE pattern match only themselves. */
+function fixedLetters(pattern: string): number {
+  return pattern.replace(/[%_]/g, "").length;
+}
 
 /**
  * The catalogue columns every read of `public.beverages` selects. One home,
@@ -306,7 +313,10 @@ export class BeveragesService {
     if (types.length > 0) q = q.in("beverage_type", types);
     if (opts.type) q = q.ilike("beverage_type", `%${opts.type}%`);
     if (opts.search) {
-      q = q.or(`name.ilike.%${opts.search}%,producer.ilike.%${opts.search}%`);
+      // F-595: the term is only ever a value — a comma or parenthesis in it
+      // ("Johnnie Walker, Black") used to end the `or()` condition and 500.
+      const v = ilikeValue(opts.search);
+      q = q.or(`name.ilike.${v},producer.ilike.${v}`);
     }
 
     const { data, error } = await q;
@@ -451,10 +461,31 @@ export class BeveragesService {
   ): Promise<RegisterResult & { unregistered: { label: string; books: string[] }[] }> {
     const types = beverageTypesForRegister(register);
 
-    const [catalogue, ledger] = await Promise.all([
-      this.readRegisterCatalogue(register, types, opts),
+    // F-592: a search ALSO reads the catalogue narrowed by the search, before
+    // the limit, and lays those rows over the plain read. Searching only the
+    // first `catalogueLimit` rows told the owner "no match" for a bottle at row
+    // 401. The plain read stays: a house row's membership and overlay come from
+    // the catalogue rows read, and must not change because a word was typed.
+    const [plain, found, ledger] = await Promise.all([
+      this.readRegisterCatalogue(register, types, { catalogueLimit: opts.catalogueLimit }),
+      opts.search?.trim()
+        ? this.readRegisterCatalogue(register, types, opts)
+        : Promise.resolve(null),
       this.readHouseLedger(restaurantId, opts.ledgerLimit),
     ]);
+    // A failed search read leaves the plain read and its own cap standing, so
+    // the page still says the catalogue is larger than what was searched.
+    const searched = found?.rows && plain.rows ? found.rows : null;
+    let catalogue = plain;
+    if (searched && plain.rows) {
+      const seen = new Set(plain.rows.map((c) => c.id));
+      catalogue = {
+        rows: [...plain.rows, ...searched.filter((c) => !seen.has(c.id))],
+        status: plain.status,
+      };
+    }
+    const catalogueTruncated =
+      (searched ? searched.length : (plain.status.rows ?? 0)) >= opts.catalogueLimit;
 
     const result = composeRegister({
       restaurantId,
@@ -465,7 +496,7 @@ export class BeveragesService {
       ledgerLimit: opts.ledgerLimit,
       catalogue: catalogue.rows,
       catalogueStatus: catalogue.status,
-      catalogueTruncated: (catalogue.status.rows ?? 0) >= opts.catalogueLimit,
+      catalogueTruncated,
       catalogueLimit: opts.catalogueLimit,
       matchedTypes: types,
       // `soft_drinks` is the live case: no value of `beverage_type` separates a
@@ -476,15 +507,16 @@ export class BeveragesService {
     });
 
     // The search filters the ASSEMBLED register rather than either source, so
-    // a house row and a catalogue row are searched by the same rule.
-    const q = opts.search?.trim().toLowerCase();
+    // a house row and a catalogue row are searched by the same rule. Folded
+    // (F-593): "raki" finds "Yeni Rakı" and "izmir" finds "İzmir".
+    const q = opts.search ? fold(opts.search) : "";
     const rows = q
       ? result.rows.filter((r) =>
-          [r.name, r.producer, r.catalogue?.beverageType, r.catalogue?.region, r.catalogue?.country]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase()
-            .includes(q),
+          fold(
+            [r.name, r.producer, r.catalogue?.beverageType, r.catalogue?.region, r.catalogue?.country]
+              .filter(Boolean)
+              .join(" "),
+          ).includes(q),
         )
       : result.rows;
 
@@ -511,7 +543,7 @@ export class BeveragesService {
   private async readRegisterCatalogue(
     register: RegisterId,
     types: string[],
-    opts: { catalogueLimit: number },
+    opts: { search?: string; catalogueLimit: number },
   ): Promise<{ rows: CatalogueRow[] | null; status: SourceStatus }> {
     if (types.length === 0) {
       // Not an empty result — the absence of a query. Said as such.
@@ -525,13 +557,31 @@ export class BeveragesService {
       };
     }
 
-    const { data, error } = await this.dbService
+    let q = this.dbService
       .getClient()
       .from("beverages")
       .select(CATALOGUE_COLUMNS)
       .is("superseded_by", null)
       .is("deleted_at", null)
-      .in("beverage_type", types)
+      .in("beverage_type", types);
+    // F-592: a search narrows in SQL BEFORE the limit. The narrowing is
+    // accent-blind (`accentBlindLike`, the vendor wine search's own), so it
+    // only ever lets too much through; the assembled filter in `readRegister`
+    // then applies the exact rule. It runs on the folded word that keeps the
+    // most fixed letters ("raki" → %r_k_%, where "yeni" would be %____%). A
+    // folded word is letters and digits only, so nothing typed reaches `or()`.
+    const p = opts.search
+      ? fold(opts.search)
+          .split(" ")
+          .map(accentBlindLike)
+          .sort((a, b) => fixedLetters(b) - fixedLetters(a))[0]
+      : undefined;
+    if (p && fixedLetters(p) > 0) {
+      q = q.or(
+        `name.ilike.${p},display_name.ilike.${p},producer.ilike.${p},beverage_type.ilike.${p},region.ilike.${p},country.ilike.${p}`,
+      );
+    }
+    const { data, error } = await q
       .order("name", { ascending: true })
       .limit(opts.catalogueLimit);
 

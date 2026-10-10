@@ -562,15 +562,27 @@ export interface RegisterVM {
   unregistered: { label: string; books: string[] }[];
 }
 
-/** One register, whole. The house's own rows, then the shared catalogue. */
-export function useRegister(register: RegisterId | null) {
+/**
+ * One register, whole. The house's own rows, then the shared catalogue.
+ *
+ * With `search`, the same register read with the gateway searching the WHOLE
+ * catalogue before its cap (F-592) — off while `search` is empty, so the page
+ * asks for it only once the plain read came back capped.
+ */
+export function useRegister(register: RegisterId | null, search?: string) {
   const { activeRestaurantId } = useAuth();
+  const term = search?.trim() ?? '';
   const q = useQuery({
-    queryKey: ['cellar', 'register', activeRestaurantId, register],
-    enabled: Boolean(activeRestaurantId) && register !== null && register !== 'wines',
+    queryKey: ['cellar', 'register', activeRestaurantId, register, ...(search === undefined ? [] : [term])],
+    enabled:
+      Boolean(activeRestaurantId) &&
+      register !== null &&
+      register !== 'wines' &&
+      (search === undefined || term !== ''),
     queryFn: async (): Promise<RegisterVM> => {
       const r = await apiClient.get(
         `/beverages/${activeRestaurantId}/registers/${register}`,
+        term ? { params: { search: term } } : undefined,
       );
       return r.data as RegisterVM;
     },
@@ -1342,6 +1354,16 @@ export function useCocktailRegister(enabled: boolean) {
   };
 }
 
+/** The value, once it has stopped changing for `ms`. */
+export function useDebounced<T>(value: T, ms = 300): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return settled;
+}
+
 export function useCellarNextData() {
   const { activeRestaurantId, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
@@ -1416,9 +1438,40 @@ export function useCellarNextData() {
   const bottles: BottleVM[] | null = useMemo(() => {
     if (!winesQ.data) return null;
     const inv = cellarByWine ?? new Map<string, CellarRow>();
-    const rows = winesQ.data.pages.flat() as WireWine[];
+    // Once per title (F-594). The library is shared and grows while a reader
+    // pages through it: a title added before the page boundary pushes the
+    // last row of one page onto the first row of the next. Without this the
+    // book listed it twice and counted it twice.
+    const seen = new Set<string>();
+    const rows = (winesQ.data.pages.flat() as WireWine[]).filter((w) =>
+      seen.has(w.id) ? false : (seen.add(w.id), true),
+    );
     return rows.map((w) => toBottle(w, inv));
   }, [winesQ.data, cellarByWine]);
+
+  /**
+   * F-592: the book's search, asked of the WHOLE library. Searching only the
+   * pages read so far told the owner "no match" for a title past row 500. It is
+   * asked only while the book is not whole; once every page is read, the page
+   * searches what it holds (and more fields than the gateway's name/producer).
+   */
+  const [bookTerm, setBookTerm] = useState('');
+  const bookSearchTerm = bookTerm.trim();
+  const bookSearchQ = useQuery({
+    queryKey: [...queryKeys.wines.all, 'book-search', bookSearchTerm] as const,
+    enabled: winesQ.hasNextPage && bookSearchTerm !== '',
+    queryFn: async (): Promise<WireWine[]> => {
+      const r = await apiClient.get('/wines', {
+        params: { search: bookSearchTerm, limit: BOOK_READ_LIMIT },
+      });
+      return r.data as WireWine[];
+    },
+  });
+  const bookSearchHits: BottleVM[] | null = useMemo(() => {
+    if (!bookSearchQ.data) return null;
+    const inv = cellarByWine ?? new Map<string, CellarRow>();
+    return bookSearchQ.data.map((w) => toBottle(w, inv));
+  }, [bookSearchQ.data, cellarByWine]);
 
   const building: BuildingVM = useMemo(() => {
     const rows = inventoryQ.data;
@@ -1529,6 +1582,22 @@ export function useCellarNextData() {
     loadMoreBook: () => {
       void winesQ.fetchNextPage();
     },
+    /** Asks the whole library for this text while the book is not whole (F-592). */
+    searchBook: setBookTerm,
+    /**
+     * The library's answer for the text last passed to `searchBook` — null when
+     * no such search is running (the book is whole, or nothing was typed).
+     * `hits` is null until it answers; it matched on name or producer only.
+     */
+    bookSearch:
+      winesQ.hasNextPage && bookSearchTerm !== ''
+        ? {
+            term: bookSearchTerm,
+            hits: bookSearchHits,
+            loading: bookSearchQ.isLoading,
+            error: bookSearchQ.isError ? errorOf(bookSearchQ.error) : null,
+          }
+        : null,
     cellarKnown: cellarByWine !== null,
     cellarError: inventoryQ.isError ? errorOf(inventoryQ.error) : null,
     vendorsError: providersQ.isError ? errorOf(providersQ.error) : null,

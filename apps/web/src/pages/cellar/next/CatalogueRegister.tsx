@@ -66,6 +66,7 @@ import { columnsFor, type CellarColumn } from './cellar-columns';
 import { cellFor, sortValueFor } from './registerCells';
 import { REGISTER_SOURCE } from './registerShapes';
 import {
+  useDebounced,
   useRegister,
   useRowRecord,
   type CellarData,
@@ -73,6 +74,22 @@ import {
 } from './useCellarNextData';
 
 type Scope = 'all' | 'ours' | 'catalogue';
+
+/**
+ * Case, accents and the Turkish dotless i stop mattering (F-593): "raki" finds
+ * "Yeni Rakı", "izmir" finds "İzmir". The gateway's register search folds the
+ * same way (`vendor-wine-search.ts` `fold`).
+ */
+function foldText(s: string): string {
+  return s
+    .replace(/[ıİ]/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
 type MatchFilter = 'all' | 'exact' | 'contains' | 'none';
 
 /** Where a column menu was opened from, so it can be drawn there. */
@@ -231,11 +248,18 @@ export default function CatalogueRegister({
 
   const register = useRegister(id);
   const reg = register.data;
+  // F-592: once the plain read came back capped, the typed text is asked of
+  // the whole catalogue, and the rows searched are what that answer holds.
+  // Counts and source lines stay the plain read's.
+  const settledQuery = useDebounced(query.trim());
+  const asking = reg?.catalogue.truncated ? settledQuery : '';
+  const searched = useRegister(id, asking);
+  const pool = asking && searched.data ? searched.data.rows : reg?.rows;
 
   // One read serves both the expanded row and the series a cell opens, because
   // both are the same question about the same line. Opening a row therefore
   // costs one request, and opening a cell on that row costs none.
-  const openedRow = (reg?.rows ?? []).find((r) => r.key === openKey) ?? null;
+  const openedRow = (pool ?? []).find((r) => r.key === openKey) ?? null;
   const record = useRowRecord(series?.label ?? openedRow?.name ?? null);
   // A series still open for another line would hand that line's record to
   // the row just expanded, under the new row's name. Expanding a different
@@ -271,12 +295,14 @@ export default function CatalogueRegister({
   }, [reg]);
 
   const shown = useMemo(() => {
-    if (!reg) return null;
-    const q = query.trim().toLowerCase();
-    const rows = reg.rows.filter((r) => {
+    if (!pool) return null;
+    const q = foldText(query);
+    const rows = pool.filter((r) => {
       if (q) {
-        const hay = [r.name, r.producer, r.catalogue?.beverageType, r.catalogue?.region, r.catalogue?.country]
-          .filter(Boolean).join(' ').toLowerCase();
+        const hay = foldText(
+          [r.name, r.producer, r.catalogue?.beverageType, r.catalogue?.region, r.catalogue?.country]
+            .filter(Boolean).join(' '),
+        );
         if (!hay.includes(q)) return false;
       }
       if (scope === 'ours' && r.house === null) return false;
@@ -299,7 +325,27 @@ export default function CatalogueRegister({
         : String(av).localeCompare(String(zv));
       return asc ? c : -c;
     });
-  }, [reg, query, scope, book, type, match, sortKey, asc]);
+  }, [pool, query, scope, book, type, match, sortKey, asc]);
+
+  // "No match" is said only when the whole catalogue was asked (F-592). A miss
+  // among the first rows of a capped read is not a miss.
+  const missLine = (): string => {
+    const widen = 'No row in this register matches this reading. Widen the filters.';
+    if (!reg?.catalogue.truncated) return widen;
+    const typed = query.trim();
+    const cap = count(reg.catalogue.limit);
+    if (!typed) {
+      return `No row among those read matches these filters. The catalogue holds more than the ${cap} rows read; type a name to search all of it.`;
+    }
+    if (settledQuery !== typed || searched.loading) return 'Looking through the whole catalogue…';
+    if (searched.error || !searched.data) {
+      return `The catalogue search did not answer, so only the first ${cap} catalogue rows were searched.`;
+    }
+    if (searched.data.catalogue.truncated) {
+      return `No row matches among the first ${cap} the search found. Add a word to narrow it.`;
+    }
+    return widen;
+  };
 
   // Cocktails are the one register a house can WRITE, and their columns are a
   // recipe's, not a bottle's — so they get their own component rather than a
@@ -404,9 +450,7 @@ export default function CatalogueRegister({
           <div style={{ marginTop: 14 }}>
             {shown === null || shown.length === 0 ? (
               <p className="cl-said cl-dim" data-testid="register-empty">
-                {reg.counts.total === 0
-                  ? noHouseRowsLine(id)
-                  : 'No row in this register matches this reading. Widen the filters.'}
+                {reg.counts.total === 0 ? noHouseRowsLine(id) : missLine()}
               </p>
             ) : (
               <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>

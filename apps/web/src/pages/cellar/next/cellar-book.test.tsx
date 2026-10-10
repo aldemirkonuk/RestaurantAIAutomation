@@ -195,3 +195,62 @@ describe('useCellarNextData — the off-the-library count does not depend on how
     expect(result.current.building.offBook).toBe(1);
   });
 });
+
+/**
+ * F-594: the library is shared and grows while a reader pages it by offset. A
+ * title added before the page boundary pushes the last row of page one onto the
+ * first row of page two; the book must still list (and count) it once.
+ */
+describe('useCellarNextData — a title that slides across the page boundary is listed once', () => {
+  it('dedupes by id when the next page repeats the last row read', async () => {
+    api.get.mockImplementation(async (path: string, opts?: { params?: Record<string, unknown> }) => {
+      if (path !== '/wines') throw new Error('not read in this test');
+      const offset = Number(opts?.params?.offset ?? 0);
+      // Page two starts one row early, as if a title was added before row 500.
+      return { data: offset === 0 ? page(0, 650) : page(BOOK_READ_LIMIT - 1, 650) };
+    });
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    await waitFor(() => expect(result.current.bottles).toHaveLength(BOOK_READ_LIMIT));
+    await act(async () => {
+      result.current.loadMoreBook();
+    });
+    await waitFor(() => expect(result.current.bookTruncated).toBe(false));
+    const ids = (result.current.bottles ?? []).map((b) => b.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toHaveLength(650);
+  });
+});
+
+/** F-592: while the book is not whole, a search is asked of the whole library. */
+describe('useCellarNextData — searching the whole library', () => {
+  function libraryWithSearch(total: number) {
+    api.get.mockImplementation(async (path: string, opts?: { params?: Record<string, unknown> }) => {
+      if (path !== '/wines') throw new Error('not read in this test');
+      if (opts?.params?.search) return { data: [{ id: 'w-yakut', name: 'Yakut', producer: 'Kavaklıdere' }] };
+      return { data: page(Number(opts?.params?.offset ?? 0), total) };
+    });
+  }
+  const searchCalls = () =>
+    (api.get.mock.calls as [string, { params?: Record<string, unknown> }?][]).filter(
+      ([p, o]) => p === '/wines' && o?.params?.search !== undefined,
+    );
+
+  it('sends the typed text to GET /wines and returns what it found', async () => {
+    libraryWithSearch(650);
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    await waitFor(() => expect(result.current.bookTruncated).toBe(true));
+    act(() => result.current.searchBook('Yakut'));
+    await waitFor(() => expect(result.current.bookSearch?.hits).toHaveLength(1));
+    expect(result.current.bookSearch?.hits?.[0].name).toBe('Yakut');
+    expect(searchCalls()[0][1]?.params).toEqual({ search: 'Yakut', limit: BOOK_READ_LIMIT });
+  });
+
+  it('asks nothing of the server once the whole library is read', async () => {
+    libraryWithSearch(120);
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    await waitFor(() => expect(result.current.bottles).toHaveLength(120));
+    act(() => result.current.searchBook('Yakut'));
+    expect(result.current.bookSearch).toBeNull();
+    expect(searchCalls()).toHaveLength(0);
+  });
+});

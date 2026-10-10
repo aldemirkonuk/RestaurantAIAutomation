@@ -78,7 +78,10 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
   };
 }
 
-function mkData(bottles: BottleVM[], providers: { id: string; name: string }[] = []): CellarData {
+/** `extra` is the vendor list (an array) or fields to override (an object). */
+function mkData(bottles: BottleVM[], extra: { id: string; name: string }[] | Partial<Record<keyof CellarData, unknown>> = []): CellarData {
+  const providers = Array.isArray(extra) ? extra : [];
+  const over = Array.isArray(extra) ? {} : extra;
   return {
     activeRestaurantId: 'r1',
     authLoading: false,
@@ -89,6 +92,8 @@ function mkData(bottles: BottleVM[], providers: { id: string; name: string }[] =
     bookLimit: 500,
     loadingMoreBook: false,
     loadMoreBook: vi.fn(),
+    searchBook: vi.fn(),
+    bookSearch: null,
     booking: false,
     bookError: null,
     cellarKnown: true,
@@ -101,6 +106,7 @@ function mkData(bottles: BottleVM[], providers: { id: string; name: string }[] =
     libraryByKind: null,
     live: { touched: {}, lastApplyMs: null },
     refetch: vi.fn(),
+    ...over,
     // A deliberately thin fixture: WineRegister never reads `saveRegisters`
     // (that control belongs to `Registers`/`CellarRegistersControl`), so the
     // real `UseMutationResult` shape is not worth reproducing here — same
@@ -108,12 +114,12 @@ function mkData(bottles: BottleVM[], providers: { id: string; name: string }[] =
   } as unknown as CellarData;
 }
 
-function mount(bottles: BottleVM[], providers: { id: string; name: string }[] = []) {
+function mount(bottles: BottleVM[], extra: { id: string; name: string }[] | Partial<Record<keyof CellarData, unknown>> = []) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter>
       <QueryClientProvider client={qc}>
-        <WineRegister data={mkData(bottles, providers)} />
+        <WineRegister data={mkData(bottles, extra)} />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -300,5 +306,48 @@ describe('WineRegister — search folds Turkish letters', () => {
     await user.type(search, 'izmir');
     expect(screen.getByText('Sevilen İzmir Merlot')).toBeInTheDocument();
     expect(screen.queryByText('Boğazkere 2021')).not.toBeInTheDocument();
+  });
+});
+
+describe('WineRegister — searching a book that is not whole (F-592)', () => {
+  const yakut = bottle({ id: 'w-yakut', name: 'Yakut', producer: 'Kavaklıdere', grape: 'Öküzgözü' });
+
+  it('asks the whole library for the typed text', async () => {
+    const searchBook = vi.fn();
+    mount([bottle()], { bookTruncated: true, searchBook });
+    await userEvent.type(screen.getByRole('searchbox'), 'Yakut');
+    await vi.waitFor(() => expect(searchBook).toHaveBeenLastCalledWith('Yakut'));
+  });
+
+  it('does not say "no match" while the library has not answered', async () => {
+    mount([bottle()], {
+      bookTruncated: true,
+      bookSearch: { term: 'Yakut', hits: null, loading: true, error: null },
+    });
+    await userEvent.type(screen.getByRole('searchbox'), 'Yakut');
+    expect(screen.getByTestId('wine-register-empty')).toHaveTextContent('Looking through the whole library');
+    expect(screen.queryByText(/No title in the book matches/)).toBeNull();
+  });
+
+  it('lists a title the library found past the rows read so far', async () => {
+    mount([bottle()], {
+      bookTruncated: true,
+      bookSearch: { term: 'Yakut', hits: [yakut], loading: false, error: null },
+    });
+    await userEvent.type(screen.getByRole('searchbox'), 'Yakut');
+    expect(await screen.findByText('Yakut')).toBeInTheDocument();
+  });
+
+  it('says "nothing in the library" only once the library said so', async () => {
+    mount([bottle()], {
+      bookTruncated: true,
+      bookSearch: { term: 'Yakut', hits: [], loading: false, error: null },
+    });
+    await userEvent.type(screen.getByRole('searchbox'), 'Yakut');
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('wine-register-empty')).toHaveTextContent(
+        'Nothing in the library has “Yakut” in its name or producer',
+      ),
+    );
   });
 });

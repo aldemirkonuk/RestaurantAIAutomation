@@ -85,6 +85,27 @@ describe("BeveragesService.listBeverages", () => {
     expect(out.scopeNote).toMatch(/absence of a query, not an empty result/);
   });
 
+  it("passes a search term to or() only as a value (F-595)", async () => {
+    const ors: string[] = [];
+    const service = await serviceWith({ beverages: [{ data: [] }] });
+    const db = (service as unknown as { dbService: { getClient: () => { from: (t: string) => Record<string, jest.Mock> } } }).dbService;
+    const from = db.getClient().from;
+    jest.spyOn(db, "getClient").mockReturnValue({
+      from: (t: string) => {
+        const c = from(t);
+        c.or = jest.fn((f: string) => {
+          ors.push(f);
+          return c;
+        });
+        return c;
+      },
+    });
+    await service.listBeverages(RID, { search: "Johnnie Walker, Black", limit: 10 });
+    expect(ors).toEqual([
+      'name.ilike."%Johnnie Walker, Black%",producer.ilike."%Johnnie Walker, Black%"',
+    ]);
+  });
+
   it("names the beverage_type values a served register resolved to", async () => {
     const service = await serviceWith({
       beverages: [{ data: [{ id: "b1", name: "Lagavulin 16", beverage_type: "whiskey" }] }],
@@ -232,6 +253,52 @@ describe("BeveragesService.readRegister", () => {
     expect(out.house.readable).toBe(false);
     expect(out.rows).toHaveLength(1);
     expect(out.stocking.decision).toBe("OD-113");
+  });
+
+  it("searches past the catalogue cap, accent-blind, without losing the plain read (F-592, F-593)", async () => {
+    // Plain read: full at its limit of 2, and the bottle is not in it. The
+    // search read, narrowed in SQL before the limit, finds it at "row 401".
+    const ors: string[] = [];
+    let n = 0;
+    const db = {
+      getClient: () => ({
+        rpc: () => Promise.resolve({ data: [], error: null }),
+        from: () => {
+          n += 1;
+          const c = writeChain({
+            data:
+              n === 1
+                ? [
+                    { id: "b1", name: "Absolut", beverage_type: "vodka" },
+                    { id: "b2", name: "Beefeater", beverage_type: "gin" },
+                  ]
+                : [{ id: "b9", name: "Yeni Rakı", producer: "Mey", beverage_type: "raki" }],
+          });
+          c.or = jest.fn((f: string) => {
+            ors.push(f);
+            return c;
+          });
+          return c;
+        },
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    const service = moduleRef.get(BeveragesService);
+
+    const out = await service.readRegister(RID, "spirits", {
+      search: "yeni raki",
+      catalogueLimit: 2,
+      ledgerLimit: 600,
+    });
+    expect(out.rows.map((r) => r.name)).toEqual(["Yeni Rakı"]);
+    // The search read came back under its limit: what it says is the whole answer.
+    expect(out.catalogue.truncated).toBe(false);
+    // Only the search read is narrowed, on its longest folded word, accent-blind.
+    expect(ors).toHaveLength(1);
+    expect(ors[0]).toContain("name.ilike.%r_k_%");
+    expect(ors[0]).toContain("display_name.ilike.%r_k_%");
   });
 
   it("says the catalogue cannot answer for soft drinks, and asks it nothing", async () => {
