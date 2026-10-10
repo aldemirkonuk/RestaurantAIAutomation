@@ -65,9 +65,11 @@ export interface EventSheetProps {
   /** Step to the adjacent entry without leaving the sheet. */
   onStep?: (dir: 'earlier' | 'later') => void;
   steps?: SheetSteps | null;
+  /** The house's zone the stamp is read on (F-634); null is the device's clock. */
+  zone?: string | null;
 }
 
-export function EventSheet({ event, onClose, onFollow, link, onStep, steps }: EventSheetProps) {
+export function EventSheet({ event, onClose, onFollow, link, onStep, steps, zone }: EventSheetProps) {
   const e = event;
   const out = e ? linkOutFor(e, link) : null;
   const lines = e ? payloadLines(e.detail) : [];
@@ -133,7 +135,7 @@ export function EventSheet({ event, onClose, onFollow, link, onStep, steps }: Ev
           <dl className="lg-facts">
             <dt>Recorded</dt>
             <dd>
-              <span style={{ fontFamily: MONO }}>{fmtStamp(e.occurredAt)}</span>
+              <span style={{ fontFamily: MONO }}>{fmtStamp(e.occurredAt, zone)}</span>
               {!e.occurredAt ? (
                 <span className="lg-facts__note"> — this row carries no timestamp.</span>
               ) : null}

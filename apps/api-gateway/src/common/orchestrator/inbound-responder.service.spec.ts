@@ -1390,4 +1390,115 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(flags.needs_approval).toBe(false);
     });
   });
+
+  /**
+   * F-492 (2026-10-09): the decision row says what the agent did to the
+   * order (status and price, from → to), and a refused insert is logged at
+   * error level instead of vanishing.
+   */
+  describe("logDecision — the record of an agent acting on an order", () => {
+    const ctx = { restaurantId: "r1", orderId: "o1", providerId: "p1", correlationId: "c1" };
+    const flags = { needs_approval: false, reasons: [] as string[] };
+
+    const withDecisionDb = (insertResult: any) => {
+      const inserts: Record<string, any>[] = [];
+      const orderWrites: Record<string, any>[] = [];
+      const supabase = {
+        from: (table: string) => ({
+          insert: (row: Record<string, any>) => {
+            inserts.push(row);
+            return insertResult instanceof Error
+              ? Promise.reject(insertResult)
+              : Promise.resolve(insertResult);
+          },
+          update: (payload: Record<string, any>) => {
+            if (table === "procurement_orders") orderWrites.push(payload);
+            return { eq: () => Promise.resolve({ error: null }) };
+          },
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({
+                  maybeSingle: () => Promise.resolve({ data: { id: "line1" }, error: null }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      };
+      const s = new InboundResponderService(
+        {} as any,
+        { supabase } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      ) as any;
+      const errors: string[] = [];
+      s.logger = { error: (m: string) => errors.push(m), warn: () => {}, log: () => {} };
+      return { s, inserts, orderWrites, errors };
+    };
+
+    it("records the order's status and price from → to as the agent wrote them", async () => {
+      const { s, inserts } = withDecisionDb({ error: null });
+      // ADR 0325: the house's rules approve the accepted order (integ).
+      s.orderApprover = {
+        approveAcceptedOrderAsAgent: async () => ({ approved: true }),
+      };
+      const analysis = baseAnalysis({
+        intent: "price_acceptance",
+        deal_kind: "offer",
+        vendor_offers: [{ price_per_bottle: 1050, quantity: 6, unit: "bottle", conditions: "", quote: "" }],
+      });
+      const move = await s.syncOrderState(
+        { id: "o1", status: "NEGOTIATING", negotiated_price: 1200 },
+        analysis,
+        1090,
+        6,
+        true,
+      );
+      expect(move).toEqual({
+        order_id: "o1",
+        status_from: "NEGOTIATING",
+        status_to: "APPROVED",
+        negotiated_price_from: 1200,
+        negotiated_price_to: 1050,
+        agreed_price: 1050,
+        written: true,
+      });
+      await s.logDecision(ctx, analysis, flags, {
+        paused: false,
+        autoReply: false,
+        autonomyFull: true,
+        order_change: move,
+      });
+      expect(inserts[0].output.order_change).toEqual(move);
+    });
+
+    it("a terminal order the sync leaves alone records no change", async () => {
+      const { s } = withDecisionDb({ error: null });
+      const move = await s.syncOrderState(
+        { id: "o1", status: "DELIVERED" },
+        baseAnalysis(),
+        1090,
+        6,
+        true,
+      );
+      expect(move).toBeNull();
+    });
+
+    it("a refused decision row is logged at error level, not dropped", async () => {
+      const { s, errors } = withDecisionDb({ error: { message: "violates check" } });
+      await s.logDecision(ctx, baseAnalysis(), flags, { paused: false, autoReply: false, autonomyFull: false });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/decision on order o1 was not recorded.*violates check/);
+    });
+
+    it("a thrown insert is logged at error level too, and never blocks the responder", async () => {
+      const { s, errors } = withDecisionDb(new Error("socket hang up"));
+      await expect(
+        s.logDecision(ctx, baseAnalysis(), flags, { paused: false, autoReply: false, autonomyFull: false }),
+      ).resolves.toBeUndefined();
+      expect(errors[0]).toMatch(/socket hang up/);
+    });
+  });
 });

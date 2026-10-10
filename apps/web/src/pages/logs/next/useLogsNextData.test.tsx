@@ -26,7 +26,7 @@ vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 
-import { LOGS_SERVER_WINDOWS, useLogsNextData } from './useLogsNextData';
+import { LOGS_SERVER_WINDOWS, useLogsHouseZone, useLogsNextData } from './useLogsNextData';
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -299,6 +299,32 @@ describe('useLogsNextData — honesty', () => {
     const { result } = renderHook(() => useLogsNextData(null), { wrapper });
     expect(result.current.state).toBe('unreadable');
     expect(result.current.failure?.message).toMatch(/No house is selected/);
+    expect(api.get).not.toHaveBeenCalled();
+  });
+});
+
+/** F-634: the house's zone, so /logs dates its rows on the house's clock. */
+describe('useLogsHouseZone', () => {
+  it('reads the zone the house keeps', async () => {
+    api.get.mockResolvedValueOnce({ data: { restaurantId: 'rest-A', timezone: 'America/Los_Angeles' } });
+    const { result } = renderHook(() => useLogsHouseZone(), { wrapper });
+    expect(result.current).toBeUndefined();
+    await waitFor(() => expect(result.current).toBe('America/Los_Angeles'));
+    expect(api.get.mock.calls[0][0]).toMatch(/rest-A\/operating-hours$/);
+  });
+
+  it('a house with no zone, or a failed read, leaves the device’s clock (null)', async () => {
+    api.get.mockResolvedValueOnce({ data: { restaurantId: 'rest-A', timezone: null } });
+    const none = renderHook(() => useLogsHouseZone(), { wrapper });
+    await waitFor(() => expect(none.result.current).toBeNull());
+    api.get.mockRejectedValueOnce(new Error('boom'));
+    const failed = renderHook(() => useLogsHouseZone(), { wrapper });
+    await waitFor(() => expect(failed.result.current).toBeNull());
+  });
+
+  it('a held first read asks the gateway nothing', async () => {
+    renderHook(() => useLogsNextData(null, '2026-07-23T07:00:00.000Z', false), { wrapper });
+    await new Promise((r) => setTimeout(r, 20));
     expect(api.get).not.toHaveBeenCalled();
   });
 });

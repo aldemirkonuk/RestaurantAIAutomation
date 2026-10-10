@@ -145,6 +145,19 @@ interface VendorOffer {
   quote?: string | null;
 }
 
+/** What `syncOrderState` did to the order, recorded on the decision row (F-492). */
+interface OrderMove {
+  order_id: string | null;
+  status_from: string | null;
+  status_to: string | null;
+  negotiated_price_from: number | null;
+  negotiated_price_to: number | null;
+  /** The price the agent agreed on the order's line, when it agreed one. */
+  agreed_price: number | null;
+  /** False when the order write was refused: the move was attempted, not made. */
+  written: boolean;
+}
+
 export interface ResponderResult {
   drafted: boolean;
   draftId?: string;
@@ -525,8 +538,9 @@ export class InboundResponderService {
       // ── Close the loop: reflect the negotiation onto the order itself ──────
       // Only a mail we can trust moves the order (F-485), and only once
       // (F-769): `applyNow` above already folds in `orderSyncHeld`.
+      let orderMove: OrderMove | null = null;
       if (applyNow) {
-        await this.syncOrderState(
+        orderMove = await this.syncOrderState(
           o,
           analysis,
           targetPrice,
@@ -544,6 +558,7 @@ export class InboundResponderService {
         autoReply,
         autonomyFull,
         orderSyncHeld,
+        order_change: orderMove,
       });
 
       // ── Reasons NOT to draft a reply (analysis already saved above) ────────
@@ -1309,7 +1324,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     targetPrice: number | null,
     orderedQty: number,
     autonomyFull: boolean,
-  ): Promise<void> {
+  ): Promise<OrderMove | null> {
     try {
       const sameQtyOffer = analysis.vendor_offers.find((v) => {
         const q = this.toNum(v.quantity);
@@ -1360,7 +1375,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         terminal.includes(currentStatus) &&
         !(isDecline && declineMayRewindFrom.includes(currentStatus))
       ) {
-        return;
+        return null;
       }
 
       const accepted =
@@ -1530,18 +1545,39 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         }
       }
 
-      await this.databaseService.supabase
+      const { error: orderWriteError } = await this.databaseService.supabase
         .from("procurement_orders")
         .update(update)
         .eq("id", order.id);
-
-      if (agentMayApprove) {
-        await this.approveAsAgent(order, currentStatus);
+      if (orderWriteError) {
+        this.logger.error(
+          `Order ${order.id}: the agent's change was not written ` +
+            `(${orderWriteError.message}). The order stays as it was.`,
+        );
       }
+
+      // ADR 0325: the house's rules approve, or keep it for a person.
+      const approvedByAgent = agentMayApprove
+        ? await this.approveAsAgent(order, currentStatus)
+        : false;
+
+      // F-492: what this sync did to the order, for the decision row.
+      return {
+        order_id: order.id ?? null,
+        status_from: currentStatus || null,
+        status_to: approvedByAgent
+          ? "APPROVED"
+          : (update.status ?? (currentStatus || null)),
+        negotiated_price_from: this.toNum(order.negotiated_price),
+        negotiated_price_to: update.negotiated_price ?? this.toNum(order.negotiated_price),
+        agreed_price: agreedPriceToWrite,
+        written: !orderWriteError,
+      };
     } catch (e: any) {
       this.logger.warn(
         `syncOrderState failed for order ${order.id}: ${e?.message}`,
       );
+      return null;
     }
   }
 
@@ -1550,12 +1586,12 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
    * the order is approved. When they keep it for a person, the owner is told
    * in plain words, since nothing else on this path reaches anyone.
    */
-  private async approveAsAgent(order: any, fromStatus: string): Promise<void> {
+  private async approveAsAgent(order: any, fromStatus: string): Promise<boolean> {
     const restaurantId = String(order.restaurant_id ?? "");
     const outcome: AgentApprovalOutcome = this.orderApprover
       ? await this.orderApprover.approveAcceptedOrderAsAgent(restaurantId, order.id)
       : { approved: false, why: "the house's approval rules could not be checked" };
-    if (outcome.approved) return;
+    if (outcome.approved) return true;
     this.logger.log(
       `Order ${order.id}: the vendor accepted, but the agent did not approve it — ${outcome.why}.`,
     );
@@ -1569,9 +1605,20 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       actionUrl: `/orders?order=${order.id}`,
       metadata: { order_id: order.id, from_status: fromStatus, held_because: outcome.why },
     });
+    return false;
   }
 
-  /** Best-effort audit trail of the AI's decision (decision_log). Never blocks. */
+  /**
+   * Best-effort audit trail of the AI's decision (decision_log). Never blocks.
+   *
+   * F-492 (2026-10-09): the row carries `order_change` — the order's status
+   * and price from → to as `syncOrderState` wrote them (null when it did not
+   * touch the order) — so /logs can say what the agent did to the order, not
+   * only what it recommended. A refused insert used to vanish: the returned
+   * `{ error }` was never read and the catch saw only throws. Both are now
+   * logged at error level, because a missing decision row is a missing
+   * record of an agent acting on an order.
+   */
   private async logDecision(
     ctx: InboundContext,
     analysis: Analysis,
@@ -1581,10 +1628,11 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       autoReply: boolean;
       autonomyFull: boolean;
       orderSyncHeld: string | null;
+      order_change?: OrderMove | null;
     },
   ): Promise<void> {
     try {
-      await this.databaseService.supabase.from("decision_log").insert({
+      const { error } = await this.databaseService.supabase.from("decision_log").insert({
         agent_name: "InboundResponder",
         restaurant_id: ctx.restaurantId,
         // Fix for the long-standing null: the column existed but was never
@@ -1612,8 +1660,18 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         },
         reasoning: { text: analysis.reasoning },
       });
-    } catch {
+      if (error) {
+        this.logger.error(
+          `The agent's decision on order ${ctx.orderId} was not recorded ` +
+            `(decision_log insert refused: ${error.message}).`,
+        );
+      }
+    } catch (e: any) {
       // decision_log is best-effort; never block the responder on it.
+      this.logger.error(
+        `The agent's decision on order ${ctx.orderId} was not recorded ` +
+          `(decision_log insert threw: ${e?.message}).`,
+      );
     }
   }
 

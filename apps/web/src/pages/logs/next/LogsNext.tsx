@@ -82,12 +82,13 @@ import {
   nameOf,
   orderForThread,
   parseDay,
+  dayKeyOf,
   threadSpan,
   word,
   type LinkContext,
   type TimelineEvent,
 } from './lg-format';
-import { LOGS_SERVER_WINDOWS, useLogsNextData, type LogsNextData } from './useLogsNextData';
+import { LOGS_SERVER_WINDOWS, useLogsHouseZone, useLogsNextData, type LogsNextData } from './useLogsNextData';
 
 /* ── figures arrive on the tally spring; an unknown never counts ────────── */
 
@@ -481,12 +482,14 @@ interface RowProps {
   onOpen: (e: TimelineEvent) => void;
   onFollow: (id: string) => void;
   showDate?: boolean;
+  /** The house's zone the stamp is read on (F-634); null is the device's clock. */
+  zone?: string | null;
   /** Where the keyboard reader is standing. Not a selection; nothing acts on it. */
   cursor?: boolean;
   rowRef?: (el: HTMLLIElement | null) => void;
 }
 
-function Row({ e, index, link, onOpen, onFollow, showDate, cursor, rowRef }: RowProps) {
+function Row({ e, index, link, onOpen, onFollow, showDate, zone, cursor, rowRef }: RowProps) {
   const out = linkOutFor(e, link);
   const undated = !e.occurredAt;
   return (
@@ -498,7 +501,7 @@ function Row({ e, index, link, onOpen, onFollow, showDate, cursor, rowRef }: Row
     >
       {index !== undefined ? <span className="lg-index">{String(index).padStart(2, '0')}</span> : null}
       <span className={`lg-clock${undated ? ' lg-clock--none' : ''}`} title={undated ? 'This row records no timestamp' : undefined}>
-        {showDate ? fmtStamp(e.occurredAt) : fmtClock(e.occurredAt)}
+        {showDate ? fmtStamp(e.occurredAt, zone) : fmtClock(e.occurredAt, zone)}
       </span>
       <span className="lg-mark">{labelOf(e.source)}</span>
       <div style={{ minWidth: 0 }}>
@@ -618,7 +621,10 @@ export default function LogsNext({ ground }: LogsNextProps) {
   // `parseDay` is strict, and a value it cannot read is SAID below rather than
   // quietly read from the top.
   const dateParam = searchParams.get('date') || null;
-  const day = useMemo(() => parseDay(dateParam), [dateParam]);
+  // F-634: the day is the HOUSE's day. While its zone is read, a named day
+  // waits rather than reading from the device's midnight.
+  const zone = useLogsHouseZone();
+  const day = useMemo(() => parseDay(dateParam, zone ?? null), [dateParam, zone]);
   const dayUnreadable = dateParam !== null && day === null;
   // A thread always reads whole: a date never cuts one short, so "Ruled off"
   // stays true. The date stays in the address for the way back.
@@ -632,7 +638,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
   const [cursor, setCursor] = useState<string | null>(null);
   const { activeRestaurantId } = useAuth();
   const documentPageOn = useMudavymDesign('document');
-  const data = useLogsNextData(correlationId, jump?.end ?? null);
+  const data = useLogsNextData(correlationId, jump?.end ?? null, !(jump && zone === undefined));
   const inputRef = useRef<HTMLInputElement | null>(null);
   const headRef = useRef<HTMLElement | null>(null);
   const ledgerRef = useRef<HTMLElement | null>(null);
@@ -724,7 +730,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
     () => (events ? (activeSource ? events.filter((e) => e.source === activeSource) : events) : null),
     [events, activeSource],
   );
-  const days = useMemo(() => (visible ? groupByDay(visible) : []), [visible]);
+  const days = useMemo(() => (visible ? groupByDay(visible, zone) : []), [visible, zone]);
   const thread = useMemo(() => (visible && correlationId ? orderForThread(visible) : null), [visible, correlationId]);
   const span = useMemo(() => (thread ? threadSpan(thread) : null), [thread]);
   const someFailed = (data.failedSources?.length ?? 0) > 0;
@@ -1010,7 +1016,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
                   type="date"
                   className="lg-input lg-input--day lg-ink"
                   value={dayDraft}
-                  max={localToday()}
+                  max={dayKeyOf(new Date().toISOString(), zone) ?? localToday()}
                   onChange={(ev) => setDayDraft(ev.target.value)}
                 />
                 <button type="submit" className="lg-btn lg-ink">
@@ -1105,8 +1111,8 @@ export default function LogsNext({ ground }: LogsNextProps) {
                   {span.registers === 1 ? 'register' : 'registers'}
                   {span.first && span.last
                     ? span.first === span.last
-                      ? `, at ${fmtStamp(span.first)}`
-                      : `, from ${fmtStamp(span.first)} to ${fmtStamp(span.last)}`
+                      ? `, at ${fmtStamp(span.first, zone)}`
+                      : `, from ${fmtStamp(span.first, zone)} to ${fmtStamp(span.last, zone)}`
                     : ', none of them dated'}
                   .
                 </p>
@@ -1117,6 +1123,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
                       e={e}
                       index={i + 1}
                       link={link}
+                      zone={zone}
                       onOpen={setOpen}
                       onFollow={follow}
                       showDate
@@ -1140,6 +1147,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
                           key={keyOf(e)}
                           e={e}
                           link={link}
+                          zone={zone}
                           onOpen={setOpen}
                           onFollow={follow}
                           cursor={cursor === keyOf(e)}
@@ -1208,6 +1216,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
         onClose={() => setOpen(null)}
         onFollow={follow}
         link={link}
+        zone={zone}
         steps={steps}
         onStep={(dir) => stepBy(dir === 'earlier' ? stepDir : -stepDir)}
       />

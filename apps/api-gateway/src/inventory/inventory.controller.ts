@@ -834,13 +834,33 @@ export class InventoryController {
     summary: "Soft delete an inventory item (set is_active = false)",
   })
   @ApiResponse({ status: 200, description: "Item soft-deleted" })
+  @ApiResponse({ status: 403, description: "Only managers and owners may remove a wine" })
+  @ApiResponse({ status: 409, description: "The wine still has bottles on the books" })
   async deleteInventoryItem(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
-  ): Promise<{ success: boolean }> {
+    @CurrentUser() user?: { userId?: string },
+  ): Promise<{ success: boolean; audited: boolean }> {
+    // F-633: removing a wine is an owner/manager act, the same house-role
+    // check a price edit runs, and the removal names who did it.
+    if (!user?.userId) {
+      throw new HttpException(
+        "Removing a wine names the person who did it, and this session names nobody. Nothing was removed.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      restaurantId,
+      "remove a wine from inventory",
+    );
     try {
-      await this.inventoryService.softDeleteItem(restaurantId, itemId);
-      return { success: true };
+      const { audited } = await this.inventoryService.softDeleteItem(
+        restaurantId,
+        itemId,
+        user.userId,
+      );
+      return { success: true, audited };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
