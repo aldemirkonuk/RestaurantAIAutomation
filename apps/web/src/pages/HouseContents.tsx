@@ -23,12 +23,20 @@ export default function HouseContents() {
     setError(null)
     try {
       await addCustomProvider({ name: supplier.trim() })
-      await updateOnboardingProgress({ vendor_added: true })
-      setSaved(true)
     } catch (cause: any) {
       setError(cause?.response?.data?.message || cause?.message || 'We could not add that supplier yet.')
-    } finally {
       setSaving(false)
+      return
+    }
+    // The supplier exists now, so this is the answer the owner gets (F-587).
+    // The progress mark is a courtesy (the server sets it on create too); a
+    // failure here must not say "could not add" and invite a second copy.
+    setSaved(true)
+    setSaving(false)
+    try {
+      await updateOnboardingProgress({ vendor_added: true })
+    } catch {
+      // Non-fatal: the gateway already marks vendor_added when it creates one.
     }
   }
 
@@ -105,11 +113,13 @@ export default function HouseContents() {
             <span className="text-xs uppercase tracking-[0.12em]">Later · not required</span>
             <span className="mt-2 block">
               {invoice
-                ? `Last invoice · kept for later — ${invoice.name}`
+                ? `Last invoice · noted, not kept — ${invoice.name}`
                 : 'Last invoice · later'}
             </span>
             <span className="mt-1 block font-sans text-sm">
-              Drop a file when you want. We will not read it yet.
+              {invoice
+                ? 'We noted its name only. The file itself is not kept yet, so keep your copy.'
+                : 'Drop a file when you want. We will not read it yet.'}
             </span>
             <input
               aria-label="Last invoice later"
@@ -133,7 +143,7 @@ export default function HouseContents() {
               }}
               className="mt-3 block min-h-[72px] border border-dashed border-[#211f1b]/20 px-4 py-4 font-sans text-sm"
             >
-              {invoiceDropping ? 'Drop it here' : 'Drop the last invoice here, or click to keep a file for later.'}
+              {invoiceDropping ? 'Drop it here' : 'Drop the last invoice here, or click to choose a file.'}
             </span>
           </label>
 

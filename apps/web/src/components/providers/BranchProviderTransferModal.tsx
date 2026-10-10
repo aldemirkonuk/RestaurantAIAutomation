@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { X, Loader2, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
-import { apiClient } from '../../services/api/client'
+import { copyVendorsToHouse, type VendorCopyResult } from '../../services/api/vendors'
 import type { Provider } from '../../services/api/providers'
 
 interface BranchProviderTransferModalProps {
@@ -25,13 +25,17 @@ export function BranchProviderTransferModal({
   // All providers start checked
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isTransferring, setIsTransferring] = useState(false)
-  const [transferProgress, setTransferProgress] = useState(0)
+  // What the server answered, vendor by vendor (F-586). Shown in place of the
+  // list so the owner reads exactly what landed and what did not, and why.
+  const [results, setResults] = useState<VendorCopyResult[] | null>(null)
+  const [failure, setFailure] = useState<string | null>(null)
 
   // Reset selection whenever the modal opens with a new set of providers
   useEffect(() => {
     if (open) {
       setSelectedIds(new Set(currentProviders.map((p) => p.id)))
-      setTransferProgress(0)
+      setResults(null)
+      setFailure(null)
     }
   }, [open, currentProviders])
 
@@ -53,55 +57,29 @@ export function BranchProviderTransferModal({
     }
 
     setIsTransferring(true)
-    setTransferProgress(0)
-    let succeeded = 0
-    let attempted = 0
-
+    setFailure(null)
     try {
-      for (const provider of selectedProviders) {
-        try {
-          // If the provider was originally added from the catalogue, re-use catalogue mode.
-          // Otherwise fall back to custom-provider creation for the new branch.
-          if (provider.catalogueVendorId) {
-            // Temporarily override the X-Restaurant-Id header for this single call
-            await apiClient.post(
-              '/providers',
-              { catalogue_vendor_id: provider.catalogueVendorId },
-              { headers: { 'X-Restaurant-Id': newRestaurantId } },
-            )
-          } else {
-            await apiClient.post(
-              '/providers',
-              {
-                name: provider.name,
-                phone: provider.phone ?? undefined,
-                email: provider.email ?? undefined,
-              },
-              { headers: { 'X-Restaurant-Id': newRestaurantId } },
-            )
-          }
-          succeeded++
-        } catch {
-          // Individual provider failure — skip and continue with the rest
-        }
-        attempted++
-        setTransferProgress(attempted)
-      }
-
-      const skipped = selectedCount - succeeded
-      if (succeeded > 0) {
-        toast.success(
-          `${succeeded} vendor${succeeded !== 1 ? 's' : ''} added to ${newBranchName}` +
-            (skipped > 0 ? ` (${skipped} skipped)` : ''),
-        )
-      } else {
-        toast.error('No vendors could be transferred. Please try again.')
-      }
-      onClose()
+      // One call that names the new house; the server checks you own both
+      // houses and copies into the new one. It used to post each vendor with
+      // a header the server never read, so they landed in this house instead.
+      const answer = await copyVendorsToHouse(
+        newRestaurantId,
+        selectedProviders.map((p) => p.id),
+      )
+      setResults(answer.results)
+    } catch (cause: any) {
+      setFailure(
+        cause?.response?.data?.message ||
+          cause?.message ||
+          `No vendors were added to ${newBranchName}. Try again.`,
+      )
     } finally {
       setIsTransferring(false)
     }
   }
+
+  const added = results?.filter((r) => r.outcome === 'added') ?? []
+  const skipped = results?.filter((r) => r.outcome === 'skipped') ?? []
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && !isTransferring && onClose()}>
@@ -132,10 +110,43 @@ export function BranchProviderTransferModal({
             </div>
 
             <Dialog.Description className="text-sm text-gray-500 mb-5">
-              Your current providers are listed below. Select which ones to add to this new location.
+              {results
+                ? `Here is what happened at ${newBranchName}.`
+                : 'Your current providers are listed below. Select which ones to add to this new location. They stay here too.'}
             </Dialog.Description>
 
-            {/* Provider list */}
+            {results ? (
+              <div className="flex-1 overflow-y-auto space-y-4 mb-5" data-testid="vendor-copy-results">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {added.length === 0
+                      ? `No vendors were added to ${newBranchName}.`
+                      : `${added.length} vendor${added.length !== 1 ? 's' : ''} added to ${newBranchName}.`}
+                  </p>
+                  {added.length > 0 && (
+                    <ul className="mt-1 text-sm text-gray-600 list-disc pl-5">
+                      {added.map((r) => (
+                        <li key={r.providerId}>{r.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {skipped.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {skipped.length} not added
+                    </p>
+                    <ul className="mt-1 text-sm text-gray-600 space-y-1">
+                      {skipped.map((r) => (
+                        <li key={r.providerId}>
+                          <span className="font-medium">{r.name ?? 'A vendor'}</span> — {r.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="flex-1 overflow-y-auto space-y-2 mb-5">
               {currentProviders.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6">No providers to transfer.</p>
@@ -169,26 +180,25 @@ export function BranchProviderTransferModal({
                 })
               )}
             </div>
+            )}
 
-            {/* Progress indicator */}
-            {isTransferring && selectedCount > 0 && (
-              <div className="mb-4">
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <span>Transferring vendors…</span>
-                  <span>
-                    {transferProgress} / {selectedCount}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-1.5">
-                  <div
-                    className="bg-wine-600 h-1.5 rounded-full transition-all duration-300"
-                    style={{ width: `${(transferProgress / selectedCount) * 100}%` }}
-                  />
-                </div>
-              </div>
+            {failure && (
+              <p role="alert" className="mb-4 text-sm text-red-700">
+                {failure}
+              </p>
             )}
 
             {/* Footer actions */}
+            {results ? (
+              <div className="flex items-center justify-end">
+                <Button
+                  onClick={onClose}
+                  className="bg-wine-600 text-white hover:bg-wine-700"
+                >
+                  Done
+                </Button>
+              </div>
+            ) : (
             <div className="flex items-center justify-between gap-3">
               <Button
                 variant="ghost"
@@ -206,13 +216,14 @@ export function BranchProviderTransferModal({
                 {isTransferring ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Transferring…
+                    Adding…
                   </>
                 ) : (
-                  `Transfer ${selectedCount > 0 ? selectedCount : ''} Selected`.trim()
+                  `Add ${selectedCount > 0 ? selectedCount : ''} selected`.replace('  ', ' ')
                 )}
               </Button>
             </div>
+            )}
           </motion.div>
         </Dialog.Content>
       </Dialog.Portal>

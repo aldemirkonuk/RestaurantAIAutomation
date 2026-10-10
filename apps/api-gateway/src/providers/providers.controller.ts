@@ -19,6 +19,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   BulkImportProvidersDto,
   BulkImportResultDto,
+  CopyProvidersToHouseDto,
   CreateProviderContactDto,
   CreateProviderDto,
   CreateProviderLocationDto,
@@ -32,7 +33,10 @@ import {
 } from "./dto/providers.dto";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
-import { ProvidersService } from "./providers.service";
+import {
+  ProvidersService,
+  type ProviderCopyResult,
+} from "./providers.service";
 import type { VendorMenuSupply } from "./vendor-menu-supply";
 import {
   parseWineQuery,
@@ -319,6 +323,52 @@ export class ProvidersController {
       });
     } catch (error) {
       rethrow(error, "Failed to match providers");
+    }
+  }
+
+  // =========================================================================
+  // F-586 — "Add vendors to <new branch>". The add-location dialog used to
+  // post `/providers` with an `X-Restaurant-Id` header that nothing here
+  // reads, so the vendors landed (some twice) in the house the owner was
+  // standing in. The source is the token's house; the target is in the body
+  // and is checked: the caller owns both, in one organisation.
+  // =========================================================================
+  @Post("copy-to-house")
+  @ApiOperation({
+    summary: "Copy some of this house's vendors into another house you own",
+    description:
+      "Owner of both houses, same organisation (403 otherwise; 503 when that could not be read). Each vendor is answered added or skipped with the reason; one already in the target (catalogue entry, email or name) is skipped, never added twice.",
+  })
+  async copyToHouse(
+    @Body() dto: CopyProvidersToHouseDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<{
+    targetRestaurantId: string;
+    targetName: string;
+    results: ProviderCopyResult[];
+  }> {
+    const fromHouse = houseOf(user);
+    const actor = actorOf(user);
+    const { toHouseName } =
+      await this.organizations.assertOwnsBothHousesInOneOrganisation(
+        actor,
+        fromHouse,
+        dto.targetRestaurantId,
+      );
+    try {
+      const results = await this.providersService.copyProvidersToHouse(
+        fromHouse,
+        dto.targetRestaurantId,
+        dto.providerIds,
+        actor,
+      );
+      return {
+        targetRestaurantId: dto.targetRestaurantId,
+        targetName: toHouseName,
+        results,
+      };
+    } catch (error) {
+      rethrow(error, "Failed to copy vendors");
     }
   }
 
