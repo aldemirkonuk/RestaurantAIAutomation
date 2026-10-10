@@ -78,3 +78,33 @@ export function recommendationsForRole<T extends Row>(answer: T, role?: string |
   );
   return { ...answer, recommendations: kept, withheldForYourRole: list.length - kept.length };
 }
+
+/**
+ * The stored copies of the same entries (F-603): the Snoozed, Dismissed and
+ * Done tabs (`/actions`), the history (`/history`) and the caller's own
+ * snoozes (`/snoozed-for-me`) each carry the observation and advice as they
+ * were when someone acted on the card. A row whose words print an amount
+ * keeps its place (staff may still return their own act to the book) but
+ * loses those words for a reader who does not hold the money:
+ * `observation` and `recommendation` come back null and the row says
+ * `withheldForYourRole: true`; the answer's `withheldForYourRole` counts them.
+ */
+export function actionRowsForRole<T extends Row>(
+  items: T[],
+  role?: string | null,
+): { items: T[]; withheldForYourRole?: number } {
+  if (holdsHouseMoney(role ?? null)) return { items };
+  let withheld = 0;
+  const out = items.map((r) => {
+    if (!saysMoney(r?.observation, r?.recommendation, r?.rationale)) return r;
+    withheld += 1;
+    return {
+      ...r,
+      observation: null,
+      recommendation: null,
+      ...("rationale" in r ? { rationale: null } : {}),
+      withheldForYourRole: true,
+    };
+  });
+  return { items: out, withheldForYourRole: withheld };
+}

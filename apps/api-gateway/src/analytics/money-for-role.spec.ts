@@ -38,6 +38,18 @@ const RECS = {
   rulesEvaluated: 3,
 };
 
+/** The same entries as the actions table stores them (the snapshot at the act). */
+const STORED = RECS.recommendations.map((r) => ({
+  ruleKey: r.ruleKey,
+  ruleWide: false,
+  status: "dismissed",
+  observation: r.observation,
+  recommendation: r.recommendation,
+  category: null,
+  urgency: null,
+  updatedAt: "2026-10-09T00:00:00Z",
+}));
+
 function controller() {
   const analytics = {
     getInventoryScience: jest.fn(async () => ({ skuCount: 1, reorderCount: 1, skus: [SKU], reorderList: [SKU] })),
@@ -45,6 +57,10 @@ function controller() {
   const recommendations = { getRecommendations: jest.fn(async () => RECS) };
   const actions = {
     viewFor: jest.fn(async (_r: string, _u: unknown, list: unknown[]) => ({ kept: list, hiddenForYou: 0, personalSnoozesReadable: true })),
+    listByStatus: jest.fn(async () => STORED),
+    setActionAs: jest.fn(async () => ({ row: STORED[0], audit: null, history: null, noteAudit: null, recordedAs: "pinned", personal: null })),
+    listHistory: jest.fn(async () => STORED),
+    listForMe: jest.fn(async () => STORED.map(({ ruleKey, observation, recommendation }) => ({ ruleKey, snoozeUntil: "2026-10-20T00:00:00Z", observation, recommendation, category: null, urgency: null, updatedAt: null }))),
   };
   const generator = { readStored: jest.fn(async () => ({ rows: INSIGHTS.insights, read: 3, withheld: { dismissed: 0 }, suppressionsReadable: true })) };
   const c = new AnalyticsController(
@@ -105,5 +121,42 @@ describe("the analytics reads staff can call carry no house money (F-602, F-603)
     const out: any = await controller().getRecommendations("r1", undefined, { userId: "u1", role: "manager" });
     expect(out.recommendations).toHaveLength(3);
     expect(out.withheldForYourRole).toBeUndefined();
+  });
+
+  // The Snoozed / Dismissed / Done tabs, the history and the caller's own
+  // snoozes read the stored words of the same entries: the feed's cut must
+  // hold on each of them, or a staff member refused a card reads it there.
+  const storedRoutes: Array<[string, (c: AnalyticsController, user: any) => Promise<any>]> = [
+    ["GET /actions?status=all", (c, u) => c.listRecommendationActions("r1", "all", u)],
+    ["GET /actions?status=dismissed", (c, u) => c.listRecommendationActions("r1", "dismissed", u)],
+    ["GET /history", (c, u) => c.recommendationHistory("r1", u)],
+    ["GET /snoozed-for-me", (c, u) => c.listSnoozedForMe("r1", u)],
+  ];
+
+  it.each(storedRoutes)("staff read %s without the amounts in the stored words", async (_name, call) => {
+    const out = await call(controller(), { userId: "u1", role: "staff" });
+    expect(JSON.stringify(out)).not.toMatch(/[$€£₺¥]\s?\d/);
+    expect(out.items.map((r: any) => r.ruleKey)).toEqual(["dead_stock_capital", "stockout_imminent", "spend_pace"]);
+    expect(out.items[0]).toMatchObject({ observation: null, recommendation: null, withheldForYourRole: true });
+    expect(out.items[1]).toMatchObject({ observation: "Yakut has a 40% chance of stocking out." });
+    expect(out.items[1].withheldForYourRole).toBeUndefined();
+    expect(out.withheldForYourRole).toBe(1);
+  });
+
+  it.each(storedRoutes)("an owner reads %s whole", async (_name, call) => {
+    const out = await call(controller(), { userId: "u1", role: "owner" });
+    expect(out.items[0].observation).toMatch(/\$4,800/);
+    expect(out.withheldForYourRole).toBeUndefined();
+  });
+
+  it("staff pinning a card do not read its amounts back in the answer", async () => {
+    const out: any = await controller().setRecommendationAction("r1", { ruleKey: "dead_stock_capital", pinned: true } as any, { userId: "u1", role: "staff" });
+    expect(out).toMatchObject({ ruleKey: "dead_stock_capital", observation: null, recommendation: null, withheldForYourRole: true });
+    expect(JSON.stringify(out)).not.toMatch(/[$€£₺¥]\s?\d/);
+  });
+
+  it("a manager pinning a card reads it whole", async () => {
+    const out: any = await controller().setRecommendationAction("r1", { ruleKey: "dead_stock_capital", pinned: true } as any, { userId: "u1", role: "manager" });
+    expect(out.observation).toMatch(/\$4,800/);
   });
 });

@@ -53,6 +53,7 @@ import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { Persona } from "./metric-registry";
 import {
+  actionRowsForRole,
   insightsForRole,
   inventoryScienceForRole,
   recommendationsForRole,
@@ -1275,13 +1276,23 @@ export class AnalyticsController {
       // receipt when this was a rule-wide act (null otherwise), the history
       // receipt, what the write was recorded as, and — when it became the
       // caller's own snooze — that snooze instead of a house row.
+      // F-603: the echoed row carries the stored words of the card, which a
+      // note (a pin, a rating) by staff would otherwise read back with its
+      // amounts; the same cut as the tabs.
+      const [row] = actionRowsForRole(
+        [out.row ?? { ruleKey: body.ruleKey }],
+        user?.role,
+      ).items;
+      const [personal] = out.personal
+        ? actionRowsForRole([out.personal], user?.role).items
+        : [out.personal];
       return {
-        ...(out.row ?? { ruleKey: body.ruleKey }),
+        ...row,
         audit: out.audit,
         history: out.history,
         noteAudit: out.noteAudit,
         recordedAs: out.recordedAs,
-        personal: out.personal,
+        personal,
       };
     } catch (error) {
       if (error instanceof RuleWideActForbidden)
@@ -1361,13 +1372,16 @@ export class AnalyticsController {
   ) {
     try {
       const s = (status || "all") as RecommendationStatus | "all";
-      return {
-        items: await this.recommendationActions.listByStatus(
+      // F-603: the stored words of a card that states an amount stay the
+      // owner's and the manager's, as on the feed.
+      return actionRowsForRole(
+        await this.recommendationActions.listByStatus(
           restaurantId,
           s,
           actorOf(user),
         ),
-      };
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to list recommendation actions",
@@ -1384,15 +1398,17 @@ export class AnalyticsController {
   })
   async listSnoozedForMe(
     @Param("restaurantId") restaurantId: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
-      return {
-        items: await this.recommendationActions.listForMe(
+      // F-603: as on the feed, an amount in the stored words is withheld.
+      return actionRowsForRole(
+        await this.recommendationActions.listForMe(
           restaurantId,
           actorOf(user).userId ?? "",
         ),
-      };
+        user?.role,
+      );
     } catch (error) {
       if (error instanceof ActRefused)
         throw new HttpException(error.message, HttpStatus.FORBIDDEN);
@@ -1432,11 +1448,16 @@ export class AnalyticsController {
 
   @Get("recommendations/:restaurantId/history")
   @ApiOperation({ summary: "Acted/dismissed/completed history (NEW-302)" })
-  async recommendationHistory(@Param("restaurantId") restaurantId: string) {
+  async recommendationHistory(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string },
+  ) {
     try {
-      return {
-        items: await this.recommendationActions.listHistory(restaurantId),
-      };
+      // F-603: as on the feed, an amount in the stored words is withheld.
+      return actionRowsForRole(
+        await this.recommendationActions.listHistory(restaurantId),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to load recommendation history",
