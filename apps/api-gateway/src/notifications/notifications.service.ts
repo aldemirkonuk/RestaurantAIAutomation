@@ -19,6 +19,8 @@ import { AreaRoutingService } from "../areas/area-routing.service";
 import { type AreaLabel, readAreaLabel } from "../areas/area-label";
 import type { RouteStep } from "../areas/area-routing";
 import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
+import { isWithinQuietHours } from "../calendar/reminder-window";
+import { houseFrame } from "../common/house-frame";
 
 /**
  * How a broadcast was routed (ADR 0218), returned so a caller and a spec can
@@ -49,6 +51,35 @@ interface PushSubscription {
     p256dh: string;
     auth: string;
   };
+}
+
+/**
+ * Metadata keys that hold house money (money policy 2026-10-07, F-530). A
+ * phone push copies the row's metadata into its `data` when the writer gives
+ * no `pushData`, and a push reaches a locked screen and every addressed
+ * member, so these never ride along. The row itself keeps them; who may read
+ * the row is the writer's `onlyUserIds`.
+ */
+export const PUSH_MONEY_KEYS: ReadonlySet<string> = new Set([
+  "creditDue",
+  "effectiveUnitCost",
+  "price",
+  "unitPrice",
+  "finalPrice",
+  "quotedPrice",
+  "negotiatedPrice",
+  "totalCost",
+  "total",
+  "amount",
+  "cost",
+]);
+
+function withoutMoney(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (!PUSH_MONEY_KEYS.has(k)) out[k] = v;
+  }
+  return out;
 }
 
 @Injectable()
@@ -829,23 +860,27 @@ export class NotificationsService {
       // Routed writes push only to the people routing ALERTED (ADR 0218).
       // `skipMobilePush` opts a caller OUT of this leg entirely, for when it
       // is running its own — see the option's doc comment.
-      const pushTo = alertIds ?? userIds;
       if (
         this.expoPushService &&
         !opts.skipMobilePush &&
-        (payload.priority ?? "medium") !== "low" &&
-        pushTo.length > 0
+        (payload.priority ?? "medium") !== "low"
       ) {
-        await this.expoPushService.sendToUsers(pushTo, {
-          title: payload.title,
-          body: payload.message,
-          priority: payload.priority === "critical" ? "high" : "default",
-          data: {
-            type: payload.type,
-            actionUrl: payload.actionUrl ?? null,
-            ...(opts.pushData ?? payload.metadata ?? {}),
-          },
-        });
+        // F-528: each person's own Push switch and quiet hours, on the house's
+        // clock. Someone inside their window, or with Push off, still has the
+        // line on the bell; only the phone stays quiet.
+        const pushTo = await this.pushableNow(restaurantId, alertIds ?? userIds);
+        if (pushTo.length > 0) {
+          await this.expoPushService.sendToUsers(pushTo, {
+            title: payload.title,
+            body: payload.message,
+            priority: payload.priority === "critical" ? "high" : "default",
+            data: {
+              type: payload.type,
+              actionUrl: payload.actionUrl ?? null,
+              ...withoutMoney(opts.pushData ?? payload.metadata ?? {}),
+            },
+          });
+        }
       }
 
       return { inserted: rows.length, ids, routing };
@@ -855,6 +890,65 @@ export class NotificationsService {
       );
       return { inserted: 0, ids: [] };
     }
+  }
+
+  /**
+   * Who among `ids` may get a phone push right now (F-528): not someone whose
+   * Push switch is off (`push_enabled`), and not someone inside their quiet
+   * hours, read on the house's own clock. The window is the same half-open
+   * rule the calendar reminders and the producer ledger use
+   * (`isWithinQuietHours`).
+   *
+   * A person with no preferences row is pushed (Push defaults on, quiet hours
+   * off). When the preferences cannot be read, everyone is pushed, as before
+   * this was read, and the log says so; when the house has no readable time
+   * zone, quiet hours are not judged but the Push switch still is.
+   */
+  private async pushableNow(
+    restaurantId: string,
+    ids: string[],
+    now: Date = new Date(),
+  ): Promise<string[]> {
+    if (ids.length === 0) return ids;
+    let prefs: any[];
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("notification_preferences")
+        .select("user_id, push_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end")
+        .eq("restaurant_id", restaurantId)
+        .in("user_id", ids);
+      if (error) throw new Error(error.message);
+      prefs = Array.isArray(data) ? data : [];
+    } catch (e: any) {
+      this.logger.warn(
+        `PUSH_PREFERENCES_UNREAD restaurant=${restaurantId} — ${e?.message}. Everyone addressed is pushed, as before quiet hours were read.`,
+      );
+      return ids;
+    }
+    let zone: string | null = null;
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("restaurants")
+        .select("timezone, country")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      zone = houseFrame(data ?? null).zone ?? null;
+    } catch (e: any) {
+      this.logger.warn(`PUSH_HOUSE_ZONE_UNREAD restaurant=${restaurantId} — ${e?.message}. Quiet hours are not judged on this push.`);
+    }
+    const byUser = new Map(prefs.map((r) => [r.user_id, r]));
+    return ids.filter((id) => {
+      const row = byUser.get(id);
+      if (!row) return true;
+      if (row.push_enabled === false) return false;
+      if (!zone) return true;
+      return !isWithinQuietHours(now, zone, {
+        enabled: row.quiet_hours_enabled === true,
+        start: row.quiet_hours_start || "22:00",
+        end: row.quiet_hours_end || "08:00",
+      });
+    });
   }
 
   /**

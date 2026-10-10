@@ -44,6 +44,8 @@ interface Calls {
   auditInserts: Row[];
   /** The seals this harness has issued, and whether each was spent. */
   seals: Row[];
+  /** `notifications` updates with their eq filters (F-526). */
+  notificationUpdates: Array<{ payload: Row; filters: Row }>;
 }
 
 const REST = "rest-1";
@@ -91,7 +93,7 @@ function makeDb(opts: {
   ledgerError?: { message: string } | null;
   auditFails?: boolean;
 }) {
-  const calls: Calls = { orderUpdates: [], auditInserts: [], seals: [] };
+  const calls: Calls = { orderUpdates: [], auditInserts: [], seals: [], notificationUpdates: [] };
 
   const supabase: any = {
     from(table: string) {
@@ -184,19 +186,27 @@ function makeDb(opts: {
         return api;
       }
 
+      const filters: Row = {};
       const q: any = {
         select: (cols?: string, o?: { head?: boolean }) => {
           selectedColumns = cols ?? "";
           if (o?.head) head = true;
           return q;
         },
-        eq: () => q,
+        eq: (col: string, value: unknown) => {
+          filters[col] = value;
+          return q;
+        },
         neq: () => q,
         gte: () => q,
         order: () => q,
         limit: () => q,
         update(payload: Row) {
           op = "update";
+          if (table === "notifications") {
+            calls.notificationUpdates.push({ payload, filters });
+            return q;
+          }
           calls.orderUpdates.push(payload);
           return q;
         },
@@ -583,5 +593,76 @@ describe("approvalGate — what the page is allowed to draw", () => {
     expect(gate.policySet).toBe(false);
     expect(gate.policyNote).toBe("no threshold is set for this house");
     expect(gate.orders[0].mayApprove).toBe(true);
+  });
+});
+
+describe("approveOrder — the people who may seal a parked order are told (F-527)", () => {
+  const OWNER = "owner-1";
+  const MANAGER = "manager-1";
+  function told(role: string | null, rule = ceiling(1000)) {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 } });
+    const notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1, ids: ["n1"] }),
+    };
+    const authority = {
+      ownersAndManagers: jest.fn().mockResolvedValue({ owners: [OWNER], managers: [MANAGER, USER] }),
+      namesOf: jest.fn().mockResolvedValue(new Map([[USER, "Selin"]])),
+    };
+    const svc = new ProcurementService(
+      db, events, ledger,
+      undefined, undefined, undefined, undefined, undefined,
+      notifications as any,
+      thresholdsStub([rule]),
+      orgsStub(role),
+      new SealChallengeService(db),
+      authority as any,
+    );
+    return { svc, calls, notifications };
+  }
+
+  it("a manager refused by an owner's ceiling: the owners get one line naming the order, once per order", async () => {
+    const { svc, notifications } = told("manager");
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    const [rest, payload, opts] = notifications.persistForRestaurant.mock.calls[0];
+    expect(rest).toBe(REST);
+    // `order_pending` + `metadata.orderId` is what lights the bell's "Approve it".
+    expect(payload.type).toBe("order_pending");
+    expect(payload.metadata).toEqual({ orderId: ORDER, requiredRole: "owner" });
+    expect(payload.title).toBe("ORD-2026-00001 waits for your seal");
+    expect(payload.message).toContain("Selin tried to approve ORD-2026-00001");
+    expect(payload.message).not.toMatch(/7500|7,500|\$/);
+    expect(payload.priority).toBe("high");
+    expect(payload.groupKey).toBe(`order_awaiting_seal:${ORDER}`);
+    // Owners only, for an owner's rule; the refused manager is never told about themself.
+    expect(opts.onlyUserIds).toEqual([OWNER]);
+    expect(opts.dedupeWithinMinutes).toBeGreaterThanOrEqual(365 * 24 * 60);
+  });
+
+  it("a staff member refused by a manager's rule: owners and managers are told", async () => {
+    const { svc, notifications } = told("staff", ceiling(1000, "manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
+
+    const [, , opts] = notifications.persistForRestaurant.mock.calls[0];
+    expect(opts.onlyUserIds).toEqual([OWNER, MANAGER]);
+  });
+
+  it("the owner's seal clears the waiting line for everyone it went to", async () => {
+    const { svc, calls, notifications } = told("owner");
+
+    await sealedApprove(svc);
+
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+    expect(calls.notificationUpdates).toContainEqual({
+      payload: expect.objectContaining({ status: "read" }),
+      filters: expect.objectContaining({
+        restaurant_id: REST,
+        group_key: `order_awaiting_seal:${ORDER}`,
+        status: "unread",
+      }),
+    });
   });
 });
