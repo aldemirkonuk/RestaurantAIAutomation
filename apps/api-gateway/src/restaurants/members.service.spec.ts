@@ -571,6 +571,22 @@ describe("MembersService.updateMemberRole — owners hand over, and one owner al
     expect(roleOf(db, OWNER)).toBe("owner");
   });
 
+  // F-461: no route deletes a house, so the refusal must not send anyone to
+  // "delete the restaurant first". It says the one thing they can do.
+  it("tells the only owner to make someone else an owner, never to delete the restaurant", async () => {
+    const stepDown = service(seedHandover())
+      .updateMemberRole(OWNER, RID, OWNER, "manager")
+      .catch((e: Error) => e.message);
+    const leave = service(seedHandover())
+      .removeMember(OWNER, RID, OWNER)
+      .catch((e: Error) => e.message);
+
+    for (const message of [await stepDown, await leave]) {
+      expect(message).toMatch(/make someone else an owner/);
+      expect(message).not.toMatch(/delete/i);
+    }
+  });
+
   it("refuses a manager who changes anyone's role", async () => {
     const db = seedHandover();
     await expect(

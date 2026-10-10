@@ -43,7 +43,7 @@ export interface StubDb {
    * A table not named here is not capped.
    */
   rowCap?: Record<string, number>;
-  supabase: { from: (table: string) => any };
+  supabase: { from: (table: string) => any; rpc?: (fn: string, args: any) => any };
   /** Convenience: the ops that touched `table` with operation `op`. */
   opsOn(table: string, op?: RecordedOp["op"]): RecordedOp[];
 }
@@ -106,12 +106,33 @@ export function makeStubDb(
     ops: [],
     errors,
     schema,
-    supabase: { from: (table: string) => new Builder(db, table) },
+    supabase: {
+      from: (table: string) => new Builder(db, table),
+      rpc: async (fn: string, args: any) => defaultRpc(db, fn, args),
+    },
     opsOn(table, op) {
       return db.ops.filter((o) => o.table === table && (!op || o.op === op));
     },
   };
   return db;
+}
+
+/**
+ * The rpcs every spec may meet without stubbing them. `account_delete_blockers`
+ * (F-457, migration an_account_is_deleted_whole_or_not_at_all) answers the
+ * rows seeded under that name, none by default; fail it with
+ * `errors["rpc:account_delete_blockers"]`. A spec that replaces `rpc` for its
+ * own functions hands the rest to `defaultRpc`. Anything else throws, so an
+ * unmodelled rpc fails loudly instead of answering nothing.
+ */
+export function defaultRpc(db: StubDb, fn: string, args: any) {
+  db.ops.push({ table: `rpc:${fn}`, op: "select", filters: [], payload: args } as RecordedOp);
+  const forced = db.errors[`rpc:${fn}`];
+  if (forced) return { data: null, error: forced };
+  if (fn === "account_delete_blockers") {
+    return { data: db.tables.account_delete_blockers ?? [], error: null };
+  }
+  throw new Error(`supabase-stub: no rpc ${fn}`);
 }
 
 /**

@@ -33,6 +33,10 @@ import {
   sessionVersionOf,
 } from "./session-version";
 import { cancelPendingInvitesFrom } from "./cancel-house-invites";
+import {
+  AccountDeleteBlocker,
+  blockedDeleteMessage,
+} from "./account-delete-blockers";
 import { endedBySomeoneElse, markMembershipLeft } from "./membership-ended";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
@@ -4780,6 +4784,34 @@ export class AuthService {
       }
     }
 
+    // F-457: ask the database, before the first write, which records would
+    // refuse the `users` delete below. Leaving every house and dropping the
+    // sign-in links first, then failing on a RESTRICT foreign key, left the
+    // person with an account and no houses. A refusal is answered here, with
+    // the records named, and nothing has been written yet.
+    const { data: blockers, error: blockersError } = await (
+      this.databaseService.supabase as any
+    ).rpc("account_delete_blockers", { p_user_id: userId });
+    if (blockersError) {
+      this.logger.error(
+        `deleteAccount could not check what would refuse deleting ${userId}: ${blockersError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not check your account. Nothing was deleted; try again.",
+      );
+    }
+    if ((blockers ?? []).length > 0) {
+      this.logger.warn(
+        `deleteAccount refused for ${userId} before any write: ` +
+          (blockers as AccountDeleteBlocker[])
+            .map((b) => `${b.table_name}.${b.column_name ?? "?"}=${b.row_count ?? "?"}`)
+            .join(", "),
+      );
+      throw new BadRequestException(
+        blockedDeleteMessage(blockers as AccountDeleteBlocker[]),
+      );
+    }
+
     // Every calendar link the person holds, in every house, stops and is
     // audited before anything is deleted (ADR 0111, 2026-09-21, round 6t).
     // The `users` delete below would cascade the rows away with no record of
@@ -4831,6 +4863,23 @@ export class AuthService {
       await members.removeMember(userId, leaving.restaurant_id, userId);
     }
 
+    // The `users` row goes FIRST and alone (F-457): if it is still refused —
+    // a record written between the check above and here — the sign-in links
+    // and the access rows are still there, and the message says what did
+    // happen. `user_oauth_accounts` cascades from `users`; the delete below
+    // only sweeps a row a database without that cascade would leave.
+    const { error } = await this.databaseService.supabase
+      .from("users")
+      .delete()
+      .eq("user_id", userId);
+
+    if (error) {
+      this.logger.error(`deleteAccount failed after leaving: ${error.message}`);
+      throw new BadRequestException(
+        "You have left your restaurants, but the account itself was not deleted and you can still sign in. Try again.",
+      );
+    }
+
     await this.databaseService.supabase
       .from("user_oauth_accounts")
       .delete()
@@ -4840,16 +4889,6 @@ export class AuthService {
       .from("user_restaurant_access")
       .delete()
       .eq("user_id", userId);
-
-    const { error } = await this.databaseService.supabase
-      .from("users")
-      .delete()
-      .eq("user_id", userId);
-
-    if (error) {
-      this.logger.error(`deleteAccount failed: ${error.message}`);
-      throw new BadRequestException("Failed to delete account");
-    }
 
     for (const house of activeHouses ?? []) {
       this.websocketGateway?.evictFromHouse(userId, house.restaurant_id);

@@ -23,7 +23,7 @@ import {
   WAGE_RETENTION_CRON,
   WageRecordRetentionService,
 } from "./wage-record-retention.service";
-import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
+import { asDatabaseService, defaultRpc, makeStubDb, StubDb } from "./testing/supabase-stub";
 import { MembersService } from "../restaurants/members.service";
 import { AuthService } from "../auth/auth.service";
 
@@ -101,6 +101,7 @@ function seed(): StubDb {
 function withReleaseRpc(db: StubDb): StubDb {
   let nextRest = 0;
   (db.supabase as any).rpc = async (fn: string, args: any) => {
+    if (fn === "account_delete_blockers") return defaultRpc(db, fn, args);
     db.ops.push({ table: `rpc:${fn}`, op: "update", filters: [], payload: args } as any);
     const forced = db.errors[`rpc:${fn}`];
     if (forced) return { data: null, error: forced };
