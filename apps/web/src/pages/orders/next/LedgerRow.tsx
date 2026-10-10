@@ -434,7 +434,7 @@ export function LedgerRow({
                 <div data-testid="agreed-price">
                   {label('Agreed price')}{' '}
                   <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
-                    {describeStatedPrice(row.unitPrice, row.priceUnit.stated, row.currency ?? null) ?? EM}
+                    {describeStatedPrice(row.unitPrice, row.priceUnit.stated, row.currency ?? null, group) ?? EM}
                   </span>
                 </div>
                 {/*
@@ -524,9 +524,9 @@ export function LedgerRow({
                   <div data-testid="fees-unread" style={{ color: 'var(--ink-4, #665D50)' }}>
                     {ROW_FEES_NOT_READ}
                   </div>
-                ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees, row.currency ?? null) ? (
+                ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees, row.currency ?? null, group) ? (
                   <div data-testid="row-fees" style={{ color: 'var(--ink-2, #4F473C)' }}>
-                    outside the price of the wine: {describeFees(row.fees.fees, row.currency ?? null)}
+                    outside the price of the wine: {describeFees(row.fees.fees, row.currency ?? null, group)}
                   </div>
                 ) : null}
                 {row.priceUnit.stated &&

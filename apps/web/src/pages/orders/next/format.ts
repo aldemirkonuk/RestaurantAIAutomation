@@ -78,9 +78,17 @@ export function fmtMoneyWhole(
   return n === null ? EM : inCurrency(n, currency, { whole: true, group });
 }
 
-/** The working's figure: no grouping, as the working always printed it ("× €420.00"). */
-export function fmtWorking(n: number, currency: string | null | undefined): string {
-  return inCurrency(n, currency, { grouping: false });
+/**
+ * The working's figure: no grouping, as the working always printed it ("× €420.00").
+ * Its decimal mark is the house's when the caller passes the group mark (F-942):
+ * a lira house reads "× ₺420,00", as it reads every other figure on the page.
+ */
+export function fmtWorking(
+  n: number,
+  currency: string | null | undefined,
+  group: GroupMark | null = null,
+): string {
+  return inCurrency(n, currency, { grouping: false, group });
 }
 
 /** One currency's part of a sum; `currency: null` is "the order names none". */

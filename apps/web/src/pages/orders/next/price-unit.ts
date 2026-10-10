@@ -22,6 +22,8 @@
  * bargain, and no later reader can tell them apart.
  */
 
+import { inHouseMarks } from '@/lib/currency';
+import type { GroupMark } from '@/lib/parseDecimal';
 import { fmtMoney, fmtWorking } from './format';
 
 /**
@@ -100,10 +102,12 @@ export function describeStatedPrice(
   stated: StatedPriceUnit | null,
   /** The order's currency (F-341); null prints "currency not recorded", never `$`. */
   currency: string | null,
+  /** The house's group mark (`useHouseGroupMark`, F-942); null prints en-US. */
+  group: GroupMark | null = null,
 ): string | null {
   if (price == null || !Number.isFinite(Number(price))) return null;
   // Grouped like every other figure on the page ($1,090.00, not $1090.00; ORD-W14).
-  const money = fmtMoney(Number(price), currency);
+  const money = fmtMoney(Number(price), currency, group);
   if (!stated) return money;
   const pack =
     stated.pricePackSize > 1 ? ` (${stated.pricePackSize} bottles)` : '';
@@ -203,9 +207,12 @@ export function agreementTotal(input: {
   fees?: AgreementFees;
   /** The currency the working is said in (F-341); null says "currency not recorded". */
   currency: string | null;
+  /** The house's group mark (`useHouseGroupMark`, F-942); absent prints en-US. */
+  group?: GroupMark | null;
 }): AgreementTotal | null {
   const { price, stated, quantity, unitType, currency } = input;
-  const m = (n: number) => fmtWorking(n, currency);
+  const group = input.group ?? null;
+  const m = (n: number) => fmtWorking(n, currency, group);
   if (price == null || quantity == null || !Number.isFinite(price)) return null;
 
   const orderOpaque = OPAQUE.has(unitType);
@@ -273,7 +280,7 @@ export function agreementTotal(input: {
     Math.round(price * unitsBought * 100) / 100,
     stated.pricePackSize === 1
       ? `${bottlesTotal} × ${m(price)} per ${stated.priceUom}.`
-      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsSaid(unitsBought)} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × ${m(price)}.`,
+      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsSaid(unitsBought, group)} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × ${m(price)}.`,
   );
 }
 
@@ -282,12 +289,12 @@ export function agreementTotal(input: {
  * as is, anything else rounded to two places and marked "about". 10 bottles
  * priced per case of 6 printed "1.6666666666666667 cases" (F-344); the total
  * itself is still worked from the exact figure. Mirrors the gateway's twin in
- * `agreed-price.ts`.
+ * `agreed-price.ts`. The fraction takes the house's decimal mark (F-942).
  */
-function unitsSaid(units: number): string {
+function unitsSaid(units: number, group: GroupMark | null = null): string {
   if (Number.isInteger(units)) return String(units);
   const rounded = Math.round(units * 100) / 100;
-  return rounded === units ? String(units) : `about ${rounded}`;
+  return inHouseMarks(rounded === units ? String(units) : `about ${rounded}`, ',', group);
 }
 
 /**
@@ -298,13 +305,17 @@ function unitsSaid(units: number): string {
  * and does not need announcing. Absence of a READ does — see
  * `ROW_FEES_NOT_READ`.
  */
-export function describeFees(fees: AgreementFees, currency: string | null): string | null {
+export function describeFees(
+  fees: AgreementFees,
+  currency: string | null,
+  /** The house's group mark (`useHouseGroupMark`, F-942); null prints en-US. */
+  group: GroupMark | null = null,
+): string | null {
+  const m = (n: number) => fmtWorking(n, currency, group);
   const parts = [
-    fees.allowance !== null
-      ? `an allowance of ${fmtWorking(fees.allowance, currency)}`
-      : null,
-    fees.deposit !== null ? `a deposit of ${fmtWorking(fees.deposit, currency)}` : null,
-    fees.freight !== null ? `freight of ${fmtWorking(fees.freight, currency)}` : null,
+    fees.allowance !== null ? `an allowance of ${m(fees.allowance)}` : null,
+    fees.deposit !== null ? `a deposit of ${m(fees.deposit)}` : null,
+    fees.freight !== null ? `freight of ${m(fees.freight)}` : null,
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : null;
 }
