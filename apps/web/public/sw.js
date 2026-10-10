@@ -3,7 +3,8 @@
  * Handles push notifications, background sync, and caching
  *
  * Cache strategy:
- * - Navigations / HTML: network-first (never serve a stale index.html after deploy)
+ * - Navigations / HTML: network-first (never serve a stale index.html after deploy);
+ *   the last good shell is kept only as the offline fallback
  * - Hashed /assets/*: cache-first (immutable content hashes)
  * - Icons / manifest: cache-first with offline fallback
  */
@@ -31,7 +32,7 @@ function isPrecacheableStatic(url) {
   return PRECACHE_URLS.includes(url.pathname)
 }
 
-// Install event - cache static shell assets (not index.html)
+// Install event - cache static shell assets (index.html is kept by networkFirst)
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -225,16 +226,33 @@ async function syncInventory() {
   }
 }
 
+// The app shell is one document for every route (the SPA rewrite), so the
+// last good one is kept under "/" — network-first still serves a fresh one
+// whenever there is signal, but offline a reload lands in the app instead of
+// the browser's "No internet" page (F-1081).
+const SHELL_KEY = "/"
+
+function isShellDocument(request, response) {
+  if (!isNavigationRequest(request)) return false
+  if (!response || !response.ok || response.type !== "basic" || response.redirected) return false
+  const type = response.headers.get("content-type") || ""
+  return type.includes("text/html")
+}
+
 async function networkFirst(request) {
   try {
     const networkResponse = await fetch(request)
+    if (isShellDocument(request, networkResponse)) {
+      const cache = await caches.open(CACHE_NAME)
+      await cache.put(SHELL_KEY, networkResponse.clone())
+    }
     return networkResponse
   } catch (error) {
     const cached = await caches.match(request)
     if (cached) return cached
     // Offline SPA fallback: try a previously fetched document shell if present
     if (isNavigationRequest(request)) {
-      const offlineShell = await caches.match("/")
+      const offlineShell = await caches.match(SHELL_KEY)
       if (offlineShell) return offlineShell
     }
     throw error

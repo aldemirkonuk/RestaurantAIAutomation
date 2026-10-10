@@ -32,12 +32,13 @@
  * less is the safe direction to fail.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
 import { ink } from '@/lib/mudavym/motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { prefetchWhenOnline } from '@/lib/lazyWithRefresh';
 import { RcArrivalAsks } from './RcArrivalAsks';
 import { RcCreditDrafts } from './RcCreditDrafts';
 import { RcManagerQueue } from './RcManagerQueue';
@@ -221,6 +222,9 @@ export default function ReceivingNext() {
   const [preview, setPreview] = useState<Rendering | null>(null);
   const rendering = preview ?? actual;
   const outbox = useDoorOutbox();
+  // The door is its own route chunk; fetch it while there is signal so a tap
+  // on a delivery in a cellar with none still opens it (F-1081).
+  useEffect(() => prefetchWhenOnline(() => import('./DoorNext')), []);
   /**
    * One order asked for from OUTSIDE the page — `/deliveries/:id`
    * (DeliveryRedirect.tsx) resolves a delivery to its order and lands here

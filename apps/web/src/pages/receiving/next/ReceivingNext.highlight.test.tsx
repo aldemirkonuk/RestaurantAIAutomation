@@ -122,6 +122,9 @@ vi.mock('./useReceivingNextData', async (importOriginal) => {
   };
 });
 
+const prefetchWhenOnline = vi.hoisted(() => vi.fn((_load: () => Promise<unknown>) => () => undefined));
+vi.mock('@/lib/lazyWithRefresh', () => ({ prefetchWhenOnline }));
+
 import ReceivingNext from './ReceivingNext';
 
 function harness(path: string) {
@@ -212,5 +215,19 @@ describe('manager rendering', () => {
     role.current = 'manager';
     harness('/receiving?order=ord-9');
     expect(screen.queryByTestId('highlight-elsewhere-note')).not.toBeInTheDocument();
+  });
+});
+
+// F-1081: the door is its own route chunk; /receiving fetches it while there
+// is signal, so a tap on a delivery in a cellar with none still opens it.
+describe('door chunk', () => {
+  it('is fetched ahead of the tap that opens it', async () => {
+    role.current = 'staff';
+    prefetchWhenOnline.mockClear();
+    harness('/receiving');
+    expect(prefetchWhenOnline).toHaveBeenCalledTimes(1);
+    const load = prefetchWhenOnline.mock.calls[0][0];
+    const mod = (await load()) as { default: unknown };
+    expect(mod.default).toBe((await import('./DoorNext')).default);
   });
 });
