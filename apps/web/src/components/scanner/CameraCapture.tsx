@@ -550,9 +550,9 @@ export function CameraCapture({
             <div className="w-20 h-20 bg-indigo-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
               <Camera className="w-10 h-10 text-indigo-600" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Scan Wine Menu</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Scan your menu</h3>
             <p className="text-gray-500 mb-6">
-              Use your camera for live AI detection, or upload a menu photo or PDF for full analysis.
+              Photograph the menu one page at a time, or upload a PDF — every page of a PDF is read.
             </p>
 
             <div className="flex flex-col gap-3">
@@ -578,19 +578,6 @@ export function CameraCapture({
                 {cameraError}
               </div>
             )}
-
-            <div className="mt-6 p-4 bg-purple-50 border border-purple-100 rounded-xl text-left">
-              <div className="flex items-start gap-3">
-                <Zap className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">AI Detection Pipeline</p>
-                  <p className="text-xs text-gray-600 mt-1">
-                    Live: RF-DETR boxes only → Capture: PaddleOCR (or DeepSeek-OCR on GPU) →
-                    Fields: Gemini (Qwen2.5-VL / RolmOCR under evaluation). OCR runs on shutter, not every frame.
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       ) : useCameraModal ? null : (

@@ -1,8 +1,17 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
 
-// Maps lowercased CSV/Excel header aliases → WineExtractItem field names
-const HEADER_MAP: Record<string, keyof WineExtractItem> = {
+// Maps CSV/Excel header aliases → WineExtractItem field names. A header is
+// read through normalizeMenuHeader first, so "Glass Price", "glass-price" and
+// "GLASS_PRICE" are one alias. A header not named here is NOT read: the web
+// preview names it as skipped before anything is imported (F-017), and keeps
+// its own copy of these keys (apps/web/src/lib/menuColumns.ts), which a web
+// test holds equal to this map.
+//
+// "price" alone is deliberately absent: it does not say whether it is the
+// glass or the bottle, and guessing would put a price on the wrong serve
+// (sim-run reconcile, menu-import-a decision 2).
+export const HEADER_MAP: Record<string, keyof WineExtractItem> = {
   name: "name",
   wine_name: "name",
   item: "name",
@@ -22,11 +31,23 @@ const HEADER_MAP: Record<string, keyof WineExtractItem> = {
   category: "category",
   type: "category",
   by_glass: "by_glass_price",
+  by_the_glass: "by_glass_price",
+  glass: "by_glass_price",
+  pour: "by_glass_price",
   glass_price: "by_glass_price",
   by_glass_price: "by_glass_price",
   bottle: "bottle_price",
   bottle_price: "bottle_price",
 };
+
+/**
+ * Lowercase, trimmed, with runs of spaces or hyphens read as one underscore.
+ * A leading byte-order mark (Excel's "CSV UTF-8" export writes one) is dropped,
+ * or the first column would never match.
+ */
+export function normalizeMenuHeader(header: string): string {
+  return header.replace(/^\uFEFF/, "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+}
 
 const PRICE_FIELDS = new Set<keyof WineExtractItem>([
   "by_glass_price",
@@ -41,7 +62,7 @@ export class CsvParserService {
     const lines = csvContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length < 2) return [];
 
-    const headers = this.parseLine(lines[0]).map((h) => h.toLowerCase().trim());
+    const headers = this.parseLine(lines[0]).map(normalizeMenuHeader);
     const fieldMap: Array<keyof WineExtractItem | null> = headers.map(
       (h) => HEADER_MAP[h] ?? null,
     );
@@ -85,9 +106,9 @@ export class CsvParserService {
     const headerRow = worksheet.getRow(1);
     const headers: string[] = [];
     headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      headers[colNumber - 1] = this.cellToString(cell.value)
-        .toLowerCase()
-        .trim();
+      headers[colNumber - 1] = normalizeMenuHeader(
+        this.cellToString(cell.value),
+      );
     });
     const fieldMap: Array<keyof WineExtractItem | null> = headers.map(
       (h) => HEADER_MAP[h] ?? null,

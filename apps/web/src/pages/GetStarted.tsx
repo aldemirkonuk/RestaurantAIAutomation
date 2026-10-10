@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, PenLine } from 'lucide-react'
+import { Camera, MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
@@ -15,6 +15,7 @@ import { getBrowserTimezone } from '../lib/browserTimezone'
 import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
+import { SCAN_ACCEPT, isImageFile, isScannable, isTabular, resetFileInput } from '../lib/uploadAccept'
 
 type Step = 'you' | 'restaurant' | 'menu' | 'reading'
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
@@ -79,6 +80,7 @@ export default function GetStarted() {
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [dropping, setDropping] = useState(false)
+  const menuPickerRef = useRef<HTMLInputElement>(null)
 
   const currency = useMemo(() => currencyForCountry(country), [country])
   // The browser's own zone, or undefined if it will not say (item 62,
@@ -183,24 +185,55 @@ export default function GetStarted() {
     setStep('reading')
   }
 
-  const ingestDroppedImage = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setMenuMethod('file')
+  /**
+   * One menu read from the drop zone, dropped or picked (F-010, F-012).
+   *
+   * A read is one photo or one PDF: each becomes its own menu version, and
+   * the first proof shows one. So several files are not read one and lost
+   * after it, as before, when only the first was taken and the rest dropped
+   * in silence. They are refused with the way through: one page at a time,
+   * or the whole menu as one PDF, every page of which is read. A PDF is read
+   * here too rather than bounced to another panel to be picked again; a
+   * spreadsheet goes to "Send a file", which shows its columns before it is
+   * read, and the owner is told so.
+   */
+  const ingestMenuFiles = async (files: FileList | File[] | null | undefined) => {
+    const picked = Array.from(files ?? [])
+    if (picked.length === 0) return
+    setNotice(null)
+    if (picked.length > 1) {
+      setError(
+        `That was ${picked.length} files, and none of them was read. Here a menu is read one photo at a time — drop one page, or send the whole menu as one PDF, where every page is read.`,
+      )
+      return
+    }
+    const [file] = picked
+    if (!isScannable(file)) {
+      if (isTabular(file)) {
+        setError(null)
+        setMenuMethod('file')
+        setNotice(`"${file.name}" is a spreadsheet. Choose it under Send a file below, to see its columns before it is read.`)
+      } else {
+        setError(`"${file.name}" is not a photo, a PDF or a spreadsheet, so it was not read.`)
+      }
       return
     }
     setSaving(true)
     setError(null)
     try {
-      const image = await new Promise<string>((resolve, reject) => {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result))
-        reader.onerror = () => reject(new Error('Could not read that photo.'))
+        reader.onerror = () => reject(new Error(`We could not open "${file.name}".`))
         reader.readAsDataURL(file)
       })
-      const result = await importMenu('scan', { imageBase64: image })
-      menuRead(result, { image })
+      // The gateway reads the file's own bytes; a "data:…;base64," prefix
+      // left on them is not a photo it can read.
+      const base64 = dataUrl.includes(',') ? dataUrl.slice(dataUrl.indexOf(',') + 1) : dataUrl
+      const result = await importMenu('scan', { imageBase64: base64 })
+      menuRead(result, { image: isImageFile(file) ? dataUrl : null })
     } catch (cause: any) {
-      setError(cause?.response?.data?.message || cause?.message || 'We could not read that photo.')
+      setError(cause?.response?.data?.message || cause?.message || 'We could not read that menu.')
     } finally {
       setSaving(false)
     }
@@ -343,9 +376,24 @@ export default function GetStarted() {
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
         <p className="mt-3 text-[#6d685f]">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
         {notice && <p role="status" className="mt-3 text-sm text-[#6d685f]">{notice}</p>}
+        <input
+          ref={menuPickerRef}
+          type="file"
+          accept={SCAN_ACCEPT}
+          multiple
+          aria-label="Choose the menu"
+          className="hidden"
+          onChange={(event) => {
+            const input = event.target
+            const files = Array.from(input.files ?? [])
+            resetFileInput(input)
+            void ingestMenuFiles(files)
+          }}
+        />
         <button
           type="button"
-          onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')}
+          disabled={saving}
+          onClick={() => menuPickerRef.current?.click()}
           onDragEnter={() => setDropping(true)}
           onDragOver={(event) => {
             event.preventDefault()
@@ -355,8 +403,8 @@ export default function GetStarted() {
           onDrop={(event) => {
             event.preventDefault()
             setDropping(false)
-            const file = event.dataTransfer.files?.[0]
-            if (file) void ingestDroppedImage(file)
+            if (saving) return
+            void ingestMenuFiles(event.dataTransfer.files)
           }}
           className={`mt-10 flex min-h-[220px] w-full flex-col items-center justify-center border border-dashed px-6 text-center ${
             dropping ? 'border-[#1a5e6b] bg-white' : 'border-[#211f1b]/25 bg-[#fbfaf7]'
@@ -364,10 +412,14 @@ export default function GetStarted() {
         >
           <span className="font-serif text-3xl">Drop the menu here</span>
           <span className="mt-3 text-sm text-[#6d685f]">
-            {saving ? 'Reading…' : 'A photo, or click to photograph.'}
+            {saving ? 'Reading…' : 'A photo of a page, or a PDF of the whole menu. Drop it, or click to choose it.'}
           </span>
         </button>
+        {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <button type="button" onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
+            <Camera className="h-3.5 w-3.5" /> Use the camera
+          </button>
           <button type="button" onClick={() => setMenuMethod(menuMethod === 'file' ? null : 'file')} className="text-[#1a5e6b] underline underline-offset-4">
             Send a file
           </button>
