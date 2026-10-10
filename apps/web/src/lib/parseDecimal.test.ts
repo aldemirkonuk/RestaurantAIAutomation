@@ -4,7 +4,7 @@
  * was refused everywhere.
  */
 import { describe, expect, it } from 'vitest'
-import { groupMarkForCountry, parseDecimal } from './parseDecimal'
+import { displayGroupMark, groupMarkForCountry, parseDecimal, readingsDisagree } from './parseDecimal'
 
 describe('parseDecimal', () => {
   it('reads a decimal comma and a decimal point alike', () => {
@@ -63,5 +63,33 @@ describe('groupMarkForCountry', () => {
     expect(groupMarkForCountry('FR')).toBeNull()
     expect(groupMarkForCountry(null)).toBeNull()
     expect(groupMarkForCountry('Türkiye')).toBeNull()
+  })
+})
+
+describe('readingsDisagree (F-799)', () => {
+  it('names both readings when the house and the screen group with different marks', () => {
+    // A Turkish house on an English screen: the house reads 1.25, the screen 1250.
+    expect(readingsDisagree('1,250', '.', ',')).toEqual([1.25, 1250])
+    expect(readingsDisagree('1.250', '.', ',')).toEqual([1250, 1.25])
+    // A house whose country is unknown reads a lone mark as decimal; the screen may not.
+    expect(readingsDisagree('1,250', null, ',')).toEqual([1.25, 1250])
+  })
+  it('is null when there is only one reading', () => {
+    expect(readingsDisagree('1,250', ',', ',')).toBeNull()
+    expect(readingsDisagree('1.250', '.', '.')).toBeNull()
+    expect(readingsDisagree('12,50', '.', ',')).toBeNull()
+    expect(readingsDisagree('1250', '.', ',')).toBeNull()
+    expect(readingsDisagree('1.250,00', '.', ',')).toBeNull()
+    expect(readingsDisagree('0,250', '.', ',')).toBeNull()
+    expect(readingsDisagree('1,250', '.', null)).toBeNull()
+    expect(readingsDisagree('abc', '.', ',')).toBeNull()
+  })
+})
+
+describe('displayGroupMark', () => {
+  it('reads the screen locale grouping mark', () => {
+    expect(displayGroupMark('en-US')).toBe(',')
+    expect(displayGroupMark('tr-TR')).toBe('.')
+    expect(displayGroupMark('fr-FR')).toBeNull()
   })
 })
