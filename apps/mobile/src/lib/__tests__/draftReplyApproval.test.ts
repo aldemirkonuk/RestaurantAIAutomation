@@ -27,6 +27,14 @@ describe('native draft send proof', () => {
     expect(s.onApproved).toHaveBeenCalledTimes(1);
     await s.control.confirm(); expect(s.request).toHaveBeenCalledTimes(2);
   });
+  it('says nothing was sent, not that an order was not approved, when the hold is offline (F-883)', async () => {
+    const s = setup();
+    s.request.mockReset().mockRejectedValueOnce(new TypeError('Network request failed'));
+    s.control.begin(false); await s.control.confirm();
+    const [, message] = s.state.mock.calls[s.state.mock.calls.length - 1];
+    expect(message).toContain('nothing was sent');
+    expect(message).not.toContain('order');
+  });
   it('never dispatches after the review is cancelled', async () => {
     const s = setup(); s.control.begin(false); s.control.cancel(); await s.control.confirm();
     expect(s.request).toHaveBeenCalledTimes(1); expect(s.onApproved).not.toHaveBeenCalled();

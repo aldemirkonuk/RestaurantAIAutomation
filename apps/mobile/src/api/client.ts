@@ -107,10 +107,13 @@ export async function api<T = unknown>(
       // No signal, a timeout, a 503 or a 429 on the refresh: the sign-in was
       // not refused, so keep it and let the caller try again (F-336). Signing
       // out here made a receiver type the password again at the truck door.
+      // The reason marks it as "no answer", not a server error, so the
+      // outbox never parks a receipt over it (F-882).
       assertScope();
       throw new ApiError(
         503,
         "Could not reach Mudavym. You are still signed in; try again in a moment.",
+        { reason: "refresh_not_reached" },
       );
     }
     assertScope();

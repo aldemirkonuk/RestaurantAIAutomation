@@ -17,6 +17,7 @@ export const FULL_ROTA_IS_FOR_MANAGERS =
 export const ROTA_DID_NOT_LOAD = "The rota didn't load. Try again in a moment.";
 export const NO_SHIFTS_TONIGHT = "No shifts scheduled today.";
 export const NOT_ON_TONIGHT = "You're not on the rota today.";
+export const ROTA_NOT_PUBLISHED = "This week's rota isn't published yet.";
 
 /**
  * Whether to ask for the whole rota. Only a phone the house names staff skips
@@ -58,7 +59,7 @@ export function readsFullRota(role: string | null | undefined, weekError: unknow
 export function resolveTonight(input: {
   role: string | null | undefined;
   week: Read<{ shifts?: any[]; timezone?: string | null }>;
-  mine: Read<{ mine?: any[]; timezone?: string | null }>;
+  mine: Read<{ mine?: any[]; timezone?: string | null; schedule?: { status?: string } | null }>;
   now: Date;
 }): TonightView {
   const { role, week, mine, now } = input;
@@ -79,7 +80,10 @@ export function resolveTonight(input: {
   if (mine.isLoading && !mine.data) return { kind: "loading", caption, note };
   if (mine.error || !mine.data) return { kind: "error", caption, note, message: ROTA_DID_NOT_LOAD };
   const shifts = shiftsOn(mine.data.mine, houseDateKey(now, mine.data.timezone));
+  // Staff are sent no shifts until the week is published (F-506), so an
+  // empty list then is not "you're off" (F-884).
+  const published = mine.data.schedule?.status === "published";
   return shifts.length === 0
-    ? { kind: "none", caption, note, message: NOT_ON_TONIGHT }
+    ? { kind: "none", caption, note, message: published ? NOT_ON_TONIGHT : ROTA_NOT_PUBLISHED }
     : { kind: "shifts", caption, note, shifts, own: true };
 }

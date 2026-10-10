@@ -1,6 +1,7 @@
 import {
   FULL_ROTA_IS_FOR_MANAGERS,
   NOT_ON_TONIGHT,
+  ROTA_NOT_PUBLISHED,
   ROTA_DID_NOT_LOAD,
   resolveTonight,
 } from "@/components/team/teamTonight";
@@ -58,12 +59,28 @@ describe("Team tab for staff (F-251)", () => {
     const view = resolveTonight({
       role: "manager",
       week: { ...idle, error: forbidden },
-      mine: { isLoading: false, error: null, data: { mine: [], timezone: LA } },
+      mine: {
+        isLoading: false,
+        error: null,
+        data: { mine: [], timezone: LA, schedule: { status: "published" } },
+      },
       now: THU_EVENING_LA,
     });
     expect(JSON.stringify(view)).not.toMatch(/set up/i);
     expect(view.note).toBe(FULL_ROTA_IS_FOR_MANAGERS);
     expect(view.kind === "none" && view.message).toBe(NOT_ON_TONIGHT);
+  });
+
+  it("says the rota is not published yet, not that they are off, before the week is out (F-884)", () => {
+    for (const schedule of [{ status: "draft" }, null]) {
+      const view = resolveTonight({
+        role: "staff",
+        week: idle,
+        mine: { isLoading: false, error: null, data: { mine: [], timezone: LA, schedule } },
+        now: THU_EVENING_LA,
+      });
+      expect(view.kind === "none" && view.message).toBe(ROTA_NOT_PUBLISHED);
+    }
   });
 
   it("shows a staff member their own shift tonight", () => {

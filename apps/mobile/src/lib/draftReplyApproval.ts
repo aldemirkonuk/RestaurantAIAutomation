@@ -12,6 +12,18 @@ function statusOf(error: unknown): number | null {
   const status = (error as { status?: unknown } | null)?.status;
   return typeof status === 'number' ? status : null;
 }
+/**
+ * F-883: offline, the letter's hold says nothing was sent. `heldApproval`'s
+ * own offline sentence names an order ("this order was not approved").
+ */
+export const LETTER_OFFLINE_REFUSAL =
+  "No connection, so nothing was sent. Sending needs a connection and is never saved for later. Hold again once you're back online.";
+
+/** fetch rejects with a TypeError offline, and the client aborts on timeout. */
+function isConnectionFailure(error: unknown): boolean {
+  return error instanceof TypeError || (error instanceof Error && error.name === 'AbortError');
+}
+
 type Request = (path: string, options: { method: 'POST'; scope: Scope; body: unknown; sealChallenge?: string }) => Promise<any>;
 
 /** The held letter and its scope stay in memory; no outbox receives a proof. */
@@ -29,9 +41,14 @@ export function draftReplyApproval(input: {
     issue: async () => {
       if (!scope.userId || !scope.restaurantId || !body.trim() || !recipient.trim())
         throw new Error('Review a letter and recipient in an unlocked branch before sending.');
-      const result = await input.request(`/procurement/orders/${orderId}/draft-seal-challenge`, {
-        method: 'POST', scope, body: { content: body, to: recipient, ccEmails },
-      });
+      let result: any;
+      try {
+        result = await input.request(`/procurement/orders/${orderId}/draft-seal-challenge`, {
+          method: 'POST', scope, body: { content: body, to: recipient, ccEmails },
+        });
+      } catch (error) {
+        throw isConnectionFailure(error) ? new Error(LETTER_OFFLINE_REFUSAL) : error;
+      }
       return result.challenge;
     },
     approve: async (challenge) => {

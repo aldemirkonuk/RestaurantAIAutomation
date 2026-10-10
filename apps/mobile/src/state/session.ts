@@ -309,10 +309,15 @@ export const useSession = create<SessionState>((set, get) => ({
       // token lives 15 minutes, so a cold start on the next shift finds it
       // lapsed: refresh it and read again (F-404). With no answer at all the
       // last known user stands in, so the house's tabs and queued work still
-      // run; the API client refreshes once the signal is back.
+      // run; the API client refreshes once the signal is back. A refresh that
+      // gets no answer (no signal, a timeout, a 503, a 429) is that same "no
+      // answer", never a sign-out (F-336, F-881).
       let me = access ? await readMe(access) : "expired";
       if (me === "expired" && refresh) {
-        const fresh = await refreshAccessToken();
+        const fresh = await refreshAccessToken().catch((err) => {
+          if (err instanceof RefreshNotReached) return null;
+          throw err;
+        });
         me = fresh ? await readMe(fresh) : null;
       }
       if (get().generation !== generation) return;
