@@ -10,6 +10,8 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { safeActionPath } from "./safe-action-path";
+import { readHouseMoney } from "../common/house-money";
+import { money, percentFigure } from "./producers/producer-copy";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
 import { DatabaseService } from "../database/database.service";
@@ -329,11 +331,17 @@ export class NotificationsService {
     providerName: string;
     price?: number;
   }): Promise<void> {
+    // The house's money and grouping, never a literal dollar (F-889).
+    const house = data.price
+      ? await readHouseMoney(this.databaseService.supabase, data.restaurantId)
+      : null;
     const payload: NotificationPayload = {
       type: "order_approval",
       title: "New order awaiting approval",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}${
-        data.price ? ` ($${data.price.toFixed(2)}/bottle)` : ""
+        data.price && house
+          ? ` (${money(data.price, house.currency, house.locale)} a bottle)`
+          : ""
       }`,
       data: {
         orderId: data.orderId,
@@ -494,15 +502,19 @@ export class NotificationsService {
     providerName: string;
   }): Promise<void> {
     const priceDiff = data.currentPrice - data.proposedPrice;
-    const percentage = ((priceDiff / data.currentPrice) * 100).toFixed(1);
     const direction = priceDiff > 0 ? "lower" : "higher";
+    // The house's money and grouping, never a literal dollar (F-889).
+    const { currency, locale } = await readHouseMoney(
+      this.databaseService.supabase,
+      data.restaurantId,
+    );
 
     const payload: NotificationPayload = {
       type: "price_negotiation",
       title: "New price offer",
-      body: `${data.providerName} offered $${data.proposedPrice.toFixed(2)}/bottle for ${
+      body: `${data.providerName} offered ${money(data.proposedPrice, currency, locale)} a bottle for ${
         data.wineName
-      } (${Math.abs(Number(percentage))}% ${direction})`,
+      } (${percentFigure(Math.abs(priceDiff / data.currentPrice), locale)} ${direction})`,
       data: {
         orderId: data.orderId,
         wineName: data.wineName,

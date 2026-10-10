@@ -58,6 +58,8 @@ function makeDb(opts: {
   /** ADR 0141: what the ownership probe (`select("id")`) sees. `null` = the
    *  item is not this restaurant's, which is a 403 and not a missing wine. */
   ownedInventory?: Row | null;
+  /** This house's money and country (`readHouseMoney`); none by default. */
+  restaurant?: Row;
   /** This house's menu lines for the wine (F-661); none by default. */
   menuItems?: Row[];
 }) {
@@ -106,6 +108,8 @@ function makeDb(opts: {
         }
         if (table === "menu_items")
           return { data: opts.menuItems ?? [], error: null };
+        if (table === "restaurants" && opts.restaurant)
+          return { data: [opts.restaurant], error: null };
         if (table === "procurement_order_items" && op === "select")
           return {
             data: shape === "one" ? (opts.orderLine ?? null) : [],
@@ -378,8 +382,18 @@ describe("createOrder — the total is worked out, never taken on the caller's w
   it("[REVERT-FAILS] says the refused totals in the order's own money, never as dollars (F-829)", async () => {
     const { db } = makeDb({ insertedOrder, inventory: inventoryRow });
     const refusal = service(db).createOrder("rest-1", USER, { ...big, currency: "TRY", totalCost: 1 });
-    await expect(refusal).rejects.toThrow(/\(1\.00 TRY\) is not what .* comes to \(30000\.00 TRY\)/);
+    await expect(refusal).rejects.toThrow(/\(TRY.1\.00\) is not what .* comes to \(TRY.30000\.00\)/);
     await expect(refusal).rejects.not.toThrow(/\$/);
+  });
+
+  it("[REVERT-FAILS] groups the refused totals the house's way, not en-US (F-889)", async () => {
+    const { db } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      restaurant: { currency: "TRY", country: "TR", timezone: "Europe/Istanbul" },
+    });
+    const refusal = service(db).createOrder("rest-1", USER, { ...big, currency: "TRY", totalCost: 1 });
+    await expect(refusal).rejects.toThrow("(₺1,00) is not what the quantity at the agreed price comes to (₺30.000,00)");
   });
 
   it("stores 600 × $50 as $30,000 when no total is sent, so the ceiling sees the real figure", async () => {

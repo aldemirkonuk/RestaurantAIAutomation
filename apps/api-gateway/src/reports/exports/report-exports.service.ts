@@ -615,6 +615,8 @@ export class ReportExportsService {
         // The same zone the till files its days on (`readHouseZone`), so
         // "Written" and the days in the file are one clock (F-413).
         timezone: houseFrame(house as { timezone?: string | null; country?: string | null }).zone,
+        // The printed file groups its figures the house's way (F-889).
+        locale: houseFrame(house as { timezone?: string | null; country?: string | null }).locale,
         withheldCount,
       };
       csv = renderCsv(doc, header);

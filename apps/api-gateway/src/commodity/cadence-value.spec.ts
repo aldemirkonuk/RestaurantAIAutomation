@@ -539,4 +539,25 @@ describe("the alert sentence has three money states and only three", () => {
     expect(out).toContain("UNMEASURED");
     expect(out).not.toMatch(/saved about/);
   });
+
+  it("[REVERT-FAILS] a lira house reads its money and percents its own way (F-889)", () => {
+    const v = valueBacktest(run(), HOUSE);
+    const clause = valueClause(v, "tr-TR");
+    expect(clause).toContain("saved about ₺199,02 on average");
+    expect(clause).not.toMatch(/199\.02|TRY/);
+    if (v.lossRate !== null) expect(clause).toMatch(/wrong way on %[0-9]+,[0-9] of past fires/);
+    const sentence = commodityAlertSentence({ ...FACTS, locale: "tr-TR" }, v);
+    expect(sentence).toContain("%36 above its twelve-observation median");
+    expect(sentence).toContain("saved about ₺199,02");
+
+    const small = valueBacktest(run(), { ...HOUSE, periodSpend: 30, locale: "tr-TR" });
+    expect(valueClause(small, "tr-TR")).toContain(
+      "spends about ₺30 a period on this item, and a fire only repays the ₺8 it costs to read above about ₺39.",
+    );
+  });
+
+  it("an en-US house reads its dollars grouped, symbol first (F-889)", () => {
+    const v = valueBacktest(run(), { ...HOUSE, periodSpend: 100000, currency: "USD" });
+    expect(valueClause(v, "en-US")).toMatch(/saved about \$[0-9]{1,3}(,[0-9]{3})+\.[0-9]{2} on average/);
+  });
 });

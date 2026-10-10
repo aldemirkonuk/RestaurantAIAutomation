@@ -143,4 +143,15 @@ describe("renderHtml (OD-81)", () => {
     expect(bare).toContain(`<dd>5,400.00</dd>`);
     expect(bare).toContain("House name not recorded");
   });
+
+  it("[REVERT-FAILS] groups the printed figures the house's way (F-889)", () => {
+    const lira = renderHtml(DOC, { ...HEADER, locale: "tr-TR" });
+    expect(lira).toContain(`<dt>Sell-price valuation</dt><dd>5.400,00 TRY</dd>`);
+    expect(lira).not.toContain("5,400.00");
+    expect(lira).toContain(">-12,50<");
+    expect(lira).toContain(">%40,0<");
+    // en-US by default, as before.
+    expect(html).toContain(">-12.50<");
+    expect(html).toContain(">40.0%<");
+  });
 });

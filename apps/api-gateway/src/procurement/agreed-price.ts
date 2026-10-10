@@ -46,6 +46,23 @@ import { currencyCode, roundMoney } from "../common/iso-4217";
 import { Uom, normalizeUom } from "./documents/document-types";
 
 /**
+ * The house's formats tag when this runtime formats with it, else null. Kept
+ * here rather than read from `common/house-money` because the web bundle
+ * imports this file, and that module would pull the house-frame chain in
+ * behind it (ADR 0219's watched paths).
+ */
+function housedLocale(tag: string | null | undefined): string | null {
+  if (typeof tag !== "string" || !tag.trim()) return null;
+  try {
+    return Intl.NumberFormat.supportedLocalesOf([tag.trim()]).length > 0
+      ? tag.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A figure in the money it is in (F-341) — "€420.00", "TRY 35.00", "$35.00".
  *
  * Every sentence in this file wrote a bare `$` until 2026-10-09, so a € or ₺
@@ -55,24 +72,36 @@ import { Uom, normalizeUom } from "./documents/document-types";
  * grouped, as these sentences always printed it ("× $2100.00"); the web twin is
  * `fmtWorking` in `pages/orders/next/format.ts`. A code-led figure keeps Intl's
  * no-break space ("TRY\u00a035.00"), so a letter never wraps the code away.
+ *
+ * `locale` is the house's formats tag (`readHouseMoney`, ADR 0207). Given, the
+ * figure is grouped and marked the house's way — a lira house reads
+ * "₺30.000,00", where en-US printed "TRY 30000.00", 30 by its own mark (F-889).
+ * Absent keeps the old ungrouped en-US shape, so no recorded sentence moves.
  */
 export function moneyIn(
   amount: number,
   currency: string | null | undefined,
-  opts: { digits?: number; unrecorded?: "say" | "bare" } = {},
+  opts: {
+    digits?: number;
+    unrecorded?: "say" | "bare";
+    locale?: string | null;
+  } = {},
 ): string {
   const code = currencyCode(currency);
+  const tag = housedLocale(opts.locale);
+  const housed = tag !== null;
+  const grouping = housed ? {} : { useGrouping: false };
   const shape =
     opts.digits === undefined
-      ? { useGrouping: false }
+      ? grouping
       : {
-          useGrouping: false,
+          ...grouping,
           minimumFractionDigits: opts.digits,
           maximumFractionDigits: opts.digits,
         };
   if (code) {
     try {
-      return new Intl.NumberFormat("en-US", {
+      return new Intl.NumberFormat(tag ?? "en-US", {
         style: "currency",
         currency: code,
         ...shape,
@@ -82,7 +111,12 @@ export function moneyIn(
       // beside the number still names the money.
     }
   }
-  const figure = amount.toFixed(opts.digits ?? 2);
+  const figure = housed
+    ? new Intl.NumberFormat(tag ?? "en-US", {
+        minimumFractionDigits: opts.digits ?? 2,
+        maximumFractionDigits: opts.digits ?? 2,
+      }).format(amount)
+    : amount.toFixed(opts.digits ?? 2);
   if (code) return `${figure} ${code}`;
   return opts.unrecorded === "bare"
     ? figure

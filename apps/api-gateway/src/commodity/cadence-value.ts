@@ -50,6 +50,12 @@
  * on the same recorded bytes produces the same numbers a year from now.
  */
 
+import { houseMoney } from "../common/house-money";
+import {
+  money,
+  percent,
+  percentFigure,
+} from "../notifications/producers/producer-copy";
 import {
   DEFAULT_BASELINE_K,
   OBSERVATIONS_PER_YEAR,
@@ -216,6 +222,11 @@ export interface CarryingCostParams {
   shelfLifeDays: number | null;
   /** Days in one period of this series. 30 for a monthly index, 1 for a daily. */
   daysPerPeriod: number;
+  /**
+   * The house's formats tag (`readHouseMoney`, ADR 0207). Given, money is
+   * written the house's way; absent keeps the old `1240 TRY` (F-889).
+   */
+  locale?: string | null;
 }
 
 export interface CadenceValuation {
@@ -698,7 +709,7 @@ export function valueBacktest(
       withheldDetail:
         minimumPeriodSpend === null
           ? `Buying ahead on this signal loses money at this house's own carrying cost whatever it spends on the item, so no size of line would repay the interruption. Nothing is claimed as a saving.`
-          : `This house spends about ${params.periodSpend.toFixed(0)} ${params.currency} a period on this item, and a fire only repays the ${params.attentionPerFire.toFixed(0)} ${params.currency} it costs to read above about ${minimumPeriodSpend.toFixed(0)}. The saving is real and smaller than the reading.`,
+          : `This house spends about ${said(params.periodSpend, params.currency, params.locale, 0)} a period on this item, and a fire only repays the ${said(params.attentionPerFire, params.currency, params.locale, 0)} it costs to read above about ${params.locale ? said(minimumPeriodSpend, params.currency, params.locale, 0) : minimumPeriodSpend.toFixed(0)}. The saving is real and smaller than the reading.`,
     };
   }
 
@@ -747,15 +758,19 @@ export function moneyState(v: CadenceValuation): MoneyState {
  * the word the founder's own instruction uses, and it is what a manager should
  * be able to search the screen for.
  */
-export function valueClause(v: CadenceValuation): string {
-  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+export function valueClause(
+  v: CadenceValuation,
+  locale?: string | null,
+): string {
+  const pct = (n: number) =>
+    locale ? percentFigure(n, locale) : `${(n * 100).toFixed(1)}%`;
   const cover = `${v.horizon} period${v.horizon === 1 ? "" : "s"} of cover`;
 
   if (moneyState(v) === "stated") {
     const money = v.moneyPerFire as number;
     return (
       `On this series' own recorded history, buying ${cover} on a fire like this one would have ` +
-      `saved about ${money.toFixed(2)} ${v.currency} on average, after what holding the goods costs this house and what reading this costs. ` +
+      `saved about ${said(money, v.currency as string, locale, 2)} on average, after what holding the goods costs this house and what reading this costs. ` +
       `It went the wrong way on ${v.lossRate === null ? "an unmeasured share" : pct(v.lossRate)} of past fires.`
     );
   }
@@ -807,6 +822,8 @@ export interface AlertSentenceFacts {
   /** The budget the house chose, and the rate the rule actually delivered. */
   firesPerYear: number;
   realisedFiresPerYear: number | null;
+  /** The house's formats tag (`readHouseMoney`); absent keeps the old shape. */
+  locale?: string | null;
 }
 
 /**
@@ -826,7 +843,8 @@ export function commodityAlertSentence(
   facts: AlertSentenceFacts,
   v: CadenceValuation,
 ): string {
-  const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
+  const pct = (n: number) =>
+    facts.locale ? percent(n, facts.locale) : `${(n * 100).toFixed(0)}%`;
   const shelf =
     facts.shelfLifeDays === null
       ? "Nobody has typed how long this house can hold it, so nothing here says to buy ahead."
@@ -839,6 +857,24 @@ export function commodityAlertSentence(
     `${facts.seriesLabel} is ${pct(facts.move)} above its twelve-observation median: ${facts.latest} against a median of ${facts.baseline}. ` +
     `${facts.issuer}, issued ${facts.issuedOn}, ${facts.unit}, ${facts.tradeLevel}. ` +
     `You mapped this series to ${facts.itemLabel}. ${shelf} ` +
-    `${valueClause(v)} ${rate}`
+    `${valueClause(v, facts.locale)} ${rate}`
   );
+}
+
+/**
+ * A figure in the house's money. With the house's formats tag it reads the
+ * house's way — `₺1.240,50`, `$1,240.50` — where it printed `1240.50 TRY`,
+ * ungrouped with the code after the figure (F-889). Without one, the old shape,
+ * so a sentence nobody gave a locale does not move.
+ */
+function said(
+  value: number,
+  currency: string,
+  locale: string | null | undefined,
+  digits: 0 | 2,
+): string {
+  if (!locale) return `${value.toFixed(digits)} ${currency}`;
+  return digits === 0
+    ? houseMoney(value, currency, { locale })
+    : money(value, currency, locale);
 }

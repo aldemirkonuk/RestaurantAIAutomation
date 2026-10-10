@@ -584,9 +584,36 @@ describe("the PATCH route is held to the same table", () => {
     );
     expect(err.getStatus()).toBe(400);
     expect(err.getResponse().reason).toBe("total_disagrees_with_price");
-    expect(err.getResponse().message).toMatch(/\$1\.00\).*\$30000\.00/);
+    // No money recorded on the order: the figures stand bare, never a
+    // guessed dollar (F-889).
+    expect(err.getResponse().message).toMatch(/\(1\.00\).*\(30000\.00\)/);
+    expect(err.getResponse().message).not.toMatch(/\$/);
     expect(h.order.total_cost).toBe(30000);
     expect(h.updates.filter((u) => u.table === "procurement_orders")).toEqual([]);
+  });
+
+  it("[REVERT-FAILS] says a lira order's refused totals in lira, grouped the house's way (F-889)", async () => {
+    const h = await makeService(
+      {
+        status: ProcurementOrderStatus.PENDING,
+        quantity: 600,
+        bottles_total: 600,
+        final_price: 50,
+        total_cost: 30000,
+        currency: "TRY",
+      },
+      [],
+      { restaurants: [{ currency: "TRY", country: "TR", timezone: "Europe/Istanbul" }] },
+    );
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { totalCost: 1 } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getResponse().reason).toBe("total_disagrees_with_price");
+    expect(err.getResponse().message).toContain("(₺1,00)");
+    expect(err.getResponse().message).toContain("(₺30.000,00)");
+    expect(err.getResponse().message).not.toMatch(/\$/);
   });
 
   it("[REVERT-FAILS] a new price works the total out again, so approval tests what it seals (F-743)", async () => {
