@@ -756,8 +756,11 @@ export function computeMatch(input: MatchInput): MatchResult {
   else if (billableReceived < (invoiceQty as number)) verdict = "qty_short";
   else if (shortShipped) verdict = "short_shipped";
   else if (rejectedQty > 0) verdict = "rejected";
-  else if (currencyDiffers) verdict = "currency_differs";
+  // A short delivery stays the headline even when the money differs: "All N
+  // accepted" on 22 of 24 was false (F-776). The held price is still said,
+  // after the headline, by the not-compared sentence below.
   else if (!fullyFulfilled) verdict = "partial";
+  else if (currencyDiffers) verdict = "currency_differs";
   else verdict = "matched";
 
   const creditDue =

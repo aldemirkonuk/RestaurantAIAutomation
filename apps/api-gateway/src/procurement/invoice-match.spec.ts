@@ -193,6 +193,23 @@ describe("computeMatch", () => {
       expect(r.summary).toBe(`Billed for 24 but only 22 arrived — 2 short. ${notCompared}`);
     });
 
+    // F-776: currency_differs outranked partial, so 22 of 24 billed in another
+    // money read "All 22 accepted".
+    it("keeps a short delivery the headline when the money differs", () => {
+      const r = computeMatch({
+        ...base,
+        poCurrency: "USD",
+        invoiceCurrency: "EUR",
+        invoiceQty: 22,
+        acceptedQty: 22,
+      });
+
+      expect(r.verdict).toBe("partial");
+      expect(r.backorderQty).toBe(2);
+      expect(r.summary).toBe(`22 of 24 accepted, 2 still outstanding. ${notCompared}`);
+      expect(r.summary).not.toContain("All 22 accepted");
+    });
+
     it("compares as before when either money is not recorded", () => {
       const r = computeMatch({ ...base, poCurrency: "USD", invoiceUnitPrice: 24 });
 

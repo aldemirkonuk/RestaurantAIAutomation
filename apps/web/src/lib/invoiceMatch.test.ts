@@ -56,6 +56,14 @@ describe('invoiceMatch (web mirror)', () => {
     expect(sameFigure.summary).not.toContain('at the agreed price')
   })
 
+  // F-776: a short delivery billed in another money read "All 22 accepted" on an order of 24.
+  it('keeps a short delivery the headline when the money differs', () => {
+    const short = computeMatch({ ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', invoiceQty: 22, acceptedQty: 22 })
+    expect(short.verdict).toBe('partial')
+    expect(short.summary).toMatch(/^22 of 24 accepted, 2 still outstanding\. The price was not compared/)
+    expect(short.summary).not.toContain('All 22 accepted')
+  })
+
   it('blocks on any price deviation until a reason is given', () => {
     const flagged = computeMatch({ ...base, invoiceUnitPrice: 22.01 })
     expect(flagged.verdict).toBe('price_variance')
@@ -164,6 +172,7 @@ describe('invoiceMatch parity with the API engine', () => {
     ['another money, same figure', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY' }],
     ['another money, different figure', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', invoiceUnitPrice: 770 }],
     ['another money and a short ship', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', acceptedQty: 22 }],
+    ['another money and a short delivery', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', invoiceQty: 22, acceptedQty: 22 }],
     ['one money not recorded', { ...base, poCurrency: 'EUR', invoiceUnitPrice: 24 }],
     ['free goods and a real short ship', { orderedQty: 24, poUnitPrice: 22, shippedQty: 24, invoiceQty: 21, invoiceUnitPrice: 22, acceptedQty: 22, freeGoodsQty: 1 }],
   ]
