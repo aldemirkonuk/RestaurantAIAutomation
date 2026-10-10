@@ -24,7 +24,13 @@ import {
   useOrderConversations,
 } from "@/api/queries";
 import { OrderApprovalSeal } from "@/components/supply/OrderApprovalSeal";
-import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
+import {
+  DELIVERED_WAITING_WORDS,
+  NOT_SAVED_WORDS,
+  useOutbox,
+  waitingFor,
+} from "@/state/outbox";
+import { useSession } from "@/state/session";
 
 export default function OrderDetailScreen() {
   const router = useRouter();
@@ -32,15 +38,22 @@ export default function OrderDetailScreen() {
   const { data: order, isLoading, isError, refetch } = useOrder(id);
   const { data: conversations } = useOrderConversations(id);
   const house = useHouseMoneyFrame();
+  // The delivery mark still on this phone (F-956): shown under the order, and
+  // the button stays shut so a second tap cannot queue it again.
+  const user = useSession((s) => s.user);
+  const deliverPath = `/procurement/orders/${id}/deliver`;
+  const deliverWaiting = useOutbox(
+    (s) => waitingFor(s.entries, user, deliverPath) != null,
+  );
 
   const approved = useCallback(() => {
     void refetch();
   }, [refetch]);
 
   const markDelivered = () => {
-    if (!order) return;
+    if (!order || deliverWaiting) return;
     const saved = useOutbox.getState().enqueue({
-      path: `/procurement/orders/${order.id}/deliver`,
+      path: deliverPath,
       label: "Marked delivered",
       graceMs: 0,
       invalidate: [
@@ -169,19 +182,30 @@ export default function OrderDetailScreen() {
               {canApprove ? (
                 <OrderApprovalSeal orderId={order.id} onApproved={approved} />
               ) : canDeliver ? (
-                <PressableScale
-                  onPress={markDelivered}
-                  style={{
-                    backgroundColor: color.fill,
-                    borderRadius: radius.control,
-                    paddingVertical: 13,
-                    alignItems: "center",
-                  }}
-                >
-                  <AppText variant="bodyMedium">
-                    It arrived — mark delivered
-                  </AppText>
-                </PressableScale>
+                <View style={{ gap: space.sm }}>
+                  <PressableScale
+                    onPress={markDelivered}
+                    disabled={deliverWaiting}
+                    style={{
+                      backgroundColor: color.fill,
+                      borderRadius: radius.control,
+                      paddingVertical: 13,
+                      alignItems: "center",
+                      opacity: deliverWaiting ? 0.6 : 1,
+                    }}
+                  >
+                    <AppText variant="bodyMedium">
+                      {deliverWaiting
+                        ? "Saved on this phone"
+                        : "It arrived — mark delivered"}
+                    </AppText>
+                  </PressableScale>
+                  {deliverWaiting ? (
+                    <AppText variant="caption" tone="tertiary" align="center">
+                      {DELIVERED_WAITING_WORDS}
+                    </AppText>
+                  ) : null}
+                </View>
               ) : receiveLabel ? (
                 <PressableScale
                   onPress={() =>

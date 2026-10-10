@@ -234,6 +234,37 @@ export function waitingFeedItems(
 }
 
 /**
+ * This person's entry for one action in this house that has not gone through
+ * and was not refused, or null (F-956, F-951). A screen reads it to show the
+ * queued mark and to refuse the same action a second time while it waits: a
+ * second receipt for one order would book its bottles twice.
+ */
+export function waitingFor(
+  entries: OutboxEntry[],
+  user: { id?: string; restaurantId?: string } | null,
+  path: string,
+): OutboxEntry | null {
+  if (!user?.id || !user.restaurantId) return null;
+  return (
+    entries.find(
+      (e) =>
+        e.status !== "failed" &&
+        e.path === path &&
+        e.actorUserId === user.id &&
+        e.restaurantId === user.restaurantId,
+    ) ?? null
+  );
+}
+
+/** Under an order whose delivery mark waits on this phone (F-956). */
+export const DELIVERED_WAITING_WORDS =
+  "Marked delivered on this phone. It sends when the phone has signal again.";
+
+/** On the receive screen when this order's count already waits (F-951). */
+export const RECEIPT_WAITING_WORDS =
+  "A count for this delivery is already saved on this phone and waits to send. A second count is not taken, so the bottles are not booked twice.";
+
+/**
  * What signing out leaves behind on this phone (F-952): every entry of this
  * person's that has not gone through, waiting or refused. It stays here and sends only when they sign in on
  * this phone again; nobody else who signs in sees it.

@@ -35,6 +35,7 @@ import {
   unsentAtSignOut,
   useOutbox,
   waitingFeedItems,
+  waitingFor,
   waitingWork,
   waitingWords,
 } from "../outbox";
@@ -422,4 +423,22 @@ it("counts what signing out leaves on this phone and says so (F-952)", () => {
     "1 thing you did has not been sent yet. It stays on this phone and sends only when you sign in here again; nobody else who signs in will see it.",
   );
   expect(signOutWords(2)).toMatch(/^2 things you did have not been sent yet\. They stay/);
+});
+
+it("finds this person's waiting entry for one action in this house (F-956, F-951)", () => {
+  const path = "/procurement/orders/o1/verify-receipt";
+  const entries = [
+    { id: "a", actorUserId: "alice", restaurantId: "r1", status: "failed", path },
+    { id: "b", actorUserId: "bob", restaurantId: "r1", status: "pending", path },
+    { id: "c", actorUserId: "alice", restaurantId: "r2", status: "pending", path },
+    { id: "d", actorUserId: "alice", restaurantId: "r1", status: "pending", path: "/procurement/orders/o2/verify-receipt" },
+  ] as any;
+  const alice = { id: "alice", restaurantId: "r1" };
+  // Refused, another person's, another house's, another order's: none waits here.
+  expect(waitingFor(entries, alice, path)).toBeNull();
+  for (const status of ["holding", "pending", "inflight"]) {
+    const waiting = [...entries, { id: "e", actorUserId: "alice", restaurantId: "r1", status, path }];
+    expect(waitingFor(waiting, alice, path)?.id).toBe("e");
+  }
+  expect(waitingFor(entries, null, path)).toBeNull();
 });

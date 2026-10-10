@@ -14,7 +14,12 @@ import { BinBreath } from "@/components/cellar/BinBreath";
 import { color, font, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
 import { feedKey, pulseKey, useOrder } from "@/api/queries";
-import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
+import {
+  NOT_SAVED_WORDS,
+  RECEIPT_WAITING_WORDS,
+  useOutbox,
+  waitingFor,
+} from "@/state/outbox";
 import { WaitingStrip } from "@/components/today/WaitingStrip";
 import {
   BOTTLE_BARCODE_TYPES,
@@ -110,6 +115,14 @@ export default function ReceivingScreen() {
   const [sweepKey, setSweepKey] = useState(0);
   const [breatheKey, setBreatheKey] = useState(0);
   const [sealed, setSealed] = useState(false);
+  // A count for this order already waiting on this phone (F-951): a second one
+  // would book the same bottles twice, so it is refused while the first waits.
+  const user = useSession((s) => s.user);
+  const receiptPath = `/procurement/orders/${orderId}/verify-receipt`;
+  const receiptWaiting = useOutbox(
+    (s) => waitingFor(s.entries, user, receiptPath) != null,
+  );
+  const alreadyCounted = receiptWaiting && !sealed;
 
   const match = useMemo(
     () =>
@@ -176,8 +189,12 @@ export default function ReceivingScreen() {
 
   const commit = useCallback(() => {
     if (!order || sealed || match.requiresOverride || !canCommit) return;
+    if (waitingFor(useOutbox.getState().entries, user, receiptPath)) {
+      Alert.alert(RECEIPT_WAITING_WORDS);
+      return;
+    }
     const saved = useOutbox.getState().enqueue({
-      path: `/procurement/orders/${orderId}/verify-receipt`,
+      path: receiptPath,
       body: {
         // Steppers and camera both count individual bottles. Invoice figures
         // are also explicitly entered as bottles; no order-unit fallback.
@@ -228,6 +245,8 @@ export default function ReceivingScreen() {
     match.requiresOverride,
     match.backorderQty,
     orderId,
+    user,
+    receiptPath,
     invoiceQty,
     invoiceUnitPrice,
     invoiceCurrency,
@@ -836,7 +855,11 @@ export default function ReceivingScreen() {
             <PressableScale
               onPress={commit}
               disabled={
-                sealed || !order || match.requiresOverride || !canCommit
+                sealed ||
+                alreadyCounted ||
+                !order ||
+                match.requiresOverride ||
+                !canCommit
               }
               style={{
                 backgroundColor: match.requiresOverride
@@ -845,16 +868,21 @@ export default function ReceivingScreen() {
                 borderRadius: radius.control,
                 paddingVertical: 15,
                 alignItems: "center",
-                opacity: sealed ? 0.6 : 1,
+                opacity: sealed || alreadyCounted ? 0.6 : 1,
               }}
             >
               <AppText
                 variant="bodyMedium"
                 tone={match.requiresOverride ? "tertiary" : "onWine"}
               >
-                {sealed ? "Saved on this phone" : primaryLabel}
+                {sealed || alreadyCounted ? "Saved on this phone" : primaryLabel}
               </AppText>
             </PressableScale>
+            {alreadyCounted ? (
+              <AppText variant="caption" tone="tertiary" align="center">
+                {RECEIPT_WAITING_WORDS}
+              </AppText>
+            ) : null}
             {/* Earlier receipts still on this phone show here before this
                 one is added, and on Today after the screen closes (F-407). */}
             <WaitingStrip />
