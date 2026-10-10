@@ -158,6 +158,10 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     const r = await svc.doorReceivedSoFar(REST, "o1");
     expect(r.receivedQtyBottles).toBe(72);
     expect(r.onShelfBottles).toBeNull();
+    // No door event, but the order was checked: the web must not read the
+    // unread ledger as "nothing refused" (F-861).
+    expect(r.doorEventCount).toBe(0);
+    expect(r.checked).toBe(true);
   });
 
   it("[REVERT-FAILS] reads the events, not the ledger, after a verification", async () => {
@@ -195,6 +199,27 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     expect(r.receivedQtyBottles).toBe(70);
     expect(r.receivedBoxes).toBe(5);
     expect(r.receivedLooseBottles).toBe(10);
+  });
+
+  it("orders two events entered in the same instant by id, whatever order the read returns (F-862)", async () => {
+    // Same created_at: id "a" (door, 60) folds before id "b" (check, 58), so
+    // the check is the checkpoint — 58, never 58 + 60.
+    const at = "2026-10-01T09:00:00Z";
+    const svc = new ReceivingService(
+      fakeDb(
+        base({ procurement_receipt_events: [checked("b", 58, at), doorAt("a", 60, at)] }),
+      ),
+    );
+    const r = await svc.doorReceivedSoFar(REST, "o1");
+    expect(r.receivedQtyBottles).toBe(58);
+  });
+
+  it("says the order was not checked when only the door counted it (F-861)", async () => {
+    const svc = new ReceivingService(
+      fakeDb(base({ procurement_receipt_events: [doorEvent("e1", 24)] })),
+    );
+    const r = await svc.doorReceivedSoFar(REST, "o1");
+    expect(r.checked).toBe(false);
   });
 
   it("refuses to state earlier trucks when the latest verification states no count in bottles", async () => {

@@ -59,6 +59,7 @@ vi.mock('@/services/api/receiving', () => ({
       receivedBoxes: 0,
       receivedLooseBottles: 0,
       doorEventCount: 0,
+      checked: false,
     }),
     uploadDocument,
   },
