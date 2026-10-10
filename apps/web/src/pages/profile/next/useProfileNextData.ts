@@ -378,6 +378,7 @@ export function useProfileNextData() {
     refreshBranches,
     logout,
     refreshUser,
+    deleteAccountAndSignOut,
   } = useAuth();
 
   /**
@@ -981,10 +982,12 @@ export function useProfileNextData() {
     await refreshBranches();
   }, [rid, refreshBranches]);
 
+  // The same cleanup as signing out (F-703): a shared device must not keep the
+  // deleted person's houses, cached reads or unsent changes.
   const deleteAccount = useCallback(async () => {
-    await apiClient.delete('/auth/me');
+    await deleteAccountAndSignOut();
     window.location.href = '/login';
-  }, []);
+  }, [deleteAccountAndSignOut]);
 
   return {
     /* identity */

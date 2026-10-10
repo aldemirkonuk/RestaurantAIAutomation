@@ -81,6 +81,7 @@ import {
 import { roleInHouse, tokenHouse } from "./house-role";
 import { isLiveMembership } from "../common/tenant/live-membership";
 import { canonicalOrigin } from "../communications/email-templates/template-config";
+import { maskEmail } from "../common/log-mask";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import {
   HOUSE_ACCESS_ENDED,
@@ -527,7 +528,7 @@ export class AuthService {
       credentials.password,
     );
 
-    this.logger.log(`User logged in: ${user.email}`);
+    this.logger.log(`User logged in: ${user.user_id}`);
 
     return this.signIn(user, false, credentials.lastHouses, signedInNow());
   }
@@ -727,7 +728,7 @@ export class AuthService {
     }
 
     this.logger.warn(
-      `DEV_AUTH_BYPASS active — issuing a real session for ${email} (localhost only).`,
+      `DEV_AUTH_BYPASS active — issuing a real session for ${maskEmail(email)} (localhost only).`,
     );
     // `true` here signs `emailVerified: true` and a `devBypass: true` marker.
     // Without it the session is unusable for its one purpose: the bypass
@@ -755,7 +756,7 @@ export class AuthService {
       name: googleUser.name,
     });
 
-    this.logger.log(`Google OAuth login: ${user.email}`);
+    this.logger.log(`Google OAuth login: ${user.user_id}`);
 
     return this.signIn(user, false, lastHouses, signedInNow());
   }
@@ -777,7 +778,7 @@ export class AuthService {
       name: microsoftUser.name,
     });
 
-    this.logger.log(`Microsoft OAuth login: ${user.email}`);
+    this.logger.log(`Microsoft OAuth login: ${user.user_id}`);
 
     return this.signIn(user, false, lastHouses, signedInNow());
   }
@@ -2195,11 +2196,11 @@ export class AuthService {
 
       if (!result.success) {
         this.logger.warn(
-          `Verification email not delivered to ${email}: ${result.error}`,
+          `Verification email not delivered to ${maskEmail(email)}: ${result.error}`,
         );
       } else {
         this.logger.log(
-          `Verification email sent to ${email} (id: ${result.messageId})`,
+          `Verification email sent to ${maskEmail(email)} (id: ${result.messageId})`,
         );
       }
     } catch (err) {
@@ -4201,7 +4202,7 @@ export class AuthService {
     // exactly the timing/branching oracle enumeration relies on.
     if (!user) {
       this.logger.log(
-        `Password reset requested for unknown email (no-op): ${normalizedEmail}`,
+        `Password reset requested for unknown email (no-op): ${maskEmail(normalizedEmail)}`,
       );
       return { sent: true };
     }
@@ -4223,7 +4224,7 @@ export class AuthService {
         // email exists — the whole reason this method is enumeration-safe is
         // that every branch produces the same response.
         this.logger.log(
-          `Password reset re-requested within cooldown for ${normalizedEmail} — suppressing duplicate email`,
+          `Password reset re-requested within cooldown for ${maskEmail(normalizedEmail)} — suppressing duplicate email`,
         );
         return { sent: true };
       }
@@ -4242,7 +4243,7 @@ export class AuthService {
 
     if (insertErr || !reset) {
       this.logger.error(
-        `Failed to create password reset row for ${normalizedEmail}: ${insertErr?.message}`,
+        `Failed to create password reset row for ${maskEmail(normalizedEmail)}: ${insertErr?.message}`,
       );
       // Do not leak the failure to the caller — same reasoning as above.
       return { sent: true };
@@ -4265,7 +4266,7 @@ export class AuthService {
       });
       if (!result.success) {
         this.logger.warn(
-          `Password reset email not delivered to ${normalizedEmail}: ${result.error}`,
+          `Password reset email not delivered to ${maskEmail(normalizedEmail)}: ${result.error}`,
         );
       }
     } catch (err) {

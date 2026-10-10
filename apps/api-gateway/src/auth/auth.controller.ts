@@ -46,6 +46,7 @@ import {
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
+import { maskEmail } from "../common/log-mask";
 import { Request } from "express";
 import { createHash } from "crypto";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
@@ -77,7 +78,7 @@ export class AuthController {
   @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
-    this.logger.log(`Login attempt: ${credentials.email}`);
+    this.logger.log(`Login attempt: ${maskEmail(credentials.email)}`);
     const tokens = await this.authService.login(credentials);
     return {
       success: true,
@@ -516,7 +517,7 @@ export class AuthController {
   @Post("register/restaurant")
   @Public()
   async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
-    this.logger.log(`Path B registration attempt: ${dto.email}`);
+    this.logger.log(`Path B registration attempt: ${maskEmail(dto.email)}`);
     const tokens = await this.authService.registerRestaurant(dto);
     return {
       success: true,

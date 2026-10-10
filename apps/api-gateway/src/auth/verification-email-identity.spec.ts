@@ -93,7 +93,7 @@ describe("queueEmailVerification — account mail identity (ADR 0143)", () => {
     ).resolves.toBeUndefined();
 
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("Verification email not delivered to third@example.test"),
+      expect.stringContaining("Verification email not delivered to t•••@example.test"),
     );
   });
 });

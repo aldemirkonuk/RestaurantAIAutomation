@@ -349,6 +349,15 @@ describe('the former-staff history', () => {
     expect(screen.getByTestId('former-staff')).not.toHaveTextContent(/could not be read/);
   });
 
+  it('says the removal line in the record keeps the name after the rest is deleted (F-704)', async () => {
+    api.getFormerStaff.mockResolvedValue({ retentionYears: 5, money: MONEY, people: [] });
+    render(wrap(<FormerStaffSheet onClose={() => {}} />));
+    await screen.findByTestId('former-staff-empty');
+    expect(
+      screen.getByText(/stays here for 5 years after the removal and is then deleted/),
+    ).toHaveTextContent(/says they were removed keeps their name and position after that/);
+  });
+
   it('says a name that was not recorded, and a cost that cannot be known, as such', async () => {
     api.getFormerStaff.mockResolvedValue({
       retentionYears: 5,
