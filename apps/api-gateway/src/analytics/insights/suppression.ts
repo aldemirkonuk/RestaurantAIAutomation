@@ -51,6 +51,8 @@
  * anything, and a key that IS generated can never be silently unmatched.
  */
 
+import { houseToday } from "../../common/house-day";
+
 export const SUPPRESSION_SEP = "#";
 export const ANY = "*";
 
@@ -230,9 +232,10 @@ export type FiringPeriod = "day" | "week" | "month";
 
 /**
  * The grain of a firing: `fire:day:2026-09-21`, `fire:week:2026-W39`,
- * `fire:month:2026-09`. Read in UTC, like every business date this engine
- * computes (`getUTCDay` in the generator); there is no house time zone in the
- * analytics path to read instead.
+ * `fire:month:2026-09`. Read on the house's clock when the caller passes
+ * its zone (F-384, ADR 0296): on UTC a card put away in a Los Angeles
+ * afternoon came back at 17:00, when UTC's day turned. With no zone it is
+ * read in UTC, as before.
  *
  * Deliberately NOT the `d:`/`m:` data grains. Those name the days the
  * NUMBERS cover, and `dateOfGrain` offers to exclude such a day from the
@@ -258,9 +261,16 @@ export function isoWeekOf(at: Date): { year: number; week: number } {
   return { year: d.getUTCFullYear(), week };
 }
 
-export function firingGrain(period: FiringPeriod, at: Date): string {
-  const t = at.getTime();
+export function firingGrain(
+  period: FiringPeriod,
+  instant: Date,
+  zone?: string | null,
+): string {
+  const t = instant.getTime();
   if (!Number.isFinite(t)) throw new Error("a firing needs a real instant");
+  // The house's calendar date, held as that date's UTC midnight, so the
+  // UTC reads below name the house's day, week and month.
+  const at = zone ? new Date(`${houseToday(zone, instant)}T00:00:00Z`) : instant;
   const y = at.getUTCFullYear();
   if (period === "day")
     return `${FIRING_GRAIN_PREFIX}:day:${y}-${pad2(at.getUTCMonth() + 1)}-${pad2(at.getUTCDate())}`;
@@ -289,10 +299,11 @@ export function withFiring<T extends SuppressionTarget>(
   target: T,
   period: FiringPeriod,
   at: Date,
+  zone?: string | null,
 ): T {
   if (slugSubject(target.subject) !== ANY || safeGrain(target.periodKey) !== ANY)
     return target;
-  return { ...target, periodKey: firingGrain(period, at) };
+  return { ...target, periodKey: firingGrain(period, at, zone) };
 }
 
 /** The date a `d:` grain names, or null. Used to offer a day exclusion. */

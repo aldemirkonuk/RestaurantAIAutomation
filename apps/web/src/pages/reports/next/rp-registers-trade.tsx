@@ -379,6 +379,8 @@ export interface WeekRegister {
   /** Since 2026-09-03: true when an extreme is shared and both are withheld. */
   tie: boolean | null;
   trendPerDayPct: number | null;
+  /** F-185: true when the house has no zone, so no bottle is filed on a weekday. */
+  zoneUnset: boolean;
   basis?: { weekday?: string; extremes?: string };
 }
 
@@ -404,10 +406,28 @@ const week = analysis<WeekRegister>({
       worstDay: (d.worstDay ?? null) as string | null,
       tie: typeof d.tie === 'boolean' ? d.tie : null,
       trendPerDayPct: num(d.trendPerDayPct),
+      zoneUnset: d.zoneUnset === true,
       basis: d.basis as WeekRegister['basis'],
     };
   },
   view: (w) => {
+    // The gateway files each bottle on the house's day (F-185). With no zone
+    // it files none, and an empty week is not "no consumption recorded".
+    if (w.zoneUnset)
+      return {
+        say: (
+          <>
+            This house&rsquo;s time zone isn&rsquo;t set, so no bottle can be filed on a weekday yet —
+            nothing is drawn here.{' '}
+            <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
+              Set the time zone in Settings
+            </Link>
+          </>
+        ),
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     const basis = [
       w.basis?.weekday ??
         'Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than drawn at zero.',

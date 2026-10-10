@@ -45,8 +45,13 @@ function makeClient(rowsByTable: Rows) {
     from: jest.fn((table: string) => {
       const builder: any = {};
       for (const m of passthrough) builder[m] = jest.fn(() => builder);
+      // The house's zone row (seasonality files on the house's day, F-185);
+      // every other single-row read answers nothing.
       builder.maybeSingle = jest.fn(() =>
-        Promise.resolve({ data: null, error: null }),
+        Promise.resolve({
+          data: table === "restaurants" ? (rowsByTable[table]?.[0] ?? null) : null,
+          error: null,
+        }),
       );
       builder.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
@@ -243,9 +248,12 @@ describe("separableExtremes refuses an extreme that is shared", () => {
   });
 });
 
+/** A house on UTC, so a line's house day is its UTC date. */
+const UTC_HOUSE = [{ timezone: "UTC" }];
+
 describe("seasonality withholds a day it cannot separate", () => {
   it("reports null for both days on a week with no movement", async () => {
-    const out: any = await advanced({}).getSeasonality(RESTAURANT);
+    const out: any = await advanced({ restaurants: UTC_HOUSE }).getSeasonality(RESTAURANT);
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
     expect(out.tie).toBe(true);
@@ -254,7 +262,7 @@ describe("seasonality withholds a day it cannot separate", () => {
 
   it("does not report the same day as both busiest and quietest", async () => {
     // The exact pre-fix payload: bestDay === worstDay === "Sunday".
-    const out: any = await advanced({}).getSeasonality(RESTAURANT);
+    const out: any = await advanced({ restaurants: UTC_HOUSE }).getSeasonality(RESTAURANT);
     expect(out.bestDay).not.toBe("Sunday");
     expect(out.bestDay === out.worstDay && out.bestDay !== null).toBe(false);
   });
@@ -263,6 +271,7 @@ describe("seasonality withholds a day it cannot separate", () => {
     // Seven consecutive days, seven distinct quantities — every weekday ends
     // with a distinct mean, so both extremes are separable.
     const out: any = await advanced({
+      restaurants: UTC_HOUSE,
       wine_consumption_log: consumption(7, (i) => (i + 1) * 3),
     }).getSeasonality(RESTAURANT);
     expect(out.tie).toBe(false);
