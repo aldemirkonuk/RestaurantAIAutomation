@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { STAFF_WITHHELD_ACTIONS } from "../settings-audit/settings-audit.service";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 
 /**
  * Correlated logs timeline (SimPOS testbed plan, cross-cutting).
@@ -81,6 +82,31 @@ export interface TimelineResponse {
   window: number;
   hasMore: boolean;
   nextCursor: string | null;
+  /** Present when the caller does not hold the house's money (F-958): the
+   *  documents' totals and the prices an agent moved were left out. */
+  amountsWithheld?: true;
+}
+
+/** The price fields of a decision's `order_change` (inbound-responder `OrderMove`). */
+const ORDER_CHANGE_PRICES = [
+  "negotiated_price_from",
+  "negotiated_price_to",
+  "agreed_price",
+] as const;
+
+/**
+ * A decision's output without the order's prices (F-958). `order_change`
+ * carries the price an agent moved from and to (F-492); the rest of the
+ * output is reason codes and flags, which name no amount.
+ */
+function outputWithoutPrices(output: unknown): unknown {
+  if (!output || typeof output !== "object" || Array.isArray(output))
+    return output;
+  const move = (output as Record<string, unknown>).order_change;
+  if (!move || typeof move !== "object") return output;
+  const kept = { ...(move as Record<string, unknown>) };
+  for (const key of ORDER_CHANGE_PRICES) delete kept[key];
+  return { ...(output as Record<string, unknown>), order_change: kept };
 }
 
 /**
@@ -230,11 +256,28 @@ export class LogsTimelineService {
     const fetch = limit + 1;
     const cursor: Cursor = { before, fetch };
 
+    // F-958: the house's money stays with those who hold it, as the document
+    // list already does (documents.controller.ts). Omitted role reads as staff.
+    const withholdMoney = !holdsHouseMoney(
+      typeof opts.role === "string" ? opts.role : null,
+    );
     const results = await Promise.all([
       this.fetchPosChecks(db, restaurantId, correlationId, cursor),
-      this.fetchDecisions(db, restaurantId, correlationId, cursor),
+      this.fetchDecisions(
+        db,
+        restaurantId,
+        correlationId,
+        cursor,
+        withholdMoney,
+      ),
       this.fetchInventoryTxns(db, restaurantId, correlationId, cursor),
-      this.fetchDocuments(db, restaurantId, correlationId, cursor),
+      this.fetchDocuments(
+        db,
+        restaurantId,
+        correlationId,
+        cursor,
+        withholdMoney,
+      ),
       this.fetchAuditLog(db, restaurantId, correlationId, cursor, opts.role),
       // event_store is not restaurant-scoped (the table itself carries no
       // restaurant_id column), so it is read only when a correlation_id
@@ -265,6 +308,7 @@ export class LogsTimelineService {
       window: limit,
       hasMore,
       nextCursor: hasMore ? (lastDated?.occurredAt ?? null) : null,
+      ...(withholdMoney ? { amountsWithheld: true as const } : {}),
     };
   }
 
@@ -350,6 +394,7 @@ export class LogsTimelineService {
     restaurantId: string,
     correlationId: string | null,
     cursor: Cursor,
+    withholdMoney: boolean,
   ): Promise<SourceResult> {
     return this.guard("decision_log", async () => {
       let q = db
@@ -372,7 +417,7 @@ export class LogsTimelineService {
           agentName: r.agent_name,
           decisionType: r.decision_type,
           confidence: r.confidence,
-          output: r.output,
+          output: withholdMoney ? outputWithoutPrices(r.output) : r.output,
         },
       }));
     });
@@ -436,6 +481,7 @@ export class LogsTimelineService {
     restaurantId: string,
     correlationId: string | null,
     cursor: Cursor,
+    withholdMoney: boolean,
   ): Promise<SourceResult> {
     return this.guard("procurement_documents", async () => {
       let q = db
@@ -459,7 +505,8 @@ export class LogsTimelineService {
           docType: r.doc_type,
           docNumber: r.doc_number,
           status: r.status,
-          total: r.total,
+          // An invoice's or a credit note's total is the house's money.
+          ...(withholdMoney ? {} : { total: r.total }),
         },
       }));
     });

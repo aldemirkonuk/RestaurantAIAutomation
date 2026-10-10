@@ -44,10 +44,11 @@ export interface FeedResponse {
 /**
  * Why tonight's sales are or are not known (F-674), from the gateway:
  * `known`, `no_register` (the register has never sent a check),
- * `zone_unset` (the house has no time zone), `unread` (the read failed).
+ * `zone_unset` (the house has no time zone), `unread` (the read failed),
+ * `withheld` (this person does not hold the house's money: staff, F-957).
  * Absent on a pulse saved before the field existed.
  */
-export type PulseSalesState = "known" | "no_register" | "zone_unset" | "unread";
+export type PulseSalesState = "known" | "no_register" | "zone_unset" | "unread" | "withheld";
 
 export interface TodayPulse {
   salesState?: PulseSalesState;

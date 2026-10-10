@@ -13,7 +13,7 @@ import { CapsuleSweep } from "@/components/cellar/CapsuleSweep";
 import { BinBreath } from "@/components/cellar/BinBreath";
 import { color, font, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
-import { feedKey, pulseKey, useOrder } from "@/api/queries";
+import { feedKey, pulseKey, useHouseMoneyFrame, useOrder } from "@/api/queries";
 import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
 import { WaitingStrip } from "@/components/today/WaitingStrip";
 import {
@@ -26,6 +26,7 @@ import { useSession } from "@/state/session";
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
 import { holdsHouseMoney } from "@/lib/receiptMoney";
+import { readHousePrice } from "@/lib/houseMoney";
 import {
   agreedCurrency,
   computeMatch,
@@ -88,14 +89,17 @@ export default function ReceivingScreen() {
   // The invoice price and the override are an owner's or a manager's (F-802);
   // staff record the count, and the price is never queued for them (F-806).
   const seesMoney = holdsHouseMoney(useSession((s) => s.user?.role));
-  const invoiceUnitPrice =
-    !seesMoney || priceText == null || priceText.trim() === ""
-      ? null
-      : Number(priceText.replace(",", "."));
+  // Prices are read and printed with the house's marks (F-955, F-954): in a
+  // Turkish house "1.250" is ₺1250, never 1.25.
+  const { locale } = useHouseMoneyFrame();
+  const priceRead =
+    !seesMoney || priceText == null
+      ? ({ ok: true, value: null } as const)
+      : readHousePrice(priceText, locale);
+  const invoiceUnitPrice = priceRead.ok ? priceRead.value : null;
+  const priceProblem = priceRead.ok ? null : priceRead.problem;
   const [invoiceCurrency, setInvoiceCurrency] = useState("");
-  const priceIsValid =
-    invoiceUnitPrice == null ||
-    (Number.isFinite(invoiceUnitPrice) && invoiceUnitPrice >= 0);
+  const priceIsValid = priceRead.ok;
   const invoiceNeedsCurrency =
     invoiceUnitPrice != null && !/^[A-Z]{3}$/.test(invoiceCurrency);
   // Half-typed codes ("EU") are not a money yet; only a whole code compares.
@@ -123,6 +127,7 @@ export default function ReceivingScreen() {
         acceptedQty,
         rejectedQty,
         priceOverrideReason,
+        locale,
       }),
     [
       orderedQty,
@@ -134,6 +139,7 @@ export default function ReceivingScreen() {
       acceptedQty,
       rejectedQty,
       priceOverrideReason,
+      locale,
     ],
   );
   const tone = verdictTone(match.verdict);
@@ -256,7 +262,9 @@ export default function ReceivingScreen() {
   const primaryLabel = !canCommit
     ? invoiceNeedsCurrency
       ? "State the invoice currency"
-      : "Check the stated quantities and price"
+      : priceProblem
+        ? "Check the invoice price"
+        : "Check the stated quantities and price"
     : match.requiresOverride
       ? "Reason required"
       : match.backorderQty > 0
@@ -319,7 +327,7 @@ export default function ReceivingScreen() {
                       Agreed: {orderedQty}{" "}
                       {orderedQty === 1 ? "bottle" : "bottles"}
                       {poUnitPrice != null
-                        ? ` @ ${money(poUnitPrice, poCurrency)}`
+                        ? ` @ ${money(poUnitPrice, poCurrency, locale)}`
                         : ""}
                     </AppText>
                   </View>
@@ -560,7 +568,7 @@ export default function ReceivingScreen() {
                       ? "Record what the vendor actually billed"
                       : invoiceQty == null
                         ? "No invoice quantities recorded"
-                        : `${invoiceQty} bottles billed${invoiceUnitPrice != null ? ` at ${invoiceCurrency || "currency not stated"} ${invoiceUnitPrice.toFixed(2)}` : ""}`}
+                        : `${invoiceQty} bottles billed${invoiceUnitPrice != null ? ` at ${money(invoiceUnitPrice, statedInvoiceCurrency, locale)}` : ""}`}
                   </AppText>
                 </View>
                 <Ionicons
@@ -645,6 +653,7 @@ export default function ReceivingScreen() {
                               {money(
                                 Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice),
                                 poCurrency ?? statedInvoiceCurrency,
+                                locale,
                               )}
                               /btl{" "}
                               {(invoiceUnitPrice ?? 0) > poUnitPrice
@@ -683,6 +692,11 @@ export default function ReceivingScreen() {
                           }}
                         />
                       </View>
+                      {priceProblem ? (
+                        <AppText variant="caption" tone="danger">
+                          {priceProblem}
+                        </AppText>
+                      ) : null}
 
                       <View style={{ gap: space.xs }}>
                         <AppText variant="caption" tone="secondary">
@@ -781,7 +795,7 @@ export default function ReceivingScreen() {
                 {match.effectiveUnitCost != null ? (
                   <AppText variant="caption" tone="secondary">
                     Real cost{" "}
-                    {money(match.effectiveUnitCost, statedInvoiceCurrency)}/btl
+                    {money(match.effectiveUnitCost, statedInvoiceCurrency, locale)}/btl
                   </AppText>
                 ) : null}
               </View>

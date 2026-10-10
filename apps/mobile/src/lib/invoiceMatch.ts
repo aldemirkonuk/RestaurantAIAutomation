@@ -15,6 +15,7 @@
  * different vendor failures.
  */
 import { color } from "@/design/tokens";
+import { usableLocale } from "@/lib/houseMoney";
 
 /**
  * Local bottle-count preview for the native receiving form. The gateway owns
@@ -43,6 +44,8 @@ export interface MatchInput {
   acceptedQty: number;
   rejectedQty?: number;
   priceOverrideReason?: string | null;
+  /** The house's formats tag (F-954): prices are grouped the house's way. */
+  locale?: string | null;
 }
 
 export interface MatchResult {
@@ -65,21 +68,27 @@ const codeOf = (c: string | null | undefined): string | null => {
  * A figure in the money it is in (F-341), as the gateway's `moneyIn` says it.
  * This printed a bare "$" until 2026-10-09, so a euro or lira delivery was
  * checked under a dollar sign. No money stated says so, never USD.
+ *
+ * F-954: grouped, and with the house's marks when its formats tag is known —
+ * a Turkish manager who typed "1250,00" read back "TRY 1250.00" in en-US with
+ * no grouping. No tag keeps en-US, now grouped.
  */
-export const money = (n: number, currency: string | null | undefined) => {
+export const money = (
+  n: number,
+  currency: string | null | undefined,
+  locale?: string | null,
+) => {
+  const tag = usableLocale(locale);
   const code = codeOf(currency);
+  const plain = n.toLocaleString(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (code) {
     try {
-      return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: code,
-        useGrouping: false,
-      }).format(n);
+      return new Intl.NumberFormat(tag, { style: "currency", currency: code }).format(n);
     } catch {
-      return `${n.toFixed(2)} ${code}`;
+      return `${plain} ${code}`;
     }
   }
-  return `${n.toFixed(2)} (currency not recorded)`;
+  return `${plain} (currency not recorded)`;
 };
 
 /**
@@ -179,7 +188,7 @@ export function computeMatch(input: MatchInput): MatchResult {
           ? `All ${acceptedQty} accepted; the stated prices match.`
           : `All ${acceptedQty} accepted; the entered quantities match. Price verification is pending.`;
       case "price_variance":
-        return `Billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)} against a stated ${money(poUnitPrice as number, input.poCurrency)} per bottle. The server will check the agreement.`;
+        return `Billed ${money(invoiceUnitPrice as number, input.invoiceCurrency, input.locale)} against a stated ${money(poUnitPrice as number, input.poCurrency, input.locale)} per bottle. The server will check the agreement.`;
       case "qty_over":
         return `${receivedQty} arrived but only ${invoiceQty} were billed.`;
       case "qty_short":
@@ -193,7 +202,7 @@ export function computeMatch(input: MatchInput): MatchResult {
       case "unmatched":
         return `${acceptedQty} counted; no invoice quantities entered on this form.`;
       case "currency_differs":
-        return `All ${acceptedQty} accepted. Agreed ${money(poUnitPrice as number, input.poCurrency)}, billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)} per bottle.`;
+        return `All ${acceptedQty} accepted. Agreed ${money(poUnitPrice as number, input.poCurrency, input.locale)}, billed ${money(invoiceUnitPrice as number, input.invoiceCurrency, input.locale)} per bottle.`;
     }
   })();
   // The sentence rides along whichever verdict headlines, as on the gateway.

@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, FreshnessLabel } from "@/components/ui/StateViews";
 import { color, space } from "@/design/tokens";
 import {
+  useHouseMoneyFrame,
   useMyTeamWeek,
   useTeamMembers,
   useTeamWeek,
@@ -14,24 +15,13 @@ import {
 } from "@/api/queries";
 import { readsFullRota, resolveTonight, seesFullRota } from "@/components/team/teamTonight";
 import { useSession } from "@/state/session";
-
-function fmtTime(value?: string): string {
-  if (!value) return "";
-  // Accept "HH:MM[:SS]" or ISO strings.
-  const hm = /^(\d{2}):(\d{2})/.exec(value);
-  if (hm) {
-    const h = Number(hm[1]);
-    const suffix = h >= 12 ? "pm" : "am";
-    const hour12 = h % 12 === 0 ? 12 : h % 12;
-    return hm[2] === "00" ? `${hour12}${suffix}` : `${hour12}:${hm[2]}${suffix}`;
-  }
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
+import { houseClock } from "@/lib/houseMoney";
 
 export default function TeamScreen() {
   const role = useSession((s) => s.user?.role);
+  // Shift times on the house's clock (F-953): "19:00" in a Turkish house.
+  const { locale } = useHouseMoneyFrame();
+  const fmtTime = (value?: string) => houseClock(value, locale);
   // The house's zone, once a week reply names it; until then the phone's own
   // date (F-252). A changed zone can move the week, which re-keys the read.
   const [houseZone, setHouseZone] = useState<string | null>(null);
