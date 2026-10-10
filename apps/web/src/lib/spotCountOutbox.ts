@@ -53,6 +53,8 @@ export interface QueuedSpotCount {
     clientCountId: string
     reason?: string
     performedBy?: string | null
+    /** F-291: the shelf counted; absent = every shelf at once. */
+    locationId?: string
   }
   /**
    * When the count was taken (this phone's clock), stamped at the tap. A
@@ -249,6 +251,9 @@ export function parkedSpotCountsOf(mutations: PendingMutation[]): ParkedSpotCoun
  * A count of an item went through: any count of it the house refused as
  * overtaken, and taken no later than this one, is answered now, so it leaves
  * the not-sent strip (F-831). A failed read or delete leaves it parked.
+ * A count of one shelf answers only a count of that same shelf; a count of
+ * every shelf answers any of them (F-291). A bar count says nothing about the
+ * cellar, so it must not clear the cellar's "count it again".
  */
 async function clearOvertakenBy(sent: QueuedSpotCount): Promise<void> {
   try {
@@ -260,6 +265,7 @@ async function clearOvertakenBy(sent: QueuedSpotCount): Promise<void> {
       const e = m.data as QueuedSpotCount
       if (e.itemId !== sent.itemId) continue
       if ((e.restaurantId ?? null) !== (sent.restaurantId ?? null)) continue
+      if (sent.body.locationId && e.body?.locationId !== sent.body.locationId) continue
       const at = e.countedAt ? Date.parse(e.countedAt) : NaN
       if (Number.isFinite(at) && Number.isFinite(sentAt) && at > sentAt) continue
       await offlineStorage.removePendingMutation(m.id)

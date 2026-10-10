@@ -344,6 +344,37 @@ describe('F-831: a count refused as overtaken is named, and clears once counted 
     expect(store.removePendingMutation).not.toHaveBeenCalledWith('other')
   })
 
+  it('a count of one shelf clears only that shelf\'s overtaken count; a count of every shelf clears any (F-291)', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([
+      parked('cellar', { data: { itemId: 'i-x', itemLabel: 'x', restaurantId: H1, body: { locationId: 'L-cellar' } } }),
+      parked('bar', { data: { itemId: 'i-x', itemLabel: 'x', restaurantId: H1, body: { locationId: 'L-bar' } } }),
+      parked('whole', { data: { itemId: 'i-x', itemLabel: 'x', restaurantId: H1, body: {} } }),
+    ])
+    recordSpotCount.mockResolvedValue({})
+
+    await submitSpotCount({
+      itemId: 'i-x',
+      itemLabel: 'x',
+      restaurantId: H1,
+      body: { countedQty: 2, clientCountId: 'bar-again', locationId: 'L-bar' },
+    })
+
+    expect(store.removePendingMutation).toHaveBeenCalledWith('bar')
+    expect(store.removePendingMutation).not.toHaveBeenCalledWith('cellar')
+    expect(store.removePendingMutation).not.toHaveBeenCalledWith('whole')
+
+    store.removePendingMutation.mockClear()
+    await submitSpotCount({
+      itemId: 'i-x',
+      itemLabel: 'x',
+      restaurantId: H1,
+      body: { countedQty: 9, clientCountId: 'every-shelf' },
+    })
+
+    expect(store.removePendingMutation).toHaveBeenCalledWith('cellar')
+    expect(store.removePendingMutation).toHaveBeenCalledWith('whole')
+  })
+
   it('a count taken before the overtaken one does not clear it', async () => {
     store.getPendingMutationsByType.mockResolvedValue([
       count('early', 0, {
