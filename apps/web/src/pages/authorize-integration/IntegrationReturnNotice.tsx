@@ -14,6 +14,8 @@ const REASONS: Record<string, string> = {
   // F-279: these two are this house's answer, not the provider's.
   membership_refused: 'Nothing was connected: by the time the provider answered, your account was no longer a confirmed member of this house. Ask an owner to check your place here, then start again.',
   membership_unreadable: 'Nothing was connected: your place in this house could not be checked just then, so the connection was not kept. Start again in a moment.',
+  // F-819: the return URL carries no house name, so the other house is not named here.
+  held_by_another_house: 'This account is already connected for another of your restaurants. One connection like this can serve one restaurant, so nothing was connected here. Disconnect it while working in that restaurant first, or ask someone here to connect their own.',
 }
 
 /** Query parameters trigger a status read; they are not proof of a connection. */

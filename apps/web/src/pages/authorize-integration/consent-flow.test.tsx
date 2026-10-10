@@ -131,6 +131,12 @@ describe('completion and return status', () => {
     expect(screen.queryByText(/connection is confirmed/)).toBeNull()
   })
 
+  it('says in plain words when the account is held by another house, naming no house', () => {
+    render(<MemoryRouter initialEntries={['/profile?integration_status=error&integration=gmail_send&integration_reason=held_by_another_house']}><IntegrationReturnNotice /></MemoryRouter>)
+    expect(screen.getByText(/already connected for another of your restaurants/)).toBeInTheDocument()
+    expect(screen.queryByText(/without a confirmed connection/)).toBeNull()
+  })
+
   it('drops a confirmed status immediately when the active house changes', async () => {
     vi.mocked(integrationsApi.getConnections).mockResolvedValue([{ integrationId: 'gmail_send', connected: true }] as never)
     const content = (house: string) => <AuthContext.Provider value={auth(house)}><MemoryRouter initialEntries={['/profile?integration_status=connected&integration=gmail_send']}><IntegrationReturnNotice /></MemoryRouter></AuthContext.Provider>
