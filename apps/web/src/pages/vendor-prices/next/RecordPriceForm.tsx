@@ -74,6 +74,39 @@ const labelStyle: CSSProperties = {
   marginBottom: 4,
 }
 
+/**
+ * The gateway's bounds on a hand-recorded price (`manual-observation.dto.ts`:
+ * pack a whole 1-240 bottles, bottle size a whole 50-30000 ml), checked here
+ * so a figure it would refuse is said before the click, in words (F-716).
+ * A blank bottle size stays unknown. `null` = nothing to refuse.
+ */
+export function priceBoundsRefusal(packSize: string, unitVolumeMl: string): string | null {
+  const pack = Number(packSize)
+  if (packSize.trim() === '' || !Number.isInteger(pack) || pack < 1 || pack > 240) {
+    return 'The pack is a whole number of bottles, from 1 to 240.'
+  }
+  const vol = unitVolumeMl.trim()
+  if (vol !== '' && !(Number.isInteger(Number(vol)) && Number(vol) >= 50 && Number(vol) <= 30000)) {
+    return 'The bottle size is a whole number of millilitres, from 50 to 30000 (a standard bottle is 750).'
+  }
+  return null
+}
+
+/** The gateway's field refusals on a recorded price, in words (F-716). */
+export function recordPriceRefusal(error: unknown): string {
+  const raw = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message
+  const lines = (Array.isArray(raw) ? raw : [raw]).filter((m): m is string => typeof m === 'string')
+  const said = new Set<string>()
+  for (const line of lines) {
+    if (/^packSize /.test(line)) said.add('The pack is a whole number of bottles, from 1 to 240.')
+    else if (/^unitVolumeMl /.test(line)) said.add('The bottle size is a whole number of millilitres, from 50 to 30000.')
+    else if (/^price /.test(line)) said.add('The price is a number of zero or more.')
+  }
+  return said.size
+    ? `The price was not recorded. ${[...said].join(' ')}`
+    : apiErrorMessage(error, 'The price was not recorded.')
+}
+
 export function RecordPriceForm({
   open,
   onClose,
@@ -135,12 +168,12 @@ export function RecordPriceForm({
   const priceNum = Number(price)
   const packNum = Number(packSize)
   const volNum = Number(unitVolumeMl)
+  const boundsRefusal = priceBoundsRefusal(packSize, unitVolumeMl)
   const canSubmit =
     Number.isFinite(priceNum) &&
     priceNum > 0 &&
     currency.trim().length > 0 &&
-    Number.isFinite(packNum) &&
-    packNum > 0 &&
+    boundsRefusal === null &&
     vendorName.trim().length > 0
 
   const reset = () => {
@@ -194,7 +227,7 @@ export function RecordPriceForm({
               price: priceNum,
               currency: currency.trim().toUpperCase(),
               packSize: packNum,
-              unitVolumeMl: Number.isFinite(volNum) && volNum > 0 ? volNum : undefined,
+              unitVolumeMl: unitVolumeMl.trim() === '' ? undefined : volNum,
               sourceType,
               sourceUrl: sourceUrl.trim() || undefined,
               note: note.trim() || undefined,
@@ -318,6 +351,8 @@ export function RecordPriceForm({
               style={{ ...inputStyle, fontFamily: MONO }}
               type="number"
               min="1"
+              max="240"
+              step="1"
               value={packSize}
               onChange={(e) => setPackSize(e.target.value)}
             />
@@ -328,12 +363,19 @@ export function RecordPriceForm({
               id="vp-vol"
               style={{ ...inputStyle, fontFamily: MONO }}
               type="number"
-              min="1"
+              min="50"
+              max="30000"
+              step="1"
               value={unitVolumeMl}
               onChange={(e) => setUnitVolumeMl(e.target.value)}
             />
           </div>
         </div>
+        {boundsRefusal && (
+          <p role="status" data-testid="vp-bounds" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>
+            {boundsRefusal}
+          </p>
+        )}
 
         <div>
           {/* Fork 6(a)'s attach-a-paper step (ADR 0160 §112; sketch 112
@@ -435,7 +477,7 @@ export function RecordPriceForm({
         )}
         {mutation.isError && (
           <p role="alert" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-1, #211C16)', background: 'var(--paper-1, #F3EFE6)', padding: '8px 10px', borderRadius: 8, margin: 0 }}>
-            {apiErrorMessage(mutation.error, 'The price was not recorded.')}
+            {recordPriceRefusal(mutation.error)}
           </p>
         )}
 

@@ -384,6 +384,9 @@ export class CalendarController {
         restaurantId: user.restaurantId,
       });
     } catch (error) {
+      // A refusal the service already worded (the 409 for a taken name)
+      // passes through as itself.
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Create event type failed",
         error: error.message,

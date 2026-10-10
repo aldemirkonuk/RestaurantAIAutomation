@@ -535,6 +535,7 @@ export function MemberSheet({
     notes: member?.notes ?? '',
   });
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const formRefusal = memberFormRefusal(form);
 
   const isSoleOwner = member?.role === 'owner' && ownerCount !== null && ownerCount <= 1;
   // A manager the owner switched on sets anyone's wage, their own included
@@ -557,23 +558,35 @@ export function MemberSheet({
 
   const save = useMutation({
     mutationFn: () => {
+      // On an edit a box the user emptied is sent as `null`, which the
+      // gateway writes as "none"; `undefined` there means "leave it", so a
+      // wrong email or phone could never be taken off (F-713). A new person
+      // simply leaves it out.
+      const blank = editing ? null : undefined;
+      const wage = form.hourlyWage.trim();
       const payload: Record<string, unknown> = {
         displayName: form.displayName.trim(),
-        email: form.email.trim() || undefined,
-        phone: form.phone.trim() || undefined,
-        position: form.position.trim() || undefined,
+        email: form.email.trim() || blank,
+        phone: form.phone.trim() || blank,
+        position: form.position.trim() || blank,
         employmentType: form.employmentType,
-        homeLocation: form.homeLocation.trim() || undefined,
+        homeLocation: form.homeLocation.trim() || blank,
         // A wage nobody typed stays unknown. `Number('')` is 0, and a 0 here
         // would be a priced hour that costs nothing (ADR 0088). Only an owner
-        // sends one at all (ADR 0215).
-        hourlyWage:
-          !mayWriteWage || form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
+        // sends one at all (ADR 0215). Emptied on a row that had one, it goes
+        // back to unknown, as the hint under the box says.
+        hourlyWage: !mayWriteWage
+          ? undefined
+          : wage !== ''
+            ? Number(wage)
+            : editing && member?.hourly_wage != null
+              ? null
+              : undefined,
         skills: form.skills
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean),
-        notes: form.notes.trim() || undefined,
+        notes: form.notes.trim() || blank,
       };
       if (editing) payload.status = form.status;
       return editing
@@ -659,6 +672,7 @@ export function MemberSheet({
       <div className="tm-in tm-form">
         <MutationError when={save.isError}>
           Nothing was saved, so the roster is unchanged. Your values are still here.
+          {memberSaveRefusal(save.error) ? ` ${memberSaveRefusal(save.error)}` : ''}
         </MutationError>
         <MutationError when={ownWageUntold !== null}>{ownWageUntold}</MutationError>
         <MutationError when={remove.isError}>
@@ -909,6 +923,12 @@ export function MemberSheet({
           </div>
         )}
 
+        {formRefusal && (
+          <p className="tm-hint" role="status" data-testid="member-form-refusal">
+            {formRefusal}
+          </p>
+        )}
+
         <div className="tm-actions" style={{ justifyContent: 'space-between' }}>
           {editing && !isSoleOwner && !confirmRemove ? (
             <button
@@ -924,7 +944,7 @@ export function MemberSheet({
           <button
             type="button"
             className="tm-ctl tm-ctl--seal"
-            disabled={save.isPending || form.displayName.trim() === ''}
+            disabled={save.isPending || form.displayName.trim() === '' || formRefusal !== null}
             onClick={() => save.mutate()}
           >
             {save.isPending ? 'Saving…' : editing ? 'Save' : 'Add to the roster'}
@@ -1084,6 +1104,35 @@ function ReplaceWithPicker({
 }
 
 /** The gateway's words for a refused removal (a 409 from the hand-over checks), if any. */
+/**
+ * What the gateway would refuse in this form, said before the click (F-714):
+ * its `@IsEmail()` wants a full address with a domain ending, and its
+ * `@Min(0)` a wage of zero or more. `null` = nothing to refuse.
+ */
+export function memberFormRefusal(form: { email: string; hourlyWage: string }): string | null {
+  const email = form.email.trim();
+  if (email !== '' && !/^[^\s@]+@([^\s@.]+\.)+[^\s@.\d]{2,}$/.test(email)) {
+    return 'The email is not a full address, so it cannot be saved. Write it like name@example.com, or leave it blank.';
+  }
+  const wage = form.hourlyWage.trim();
+  if (wage !== '' && !(Number.isFinite(Number(wage)) && Number(wage) >= 0)) {
+    return 'The hourly wage must be a number of zero or more. Leave it blank if it is not known.';
+  }
+  return null;
+}
+
+/** The gateway's field refusals on a roster save, in the owner's words (F-714). */
+export function memberSaveRefusal(err: unknown): string | null {
+  const raw = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  const lines = (Array.isArray(raw) ? raw : [raw]).filter((m): m is string => typeof m === 'string');
+  const said: string[] = [];
+  for (const line of lines) {
+    if (/^email /.test(line)) said.push('The email is not a full address.');
+    else if (/^hourlyWage /.test(line)) said.push('The hourly wage must be a number of zero or more.');
+  }
+  return said.length ? [...new Set(said)].join(' ') : null;
+}
+
 function removalRefusal(err: unknown): string | null {
   const msg = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
   return typeof msg === 'string' ? msg : null;

@@ -536,6 +536,38 @@ describe('CalendarNext — honesty', () => {
     ).toHaveTextContent('“Cellar count”: its repeat rule was not returned');
   });
 
+  // F-717: a name already on the list was sent, and came back as a 500.
+  it('refuses a custom type name already on the list, whatever its case', () => {
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('New type name'), { target: { value: ' cellar AUDIT ' } });
+    expect(within(sheet).getByText(/is already on the list/)).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Add' })).toBeDisabled();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Add' }));
+    expect((data.createType as { mutate: ReturnType<typeof vi.fn> }).mutate).not.toHaveBeenCalled();
+  });
+
+  it("says the gateway's own words for a refused type, not the status code", () => {
+    const refused = Object.assign(new Error('Request failed with status code 409'), {
+      response: { data: { message: 'A type called "Tasting" is already on this calendar.' } },
+    });
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+      createType: { mutate: vi.fn(), isPending: false, error: refused },
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText(/already on this calendar/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/status code 409/)).toBeNull();
+  });
+
   // Sweep 2026-09-28 row 19: adding or deleting a custom type used to fail in
   // silence. Both refusals reach the sheet's failure banner.
   it.each([

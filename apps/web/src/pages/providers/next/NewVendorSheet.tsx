@@ -167,8 +167,16 @@ export function vendorRefusals(d: VendorDraft): Record<string, string> {
   if (!d.email.trim()) out.email = 'An email address is required — the house writes to vendors.';
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim())) out.email = 'That is not an email address.';
   if (d.specialties.length === 0) out.specialties = 'Say what this vendor sells — at least one.';
-  if (d.minimumOrder.trim() !== '' && !Number.isFinite(Number(d.minimumOrder))) {
+  // The gateway keeps a whole amount of zero or more (`@IsInt() @Min(0)`,
+  // an integer column), so a decimal or a negative is refused here, in words,
+  // rather than losing the whole vendor to its field-name refusal (F-715).
+  const min = d.minimumOrder.trim();
+  if (min !== '' && !Number.isFinite(Number(min))) {
     out.minimumOrder = 'A minimum order is a number, or nothing at all.';
+  } else if (min !== '' && Number(min) < 0) {
+    out.minimumOrder = 'A minimum order cannot be below zero.';
+  } else if (min !== '' && !Number.isInteger(Number(min))) {
+    out.minimumOrder = 'A minimum order is kept as a whole amount. Write it without decimals, like 1500.';
   }
   return out;
 }
@@ -724,7 +732,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
               <input
                 id="nv-min"
                 style={field}
-                inputMode="decimal"
+                inputMode="numeric"
                 value={draft.minimumOrder}
                 onChange={(e) => set({ minimumOrder: e.target.value })}
               />

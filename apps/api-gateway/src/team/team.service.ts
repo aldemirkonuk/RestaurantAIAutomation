@@ -2381,6 +2381,28 @@ export class TeamService {
     dto: CreateCoverageTemplateDto,
   ): Promise<any> {
     await this.assertAccess(userId, restaurantId, "manager");
+    // The same role, day and service twice is one rule asked for twice, and
+    // each copy raises its own gap (F-718). `coverage_templates` has no
+    // unique key, so the file is read first and a copy is a 409 in words.
+    const { data: onFile, error: readError } = await this.sb
+      .from("coverage_templates")
+      .select("role, day_of_week, shift_period, min_staff")
+      .eq("restaurant_id", restaurantId);
+    if (readError)
+      throw new InternalServerErrorException(
+        "The coverage rules could not be read, so the rule was not added.",
+      );
+    const role = dto.role.trim().toLowerCase();
+    const twin = (onFile ?? []).find(
+      (r: any) =>
+        String(r.role ?? "").trim().toLowerCase() === role &&
+        (r.day_of_week ?? null) === (dto.dayOfWeek ?? null) &&
+        r.shift_period === dto.shiftPeriod,
+    );
+    if (twin)
+      throw new ConflictException(
+        `This rule is already on file, asking for ${twin.min_staff} ${twin.role}. Remove that one first to change how many people it asks for.`,
+      );
     const { data, error } = await this.sb
       .from("coverage_templates")
       .insert({
