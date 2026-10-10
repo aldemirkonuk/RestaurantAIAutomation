@@ -41,7 +41,7 @@ import {
  *   GET  /pos-hub/status/:restaurantId           ingestion stats by source
  *   POST /pos-hub/webhook/:provider/:restaurantId   push path (webhooks/middleware)
  *   POST /pos-hub/import/:restaurantId           batch import (canonical JSON)
- *   POST /pos-hub/connections/:restaurantId/:provider   owner: take or refuse a provider's feed
+ *   POST /pos-hub/connections/:restaurantId/:provider   owner/manager: take or refuse a provider's feed
  *   GET/POST /pos-hub/mappings/:restaurantId     pos_item_mappings CRUD
  *   GET  /pos-hub/mappings/:restaurantId/sale-unit-review   rows missing a unit, with evidence
  *   POST /pos-hub/mappings/:restaurantId/sale-unit          batch: the human's answers
@@ -188,14 +188,15 @@ export class PosHubController {
   /**
    * F-643: the owner takes or refuses a provider's feed for the house. Before
    * this, a house that stopped using a till had no way to stop its feed; an
-   * operator had to remove an environment secret. Owner only (ADR 0164:
-   * @Roles is exact), and the actor is the token's, never the body's.
+   * operator had to remove an environment secret. Owner or manager (ADR
+   * 0164, "Keep managers in": @Roles is exact and no route names owner
+   * alone), and the actor is the token's, never the body's.
    */
   @Post("connections/:restaurantId/:provider")
   @UseGuards(RolesGuard)
-  @Roles("owner")
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Take or refuse a POS provider's checks for this restaurant (owner)",
+    summary: "Take or refuse a POS provider's checks for this restaurant (owner or manager)",
     description:
       "Body: { enabled: boolean }. enabled=false makes the webhook refuse this provider's checks for this restaurant with 409 until it is set back to true.",
   })

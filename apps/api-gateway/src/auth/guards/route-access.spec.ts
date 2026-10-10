@@ -142,10 +142,10 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // (one vendor's, active, expiring, compare, savings) gained
     // @Roles("owner", "manager"), the /promotions gate, because they carried
     // the same vendor money round it. Its other routes stay "open".
-    // PosHubController also carries sim F-643's change: the owner
-    // can disconnect a till (POST connections/:restaurantId/:provider) with
-    // @Roles("owner"), owner alone because unplugging a till stops the
-    // house's sales and stock feed. The F-387 writes keep their owner/manager gate.
+    // PosHubController also carries sim F-643's change: an owner or a
+    // manager can disconnect a till (POST connections/:restaurantId/:provider)
+    // with @Roles("owner", "manager"); ADR 0164 ("Keep managers in") names
+    // no route owner alone. The F-387 writes keep their owner/manager gate.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",

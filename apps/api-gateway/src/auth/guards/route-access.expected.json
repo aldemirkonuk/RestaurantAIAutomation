@@ -589,7 +589,8 @@
   "POST /pos-hub/webhook/:provider/:restaurantId (PosHubController.webhook)": "open",
   "POST /pos-hub/import/:restaurantId (PosHubController.importChecks)": "open",
   "POST /pos-hub/connections/:restaurantId/:provider (PosHubController.setConnection)": [
-    "owner"
+    "owner",
+    "manager"
   ],
   "GET /pos-hub/mappings/:restaurantId (PosHubController.listMappings)": "open",
   "POST /pos-hub/mappings/:restaurantId (PosHubController.upsertMapping)": [
