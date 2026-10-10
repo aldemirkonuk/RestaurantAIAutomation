@@ -141,6 +141,34 @@ describe('MenuCsvUpload', () => {
     expect(importMenu).toHaveBeenCalledTimes(1)
   })
 
+  it.each([
+    ['a CSV', 'drinks.csv', 'name,glass\nEfes Pilsen,6\nAyran,3\n', 'Import 2 lines'],
+    ['a spreadsheet', 'drinks.xlsx', 'PK', 'Import the menu'],
+  ])('lets %s go after an import with no answer, so Import cannot send it twice (F-807)', async (_label, name, body, button) => {
+    importMenu.mockRejectedValueOnce(Object.assign(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'), { request: {} }))
+    render(<MenuCsvUpload onSuccess={vi.fn()} />)
+    pick(body, name)
+    fireEvent.click(await screen.findByRole('button', { name: button }))
+    expect(
+      await screen.findByText(
+        'No answer came back from the menu read. It may still be reading and keeping this menu: give it a few minutes and look for it under Menus kept before reading it again.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: button })).toBeNull()
+    expect(screen.getByText('Click to upload file')).toBeInTheDocument()
+    expect(screen.queryByText(/timeout|30000/)).toBeNull()
+    expect(importMenu).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a CSV when the server said why it did not import it (F-807)', async () => {
+    importMenu.mockRejectedValueOnce({ response: { status: 400, data: { message: 'The file has no Name column.' } } })
+    render(<MenuCsvUpload onSuccess={vi.fn()} />)
+    pick('name,glass\nEfes Pilsen,6\nAyran,3\n')
+    fireEvent.click(await screen.findByRole('button', { name: 'Import 2 lines' }))
+    expect(await screen.findByText('The file has no Name column.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import 2 lines' })).toBeInTheDocument()
+  })
+
   it('keeps the file when the server said why it did not read it (F-803)', async () => {
     importMenu.mockRejectedValueOnce({ response: { status: 503, data: { message: 'Menu scan service temporarily unavailable' } } })
     render(<MenuCsvUpload onSuccess={vi.fn()} />)
