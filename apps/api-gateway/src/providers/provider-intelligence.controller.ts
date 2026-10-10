@@ -461,13 +461,16 @@ export class ProviderIntelligenceController {
    * One active session per vendor and kind (F-568). A second tap, or a retry
    * whose first answer was lost, gets the session already open instead of a
    * new one: the agent reads only the newest active session, so every extra
-   * row was an orphan. Two requests at the same instant can still both
-   * insert; nothing in the table forbids it.
+   * row was an orphan. Two requests at the same instant both read "none";
+   * the unique index uq_pcs_one_active_per_kind (migration
+   * one_open_vendor_conversation_per_kind) lets only one insert land, and the
+   * loser (23505) answers with the row that won.
    *
    * Only a session opened in the last OPEN_SESSION_DAYS counts (F-789):
-   * nothing closes these rows, so without the bound one tap would answer
+   * nothing else closes these rows, so without the bound one tap would answer
    * "already asked" for this vendor and kind forever. An older active row is
-   * treated as closed and a fresh one is recorded.
+   * marked abandoned before the fresh one is recorded, so the unique index
+   * (which knows no age) does not refuse it.
    */
   private async openSessionOnce(row: {
     provider_id: string;
@@ -479,25 +482,45 @@ export class ProviderIntelligenceController {
   }): Promise<{ sessionId: string; alreadyOpen: boolean }> {
     const sessions = () =>
       this.databaseService.supabase.from("provider_conversation_sessions");
-    const { data: open, error: readError } = await sessions()
-      .select("id")
-      .eq("provider_id", row.provider_id)
-      .eq("restaurant_id", row.restaurant_id)
-      .eq("session_type", row.session_type)
-      .eq("status", "active")
-      .gte(
-        "created_at",
-        new Date(Date.now() - OPEN_SESSION_DAYS * 86_400_000).toISOString(),
-      )
-      .limit(1)
-      .maybeSingle();
-    if (readError) throw readError;
+    const cutoff = new Date(
+      Date.now() - OPEN_SESSION_DAYS * 86_400_000,
+    ).toISOString();
+    const findOpen = async () => {
+      const { data: open, error: readError } = await sessions()
+        .select("id")
+        .eq("provider_id", row.provider_id)
+        .eq("restaurant_id", row.restaurant_id)
+        .eq("session_type", row.session_type)
+        .eq("status", "active")
+        .gte("created_at", cutoff)
+        .limit(1)
+        .maybeSingle();
+      if (readError) throw readError;
+      return open;
+    };
+    const open = await findOpen();
+    if (!open) {
+      // F-789 under F-568's index: a stale active row is closed, not left to
+      // block the new one with a 23505 that findOpen (bounded) cannot answer.
+      const { error: staleError } = await sessions()
+        .update({ status: "abandoned", closed_at: new Date().toISOString() })
+        .eq("provider_id", row.provider_id)
+        .eq("restaurant_id", row.restaurant_id)
+        .eq("session_type", row.session_type)
+        .eq("status", "active")
+        .lt("created_at", cutoff);
+      if (staleError) throw staleError;
+    }
     if (open) return { sessionId: open.id, alreadyOpen: true };
 
     const { data: created, error } = await sessions()
       .insert(row)
       .select("id")
       .single();
+    if ((error as { code?: string } | null)?.code === "23505") {
+      const winner = await findOpen();
+      if (winner) return { sessionId: winner.id, alreadyOpen: true };
+    }
     if (error) throw error;
     return { sessionId: created.id, alreadyOpen: false };
   }
