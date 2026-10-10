@@ -28,6 +28,8 @@ export interface ActiveConversationDto {
   orderNumber: string | null;
   quantity: number | null;
   quotedPrice: number | null;
+  /** The vendor's latest figure, as the reply engine read it from their mail (F-773). */
+  negotiatedPrice?: number | null;
   wineName: string | null;
   providerName: string | null;
   providerEmail: string | null;

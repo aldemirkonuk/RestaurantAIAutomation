@@ -22,6 +22,7 @@ const seams = vi.hoisted(() => ({
   approveMutateAsync: vi.fn(),
   editMutate: vi.fn(),
   drafts: [] as unknown[],
+  thread: [] as unknown[],
 }));
 
 vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
@@ -34,7 +35,7 @@ vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
   useCancelScheduledSend: () => ({ mutate: vi.fn(), isPending: false }),
   useDiscardDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useEditDraft: () => ({ mutate: seams.editMutate, isPending: false }),
-  useOrderConversations: () => ({ data: [], isError: false }),
+  useOrderConversations: () => ({ data: seams.thread, isError: false }),
   useDraftStanding: () =>
     seams.standingFailed
       ? { data: undefined, isPending: false, isError: true, error: new Error('network down') }
@@ -98,6 +99,7 @@ function holdIt(name: RegExp) {
 beforeEach(() => {
   vi.clearAllMocks();
   seams.drafts = [DRAFT];
+  seams.thread = [];
   seams.standing = AS_MANAGER;
   seams.standingFailed = false;
   seams.standingDraft = null;
@@ -342,5 +344,61 @@ describe('the discard link is a 24px target (ORD-W19)', () => {
     expect(discard).toHaveTextContent('Discard the draft');
     expect(discard.style.minHeight).toBe('24px');
     expect(discard.style.textDecoration).toBe('underline');
+  });
+});
+
+describe('the card tells the thread and the figure as they are', () => {
+  const line = (i: number, over: Record<string, unknown> = {}) => ({
+    id: `m-${i}`,
+    orderId: 'ord-1',
+    status: 'SENT',
+    direction: i % 2 ? 'INBOUND' : 'OUTBOUND',
+    emailType: `ROUND_${i}`,
+    roundCount: i,
+    createdAt: `2026-09-2${i}T09:00:00.000Z`,
+    sentAt: i % 2 ? null : `2026-09-2${i}T09:00:00.000Z`,
+    draftContent: null,
+    rollingSummary: null,
+    ...over,
+  });
+
+  // F-770: the gateway sends the thread oldest first.
+  it('shows the newest four lines and counts the older ones as earlier', () => {
+    seams.thread = [1, 2, 3, 4, 5, 6].map((i) => line(i));
+    draw();
+    const box = screen.getByTestId('draft-thread');
+    expect(box).toHaveTextContent('+ 2 earlier in the thread');
+    expect(box).toHaveTextContent('round 6');
+    expect(box).toHaveTextContent('round 3');
+    expect(box).not.toHaveTextContent('round 1');
+    expect(box).not.toHaveTextContent('round 2');
+  });
+
+  // F-771: a closed letter is not a live draft.
+  it('names a discarded or refused letter as such, not as a draft', () => {
+    seams.thread = [
+      line(2, { status: 'DISCARDED', sentAt: null }),
+      line(4, { status: 'SEND_REFUSED', sentAt: null }),
+      line(6, { status: 'PENDING_APPROVAL', sentAt: null }),
+    ];
+    draw();
+    const box = screen.getByTestId('draft-thread');
+    expect(box).toHaveTextContent('discarded — never sent');
+    expect(box).toHaveTextContent('refused — never sent');
+    expect(box.textContent?.match(/draft — not sent/g)).toHaveLength(1);
+  });
+
+  // F-773: the headline is the vendor's latest figure when there is one.
+  it('heads the card with the vendor’s latest figure, labelled', () => {
+    seams.drafts = [{ ...DRAFT, quantity: 11, quotedPrice: 16, negotiatedPrice: 14 }];
+    draw();
+    const fig = screen.getByTestId('draft-figure');
+    expect(fig).toHaveTextContent('vendor’s latest');
+    expect(fig).toHaveTextContent(/11 × \$14/);
+  });
+
+  it('says the first quote is the first quote when the vendor has named none', () => {
+    draw();
+    expect(screen.getByTestId('draft-figure')).toHaveTextContent('first quote');
   });
 });

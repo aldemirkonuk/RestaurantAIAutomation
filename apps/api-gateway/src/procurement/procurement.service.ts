@@ -9907,6 +9907,7 @@ export class ProcurementService {
   async discardDraft(
     restaurantId: string,
     orderId: string,
+    userId?: string,
   ): Promise<{ success: boolean }> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_conversations")
@@ -9931,11 +9932,23 @@ export class ProcurementService {
       );
     }
 
+    // Who discarded which letter (F-772): the event is the decision log's only
+    // source, and without these it recorded an empty letter and no person.
+    const conversationIds = (data as any[]).map((r) => r.id);
+    this.logger.log(
+      `Draft discarded: order ${orderId}, letter ${conversationIds.join(", ")}, by ${userId ?? "an unrecorded user"}`,
+    );
     if (this.orchestratorService) {
       await this.orchestratorService.publishEvent(
         "provider.events",
         "provider.draft.discarded",
-        { order_id: orderId, restaurant_id: restaurantId },
+        {
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          conversation_id: conversationIds[0],
+          conversation_ids: conversationIds,
+          discarded_by: userId ?? null,
+        },
       );
     }
 
@@ -10103,7 +10116,7 @@ export class ProcurementService {
         send_requested_sha256,
         send_requested_cc,
         procurement_orders!inner(
-          id, order_number, quantity, quoted_price,
+          id, order_number, quantity, quoted_price, negotiated_price,
           inventory:inventory_id(wine_name)
         ),
         providers!left(name, contact_email)
@@ -10148,6 +10161,9 @@ export class ProcurementService {
         orderNumber: row.procurement_orders?.order_number ?? null,
         quantity: row.procurement_orders?.quantity ?? null,
         quotedPrice: row.procurement_orders?.quoted_price ?? null,
+        // The vendor's latest figure (the reply engine writes it here, never
+        // to quoted_price), so the card can say what the letter answers (F-773).
+        negotiatedPrice: row.procurement_orders?.negotiated_price ?? null,
         wineName,
         providerName: row.providers?.name ?? null,
         providerEmail: row.providers?.contact_email ?? null,
