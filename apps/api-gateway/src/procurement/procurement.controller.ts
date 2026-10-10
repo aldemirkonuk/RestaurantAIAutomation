@@ -263,6 +263,7 @@ export class ProcurementController {
         user.restaurantId,
         orderId,
         dto,
+        { actorUserId: user.userId },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
