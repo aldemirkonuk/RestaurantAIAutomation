@@ -231,6 +231,7 @@ export function minimumNotes(
   lines: OrderLine[],
   minimums: VendorMinimums,
   vendorName: (providerId: string) => string,
+  group: GroupMark | null = null,
 ): string[] {
   const vendorsInDraft = [...new Set(lines.map((l) => l.providerId).filter(Boolean))];
   if (vendorsInDraft.length === 0) return [];
@@ -246,15 +247,16 @@ export function minimumNotes(
     let unknown = 0;
     for (const line of lines) {
       if (line.providerId !== providerId) continue;
-      const price = num(line.price);
+      // Read with the house's group mark, as placement reads it (F-828).
+      const price = num(line.price, group);
       const value =
-        code && line.currency === code && price != null && price > 0 && line.priceUom && lineRefusal(line) == null
+        code && line.currency === code && price != null && price > 0 && line.priceUom && lineRefusal(line, group) == null
           ? agreementTotal({
               price,
-              stated: { priceUom: line.priceUom, pricePackSize: num(line.pricePackSize) ?? 1 },
-              quantity: num(line.quantity),
+              stated: { priceUom: line.priceUom, pricePackSize: num(line.pricePackSize, group) ?? 1 },
+              quantity: num(line.quantity, group),
               unitType: line.unitType,
-              bottlesPerUnit: num(line.bottlesPerUnit),
+              bottlesPerUnit: num(line.bottlesPerUnit, group),
               currency: line.currency,
             })
           : null;
@@ -335,7 +337,8 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
-  const [lines, setLines] = useState<OrderLine[]>([]);
+  // The kept cart is there from the first render, so a seed sees it (F-827).
+  const [lines, setLines] = useState<OrderLine[]>(() => readCart(scope));
   const [placing, setPlacing] = useState(false);
   /** The last thing that did not happen for the WHOLE act, in words. */
   const [failure, setFailure] = useState<string | null>(null);
@@ -386,12 +389,20 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
       setFailure('The wine you asked to order is not on this house\'s shelf list, so it was not added. Search for it below.');
       return;
     }
+    // Only a line still waiting to be placed holds the wine; a placed one is a
+    // receipt, and the seed is a new order (F-827). When one is waiting, the
+    // person is told rather than the seed vanishing.
+    const waiting = (l: OrderLine) => l.inventoryId === seed.inventoryId && !l.outcome?.ok;
+    if (lines.some(waiting)) {
+      setFailure('This wine is already in the cart, not yet placed, so it was not added twice. Change its bottles on that line.');
+      return;
+    }
     setLines((prev) =>
-      prev.some((l) => l.inventoryId === seed.inventoryId)
+      prev.some(waiting)
         ? prev
         : [...prev, { ...newLine(String(item.id), String(item.wineName ?? EM)), quantity: seed.quantity }],
     );
-  }, [open, seed, shelf, inventory.isLoading, inventory.isError]);
+  }, [open, seed, shelf, inventory.isLoading, inventory.isError, lines]);
   const vendors = useMemo(() => (providers.data ?? []) as Array<Record<string, any>>, [providers.data]);
 
   const terms = useQuery({
@@ -403,13 +414,14 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
   const minimumLines = useMemo(() => {
     if (terms.isLoading || terms.isPending) return [];
     const minimums: VendorMinimums = terms.isError ? { state: 'unreadable' } : readVendorMinimums(terms.data);
-    return minimumNotes(lines, minimums, (id) => String(vendors.find((v) => v.id === id)?.name ?? 'This vendor'));
-  }, [terms.isLoading, terms.isPending, terms.isError, terms.data, lines, vendors]);
+    return minimumNotes(lines, minimums, (id) => String(vendors.find((v) => v.id === id)?.name ?? 'This vendor'), group);
+  }, [terms.isLoading, terms.isPending, terms.isError, terms.data, lines, vendors, group]);
 
   const matches = useMemo(() => {
     const q = foldText(search.trim());
     if (q === '') return [];
-    const taken = new Set(lines.map((l) => l.inventoryId));
+    // A placed line is a receipt, not a hold on the wine: it can be ordered again (F-827).
+    const taken = new Set(lines.filter((l) => !l.outcome?.ok).map((l) => l.inventoryId));
     return shelf
       .filter((item) => {
         if (taken.has(item.id)) return false;

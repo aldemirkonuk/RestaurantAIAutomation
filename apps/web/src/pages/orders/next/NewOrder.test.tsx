@@ -52,7 +52,7 @@ vi.mock('@/hooks/queries/useProviderQueries', () => ({
   useProviders: () => vendorList.value,
 }));
 
-import { NewOrderSheet, lineRefusal } from './NewOrderSheet';
+import { NewOrderSheet, lineRefusal, minimumNotes } from './NewOrderSheet';
 import { VendorFirstPanel } from './VendorFirstPanel';
 
 const ITEM = { id: 'inv-1', wineName: 'Öküzgözü 2022', producer: 'Kavaklıdere' };
@@ -435,6 +435,17 @@ describe('lineRefusal, on its own', () => {
     expect(lineRefusal({ ...base, price: '0' })).toMatch(/above zero/);
   });
 
+  it('[REVERT-FAILS] reads the minimum-order note with the house group mark, as placement does (F-828)', () => {
+    // A TR house writes 1.250 for one thousand two hundred and fifty: placed
+    // as 1250, so 10 bottles reach a 5000 minimum.
+    const line = { ...base, providerId: 'prov-1', quantity: '10', price: '1.250', priceUom: 'bottle' as const, pricePackSize: '1', currency: 'TRY' };
+    const minimums = { state: 'read' as const, currency: 'TRY', byVendor: new Map([['prov-1', 5000]]) };
+    const notes = minimumNotes([line], minimums, () => 'Kavaklıdere', '.');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatch(/which meets it/);
+    expect(notes[0]).not.toMatch(/short of it/);
+  });
+
   it('takes a decimal-comma price as a price (F-358)', () => {
     const priced = { ...base, priceUom: 'bottle' as const, pricePackSize: '1', currency: 'TRY' };
     expect(lineRefusal({ ...priced, price: '12,50' })).toBeNull();
@@ -551,6 +562,43 @@ describe("the vendor's minimum order", () => {
     draw();
     await addLine(ITEM, '5');
     expect(await screen.findByTestId('new-order-minimum')).toHaveTextContent(/could not be read/);
+  });
+});
+
+/**
+ * F-827: the seed is a new order. A placed line in the kept cart is a receipt
+ * and does not swallow it; an unplaced line for the same wine says so.
+ */
+describe('a seed over a kept cart', () => {
+  function keep(lines: Array<Record<string, unknown>>) {
+    sessionStorage.setItem('mdv:new-order-cart:actor-A:rest-A', JSON.stringify({ lines, inFlight: null }));
+  }
+  const kept = {
+    key: 'line-900', inventoryId: 'inv-1', wineName: ITEM.wineName, providerId: VENDOR.id,
+    quantity: '12', unitType: 'bottle', bottlesPerUnit: '', price: '', priceUom: '', pricePackSize: '',
+    currency: '', notes: '', offer: null, asking: false, outcome: null,
+  };
+
+  it('[REVERT-FAILS] adds the seeded wine beside a placed line for it', async () => {
+    keep([{ ...kept, outcome: { ok: true, message: 'Placed as PO-118.' } }]);
+    draw({ seed: { inventoryId: 'inv-1', quantity: '6' } });
+    const lines = await screen.findAllByTestId('new-order-line');
+    expect(lines).toHaveLength(2);
+    expect((within(lines[1]).getByTestId('new-order-qty') as HTMLInputElement).value).toBe('6');
+  });
+
+  it('[REVERT-FAILS] lets search find a wine whose only line is placed', async () => {
+    keep([{ ...kept, outcome: { ok: true, message: 'Placed as PO-118.' } }]);
+    draw();
+    fireEvent.change(screen.getByTestId('new-order-search'), { target: { value: 'Öküz' } });
+    expect(await screen.findByRole('button', { name: new RegExp(ITEM.wineName) })).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] says the wine is already in the cart when an unplaced line holds it', async () => {
+    keep([kept]);
+    draw({ seed: { inventoryId: 'inv-1', quantity: '6' } });
+    expect(await screen.findByText(/already in the cart, not yet placed/)).toBeInTheDocument();
+    expect(screen.getAllByTestId('new-order-line')).toHaveLength(1);
   });
 });
 

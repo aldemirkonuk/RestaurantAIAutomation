@@ -519,6 +519,21 @@ describe("createRetroactiveOrder — the invoice total is a total", () => {
     expect(p.final_confirmed_cost).toBe(600);
   });
 
+  it("[REVERT-FAILS] keeps an invoice total that does not divide into whole cents per bottle (F-829)", async () => {
+    // 100 over 12 bottles is 8.33 a bottle, which works back out to 99.96.
+    // The 4 cents are rounding, not a disagreement: the invoice is what was paid.
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
+    await services(db).providers.createRetroactiveOrder(PROVIDER, "rest-1", USER, {
+      ...caseInvoice,
+      quantity: 1,
+      invoiceTotal: 100,
+    });
+
+    const p = calls.orderInserts[0];
+    expect(p.final_price).toBe(8.33);
+    expect(p.total_cost).toBe(100);
+  });
+
   it("refuses an invoice whose units cannot be resolved, and writes nothing", async () => {
     const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
     await expect(

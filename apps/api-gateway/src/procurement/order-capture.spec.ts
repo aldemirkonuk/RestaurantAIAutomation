@@ -371,8 +371,15 @@ describe("createOrder — the total is worked out, never taken on the caller's w
     const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
     await expect(
       service(db).createOrder("rest-1", USER, { ...big, totalCost: 1 }),
-    ).rejects.toThrow(/\$1\.00\) is not what the quantity at the agreed price comes to \(\$30000\.00\)/);
+    ).rejects.toThrow(/\(1\.00\) is not what the quantity at the agreed price comes to \(30000\.00\)/);
     expect(calls.orderInserts).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] says the refused totals in the order's own money, never as dollars (F-829)", async () => {
+    const { db } = makeDb({ insertedOrder, inventory: inventoryRow });
+    const refusal = service(db).createOrder("rest-1", USER, { ...big, currency: "TRY", totalCost: 1 });
+    await expect(refusal).rejects.toThrow(/\(1\.00 TRY\) is not what .* comes to \(30000\.00 TRY\)/);
+    await expect(refusal).rejects.not.toThrow(/\$/);
   });
 
   it("stores 600 × $50 as $30,000 when no total is sent, so the ceiling sees the real figure", async () => {
