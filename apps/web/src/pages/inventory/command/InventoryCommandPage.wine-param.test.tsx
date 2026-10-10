@@ -11,6 +11,9 @@
  * The page's own data hooks are mocked wholesale (its own correctness is not
  * this file's job); this is only about whether `?wine=` reaches
  * `setSearchQuery`, once, and is reflected in the visible search box.
+ *
+ * F-831: also `/inventory?count=<inventoryId>` — "Count again" on the
+ * app-wide not-sent strip opens that item's row with its spot count up.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -19,7 +22,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const setSearchQuery = vi.fn();
-const page = vi.hoisted(() => ({ searchQuery: '' as string }));
+const page = vi.hoisted(() => ({ searchQuery: '' as string, items: [] as unknown[] }));
 
 vi.mock('../index', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../index')>();
@@ -32,8 +35,8 @@ vi.mock('../index', async (importOriginal) => {
       setFilterType: vi.fn(),
       selectedLocationFilter: null,
       setSelectedLocationFilter: vi.fn(),
-      inventory: [],
-      filteredInventory: [],
+      inventory: page.items,
+      filteredInventory: page.items,
       stats: {
         total: 0,
         liveTotal: 0,
@@ -94,7 +97,9 @@ vi.mock('../../../contexts/RealtimeContext', () => ({
   useTypedInventorySubscription: () => {},
 }));
 
-vi.mock('../../../lib/spotCountOutbox', () => ({
+vi.mock('../../../lib/spotCountOutbox', async (importOriginal) => ({
+  // The app-wide sync manager reads the rest of this module.
+  ...(await importOriginal<typeof import('../../../lib/spotCountOutbox')>()),
   watchSpotCountOutbox: () => () => {},
 }));
 
@@ -121,6 +126,17 @@ vi.mock('../../../components/insights/ContextualInsights', () => ({
   ContextualInsights: () => null,
 }));
 
+// The expanded row is its own component with its own suite; here only which
+// row opens, and whether it opens with the count up.
+vi.mock('./RowExpansion', () => ({
+  RowExpansion: ({ item, startCounting }: { item: { name: string }; startCounting?: boolean }) => (
+    <div data-testid="row-open">
+      {item.name}
+      {startCounting ? ' counting' : ''}
+    </div>
+  ),
+}));
+
 import { InventoryCommandPage } from './InventoryCommandPage';
 
 function Where() {
@@ -142,6 +158,7 @@ function harness(path: string) {
 afterEach(() => {
   vi.clearAllMocks();
   page.searchQuery = '';
+  page.items = [];
 });
 
 describe('?wine= deep link', () => {
@@ -206,5 +223,29 @@ describe('?filter=low-stock deep link (F-217)', () => {
   it('opens on the whole cellar without it', () => {
     harness('/inventory');
     expect(pressedBelowPar()).toHaveLength(0);
+  });
+});
+
+describe('?count= deep link (F-831)', () => {
+  const barolo = {
+    inventoryId: 'inv-1',
+    name: 'Barolo 2019',
+    liveStock: 3,
+    shadowStock: 0,
+    threshold: 2,
+  };
+
+  it("opens that item's row with its spot count up", () => {
+    page.items = [barolo];
+    harness('/inventory?count=inv-1');
+
+    expect(screen.getByTestId('row-open').textContent).toBe('Barolo 2019 counting');
+  });
+
+  it('opens no row, and no count, without the link', () => {
+    page.items = [barolo];
+    harness('/inventory');
+
+    expect(screen.queryByTestId('row-open')).toBeNull();
   });
 });

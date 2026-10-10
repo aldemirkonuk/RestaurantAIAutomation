@@ -13,7 +13,7 @@
  * connection dropped cannot double-apply the count.
  */
 
-import { offlineStorage } from './offline-storage'
+import { offlineStorage, type PendingMutation } from './offline-storage'
 import { recordSpotCount, type SpotCountRecord } from '../services/api/inventory'
 import {
   currentQueueOwner,
@@ -24,6 +24,16 @@ import {
 } from './queue-owner'
 
 const MUTATION_TYPE = 'inventory.spotCount'
+
+/**
+ * Fired on `window` when this queue parks a count or clears one, so the
+ * app-wide sync manager re-reads its counts (it imports this module, so it
+ * cannot be called from here).
+ */
+export const SPOT_COUNTS_CHANGED_EVENT = 'mdv:spot-counts-changed'
+
+/** The house's answer to a count something else overtook (F-249). */
+const OVERTAKEN = 409
 
 // No attempt ceiling (ADR 0241, OD-203 (a)). This queue used to delete a
 // count after 8 failed attempts, and on any permanent refusal, with nothing
@@ -82,6 +92,7 @@ export async function submitSpotCount(
 
   try {
     const res = await recordSpotCount(entry.itemId, entry.body, entry.restaurantId)
+    await clearOvertakenBy(entry)
     return { synced: true, count: res?.count ?? null }
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status
@@ -148,10 +159,13 @@ export async function flushSpotCountOutbox(): Promise<{
     try {
       await recordSpotCount(entry.itemId, replayBody(entry), entry.restaurantId)
       await offlineStorage.removePendingMutation(m.id)
+      await clearOvertakenBy(entry)
       sent++
     } catch (err) {
       const status = statusOf(err)
-      const lastError = (err as Error)?.message ?? 'sync failed'
+      // The house's own sentence, not axios's "Request failed with status
+      // code 409": a parked count is shown with it (F-831).
+      const lastError = refusalMessage(err)
       if (isPermanentRefusal(status)) {
         await markQuietly(m.id, {
           lastError,
@@ -169,7 +183,100 @@ export async function flushSpotCountOutbox(): Promise<{
     }
   }
 
+  if (parked > 0) announce()
   return { sent, failed, parked }
+}
+
+/** The house's refusal in its own words, else the error's own message. */
+function refusalMessage(err: unknown): string {
+  const said = (err as { response?: { data?: { message?: unknown } } } | null)
+    ?.response?.data?.message
+  if (typeof said === 'string' && said.trim()) return said
+  return (err as Error)?.message ?? 'sync failed'
+}
+
+/**
+ * A count the house refused because the item was counted again, or bottles
+ * moved, after it was taken (F-249). Sending it again cannot change that
+ * answer, so it is never retried: the person counts the item again or
+ * discards it (F-831).
+ */
+export function isOvertakenCount(m: PendingMutation): boolean {
+  return (
+    m.type === MUTATION_TYPE &&
+    m.parked?.reason === 'refused' &&
+    m.parked.status === OVERTAKEN
+  )
+}
+
+/** A refused count, as the not-sent strip names it: by item, in words. */
+export interface ParkedSpotCount {
+  id: string
+  itemId: string
+  itemLabel: string
+  /** Refused as overtaken: offer "Count again", never "Try again". */
+  overtaken: boolean
+  message: string
+}
+
+/** This session's refused counts, from its queue entries (F-831). */
+export function parkedSpotCountsOf(mutations: PendingMutation[]): ParkedSpotCount[] {
+  return mutations
+    .filter((m) => m.type === MUTATION_TYPE && m.parked?.reason === 'refused')
+    .map((m) => {
+      const entry = m.data as QueuedSpotCount
+      const overtaken = isOvertakenCount(m)
+      // Counts parked before F-831 kept axios's words; never show those.
+      const said =
+        m.lastError && !/^Request failed with status code/.test(m.lastError)
+          ? m.lastError
+          : null
+      return {
+        id: m.id,
+        itemId: entry.itemId,
+        itemLabel: entry.itemLabel || 'An item',
+        overtaken,
+        message:
+          said ??
+          (overtaken
+            ? 'Bottles moved or it was counted again after this count was taken, so it was not applied. Count it again.'
+            : 'The house did not accept this count.'),
+      }
+    })
+}
+
+/**
+ * A count of an item went through: any count of it the house refused as
+ * overtaken, and taken no later than this one, is answered now, so it leaves
+ * the not-sent strip (F-831). A failed read or delete leaves it parked.
+ */
+async function clearOvertakenBy(sent: QueuedSpotCount): Promise<void> {
+  try {
+    const sentAt = sent.countedAt ? Date.parse(sent.countedAt) : NaN
+    const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+    let cleared = 0
+    for (const m of all) {
+      if (!isOvertakenCount(m)) continue
+      const e = m.data as QueuedSpotCount
+      if (e.itemId !== sent.itemId) continue
+      if ((e.restaurantId ?? null) !== (sent.restaurantId ?? null)) continue
+      const at = e.countedAt ? Date.parse(e.countedAt) : NaN
+      if (Number.isFinite(at) && Number.isFinite(sentAt) && at > sentAt) continue
+      await offlineStorage.removePendingMutation(m.id)
+      cleared++
+    }
+    if (cleared > 0) announce()
+  } catch {
+    /* left parked; the person can still discard it */
+  }
+}
+
+function announce(): void {
+  try {
+    window.dispatchEvent(new Event(SPOT_COUNTS_CHANGED_EVENT))
+  } catch {
+    /* no window (tests, workers): nobody to tell */
+  }
 }
 
 /**

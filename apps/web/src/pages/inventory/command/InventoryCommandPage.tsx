@@ -369,6 +369,23 @@ export function InventoryCommandPage() {
       : null;
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /* Deep-link: /inventory?count=<inventoryId> — "Count again" on the app-wide
+     not-sent strip, for a count the house refused as overtaken (F-831). Opens
+     that item's row with its spot count already up, once. */
+  const [countOnOpen, setCountOnOpen] = useState<string | null>(null);
+  useEffect(() => {
+    const id = searchParams.get("count");
+    if (!id) return;
+    setView("table");
+    setExpandedId(id);
+    setCountOnOpen(id);
+    searchParams.delete("count");
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+  // Once that row is closed, opening it again is an ordinary open.
+  useEffect(() => {
+    if (countOnOpen && expandedId !== countOnOpen) setCountOnOpen(null);
+  }, [expandedId, countOnOpen]);
   const [showAddWine, setShowAddWine] = useState(false);
   /* THE FOURTH START (census 102; the founder, 2026-09-05). An auction bottle
      is still one bottle entering the book, so it goes in through the same
@@ -1927,7 +1944,12 @@ export function InventoryCommandPage() {
                           className="sticky left-0"
                           style={{ width: "100cqw" }}
                         >
-                          <RowExpansion item={item} locations={locations} seesCost={seesCost} />
+                          <RowExpansion
+                            item={item}
+                            locations={locations}
+                            seesCost={seesCost}
+                            startCounting={countOnOpen === item.inventoryId}
+                          />
                         </div>
                       )}
                     </div>

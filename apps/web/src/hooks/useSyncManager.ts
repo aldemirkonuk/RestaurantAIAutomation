@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { syncManager, SyncStatus, SyncResult, MutationDescriptor } from '../lib/sync-manager'
+import type { ParkedSpotCount } from '../lib/spotCountOutbox'
 
 export interface UseSyncManagerReturn {
   /** Current sync status */
@@ -32,6 +33,12 @@ export interface UseSyncManagerReturn {
 
   /** Remove the parked changes: the person gives them up. */
   discardNotSent: () => Promise<number>
+
+  /** Refused spot counts, by item and in the house's words (F-831). */
+  parkedCounts: ParkedSpotCount[]
+
+  /** Remove one refused count the strip names. */
+  discardNotSentOne: (id: string) => Promise<void>
   
   /** Last successful sync time */
   lastSyncTime: Date | null
@@ -78,6 +85,7 @@ export function useSyncManager(): UseSyncManagerReturn {
 
   const retryNotSent = useCallback(() => syncManager.retryNotSent(), [])
   const discardNotSent = useCallback(() => syncManager.discardNotSent(), [])
+  const discardNotSentOne = useCallback((id: string) => syncManager.discardNotSentOne(id), [])
 
   return {
     status,
@@ -88,6 +96,8 @@ export function useSyncManager(): UseSyncManagerReturn {
     stillTryingCount: status.stillTryingCount ?? 0,
     retryNotSent,
     discardNotSent,
+    parkedCounts: status.parkedCounts ?? [],
+    discardNotSentOne,
     lastSyncTime: status.lastSyncTime,
     lastError: status.lastError,
     queueMutation,

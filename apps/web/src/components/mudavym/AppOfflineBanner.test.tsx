@@ -17,6 +17,8 @@ type SyncState = {
   stillTryingCount?: number;
   retryNotSent?: () => Promise<unknown>;
   discardNotSent?: () => Promise<number>;
+  parkedCounts?: Array<{ id: string; itemId: string; itemLabel: string; overtaken: boolean; message: string }>;
+  discardNotSentOne?: (id: string) => Promise<void>;
 };
 
 const syncState = vi.hoisted(() => ({
@@ -269,5 +271,55 @@ describe('device storage note (founder storage ruling 2026-09-29): unsent work w
     const { container } = render(<AppOfflineBanner />);
     await new Promise((r) => setTimeout(r, 0));
     expect(container.textContent).toBe('');
+  });
+});
+
+describe('F-831: a refused count is named by its item, in the house\'s words', () => {
+  const OVERTAKEN =
+    'Bottles of this item were sold, received or moved after this count was taken, so it was not applied. Count it again.';
+
+  it('an overtaken count offers "Count again" for that item, never "Try again"', () => {
+    const retryNotSent = vi.fn().mockResolvedValue({});
+    const discardNotSentOne = vi.fn().mockResolvedValue(undefined);
+    syncState.current = {
+      isOnline: true,
+      isSyncing: false,
+      pendingCount: 0,
+      lastError: null,
+      notSentCount: 1,
+      retryNotSent,
+      parkedCounts: [{ id: 'q1', itemId: 'inv 1', itemLabel: 'Barolo 2019', overtaken: true, message: OVERTAKEN }],
+      discardNotSentOne,
+    };
+    render(<AppOfflineBanner />);
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain(`Barolo 2019: ${OVERTAKEN}`);
+    expect(alert.textContent).not.toMatch(/could not be saved/);
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Count again' }).getAttribute('href')).toBe('/inventory?count=inv%201');
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/Discard this count of Barolo 2019\?/));
+    expect(discardNotSentOne).toHaveBeenCalledWith('q1');
+    confirm.mockRestore();
+  });
+
+  it('other not-sent changes keep their own line, counted without the listed counts', () => {
+    syncState.current = {
+      isOnline: true,
+      isSyncing: false,
+      pendingCount: 0,
+      lastError: null,
+      notSentCount: 3,
+      retryNotSent: vi.fn().mockResolvedValue({}),
+      parkedCounts: [{ id: 'q1', itemId: 'i', itemLabel: 'Barolo 2019', overtaken: true, message: OVERTAKEN }],
+      discardNotSentOne: vi.fn(),
+    };
+    render(<AppOfflineBanner />);
+
+    expect(screen.getByRole('alert').textContent).toMatch(/Not sent.*2 changes could not be saved/);
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
   });
 });

@@ -73,11 +73,14 @@ export function RowExpansion({
   item,
   locations,
   seesCost = true,
+  startCounting = false,
 }: {
   item: InventoryItem
   locations: StorageLocation[]
   /** False for a reader the gateway sends no cost (staff, ADR 0145): no "You paid" line. */
   seesCost?: boolean
+  /** Open with the spot count up (`/inventory?count=<id>`, F-831). */
+  startCounting?: boolean
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -93,7 +96,7 @@ export function RowExpansion({
 
   const [delta, setDelta] = useState(0)
   const [reason, setReason] = useState('Count correction')
-  const [showSpotCount, setShowSpotCount] = useState(false)
+  const [showSpotCount, setShowSpotCount] = useState(startCounting)
   const [pouring, setPouring] = useState(false)
 
   // F-705: a read that failed or has not answered is said as such — never

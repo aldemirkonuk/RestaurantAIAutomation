@@ -19,7 +19,13 @@ const store = vi.hoisted(() => ({
 }))
 vi.mock('./offline-storage', () => ({ offlineStorage: store }))
 
-import { flushSpotCountOutbox, submitSpotCount } from './spotCountOutbox'
+import {
+  flushSpotCountOutbox,
+  isOvertakenCount,
+  parkedSpotCountsOf,
+  submitSpotCount,
+  SPOT_COUNTS_CHANGED_EVENT,
+} from './spotCountOutbox'
 
 const U1 = '11111111-1111-4111-8111-111111111111'
 const H1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -255,5 +261,103 @@ describe('submitSpotCount — the count comes back (F-645)', () => {
       body: { countedQty: 10, clientCountId: 'k' },
     })
     expect(res).toEqual({ synced: false })
+  })
+})
+
+describe('F-831: a count refused as overtaken is named, and clears once counted again', () => {
+  const OVERTAKEN =
+    'Bottles of this item were sold, received or moved after this count was taken, so it was not applied. Count it again.'
+  const refused409 = () =>
+    Object.assign(new Error('Request failed with status code 409'), {
+      response: { status: 409, data: { statusCode: 409, message: OVERTAKEN } },
+    })
+  const parked = (id: string, over: Record<string, unknown> = {}) =>
+    count(id, 0, {
+      parked: { reason: 'refused', status: 409, at: '2026-10-10T12:00:00.000Z' },
+      lastError: OVERTAKEN,
+      ...over,
+    })
+
+  it("keeps the house's sentence, not axios's, on the parked count", async () => {
+    store.getPendingMutationsByType.mockResolvedValue([count('o')])
+    recordSpotCount.mockRejectedValue(refused409())
+
+    await flushSpotCountOutbox()
+
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'o',
+      expect.objectContaining({
+        lastError: OVERTAKEN,
+        parked: expect.objectContaining({ reason: 'refused', status: 409 }),
+      }),
+    )
+  })
+
+  it('tells the app a count was parked, so the strip re-reads', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SPOT_COUNTS_CHANGED_EVENT, heard)
+    store.getPendingMutationsByType.mockResolvedValue([count('o')])
+    recordSpotCount.mockRejectedValue(refused409())
+
+    await flushSpotCountOutbox()
+
+    window.removeEventListener(SPOT_COUNTS_CHANGED_EVENT, heard)
+    expect(heard).toHaveBeenCalled()
+  })
+
+  it('names each refused count by its item, and marks only a 409 as overtaken', () => {
+    const list = parkedSpotCountsOf([
+      parked('a', { data: { itemId: 'i-a', itemLabel: 'Barolo 2019', body: {} } }),
+      count('b', 0, {
+        parked: { reason: 'refused', status: 422, at: 'x' },
+        lastError: 'Request failed with status code 422',
+      }),
+      count('c'),
+      count('d', 0, { parked: { reason: 'unowned', at: 'x' } }),
+    ] as never)
+
+    expect(list).toEqual([
+      { id: 'a', itemId: 'i-a', itemLabel: 'Barolo 2019', overtaken: true, message: OVERTAKEN },
+      // axios's words are never shown
+      expect.objectContaining({ id: 'b', overtaken: false, message: 'The house did not accept this count.' }),
+    ])
+    expect(isOvertakenCount(parked('a') as never)).toBe(true)
+    expect(isOvertakenCount(count('c') as never)).toBe(false)
+  })
+
+  it('a fresh count of the item clears its overtaken count, and leaves other items alone', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([
+      parked('old', { data: { itemId: 'i-x', itemLabel: 'x', restaurantId: H1, body: {} } }),
+      parked('other', { data: { itemId: 'i-y', itemLabel: 'y', restaurantId: H1, body: {} } }),
+    ])
+    recordSpotCount.mockResolvedValue({})
+
+    const res = await submitSpotCount({
+      itemId: 'i-x',
+      itemLabel: 'x',
+      restaurantId: H1,
+      body: { countedQty: 4, clientCountId: 'new' },
+    })
+
+    expect(res).toEqual({ synced: true, count: null })
+    expect(store.removePendingMutation).toHaveBeenCalledWith('old')
+    expect(store.removePendingMutation).not.toHaveBeenCalledWith('other')
+  })
+
+  it('a count taken before the overtaken one does not clear it', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([
+      count('early', 0, {
+        data: { itemId: 'i-x', itemLabel: 'x', restaurantId: H1, countedAt: '2026-10-10T09:00:00.000Z', body: { countedQty: 1, clientCountId: 'early' } },
+      }),
+      parked('late', {
+        data: { itemId: 'i-x', itemLabel: 'x', restaurantId: H1, countedAt: '2026-10-10T10:00:00.000Z', body: {} },
+      }),
+    ])
+    recordSpotCount.mockResolvedValue({})
+
+    await flushSpotCountOutbox()
+
+    expect(store.removePendingMutation).toHaveBeenCalledWith('early')
+    expect(store.removePendingMutation).not.toHaveBeenCalledWith('late')
   })
 })
