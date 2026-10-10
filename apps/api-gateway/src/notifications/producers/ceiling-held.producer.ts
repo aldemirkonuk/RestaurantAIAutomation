@@ -7,7 +7,7 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
-import { readHouseCurrency } from "../../common/house-money";
+import { readHouseMoney } from "../../common/house-money";
 import { clockIn, dayIn, money, onShiftPhrase, percent } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
@@ -118,8 +118,9 @@ export class CeilingHeldProducer {
     }
 
     // The house's own money, for a goal counted in money (F-341). These lines
-    // said `$` whatever the house sold in; `null` prints the figure bare.
-    const currency = await readHouseCurrency(client, restaurantId);
+    // said `$` whatever the house sold in; `null` prints the figure bare. The
+    // figure groups the house's way, not en-US (F-887).
+    const { currency, locale } = await readHouseMoney(client, restaurantId);
 
     let stillOpen = 0;
     // The sentence carries the goal's figures, so only the people who may read
@@ -215,6 +216,7 @@ export class CeilingHeldProducer {
             title: `${name} stayed under its ceiling`,
             message: this.sentence({
               currency,
+              locale,
               label,
               unit,
               current,
@@ -283,6 +285,7 @@ export class CeilingHeldProducer {
   /** The sentence of record: the fact, then the arithmetic, then the people. */
   private sentence(input: {
     currency: string | null;
+    locale: string | null;
     label: string;
     unit: string;
     current: number;
@@ -295,7 +298,7 @@ export class CeilingHeldProducer {
   }): string {
     const shown = (v: number) =>
       input.unit === "currency"
-        ? money(v, input.currency)
+        ? money(v, input.currency, input.locale)
         : input.unit === "percent"
           ? `${(v * 100).toFixed(1)}%`
           : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(

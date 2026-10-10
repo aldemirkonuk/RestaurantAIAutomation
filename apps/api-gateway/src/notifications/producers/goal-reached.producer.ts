@@ -8,7 +8,7 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
-import { readHouseCurrency } from "../../common/house-money";
+import { readHouseMoney } from "../../common/house-money";
 import {
   clockIn,
   dayIn,
@@ -139,8 +139,9 @@ export class GoalReachedProducer {
     }
 
     // The house's own money, for a goal counted in money (F-341). These lines
-    // said `$` whatever the house sold in; `null` prints the figure bare.
-    const currency = await readHouseCurrency(client, restaurantId);
+    // said `$` whatever the house sold in; `null` prints the figure bare. The
+    // figure groups the house's way, not en-US (F-887).
+    const { currency, locale } = await readHouseMoney(client, restaurantId);
 
     let ceilingGoals = 0;
     // The sentence carries the goal's figures, so only the people who may read
@@ -217,6 +218,7 @@ export class GoalReachedProducer {
 
       const message = this.sentence({
         currency,
+        locale,
         label,
         unit,
         current,
@@ -376,6 +378,7 @@ export class GoalReachedProducer {
   /** The sentence of record. Facts, then the arithmetic, then the people. */
   private sentence(input: {
     currency: string | null;
+    locale: string | null;
     label: string;
     unit: string;
     current: number;
@@ -402,7 +405,7 @@ export class GoalReachedProducer {
 
     const shown = (v: number) =>
       unit === "currency"
-        ? money(v, input.currency)
+        ? money(v, input.currency, input.locale)
         : unit === "percent"
           ? `${(v * 100).toFixed(1)}%`
           : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(

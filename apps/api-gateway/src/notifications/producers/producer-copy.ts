@@ -44,6 +44,7 @@
  * whole directory names `persistForRestaurant`.
  */
 
+import { usableLocale } from "../../common/house-money";
 import { currencyCode } from "../../common/iso-4217";
 
 /**
@@ -53,15 +54,21 @@ import { currencyCode } from "../../common/iso-4217";
  * The money is the caller's to name (F-341): this defaulted to USD, so a lira
  * house read its night's takings in dollars. A money nobody recorded prints
  * the figure with no symbol (ADR 0117 Q25), never a guessed dollar.
+ *
+ * `locale` is the house's formats tag (`readHouseMoney`, ADR 0207): a lira
+ * house reads `₺1.240,50`, where en-US printed `TRY 1,240.50` — 1.24 by its
+ * own mark (F-887). Unknown keeps en-US; the words stay English either way.
  */
 export function money(
   value: number,
   currency: string | null | undefined,
+  locale?: string | null,
 ): string {
+  const tag = usableLocale(locale);
   const code = currencyCode(currency);
   if (code) {
     try {
-      return new Intl.NumberFormat("en-US", {
+      return new Intl.NumberFormat(tag, {
         style: "currency",
         currency: code,
         minimumFractionDigits: 2,
@@ -72,7 +79,7 @@ export function money(
       // beside the figure still names the money.
     }
   }
-  const figure = new Intl.NumberFormat("en-US", {
+  const figure = new Intl.NumberFormat(tag, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);

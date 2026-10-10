@@ -97,6 +97,18 @@ describe("CeilingHeldProducer", () => {
     expect(call.message).not.toContain("$");
   });
 
+  it("[REVERT-FAILS] a ceiling in a German house groups its money the house's way (F-887)", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.restaurants[0].currency = "EUR";
+    db.tables.restaurants[0].country = "DE";
+    db.tables.analytics_goals.push(ceiling());
+    seedShift(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(notifications.persistForRestaurant.calls[0][1].message).toContain(
+      "stayed under by 1.580,00\u00a0€",
+    );
+  });
+
   it("[REVERT-FAILS] sends the goal's figures only to owners and managers (F-782)", async () => {
     const { db, notifications, producer } = build(HELD);
     db.tables.analytics_goals.push(ceiling());
