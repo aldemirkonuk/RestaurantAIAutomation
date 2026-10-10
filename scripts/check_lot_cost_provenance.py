@@ -325,9 +325,12 @@ def self_test() -> int:
                 "expected at least 3 (inventory.service.ts x3)"
             )
         # Every allow-list entry must still be a real, live exemption.
-        if not real.mute_exempted:
+        # Per entry, so an EMPTY allow-list (nothing exempted) is not read as
+        # an entry gone stale, and one stale entry beside a live one still fails.
+        live_mute = {w.rsplit(":", 1)[0] for w in real.mute_exempted}
+        for entry in sorted(MUTE_PRICE_ALLOWLIST - live_mute):
             failures.append(
-                "allowlist: MUTE_PRICE_ALLOWLIST names a call site that no longer "
+                f"allowlist: MUTE_PRICE_ALLOWLIST names {entry}, which no longer "
                 "passes a mute price. Delete the entry."
             )
         if not real.invoice_exempted:
