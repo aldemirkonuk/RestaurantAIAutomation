@@ -155,8 +155,12 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
     try {
       const out = await setRecipe.mutateAsync({ id: cocktailId, lines });
       setEditing(false);
+      // Said from what was saved, never a history claim the page cannot see:
+      // an amend or a clearing save is not "the first recipe" (F-917).
       setSaid(
-        `${out.lines} ${out.lines === 1 ? 'line' : 'lines'} recorded. This is the first recipe data this house has ever had — cocktail_ingredients was created empty in August and no extraction pass ever filled it.`,
+        out.lines === 0
+          ? 'Recipe cleared. This cocktail has no recipe now.'
+          : `Recipe recorded: ${out.lines} ${out.lines === 1 ? 'line' : 'lines'}.`,
       );
     } catch (e) {
       // Only a definite answer may say what happened (F-338): a timeout or a

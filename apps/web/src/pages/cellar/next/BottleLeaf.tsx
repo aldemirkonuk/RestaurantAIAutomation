@@ -40,6 +40,7 @@ import {
   handlingSentence,
   knowledgeLabel,
   knowledgeNote,
+  libraryMoney,
   money,
   tanninTicks,
   volume,
@@ -292,10 +293,10 @@ export default function BottleLeaf({
           )}
         </Fact>
         <Fact label="Market average">
-          <span className="cl-num">{money(bottle.listPrice)}</span>
+          <span className="cl-num">{libraryMoney(bottle.listPrice)}</span>
         </Fact>
         <Fact label="Market price">
-          <span className="cl-num">{money(bottle.marketPrice)}</span>
+          <span className="cl-num">{libraryMoney(bottle.marketPrice)}</span>
         </Fact>
       </dl>
 
@@ -466,7 +467,7 @@ export default function BottleLeaf({
                   )}
                 </Fact>
                 <Fact label="Market average (bottle)">
-                  <span className="cl-num">{money(bottle.listPrice)}</span>
+                  <span className="cl-num">{libraryMoney(bottle.listPrice)}</span>
                 </Fact>
               </dl>
               {/* ADR 0193 round 3, L8: a locked price is said wherever the price is shown. */}

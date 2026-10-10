@@ -31,11 +31,21 @@ import {
 import { useAuthStore } from '../../../stores';
 import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '../../../lib/parseDecimal';
 import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark';
+import { formatMoney } from '../../../lib/currency';
 
 const EM = '—';
 
-function money(n: number | null | undefined): string {
-  return n === null || n === undefined ? EM : n.toFixed(2);
+/**
+ * Money printed the way /menu's line table prints it: the house's currency,
+ * in the screen's own marks (F-919). It was a bare `toFixed(2)`, so one screen
+ * read "₺1.250,00" in the table and "1250.00" here. With no currency handed in
+ * (a caller outside /menu), the number alone, still in the screen's marks.
+ */
+function money(n: number | null | undefined, currency?: string | null): string {
+  if (n === null || n === undefined) return EM;
+  return currency === undefined
+    ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : formatMoney(n, currency);
 }
 
 function reasonOf(err: unknown): string {
@@ -54,18 +64,23 @@ function readPrice(raw: string, group: GroupMark | null = null): number | null {
 }
 
 /** One lock's facts, in words. The menu grouping says "not on the current menu" itself. */
-export function markerWords(l: PriceLock): string[] {
+export function markerWords(l: PriceLock, currency?: string | null): string[] {
   const out: string[] = [];
   const has = (m: LockMarker) => l.markers.includes(m);
   if (has('off_target') && l.advice) out.push(`off your target margin: ${l.advice.sentence}`);
   if (has('advice_unknown')) out.push(`no advice: ${l.adviceUnknownReason ?? 'the reason was not given'}`);
-  if (has('menu_differs')) out.push(`the current menu reads ${money(l.menuPrice)}`);
+  if (has('menu_differs')) out.push(`the current menu reads ${money(l.menuPrice, currency)}`);
   if (has('wine_removed')) out.push('the wine was removed from inventory');
   if (has('author_without_access')) out.push('set by someone who no longer manages this house');
   return out;
 }
 
-function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; onSaid: (s: string) => void }) {
+function LockRow({ l, canManage, onSaid, currency }: {
+  l: PriceLock;
+  canManage: boolean;
+  onSaid: (s: string) => void;
+  currency?: string | null;
+}) {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'none' | 'change' | 'move'>('none');
   const [price, setPrice] = useState('');
@@ -118,14 +133,14 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
     move.mutate({ target, price: p });
   };
 
-  const words = markerWords(l);
+  const words = markerWords(l, currency);
   return (
     <li className="cl-said" style={{ padding: '10px 0', borderTop: '1px solid var(--paper-2)' }} data-testid="locked-price-row">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline', justifyContent: 'space-between' }}>
         <span>
           <strong>{l.wine.name ?? 'A wine'}</strong>
           {l.wine.vintage ? ` ${l.wine.vintage}` : ''} <span className="cl-dim">({l.kind})</span> locked at{' '}
-          <strong>{money(l.lockedPrice)}</strong>
+          <strong>{money(l.lockedPrice, currency)}</strong>
         </span>
         <span className="cl-dim">
           by {l.lockedBy.name ?? 'someone whose name could not be read'}, {l.ageDays} day{l.ageDays === 1 ? '' : 's'} ago
@@ -215,7 +230,11 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
   );
 }
 
-export function LockedPrices({ canManage }: { canManage: boolean }) {
+export function LockedPrices({ canManage, currency }: {
+  canManage: boolean;
+  /** The house's currency, as /menu read it for its line table. */
+  currency?: string | null;
+}) {
   const [said, setSaid] = useState<string | null>(null);
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
   const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks });
@@ -265,7 +284,7 @@ export function LockedPrices({ canManage }: { canManage: boolean }) {
             <p className="cl-crumb">On the current menu</p>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} data-testid="locked-on-menu">
               {onMenu.map((l) => (
-                <LockRow key={l.lockId} l={l} canManage={canManage} onSaid={setSaid} />
+                <LockRow key={l.lockId} l={l} canManage={canManage} onSaid={setSaid} currency={currency} />
               ))}
             </ul>
           </div>
@@ -279,7 +298,7 @@ export function LockedPrices({ canManage }: { canManage: boolean }) {
             </p>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} data-testid="locked-off-menu">
               {off.map((l) => (
-                <LockRow key={l.lockId} l={l} canManage={canManage} onSaid={setSaid} />
+                <LockRow key={l.lockId} l={l} canManage={canManage} onSaid={setSaid} currency={currency} />
               ))}
             </ul>
           </div>
@@ -293,7 +312,7 @@ export function LockedPrices({ canManage }: { canManage: boolean }) {
             </p>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} data-testid="locked-menu-unknown">
               {unknown.map((l) => (
-                <LockRow key={l.lockId} l={l} canManage={canManage} onSaid={setSaid} />
+                <LockRow key={l.lockId} l={l} canManage={canManage} onSaid={setSaid} currency={currency} />
               ))}
             </ul>
           </div>

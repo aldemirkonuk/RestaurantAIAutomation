@@ -1107,7 +1107,15 @@ export function useCocktailWrites() {
       );
       return r.data;
     },
-    onSettled: invalidate,
+    // The open leaf reads the recipe under its own key, so it is re-read too:
+    // without it the leaf kept the old lines, or "no recipe", after a save
+    // the page had just called recorded (F-917).
+    onSettled: (_d, _e, v) => {
+      invalidate();
+      void queryClient.invalidateQueries({
+        queryKey: ['cellar', 'recipe', activeRestaurantId, v.id],
+      });
+    },
   });
 
   return { create, amend, retire, setRecipe };

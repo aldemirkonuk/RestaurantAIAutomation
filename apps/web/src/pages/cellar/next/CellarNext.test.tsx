@@ -592,7 +592,9 @@ describe('CellarNext — the wine register', () => {
     expect(cells.getByText('2016')).toBeInTheDocument();
     expect(cells.getByText('Friuli, Italy')).toBeInTheDocument();
     expect(cells.getByText('750ml')).toBeInTheDocument();
-    expect(cells.getByText('$92.00')).toBeInTheDocument();
+    // The library keeps no currency for its reference price, so it is never
+    // given this house's sign (F-918).
+    expect(cells.getByText('92.00 (currency not recorded)')).toBeInTheDocument();
     // market price has no producer, and a bottle this house does not stock
     // has no house price (F-617): two dashes, never a number, never a zero
     expect(cells.getAllByText('—')).toHaveLength(2);
