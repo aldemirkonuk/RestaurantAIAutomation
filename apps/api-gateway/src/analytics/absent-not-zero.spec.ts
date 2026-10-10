@@ -654,6 +654,32 @@ describe("no spend reader adds orders paid in two currencies", () => {
     ).toEqual([]);
   });
 
+  // F-1102: an order naming no currency is the house's lira, so beside a
+  // euro order the window holds two currencies and nothing is said.
+  it("counts an order naming no currency as the house's money", () => {
+    expect(
+      familyOver(
+        [
+          {
+            vendorId: "a",
+            vendorName: "A",
+            cost: 8000,
+            currency: "EUR",
+            date: day(3),
+          },
+          {
+            vendorId: "b",
+            vendorName: "B",
+            cost: 300000,
+            currency: null,
+            date: day(2),
+          },
+        ],
+        "TRY",
+      ),
+    ).toEqual([]);
+  });
+
   it("prints vendor shares in the money the orders were paid in", () => {
     const pushed = familyOver(
       [

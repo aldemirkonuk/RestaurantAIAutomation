@@ -137,44 +137,40 @@ export async function getAlerts(restaurantId?: string): Promise<any[]> {
  * glasses count. See `apps/api-gateway/src/dashboard/dashboard.service.ts`
  * `getSalesChart`. Sales revenue lives in `pos_checks` and is not returned here.
  */
+export interface SalesChartPoint {
+  date: string;
+  /** Vendor spend in this bucket; null when it was paid in two currencies. */
+  procurementSpend: number | null;
+  /**
+   * The code `procurementSpend` is in; null means the house's own money
+   * (F-1103). Never print a figure without it: a euro bucket is not lira.
+   */
+  procurementSpendCurrency?: string | null;
+  procurementSpendByCurrency?: Array<{ currency: string | null; amount: number }>;
+  procurementSpendNote?: string | null;
+  /** Orders in this bucket with no price, left out of the spend. */
+  unpricedOrders?: number;
+  bottles: number;
+  glasses: number;
+}
+
+/**
+ * F-1103: typed as the gateway's `SalesChartPointDto[]`, so each point's
+ * currency reaches the reader. The old `{ labels, data, total }` type was
+ * never what the route returns, and its fallback drew a failed read as a
+ * row of zeros; a failed read now rejects, like `getAlerts` above.
+ */
 export async function getSalesChartData(
   period: 'day' | 'week' | 'month' = 'week',
   restaurantId?: string
-): Promise<{
-  labels: string[];
-  data: number[];
-  total: number;
-}> {
+): Promise<SalesChartPoint[]> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  try {
-    const response = await apiClient.get(`${DASHBOARD_PATH}/sales-chart/${id}`, {
-      params: { period },
-    });
-    return response.data;
-  } catch {
-    // Fallback: generate empty chart data
-    const now = new Date();
-    const labels: string[] = [];
-    const data: number[] = [];
-    
-    const days = period === 'day' ? 24 : period === 'week' ? 7 : 30;
-    
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(now);
-      if (period === 'day') {
-        date.setHours(date.getHours() - i);
-        labels.push(date.toLocaleTimeString('en-US', { hour: 'numeric' }));
-      } else {
-        date.setDate(date.getDate() - i);
-        labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
-      }
-      data.push(0);
-    }
-    
-    return { labels, data, total: 0 };
-  }
+  const response = await apiClient.get(`${DASHBOARD_PATH}/sales-chart/${id}`, {
+    params: { period },
+  });
+  return response.data;
 }
 
 /**
