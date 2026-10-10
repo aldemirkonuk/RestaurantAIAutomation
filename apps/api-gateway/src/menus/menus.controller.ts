@@ -132,12 +132,26 @@ export class MenusController {
   @Patch(":restaurantId/items/:id/discard")
   @ApiOperation({
     summary:
-      "Discard one line from the active menu (ADR 0160 sec110 item 7). Soft remove — status becomes 'discarded', the row is kept",
+      "Discard one line from the active menu (ADR 0160 sec110 item 7). Soft remove — status becomes 'discarded', the row is kept. Owner or manager only",
   })
   async discardMenuItem(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user: { userId?: string },
   ) {
+    // Taking a line off the guest menu is an owner's or a manager's, the same
+    // people who may price one (POST /menus/items above; coordinator's call
+    // for the founder, 2026-10-08, F-268). Checked before anything is written.
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "Taking a line off the menu names the person, and this session names no one. Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      restaurantId,
+      "take a line off the menu",
+    );
     return this.menusService.discardMenuItem(restaurantId, id);
   }
 }

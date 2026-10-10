@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
   beverageTypesForRegister,
@@ -583,7 +583,14 @@ export class BeveragesService {
     restaurantId: string,
     cocktailId: string,
     dto: UpdateCocktailDto,
+    // Owner or manager (beverages.controller.ts). Anyone else may send the
+    // price the row already has, which the page does on every amend, but not
+    // a new one (F-270).
+    mayPrice: boolean,
   ) {
+    if (dto.price !== undefined && !mayPrice) {
+      await this.assertCocktailPriceUnchanged(restaurantId, cocktailId, dto.price);
+    }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     // Only fields the caller actually sent. A PATCH that nulled every absent
     // field would erase a row's method and glass on a price edit.
@@ -593,7 +600,7 @@ export class BeveragesService {
     if (dto.method !== undefined) patch.method = dto.method?.trim() ?? null;
     if (dto.glass !== undefined) patch.glass = dto.glass?.trim() ?? null;
     if (dto.garnish !== undefined) patch.garnish = dto.garnish?.trim() ?? null;
-    if (dto.price !== undefined) patch.price = dto.price;
+    if (dto.price !== undefined && mayPrice) patch.price = dto.price;
     if (dto.description !== undefined) patch.description = dto.description?.trim() ?? null;
 
     const { data, error } = await this.dbService
@@ -620,6 +627,32 @@ export class BeveragesService {
       );
     }
     return data;
+  }
+
+  private async assertCocktailPriceUnchanged(
+    restaurantId: string,
+    cocktailId: string,
+    price: number | null,
+  ): Promise<void> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("cocktails")
+      .select("price")
+      .eq("id", cocktailId)
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (error) throw this.explain(error, "cocktails");
+    // No row: the update below matches nothing and says so.
+    if (!data) return;
+    const was = (data as { price: unknown }).price;
+    const wasNum = was === null || was === undefined ? null : Number(was);
+    const nowNum = price === null ? null : Number(price);
+    if (wasNum !== nowNum) {
+      throw new ForbiddenException(
+        "Only managers and owners can change a cocktail's price",
+      );
+    }
   }
 
   /**

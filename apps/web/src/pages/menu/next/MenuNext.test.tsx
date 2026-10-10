@@ -13,7 +13,7 @@
  *  - the no-active-menu, loading and read-error states.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
@@ -21,8 +21,9 @@ import { housePriceNote } from './menu-price-note';
 import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
+const auth = vi.hoisted(() => ({ role: null as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1', loading: false }),
+  useAuth: () => ({ activeRestaurantId: 'r1', loading: false, activeRole: auth.role }),
 }));
 
 vi.mock('../../../services/api/menus', async () => {
@@ -230,6 +231,21 @@ describe('MenuNext — add', () => {
 });
 
 describe('MenuNext — discard', () => {
+  beforeEach(() => {
+    auth.role = 'manager';
+  });
+  afterEach(() => {
+    auth.role = null;
+  });
+
+  it('staff see no Discard: taking a line off the menu is an owner\'s or a manager\'s (F-268)', async () => {
+    auth.role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Discard Raki' })).not.toBeInTheDocument();
+  });
+
   it('names the line it discards, for a screen reader', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
     mount();

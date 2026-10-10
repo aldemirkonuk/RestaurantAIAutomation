@@ -295,7 +295,7 @@ describe("BeveragesService cocktail writes", () => {
       tables: { cocktails: [{ data: null }] },
     });
     await expect(
-      service.updateCocktail(RID, COCKTAIL_ID, { price: 22 }),
+      service.updateCocktail(RID, COCKTAIL_ID, { price: 22 }, true),
     ).rejects.toThrow(/Nothing was changed/);
   });
 
@@ -322,7 +322,7 @@ describe("BeveragesService cocktail writes", () => {
     }).compile();
     await moduleRef
       .get(BeveragesService)
-      .updateCocktail(RID, COCKTAIL_ID, { price: 22 });
+      .updateCocktail(RID, COCKTAIL_ID, { price: 22 }, true);
 
     const patch = patches[0] as Record<string, unknown>;
     expect(patch.price).toBe(22);

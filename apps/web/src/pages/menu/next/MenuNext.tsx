@@ -217,11 +217,14 @@ function AddItemForm({ onAdd, adding, error }: {
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding }: {
+function MenuRow({ line, currency, onDiscard, discarding, canDiscard }: {
   line: MenuLine
   currency: string | null
   onDiscard: () => void
   discarding: boolean
+  // Taking a line off the guest menu is an owner's or a manager's (F-268);
+  // the gateway refuses anyone else.
+  canDiscard: boolean
 }) {
   return (
     <tr data-testid="menu-row">
@@ -241,16 +244,18 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
         ) : null}
       </td>
       <td>
-        <button
-          type="button"
-          className="cl-btn cl-focus"
-          disabled={discarding}
-          onClick={onDiscard}
-          aria-label={`Discard ${line.name}`}
-          data-testid="menu-discard-button"
-        >
-          {discarding ? 'Discarding…' : 'Discard'}
-        </button>
+        {canDiscard ? (
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            disabled={discarding}
+            onClick={onDiscard}
+            aria-label={`Discard ${line.name}`}
+            data-testid="menu-discard-button"
+          >
+            {discarding ? 'Discarding…' : 'Discard'}
+          </button>
+        ) : null}
       </td>
     </tr>
   );
@@ -352,6 +357,7 @@ export default function MenuNext() {
                         key={line.id}
                         line={line}
                         currency={currency}
+                        canDiscard={canManage}
                         discarding={discard.isPending && discardingId === line.id}
                         onDiscard={() => {
                           setDiscardingId(line.id);
