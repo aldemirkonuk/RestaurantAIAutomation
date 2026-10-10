@@ -1,8 +1,40 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
+import { QueryClientContext, type QueryClient } from '@tanstack/react-query'
 import { AlertTriangle, RefreshCw, Home, Copy, CheckCircle, WifiOff, Lock, Server } from 'lucide-react'
 import { errorTracking } from '../lib/error-tracking'
 
 type ErrorCategory = 'network' | 'auth' | 'server' | 'unknown'
+
+/** Error names and codes a failed request carries (fetch, axios, AbortSignal.timeout). */
+const NETWORK_NAMES = new Set(['NetworkError', 'TimeoutError'])
+const NETWORK_CODES = new Set(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', 'ECONNREFUSED'])
+
+/**
+ * The category from the error's typed fields only — an HTTP status (`status`,
+ * `statusCode`, or axios's `response.status`), an error `name`, an axios
+ * `code`. Never from the message: a render TypeError "(reading 'connection')"
+ * or one naming `author` is a page bug, not a lost network or session (F-736).
+ */
+export function categorizeError(error: unknown): ErrorCategory {
+  if (!error || typeof error !== 'object') return 'unknown'
+  const e = error as {
+    name?: unknown
+    code?: unknown
+    status?: unknown
+    statusCode?: unknown
+    response?: { status?: unknown } | null
+  }
+  const status = [e.status, e.statusCode, e.response?.status].find(
+    (s): s is number => typeof s === 'number',
+  )
+  if (status === 401 || status === 403) return 'auth'
+  if (status !== undefined && status >= 500) return 'server'
+  if (status === undefined) {
+    if (typeof e.name === 'string' && NETWORK_NAMES.has(e.name)) return 'network'
+    if (typeof e.code === 'string' && NETWORK_CODES.has(e.code)) return 'network'
+  }
+  return 'unknown'
+}
 
 /** What a render-function `fallback` receives — enough to build a styled
  * screen of its own (sketch 119's house error screen) without duplicating
@@ -22,6 +54,10 @@ interface Props {
    * gets the error, its category, and working retry/reset handlers — so a
    * caller can build its own screen without a second copy of this class. */
   fallback?: ReactNode | ((info: ErrorBoundaryFallbackInfo) => ReactNode)
+  /** When this changes while the error screen is up, the error clears and the
+   * children render again — a link to the same page (only the query string
+   * differs) recovers a crashed page without remounting a healthy one (F-734). */
+  resetKey?: unknown
 }
 
 interface State {
@@ -36,6 +72,10 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  // Optional: the outermost boundary in App.tsx sits above QueryClientProvider.
+  static contextType = QueryClientContext
+  declare context: QueryClient | undefined
+
   constructor(props: Props) {
     super(props)
     this.state = {
@@ -50,19 +90,10 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   }
 
-  categorizeError(error: Error): ErrorCategory {
-    const message = error.message.toLowerCase()
-    
-    if (message.includes('network') || message.includes('fetch failed') || message.includes('connection')) {
-      return 'network'
+  componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && !Object.is(prevProps.resetKey, this.props.resetKey)) {
+      this.handleRetry()
     }
-    if (message.includes('unauthorized') || message.includes('forbidden') || message.includes('auth')) {
-      return 'auth'
-    }
-    if (message.includes('server') || message.includes('500') || message.includes('503')) {
-      return 'server'
-    }
-    return 'unknown'
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -96,7 +127,7 @@ export class ErrorBoundary extends Component<Props, State> {
       type: 'react_error_boundary',
     })
     
-    const errorCategory = this.categorizeError(error)
+    const errorCategory = categorizeError(error)
     
     this.setState({
       error,
@@ -121,6 +152,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleRetry = () => {
+    // The crashed page's queries lost their observers when its tree came down,
+    // so they are the inactive ones now; the shell's own stay active and keep
+    // their data. Reset to empty, the page refetches on its way back in rather
+    // than re-rendering the same cached rows that just threw (F-737).
+    this.context?.resetQueries({ type: 'inactive' })
     this.setState({
       hasError: false,
       error: null,

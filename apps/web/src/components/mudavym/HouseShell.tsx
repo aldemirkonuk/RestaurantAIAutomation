@@ -27,9 +27,9 @@
  *
  * THE BOUNDARY SITS UNDER THE SHELL
  * ---------------------------------
- * A second `ErrorBoundary` wraps the routed page, keyed by the route, so a page
- * that crashes leaves the rooms, the counter, the bell and the search standing;
- * the outer one in App.tsx still guards the shell itself.
+ * A second `ErrorBoundary` wraps the routed page, keyed by the route and reset by
+ * any navigation, so a page that crashes leaves the rooms, the counter, the bell
+ * and the search standing; the outer one in App.tsx still guards the shell itself.
  *
  * THE GROUND
  * ----------
@@ -120,7 +120,7 @@ function modKey(): string {
 
 export function HouseShell({ children }: { children?: ReactNode } = {}) {
   const auth = useContext(AuthContext);
-  const { pathname } = useLocation();
+  const { pathname, key: locationKey } = useLocation();
   const userId = auth?.user?.userId ?? null;
   const houseId = auth?.activeRestaurantId ?? null;
   // The role IN THIS HOUSE (ADR 0162) and the room-visibility flags — one
@@ -316,7 +316,13 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                       page afresh, so nothing a page holds for itself (the
                       dashboard's approvals and low stock, Ask's answer) is
                       drawn under the next house's name (F-220, F-233). */}
-                  <ErrorBoundary key={`${houseId ?? ''}|${pathname}`} fallback={(info) => <HouseErrorScreen {...info} />}>
+                  {/* `resetKey`: a link to this same room (a counter act, a search
+                      hit — only the query differs) clears a crashed page, F-734. */}
+                  <ErrorBoundary
+                    key={`${houseId ?? ''}|${pathname}`}
+                    resetKey={locationKey}
+                    fallback={(info) => <HouseErrorScreen {...info} />}
+                  >
                     {children ?? <Outlet />}
                   </ErrorBoundary>
                 </main>

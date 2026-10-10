@@ -276,6 +276,34 @@ describe('the boundary under the shell', () => {
     expect(screen.getByRole('navigation', { name: 'The rooms' })).toBeTruthy();
     consoleError.mockRestore();
   });
+
+  // F-734: counter acts and search hits link to the SAME room with a new query.
+  it('a link to the same room clears a crashed page', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let crash = true;
+    const Page = () => {
+      if (crash) throw new Error('boom');
+      return <div>order page</div>;
+    };
+    render(
+      <AuthContext.Provider value={auth()}>
+        <MemoryRouter initialEntries={['/orders']}>
+          {/* Stands in for the counter's act link, which lives outside the page. */}
+          <Link to="/orders?order=o-2">open order o-2</Link>
+          <Routes>
+            <Route element={<HouseShell />}>
+              <Route path="*" element={<Page />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    );
+    expect(screen.getByText(/this page ran into a problem/i)).toBeTruthy();
+    crash = false;
+    fireEvent.click(screen.getByText('open order o-2'));
+    expect(screen.getByText('order page')).toBeTruthy();
+    consoleError.mockRestore();
+  });
 });
 
 describe('offline — the strip under the header', () => {

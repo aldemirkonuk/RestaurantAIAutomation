@@ -76,6 +76,7 @@ import { InventoryCommandPage } from './pages/inventory/command/InventoryCommand
 import { PageGate } from './components/mudavym'
 import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 import { readRetryDelay, shouldRetryRead } from './lib/readFailure'
+import { PageBoundary } from './components/mudavym/PageBoundary'
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
@@ -213,8 +214,17 @@ function App() {
                     OD-124 until a lawyer reviews it (founder Q11, 2026-09-22). */}
                 <Route path="/terms" element={<Terms />} />
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
-                    to publish, and our own ingester reads it back as structured data. */}
-                <Route path="/v/:slug" element={<VendorPortal />} />
+                    to publish, and our own ingester reads it back as structured data.
+                    PageBoundary (F-735) on this and the other routes outside the
+                    shell; a visitor here has no dashboard to be sent back to. */}
+                <Route
+                  path="/v/:slug"
+                  element={
+                    <PageBoundary showHome={false}>
+                      <VendorPortal />
+                    </PageBoundary>
+                  }
+                />
                 {/* ADR 0213's first-proof GetStarted (#455) is the plan of record. [2026-09-28,
                     ADR 0149 cutover (CUTOVER-MANIFEST-2026-09-28.md, group `arrival_book`): #414's Skyleaf
                     Arrival book, which sat in this route's `next` slot behind
@@ -224,7 +234,9 @@ function App() {
                 <Route
                   path="/get-started"
                   element={
-                    <GetStarted />
+                    <PageBoundary>
+                      <GetStarted />
+                    </PageBoundary>
                   }
                 />
                 <Route
@@ -249,27 +261,33 @@ function App() {
                 <Route
                   path="/studio"
                   element={
-                    <ProtectedRoute houseOptional
-                      requiredStudioRole={['developer', 'certified_contributor', 'review_admin']}
-                    >
-                      <Studio />
-                    </ProtectedRoute>
+                    <PageBoundary>
+                      <ProtectedRoute houseOptional
+                        requiredStudioRole={['developer', 'certified_contributor', 'review_admin']}
+                      >
+                        <Studio />
+                      </ProtectedRoute>
+                    </PageBoundary>
                   }
                 />
                 <Route
                   path="/studio/queue"
                   element={
-                    <ProtectedRoute houseOptional requiredStudioRole={['developer', 'review_admin']}>
-                      <StudioApprovalQueue />
-                    </ProtectedRoute>
+                    <PageBoundary>
+                      <ProtectedRoute houseOptional requiredStudioRole={['developer', 'review_admin']}>
+                        <StudioApprovalQueue />
+                      </ProtectedRoute>
+                    </PageBoundary>
                   }
                 />
                 <Route
                   path="/studio/certify"
                   element={
-                    <ProtectedRoute houseOptional requiredStudioRole={['developer', 'review_admin']}>
-                      <StudioCertify />
-                    </ProtectedRoute>
+                    <PageBoundary>
+                      <ProtectedRoute houseOptional requiredStudioRole={['developer', 'review_admin']}>
+                        <StudioCertify />
+                      </ProtectedRoute>
+                    </PageBoundary>
                   }
                 />
                 {/*
@@ -281,9 +299,11 @@ function App() {
                 <Route
                   path="/studio/invite/:token"
                   element={
-                    <ProtectedRoute houseOptional>
-                      <StudioInviteRedeem />
-                    </ProtectedRoute>
+                    <PageBoundary>
+                      <ProtectedRoute houseOptional>
+                        <StudioInviteRedeem />
+                      </ProtectedRoute>
+                    </PageBoundary>
                   }
                 />
 
@@ -296,9 +316,11 @@ function App() {
                 <Route
                   path="/receiving/:orderId/door"
                   element={
-                    <ProtectedRoute>
-                      <PageGate page="receiving_door" next={<DoorNext />} />
-                    </ProtectedRoute>
+                    <PageBoundary>
+                      <ProtectedRoute>
+                        <PageGate page="receiving_door" next={<DoorNext />} />
+                      </ProtectedRoute>
+                    </PageBoundary>
                   }
                 />
 
@@ -347,14 +369,20 @@ function App() {
                 */}
                 <Route
                   path="/authorize/complete"
-                  element={<CompleteIntegrationConsent />}
+                  element={
+                    <PageBoundary>
+                      <CompleteIntegrationConsent />
+                    </PageBoundary>
+                  }
                 />
                 <Route
                   path="/authorize/:integrationId"
                   element={
-                    <ProtectedRoute>
-                      <PageGate page="authorize_integration" next={<AuthorizeIntegrationNext />} />
-                    </ProtectedRoute>
+                    <PageBoundary>
+                      <ProtectedRoute>
+                        <PageGate page="authorize_integration" next={<AuthorizeIntegrationNext />} />
+                      </ProtectedRoute>
+                    </PageBoundary>
                   }
                 />
 
