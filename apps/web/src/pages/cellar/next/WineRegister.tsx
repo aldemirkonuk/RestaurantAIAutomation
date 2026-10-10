@@ -38,7 +38,7 @@ import {
   type BottleVM,
   type CellarData,
 } from './useCellarNextData';
-import { EM, houseNamingFor, libraryFigure, libraryMoney, money, volume, year } from './cellar-format';
+import { EM, count as houseCount, houseNamingFor, libraryFigure, libraryMoney, money, volume, year } from './cellar-format';
 import IsThisTheBottlePanel, { type BottleReading } from './IsThisTheBottlePanel';
 import { readingsFrom } from './readings';
 import { foldText } from '@/lib/textFold';
@@ -385,7 +385,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
   // "No match" is said only when the library itself said so (F-592). While the
   // book is not whole, a miss among the rows read so far is not a miss.
   const emptyLine = (): string => {
-    const read = (bottles?.length ?? 0).toLocaleString('en-US');
+    const read = houseCount(bottles?.length ?? 0);
     const typed = query.trim();
     if ((bottles?.length ?? 0) === 0) return 'The book is open and empty — the library holds no titles.';
     if (!data.bookTruncated) return 'No title in the book matches this reading. Widen the filters.';
@@ -429,8 +429,8 @@ export default function WineRegister({ data }: { data: CellarData }) {
         <p className="cl-dim" style={{ margin: 0, fontSize: 12.5 }}>
           {shown === null
             ? 'Opening the book…'
-            : `${shown.length.toLocaleString('en-US')} of ${(bottles?.length ?? 0).toLocaleString('en-US')} titles`}
-          {data.bookTruncated ? ` · this read is capped at ${data.bookLimit.toLocaleString('en-US')}` : ''}
+            : `${houseCount(shown.length)} of ${houseCount(bottles?.length ?? 0)} titles`}
+          {data.bookTruncated ? ` · this read is capped at ${houseCount(data.bookLimit)}` : ''}
         </p>
         {data.bookTruncated ? (
           <button

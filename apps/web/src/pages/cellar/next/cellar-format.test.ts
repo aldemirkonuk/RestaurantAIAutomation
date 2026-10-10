@@ -15,14 +15,18 @@ import {
   acidityTicks,
   bodyTicks,
   composedTastingSentence,
+  count,
   handlingSentence,
   matchNote,
   quoteSource,
   decimal,
   shortDate,
+  strandedPrompt,
   tanninTicks,
   volume,
 } from './cellar-format';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { setHouseLocale } from '../../../lib/houseCurrency';
 
 describe('shortDate', () => {
@@ -202,5 +206,27 @@ describe('decimals use the house mark (F-1070, rehit of F-866)', () => {
     expect(decimal(1.5, 1)).toBe('1.5');
     expect(volume(1500)).toBe('1.50L');
     expect(volume(750)).toBe('750ml');
+  });
+});
+
+describe('counts group thousands with the house mark (F-1085, F-908 family)', () => {
+  it('writes 12.500 in a lira house and 12,500 in a dollar house', () => {
+    setHouseLocale('tr-TR');
+    try {
+      expect(count(12500)).toBe('12.500');
+      expect(strandedPrompt('wines', 1250)).toBe('1.250 wines are still in this house’s books.');
+    } finally {
+      setHouseLocale('en-US');
+    }
+    expect(count(12500)).toBe('12,500');
+    expect(count(null)).toBe(EM);
+  });
+
+  it('no cellar page groups a shown number with a hard-coded en-US', () => {
+    const dir = resolve(process.cwd(), 'src/pages/cellar/next');
+    const offenders = readdirSync(dir)
+      .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+      .filter((f) => /\.toLocaleString\(\s*['"]en-US['"]/.test(readFileSync(resolve(dir, f), 'utf8')));
+    expect(offenders).toEqual([]);
   });
 });

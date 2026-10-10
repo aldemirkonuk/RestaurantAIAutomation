@@ -146,10 +146,13 @@ export function year(v: number | null | undefined): string {
   return String(n);
 }
 
-/** Plain count, or the dash. */
+/**
+ * Plain count, or the dash — thousands grouped with the house's own mark,
+ * "1.250" in a lira house beside "₺1.250,00" (F-1085, F-908 family).
+ */
 export function count(v: number | null | undefined): string {
   const n = num(v);
-  return n === null ? EM : n.toLocaleString('en-US');
+  return n === null ? EM : n.toLocaleString(getHouseLocale());
 }
 
 /**
@@ -630,7 +633,7 @@ export function strandedPrompt(id: RegisterId, n: number): string {
         : id === 'whiskey'
           ? n === 1 ? 'whisky' : 'whiskies'
           : `${REGISTER_TITLE[id].toLowerCase()} ${n === 1 ? 'line' : 'lines'}`;
-  return `${n.toLocaleString('en-US')} ${what} ${n === 1 ? 'is' : 'are'} still in this house’s books.`;
+  return `${count(n)} ${what} ${n === 1 ? 'is' : 'are'} still in this house’s books.`;
 }
 
 /* ── the house's own record ────────────────────────────────────────────────
