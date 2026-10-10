@@ -8,11 +8,12 @@
  * The grant is bound server-side to the invite's target_email, so this page can only ever
  * succeed for the account the invite was issued to.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Wine, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../../components/ui/button'
+import { forgetJoin } from '../../lib/joinResume'
 
 const ROLE_LABELS: Record<string, string> = {
   developer: 'Developer',
@@ -51,6 +52,11 @@ export function StudioInviteRedeem() {
   const [status, setStatus] = useState<'idle' | 'working' | 'done' | 'error'>('idle')
   const [grantedRole, setGrantedRole] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // Being here is the way back from verifying (F-288): nothing more to keep.
+  useEffect(() => {
+    forgetJoin()
+  }, [])
 
   const handleAccept = async () => {
     if (!token) return

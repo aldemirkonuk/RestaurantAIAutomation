@@ -27,6 +27,7 @@ import {
   tokenClaims,
   tokenHouse,
 } from "../lib/houseMemory";
+import { forgetJoin } from "../lib/joinResume";
 import { doRefresh } from "../lib/sessionRefresh";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
@@ -1080,6 +1081,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // only ids and times, and it is what lets this person go straight back
       // into their house tomorrow.
       clearHouseEnded();
+      // An invite kept for this person while they verified is theirs only.
+      forgetJoin();
       // The read cache was this session's: the next person on a shared device
       // must not see it. Cache only — unsent work is ADR 0241's to decide.
       // Bounded: IndexedDB's open has no timeout and has hung on WebKit, and a

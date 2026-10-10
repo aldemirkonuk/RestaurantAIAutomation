@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
+import { rememberJoin } from '../lib/joinResume'
 
 type HouseRole = 'owner' | 'manager' | 'staff'
 
@@ -14,6 +15,13 @@ interface ProtectedRouteProps {
   requiredRole?: HouseRole | HouseRole[]
   requiredStudioRole?: ('developer' | 'certified_contributor' | 'review_admin')[]
   redirectTo?: string
+  /**
+   * The page needs a signed-in, verified account but no house: the studio,
+   * which the gateway does not scope to a house (`@TenantBypass`). A studio
+   * invitee is often a brand-new account with no house (ADR 0021), and the
+   * chooser would send them on to /get-started without their invite (F-288).
+   */
+  houseOptional?: boolean
 }
 
 export function ProtectedRoute({
@@ -21,6 +29,7 @@ export function ProtectedRoute({
   requiredRole,
   requiredStudioRole,
   redirectTo = '/login',
+  houseOptional = false,
 }: ProtectedRouteProps) {
   const { user, loading, isAuthenticated } = useAuth()
   const location = useLocation()
@@ -46,7 +55,10 @@ export function ProtectedRoute({
   }
 
   // Email verification gate — Path B users must verify before accessing dashboard (D-05, T-26-05-02)
+  // An invite link opened by an unverified account is kept for that account,
+  // so verifying brings them back to it (F-288); other pages are not.
   if (user?.emailVerified === false) {
+    rememberJoin(location.pathname, user.userId)
     return <Navigate to="/verify-email" replace />
   }
 
@@ -56,7 +68,7 @@ export function ProtectedRoute({
   // else ended a membership of theirs, or to /get-started if they never had
   // one or ended their own (brackets 2026-09-25; the founder, round 4, item
   // 16, and round 5, item 26).
-  if (!user?.restaurantId) {
+  if (!user?.restaurantId && !houseOptional) {
     return <Navigate to="/choose-house" state={{ from: location }} replace />
   }
 

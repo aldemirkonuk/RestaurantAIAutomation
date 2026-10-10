@@ -11,6 +11,7 @@ import { ChooseHouse } from "./ChooseHouse";
 import { useAuth } from "../contexts/AuthContext";
 import apiClient from "../services/api/client";
 import { HOUSE_ENDED_KEY, rememberHouse } from "../lib/houseMemory";
+import { rememberJoin } from "../lib/joinResume";
 
 /**
  * Which house today? (ADR 0164, R7): one row per house, this device's last
@@ -146,6 +147,18 @@ describe("ChooseHouse", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("where")).toHaveTextContent("/get-started"),
+    );
+  });
+
+  // F-274/F-288: an invite the account was joining goes before /get-started.
+  it("sends an account with no house back to the invite it was joining", async () => {
+    rememberJoin("/invite/AB12CD34", U);
+    housesAnswer([], { accessEnded: false });
+
+    renderAt();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("/invite/AB12CD34"),
     );
   });
 

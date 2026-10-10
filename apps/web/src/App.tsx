@@ -242,7 +242,7 @@ function App() {
                 <Route
                   path="/studio"
                   element={
-                    <ProtectedRoute
+                    <ProtectedRoute houseOptional
                       requiredStudioRole={['developer', 'certified_contributor', 'review_admin']}
                     >
                       <Studio />
@@ -252,7 +252,7 @@ function App() {
                 <Route
                   path="/studio/queue"
                   element={
-                    <ProtectedRoute requiredStudioRole={['developer', 'review_admin']}>
+                    <ProtectedRoute houseOptional requiredStudioRole={['developer', 'review_admin']}>
                       <StudioApprovalQueue />
                     </ProtectedRoute>
                   }
@@ -260,7 +260,7 @@ function App() {
                 <Route
                   path="/studio/certify"
                   element={
-                    <ProtectedRoute requiredStudioRole={['developer', 'review_admin']}>
+                    <ProtectedRoute houseOptional requiredStudioRole={['developer', 'review_admin']}>
                       <StudioCertify />
                     </ProtectedRoute>
                   }
@@ -274,7 +274,7 @@ function App() {
                 <Route
                   path="/studio/invite/:token"
                   element={
-                    <ProtectedRoute>
+                    <ProtectedRoute houseOptional>
                       <StudioInviteRedeem />
                     </ProtectedRoute>
                   }
