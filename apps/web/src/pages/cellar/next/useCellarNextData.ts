@@ -1044,13 +1044,15 @@ export function useCocktailWrites() {
     void queryClient.invalidateQueries({ queryKey: ['cellar', 'cocktails', activeRestaurantId] });
     void queryClient.invalidateQueries({ queryKey: ['cellar', 'register', activeRestaurantId] });
   };
+  // Settled, not only success: a write that timed out may still have landed
+  // (F-338), and the list must re-read so "check the list" means something.
 
   const create = useMutation({
     mutationFn: async (input: CocktailInput) => {
       const r = await apiClient.post(`/cocktails/${activeRestaurantId}`, input);
       return r.data;
     },
-    onSuccess: invalidate,
+    onSettled: invalidate,
   });
 
   const amend = useMutation({
@@ -1061,7 +1063,7 @@ export function useCocktailWrites() {
       );
       return r.data;
     },
-    onSuccess: invalidate,
+    onSettled: invalidate,
   });
 
   const retire = useMutation({
@@ -1069,7 +1071,7 @@ export function useCocktailWrites() {
       const r = await apiClient.delete(`/cocktails/${activeRestaurantId}/${id}`);
       return r.data;
     },
-    onSuccess: invalidate,
+    onSettled: invalidate,
   });
 
   const setRecipe = useMutation({
@@ -1083,7 +1085,7 @@ export function useCocktailWrites() {
       );
       return r.data;
     },
-    onSuccess: invalidate,
+    onSettled: invalidate,
   });
 
   return { create, amend, retire, setRecipe };

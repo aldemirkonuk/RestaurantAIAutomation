@@ -38,7 +38,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
-import { getErrorMessage } from '@/services/api/client';
+import { getErrorMessage, isUnconfirmedWrite } from '@/services/api/client';
 import {
   createCertification,
   deleteCertification,
@@ -123,9 +123,21 @@ export function CertificationsSheet({
     onChanged();
   };
 
-  /** One failure sentence per act, each naming what did NOT happen. */
-  const said = (verb: string, tail: string) => (e: unknown) =>
-    setFailure(`${verb} (${getErrorMessage(e)}). ${tail}`);
+  /**
+   * One failure sentence per act, each naming what did NOT happen — but only
+   * for a definite refusal. A timeout or a server fault can land after the
+   * write did (F-338), so that one says what MAY have happened instead.
+   */
+  const said = (verb: string, tail: string, unconfirmed: string) => (e: unknown) => {
+    if (!isUnconfirmedWrite(e)) {
+      setFailure(`${verb} (${getErrorMessage(e)}). ${tail}`);
+      return;
+    }
+    // Re-read the file so the list below shows what actually landed.
+    void qc.invalidateQueries({ queryKey: ['team', 'certs'] });
+    void qc.invalidateQueries({ queryKey: ['team-next-certs'] });
+    setFailure(`No answer came back, so ${unconfirmed} Check the file below before trying again.`);
+  };
 
   const add = useMutation({
     mutationFn: () =>
@@ -139,7 +151,7 @@ export function CertificationsSheet({
         restaurantId ?? undefined,
       ),
     onSuccess: after,
-    onError: said('The certificate was not filed', 'Nothing was written and your words are still here.'),
+    onError: said('The certificate was not filed', 'Nothing was written and your words are still here.', 'the certificate may already be on file. Your words are still here.'),
   });
 
   const change = useMutation({
@@ -154,13 +166,13 @@ export function CertificationsSheet({
         restaurantId ?? undefined,
       ),
     onSuccess: after,
-    onError: said('The change was not saved', 'The certificate on file is unchanged.'),
+    onError: said('The change was not saved', 'The certificate on file is unchanged.', 'the change may already be saved. Your words are still here.'),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => deleteCertification(id, restaurantId ?? undefined),
     onSuccess: after,
-    onError: said('It was not taken off the file', 'It is still on file.'),
+    onError: said('It was not taken off the file', 'It is still on file.', 'it may already be off the file.'),
   });
 
   const busy = add.isPending || change.isPending || remove.isPending;

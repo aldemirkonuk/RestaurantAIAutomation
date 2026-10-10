@@ -44,7 +44,7 @@
 
 import { useMemo, useState } from 'react';
 import { Panel } from '@/components/mudavym';
-import { apiClient, getErrorMessage } from '@/services/api/client';
+import { apiClient, getErrorMessage, isUnconfirmedWrite } from '@/services/api/client';
 import { EM } from './cellar-format';
 
 export type ReadingSource = 'ai_detection' | 'external_api' | 'manual' | 'menu_scan';
@@ -188,10 +188,14 @@ export function IsThisTheBottlePanel({
       onClose();
     } catch (e) {
       const status = (e as { response?: { status?: number } })?.response?.status;
+      // Only a definite refusal may say "nothing was written" (F-338): a
+      // timeout or a server fault can land after the bottle was added.
       setFailure(
         status === 403 || status === 401
           ? `This account may not add to the library (${status}). Nothing was written and the reading is still here.`
-          : `The bottle was not added to the library (${getErrorMessage(e)}). Nothing was written and the reading is still here.`,
+          : isUnconfirmedWrite(e)
+            ? 'No answer came back, so the bottle may already be in the library. Look it up there before confirming it again. The reading is still here.'
+            : `The bottle was not added to the library (${getErrorMessage(e)}). Nothing was written and the reading is still here.`,
       );
     } finally {
       setSaving(false);

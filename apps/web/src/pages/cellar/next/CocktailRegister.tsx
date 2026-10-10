@@ -29,6 +29,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { isUnconfirmedWrite } from '@/services/api/client';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
@@ -128,8 +129,12 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
         `${out.lines} ${out.lines === 1 ? 'line' : 'lines'} recorded. This is the first recipe data this house has ever had — cocktail_ingredients was created empty in August and no extraction pass ever filled it.`,
       );
     } catch (e) {
+      // Only a definite refusal may say nothing changed (F-338): a timeout or
+      // a server fault can land after the recipe was recorded.
       setSaid(
-        `The recipe was NOT recorded${e instanceof Error ? ` — ${e.message}` : ''}. Nothing was changed.`,
+        isUnconfirmedWrite(e)
+          ? 'No answer came back, so the recipe may have been recorded. Close and reopen this cocktail to check before recording it again. Your lines are still here.'
+          : `The recipe was NOT recorded${e instanceof Error ? ` — ${e.message}` : ''}. Nothing was changed.`,
       );
     }
   };
@@ -251,8 +256,12 @@ export default function CocktailRegister({
       setDraft(null);
       setEditId(null);
     } catch (e) {
+      // Same rule (F-338): after a timeout the cocktail may already be on the
+      // list, and a second press would put it there twice.
       setSaid(
-        `Nothing was written${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`,
+        isUnconfirmedWrite(e)
+          ? 'No answer came back, so this may already be on the list. Check the list before pressing again. Your words are still here.'
+          : `Nothing was written${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`,
       );
     }
   };
@@ -264,7 +273,11 @@ export default function CocktailRegister({
         `“${name}” is off the list. The row was dated, not deleted — a cocktail that came off in September is a fact about the season.`,
       );
     } catch (e) {
-      setSaid(`“${name}” was NOT retired${e instanceof Error ? ` — ${e.message}` : ''}.`);
+      setSaid(
+        isUnconfirmedWrite(e)
+          ? `No answer came back, so “${name}” may already be off the list. Check the list before taking it off again.`
+          : `“${name}” was NOT retired${e instanceof Error ? ` — ${e.message}` : ''}.`,
+      );
     } finally {
       setConfirmRetire(null);
     }

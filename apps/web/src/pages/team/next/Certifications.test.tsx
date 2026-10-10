@@ -31,6 +31,12 @@ vi.mock('@/services/api/team', () => ({
 
 vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
+  // Same reading as the real client: a 5xx, or a request that went out with
+  // no answer (a timeout), is unconfirmed.
+  isUnconfirmedWrite: (e: unknown) => {
+    const x = e as { response?: { status?: number }; request?: unknown };
+    return x?.response ? (x.response.status ?? 0) >= 500 : x?.request != null;
+  },
 }));
 
 import { CertificationsSheet, certRefusal, STATUS_WORDS, EMPTY_CERT } from './CertificationsSheet';
@@ -173,6 +179,32 @@ describe('four states, honestly', () => {
       ),
     );
     expect(screen.getByTestId('cert-type')).toHaveValue('allergen');
+  });
+
+  // F-338: a timeout can land after the certificate was filed; the sheet must
+  // not say "nothing was written", and it must re-read the file.
+  it('after a timeout, says it may already be on file, never "nothing was written"', async () => {
+    team.create.mockRejectedValue(
+      Object.assign(new Error('timeout of 30000ms exceeded'), { request: {} }),
+    );
+    draw();
+    fireEvent.change(screen.getByTestId('cert-type'), { target: { value: 'allergen' } });
+    fireEvent.click(screen.getByTestId('cert-save'));
+    const failure = await screen.findByTestId('cert-failure');
+    expect(failure).toHaveTextContent(/may already be on file.*Check the file below before trying again/s);
+    expect(failure).not.toHaveTextContent(/Nothing was written|30000ms/);
+    expect(screen.getByTestId('cert-type')).toHaveValue('allergen');
+  });
+
+  it('after a server fault on a removal, never says it is still on file', async () => {
+    team.remove.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 502'), { response: { status: 502 } }),
+    );
+    draw();
+    fireEvent.click(screen.getByTestId('cert-remove'));
+    const failure = await screen.findByTestId('cert-failure');
+    expect(failure).toHaveTextContent(/may already be off the file/);
+    expect(failure).not.toHaveTextContent(/It is still on file/);
   });
 
   it('says a removal that failed left it on file', async () => {

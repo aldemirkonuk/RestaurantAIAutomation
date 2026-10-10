@@ -24,6 +24,12 @@ const api = vi.hoisted(() => ({ post: vi.fn() }));
 vi.mock('@/services/api/client', () => ({
   apiClient: { post: (...a: unknown[]) => api.post(...a) },
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
+  // Same reading as the real client: a 5xx, or a request that went out with
+  // no answer (a timeout), is unconfirmed.
+  isUnconfirmedWrite: (e: unknown) => {
+    const x = e as { response?: { status?: number }; request?: unknown };
+    return x?.response ? (x.response.status ?? 0) >= 500 : x?.request != null;
+  },
 }));
 
 import { IsThisTheBottlePanel, readingRefusals, sureness, type BottleReading } from './IsThisTheBottlePanel';
@@ -138,7 +144,7 @@ describe('the engine’s hand stays grey', () => {
 
 describe('four states, honestly', () => {
   it('says what did not happen when the write is refused, and keeps the reading', async () => {
-    api.post.mockRejectedValue(Object.assign(new Error('staging full'), { response: { status: 500 } }));
+    api.post.mockRejectedValue(Object.assign(new Error('staging full'), { response: { status: 422 } }));
     draw();
     fireEvent.click(screen.getByTestId('bottle-confirm'));
     await waitFor(() =>
@@ -147,6 +153,21 @@ describe('four states, honestly', () => {
       ),
     );
     // name and grape are both "Öküzgözü" here — assert the NAME field's cell.
+    expect(within(screen.getByTestId('bottle-field-name')).getByText('Öküzgözü')).toBeInTheDocument();
+  });
+
+  // F-338: a timeout or a 5xx can land after the bottle was added — the panel
+  // must not say "nothing was written".
+  it.each([
+    ['a timeout', Object.assign(new Error('timeout of 30000ms exceeded'), { request: {} })],
+    ['a server fault', Object.assign(new Error('staging full'), { response: { status: 500 } })],
+  ])('after %s, says the bottle may already be in the library', async (_, err) => {
+    api.post.mockRejectedValue(err);
+    draw();
+    fireEvent.click(screen.getByTestId('bottle-confirm'));
+    const failure = await screen.findByTestId('bottle-failure');
+    expect(failure).toHaveTextContent(/may already be in the library.*before confirming it again/s);
+    expect(failure).not.toHaveTextContent(/Nothing was written/);
     expect(within(screen.getByTestId('bottle-field-name')).getByText('Öküzgözü')).toBeInTheDocument();
   });
 
