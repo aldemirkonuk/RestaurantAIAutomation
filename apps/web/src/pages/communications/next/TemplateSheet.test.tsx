@@ -17,6 +17,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 const mockPost = vi.hoisted(() => vi.fn());
+const mockGet = vi.hoisted(() => vi.fn());
 
 vi.mock('./Compose/useComposeData', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./Compose/useComposeData')>()),
@@ -24,7 +25,7 @@ vi.mock('./Compose/useComposeData', async (importOriginal) => ({
 }));
 
 vi.mock('../../../services/api/client', () => ({
-  apiClient: { post: mockPost, get: vi.fn() },
+  apiClient: { post: mockPost, get: mockGet },
 }));
 
 import { TemplateSheet } from './TemplateSheet';
@@ -52,6 +53,7 @@ const base = {
 beforeEach(() => {
   mockData.current = { ...base };
   mockPost.mockReset();
+  mockGet.mockReset();
 });
 
 describe('the house letter library', () => {
@@ -269,5 +271,174 @@ describe('leaving an unsaved template keeps it (COMMS-W34)', () => {
     render(<TemplateSheet onClose={() => {}} held={{ draft: { ...opened, body: 'Merhaba,' }, opened }} />);
     expect(screen.getByLabelText('The letter')).toHaveValue('Merhaba,');
     expect(screen.getByTestId('tpl-unsaved')).toBeInTheDocument();
+  });
+});
+
+// ── the order letter (ADR 0313, 4a-ii) ──────────────────────────────────────
+
+const HOUSE_WORDS = '{{greeting}}\n\nOur order:\n\n{{order_lines}}\n\n{{ask}}\n\n{{signer}}';
+const DEFAULT_EN = '{{greeting}}\n\nHere is our order request:\n\n{{order_lines}}\n\n{{ask}}\n\n{{signer}}';
+
+function letterView(over: Record<string, unknown> = {}) {
+  return {
+    key: 'order_request',
+    locale: 'en',
+    mayEdit: true,
+    template: { id: 't-ol', name: 'Our order letter', draft: HOUSE_WORDS, lastEditedBy: 'Deniz', lastEditedAt: '2026-10-08T09:00:00Z' },
+    published: null,
+    rendersFrom: 'default',
+    draftRefusals: [],
+    versions: [],
+    defaults: { en: DEFAULT_EN, tr: DEFAULT_EN },
+    tokens: [
+      { key: 'greeting', required: true, says: "Hello and the vendor's first name" },
+      { key: 'order_lines', required: true, says: 'Each line' },
+      { key: 'ask', required: true, says: 'Asks the vendor to confirm' },
+      { key: 'signer', required: true, says: 'Who placed the order' },
+      { key: 'needed_by', required: false, says: 'The date the order is needed by' },
+    ],
+    ...over,
+  };
+}
+
+async function openLetter(view = letterView()) {
+  mockGet.mockResolvedValue({ data: view });
+  render(<TemplateSheet onClose={() => {}} />);
+  fireEvent.click(screen.getByText('Open the order letter'));
+  return (await screen.findByLabelText('The draft')) as HTMLTextAreaElement;
+}
+
+describe('the order letter', () => {
+  it('is never in the library or the purpose picker, and is read only when opened', () => {
+    mockData.current = {
+      ...base,
+      templates: [
+        { id: 'a', name: 'Price ask', subject: null, body: 'Hi', category: 'price_query', mergeFields: [], lastEditedBy: null, lastEditedAt: null, lastUsedAt: null },
+        { id: 'b', name: 'Our order letter', subject: null, body: HOUSE_WORDS, category: 'order_request', mergeFields: [], lastEditedBy: null, lastEditedAt: null, lastUsedAt: null },
+      ],
+      sender: { categories: ['price_query', 'order_request'] },
+    };
+    render(<TemplateSheet onClose={() => {}} />);
+    expect(screen.getByText('Price ask')).toBeInTheDocument();
+    expect(screen.queryByText('Our order letter')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Write a new template'));
+    const options = Array.from((screen.getByLabelText('Purpose') as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toEqual(['price_query']);
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it('staff read it and cannot change it', async () => {
+    const box = await openLetter(letterView({ mayEdit: false }));
+    expect(box.readOnly).toBe(true);
+    expect(screen.getByTestId('order-letter-read-only')).toHaveTextContent(/Only an owner or a manager/);
+    expect(screen.queryByText('Save the draft')).not.toBeInTheDocument();
+    expect(screen.queryByText('Publish')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Copy v/)).not.toBeInTheDocument();
+    expect(screen.getByText('{{greeting}} *')).toBeDisabled();
+  });
+
+  it("says vendors receive Mudavym's words until something is published", async () => {
+    await openLetter();
+    expect(screen.getByTestId('order-letter-live')).toHaveTextContent(/Vendors receive Mudavym's words: nothing of the house's has been published/);
+  });
+
+  it('saves a draft as the order letter, with no subject, and says vendors are unaffected', async () => {
+    const box = await openLetter();
+    fireEvent.change(box, { target: { value: `${HOUSE_WORDS}\nWith thanks,` } });
+    expect(screen.getByText('Preview')).toBeDisabled();
+    expect(screen.getByText('Publish')).toBeDisabled();
+    mockPost.mockResolvedValueOnce({ data: { id: 't-ol', saved: true, published: false } });
+    fireEvent.click(screen.getByText('Save the draft'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(mockPost.mock.calls[0]).toEqual([
+      '/communications/letters/templates',
+      { id: 't-ol', name: 'Our order letter', category: 'order_request', body: `${HOUSE_WORDS}\nWith thanks,` },
+    ]);
+    expect(await screen.findByText(/Vendors still receive the published words/)).toBeInTheDocument();
+  });
+
+  it('shows each refused sentence when the server refuses the words', async () => {
+    const box = await openLetter();
+    fireEvent.change(box, { target: { value: `${HOUSE_WORDS}\n3 cases` } });
+    mockPost.mockRejectedValueOnce({
+      response: { data: { message: 'These words cannot go into the order letter.', refusals: [{ rule: 'numeral', says: 'Write no figures: "3" is a figure.' }] } },
+    });
+    fireEvent.click(screen.getByText('Save the draft'));
+    expect(await screen.findByTestId('order-letter-refusals')).toHaveTextContent('Write no figures: "3" is a figure.');
+    expect(screen.getByText(/Nothing changed for vendors/)).toBeInTheDocument();
+  });
+
+  it('publishes only what it previewed, sending the preview hash', async () => {
+    await openLetter();
+    expect(screen.getByText('Publish')).toBeDisabled();
+    mockPost.mockResolvedValueOnce({
+      data: {
+        locale: 'en',
+        previewHash: 'h'.repeat(64),
+        refusals: [],
+        samples: [
+          { label: "an owner's order with a price", subject: 'Order PO-1042', body: 'Hello Ayşe, Our order: ...' },
+          { label: 'an order with no price on file', subject: 'Order PO-1042', body: 'Hello Ayşe, ...' },
+        ],
+      },
+    });
+    fireEvent.click(screen.getByText('Preview'));
+    expect(await screen.findByTestId('order-letter-preview')).toHaveTextContent("an owner's order with a price");
+    expect(mockPost).toHaveBeenLastCalledWith('/communications/letters/templates/order-request/preview', { locale: 'en' });
+    await waitFor(() => expect(screen.getByText('Publish')).not.toBeDisabled());
+    mockPost.mockResolvedValueOnce({ data: { version: 1 } });
+    fireEvent.click(screen.getByText('Publish'));
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenLastCalledWith('/communications/letters/templates/order-request/publish', {
+        previewHash: 'h'.repeat(64),
+        locale: 'en',
+      }),
+    );
+    expect(await screen.findByText(/Published as version 1/)).toBeInTheDocument();
+  });
+
+  it('an edit after the preview cannot be published', async () => {
+    const box = await openLetter();
+    mockPost.mockResolvedValueOnce({ data: { locale: 'en', previewHash: 'h'.repeat(64), refusals: [], samples: [{ label: 'x', subject: 's', body: 'b' }] } });
+    fireEvent.click(screen.getByText('Preview'));
+    await waitFor(() => expect(screen.getByText('Publish')).not.toBeDisabled());
+    fireEvent.change(box, { target: { value: `${HOUSE_WORDS}\nKind regards,` } });
+    expect(screen.getByText('Publish')).toBeDisabled();
+  });
+
+  it('copies a version into the draft and says nothing was published', async () => {
+    await openLetter(
+      letterView({
+        versions: [{ id: 'v1', version: 1, locale: 'en', kind: 'publish', body: HOUSE_WORDS, by: 'Deniz', at: '2026-10-08T10:00:00Z' }],
+        published: { id: 'v1', version: 1, locale: 'en', kind: 'publish', body: HOUSE_WORDS, by: 'Deniz', at: '2026-10-08T10:00:00Z' },
+        rendersFrom: 'house',
+      }),
+    );
+    expect(screen.getByTestId('order-letter-live')).toHaveTextContent(/your published words, version 1, published by Deniz/);
+    expect(screen.getByTestId('order-letter-versions')).toHaveTextContent('v1 · English · published · live');
+    mockPost.mockResolvedValueOnce({ data: { restored: true, published: false } });
+    fireEvent.click(screen.getByText('Copy v1 into the draft'));
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenLastCalledWith('/communications/letters/templates/order-request/restore', { versionId: 'v1' }),
+    );
+    expect(await screen.findByText(/Nothing was published/)).toBeInTheDocument();
+  });
+
+  it('reset asks first, then publishes Mudavym\'s words', async () => {
+    await openLetter();
+    fireEvent.click(screen.getByText("Reset to Mudavym's words"));
+    expect(mockPost).not.toHaveBeenCalled();
+    mockPost.mockResolvedValueOnce({ data: { version: 2 } });
+    fireEvent.click(screen.getByText('Reset'));
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenLastCalledWith('/communications/letters/templates/order-request/reset', { locale: 'en' }),
+    );
+  });
+
+  it('a failed read says so, never "no letter"', async () => {
+    mockGet.mockRejectedValueOnce(new Error('network down'));
+    render(<TemplateSheet onClose={() => {}} />);
+    fireEvent.click(screen.getByText('Open the order letter'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be read \(network down\.\)\. That does not mean the house has none/);
   });
 });

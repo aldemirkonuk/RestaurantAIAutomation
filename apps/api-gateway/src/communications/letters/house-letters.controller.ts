@@ -28,21 +28,101 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiOperation,
+  ApiProperty,
+  ApiPropertyOptional,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../../auth/guards/roles.guard";
 import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import {
   HouseLettersService,
-  LETTER_CATEGORIES,
+  COMPOSER_LETTER_CATEGORIES,
 } from "./house-letters.service";
 import { HouseSenderService } from "./house-sender.service";
 import { HouseLettersCron } from "./house-letters.cron";
 import { HouseInboxCron } from "../inbox/house-inbox.cron";
 import { HouseInboxService } from "../inbox/house-inbox.service";
-import { DeclineLetterRequestDto, QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
+import {
+  DeclineLetterRequestDto,
+  QueueLetterDto,
+  UpsertLetterTemplateDto,
+} from "./house-letters.dto";
 import { houseActor, type TokenUser } from "./house-letters.actor";
+
+// ── The order letter's request bodies (ADR 0313, 4a-ii). They sit beside the
+//    four routes that take them; house-letters.dto.ts holds the composer's. ──
+
+/** The two languages an order letter is written in (ADR 0313 R4, F3). */
+export const ORDER_LETTER_LOCALES = ["en", "tr"] as const;
+
+/**
+ * Preview the house's order letter (ADR 0313, 0173 D2: draft, preview,
+ * publish). Without `body`, the saved draft is previewed; with one, the
+ * words given (the sheet previews what is being typed). The answer carries a
+ * `previewHash`, and publish refuses unless the hash it is given is the one
+ * the SAVED draft previews to.
+ */
+export class PreviewOrderLetterDto {
+  @ApiPropertyOptional({ description: "Words to preview instead of the saved draft." })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20000)
+  body?: string;
+
+  @ApiPropertyOptional({
+    enum: ORDER_LETTER_LOCALES,
+    description: "The letter's language. Default: the house's own (restaurants.country, ADR 0313).",
+  })
+  @IsOptional()
+  @IsIn(ORDER_LETTER_LOCALES as unknown as string[])
+  locale?: "en" | "tr";
+}
+
+/** Publish the saved draft as a new version. Owner or manager only. */
+export class PublishOrderLetterDto {
+  @ApiProperty({
+    description:
+      "The previewHash the preview of the saved draft answered. A draft saved after that preview, or another language, does not match and nothing is published.",
+  })
+  @IsString()
+  @MinLength(64)
+  @MaxLength(64)
+  previewHash: string;
+
+  @ApiPropertyOptional({ enum: ORDER_LETTER_LOCALES })
+  @IsOptional()
+  @IsIn(ORDER_LETTER_LOCALES as unknown as string[])
+  locale?: "en" | "tr";
+}
+
+/** Publish Mudavym's default words as a new version (0173 D2: a reset is a version). */
+export class ResetOrderLetterDto {
+  @ApiPropertyOptional({ enum: ORDER_LETTER_LOCALES })
+  @IsOptional()
+  @IsIn(ORDER_LETTER_LOCALES as unknown as string[])
+  locale?: "en" | "tr";
+}
+
+/** Copy an earlier version's words into the draft. Nothing is published. */
+export class RestoreOrderLetterDto {
+  @ApiProperty({ description: "letter_template_versions.id of this house's order letter." })
+  @IsUUID()
+  versionId: string;
+}
 
 @ApiTags("Communications")
 @UseGuards(JwtAuthGuard)
@@ -85,7 +165,7 @@ export class HouseLettersController {
         lastRun: this.inboxCron.lastRun(),
         ...(await this.inbox.statusFor(restaurantId)),
       },
-      categories: LETTER_CATEGORIES,
+      categories: COMPOSER_LETTER_CATEGORIES,
     };
   }
 
@@ -140,19 +220,106 @@ export class HouseLettersController {
   async templates(@CurrentUser() user: TokenUser) {
     const { restaurantId } = houseActor(user);
     return {
-      categories: LETTER_CATEGORIES,
+      categories: COMPOSER_LETTER_CATEGORIES,
       templates: await this.letters.listTemplates(restaurantId),
     };
   }
 
   @Post("templates")
-  @ApiOperation({ summary: "Create or edit a house letter template" })
+  @ApiOperation({
+    summary: "Create or edit a house letter template",
+    description:
+      "Open to every member for the five composer purposes, as before. The order letter (`order_request`, ADR 0313) is owner or manager only, checked in the service against the STORED purpose of an edited row, so a request that names another purpose cannot get around it; its words are checked by the order letter's prose rules, and a save is a draft that renders nothing until it is previewed and published.",
+  })
+  @ApiResponse({ status: 403, description: "The order letter, and the caller is not an owner or a manager" })
   async upsertTemplate(
     @CurrentUser() user: TokenUser,
     @Body() dto: UpsertLetterTemplateDto,
+    // Last, for the positional specs (see `queue`): an absent role fails
+    // closed for the order letter and is never read for the five.
+    @CurrentUser("role") role?: string | null,
   ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.letters.upsertTemplate({ restaurantId, userId, dto });
+    return this.letters.upsertTemplate({ restaurantId, userId, dto, role });
+  }
+
+  // ── The order letter (ADR 0313; 0173 D2: draft, preview, publish, reset,
+  //    history). Reading it is open to the house, so staff see it read-only;
+  //    every route that previews or changes it is owner or manager. ──────────
+
+  @Get("templates/order-request")
+  @ApiOperation({
+    summary:
+      "The house's order letter: its draft, what is published, every version, Mudavym's default words, the blocks, and whether the caller may change it",
+  })
+  async orderLetter(
+    @CurrentUser() user: TokenUser,
+    @CurrentUser("role") role?: string | null,
+  ) {
+    const { restaurantId } = houseActor(user);
+    return this.letters.orderLetter(restaurantId, role);
+  }
+
+  @Post("templates/order-request/preview")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Render the order letter's words over an example order, priced and unpriced; the previewHash it answers is what publish must bring back",
+  })
+  async previewOrderLetter(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: PreviewOrderLetterDto,
+  ) {
+    const { restaurantId } = houseActor(user);
+    return this.letters.previewOrderLetter({ restaurantId, body: dto.body, locale: dto.locale });
+  }
+
+  @Post("templates/order-request/publish")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Publish the saved draft as a new version, after its preview" })
+  @ApiResponse({ status: 409, description: "The preview was not of the words saved now" })
+  async publishOrderLetter(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: PublishOrderLetterDto,
+    @CurrentUser("role") role?: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.publishOrderLetter({
+      restaurantId,
+      userId,
+      role,
+      previewHash: dto.previewHash,
+      locale: dto.locale,
+    });
+  }
+
+  @Post("templates/order-request/reset")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Publish Mudavym's default words as a new version" })
+  async resetOrderLetter(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: ResetOrderLetterDto,
+    @CurrentUser("role") role?: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.resetOrderLetter({ restaurantId, userId, role, locale: dto.locale });
+  }
+
+  @Post("templates/order-request/restore")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Copy an earlier version's words into the draft; nothing is published" })
+  async restoreOrderLetter(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: RestoreOrderLetterDto,
+    @CurrentUser("role") role?: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.restoreOrderLetter({ restaurantId, userId, role, versionId: dto.versionId });
   }
 
   /**
