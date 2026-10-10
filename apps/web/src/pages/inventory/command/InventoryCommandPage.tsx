@@ -28,7 +28,8 @@ import { useInventoryPage, type InventoryItem } from "../index";
 import { ContextualInsights } from "../../../components/insights/ContextualInsights";
 import { useStorageLocations } from "../../../hooks/useStorageLocations";
 import { useCreateInventoryItem } from "../../../hooks/queries";
-import { getOrders } from "../../../services/api/orders";
+import { getOrder, getOrders } from "../../../services/api/orders";
+import type { Order } from "../../../services/api/types";
 import { AddWineToInventoryModal } from "../../../components/inventory/AddWineToInventoryModal";
 import { StorageLocationManager } from "../../../components/inventory/StorageLocationManager";
 import { AutoLocatePreviewModal } from "../../../components/inventory/AutoLocatePreviewModal";
@@ -127,6 +128,55 @@ const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
 
 /** An unknown figure, never a fabricated zero (CLAUDE.md §9). */
 const UNKNOWN = "—";
+
+/**
+ * What to say for a `?verify=` order that is not waiting in the queue
+ * (F-710). The words name the order and where it stands, never "nothing to
+ * show"; the link goes where the follow-up actually lives.
+ */
+export function verifyLinkNotice(
+  order: Order | undefined,
+  error: unknown,
+  loading: boolean,
+): { text: string; to?: string; toLabel?: string } | null {
+  if (loading) return { text: "Looking up the delivery this link points to…" };
+  if (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      return {
+        text: "The delivery this link points to is not in this house. It may belong to another house, or it was removed.",
+      };
+    }
+    return {
+      text: "The delivery this link points to could not be looked up just now, so we cannot say where it stands. Try the link again in a moment.",
+    };
+  }
+  if (!order) return null;
+  const name = order.orderNumber ? `Order ${order.orderNumber}` : "This delivery";
+  const status = String(order.status).toUpperCase();
+  if (status === "COMPLETED") {
+    const at = order.matchVerifiedAt ?? order.completedAt;
+    const when = at && Number.isFinite(Date.parse(at))
+      ? ` on ${new Date(at).toLocaleDateString()}`
+      : "";
+    return {
+      text: `${name} was already checked${when} and is closed. Any money the vendor owes back is on Receipts › Credits.`,
+      to: "/receipts?tab=credits",
+      toLabel: "Open Credits",
+    };
+  }
+  if (status === "CANCELLED" || status === "REJECTED") {
+    return { text: `${name} was cancelled, so there is no delivery to check.` };
+  }
+  if (status === "DELIVERED" || status === "PARTIALLY_RECEIVED") {
+    return {
+      text: `${name} is still waiting to be checked, but it is older than the deliveries listed here.`,
+      to: `/receiving?order=${encodeURIComponent(order.id)}`,
+      toLabel: "Open it in Receiving",
+    };
+  }
+  return { text: `${name} has not been delivered yet, so there is nothing to check.` };
+}
 
 export function InventoryCommandPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -367,12 +417,12 @@ export function InventoryCommandPage() {
   // Deliveries still owed a three-way match. PARTIALLY_RECEIVED belongs here too: those orders
   // were matched once and left open for a backorder, so they still need a human when the rest
   // shows up. Filtering to DELIVERED alone would strand them where nothing links to them.
-  const { data: delivered = [] } = useQuery({
+  const { data: delivered = [], isFetched: deliveredRead } = useQuery({
     queryKey: ["orders", "to-verify", "delivered"],
     queryFn: () => getOrders({ status: "delivered" as any }),
     staleTime: 60_000,
   });
-  const { data: partiallyReceived = [] } = useQuery({
+  const { data: partiallyReceived = [], isFetched: partialRead } = useQuery({
     queryKey: ["orders", "to-verify", "partially-received"],
     queryFn: () => getOrders({ status: "partially_received" as any }),
     staleTime: 60_000,
@@ -424,6 +474,31 @@ export function InventoryCommandPage() {
     const match = (toVerify as any[]).find((o) => o.id === id);
     if (match) setVerifyOrder(match);
   }, [searchParams, toVerify, verifyOrder]);
+
+  /**
+   * The `?verify=` order is not in the queue above (F-710). The "Delivery
+   * discrepancy" bell links here for a delivery the match already CLOSED,
+   * and a "Verify receipt" link can be stale (checked on another device) or
+   * older than the newest 50. It used to open nothing at all. Read the order
+   * itself and say where it stands, in words.
+   */
+  const verifyParam = searchParams.get("verify");
+  const verifyMissed =
+    !!verifyParam &&
+    !verifyOrder &&
+    deliveredRead &&
+    partialRead &&
+    !(toVerify as any[]).some((o) => o.id === verifyParam);
+  const verifyRead = useQuery({
+    queryKey: ["orders", "verify-link", verifyParam],
+    queryFn: () => getOrder(verifyParam as string),
+    enabled: verifyMissed,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const verifyNotice = verifyMissed
+    ? verifyLinkNotice(verifyRead.data, verifyRead.error, verifyRead.isLoading)
+    : null;
 
   /**
    * Deep-link: /inventory?wine=<name> (low-stock-alert.template.ts's email
@@ -978,6 +1053,37 @@ export function InventoryCommandPage() {
           </button>
         </div>
       </div>
+
+      {verifyNotice && (
+        <div
+          role="status"
+          data-testid="verify-link-notice"
+          className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700"
+        >
+          <p>
+            {verifyNotice.text}
+            {verifyNotice.to && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => navigate(verifyNotice.to as string)}
+                  className="font-semibold text-wine-700 underline"
+                >
+                  {verifyNotice.toLabel}
+                </button>
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={closeVerify}
+            className="shrink-0 text-xs font-semibold text-gray-500"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* A failed read is an error, not an empty success (CLAUDE.md §9 /
           ADR 0149): without this, every KPI below and "No wines match" read
