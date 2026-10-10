@@ -456,6 +456,8 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
         partlyReceived: 1,
         other: 0,
         orderValue: 550,
+        orderValueByCurrency: [{ currency: null, amount: 550 }],
+        orderValueNote: null,
         unpriced: 0,
       });
       expect(out.basis.notCounted).toMatch(/in neither figure/);
@@ -509,6 +511,8 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
         partlyReceived: 0,
         other: 0,
         orderValue: 300,
+        orderValueByCurrency: [{ currency: null, amount: 300 }],
+        orderValueNote: null,
         unpriced: 1,
       });
     });

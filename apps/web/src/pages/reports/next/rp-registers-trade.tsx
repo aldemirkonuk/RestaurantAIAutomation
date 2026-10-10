@@ -337,6 +337,13 @@ export interface PacingRegister {
   committedOpenOrders: number | null;
   openOrderCount: number | null;
   /**
+   * Why the buying figures are blank: the deliveries were paid in two
+   * currencies, with no exchange rate to add them by (F-1042).
+   */
+  spendNote?: string | null;
+  /** The same, for the open orders behind Committed (F-1042). */
+  committedNote?: string | null;
+  /**
    * Orders in neither figure (approved, in negotiation, partly received), at
    * their order value — null from a gateway that does not send it (F-130).
    */
@@ -344,7 +351,10 @@ export interface PacingRegister {
     approved: number;
     partlyReceived: number;
     other: number;
-    orderValue: number;
+    /** Null when they were ordered in two currencies (F-1042). */
+    orderValue: number | null;
+    /** Why `orderValue` is null (F-1042). */
+    orderValueNote?: string | null;
     /** Of those, orders with no price, left out of `orderValue` (F-1010). */
     unpriced: number;
   } | null;
@@ -375,7 +385,11 @@ export function notCountedNote(n: PacingRegister['notCounted']): string | null {
     n.unpriced > 0
       ? ` ${figure(n.unpriced)} of them ${n.unpriced === 1 ? 'carries' : 'carry'} no price, so that order value leaves ${n.unpriced === 1 ? 'it' : 'them'} out.`
       : '';
-  return `Not in either figure: ${list}, ${money(n.orderValue)} at order value.${unpriced} They count once the vendor confirms them or they close.`;
+  const value =
+    n.orderValue === null
+      ? `.${n.orderValueNote ? ` ${n.orderValueNote}` : ''}`
+      : `, ${money(n.orderValue)} at order value.`;
+  return `Not in either figure: ${list}${value}${unpriced} They count once the vendor confirms them or they close.`;
 }
 
 /**
@@ -424,12 +438,17 @@ const pacing = analysis<PacingRegister>({
         const p = num(n.partlyReceived);
         const o = num(n.other);
         const v = num(n.orderValue);
-        return a === null || p === null || o === null || v === null
+        const vNote = typeof n.orderValueNote === 'string' ? n.orderValueNote : null;
+        // A null value is read only with its reason (F-1042); without one the
+        // gateway did not say, as before.
+        return a === null || p === null || o === null || (v === null && !vNote)
           ? null
-          : { approved: a, partlyReceived: p, other: o, orderValue: v, unpriced: num(n.unpriced) ?? 0 };
+          : { approved: a, partlyReceived: p, other: o, orderValue: v, orderValueNote: vNote, unpriced: num(n.unpriced) ?? 0 };
       })(),
       spendUnpricedCount: num(d.spendUnpricedCount) ?? undefined,
       committedUnpricedCount: num(d.committedUnpricedCount) ?? undefined,
+      spendNote: typeof d.spendNote === 'string' ? d.spendNote : null,
+      committedNote: typeof d.committedNote === 'string' ? d.committedNote : null,
     };
   },
   view: (c) => {
@@ -455,6 +474,7 @@ const pacing = analysis<PacingRegister>({
       ),
       ...(notCountedNote(c.notCounted) ? [notCountedNote(c.notCounted)] : []),
       ...unpricedNotes(c.spendUnpricedCount, c.committedUnpricedCount),
+      ...(c.committedNote ? [c.committedNote] : []),
     ];
     const basis = [
       c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null,
@@ -467,6 +487,9 @@ const pacing = analysis<PacingRegister>({
         notes: [],
         basis,
       };
+    // Two currencies have no one figure (F-1042): blank windows, and why —
+    // never the "no delivered order" sentence below.
+    if (c.spendNote) return { say: c.spendNote, figures, notes, basis };
     // Two invisible bars are not a chart. When both windows are empty the
     // sentence is the honest rendering — and it names WHICH windows.
     if ((c.spendLast30d ?? 0) === 0 && (c.spendPrev30d ?? 0) === 0)

@@ -418,6 +418,34 @@ describe('a staff reader sees no house money on /reports (F-203)', () => {
     expect(said(staff)).not.toMatch(/no price/);
   });
 
+  // F-1042: a lira and a euro delivery have no one figure; the cutting says
+  // why the windows are blank, never "no delivered order".
+  it('says why the buying figures are blank when the orders were paid in two currencies', () => {
+    const SPEND =
+      'Paid in EUR and TRY: with no exchange rate on record they cannot be added into one figure, so the 30-day buying figures and the pace are left blank.';
+    const COMMITTED = 'Ordered in EUR and TRY: with no exchange rate on record these cannot be added into one figure.';
+    const cf = {
+      spendLast30d: null,
+      spendPrev30d: null,
+      paceDeltaPct: null,
+      committedOpenOrders: null,
+      openOrderCount: 2,
+      spendNote: SPEND,
+      committedNote: COMMITTED,
+      notCounted: { approved: 2, partlyReceived: 0, other: 0, orderValue: null, orderValueNote: COMMITTED, unpriced: 0 },
+    };
+    const v = pacing.view(pacing.select(cf), ctx);
+    expect(String(v.say)).toBe(SPEND);
+    expect(String(v.say)).not.toMatch(/No delivered purchase order/);
+    expect(v.cats).toBeUndefined();
+    expect(said(v)).toContain(COMMITTED);
+    expect(said(v)).toContain(`Not in either figure: 2 approved orders. ${COMMITTED}`);
+
+    const owner = bench.view(bench.select({ cashflow: cf, activeGoals: [] }), ctx);
+    expect(said(owner)).toContain(SPEND);
+    expect(said(owner)).toContain(COMMITTED);
+  });
+
   it('an owner still reads every figure', () => {
     const c = pacing.select({ spendLast30d: 1200, spendPrev30d: 900, paceDeltaPct: 33, committedOpenOrders: 640, openOrderCount: 3 });
     const v = pacing.view(c, ctx);
