@@ -1136,19 +1136,35 @@ export class ProcurementService {
     // the owner's ceiling and the seal both read `total_cost`, so a $1 total on
     // 600 × $50 slipped a $30,000 order under a $2,500 ceiling. A caller total
     // that agrees to the cent is accepted; one that does not is refused.
-    if (
-      dto.totalCost !== undefined &&
-      dto.totalCost !== null &&
-      Math.abs(dto.totalCost - agreedTotal.total) >= 0.005
-    ) {
+    //
+    // An off-app invoice (`alreadyFulfilled`) is the one exception, and only by
+    // rounding (F-829): its per-bottle price is the invoice total divided and
+    // rounded to the cent, so 100 over 12 bottles is 8.33 and works back out to
+    // 99.96. The invoice's own total is what was paid, so it is kept when it is
+    // within half a cent per bottle of the worked-out one, and no further.
+    const callerTotal =
+      dto.totalCost !== undefined && dto.totalCost !== null
+        ? Number(dto.totalCost)
+        : null;
+    const tolerance = fulfilled ? 0.005 * Math.max(bottlesTotal, 1) + 1e-9 : 0.005;
+    const totalAgrees =
+      callerTotal === null ||
+      (fulfilled
+        ? Math.abs(callerTotal - agreedTotal.total) <= tolerance
+        : Math.abs(callerTotal - agreedTotal.total) < tolerance);
+    if (!totalAgrees) {
+      // Said in the order's own money, never as dollars (F-829).
+      const code = currencyCode(dto.currency);
+      const money = (n: number) => (code ? `${n.toFixed(2)} ${code}` : n.toFixed(2));
       throw new BadRequestException({
         reason: "total_disagrees_with_price",
         message:
-          `The total sent with this order ($${Number(dto.totalCost).toFixed(2)}) is not what the quantity at the agreed price comes to ($${agreedTotal.total.toFixed(2)}). ` +
+          `The total sent with this order (${money(callerTotal as number)}) is not what the quantity at the agreed price comes to (${money(agreedTotal.total)}). ` +
           "Nothing was ordered. Send it again without a total and it is worked out from the price.",
       });
     }
-    const totalCost = agreedTotal.total;
+    const totalCost =
+      fulfilled && callerTotal !== null ? callerTotal : agreedTotal.total;
 
     // Dedup guard: a price/quantity change for the same wine+vendor should
     // update the existing open order, not spawn a second one. Match on
