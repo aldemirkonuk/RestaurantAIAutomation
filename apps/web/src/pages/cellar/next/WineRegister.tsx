@@ -39,6 +39,7 @@ import {
 import { EM, houseNamingFor, money, volume, year } from './cellar-format';
 import IsThisTheBottlePanel, { type BottleReading } from './IsThisTheBottlePanel';
 import { readingsFrom } from './readings';
+import { foldText } from '@/lib/textFold';
 
 /**
  * The menu scanner ships today and its detection half is real (`scanMenuImage`
@@ -280,13 +281,14 @@ export default function WineRegister({ data }: { data: CellarData }) {
 
   const shown = useMemo(() => {
     if (!bottles) return null;
-    const q = query.trim().toLowerCase();
+    const q = foldText(query.trim());
     const rows = bottles.filter((b) => {
       if (q) {
-        const hay = [b.name, b.producer, b.grape, b.region, b.country, b.appellation, b.style]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
+        const hay = foldText(
+          [b.name, b.producer, b.grape, b.region, b.country, b.appellation, b.style]
+            .filter(Boolean)
+            .join(' '),
+        );
         if (!hay.includes(q)) return false;
       }
       if (style !== 'all' && b.style !== style) return false;

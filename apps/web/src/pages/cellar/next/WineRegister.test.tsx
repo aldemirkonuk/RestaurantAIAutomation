@@ -260,3 +260,24 @@ describe('WineRegister — sketch 121, the record opens beside a narrowed index'
     expect(document.activeElement).toBe(rowAfterClose);
   });
 });
+
+describe('WineRegister — search folds Turkish letters', () => {
+  it('finds Kavaklıdere and İzmir when typed without Turkish letters', async () => {
+    const user = userEvent.setup();
+    mount([
+      bottle(),
+      bottle({ id: 'w2', name: 'Sevilen İzmir Merlot', producer: 'Sevilen', grape: 'Merlot', region: 'Ege' }),
+      bottle({ id: 'w3', name: 'Barolo Riserva', producer: 'Borgogno', grape: 'Nebbiolo', country: 'Italy', region: 'Piemonte' }),
+    ]);
+    const search = screen.getByLabelText('Search the register');
+
+    await user.type(search, 'kavaklidere');
+    expect(screen.getByText('Boğazkere 2021')).toBeInTheDocument();
+    expect(screen.queryByText('Barolo Riserva')).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'izmir');
+    expect(screen.getByText('Sevilen İzmir Merlot')).toBeInTheDocument();
+    expect(screen.queryByText('Boğazkere 2021')).not.toBeInTheDocument();
+  });
+});
