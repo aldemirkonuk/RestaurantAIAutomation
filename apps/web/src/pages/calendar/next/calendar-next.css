@@ -417,7 +417,7 @@
 }
 .cn-block-continues {
   display: block;
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-variant-numeric: tabular-nums;
 }
 .cn-block-open {
