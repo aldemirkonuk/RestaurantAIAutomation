@@ -180,6 +180,21 @@ expect(screen.getByText(fmtMoney(250, 'USD'))).toBeInTheDocument();
     expect(await screen.findByText('Net 14')).toBeInTheDocument();
   });
 
+  it('reads a minimum typed with a decimal comma, and refuses one that is not an amount (F-358)', async () => {
+    api.get.mockResolvedValue({ data: register() });
+    api.put.mockResolvedValue({ data: { readout: register(), audited: true, auditReason: null } });
+    mount();
+    fireEvent.click(await screen.findByText('Record what they said'));
+    const minimum = screen.getByLabelText('Minimum order (USD)');
+    fireEvent.change(minimum, { target: { value: '12,5x' } });
+    expect(screen.getByText('“12,5x” is not an amount, so nothing can be recorded.')).toBeInTheDocument();
+    expect(screen.getByText('Record what they said').closest('button')).toBeDisabled();
+    fireEvent.change(minimum, { target: { value: '1.250,00' } });
+    fireEvent.click(screen.getByText('Record what they said'));
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    expect(api.put).toHaveBeenCalledWith('/vendor-terms/p1', { minimumOrderAmount: 1250 });
+  });
+
   it('reports the gateway’s refusal for a vendor of another house', async () => {
     api.get.mockResolvedValue({ data: register() });
     api.put.mockRejectedValue(

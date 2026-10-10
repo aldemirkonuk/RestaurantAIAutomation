@@ -32,6 +32,8 @@
 
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { Action, Choice, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
 import { EM, MONO, SANS, SERIF } from './st-format';
 import type {
@@ -81,6 +83,27 @@ const RULES: Array<{
     kind: 'percent',
   },
 ];
+
+/**
+ * The number a rule carries, read the way the house writes it ("1.250,00",
+ * "12,50"; F-358). Blank leaves it null — the editor then says a rule with no
+ * number cannot fire. `ok: false` is text that is not an amount of 0 or more.
+ * Text left exactly as the recorded number was shown keeps that number, so
+ * "Change it" never re-reads a recorded 1.125 as 1125.
+ */
+export function readRuleLimit(
+  kind: 'amount' | 'always' | 'percent',
+  text: string,
+  group: GroupMark | null = null,
+  recorded: number | null = null,
+): { ok: true; amountLimit: number | null; percentLimit: number | null } | { ok: false } {
+  if (kind === 'always') return { ok: true, amountLimit: null, percentLimit: null };
+  const n = recorded !== null && text === String(recorded) ? { ok: true as const, value: recorded } : readOptionalAmount(text, group);
+  if (!n.ok) return { ok: false };
+  return kind === 'amount'
+    ? { ok: true, amountLimit: n.value, percentLimit: null }
+    : { ok: true, amountLimit: null, percentLimit: n.value };
+}
 
 function findRow(reg: ThresholdsRegister, rule: ApprovalRule): ThresholdRow | undefined {
   return reg.thresholds.find((t) => t.rule === rule);
@@ -147,6 +170,8 @@ function RuleEditor({
   const needsNumber = spec.kind === 'amount' || spec.kind === 'percent';
   const numberText = spec.kind === 'amount' ? amount : percent;
   const numberMissing = needsNumber && numberText.trim() === '';
+  const group = useHouseGroupMark();
+  const limit = readRuleLimit(spec.kind, numberText, group, (spec.kind === 'amount' ? row?.amountLimit : row?.percentLimit) ?? null);
 
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 8 }}>
@@ -161,8 +186,7 @@ function RuleEditor({
             {spec.hint}
           </span>
           <input
-            type="number"
-            min={0}
+            type="text"
             inputMode="decimal"
             value={numberText}
             onChange={(e) =>
@@ -184,18 +208,23 @@ function RuleEditor({
         ]}
       />
       <Action
-        disabled={busy || numberMissing || !canManage}
+        disabled={busy || numberMissing || !limit.ok || !canManage}
         onClick={() =>
           onSave({
             enabled: row?.enabled ?? true,
-            amountLimit: spec.kind === 'amount' && amount.trim() !== '' ? Number(amount) : null,
-            percentLimit: spec.kind === 'percent' && percent.trim() !== '' ? Number(percent) : null,
+            amountLimit: limit.ok ? limit.amountLimit : null,
+            percentLimit: limit.ok ? limit.percentLimit : null,
             requiredRole: role,
           })
         }
       >
         {busy ? 'Recording…' : row ? 'Change it' : 'Set it'}
       </Action>
+      {!limit.ok && canManage && (
+        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
+          “{numberText.trim()}” is not a number of 0 or more, so it cannot be set.
+        </span>
+      )}
       {numberMissing && canManage && (
         <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
           A rule with no number cannot fire, so it cannot be set.

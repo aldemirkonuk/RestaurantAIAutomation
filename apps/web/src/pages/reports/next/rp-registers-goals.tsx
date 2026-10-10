@@ -39,6 +39,8 @@ import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
 import { EM, countOf, figure, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
+import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
 import type { ViewCtx } from './rp-spec';
@@ -390,6 +392,16 @@ function ScenarioPicker({
   );
 }
 
+/**
+ * The typed target, read the way the house writes it ("12,5"; "9.000" in a
+ * "."-grouping house — F-358). Text left exactly as the recorded target was
+ * shown keeps the recorded number, so an edit never re-reads "1.125" as 1125.
+ */
+export function readTargetText(text: string, recorded: number | null, group: GroupMark | null = null): number | null {
+  if (recorded !== null && text === String(recorded)) return recorded;
+  return parseDecimal(text, group);
+}
+
 function GoalForm({
   metrics,
   scenarios,
@@ -427,7 +439,8 @@ function GoalForm({
   const [scenarioId, setScenarioId] = useState('');
   const editing = !!initial?.id;
 
-  const targetValue = num(target);
+  const group = useHouseGroupMark();
+  const targetValue = readTargetText(target, initial?.target ?? null, group);
   const ready = name.trim() !== '' && targetValue !== null && targetValue > 0 && metricKey !== '';
 
   /**

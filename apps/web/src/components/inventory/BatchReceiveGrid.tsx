@@ -14,6 +14,7 @@ import { useStorageLocations } from '../../hooks/useStorageLocations'
 import { useMayActForTheHouse } from '../../hooks/useMayActForTheHouse'
 import { fmtMoney } from '../../pages/inventory/command/bits'
 import { cn } from '../../lib/utils'
+import { parseDecimal, type GroupMark } from '../../lib/parseDecimal'
 import type { BulkInventoryLine, WineDraft } from '../../services/api/types'
 
 const GRID = '32px minmax(190px,1.7fr) 76px 104px 172px 96px 34px'
@@ -65,10 +66,19 @@ export function nextBatchRowKey(prefix = 'row'): string {
   return `${prefix}-${rowSeq}`
 }
 
-export function batchTotals(rows: BatchReceiveRow[]): BatchTotals {
+/**
+ * A row's typed cost, read the way the house writes it ("12,50"; "1.250" in a
+ * "."-grouping house — see lib/parseDecimal.ts). NaN when it is not a number,
+ * so every caller's existing isFinite check keeps refusing it.
+ */
+function costOf(row: BatchReceiveRow, group: GroupMark | null): number {
+  return parseDecimal(row.cost, group) ?? NaN
+}
+
+export function batchTotals(rows: BatchReceiveRow[], group: GroupMark | null = null): BatchTotals {
   return rows.reduce<BatchTotals>(
     (acc, row) => {
-      const cost = row.isSample ? 0 : Number(row.cost)
+      const cost = row.isSample ? 0 : costOf(row, group)
       acc.rows += 1
       acc.bottles += row.quantity
       if (Number.isFinite(cost)) acc.cost += cost * row.quantity
@@ -81,7 +91,7 @@ export function batchTotals(rows: BatchReceiveRow[]): BatchTotals {
 }
 
 /** Everything that would make the server reject a line, named per row rather than as one generic error. */
-export function validateBatchRows(rows: BatchReceiveRow[]): BatchRowIssue[] {
+export function validateBatchRows(rows: BatchReceiveRow[], group: GroupMark | null = null): BatchRowIssue[] {
   const issues: BatchRowIssue[] = []
   for (const row of rows) {
     const label = row.name || 'Unnamed wine'
@@ -92,7 +102,7 @@ export function validateBatchRows(rows: BatchReceiveRow[]): BatchRowIssue[] {
       issues.push({ key: row.key, name: label, reason: 'quantity must be a whole number of 0 or more' })
     }
     if (!row.isSample && row.cost.trim() !== '') {
-      const cost = Number(row.cost)
+      const cost = costOf(row, group)
       if (!Number.isFinite(cost) || cost < 0) {
         issues.push({ key: row.key, name: label, reason: `cost "${row.cost}" is not a number` })
       }
@@ -109,6 +119,7 @@ export function validateBatchRows(rows: BatchReceiveRow[]): BatchRowIssue[] {
 export function batchRowsToBulkLines(
   rows: BatchReceiveRow[],
   shared?: { providerId?: string },
+  group: GroupMark | null = null,
 ): BulkInventoryLine[] {
   return rows.map((row) => {
     const line: BulkInventoryLine = {
@@ -123,7 +134,7 @@ export function batchRowsToBulkLines(
       line.costPerBottle = 0
       line.costProvenance = 'sample'
     } else if (row.cost.trim() !== '') {
-      line.costPerBottle = Number(row.cost)
+      line.costPerBottle = costOf(row, group)
       line.costProvenance = 'manual'
     }
     return line
@@ -162,6 +173,8 @@ export function BatchReceiveGrid({
     locationId: '',
   })
 
+  // No house group mark here: the two hosts read these rows with the same
+  // helpers and none passes one yet, and the grid must agree with what they send.
   const totals = useMemo(() => batchTotals(rows), [rows])
   const issues = useMemo(() => validateBatchRows(rows), [rows])
   const selectedCount = rows.filter((r) => r.selected).length
@@ -232,9 +245,8 @@ export function BatchReceiveGrid({
         <label className="flex items-center gap-1.5 text-xs text-gray-500">
           Cost
           <input
-            type="number"
-            min={0}
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             disabled={disabled || rows.length === 0}
             defaultValue=""
             onChange={(e) => { fillRef.current.cost = e.target.value }}
