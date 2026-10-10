@@ -23,6 +23,7 @@ export type DecisionKind =
   | "order_approval"
   | "draft_approval"
   | "receipt_verification"
+  | "receipt_discrepancy"
   | "alert";
 
 export type FeedPriority = "low" | "medium" | "high" | "critical";

@@ -184,6 +184,11 @@ function makeDb(opts: {
   latestReconciledEvent?: Row | null;
   /** The idempotence check's read of the latest `reconciled` event fails with this. */
   latestReconciledReadError?: { message: string } | null;
+  /**
+   * F-349. The order's status moved after verifyReceipt read it: an update
+   * filtered on `status` matches no row, as PostgREST answers `.single()`.
+   */
+  statusChangedMeanwhile?: boolean;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -208,6 +213,11 @@ function makeDb(opts: {
           if (op === "update") {
             if (opts.updateError)
               return { data: null, error: opts.updateError };
+            if (opts.statusChangedMeanwhile && filters.status !== undefined)
+              return {
+                data: null,
+                error: { code: "PGRST116", message: "0 rows" },
+              };
             return {
               data: {
                 ...(opts.orderRow ?? {}),
@@ -1596,5 +1606,74 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     ).rejects.toThrow(/could not be checked.*nothing was changed/);
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-349 — a settled order is not completed by a tap that states no match
+// ---------------------------------------------------------------------------
+describe("verifyReceipt — a check already made is not written over (F-349)", () => {
+  const settled = {
+    ...deliveredOrder,
+    status: "PARTIALLY_RECEIVED",
+    match_status: "short_shipped",
+    match_verified_at: "2026-10-08T10:00:00Z",
+  };
+
+  it("refuses a 'Counts match' tap on an order a match left partly received, and writes nothing", async () => {
+    const { db, calls } = makeDb({ orderRow: settled });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(err.getResponse().message).toMatch(/already checked.*nothing was changed/i);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.receiptEvents).toEqual([]);
+  });
+
+  it("refuses a 'Counts match' tap on a completed order", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, status: "COMPLETED" },
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    // A completed order is refused first by the checkable-status gate (F-647,
+    // 422 order_not_checkable); the settled-match 409 covers PARTIALLY_RECEIVED.
+    expect(err.getStatus?.()).toBe(422);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+
+  it("still lets a newer match move a partly received order", async () => {
+    const { db, calls } = makeDb({ orderRow: settled });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+    } as any);
+    expect(calls.orderUpdates).toHaveLength(1);
+  });
+
+  it("a partly received order nobody has matched yet still takes the tap", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, status: "PARTIALLY_RECEIVED" },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.orderUpdates).toHaveLength(1);
+  });
+
+  it("refuses with a 409 when a match landed between the read and the write", async () => {
+    // The tap read DELIVERED; a manager's match moved the order meanwhile. The
+    // write is compared-and-set on DELIVERED, so it matches no row.
+    const { db } = makeDb({
+      orderRow: deliveredOrder,
+      statusChangedMeanwhile: true,
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(err.getResponse().message).toMatch(/at the same moment/);
   });
 });

@@ -367,7 +367,7 @@ export async function nameDeliveredItem(
   // THE ITEM, by id and house.
   const { data: itemData, error: itemError } = await client
     .from("restaurant_inventory")
-    .select("id, shadow_stock, in_transit_quantity")
+    .select("id, shadow_stock")
     .eq("restaurant_id", input.restaurantId)
     .eq("id", input.inventoryId)
     .maybeSingle();
@@ -377,7 +377,7 @@ export async function nameDeliveredItem(
   if (!itemData) {
     throw new UnprocessableEntityException("That item is not an item of this house. Nothing was booked.");
   }
-  const item = itemData as { shadow_stock?: number | null; in_transit_quantity?: number | null };
+  const item = itemData as { shadow_stock?: number | null };
 
   // NOT BOOKED BY ANYTHING ELSE SINCE, read from the ledger (ADR 0192: what
   // an order received IS the ledger): the canonical door (ADR 0103 A5), the
@@ -561,16 +561,15 @@ export async function nameDeliveredItem(
 
   // After the booking, never undoing it: the display counter, the event, the
   // audit row, research. Each failure is said or logged, not swallowed.
-  const inTransit = Number(item.in_transit_quantity ?? 0) || 0;
-  if (inTransit > 0) {
-    const { error: inTransitError } = await client
-      .from("restaurant_inventory")
-      .update({ in_transit_quantity: Math.max(0, inTransit - bottles) })
-      .eq("restaurant_id", input.restaurantId)
-      .eq("id", input.inventoryId);
-    if (inTransitError) {
-      logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but the in-transit counter was not lowered (${inTransitError.message})`);
-    }
+  // F-351: lowered by a delta in one statement (floored at 0), never read and
+  // written back, so an approval on the same item at the same moment is kept.
+  const { error: inTransitError } = await client.rpc("move_in_transit_by_delta", {
+    p_restaurant_id: input.restaurantId,
+    p_inventory_id: input.inventoryId,
+    p_delta: -bottles,
+  });
+  if (inTransitError) {
+    logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but the in-transit counter was not lowered (${inTransitError.message})`);
   }
   const { error: eventError } = await client.from("inventory_events").insert({
     restaurant_id: input.restaurantId,

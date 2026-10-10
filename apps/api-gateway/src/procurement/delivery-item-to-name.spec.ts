@@ -81,6 +81,18 @@ function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: st
     }
     return { data: null, error: null };
   };
+  // F-351: modelled as the migration is — a delta applied to the row the
+  // moment it runs, floored at 0, never an absolute figure from the caller.
+  const inTransitMoves: Row[] = [];
+  db.rpcHandlers.move_in_transit_by_delta = (args) => {
+    inTransitMoves.push(args);
+    const row = db.tables.restaurant_inventory.find(
+      (r) => r.id === args.p_inventory_id && r.restaurant_id === args.p_restaurant_id,
+    );
+    if (!row) return { data: null, error: null };
+    row.in_transit_quantity = Math.max(0, Number(row.in_transit_quantity ?? 0) + args.p_delta);
+    return { data: row.in_transit_quantity, error: null };
+  };
   const roles: Record<string, string> = { [OWNER]: "owner", [STAFF]: "staff" };
   let roleReadFails = false;
   const deps = {
@@ -96,6 +108,7 @@ function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: st
     db,
     deps,
     live,
+    inTransitMoves,
     failRoleRead: () => {
       roleReadFails = true;
     },
@@ -179,6 +192,22 @@ describe("naming it books the stock then — once, on the record", () => {
     expect(out.says).toBe(
       "The delivery's item was named and 6 bottles were booked. This wine is not in the wine library yet, so it is queued for research.",
     );
+  });
+
+  it("F-351: lowers in-transit by the bottles booked, as a delta — an approval landing meanwhile is kept", async () => {
+    const t = build({ item: { in_transit_quantity: 10 } });
+    // Read-then-write lost this: the naming read 10, an approval reserved 4
+    // more while the stock was being booked (14), then the naming wrote back
+    // 10 - 6 = 4 and erased the 4.
+    const read = t.db.tables.restaurant_inventory[0];
+    const book = t.db.rpcHandlers.apply_stock_movement;
+    t.db.rpcHandlers.apply_stock_movement = (args) => {
+      if (args.p_stock_state === "live") read.in_transit_quantity += 4;
+      return book(args);
+    };
+    await name(t);
+    expect(t.inTransitMoves).toEqual([{ p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: -6 }]);
+    expect(read.in_transit_quantity).toBe(8);
   });
 
   it("a second naming is refused and books nothing twice", async () => {
