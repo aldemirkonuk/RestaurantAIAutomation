@@ -60,6 +60,24 @@ describe("invoiceMatch money (F-341)", () => {
     expect(r.summary).toContain("The price was not compared");
   });
 
+  it("says a 22-of-24 delivery in another money is partial, never 'All 22 accepted' (F-812)", () => {
+    const r = computeMatch({
+      orderedQty: 24,
+      invoiceQty: 22,
+      acceptedQty: 22,
+      poUnitPrice: 22,
+      poCurrency: "EUR",
+      invoiceUnitPrice: 770,
+      invoiceCurrency: "TRY",
+    });
+    expect(r.verdict).toBe("partial");
+    expect(r.backorderQty).toBe(2);
+    expect(r.requiresOverride).toBe(false);
+    expect(r.summary).toMatch(/^22 of 24 accepted, 2 still outstanding\. /);
+    expect(r.summary).toContain("The price was not compared");
+    expect(r.summary).not.toContain("All 22 accepted");
+  });
+
   it("still compares the same money, and an unstated one, as before", () => {
     const same = computeMatch({
       ...base,
