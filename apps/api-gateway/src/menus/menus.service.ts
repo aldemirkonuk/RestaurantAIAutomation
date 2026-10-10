@@ -261,6 +261,23 @@ const VERSION_SELECT =
 export const LINE_SELECT =
   "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, raw_extracted_text, created_at";
 
+/** The words /logs prints for a discarded line (F-484): line, prices, menu. */
+function discardSubject(
+  row: {
+    name?: string | null;
+    by_glass_price?: number | string | null;
+    bottle_price?: number | string | null;
+  },
+  menuName: string | null,
+): string {
+  const prices = [
+    row.bottle_price != null ? `bottle ${row.bottle_price}` : null,
+    row.by_glass_price != null ? `glass ${row.by_glass_price}` : null,
+  ].filter(Boolean);
+  const line = `${row.name?.trim() || "A line"}${prices.length ? ` (${prices.join(", ")})` : ""}`;
+  return menuName ? `${line} on ${menuName}` : line;
+}
+
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
   if (bytes.subarray(0, 4).toString("latin1") === "%PDF") return { mime: "application/pdf", ext: "pdf" };
@@ -737,14 +754,25 @@ export class MenusService {
    * the row's own `restaurant_id` is checked again here so a menu item id
    * from a different restaurant 404s rather than silently discarding
    * someone else's line.
+   *
+   * WHO AND WHEN (F-484, 2026-10-09). The discard writes one
+   * `system_audit_log` row — `menu_line_discarded`, the actor, the line, its
+   * menu and its prices at the moment it went — so /logs says who took it off
+   * and when. No `discarded_by`/`discarded_at` columns were added: the audit
+   * row is the record /logs already reads, it carries the time and the
+   * prices the columns would not, and two records of one act can disagree.
+   * Like `recordAccessChange`, a failed audit write does not undo the
+   * discard (the line is already off the menu); it is logged and the reply
+   * says `audited: false`, so a missing record is said, not inferred.
    */
   async discardMenuItem(
     restaurantId: string,
     menuItemId: string,
-  ): Promise<{ menuItemId: string; status: "discarded" }> {
+    actorUserId: string | null = null,
+  ): Promise<{ menuItemId: string; status: "discarded"; audited: boolean }> {
     const { data: row, error: readErr } = await this.dbService.supabase
       .from("menu_items")
-      .select("id, restaurant_id, status")
+      .select("id, restaurant_id, status, menu_id, name, by_glass_price, bottle_price")
       .eq("id", menuItemId)
       .maybeSingle();
 
@@ -754,6 +782,9 @@ export class MenusService {
     if (!row || row.restaurant_id !== restaurantId) {
       throw new NotFoundException("No menu item of this restaurant");
     }
+
+    // What the line was before it went, for the audit row (F-484).
+    const before = { ...row };
 
     // The house again on the write, not only on the read above: the write is
     // what must never land on another house's row.
@@ -767,7 +798,67 @@ export class MenusService {
       throw new Error(`The item was not discarded: ${writeErr.message}`);
     }
 
-    return { menuItemId, status: "discarded" };
+    const audited = await this.recordDiscard(restaurantId, before, actorUserId);
+    return { menuItemId, status: "discarded", audited };
+  }
+
+  /** The audit half of `discardMenuItem` (F-484). Never throws. */
+  private async recordDiscard(
+    restaurantId: string,
+    row: {
+      id: string;
+      status: string | null;
+      menu_id?: string | null;
+      name?: string | null;
+      by_glass_price?: number | string | null;
+      bottle_price?: number | string | null;
+    },
+    actorUserId: string | null,
+  ): Promise<boolean> {
+    try {
+      let menuName: string | null = null;
+      if (row.menu_id) {
+        const { data: menu } = await this.dbService.supabase
+          .from("restaurant_menus")
+          .select("name")
+          .eq("id", row.menu_id)
+          .eq("restaurant_id", restaurantId)
+          .maybeSingle();
+        menuName = menu?.name ?? null;
+      }
+      const { error } = await this.dbService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: actorUserId ? "user" : "system",
+          actor_id: actorUserId,
+          action: "menu_line_discarded",
+          entity_type: "menu_item",
+          entity_id: row.id,
+          restaurant_id: restaurantId,
+          reason: null,
+          changes: {
+            // Read on /logs as one phrase: "Opus One (bottle 120, glass 18) on Wine List".
+            subject: discardSubject(row, menuName),
+            fields: { status: { from: row.status ?? null, to: "discarded" } },
+            menu_id: row.menu_id ?? null,
+            menu_name: menuName,
+            bottle_price: row.bottle_price ?? null,
+            by_glass_price: row.by_glass_price ?? null,
+          },
+        });
+      if (error) {
+        this.logger.error(
+          `menu line ${row.id} was discarded but the audit row failed: ${error.message}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.error(
+        `menu line ${row.id} was discarded but the audit row threw: ${err?.message ?? err}`,
+      );
+      return false;
+    }
   }
 
   /**
