@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  ForbiddenException,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -169,13 +170,13 @@ export class SettingsController {
   @ApiOperation({
     summary: "Set one approval rule — owner or manager only",
     description:
-      "`enabled: false` keeps the row and its number, so switching a rule back on does not lose the figure somebody chose. The response carries `audited` and `auditReason` so a change whose audit row failed is visible rather than assumed. Only an owner or a manager of this restaurant may write a rule; anyone else is refused with 403.",
+      "`enabled: false` keeps the row and its number, so switching a rule back on does not lose the figure somebody chose. The response carries `audited` and `auditReason` so a change whose audit row failed is visible rather than assumed. Only an owner or a manager of this restaurant may write a rule; anyone else is refused with 403. A rule an owner has to sign may be changed or switched off only by an owner: a manager is refused with 403, because that rule is the one that stops them.",
   })
   @ApiResponse({ status: 200, description: "The readout after the write" })
   @ApiResponse({
     status: 403,
     description:
-      "The caller is not an owner or manager of this restaurant. A limit anybody may raise is not a limit.",
+      "The caller is not an owner or manager of this restaurant, or is a manager changing a rule an owner has to sign. A limit anybody may raise is not a limit.",
   })
   async setApprovalThreshold(
     @CurrentUser("restaurantId") restaurantId: string,
@@ -203,6 +204,25 @@ export class SettingsController {
       restaurantId,
       "set an approval threshold for this restaurant",
     );
+    // F-419 (sim wave 9, 2026-10-09). The founder's call lets a manager adjust
+    // the rules, and a manager still may — but not a rule that names an OWNER
+    // as the signer. That rule exists to stop the manager, and a manager who
+    // could switch it off, raise its number or re-role it to "a manager" could
+    // seal the order it stops a second later: the comment above, applied to
+    // the rule rather than to staff. A manager may still write a rule that
+    // needs a manager, or name an owner on one (that only tightens it); after
+    // that, only an owner moves it. A policy that could not be read is not
+    // proof the rule is a manager's, so a manager is refused then too.
+    const role = await this.organizations.resolveRestaurantRole(userId, restaurantId);
+    if (role !== "owner") {
+      const current = await this.thresholds.read(restaurantId);
+      const before = current.thresholds.find((t) => t.rule === dto.rule);
+      if (!current.readable || before?.requiredRole === "owner") {
+        throw new ForbiddenException(
+          "Only an owner can change or switch off a rule that needs an owner's signature. Nothing was changed.",
+        );
+      }
+    }
     try {
       return await this.thresholds.write(restaurantId, dto, userId ?? null);
     } catch (error) {

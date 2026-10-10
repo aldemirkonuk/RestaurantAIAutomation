@@ -623,3 +623,23 @@ so the migrations behind both are unapplied there. The redemption path is proven
 only by the specs.
 
 **[CORRECTED 2026-09-12: BOTH tables EXIST now. The migrations behind them were applied on 2026-09-12. The redemption path is still proven only by the specs -- nobody has re-run that probe -- but the REASON given here for not proving it live has gone. Verified that day by query: `to_regclass('public.ux_experiment_assignments')`, `to_regclass('public.mcp_seal_challenges')` and `to_regclass('public.payment_methods')` all return NOT NULL. The observation above is kept as the dated finding it was; do not read it as the current state, and do not infer that a missing table is guarding anything.]**
+
+## Amendment — 2026-10-09: §Two narrowed for an owner-signed rule; bulk refusals name themselves
+
+**What changed (F-419, sim ledger S63).** §Two let "an owner or a manager" write
+any threshold, so a manager could switch off, hand to a manager, or raise the
+very rule that required an owner's signature above it — a limit the limited
+party may lift. `SettingsController.setApprovalThreshold` now refuses (403, in
+words) a non-owner's write to a rule whose current signer is the owner, and
+refuses when the policy cannot be read (the same fail-closed reading as §One).
+Managers keep every rule a manager signs, and may name an owner on a rule.
+`ThresholdsSection` disables the controls for a manager on an owner-signed rule
+and says why. **Rejected:** a UI-only lock (the write route stays open);
+owner-only for every rule (removes a power §Two deliberately gave managers).
+
+**What did NOT change (F-416).** "Approves NOTHING if any mint fails" stands.
+A first fix approved the minted subset and was reverted before merge as
+contrary to this ADR. `BulkApproveBar` now settles every mint and, when any is
+refused, prints each refused order with the gateway's own sentence so the
+operator can take it out and hold again. Approving the rest of a batch would
+need this clause superseded — a founder decision, not taken here.
