@@ -48,6 +48,7 @@ import {
 import { houseFrame } from "../common/house-frame";
 import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
+import { stopGrantsOnLeaving } from "../integrations/stop-grants-on-leaving";
 import {
   ChannelPreferences,
   loadChannelOptOuts,
@@ -1262,6 +1263,15 @@ export class TeamService {
       // on leaving (Recommended)"). A stop that fails throws here, so nothing
       // about the membership has changed (`calendar/stop-links-on-leaving.ts`).
       await stopCalendarLinksOnLeaving(this.sb, this.logger, {
+        restaurantId,
+        userId: member.user_id,
+        actorUserId: userId,
+        via: actor.via,
+      });
+      // Their Google/Microsoft grants made in this house stop with it, at the
+      // same point and for the same reason (F-458): a removed person's
+      // mailbox must not keep sending or reading this house's mail.
+      await stopGrantsOnLeaving(this.sb, this.logger, {
         restaurantId,
         userId: member.user_id,
         actorUserId: userId,

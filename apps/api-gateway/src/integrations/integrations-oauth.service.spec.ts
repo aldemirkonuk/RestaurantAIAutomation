@@ -81,12 +81,16 @@ describe("integration OAuth tables are backed by an applied migration", () => {
     //   users — naming the owner of each grant, because "a member" is not an
     //     answer to "whose is this";
     //   user_restaurant_access — counting the live grants of people who work
-    //     here that carry no recorded restaurant, so an incomplete list says so.
+    //     here that carry no recorded restaurant, so an incomplete list says so;
+    //     and (F-458) refusing a token whose owner no longer works here.
+    // One more on 2026-10-09 (F-459): restaurants — naming the house that
+    // would lose a grant if it were connected again somewhere else.
     expect(queriedTables).toEqual([
       "integration_consent_receipts",
       "integration_oauth_connections",
       "integration_oauth_states",
       "restaurant_personal_grant_access",
+      "restaurants",
       "user_restaurant_access",
       "users",
     ]);
