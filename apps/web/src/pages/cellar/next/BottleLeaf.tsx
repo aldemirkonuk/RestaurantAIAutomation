@@ -581,8 +581,8 @@ export default function BottleLeaf({
                 // correction rules out. Both ceremonies hold; `auto` only
                 // skips the "are you sure?" that follows it.
                 settings.data.holdCeremony === 'hold'
-                  ? 'This house holds every order, then asks "are you sure?", before it sends — changed in Settings › Cellar.'
-                  : 'This house holds every order, then sends the moment the hold completes — no "are you sure?" — changed in Settings › Cellar.'
+                  ? 'This house holds every order placed from the cellar, then asks "are you sure?", before it sends — changed in Settings › Cellar.'
+                  : 'This house holds every order placed from the cellar, then sends the moment the hold completes — no "are you sure?" — changed in Settings › Cellar.'
               }
             </p>
           ) : null}

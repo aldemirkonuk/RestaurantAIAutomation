@@ -63,6 +63,7 @@ const EVERY: Record<SettingsRegister, true> = {
   "state-and-country": true,
   location: true,
   hours: true,
+  "cellar-settings": true,
 };
 
 describe("the ?register= allow-list holds every register the type admits", () => {

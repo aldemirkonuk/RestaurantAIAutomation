@@ -49,13 +49,17 @@ vi.mock('../../../services/api/pricing', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   listPriceLocks: () => listPriceLocks(),
 }));
+// F-505: flipped by the ceremony-copy test below; every other test reads an unchosen ceremony.
+let ceremony: { holdCeremony: 'hold' | 'auto'; holdCeremonyConfigured: boolean } = {
+  holdCeremony: 'hold',
+  holdCeremonyConfigured: false,
+};
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarSettings: () => ({
     data: {
       restaurantId: 'r1',
-      holdCeremony: 'hold',
-      holdCeremonyConfigured: false,
+      ...ceremony,
       gazetteerMeasures: ['bottles'],
       gazetteerMeasuresConfigured: false,
       setBy: null,
@@ -334,4 +338,21 @@ describe('BottleLeaf — "what the library knows"', () => {
     mount(bottle({ structure: null }));
     expect(screen.queryByTestId('bottle-leaf-aromas')).not.toBeInTheDocument();
   });
+});
+
+describe('BottleLeaf — the hold-ceremony note names only the cellar (F-505)', () => {
+  it.each(['hold', 'auto'] as const)(
+    'says a chosen "%s" ceremony holds orders placed from the cellar, never "every order"',
+    (chosen) => {
+      ceremony = { holdCeremony: chosen, holdCeremonyConfigured: true };
+      try {
+        mount(bottle());
+        const note = screen.getByTestId('order-ceremony-note').textContent ?? '';
+        // Only this leaf reads the ceremony; /orders approvals keep their own.
+        expect(note).toMatch(/holds every order placed from the cellar/);
+      } finally {
+        ceremony = { holdCeremony: 'hold', holdCeremonyConfigured: false };
+      }
+    },
+  );
 });

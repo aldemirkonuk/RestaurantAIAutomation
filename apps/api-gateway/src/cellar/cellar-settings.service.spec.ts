@@ -1,5 +1,6 @@
 import { Test } from "@nestjs/testing";
 import { DatabaseService } from "../database/database.service";
+import { SettingsAuditService } from "../settings-audit/settings-audit.service";
 import { CellarSettingsService } from "./cellar-settings.service";
 import { DEFAULT_GAZETTEER_MEASURES } from "./dto/hold-ceremony";
 
@@ -21,6 +22,14 @@ interface StoredRow {
   gazetteer_measures: string[] | null;
   set_by: string | null;
   set_at: string | null;
+  created_at?: string | null;
+}
+
+interface AuditRow {
+  actor_id: string | null;
+  action: string;
+  created_at: string;
+  fields: Record<string, { from: unknown; to: unknown }>;
 }
 
 /**
@@ -42,10 +51,35 @@ function makeClient(opts: {
   let row = opts.row ?? null;
   const missing = opts.missingTable ?? false;
   let upsertCalls = 0;
+  // F-503: the settings trail, written by the stub recorder below and read
+  // back by `read()` for each field's own setter. Newest first.
+  const audit: AuditRow[] = [];
+  let tick = 0;
 
   return {
     upsertCallCount: () => upsertCalls,
+    audit,
+    record: async (c: { actorUserId: string; action: string; fields: AuditRow["fields"] }) => {
+      tick += 1;
+      audit.unshift({
+        actor_id: c.actorUserId,
+        action: c.action,
+        created_at: `2026-10-11T00:00:${String(tick).padStart(2, "0")}Z`,
+        fields: c.fields,
+      });
+      return { recorded: true, reason: null };
+    },
     from: (table: string) => {
+      if (table === "system_audit_log") {
+        const q = {
+          select: () => q,
+          eq: () => q,
+          in: () => q,
+          order: () => q,
+          limit: async () => ({ data: audit, error: null }),
+        };
+        return q;
+      }
       expect(table).toBe("restaurant_cellar_settings");
       return {
         select: () => ({
@@ -70,6 +104,9 @@ function makeClient(opts: {
             gazetteer_measures: next.gazetteer_measures as string[] | null,
             set_by: next.set_by as string | null,
             set_at: next.set_at as string | null,
+            // An existing row keeps its own creation date; a new one is born
+            // after per-field stamps began.
+            created_at: row ? row.created_at : "2026-10-11T00:00:00Z",
           };
           return { error: null };
         },
@@ -83,6 +120,7 @@ async function serviceWith(client: ReturnType<typeof makeClient>): Promise<Cella
     providers: [
       CellarSettingsService,
       { provide: DatabaseService, useValue: { getClient: () => client } },
+      { provide: SettingsAuditService, useValue: { record: client.record } },
     ],
   }).compile();
   return moduleRef.get(CellarSettingsService);
@@ -185,9 +223,13 @@ describe("CellarSettingsService.write", () => {
     const out = await service.write(RID, { gazetteerMeasures: ["registers"] }, "user-1", "staff");
     expect(out.gazetteerMeasures).toEqual(["registers"]);
     // holdCeremony was not sent and this house never configured it, so the
-    // default ('hold') is written explicitly rather than left null.
+    // default ('hold') is written explicitly rather than left null — but it
+    // is NOT a chosen ceremony (F-503): nobody picked it, so the bottle leaf
+    // must not say "this house holds every order" on a tile-only save.
     expect(out.holdCeremony).toBe("hold");
-    expect(out.holdCeremonyConfigured).toBe(true);
+    expect(out.holdCeremonyConfigured).toBe(false);
+    expect(out.holdCeremonySetBy).toBeNull();
+    expect(out.gazetteerMeasuresSetBy).toBe("user-1");
   });
 
   it("refuses the write when the BEFORE read fails — never proceeds on the unread-default shape", async () => {
@@ -278,5 +320,55 @@ describe("CellarSettingsService.write — the order-hold ceremony is owner/manag
       service.write(RID, { holdCeremony: "auto", gazetteerMeasures: ["bottles"] }, "user-1", "staff"),
     ).rejects.toThrow(/owner or a manager/);
     expect(client.upsertCallCount()).toBe(0);
+  });
+});
+
+describe("CellarSettingsService — each field keeps its own setter (F-503)", () => {
+  it("a staff tile change does not become the recorded setter of the ceremony", async () => {
+    const client = makeClient({ row: null });
+    const service = await serviceWith(client);
+
+    await service.write(RID, { holdCeremony: "auto" }, "owner-1", "owner");
+    const out = await service.write(RID, { gazetteerMeasures: ["bottles"] }, "staff-1", "staff");
+
+    expect(out.holdCeremonyConfigured).toBe(true);
+    expect(out.holdCeremonySetBy).toBe("owner-1");
+    expect(out.gazetteerMeasuresSetBy).toBe("staff-1");
+    // The row's own shared stamp still says who touched either one last.
+    expect(out.setBy).toBe("staff-1");
+  });
+
+  it("files one row per field moved, under the cellar-settings register, and none for a no-op", async () => {
+    const client = makeClient({ row: null });
+    const service = await serviceWith(client);
+
+    await service.write(RID, { holdCeremony: "hold" }, "owner-1", "owner");
+    await service.write(RID, { holdCeremony: "hold" }, "owner-1", "owner");
+    await service.write(RID, { gazetteerMeasures: ["titles"] }, "owner-1", "owner");
+
+    expect(client.audit.map((r) => r.action)).toEqual([
+      "cellar_tiles_changed",
+      "cellar_hold_ceremony_changed",
+    ]);
+    // Choosing the default ceremony is still a choice: from nothing to "hold".
+    expect(client.audit[1].fields).toEqual({ hold_ceremony: { from: null, to: "hold" } });
+    expect(client.audit[0].fields).toEqual({ gazetteer_measures: { from: null, to: ["titles"] } });
+  });
+
+  it("a row from before per-field stamps still reads as a chosen ceremony", async () => {
+    const service = await serviceWith(
+      makeClient({
+        row: {
+          hold_ceremony: "auto",
+          gazetteer_measures: null,
+          set_by: "user-1",
+          set_at: "2026-09-20T00:00:00Z",
+          created_at: "2026-09-20T00:00:00Z",
+        },
+      }),
+    );
+    const out = await service.read(RID);
+    expect(out.holdCeremonyConfigured).toBe(true);
+    expect(out.holdCeremonySetBy).toBeNull();
   });
 });

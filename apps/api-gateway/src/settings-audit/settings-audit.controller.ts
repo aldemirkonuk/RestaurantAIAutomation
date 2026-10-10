@@ -58,6 +58,7 @@ export const REGISTERS: SettingsRegister[] = [
   "state-and-country",
   "location",
   "hours",
+  "cellar-settings",
 ];
 
 /**

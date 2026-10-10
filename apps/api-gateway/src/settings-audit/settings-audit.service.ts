@@ -132,7 +132,14 @@ export type SettingsRegister =
    * Filed since F-503 (2026-10-09): until then a change to the hours left no
    * row, and "What changed here" did not say so.
    */
-  | "hours";
+  | "hours"
+  /**
+   * The cellar's order-hold ceremony and its "in the building tonight" tiles
+   * (`restaurant_cellar_settings`). Filed since F-503 (2026-10-09): until then
+   * both shared one `set_by`, so a staff tile change read as the ceremony's
+   * setter, and neither change left a row here.
+   */
+  | "cellar-settings";
 
 /**
  * Every member of `SettingsRegister`, as a record the compiler holds to the
@@ -156,6 +163,7 @@ const KNOWN_REGISTERS: Record<SettingsRegister, true> = {
   "state-and-country": true,
   location: true,
   hours: true,
+  "cellar-settings": true,
 };
 
 /**
@@ -233,6 +241,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
   "house_location_changed",
   /** The house's opening hours changed (F-503, 2026-10-09). */
   "operating_hours_changed",
+  /**
+   * The cellar's order-hold ceremony, and the tiles it shows tonight — one
+   * row per field, so each keeps its own setter (F-503, 2026-10-09).
+   */
+  "cellar_hold_ceremony_changed",
+  "cellar_tiles_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

@@ -72,7 +72,9 @@ version order and tracks one bit per table:
     `and c.relname <> 'sommelier_conversations'`, so that table keeps its grants
     BY DESIGN and the guard must not pretend otherwise. `relname <> '...'`
     predicates are parsed out of the sweep block and those tables are not
-    credited. That is the whole reason the debt list below has an entry.
+    credited. Until 2026-10-09 that was the whole reason the debt list below
+    had an entry; 20270102500000 revokes the table's grants (F-531) and the
+    list is empty.
 
 Arm (a) takes no sweep credit at all. The only dynamic ENABLE RLS in the corpus
 is OD-73 section 4's literal-array loop over the three `_bak_*` snapshots, and
@@ -463,21 +465,13 @@ CLIENT_ROLES = ("anon", "authenticated")
 #
 # `arms` names which arm the entry excuses. An entry excuses that arm ONLY.
 # --------------------------------------------------------------------------
-MAX_DEBT = 1
+MAX_DEBT = 0
 
-DEBT: dict[str, dict] = {
-    "public.sommelier_conversations": {
-        "arms": {"grant"},
-        "reason": (
-            "Excepted by design in OD-72 -- the single live browser consumer of the "
-            "publishable anon key. 20260825210000_od72_revoke_client_grants.sql:70 "
-            "excludes it from the sweep by name (`c.relname <> 'sommelier_conversations'`), "
-            "so it genuinely still grants anon/authenticated and the guard must say so "
-            "rather than over-credit the sweep. Shrinks when the sommelier surface is "
-            "routed through the gateway (CLAIMS.jsonl, OD-72 `status: open`)."
-        ),
-    },
-}
+# Emptied 2026-10-09 (F-531): its one entry, public.sommelier_conversations
+# (OD-72's by-name sweep exclusion, "the single live browser consumer"), lost
+# that consumer when /sommelier began redirecting to /ask, and
+# 20270102500000_every_view_reads_as_its_caller.sql revokes its grants.
+DEBT: dict[str, dict] = {}
 
 
 # --------------------------------------------------------------------------
@@ -1453,10 +1447,6 @@ def _st_corpus(root: Path, secdef_filler: bool = True, invoker_filler: bool = Tr
                             f"revoke execute on function {f}() from public, anon, authenticated;\n"
                             f"grant execute on function {f}() to service_role;\n")
         (root / f"20260810{i:06d}_filler_{i}.sql").write_text("".join(body), encoding="utf-8")
-    # The table arm's one DEBT entry must genuinely suppress something.
-    (root / "20260801000000_sommelier.sql").write_text(
-        "create table public.sommelier_conversations (id int);\n"
-        "alter table public.sommelier_conversations enable row level security;\n", encoding="utf-8")
     # The grandfathered pairs, mirrored: created unrevoked, closed by a LATER file
     # through EXECUTEd literals inside a DO block -- the real closing shape.
     closes = []

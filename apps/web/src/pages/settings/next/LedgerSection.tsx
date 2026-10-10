@@ -73,6 +73,9 @@ function headline(entry: LedgerEntry): string {
     return entry.subject ? `Approval rule: ${entry.subject}` : 'An approval rule';
   }
   if (entry.action === 'reporting_currency_changed') return 'The money this house reports in';
+  // F-503 (2026-10-09): the cellar's two choices file too.
+  if (entry.action === 'cellar_hold_ceremony_changed') return 'How a cellar order is sent';
+  if (entry.action === 'cellar_tiles_changed') return 'What the cellar shows tonight';
   if (entry.action === 'feature_flag_changed') {
     return entry.subject ? `Feature: ${entry.subject}` : 'A feature switch';
   }
