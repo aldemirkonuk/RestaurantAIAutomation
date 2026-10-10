@@ -33,20 +33,24 @@ export class CreateTeamMemberDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * On an edit, `null` clears a field and an absent one leaves it
+ * (`@IsOptional()` lets null through; the service writes it as none).
+ */
 export class UpdateTeamMemberDto {
   @IsOptional() @IsString() displayName?: string;
-  @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() phone?: string;
-  @IsOptional() @IsString() position?: string;
+  @IsOptional() @IsEmail() email?: string | null;
+  @IsOptional() @IsString() phone?: string | null;
+  @IsOptional() @IsString() position?: string | null;
   @IsOptional()
   @IsIn(["full_time", "part_time", "trial", "borrowed"])
   employmentType?: string;
-  @IsOptional() @IsString() homeLocation?: string;
-  @IsOptional() @IsNumber() @Min(0) hourlyWage?: number;
+  @IsOptional() @IsString() homeLocation?: string | null;
+  @IsOptional() @IsNumber() @Min(0) hourlyWage?: number | null;
   @IsOptional() @IsArray() @IsString({ each: true }) skills?: string[];
   @IsOptional() @IsDateString() hireDate?: string;
   @IsOptional() @IsIn(["active", "inactive", "trial"]) status?: string;
-  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() notes?: string | null;
 }
 
 // ── Shifts ───────────────────────────────────────────────────────────────
@@ -138,8 +142,9 @@ export class CreateCertDto {
 
 export class UpdateCertDto {
   @IsOptional() @IsString() certType?: string;
-  @IsOptional() @IsDateString() issuedAt?: string;
-  @IsOptional() @IsDateString() expiresAt?: string;
+  /** `null` takes the date off; absent leaves it. */
+  @IsOptional() @IsDateString() issuedAt?: string | null;
+  @IsOptional() @IsDateString() expiresAt?: string | null;
   @IsOptional() @IsString() docUrl?: string;
   @IsOptional()
   @IsIn(["valid", "expiring", "expired", "submitted"])
@@ -171,7 +176,8 @@ export class CreateCoverageTemplateDto {
   @IsOptional() @IsInt() @Min(0) @Max(6) dayOfWeek?: number;
   @IsIn(["am", "pm"]) shiftPeriod: "am" | "pm";
   @IsString() @IsNotEmpty() role: string;
-  @IsInt() @Min(0) minStaff: number;
+  /** At least one: a 0-person rule never raises a gap (F-718). */
+  @IsInt() @Min(1) minStaff: number;
 }
 
 // ── Sales ingestion ────────────────────────────────────────────────────────

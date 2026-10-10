@@ -77,6 +77,7 @@ export class CreateProviderDto {
 
   @ApiPropertyOptional()
   @IsInt()
+  @Min(0)
   @IsOptional()
   minimumOrder?: number;
 
@@ -222,6 +223,7 @@ export class UpdateProviderDto {
 
   @ApiPropertyOptional()
   @IsInt()
+  @Min(0)
   @IsOptional()
   minimumOrder?: number;
 

@@ -36,14 +36,50 @@ function invalidateRules(qc: ReturnType<typeof useQueryClient>, rid: string | nu
 }
 
 /**
+ * What the gateway would refuse in a new rule, said before the click (F-718):
+ * a rule asks for a whole number of people, at least one (a 0-person rule
+ * never raises a gap), and a role, day and service already on file is the
+ * same rule twice, each raising its own gap. `null` = nothing to refuse.
+ */
+export function coverageRuleRefusal(
+  form: { role: string; dayOfWeek: string; shiftPeriod: string; minStaff: string },
+  rules: CoverageRule[],
+): string | null {
+  const n = Number(form.minStaff);
+  if (form.minStaff.trim() === '' || !Number.isInteger(n) || n < 1) {
+    return 'A rule asks for a whole number of people, at least 1.';
+  }
+  const role = form.role.trim().toLocaleLowerCase();
+  const day = form.dayOfWeek === '' ? null : Number(form.dayOfWeek);
+  const twin = rules.find(
+    (r) =>
+      r.role.trim().toLocaleLowerCase() === role &&
+      (r.day_of_week ?? null) === day &&
+      r.shift_period === form.shiftPeriod,
+  );
+  if (role !== '' && twin) {
+    return `This rule is already on file (${ruleWords(twin)}). Remove that one first to change how many people it asks for.`;
+  }
+  return null;
+}
+
+/**
  * The control that starts the staffing engine, and adds every rule after the
  * first. Before it existed, a page whose declared first object is "coverage
  * gaps" could not create the only thing that produces one.
  */
-export function CoverageRuleForm({ weekStart }: { weekStart: string }) {
+export function CoverageRuleForm({
+  weekStart,
+  rules = [],
+}: {
+  weekStart: string;
+  /** The rules on file, so a second copy of one is refused before the click. */
+  rules?: CoverageRule[];
+}) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const [form, setForm] = useState({ role: '', dayOfWeek: '', shiftPeriod: 'pm', minStaff: '1' });
+  const refusal = coverageRuleRefusal(form, rules);
 
   const add = useMutation({
     mutationFn: () =>
@@ -51,7 +87,7 @@ export function CoverageRuleForm({ weekStart }: { weekStart: string }) {
         dayOfWeek: form.dayOfWeek === '' ? undefined : Number(form.dayOfWeek),
         shiftPeriod: form.shiftPeriod,
         role: form.role.trim(),
-        minStaff: Math.max(0, Number(form.minStaff) || 0),
+        minStaff: Number(form.minStaff),
       }),
     onSuccess: () => {
       setForm({ role: '', dayOfWeek: '', shiftPeriod: 'pm', minStaff: '1' });
@@ -101,7 +137,8 @@ export function CoverageRuleForm({ weekStart }: { weekStart: string }) {
           <span className="tm-label">People</span>
           <input
             type="number"
-            min={0}
+            min={1}
+            step={1}
             className="tm-input"
             style={{ width: 74 }}
             value={form.minStaff}
@@ -111,17 +148,28 @@ export function CoverageRuleForm({ weekStart }: { weekStart: string }) {
         <button
           type="button"
           className="tm-ctl"
-          disabled={!form.role.trim() || add.isPending}
+          disabled={!form.role.trim() || refusal !== null || add.isPending}
           onClick={() => add.mutate()}
         >
           {add.isPending ? 'Adding…' : 'Add coverage rule'}
         </button>
       </div>
+      {refusal && (
+        <p className="tm-hint" role="status" data-testid="rule-refusal">
+          {refusal}
+        </p>
+      )}
       <MutationError when={add.isError}>
-        The rule was not saved, so the rule file is unchanged. Try again.
+        The rule was not saved, so the rule file is unchanged. {ruleSaveRefusal(add.error)}
       </MutationError>
     </div>
   );
+}
+
+/** The gateway's worded refusal (a 409 for a rule already on file), else "Try again." */
+function ruleSaveRefusal(err: unknown): string {
+  const said = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  return typeof said === 'string' && said ? said : 'Try again.';
 }
 
 function RuleRow({
@@ -261,7 +309,7 @@ export function CoverageRulesSheet({
             ))}
           </ul>
         )}
-        {!failed && <CoverageRuleForm weekStart={weekStart} />}
+        {!failed && <CoverageRuleForm weekStart={weekStart} rules={rules ?? []} />}
       </div>
     </Sheet>
   );

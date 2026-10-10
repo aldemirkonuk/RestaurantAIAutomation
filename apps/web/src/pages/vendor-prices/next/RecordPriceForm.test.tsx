@@ -54,7 +54,8 @@ vi.mock('../../../hooks/queries/useProviderQueries', () => ({
 const house = vi.hoisted(() => ({ group: null as '.' | ',' | null }))
 vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => house.group }))
 
-import { RecordPriceForm } from './RecordPriceForm'
+import { RecordPriceForm, priceBoundsRefusal, recordPriceRefusal } from './RecordPriceForm'
+import { vendorRefusals, EMPTY_VENDOR } from '../../providers/next/NewVendorSheet'
 
 function fillRequiredFieldsExceptCurrency(vendor = 'Empire Merchants') {
   fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: vendor } })
@@ -279,5 +280,47 @@ describe('RecordPriceForm — fork 6(a): the paper, the message and the person (
     fillAll()
     expect(screen.getByText(/messages and contacts could not be read/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /record this price/i })).toBeEnabled()
+  })
+})
+
+describe('RecordPriceForm — pack and bottle size hold the gateway’s bounds, said in words (F-716)', () => {
+  it('refuses a pack or a bottle size the gateway would refuse', () => {
+    expect(priceBoundsRefusal('1', '750')).toBeNull()
+    expect(priceBoundsRefusal('240', '')).toBeNull()
+    expect(priceBoundsRefusal('300', '750')).toMatch(/from 1 to 240/)
+    expect(priceBoundsRefusal('1.5', '750')).toMatch(/whole number of bottles/)
+    expect(priceBoundsRefusal('6', '20')).toMatch(/from 50 to 30000/)
+    expect(priceBoundsRefusal('6', '75.5')).toMatch(/whole number of millilitres/)
+  })
+
+  it('holds the button and says why when the bottle size is under 50 ml', () => {
+    render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
+    fillRequiredFieldsExceptCurrency()
+    fireEvent.change(screen.getByLabelText(/Currency/), { target: { value: 'TRY' } })
+    fireEvent.change(screen.getByLabelText('Bottle size (ml)'), { target: { value: '20' } })
+    expect(screen.getByTestId('vp-bounds')).toHaveTextContent(/from 50 to 30000/)
+    expect(screen.getByRole('button', { name: /record this price/i })).toBeDisabled()
+  })
+
+  it('turns the gateway’s field text into words, never the field name', () => {
+    const said = recordPriceRefusal({
+      response: { data: { message: ['packSize must not be greater than 240', 'unitVolumeMl must not be less than 50'] } },
+    })
+    expect(said).toMatch(/^The price was not recorded\./)
+    expect(said).toMatch(/from 1 to 240/)
+    expect(said).not.toMatch(/packSize|unitVolumeMl/)
+  })
+})
+
+// The same class on /vendors: the new-vendor form's minimum order against the
+// gateway's `@IsInt() @Min(0)` (F-715). Kept here, beside its twin.
+describe('New vendor — the minimum order holds the gateway’s bounds, said in words (F-715)', () => {
+  const ok = { ...EMPTY_VENDOR, name: 'V', contactFirstName: 'A', phone: '0212 555 0101', email: 'a@b.co', specialties: ['wine'] }
+
+  it('refuses a decimal and a negative, and keeps a whole amount', () => {
+    expect(vendorRefusals({ ...ok, minimumOrder: '1500.50' }).minimumOrder).toMatch(/whole amount/)
+    expect(vendorRefusals({ ...ok, minimumOrder: '-500' }).minimumOrder).toMatch(/below zero/)
+    expect(vendorRefusals({ ...ok, minimumOrder: '0' }).minimumOrder).toBeUndefined()
+    expect(vendorRefusals({ ...ok, minimumOrder: '1500' }).minimumOrder).toBeUndefined()
   })
 })

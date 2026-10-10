@@ -63,7 +63,7 @@ import {
 import { useDuplicateVendorCheck } from '@/hooks/useDuplicateVendorCheck';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
-import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
+import { parseDecimal, readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
 import { VendorTwinPanel } from './VendorTwinPanel';
 import { EM, MONO, SANS, SERIF } from './pv-format';
 
@@ -188,8 +188,18 @@ export function vendorRefusals(d: VendorDraft, group: GroupMark | null = null): 
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim())) out.email = 'That is not an email address.';
   if (d.specialties.length === 0) out.specialties = 'Say what this vendor sells — at least one.';
   // Read the way the house writes it: "1.250,00" and "12,50" are amounts (F-358).
-  if (!readOptionalAmount(d.minimumOrder, group).ok) {
-    out.minimumOrder = 'A minimum order is a number of 0 or more, or nothing at all.';
+  // The gateway keeps a whole amount of zero or more (`@IsInt() @Min(0)`,
+  // an integer column), so a decimal or a negative is refused here, in words,
+  // rather than losing the whole vendor to its field-name refusal (F-715).
+  const min = readOptionalAmount(d.minimumOrder, group);
+  if (!min.ok) {
+    const n = parseDecimal(d.minimumOrder, group);
+    out.minimumOrder =
+      n !== null && n < 0
+        ? 'A minimum order cannot be below zero.'
+        : 'A minimum order is a number of 0 or more, or nothing at all.';
+  } else if (min.value !== null && !Number.isInteger(min.value)) {
+    out.minimumOrder = 'A minimum order is kept as a whole amount. Write it without decimals, like 1500.';
   }
   return out;
 }
@@ -775,7 +785,7 @@ export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }:
               <input
                 id="nv-min"
                 style={field}
-                inputMode="decimal"
+                inputMode="numeric"
                 value={draft.minimumOrder}
                 onChange={(e) => set({ minimumOrder: e.target.value })}
               />

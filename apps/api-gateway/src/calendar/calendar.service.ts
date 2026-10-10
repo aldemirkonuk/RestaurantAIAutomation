@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -1017,6 +1018,14 @@ export class CalendarService {
       .single();
 
     if (error) {
+      // UNIQUE (restaurant_id, name): a name already on this house's list is
+      // the person's to fix, not a server fault, so it is a 409 in words
+      // rather than the database's text under a 500 (F-717).
+      if ((error as { code?: string }).code === "23505") {
+        throw new ConflictException(
+          `A type called "${dto.name}" is already on this calendar. Pick it from the list, or give the new one another name.`,
+        );
+      }
       this.logger.error(`Failed to create event type: ${error.message}`);
       throw error;
     }

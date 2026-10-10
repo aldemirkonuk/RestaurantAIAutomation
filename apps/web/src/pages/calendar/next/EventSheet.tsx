@@ -100,6 +100,17 @@ function enumTypeFor(name: string): string {
   return ENUM_TYPES.has(slug) ? slug : 'custom';
 }
 
+/**
+ * The gateway's own sentence when it sent one (a worded 409, say), else the
+ * error's message. An axios error's message is only "Request failed with
+ * status code 409", which says nothing (F-717).
+ */
+function refusalWords(failure: unknown): string {
+  const said = (failure as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (typeof said === 'string' && said) return said;
+  return failure instanceof Error ? failure.message : 'unknown error';
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="cn-field">
@@ -161,6 +172,12 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const [newTypeColor, setNewTypeColor] = useState(SEAL_HEX);
 
   const custom = useMemo(() => data.eventTypes.filter((t) => !t.isDefault), [data.eventTypes]);
+  // A name already on the list, whatever its case, is said before the click;
+  // the gateway refuses the exact name with a 409 (F-717).
+  const typeNameTaken = useMemo(() => {
+    const wanted = newTypeName.trim().toLocaleLowerCase();
+    return wanted !== '' && data.eventTypes.some((t) => t.name.trim().toLocaleLowerCase() === wanted);
+  }, [newTypeName, data.eventTypes]);
   const saving = data.create.isPending || data.update.isPending;
   // Adding or deleting a custom type is a write too; its refusal must reach
   // the same banner (sweep 2026-09-28 row 19 — it used to vanish silently).
@@ -413,7 +430,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
             <button
               type="button"
               className="cn-btn cn-ink"
-              disabled={!newTypeName.trim() || data.createType.isPending}
+              disabled={!newTypeName.trim() || typeNameTaken || data.createType.isPending}
               onClick={() => {
                 ask('createType');
                 data.createType.mutate(
@@ -425,6 +442,12 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               Add
             </button>
           </div>
+          {typeNameTaken && (
+            <p role="status" className="cn-quiet cn-tight">
+              A type called “{newTypeName.trim()}” is already on the list. Pick it above, or give
+              the new one another name.
+            </p>
+          )}
           {custom.length === 0 && data.typesKnown && (
             <p className="cn-quiet cn-tight">
               No custom types yet — the eight above are the gateway&apos;s built-ins.
@@ -636,7 +659,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
         {failure && (
           <p role="status" className="cn-notice" style={{ marginTop: 10 }}>
-            The gateway refused this write ({failure instanceof Error ? failure.message : 'unknown error'}).
+            The gateway refused this write ({refusalWords(failure)}).
             Nothing was saved.
           </p>
         )}

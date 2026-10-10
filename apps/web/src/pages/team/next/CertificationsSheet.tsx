@@ -160,8 +160,10 @@ export function CertificationsSheet({
         editingId!,
         {
           certType: draft.certType.trim(),
-          issuedAt: draft.issuedAt || undefined,
-          expiresAt: draft.expiresAt || undefined,
+          // An emptied date is sent as `null` = "none"; `undefined` would
+          // leave the old one, so a wrong expiry could never come off (F-713).
+          issuedAt: draft.issuedAt || null,
+          expiresAt: draft.expiresAt || null,
         },
         restaurantId ?? undefined,
       ),
