@@ -1347,12 +1347,102 @@ describe('DashboardNext — a read that failed is never a quiet house (F-751, F-
 
       mount();
 
-      await waitFor(() => expect(dayCell('2026-09-14')).not.toBeDisabled());
-      fireEvent.click(dayCell('2026-09-14'));
+      // Alerts are listed on today alone (F-430), and the day's activity is
+      // read for that day (F-431): both failures show on today's sheet.
+      await waitFor(() => expect(dayCell('2026-09-15')).not.toBeDisabled());
+      fireEvent.click(dayCell('2026-09-15'));
       expect(await screen.findByText('Alerts couldn’t be read just now.')).toBeInTheDocument();
-      expect(screen.getByText('Activity couldn’t be read just now.')).toBeInTheDocument();
-      expect(screen.queryByText('No alerts carry this date.')).not.toBeInTheDocument();
+      expect(await screen.findByText('Couldn’t read this day’s activity. Try again in a moment.')).toBeInTheDocument();
+      expect(screen.queryByText('Nothing needs attention right now.')).not.toBeInTheDocument();
       expect(screen.queryByText('No recorded activity for this day.')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('DashboardNext — the day sheet files only what it knows (F-430, F-431)', () => {
+  /**
+   * The house lives on Sept 10 (UTC). The undated feed is the dozen newest
+   * lines, all from today; the dated read answers Sept 3's own line. The one
+   * alert is an overdue order stamped with the day it was PLACED (Sept 3).
+   */
+  function routeDay() {
+    routeGets({
+      '/dashboard/calendar-revenue/': { ...monthLedger(), timezone: 'UTC', today: '2026-09-10' },
+      '/dashboard/alerts/': [
+        {
+          id: 'overdue-o1',
+          type: 'overdue_order',
+          severity: 'warning',
+          title: 'Overdue Order',
+          message: 'Order expected by 2026-09-08',
+          createdAt: '2026-09-03T09:00:00Z',
+        },
+      ],
+    });
+    const base = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string, config?: { params?: { date?: string } }) => {
+      if (url.includes('/dashboard/activity/')) {
+        const date = config?.params?.date;
+        if (!date) {
+          return Promise.resolve({
+            data: Array.from({ length: 12 }, (_, i) => ({
+              id: `today-${i}`,
+              type: 'order',
+              title: `Order ORD-${i} updated`,
+              timestamp: '2026-09-10T08:00:00Z',
+            })),
+          });
+        }
+        return Promise.resolve({
+          data:
+            date === '2026-09-03'
+              ? [{ id: 'old-1', type: 'order', title: 'Order ORD-0007 delivered', timestamp: '2026-09-03T12:00:00Z' }]
+              : [],
+        });
+      }
+      return base(url, config);
+    });
+  }
+
+  it("lists a past day's own activity, read for that day", async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-10T12:00:00Z') });
+    try {
+      routeDay();
+      mount();
+
+      await waitFor(() => expect(dayCell('2026-09-03')).not.toBeDisabled());
+      fireEvent.click(dayCell('2026-09-03'));
+
+      expect(await screen.findByText('Order ORD-0007 delivered')).toBeInTheDocument();
+      expect(screen.queryByText('No recorded activity for this day.')).not.toBeInTheDocument();
+      expect(
+        api.get.mock.calls.some(
+          (call) => String(call[0]).includes('/dashboard/activity/') && call[1]?.params?.date === '2026-09-03',
+        ),
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lists the alerts on today only, never under a stamped past day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-10T12:00:00Z') });
+    try {
+      routeDay();
+      mount();
+
+      await waitFor(() => expect(dayCell('2026-09-03')).not.toBeDisabled());
+      fireEvent.click(dayCell('2026-09-03'));
+      expect(
+        await screen.findByText('Alerts are listed on today: they say what needs attention now, not the day it began.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Order expected by 2026-09-08/)).not.toBeInTheDocument();
+
+      fireEvent.click(dayCell('2026-09-10'));
+      expect(await screen.findByText(/Order expected by 2026-09-08/)).toBeInTheDocument();
+      expect(screen.getByText('Alerts now')).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

@@ -34,11 +34,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { animate, settle } from '@/lib/mudavym';
-import type { ActivityItem, AlertItem } from './useDashboardNextData';
+import type { AlertItem } from './useDashboardNextData';
 import {
   NOT_RECORDED,
   fromChecks,
   fromDays,
+  useDayActivity,
   useDayOrders,
   useMonthLedger,
   type DayLedger,
@@ -79,7 +80,6 @@ export interface SalesCalendarProps {
   restaurantId: string | null;
   /** null = the read failed (F-752). */
   alerts: AlertItem[] | null | undefined;
-  activity: ActivityItem[] | null | undefined;
   /** DASH-W20: the house's IANA zone; null until the stats answer. */
   zone?: string | null;
   /**
@@ -246,7 +246,7 @@ function cellLabel(
   return `${head}: ${parts.join(', ')}`;
 }
 
-export function SalesCalendar({ restaurantId, alerts, activity, zone = null, seesAmounts: mayShow = true }: SalesCalendarProps) {
+export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: mayShow = true }: SalesCalendarProps) {
   const now = new Date();
   // DASH-W20: the clock's today is the house's (the stats' zone) — it picks the
   // month the address leaves out. ADR 0290: once the month answers, its own
@@ -287,6 +287,9 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   // A future day has no deliveries to list; don't ask the ledger for them
   // (DASH-W13). Deliveries are matched in the zone the month is filed in.
   const dayOrders = useDayOrders(restaurantId, selected && selected <= todayStr ? selected : null, ledger?.timezone);
+  // The day's own activity, read for that day (F-431) — never the newest
+  // dozen lines of the house filtered down to it.
+  const dayActivity = useDayActivity(restaurantId, selected && selected <= todayStr ? selected : null, ledger?.timezone);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   const monthKey = `${cursor.year}-${cursor.month}`;
@@ -537,7 +540,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
             dayOrders={dayOrders}
             seesAmounts={seesAmounts}
             alerts={alerts}
-            activity={activity}
+            dayActivity={dayActivity}
             onScrub={(d) => show(cursor, d)}
             onClose={() => {
               const closing = selected;

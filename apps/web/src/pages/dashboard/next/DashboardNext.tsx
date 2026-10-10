@@ -220,7 +220,6 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
             zone={zone}
             seesAmounts={seesAmounts}
             alerts={spine.alerts}
-            activity={spine.activity}
           />
           <div className="space-y-4">
             <WaitingOnYou

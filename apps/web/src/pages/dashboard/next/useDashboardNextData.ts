@@ -510,3 +510,63 @@ export function useDayOrders(
 
   return state;
 }
+
+/* ── One day's activity (GET /dashboard/activity/:id?date=) ─────────────── */
+
+/** The most lines one day's sheet asks for; more are said, not dropped. */
+export const DAY_ACTIVITY_LIMIT = 100;
+
+export type DayActivityState =
+  | { state: "idle" }
+  | { state: "loading" }
+  | { state: "unknown" }
+  /** The house has no time zone, so no line can be filed on a day. */
+  | { state: "no-zone" }
+  /** `cut` = the day holds at least DAY_ACTIVITY_LIMIT lines; older ones were not read. */
+  | { state: "ready"; items: ActivityItem[]; cut: boolean };
+
+/**
+ * The day sheet's own activity read (F-431). It used to filter the twelve
+ * newest lines of the whole house by date, so every day older than those
+ * twelve said "No recorded activity" however busy it was. Now the gateway
+ * bounds the read to the house's day. `zone` follows `useDayOrders`: null =
+ * the house has none (nothing is read); undefined = an older gateway did not
+ * say, and the read is still asked for.
+ */
+export function useDayActivity(
+  restaurantId: string | null,
+  date: string | null,
+  zone?: string | null,
+): DayActivityState {
+  const [state, setState] = useState<DayActivityState>({ state: "idle" });
+  const seq = useRef(0);
+
+  useEffect(() => {
+    if (!date || !restaurantId) {
+      setState({ state: "idle" });
+      return;
+    }
+    if (zone === null) {
+      seq.current += 1;
+      setState({ state: "no-zone" });
+      return;
+    }
+    const mySeq = ++seq.current;
+    setState({ state: "loading" });
+    dashboardApi
+      .getDayActivity(date, DAY_ACTIVITY_LIMIT, restaurantId)
+      .then((rows) => {
+        if (mySeq !== seq.current) return;
+        const items = rows as ActivityItem[];
+        // The gateway reads up to the limit per source and returns at most
+        // the limit, so a full page may have left older lines unread.
+        setState({ state: "ready", items, cut: items.length >= DAY_ACTIVITY_LIMIT });
+      })
+      .catch(() => {
+        if (mySeq !== seq.current) return;
+        setState({ state: "unknown" });
+      });
+  }, [restaurantId, date, zone]);
+
+  return state;
+}

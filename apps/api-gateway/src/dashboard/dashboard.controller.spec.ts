@@ -133,6 +133,7 @@ describe("DashboardController", () => {
       expect(mockDashboardService.getActivity).toHaveBeenCalledWith(
         restaurantId,
         20,
+        undefined,
       );
     });
 
@@ -144,6 +145,7 @@ describe("DashboardController", () => {
       expect(mockDashboardService.getActivity).toHaveBeenCalledWith(
         restaurantId,
         50,
+        undefined,
       );
     });
 
@@ -155,6 +157,7 @@ describe("DashboardController", () => {
       expect(mockDashboardService.getActivity).toHaveBeenCalledWith(
         restaurantId,
         20,
+        undefined,
       );
     });
   });
