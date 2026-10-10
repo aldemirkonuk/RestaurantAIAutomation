@@ -244,6 +244,30 @@ export class InventoryService {
     }
   }
 
+  /**
+   * The money one house keeps its books in, for the all-locations export
+   * (F-599). `restaurants.currency` is nullable and never defaulted here; a
+   * failed read is `readable: false`, never "not recorded" (ADR 0083).
+   */
+  async readHouseCurrency(
+    restaurantId: string,
+  ): Promise<{ code: string | null; readable: boolean }> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `Could not read the currency of ${restaurantId}: ${error.message}`,
+      );
+      return { code: null, readable: false };
+    }
+    const code = (data as { currency?: string | null } | null)?.currency;
+    return { code: code ?? null, readable: true };
+  }
+
   async getRestaurantInventory(restaurantId: string) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
     const [data, rollup, locations, analytics] = await Promise.all([

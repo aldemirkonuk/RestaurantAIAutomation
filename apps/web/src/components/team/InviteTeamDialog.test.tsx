@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { InviteTeamDialog } from './InviteTeamDialog'
 import { apiClient } from '../../services/api/client'
+import { toast } from 'sonner'
 import { claimMudavymShell, resetMudavymShell } from '../../lib/mudavym/shellGround'
 
 vi.mock('../../services/api/client', () => ({
@@ -122,6 +123,27 @@ describe('with a Mudavym page on screen', () => {
     draw(false)
     fireEvent.click(screen.getAllByRole('button', { name: 'Generate Invite Link' })[0])
     await waitFor(() => expect(screen.getByText(/^Not emailed:/)).toBeInTheDocument())
+  })
+
+  it('says copied only once the browser took the link, and says so when it refused (F-600)', async () => {
+    const writeText = vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    vi.mocked(toast.success).mockClear()
+    vi.mocked(toast.error).mockClear()
+    try {
+      draw(true, { anchored: true })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
+      await waitFor(() => expect(screen.getByText('AB12CD34')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: /^Copy$/ }))
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/would not copy/)))
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(screen.queryByText('Copied!')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: /^Copy$/ }))
+      await waitFor(() => expect(screen.getByText('Copied!')).toBeInTheDocument())
+      expect(writeText).toHaveBeenLastCalledWith(INVITE.inviteUrl)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('states the expiry in words once a link is generated, on both branches', async () => {

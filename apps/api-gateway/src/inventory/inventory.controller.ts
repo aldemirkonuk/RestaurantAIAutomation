@@ -145,6 +145,66 @@ export class InventoryController {
     return this.inventoryService.listHouseItemResearch(user.restaurantId);
   }
 
+  // ==========================================================================
+  // EVERY HOUSE — the /inventory "Export all locations" read (F-596). The
+  // token names one house, so reading `GET /inventory/<other house>` is a
+  // tenant violation (assert-tenant-match.ts) and the export always failed for
+  // an owner of two houses. This route names no house in its path: it reads
+  // the caller's houses from their access rows and, for each one, checks the
+  // caller's role in THAT house. Only an owner's or a manager's houses are
+  // read; the rest are listed by name as not included. Declared before
+  // `:restaurantId` for the same routing reason as the routes above.
+  // ==========================================================================
+
+  @Get("across-houses")
+  @ApiOperation({
+    summary:
+      "Inventory of every house the caller owns or manages, for the all-locations export",
+  })
+  async getInventoryAcrossHouses(
+    @CurrentUser() user: { userId?: string },
+  ) {
+    if (!user?.userId) {
+      throw new HttpException(
+        "This sign-in names nobody, so there are no houses to read.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const branches = await this.organizations.getBranchesForUser(user.userId);
+    const houses: Array<{
+      restaurantId: string;
+      name: string;
+      currency: { code: string | null; readable: boolean };
+      items: unknown[];
+    }> = [];
+    const notIncluded: Array<{ restaurantId: string; name: string }> = [];
+    for (const branch of branches) {
+      let role: string | null;
+      try {
+        role = await this.organizations.readRestaurantRole(
+          user.userId,
+          branch.id,
+        );
+      } catch {
+        // "Could not check" never means "yes", and never quietly drops a house.
+        throw new HttpException(
+          `Your role at ${branch.name} could not be checked, so nothing was exported. Try again in a moment.`,
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+      if (role !== "owner" && role !== "manager") {
+        notIncluded.push({ restaurantId: branch.id, name: branch.name });
+        continue;
+      }
+      const [currency, items] = await Promise.all([
+        this.inventoryService.readHouseCurrency(branch.id),
+        this.inventoryService.getRestaurantInventory(branch.id),
+      ]);
+      houses.push({ restaurantId: branch.id, name: branch.name, currency, items });
+    }
+    return { houses, notIncluded };
+  }
+
   @Get(":restaurantId")
   @ApiOperation({ summary: "Get all inventory items for a restaurant" })
   @ApiResponse({ status: 200, description: "Returns all inventory items" })

@@ -25,7 +25,8 @@ import {
   Barcode,
 } from "lucide-react";
 import { useInventoryPage, type InventoryItem } from "../index";
-import { loadHouseInventory } from "../useInventoryPage";
+import { loadEveryHouseInventory, stockValueCell } from "../useInventoryPage";
+import { settingsApi } from "../../../services/api/settings";
 import { ContextualInsights } from "../../../components/insights/ContextualInsights";
 import { useStorageLocations } from "../../../hooks/useStorageLocations";
 import { useCreateInventoryItem } from "../../../hooks/queries";
@@ -51,8 +52,12 @@ import { summarizeMenuScanPersist } from "../../../lib/menuScannerPersistence";
 import { ThemedSelect } from "../../../components/ui/ThemedSelect";
 import { ExportMenu } from "../../../components/ui/ExportMenu";
 import {
+  copyText,
+  exportDay,
   exportTable,
   fileSafeName,
+  moneyHeader,
+  moneyUnit,
   type TableExportColumn,
   type TableExportFormat,
 } from "../../../lib/tableExport";
@@ -570,8 +575,17 @@ export function InventoryCommandPage() {
     return notes.join("; ");
   };
 
-  const valuationColumns: TableExportColumn<InventoryItem>[] = useMemo(
-    () => [
+  // The money the house keeps its books in, named in every money header of
+  // an export (F-599), as the team schedule export does.
+  const { data: houseCurrency } = useQuery({
+    queryKey: ["settings", "currency"],
+    queryFn: () => settingsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+  });
+  const unit = moneyUnit(houseCurrency);
+
+  const valuationColumnsIn = useCallback(
+    (unit: string): TableExportColumn<InventoryItem>[] => [
       { header: "Wine", value: (i) => i.name },
       { header: "Producer", value: (i) => i.producer ?? "" },
       { header: "Type", value: (i) => i.type ?? "" },
@@ -589,21 +603,25 @@ export function InventoryCommandPage() {
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
+      { header: moneyHeader("WAC", unit), value: (i) => i.wac ?? i.price ?? "" },
       // The house's own prices (ADR 0193), beside -- never instead of -- Market.
-      { header: "Your bottle price", value: (i) => i.menuPriceBottle ?? "" },
-      { header: "Your glass price", value: (i) => i.menuPriceGlass ?? "" },
-      { header: "Market", value: (i) => i.marketPrice ?? "" },
       {
-        header: "Value",
-        value: (i) =>
-          round2(
-            (i.wac ?? i.price ?? 0) *
-              ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
-          ),
+        header: moneyHeader("Your bottle price", unit),
+        value: (i) => i.menuPriceBottle ?? "",
       },
+      {
+        header: moneyHeader("Your glass price", unit),
+        value: (i) => i.menuPriceGlass ?? "",
+      },
+      { header: moneyHeader("Market", unit), value: (i) => i.marketPrice ?? "" },
+      { header: moneyHeader("Value", unit), value: stockValueCell },
     ],
     [],
+  );
+
+  const valuationColumns = useMemo(
+    () => valuationColumnsIn(unit),
+    [valuationColumnsIn, unit],
   );
 
   const countSheetColumns: TableExportColumn<InventoryItem>[] = useMemo(
@@ -649,19 +667,12 @@ export function InventoryCommandPage() {
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
-      {
-        header: "Value",
-        value: (i) =>
-          round2(
-            (i.wac ?? i.price ?? 0) *
-              ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
-          ),
-      },
+      { header: moneyHeader("WAC", unit), value: (i) => i.wac ?? i.price ?? "" },
+      { header: moneyHeader("Value", unit), value: stockValueCell },
       { header: "Observation", value: (i) => countObservation(i) },
     ],
     // countObservation closes over helpers; recreate when inventory shape changes
-    [locations, measurementUnit],
+    [locations, measurementUnit, unit],
   );
 
   const runInventoryExport = useCallback(
@@ -699,7 +710,7 @@ export function InventoryCommandPage() {
       format,
       selectedRows,
       valuationColumns,
-      `inventory-selected-${new Date().toISOString().slice(0, 10)}`,
+      `inventory-selected-${exportDay()}`,
       "Inventory selection",
     );
 
@@ -708,50 +719,62 @@ export function InventoryCommandPage() {
       format,
       rows,
       valuationColumns,
-      `inventory-valuation-${new Date().toISOString().slice(0, 10)}`,
+      `inventory-valuation-${exportDay()}`,
       "Inventory valuation",
     );
 
+  // Houses may keep different money, so each row names its own and the
+  // money headers point at that column (F-599).
   const allLocationsValuationColumns = useMemo(
-    (): TableExportColumn<{ branchName: string; item: InventoryItem }>[] => [
+    (): TableExportColumn<{ branchName: string; currency: string; item: InventoryItem }>[] => [
       { header: "Location", value: (r) => r.branchName },
-      ...valuationColumns.map((col) => ({
+      { header: "Currency", value: (r) => r.currency },
+      ...valuationColumnsIn("see Currency").map((col) => ({
         header: col.header,
-        value: (r: { branchName: string; item: InventoryItem }) =>
-          typeof col.value === "function" ? col.value(r.item) : "",
+        value: (r: { item: InventoryItem }) => col.value(r.item),
       })),
     ],
-    [valuationColumns],
+    [valuationColumnsIn],
   );
 
   const exportAllLocationsValuation = useCallback(
     async (format: TableExportFormat) => {
       try {
-        const merged: { branchName: string; item: InventoryItem }[] = [];
-        for (const branch of availableRestaurants) {
-          // Shaped as the page shapes its own rows: the raw gateway row has
-          // none of the keys the columns read, so a cast wrote blank names
-          // and zero stock for every house.
-          const items = await loadHouseInventory(branch.id);
-          for (const item of items) {
-            merged.push({ branchName: branch.name, item });
-          }
+        // One read across houses, checked house by house on the server: a
+        // per-house read with this house's sign-in was refused (F-596).
+        const { houses, notIncluded } = await loadEveryHouseInventory();
+        if (houses.length === 0) {
+          toast.error(
+            "Only an owner or manager can export a location's stock, and you are neither at any of your locations.",
+          );
+          return;
         }
+        const merged = houses.flatMap((h) =>
+          h.items.map((item) => ({
+            branchName: h.name,
+            currency: moneyUnit(h.currency),
+            item,
+          })),
+        );
         await exportTable({
           format,
           rows: merged,
           columns: allLocationsValuationColumns,
-          filename: `inventory-all-locations-${new Date().toISOString().slice(0, 10)}`,
+          filename: `inventory-all-locations-${exportDay()}`,
           title: "Inventory valuation — all locations",
         });
+        const left =
+          notIncluded.length > 0
+            ? ` Not included, because you are not an owner or manager there: ${notIncluded.join(", ")}.`
+            : "";
         toast.success(
-          `Exported ${merged.length} rows across ${availableRestaurants.length} locations`,
+          `${format === "clipboard" ? "Copied" : "Exported"} ${merged.length} rows across ${houses.length} locations.${left}`,
         );
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Export failed");
       }
     },
-    [allLocationsValuationColumns, availableRestaurants],
+    [allLocationsValuationColumns],
   );
 
   const exportCountSheet = (format: TableExportFormat) =>
@@ -759,13 +782,19 @@ export function InventoryCommandPage() {
       format,
       rows,
       countSheetColumns,
-      `inventory-count-${new Date().toISOString().slice(0, 10)}`,
+      `inventory-count-${exportDay()}`,
       "Inventory count sheet",
     );
 
-  const copySelectedNames = () => {
-    navigator.clipboard?.writeText(selectedRows.map((r) => r.name).join("\n"));
+  // Says what happened only once the browser has answered (F-600).
+  const copyNames = async (names: string[]) => {
+    if (await copyText(names.join("\n"))) {
+      toast.success(names.length === 1 ? "Name copied" : `Copied ${names.length} names`);
+    } else {
+      toast.error("This browser would not copy. Select the names and copy them by hand.");
+    }
   };
+  const copySelectedNames = () => void copyNames(selectedRows.map((r) => r.name));
 
   // Keep the focus index valid as the row set changes.
   useEffect(() => {
@@ -1826,7 +1855,7 @@ export function InventoryCommandPage() {
                 icon={Copy}
                 label="Copy name"
                 onClick={() => {
-                  navigator.clipboard?.writeText(item.name);
+                  void copyNames([item.name]);
                   setMenu(null);
                 }}
               />

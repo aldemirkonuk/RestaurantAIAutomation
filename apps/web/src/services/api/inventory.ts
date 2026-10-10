@@ -163,6 +163,32 @@ export async function getInventory(restaurantId?: string): Promise<InventoryItem
 }
 
 /**
+ * Every house the signed-in person owns or manages, for "Export all
+ * locations" (F-596). The token names one house, so `getInventory(otherHouse)`
+ * is refused; this read names none and the gateway checks the person's role in
+ * each house. Houses where they are neither owner nor manager come back by
+ * name in `notIncluded`, never read.
+ */
+export interface HouseInventoryRead {
+  restaurantId: string;
+  name: string;
+  /** `readable: false` is a failed read, not "no currency recorded". */
+  currency: { code: string | null; readable: boolean };
+  items: InventoryItem[];
+}
+
+export async function getInventoryAcrossHouses(): Promise<{
+  houses: HouseInventoryRead[];
+  notIncluded: { restaurantId: string; name: string }[];
+}> {
+  const response = await apiClient.get<{
+    houses: HouseInventoryRead[];
+    notIncluded: { restaurantId: string; name: string }[];
+  }>(`${INVENTORY_PATH}/across-houses`);
+  return response.data;
+}
+
+/**
  * Create a new inventory item
  */
 export async function createInventoryItem(

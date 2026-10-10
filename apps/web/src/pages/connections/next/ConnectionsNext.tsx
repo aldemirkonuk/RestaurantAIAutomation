@@ -168,7 +168,9 @@ export const REGISTER_ANCHORS = [
 
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
-  const [copied, setCopied] = useState(false);
+  // 'failed' is a browser that refused the write: the button says so instead
+  // of claiming 'Copied' (F-600).
+  const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   /**
    * Bring the fragment's register into view once its register has answered.
@@ -691,11 +693,21 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       ...(feed
                         ? [
                             {
-                              label: copied ? 'Copied' : 'Copy address',
-                              onClick: () => {
-                                void navigator.clipboard?.writeText(feed);
-                                setCopied(true);
-                                window.setTimeout(() => setCopied(false), 1600);
+                              label:
+                                copied === 'copied'
+                                  ? 'Copied'
+                                  : copied === 'failed'
+                                    ? 'Could not copy. Select the address above.'
+                                    : 'Copy address',
+                              onClick: async () => {
+                                try {
+                                  if (!navigator.clipboard) throw new Error('no clipboard');
+                                  await navigator.clipboard.writeText(feed);
+                                  setCopied('copied');
+                                  window.setTimeout(() => setCopied('idle'), 1600);
+                                } catch {
+                                  setCopied('failed');
+                                }
                               },
                             },
                           ]

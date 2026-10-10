@@ -32,6 +32,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Building2, FileUp, Gavel } from 'lucide-react';
 import { AttachmentRow } from './AttachmentRow';
 import { readError } from './cx-format';
+import { downloadBlob } from '@/lib/tableExport';
 import type {
   CatalogueAdmissionVM,
   DistributorCatalogueVM,
@@ -215,15 +216,9 @@ export function DistributorFeedPanel({
    */
   const download = (l: FeedLetterVM) => {
     try {
-      const blob = new Blob([l.body], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = l.filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      // Revoked after a delay, not in the same tick: some Safari and Firefox
+      // versions abort a download whose URL is gone (F-598).
+      downloadBlob(new Blob([l.body], { type: 'text/plain;charset=utf-8' }), l.filename);
     } catch {
       /* The text is on the page above the control; a browser that cannot save
          a Blob has not lost it. */

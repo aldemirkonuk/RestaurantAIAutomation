@@ -18,6 +18,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { DistributorFeedPanel } from './DistributorFeedPanel';
+import { REVOKE_AFTER_MS } from '@/lib/tableExport';
 import type {
   CatalogueAdmissionVM,
   DistributorCatalogueVM,
@@ -261,8 +262,17 @@ describe('the two ways in', () => {
     const revokeObjectURL = vi.fn();
     Object.assign(URL, { createObjectURL, revokeObjectURL });
     render(<DistributorFeedPanel distributors={reg(catalogue)} letter={reg(letter)} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Download the letter' }));
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Download the letter' }));
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      // Not revoked in the same tick, which aborts the save in some browsers (F-598).
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(REVOKE_AFTER_MS);
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:x');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
