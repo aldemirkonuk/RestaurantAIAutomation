@@ -257,4 +257,21 @@ describe('the time-off form opens on the house’s day (F-1008)', () => {
       api.zone = null;
     }
   });
+
+  it('asks for both days when one is cleared, not "comes before the first" (F-1019)', async () => {
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      acknowledged: true,
+      mine: [],
+      open: [],
+    };
+    mount();
+    const first = await screen.findByLabelText('First day off');
+    fireEvent.change(first, { target: { value: '' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('Pick both days.');
+    fireEvent.change(first, { target: { value: '2099-01-02' } });
+    fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2099-01-01' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/comes before the first/);
+  });
 });

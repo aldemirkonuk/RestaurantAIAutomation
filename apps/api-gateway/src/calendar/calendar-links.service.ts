@@ -35,6 +35,7 @@ import { resolveZone } from "./zoned-time";
 import { roleInHouse } from "../auth/house-role";
 import { stopCalendarLinksOnLeaving } from "./stop-links-on-leaving";
 import { onTheRoster } from "../team/pay-rules";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 
 /**
  * Personal calendar links (ADR 0111, review trail 2026-09-21).
@@ -81,8 +82,36 @@ export class FeedUnavailableError extends Error {}
 
 const SECRET_SHAPE = /^[0-9a-f]{64}$/;
 
-/** How far back a link reaches for shifts. Events are served whole, as before. */
+/**
+ * How far back a link reaches for shifts. Events are the house's whole master
+ * set, the same set GET /calendar/events returns (ADR 0111, "Same as the
+ * app"). Both reads are paged whole (ADR 0292, F-1018): PostgREST stops a
+ * response at 1,000 rows without saying so, and a read in date order then
+ * served the OLDEST thousand and dropped every new event and every later
+ * shift, a person's own included. Past the whole-read ceiling the feed answers
+ * 503 (the subscriber keeps its last good copy), never a truncated calendar.
+ */
 const SHIFT_LOOKBACK_DAYS = 31;
+
+/** `now` moved by whole days, as a `YYYY-MM-DD` date. */
+function feedDay(now: Date, days: number): string {
+  return new Date(now.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** A window read that could not be read whole is a failed read, not a feed. */
+async function readFeedWindow<T>(
+  what: string,
+  build: Parameters<typeof readWholeWindow>[1],
+): Promise<T[]> {
+  try {
+    return await readWholeWindow<T>(what, build);
+  } catch (error) {
+    if (error instanceof WholeReadError) {
+      throw new FeedUnavailableError(error.message);
+    }
+    throw error;
+  }
+}
 
 export function hashSecret(secret: string): string {
   return crypto.createHash("sha256").update(secret).digest("hex");
@@ -665,20 +694,22 @@ export class CalendarLinksService {
   }
 
   private async readEvents(restaurantId: string): Promise<FeedEventRow[]> {
-    const { data, error } = await this.db
-      .from("calendar_events")
-      .select(
-        "id, title, description, event_type, start_date, start_time, end_date, end_time, all_day, status, is_recurring, parent_event_id",
-      )
-      .eq("restaurant_id", restaurantId)
-      .is("parent_event_id", null)
-      .order("start_date", { ascending: true });
-    if (error) {
-      throw new FeedUnavailableError(
-        `Could not read the calendar: ${error.message}`,
-      );
-    }
-    return (data ?? []) as FeedEventRow[];
+    const rows = await readFeedWindow<FeedEventRow>("The calendar", () =>
+      this.db
+        .from("calendar_events")
+        .select(
+          "id, title, description, event_type, start_date, start_time, end_date, end_time, all_day, status, is_recurring, parent_event_id",
+          { count: "exact" },
+        )
+        .eq("restaurant_id", restaurantId)
+        .is("parent_event_id", null),
+    );
+    // Paged in id order; served in date order, as before.
+    return rows.sort(
+      (a, b) =>
+        String(a.start_date ?? "").localeCompare(String(b.start_date ?? "")) ||
+        a.id.localeCompare(b.id),
+    );
   }
 
   private async readRules(
@@ -727,22 +758,24 @@ export class CalendarLinksService {
     );
     if (scope.shifts === "own" && mine.size === 0) return [];
 
-    const since = new Date(now.getTime() - SHIFT_LOOKBACK_DAYS * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    const { data: rows, error: shiftsErr } = await this.db
-      .from("shifts")
-      .select(
-        "id, schedule_id, member_id, shift_date, start_time, end_time, role, state",
+    const since = feedDay(now, -SHIFT_LOOKBACK_DAYS);
+    const rows = (
+      await readFeedWindow<{ id: string; shift_date: string }>(
+        "The shifts",
+        () =>
+          this.db
+            .from("shifts")
+            .select(
+              "id, schedule_id, member_id, shift_date, start_time, end_time, role, state",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("shift_date", since),
       )
-      .eq("restaurant_id", restaurantId)
-      .gte("shift_date", since)
-      .order("shift_date", { ascending: true });
-    if (shiftsErr) {
-      throw new FeedUnavailableError(
-        `Could not read the shifts: ${shiftsErr.message}`,
-      );
-    }
+    ).sort(
+      (a, b) =>
+        a.shift_date.localeCompare(b.shift_date) || a.id.localeCompare(b.id),
+    );
     // A removed person's shifts are KEPT five years since ADR 0215 item 20
     // dropped `shifts.member_id`'s cascade, and kept is not shown: the feed
     // reads the week the way /team's `getWeek` does (`onTheRoster`), as it

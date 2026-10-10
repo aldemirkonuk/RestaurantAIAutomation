@@ -1152,6 +1152,61 @@ describe("stopping someone's link: owners manage owners", () => {
   });
 });
 
+describe("past the 1,000-row cap the newest events and own later shifts still arrive (F-1018)", () => {
+  /** A date `days` from NOW, as `YYYY-MM-DD`. */
+  const day = (days: number) =>
+    new Date(NOW.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+
+  function capped(): FakeDb {
+    const db = seed();
+    db.maxRows = 1000;
+    // 1,200 old one-offs, dated before the new one.
+    for (let i = 0; i < 1200; i++) {
+      db.tables.calendar_events.push({
+        ...event(`e-old-${String(i).padStart(4, "0")}`, `Old ${i}`, "delivery"),
+        start_date: "2024-01-01",
+        end_date: "2024-01-01",
+      });
+    }
+    db.tables.calendar_events.push({
+      ...event("e-new", "New delivery", "delivery"),
+      start_date: day(5),
+      end_date: day(5),
+    });
+    // 1,100 of Bora's shifts ahead of Ayse's later one.
+    for (let i = 0; i < 1100; i++) {
+      db.tables.shifts.push(
+        shift(`sh-bora-${String(i).padStart(4, "0")}`, "m-bora", {
+          role: "kitchen",
+          shift_date: day(i % 200),
+        }),
+      );
+    }
+    db.tables.shifts.push(
+      shift("sh-ayse-later", "m-ayse", { shift_date: day(250) }),
+    );
+    return db;
+  }
+
+  it("serves the new event behind 1,200 older ones, and still every older one (ADR 0111: the app's set)", async () => {
+    const db = capped();
+    const svc = service(db);
+    const { secret } = await svc.create(HOUSE, OWNER);
+    const shown = summaries(await svc.renderFor(secret as string));
+    expect(shown).toContain("New delivery");
+    expect(shown).toContain("Old 0");
+    expect(shown).toContain("Old 1199");
+  });
+
+  it("serves a person's own later shift behind more than 1,000 of the house's", async () => {
+    const db = capped();
+    const svc = service(db);
+    const { secret } = await svc.create(HOUSE, AYSE);
+    const ics = unfold(await svc.renderFor(secret as string));
+    expect(ics).toContain(day(250).replace(/-/g, ""));
+  });
+});
+
 describe("a failed read is never shown as an expired link or an empty calendar", () => {
   for (const table of [
     "calendar_feed_links",

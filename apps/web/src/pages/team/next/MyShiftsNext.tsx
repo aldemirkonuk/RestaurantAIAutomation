@@ -512,7 +512,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             </button>
             {!rangeOk && (
               <p className="tm-alert" role="alert" style={{ margin: 0, flexBasis: '100%' }}>
-                The last day off comes before the first. Pick the days again.
+                {/* F-1019: a cleared date is not a reversed range. */}
+                {offFrom === '' || offTo === ''
+                  ? 'Pick both days.'
+                  : 'The last day off comes before the first. Pick the days again.'}
               </p>
             )}
           </div>

@@ -86,6 +86,7 @@ import {
   CrewNoteStrip,
   ExportPopover,
   PublishPanel,
+  serverMessage,
   TimeOffSheet,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
@@ -177,8 +178,9 @@ function GapRow({
         <span style={{ fontSize: 11, color: 'var(--ink-4)', width: '100%' }}>{reason}</span>
       )}
       <MutationError when={assign.isError}>
-        The assignment did not go through — the desk still shows the gap. Try again or set
-        the shift by hand in the grid.
+        {/* A 409 says why — time off, inactive, a clash — and what to do (F-1017). */}
+        {serverMessage(assign.error) ??
+          'The assignment did not go through — the desk still shows the gap. Try again or set the shift by hand in the grid.'}
       </MutationError>
     </div>
   );

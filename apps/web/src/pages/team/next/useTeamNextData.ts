@@ -52,6 +52,8 @@ import {
   type WeekPayload,
 } from '../../../services/api/team';
 import { apiClient } from '../../../services/api/client';
+import { getAway } from '../../../services/api/areas';
+import { awayKey } from './useHouseAreas';
 import { mondayOf, parsePeriod, resolveName, shiftHours } from './tm-format';
 
 /**
@@ -469,6 +471,9 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     staleTime: 60_000,
   });
 
+  /** The same read and key as `useHouseAreas`, so it is one request (ADR 0218). */
+  const awayQ = useQuery({ queryKey: awayKey(rid), queryFn: getAway, enabled });
+
   const shifts = weekQ.data?.shifts ?? [];
   const members = membersQ.data ?? [];
 
@@ -517,6 +522,16 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
       for (const c of counts.values()) if (!best || c.n > best.n) best = c;
       return best ? { start: best.start, end: best.end } : null;
     };
+    // F-1017: approved time off and Away dates take a person out of the
+    // suggestion for that day. The gateway refuses leave with a 409, so a
+    // suggestion it will refuse is not a suggestion.
+    const offOn = (m: TeamMember, date: string) =>
+      (timeOffQ.data ?? []).some(
+        (t) => t.member_id === m.id && t.status === 'approved' && t.start_date <= date && date <= t.end_date,
+      ) ||
+      (awayQ.data?.windows ?? []).some(
+        (w) => m.user_id !== null && w.userId === m.user_id && w.from <= date && date <= w.until,
+      );
     const out: GapVM[] = [];
     for (const day of weekQ.data.coverage.days) {
       for (const g of day.gaps) {
@@ -524,7 +539,9 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
         if (unfilled === 0) continue;
         const busy = busyByDate.get(day.date) ?? new Set<string>();
         const candidates = members
-          .filter((m) => m.status === 'active' && !busy.has(m.id) && roleMatches(m, g.role))
+          .filter(
+            (m) => m.status === 'active' && !busy.has(m.id) && !offOn(m, day.date) && roleMatches(m, g.role),
+          )
           .sort((a, b) => (hoursByMember.get(a.id) ?? 0) - (hoursByMember.get(b.id) ?? 0));
         const pick = candidates[0] ?? null;
 
@@ -567,7 +584,7 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
       }
     }
     return out.sort((a, b) => a.date.localeCompare(b.date));
-  }, [weekQ.data, membersQ.data, members, shifts, hoursByMember]);
+  }, [weekQ.data, membersQ.data, members, shifts, hoursByMember, timeOffQ.data, awayQ.data]);
 
   const certExposures: CertExposureVM[] = useMemo(() => {
     if (certsQ.data === undefined || membersQ.data === undefined || !weekQ.data) return [];
