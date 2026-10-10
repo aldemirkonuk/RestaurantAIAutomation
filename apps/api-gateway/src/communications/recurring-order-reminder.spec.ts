@@ -72,10 +72,15 @@ function makeHarness(opts: {
   flag?: string;
   schedules?: any[];
   isLegacyDefault?: boolean;
+  /** Bells already in the inbox, by group key. */
+  rung?: string[];
+  memberIds?: string[];
 }) {
   const queriedTables: string[] = [];
+  const bells: any[] = [];
   const rowsByTable: Record<string, any[]> = {
     recurring_orders: opts.schedules ?? [],
+    notifications: (opts.rung ?? []).map((group_key) => ({ group_key })),
     // Production truth: the old query matched nothing, so the pre-fix code
     // path finds an empty set here. Nothing about this mock hides the bug.
     procurement_orders: [],
@@ -92,7 +97,10 @@ function makeHarness(opts: {
     q.gte = jest.fn(self);
     q.not = jest.fn(self);
     q.order = jest.fn(self);
-    q.insert = jest.fn(() => Promise.resolve({ data: null, error: null }));
+    q.insert = jest.fn((rows: any) => {
+      if (table === "notifications") bells.push(...rows);
+      return Promise.resolve({ data: null, error: null });
+    });
     // Thenable so `await client.from(x).select(y).eq(...)` resolves whether or
     // not the chain ends in `.order()`.
     q.then = (res: any, rej: any) =>
@@ -132,7 +140,7 @@ function makeHarness(opts: {
       getClient: () => client,
       // Empty membership short-circuits both the preferences lookup (which
       // then defaults to enabled) and the in-app notification insert.
-      getRestaurantMemberIds: jest.fn(async () => []),
+      getRestaurantMemberIds: jest.fn(async () => opts.memberIds ?? []),
     } as any,
     { sendRecurringOrderReminder } as any,
     { resolveRecipients } as any,
@@ -141,6 +149,7 @@ function makeHarness(opts: {
 
   return {
     service,
+    bells,
     queriedTables,
     resolveRecipients,
     sendRecurringOrderReminder,
@@ -300,5 +309,30 @@ describe("sendRecurringOrderReminders", () => {
 
     expect(h.queriedTables).toContain("recurring_orders");
     expect(h.sendRecurringOrderReminder).not.toHaveBeenCalled();
+  });
+
+  it("rings once per schedule and date, not again every morning (F-766)", async () => {
+    // The read is `lte(today+2)`, so an overdue schedule is in it every day.
+    // The bell was keyed on the day and rang again each morning.
+    const h = makeHarness({
+      flag: "true",
+      schedules: [COMPLETE_ROW],
+      memberIds: ["member-1"],
+    });
+    await h.service.sendRecurringOrderReminders();
+    expect(h.bells).toHaveLength(1);
+    expect(h.bells[0].group_key).toBe("recurring_order:sched-1:2026-09-04");
+    expect(h.bells[0].title).toBe("Recurring order due soon: Barolo 2019");
+    expect(h.bells[0].message).toBe("Due Fri, Sep 4");
+
+    const next = makeHarness({
+      flag: "true",
+      schedules: [COMPLETE_ROW],
+      memberIds: ["member-1"],
+      rung: ["recurring_order:sched-1:2026-09-04"],
+    });
+    await next.service.sendRecurringOrderReminders();
+    expect(next.bells).toHaveLength(0);
+    expect(next.sendRecurringOrderReminder).not.toHaveBeenCalled();
   });
 });

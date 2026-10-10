@@ -150,7 +150,10 @@ function makeDb(opts: {
         if (table === "recurring_orders") {
           if (op === "insert")
             return { data: opts.insertedSchedule ?? null, error: null };
-          if (op === "update") return { data: null, error: null };
+          // The cron claims the occurrence with a compare-and-set update that
+          // returns the row it moved (F-765); one row back means claimed.
+          if (op === "update")
+            return { data: [{ id: "claimed" }], error: null };
           calls.scheduleQueries += 1;
           if (opts.scheduleQueryError)
             return { data: null, error: { message: opts.scheduleQueryError } };

@@ -292,9 +292,14 @@ export class CalendarService {
     // for the lower bound to spare repeating rows (sweep 2026-09-28 row 16).
     // The value is quoted for PostgREST's `or` grammar; `@IsDateString`
     // already refuses commas.
+    //
+    // Only a row WITH a rule can repeat into the window (F-764). The legacy
+    // recurring-order writer marks each dated entry `is_recurring` with no
+    // rule; without the rule test every one of those since the start was
+    // fetched on every view, oldest first, crowding the page.
     if (query.startDate && query.includeEarlierSeries) {
       supabaseQuery = supabaseQuery.or(
-        `start_date.gte."${query.startDate}",is_recurring.eq.true`,
+        `start_date.gte."${query.startDate}",and(is_recurring.eq.true,recurrence_rule_id.not.is.null)`,
       );
     } else if (query.startDate) {
       supabaseQuery = supabaseQuery.gte("start_date", query.startDate);

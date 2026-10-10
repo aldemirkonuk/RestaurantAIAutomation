@@ -232,9 +232,9 @@ describe("scheduled inbox rows — no emoji, and no fact lost with it", () => {
 
   it("writes plain titles that still name the count and the thing counted", () => {
     expect(SOURCE).toContain('title: "Weekly report ready"');
-    expect(SOURCE).toContain(
-      'title: `${schedules.length} recurring order${schedules.length === 1 ? "" : "s"} due soon`',
-    );
+    // One bell per schedule and date since F-766, so it names the wine
+    // rather than a count.
+    expect(SOURCE).toContain("`Recurring order due soon: ${described.label}`");
     expect(SOURCE).toContain(
       'title: `${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"} arriving tomorrow`',
     );
