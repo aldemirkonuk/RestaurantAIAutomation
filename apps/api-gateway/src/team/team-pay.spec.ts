@@ -654,6 +654,45 @@ describe("a failed week read is an error, not an empty week", () => {
       InternalServerErrorException,
     );
   });
+
+  // F-922: the staff half read the same week without looking at `error`, so a
+  // failed shifts read came back as seven days of "Off".
+  it.each(["team_members", "schedules", "shifts"])(
+    "my-week refuses when %s cannot be read, rather than an empty week",
+    async (table) => {
+      const db = seed();
+      await expect(scheduleOf(db).getMyWeek(STAFF, RID, WEEK)).resolves.toBeDefined();
+      db.errors[`${table}:select`] = { message: "boom" };
+      await expect(scheduleOf(db).getMyWeek(STAFF, RID, WEEK)).rejects.toBeInstanceOf(
+        InternalServerErrorException,
+      );
+    },
+  );
+});
+
+describe("F-923 — a time-off request runs forward", () => {
+  it("refuses a last day before the first, from any caller", async () => {
+    const db = seed();
+    const before = (db.tables.time_off_requests ?? []).length;
+    await expect(
+      teamOf(db).createTimeOff(STAFF, RID, {
+        memberId: "m-staff",
+        startDate: "2026-11-10",
+        endDate: "2026-11-03",
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect((db.tables.time_off_requests ?? []).length).toBe(before);
+  });
+
+  it("still files a past day, which sick leave needs", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: "2026-01-05",
+      endDate: "2026-01-05",
+    } as any);
+    expect(req.start_date).toBe("2026-01-05");
+  });
 });
 
 // ── the rules themselves ─────────────────────────────────────────────────────

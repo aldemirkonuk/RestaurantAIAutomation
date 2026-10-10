@@ -293,27 +293,44 @@ export class ScheduleService {
   async getMyWeek(userId: string, restaurantId: string, weekStart: string) {
     const { role } = await this.team.assertAccess(userId, restaurantId);
     const weekEnd = addDays(weekStart, 6);
-    const { data: member } = await this.sb
+    // Each read below decides a sentence the person reads about their week:
+    // no member row says "ask your manager to add you", no schedule says "not
+    // out yet", no shifts says "Off" on all seven days. A failed read is none
+    // of those, so it refuses and the page says the week is not known (F-922;
+    // getWeek above was fixed for the same fault).
+    const unreadable = (what: string, message: string): never => {
+      this.logger.error(
+        `getMyWeek: could not read ${what} of ${weekStart} for ` +
+          `restaurant ${restaurantId}: ${message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read your week, so it is not shown.",
+      );
+    };
+    const { data: member, error: memberErr } = await this.sb
       .from("team_members")
       .select("id, display_name")
       .eq("restaurant_id", restaurantId)
       .eq("user_id", userId)
       .maybeSingle();
+    if (memberErr) unreadable("the caller's roster row", memberErr.message);
 
-    const { data: schedule } = await this.sb
+    const { data: schedule, error: scheduleErr } = await this.sb
       .from("schedules")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .eq("week_start", weekStart)
       .maybeSingle();
+    if (scheduleErr) unreadable("the schedule", scheduleErr.message);
 
-    const { data: shifts } = await this.sb
+    const { data: shifts, error: shiftsErr } = await this.sb
       .from("shifts")
       .select("*, shift_breaks(*)")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", weekStart)
       .lte("shift_date", weekEnd)
       .order("shift_date", { ascending: true });
+    if (shiftsErr) unreadable("the shifts", shiftsErr.message);
 
     // Staff must never see labor cost. Strip it from every row.
     const strip = (s: any) => {
@@ -334,12 +351,14 @@ export class ScheduleService {
 
     let acknowledged = false;
     if (member && schedule) {
-      const { data: receipt } = await this.sb
+      const { data: receipt, error: receiptErr } = await this.sb
         .from("schedule_receipts")
         .select("id")
         .eq("schedule_id", schedule.id)
         .eq("member_id", member.id)
         .maybeSingle();
+      // A failed read would ask the person to tell their manager again.
+      if (receiptErr) unreadable("the read receipt", receiptErr.message);
       acknowledged = !!receipt;
     }
     return {

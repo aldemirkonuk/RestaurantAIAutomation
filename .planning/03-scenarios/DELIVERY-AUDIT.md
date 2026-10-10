@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **128 as of 2026-10-10, on `fix/sim-w65-staff-day` (F-922)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 128 sites, 128 baselined, 0 allowlisted, PASS). `getMyWeek` in `schedule.service.ts` now binds the error on its roster-row, schedule, shifts and read-receipt reads and refuses, so four rows are retired (1 -> 0 each). The note it supersedes:
+>
 > **131 as of 2026-10-10, on `fix/sim-w65-settings-locations` (F-916)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 131 sites, 131 baselined, 0 allowlisted, PASS). `deleteAccount`'s sole-house-owner guard in `auth.service.ts` now binds the error of its `ownerRows` read and its per-house count, and refuses with 503, so its row is retired (1 -> 0). The note it supersedes:
 >
 > **132 as of 2026-10-10, on `fix/sim-guard-leftovers` (F-857 leftover)** (`check_read_errors_not_swallowed.py` on that tree: 1787 files scanned, 132 sites, 132 baselined, 0 allowlisted, PASS). `resolveOrCreateLibraryWine`'s read-back in `wine-submissions.service.ts` now binds its error, so its row is retired (1 -> 0). The note it supersedes:

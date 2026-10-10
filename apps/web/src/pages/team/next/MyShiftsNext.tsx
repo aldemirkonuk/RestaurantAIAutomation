@@ -52,6 +52,7 @@ import {
   fmtTime,
   fmtWeekRange,
   mondayOf,
+  todayIso,
   weekFromLink,
   weekDays,
 } from './tm-format';
@@ -144,9 +145,13 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
 
   /** What the person says about pay; `unknown` = left to whoever approves. */
   const [leaveType, setLeaveType] = useState<LeaveType>('unknown');
-  /** The days asked for, first and last inclusive. Starts as this week. */
-  const [offFrom, setOffFrom] = useState(() => weekStart);
-  const [offTo, setOffTo] = useState(() => addDays(weekStart, 6));
+  /**
+   * The days asked for, first and last inclusive. Starts as today, one day: the
+   * week on screen made one tap on a Friday ask for four days already worked
+   * (F-923). A past day can still be picked — sick leave is often filed after.
+   */
+  const [offFrom, setOffFrom] = useState(() => todayIso(houseToday(zone)));
+  const [offTo, setOffTo] = useState(() => todayIso(houseToday(zone)));
   const rangeOk = offFrom !== '' && offTo !== '' && offFrom <= offTo;
   /** The range last sent, so the same days are not filed twice by a second press. */
   const [sentKey, setSentKey] = useState<string | null>(null);
@@ -293,7 +298,11 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
               Your manager was not told you have read this. Try again.
             </MutationError>
             {notesQ.data!.notes.map((n) => {
-              const mine = n.recipients.find((r) => r.openedAt !== null);
+              // Only the caller's own row says they have read it — a colleague's
+              // open is not theirs (F-921).
+              const mine = n.recipients.find(
+                (r) => r.openedAt !== null && (memberId === null || r.memberId === memberId),
+              );
               return (
                 <div key={n.id} style={{ paddingTop: 8 }}>
                   <p className="tm-note">{n.body}</p>

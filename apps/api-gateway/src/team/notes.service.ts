@@ -171,11 +171,22 @@ export class NotesService {
       nameOf.set(m.id, m.linkedUser?.name?.trim() || m.display_name);
     }
 
-    const mine = role === "staff" ? await this.team.ownMemberId(userId, restaurantId) : null;
+    const isStaff = role === "staff";
+    const mine = isStaff ? await this.team.ownMemberId(userId, restaurantId) : null;
+    // A staff caller gets back only their OWN recipient and delivery rows. The
+    // full list told every waiter when each colleague opened the note and how
+    // it reached them (an "Away until …" hold included), and the page, handed
+    // everyone's openedAt, read a colleague's open as its own (F-921).
+    const visible = (memberId: string) => !isStaff || memberId === mine;
 
     const shaped = (notes ?? [])
+      .filter((n: any) =>
+        // A staff caller with no roster row is addressed by nothing — it is not
+        // a licence to read every note.
+        isStaff ? recipients.some((r) => r.note_id === n.id && r.member_id === mine) : true,
+      )
       .map((n: any) => {
-        const to = recipients.filter((r) => r.note_id === n.id);
+        const to = recipients.filter((r) => r.note_id === n.id && visible(r.member_id));
         return {
           id: n.id,
           weekStart: n.week_start,
@@ -197,7 +208,7 @@ export class NotesService {
           // attempted".
           deliveries: receiptsReadable
             ? deliveries
-                .filter((d) => d.note_id === n.id)
+                .filter((d) => d.note_id === n.id && visible(d.member_id))
                 .map((d) => ({
                   memberId: d.member_id,
                   name: nameOf.get(d.member_id) ?? null,
@@ -207,8 +218,7 @@ export class NotesService {
                 }))
             : null,
         };
-      })
-      .filter((n) => (mine ? n.recipients.some((r: any) => r.memberId === mine) : true));
+      });
 
     return {
       weekStart,
