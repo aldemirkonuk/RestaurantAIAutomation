@@ -18,8 +18,11 @@ type Row = Record<string, any>;
 
 const HOUSE = "house-1";
 
-function makeService(teamMembers: Row[]) {
-  const db = makeStubDb({ team_members: teamMembers });
+function makeService(
+  teamMembers: Row[],
+  errors: Record<string, { message: string }> = {},
+) {
+  const db = makeStubDb({ team_members: teamMembers }, errors);
   const svc = new AuthService(
     { sign: () => "tok", signAsync: async () => "tok" } as any,
     { get: () => undefined } as any,
@@ -159,5 +162,32 @@ describe("claimTeamMemberFromInvite matches the exact address", () => {
     });
     expect(db.tables.team_members).toHaveLength(1);
     expect(db.tables.team_members[0].user_id).toBe("user-ana");
+  });
+});
+
+describe("a team-member read that fails is not read as nobody", () => {
+  const failing = { "team_members:select": { message: "timeout" } };
+
+  it("an invite does not add a second row for someone already on the team", async () => {
+    const { svc, db } = makeService([ana()], failing);
+    await svc.ensureTeamMemberForInvite({
+      restaurantId: HOUSE,
+      inviteId: "invite-new",
+      email: "ana.x@tuzlu.com",
+      role: "staff",
+    });
+    expect(db.tables.team_members).toHaveLength(1);
+  });
+
+  it("an accepted invite does not add a second row either", async () => {
+    const { svc, db } = makeService([{ ...ana(), invite_id: null }], failing);
+    await svc.claimTeamMemberFromInvite({
+      restaurantId: HOUSE,
+      inviteId: "invite-other",
+      userId: "user-ana",
+      email: "ana.x@tuzlu.com",
+      role: "staff",
+    });
+    expect(db.tables.team_members).toHaveLength(1);
   });
 });

@@ -66,7 +66,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // leaves for a vendor with no human approval. A restaurant gets that only
     // by deliberately asking for it.
     defaultValue: false,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1190",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1191",
   },
   {
     key: "enable_house_inbox_read",
