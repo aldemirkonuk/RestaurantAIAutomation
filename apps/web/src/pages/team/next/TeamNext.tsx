@@ -56,6 +56,7 @@ import {
 } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import { useAuth } from '../../../contexts/AuthContext';
+import { houseToday, useHouseZone, useSettleOnHouseDay } from '@/lib/houseZone';
 import { MyShiftsNext } from './MyShiftsNext';
 import { broadcast, createShift, type TeamMember } from '../../../services/api/team';
 import {
@@ -324,7 +325,10 @@ function TeamNextManager({
 }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  // F-571: "this week" is the house's week, not the device's (lib/houseZone.ts).
+  const zone = useHouseZone();
+  const [weekStart, setWeekStart] = useState(() => mondayOf(houseToday(zone)));
+  useSettleOnHouseDay(zone, mondayOf, setWeekStart);
   const [lens, setLens] = useState<Lens>('coverage');
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const exportAnchor = useRef<HTMLButtonElement | null>(null);
@@ -671,7 +675,7 @@ function TeamNextManager({
             <button
               type="button"
               className="tm-ctl tm-ctl--quiet"
-              onClick={() => setWeekStart(mondayOf(new Date()))}
+              onClick={() => setWeekStart(mondayOf(houseToday(zone)))}
             >
               This week
             </button>

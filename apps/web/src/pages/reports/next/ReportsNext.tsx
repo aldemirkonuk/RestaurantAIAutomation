@@ -77,6 +77,7 @@ import {
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
+import { useHouseZone } from '@/lib/houseZone';
 import './reports-next.css';
 
 export interface ReportsNextProps {
@@ -107,6 +108,7 @@ function Action({
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   const [tillDays, setTillDays] = useState(30);
+  const zone = useHouseZone();
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -336,10 +338,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
 
   const offSheet = ANALYSIS_IDS.filter((id) => !onSheet.has(id));
 
+  // F-571: the header's date is the house's day, not the device's.
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
+    ...(zone ? { timeZone: zone } : {}),
   });
 
   return (

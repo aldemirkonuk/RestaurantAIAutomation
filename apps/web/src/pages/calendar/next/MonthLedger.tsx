@@ -29,6 +29,8 @@ const MAX_RIBBONS = 3;
 export interface MonthLedgerProps {
   data: CalendarData;
   cursor: Date;
+  /** The house's today, YYYY-MM-DD (F-571); the device's day when absent. */
+  today?: string;
   selected: string | null;
   onSelect: (day: string | null) => void;
   onOpenEvent: (event: CalEvent) => void;
@@ -237,6 +239,7 @@ export function DayLedger({
 export default function MonthLedger({
   data,
   cursor,
+  today: houseToday,
   selected,
   onSelect,
   onOpenEvent,
@@ -249,7 +252,7 @@ export default function MonthLedger({
   const gridStart = startOfWeek(first);
   const last = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
   const weeks = Math.ceil((last.getDate() + ((first.getDay() + 6) % 7)) / 7);
-  const today = dayKey(new Date());
+  const today = houseToday ?? dayKey(new Date());
 
   const drop = (target: string) => {
     const event = dragged;

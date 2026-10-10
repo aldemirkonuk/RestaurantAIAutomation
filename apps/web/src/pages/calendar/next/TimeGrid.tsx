@@ -50,6 +50,8 @@ interface Drag {
 export interface TimeGridProps {
   data: CalendarData;
   cursor: Date;
+  /** The house's today, YYYY-MM-DD (F-571); the device's day when absent. */
+  today?: string;
   days: 1 | 7;
   onOpenEvent: (e: CalEvent) => void;
   onCreateAt: (day: string, hour: number) => void;
@@ -65,7 +67,7 @@ export function placed(e: CalEvent): { start: number; end: number } | null {
   return { start, end };
 }
 
-export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }: TimeGridProps) {
+export default function TimeGrid({ data, cursor, today: houseToday, days, onOpenEvent, onCreateAt }: TimeGridProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const originRef = useRef<{ x: number; y: number; colWidth: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -77,7 +79,7 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
       ? Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cursor), i))
       : [new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate())];
   const keys = columns.map(dayKey);
-  const today = dayKey(new Date());
+  const today = houseToday ?? dayKey(new Date());
   const template = `56px repeat(${columns.length}, minmax(0, 1fr))`;
 
   /** Commit whatever the drag ended on. Held in a ref so the window listeners
