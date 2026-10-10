@@ -34,6 +34,7 @@ import {
 } from "./event-prep-reminder";
 import { interpretRead, interpretWrite } from "./scheduled-db";
 import type { ReadEnvelope, ReadOutcome, WriteEnvelope } from "./scheduled-db";
+import { maskEmail, maskPhone } from "../common/log-mask";
 
 /**
  * Pure function — exported for direct use in tests without NestJS DI.
@@ -130,8 +131,8 @@ export class ScheduledTasksService implements OnModuleInit {
       .filter((e) => e);
 
     this.logger.log("Scheduled tasks service initialized");
-    this.logger.log(`Manager Emails: ${this.managerEmails.join(", ")}`);
-    this.logger.log(`Manager Phone: ${this.managerPhone || "Not configured"}`);
+    this.logger.log(`Manager Emails: ${this.managerEmails.map(maskEmail).join(", ")}`);
+    this.logger.log(`Manager Phone: ${this.managerPhone ? maskPhone(this.managerPhone) : "Not configured"}`);
   }
 
   /**

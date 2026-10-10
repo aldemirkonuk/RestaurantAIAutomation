@@ -24,6 +24,7 @@ import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
 import { OWNER_AND_MANAGER } from "../tenant/live-membership";
+import { maskEmail } from "../log-mask";
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -759,7 +760,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           }
         } else {
           this.logger.warn(
-            `handleInboundEmail: no provider found for ${senderEmail} (not leaded)`,
+            `handleInboundEmail: no provider found for ${maskEmail(senderEmail)} (not leaded)`,
           );
         }
         return;

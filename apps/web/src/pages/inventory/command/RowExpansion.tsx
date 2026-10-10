@@ -49,6 +49,18 @@ function KV({ k, v, tone }: { k: string; v: React.ReactNode; tone?: 'green' | 'a
   )
 }
 
+/** A read that did not answer, worded the way ReceiptDepth says it (F-705). */
+function ReadFailed({ what, retry }: { what: string; retry: () => void }) {
+  return (
+    <p className="text-[11px] text-gray-500">
+      The {what} for this wine could not be read just now — this is not an empty history.{' '}
+      <button onClick={retry} className="text-blue-600 font-semibold">
+        Try again
+      </button>
+    </p>
+  )
+}
+
 const ADJUST_REASONS = [
   { value: 'Count correction', label: 'Count correction' },
   { value: 'Breakage', label: 'Breakage' },
@@ -84,20 +96,26 @@ export function RowExpansion({
   const [showSpotCount, setShowSpotCount] = useState(false)
   const [pouring, setPouring] = useState(false)
 
-  const { data: activity } = useQuery({
+  // F-705: a read that failed or has not answered is said as such — never
+  // drawn as an empty history ("No orders for this wine yet").
+  const activityQ = useQuery({
     queryKey: ['inventory', 'activity', inventoryId],
     queryFn: () => getItemActivity(inventoryId),
     enabled: !!inventoryId,
     staleTime: 5 * 60_000,
   })
+  const activity = activityQ.data
 
-  const { data: itemOrders = [], isError: ordersUnread, isSuccess: ordersRead } = useQuery({
+  const ordersQ = useQuery({
     queryKey: ['orders', 'for-item', inventoryId],
     queryFn: () => getOrders(),
     enabled: !!inventoryId,
     staleTime: 60_000,
     select: (all) => (all || []).filter((o: any) => o.inventoryId === inventoryId),
   })
+  const itemOrders = ordersQ.data ?? []
+  const ordersUnread = ordersQ.isError
+  const ordersRead = ordersQ.isSuccess
   const orders = itemOrders.slice(0, 4)
   // Bottles ordered and not here yet (F-630 sibling). PARTIALLY_RECEIVED is
   // left out: its quantity still names bottles already on the shelf. null =
@@ -317,7 +335,11 @@ export function RowExpansion({
 
         {/* velocity 14d */}
         <Card title="Velocity, last 14 days">
-          {daily.length > 0 ? (
+          {activityQ.isError ? (
+            <ReadFailed what="sales" retry={() => void activityQ.refetch()} />
+          ) : activityQ.isLoading ? (
+            <p className="text-[11px] text-gray-400">Reading sales…</p>
+          ) : daily.length > 0 ? (
             <>
               <div className="flex items-end gap-1 h-16">
                 {daily.map((d) => (
@@ -342,7 +364,11 @@ export function RowExpansion({
 
         {/* busy hours */}
         <Card title="When it sells">
-          {activity?.heat?.length ? (
+          {activityQ.isError ? (
+            <ReadFailed what="sales" retry={() => void activityQ.refetch()} />
+          ) : activityQ.isLoading ? (
+            <p className="text-[11px] text-gray-400">Reading sales…</p>
+          ) : activity?.heat?.length ? (
             <HoursHeatmap heat={activity.heat} />
           ) : (
             <p className="text-[11px] text-gray-400">Heatmap builds as POS sales come in.</p>
@@ -351,7 +377,11 @@ export function RowExpansion({
 
         {/* order history */}
         <Card title="Order history">
-          {orders.length === 0 ? (
+          {ordersQ.isError ? (
+            <ReadFailed what="orders" retry={() => void ordersQ.refetch()} />
+          ) : ordersQ.isLoading ? (
+            <p className="text-[11px] text-gray-400">Reading orders…</p>
+          ) : orders.length === 0 ? (
             <p className="text-[11px] text-gray-400">No orders for this wine yet.</p>
           ) : (
             <div>
@@ -411,7 +441,8 @@ export function RowExpansion({
           </Card>
         )}
 
-        {receiptDepthOn && <ReceiptDepth orders={orders} />}
+        {/* Only once the orders are read: an unread list is not "no orders". */}
+        {receiptDepthOn && ordersQ.isSuccess && <ReceiptDepth orders={orders} />}
       </div>
 
       {/* action bar */}

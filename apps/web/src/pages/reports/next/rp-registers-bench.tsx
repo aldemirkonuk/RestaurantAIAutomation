@@ -45,6 +45,7 @@
 
 import { EM, countOf, figure, money, num, pct, ratioPct, shortDay } from './rp-format';
 import { AMOUNTS_WITHHELD } from './rp-registers-house';
+import { unpricedNotes } from './rp-registers-trade';
 import { analysis, arr, obj, str, type ViewCtx } from './rp-spec';
 
 export interface BenchGoalRow {
@@ -69,6 +70,9 @@ export interface BenchRegister {
   paceDeltaPct: number | null;
   committed: number | null;
   openOrderCount: number | null;
+  /** Orders the buying and committed figures leave out for want of a price (F-701). */
+  spendUnpricedCount?: number;
+  committedUnpricedCount?: number;
   trendPerDayPct: number | null;
   bestDay: string | null;
   worstDay: string | null;
@@ -109,6 +113,8 @@ export const bench = analysis<BenchRegister>({
       paceDeltaPct: num(cf.paceDeltaPct),
       committed: num(cf.committedOpenOrders),
       openOrderCount: num(cf.openOrderCount),
+      spendUnpricedCount: num(cf.spendUnpricedCount) ?? undefined,
+      committedUnpricedCount: num(cf.committedUnpricedCount) ?? undefined,
       trendPerDayPct: num(se.trendPerDayPct),
       bestDay: se.bestDay == null ? null : str(se.bestDay),
       worstDay: se.worstDay == null ? null : str(se.worstDay),
@@ -293,6 +299,7 @@ export const bench = analysis<BenchRegister>({
       notes: [
         noPeers,
         withheld ? AMOUNTS_WITHHELD : null,
+        ...(withheld ? [] : unpricedNotes(b.spendUnpricedCount, b.committedUnpricedCount)),
         // Since ADR 0292 / F-186 the cashflow loader reads the whole window or
         // refuses (`loadOrders`, advanced-analytics.service.ts); a refusal
         // nulls the lens, which `cashflowMissing` below says in its own words.
