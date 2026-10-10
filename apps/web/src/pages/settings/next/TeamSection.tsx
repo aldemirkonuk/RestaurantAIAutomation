@@ -16,21 +16,19 @@
  *           is how the page came to print "an invite records its expiry, not
  *           when it was issued" over data it had been handed (audit BLOCKER 4).
  *
- * AND ONE THING THE ROSTER CANNOT TELL YOU
- * ----------------------------------------
- * `getMembers` swallows a failed read into an empty array
- * (`members.service.ts:75-80`), so "nobody works here" and "the roster could not
- * be read" arrive at this page identically. That is the
- * absence-reported-as-health shape, one layer below anything this page can fix,
- * so an empty roster says both possibilities out loud rather than picking the
- * flattering one. A concrete suspect is named in the page note §9.9.
+ * A failed roster read now throws (`members.service.ts`, getMembers), so it
+ * reaches this page as the register's error, never as an empty list; an empty
+ * roster really is an empty one (F-195).
+ *
+ * A role change waits for a second tap, like Remove, and the only owner cannot
+ * step down here; the gateway refuses that too (F-193).
  */
 
 import { useRef, useState } from 'react';
 import { InviteTeamDialog } from '@/components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '@/components/team/TeamLaborSettings';
 import { TeamGoalsSettings } from '@/components/team/TeamGoalsSettings';
-import { ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
+import { Action, ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
 import { EM, PROVENANCE_UNKNOWN, SANS, fmtExpiry } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
@@ -39,6 +37,59 @@ const ROLE_MEANS: Record<string, string> = {
   manager: 'may invite, order and receive; may not change roles or chains.',
   staff: 'may not open restaurant settings at all — only their own profile.',
 };
+
+const ROLE_WORD: Record<string, string> = { owner: 'an owner', manager: 'a manager', staff: 'staff' };
+
+/**
+ * Picking a role arms the change; nothing is sent until "Yes, change". The
+ * only owner gets no picker at all: someone else must be made an owner first.
+ */
+function RoleChange({ name, current, isSelf, onlyOwner, busy, onConfirm }: {
+  name: string;
+  current: string;
+  isSelf: boolean;
+  onlyOwner: boolean;
+  busy: boolean;
+  onConfirm: (next: string) => void;
+}) {
+  const [pending, setPending] = useState<string | null>(null);
+  if (onlyOwner) {
+    return (
+      <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)', maxWidth: 260, textAlign: 'right' }}>
+        Owner. {isSelf ? 'You are' : 'They are'} the only owner here, so make someone else an owner before changing this.
+      </span>
+    );
+  }
+  const next = pending ?? current;
+  const consequence = isSelf
+    ? `You become ${ROLE_WORD[next] ?? next} here${current === 'owner' ? ' and can no longer change roles or chains' : ''}.`
+    : `${name} becomes ${ROLE_WORD[next] ?? next} here.`;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <select
+        aria-label={`Role for ${name}`}
+        value={next}
+        disabled={busy}
+        onChange={(e) => setPending(e.target.value === current ? null : e.target.value)}
+        className="st-focus"
+        style={fieldStyle}
+      >
+        <option value="owner">Owner</option>
+        <option value="manager">Manager</option>
+        <option value="staff">Staff</option>
+      </select>
+      {pending && (
+        <>
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2)', maxWidth: 260, textAlign: 'right' }}>
+            {consequence}
+          </span>
+          <Action tone="grave" disabled={busy} onClick={() => { setPending(null); onConfirm(pending); }}>Yes, change</Action>
+          <Action tone="quiet" onClick={() => setPending(null)}>Keep as is</Action>
+        </>
+      )}
+    </span>
+  );
+}
 
 export function TeamSection({ data }: { data: SettingsNextData }) {
   const { team, role, canManage, restaurantId, writer, setMemberRole, removeMember, revokeInvite, userId } = data;
@@ -72,14 +123,13 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
             <div style={{ margin: '14px 0 0' }}><Micro tone="seal">Members · {reg.members.length}</Micro></div>
             {reg.members.length === 0 && (
               <Note role="status">
-                The roster came back empty. That is either a branch with nobody on it <em>or</em> a read that failed:
-                the endpoint logs a failed read and returns an empty list, so the two arrive here identically and this
-                page cannot tell them apart. You are signed in, so at least your own access exists.
+                Nobody is on this branch&rsquo;s team yet. Invite someone and they will appear here once they accept.
               </Note>
             )}
             {reg.members.map((m) => {
               const name = m.users?.name?.trim() || m.users?.email || 'Team member';
               const isSelf = m.user_id === userId;
+              const onlyOwner = m.role === 'owner' && reg.members.filter((x) => x.role === 'owner').length === 1;
               return (
                 <Row
                   key={m.user_id}
@@ -100,18 +150,14 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
                   control={
                     <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {role === 'owner' ? (
-                        <select
-                          aria-label={`Role for ${name}`}
-                          value={m.role}
-                          disabled={writer.busy === `role:${m.user_id}`}
-                          onChange={(e) => void setMemberRole(m.user_id, e.target.value)}
-                          className="st-focus"
-                          style={fieldStyle}
-                        >
-                          <option value="owner">Owner</option>
-                          <option value="manager">Manager</option>
-                          <option value="staff">Staff</option>
-                        </select>
+                        <RoleChange
+                          name={name}
+                          current={m.role}
+                          isSelf={isSelf}
+                          onlyOwner={onlyOwner}
+                          busy={writer.busy === `role:${m.user_id}`}
+                          onConfirm={(next) => void setMemberRole(m.user_id, next)}
+                        />
                       ) : (
                         <Micro>{m.role}</Micro>
                       )}

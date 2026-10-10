@@ -48,6 +48,19 @@ export interface StubDb {
   opsOn(table: string, op?: RecordedOp["op"]): RecordedOp[];
 }
 
+function ilikeRegex(pattern: string): RegExp {
+  let out = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "\\" && i + 1 < pattern.length) {
+      out += pattern[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    } else if (c === "%") out += ".*";
+    else if (c === "_") out += ".";
+    else out += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${out}$`, "is");
+}
+
 function matches(row: Row, filters: Filter[]): boolean {
   return filters.every((f) => {
     const actual = row[f.column];
@@ -69,9 +82,11 @@ function matches(row: Row, filters: Filter[]): boolean {
       case "gt":
         return actual > f.value;
       case "ilike":
+        // Real ILIKE: `%` and `_` are wildcards, a backslash escapes. An equality
+        // stand-in here hid that a raw address passed to `.ilike` matched
+        // other people's (F-189).
         return (
-          typeof actual === "string" &&
-          actual.toLowerCase() === String(f.value).toLowerCase()
+          typeof actual === "string" && ilikeRegex(String(f.value)).test(actual)
         );
       default:
         throw new Error(`supabase-stub: unhandled filter ${f.kind}`);

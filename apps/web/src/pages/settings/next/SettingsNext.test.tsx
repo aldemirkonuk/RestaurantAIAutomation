@@ -820,9 +820,50 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(screen.getByText(/reached your session without one/i)).toBeInTheDocument();
   });
 
-  it('does not fabricate an empty roster out of a failed read', () => {
+  it('says an empty roster in plain words, now that a failed read arrives as an error (F-195)', () => {
     mount('/settings?tab=team');
-    expect(screen.getByText(/either a branch with nobody on it/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nobody is on this branch.s team yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/endpoint|returns an empty list/i)).not.toBeInTheDocument();
+  });
+
+  it('asks before changing a role, and sends nothing until confirmed (F-193)', () => {
+    const setMemberRole = vi.fn();
+    mock.current = base({
+      setMemberRole,
+      team: remote({
+        members: [
+          { user_id: 'u1', role: 'owner', users: { name: 'Deniz', email: 'd@x.com' }, created_at: THREE_DAYS_AGO },
+          { user_id: 'u2', role: 'manager', users: { name: 'Ece', email: 'e@x.com' }, created_at: THREE_DAYS_AGO },
+        ],
+        invites: [], invitesDenied: false,
+      }),
+    });
+    mount('/settings?tab=team');
+    fireEvent.change(screen.getByLabelText('Role for Ece'), { target: { value: 'staff' } });
+    expect(setMemberRole).not.toHaveBeenCalled();
+    expect(screen.getByText(/Ece becomes staff here/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as is' }));
+    expect(setMemberRole).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Role for Ece')).toHaveValue('manager');
+
+    fireEvent.change(screen.getByLabelText('Role for Ece'), { target: { value: 'staff' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, change' }));
+    expect(setMemberRole).toHaveBeenCalledWith('u2', 'staff');
+  });
+
+  it('gives the only owner no way to step down here (F-193)', () => {
+    mock.current = base({
+      team: remote({
+        members: [
+          { user_id: 'u1', role: 'owner', users: { name: 'Deniz', email: 'd@x.com' }, created_at: THREE_DAYS_AGO },
+          { user_id: 'u2', role: 'manager', users: { name: 'Ece', email: 'e@x.com' }, created_at: THREE_DAYS_AGO },
+        ],
+        invites: [], invitesDenied: false,
+      }),
+    });
+    mount('/settings?tab=team');
+    expect(screen.queryByLabelText('Role for Deniz')).not.toBeInTheDocument();
+    expect(screen.getByText(/You are the only owner here/)).toBeInTheDocument();
   });
 
   it('says out loud that the measurement register never leaves this browser', () => {
