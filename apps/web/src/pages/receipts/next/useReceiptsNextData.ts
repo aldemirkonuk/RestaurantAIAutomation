@@ -55,11 +55,12 @@ export const RECEIPTS_SERVER_WINDOWS = {
    */
   CREDITS_LIST: 200,
   /**
-   * credits.controller.ts:137 — every recovery figure is computed behind this.
-   * The route says itself whether it hit the cap (`capped`); an older gateway
-   * that does not say is read as a floor.
+   * credits.controller.ts:247 — every recovery figure is computed behind
+   * this. 1000 is PostgREST's own max_rows; the old 5000 was never reached
+   * (F-263). The route says itself whether it hit the cap (`capped`); an older
+   * gateway that does not say is read as a floor.
    */
-  RECOVERY_STATS: 5000,
+  RECOVERY_STATS: 1000,
   /** documents.controller.ts:117 — the credit memos a settlement can name. */
   CREDIT_MEMOS: 100,
   /**

@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "./delivery-item-to-name";
@@ -995,37 +996,40 @@ export class ReceivingService {
   }
 
   /**
-   * Same read as `listUnverified`, plus whether the underlying
-   * `procurement_receipt_events` read hit its 500-row cap.
+   * Same read as `listUnverified`, plus whether the rows are a floor.
    *
-   * `capped: true` means `rows` is a floor, not a total — the exact sense
+   * `capped: true` would mean `rows` is a floor, not a total — the exact sense
    * `complete` carries for every other register (`house-counter.types.ts`).
-   * An order whose only qualifying event fell outside the newest-500 window
-   * is silently absent from `rows`, not truncated, so a caller that needs to
-   * claim completeness (the house counter) must read this, not the plain
-   * array `listUnverified` and the `/unverified` page route keep using.
+   * The events are now read WHOLE (F-259), so it is always false: the read
+   * either holds every receipt event this house ever recorded, or it throws (`WholeReadError`, a 503 with the sentence) and
+   * nothing is listed. The field stays for the house counter, which reads it.
    */
   async listUnverifiedCapped(
     restaurantId: string,
   ): Promise<{ rows: UnverifiedDelivery[]; capped: boolean }> {
-    // Newest-first: the cap below is a lifetime-event-count safety valve, not a
-    // recency window, and a restaurant well past 500 lifetime events must still
-    // see today's delivery. Ascending order here previously meant the cap kept
-    // the OLDEST 500 events, so every new door count stopped surfacing once a
-    // restaurant crossed that lifetime total.
-    const { data, error } = await this.db
-      .getClient()
-      .from("procurement_receipt_events")
-      .select("order_id, counted_qty_bottles, occurred_at, stage")
-      .eq("restaurant_id", restaurantId)
-      .order("occurred_at", { ascending: false })
-      .limit(500);
-    if (error) throw new Error(error.message);
-    // A read that returned exactly the page size may have dropped an older
-    // event that a still-open order needed — the register reading this must
-    // say so rather than claim `complete: true` over a read that stopped,
-    // not a read that finished.
-    const capped = (data ?? []).length === 500;
+    // The whole event history, not the newest 500. A cap of any size let age
+    // decide whether an open delivery was listed: once a house had recorded
+    // more events than the cap since a case count, that count fell out of the
+    // read and the delivery left /receipts' "counted at the door" list
+    // without ever being counted by bottle (F-259). And one response holds
+    // at most 1000 rows (PostgREST max_rows), whatever the limit says.
+    const data = await readWholeWindow<{
+      order_id: string | null;
+      counted_qty_bottles: number | string | null;
+      occurred_at: string;
+      stage: string;
+    }>(
+      "The deliveries counted at the door",
+      () =>
+        this.db
+          .getClient()
+          .from("procurement_receipt_events")
+          .select("id, order_id, counted_qty_bottles, occurred_at, stage", {
+            count: "exact",
+          })
+          .eq("restaurant_id", restaurantId),
+    );
+    const capped = false;
 
     const byOrder = new Map<
       string,
@@ -1036,7 +1040,7 @@ export class ReceivingService {
         caseCountAt: number | null;
       }
     >();
-    for (const e of data ?? []) {
+    for (const e of data) {
       if (!e.order_id) continue;
       const cur = byOrder.get(e.order_id) ?? {
         counted: 0,

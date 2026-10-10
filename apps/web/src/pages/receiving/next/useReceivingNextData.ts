@@ -82,20 +82,19 @@ export function failureOf(isError: boolean, error: unknown): FailureVM | null {
  * imposes it. ADR 0051 clause 2 turns each of these into a `≥`.
  *
  * A cap is only observable from the client when the payload's own length can
- * reach it — so `QUEUE_ITEMS` and `UNVERIFIED` produce a floor exactly when the
- * list came back full. `LINKED_CREDITS` and `RECOVERY_STATS` are aggregates
+ * reach it — so `QUEUE_ITEMS` produces a floor exactly when the list came back
+ * full. The uncounted list has no window any more: the server reads every
+ * receipt event or refuses (F-259). `LINKED_CREDITS` and `RECOVERY_STATS` are aggregates
  * computed server-side behind the cap, so their fullness is NOT observable
  * here and their figures are floors unconditionally.
  */
 export const SERVER_WINDOWS = {
   /** receiving.service.ts:375 — the queue's own rows. */
   QUEUE_ITEMS: 100,
-  /** receiving.service.ts:271 — the receipt events the uncounted list is built from. */
-  UNVERIFIED: 500,
   /** receiving.service.ts:384 — credits linked to queue rows. No `.order()`. */
   LINKED_CREDITS: 200,
-  /** credits.controller.ts:137 — every figure on the owner ledger. No `.order()`. */
-  RECOVERY_STATS: 5000,
+  /** credits.controller.ts:247 — every figure on the owner ledger. No `.order()`. 1000 is PostgREST's own max_rows (F-263). */
+  RECOVERY_STATS: 1000,
   /** credits.controller.ts:113 — `/credits` list, oldest-first. */
   CREDITS_LIST: 200,
 } as const;
@@ -415,7 +414,10 @@ export interface ManagerQueueData {
    * this is the single figure on the page where silence is most expensive.
    */
   unverified: UnverifiedDelivery[] | null;
-  /** The uncounted list is built behind `.limit(500)` on receipt events. */
+  /**
+   * Always false now: the uncounted list is built from every receipt event the
+   * house recorded, or the read refuses and `unverified` is null (F-259).
+   */
   unverifiedAtFloor: boolean;
   /**
    * True when the vendor-name lookup itself failed (receiving.service.ts
@@ -482,10 +484,9 @@ export function useManagerQueue(): ManagerQueueData {
       totalAtRiskByCurrency: known ? (q.data!.totalAtRiskByCurrency ?? null) : null,
       itemsAtFloor,
       unverified,
-      // Built from the newest 500 receipt events; the list itself is shorter
-      // than that window, so fullness is not observable and this is a floor
-      // whenever the list is non-empty.
-      unverifiedAtFloor: (unverified?.length ?? 0) > 0,
+      // Built from every receipt event, not the newest 500 (F-259): the list
+      // is whole or the query fails, so it is never a floor.
+      unverifiedAtFloor: false,
       providerNamesUnavailable: known ? !!q.data!.providerNamesUnavailable : false,
       itemNamesUnavailable: known ? !!q.data!.itemNamesUnavailable : false,
       hasData: known,

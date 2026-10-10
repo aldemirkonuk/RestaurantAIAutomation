@@ -231,6 +231,12 @@ export class CreditsController {
       "`recovered` counts only claims settled by a credit memo, using the amount the vendor allowed. `outstanding` and `promised` are explicitly not recovery. `rejected` is reported alongside so the figure has a denominator — a recovery number with nothing to divide it by flatters.",
   })
   async stats(@CurrentUser() user: AuthedUser) {
+    // At most 1,000 claims. It was 5,000, but PostgREST answers one response
+    // with at most 1,000 rows (`max_rows`, supabase/config.toml:18), so a
+    // house past 1,000 claims got figures from part of its ledger while
+    // `capped`, compared against 5,000, said they were whole (F-263). At
+    // 1,000 the cap is one the server really applies, so `capped` fires when
+    // it should and the screen shows every figure as a floor.
     const { data, error } = await this.db
       .getClient()
       .from("procurement_credits")
@@ -238,7 +244,7 @@ export class CreditsController {
         "state, claimed_amount, credited_amount, credit_document_id, opened_at, self_evidenced, currency",
       )
       .eq("restaurant_id", user.restaurantId)
-      .limit(5000);
+      .limit(1000);
     if (error)
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
 
@@ -263,7 +269,7 @@ export class CreditsController {
       // the `.limit()` above. At the cap every figure is a floor, and only the
       // server can know it reached the cap.
       rowsCounted: credits.length,
-      capped: credits.length >= 5000,
+      capped: credits.length >= 1000,
       // Claims the vendor's own paperwork proves. Worth separating: these are
       // the ones worth a phone call, and a low settlement rate on them says
       // something about the distributor rather than about the claim.

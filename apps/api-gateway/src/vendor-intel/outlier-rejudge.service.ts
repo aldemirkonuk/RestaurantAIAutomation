@@ -49,10 +49,13 @@ const REJUDGE_SELECT =
 /**
  * How many rows one run will read.
  *
- * Matched to `belowTrailingAverage`'s own `.limit(2000)` so the pass cannot
- * judge over a set the reader would never see. When a run comes back holding
- * exactly this many rows the window is larger than the pass can see, and that
- * is SAID in the summary rather than left to be inferred from a round number.
+ * This was matched to `belowTrailingAverage`'s own `.limit(2000)`. That
+ * reader now reads its window whole (F-262), so the two no longer match, and
+ * PostgREST's max_rows (1000) answers this read with at most 1000 rows, so
+ * the "exactly this many" test below cannot fire either. Left as it was: the
+ * pass is off behind its flag, and reading it whole is its own change.
+ * When a run comes back holding exactly this many rows the window is larger
+ * than the pass can see, and that is SAID in the summary.
  */
 const REJUDGE_ROW_LIMIT = 2000;
 
