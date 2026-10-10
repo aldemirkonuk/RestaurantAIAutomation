@@ -37,6 +37,9 @@ const api = vi.hoisted(() => ({
   orderFails: null as unknown,
   orderOver: {} as Record<string, unknown>,
   verify: vi.fn(() => Promise.resolve()),
+  /** F-552: the papers linked to one order (`?order=`). */
+  forOrder: [] as ProcurementDocument[],
+  forOrderFails: null as unknown,
   restaurantId: 'rest-A' as string | null,
   /** The sheet's recomputed verdict; `null` leaves the canonical read pending. */
   sheetLayer3: null as null | { tiesOut: boolean | null; tieOutDeltaCents: number | null },
@@ -86,6 +89,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
                   : api.queue,
             ),
       detail: () => (api.detailFails ? Promise.reject(api.detailFails) : Promise.resolve(api.detail)),
+      forOrder: () => (api.forOrderFails ? Promise.reject(api.forOrderFails) : Promise.resolve(api.forOrder)),
       editLine: api.editLine,
       verify: api.verify,
       match: vi.fn(),
@@ -223,6 +227,8 @@ beforeEach(() => {
   api.unverified = { items: [] };
   api.detail = { document: doc({}), lines: [line], links: [] };
   api.detailFails = null;
+  api.forOrder = [];
+  api.forOrderFails = null;
   api.orderFails = null;
   api.orderOver = {};
   api.unverifiedFails = null;
@@ -826,6 +832,33 @@ describe('ReceiptsNext — ?doc=<id> opens that document', () => {
       await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-99/.test(el.textContent ?? '')),
     );
     await waitFor(() => expect(screen.getAllByText(/INV-99/).length).toBeGreaterThan(0));
+  });
+});
+
+/**
+ * F-552: the manager queue's "Edit line items at the desk" sends
+ * `?order=<id>`. The desk read only `tab` and `doc`, so the manager landed on
+ * the whole desk after picking one delivery.
+ */
+describe('ReceiptsNext — ?order=<id> opens that order\'s paper', () => {
+  it('opens the one paper linked to the order, without a click', async () => {
+    api.forOrder = [doc({})];
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?order=o1') });
+    expect(await screen.findByLabelText('Quantity, line 1')).toBeTruthy();
+  });
+
+  it('says so, and opens nothing, when no paper is linked yet', async () => {
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?order=o1') });
+    expect(await screen.findByTestId('order-papers-note')).toHaveTextContent(/No delivery note or invoice/);
+    expect(screen.queryByLabelText('Quantity, line 1')).toBeNull();
+  });
+
+  it('picks nothing for the person when the order has several papers', async () => {
+    api.queue = [doc({}), doc({ id: 'd2', doc_number: 'INV-99' })];
+    api.forOrder = api.queue;
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?order=o1') });
+    expect(await screen.findByTestId('order-papers-note')).toHaveTextContent('That order has 2 papers');
+    expect(screen.queryByLabelText('Quantity, line 1')).toBeNull();
   });
 });
 

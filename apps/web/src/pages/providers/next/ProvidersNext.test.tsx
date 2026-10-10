@@ -13,6 +13,12 @@ const mockData = vi.hoisted(() => ({
   current: {} as Record<string, unknown>,
 }));
 
+// The add sheet writes through react-query; this file only asks whether the
+// page opens it.
+vi.mock('./NewVendorSheet', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./NewVendorSheet')>()),
+  NewVendorSheet: () => <div data-testid="new-vendor-sheet" />,
+}));
 vi.mock('./useProvidersNextData', () => ({
   useProvidersNextData: () => mockData.current,
 }));
@@ -345,6 +351,22 @@ describe('ProvidersNext', () => {
     // sheet and the reader cannot close it at all.
     rerender(<ProvidersNext />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  /**
+   * F-550: the command palette's "Add vendor" sends `?add=1`; no page read it,
+   * so the person landed on the list with nothing opened.
+   */
+  it('opens the add-a-vendor sheet when reached by ?add=1, and drops the param', async () => {
+    window.history.replaceState({}, '', '/vendors?add=1');
+    render(<ProvidersNext />);
+    expect(await screen.findByTestId('new-vendor-sheet')).toBeInTheDocument();
+    expect(window.location.search).toBe('');
+  });
+
+  it('keeps the add-a-vendor sheet shut without ?add=1', () => {
+    render(<ProvidersNext />);
+    expect(screen.queryByTestId('new-vendor-sheet')).not.toBeInTheDocument();
   });
 
   it('leaves a card-opened sheet where it always opened', async () => {

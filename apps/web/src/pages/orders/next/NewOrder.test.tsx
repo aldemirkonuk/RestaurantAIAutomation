@@ -416,3 +416,41 @@ describe('the search folds Turkish letters', () => {
     expect(screen.queryByText(/Chianti Classico/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * F-549: /inventory's "Draft PO, N btl" hands the page one wine and a
+ * quantity. The sheet starts with that line; vendor and price stay the
+ * person's to state.
+ */
+describe('a seeded line — the wine and the bottles chosen on /inventory', () => {
+  it('starts the sheet with that wine and that quantity', async () => {
+    draw({ seed: { inventoryId: 'inv-2', quantity: '6' } });
+    const lines = await screen.findAllByTestId('new-order-line');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveTextContent('Chianti Classico 2021');
+    expect((within(lines[0]).getByTestId('new-order-qty') as HTMLInputElement).value).toBe('6');
+    expect((within(lines[0]).getByTestId('new-order-vendor') as HTMLSelectElement).value).toBe('');
+  });
+
+  it('says so, adding nothing, when the wine is not on the shelf list', async () => {
+    draw({ seed: { inventoryId: 'gone', quantity: '6' } });
+    expect(await screen.findByText(/not on this house's shelf list/)).toBeInTheDocument();
+    expect(screen.queryAllByTestId('new-order-line')).toHaveLength(0);
+  });
+
+  it('does not put back a seeded line the person removed', async () => {
+    const seed = { inventoryId: 'inv-1', quantity: '3' };
+    const { rerender } = draw({ seed });
+    await screen.findAllByTestId('new-order-line');
+    fireEvent.click(screen.getByTestId('new-order-remove'));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    rerender(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <NewOrderSheet open onClose={() => {}} onNoVendors={() => {}} seed={seed} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryAllByTestId('new-order-line')).toHaveLength(0);
+  });
+});

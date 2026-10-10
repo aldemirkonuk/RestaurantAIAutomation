@@ -209,6 +209,34 @@ export default function OrdersNext() {
     setOrdering(true);
   };
 
+  /* A link that asks for a NEW order opens the composer. `?new=1` is the
+     command palette's "New order" (F-477); `?draft=new&inventoryId=&qty=` is
+     /inventory's "Draft PO, N btl" (F-549), which also starts the composer
+     with that wine and that many bottles. Neither was read before, so both
+     landed on the ledger with nothing opened. Waits for the vendor list, so
+     the add-a-vendor-first guard still speaks; the params are then dropped,
+     so a reload or Back does not reopen it. */
+  const askedToWrite = searchParams.get('new') === '1' || searchParams.get('draft') === 'new';
+  const [seed, setSeed] = useState<{ inventoryId: string; quantity: string } | null>(null);
+  useEffect(() => {
+    if (!askedToWrite || vendorList.isLoading) return;
+    const inventoryId = searchParams.get('inventoryId');
+    const qty = Number(searchParams.get('qty'));
+    if (inventoryId) {
+      setSeed({ inventoryId, quantity: Number.isFinite(qty) && qty > 0 ? String(qty) : '' });
+    }
+    openTheComposer();
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        for (const k of ['new', 'draft', 'inventoryId', 'qty']) p.delete(k);
+        return p;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedToWrite, vendorList.isLoading]);
+
   return (
     <div
       className="mudavym min-h-screen"
@@ -323,6 +351,7 @@ export default function OrdersNext() {
           onClose={() => setOrdering(false)}
           onNoVendors={() => setVendorGuard('refused')}
           onPlaced={() => data.refetch()}
+          seed={seed}
         />
 
         {/* The guard travels with it: caught before the composer opens, and

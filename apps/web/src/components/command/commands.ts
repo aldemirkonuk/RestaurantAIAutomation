@@ -109,7 +109,7 @@ const NAVIGATION: Command[] = [
 
 const CREATE: Command[] = [
   { id: "new-order", title: "New order", section: "Create", icon: Plus, href: "/orders?new=1", keywords: "create purchase po add" },
-  { id: "new-wine", title: "Add wine", section: "Create", icon: Wine, href: "/wines?add=1", keywords: "create bottle scan label" },
+  { id: "new-wine", title: "Add wine", section: "Create", icon: Wine, href: "/inventory?add=1", keywords: "create bottle scan label" },
   { id: "new-event", title: "Add calendar event", section: "Create", icon: CalendarPlus, href: "/calendar?openModal=true", keywords: "create schedule meeting" },
   { id: "new-provider", title: "Add vendor", section: "Create", icon: UserPlus, href: "/vendors?add=1", keywords: "create provider supplier distributor" },
   { id: "new-report", title: "Generate report", section: "Create", icon: BarChart3, href: "/reports", keywords: "export pdf" },

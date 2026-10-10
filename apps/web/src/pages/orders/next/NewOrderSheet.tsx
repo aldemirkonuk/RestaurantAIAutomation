@@ -177,9 +177,16 @@ export interface NewOrderSheetProps {
   onNoVendors: () => void;
   /** Called after at least one line was placed, so the ledger refetches. */
   onPlaced?: () => void;
+  /**
+   * One wine and a quantity the person already chose on another page — the
+   * /inventory "Draft PO, N btl" button (F-549). Starts the sheet with that
+   * line; vendor and price are still the person's to state. Applied once per
+   * seed, so a line the person then removes is not put back.
+   */
+  seed?: { inventoryId: string; quantity: string } | null;
 }
 
-export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrderSheetProps) {
+export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: NewOrderSheetProps) {
   const { activeRestaurantId, user } = useAuth();
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
   const actorId = user?.userId ?? '';
@@ -216,6 +223,22 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
   }, [scope]);
 
   const shelf = useMemo(() => (inventory.data ?? []) as Array<Record<string, any>>, [inventory.data]);
+
+  const seededFrom = useRef<typeof seed>(null);
+  useEffect(() => {
+    if (!open || !seed || seededFrom.current === seed || inventory.isLoading || inventory.isError) return;
+    seededFrom.current = seed;
+    const item = shelf.find((i) => String(i.id) === seed.inventoryId);
+    if (!item) {
+      setFailure('The wine you asked to order is not on this house\'s shelf list, so it was not added. Search for it below.');
+      return;
+    }
+    setLines((prev) =>
+      prev.some((l) => l.inventoryId === seed.inventoryId)
+        ? prev
+        : [...prev, { ...newLine(String(item.id), String(item.wineName ?? EM)), quantity: seed.quantity }],
+    );
+  }, [open, seed, shelf, inventory.isLoading, inventory.isError]);
   const vendors = useMemo(() => (providers.data ?? []) as Array<Record<string, any>>, [providers.data]);
 
   const matches = useMemo(() => {

@@ -565,14 +565,11 @@ function QueueRow({
                 data-ux-key="receiving-next:queue-open-receipts"
                 // Carries the order, exactly as its sibling above does. Landing
                 // a manager on an unfiltered desk after they picked one row is
-                // how the wrong receipt gets edited.
-                // TODO(receipts): `pages/receipts/next/ReceiptsNext.tsx:447`
-                // reads only `?tab`, so this parameter is inert until that page
-                // selects by order id. Passing it now means the hand-off starts
-                // working the moment it does, with no change here.
+                // how the wrong receipt gets edited. ReceiptsNext reads
+                // `?order=` and opens that order's paper (F-552).
                 onClick={() => navigate(`/receipts?order=${encodeURIComponent(item.orderId)}`)}
               >
-                Edit line items at the desk — /receipts
+                Edit line items at the desk
               </button>
             </div>
           </div>

@@ -204,26 +204,17 @@ describe('ContextualInsights — round 3, what each choice records', () => {
 });
 
 /**
- * ADR 0112 F10, amended 2026-09-25 (the founder, sketch 122 Q2): a hand-off
- * that only opens another page records nothing. Since PR #483 `acted` is the
- * gated, audited "Mark as briefed" stamp, so Act posting it fire-and-forget
- * named the clicker as the briefer, or was refused unseen (audit R4).
+ * F-551: "Act" handed off to `/inventory?insight=` — the page the rail sits
+ * on, which reads no `insight` param — so it reloaded and did nothing. The
+ * button is gone; the acts that remain are Explain, Pin and Dismiss.
  */
-describe('ContextualInsights — Act is a hand-off and records nothing', () => {
-  it('Act opens the work page and posts nothing', async () => {
-    const real = window.location;
-    const loc = { href: '' } as Location;
-    Object.defineProperty(window, 'location', { configurable: true, value: loc });
-    try {
-      serve([ONE]);
-      render(<ContextualInsights host="inventory" />);
-      await screen.findByText(ONE.sentence);
-      fireEvent.click(screen.getByRole('button', { name: /^Act/ }));
-      expect(loc.href).toContain('insight=');
-      expect(loc.href).toContain('from=inventory');
-      expect(api.post).not.toHaveBeenCalled();
-    } finally {
-      Object.defineProperty(window, 'location', { configurable: true, value: real });
-    }
+describe('ContextualInsights — no Act that goes nowhere', () => {
+  it('offers no Act button and posts nothing', async () => {
+    serve([ONE]);
+    render(<ContextualInsights host="inventory" />);
+    await screen.findByText(ONE.sentence);
+    expect(screen.queryByRole('button', { name: /^Act/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Explain' })).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
   });
 });
