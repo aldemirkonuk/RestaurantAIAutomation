@@ -18,7 +18,8 @@
  *
  * The ruler runs the whole day, 00–24, and opens scrolled to 06:00 (or to the
  * earliest entry, if one starts sooner), so a 05:00 bread drop is never above
- * reach. An end earlier than the start runs past midnight (F-197).
+ * reach. An end earlier than the start runs past midnight (F-197), and a later
+ * end date is kept (F-821); either is drawn to midnight and says when it ends.
  *
  * Entries that overlap share the column side by side, one lane each, so every
  * one of them is visible and can be opened (F-604). Two 10:00 deliveries used
@@ -65,18 +66,31 @@ export interface TimeGridProps {
   onCreateAt: (day: string, hour: number) => void;
 }
 
+/** Whole days from one `YYYY-MM-DD` key to a later one (0 when not later). */
+const daysAfter = (from: string, to: string | null) =>
+  to && to > from
+    ? Math.round((parseDayKey(to).getTime() - parseDayKey(from).getTime()) / 86_400_000)
+    : 0;
+
 /**
  * Where an event sits on the hour ruler, or null when it has no recorded time.
  * An end before the start is the next morning, so `end` can pass END_MIN
  * (22:00–01:00 is 1320–1500); the block is drawn down to midnight. An end equal
  * to the start is a zero-length moment, drawn at the shortest block, as the
  * feed and the sheet read it (F-820).
+ *
+ * A later end date is kept as written (F-821): `end` counts the whole days to
+ * it, so 10:00 on the 15th to 14:00 on the 17th is 600–3720, and an end date
+ * with no end time ends at 23:59 that day, as the feed exports it. Anything
+ * whose `end` passes END_MIN is drawn to midnight with a "continues" line.
  */
 export function placed(e: CalEvent): { start: number; end: number } | null {
   if (e.allDay) return null;
   const start = toMinutes(e.startTime);
   if (start === null) return null;
   const rawEnd = toMinutes(e.endTime);
+  const later = daysAfter(e.date, e.endDate);
+  if (later > 0) return { start, end: later * END_MIN + (rawEnd ?? END_MIN - 1) };
   const end =
     rawEnd === null
       ? start + DEFAULT_MINUTES
@@ -164,12 +178,16 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
       const start = Math.min(END_MIN - 15, Math.max(START_MIN, p.start + finished.dMin));
       // The length is kept, so a move can carry the end past midnight.
       const end = start + (p.end - p.start);
+      const day = addDays(parseDayKey(event.date), finished.dDay);
+      // A written end date moves with the entry, as a month drag moves it (F-821).
+      const endDays = Math.floor(end / END_MIN);
       data.move.mutate({
         id: event.seriesId,
         patch: {
-          eventDate: dayKey(addDays(parseDayKey(event.date), finished.dDay)),
+          eventDate: dayKey(day),
           eventTime: fromMinutes(start),
-          eventTimeEnd: wrapClock(end),
+          eventTimeEnd: event.endDate ? fromMinutes(end - endDays * END_MIN) : wrapClock(end),
+          ...(event.endDate ? { eventDateEnd: dayKey(addDays(day, endDays)) } : {}),
         },
       });
     },
@@ -319,6 +337,13 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
               const top = ((start - START_MIN) / 60) * HOUR_PX;
               // A block running past midnight is drawn down to the day's end.
               const height = Math.max(22, ((Math.min(END_MIN, end) - start) / 60) * HOUR_PX);
+              // Cut at midnight: say when it really ends (F-821).
+              const endDays = Math.floor(p.end / END_MIN);
+              const endsOn = addDays(parseDayKey(e.date), endDays);
+              const continues =
+                p.end > END_MIN
+                  ? `Ends ${endsOn.toLocaleDateString('en-US', { weekday: 'short' })} ${endsOn.getDate()}, ${fromMinutes(p.end - endDays * END_MIN)}`
+                  : null;
               return (
                 <div
                   key={e.id}
@@ -326,6 +351,7 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
                   data-spine={isDelivery(e)}
                   data-ruled={data.isRuledOff(e)}
                   data-dragging={d ? true : undefined}
+                  data-continues={continues ? true : undefined}
                   style={{
                     top,
                     height,
@@ -353,8 +379,11 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
                   >
                     <span className="cn-ribbon-time">{d ? fromMinutes(start) : clock(e.startTime)}</span>
                     <span style={{ fontWeight: 600 }}>{e.title}</span>
+                    {continues && <span className="cn-block-continues">{continues}</span>}
                   </button>
-                  {!e.isOccurrence && (
+                  {/* The handle sits at midnight, not at a later day's end, so an
+                      entry with a later end date is resized in the sheet. */}
+                  {!e.isOccurrence && daysAfter(e.date, e.endDate) === 0 && (
                     <button
                       type="button"
                       className="cn-handle"

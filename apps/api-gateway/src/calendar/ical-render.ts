@@ -254,9 +254,11 @@ export function renderFeed(input: FeedInput): string {
   for (const shift of input.shifts) {
     const startTime = hhmm(shift.start_time);
     const endTime = hhmm(shift.end_time);
-    // A shift that ends at or before it starts runs past midnight.
+    // A shift that ends before it starts runs past midnight. Equal times are
+    // a zero-length moment that day, the same rule as entries (F-820, F-821):
+    // a shift row has no end date, so it cannot say "a full 24 hours".
     const endDate =
-      endTime <= startTime ? addDaysIso(shift.shift_date, 1) : shift.shift_date;
+      endTime < startTime ? addDaysIso(shift.shift_date, 1) : shift.shift_date;
     calendar.createEvent({
       id: `shift-${shift.id}@wineops.app`,
       start: wallClock(shift.shift_date, startTime, zone),

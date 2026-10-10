@@ -26,13 +26,14 @@ function feed(opts: {
   restaurant: { id: string; name: string; timezone?: string | null };
   events?: any[];
   rules?: any[];
+  shifts?: any[];
 }): string {
   return renderFeed({
     calendarName: `${opts.restaurant.name || "Mudavym"} Calendar`,
     zone: resolveZone(opts.restaurant.timezone),
     events: opts.events ?? [],
     rules: opts.rules ?? [],
-    shifts: [],
+    shifts: opts.shifts ?? [],
   });
 }
 
@@ -303,6 +304,24 @@ describe("iCal feed structure", () => {
 
     expect(out).toContain("DTSTART:20260803T220000Z");
     expect(out).toContain("DTEND:20260805T020000Z");
+  });
+
+  it("ends a shift that ends before it starts on the next morning, and keeps equal times a moment, as entries do (F-821)", () => {
+    const SHIFT = { id: "s1", shift_date: "2026-08-03", summary: "Bar", draft: false, calledOut: false };
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "UTC" },
+      shifts: [
+        { ...SHIFT, id: "late", start_time: "22:00", end_time: "02:00" },
+        { ...SHIFT, id: "moment", start_time: "10:00", end_time: "10:00" },
+      ],
+    });
+    const vevent = (uid: string) =>
+      out.split("BEGIN:VEVENT").find((b) => b.includes(`UID:shift-${uid}@`)) ?? "";
+
+    expect(vevent("late")).toContain("DTSTART:20260803T220000Z");
+    expect(vevent("late")).toContain("DTEND:20260804T020000Z");
+    expect(vevent("moment")).toContain("DTSTART:20260803T100000Z");
+    expect(vevent("moment")).toContain("DTEND:20260803T100000Z");
   });
 
   it("keeps a monthly entry on the 31st on the last day of shorter months (F-791)", () => {
