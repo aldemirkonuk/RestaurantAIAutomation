@@ -74,7 +74,13 @@ export interface BellOrder {
   requestedAt?: string;
   approvedAt?: string;
   deliveredAt?: string;
-  expectedDeliveryDate?: string;
+  /**
+   * The day the order says it arrives, `YYYY-MM-DD` (a `date` column). `null`
+   * when the order states none. Formatted as the day it names, never through
+   * the viewer's zone: `new Date('2026-10-10')` is UTC midnight, which reads
+   * as 9 Oct anywhere west of Greenwich.
+   */
+  expectedDeliveryDate?: string | null;
   /**
    * The currency the order was placed in. `null` when the order names none;
    * absent when the route did not read it (`GET /procurement/orders/:id`
@@ -264,7 +270,7 @@ export function ApproveFromBellPanel({
             [
               'Delivery',
               order.expectedDeliveryDate
-                ? new Date(order.expectedDeliveryDate).toLocaleDateString()
+                ? new Date(order.expectedDeliveryDate).toLocaleDateString(undefined, { timeZone: 'UTC' })
                 : `${EM} — no date is recorded`,
             ],
             ['Vendor', order.providerName ?? EM],

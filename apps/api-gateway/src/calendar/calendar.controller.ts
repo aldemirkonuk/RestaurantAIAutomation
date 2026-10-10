@@ -64,6 +64,7 @@ import type {
 } from "./day-record.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
+import { shiftHouseDay } from "../common/house-day";
 
 @ApiTags("calendar")
 @Controller("calendar")
@@ -594,10 +595,9 @@ export class CalendarController {
   async getUpcomingEvents(
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<CalendarEventsListResponseDto> {
-    const today = new Date().toISOString().split("T")[0];
-    const thirtyDaysLater = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split("T")[0];
+    // The house's day, not the UTC one (F-086, ADR 0296).
+    const today = await this.dayRecord.houseToday(user.restaurantId);
+    const thirtyDaysLater = shiftHouseDay(today, 30);
 
     return this.calendarService.listEvents(user.restaurantId, {
       startDate: today,
@@ -617,7 +617,7 @@ export class CalendarController {
   async getTodayEvents(
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<CalendarEventsListResponseDto> {
-    const today = new Date().toISOString().split("T")[0];
+    const today = await this.dayRecord.houseToday(user.restaurantId);
 
     return this.calendarService.listEvents(user.restaurantId, {
       startDate: today,
@@ -697,10 +697,12 @@ export class CalendarController {
     @Query() query: GetWeatherQueryDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<WeatherWindow> {
-    const today = new Date().toISOString().slice(0, 10);
-    const from = query.from?.slice(0, 10) || today;
-    const to = query.to?.slice(0, 10) || from;
     try {
+      // The house's day, not the UTC one (F-086, ADR 0296).
+      const from =
+        query.from?.slice(0, 10) ||
+        (await this.dayRecord.houseToday(user.restaurantId));
+      const to = query.to?.slice(0, 10) || from;
       return await this.weather.windowFor(user.restaurantId, from, to);
     } catch (error) {
       this.logger.error({
@@ -742,9 +744,6 @@ export class CalendarController {
     @CurrentUser()
     user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<DayRecordWindow | WithheldDayRecordWindow> {
-    const today = new Date().toISOString().slice(0, 10);
-    const from = query.from?.slice(0, 10) || today;
-    const to = query.to?.slice(0, 10) || from;
     // Who sees the house's takings (ADR 0287 F1; the founder, 2026-10-04
     // ~02:10Z: "authorized ones see everything others only see actions"):
     // owners and managers. That is F1 option (b), which follows his money rule
@@ -757,6 +756,11 @@ export class CalendarController {
     // role here gets the days without the money, never with it.
     const seesHouseMoney = roleSatisfies(user.role, "manager");
     try {
+      // The house's day, not the UTC one (F-086, ADR 0296).
+      const from =
+        query.from?.slice(0, 10) ||
+        (await this.dayRecord.houseToday(user.restaurantId));
+      const to = query.to?.slice(0, 10) || from;
       return await this.dayRecord.windowFor(user.restaurantId, from, to, {
         seesHouseMoney,
       });

@@ -490,6 +490,13 @@ interface ProcurementOrderRow {
    */
   provider_name?: string | null;
   /**
+   * `procurement_orders.expected_delivery_date` — a `date` column, the day the
+   * order says it arrives. Optional and read through the key test like
+   * `provider_name`: a route that selected a column list without it has not
+   * learned the order states no day.
+   */
+  expected_delivery_date?: string | null;
+  /**
    * The recurrence rule this order carries, and the occurrence it was minted
    * for (ADR 0125's addendum, 2026-09-05). All six are OPTIONAL and read
    * through the key test, for exactly the reason `provider_name` is: a route
@@ -8681,6 +8688,13 @@ export class ProcurementService {
       // row rather than on a reading argument.
       providerName:
         "provider_name" in row ? (row.provider_name ?? null) : undefined,
+      // The day the order says it arrives, as `YYYY-MM-DD` — a calendar day,
+      // not an instant, so a screen formats it without a zone. `null` is "the
+      // order states no day"; absence is "this route did not read the column".
+      expectedDeliveryDate:
+        "expected_delivery_date" in row
+          ? statedDeliveryDayOf(row.expected_delivery_date)
+          : undefined,
       // What the stock ledger booked for this order (ADR 0192), or undefined
       // on a route that did not read it. `readable:false` travels as itself.
       received,

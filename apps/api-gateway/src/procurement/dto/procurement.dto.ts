@@ -1056,6 +1056,14 @@ export class OrderResponseDto {
   wineName?: string;
 
   /**
+   * The day the order says it arrives, as `YYYY-MM-DD` (a calendar day from
+   * a `date` column, never an instant). `null` when the order states no day;
+   * absent on a route that did not read the column.
+   */
+  @ApiPropertyOptional({ nullable: true })
+  expectedDeliveryDate?: string | null;
+
+  /**
    * The vendor's NAME, joined from `providers` on `provider_id`.
    *
    * The same three states as the price pair below, and for the same reason:

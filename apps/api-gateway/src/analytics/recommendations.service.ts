@@ -28,6 +28,8 @@ import type { PriceAdvice } from "../pricing/margin-to-target";
 import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
 import { resolveItemState, stateBookFrom } from "./insights/item-state";
 import { houseMoney, readHouseCurrency } from "../common/house-money";
+import { houseDayOf } from "../common/house-day";
+import { localMidnight } from "../notifications/producers/service-day";
 
 /**
  * A rule's own firing period, from the horizon the rule itself declares
@@ -43,6 +45,48 @@ export function firingPeriodOf(urgency: Recommendation["urgency"]): FiringPeriod
   if (urgency === "now") return "day";
   if (urgency === "this_month") return "month";
   return "week";
+}
+
+/**
+ * Whether a goal is behind its linear pace — the goals desk's own schedule
+ * (`goals.service.ts` `getGoalProgress`, ADR 0296), so the card and the desk
+ * can never judge one goal two ways (F-383).
+ *
+ * The schedule runs from the midnight that opened the house date the goal was
+ * set on to the midnight that opens its deadline day, both on the house's
+ * clock. An at-most goal is behind when it is over its share of the limit, an
+ * at-least goal when it is under its share of the target, with the desk's
+ * 10% grace either way. No zone (the deadline has no midnight), no deadline,
+ * no target, or a goal not yet measured (`current_value` null) is not judged:
+ * an unmeasured goal is not 0% done.
+ */
+export function goalBehindPace(
+  g: {
+    target_value?: unknown;
+    current_value?: unknown;
+    direction?: string | null;
+    deadline?: string | null;
+    created_at?: string | null;
+  },
+  zone: string | null,
+  now: number = Date.now(),
+): boolean {
+  if (!g.deadline || !zone) return false;
+  if (g.current_value === null || g.current_value === undefined) return false;
+  const target = Number(g.target_value);
+  const current = Number(g.current_value);
+  if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(current))
+    return false;
+  const periodStart = houseDayOf(g.created_at ?? null, zone);
+  if (!periodStart) return false;
+  const start = localMidnight(periodStart, zone).getTime();
+  const end = localMidnight(String(g.deadline).slice(0, 10), zone).getTime();
+  const totalDays = Math.max(1, (end - start) / 86400000);
+  const elapsed = Math.min(totalDays, Math.max(0, (now - start) / 86400000));
+  const expectedByNow = target * (elapsed / totalDays);
+  return g.direction === "at_most"
+    ? current > expectedByNow * 1.1
+    : current < expectedByNow * 0.9;
 }
 
 /**

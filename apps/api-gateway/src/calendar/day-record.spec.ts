@@ -281,6 +281,8 @@ function makeService(opts: {
   /** `restaurants.currency` as stored; `undefined` means the row says USD. */
   currency?: string | null;
   currencyReadError?: { message: string };
+  /** `restaurants.timezone`; absent means the house states none. */
+  timezone?: string;
 }) {
   const inserted: any[][] = [];
 
@@ -297,6 +299,7 @@ function makeService(opts: {
             : {
                 data: {
                   currency: opts.currency === undefined ? "USD" : opts.currency,
+                  ...(opts.timezone ? { timezone: opts.timezone } : {}),
                 },
                 error: null,
               },
@@ -504,6 +507,54 @@ describe("DayRecordService", () => {
 
     const out = await service.windowFor("r1", today, today, OWNER);
     expect(out.days).toHaveLength(0);
+  });
+
+  it("files 'today' on the house's clock, not UTC (F-086)", async () => {
+    // 20:00 on Oct 9 in Los Angeles is already Oct 10 in UTC.
+    const evening = new Date("2026-10-10T03:00:00Z");
+    const la = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER(),
+      timezone: "America/Los_Angeles",
+    });
+    expect(await la.service.houseToday("r1", evening)).toBe("2026-10-09");
+    // A house with no zone keeps the UTC day its till is still filed by.
+    const none = makeService({ recorded: LEDGER(), weather: WEATHER() });
+    expect(await none.service.houseToday("r1", evening)).toBe("2026-10-10");
+  });
+
+  it("keeps the house's evening out of the passed days after UTC midnight (F-086)", async () => {
+    // 20:00 on Oct 9 in Los Angeles: UTC already reads Oct 10, so a UTC
+    // "today" filed the LA evening still running as a passed day.
+    jest.useFakeTimers({
+      now: new Date("2026-10-10T03:00:00Z"),
+      doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+    });
+    try {
+      const { service } = makeService({
+        recorded: LEDGER({
+          from: "2026-10-09",
+          to: "2026-10-09",
+          days: [
+            {
+              businessDate: "2026-10-09",
+              checkCount: 3,
+              netSales: 100,
+              netSalesCheckCount: 3,
+              covers: 6,
+              excluded: false,
+              exclusionReason: null,
+            },
+          ],
+        }),
+        weather: WEATHER({ forecastInAdvance: [] }),
+        timezone: "America/Los_Angeles",
+      });
+      const out = await service.windowFor("r1", "2026-10-09", "2026-10-09", OWNER);
+      expect(out.days).toHaveLength(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

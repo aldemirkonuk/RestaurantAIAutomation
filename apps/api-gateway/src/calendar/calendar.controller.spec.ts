@@ -43,7 +43,15 @@ describe("CalendarController", () => {
     getRecurringInstances: jest.fn(),
     deleteRecurringSeries: jest.fn(),
     endSeriesFrom: jest.fn(),
+    listEvents: jest.fn(),
   };
+
+  // The house's today (F-086): the controller's default day comes from here.
+  const mockDayRecord = {
+    windowFor: jest.fn(),
+    houseToday: jest.fn(),
+  };
+  const mockWeather = { windowFor: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -65,13 +73,13 @@ describe("CalendarController", () => {
           // now (GET /calendar/weather). Its behaviour is specified in
           // weather/weather.service.spec.ts; here it only has to resolve.
           provide: WeatherService,
-          useValue: { windowFor: jest.fn() },
+          useValue: mockWeather,
         },
         {
           // Slice 3's reconciliation (GET /calendar/day-record). Specified in
           // calendar/day-record.spec.ts; here it only has to resolve.
           provide: DayRecordService,
-          useValue: { windowFor: jest.fn() },
+          useValue: mockDayRecord,
         },
         {
           // Day notes (POST/GET /calendar/day-notes), built 2026-09-21.
@@ -467,6 +475,59 @@ describe("CalendarController", () => {
       await expect(
         controller.deleteRecurringSeries(eventId, undefined, mockUser),
       ).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe("the default day is the house's, not UTC's (F-086)", () => {
+    const user = { userId: "user-123", restaurantId: "restaurant-456" };
+
+    beforeEach(() => {
+      // A day that is not the UTC date whenever the suite runs, so only the
+      // house's answer can produce it.
+      mockDayRecord.houseToday.mockResolvedValue("2001-01-15");
+    });
+
+    it("GET /calendar/today lists the house's today", async () => {
+      await controller.getTodayEvents(user);
+      expect(mockDayRecord.houseToday).toHaveBeenCalledWith("restaurant-456");
+      expect(mockCalendarService.listEvents).toHaveBeenCalledWith(
+        "restaurant-456",
+        expect.objectContaining({ startDate: "2001-01-15", endDate: "2001-01-15" }),
+      );
+    });
+
+    it("GET /calendar/upcoming runs thirty house days from the house's today", async () => {
+      await controller.getUpcomingEvents(user);
+      expect(mockCalendarService.listEvents).toHaveBeenCalledWith(
+        "restaurant-456",
+        expect.objectContaining({ startDate: "2001-01-15", endDate: "2001-02-14" }),
+      );
+    });
+
+    it("GET /calendar/weather and /day-record default to the house's today", async () => {
+      await controller.getWeather({} as any, user);
+      expect(mockWeather.windowFor).toHaveBeenCalledWith(
+        "restaurant-456",
+        "2001-01-15",
+        "2001-01-15",
+      );
+      await controller.getDayRecord({} as any, { ...user, role: "owner" });
+      expect(mockDayRecord.windowFor).toHaveBeenCalledWith(
+        "restaurant-456",
+        "2001-01-15",
+        "2001-01-15",
+        { seesHouseMoney: true },
+      );
+    });
+
+    it("a day the page names is used as given, with no zone read", async () => {
+      await controller.getWeather({ from: "2026-10-01" } as any, user);
+      expect(mockWeather.windowFor).toHaveBeenCalledWith(
+        "restaurant-456",
+        "2026-10-01",
+        "2026-10-01",
+      );
+      expect(mockDayRecord.houseToday).not.toHaveBeenCalled();
     });
   });
 });
