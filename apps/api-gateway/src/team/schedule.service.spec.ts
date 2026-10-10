@@ -520,6 +520,71 @@ describe("ScheduleService — T7: destruction is in the contract, not a side eff
 });
 
 /**
+ * F-1082 — a publish that timed out after it landed, pressed again, must not
+ * notify the whole crew a second time. A real change since it went live
+ * still does.
+ */
+describe("ScheduleService — F-1082: a repeated publish does not notify twice", () => {
+  const LIVE_AT = "2026-09-01T00:00:00.000Z";
+  function liveWeek(db: StubDb) {
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "published",
+      published_at: LIVE_AT,
+    });
+    db.tables.shifts.push({
+      id: "sh1",
+      restaurant_id: RID,
+      schedule_id: "s1",
+      member_id: "m-priced",
+      shift_date: WEEK,
+      start_time: "09:00",
+      end_time: "17:00",
+      state: "scheduled",
+      updated_at: "2026-08-31T12:00:00.000Z",
+    });
+  }
+
+  it("a second publish of an unchanged live week writes nothing and tells nobody", async () => {
+    const db = seed();
+    liveWeek(db);
+    const res: any = await service(db).publish(MANAGER, RID, "s1", {} as any);
+    expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
+    expect(res.schedule.published_at).toBe(LIVE_AT);
+    expect(db.tables.schedules[0].published_at).toBe(LIVE_AT);
+  });
+
+  it("still tells the crew when a shift was edited after the week went live", async () => {
+    const db = seed();
+    liveWeek(db);
+    db.tables.shifts[0].updated_at = "2026-09-02T08:00:00.000Z";
+    await service(db).publish(MANAGER, RID, "s1", {
+      resetReceipts: true,
+    } as any);
+    expect(lastNotifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  it("still tells the crew when a shift of the week was deleted after it went live", async () => {
+    const db = seed();
+    liveWeek(db);
+    db.tables.system_audit_log.push({
+      id: "a1",
+      restaurant_id: RID,
+      action: "shift_deleted",
+      entity_type: "shift",
+      changes: { shift_date: WEEK },
+      created_at: "2026-09-02T08:00:00.000Z",
+    });
+    await service(db).publish(MANAGER, RID, "s1", {
+      resetReceipts: true,
+    } as any);
+    expect(lastNotifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
  * T8 — the house's own voice carries no emoji into a stored row.
  *
  * Both of these titles used to be prefixed ("[calendar] Schedule published",
