@@ -213,6 +213,35 @@ describe('PhotographLabel — editable fields', () => {
   });
 });
 
+describe('PhotographLabel — a typed vintage is read like the bottle panel reads it (F-1069)', () => {
+  async function typeVintage(v: string) {
+    fireEvent.click(screen.getByTestId('label-field-vintage'));
+    const input = screen.getByTestId('label-field-edit-vintage');
+    fireEvent.change(input, { target: { value: v } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+  }
+
+  it.each(['1850', '20190', '2O19'])('refuses %s and blocks the confirm', async (v) => {
+    mockScan.mockResolvedValue(wine());
+    mount();
+    await capture();
+    await typeVintage(v);
+    expect(screen.getByTestId('label-bad-vintage')).toBeInTheDocument();
+    expect(screen.getByTestId('label-confirm-yes')).toBeDisabled();
+  });
+
+  it('sends NV as no vintage and a good year as that year', async () => {
+    mockScan.mockResolvedValue(wine());
+    mockSubmit.mockResolvedValue({ id: 's1', status: 'flagged' });
+    mount();
+    await capture();
+    await typeVintage('NV');
+    expect(screen.queryByTestId('label-bad-vintage')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('label-confirm-yes'));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({ vintage: null })));
+  });
+});
+
 describe('PhotographLabel — Not this bottle, and the error paths', () => {
   it('"Not this bottle" resets to the camera step and submits nothing', async () => {
     mockScan.mockResolvedValue(wine());

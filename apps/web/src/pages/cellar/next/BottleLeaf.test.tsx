@@ -12,10 +12,11 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import BottleLeaf from './BottleLeaf';
 import { EM, setCellarCurrency } from './cellar-format';
+import { setHouseLocale } from '../../../lib/houseCurrency';
 import type { BottleVM, CellarRow, WineStructureVM } from './useCellarNextData';
 
 // The house currency CellarNext reads from /settings/currency before any leaf
@@ -24,8 +25,9 @@ beforeEach(() => {
   setCellarCurrency('USD');
 });
 
+const bringInMutate = vi.hoisted(() => vi.fn());
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
-  useCreateInventoryItem: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateInventoryItem: () => ({ mutate: bringInMutate, isPending: false }),
 }));
 vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
@@ -400,4 +402,44 @@ describe('BottleLeaf — the hold-ceremony note names only the cellar (F-505)', 
       }
     },
   );
+});
+
+describe('BottleLeaf — the bottle counts keep what is typed (F-1070, rehit of F-866)', () => {
+  beforeEach(() => bringInMutate.mockReset());
+
+  it('a cleared bring-in field stays empty, so typing 6 books 6', () => {
+    const { container } = mount(bottle());
+    const field = container.querySelector('#cl-bring-qty') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '' } });
+    expect(field.value).toBe('');
+    expect(screen.getByRole('button', { name: 'Bring into the cellar' })).toBeDisabled();
+    fireEvent.change(field, { target: { value: '6' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Bring into the cellar' }));
+    expect(bringInMutate).toHaveBeenCalledWith({ wineId: 'w1', stockLive: 6 }, expect.anything());
+  });
+
+  it('half a bottle is not booked (F-1068)', () => {
+    const { container } = mount(bottle());
+    fireEvent.change(container.querySelector('#cl-bring-qty')!, { target: { value: '2.5' } });
+    expect(screen.getByRole('button', { name: 'Bring into the cellar' })).toBeDisabled();
+    expect(screen.getByText('Write a whole number of bottles, 1 or more.')).toBeInTheDocument();
+  });
+
+  it('a cleared order field stays empty and the order waits for a number', () => {
+    const { container } = mount(bottle({ cellar: cellarRow({ providerId: 'p1' }) }));
+    const field = container.querySelector('#cl-order-qty') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '' } });
+    expect(field.value).toBe('');
+    expect(screen.getByText('Write a whole number of bottles, 1 or more.')).toBeInTheDocument();
+  });
+
+  it('the selling pace uses the house decimal mark', () => {
+    setHouseLocale('tr-TR');
+    try {
+      mount(bottle({ cellar: cellarRow({ velocityPerDay: 1.5 }) }));
+      expect(screen.getByTestId('bottle-leaf-sold-line').textContent).toContain('Selling ~1,5/day');
+    } finally {
+      setHouseLocale('en-US');
+    }
+  });
 });

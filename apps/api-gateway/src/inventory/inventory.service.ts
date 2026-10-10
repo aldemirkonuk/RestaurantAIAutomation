@@ -1531,9 +1531,17 @@ export class InventoryService {
         // take that on trust.
         p_restaurant_id: restaurantId,
       });
+      // A wine added with 12 bottles must not come back booked with 0 —
+      // fail the request the way the reactivation path does (F-1068, F-693).
       if (rpcErr) {
-        this.logger.warn(
+        this.logger.error(
           `initial apply_stock_movement failed for ${data.id}: ${rpcErr.message}`,
+        );
+        throw new HttpException(
+          `The wine is on your list, but its ${dto.stockLive} ` +
+            `${dto.stockLive === 1 ? "bottle was" : "bottles were"} not ` +
+            `recorded. Add them with a stock count.`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
     }

@@ -51,6 +51,7 @@ import { submitWine } from '../../../services/api/wines';
 import { scanWineLabel } from '../../../services/wineDetection';
 import type { DetectedWine } from '../../../services/wineDetection';
 import { EM, SANS, year } from './cellar-format';
+import { typedVintage, vintageRefusal } from './IsThisTheBottlePanel';
 
 /** The page's one mono stack — not exported from `cellar-format.ts`, which
  * carries only `SANS` (see that file's own header on why the serif/mono
@@ -227,6 +228,15 @@ export default function PhotographLabel({
 
   const effectiveProducer = effective('producer');
 
+  // A typed vintage goes through the same reading as the bottle panel's, so
+  // "20190" or "1850" is refused in words rather than sent (F-1069).
+  const typed = taken.vintage !== undefined ? typedVintage(taken.vintage) : null;
+  const effectiveVintage = taken.vintage !== undefined ? typed : (wine?.vintage ?? null);
+  const vintageWrong =
+    effectiveVintage === undefined
+      ? 'A four-digit year such as 2019, or NV for a wine with no vintage.'
+      : vintageRefusal(effectiveVintage);
+
   const submit = useMutation({
     mutationFn: async (w: DetectedWine) => {
       // The gateway's DTO requires a producer (`@IsNotEmpty()`,
@@ -243,7 +253,7 @@ export default function PhotographLabel({
       return submitWine({
         name: effective('wine_name') ?? w.name,
         producer,
-        vintage: taken.vintage !== undefined ? Number(taken.vintage) || null : (w.vintage ?? null),
+        vintage: effectiveVintage ?? null,
         primaryType: effective('wine_type') ?? undefined,
         grapeVariety: effective('grape_variety') ?? undefined,
         country: effective('country') ?? undefined,
@@ -445,12 +455,17 @@ export default function PhotographLabel({
               the photo with the producer's name in frame.
             </p>
           ) : null}
+          {vintageWrong ? (
+            <p className="cl-said" role="alert" style={{ marginTop: 10 }} data-testid="label-bad-vintage">
+              {vintageWrong} Click Vintage above to fix it.
+            </p>
+          ) : null}
           <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
             <button
               type="button"
               className="cl-btn cl-focus"
               data-seal="true"
-              disabled={!effectiveProducer}
+              disabled={!effectiveProducer || !!vintageWrong}
               onClick={() => {
                 setStep('submitting');
                 submit.mutate(wine);
