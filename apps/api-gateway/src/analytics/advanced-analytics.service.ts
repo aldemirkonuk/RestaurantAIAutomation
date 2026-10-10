@@ -28,6 +28,14 @@ import { overdueStanding } from "../procurement/overdue-order";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
 import { HouseFrame, houseFrame } from "../common/house-frame";
+import {
+  HOUSE_ZONE_UNSET,
+  houseDayBounds,
+  houseDayOf,
+  houseToday,
+  readHouseZone,
+  shiftHouseDay,
+} from "../common/house-day";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -127,8 +135,16 @@ export class AdvancedAnalyticsService {
    * as a house that sold nothing. The overview's `allSettled` turns it into a
    * null lens (`getOverview`), as it does for any lens that throws.
    */
-  private async loadConsumption(restaurantId: string, sinceDays = 90) {
-    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+  private async loadConsumption(
+    restaurantId: string,
+    sinceDays = 90,
+    // `zone` files each line on the house's day (ADR 0296) instead of its
+    // UTC date; `sinceIso` starts the read at that day's own midnight.
+    house: { zone?: string; sinceIso?: string } = {},
+  ) {
+    const since =
+      house.sinceIso ??
+      new Date(Date.now() - sinceDays * 86400000).toISOString();
     const client = this.dbService.getClient();
     let data: any[];
     try {
@@ -162,7 +178,9 @@ export class AdvancedAnalyticsService {
         inventoryId: c.inventory_id ?? null,
         qty: bottles,
         how,
-        date: (c.created_at || "").substring(0, 10),
+        date: house.zone
+          ? (houseDayOf(c.created_at ?? null, house.zone) ?? "")
+          : (c.created_at || "").substring(0, 10),
       };
     });
   }
@@ -199,8 +217,17 @@ export class AdvancedAnalyticsService {
     return { ...houseFrame(data), read: data ? "read" : "no_record" };
   }
 
+  /**
+   * Orders of the last `sinceDays` days, read WHOLE or refused (ADR 0292,
+   * F-186). The unranged select this replaces stopped at PostgREST's 1,000
+   * rows, and a failed read came back as `[]`, so cashflow and the vendor
+   * scorecard drew a house that bought nothing. A refusal now propagates, as
+   * `loadConsumption`'s does: the overview turns it into a null lens and the
+   * page says the register could not be read.
+   */
   private async loadOrders(restaurantId: string, sinceDays = 365) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    const client = this.dbService.getClient();
     // Same schema-drift class as loadInventory above. `procurement_orders` has
     // NO provider_name and NO wine_name column (see
     // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
@@ -210,16 +237,24 @@ export class AdvancedAnalyticsService {
     // list, so getVendorScorecard and getCashflow returned zeroes for every
     // restaurant, forever. The vendor label comes from the FK embed instead;
     // wine_name was selected but never read, so it is simply gone.
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return data || [];
+    try {
+      return await readWholeWindow<any>("The orders in this window", () =>
+        client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("created_at", since),
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `analytics query on procurement_orders refused — this lens says it ` +
+          `could not be read rather than drawing part of the window: ${err?.message ?? err}`,
+      );
+      throw err;
+    }
   }
 
   /**
@@ -570,7 +605,38 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getSeasonality(restaurantId: string, sinceDays = 90) {
-    const consumption = await this.loadConsumption(restaurantId, sinceDays);
+    // The week's shape files every line on the house's day (F-185, ADR 0296):
+    // on UTC days a bottle opened after 17:00 in Los Angeles landed on the
+    // next weekday. A house with no zone has no day to file on, so the lens
+    // states nothing rather than UTC days dressed as the house's (DASH-G2).
+    const { zone } = await readHouseZone(
+      this.dbService.getClient(),
+      restaurantId,
+    );
+    if (!zone) {
+      return {
+        weekdayProfile: [],
+        bestDay: null,
+        worstDay: null,
+        tie: false,
+        timezone: null,
+        zoneUnset: true,
+        basis: { weekday: HOUSE_ZONE_UNSET, units: null, extremes: null },
+        weeklySeasonalFactors: null,
+        trendPerDayPct: null,
+        categoryProfiles: [],
+        generatedAt: new Date().toISOString(),
+      };
+    }
+    // The window: the `sinceDays` whole house days before today.
+    const today = houseToday(zone);
+    const dates: string[] = [];
+    for (let d = sinceDays; d >= 1; d--) dates.push(shiftHouseDay(today, -d));
+    const consumption = await this.loadConsumption(restaurantId, sinceDays, {
+      zone,
+      sinceIso: houseDayBounds(dates[0], dates[dates.length - 1], zone)
+        .startIso,
+    });
     // Counted lines only, zero-filled: a line with no bottle figure is left
     // out, so a day holding one counts only its other lines and reads 0 if
     // it has none. `basis.units` says so in those words (ADR 0297); the day
@@ -582,16 +648,7 @@ export class AdvancedAnalyticsService {
     const byDay = new Map<string, number>();
     for (const r of rows)
       if (r.date) byDay.set(r.date, (byDay.get(r.date) || 0) + r.value);
-    const dates: string[] = [];
-    const values: number[] = [];
-    const today = new Date();
-    for (let d = sinceDays; d >= 1; d--) {
-      const day = new Date(today.getTime() - d * 86400000)
-        .toISOString()
-        .substring(0, 10);
-      dates.push(day);
-      values.push(byDay.get(day) || 0);
-    }
+    const values = dates.map((day) => byDay.get(day) || 0);
 
     const weekday = E.dayOfWeekProfile(dates, values);
     // `weekday.best`/`.worst` break an exact tie by weekday order, so a week
@@ -616,8 +673,9 @@ export class AdvancedAnalyticsService {
         i.master_wine_library?.primary_type || "unknown",
       ]),
     );
+    const inWindow = new Set(dates);
     for (const c of consumption) {
-      if (c.qty == null) continue;
+      if (c.qty == null || !inWindow.has(c.date)) continue;
       const t = typeByWine.get(c.wineId) || "unknown";
       const arr = byType.get(t) || [];
       arr.push({ date: c.date, value: c.qty });
@@ -650,7 +708,7 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log, each line filed on the house's day (${zone}); a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
         units: unitsBasisSentence(unitsCoverage, "series"),
         extremes: extremes.tie
           ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
@@ -661,6 +719,8 @@ export class AdvancedAnalyticsService {
         : null,
       trendPerDayPct: trend28,
       categoryProfiles,
+      timezone: zone,
+      zoneUnset: false,
       generatedAt: new Date().toISOString(),
     };
   }

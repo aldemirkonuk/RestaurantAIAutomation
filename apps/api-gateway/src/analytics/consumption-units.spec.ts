@@ -318,6 +318,9 @@ const item = (n: number, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+/** A house whose clock is UTC, so a line's house day is its UTC date. */
+const UTC_HOUSE = [{ id: RESTAURANT, timezone: "UTC" }];
+
 let seq = 0;
 /** `count` lines of one item, one per day going back. */
 function lines(
@@ -968,10 +971,12 @@ describe("seasonality reads counted lines only, and names the rest", () => {
   it("S1: a line with no bottle figure moves no weekday, and the basis counts it", async () => {
     const counted = everyDay(1, 1, 60, BOTTLE);
     const base: any = await advanced({
+      restaurants: UTC_HOUSE,
       restaurant_inventory: [item(1)],
       wine_consumption_log: counted,
     }).getSeasonality(RESTAURANT, 90);
     const out: any = await advanced({
+      restaurants: UTC_HOUSE,
       restaurant_inventory: [item(1)],
       // Quantity 2 on a day of its own: read as its servings it would move
       // that weekday's mean.
@@ -986,12 +991,14 @@ describe("seasonality reads counted lines only, and names the rest", () => {
   it("S2: a category's weekday winner needs ten counted lines; one with no figure is not one of them", async () => {
     const red = { master_wine_library: { primary_type: "red" } };
     const control: any = await advanced({
+      restaurants: UTC_HOUSE,
       restaurant_inventory: [item(1, red)],
       wine_consumption_log: everyDay(1, 1, 10, BOTTLE),
     }).getSeasonality(RESTAURANT, 90);
     expect(control.categoryProfiles.map((p: any) => p.type)).toEqual(["red"]);
 
     const out: any = await advanced({
+      restaurants: UTC_HOUSE,
       restaurant_inventory: [item(1, red)],
       wine_consumption_log: [
         ...everyDay(1, 1, 9, BOTTLE),
@@ -999,6 +1006,46 @@ describe("seasonality reads counted lines only, and names the rest", () => {
       ],
     }).getSeasonality(RESTAURANT, 90);
     expect(out.categoryProfiles).toEqual([]);
+  });
+});
+
+describe("the week's shape files each bottle on the house's day (F-185, ADR 0296)", () => {
+  it("W1: a bottle opened at 20:00 in Los Angeles counts on that weekday, not the next UTC one", async () => {
+    // 03:00 UTC is 20:00 the evening before in Los Angeles (UTC−7 or −8).
+    const evening = (d: number) => {
+      const t = new Date();
+      t.setUTCHours(3, 0, 0, 0);
+      return new Date(t.getTime() - d * 86400000).toISOString();
+    };
+    const rows = [5, 12, 19, 26].map((d) => ({
+      ...on(1, 0, BOTTLE),
+      created_at: evening(d),
+    }));
+    const out: any = await advanced({
+      restaurants: [{ id: RESTAURANT, timezone: "America/Los_Angeles" }],
+      restaurant_inventory: [item(1)],
+      wine_consumption_log: rows,
+    }).getSeasonality(RESTAURANT, 90);
+    const laDay = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      weekday: "long",
+    }).format(new Date(evening(5)));
+    expect(out.bestDay).toBe(laDay);
+    expect(out.timezone).toBe("America/Los_Angeles");
+    expect(out.basis.weekday).toContain("the house's day (America/Los_Angeles)");
+  });
+
+  it("W2: a house with no zone draws no week and says why, never UTC days", async () => {
+    const out: any = await advanced({
+      restaurants: [{ id: RESTAURANT, timezone: null }],
+      restaurant_inventory: [item(1)],
+      wine_consumption_log: everyDay(1, 1, 30, BOTTLE),
+    }).getSeasonality(RESTAURANT, 90);
+    expect(out.zoneUnset).toBe(true);
+    expect(out.weekdayProfile).toEqual([]);
+    expect(out.bestDay).toBeNull();
+    expect(out.trendPerDayPct).toBeNull();
+    expect(out.basis.weekday).toContain("time zone isn't set");
   });
 });
 
@@ -1013,10 +1060,12 @@ describe("a series reader's basis says what it does with a line with no bottle f
   it("SB1: seasonality's basis.units says the line is left out of the series, not that figures are null", async () => {
     const counted = everyDay(1, 1, 60, BOTTLE);
     const base: any = await advanced({
+      restaurants: UTC_HOUSE,
       restaurant_inventory: [item(1)],
       wine_consumption_log: counted,
     }).getSeasonality(RESTAURANT, 90);
     const out: any = await advanced({
+      restaurants: UTC_HOUSE,
       restaurant_inventory: [item(1)],
       // Day 70 holds only the line with no figure, so it reads 0 as before.
       wine_consumption_log: [...counted, on(2, 70, NO_FIGURE)],
