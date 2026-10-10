@@ -93,6 +93,7 @@ function makeClient(rowsByTable: Rows, errors: Record<string, string> = {}) {
   const passthrough = [
     "select",
     "update",
+    "insert",
     "eq",
     "neq",
     "gt",
@@ -641,6 +642,93 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     // Aug 1 00:00 LA → Sep 30 00:00 LA is 60 days; 31 d 20 h of it have run.
     expect(progress.expectedByNow).toBeCloseTo((600 * (31 + 20 / 24)) / 60, 6);
     expect(progress.daysLeft).toBe(29);
+  });
+
+  // F-628: one check closing at 20:00 LA on each named house day.
+  const checkOn = (day: string) => ({
+    total: 40,
+    opened_at: `${day}T02:00:00Z`,
+    closed_at: `${day}T03:00:00Z`,
+    items: [],
+  });
+
+  it("(j2) counts a goal counted over a week in the current week only, and paces it against that week", async () => {
+    const { service } = makeGoals({
+      analytics_goals: [{ ...goal, period: "week", target_value: 70 }],
+      // Aug 20 LA (last-but-one week), and Aug 31 LA (this week, which
+      // opened on Sunday Aug 30).
+      pos_checks: [checkOn("2026-08-21"), checkOn("2026-09-01")],
+    });
+
+    const progress: any = await service.getGoalProgress("r1", "g1");
+
+    expect(progress.current).toBe(1);
+    // Aug 30 00:00 LA → Sep 6 00:00 LA is 7 days; 2 d 20 h of it have run.
+    expect(progress.expectedByNow).toBeCloseTo((70 * (2 + 20 / 24)) / 7, 6);
+    // The deadline is still the deadline.
+    expect(progress.daysLeft).toBe(29);
+  });
+
+  it("(j3) stops counting on the deadline's house day", async () => {
+    const { service, client } = makeGoals({
+      analytics_goals: [{ ...goal, deadline: "2026-08-25" }],
+      // Aug 20 LA (before the deadline), Aug 27 LA (after it).
+      pos_checks: [checkOn("2026-08-21"), checkOn("2026-08-28")],
+    });
+
+    const progress: any = await service.getGoalProgress("r1", "g1");
+
+    expect(progress.current).toBe(1);
+    expect(progress.daysLeft).toBe(0);
+    const until = client.calls.find(
+      (c) =>
+        c.table === "pos_checks" &&
+        c.method === "lte" &&
+        c.args[0] === "opened_at",
+    )?.args[1];
+    // The last instant of Aug 25 in Los Angeles.
+    expect(until).toBe("2026-08-26T06:59:59.999Z");
+  });
+
+  it("(j4) a weekly goal past its deadline counts the week that held the deadline", async () => {
+    const { service } = makeGoals({
+      analytics_goals: [
+        { ...goal, period: "week", deadline: "2026-08-25" },
+      ],
+      // Aug 22 LA (the week before), Aug 24 LA (the deadline's week, which
+      // opened Sunday Aug 23), Aug 31 LA (after the deadline).
+      pos_checks: [
+        checkOn("2026-08-23"),
+        checkOn("2026-08-25"),
+        checkOn("2026-09-01"),
+      ],
+    });
+
+    const progress: any = await service.getGoalProgress("r1", "g1");
+
+    expect(progress.current).toBe(1);
+  });
+
+  it("(j5) dues a goal for this month on the house's month end, not 30 days on", async () => {
+    const written = async (period: string, deadline?: string) => {
+      const { service, client } = makeGoals({ pos_checks: [] });
+      await service.createGoal("r1", {
+        name: "Covers",
+        metricKey: "checks",
+        targetValue: 500,
+        period,
+        ...(deadline ? { deadline } : {}),
+      });
+      return client.calls.find(
+        (c) => c.table === "analytics_goals" && c.method === "insert",
+      )?.args[0].deadline;
+    };
+    // Sep 1 in Los Angeles (Sep 2 UTC): the month ends Sep 30, the week
+    // (opened Sunday Aug 30) on Saturday Sep 5.
+    expect(await written("month")).toBe("2026-09-30");
+    expect(await written("week")).toBe("2026-09-05");
+    expect(await written("month", "2026-12-31")).toBe("2026-12-31");
+    expect(await written("custom")).toBeNull();
   });
 
   it("scores no goal for a house with no zone, and says why", async () => {

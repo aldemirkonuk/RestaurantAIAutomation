@@ -20,6 +20,7 @@ const auth = vi.hoisted(() => ({ rid: 'r1' as string | null }));
 const api = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
+  delete: vi.fn(),
 }));
 
 const role = vi.hoisted(() => ({ current: null as string | null }));
@@ -55,6 +56,7 @@ beforeEach(() => {
   role.current = null;
   api.get.mockReset();
   api.post.mockReset();
+  api.delete.mockReset();
   api.get.mockImplementation(async (url: string) => {
     if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
     if (url.includes('/exclusions'))
@@ -160,6 +162,76 @@ describe('useRecommendationsNextData transport', () => {
       expect.objectContaining({ businessDate: '2026-09-02' }),
     );
     expect(result.current.entries).toHaveLength(0);
+  });
+
+  // F-631: Undo of "dismiss and leave this day out" puts the day back too.
+  const dismissAndStrike = {
+    reason: 'not_relevant',
+    scope: 'insight',
+    key: 'stockout_imminent#chablis-2021#d:2026-09-02',
+    excludeDate: '2026-09-02',
+    said: 'Dismissed.',
+  } as const;
+
+  it('Undo after dismissing and leaving the day out counts the day again', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    api.delete.mockResolvedValue({ data: {} });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], dismissAndStrike);
+    });
+    const undo = result.current.undo!;
+    expect(undo.excludedDate).toBe('2026-09-02');
+
+    await act(async () => {
+      await result.current.restore(undo.ruleKey, undo.excludedDate);
+    });
+    expect(api.delete).toHaveBeenCalledWith('/analytics/exclusions/r1/2026-09-02');
+    expect(result.current.exclusions?.items).toEqual([]);
+    expect(result.current.note).toBe(
+      'Restored to the standing book. 2026-09-02 counts again in every average.',
+    );
+  });
+
+  it('Undo says so when the day could not be put back', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    api.delete.mockRejectedValue(new Error('no table'));
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], dismissAndStrike);
+    });
+    await act(async () => {
+      await result.current.restore('stockout_imminent', '2026-09-02');
+    });
+    expect(result.current.note).toContain('2026-09-02 is still out of the analysis');
+  });
+
+  it('Undo leaves alone a day that was already out before the dismissal', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions'))
+        return {
+          data: {
+            items: [{ businessDate: '2026-09-02', reason: 'closed', createdAt: null }],
+            readable: true,
+            problem: null,
+          },
+        };
+      return { data: FEED };
+    });
+    api.post.mockResolvedValue({ data: {} });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.exclusions?.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], dismissAndStrike);
+    });
+    expect(result.current.undo?.excludedDate).toBeUndefined();
   });
 
   it('says so when the entry was dismissed but the day could not be excluded', async () => {

@@ -1045,6 +1045,7 @@ describe('RecommendationsNext — the two forward doors', () => {
     expect(screen.getByLabelText("The goal's period")).toBeInTheDocument();
     const week = screen.getByRole('radio', { name: 'This week' }) as HTMLInputElement;
     expect(week.checked).toBe(true);
+    expect(screen.getByText(/You can move the deadline later, in Reports under Goals/)).toBeInTheDocument();
     // and it says why THIS metric, rather than leaving the mapping unexplained
     expect(screen.getByText(/same weekday.s baseline/)).toBeInTheDocument();
   });
@@ -1076,7 +1077,10 @@ describe('RecommendationsNext — the two forward doors', () => {
       period: 'week',
     });
     expect(sent.name).toBe('Wednesday wine revenue, after a soft Wednesday');
-    expect(sent.deadline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // F-632: the gateway dates it on the house's calendar; the browser does
+    // not know the house's zone, so it sends no date of its own.
+    expect(sent).not.toHaveProperty('deadline');
+    expect(screen.queryByText(/cannot be\s+changed/)).toBeNull();
     // an actor id is never sent from the client — the JWT is the only witness
     expect(sent).not.toHaveProperty('createdBy');
   });

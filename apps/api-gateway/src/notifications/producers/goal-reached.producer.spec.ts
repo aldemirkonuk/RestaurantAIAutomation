@@ -207,6 +207,79 @@ describe("GoalReachedProducer", () => {
     ).rejects.toThrow(/analytics_goals/);
   });
 
+  // F-629: an average is a level over the window, not a running total.
+  const AVERAGE = {
+    target: 85,
+    current: 120,
+    metricLabel: "Average check",
+    unit: "currency",
+  };
+
+  it("[REVERT-FAILS] does not call an average reached while its window is still open", async () => {
+    const { db, notifications, goals, producer } = build(AVERAGE);
+    db.tables.analytics_goals.push(
+      goalRow({ name: "Average check", metric_key: "avg_check", target_value: 85 }),
+    );
+    seedCrossing(db);
+    seedShift(db);
+
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(goals.getGoalProgress.calls).toHaveLength(0);
+    expect(tally.withheldReason).toMatch(/judged only over a whole window/);
+  });
+
+  it("[REVERT-FAILS] does not judge an average with no deadline", async () => {
+    const { db, notifications, producer } = build(AVERAGE);
+    db.tables.analytics_goals.push(
+      goalRow({ metric_key: "wine_attach_rate", deadline: null }),
+    );
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+  });
+
+  it("calls an average reached once its deadline has passed, with no crossing time or roster", async () => {
+    const { db, notifications, producer } = build(AVERAGE);
+    db.tables.analytics_goals.push(
+      goalRow({
+        name: "Average check",
+        metric_key: "avg_check",
+        target_value: 85,
+        deadline: "2026-09-01",
+      }),
+    );
+    seedCrossing(db);
+    seedShift(db);
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.metadata.crossedAt).toBeNull();
+    expect(call.metadata.crossedAtSource).toMatch(/a level has no single row/);
+    expect(call.metadata.onShift).toEqual([]);
+    expect(call.message).toContain("no single moment it crossed");
+    expect(call.message).not.toContain("could not be read");
+  });
+
+  it("[REVERT-FAILS] does not judge days of stock after its deadline", async () => {
+    const { db, notifications, producer } = build({
+      target: 20,
+      current: 25,
+      metricLabel: "Days of stock",
+      unit: "days",
+    });
+    db.tables.analytics_goals.push(
+      goalRow({
+        metric_key: "days_of_inventory",
+        target_value: 20,
+        deadline: "2026-08-31",
+      }),
+    );
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+  });
+
   it("[REVERT-FAILS] writes no emoji into the title or the message", async () => {
     const { db, notifications, producer } = build(REACHED);
     db.tables.analytics_goals.push(goalRow());

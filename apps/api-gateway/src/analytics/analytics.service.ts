@@ -15,7 +15,10 @@ import {
   unitsBasisSentence,
   volumeMlOf,
 } from "./consumption-units";
-import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import {
+  ORDER_NOT_YET_ARRIVED_STATUSES,
+  ORDER_SPEND_STATUSES,
+} from "../procurement/order-status";
 import { houseDayBounds } from "../common/house-day";
 
 /**
@@ -113,7 +116,7 @@ export class AnalyticsService {
 
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    const [invRes, rollupRes, openRes] = await Promise.allSettled([
       client
         .from("restaurant_inventory")
         // Column names must match the live schema exactly. PostgREST rejects
@@ -140,6 +143,13 @@ export class AnalyticsService {
           "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
         )
         .eq("restaurant_id", restaurantId),
+      // Bottles already ordered and not yet here (F-630): reorder science
+      // counts them before it says "order today".
+      client
+        .from("procurement_orders")
+        .select("inventory_id, bottles_total, expected_delivery_date")
+        .eq("restaurant_id", restaurantId)
+        .in("status", ORDER_NOT_YET_ARRIVED_STATUSES),
     ]);
 
     // allSettled makes a REJECTION invisible and `{ data, error }` makes a
@@ -149,12 +159,40 @@ export class AnalyticsService {
     // file, same directory and same tables, was not. See ADR 0067.
     this.reportSlice("restaurant_inventory", invRes);
     this.reportSlice("inventory_lot_rollup", rollupRes);
+    this.reportSlice("procurement_orders", openRes);
 
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
     if (rollupRes.status === "fulfilled") {
       for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    }
+    // Per wine: bottles on order, or null when they cannot be counted — the
+    // read failed, or an open order states no bottle count. A failed read is
+    // never "nothing on order" (ADR 0067).
+    const openRead =
+      openRes.status === "fulfilled" && !openRes.value.error
+        ? openRes.value.data || []
+        : null;
+    const onOrder = new Map<
+      string,
+      { bottles: number | null; nextArrival: string | null }
+    >();
+    for (const o of openRead ?? []) {
+      if (!o.inventory_id) continue;
+      const was = onOrder.get(o.inventory_id) ?? { bottles: 0, nextArrival: null };
+      const bottles = Number(o.bottles_total);
+      const due = o.expected_delivery_date
+        ? String(o.expected_delivery_date).slice(0, 10)
+        : null;
+      onOrder.set(o.inventory_id, {
+        bottles:
+          was.bottles === null || !(bottles > 0) ? null : was.bottles + bottles,
+        nextArrival:
+          due && (!was.nextArrival || due < was.nextArrival)
+            ? due
+            : was.nextArrival,
+      });
     }
 
     // Unit cost: invoiced lot WAC → recorded last purchase price → UNKNOWN.
@@ -179,6 +217,13 @@ export class AnalyticsService {
         // is no separate reorder_point column.
         reorderPoint: i.threshold_min || 0,
         masterWineId: i.master_wine_id,
+        onOrder:
+          openRead === null
+            ? null
+            : onOrder.has(i.id)
+              ? onOrder.get(i.id)!.bottles
+              : 0,
+        nextArrival: onOrder.get(i.id)?.nextArrival ?? null,
         // A row we cannot cost has no value we can state. `qty × null` must
         // not become 0 — that is the fabrication ADR 0051 names, wearing an
         // arithmetic costume.
@@ -650,6 +695,9 @@ export class AnalyticsService {
     const unitsCoverage = summarizeUnits(consumption);
 
     const skus = inventory.map((i) => {
+      // What the shelf will hold once what is already ordered arrives. An
+      // order that cannot be counted adds nothing, and says so (onOrder null).
+      const position = i.qty + (i.onOrder ?? 0);
       const rows = demandByWine.get(i.masterWineId || "") || [];
       const { values } = this.toDailySeries(rows, sinceDays);
       const profile = E.inventory.demandProfile(values) || {
@@ -664,7 +712,7 @@ export class AnalyticsService {
         avgLeadTime: leadTime,
       });
       const stockoutProb = E.inventory.stockoutProbability({
-        onHand: i.qty,
+        onHand: position,
         avgDemandPerPeriod: profile.mean,
         demandStdev: profile.stdev,
         leadTime,
@@ -685,6 +733,9 @@ export class AnalyticsService {
         id: i.id,
         name: i.name,
         onHand: i.qty,
+        /** Bottles ordered and not yet here; null when they cannot be counted. */
+        onOrder: i.onOrder,
+        nextArrival: i.nextArrival ?? null,
         avgDailyDemand: profile.mean,
         demandCv: profile.cv,
         xyzClass: E.inventory.xyzClassify(profile.cv),
@@ -693,7 +744,7 @@ export class AnalyticsService {
         safetyStock: rop?.safetyStock ?? null,
         stockoutProbability: stockoutProb,
         eoq: eoq?.eoq ?? null,
-        needsReorder: rop ? i.qty <= rop.reorderPoint : false,
+        needsReorder: rop ? position <= rop.reorderPoint : false,
         unitCost: i.unitCost,
         costBasis: i.costBasis,
         inventoryValue: i.inventoryValue,
@@ -752,7 +803,7 @@ export class AnalyticsService {
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
         demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
-        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
+        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost; stockout risk and the reorder list count bottles already ordered and not yet arrived (skus[].onOrder; null when an open order states no bottle count or the orders could not be read, and then only the shelf is counted)`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
           "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",

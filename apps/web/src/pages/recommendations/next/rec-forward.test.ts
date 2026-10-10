@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 import {
   METRICS,
   cuttingFor,
-  deadlineFor,
+  PERIOD_DUE,
   goalOfferFor,
   landingWords,
   periodFor,
@@ -150,10 +150,10 @@ describe('rec-forward — the goal door', () => {
     expect(periodFor('this_month')).toBe('month');
   });
 
-  it('derives a deadline that is 7 or 30 days out, as a business date', () => {
-    const now = new Date('2026-09-03T12:00:00Z');
-    expect(deadlineFor('week', now)).toBe('2026-09-10');
-    expect(deadlineFor('month', now)).toBe('2026-10-03');
+  it('says a goal is due at the end of its week or month on the house calendar, and that it can be moved', () => {
+    // F-632: not 7 or 30 days on, on the browser's UTC date.
+    expect(PERIOD_DUE.week).toMatch(/Saturday, the last day of this week on your restaurant’s calendar/);
+    expect(PERIOD_DUE.month).toMatch(/last day of this month on your restaurant’s calendar/);
   });
 
   it('stores a rate as a fraction — 60% is 0.6 on the wire, not 60', () => {

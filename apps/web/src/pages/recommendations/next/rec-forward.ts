@@ -229,19 +229,19 @@ export const PERIOD_LABEL: Record<GoalPeriod, string> = {
 };
 
 /**
- * The deadline a period implies, as a business date.
+ * When a goal made here falls due, in words.
  *
- * Stated on the sheet before the write because it CANNOT be changed
- * afterwards: the gateway's only goal mutation is
- * `PUT /analytics/goals/:rid/:goalId/status` (`analytics.controller.ts:536`),
- * which moves a goal between active / achieved / missed / archived and touches
- * nothing else.
+ * The sheet sends no deadline: the gateway sets it to the last day of the
+ * period on the house's own calendar (`GoalsService.createGoal`), because
+ * this browser does not know the house's time zone and "this month" ends on
+ * the house's month end, not 30 days on (F-632). A week opens on Sunday
+ * there, so it ends on Saturday. The deadline can be moved afterwards
+ * (`PATCH /analytics/goals/:rid/:goalId`, the Edit on the Reports goals desk).
  */
-export function deadlineFor(period: GoalPeriod, now = new Date()): string {
-  const d = new Date(now.getTime());
-  d.setUTCDate(d.getUTCDate() + (period === 'week' ? 7 : 30));
-  return d.toISOString().substring(0, 10);
-}
+export const PERIOD_DUE: Record<GoalPeriod, string> = {
+  week: 'Due on Saturday, the last day of this week on your restaurant’s calendar.',
+  month: 'Due on the last day of this month on your restaurant’s calendar.',
+};
 
 export function goalOfferFor(entry: ForwardEntry): GoalOffer {
   if (entry.ruleKey.startsWith(GOAL_RULE_PREFIX))
