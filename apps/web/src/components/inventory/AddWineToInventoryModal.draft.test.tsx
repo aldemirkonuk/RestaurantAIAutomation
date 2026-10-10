@@ -18,6 +18,8 @@ vi.mock("../../stores/restaurantSettingsStore", () => ({
   useRestaurantSettingsStore: () => ({ measurementUnit: "ml" }),
 }));
 vi.mock("../scanner/MenuScannerFlow", () => ({ MenuScannerFlow: () => null }));
+// The cost field shows only to a manager (F-312); this test types a cost.
+vi.mock("../../hooks/useMayActForTheHouse", () => ({ useMayActForTheHouse: () => true }));
 
 const wine = {
   id: "wine-1",

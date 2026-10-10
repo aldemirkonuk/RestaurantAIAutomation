@@ -1037,7 +1037,10 @@ describe("InboundResponderService (deterministic core)", () => {
   // F-769: Ask AI's "draft a reply" and regenerate re-run the responder on the
   // same vendor mail. What the manager did with that mail since must stand.
   describe("a re-run on a mail already understood", () => {
-    const run = async (priorContext: Record<string, any> | null) => {
+    const run = async (
+      priorContext: Record<string, any> | null,
+      analysis: Record<string, any> = {},
+    ) => {
       const writes: Array<{ table: string; payload: any }> = [];
       const result = (table: string, ops: string[]) => {
         if (table === "procurement_orders")
@@ -1103,6 +1106,7 @@ describe("InboundResponderService (deterministic core)", () => {
           special_conditions: [],
           email_class: "negotiation_reply",
           injection_suspected: false,
+          ...analysis,
         });
       s.buildDealProposal = () => ({ summary: "11 at $14", dealKind: "offer", urgency: "normal" });
       s.isAutonomousSendEnabled = async () => false;
@@ -1147,6 +1151,15 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(ws.emitRoleNotification).toHaveBeenCalledTimes(1);
       expect(ctx.deal_resolved_at).toBeUndefined();
       expect(typeof ctx.order_synced_at).toBe("string");
+    });
+
+    // A held mail (F-485) is written to the thread before the order would move,
+    // so the trace must not say it moved the order when it did not.
+    it("never stamps a held mail as applied to the order", async () => {
+      const { s, ctx } = await run(null, { injection_suspected: true });
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+      expect(ctx.analyzed_at).toEqual(expect.any(String));
+      expect(ctx.order_synced_at).toBeNull();
     });
   });
 });

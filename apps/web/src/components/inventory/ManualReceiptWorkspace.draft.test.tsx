@@ -17,7 +17,9 @@ vi.mock('../../hooks/queries', () => ({
 vi.mock('../../hooks/queries/useProviderQueries', () => ({ useProviders: () => ({ data: [] }) }))
 vi.mock('../../hooks/useStorageLocations', () => ({ useStorageLocations: () => ({ locations: [] }) }))
 const persistBatchToInventory = vi.fn()
-vi.mock('../../lib/menuScannerPersistence', () => ({
+// Keep the real save-key and error helpers (F-566); only the write is stubbed.
+vi.mock('../../lib/menuScannerPersistence', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/menuScannerPersistence')>()),
   persistBatchToInventory: (...a: unknown[]) => persistBatchToInventory(...a),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }))

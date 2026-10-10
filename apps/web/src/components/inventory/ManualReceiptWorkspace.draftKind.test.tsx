@@ -22,7 +22,9 @@ vi.mock('../../hooks/queries/useProviderQueries', () => ({
 vi.mock('../../hooks/useStorageLocations', () => ({
   useStorageLocations: () => ({ locations: [] }),
 }))
-vi.mock('../../lib/menuScannerPersistence', () => ({
+// Keep the real save-key and error helpers (F-566); only the write is stubbed.
+vi.mock('../../lib/menuScannerPersistence', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/menuScannerPersistence')>()),
   persistBatchToInventory: (...args: unknown[]) => {
     persistMock(...args)
     return Promise.resolve({ added: [{}], stockAdded: [], reactivated: [], provisional: [], failed: [] })

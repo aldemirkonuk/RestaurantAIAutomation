@@ -144,11 +144,27 @@ class TestBuildLibraryRow:
         assert "price_reference" not in row
 
 
+# Write endpoints re-read user_roles (require_live_studio_role, F-761). Each caller
+# holds in the DB exactly the roles its JWT claims, as in test_studio_routes.py.
+_DB_ROLES_BY_SUB: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _db_roles_match_jwt():
+    with patch(
+        "services.override_service._fetch_active_studio_roles",
+        side_effect=lambda sub: _DB_ROLES_BY_SUB.get(sub, []),
+    ):
+        yield
+
+
 def _auth(roles):
     import jwt as pyjwt
 
+    sub = "user-" + "+".join(sorted(roles))
+    _DB_ROLES_BY_SUB[sub] = list(roles)
     token = pyjwt.encode(
-        {"sub": "user-001", "email": "u@example.com", "app_metadata": {"roles": roles}},
+        {"sub": sub, "email": "u@example.com", "app_metadata": {"roles": roles}},
         SECRET,
         algorithm="HS256",
     )

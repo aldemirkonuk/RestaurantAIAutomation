@@ -10,6 +10,8 @@ import { BatchReceiveGrid, type BatchReceiveRow } from './BatchReceiveGrid'
 
 vi.mock('../../hooks/useStorageLocations', () => ({ useStorageLocations: () => ({ locations: [] }) }))
 vi.mock('../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => '.' }))
+// Cost and total show only to a manager (F-312/F-780); this test reads the total.
+vi.mock('../../hooks/useMayActForTheHouse', () => ({ useMayActForTheHouse: () => true }))
 
 const row: BatchReceiveRow = {
   key: 'r1',
