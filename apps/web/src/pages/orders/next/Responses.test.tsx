@@ -460,6 +460,42 @@ describe('confirm', () => {
     expect(approveMock.mutate).not.toHaveBeenCalled();
   });
 
+  /**
+   * F-775: the sheet's confirm is the fourth approve path. A 409 "already
+   * approved" is the outcome wanted, so the sheet closes with no error; any
+   * other 409 is printed as it came, never inside "still pending".
+   */
+  const conflict = (reason: string, message: string) =>
+    Object.assign(new Error(message), { response: { status: 409, data: { reason, message } } });
+  type MutateOpts = { onError?: (e: unknown) => void; onSuccess?: () => void };
+
+  it('closes without an error when someone already approved the order', async () => {
+    approveMock.mutate.mockImplementation((_input: unknown, opts: MutateOpts) =>
+      opts.onError?.(conflict('order_already_approved', 'This order is already approved.')),
+    );
+    const onClose = vi.fn();
+    mount({}, { onClose });
+    hold(confirmDie());
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(screen.queryByText(/still pending/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/already approved/i)).not.toBeInTheDocument();
+  });
+
+  it('prints any other 409 sentence verbatim, outside the "still pending" frame', async () => {
+    const CHANGED =
+      'Someone else changed this order while it was being approved, so this approval was not written.';
+    approveMock.mutate.mockImplementation((_input: unknown, opts: MutateOpts) =>
+      opts.onError?.(conflict('order_changed_while_approving', CHANGED)),
+    );
+    const onClose = vi.fn();
+    mount({}, { onClose });
+    hold(confirmDie());
+    expect(await screen.findByText(CHANGED)).toBeInTheDocument();
+    expect(screen.queryByText(/still pending/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/gateway refused/i)).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('is disabled, never hidden, when this house’s rules hold the order', () => {
     mount(
       {},

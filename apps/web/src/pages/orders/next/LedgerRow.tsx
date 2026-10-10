@@ -25,6 +25,7 @@ import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
 import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
 import * as ordersApi from '@/services/api/orders';
+import { approveConflict } from '@/services/api/approveConflict';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   PRICE_UOM_LABEL,
@@ -194,12 +195,22 @@ export function LedgerRow({
         // (…)" would bury a sentence written to be read. A 403 is printed
         // verbatim; anything else keeps the old framing, because a network
         // error's message is not an explanation of anything.
+        //
+        // A 409 is neither (F-775). "Already approved" is the outcome the
+        // person wanted — someone else sealed it first — so it is no error: the
+        // die keeps saying "Approved" and `useApproveOrder` refetches the list,
+        // which moves the row on. Any other 409 is printed as it came, since the
+        // order may no longer be pending at all.
+        const conflict = approveConflict(err);
+        if (conflict?.settled) return;
         const status = (err as { response?: { status?: number } })?.response?.status;
         const msg = (err as { message?: string })?.message ?? 'request failed';
         setApproveError(
-          status === 403
-            ? msg
-            : `The gateway refused (${msg}) — still pending, nothing approved.`,
+          conflict
+            ? conflict.message
+            : status === 403
+              ? msg
+              : `The gateway refused (${msg}) — still pending, nothing approved.`,
         );
         setAttempt((a) => a + 1);
       },

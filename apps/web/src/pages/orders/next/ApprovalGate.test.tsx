@@ -247,6 +247,53 @@ describe('the refusal that comes back from the seal', () => {
   });
 });
 
+/**
+ * F-775. A 409 is not a refused request in the "still pending" sense: an order
+ * someone else approved first is the outcome the person wanted, and any other
+ * 409 is a sentence of its own about an order that may no longer be pending.
+ */
+describe('a 409 on the seal', () => {
+  const conflict = (reason: string, message: string) =>
+    Object.assign(new Error(message), { response: { status: 409, data: { reason, message } } });
+
+  it('treats an order that is ALREADY APPROVED as settled — no error on the row', async () => {
+    approveMock.mutate.mockImplementation(
+      (_input: unknown, opts: { onError: (e: unknown) => void }) => {
+        opts.onError(
+          conflict(
+            'order_already_approved',
+            'This order is already approved, so there is nothing to approve again. Nothing was changed.',
+          ),
+        );
+      },
+    );
+
+    mount({ approval: verdict({ mayApprove: true, sentence: null }) });
+    seal();
+
+    await waitFor(() => expect(approveMock.mutate).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/still pending, nothing approved/i)).not.toBeInTheDocument();
+  });
+
+  it('prints any other 409 sentence VERBATIM, outside the "still pending" frame', async () => {
+    const sentence =
+      'Someone else changed this order while it was being approved, so this approval was not written. Open the order again to see where it stands.';
+    approveMock.mutate.mockImplementation(
+      (_input: unknown, opts: { onError: (e: unknown) => void }) => {
+        opts.onError(conflict('order_changed_while_approving', sentence));
+      },
+    );
+
+    mount({ approval: verdict({ mayApprove: true, sentence: null }) });
+    seal();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(sentence);
+    expect(alert).not.toHaveTextContent(/The gateway refused|still pending/i);
+  });
+});
+
 
 /**
  * The seal on an order is REDEEMED, not asserted (founder, 2026-09-04; ADR 0116

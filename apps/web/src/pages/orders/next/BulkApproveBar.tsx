@@ -20,6 +20,7 @@ import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
 import { MONO, SANS, fmtMoney } from './format';
 import type { OrderRowVM } from './useOrdersNextData';
+import { approveConflict } from '@/services/api/approveConflict';
 
 export interface BulkApproveBarProps {
   selectedRows: OrderRowVM[];
@@ -53,6 +54,10 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   const [result, setResult] = useState<{
     ok: number;
     refused: number;
+    /** Approved by someone else first (F-775): settled, so not counted as refused. */
+    already: number;
+    /** Refused with a 409 sentence: not approved, but not "still pending" either. */
+    conflicted: number;
     /**
      * The distinct reasons the gateway gave, in the order first seen.
      *
@@ -203,7 +208,9 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     setFill(1);
     const ids = selectedRows.map((r) => r.id);
     const okIds: string[] = [];
+    const alreadyIds: string[] = [];
     let refused = 0;
+    let conflicted = 0;
     const reasons: string[] = [];
     for (let i = 0; i < ids.length; i++) {
       setProgress({ done: i, total: ids.length });
@@ -214,6 +221,20 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
         });
         okIds.push(ids[i]);
       } catch (err) {
+        // F-775. An order someone else approved first is settled, not refused:
+        // it leaves the selection like an approved one. Any other 409 is a
+        // sentence of its own and is kept apart from the "still pending" count,
+        // because the order may no longer be pending at all.
+        const conflict = approveConflict(err);
+        if (conflict?.settled) {
+          alreadyIds.push(ids[i]);
+          continue;
+        }
+        if (conflict) {
+          conflicted += 1;
+          if (!reasons.includes(conflict.message)) reasons.push(conflict.message);
+          continue;
+        }
         refused += 1;
         const msg = refusalReason(err);
         if (msg && !reasons.includes(msg)) reasons.push(msg);
@@ -222,10 +243,10 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     setProgress({ done: ids.length, total: ids.length });
     // Spent or refused, every seal from this gesture is done.
     abandonSeals();
-    setResult({ ok: okIds.length, refused, reasons });
-    expectedAfterDoneRef.current = refused;
+    setResult({ ok: okIds.length, refused, already: alreadyIds.length, conflicted, reasons });
+    expectedAfterDoneRef.current = refused + conflicted;
     setPhase('done');
-    onApproved(okIds);
+    onApproved([...okIds, ...alreadyIds]);
     onRunningChange(false);
     runningRef.current = false;
     // The one impression: the die pressed dry into the bar, a third of the
@@ -339,9 +360,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
             }}
           >
             {phase === 'done' && result
-              ? result.refused > 0
-                ? `${result.refused} refused by the gateway — still pending, still selected.`
-                : 'The rows settle; the seal stays rationed.'
+              ? doneLine(result)
               : `${fmtMoney(knownTotal)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
           </span>
           {phase === 'done' && result && result.reasons.length > 0 && (
@@ -460,6 +479,21 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
       )}
     </div>
   );
+}
+
+/** The line under the count once a run is done: each outcome named apart. */
+function doneLine(result: { refused: number; already: number; conflicted: number }): string {
+  const parts: string[] = [];
+  if (result.already > 0) {
+    parts.push(`${result.already} already approved — nothing to do.`);
+  }
+  if (result.conflicted > 0) {
+    parts.push(`${result.conflicted} not approved — still selected, the reason is below.`);
+  }
+  if (result.refused > 0) {
+    parts.push(`${result.refused} refused by the gateway — still pending, still selected.`);
+  }
+  return parts.length > 0 ? parts.join(' ') : 'The rows settle; the seal stays rationed.';
 }
 
 export default BulkApproveBar;
