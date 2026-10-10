@@ -407,6 +407,7 @@ export default function DocumentsReportsNext() {
    * the next page from the gateway, which takes an offset.
    */
   const { activeRestaurantId } = useAuth();
+  const rid = activeRestaurantId ?? '';
   const [shown, setShown] = useState(20);
   const [older, setOlder] = useState<GeneratedReport[]>([]);
   const [olderState, setOlderState] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -446,7 +447,7 @@ export default function DocumentsReportsNext() {
    */
   const listed = loaded.find((r) => r.id === selectedId) ?? null;
   const lookupQ = useQuery<GeneratedReport>({
-    queryKey: ['sorting-office', 'report', activeRestaurantId ?? '', selectedId],
+    queryKey: ['sorting-office', 'report', rid, selectedId],
     queryFn: () => getReport(selectedId as string),
     enabled: !!selectedId && data.reportsKnown && !listed,
     retry: false,

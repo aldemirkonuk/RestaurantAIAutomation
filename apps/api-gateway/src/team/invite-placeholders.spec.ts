@@ -225,4 +225,13 @@ describe("HISTORY_COLUMNS covers every table that points at a roster row", () =>
     expect(fks.length).toBeGreaterThanOrEqual(10);
     expect(fks.filter((fk) => !named.has(fk))).toEqual([]);
   });
+
+  it.each(HISTORY_COLUMNS.map(([t, , from]) => [t, from] as const))(
+    "the read for %s asks for that same table",
+    (table, from) => {
+      const asked: string[] = [];
+      from({ from: (t: string) => (asked.push(t), {}) });
+      expect(asked).toEqual([table]);
+    },
+  );
 });
