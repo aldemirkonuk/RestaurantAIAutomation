@@ -385,6 +385,8 @@ export function verdictLabel(verdict: string): string {
       return 'Partial delivery';
     case 'unmatched':
       return 'No invoice yet';
+    case 'currency_differs':
+      return 'Different money';
     default:
       return verdict;
   }

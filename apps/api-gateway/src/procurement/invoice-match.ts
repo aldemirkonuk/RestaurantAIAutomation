@@ -79,7 +79,9 @@ export type MatchVerdict =
   | "short_shipped"
   | "rejected"
   | "partial"
-  | "unmatched";
+  | "unmatched"
+  /** Agreed and billed in two different moneys: the price was not compared (F-341). */
+  | "currency_differs";
 
 export type MatchCheckId =
   | "price"
@@ -623,18 +625,31 @@ export function computeMatch(input: MatchInput): MatchResult {
 
   // --- price: exact match, no tolerance band (D-B) --------------------------------------
   const bothPriced = poUnitPrice != null && invoiceUnitPrice != null;
+  // Two stated, different moneys are never compared as numbers (F-341): 20 EUR
+  // against 20 TRY is not a match, and 20 EUR against 700 TRY is not a
+  // variance. Nothing converts, so the check is held for the owner to decide.
+  // A money not stated is the old, unknown case and compares as before.
+  const currencyDiffers =
+    bothPriced && differentMoney(input.poCurrency, input.invoiceCurrency);
   const priceVerified =
-    bothPriced && priceEquals(poUnitPrice, invoiceUnitPrice);
-  const priceMismatch = bothPriced && !priceVerified;
+    bothPriced &&
+    !currencyDiffers &&
+    priceEquals(poUnitPrice, invoiceUnitPrice);
+  const priceMismatch = bothPriced && !currencyDiffers && !priceVerified;
   const requiresOverride = priceMismatch && overrideReason.length === 0;
+  const notComparedSentence = currencyDiffers
+    ? notComparedWords(input.poCurrency, input.invoiceCurrency)
+    : "";
 
   checks.push({
     id: "price",
-    ok: !bothPriced ? null : !priceMismatch,
+    ok: !bothPriced || currencyDiffers ? null : !priceMismatch,
     label: "Invoice price matches the agreed price",
     detail: !bothPriced
       ? "No price to compare"
-      : priceMismatch
+      : currencyDiffers
+        ? `Agreed ${agreed(poUnitPrice)}, billed ${billed(invoiceUnitPrice as number)}. ${notComparedSentence}`
+        : priceMismatch
         ? `Agreed ${agreed(poUnitPrice)} vs billed ${billed(invoiceUnitPrice)}` +
           (overrideReason ? " — accepted by override" : "")
         : `Both ${agreed(poUnitPrice as number)}`,
@@ -741,6 +756,7 @@ export function computeMatch(input: MatchInput): MatchResult {
   else if (billableReceived < (invoiceQty as number)) verdict = "qty_short";
   else if (shortShipped) verdict = "short_shipped";
   else if (rejectedQty > 0) verdict = "rejected";
+  else if (currencyDiffers) verdict = "currency_differs";
   else if (!fullyFulfilled) verdict = "partial";
   else verdict = "matched";
 
@@ -764,10 +780,7 @@ export function computeMatch(input: MatchInput): MatchResult {
         acceptedQty
       : null;
 
-  return {
-    verdict,
-    checks,
-    summary: summarize(verdict, {
+  const headline = summarize(verdict, {
       orderedQty,
       shippedQty,
       invoiceQty,
@@ -781,7 +794,13 @@ export function computeMatch(input: MatchInput): MatchResult {
       invoiceUnitPrice,
       agreed,
       billed,
-    }),
+    });
+
+  return {
+    verdict,
+    checks,
+    // Whatever headlines, a price held for a different money is said (F-341).
+    summary: currencyDiffers ? `${headline} ${notComparedSentence}` : headline,
     backorderQty,
     ledgerDelta: acceptedQty - stockedQty,
     requiresOverride,
@@ -847,7 +866,36 @@ function summarize(
       return `${f.acceptedQty} of ${f.orderedQty} accepted, ${f.backorderQty} still outstanding.`;
     case "unmatched":
       return `${f.acceptedQty} accepted with no invoice on file yet.`;
+    case "currency_differs":
+      return (
+        `All ${f.acceptedQty} accepted. Agreed ${f.agreed(
+          f.poUnitPrice as number,
+        )}, billed ${f.billed(f.invoiceUnitPrice as number)}.` +
+        (f.freeGoodsQty > 0 ? ` Includes ${f.freeGoodsQty} free.` : "")
+      );
   }
+}
+
+/** Both moneys stated and not the same code. */
+export function differentMoney(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const x = (a ?? "").trim().toUpperCase();
+  const y = (b ?? "").trim().toUpperCase();
+  return x !== "" && y !== "" && x !== y;
+}
+
+/** The plain sentence for a price held because the two moneys differ. */
+export function notComparedWords(
+  agreedIn: string | null | undefined,
+  billedIn: string | null | undefined,
+): string {
+  return (
+    `The price was not compared: the agreement is in ${(agreedIn ?? "").trim().toUpperCase()} ` +
+    `and the invoice is in ${(billedIn ?? "").trim().toUpperCase()}, and nothing here converts one ` +
+    `into the other. You decide whether this price is right.`
+  );
 }
 
 /** Verdicts that mean the manager must be told immediately (D-E). */
