@@ -11,7 +11,7 @@
  * Provider / reference / default location are receipt-level on purpose: the
  * manager sets them once and every row inherits them.
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
@@ -31,7 +31,12 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useWines } from '../../hooks/queries'
 import { useProviders } from '../../hooks/queries/useProviderQueries'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
-import { useUnsavedWorkGuard } from '../../hooks/useUnsavedWorkGuard'
+import {
+  clearSessionDraft,
+  readSessionDraft,
+  useUnsavedWorkGuard,
+  writeSessionDraft,
+} from '../../hooks/useUnsavedWorkGuard'
 import { persistBatchToInventory, type MenuScannerPersistResult } from '../../lib/menuScannerPersistence'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
@@ -52,12 +57,43 @@ interface ManualReceiptWorkspaceProps {
 
 const EMPTY_DRAFT = { name: '', producer: '', vintage: '', country: '', region: '', grapeVariety: '' }
 
+/**
+ * The receipt as typed, kept for this tab and this person in this house
+ * (F-712), so a refresh or a Back does not drop forty typed lines. A manual
+ * receipt has no purchase order, so the house is the whole key.
+ */
+interface KeptReceipt {
+  providerId: string
+  reference: string
+  defaultLocationId: string
+  rows: BatchReceiveRow[]
+  /** The save was out when this was written down: if the page died there,
+   *  some lines may already be in stock, and the receipt comes back saying so. */
+  saving?: boolean
+}
+const receiptKey = (scope: string) => `mdv:manual-receipt:${scope}`
+
+function readReceipt(scope: string): KeptReceipt | null {
+  const kept = readSessionDraft<KeptReceipt>(receiptKey(scope))
+  if (!kept || !Array.isArray(kept.rows)) return null
+  return {
+    providerId: kept.providerId ?? '',
+    reference: kept.reference ?? '',
+    defaultLocationId: kept.defaultLocationId ?? '',
+    // Row keys are minted from a counter that starts again with the page; a
+    // kept row must not share its key with the next row added.
+    rows: kept.rows.map((row) => ({ ...row, key: nextBatchRowKey('receipt') })),
+    saving: kept.saving === true,
+  }
+}
+
 export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualReceiptWorkspaceProps) {
   const { user, activeRestaurantId } = useAuth()
   const queryClient = useQueryClient()
   const { locations } = useStorageLocations()
   const restaurantId = activeRestaurantId || user?.restaurantId || ''
   const { data: providers = [] } = useProviders(restaurantId)
+  const scope = user?.userId && restaurantId ? `${user.userId}:${restaurantId}` : null
 
   const [providerId, setProviderId] = useState('')
   const [reference, setReference] = useState('')
@@ -69,12 +105,50 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // The receipt kept for THIS person in THIS house comes back; another
+  // house's lines never stay on screen across a switch (F-712).
+  const skipKeep = useRef(true)
+  useEffect(() => {
+    skipKeep.current = true
+    const kept = scope ? readReceipt(scope) : null
+    setProviderId(kept?.providerId ?? '')
+    setReference(kept?.reference ?? '')
+    setDefaultLocationId(kept?.defaultLocationId ?? '')
+    setRows(kept?.rows ?? [])
+    setError(
+      kept?.saving
+        ? 'This receipt was being saved when the page closed. Some lines may already be in stock: check the list before saving again.'
+        : null,
+    )
+  }, [scope])
+
+  // Written on every change, except in the commit where the house changed:
+  // there the state still holds the previous house's receipt.
+  useEffect(() => {
+    if (skipKeep.current) {
+      skipKeep.current = false
+      return
+    }
+    if (!scope) return
+    if (rows.length === 0 && !providerId && !reference.trim() && !defaultLocationId) {
+      clearSessionDraft(receiptKey(scope))
+      return
+    }
+    writeSessionDraft(receiptKey(scope), {
+      providerId,
+      reference,
+      defaultLocationId,
+      rows,
+      saving: isSaving,
+    } satisfies KeptReceipt)
+  }, [scope, providerId, reference, defaultLocationId, rows, isSaving])
+
   // A refresh or a Back used to drop the typed rows without a word (F-712).
   useUnsavedWorkGuard(
     isOpen && (rows.length > 0 || isSaving),
     isSaving
       ? 'This receipt is still being saved. Leave now and some lines may not be written.'
-      : 'This receipt has lines that are not saved. Leave and lose them?',
+      : 'This receipt has lines that are not saved yet. Leave anyway? They stay here on this tab.',
   )
 
   const { data: searchResults = [], isFetching: isSearching } = useWines({

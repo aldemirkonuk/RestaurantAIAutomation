@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,6 +32,12 @@ import {
   type SaleType,
 } from "../../utils/volumeUtils";
 import { useRestaurantSettingsStore } from "../../stores/restaurantSettingsStore";
+import {
+  clearSessionDraft,
+  readSessionDraft,
+  useUnsavedWorkGuard,
+  writeSessionDraft,
+} from "../../hooks/useUnsavedWorkGuard";
 
 type TabType = "search" | "photo";
 
@@ -61,12 +67,41 @@ interface AddWineToInventoryModalProps {
     storageLocationId?: string,
     volumeFields?: VolumeFields,
   ) => void;
+  /**
+   * Who is adding, in which house (`<person>:<house>`). With it, a picked
+   * wine and what was typed about it are kept for this tab, so a refresh or a
+   * Back does not drop them (F-712). Without it nothing is kept.
+   */
+  draftScope?: string;
 }
+
+/** Everything typed about one wine before it is added — the modal's state. */
+interface AddWineDraft {
+  activeTab: TabType;
+  searchQuery: string;
+  selectedWine: WineType | null;
+  quantity: number;
+  threshold: number;
+  costPerBottle: number | null;
+  isSample: boolean;
+  selectedStorageLocationId?: string;
+  bottleSizeMl: number;
+  customBottleSizeInput: string;
+  isCustomBottleSize: boolean;
+  saleType: SaleType;
+  pourSizeMl: number;
+  customPourSizeInput: string;
+  isCustomPourSize: boolean;
+  menuPriceGlass: number | null;
+  menuPriceBottle: number | null;
+}
+const addWineKey = (scope: string) => `mdv:add-wine:${scope}`;
 
 export function AddWineToInventoryModal({
   isOpen,
   onClose,
   onAddWine,
+  draftScope,
 }: AddWineToInventoryModalProps) {
   const { measurementUnit } = useRestaurantSettingsStore();
   const queryClient = useQueryClient();
@@ -151,26 +186,103 @@ export function AddWineToInventoryModal({
     );
   }, [apiWines, searchQuery]);
 
+  /** Puts the modal back to a kept draft, or to empty when there is none. */
+  const applyDraft = (d: AddWineDraft | null) => {
+    setActiveTab(d?.activeTab ?? "search");
+    setSearchQuery(d?.searchQuery ?? "");
+    setSelectedWine(d?.selectedWine ?? null);
+    setQuantity(d?.quantity ?? 1);
+    setThreshold(d?.threshold ?? 10);
+    setCostPerBottle(d?.costPerBottle ?? null);
+    setIsSample(d?.isSample ?? false);
+    setSelectedStorageLocationId(d?.selectedStorageLocationId);
+    setBottleSizeMl(d?.bottleSizeMl ?? 750);
+    setCustomBottleSizeInput(d?.customBottleSizeInput ?? "");
+    setIsCustomBottleSize(d?.isCustomBottleSize ?? false);
+    setSaleType(d?.saleType ?? "bottle");
+    setPourSizeMl(d?.pourSizeMl ?? 150);
+    setCustomPourSizeInput(d?.customPourSizeInput ?? "");
+    setIsCustomPourSize(d?.isCustomPourSize ?? false);
+    setMenuPriceGlass(d?.menuPriceGlass ?? null);
+    setMenuPriceBottle(d?.menuPriceBottle ?? null);
+  };
+
+  // The wine picked by THIS person in THIS house comes back after a refresh
+  // or a Back; another house's pick (and its storage spot) never carries over.
+  const skipKeep = useRef(true);
+  useEffect(() => {
+    skipKeep.current = true;
+    applyDraft(
+      draftScope
+        ? readSessionDraft<AddWineDraft>(addWineKey(draftScope))
+        : null,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftScope]);
+
+  // Written on every change, except in the commit where the house changed:
+  // there the state still holds the previous house's pick. Nothing picked,
+  // nothing kept.
+  useEffect(() => {
+    if (skipKeep.current) {
+      skipKeep.current = false;
+      return;
+    }
+    if (!draftScope) return;
+    if (!selectedWine) {
+      clearSessionDraft(addWineKey(draftScope));
+      return;
+    }
+    writeSessionDraft(addWineKey(draftScope), {
+      activeTab,
+      searchQuery,
+      selectedWine,
+      quantity,
+      threshold,
+      costPerBottle,
+      isSample,
+      selectedStorageLocationId,
+      bottleSizeMl,
+      customBottleSizeInput,
+      isCustomBottleSize,
+      saleType,
+      pourSizeMl,
+      customPourSizeInput,
+      isCustomPourSize,
+      menuPriceGlass,
+      menuPriceBottle,
+    } satisfies AddWineDraft);
+  }, [
+    draftScope,
+    activeTab,
+    searchQuery,
+    selectedWine,
+    quantity,
+    threshold,
+    costPerBottle,
+    isSample,
+    selectedStorageLocationId,
+    bottleSizeMl,
+    customBottleSizeInput,
+    isCustomBottleSize,
+    saleType,
+    pourSizeMl,
+    customPourSizeInput,
+    isCustomPourSize,
+    menuPriceGlass,
+    menuPriceBottle,
+  ]);
+
+  // A refresh or a Back used to drop the picked wine without a word (F-712).
+  useUnsavedWorkGuard(
+    isOpen && selectedWine !== null,
+    draftScope
+      ? "This wine is not added to your stock yet. Leave anyway? It stays here on this tab."
+      : "This wine is not added to your stock yet. Leave and lose what you typed?",
+  );
+
   const handleClose = () => {
-    setActiveTab("search");
-    setSearchQuery("");
-    setSelectedWine(null);
-    setQuantity(1);
-    setThreshold(10);
-    setCostPerBottle(0);
-    setIsSample(false);
-    setSelectedStorageLocationId(undefined);
-    setBottleSizeMl(750);
-    setCustomBottleSizeInput("");
-    setIsCustomBottleSize(false);
-    setSaleType("bottle");
-    setPourSizeMl(150);
-    setCustomPourSizeInput("");
-    setIsCustomPourSize(false);
-    setMenuPriceGlass(null);
-    setMenuPriceBottle(null);
-    setCostPerBottle(null);
-    setIsSample(false);
+    applyDraft(null);
     onClose();
   };
 

@@ -239,7 +239,7 @@ export function InventoryCommandPage() {
     locationsUnavailable,
     mappingsUnavailable,
   } = useStorageLocations();
-  const { availableRestaurants, refreshBranches, activeRole, user } = useAuth();
+  const { availableRestaurants, refreshBranches, activeRole, user, activeRestaurantId } = useAuth();
   // ADR 0193: a wine's price is the manager's to change. The page offers the
   // controls to owners and managers only; the gateway refuses anyone else
   // regardless of what this page shows.
@@ -1773,6 +1773,11 @@ export function InventoryCommandPage() {
       <AddWineToInventoryModal
         isOpen={showAddWine}
         onClose={() => setShowAddWine(false)}
+        draftScope={
+          user?.userId && (activeRestaurantId || user?.restaurantId)
+            ? `${user.userId}:${activeRestaurantId || user.restaurantId}`
+            : undefined
+        }
         onAddWine={async (
           wine: any,
           quantity: number,
