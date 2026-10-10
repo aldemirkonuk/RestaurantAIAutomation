@@ -248,6 +248,14 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     staleTime: 15_000,
   })
 
+  /** The lines Agree still waits on, so each can be kept as billed (A11). */
+  const differencesQ = useQuery({
+    queryKey: ['delivery-differences', soleDelivery?.deliveryId],
+    queryFn: () => deliveriesApi.differences(soleDelivery!.deliveryId),
+    enabled: !!soleDelivery,
+    staleTime: 15_000,
+  })
+
   /** The gateway's message, or the transport's when there is nothing better. */
   const messageFrom = (err: unknown): string => {
     const body = (err as { response?: { data?: { message?: unknown } } })?.response?.data
@@ -290,15 +298,25 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     }
   }
 
-  /** Run one delivery write, refresh, and show the gateway's words if it refused. */
-  const deliveryWrite = async (fn: () => Promise<unknown>) => {
+  /**
+   * Run one delivery write, refresh, and show the gateway's words if it
+   * refused. Resolves `false` on a refusal, so a form can keep what was typed.
+   */
+  const deliveryWrite = async (fn: () => Promise<unknown>): Promise<boolean> => {
     setWriting(true)
     setDeliveryError(null)
     try {
       await fn()
-      await Promise.all([q.refetch(), eventQ.refetch(), proposalsQ.refetch()])
+      await Promise.all([
+        q.refetch(),
+        eventQ.refetch(),
+        proposalsQ.refetch(),
+        differencesQ.refetch(),
+      ])
+      return true
     } catch (err) {
       setDeliveryError(messageFrom(err))
+      return false
     } finally {
       setWriting(false)
     }
@@ -617,6 +635,16 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                   ? () => deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
                   : undefined
               }
+              differences={differencesQ.data ?? null}
+              onAcceptAsBilled={(line, reason) =>
+                deliveryWrite(() =>
+                  deliveriesApi.acceptAsBilled(soleDelivery.deliveryId, {
+                    documentId: line.documentId,
+                    lineNo: line.lineNo,
+                    reason,
+                  }),
+                )
+              }
             />
           ) : (
             <p data-testid="gates-unavailable" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
@@ -779,7 +807,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                             : { createDelivery: true }),
                           ...(doc.jurisdiction ? { jurisdiction: doc.jurisdiction } : {}),
                         }),
-                      )
+                      ).then(() => undefined)
               }
             />
           )}

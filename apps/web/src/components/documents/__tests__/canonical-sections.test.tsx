@@ -875,9 +875,97 @@ describe('ProposalThread — every position stays (ADR 0103 D7)', () => {
       note: 'we counted ten',
     })
   })
+
+  // sim F-673: a refused proposal used to wipe the form and close it.
+  it('keeps the form open, as typed, with the refusal beside it when the gateway refuses', async () => {
+    const { rerender } = render(
+      <ProposalThread proposals={[]} onPropose={async () => false} />,
+    )
+    await userEvent.click(screen.getByTestId('open-proposal-form'))
+    await userEvent.type(screen.getByTestId('proposal-qty'), '10')
+    await userEvent.type(screen.getByTestId('proposal-note'), 'two broken')
+    await userEvent.click(screen.getByTestId('submit-proposal'))
+    rerender(
+      <ProposalThread
+        proposals={[]}
+        onPropose={async () => false}
+        error="This delivery is VERIFIED."
+      />,
+    )
+    expect(screen.getByTestId('proposal-form')).toBeTruthy()
+    expect((screen.getByTestId('proposal-qty') as HTMLInputElement).value).toBe('10')
+    expect((screen.getByTestId('proposal-note') as HTMLTextAreaElement).value).toBe(
+      'two broken',
+    )
+    expect(screen.getByTestId('proposal-error').textContent).toMatch(/VERIFIED/)
+  })
+
+  it('still clears and closes the form once the position is recorded', async () => {
+    render(<ProposalThread proposals={[]} onPropose={async () => true} />)
+    await userEvent.click(screen.getByTestId('open-proposal-form'))
+    await userEvent.type(screen.getByTestId('proposal-note'), 'two broken')
+    await userEvent.click(screen.getByTestId('submit-proposal'))
+    expect(screen.queryByTestId('proposal-form')).toBeNull()
+  })
+
+  // sim F-666: only the other side accepts a position.
+  it('offers Accept on the vendor’s positions and never on our own', () => {
+    render(
+      <ProposalThread
+        proposals={[proposal(), proposal({ id: 'p-2', side: 'vendor' })]}
+        onAccept={async () => {}}
+      />,
+    )
+    const rows = screen.getAllByTestId('proposal-row')
+    expect(within(rows[0]).queryByTestId('accept-proposal')).toBeNull()
+    expect(within(rows[1]).getByTestId('accept-proposal')).toBeTruthy()
+  })
 })
 
 describe('DeliveryGates — the two gates, explained before they are pressed', () => {
+  // sim F-670: the Agree refusal points at "keep it as billed", which had no button.
+  it('offers keep-as-billed on each line Agree waits on, and sends its key and the reason', async () => {
+    const sent: unknown[] = []
+    render(
+      <DeliveryGates
+        delivery={event()}
+        onAgree={async () => {}}
+        differences={[
+          { documentId: 'doc-inv', lineNo: 1, label: 'Okuzgozu 2021', why: 'counted 10, billed 12' },
+        ]}
+        onAcceptAsBilled={async (line, reason) => {
+          sent.push({ line, reason })
+        }}
+      />,
+    )
+    const row = screen.getByTestId('open-difference')
+    expect(row.textContent).toMatch(/Okuzgozu 2021 · line 1 · counted 10, billed 12/)
+    expect(row.textContent).not.toMatch(/doc-inv/)
+    await userEvent.click(screen.getByTestId('keep-as-billed'))
+    const confirm = screen.getByTestId('keep-as-billed-confirm') as HTMLButtonElement
+    // A reason in their own words, or nothing is sent.
+    expect(confirm.disabled).toBe(true)
+    await userEvent.type(screen.getByTestId('keep-as-billed-reason'), 'vendor credits next week')
+    await userEvent.click(confirm)
+    expect(sent).toEqual([
+      {
+        line: expect.objectContaining({ documentId: 'doc-inv', lineNo: 1 }),
+        reason: 'vendor credits next week',
+      },
+    ])
+  })
+
+  it('offers no keep-as-billed once the delivery is agreed', () => {
+    render(
+      <DeliveryGates
+        delivery={event({ state: 'AGREED', agreedAt: '2026-08-15T10:00:00Z' })}
+        differences={[{ documentId: 'doc-inv', lineNo: 1, label: 'Okuzgozu 2021' }]}
+        onAcceptAsBilled={async () => {}}
+      />,
+    )
+    expect(screen.queryByTestId('open-differences')).toBeNull()
+  })
+
   it('says what AGREED needs while it is not yet agreed', () => {
     render(<DeliveryGates delivery={event()} onAgree={async () => {}} />)
     const text = screen.getByTestId('delivery-gates').textContent ?? ''

@@ -22,17 +22,28 @@
  * rather than absorb it.
  */
 
-import type { DeliveryEvent } from '../../services/api/deliveries'
+import { useState } from 'react'
+import type { DeliveryEvent, OpenDifference } from '../../services/api/deliveries'
 import { MONO, SERIF, fmtStamp } from './canonical-format'
 
 export interface DeliveryGatesProps {
   delivery: DeliveryEvent
-  onAgree?: () => Promise<void>
-  onVerify?: () => Promise<void>
+  onAgree?: () => Promise<unknown>
+  onVerify?: () => Promise<unknown>
+  /**
+   * The lines Agree is still waiting on (ADR 0103 A11), straight from the
+   * gateway. Each can be kept as billed here — the act the Agree refusal
+   * points at, which used to have no button (sim F-670).
+   */
+  differences?: OpenDifference[] | null
+  /** Resolves `false` when the gateway refused; the reason stays typed. */
+  onAcceptAsBilled?: (line: OpenDifference, reason: string) => Promise<unknown>
   busy?: boolean
   /** The gateway's own words when it refused. Never paraphrased. */
   error?: string | null
 }
+
+const keyOf = (d: OpenDifference) => `${d.documentId}#${d.lineNo}`
 
 const AGREE_RULES: Record<string, string> = {
   both_sides_recorded:
@@ -45,9 +56,13 @@ export function DeliveryGates({
   delivery,
   onAgree,
   onVerify,
+  differences,
+  onAcceptAsBilled,
   busy,
   error,
 }: DeliveryGatesProps) {
+  const [keeping, setKeeping] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
   const agreed = !!delivery.agreedAt
   const verified = !!delivery.verifiedAt
   const lapsed = delivery.state === 'LAPSED' || delivery.state === 'LAPSED_AMENDED'
@@ -126,6 +141,65 @@ export function DeliveryGates({
               </>
             )}
           </p>
+          {!agreed && differences && differences.length > 0 && (
+            <ul
+              data-testid="open-differences"
+              style={{ margin: '4px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 4 }}
+            >
+              {differences.map((d) => (
+                <li key={keyOf(d)} data-testid="open-difference" style={{ fontSize: 10.5 }}>
+                  <span style={{ fontWeight: 600 }}>{d.label}</span>
+                  {` · line ${d.lineNo}`}
+                  {d.why ? ` · ${d.why}` : ''}
+                  {onAcceptAsBilled && keeping !== keyOf(d) && (
+                    <button
+                      type="button"
+                      data-testid="keep-as-billed"
+                      className="cd-no-print"
+                      disabled={busy}
+                      onClick={() => {
+                        setKeeping(keyOf(d))
+                        setReason('')
+                      }}
+                      style={{ ...linkButton, marginLeft: 8 }}
+                    >
+                      Keep it as billed
+                    </button>
+                  )}
+                  {onAcceptAsBilled && keeping === keyOf(d) && (
+                    <span className="cd-no-print" style={{ display: 'grid', gap: 4, marginTop: 3 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600 }}>
+                        Why you are not disputing it
+                        <input
+                          data-testid="keep-as-billed-reason"
+                          value={reason}
+                          onChange={(e) => setReason(e.target.value)}
+                          style={field}
+                        />
+                      </label>
+                      <span style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          data-testid="keep-as-billed-confirm"
+                          disabled={busy || !reason.trim()}
+                          onClick={async () => {
+                            const done = await onAcceptAsBilled(d, reason.trim())
+                            if (done !== false) setKeeping(null)
+                          }}
+                          style={primary}
+                        >
+                          {busy ? 'Recording…' : 'Keep it as billed'}
+                        </button>
+                        <button type="button" onClick={() => setKeeping(null)} style={linkButton}>
+                          Cancel
+                        </button>
+                      </span>
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           {!agreed && onAgree && (
             <button
               type="button"
@@ -195,6 +269,28 @@ const primary: React.CSSProperties = {
   background: 'var(--seal, #1A5E6B)',
   color: '#FFFDF8',
   cursor: 'pointer',
+}
+
+const linkButton: React.CSSProperties = {
+  font: 'inherit',
+  fontSize: 11,
+  fontWeight: 600,
+  color: 'var(--seal-deep, #14515C)',
+  background: 'none',
+  border: 0,
+  padding: 0,
+  cursor: 'pointer',
+}
+
+const field: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  marginTop: 2,
+  padding: '4px 7px',
+  fontSize: 12,
+  border: '1px solid var(--paper-2, #EAE4D8)',
+  borderRadius: 7,
+  background: 'var(--paper-0, #FFFDF8)',
 }
 
 export default DeliveryGates

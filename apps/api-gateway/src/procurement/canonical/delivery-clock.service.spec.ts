@@ -209,6 +209,61 @@ describe("DeliveryClockService", () => {
       });
     });
 
+    // sim F-668: the invoice's own date when it states one; the delivery date
+    // only when it states none, and the row says which it counted from.
+    describe("an issue-date clock whose document states no date", () => {
+      beforeEach(() => {
+        db.answers.vendor_terms = {
+          data: [
+            {
+              id: "vt",
+              restaurant_id: null,
+              provider_id: null,
+              days: 8,
+              basis: "document_issue_date",
+              signed_ticket_is_final: false,
+            },
+          ],
+          error: null,
+        };
+        db.insertAnswers.delivery_timers = {
+          data: { state: "open", due_at: null },
+          error: null,
+        };
+      });
+      const run = (basisAt: Record<string, unknown>) =>
+        service.schedule({
+          restaurantId: REST,
+          deliveryId: DEL,
+          documentId: "doc-1",
+          clock: "objection_window",
+          documentType: "invoice",
+          providerId: null,
+          jurisdiction: "TR",
+          basisAt,
+        });
+
+      it("counts from the delivery date and records that basis, not the rule's", async () => {
+        await run({ delivery: "2026-08-14T00:00:00Z", issueMissing: true });
+        const write = db.writes.find((w) => w.table === "delivery_timers");
+        expect(write?.payload).toMatchObject({
+          state: "open",
+          basis: "delivery_date",
+          due_at: "2026-08-22T00:00:00.000Z",
+        });
+      });
+
+      it("never borrows the delivery date when the issue date was not READ", async () => {
+        await run({ delivery: "2026-08-14T00:00:00Z", issue: null });
+        const write = db.writes.find((w) => w.table === "delivery_timers");
+        expect(write?.payload).toMatchObject({
+          state: "blocked_unknown",
+          basis: "document_issue_date",
+          due_at: null,
+        });
+      });
+    });
+
     it("treats an already-scheduled clock as idempotent, not as a failure (A10)", async () => {
       db.answers.vendor_terms = {
         data: [
@@ -502,6 +557,13 @@ describe("DeliveryClockService", () => {
 
     it("names TTK 21/2 for a Turkish objection window", () => {
       expect(lapseDeeming("objection_window", "TR")).toMatch(/TTK 21\/2/);
+      expect(lapseDeeming("objection_window", "TR")).not.toMatch(/delivery date/);
+    });
+
+    it("says so when the eight days were counted from the delivery date (sim F-668)", () => {
+      expect(
+        lapseDeeming("objection_window", "TR", "delivery_date"),
+      ).toMatch(/showed no date of its own.*counted from the delivery date/);
     });
 
     it("says the money may already have left for a payment clock", () => {

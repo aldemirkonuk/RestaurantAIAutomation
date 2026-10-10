@@ -44,7 +44,11 @@ export interface ProposalThreadProps {
   failedRead?: string | null
   jurisdiction?: string | null
   currency?: string | null
-  /** Absent = read-only (no delivery, or the caller has no write path). */
+  /**
+   * Absent = read-only (no delivery, or the caller has no write path).
+   * Resolves `false` when the gateway refused: the form then stays open with
+   * what was typed and the refusal beside it (sim F-673).
+   */
   onPropose?: (body: {
     side: 'restaurant' | 'vendor'
     reason: ReasonClass
@@ -52,14 +56,14 @@ export interface ProposalThreadProps {
     qtyProposedBottles?: number
     moneyAtRisk?: number
     note?: string
-  }) => Promise<void>
+  }) => Promise<unknown>
   onCounter?: (proposalId: string, body: {
     side: 'restaurant' | 'vendor'
     reason: ReasonClass
     moneyAtRisk?: number
     note?: string
-  }) => Promise<void>
-  onAccept?: (proposalId: string) => Promise<void>
+  }) => Promise<unknown>
+  onAccept?: (proposalId: string) => Promise<unknown>
   /** The line the sheet has selected, pre-filled into a new proposal. */
   selectedLine?: number | null
   busy?: boolean
@@ -120,8 +124,14 @@ export function ProposalThread({
       ...(money.trim() ? { moneyAtRisk: parseDecimal(money, group) ?? Number.NaN } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
     }
-    if (counteringId && onCounter) await onCounter(counteringId, body)
-    else if (onPropose) await onPropose(body)
+    const done =
+      counteringId && onCounter
+        ? await onCounter(counteringId, body)
+        : onPropose
+          ? await onPropose(body)
+          : undefined
+    // A refusal keeps the form as it was typed; `error` shows why beside it.
+    if (done === false) return
     setQty('')
     setMoney('')
     setNote('')
@@ -191,7 +201,9 @@ export function ProposalThread({
 
             {p.status === 'open' && (onAccept || onCounter) && (
               <span className="cd-no-print" style={{ display: 'flex', gap: 10, marginTop: 2 }}>
-                {onAccept && (
+                {/* Only the other side accepts a position (sim F-666): the
+                    gateway refuses the house accepting its own. */}
+                {onAccept && p.side === 'vendor' && (
                   <button
                     type="button"
                     data-testid="accept-proposal"
