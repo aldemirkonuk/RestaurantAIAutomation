@@ -2250,23 +2250,33 @@ export class MenusService {
     }
   }
 
-  async getOnboardingProgress(userId: string) {
+  /**
+   * The checklist of the house the session is in (F-240). The row is kept per
+   * person per house (UNIQUE (user_id, restaurant_id),
+   * 20261231800000_onboarding_progress_is_kept_per_house.sql); read by person
+   * alone, a second house showed the first house's checklist. A house with no
+   * row for this person (opened through Add a location before that file, or
+   * joined by invite) has no checklist: 404, never another house's.
+   */
+  async getOnboardingProgress(userId: string, restaurantId: string | null) {
+    if (!restaurantId)
+      throw new NotFoundException("Onboarding progress not found for this house");
     const { data, error } = await this.dbService.supabase
       .from("user_onboarding_progress")
       .select("*")
       .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
 
     if (error) throw error;
     if (!data)
       throw new NotFoundException(
-        "Onboarding progress not found for this user",
+        "Onboarding progress not found for this house",
       );
 
-    // Restaurant-scoped self-heal: user_onboarding_progress is keyed by
-    // user_id, so an invitee who joins after the owner already uploaded a
-    // menu would otherwise see "Upload your wine menu" as still pending.
-    // Auto-satisfy it from the restaurant's actual state instead.
+    // Restaurant-scoped self-heal: an invitee who joins after the owner
+    // already uploaded a menu would otherwise see "Upload your wine menu" as
+    // still pending. Auto-satisfy it from the house's actual state instead.
     let menuUploaded = !!data.menu_uploaded;
     if (!menuUploaded) {
       const { data: activeMenu } = await this.dbService.supabase
@@ -2328,6 +2338,7 @@ export class MenusService {
 
   async updateOnboardingProgress(
     userId: string,
+    restaurantId: string | null,
     dto: UpdateOnboardingProgressDto,
   ) {
     const updates: Record<string, boolean | string> = {};
@@ -2340,7 +2351,7 @@ export class MenusService {
       updates.checklist_dismissed = dto.checklist_dismissed;
 
     // Auto-set completed_at when all three tasks become true
-    const current = await this.getOnboardingProgress(userId);
+    const current = await this.getOnboardingProgress(userId, restaurantId);
     const merged = { ...current, ...updates };
     if (
       merged.menu_uploaded &&
@@ -2354,7 +2365,7 @@ export class MenusService {
     const { data, error } = await this.dbService.supabase
       .from("user_onboarding_progress")
       .update(updates)
-      .eq("user_id", userId)
+      .eq("id", current.id)
       .select()
       .single();
 

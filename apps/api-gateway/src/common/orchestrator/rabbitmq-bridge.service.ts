@@ -935,6 +935,15 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         .single();
 
       if (error) {
+        // F-047: the one-row-per-message index refused a second copy that
+        // raced past the read in step 3. That is the dedupe answering, not
+        // a failure.
+        if (error.code === "23505" && gmailMessageId) {
+          this.logger.log(
+            `handleInboundEmail: already stored gmail_message_id=${gmailMessageId}, skipping`,
+          );
+          return;
+        }
         this.logger.error(
           `handleInboundEmail: DB insert failed — ${error.message}`,
         );
