@@ -87,6 +87,7 @@ import {
   type ShelfReceived,
 } from "./shelf-received";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
+import { resolveBellLines } from "../notifications/resolve-bell-lines";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
   OrderSource,
@@ -4232,6 +4233,7 @@ export class ProcurementService {
         cancelledFromStoredStatus: (preRow as { status: string }).status,
       },
     );
+    await this.clearSealLine(restaurantId, orderId);
 
     // D-10: Cascade PENDING_APPROVAL conversations to CANCELLED so they don't
     // appear in the active conversations panel after order cancellation.
@@ -4923,6 +4925,7 @@ export class ProcurementService {
     };
 
     const order = this.mapOrderRow(orderRow);
+    await this.clearSealLine(restaurantId, orderId);
 
     // Reserve shadow stock so managers can see "X bottles on order" before
     // delivery — once per order, in bottles (F-491, F-494).
@@ -5257,7 +5260,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, currency, procurement_order_items(price_uom, price_pack_size)",
+          "id, order_number, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, currency, procurement_order_items(price_uom, price_pack_size)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -5321,6 +5324,11 @@ export class ProcurementService {
     if (roleSatisfies(actorRole, decision.requiredRole)) return;
 
     await this.parkOrderAwaitingApproval(restaurantId, orderId, row.status);
+    await this.tellSealHolders(restaurantId, orderId, {
+      orderNumber: (orderRow as { order_number?: string | null }).order_number ?? null,
+      requiredRole: decision.requiredRole,
+      refusedUserId: userId,
+    });
 
     const sentence = refusalSentence(decision, actorRole);
     const receipt = await recordApprovalRefusal(
@@ -5786,6 +5794,88 @@ export class ProcurementService {
       },
       input,
     );
+  }
+
+  /**
+   * Who may read this house's money on a bell line: its owners and managers
+   * (money policy 2026-10-07, F-530), or only its owners when `ownersOnly`.
+   * Empty when they cannot be read — a caller then writes no money line,
+   * rather than falling back to the whole house.
+   */
+  private async moneyHoldersHere(
+    restaurantId: string,
+    ownersOnly = false,
+  ): Promise<string[]> {
+    if (!this.vendorSendAuthority) return [];
+    try {
+      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(restaurantId);
+      return [...new Set(ownersOnly ? owners : [...owners, ...managers])];
+    } catch (err: any) {
+      this.logger.warn(
+        `This house's owners and managers could not be read for a bell line (${err?.message ?? String(err)}).`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * F-527. A manager's seal was refused by the house's rules and the order is
+   * parked for an owner (or a manager, when the rule asks for one). The people
+   * who may seal it are told once per order, on the bell and their phone, and
+   * the line names the order so the bell's "Approve it" hand-off reaches it.
+   * The line carries no amount. Best-effort: the refusal stands whatever
+   * happens here.
+   */
+  private async tellSealHolders(
+    restaurantId: string,
+    orderId: string,
+    input: { orderNumber: string | null; requiredRole: string; refusedUserId: string },
+  ): Promise<void> {
+    if (!this.notificationsService) return;
+    try {
+      const ownersOnly = input.requiredRole === "owner";
+      const audience = (await this.moneyHoldersHere(restaurantId, ownersOnly)).filter(
+        (id) => id !== input.refusedUserId,
+      );
+      if (audience.length === 0) {
+        this.logger.warn(`Order ${orderId} waits for a seal, but nobody who may seal it could be told; /orders lists it.`);
+        return;
+      }
+      const names = this.vendorSendAuthority
+        ? await this.vendorSendAuthority.namesOf([input.refusedUserId]).catch(() => new Map<string, string>())
+        : new Map<string, string>();
+      const who = names.get(input.refusedUserId) ?? "A member of the team";
+      const order = input.orderNumber ?? "An order";
+      await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "order_pending",
+          title: `${order} waits for your seal`,
+          message: `${who} tried to approve ${order}, and this house's rules need ${
+            ownersOnly ? "an owner" : "an owner or a manager"
+          } to seal it. It waits on Orders until one of you does.`,
+          priority: "high",
+          actionUrl: `/orders?order=${orderId}`,
+          actionLabel: "Review and seal",
+          groupKey: `order_awaiting_seal:${orderId}`,
+          metadata: { orderId, requiredRole: input.requiredRole },
+        },
+        // Once per order: a second refused try on the same order adds no line.
+        { onlyUserIds: audience, dedupeWithinMinutes: 365 * 24 * 60 },
+      );
+    } catch (err: any) {
+      this.logger.warn(`Order ${orderId} waits for a seal, but the people who may seal it were not told (${err?.message ?? String(err)}).`);
+    }
+  }
+
+  /** F-526: the "waits for your seal" line clears once the order is sealed or ended. */
+  private async clearSealLine(restaurantId: string, orderId: string): Promise<void> {
+    const bell = await resolveBellLines(this.databaseService.supabase, restaurantId, {
+      groupKey: `order_awaiting_seal:${orderId}`,
+    });
+    if (!bell.ok) {
+      this.logger.warn(`Order ${orderId}'s "waits for your seal" line was not cleared (${bell.error}).`);
+    }
   }
 
   /**
@@ -8162,29 +8252,57 @@ export class ProcurementService {
 
     // The manager hears about a bad delivery immediately, as its own task — the verify
     // task above has just been resolved, so the discrepancy needs its own thread (D-E).
+    //
+    // F-530: the line says what was billed against what was agreed, and its
+    // metadata carries the credit due and the landed unit cost — house money.
+    // It goes to the owners and managers only, and the phone push carries no
+    // figure. Without a way to name them, nothing is written: a money line
+    // must not fall back to the whole house.
     if (match && isDiscrepancy(match.verdict) && this.notificationsService) {
-      await this.notificationsService.persistForRestaurant(
-        restaurantId,
-        {
-          type: "invoice_received",
-          title: `Delivery discrepancy: ${order.wineName || order.orderNumber || "order"}`,
-          message: match.summary,
-          priority: "critical",
-          actionUrl: `/inventory?verify=${orderId}`,
-          actionLabel: "Review match",
-          groupKey: `receipt_discrepancy:${orderId}`,
-          metadata: {
-            orderId,
-            inventoryId: (orderRow as any).inventory_id,
-            matchStatus: match.verdict,
-            backorderQty: match.backorderQty,
-            creditDue: match.creditDue,
-            effectiveUnitCost: match.effectiveUnitCost,
-            providerId: (orderRow as any).provider_id,
+      const holders = await this.moneyHoldersHere(restaurantId);
+      if (holders.length === 0) {
+        this.logger.warn(
+          `verifyReceipt: order ${orderId} has a delivery discrepancy, but no owner or manager could be named to tell; /inventory lists it.`,
+        );
+      } else {
+        await this.notificationsService.persistForRestaurant(
+          restaurantId,
+          {
+            type: "invoice_received",
+            title: `Delivery discrepancy: ${order.wineName || order.orderNumber || "order"}`,
+            message: match.summary,
+            priority: "critical",
+            actionUrl: `/inventory?verify=${orderId}`,
+            actionLabel: "Review match",
+            groupKey: `receipt_discrepancy:${orderId}`,
+            metadata: {
+              orderId,
+              inventoryId: (orderRow as any).inventory_id,
+              matchStatus: match.verdict,
+              backorderQty: match.backorderQty,
+              creditDue: match.creditDue,
+              effectiveUnitCost: match.effectiveUnitCost,
+              providerId: (orderRow as any).provider_id,
+            },
           },
-        },
-        { dedupeWithinMinutes: 24 * 60 },
+          {
+            dedupeWithinMinutes: 24 * 60,
+            onlyUserIds: holders,
+            pushData: { orderId, matchStatus: match.verdict },
+          },
+        );
+      }
+    } else if (match && !isDiscrepancy(match.verdict)) {
+      // F-526: a later check found the delivery and the invoice agree, so an
+      // earlier "Delivery discrepancy" line for this order is no longer true.
+      const bell = await resolveBellLines(
+        this.databaseService.supabase,
+        restaurantId,
+        { groupKey: `receipt_discrepancy:${orderId}` },
       );
+      if (!bell.ok) {
+        this.logger.warn(`verifyReceipt: order ${orderId}'s old discrepancy line was not cleared (${bell.error}).`);
+      }
     }
 
     await this.emitOrderChangeEvent(
@@ -8988,6 +9106,8 @@ export class ProcurementService {
           actionLabel: "Read it and send",
           // The only words a push of this may ever carry (founder answer 5,
           // 2026-09-21): no names on a locked screen.
+          // F-526: cleared for every owner and manager once one of them sends it.
+          groupKey: `vendor_send_requested:${input.orderId}`,
           metadata: { orderId: input.orderId, requestedBy: input.userId, lockScreenText: SEND_REQUEST_PUSH_TEXT },
         },
         { onlyUserIds: audience },
@@ -9315,6 +9435,18 @@ export class ProcurementService {
     // Best-effort: the letter has gone, and failing the send because the bell
     // failed would tell the sender something false.
     const requester = (conv as any).send_requested_by as string | null;
+    // F-526: the "<who> asks you to send a letter" line clears for every owner
+    // and manager it went to, not only for the one who sent it. Matched by
+    // type and order, so a line written before it carried a group key clears too.
+    if (requester) {
+      const bell = await resolveBellLines(this.databaseService.supabase, restaurantId, {
+        type: "vendor_send_requested",
+        orderId,
+      });
+      if (!bell.ok) {
+        this.logger.warn(`The letter for order ${orderId} went, but its "asks you to send" line was not cleared (${bell.error}).`);
+      }
+    }
     if (requester && requester !== actor.userId) {
       await this.tellRequesterItWent({
         restaurantId,

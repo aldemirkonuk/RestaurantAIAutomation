@@ -330,6 +330,57 @@ describe('the bell', () => {
   });
 });
 
+describe('the bell and lines put to sleep on /notifications (F-529)', () => {
+  const plain = (id: string, title: string, agoMs: number) => ({
+    ...lowStock(id, title, agoMs),
+    type: 'order_delivered',
+    metadata: {},
+  });
+  const sleep = (id: string, untilMs: number, seenAt: number) =>
+    window.localStorage.setItem(
+      'mudavym.notifications.snooze.rest-A',
+      JSON.stringify([{ id, until: Date.now() + untilMs, seenAt, seenFolded: 0 }]),
+    );
+  afterEach(() => window.localStorage.clear());
+
+  it('hides the sleeping line, takes it off the number, and says so', async () => {
+    sleep('n2', 60 * MINUTE, Date.now());
+    answer({
+      count: 2,
+      rows: [plain('n1', 'Barolo arrived', 2 * MINUTE), plain('n2', 'Yakut arrived', 10 * MINUTE)],
+    });
+    mount(<HouseHeader page="providers" />);
+    const bell = await screen.findByRole('button', { name: 'Notifications (1 unread)' });
+    expect(bell.querySelector('.mdv-hdr__badge')?.textContent).toBe('1');
+    fireEvent.click(bell);
+    expect(await screen.findByText('Barolo arrived')).toBeTruthy();
+    expect(screen.queryByText('Yakut arrived')).toBeNull();
+    expect(
+      screen.getByText(/1 line you put to sleep in this browser is hidden and not counted/),
+    ).toBeTruthy();
+  });
+
+  it('a line whose sleep ran out is back on the bell and in the number', async () => {
+    sleep('n2', -MINUTE, Date.now());
+    answer({
+      count: 2,
+      rows: [plain('n1', 'Barolo arrived', 2 * MINUTE), plain('n2', 'Yakut arrived', 10 * MINUTE)],
+    });
+    mount(<HouseHeader page="providers" />);
+    expect(await screen.findByRole('button', { name: 'Notifications (2 unread)' })).toBeTruthy();
+  });
+
+  it('a line the register wrote about again wakes, as it does on the page', async () => {
+    sleep('n2', 60 * MINUTE, Date.now() - 60 * MINUTE);
+    answer({
+      count: 2,
+      rows: [plain('n1', 'Barolo arrived', 2 * MINUTE), plain('n2', 'Yakut arrived', 10 * MINUTE)],
+    });
+    mount(<HouseHeader page="providers" />);
+    expect(await screen.findByRole('button', { name: 'Notifications (2 unread)' })).toBeTruthy();
+  });
+});
+
 /* ── the account ────────────────────────────────────────────────────────── */
 
 describe('the account menu', () => {

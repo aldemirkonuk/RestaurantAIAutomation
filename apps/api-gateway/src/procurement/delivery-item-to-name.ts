@@ -42,6 +42,7 @@ import {
   type EnqueueOutcome,
 } from "../inventory/house-item-research";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
+import { resolveBellLines } from "../notifications/resolve-bell-lines";
 
 type Client = {
   from: (table: string) => any;
@@ -162,6 +163,15 @@ export async function closeDeliveryItemToNameBookedElsewhere(
       .select("id");
     if (error) {
       return { ok: false, error: `the ask to name the item could not be closed (${error.message})` };
+    }
+    // F-526: the owners' and managers' "Name the item of ORD-…" line clears
+    // with the ask. Also when nothing was open to close: the ask is then
+    // already named or closed, and its line is stale either way.
+    const bell = await resolveBellLines(client, input.restaurantId, {
+      groupKey: `delivery_item_to_name:${input.orderId}`,
+    });
+    if (!bell.ok) {
+      return { ok: false, error: `the ask is closed, but its line on the bell could not be cleared (${bell.error})` };
     }
     return { ok: true, closed: Array.isArray(data) && data.length > 0 };
   } catch (err: any) {
@@ -612,6 +622,15 @@ export async function nameDeliveredItem(
     }
   } catch (err: any) {
     logger.error(`delivery_item_named happened but the audit row failed to write: ${err?.message ?? String(err)}`);
+  }
+
+  // F-526: the item is named, so the "Name the item of ORD-…" line clears
+  // for every owner and manager it was sent to, not only for the one who named it.
+  const bell = await resolveBellLines(client, input.restaurantId, {
+    groupKey: `delivery_item_to_name:${input.orderId}`,
+  });
+  if (!bell.ok) {
+    logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but its line on the bell was not cleared (${bell.error}).`);
   }
 
   const research = await queueResearchIfLibraryLacks(client, {

@@ -30,14 +30,12 @@
  *                 SMS goes out inside the quiet window. The rendered copy never
  *                 claimed otherwise; this comment did, by counting :637 as a
  *                 fourth handler (second-pass audit DEFECT 1).
- *   push        → `push_enabled` is written three times and read never.
- *                 Push DELIVERY code does exist in the orchestrator
- *                 (`push_service.send_push_notification`), but the channel
- *                 chooser picks by urgency and `<type>_channels`, its device
- *                 table `push_subscriptions` is absent from production
- *                 (notification_agent.py:31-37) and the gateway has no push
- *                 path at all
- *                 (communications/push-is-not-resolved-here.spec.ts)   PREF DEAD
+ *   push        → `push_enabled` is read by the gateway's bell funnel
+ *                 (notifications.service.ts `pushableNow`, F-528): every bell
+ *                 line that is not low priority goes to the phones on file,
+ *                 except for a person with this off or inside their quiet
+ *                 window on the house clock. The orchestrator's own push code
+ *                 still ignores it (notification_agent.py:1435-1470)       LIVE
  *   categories  → written at notifications.service.ts:1144-1145; no reader in
  *                 any of the four trees                                       DEAD
  *
@@ -152,18 +150,16 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                   onChange={(v) => void saveNotif('sms', { sms: v })} />
               }
             />
-            <Dead
-              label="Push"
-              stored={p.push ? 'stored: on' : 'stored: off'}
-              consequence="Nothing in the product sends a push notification to your phone, and this preference would not be what decided it if something did. Push-sending code exists in the alerting agent, but it chooses its channels by urgency and never consults this switch; the device register it would send to is absent from production; and the gateway has no push path at all."
-              // Checked 2026-09-03 across all four runtimes: `push_enabled` has three
-              // writers and no reader — notifications.service.ts:189,1142,1193 write it;
-              // the channel chooser reads urgency and `<type>_channels` instead
-              // (notification_agent.py › _select_channels); core/database.py:1967 copies a
-              // `restaurants.push_enabled` onto a manager object nothing then reads.
-              // Device table missing per notification_agent.py:31-37; gateway path per
-              // apps/api-gateway/src/communications/push-is-not-resolved-here.spec.ts.
-              evidence="Your choice is kept, so it is not lost if push is built later."
+            <Row
+              label="Phone push"
+              cert="manual"
+              // read by: notifications/notifications.service.ts › pushableNow (F-528)
+              provenance={{ ...kept, readBy: 'the bell, before it pushes your phone' }}
+              consequence="When something lands on your bell that is not low priority, your phone gets a push too. Off means the bell still shows it, but your phone stays silent."
+              control={
+                <Toggle label="Push notifications" checked={p.push} busy={writer.busy === 'push'}
+                  onChange={(v) => void saveNotif('push', { push: v })} />
+              }
             />
 
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Low stock</Micro></div>
@@ -257,11 +253,11 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               }}
               consequence={
                 <>
-                  Honoured by the alerting agent: inside this window it drops every channel for
-                  anything below <strong>critical</strong>, so the alert is suppressed rather than
-                  delayed. Critical still goes out. The gateway’s own scheduled mail — the weekly
-                  report and order reminders — does <strong>not</strong> consult this window and
-                  sends on its own clock.
+                  Inside this window your phone is not pushed, by the restaurant’s clock. The
+                  line still lands on your bell, so you see it when you next look. The alerting
+                  agent also drops every channel for anything below <strong>critical</strong>.
+                  Scheduled mail — the weekly report and order reminders — is <strong>not</strong> held
+                  for this window and goes out on its own clock.
                 </>
               }
               control={

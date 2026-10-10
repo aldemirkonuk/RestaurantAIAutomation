@@ -89,7 +89,7 @@ function build() {
       rfc822MessageId: opts.messageIdHeader,
     })),
   };
-  const notifications = fakeNotifications([OWNER, MANAGER, STAFF, GRANTEE]);
+  const notifications = fakeNotifications([OWNER, MANAGER, STAFF, GRANTEE], undefined, db);
   const seal = new SealChallengeService(database);
   const authority = new VendorSendAuthorityService(database);
   const service = new ProcurementService(
@@ -388,5 +388,40 @@ describe("a standing that cannot be read is an error, never a quiet answer", () 
     const t = build();
     t.db.failures.authority_grants = "relation does not exist";
     await expect(t.service.sendOrAskFor(GRANTEE, HOUSE)).resolves.toMatchObject({ readable: false });
+  });
+});
+
+describe("the ask clears from every owner's and manager's bell once one of them sends it (F-526)", () => {
+  it("the manager sends; the owner's copy of the ask is no longer unread", async () => {
+    const t = build();
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
+    const asks = () =>
+      (t.db.tables.notifications ?? []).filter((r: any) => r.type === "vendor_send_requested");
+    expect(asks().map((r: any) => r.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+    for (const r of asks()) r.status = "unread";
+
+    const { challenge } = await t.mint(MANAGER, STAFF_WORDS);
+    await t.send(MANAGER, STAFF_WORDS, challenge);
+
+    expect(asks().map((r: any) => r.status)).toEqual(["read", "read"]);
+    expect(asks().every((r: any) => typeof r.read_at === "string")).toBe(true);
+  });
+
+  it("an ask written before it carried a group key still clears, by its order", async () => {
+    const t = build();
+    await t.service.requestDraftSend(HOUSE, ORDER, STAFF, { content: STAFF_WORDS });
+    (t.db.tables.notifications ??= []).push({
+      id: "old-ask",
+      restaurant_id: HOUSE,
+      user_id: OWNER,
+      type: "vendor_send_requested",
+      status: "unread",
+      group_key: null,
+      metadata: { orderId: ORDER },
+    });
+    const { challenge } = await t.mint(MANAGER, STAFF_WORDS);
+    await t.send(MANAGER, STAFF_WORDS, challenge);
+
+    expect(t.db.tables.notifications.find((r: any) => r.id === "old-ask")?.status).toBe("read");
   });
 });
