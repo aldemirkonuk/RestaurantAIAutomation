@@ -528,3 +528,61 @@ def test_the_drop_flag_is_written_into_the_audit_trail_source():
 
     src = inspect.getsource(pca)
     assert '"withheld_figure_dropped": audit.withheld_figure_dropped' in src
+
+
+# ── the Level-4 decision log (ADR 0326) ────────────────────────────────────
+
+
+class _Level4Settings:
+    prov_agent_level4_enabled = True
+
+
+def _level4_agent(model_text, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(pca, "Settings", _Level4Settings)
+    agent = _agent(model_text)
+    agent._get_db_context_for_prompt = AsyncMock(
+        return_value={
+            "last_3_db_interactions": "",
+            "open_orders": "",
+            "credit_terms": "",
+            "close_relationship": False,
+        }
+    )
+    agent.log_decision = AsyncMock()
+    return agent
+
+
+@pytest.mark.asyncio
+async def test_a_replaced_draft_is_still_logged_by_key_name_only(monkeypatch):
+    agent = _level4_agent(
+        "Target $1,090, with a maximum acceptable price of $1,199.", monkeypatch
+    )
+    text, audit = await _draft(agent)
+    assert audit.withheld_figure_dropped is True
+    agent.log_decision.assert_awaited_once()
+    kw = agent.log_decision.await_args.kwargs
+    assert kw["decision_type"] == "draft_generated"
+    assert kw["inputs"]["withheld_keys"] == ["max_acceptable_price"]
+    assert kw["output"]["replaced_by_order_letter"] is True
+    assert kw["output"]["draft_preview"] == text[:500]
+    logged = repr(kw)
+    assert "1199" not in logged and "1,199" not in logged
+
+
+@pytest.mark.asyncio
+async def test_a_kept_draft_is_logged_as_before(monkeypatch):
+    agent = _level4_agent("Could you do $1,090 per bottle?", monkeypatch)
+    text, audit = await _draft(agent)
+    kw = agent.log_decision.await_args.kwargs
+    assert "withheld_keys" not in kw["inputs"]
+    assert kw["output"] == {"draft_preview": "Could you do $1,090 per bottle?"}
+
+
+@pytest.mark.asyncio
+async def test_the_spend_ledger_is_written_before_the_draft_is_checked():
+    agent = _agent("Target $1,090, with a maximum acceptable price of $1,199.")
+    await _draft(agent)
+    agent._log_gemini_spend.assert_called_once()
+    assert agent._log_gemini_spend.call_args.args[1] == "draft_response"

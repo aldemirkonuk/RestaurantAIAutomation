@@ -2310,8 +2310,9 @@ class ProviderConversationAgent(BaseAgent):
             # A house-only figure in the draft (the model can still meet one in
             # memories or history) replaces the draft with a fixed order letter
             # built from the wine, quantity and target fields, without the
-            # house-only keys. The drop is recorded in
-            # constraint_flags.audit_trail.
+            # house-only keys (ADR 0326). The drop is recorded in
+            # constraint_flags.audit_trail and, under Level 4, in the
+            # decision log by key name only; the model's draft is not kept.
             withheld = withheld_figures_in(draft_text, intent)
             if withheld:
                 self.logger.warning(
@@ -2319,14 +2320,11 @@ class ProviderConversationAgent(BaseAgent):
                     f"({', '.join(withheld)}); using the fixed order letter instead"
                 )
                 audit.withheld_figure_dropped = True
-                letter = order_letter_without_ceiling(intent)
-                # The letter interpolates the intent's wine name and quantity,
-                # so it gets the same commitment check as a model draft.
-                if self._check_commitment_language(letter):
-                    audit.commitment_language_detected = True
-                return letter, audit
+                draft_text = order_letter_without_ceiling(intent)
 
             # AI-SPEC §6: Check commitment language — log warning; caller must force pending_approval
+            # (the fixed order letter gets the same check: it interpolates the
+            # intent's wine name and quantity)
             if self._check_commitment_language(draft_text):
                 self.logger.warning(
                     f"Commitment language detected in draft for provider {provider_id} "
@@ -2336,16 +2334,29 @@ class ProviderConversationAgent(BaseAgent):
 
             # Level 4: log draft generation decision to decision_log
             if settings.prov_agent_level4_enabled:
+                inputs = {
+                    "provider_id": str(provider_id),
+                    "intent": str(intent.get("intent_type", "unknown"))[:500],
+                    "context_injected": list(db_ctx.keys()),
+                    "close_relationship": close_relationship,
+                }
+                output = {"draft_preview": str(draft_text)[:500]}
+                reasoning = (
+                    "Gemini-generated reply using provider context + DB history (D-19)"
+                )
+                if withheld:
+                    # key names only: the withheld value is never logged
+                    inputs["withheld_keys"] = list(withheld)
+                    output["replaced_by_order_letter"] = True
+                    reasoning = (
+                        "The model's draft held a house-only figure, so the fixed "
+                        "order letter was staged instead (ADR 0326)"
+                    )
                 await self.log_decision(
                     decision_type="draft_generated",
-                    inputs={
-                        "provider_id": str(provider_id),
-                        "intent": str(intent.get("intent_type", "unknown"))[:500],
-                        "context_injected": list(db_ctx.keys()),
-                        "close_relationship": close_relationship,
-                    },
-                    output={"draft_preview": str(draft_text)[:500]},
-                    reasoning="Gemini-generated reply using provider context + DB history (D-19)",
+                    inputs=inputs,
+                    output=output,
+                    reasoning=reasoning,
                     confidence=0.8,
                 )
 
