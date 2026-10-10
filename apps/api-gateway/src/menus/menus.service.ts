@@ -260,6 +260,14 @@ const VERSION_SELECT =
  */
 export const LINE_SELECT =
   "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, raw_extracted_text, created_at";
+/**
+ * A discarded line: the member columns (no raw line: this read does not pass
+ * through lineForViewer), and what it would go back to (F-268).
+ * A literal, not built from LINE_SELECT, so check_read_columns_exist.py can
+ * read it.
+ */
+const DISCARDED_LINE_SELECT =
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, created_at, prior_status";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
@@ -757,11 +765,17 @@ export class MenusService {
       throw new NotFoundException("No menu item of this restaurant");
     }
 
+    // Discarding a line twice keeps the status it had the first time: writing
+    // 'discarded' over prior_status would leave nothing to put it back to.
+    if (row.status === "discarded") return { menuItemId, status: "discarded" };
+
     // The house again on the write, not only on the read above: the write is
-    // what must never land on another house's row.
+    // what must never land on another house's row. prior_status keeps the
+    // status the line had (a_discarded_menu_line_remembers_its_status, F-268),
+    // so restoreMenuItem can put it back exactly as it stood.
     const { error: writeErr } = await this.dbService.supabase
       .from("menu_items")
-      .update({ status: "discarded" })
+      .update({ status: "discarded", prior_status: row.status ?? null })
       .eq("id", menuItemId)
       .eq("restaurant_id", restaurantId);
 
@@ -770,6 +784,86 @@ export class MenusService {
     }
 
     return { menuItemId, status: "discarded" };
+  }
+
+  /**
+   * Puts a discarded line back on the menu (F-268; coordinator's call for the
+   * founder, 2026-10-08). It returns to the status it had when it was
+   * discarded; a line discarded before menu_items kept that (prior_status
+   * NULL) comes back 'in_review', which the page states. Tenant-scoped the
+   * same way as discardMenuItem: a foreign or missing id 404s. A line that is
+   * not discarded is left as it is (a second tap changes nothing).
+   */
+  async restoreMenuItem(
+    restaurantId: string,
+    menuItemId: string,
+  ): Promise<{ menuItemId: string; status: string }> {
+    const { data: row, error: readErr } = await this.dbService.supabase
+      .from("menu_items")
+      .select("id, restaurant_id, status, prior_status")
+      .eq("id", menuItemId)
+      .maybeSingle();
+
+    if (readErr) {
+      throw new Error(`Could not read the menu item: ${readErr.message}`);
+    }
+    if (!row || row.restaurant_id !== restaurantId) {
+      throw new NotFoundException("No menu item of this restaurant");
+    }
+    if (row.status !== "discarded") return { menuItemId, status: row.status };
+
+    const status: string = row.prior_status ?? "in_review";
+    const { error: writeErr } = await this.dbService.supabase
+      .from("menu_items")
+      .update({ status, prior_status: null })
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "discarded");
+
+    if (writeErr) {
+      throw new Error(`The item was not put back: ${writeErr.message}`);
+    }
+
+    return { menuItemId, status };
+  }
+
+  /**
+   * The lines taken off the house's current menu, so an owner or a manager can
+   * see them and put one back (F-268). Same paged read as getMenu, the other
+   * half of the status split; no current menu means none.
+   */
+  async getDiscardedLines(restaurantId: string): Promise<{ items: Array<Record<string, unknown>> }> {
+    const { data: menu, error: menuErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
+    if (!menu) return { items: [] };
+
+    // Paged like readLines (PostgREST stops at 1000 rows without saying so);
+    // a failed page is an error, never a shorter list.
+    const items: Array<Record<string, unknown>> = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = this.dbService.supabase
+        .from("menu_items")
+        .select(DISCARDED_LINE_SELECT)
+        .eq("menu_id", menu.id)
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "discarded");
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      if (error) throw new Error(`Failed to load the discarded lines: ${error.message}`);
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      items.push(...rows);
+      if (rows.length < PAGE_ROWS) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    items.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")));
+    return { items };
   }
 
   /**

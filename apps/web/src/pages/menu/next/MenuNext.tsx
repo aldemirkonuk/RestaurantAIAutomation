@@ -8,6 +8,8 @@
  * WHAT THIS READS AND WRITES, both real, both wired in this build:
  *   GET   /menus/:restaurantId               the active menu and its lines
  *   PATCH /menus/:restaurantId/items/:id/discard   soft-remove one line
+ *   GET   /menus/:restaurantId/discarded     the lines taken off (F-268)
+ *   PATCH /menus/:restaurantId/items/:id/restore   put one back (F-268)
  *   POST  /menus/items                        add one line (existing route;
  *                                              its tenant check was a real
  *                                              gap — see menus.service.ts —
@@ -40,7 +42,15 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
+import {
+  addMenuItem,
+  discardMenuItem,
+  getDiscardedLines,
+  getMenu,
+  restoreMenuItem,
+  type DiscardedLine,
+  type MenuLine,
+} from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
@@ -82,9 +92,14 @@ function useHouseCurrency(restaurantId: string | null): string | null {
   return data?.readable ? (data.code ?? null) : null;
 }
 
-function useActiveMenu(restaurantId: string | null) {
+function useActiveMenu(restaurantId: string | null, canManage: boolean) {
   const queryClient = useQueryClient();
   const key = ['menu', 'active', restaurantId] as const;
+  const discardedKey = ['menu', 'discarded', restaurantId] as const;
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: key });
+    void queryClient.invalidateQueries({ queryKey: discardedKey });
+  };
 
   const q = useQuery({
     queryKey: key,
@@ -92,9 +107,22 @@ function useActiveMenu(restaurantId: string | null) {
     queryFn: () => getMenu(restaurantId as string),
   });
 
+  // Only the people who may put a line back are shown the lines taken off
+  // (F-268); the gateway refuses a restore from anyone else.
+  const discarded = useQuery({
+    queryKey: discardedKey,
+    enabled: Boolean(restaurantId) && canManage,
+    queryFn: () => getDiscardedLines(restaurantId as string),
+  });
+
   const discard = useMutation({
     mutationFn: (itemId: string) => discardMenuItem(restaurantId as string, itemId),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
+    onSuccess: refresh,
+  });
+
+  const restore = useMutation({
+    mutationFn: (itemId: string) => restoreMenuItem(restaurantId as string, itemId),
+    onSuccess: refresh,
   });
 
   const add = useMutation({
@@ -114,7 +142,58 @@ function useActiveMenu(restaurantId: string | null) {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
   });
 
-  return { q, discard, add };
+  return { q, discarded, discard, restore, add };
+}
+
+/** What a put-back line returns as, in the house's words. */
+function goesBackAs(line: DiscardedLine): string {
+  return line.prior_status
+    ? `Goes back as ${line.prior_status.replace('_', ' ')}.`
+    : 'Goes back as in review — what it was before is not known.';
+}
+
+/**
+ * The lines taken off the current menu, each with Put back (F-268). Folded by
+ * default: it is the way back, not the menu.
+ */
+function DiscardedLines({ lines, onRestore, restoringId }: {
+  lines: DiscardedLine[]
+  onRestore: (line: DiscardedLine) => void
+  restoringId: string | null
+}) {
+  if (lines.length === 0) return null;
+  return (
+    <details style={{ marginTop: 16 }} data-testid="menu-discarded">
+      <summary className="cl-said" style={{ cursor: 'pointer' }}>
+        Taken off the menu ({lines.length})
+      </summary>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+        {lines.map((line) => (
+          <li
+            key={line.id}
+            data-testid="menu-discarded-row"
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 0', borderTop: '1px solid var(--paper-2)' }}
+          >
+            <span style={{ flex: 1 }}>
+              {line.name}
+              <span className="cl-note" style={{ display: 'block' }}>
+                {goesBackAs(line)}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={restoringId === line.id}
+              onClick={() => onRestore(line)}
+              aria-label={`Put ${line.name} back on the menu`}
+            >
+              {restoringId === line.id ? 'Putting back…' : 'Put back'}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
 }
 
 function AddItemForm({ onAdd, adding, error }: {
@@ -267,9 +346,20 @@ export default function MenuNext() {
   // gateway refuses anyone else regardless of what this page offers.
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
-  const { q, discard, add } = useActiveMenu(activeRestaurantId);
+  const { q, discarded, discard, restore, add } = useActiveMenu(activeRestaurantId, canManage);
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  // The line this person just took off, offered back in place (F-268): the
+  // undo is why Discard needs no confirm step.
+  const [justDiscarded, setJustDiscarded] = useState<{ id: string; name: string } | null>(null);
+  const putBack = (id: string) => {
+    setRestoringId(id);
+    restore.mutate(id, {
+      onSuccess: () => setJustDiscarded((d) => (d?.id === id ? null : d)),
+      onSettled: () => setRestoringId(null),
+    });
+  };
 
   return (
     <div
@@ -361,7 +451,10 @@ export default function MenuNext() {
                         discarding={discard.isPending && discardingId === line.id}
                         onDiscard={() => {
                           setDiscardingId(line.id);
-                          discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
+                          discard.mutate(line.id, {
+                            onSuccess: () => setJustDiscarded({ id: line.id, name: line.name }),
+                            onSettled: () => setDiscardingId(null),
+                          });
                         }}
                       />
                     ))
@@ -374,6 +467,39 @@ export default function MenuNext() {
                 That line was not discarded (
                 {discard.error instanceof Error ? discard.error.message : 'no reason given'}).
               </p>
+            ) : null}
+            {justDiscarded ? (
+              <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-just-discarded">
+                {justDiscarded.name} is off the menu.{' '}
+                <button
+                  type="button"
+                  className="cl-btn cl-focus"
+                  disabled={restoringId === justDiscarded.id}
+                  onClick={() => putBack(justDiscarded.id)}
+                >
+                  {restoringId === justDiscarded.id ? 'Putting it back…' : 'Put it back'}
+                </button>
+              </p>
+            ) : null}
+            {restore.isError ? (
+              <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
+                That line was not put back (
+                {restore.error instanceof Error ? restore.error.message : 'no reason given'}).
+              </p>
+            ) : null}
+            {canManage ? (
+              discarded.isError ? (
+                <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
+                  The lines taken off the menu could not be read
+                  {discarded.error instanceof Error ? ` (${discarded.error.message})` : ''}.
+                </p>
+              ) : (
+                <DiscardedLines
+                  lines={discarded.data?.items ?? []}
+                  restoringId={restoringId}
+                  onRestore={(line) => putBack(line.id)}
+                />
+              )
             ) : null}
           </>
         )}
@@ -394,7 +520,7 @@ export default function MenuNext() {
         >
           <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
             Discard removes a line from what guests see. What it cost and who added it is kept —
-            nothing here is a delete.
+            nothing here is a delete, and an owner or a manager can put it back.
           </p>
         </footer>
       </div>
