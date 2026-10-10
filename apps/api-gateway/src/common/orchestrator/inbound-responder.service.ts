@@ -59,6 +59,18 @@ const AUTO_REPLY_SUBJECT_PATTERNS: RegExp[] = [
   /away from (the )?office/i,
 ];
 
+// Guardrail reasons that mean the mail itself cannot be trusted to move the
+// order (F-485): a sender we could not verify, or a price we could not read
+// one way. They already hold the REPLY for a person; they hold the order's
+// price and status too. A dear price, a changed quantity or a long thread are
+// not on this list: those are ordinary negotiation and still move the order
+// to NEGOTIATING.
+const ORDER_SYNC_HOLD_REASONS = [
+  "sender_unverified",
+  "price_inconsistent",
+  "currency_ambiguous",
+];
+
 interface InboundContext {
   inboundConversationId: string;
   orderId: string;
@@ -262,12 +274,7 @@ export class InboundResponderService {
       const wineName: string = o.restaurant_inventory?.wine_name ?? "the wine";
       const quantity: number = o.quantity ?? 0;
       const paused: boolean = o.ai_autonomy_paused === true;
-      // Target = what we last proposed / are anchored to.
-      const targetPrice: number | null =
-        this.toNum(o.negotiated_price) ??
-        this.toNum(o.quoted_price) ??
-        this.toNum(o.restaurant_inventory?.target_price) ??
-        this.toNum(o.final_price);
+      const targetPrice = this.houseTargetPrice(o);
 
       // Bulletproofing: never reply to autoresponders / bounces / no-reply traffic —
       // that's how auto-send loops happen. Store + understand it, but draft nothing.
@@ -426,7 +433,18 @@ export class InboundResponderService {
       const autonomyFull = await this.isAutonomousSendEnabled(ctx.restaurantId);
 
       // ── Close the loop: reflect the negotiation onto the order itself ──────
-      if (!paused) {
+      // Only a mail we can trust moves the order (F-485). A bounce or an
+      // out-of-office, a mail that tried to instruct the AI, or one from a
+      // sender we could not verify is still read and kept above, but it writes
+      // no price and no status: those checks used to run AFTER this write and
+      // only held back the reply.
+      const orderSyncHeld = this.orderSyncHoldReason(
+        analysis,
+        flags,
+        autoReply,
+        ctx.transportSignals,
+      );
+      if (!paused && !orderSyncHeld) {
         await this.syncOrderState(
           o,
           analysis,
@@ -434,12 +452,17 @@ export class InboundResponderService {
           quantity,
           autonomyFull,
         );
+      } else if (orderSyncHeld) {
+        this.logger.warn(
+          `Responder: order ${ctx.orderId} left as it was — ${orderSyncHeld} on inbound ${ctx.inboundConversationId}.`,
+        );
       }
 
       await this.logDecision(ctx, analysis, flags, {
         paused,
         autoReply,
         autonomyFull,
+        orderSyncHeld,
       });
 
       // ── Reasons NOT to draft a reply (analysis already saved above) ────────
@@ -1060,6 +1083,46 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     }
   }
 
+  /**
+   * The house's own figure for this order: what it quoted, else the wine's
+   * target, else a price it already agreed. NEVER `negotiated_price` (F-486):
+   * `syncOrderState` writes the vendor's last stated price there on every
+   * inbound, so anchoring on it let a vendor's first mail ("$90") become the
+   * target its second mail ("confirming $90") was measured against.
+   */
+  private houseTargetPrice(o: any): number | null {
+    return (
+      this.toNum(o.quoted_price) ??
+      this.toNum(o.restaurant_inventory?.target_price) ??
+      this.toNum(o.final_price)
+    );
+  }
+
+  /**
+   * Why this inbound must not move the order, or `null` when it may (F-485).
+   * Automated mail (subject, the model's own class, or an RFC 3834
+   * `Auto-Submitted` header), a suspected injection, and the guardrails in
+   * ORDER_SYNC_HOLD_REASONS each hold the order where it is.
+   */
+  private orderSyncHoldReason(
+    analysis: Analysis,
+    flags: { reasons: string[] },
+    autoReply: boolean,
+    transport?: TransportSignals | null,
+  ): string | null {
+    if (
+      autoReply ||
+      analysis.email_class === "bounce_autoreply" ||
+      transport?.autoSubmitted === true
+    ) {
+      return "automated_reply";
+    }
+    if (analysis.injection_suspected) return "injection_suspected";
+    return (
+      ORDER_SYNC_HOLD_REASONS.find((r) => flags.reasons.includes(r)) ?? null
+    );
+  }
+
   private isAutoReplyLike(subject?: string | null): boolean {
     const s = (subject || "").replace(/^subject:\s*/i, "");
     if (!s.trim()) return false;
@@ -1215,13 +1278,19 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         analysis.intent === "order_confirmation";
       const approvedPrice =
         this.toNum(order.final_price) ?? this.toNum(order.negotiated_price);
-      const receiptQty = this.toNum(sameQtyOffer?.quantity);
+      // Every quantity the vendor stated, from ANY offer (F-493). Reading it off
+      // `sameQtyOffer` could never disagree with ours, because that offer is
+      // chosen for having our quantity, so "Confirmed, 6 at 45" on a 12-bottle
+      // order went through as a matching receipt.
+      const statedQtys = analysis.vendor_offers
+        .map((v) => this.toNum(v.quantity))
+        .filter((q): q is number => q != null);
       const priceContradicts =
         approvedPrice != null &&
         vendorPrice != null &&
         Math.abs(vendorPrice - approvedPrice) > 0.01;
       const qtyContradicts =
-        orderedQty > 0 && receiptQty != null && receiptQty !== orderedQty;
+        orderedQty > 0 && statedQtys.some((q) => q !== orderedQty);
       const receiptMatches =
         isVerification && !priceContradicts && !qtyContradicts;
 
@@ -1364,7 +1433,12 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     ctx: InboundContext,
     analysis: Analysis,
     flags: { needs_approval: boolean; reasons: string[] },
-    meta: { paused: boolean; autoReply: boolean; autonomyFull: boolean },
+    meta: {
+      paused: boolean;
+      autoReply: boolean;
+      autonomyFull: boolean;
+      orderSyncHeld: string | null;
+    },
   ): Promise<void> {
     try {
       await this.databaseService.supabase.from("decision_log").insert({
