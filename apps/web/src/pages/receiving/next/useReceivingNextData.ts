@@ -112,7 +112,7 @@ export const SERVER_WINDOWS = {
  * the second truck of a split order arrives on exactly that status (F-467).
  * Left out, the rest of an order had no way into the door from this page. It
  * is asked for, and only the orders whose ledger still owes bottles are kept
- * (`stillOwed`): the door writes the same status after a truck that brought
+ * (`stillExpected`): the door writes the same status after a truck that brought
  * everything.
  */
 const IN_FLIGHT_STATUSES = ['CONFIRMED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] as const;
@@ -140,18 +140,34 @@ interface OpenOrderDto {
   providerName?: string | null;
   provider?: { name?: string | null } | null;
   /** What the stock ledger booked for this order (ADR 0192), as the list route reads it. */
-  received?: { readable?: boolean; backorderBottles?: number | null } | null;
+  received?: {
+    readable?: boolean;
+    backorderBottles?: number | null;
+    rejectedAtDoorBottles?: number | null;
+    rejectedAtDeskBottles?: number | null;
+  } | null;
 }
 
 /**
- * Bottles the order still owes, or null when that is not a known positive
- * number. An unreadable ledger is not "still owed": the card would announce a
- * remainder nobody measured.
+ * Bottles a truck is still expected to bring, or null when that is not a known
+ * positive number. An unreadable ledger is not "still owed": the card would
+ * announce a remainder nobody measured.
+ *
+ * `backorderBottles` is the order less the ledger (ADR 0192), and a bottle
+ * refused at the door or at verification never reaches the ledger — so read
+ * alone it called every broken or refused bottle "still to come", and the
+ * order sat on the lane for a truck nobody is sending (F-774). The refusals
+ * are taken off; a desk that never verified refused nothing. Whether the
+ * order is then closed short is the order's own act (F-104), not this lane's.
  */
-function stillOwed(o: OpenOrderDto): number | null {
+function stillExpected(o: OpenOrderDto): number | null {
   if (o.received?.readable !== true) return null;
   const owed = num(o.received.backorderBottles);
-  return owed !== null && owed > 0 ? owed : null;
+  const atDoor = num(o.received.rejectedAtDoorBottles);
+  const atDesk = o.received.rejectedAtDeskBottles == null ? 0 : num(o.received.rejectedAtDeskBottles);
+  if (owed === null || atDoor === null || atDesk === null) return null;
+  const expected = owed - Math.max(0, atDoor) - Math.max(0, atDesk);
+  return expected > 0 ? expected : null;
 }
 
 /**
@@ -255,7 +271,7 @@ export function useStaffDeliveries(): StaffLaneData {
             // counts every partly received order, so it is no count of these:
             // the kept rows are, when the page held them all, and otherwise
             // the count is not known.
-            const owed = orders.filter((o) => stillOwed(o) !== null);
+            const owed = orders.filter((o) => stillExpected(o) !== null);
             const hasMore = data?.hasMore === true;
             return { status, orders: owed, total: hasMore ? null : owed.length, hasMore };
           }
@@ -288,7 +304,7 @@ export function useStaffDeliveries(): StaffLaneData {
           // NEVER `quantity`. See DeliveryVM.bottlesTotal.
           bottlesTotal: num(o.bottlesTotal),
           orderedQty: num(o.quantity),
-          restOfOrderBottles: rest ? stillOwed(o) : null,
+          restOfOrderBottles: rest ? stillExpected(o) : null,
           unitType: o.unitType ?? null,
           requestedAt: o.requestedAt ?? null,
         })),

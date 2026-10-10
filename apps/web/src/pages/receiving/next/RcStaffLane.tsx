@@ -30,12 +30,16 @@ import type { DeliveryVM, StaffLaneData } from './useReceivingNextData';
  * actually ordered, in its own unit. The pack size is not in this payload and
  * is never guessed.
  */
+function bottlesWord(n: number): string {
+  return `${fmtInt(n)} ${n === 1 ? 'bottle' : 'bottles'}`;
+}
+
 function countSentence(d: DeliveryVM): string {
   // The rest of a split order: what is still to come, not the whole order an
   // earlier truck already brought part of (F-467).
   if (d.restOfOrderBottles !== null)
-    return `${fmtInt(d.restOfOrderBottles)} bottles still to come`;
-  if (d.bottlesTotal !== null) return `${fmtInt(d.bottlesTotal)} bottles expected`;
+    return `${bottlesWord(d.restOfOrderBottles)} still to come`;
+  if (d.bottlesTotal !== null) return `${bottlesWord(d.bottlesTotal)} expected`;
   if (d.orderedQty !== null) return `${fmtUnits(d.orderedQty, d.unitType)} ordered · bottles ${EM}`;
   return `${EM} bottles`;
 }
