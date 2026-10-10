@@ -1247,10 +1247,11 @@ jobs:
         run: pnpm run lint:check
 
       # Prettier drift is only a warning, so the step above cannot see it. A
-      # gateway file this change adds or edits must already be what
-      # `eslint --fix` would make it; untouched legacy drift is left alone.
+      # gateway LINE this change adds or edits must carry no fixable ESLint
+      # problem. Untouched lines are left alone, even in a touched file: a
+      # whole-file reformat moves the lines other guards point at (F-960/F-961).
       # Pushes compare against the previous commit (squash merges = one PR).
-      - name: Touched gateway files are already eslint --fix clean
+      - name: Changed gateway lines are already eslint --fix clean
         if: ${{ !cancelled() }}
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
