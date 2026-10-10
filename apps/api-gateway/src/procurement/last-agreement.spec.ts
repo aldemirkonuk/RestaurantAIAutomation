@@ -134,8 +134,10 @@ function stubDb(opts: {
   rows?: unknown[];
   error?: string;
   vendorName?: string | null;
+  house?: { timezone: string; country: string };
 }) {
   const filters: Filter[] = [];
+  let table = "";
   const builder: any = {
     select: () => builder,
     eq: (col: string, val: unknown) => {
@@ -150,15 +152,21 @@ function stubDb(opts: {
         : Promise.resolve({ data: opts.rows ?? [], error: null }),
     maybeSingle: () =>
       Promise.resolve({
-        data: opts.vendorName === undefined ? null : { name: opts.vendorName },
+        data:
+          table === "restaurants"
+            ? (opts.house ?? null)
+            : opts.vendorName === undefined
+              ? null
+              : { name: opts.vendorName },
         error: null,
       }),
   };
   return {
     filters,
     supabase: {
-      from: (table: string) => {
-        filters.push(["from", table, null]);
+      from: (name: string) => {
+        table = name;
+        filters.push(["from", name, null]);
         return builder;
       },
     },
@@ -274,5 +282,68 @@ describe("lastAgreementAnswer — the ambiguous state", () => {
     expect(ambiguous.sentence).toContain("more than once");
     expect(ambiguous.sentence).not.toContain("could not be read");
     expect(ambiguous.sentence).not.toEqual(unreadable.sentence);
+  });
+});
+
+/* F-328: the agreed day is the house's. 01:00 UTC on Oct 9 is 18:00 on Oct 8
+   in Los Angeles; 22:30 UTC on Oct 8 is 01:30 on Oct 9 in Istanbul. */
+describe("the last agreement is dated on the house's clock", () => {
+  const line = (agreedOn: string) => ({
+    price: 210,
+    priceUom: "case",
+    pricePackSize: 6,
+    currency: "USD",
+    unitType: "case",
+    bottlesPerUnit: 6,
+    agreedOn,
+    orderNumber: "PO-77",
+  });
+
+  it("an LA order sealed at 18:00 reads as that evening's day", () => {
+    const a = lastAgreementAnswer(
+      line("2026-10-09T01:00:00.000Z"),
+      false,
+      "Banfi",
+      false,
+      "America/Los_Angeles",
+    );
+    expect(a.sentence).toContain("on 2026-10-08:");
+  });
+
+  it("an Istanbul order sealed at 01:30 reads as the new day", () => {
+    const a = lastAgreementAnswer(
+      line("2026-10-08T22:30:00.000Z"),
+      false,
+      "Banfi",
+      false,
+      "Europe/Istanbul",
+    );
+    expect(a.sentence).toContain("on 2026-10-09:");
+  });
+
+  it("the service reads the house's zone for the sentence", async () => {
+    const a = await callLastAgreement(
+      stubDb({
+        rows: [
+          {
+            order_number: "PO-77",
+            requested_at: "2026-10-09T01:00:00.000Z",
+            procurement_order_items: [
+              {
+                final_unit_price: 210,
+                price_uom: "case",
+                price_pack_size: 6,
+                currency: "USD",
+                unit_type: "case",
+                bottles_per_unit: 6,
+              },
+            ],
+          },
+        ],
+        vendorName: "Banfi",
+        house: { timezone: "America/Los_Angeles", country: "US" },
+      }),
+    );
+    expect(a.sentence).toContain("Last agreed with Banfi on 2026-10-08:");
   });
 });

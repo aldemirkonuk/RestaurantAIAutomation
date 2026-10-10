@@ -9,6 +9,9 @@ import { DatabaseService } from "../../database/database.service";
 import { InsightGeneratorService } from "./insight-generator.service";
 import { InsightCategory } from "./insight-catalog";
 import { GoalsService } from "../goals.service";
+import { houseFrame } from "../../common/house-frame";
+import { houseDayOf } from "../../common/house-day";
+import { houseWallAt } from "../../notifications/low-stock-digest-clock";
 
 /**
  * InsightSchedulerService — manager-preference-driven refresh.
@@ -21,6 +24,11 @@ import { GoalsService } from "../goals.service";
  *
  * A single hourly sweep walks all restaurants; categories with no pref row
  * default to daily @ 06:00. Failures are per-restaurant isolated.
+ *
+ * "Local" is the HOUSE's clock (F-329): the hour, the weekday and "today" are
+ * read in its zone, so an LA house's 06:00 is 06:00 in Los Angeles, not 06:00
+ * UTC (23:00 the evening before, mid-service). A house with no known zone
+ * keeps the server's clock, as before.
  */
 @Injectable()
 export class InsightSchedulerService {
@@ -73,7 +81,7 @@ export class InsightSchedulerService {
     // hourly cron's own catch records a failed sweep.
     const { data: restaurants, error: restaurantsError } = await client
       .from("restaurants")
-      .select("id")
+      .select("id, timezone, country")
       .limit(500);
     if (restaurantsError)
       throw new Error(
@@ -119,11 +127,14 @@ export class InsightSchedulerService {
           `holding them until its normal schedule comes round`,
       );
 
-    const hour = now.getHours();
-    const weekday = now.getDay();
-    const todayStr = now.toISOString().substring(0, 10);
-
     for (const r of restaurants) {
+      const zone = houseFrame(r as any).zone;
+      const wall = zone ? houseWallAt(now, zone) : null;
+      const hour = wall ? Math.floor(wall.minutes / 60) : now.getHours();
+      const todayStr = wall ? wall.dateKey : now.toISOString().substring(0, 10);
+      const weekday = wall
+        ? new Date(`${todayStr}T00:00:00Z`).getUTCDay()
+        : now.getDay();
       // The stored goal values are refreshed every sweep, whatever the goals
       // category's cadence: progress reads no longer write them (F-264), and
       // the goals family, the recommendation goal rules and the goal lists
@@ -161,7 +172,9 @@ export class InsightSchedulerService {
         }
         if (!p.enabled || p.cadence === "manual") continue;
         const lastRunDay = p.last_run_at
-          ? String(p.last_run_at).substring(0, 10)
+          ? zone
+            ? houseDayOf(String(p.last_run_at), zone)
+            : String(p.last_run_at).substring(0, 10)
           : null;
         const ranToday = lastRunDay === todayStr;
         if (p.cadence === "hourly") due.push(category);

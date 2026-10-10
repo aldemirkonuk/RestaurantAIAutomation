@@ -16,7 +16,13 @@ import {
   volumeMlOf,
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
-import { houseDayBounds } from "../common/house-day";
+import {
+  houseDayBounds,
+  houseDayOf,
+  houseToday,
+  readHouseZone,
+  shiftHouseDay,
+} from "../common/house-day";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -219,7 +225,12 @@ export class AnalyticsService {
     }));
   }
 
-  private async loadConsumption(restaurantId: string, sinceDays = 90) {
+  private async loadConsumption(
+    restaurantId: string,
+    sinceDays = 90,
+    /** With a zone, each line is dated on the house's day (ADR 0296). */
+    zone: string | null = null,
+  ) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
     // wine_consumption_log keys on inventory_id — it has no master_wine_id
@@ -260,7 +271,9 @@ export class AnalyticsService {
         how,
         servings: servingsOf(c),
         volumeMl: volumeMlOf(c),
-        date: (c.created_at || "").substring(0, 10),
+        date: zone
+          ? (houseDayOf(c.created_at, zone) ?? "")
+          : (c.created_at || "").substring(0, 10),
       };
     });
   }
@@ -279,6 +292,8 @@ export class AnalyticsService {
   private toDailySeries(
     rows: Array<{ date: string; value: number }>,
     sinceDays: number,
+    /** With a zone, "today" is the house's (ADR 0296); without, UTC's. */
+    zone: string | null = null,
   ): { dates: string[]; values: number[] } {
     const byDay = new Map<string, number>();
     for (const r of rows) {
@@ -288,10 +303,13 @@ export class AnalyticsService {
     const dates: string[] = [];
     const values: number[] = [];
     const today = new Date();
+    const houseDay = zone ? houseToday(zone, today) : null;
     for (let d = sinceDays - 1; d >= 0; d--) {
-      const day = new Date(today.getTime() - d * 86400000)
-        .toISOString()
-        .substring(0, 10);
+      const day = houseDay
+        ? shiftHouseDay(houseDay, -d)
+        : new Date(today.getTime() - d * 86400000)
+            .toISOString()
+            .substring(0, 10);
       dates.push(day);
       values.push(byDay.get(day) || 0);
     }
@@ -902,7 +920,18 @@ export class AnalyticsService {
   ) {
     const horizon = opts.horizon ?? 14;
     const sinceDays = 120;
-    const consumption = await this.loadConsumption(restaurantId, sinceDays);
+    // Days are the house's (F-324): on UTC's an LA evening's pours sat on
+    // tomorrow's bar and the projection started the day after. No zone keeps
+    // UTC's days, as before.
+    const { zone } = await readHouseZone(
+      this.dbService.getClient(),
+      restaurantId,
+    );
+    const consumption = await this.loadConsumption(
+      restaurantId,
+      sinceDays,
+      zone,
+    );
     const scoped = consumption.filter(
       (c) => !opts.masterWineId || c.masterWineId === opts.masterWineId,
     );
@@ -913,7 +942,7 @@ export class AnalyticsService {
     const rows = scoped
       .filter((c) => c.qty != null)
       .map((c) => ({ date: c.date, value: c.qty as number }));
-    const { dates, values } = this.toDailySeries(rows, sinceDays);
+    const { dates, values } = this.toDailySeries(rows, sinceDays, zone);
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
     // `warmup` is the seeding window each model reads before its recursion can
@@ -1000,7 +1029,11 @@ export class AnalyticsService {
     const today = new Date();
     for (let h = 1; h <= horizon; h++)
       futureDates.push(
-        new Date(today.getTime() + h * 86400000).toISOString().substring(0, 10),
+        zone
+          ? shiftHouseDay(houseToday(zone, today), h)
+          : new Date(today.getTime() + h * 86400000)
+              .toISOString()
+              .substring(0, 10),
       );
 
     // `toDailySeries` zero-fills, so a restaurant with no consumption feed

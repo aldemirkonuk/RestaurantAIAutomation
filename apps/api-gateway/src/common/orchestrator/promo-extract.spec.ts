@@ -143,3 +143,32 @@ describe("an offer's amount keeps its own currency", () => {
     expect(line).toBe("Acme — TRY 500 off");
   });
 });
+
+/**
+ * F-322: the offer is dated on the house's clock, not the server's. The
+ * instants are chosen so a server on UTC and one on US Eastern both read a
+ * different date from the house, so these fail on either without the zone.
+ */
+describe("promo-extract on the house's clock", () => {
+  afterEach(() => jest.useRealTimers());
+
+  it("an LA house at 22:30 Thursday still reads Thursday", () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-09T05:30:00Z"));
+    const LA = "America/Los_Angeles";
+    const at = (b: string) =>
+      extractPromotion("Sale", b, undefined, LA)!.valid_until;
+    expect(at("20% off, offer ends Oct 8.")).toBe("2026-10-08");
+    expect(at("20% off, valid until Friday.")).toBe("2026-10-09");
+    expect(at("20% off, today only!")).toBe("2026-10-08");
+  });
+
+  it("an Istanbul house at 01:30 Friday already reads Friday", () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-08T22:30:00Z"));
+    const IST = "Europe/Istanbul";
+    const at = (b: string) =>
+      extractPromotion("Sale", b, undefined, IST)!.valid_until;
+    expect(at("20% off, today only!")).toBe("2026-10-09");
+    expect(at("20% off, offer ends Oct 8.")).toBe("2027-10-08");
+    expect(at("20% off, valid until Friday.")).toBe("2026-10-16");
+  });
+});

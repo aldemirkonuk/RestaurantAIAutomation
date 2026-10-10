@@ -131,6 +131,7 @@ import {
   receivingPriceRefusal,
 } from "./documents/invoice-currency";
 import { lastAgreementAnswer, type LastAgreement } from "./last-agreement";
+import { readHouseZone } from "../common/house-day";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -2677,6 +2678,16 @@ export class ProcurementService {
       vendorName = null;
     }
 
+    // The house's zone dates the sentence (F-328). Like the vendor's name it
+    // costs only words: a failed read falls back to UTC's day, never the price.
+    let zone: string | null = null;
+    try {
+      zone = (await readHouseZone(this.databaseService.supabase, restaurantId))
+        .zone;
+    } catch {
+      zone = null;
+    }
+
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
@@ -2726,6 +2737,8 @@ export class ProcurementService {
         },
         false,
         vendorName,
+        false,
+        zone,
       );
     } catch (e: any) {
       this.logger.warn(
