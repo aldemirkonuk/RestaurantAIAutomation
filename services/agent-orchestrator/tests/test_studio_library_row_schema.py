@@ -505,3 +505,48 @@ class TestPromoteDedup:
         assert resp.status_code == 200, resp.text
         assert q.is_.call_args_list[0].args == ("vintage", "null")
         assert q.is_.return_value.is_.call_args.args == ("producer", "null")
+
+    def test_an_unconfirmed_near_match_candidate_still_promotes(self, test_client):
+        # The gateway writes matched_master_id on a near miss it leaves in
+        # pending_review: a candidate, not a link. A reviewer promoting it as a
+        # distinct wine must not be told it is already in the library.
+        lib = MagicMock()
+        q = lib.select.return_value.ilike.return_value
+        q.eq.return_value.ilike.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
+        lib.insert.return_value.execute.return_value.data = [{"id": "wine-new"}]
+        resp = self._post(
+            test_client,
+            {
+                "id": "sub-1",
+                "status": "pending_review",
+                "matched_master_id": "wine-candidate",
+                "decision_reason": "near_match_name",
+                "payload": {},
+                "field_confidence": _fc(
+                    wine_name="Chianti Classico", producer="Fontodi", vintage="2019"
+                ),
+            },
+            lib,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["wine_id"] == "wine-new"
+        lib.insert.assert_called_once()
+
+    @pytest.mark.parametrize("status", ["approved", "merged", "accepted"])
+    def test_every_settled_link_is_already_in_the_library(self, test_client, status):
+        lib = MagicMock()
+        resp = self._post(
+            test_client,
+            {
+                "id": "sub-1",
+                "status": status,
+                "matched_master_id": "wine-first",
+                "payload": {},
+                "field_confidence": _fc(wine_name="Chianti Classico", producer="Fontodi"),
+            },
+            lib,
+        )
+        assert resp.status_code == 409, resp.text
+        lib.insert.assert_not_called()

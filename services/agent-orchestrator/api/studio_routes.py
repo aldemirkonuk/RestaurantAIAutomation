@@ -1022,6 +1022,11 @@ def enable_contributor(
 
 
 # --- POST /promote ---
+# Submission statuses whose matched_master_id names the library row the wine IS:
+# approved (studio promotion), merged and accepted (gateway, wine-submissions.service.ts).
+_SETTLED_SUBMISSION_STATUSES = frozenset({"approved", "merged", "accepted"})
+
+
 @studio_router.post("/promote")
 def promote_to_library(
     body: PromoteRequest,
@@ -1056,10 +1061,16 @@ def promote_to_library(
 
     submission = sub_resp.data
 
-    # A submission already linked to a library row (auto-promotion records the link,
-    # F-810) is in the library: a second Promote after more fields were saved would
-    # otherwise miss that row in the dedup below and insert the wine twice.
-    if submission.get("matched_master_id"):
+    # A submission already settled onto a library row (auto-promotion records the
+    # link, F-810) is in the library: a second Promote after more fields were saved
+    # would otherwise miss that row in the dedup below and insert the wine twice.
+    # Only a settled status counts: the gateway also writes matched_master_id on a
+    # near miss left in pending_review, a candidate nobody has confirmed, and a
+    # reviewer may still promote that submission as a distinct wine.
+    if (
+        submission.get("matched_master_id")
+        and submission.get("status") in _SETTLED_SUBMISSION_STATUSES
+    ):
         raise HTTPException(
             status_code=409,
             detail="Wine already exists in library",
