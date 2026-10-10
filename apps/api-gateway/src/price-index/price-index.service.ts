@@ -217,7 +217,8 @@ export interface SourceStatus {
   withheld: { reason: string; measuredOn: string } | null;
   silent: { kind: string; reason: string; measuredOn: string } | null;
   display: { category: string; shortIssuer: string; extent: string } | null;
-  rows: number;
+  /** null when the count could not be read -- never a 0 that reads as empty. */
+  rows: number | null;
   lastFetchedAt: string | null;
   silentBecause: string | null;
 }
@@ -674,11 +675,13 @@ export class PriceIndexService {
           ? `withheld: ${s.withheld.reason}`
           : s.silent
             ? `${s.silent.kind}: ${s.silent.reason}`
-            : rows > 0
-              ? null
-              : armed
-                ? "armed, but no rows recorded yet"
-                : `fetch disabled (${PRICE_INDEX_FETCH_FLAG} is off)`,
+            : rows === null
+              ? "could not be read just now"
+              : rows > 0
+                ? null
+                : armed
+                  ? "armed, but no rows recorded yet"
+                  : `fetch disabled (${PRICE_INDEX_FETCH_FLAG} is off)`,
       });
     }
     return { armed, flag: PRICE_INDEX_FETCH_FLAG, sources };
@@ -686,7 +689,7 @@ export class PriceIndexService {
 
   private async lastFetch(
     sourceKey: string,
-  ): Promise<{ rows: number; lastFetchedAt: string | null }> {
+  ): Promise<{ rows: number | null; lastFetchedAt: string | null }> {
     try {
       // FIXED 2026-09-05 (ADR 0117 addendum): this read carried NO visibility
       // predicate, so `/price-index/status` counted held books as rows a reader
@@ -709,8 +712,12 @@ export class PriceIndexService {
       if (error) throw error;
       const last = data && data.length ? (data[0] as { fetched_at: string }).fetched_at : null;
       return { rows: count ?? 0, lastFetchedAt: last };
-    } catch {
-      return { rows: 0, lastFetchedAt: null };
+    } catch (err) {
+      // A failed read is not an empty source: returning 0 here made the
+      // masthead say "0 of N sources holding rows" while the table was
+      // unreachable (F-544). null carries "unknown" to the page.
+      this.logger.warn(`price index status read failed for ${sourceKey}: ${(err as Error)?.message ?? err}`);
+      return { rows: null, lastFetchedAt: null };
     }
   }
 }

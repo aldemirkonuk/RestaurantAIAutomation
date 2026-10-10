@@ -1255,10 +1255,17 @@ export class ProcurementService {
           .limit(1);
 
       if (existingError) {
-        this.logger.warn("Dedup lookup for procurement order failed", {
+        this.logger.error("Dedup lookup for procurement order failed", {
           restaurantId,
           error: existingError.message,
         });
+        // F-584: a failed lookup is not "no open order". Carrying on would
+        // insert a second order beside the one we could not see -- the exact
+        // duplicate this guard exists to stop. Nothing is written yet, so a
+        // retry is safe.
+        throw new ServiceUnavailableException(
+          "Could not check for an open order to this vendor, so nothing was saved. Please try again.",
+        );
       }
 
       existing = existingRows?.[0] as any | undefined;

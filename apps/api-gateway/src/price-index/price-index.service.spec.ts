@@ -234,4 +234,17 @@ describe("PriceIndexService.status", () => {
     const ca = status.sources.find((s) => s.jurisdiction === "US-CA")!;
     expect(ca.silentBecause).toContain("fetch disabled");
   });
+
+  // F-544: a failed read used to come back as rows: 0, so the masthead said
+  // "0 of N sources holding rows" while the table was unreachable.
+  it("reports rows as unknown, not zero, when the read fails", async () => {
+    delete process.env.PRICE_INDEX_FETCH_ENABLED;
+    const svc = new PriceIndexService(
+      makeDb(() => ({ error: { message: "connection reset" } })),
+    );
+    const status = await svc.status();
+    const ca = status.sources.find((s) => s.jurisdiction === "US-CA")!;
+    expect(ca.rows).toBeNull();
+    expect(ca.silentBecause).toBe("could not be read just now");
+  });
 });

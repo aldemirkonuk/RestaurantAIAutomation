@@ -1,4 +1,4 @@
-import { NotFoundException } from "@nestjs/common";
+import { NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
@@ -36,7 +36,7 @@ const providers: Row[] = [
 ];
 
 function makeDb(opts: { providerReadError?: string } = {}) {
-  const touched = { procurementOrders: 0 };
+  const touched = { procurementOrders: 0, inserts: 0 };
 
   const supabase: any = {
     from(table: string) {
@@ -81,7 +81,10 @@ function makeDb(opts: { providerReadError?: string } = {}) {
         is: () => q,
         order: () => q,
         limit: () => q,
-        insert: () => q,
+        insert: () => {
+          touched.inserts++;
+          return q;
+        },
         update: () => q,
         single: async () => settle(),
         maybeSingle: async () => settle(),
@@ -165,5 +168,18 @@ describe("createOrder — the vendor must be the caller's house's", () => {
       .createOrder(HOUSE_A, USER, order(OWN_VENDOR))
       .catch(() => undefined);
     expect(touched.procurementOrders).toBeGreaterThan(0);
+  });
+
+  // F-584: the dedup lookup is what stops a second open order to the same
+  // vendor for the same item. It used to log a warning on a failed read and
+  // carry on to insert -- a duplicate order over a read that never happened.
+  it("refuses with a 503 and writes nothing when the open-order lookup fails", async () => {
+    const { db, touched } = makeDb();
+    const err = await service(db)
+      .createOrder(HOUSE_A, USER, order(OWN_VENDOR))
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(String(err.message)).toContain("nothing was saved");
+    expect(touched.inserts).toBe(0);
   });
 });

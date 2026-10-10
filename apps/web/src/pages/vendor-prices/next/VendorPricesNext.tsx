@@ -49,7 +49,7 @@ import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { Wordmark } from '@/components/mudavym'
 import { Sheet } from '../../../components/mudavym/Sheet'
 import { useAuth } from '../../../contexts/AuthContext'
-import type { VendorObservationRow } from '../../../services/api/vendorIntel'
+import type { PriceIndexSourceStatus, VendorObservationRow } from '../../../services/api/vendorIntel'
 import { apiErrorMessage, apiErrorStatus, comparisonClassLabel } from '../../../services/api/vendorIntel'
 import { ink } from '../../../lib/mudavym/motion'
 import {
@@ -686,6 +686,17 @@ function ComparisonPanel({ productRef, wineId }: { productRef: ProductRef; wineI
   )
 }
 
+/** A source whose count could not be read is said as such, never folded into
+ * "0 of N" — that read as "nothing is there" while the list was unreachable (F-544). */
+function priceIndexLine(data: { armed: boolean; sources: PriceIndexSourceStatus[] }): string {
+  const unread = data.sources.filter((s) => s.rows === null).length
+  const holding = data.sources.filter((s) => s.rows !== null && s.rows > 0).length
+  const armedNote = data.armed ? '' : ' · Mudavym is not checking them for you yet'
+  if (unread === data.sources.length && unread > 0) return 'could not be read just now'
+  const unreadNote = unread > 0 ? `; ${unread} could not be read just now` : ''
+  return `${holding} of ${data.sources.length} have prices on file${unreadNote}${armedNote}`
+}
+
 /** The masthead standing line — what the identity register, the price index
  * and (owner only) the two sweeps hold, so the page is not just a title, a
  * search box and one sentence before a bottle is picked.
@@ -719,7 +730,7 @@ function MastheadStatus({ role }: { role: 'owner' | 'manager' | 'staff' | null }
         priceIndex.isError
           ? `could not be read (${apiErrorMessage(priceIndex.error, 'unknown error')})`
           : priceIndex.data
-            ? `${priceIndex.data.sources.filter((s) => s.rows > 0).length} of ${priceIndex.data.sources.length} have prices on file${priceIndex.data.armed ? '' : ' · Mudavym is not checking them for you yet'}`
+            ? priceIndexLine(priceIndex.data)
             : 'reading…',
       )}
       {role === 'owner' ? (
