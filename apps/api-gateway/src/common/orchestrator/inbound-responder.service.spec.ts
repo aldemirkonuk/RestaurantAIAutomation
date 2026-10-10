@@ -1033,4 +1033,120 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(updates[0]).not.toHaveProperty("confirmed_at");
     });
   });
+
+  // F-769: Ask AI's "draft a reply" and regenerate re-run the responder on the
+  // same vendor mail. What the manager did with that mail since must stand.
+  describe("a re-run on a mail already understood", () => {
+    const run = async (priorContext: Record<string, any> | null) => {
+      const writes: Array<{ table: string; payload: any }> = [];
+      const result = (table: string, ops: string[]) => {
+        if (table === "procurement_orders")
+          return {
+            data: {
+              id: "o1",
+              status: "NEGOTIATING",
+              quantity: 6,
+              quoted_price: 16,
+              negotiated_price: null,
+              providers: { name: "Kavaklıdere" },
+              restaurant_inventory: { wine_name: "Öküzgözü" },
+            },
+            error: null,
+          };
+        if (ops.includes("maybeSingle"))
+          return {
+            data: priorContext ? { conversation_context: priorContext } : null,
+            error: null,
+          };
+        if (ops.includes("in"))
+          return { data: [{ id: "d1", status: "PENDING_APPROVAL" }], error: null };
+        return { data: [], error: null };
+      };
+      const supabase = {
+        from: (table: string) => {
+          const ops: string[] = [];
+          const q: any = new Proxy(
+            {},
+            {
+              get: (_t, k: string) => {
+                if (k === "then") {
+                  const r = result(table, ops);
+                  return (ok: any, bad: any) => Promise.resolve(r).then(ok, bad);
+                }
+                return (arg?: any) => {
+                  ops.push(k);
+                  if (k === "update" || k === "insert")
+                    writes.push({ table, payload: arg });
+                  return q;
+                };
+              },
+            },
+          );
+          return q;
+        },
+      };
+      // Money bells go to owners and managers only (F-538).
+      const ws = {
+        emitRoleNotification: jest.fn(async () => 1),
+        emitConversationUpdated: jest.fn(),
+      };
+      const s = new InboundResponderService(
+        { get: () => "key" } as any,
+        { supabase } as any,
+        {} as any,
+        ws as any,
+        {} as any,
+      ) as any;
+      s.runLlm = async () =>
+        baseAnalysis({
+          deal_ready: true,
+          special_conditions: [],
+          email_class: "negotiation_reply",
+          injection_suspected: false,
+        });
+      s.buildDealProposal = () => ({ summary: "11 at $14", dealKind: "offer", urgency: "normal" });
+      s.isAutonomousSendEnabled = async () => false;
+      s.logDecision = async () => undefined;
+      s.persistManagerNotification = jest.fn(async () => undefined);
+      s.syncOrderState = jest.fn(async () => undefined);
+      await s.analyzeAndDraftReply({
+        inboundConversationId: "in1",
+        orderId: "o1",
+        restaurantId: "r1",
+        providerId: "p1",
+      });
+      const ctx = writes.find(
+        (w) => w.table === "procurement_conversations" && w.payload?.conversation_context,
+      )?.payload.conversation_context;
+      return { s, ws, ctx };
+    };
+
+    it("keeps a dismissed deal dismissed, and neither re-announces it nor re-applies the mail", async () => {
+      const { s, ws, ctx } = await run({
+        analyzed_at: "2026-10-01T10:00:00.000Z",
+        order_synced_at: "2026-10-01T10:00:00.000Z",
+        deal_proposal: { summary: "11 at $14" },
+        deal_resolved_at: "2026-10-02T09:00:00.000Z",
+        deal_resolution: "dismissed",
+      });
+      expect(ctx.deal_resolved_at).toBe("2026-10-02T09:00:00.000Z");
+      expect(ctx.deal_resolution).toBe("dismissed");
+      expect(ws.emitRoleNotification).not.toHaveBeenCalled();
+      expect(s.persistManagerNotification).not.toHaveBeenCalled();
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+    });
+
+    it("does not re-apply a mail understood before the marker existed", async () => {
+      const { s } = await run({ analyzed_at: "2026-10-01T10:00:00.000Z" });
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+    });
+
+    it("still applies and announces a mail seen for the first time", async () => {
+      const { s, ws, ctx } = await run(null);
+      expect(s.syncOrderState).toHaveBeenCalledTimes(1);
+      expect(ws.emitRoleNotification).toHaveBeenCalledTimes(1);
+      expect(ctx.deal_resolved_at).toBeUndefined();
+      expect(typeof ctx.order_synced_at).toBe("string");
+    });
+  });
 });

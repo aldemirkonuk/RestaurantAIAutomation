@@ -61,7 +61,7 @@ import {
   useDraftStanding,
 } from '@/hooks/queries/useDraftEmailQueries';
 import { SendStandingNote, holdAct } from '@/components/orders/SendStanding';
-import { MONO, SANS, SERIF } from './cm-format';
+import { MONO, SANS, SERIF, heldWords } from './cm-format';
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { Check, ConnectLink, Recheck } from './LetterRequestsPanel';
 
@@ -114,14 +114,23 @@ export function kindWords(emailType: string): string {
 }
 
 
-/** The engine's flags on this letter, whatever shape they arrived in. */
+/**
+ * The engine's flags on this letter, whatever shape they arrived in. The
+ * writers do not agree (F-768): the reply engine writes `{reasons: [...]}`
+ * (`inbound-responder.service.ts`), the order-letter agent writes
+ * `{hard: [...], soft_warnings: [{code, message}]}`
+ * (`provider_communication_agent.py`), and older rows carry a bare list or
+ * `{warnings: [...]}`. A hold reason is said in words, without its code.
+ */
 export function warningsOf(flags: unknown): ConstraintWarning[] {
-  const raw = Array.isArray(flags)
-    ? flags
-    : Array.isArray((flags as { warnings?: unknown })?.warnings)
-      ? ((flags as { warnings: unknown[] }).warnings)
-      : [];
+  const f = (flags ?? {}) as Record<string, unknown>;
+  const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  const raw = Array.isArray(flags) ? flags : [...list(f.warnings), ...list(f.soft_warnings)];
   const out: ConstraintWarning[] = [];
+  const held = [...list(f.hard), ...list(f.reasons)].filter((c): c is string => typeof c === 'string');
+  for (const code of new Set(held)) {
+    out.push({ code: '', message: `Held for you because ${heldWords(code)}.` });
+  }
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const w = item as Record<string, unknown>;
@@ -444,11 +453,16 @@ export function DraftedReplyPanel({
                   fontSize: 11.5,
                 }}
               >
-                {w.message}{' '}
-                <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}>
-                  rule {w.code}
-                  {w.severity ? ` · ${w.severity}` : ''}
-                </span>
+                {w.message}
+                {w.code && (
+                  <>
+                    {' '}
+                    <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}>
+                      rule {w.code}
+                      {w.severity ? ` · ${w.severity}` : ''}
+                    </span>
+                  </>
+                )}
               </li>
             ))}
           </ul>

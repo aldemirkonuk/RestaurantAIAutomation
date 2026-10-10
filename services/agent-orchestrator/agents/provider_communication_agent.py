@@ -899,9 +899,15 @@ class ProviderCommunicationAgent(BaseAgent):
         """D-32-06: Log draft discard."""
         conversation_id = payload.get("conversation_id", "")
         restaurant_id = payload.get("restaurant_id", "")
+        # F-772: which letter, on which order, and who discarded it.
         await self.log_decision(
             decision_type="draft_discarded",
-            inputs={"conversation_id": conversation_id},
+            inputs={
+                "conversation_id": conversation_id,
+                "conversation_ids": payload.get("conversation_ids") or [],
+                "order_id": payload.get("order_id", ""),
+                "discarded_by": payload.get("discarded_by"),
+            },
             output={"status": "DISCARDED"},
             reasoning="Manager discarded outbound draft",
             confidence=1.0,

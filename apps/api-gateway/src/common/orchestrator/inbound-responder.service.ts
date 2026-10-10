@@ -343,6 +343,40 @@ export class InboundResponderService {
           )
         : null;
 
+      // A manual re-run (regenerate, Ask AI's "draft a reply") reads a mail this
+      // pass may already have understood (F-769). What the manager did with it
+      // since stands: a dismissed or confirmed deal stays resolved, the deal is
+      // not announced twice, and the old mail is not applied to the order again.
+      const { data: priorRow } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .select("conversation_context")
+        .eq("id", ctx.inboundConversationId)
+        .maybeSingle();
+      const prior = ((priorRow as any)?.conversation_context ?? {}) as Record<
+        string,
+        any
+      >;
+      // Rows understood before `order_synced_at` existed were applied then.
+      const alreadyApplied =
+        prior.order_synced_at != null ||
+        (prior.analyzed_at != null && !("order_synced_at" in prior));
+      // Only a mail we can trust moves the order (F-485). A bounce or an
+      // out-of-office, a mail that tried to instruct the AI, or one from a
+      // sender we could not verify is still read and kept, but it writes no
+      // price and no status. Worked out before the trace is written so a held
+      // mail is never stamped `order_synced_at` (F-769) as if it had moved it.
+      const orderSyncHeld = this.orderSyncHoldReason(
+        analysis,
+        flags,
+        autoReply,
+        ctx.transportSignals,
+      );
+      const applyNow = !paused && !alreadyApplied && !orderSyncHeld;
+      const announceDeal =
+        dealProposal != null &&
+        !prior.deal_proposal &&
+        prior.deal_resolved_at == null;
+
       // Persist the understanding onto the inbound row ("trace") — always.
       await this.databaseService.supabase
         .from("procurement_conversations")
@@ -372,15 +406,24 @@ export class InboundResponderService {
               transport: ctx.transportSignals ?? null,
             },
             deal_proposal: dealProposal,
+            ...(prior.deal_resolved_at != null
+              ? {
+                  deal_resolved_at: prior.deal_resolved_at,
+                  deal_resolution: prior.deal_resolution,
+                }
+              : {}),
             analyzed_at: new Date().toISOString(),
+            order_synced_at: applyNow
+              ? new Date().toISOString()
+              : (prior.order_synced_at ?? (alreadyApplied ? prior.analyzed_at : null)),
             model: NEGOTIATION_MODEL,
           },
         })
         .eq("id", ctx.inboundConversationId);
 
       // Notify the manager of a decision-ready deal (drives the sidebar CTA +
-      // urgent auto-popup). Fires regardless of the reply path below.
-      if (dealProposal) {
+      // urgent auto-popup). Fires regardless of the reply path below, once per mail.
+      if (dealProposal && announceDeal) {
         // D4 — deals always notify; priority only sets the loudness (interrupt vs info).
         const dealBucket = computePriority({
           relevance: 1,
@@ -444,18 +487,9 @@ export class InboundResponderService {
       const autonomyFull = await this.isAutonomousSendEnabled(ctx.restaurantId);
 
       // ── Close the loop: reflect the negotiation onto the order itself ──────
-      // Only a mail we can trust moves the order (F-485). A bounce or an
-      // out-of-office, a mail that tried to instruct the AI, or one from a
-      // sender we could not verify is still read and kept above, but it writes
-      // no price and no status: those checks used to run AFTER this write and
-      // only held back the reply.
-      const orderSyncHeld = this.orderSyncHoldReason(
-        analysis,
-        flags,
-        autoReply,
-        ctx.transportSignals,
-      );
-      if (!paused && !orderSyncHeld) {
+      // Only a mail we can trust moves the order (F-485), and only once
+      // (F-769): `applyNow` above already folds in `orderSyncHeld`.
+      if (applyNow) {
         await this.syncOrderState(
           o,
           analysis,

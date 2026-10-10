@@ -319,6 +319,40 @@ describe('the engine’s flags name their rule', () => {
     // A message with no code is still worth showing; the code says so.
     expect(warningsOf([{ message: 'x' }])[0].code).toBe('unnamed rule');
   });
+
+  // F-768: the shapes the writers really produce, not the fixture's.
+  it('says why the reply engine held a letter, in words and without its code', () => {
+    draw({
+      reply: {
+        ...REPLY,
+        constraintFlags: {
+          needs_approval: true,
+          reasons: ['price_above_target', 'sender_unverified'],
+          price_above_target: true,
+          target_price: 14,
+        },
+      },
+    });
+    const box = screen.getByTestId('draft-warnings');
+    expect(box).toHaveTextContent('Held for you because the vendor’s price is above the house’s target.');
+    expect(box).toHaveTextContent('could not be proven to come from them');
+    expect(box).not.toHaveTextContent('price_above_target');
+    expect(box).not.toHaveTextContent('rule');
+  });
+
+  it('reads the order-letter agent’s hard rules and its notes', () => {
+    const w = warningsOf({
+      hard: ['C-04'],
+      annotating: ['C-11'],
+      soft_warnings: [{ code: 'C-11', message: 'Quantity unit unclear.', severity: 'annotating' }],
+      is_sensitive: false,
+    });
+    expect(w.map((x) => x.message)).toEqual([
+      'Held for you because the price is more than 15% over the house’s target.',
+      'Quantity unit unclear.',
+    ]);
+    expect(warningsOf({ needs_approval: false, reasons: [] })).toEqual([]);
+  });
 });
 
 describe('copies', () => {

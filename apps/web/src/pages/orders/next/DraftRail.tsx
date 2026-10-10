@@ -185,8 +185,20 @@ function CountdownBar({
 
 /* ── one thread line inside an expanded draft ───────────────────────────── */
 
+/** A letter that was closed without leaving, said as what happened to it (F-771). */
+const CLOSED_UNSENT: Record<string, string> = {
+  DISCARDED: "discarded — never sent",
+  CANCELLED: "cancelled — never sent",
+  HOUSE_CANCELLED: "cancelled — never sent",
+  SEND_REFUSED: "refused — never sent",
+  RELAY_REFUSED: "refused — never sent",
+  FAILED: "failed — never sent",
+};
+
 function ThreadLine({ row }: { row: OrderConversationDto }) {
-  const isDraft = row.direction === "OUTBOUND" && !row.sentAt;
+  const closed =
+    row.direction === "OUTBOUND" && !row.sentAt ? CLOSED_UNSENT[row.status] : undefined;
+  const isDraft = row.direction === "OUTBOUND" && !row.sentAt && !closed;
   return (
     <div
       style={{
@@ -201,7 +213,7 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
           : "1px solid var(--paper-2, #EAE4D8)",
         fontFamily: SANS,
         fontSize: 11.5,
-        color: "var(--ink-2, #4F473C)",
+        color: closed ? "var(--ink-4, #665D50)" : "var(--ink-2, #4F473C)",
       }}
     >
       <span
@@ -226,7 +238,9 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
           flex: "none",
         }}
       >
-        {isDraft
+        {closed
+          ? closed
+          : isDraft
           ? row.requestedByName || row.requestedBy
             ? `draft — asked by ${row.requestedByName ?? "a colleague"}, not sent`
             : "draft — not sent"
@@ -497,12 +511,12 @@ function DraftDetail({
         </div>
       )}
 
-      {/* the thread it belongs to — sent rows carry their proof, drafts do not */}
+      {/* the thread it belongs to — sent rows carry their proof, drafts do not.
+          The gateway sends it oldest first; the card shows the newest four, in
+          order, so the vendor message the draft answers is never the one hidden
+          (F-770). */}
       {rows.length > 0 && (
-        <div className="grid gap-1">
-          {rows.slice(0, 4).map((r) => (
-            <ThreadLine key={r.id} row={r} />
-          ))}
+        <div className="grid gap-1" data-testid="draft-thread">
           {rows.length > 4 && (
             <span
               style={{
@@ -515,6 +529,9 @@ function DraftDetail({
               + {rows.length - 4} earlier in the thread
             </span>
           )}
+          {rows.slice(-4).map((r) => (
+            <ThreadLine key={r.id} row={r} />
+          ))}
         </div>
       )}
       {conversations.isError && (
@@ -679,7 +696,11 @@ function DraftCard({
     cardRef.current?.scrollIntoView?.({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }, [focused, reduced]);
   const qty = num(draft.quantity);
-  const price = num(draft.quotedPrice);
+  // F-773: the vendor's latest figure when there is one, else the house's first
+  // quote — each said as which it is, never a bare number.
+  const vendorPrice = num(draft.negotiatedPrice);
+  const price = vendorPrice ?? num(draft.quotedPrice);
+  const priceLabel = vendorPrice !== null ? "vendor’s latest" : "first quote";
   const total = qty !== null && price !== null ? qty * price : null;
 
   return (
@@ -737,14 +758,21 @@ function DraftCard({
           )}
         </span>
         <span
+          data-testid="draft-figure"
           style={{
             fontFamily: MONO,
             fontSize: 12,
             fontVariantNumeric: "tabular-nums",
             color: "var(--ink-1, #211C16)",
             flex: "none",
+            textAlign: "right",
           }}
         >
+          {price !== null && (
+            <span className="block" style={{ fontFamily: SANS, fontSize: 10, color: "var(--ink-4, #665D50)" }}>
+              {priceLabel}
+            </span>
+          )}
           {qty !== null ? `${qty} × ${fmtMoney(price)}` : fmtMoney(total)}
         </span>
         <span

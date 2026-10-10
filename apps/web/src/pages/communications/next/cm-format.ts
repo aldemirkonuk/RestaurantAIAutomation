@@ -161,8 +161,30 @@ export function hardCodesOf(flags: unknown): string[] {
   return Array.isArray(hard) ? hard.filter((c): c is string => typeof c === 'string') : [];
 }
 
+/**
+ * Like `HELD_BECAUSE`, for the reply engine’s held-for-review reasons
+ * (`inbound-responder.service.ts`, `computeGuardrails`), which name their rule
+ * in words rather than a C-number.
+ */
+const HELD_BECAUSE_REPLY: Record<string, string> = {
+  commitment_language: 'it commits the house to something',
+  price_above_target: 'the vendor’s price is above the house’s target',
+  qty_or_budget_change: 'the vendor offers a different quantity than the house ordered',
+  max_rounds: 'the exchange has gone back and forth three times or more',
+  sender_unverified: 'the vendor’s mail could not be proven to come from them',
+  price_inconsistent: 'the vendor’s case and bottle prices do not agree',
+  moq_not_met: 'the order is below the vendor’s minimum',
+  currency_ambiguous: 'the vendor’s currency is unclear',
+  tax_status_unknown: 'the vendor did not say whether tax is included',
+};
+
+/** One held-for-review rule, in the house's words. */
+export function heldWords(code: string): string {
+  return HELD_BECAUSE[code] ?? HELD_BECAUSE_REPLY[code] ?? 'a rule this page has no words for yet';
+}
+
 export function heldBecause(codes: readonly string[]): string {
-  const words = [...new Set(codes.map((c) => HELD_BECAUSE[c] ?? 'a rule this page has no words for yet'))];
+  const words = [...new Set(codes.map(heldWords))];
   const list =
     words.length < 3 ? words.join(' and ') : `${words.slice(0, -1).join(', ')}, and ${words[words.length - 1]}`;
   return `Held because ${list}.`;
