@@ -8,7 +8,7 @@ import { feedKey, pulseKey } from "@/api/queries";
 import { openNotificationTap, routeForNotificationData } from "@/lib/notificationRoute";
 import { useSession } from "@/state/session";
 import { color } from "@/design/tokens";
-import { beforeSignOutRequest } from "@/state/session";
+import { afterSignIn, beforeSignOutRequest } from "@/state/session";
 
 let registeredToken: string | null = null;
 
@@ -49,7 +49,8 @@ Notifications.setNotificationHandler({
  * gateway. Every push also warms the cache: by the time the manager opens
  * the app from a notification, the feed is already fresh.
  */
-export async function registerPush(): Promise<void> {
+export async function registerPush(opts: { ask?: boolean } = {}): Promise<void> {
+  const ask = opts.ask ?? true;
   try {
     if (!Device.isDevice) return; // simulators have no push
 
@@ -63,7 +64,7 @@ export async function registerPush(): Promise<void> {
 
     const { status } = await Notifications.getPermissionsAsync();
     let granted = status === "granted";
-    if (!granted) {
+    if (!granted && ask) {
       const req = await Notifications.requestPermissionsAsync();
       granted = req.status === "granted";
     }
@@ -105,6 +106,20 @@ beforeSignOutRequest(async (send) => {
   if (!token) return;
   await send(`/mobile/devices/${encodeURIComponent(token)}`, "DELETE");
   registeredToken = null;
+});
+
+// Every sign-in registers the device again when the person's saved Push
+// setting is on (F-801): sign-out unregistered it above, and nothing else
+// would. Never asks the phone's permission here; Settings does that.
+afterSignIn(async () => {
+  const userId = useSession.getState().user?.id;
+  if (!userId) return;
+  const res = await api<{ preferences?: { servicePermissions?: Record<string, unknown> } }>(
+    `/users/${userId}/preferences`,
+  );
+  if (res?.preferences?.servicePermissions?.push !== true) return;
+  if (useSession.getState().user?.id !== userId) return;
+  await registerPush({ ask: false });
 });
 
 /**

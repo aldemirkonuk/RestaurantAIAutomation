@@ -184,6 +184,27 @@ it("parks a write the server keeps refusing with 5xx so later work still sends (
   (api as jest.Mock).mockResolvedValue({});
 });
 
+it("does not park after offline misses and one 5xx; parks only after 5 server errors (F-798)", async () => {
+  const { ApiError } = jest.requireMock("@/api/client");
+  const serverDown = Object.assign(new ApiError("Request failed (502)"), { status: 502 });
+  const offline = new TypeError("Network request failed");
+  let call = 0;
+  (api as jest.Mock).mockImplementation(() => {
+    call += 1;
+    return Promise.reject(call <= 4 ? offline : serverDown);
+  });
+  useOutbox.getState().enqueue({ path: "/orders/one/receive", label: "Receipt" });
+  // Four offline misses then one 5xx.
+  while (call < 5) await jest.advanceTimersByTimeAsync(500);
+  expect(call).toBe(5);
+  expect(useOutbox.getState().entries[0]).toMatchObject({ status: "pending", serverAttempts: 1 });
+  // Four more server errors make five: now it is parked.
+  await jest.advanceTimersByTimeAsync(300_000);
+  expect(call).toBe(9);
+  expect(useOutbox.getState().entries[0]).toMatchObject({ status: "failed", serverAttempts: 5 });
+  (api as jest.Mock).mockResolvedValue({});
+});
+
 it("keeps waiting, without parking, while the phone gets no answer at all", async () => {
   (api as jest.Mock).mockRejectedValue(new TypeError("Network request failed"));
   useOutbox.getState().enqueue({ path: "/offline", label: "Count" });

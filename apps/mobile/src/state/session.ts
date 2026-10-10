@@ -190,6 +190,21 @@ export function beforeSignOutRequest(job: (send: SignOutSend) => Promise<void>):
   return () => signOutRequests.delete(job);
 }
 
+/**
+ * Work that follows a fresh session — sign-in, or tokens adopted on a house
+ * switch or a link. Today only the push device's re-register (F-801): every
+ * sign-out unregisters it, so without this the Settings switch read ON while
+ * the phone got nothing. Fire-and-forget; sign-in never waits on it.
+ */
+const signedInJobs = new Set<() => Promise<void>>();
+export function afterSignIn(job: () => Promise<void>): () => void {
+  signedInJobs.add(job);
+  return () => signedInJobs.delete(job);
+}
+function announceSignedIn() {
+  for (const job of signedInJobs) void job().catch(() => {});
+}
+
 function sayGoodbye(access: string | null, refresh: string | null): Promise<void> {
   let token = access;
   let canRefresh = !!refresh;
@@ -354,6 +369,7 @@ export const useSession = create<SessionState>((set, get) => ({
     await rememberSessionHouse(user);
     await persistUser(current, generation, user);
     set({ accessToken, user, status: "signedIn" });
+    announceSignedIn();
   },
 
   adoptTokens: async (accessToken, refreshToken, expectedGeneration) => {
@@ -373,6 +389,7 @@ export const useSession = create<SessionState>((set, get) => ({
     await rememberSessionHouse(user);
     await persistUser(current, generation, user);
     set({ accessToken, user, status: "signedIn" });
+    announceSignedIn();
     return true;
   },
 
