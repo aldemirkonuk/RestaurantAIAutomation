@@ -40,6 +40,7 @@ import {
 } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
 import { useAuth } from '../../../contexts/AuthContext';
+import { houseToday, useHouseZone, useSettleOnHouseDay } from '@/lib/houseZone';
 import { AwayCard, HouseAwayCard } from './AwayCard';
 import { useHouseAreas } from './useHouseAreas';
 import {
@@ -87,7 +88,12 @@ function serverMessage(e: unknown): string | null {
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
   const qc = useQueryClient();
-  const [weekStart, setWeekStart] = useState(() => weekFromLink(window.location.search));
+  // F-571: "this week" is the house's week, not the device's (lib/houseZone.ts);
+  // a ?week= link still opens its own week (HEAD), and is never moved by it.
+  const zone = useHouseZone();
+  const [weekStart, setWeekStart] = useState(() => weekFromLink(window.location.search, houseToday(zone)));
+  const linkedWeek = new URLSearchParams(window.location.search).has('week');
+  useSettleOnHouseDay(zone, mondayOf, linkedWeek ? () => {} : setWeekStart);
   const days = weekDays(weekStart);
   const { user } = useAuth();
   const house = useHouseAreas();
@@ -200,7 +206,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             <button
               type="button"
               className="tm-ctl tm-ctl--quiet"
-              onClick={() => setWeekStart(mondayOf(new Date()))}
+              onClick={() => setWeekStart(mondayOf(houseToday(zone)))}
             >
               This week
             </button>

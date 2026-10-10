@@ -57,6 +57,7 @@ import EventSheet, { type SheetTarget } from './EventSheet';
 import MeetingNotePanel, { meetingsAwaitingNote, withoutNotedMeetings } from './MeetingNotePanel';
 import { useDayNotesInRange } from '@/hooks/queries';
 import { getErrorMessage } from '@/services/api/client';
+import { houseToday, useHouseZone } from '@/lib/houseZone';
 import CalendarLinkSheet from './CalendarLinkSheet';
 import { useMyCalendarLink } from '@/components/calendar-link/useMyCalendarLink';
 import './calendar-next.css';
@@ -117,7 +118,9 @@ export interface CalendarNextProps {
 
 export default function CalendarNext({ ground }: CalendarNextProps) {
   const [view, setView] = useState<CalView>('month');
-  const [cursor, setCursor] = useState(() => new Date());
+  // F-571: "today" is the house's day, not the device's (lib/houseZone.ts).
+  const zone = useHouseZone();
+  const [cursor, setCursor] = useState(() => houseToday(zone));
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   /**
@@ -261,11 +264,16 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     );
   }, [params, setParams]);
   useEffect(() => {
+    // Once, when the house's zone is known: the page opened on the device's
+    // day while it was read, so an untouched cursor moves to the house's day.
+    if (zone === undefined) return;
+    const today = houseToday(zone);
+    setCursor((c) => (dayKey(c) === dayKey(new Date()) ? today : c));
     // `?new=` first: a link carrying both is the richer one, and the drafted
     // entry is what the person clicked.
     const drafted = readNewParam(params.get('new'));
     if (drafted) {
-      const day = drafted.date ?? dayKey(new Date());
+      const day = drafted.date ?? dayKey(today);
       setCursor(parseDayKey(day));
       setSelected(day);
       setSheet({ mode: 'create', date: day, startTime: null, prefill: drafted.prefill });
@@ -284,10 +292,10 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     // send; the legacy page feeds it to `new Date()` and gets Invalid Date.
     const day =
       !raw || raw === 'today'
-        ? dayKey(new Date())
+        ? dayKey(today)
         : /^\d{4}-\d{2}-\d{2}/.test(raw)
           ? raw.slice(0, 10)
-          : dayKey(new Date());
+          : dayKey(today);
     setCursor(parseDayKey(day));
     setSelected(day);
     setSheet({ mode: 'create', date: day, startTime: null });
@@ -299,9 +307,10 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
       },
       { replace: true },
     );
-    // once, on arrival — a later param change is the user's own navigation
+    // once, on arrival (when the zone is known) — a later param change is the
+    // user's own navigation
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [zone === undefined]);
 
   /* ── keyboard: parity with the shipping page (NEW-399) ────────────────── */
   useEffect(() => {
@@ -313,7 +322,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       switch (e.key) {
         case 't':
-          setCursor(new Date());
+          setCursor(houseToday(zone));
           break;
         case 'm':
           setView('month');
@@ -344,7 +353,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sheet, view, cursor, selected]);
+  }, [sheet, view, cursor, selected, zone]);
 
   function step(delta: number) {
     setSelected(null);
@@ -445,7 +454,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
               <button type="button" className="cn-btn cn-ink" onClick={() => step(-1)} aria-label="Previous period">
                 ‹
               </button>
-              <button type="button" className="cn-btn cn-ink" onClick={() => setCursor(new Date())}>
+              <button type="button" className="cn-btn cn-ink" onClick={() => setCursor(houseToday(zone))}>
                 Today
               </button>
               <button type="button" className="cn-btn cn-ink" onClick={() => step(1)} aria-label="Next period">
@@ -628,6 +637,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
             <MonthLedger
               data={data}
               cursor={cursor}
+              today={dayKey(houseToday(zone))}
               selected={selected}
               onSelect={setSelected}
               onOpenEvent={openEvent}
@@ -639,6 +649,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
               <TimeGrid
                 data={data}
                 cursor={cursor}
+                today={dayKey(houseToday(zone))}
                 days={view === 'week' ? 7 : 1}
                 onOpenEvent={openEvent}
                 onCreateAt={(day, hour) =>

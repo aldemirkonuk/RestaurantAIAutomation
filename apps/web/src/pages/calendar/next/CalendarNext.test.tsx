@@ -13,7 +13,7 @@
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const state = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -63,8 +63,18 @@ vi.mock('../../../services/api/calendar', async (importOriginal) => {
   return { ...actual, listHouseCalendarLinks: vi.fn(async () => []) };
 });
 
+/* F-571: the house's zone, as `GET /restaurants/:id/operating-hours` says it.
+   Only read when a house is picked (localStorage `activeRestaurantId`). */
+const houseZone = vi.hoisted(() => ({ current: null as string | null }));
+vi.mock('@/services/api/restaurants', () => ({
+  restaurantsApi: {
+    getOperatingHours: vi.fn(async () => ({ timezone: houseZone.current })),
+  },
+}));
+
 import CalendarNext from './CalendarNext';
 import { laneLayout, placed } from './TimeGrid';
+import { forgetHouseZones } from '@/lib/houseZone';
 import { SEAL_HEX } from './cal-format';
 import { formatMoney } from '@/lib/currency';
 import type { CalEvent } from './useCalendarNextData';
@@ -1772,5 +1782,42 @@ describe('CalendarNext — an all-day entry can span days (F-198)', () => {
       eventDate: '2026-09-11',
       eventDateEnd: '2026-09-13',
     });
+  });
+});
+
+describe("CalendarNext — the house's today (F-571)", () => {
+  // The fixed clock is 12:00 on Sep 15 in New York (the suite's zone), which
+  // is already 01:00 on Sep 16 in Tokyo.
+  beforeEach(() => {
+    forgetHouseZones();
+    localStorage.setItem('activeRestaurantId', 'house-tokyo');
+    houseZone.current = 'Asia/Tokyo';
+  });
+  afterEach(() => {
+    localStorage.removeItem('activeRestaurantId');
+    houseZone.current = null;
+  });
+
+  it("rings the house's today, not the device's", async () => {
+    const { container } = draw();
+    await waitFor(() =>
+      expect(container.querySelector('[data-today="true"]')).toHaveAttribute(
+        'aria-label',
+        expect.stringContaining('16'),
+      ),
+    );
+  });
+
+  it("opens date=today on the house's day", async () => {
+    draw('/calendar?openModal=true&date=today');
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByLabelText('Date')).toHaveValue('2026-09-16');
+  });
+
+  it("keeps the device's day when the house has no zone set", async () => {
+    houseZone.current = null;
+    draw('/calendar?openModal=true&date=today');
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByLabelText('Date')).toHaveValue('2026-09-15');
   });
 });
