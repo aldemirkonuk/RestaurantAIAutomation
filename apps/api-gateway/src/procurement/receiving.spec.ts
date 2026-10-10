@@ -36,6 +36,8 @@ function makeDb(opts: {
   rpcError?: { message: string } | null;
   /** The order's house item, as `restaurant_inventory` answers a read by id. */
   item?: Row | null;
+  /** The order's live ledger rows, in place of the one-tap row `quantity_received` stands for. */
+  ledger?: Row[];
   /**
    * Refuse an order write, by its payload — to prove neither order write's
    * error is swallowed any more (ADR 0286).
@@ -121,7 +123,9 @@ function makeDb(opts: {
         },
         limit: () => q,
         range: async () => ({
-          data: opts.order?.quantity_received
+          data: opts.ledger
+            ? opts.ledger
+            : opts.order?.quantity_received
             ? [
                 {
                   quantity_change: opts.order.quantity_received,
@@ -621,6 +625,41 @@ describe("recordDoorReceipt", () => {
     expect(
       shared.calls.orderUpdates.some((u: Row) => "quantity_received" in u),
     ).toBe(false);
+  });
+
+  it("[REVERT-FAILS] books the second truck in full after a phone receive closed the first (F-467)", async () => {
+    // Truck one was received on the phone: a verification (`reconciled`) and a
+    // `receipt-verify:` booking of 72, no door event. Truck two's six cases
+    // arrive at the door. Netting them against the phone's 72 booked 0.
+    const { db, calls } = makeDb({
+      order: packTwelve,
+      events: [
+        { order_id: "o1", stage: "reconciled", counted_qty_bottles: 72, rejected_qty_bottles: 0 },
+      ],
+      ledger: [{ quantity_change: 72, idempotency_key: "receipt-verify:o1:inv1" }],
+    });
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 6,
+      countedUom: "case",
+      idempotencyKey: "truck-2",
+    });
+    expect(calls.rpc[0].args.p_delta).toBe(72);
+  });
+
+  it("still reconciles a first door count against an unverified one-tap booking", async () => {
+    // The one-tap "delivered" with no verification is the SAME truck the door
+    // is counting; that rule is unchanged.
+    const { db, calls } = makeDb({
+      order: packTwelve,
+      ledger: [{ quantity_change: 192, idempotency_key: "order-delivered-live:o1" }],
+    });
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 15,
+      countedUom: "case",
+    });
+    expect(calls.rpc[0].args.p_delta).toBe(-12);
   });
 
   it("does not swallow a second truck that happens to bring the same count", async () => {

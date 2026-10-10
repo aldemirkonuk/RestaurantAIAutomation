@@ -221,6 +221,50 @@ describe('F1 — the door counts bottles, and the order is not denominated in th
   })
 })
 
+/* ═══════════════════════════════ F-467 — the second truck has a way in ══ */
+
+describe('F-467 — the rest of a split order is at the door', () => {
+  const rest = (id: string, backorderBottles: number | null, readable = true) => ({
+    id,
+    orderNumber: `PO-${id}`,
+    quantity: 10,
+    unitType: 'case',
+    bottlesTotal: 120,
+    wineName: 'Barolo',
+    received: { readable, backorderBottles },
+  })
+
+  it('[REVERT-FAILS] lists a partly received order that still owes bottles, as the rest of it', async () => {
+    get.mockImplementation(onlyForStatus('PARTIALLY_RECEIVED', [rest('half', 48)]))
+    harness(StaffBody)
+
+    expect(await screen.findByText(/48 bottles still to come/)).toBeInTheDocument()
+    expect(screen.getByText(/The rest of this order/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Receive the rest of Barolo at the door/ })).toBeInTheDocument()
+    // Not the whole order an earlier truck already brought part of.
+    expect(screen.queryByText(/120 bottles expected/)).not.toBeInTheDocument()
+    expect(screen.getByText(/1 out for delivery/)).toBeInTheDocument()
+  })
+
+  it('leaves out a partly received order that owes nothing, or whose ledger could not be read', async () => {
+    get.mockImplementation(
+      onlyForStatus('PARTIALLY_RECEIVED', [rest('done', 0), rest('unread', 48, false)], { total: 2 }),
+    )
+    harness(StaffBody)
+
+    expect(await screen.findByText(/Nothing is out for delivery/)).toBeInTheDocument()
+    expect(screen.queryByText(/bottles still to come/)).not.toBeInTheDocument()
+  })
+
+  it('does not call a confirmed order the rest of anything', async () => {
+    get.mockImplementation(onlyForStatus('CONFIRMED', [rest('new', 120)]))
+    harness(StaffBody)
+
+    expect(await screen.findByText(/120 bottles expected/)).toBeInTheDocument()
+    expect(screen.queryByText(/The rest of this order/)).not.toBeInTheDocument()
+  })
+})
+
 /* ══════════════════════════════════════════════════ F2 — the distributor ══ */
 
 describe('F2 — the vendor slot never passes the wine off as a distributor', () => {
