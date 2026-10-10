@@ -31,6 +31,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../services/api/client';
 import { useAuth } from '../../../contexts/AuthContext';
+import { houseToday, useHouseZone } from '../../../lib/houseZone';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { receivingApi, type UnverifiedDelivery } from '../../../services/api/receiving';
 import { listReportsWithTotal, type GeneratedReport } from '../../../services/api/reports';
@@ -145,16 +146,21 @@ export function settledError(q: { isError: boolean; isFetching: boolean }): bool
   return q.isError && !q.isFetching;
 }
 
-/** Local calendar day of an ISO instant, or null when it has no time. */
-function dayOf(iso: string | null | undefined): string | null {
+/**
+ * The house's calendar day of an ISO instant, or null when it has no time.
+ * F-990: the HOUSE's day, not the reader's (F-571) — a Detroit owner reading
+ * an Istanbul house at 20:00 used to see yesterday's entries counted as today.
+ */
+function dayOf(iso: string | null | undefined, zone: string | null | undefined): string | null {
   if (!iso) return null;
   const t = Date.parse(iso);
-  return Number.isFinite(t) ? new Date(t).toDateString() : null;
+  return Number.isFinite(t) ? houseToday(zone, new Date(t)).toDateString() : null;
 }
 
 export function useSortingOfficeData(): SortingOfficeData {
   const { activeRestaurantId } = useAuth();
   const rid = activeRestaurantId ?? '';
+  const zone = useHouseZone();
 
   // `total: number | null` — the gateway reports null when it could not count,
   // rather than handing back the page length (ADR 0086 / ADR 0051 clause 2).
@@ -269,8 +275,8 @@ export function useSortingOfficeData(): SortingOfficeData {
   const todayRoutine: TodayRoutine | null = useMemo(() => {
     if (timelineQ.data === undefined) return null;
     const events = timelineQ.data.events;
-    const today = new Date().toDateString();
-    const todays = events.filter((e) => dayOf(e.occurredAt) === today);
+    const today = houseToday(zone).toDateString();
+    const todays = events.filter((e) => dayOf(e.occurredAt, zone) === today);
     const bySource = new Map<string, number>();
     for (const e of todays) bySource.set(e.source, (bySource.get(e.source) ?? 0) + 1);
 
@@ -291,7 +297,7 @@ export function useSortingOfficeData(): SortingOfficeData {
       .map((e) => Date.parse(e.occurredAt ?? ''))
       .filter((t) => Number.isFinite(t));
     const oldestIsToday =
-      times.length === 0 || new Date(Math.min(...times)).toDateString() === today;
+      times.length === 0 || houseToday(zone, new Date(Math.min(...times))).toDateString() === today;
 
     return {
       count: todays.length,
@@ -299,7 +305,7 @@ export function useSortingOfficeData(): SortingOfficeData {
       bySource,
       sample: todays.slice(0, 12),
     };
-  }, [timelineQ.data, timelineWindowFull, timelineSourcesFailed]);
+  }, [timelineQ.data, timelineWindowFull, timelineSourcesFailed, zone]);
 
   const reports: GeneratedReport[] = useMemo(
     () =>

@@ -12,7 +12,8 @@
  * on the way to a chart.
  */
 
-import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatMoney } from '@/lib/utils';
+import { getHouseLocale } from '@/lib/houseCurrency';
 
 export const EM = '—';
 
@@ -33,16 +34,36 @@ export function money(v: unknown, mode: 'compact' | 'full' | 'table' = 'full'): 
   return n === null ? EM : formatMoney(n, mode);
 }
 
+/**
+ * A number in the house's marks (F-992): money already groups the house's way
+ * (F-908), so a count, a ratio or a turn beside it does too — in a lira house
+ * "1.250 bottles" and "62,5%", never "1,250" (1.25 by the house's own mark).
+ * `digits` fixes the decimals; omitted, up to three, as `toLocaleString` did.
+ */
+function houseNumber(n: number, digits?: number): string {
+  const opts: Intl.NumberFormatOptions =
+    digits === undefined ? {} : { minimumFractionDigits: digits, maximumFractionDigits: digits };
+  return new Intl.NumberFormat(getHouseLocale(), opts).format(n);
+}
+
 /** Plain figure, or the dash. */
 export function figure(v: unknown, mode: 'compact' | 'full' = 'full'): string {
   const n = num(v);
-  return n === null ? EM : formatNumber(n, mode);
+  if (n === null) return EM;
+  if (mode === 'full') return houseNumber(n);
+  // Compact keeps its English K/M and takes only the house's decimal mark,
+  // as compact money does.
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000) return `${sign}${houseNumber(abs / 1_000_000, 1)}M`;
+  if (abs >= 1_000) return `${sign}${houseNumber(abs / 1_000, 1)}K`;
+  return `${sign}${houseNumber(abs, 0)}`;
 }
 
 /** A ratio the engine returns as 0–1, rendered as a percentage of record. */
 export function ratioPct(v: unknown, digits = 1): string {
   const n = num(v);
-  return n === null ? EM : `${(n * 100).toFixed(digits)}%`;
+  return n === null ? EM : `${houseNumber(n * 100, digits)}%`;
 }
 
 /**
@@ -62,15 +83,15 @@ export function pct(v: unknown, digits = 1): string {
   const n = num(v);
   if (n === null) return EM;
   const shown = (n * 100).toFixed(digits);
-  if (Number(shown) === 0) return `${(0).toFixed(digits)}%`;
-  return `${n > 0 ? '+' : ''}${shown}%`;
+  if (Number(shown) === 0) return `${houseNumber(0, digits)}%`;
+  return `${n > 0 ? '+' : ''}${houseNumber(n * 100, digits)}%`;
 }
 
 /** A count with its noun, or the dash — "1 wine" / "6 wines" / "—". */
 export function countOf(v: unknown, one: string, many: string): string {
   const n = num(v);
   if (n === null) return EM;
-  return `${formatNumber(n)} ${n === 1 ? one : many}`;
+  return `${houseNumber(n)} ${n === 1 ? one : many}`;
 }
 
 /** Parse a YYYY-MM-DD as a LOCAL date (`new Date('YYYY-MM-DD')` is UTC). */

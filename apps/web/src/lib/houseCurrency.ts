@@ -67,6 +67,11 @@ export function setHouseLocale(locale: string | null | undefined): void {
   listeners.forEach((l) => l());
 }
 
+/** The house's formats tag, for figures that are not money (F-992). */
+export function getHouseLocale(): string {
+  return currentLocale;
+}
+
 /** For `useSyncExternalStore` in the hook. */
 export function subscribeHouseCurrency(l: () => void): () => void {
   listeners.add(l);

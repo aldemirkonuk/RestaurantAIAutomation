@@ -109,6 +109,37 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(countWithheld(doc)).toBe(8);
   });
 
+  it("figures of record: a partly costed cellar writes the priced wines' value and the notes the screen shows (F-989)", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as Record<string, unknown>),
+        pricedInventoryValue: 1800,
+        priceCoverage: { total: 2, priced: 1, unpriced: 1 },
+        cogsUnpricedCount: 3,
+      },
+      { days: null },
+    );
+    expect(figure(doc, "Cellar at cost (priced wines)")).toBe(1800);
+    const notes = doc.notes.join(" ");
+    expect(notes).toContain(
+      "1 of 2 on-hand wines have no cost yet, so the cellar figure above counts only the 1 that do",
+    );
+    expect(notes).not.toContain("assembled from part of the cellar");
+    expect(notes).toContain("1 wine on hand has no bottle price");
+    expect(notes).toContain("3 delivered orders carry no price");
+    expect(countWithheld(doc)).toBe(7);
+  });
+
+  it("figures of record: a withheld sell-price valuation gives both causes, not only an empty read (F-989)", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      { ...(PAYLOADS.ledger as Record<string, unknown>), revenue: null },
+      { days: null },
+    );
+    expect(JSON.stringify(figure(doc, "Sell-price valuation"))).toContain(
+      "No wine on hand carries a bottle price, or no inventory row came back",
+    );
+  });
+
   it("what's coming: an unfitted model projects nothing and claims no total", () => {
     const doc = EXPORT_CUTTINGS.ahead.write(PAYLOADS.ahead, { days: null });
     expect(isWithheld(figure(doc, "Next 14 days"))).toBe(true);

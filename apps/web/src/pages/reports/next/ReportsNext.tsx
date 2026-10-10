@@ -476,6 +476,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             onSheet={view.cuttings.map((c) => c.id)}
             tillDays={tillDays}
             tillMonth={tillMonth}
+            zone={zone ?? null}
           />
         )}
 

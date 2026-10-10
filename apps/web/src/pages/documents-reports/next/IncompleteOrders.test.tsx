@@ -4,12 +4,20 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
+const die = vi.hoisted(() => ({ claim: { id: 'c1', claimedAmount: 12400.5, currency: 'TRY' as string | null, state: 'open' } }));
+vi.mock('@/components/orders/SealedRejectDie', () => ({
+  SealedRejectDie: ({ onCreditClaimOpened }: { onCreditClaimOpened: (r: unknown) => void }) => (
+    <button type="button" onClick={() => onCreditClaimOpened({ ok: true, result: { alreadyOpen: false, claim: die.claim } })}>
+      Hold to cancel
+    </button>
+  ),
+}));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: 'r1' }) }));
 
 import { IncompleteOrders } from './IncompleteOrders';
@@ -60,6 +68,31 @@ describe('Incomplete orders', () => {
     api.get.mockRejectedValue({ response: { data: { message: 'The orders book did not answer (timeout).' } } });
     mount();
     expect(await screen.findByRole('alert')).toHaveTextContent('This register is unknown, not empty.');
+  });
+
+  it('the credit-claim sentence prints the money grouped and with its sign, or says no currency was recorded (F-993)', async () => {
+    const order = { orderId: 'o1', orderNumber: 'PO-2201', providerId: 'p', providerName: 'Kestrel Wine Co.', expectedDate: '2026-08-10', daysPast: 42, confirmed: false, choices: [{ key: 'cancel' }] };
+    api.get.mockResolvedValue({ data: { forYou: true, sentence: null, afterDays: 30, orders: [order] } });
+    die.claim = { ...die.claim, claimedAmount: 12400.5, currency: 'TRY' };
+    mount();
+    const [row] = await screen.findAllByTestId('incomplete-order');
+    fireEvent.click(within(row).getByRole('button', { name: 'It never arrived — cancel' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Hold to cancel' }));
+    const said = within(row).getByRole('status').textContent ?? '';
+    expect(said).toContain('12,400.50');
+    expect(said).not.toContain('12400.5');
+    expect(said).not.toContain('currency not recorded');
+  });
+
+  it('a claim with no currency on record says so rather than printing a bare number (F-993)', async () => {
+    const order = { orderId: 'o1', orderNumber: 'PO-2201', providerId: 'p', providerName: 'Kestrel Wine Co.', expectedDate: '2026-08-10', daysPast: 42, confirmed: false, choices: [{ key: 'cancel' }] };
+    api.get.mockResolvedValue({ data: { forYou: true, sentence: null, afterDays: 30, orders: [order] } });
+    die.claim = { ...die.claim, claimedAmount: 12400.5, currency: null };
+    mount();
+    const [row] = await screen.findAllByTestId('incomplete-order');
+    fireEvent.click(within(row).getByRole('button', { name: 'It never arrived — cancel' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Hold to cancel' }));
+    expect(within(row).getByRole('status')).toHaveTextContent('chasing the vendor for 12,400.50 (currency not recorded).');
   });
 
   it('prints the gateway’s rule for someone it does not ask', async () => {
