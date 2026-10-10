@@ -83,8 +83,9 @@ export function isCompleteInviteCode(raw: string): boolean {
 
 /**
  * The reason strings `GET /auth/invite/:code` returns when `valid` is false,
- * turned into copy. The gateway answers `not_found`, `used` or `expired`
- * (`auth.service.ts#getInvitePreview`).
+ * turned into copy. The gateway answers `not_found`, `used`, `expired` or
+ * `issuer` — the sender was demoted or removed and can no longer give an
+ * invite for that role (`auth.service.ts#getInvitePreview`).
  */
 export function describeInviteRejection(reason: string | undefined): string {
   switch (reason) {
@@ -94,6 +95,8 @@ export function describeInviteRejection(reason: string | undefined): string {
       return "This invite has expired. Ask for a fresh one.";
     case "not_found":
       return "We don't recognise that code. Check it and try again.";
+    case "issuer":
+      return "The person who sent this invite can no longer invite someone in this role. Ask the restaurant owner for a new one.";
     default:
       return "This invite can't be used. Ask for a fresh one.";
   }
