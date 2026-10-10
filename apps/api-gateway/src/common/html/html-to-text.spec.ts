@@ -68,19 +68,50 @@ describe("htmlToText", () => {
   describe("js/polynomial-redos", () => {
     it("stays linear on many '<style' prefixes", () => {
       // The old /<style[^>]*>[\s\S]*?<\/style>/ rescanned to end-of-input from
-      // every '<style'. Assert the growth curve, not absolute time, so this is
-      // not a machine-speed benchmark.
-      const time = (n: number) => {
+      // every '<style'. Measure the work, not the clock, so the result is the
+      // same on an idle laptop and under a loaded parallel run: every regex
+      // the scanner runs (test, replace and match all go through
+      // RegExp.prototype.exec) may only ever see a short slice, never the
+      // document; and the indexOf scans together read each character a
+      // bounded number of times.
+      const work = (n: number) => {
         const input = "<style".repeat(n);
-        const start = Date.now();
-        htmlToText(input);
-        return Date.now() - start;
+        let longestRegexRead = 0;
+        let regexCalls = 0;
+        let scanned = 0;
+        const exec = RegExp.prototype.exec;
+        const indexOf = String.prototype.indexOf;
+        const execSpy = jest
+          .spyOn(RegExp.prototype, "exec")
+          .mockImplementation(function (this: RegExp, s: string) {
+            regexCalls++;
+            longestRegexRead = Math.max(longestRegexRead, String(s).length);
+            return exec.call(this, s);
+          });
+        const indexOfSpy = jest
+          .spyOn(String.prototype, "indexOf")
+          .mockImplementation(function (this: string, needle: string, from?: number) {
+            const at = indexOf.call(this, needle, from);
+            scanned += (at === -1 ? this.length : at) - Math.max(0, from ?? 0);
+            return at;
+          });
+        try {
+          htmlToText(input);
+        } finally {
+          execSpy.mockRestore();
+          indexOfSpy.mockRestore();
+        }
+        return { length: input.length, longestRegexRead, regexCalls, scanned };
       };
-      const small = time(20000);
-      const large = time(80000);
-      // 4x input. Quadratic would be ~16x. Floor of 50ms absorbs timer noise
-      // on a fast machine where both readings round to 0.
-      expect(large).toBeLessThan(Math.max(small * 8, 50));
+      const small = work(20000);
+      const large = work(80000);
+      // The spy saw the scanner's regexes at all (a silent spy proves nothing).
+      expect(large.regexCalls).toBeGreaterThan(0);
+      // No regex reads more than a sliver of the 480,000-character input.
+      expect(large.longestRegexRead).toBeLessThan(64);
+      // 4x input: linear scans grow ~4x; the old rescan grew ~16x.
+      expect(large.scanned).toBeLessThanOrEqual(2 * large.length);
+      expect(large.regexCalls).toBeLessThanOrEqual(4 * small.regexCalls + 16);
     });
 
     it("terminates on an unterminated style element", () => {

@@ -643,6 +643,20 @@ describe("the PATCH route is held to the same table", () => {
     expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
   });
 
+  // F-826 (rest): the same hole from DELIVERED. Only the invoice check
+  // (`verifyReceipt`) completes a delivered order; a PATCH closed it unchecked.
+  it("refuses to complete a delivered order by PATCH, and writes nothing", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.DELIVERED });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, {
+        status: ProcurementOrderStatus.COMPLETED,
+      } as any),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(err.getResponse().reason).toBe("complete_through_the_invoice_check");
+    expect(h.order.status).toBe(ProcurementOrderStatus.DELIVERED);
+  });
+
   it("leaves a PATCH that carries no status alone", async () => {
     const h = await makeService();
     await h.service.updateOrder(HOUSE, ORDER_ID, {

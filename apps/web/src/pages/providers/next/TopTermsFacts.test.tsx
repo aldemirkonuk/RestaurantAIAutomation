@@ -192,7 +192,7 @@ describe('TwinSheet top facts — one source with Terms (VEN-W24)', () => {
 
 describe('the vendor sheet’s email is an act, not a warning (VEN-W32)', () => {
   it('draws the address as one sealed "write to them" link', async () => {
-    api.get.mockResolvedValue({ data: { rows: [], windowDays: 90 } });
+    api.get.mockResolvedValue({ data: register({ vendors: [] }) });
     render(<TwinSheet provider={{ ...provider, email: 'orders@bodega.example' } as Provider} onClose={() => {}} />);
     const link = within(screen.getByTestId('vendor-email')).getByRole('link', { name: 'Write to orders@bodega.example' });
     expect(link).toHaveAttribute('href', 'mailto:orders@bodega.example');
@@ -201,7 +201,7 @@ describe('the vendor sheet’s email is an act, not a warning (VEN-W32)', () => 
   });
 
   it('the phone is the same kind of act: one sealed "call" link (founder: "Approve, phone too")', () => {
-    api.get.mockResolvedValue({ data: { rows: [], windowDays: 90 } });
+    api.get.mockResolvedValue({ data: register({ vendors: [] }) });
     render(<TwinSheet provider={{ ...provider, phone: '+1 (312) 555-0100' } as Provider} onClose={() => {}} />);
     const link = within(screen.getByTestId('vendor-phone')).getByRole('link', { name: 'Call +1 (312) 555-0100' });
     expect(link).toHaveAttribute('href', 'tel:+13125550100');
@@ -209,7 +209,7 @@ describe('the vendor sheet’s email is an act, not a warning (VEN-W32)', () => 
   });
 
   it('no address stays a dash, never a button', () => {
-    api.get.mockResolvedValue({ data: { rows: [], windowDays: 90 } });
+    api.get.mockResolvedValue({ data: register({ vendors: [] }) });
     render(<TwinSheet provider={{ ...provider, email: '  ' } as Provider} onClose={() => {}} />);
     expect(screen.queryByTestId('vendor-email')).toBeNull();
     expect(fact('Email')).toHaveTextContent('—');
