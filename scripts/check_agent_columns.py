@@ -87,12 +87,6 @@ class CannotCheck(Exception):
 # only way to touch this list is to make it shorter.
 # ---------------------------------------------------------------------------
 KNOWN_BAD: dict[str, str] = {
-    "agents/email_intel_agent.py::providers.email": "Column is contact_email (F-535).",
-    "agents/email_intel_agent.py::provider_contacts.restaurant_id": "No house column (F-535).",
-    "agents/email_parsing_agent.py::procurement_orders.wine_name": (
-        "Name lives on restaurant_inventory (F-454/F-455, fix branch unmerged)."
-    ),
-    "agents/email_parsing_agent.py::procurement_orders.notes": "No such column.",
     "agents/provider_communication_agent.py::restaurant_feature_flags.auto_send_enabled": (
         "No such column; the auto-send gate reads nothing."
     ),
