@@ -180,21 +180,32 @@ self.addEventListener("notificationclick", (event) => {
   const data = event.notification.data || {}
   const url = resolveNotificationUrl(action, data)
 
-  // Open or focus the app
+  // A client's url is absolute ("https://mudavym.com/orders/…") and `url` is a
+  // path, so compare against the path resolved on this origin (F-222: the raw
+  // comparison never matched and every click opened another window).
+  const target = new URL(url, self.location.origin).href
+  const openNew = () => (clients.openWindow ? clients.openWindow(url) : undefined)
+
+  // Focus a tab already on that page; else bring an open app tab to the page;
+  // else open a new window.
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
-        // Check if there's already a window open
-        for (const client of clientList) {
-          if (client.url === url && "focus" in client) {
-            return client.focus()
-          }
+        const ours = clientList.filter(
+          (client) => new URL(client.url).origin === self.location.origin && "focus" in client
+        )
+        const same = ours.find((client) => client.url === target)
+        if (same) return same.focus()
+        const tab = ours.find((client) => "navigate" in client)
+        if (tab) {
+          return tab
+            .focus()
+            .then((focused) => (focused || tab).navigate(target))
+            .then((navigated) => navigated || openNew())
+            .catch(openNew)
         }
-        // Open new window
-        if (clients.openWindow) {
-          return clients.openWindow(url)
-        }
+        return openNew()
       })
   )
 })

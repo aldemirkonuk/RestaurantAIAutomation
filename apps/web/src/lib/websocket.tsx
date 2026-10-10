@@ -753,8 +753,10 @@ export function WebSocketProvider({
           requireInteraction: true,
         })
         
+        // Drafts waiting for a yes live on /communications; there is no
+        // per-conversation page (F-179: /conversations/:id was a 404).
         notification.onclick = () => {
-          window.location.href = `/conversations/${data.conversation_id}`
+          window.location.href = '/communications'
         }
       }
       
@@ -767,7 +769,8 @@ export function WebSocketProvider({
           onClick: () => {
             // This will trigger OneTapActionCenter (SECONDARY: 20%)
             queryClient.invalidateQueries({ queryKey: ['onetap-actions'] })
-            window.location.href = '/dashboard'
+            // The dashboard lives at `/`; `/dashboard` was a 404 (F-179).
+            window.location.href = '/'
           },
         },
       })
