@@ -306,6 +306,10 @@ describe("verifyReceipt — a held invoice refuses the PRICE, never the stock", 
       .catch((e) => e);
 
     expect(err?.status).toBe(409);
+    // Typed, so the phone tells it from other 409s (F-1025).
+    expect(err.getResponse()).toMatchObject({
+      reason: "receipt_price_refused",
+    });
     // The reason, verbatim from the rule that wrote it.
     expect(err.message).toContain("MONEY HELD, NOT FILED");
     expect(err.message).toContain("EUR");
@@ -450,6 +454,9 @@ describe("verifyReceipt — a held invoice refuses the PRICE, never the stock", 
       .catch((e: Error) => e);
 
     const said = String((err as { message?: string }).message ?? err);
+    expect((err as BadRequestException).getResponse()).toMatchObject({
+      reason: "receipt_price_refused",
+    });
     // The four rungs the screen offers, named rather than implied. The
     // invoice's own filed code is first, because it is the vendor's statement
     // about this very price (founder, 2026-09-11, batch 69).

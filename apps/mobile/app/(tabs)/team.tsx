@@ -15,7 +15,7 @@ import {
 } from "@/api/queries";
 import { readsFullRota, resolveTonight, seesFullRota } from "@/components/team/teamTonight";
 import { useSession } from "@/state/session";
-import { houseClock } from "@/lib/houseMoney";
+import { houseClock, houseDay } from "@/lib/houseMoney";
 
 export default function TeamScreen() {
   const role = useSession((s) => s.user?.role);
@@ -167,7 +167,8 @@ export default function TeamScreen() {
                   </AppText>
                   {e.start_time ? (
                     <AppText variant="caption" tone="tertiary">
-                      {new Date(e.start_time).toLocaleDateString(undefined, {
+                      {/* The house's day, in its zone and words (F-1029). */}
+                      {houseDay(e.start_time, locale, houseZone, {
                         weekday: "short",
                         month: "short",
                         day: "numeric",

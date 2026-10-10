@@ -1,4 +1,12 @@
-import { houseClock, houseDecimal, houseMoney, readHousePrice } from "../houseMoney";
+import {
+  houseClock,
+  houseDay,
+  houseDecimal,
+  houseMoney,
+  idleStockWords,
+  readHousePrice,
+  stockValue,
+} from "../houseMoney";
 import { computeMatch, money } from "../invoiceMatch";
 import {
   REVENUE_UNAVAILABLE_MESSAGES,
@@ -156,3 +164,41 @@ function pulse(overrides: Partial<TodayPulse>): TodayPulse {
     ...overrides,
   };
 }
+
+describe("houseDay — a date in the house's zone and words (F-1029)", () => {
+  // 00:30 in Istanbul is still the evening before in Detroit.
+  const lateNight = "2026-10-09T21:30:00Z";
+  it("dates an Istanbul event on the Istanbul day, in Turkish", () => {
+    expect(houseDay(lateNight, "tr-TR", "Europe/Istanbul", { month: "short", day: "numeric" })).toBe("10 Eki");
+    expect(houseDay(lateNight, "en-US", "America/Detroit", { month: "short", day: "numeric" })).toBe("Oct 9");
+  });
+  it("keeps the phone's zone for no zone or one it cannot read, and prints nothing for no date", () => {
+    const own = new Date(lateNight).toLocaleDateString("en-US", { day: "numeric" });
+    expect(houseDay(lateNight, null, "Not/AZone", { day: "numeric" })).toBe(own);
+    expect(houseDay(lateNight, null, null, { day: "numeric" })).toBe(own);
+    expect(houseDay(null, "tr-TR", null, { day: "numeric" })).toBe("");
+    expect(houseDay("not a date", "tr-TR", null, { day: "numeric" })).toBe("");
+  });
+});
+
+describe("idle stock and cellar value never read a missing cost as zero (F-1027)", () => {
+  const money = (v: number) => houseMoney(v, { currency: "TRY", locale: "tr-TR" });
+  it("gives staff, whose rows carry no cost, the count and no false ₺0", () => {
+    const dead = [{ quantity: 6 }, { quantity: 2 }, { quantity: 1 }];
+    expect(idleStockWords(dead, false, money)).toBe("3 wines · value kept for the owner and managers");
+  });
+  it("names the wines with no cost for the owner instead of counting them as free", () => {
+    expect(idleStockWords([{ quantity: 6, wac: 250 }, { quantity: 2 }], true, money)).toBe(
+      "2 wines · ₺1.500 idle (1 with no cost)",
+    );
+    expect(idleStockWords([{ quantity: 2 }], true, money)).toBe("1 wine · no cost recorded");
+    expect(idleStockWords([], true, money)).toBe("None");
+  });
+  it("values the cellar from the costs it has", () => {
+    expect(stockValue([{ quantity: 6, wac: 250 }, { lotLiveQty: 2, wac: 100 }, { quantity: 3 }, { quantity: 0 }])).toEqual({
+      value: 1700,
+      unpriced: 1,
+    });
+    expect(stockValue([{ quantity: 3 }])).toEqual({ value: null, unpriced: 1 });
+  });
+});

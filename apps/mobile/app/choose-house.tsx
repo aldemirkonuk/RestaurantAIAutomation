@@ -8,6 +8,7 @@ import { AuthLink, AuthNotice, AuthShell } from "@/components/auth/AuthShell";
 import { color, radius, space } from "@/design/tokens";
 import { api } from "@/api/client";
 import { useSession } from "@/state/session";
+import { confirmSignOut } from "@/lib/confirmSignOut";
 import {
   LAST_HOUSE_KEY,
   orderHouses,
@@ -150,10 +151,13 @@ export default function ChooseHouseScreen() {
 
       <AuthLink
         label="Not you? Sign out"
-        onPress={() => {
-          void signOut();
-          router.replace("/login");
-        }}
+        onPress={() =>
+          // Says first what stays unsent on this phone (F-1026).
+          confirmSignOut(() => {
+            void signOut();
+            router.replace("/login");
+          })
+        }
       />
     </AuthShell>
   );
