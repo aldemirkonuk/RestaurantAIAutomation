@@ -20,6 +20,7 @@ import {
   validateBatchRows,
   type BatchReceiveRow,
 } from '../inventory/BatchReceiveGrid'
+import { useMayActForTheHouse } from '../../hooks/useMayActForTheHouse'
 import {
   detectedWinesToBatchRows,
   mergePersistResults,
@@ -61,6 +62,8 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
   const [isSaving, setIsSaving] = useState(false)
   const [persistResult, setPersistResult] = useState<MenuScannerPersistResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // F-780: staff do not see the cost cells (F-312), so the copy does not ask them for a cost.
+  const canSetCost = useMayActForTheHouse()
 
   const reset = () => {
     setStep('capture')
@@ -209,7 +212,8 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
                     {step === 'capture' && 'Capture or upload your wine menu for AI analysis'}
                     {step === 'processing' && 'Running capture pipeline (OCR on shutter, not live frames)'}
                     {step === 'results' && 'Review and confirm detected wines'}
-                    {step === 'stock-setup' && 'How many, what they cost, and where they live'}
+                    {step === 'stock-setup' &&
+                      (canSetCost ? 'How many, what they cost, and where they live' : 'How many, and where they live')}
                     {step === 'done' && summarizeMenuScanPersist(persistResult ?? { added: [], stockAdded: [], reactivated: [], provisional: [], failed: [] })}
                   </p>
                 </div>
