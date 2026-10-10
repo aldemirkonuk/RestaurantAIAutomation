@@ -249,4 +249,143 @@ describe("iCal feed structure", () => {
     expect(out).toMatch(/BYDAY=MO,WE/);
     expect(out).toMatch(/COUNT=10/);
   });
+
+  it("ends an entry that runs past midnight on the next morning (F-790)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "UTC" },
+      events: [
+        {
+          ...EVENT,
+          start_time: "21:00",
+          end_date: null,
+          end_time: "02:00",
+        },
+      ],
+    });
+
+    expect(out).toContain("DTSTART:20260803T210000Z");
+    expect(out).toContain("DTEND:20260804T020000Z");
+  });
+
+  it("keeps a monthly entry on the 31st on the last day of shorter months (F-791)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "UTC" },
+      events: [
+        {
+          ...EVENT,
+          start_date: "2026-08-31",
+          end_date: "2026-08-31",
+          is_recurring: true,
+        },
+      ],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "monthly",
+          interval_value: 1,
+        },
+      ],
+    });
+
+    expect(out).toMatch(
+      /RRULE:FREQ=MONTHLY;BYMONTHDAY=28,29,30,31;BYSETPOS=-1/,
+    );
+  });
+
+  it("names only the days up to a monthly 30th, so a 31-day month keeps the 30th (F-791)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "UTC" },
+      events: [
+        {
+          ...EVENT,
+          start_date: "2026-09-30",
+          end_date: "2026-09-30",
+          is_recurring: true,
+        },
+      ],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "monthly",
+          interval_value: 1,
+        },
+      ],
+    });
+
+    expect(out).toMatch(/BYMONTHDAY=28,29,30;BYSETPOS=-1/);
+  });
+
+  it("leaves a monthly entry on the 15th as a plain monthly rule", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "UTC" },
+      events: [
+        {
+          ...EVENT,
+          start_date: "2026-08-15",
+          end_date: "2026-08-15",
+          is_recurring: true,
+        },
+      ],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "monthly",
+          interval_value: 1,
+        },
+      ],
+    });
+
+    expect(out).toMatch(/RRULE:FREQ=MONTHLY\r?\n/);
+    expect(out).not.toMatch(/BYMONTHDAY/);
+  });
+
+  it("keeps the last kept day in the feed when a series ends on a date (F-792)", () => {
+    // America/Chicago in October is UTC-5: the day ends at 04:59:59Z the next
+    // morning, after the 06:00 local (11:00Z) occurrence on Oct 14.
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "America/Chicago" },
+      events: [
+        {
+          ...EVENT,
+          start_date: "2026-10-01",
+          end_date: "2026-10-01",
+          start_time: "06:00",
+          end_time: "07:00",
+          is_recurring: true,
+        },
+      ],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "daily",
+          interval_value: 1,
+          end_on_date: "2026-10-14",
+        },
+      ],
+    });
+
+    expect(out).toContain("UNTIL=20261015T045959Z");
+  });
+
+  it("ends an all-day series on the date itself, and a floating one on a floating time (F-792)", () => {
+    const rule = {
+      calendar_event_id: EVENT.id,
+      frequency: "daily",
+      interval_value: 1,
+      end_on_date: "2026-10-14",
+    };
+    const allDay = feed({
+      restaurant: { id: "r1", name: "R", timezone: "America/Chicago" },
+      events: [{ ...EVENT, all_day: true, is_recurring: true }],
+      rules: [rule],
+    });
+    const floating = feed({
+      restaurant: { id: "r1", name: "R" },
+      events: [{ ...EVENT, is_recurring: true }],
+      rules: [rule],
+    });
+
+    expect(allDay).toMatch(/UNTIL=20261014(\r?\n|;)/);
+    expect(floating).toMatch(/UNTIL=20261014T235959(\r?\n|;)/);
+  });
 });
