@@ -54,6 +54,25 @@ const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const HEX_256_PATTERN = /^[a-f0-9]{64}$/;
 
 /**
+ * Every `integration_reason` a return URL can carry. The web return notice
+ * (IntegrationReturnNotice) has a sentence for each, and its test reads this
+ * list, so a reason added here without words fails there.
+ */
+export const INTEGRATION_RETURN_REASONS = [
+  "denied",
+  "provider_error",
+  "missing_state",
+  "invalid_state",
+  "invalid_callback",
+  "invalid_browser_origin",
+  "exchange_failed",
+  "membership_refused",
+  "membership_unreadable",
+  "held_by_another_house",
+] as const;
+export type IntegrationReturnReason = (typeof INTEGRATION_RETURN_REASONS)[number];
+
+/**
  * Why a completed provider round trip still connected nothing, when the cause
  * is the PERSON's standing rather than the provider exchange. A revoked
  * membership is not an exchange failure, and a membership that could not be
@@ -61,10 +80,10 @@ const HEX_256_PATTERN = /^[a-f0-9]{64}$/;
  */
 class ConsentMembershipRefusal extends Error {
   constructor(
-    readonly reason:
-      | "membership_refused"
-      | "membership_unreadable"
-      | "held_by_another_house",
+    readonly reason: Extract<
+      IntegrationReturnReason,
+      "membership_refused" | "membership_unreadable" | "held_by_another_house"
+    >,
   ) {
     super(reason);
     this.name = "ConsentMembershipRefusal";
@@ -627,7 +646,7 @@ export class IntegrationsOauthService {
       );
     }
     const returnBase = `${stateRow.frontend_origin}${this.safeReturnPath(stateRow.return_path)}`;
-    const refused = (reason: string) => ({
+    const refused = (reason: IntegrationReturnReason) => ({
       destination: this.resultUrl(returnBase, "error", reason, stateRow.integration_id),
     });
 
@@ -792,7 +811,7 @@ export class IntegrationsOauthService {
   private resultUrl(
     base: string,
     status: "connected" | "error",
-    reason?: string,
+    reason?: IntegrationReturnReason,
     integrationId?: string,
   ): string {
     const url = new URL(base);
