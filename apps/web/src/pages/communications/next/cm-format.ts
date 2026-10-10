@@ -23,12 +23,48 @@ export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
 const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
 const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-export function fmtWhen(iso: string | null | undefined): string {
+/** Day, month (and year), hour:minute of a moment on `zone`'s clock — the device's when none. */
+function wallParts(d: Date, zone: string | null | undefined) {
+  const read = (timeZone: string | undefined) =>
+    new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone,
+    }).formatToParts(d);
+  let p: Intl.DateTimeFormatPart[];
+  try {
+    p = read(zone || undefined);
+  } catch {
+    p = read(undefined); // a zone this browser cannot read: the device's clock
+  }
+  const get = (t: string) => p.find((x) => x.type === t)?.value ?? '';
+  return { dm: `${get('day')} ${get('month')}`, year: get('year'), hm: `${get('hour')}:${get('minute')}` };
+}
+
+/**
+ * When a letter was sent or a request made, on the HOUSE's clock (`zone`,
+ * from `useHouseZone`; the device's clock while none is known): the time when
+ * it is the house's today, "10 Oct" earlier this year, "10 Oct 2025" before
+ * it. The book runs back past a year in a quiet house, and a yearless "10 Oct"
+ * read last October's letter as this October's; a device in another zone put
+ * an Istanbul letter at 01:30 on the day before (F-903).
+ */
+export function fmtWhen(
+  iso: string | null | undefined,
+  zone?: string | null,
+  now: Date = new Date(),
+): string {
   if (!iso) return EM;
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return EM;
-  const sameDay = new Date().toDateString() === d.toDateString();
-  return sameDay ? time.format(d) : day.format(d);
+  const at = wallParts(d, zone);
+  const today = wallParts(now, zone);
+  if (at.dm === today.dm && at.year === today.year) return at.hm;
+  return at.year === today.year ? at.dm : `${at.dm} ${at.year}`;
 }
 
 /**

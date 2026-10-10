@@ -30,6 +30,7 @@ import { HoldToApprove, Popover } from '@/components/mudavym';
 import { apiClient } from '../../../services/api/client';
 import { errText, letterRequestKeys } from './Compose/useComposeData';
 import { failedReadWords, fmtWhen, readAgainFailed } from './cm-format';
+import { useHouseZone } from '@/lib/houseZone';
 
 export interface LetterRequest {
   id: string;
@@ -428,14 +429,14 @@ const cardStyle: CSSProperties = {
   background: 'var(--paper-0, #FFFDF8)',
 };
 
-function ago(iso: string): string {
+function ago(iso: string, zone: string | null | undefined): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return '';
   const min = Math.round((Date.now() - t) / 60_000);
   if (min < 1) return 'just now';
   if (min < 60) return `${min} min ago`;
   const h = Math.round(min / 60);
-  return h < 24 ? `${h} h ago` : fmtWhen(iso);
+  return h < 24 ? `${h} h ago` : fmtWhen(iso, zone);
 }
 
 function RequestHead({
@@ -449,6 +450,7 @@ function RequestHead({
   open: boolean;
   onToggle: () => void;
 }) {
+  const zone = useHouseZone();
   const name = r.requestedBy.name ?? 'A member whose name could not be read';
   const pill = PILL[tone];
   const body = r.payload.body ?? '';
@@ -478,8 +480,8 @@ function RequestHead({
         <span style={{ fontSize: 12.5, color: 'var(--ink-1, #211C16)' }}>
           <strong>{name}</strong> asked to send a letter
         </span>
-        <time dateTime={r.requestedAt} title={fmtWhen(r.requestedAt)} style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-          {ago(r.requestedAt)}
+        <time dateTime={r.requestedAt} title={fmtWhen(r.requestedAt, zone)} style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+          {ago(r.requestedAt, zone)}
         </time>
         <span
           data-testid="letter-request-state"
@@ -789,12 +791,13 @@ export function ConnectLink() {
 }
 
 export function Recheck({ mailbox }: { mailbox: MailboxRead }) {
+  const zone = useHouseZone();
   return (
     <p role="status" style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
       {mailbox.checking
         ? 'Checking the mailbox…'
         : mailbox.checkedAt
-          ? `Mailbox checked ${fmtWhen(new Date(mailbox.checkedAt).toISOString())}`
+          ? `Mailbox checked ${fmtWhen(new Date(mailbox.checkedAt).toISOString(), zone)}`
           : 'The mailbox has not been checked yet'}
       {' · '}
       <button type="button" disabled={mailbox.checking} onClick={mailbox.recheck} style={{ ...quietButton, fontSize: 11 }}>

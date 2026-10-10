@@ -42,6 +42,37 @@ export function useOrders(filters?: { status?: OrderStatus }) {
 }
 
 // ---------------------------------------------------------------------------
+// Query: Every order, read to the end of the book
+// ---------------------------------------------------------------------------
+
+/**
+ * The whole book, not the newest page: for counts that must cover every
+ * order (open orders per vendor, F-905). Keyed under `orders.all` so the
+ * same realtime invalidation reaches it.
+ */
+export function useEveryOrder() {
+  const { activeRestaurantId, isAuthenticated } = useAuth()
+  const queryClient = useQueryClient()
+
+  useOrdersSubscription(
+    useCallback(() => {
+      if (activeRestaurantId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
+      }
+    }, [activeRestaurantId, queryClient]),
+  )
+
+  return useQuery({
+    queryKey: [...queryKeys.orders.all, 'every', activeRestaurantId ?? ''] as const,
+    queryFn: () => ordersApi.getEveryOrder(activeRestaurantId!),
+    enabled: !!activeRestaurantId && isAuthenticated,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Query: Pending orders (approval needed)
 // ---------------------------------------------------------------------------
 

@@ -21,6 +21,7 @@ import {
   roundEstimate,
   standingLine,
   houseToday,
+  houseDayWord,
   ungradableOffers,
   verdictTone,
   verdictWord,
@@ -157,6 +158,17 @@ describe('offer state word', () => {
     const o = offer({ end_date: '2026-09-20', state: 'open' });
     const w = offerStateWord(o, today);
     expect(w.soon).toBe(true);
+  });
+  it('says the end day in words, never a raw ISO date with "d" (F-904)', () => {
+    const w = offerStateWord(offer({ end_date: '2026-09-21', state: 'open' }), today);
+    expect(w.word).toBe('ends Sep 21, 2026 · 3 days left');
+    expect(offerStateWord(offer({ end_date: '2026-09-18', state: 'open' }), today).word).toBe('ends today');
+    expect(offerStateWord(offer({ end_date: '2026-09-19', state: 'open' }), today).word).toBe('ends tomorrow');
+    expect(offerStateWord(offer({ end_date: '2026-10-30', state: 'open' }), today)).toEqual({ word: 'ends Oct 30, 2026', soon: false });
+  });
+  it('an offer whose end day is behind the house today reads ended, not "0 d" (F-904)', () => {
+    // The read said open yesterday; the house's midnight has passed since.
+    expect(offerStateWord(offer({ end_date: '2026-09-17', state: 'open' }), today)).toEqual({ word: 'ended', soon: false });
   });
   it('a dismissed offer says put away, regardless of its date', () => {
     const o = offer({ state: 'dismissed', dismissed_at: '2026-09-10T00:00:00.000Z' });
@@ -458,5 +470,16 @@ describe('capsSentence (F-258)', () => {
       }),
     ).toBe(' Only the newest 2,000 paid lines were read; older ones in the window were not graded.');
     expect(capsSentence(undefined)).toBe('');
+  });
+});
+
+describe('houseDayWord (F-902)', () => {
+  it('names the house day a moment fell on, not its UTC date', () => {
+    // 22:30 UTC on Oct 9 is already Oct 10 in Istanbul and still Oct 9 in Detroit.
+    expect(houseDayWord('2026-10-09T22:30:00Z', 'Europe/Istanbul')).toBe('Oct 10, 2026');
+    expect(houseDayWord('2026-10-10T02:30:00Z', 'America/Detroit')).toBe('Oct 9, 2026');
+  });
+  it('falls back to the UTC day when no zone is recorded', () => {
+    expect(houseDayWord('2026-10-09T22:30:00Z', null)).toBe('Oct 9, 2026');
   });
 });

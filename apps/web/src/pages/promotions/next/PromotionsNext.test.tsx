@@ -338,6 +338,27 @@ describe('PromotionsNext — offers only (ADR 0160 §113, Open item 3)', () => {
     };
   };
 
+  it('says when it was read and when the menu became current on the house clock, not the device or UTC (F-902)', () => {
+    // 22:30 UTC on Oct 9 is Oct 10 in Istanbul.
+    mockRead.current = {
+      data: {
+        read_at: '2026-10-09T22:30:00Z',
+        time_zone: 'Europe/Istanbul',
+        house: { ...HOUSE, menus: [{ menu_id: 'm1', name: 'Autumn', read_at: '2026-10-09T22:30:00Z' }] },
+        offers: [],
+        ledger: { window_days: 540, since: '2025-03-12', paid_lines: 0, house_sightings: 0, market_sightings: 0, skipped_sightings: 0 },
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    const { container } = renderPage();
+    const readAt = container.querySelector('.pn-readat')!.textContent!;
+    expect(readAt).toMatch(/^Read Oct 10, 2026/);
+    expect(readAt).not.toContain('10/10/2026');
+    expect(screen.getByTestId('pn-coverage')).toHaveTextContent('current since Oct 10, 2026');
+  });
+
   it('has no tab strip and no sender or prospect section', () => {
     emptyRead();
     renderPage();

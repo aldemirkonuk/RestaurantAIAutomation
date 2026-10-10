@@ -35,6 +35,7 @@ import { Stub, Wordmark } from '@/components/mudavym';
 import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
+import { useHouseZone } from '@/lib/houseZone';
 import {
   EM,
   GE,
@@ -270,6 +271,7 @@ function StateChip({
 
 function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
   const [open, setOpen] = useState(false);
+  const zone = useHouseZone();
   return (
     <div style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
       <button
@@ -285,7 +287,7 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
         }}
       >
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44 }}>
-          {fmtWhen(item.sentAt ?? item.createdAt)}
+          {fmtWhen(item.sentAt ?? item.createdAt, zone)}
         </span>
         <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
           {item.providerName ?? EM}
