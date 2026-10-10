@@ -580,6 +580,13 @@ fork; its options A/B/C were these three, B chosen).
    like the full verification's event: if it cannot be recorded, or the ledger cannot be read,
    nothing changes (no stock, no order write). Every adjustment's item is proven to be the
    house's before the line is written, so a refused adjustment (403) leaves no line.
+   *[Corrected 2026-10-09, F-371: the line is decided before anything moves but written
+   only after the order's status compare-and-set (F-349) wins, because this record is
+   append-only (ADR 0227) and a line written before a lost compare-and-set (409) could not
+   be taken back. If the line then fails, the status is put back the way it was, so
+   "nothing changes" still holds for the one-tap; an old offline payload whose adjustments
+   already moved stock is not put back (a retry would move it twice) and gets an error
+   saying the line is missing.]*
 2. **The mark.** `outcome = 'accepted'` (`COUNTS_CONFIRMED_OUTCOME`,
    `apps/api-gateway/src/procurement/shelf-received.ts`) is the receiver's word from the
    column's own list (`accepted | short | refused`, `20260901220000_door_facts_are_columns.sql`):

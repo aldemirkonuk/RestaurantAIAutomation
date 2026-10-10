@@ -151,7 +151,10 @@ export class MobileService {
         continue;
       }
 
-      if (type === "invoice_received") {
+      // F-372. A notice with no order id has no delivery to verify: its
+      // "Counts match" would post to /verify-receipt on an undefined id. It
+      // falls through to an informational alert instead.
+      if (type === "invoice_received" && notifOrderId) {
         items.push(
           this.makeItem({
             kind: "receipt_verification",

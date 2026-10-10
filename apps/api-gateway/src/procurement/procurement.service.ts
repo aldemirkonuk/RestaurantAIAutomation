@@ -7178,8 +7178,8 @@ export class ProcurementService {
     // refusal, and `outcome = 'accepted'` (`COUNTS_CONFIRMED_OUTCOME`), the word
     // that tells the desk's readers this line restates nothing: the invoice and
     // the refusal stay read from the latest event that states them
-    // (`shelf-received.ts`). Written before anything moves, like the full
-    // verification's event: if it cannot be recorded, nothing is changed.
+    // (`shelf-received.ts`). Decided here, before anything moves, but written
+    // only once the order's status compare-and-set has won (F-371).
     //
     // Every legacy adjustment's item is proven to be this house's FIRST, so a
     // refused adjustment (403) leaves no line claiming a verification happened.
@@ -7192,6 +7192,7 @@ export class ProcurementService {
     // reports success, the order's status write below still runs, and an
     // earlier full check's rejected count and invoice stay exactly as they
     // were, read from that same still-latest row.
+    let countsConfirmedEvent: Record<string, unknown> | null = null;
     if (!hasMatchFields) {
       for (const adj of adjustments)
         await assertInventoryBelongsToRestaurant(
@@ -7243,29 +7244,25 @@ export class ProcurementService {
       }
       const latestReconciled = latestReconciledRows?.[0] ?? null;
 
+      // F-371. The line is written AFTER the status compare-and-set below,
+      // not here: the receipt record is append-only (ADR 0227), so a line
+      // written before a lost compare-and-set (409) could never be taken back
+      // and would claim a check that was not the one that landed.
       if (!repeatsTheLatestConfirmation(latestReconciled, confirmedBottles)) {
-        const { error: confirmError } = await this.databaseService.supabase
-          .from("procurement_receipt_events")
-          .insert({
-            restaurant_id: restaurantId,
-            order_id: orderId,
-            stage: "reconciled",
-            outcome: COUNTS_CONFIRMED_OUTCOME,
-            counted_qty: confirmedBottles,
-            counted_uom: "bottle",
-            counted_qty_bottles: confirmedBottles,
-            rejected_qty: 0,
-            rejected_qty_bottles: 0,
-            invoice_qty_bottles: null,
-            received_by: userId,
-            notes: null,
-          });
-        if (confirmError) {
-          throw new InternalServerErrorException(
-            `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
-              "no stock was corrected and the order is as it was. Try again.",
-          );
-        }
+        countsConfirmedEvent = {
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          stage: "reconciled",
+          outcome: COUNTS_CONFIRMED_OUTCOME,
+          counted_qty: confirmedBottles,
+          counted_uom: "bottle",
+          counted_qty_bottles: confirmedBottles,
+          rejected_qty: 0,
+          rejected_qty_bottles: 0,
+          invoice_qty_bottles: null,
+          received_by: userId,
+          notes: null,
+        };
       }
     }
 
@@ -7489,6 +7486,45 @@ export class ProcurementService {
     if (error) {
       this.logger.error(`verifyReceipt status update failed: ${error.message}`);
       throw error;
+    }
+
+    // F-371. Only the tap whose compare-and-set won writes its history line.
+    // If the line then cannot be written, the order is put back the way it
+    // was (compare-and-set on the status just written), so the tap can be
+    // retried and "nothing changes" still holds. An old offline payload whose
+    // adjustments already moved stock is NOT put back: a retry would move
+    // that stock a second time.
+    if (countsConfirmedEvent) {
+      const { error: confirmError } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .insert(countsConfirmedEvent);
+      if (confirmError) {
+        if (adjustments.length === 0) {
+          const { error: undoError } = await this.databaseService.supabase
+            .from("procurement_orders")
+            .update({
+              status: (orderRow as any).status,
+              delivery_notes: (orderRow as any).delivery_notes ?? null,
+            })
+            .eq("restaurant_id", restaurantId)
+            .eq("id", orderId)
+            .eq("status", status)
+            .select("id")
+            .single();
+          if (!undoError) {
+            throw new InternalServerErrorException(
+              `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
+                "no stock was corrected and the order is as it was. Try again.",
+            );
+          }
+          this.logger.error(
+            `verifyReceipt could not put order ${orderId} back after its counts line failed: ${undoError.message}`,
+          );
+        }
+        throw new InternalServerErrorException(
+          `The delivery is marked as checked, but its count could not be saved to the order's history (${confirmError.message}).`,
+        );
+      }
     }
 
     // Resolve the pinned notification for every member.
