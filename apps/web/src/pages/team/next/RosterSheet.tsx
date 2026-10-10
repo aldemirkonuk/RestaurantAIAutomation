@@ -539,6 +539,10 @@ export function MemberSheet({
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const isSoleOwner = member?.role === 'owner' && ownerCount !== null && ownerCount <= 1;
+  // Owners manage owners: the gateway refuses a manager removing an owner
+  // (team.service.ts, "Only an owner of this house can remove an owner."), so a
+  // manager is told that instead of offered a Remove that always fails (F-933).
+  const ownerOutOfReach = member?.role === 'owner' && !viewerIsOwner;
   // A manager the owner switched on sets anyone's wage, their own included
   // (founder 2026-09-25, round 5 item 32, replacing the round-4 refusal); on
   // their own row the page says the owner is told before they save.
@@ -897,7 +901,13 @@ export function MemberSheet({
           <ZoneSetupSwitch userId={member.user_id} />
         ) : null}
 
-        {editing && isSoleOwner && (
+        {editing && ownerOutOfReach && (
+          <p className="tm-hint">
+            Only an owner can remove an owner, so there is no Remove here for you.
+          </p>
+        )}
+
+        {editing && isSoleOwner && !ownerOutOfReach && (
           <p className="tm-hint">
             This is the restaurant&apos;s only owner, so they cannot be removed here. Make
             someone else an owner first, and the control returns.
@@ -957,7 +967,7 @@ export function MemberSheet({
         )}
 
         <div className="tm-actions" style={{ justifyContent: 'space-between' }}>
-          {editing && !isSoleOwner && !confirmRemove ? (
+          {editing && !isSoleOwner && !ownerOutOfReach && !confirmRemove ? (
             <button
               type="button"
               className="tm-ctl tm-ctl--quiet"

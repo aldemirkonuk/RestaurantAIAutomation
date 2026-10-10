@@ -30,6 +30,7 @@ import { useBellBook } from './useBellBook';
 import { collapseStackedNotifications } from '../notificationStack';
 import type { Notification } from '../../services/api/notifications';
 import { publishUnreadCount, resetSharedUnreadCount } from './unreadCount';
+import { ROLE_RECHECK_EVENT } from '../roleRecheck';
 
 function flood(n: number) {
   return Array.from({ length: n }, (_, i) => ({
@@ -83,6 +84,49 @@ describe('useBellBook', () => {
 
     act(() => publishUnreadCount({ restaurantId: 'rest-B', count: 9, note: null }));
     expect(result.current.unread).toBeNull();
+  });
+});
+
+describe('the "your role changed" notice (F-930)', () => {
+  it('asks the session to read its role again, once per notice', async () => {
+    const roleNotice = {
+      ...flood(1)[0],
+      id: 'role-1',
+      title: 'Your role in this restaurant changed',
+      metadata: { action: 'member_role_changed', changes: { role: { from: 'manager', to: 'staff' } } },
+    };
+    api.get.mockImplementation((url: string) =>
+      url === '/notifications/unread/count'
+        ? Promise.resolve({ data: { count: 1 } })
+        : Promise.resolve({ data: { data: [roleNotice], total: 1, hasMore: false } }),
+    );
+    const heard = vi.fn();
+    window.addEventListener(ROLE_RECHECK_EVENT, heard);
+    try {
+      const { result } = renderHook(() => useBellBook(true));
+      await waitFor(() => expect(result.current.items).toHaveLength(1));
+      expect(heard).toHaveBeenCalledTimes(1);
+      // The same unread notice read again on the next poll does not ask again.
+      await act(async () => {
+        window.dispatchEvent(new Event('notification_sent'));
+      });
+      await waitFor(() => expect(api.get.mock.calls.filter((c) => c[0] === '/notifications').length).toBeGreaterThan(1));
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(ROLE_RECHECK_EVENT, heard);
+    }
+  });
+
+  it('other notices do not ask', async () => {
+    const heard = vi.fn();
+    window.addEventListener(ROLE_RECHECK_EVENT, heard);
+    try {
+      const { result } = renderHook(() => useBellBook(true));
+      await waitFor(() => expect(result.current.items).toHaveLength(1));
+      expect(heard).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(ROLE_RECHECK_EVENT, heard);
+    }
   });
 });
 

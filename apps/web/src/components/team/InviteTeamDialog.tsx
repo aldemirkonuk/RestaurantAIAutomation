@@ -22,6 +22,11 @@ interface InviteTeamDialogProps {
    * account invite (walk-in / contractor who only needs shifts, not Mudavym login).
    */
   onRosterOnly?: () => void
+  /**
+   * Only an owner changes a role afterwards (Settings → Team gives the picker to
+   * owners, and the gateway agrees), so only an owner is told they can (F-934).
+   */
+  inviterIsOwner?: boolean
 }
 
 interface GeneratedInvite {
@@ -34,11 +39,18 @@ interface GeneratedInvite {
   sentTo?: string
 }
 
+/** Who can change the role after joining, said to the person inviting (F-934). */
+function roleLaterHint(inviterIsOwner: boolean): string {
+  return inviterIsOwner
+    ? 'You can change their role later in Settings → Team.'
+    : 'An owner can change their role later in Settings → Team.'
+}
+
 const EMAIL_HINT =
   'Optional. We email the invite to this address, and joining from that email confirms it. Anyone with the copied link can still join, and confirms their address once.'
 
 
-export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRosterOnly }: InviteTeamDialogProps) {
+export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRosterOnly, inviterIsOwner = false }: InviteTeamDialogProps) {
   const [targetEmail, setTargetEmail] = useState('')
   // Staff unless the inviter picks more: the least role by default (F-190).
   const [role, setRole] = useState<'manager' | 'staff'>('staff')
@@ -133,7 +145,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
               <option value="manager">Manager</option>
               <option value="staff">Staff</option>
             </select>
-            <p className="mdv-hintline">You can change their role later in Settings → Team.</p>
+            <p className="mdv-hintline">{roleLaterHint(inviterIsOwner)}</p>
           </div>
           <p className="mdv-hintline">Expires: 7 days from generation · Single-use</p>
           <div className="mdv-actions">
@@ -282,7 +294,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
                       <option value="manager">Manager</option>
                       <option value="staff">Staff</option>
                     </select>
-                    <p className="text-xs text-gray-400 mt-1">You can change their role later in Settings → Team.</p>
+                    <p className="text-xs text-gray-400 mt-1">{roleLaterHint(inviterIsOwner)}</p>
                   </div>
                   <p className="text-xs text-gray-400">Expires: 7 days from generation · Single-use</p>
                 </div>

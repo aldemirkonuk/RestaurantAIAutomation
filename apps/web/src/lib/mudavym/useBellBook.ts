@@ -41,6 +41,7 @@ import { apiClient, getErrorMessage } from '../../services/api/client';
 import type { Notification } from '../../services/api/notifications';
 import { collapseStackedNotifications } from '../notificationStack';
 import { publishUnreadCount, useSharedUnreadCount } from './unreadCount';
+import { askRoleRecheck, newRoleChangeNotice } from '../roleRecheck';
 
 /** How many unread lines the bell asks for. The whole book is one click away. */
 export const BELL_PAGE = 25;
@@ -291,6 +292,7 @@ export function useBellBook(open: boolean): BellBook {
 
   const tenant = useRef<string | null>(activeRestaurantId);
   const alive = useRef(true);
+  const roleNoticesSeen = useRef(new Set<string>());
   const wantRows = useRef(open);
   wantRows.current = open;
 
@@ -351,7 +353,10 @@ export function useBellBook(open: boolean): BellBook {
       setHasMore(null);
     } else if (bookRes.value) {
       const payload = bookRes.value.data as { total?: unknown; hasMore?: unknown } | null;
-      setRegister({ state: 'ready', rows: rowsOf(payload) });
+      const rows = rowsOf(payload);
+      // "Your role in this restaurant changed" (F-930): the desk follows it now.
+      if (newRoleChangeNotice(rows, roleNoticesSeen.current)) askRoleRecheck();
+      setRegister({ state: 'ready', rows });
       setTotal(numOf(payload?.total));
       setHasMore(typeof payload?.hasMore === 'boolean' ? payload.hasMore : null);
     }

@@ -21,6 +21,7 @@ import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequ
 import { goToChooser } from '../../lib/houseMemory';
 import { announceSessionEnded, sessionEndedMessage } from '../../lib/sessionEnded';
 import { doRefresh, takeRefusal } from '../../lib/sessionRefresh';
+import { askRoleRecheck, isRoleRefusal } from '../../lib/roleRecheck';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -116,6 +117,10 @@ function createApiClient(): AxiosInstance {
       ) {
         goToChooser();
       }
+
+      // F-930: any other 403 may be a role changed under the page; the session
+      // reads its role again, so the desk on screen follows it.
+      if (isRoleRefusal(error)) askRoleRecheck();
 
       return Promise.reject(error);
     },

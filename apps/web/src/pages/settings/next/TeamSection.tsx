@@ -240,6 +240,7 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
         onClose={() => { setInviting(false); team.reload(); }}
         restaurantId={restaurantId}
         anchorRef={inviteAnchor}
+        inviterIsOwner={role === 'owner'}
       />
     </>
   );
