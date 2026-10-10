@@ -318,6 +318,28 @@ export class CreditsController {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
 
+    // The credit memo is this house's document. Another house's id, or one
+    // that does not exist, gets the same 404, so the id's existence is not
+    // confirmed; a failed read refuses rather than storing an unchecked id.
+    if (
+      outcome.next.creditDocumentId &&
+      outcome.next.creditDocumentId !== row.credit_document_id
+    ) {
+      const { count: ownMemo, error: memoError } = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .select("id", { count: "exact", head: true })
+        .eq("id", outcome.next.creditDocumentId)
+        .eq("restaurant_id", user.restaurantId);
+      if (memoError)
+        throw new HttpException(
+          "Could not confirm this credit memo belongs to this restaurant, so the claim was not changed. Please try again.",
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      if (!ownMemo)
+        throw new HttpException("Credit memo not found", HttpStatus.NOT_FOUND);
+    }
+
     const now = new Date().toISOString();
     const patch: Record<string, unknown> = {
       state: outcome.next.state,

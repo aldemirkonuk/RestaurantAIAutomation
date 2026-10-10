@@ -209,6 +209,7 @@ function makeApp(tables: Tables = seed()) {
     undefined as any,
     undefined as any,
     identity,
+    undefined as any,
   );
   const log = async (user: { restaurantId: string }) =>
     ((await controller.identityDecisions(user, "50")) as any).items as any[];
