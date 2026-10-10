@@ -64,7 +64,7 @@ export interface RibbonProps {
   /** The calendar month on screen, `YYYY-MM`. Controlled by the page. */
   month: string;
   onMonth: (month: string) => void;
-  /** Today, as the gateway's UTC business date — the key this page files by. */
+  /** Today, on the reader's clock — the day key this page files by. */
   today: string;
   selected: string | null;
   onSelect: (date: string | null) => void;

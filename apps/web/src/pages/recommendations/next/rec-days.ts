@@ -56,6 +56,7 @@
  */
 
 import { monthDays, recordWords as houseRecordWords } from '@/components/mudavym/dayStripDates';
+import { localDayKey } from '@/lib/localDay';
 import type { EntryVM, GoalRow } from './useRecommendationsNextData';
 
 /** The POS window, as the ribbon needs it. */
@@ -82,7 +83,7 @@ export interface DueMark {
 }
 
 export interface DayCell {
-  /** YYYY-MM-DD, UTC — the same business-date key the gateway stores. */
+  /** YYYY-MM-DD, on the reader's clock — the day the strip files by. */
   date: string;
   /** One letter, the house's own abbreviation (never Intl — see `fmtDay`). */
   weekday: string;
@@ -122,12 +123,20 @@ export function posDaysFor(month: string, todayKey: string): number {
   return Math.min(365, Math.max(1, span));
 }
 
-/** A UTC business date from a timestamp. Null when it will not parse. */
+/**
+ * The day a timestamp falls on, on the reader's clock. Null when it will not
+ * parse.
+ *
+ * Not the UTC date: for a house west of Greenwich that is tomorrow from the
+ * evening on, so an entry that fired at 18:00 PDT would sit on a day that has
+ * not happened yet. The till's own days are house days, so the strip files on
+ * the reader's day too rather than mixing two clocks on one row of cells.
+ */
 export function businessDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return null;
-  return t.toISOString().substring(0, 10);
+  return localDayKey(t);
 }
 
 export interface BuildDaysInput {
@@ -150,7 +159,7 @@ export interface BuildDaysInput {
  */
 export function buildDays(input: BuildDaysInput): DayCell[] {
   const now = input.now ?? new Date();
-  const todayKey = now.toISOString().substring(0, 10);
+  const todayKey = localDayKey(now);
 
   const firedByDay = new Map<string, string[]>();
   const dueByDay = new Map<string, DueMark[]>();

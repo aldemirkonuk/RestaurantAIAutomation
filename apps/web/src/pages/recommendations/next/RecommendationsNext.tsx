@@ -92,6 +92,7 @@ import {
 } from 'lucide-react';
 import { Wordmark, monthOf } from '@/components/mudavym';
 import { animate, tuck } from '@/lib/mudavym/motion';
+import { localDayKey } from '@/lib/localDay';
 import Entry from './Entry';
 import Ribbon from './Ribbon';
 import DigestPost from './DigestPost';
@@ -199,14 +200,14 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   /**
    * The calendar month the ribbon shows, `YYYY-MM`.
    *
-   * Today's, on arrival. Keyed by the gateway's UTC business date rather than
-   * the reader's local one, because every date this page files by — a first
-   * impression, a goal deadline, an excluded day — is written in UTC by the
-   * gateway. Using the browser's month would put a 1st-of-the-month entry in
-   * the wrong month for every reader west of Greenwich after 19:00.
+   * Today's, on arrival — the reader's day, not the UTC one. The UTC date is
+   * tomorrow for a house west of Greenwich from the evening on, which rang
+   * tomorrow as "today" and, on the 30th or 31st, opened the strip on next
+   * month. The till's days are house days, and `buildDays` files every other
+   * mark on the reader's day too, so one clock runs the whole strip.
    */
-  const utcToday = new Date().toISOString().substring(0, 10);
-  const [month, setMonth] = useState<string>(() => monthOf(utcToday));
+  const today = localDayKey(new Date());
+  const [month, setMonth] = useState<string>(() => monthOf(today));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReasonOpen, setBulkReasonOpen] = useState(false);
@@ -263,8 +264,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
    */
   const posBack = data.requestPosBack;
   useEffect(() => {
-    posBack(posDaysFor(month, utcToday));
-  }, [month, utcToday, posBack]);
+    posBack(posDaysFor(month, today));
+  }, [month, today, posBack]);
 
   /*
    * The goal list is normally read lazily, when someone opens the goal sheet.
@@ -734,7 +735,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             days={days}
             month={month}
             onMonth={setMonth}
-            today={utcToday}
+            today={today}
             selected={day}
             onSelect={setDay}
             pos={data.pos}
@@ -1010,7 +1011,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         daybook={
                           a === 'schedule' && leaf === 'standing'
                             ? {
-                                draft: daybookDraftFor(e, day ?? utcToday),
+                                draft: daybookDraftFor(e, day ?? today),
                                 basis: daybookBasis(e.ruleKey),
                               }
                             : null

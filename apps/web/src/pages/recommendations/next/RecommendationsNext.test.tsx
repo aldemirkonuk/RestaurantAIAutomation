@@ -2574,3 +2574,24 @@ describe('founder item 87 — a Promotions hand is a manager’s for staff (OD-1
     );
   });
 });
+
+describe('RecommendationsNext — the ribbon opens on the reader’s month (F-326)', () => {
+  it('on the evening of the 30th in Los Angeles, opens on this month, not the UTC one', () => {
+    // 19:00 PDT on 2026-09-30 is already 2026-10-01 in UTC.
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    vi.setSystemTime(new Date('2026-10-01T02:00:00.000Z'));
+    const posBack = vi.fn();
+    mockData.current = { ...base, entries: [], requestPosBack: posBack };
+    try {
+      draw();
+      // September, the 1st through today: thirty days of till. The UTC month
+      // would have asked for one day of October.
+      expect(posBack).toHaveBeenCalledWith(30);
+      expect(posBack).not.toHaveBeenCalledWith(1);
+    } finally {
+      vi.setSystemTime(NOW);
+      process.env.TZ = tz;
+    }
+  });
+});
