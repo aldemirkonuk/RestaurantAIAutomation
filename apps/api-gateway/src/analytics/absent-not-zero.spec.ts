@@ -875,3 +875,73 @@ describe("COGS and the purchase spend goal read the house's currency (F-1052)", 
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// F-1088: the cashflow and vendor lenses read an order naming no currency as
+// the house's, and say which money one other currency is in
+// ---------------------------------------------------------------------------
+
+describe("the cashflow and vendor lenses read the house's currency (F-1088)", () => {
+  const LIRA_HOUSE = { id: RESTAURANT, timezone: "UTC", currency: "try" };
+  const EUR = { ...DELIVERED, id: "po-eur", currency: "EUR", total_cost: 400 };
+  const LEGACY = { ...DELIVERED, id: "po-old", total_cost: 12000 };
+  const open = (o: any) => ({
+    ...o,
+    id: `${o.id}-open`,
+    status: "IN_TRANSIT",
+    delivered_at: null,
+  });
+
+  it("the vendor scorecard does not add old lira orders to a euro one", async () => {
+    const out: any = await advanced({
+      restaurants: [LIRA_HOUSE],
+      procurement_orders: [LEGACY, EUR],
+    }).getVendorScorecard(RESTAURANT);
+    const v = out.vendors[0];
+    expect(v.spend).toBeNull();
+    expect(v.spendByCurrency).toEqual(
+      expect.arrayContaining([
+        { currency: "TRY", amount: 12000 },
+        { currency: "EUR", amount: 400 },
+      ]),
+    );
+    expect(v.spendNote).toContain("EUR and TRY");
+    expect(v.unitPrice.mean).toBeNull();
+  });
+
+  it("the vendor scorecard gives a euro vendor its code in a lira house", async () => {
+    const out: any = await advanced({
+      restaurants: [LIRA_HOUSE],
+      procurement_orders: [EUR, { ...LEGACY, provider_id: "prov-2" }],
+    }).getVendorScorecard(RESTAURANT);
+    const eur = out.vendors.find((v: any) => v.vendorId === "prov-1");
+    const lira = out.vendors.find((v: any) => v.vendorId === "prov-2");
+    expect(eur).toMatchObject({ spend: 400, spendCurrency: "EUR" });
+    expect(lira).toMatchObject({ spend: 12000, spendCurrency: "TRY" });
+    expect(out.concentration.hhi).toBeNull();
+    expect(out.concentration.note).toContain("EUR and TRY");
+  });
+
+  it("cashflow does not add old lira orders to a euro one, paid or committed", async () => {
+    const out: any = await advanced({
+      restaurants: [LIRA_HOUSE],
+      procurement_orders: [LEGACY, EUR, open(LEGACY), open(EUR)],
+    }).getCashflow(RESTAURANT);
+    expect(out.spendLast30d).toBeNull();
+    expect(out.spendCurrency).toBeNull();
+    expect(out.spendNote).toContain("EUR and TRY");
+    expect(out.committedOpenOrders).toBeNull();
+    expect(out.committedNote).toContain("Ordered in EUR and TRY");
+  });
+
+  it("cashflow says a euro-only window is in euros", async () => {
+    const out: any = await advanced({
+      restaurants: [LIRA_HOUSE],
+      procurement_orders: [EUR, open(EUR)],
+    }).getCashflow(RESTAURANT);
+    expect(out.spendLast30d).toBe(400);
+    expect(out.spendCurrency).toBe("EUR");
+    expect(out.committedOpenOrders).toBe(400);
+    expect(out.committedCurrency).toBe("EUR");
+  });
+});

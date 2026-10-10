@@ -188,6 +188,26 @@ export function spendPartsSaid(
     .join(" and ");
 }
 
+/**
+ * What each day's bar or tint is measured against: the month's largest figure
+ * IN THE SAME CURRENCY (F-1088). With `currencyOf` the days are scaled per
+ * currency, so a €5.000 day never shrinks a ₺100 day to a sliver, nor the
+ * reverse: two currencies are never compared without an exchange rate.
+ * Without it (sales, order counts) the whole month shares one scale.
+ */
+export function barScaleOf(
+  daily: DayLedger[],
+  value: (d: DayLedger) => number | null,
+  currencyOf?: (d: DayLedger) => string | null,
+): (d: DayLedger) => number {
+  const max = new Map<string | null, number>();
+  for (const d of daily) {
+    const key = currencyOf ? currencyOf(d) : null;
+    max.set(key, Math.max(max.get(key) ?? 1, value(d) ?? 0));
+  }
+  return (d) => max.get(currencyOf ? currencyOf(d) : null) ?? 1;
+}
+
 /** Why the parts above are not one figure, in the owner's words. */
 export const SPEND_KEPT_APART = "kept apart, no exchange rate on record";
 

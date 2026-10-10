@@ -377,6 +377,13 @@ export class SalesChartPointDto {
   })
   procurementSpend: number | null;
 
+  @ApiPropertyOptional({
+    description:
+      "The currency code `procurementSpend` is in; null for the house's money when none is on record (F-1088)",
+    nullable: true,
+  })
+  procurementSpendCurrency?: string | null;
+
   @ApiPropertyOptional() procurementSpendByCurrency?: {
     currency: string | null;
     amount: number;

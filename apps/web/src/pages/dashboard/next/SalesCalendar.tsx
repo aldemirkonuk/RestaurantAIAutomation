@@ -38,6 +38,7 @@ import type { AlertItem } from './useDashboardNextData';
 import {
   NOT_RECORDED,
   SPEND_KEPT_APART,
+  barScaleOf,
   fromChecks,
   fromDays,
   spendMoney,
@@ -317,11 +318,14 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
   const monthSales = monthSalesSaid(ledger);
   const headline = (d: DayLedger | undefined): number | null =>
     d ? (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count) : null;
+  // Spend tints are scaled per currency: a euro day is never measured
+  // against a lira one (F-1088).
   const maxHead = useMemo(
     () =>
-      Math.max(
-        1,
-        ...daily.map((d) => (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count) ?? 0),
+      barScaleOf(
+        daily,
+        (d) => (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count),
+        !salesShown && seesAmounts ? (d) => d.procurement_spend_currency : undefined,
       ),
     [daily, salesShown, seesAmounts],
   );
@@ -472,7 +476,7 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
           // No today mark when the house has no zone (ADR 0290).
           const isToday = houseToday !== null && dateStr === todayStr;
           const head = zoneUnset ? null : headline(day);
-          const heat = head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead) : 0;
+          const heat = day && head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead(day)) : 0;
           const fig = cellFigure(day, salesShown, zoneUnset, seesAmounts);
           // Count and say: a figure short of its day's checks says so here.
           const from = salesShown && !zoneUnset && day ? fromChecks(day.net_checks, day.checks) : null;

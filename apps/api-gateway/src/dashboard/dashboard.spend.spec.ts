@@ -485,6 +485,29 @@ describe("DashboardService — spend in the house's currency (F-1052, F-1055)", 
       { currency: "EUR", amount: 1200 },
     ]);
   });
+
+  // F-1088: the chart was given no house currency, so the old no-code lira
+  // order stood apart and the month read ₺12,000 + €1,200 as one 13,200.
+  it("the chart counts no-code orders as the house's and keeps each code", async () => {
+    const year: any[] = await service.getSalesChart("r1", "year");
+    const august = year.find((p) => p.date === "2026-08");
+    expect(august?.procurementSpend).toBeNull();
+    expect(august?.procurementSpendCurrency).toBeNull();
+    expect(august?.procurementSpendByCurrency).toEqual([
+      { currency: "TRY", amount: 12000 },
+      { currency: "EUR", amount: 1200 },
+    ]);
+
+    const days: any[] = await service.getSalesChart("r1", "month");
+    expect(days.find((p) => p.date === "2026-08-15")).toMatchObject({
+      procurementSpend: 1200,
+      procurementSpendCurrency: "EUR",
+    });
+    expect(days.find((p) => p.date === "2026-08-03")).toMatchObject({
+      procurementSpend: 12000,
+      procurementSpendCurrency: "TRY",
+    });
+  });
 });
 
 // F-1056: GET /dashboard/summary answered 0 spent when the orders could not be
