@@ -30,6 +30,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useWines } from '../../hooks/queries'
 import { useProviders } from '../../hooks/queries/useProviderQueries'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
 import {
   keyForBatchSave,
@@ -45,7 +46,6 @@ import {
   useUnsavedWorkGuard,
   writeSessionDraft,
 } from '../../hooks/useUnsavedWorkGuard'
-import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
   BatchReceiveGrid,
@@ -566,6 +566,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
             <BatchReceiveGrid
               rows={rows}
               onChange={setRows}
+              group={group}
               disabled={isSaving}
               className="flex-1 min-h-0"
               emptyState={

@@ -204,3 +204,46 @@ describe("AddWineToInventoryModal — amounts read the way the house writes them
     expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(12.5);
   });
 });
+
+/**
+ * F-358 (fix/sim-number-input-tail): the decimal keypad, a price that is not
+ * an amount holds the add, and the library reference is written back in the
+ * house's own notation.
+ */
+describe("AddWineToInventoryModal — prices read the way the house writes them (F-358)", () => {
+  it("reads a comma-decimal cost from a decimal-keypad text field", async () => {
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    const cost = screen.getByPlaceholderText(/leave blank if unknown/i);
+    expect(cost).toHaveAttribute("inputmode", "decimal");
+    await user.type(cost, "38,50");
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(38.5);
+  });
+  it("holds the add, and says why, while a price is not an amount", async () => {
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.type(screen.getByPlaceholderText(/leave blank if unknown/i), "38,5,0");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/is not an amount/);
+    const add = screen.getByRole("button", { name: /Add to Inventory/i });
+    expect(add).toBeDisabled();
+    await user.click(add);
+    expect(onAddWine).not.toHaveBeenCalled();
+  });
+  it("writes the library reference back so the house's reader takes it unchanged", async () => {
+    groupMark.value = ".";
+    useWines.mockReturnValue({ data: [{ ...wine, price: 1.125 }] });
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.click(screen.getByRole("button", { name: /Use library reference/i }));
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(1.125);
+  });});

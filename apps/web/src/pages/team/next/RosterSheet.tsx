@@ -98,6 +98,8 @@ import { AwayCard } from './AwayCard';
 import type { HouseAreasData } from './useHouseAreas';
 import { mayChangeAway } from '../../../services/api/areas';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { readOptionalAmount } from '@/lib/parseDecimal';
 
 const EMPLOYMENT: ReadonlyArray<[string, string]> = [
   ['full_time', 'full time'],
@@ -547,6 +549,12 @@ export function MemberSheet({
   // not offer it.
   const ownersPay = member?.pay_withheld === 'owner';
   const mayWriteWage = moneyVisible && !ownersPay;
+  // "12,50" — and "1.250" in a "."-grouping house — read the way the house writes
+  // it (F-358). A bare Number() made "12,50" NaN, which goes out as null and
+  // would have cleared the recorded wage.
+  const group = useHouseGroupMark();
+  const wageRead = readOptionalAmount(form.hourlyWage, group);
+  const wageUnreadable = mayWriteWage && !wageRead.ok;
   const [ownWageUntold, setOwnWageUntold] = useState<string | null>(null);
   const hasPaySwitch = viewerIsOwner && member?.role === 'manager';
   const paySwitch = useMutation({
@@ -567,8 +575,7 @@ export function MemberSheet({
         // A wage nobody typed stays unknown. `Number('')` is 0, and a 0 here
         // would be a priced hour that costs nothing (ADR 0088). Only an owner
         // sends one at all (ADR 0215).
-        hourlyWage:
-          !mayWriteWage || form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
+        hourlyWage: !mayWriteWage || !wageRead.ok || wageRead.value === null ? undefined : wageRead.value,
         skills: form.skills
           .split(',')
           .map((s) => s.trim())
@@ -751,14 +758,18 @@ export function MemberSheet({
             <label>
               <span className="tm-label">Hourly wage</span>
               <input
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 className="tm-input"
                 value={form.hourlyWage}
                 placeholder="leave blank for unknown"
                 onChange={(e) => setForm({ ...form, hourlyWage: e.target.value })}
               />
+              {wageUnreadable && (
+                <p className="tm-hint" role="alert">
+                  “{form.hourlyWage}” is not an amount. Write it like 12,50 or 12.50.
+                </p>
+              )}
               <p className="tm-hint">
                 Blank stays unknown. Every hour this person works is uncosted until a
                 real figure is here — the week total says so rather than showing a zero.
@@ -924,7 +935,7 @@ export function MemberSheet({
           <button
             type="button"
             className="tm-ctl tm-ctl--seal"
-            disabled={save.isPending || form.displayName.trim() === ''}
+            disabled={save.isPending || form.displayName.trim() === '' || wageUnreadable}
             onClick={() => save.mutate()}
           >
             {save.isPending ? 'Saving…' : editing ? 'Save' : 'Add to the roster'}

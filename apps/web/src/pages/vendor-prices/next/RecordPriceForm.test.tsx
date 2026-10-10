@@ -51,6 +51,9 @@ vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useProviders: () => ({ data: mock.providers, isLoading: false, isError: false }),
 }))
 
+const house = vi.hoisted(() => ({ group: null as '.' | ',' | null }))
+vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => house.group }))
+
 import { RecordPriceForm } from './RecordPriceForm'
 
 function fillRequiredFieldsExceptCurrency(vendor = 'Empire Merchants') {
@@ -65,6 +68,35 @@ beforeEach(() => {
   mock.usualCurrency = { data: undefined, isLoading: false }
   mock.sources = { data: undefined, isLoading: false, isError: false, error: null }
   mock.sourcesAskedFor = []
+  house.group = null
+})
+
+describe('RecordPriceForm — the price is read the way the house writes it (F-358)', () => {
+  function record(price: string) {
+    render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Empire Merchants' } })
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: price } })
+    fireEvent.change(screen.getByLabelText(/Currency/), { target: { value: 'TRY' } })
+    fireEvent.click(screen.getByRole('button', { name: /record this price/i }))
+  }
+
+  it('is a text field with the decimal keypad, so a comma reaches the page', () => {
+    render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
+    const price = screen.getByLabelText('Price')
+    expect(price).toHaveAttribute('type', 'text')
+    expect(price).toHaveAttribute('inputmode', 'decimal')
+  })
+
+  it('reads "12,50" as 12.5', () => {
+    record('12,50')
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ price: 12.5 }), expect.anything())
+  })
+
+  it('reads "1.250" as 1250 in a "."-grouping house', () => {
+    house.group = '.'
+    record('1.250')
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ price: 1250 }), expect.anything())
+  })
 })
 
 describe('RecordPriceForm — currency required, no default when no provider states one (fork 2, direction C\'s (a) as the floor)', () => {
@@ -123,7 +155,7 @@ describe('RecordPriceForm — fork 2(c): the vendor\'s usual currency where stat
     mock.usualCurrency = { data: { code: 'TRY' }, isLoading: false }
     // Force the same real re-render as above; the typed USD must survive it.
     fireEvent.change(screen.getByLabelText('Price'), { target: { value: '31' } })
-    await waitFor(() => expect(screen.getByLabelText('Price')).toHaveValue(31))
+    await waitFor(() => expect(screen.getByLabelText('Price')).toHaveValue('31'))
     expect(screen.getByLabelText(/Currency/)).toHaveValue('USD')
   })
 

@@ -246,6 +246,35 @@ describe('MenuNext — add', () => {
   });
 });
 
+// F-358: the prices were type="number" read with Number(), so "12,50" went out
+// as NaN (null in JSON) and the line was added with no price, silently.
+describe('MenuNext — a typed price is read the way the house writes it', () => {
+  it('sends "12,50" and "1.250,00" as 12.5 and 1250, from decimal-keypad text fields', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({ priceSync: 'not_linked' } as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    const glass = screen.getByLabelText('Glass');
+    expect(glass).toHaveAttribute('inputmode', 'decimal');
+    fireEvent.change(glass, { target: { value: '12,50' } });
+    fireEvent.change(screen.getByLabelText('Bottle'), { target: { value: '1.250,00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    expect(mockAdd.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ name: 'Barolo', by_glass_price: 12.5, bottle_price: 1250 }),
+    );
+  });
+
+  it('holds the add and says so when a price is not a number', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    fireEvent.change(screen.getByLabelText('Glass'), { target: { value: '12,5,0' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('“12,5,0” is not a price');
+    expect(screen.getByRole('button', { name: /Add to menu/ })).toBeDisabled();
+  });
+});
+
 describe('MenuNext — discard', () => {
   beforeEach(() => {
     auth.role = 'manager';

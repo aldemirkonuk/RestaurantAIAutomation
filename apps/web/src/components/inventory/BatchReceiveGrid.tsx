@@ -172,6 +172,11 @@ interface BatchReceiveGridProps {
   /** Rendered in place of the table when there are no rows yet. */
   emptyState?: React.ReactNode
   className?: string
+  /**
+   * The house's thousands mark (useHouseGroupMark). The host must pass the same
+   * mark to the helpers it saves with, so the total shown here is the total sent.
+   */
+  group?: GroupMark | null
 }
 
 export function BatchReceiveGrid({
@@ -181,6 +186,7 @@ export function BatchReceiveGrid({
   disabled = false,
   emptyState,
   className,
+  group: groupFromHost,
 }: BatchReceiveGridProps) {
   const { locations } = useStorageLocations()
   // What the house paid is an owner's or a manager's to set (F-312): the
@@ -198,7 +204,10 @@ export function BatchReceiveGrid({
   // The house's group mark (F-779): "1.250" is ₺1,250 here as in every other
   // money field. Both hosts read the same mark, so the grid agrees with what
   // they validate and send.
-  const group = useHouseGroupMark()
+  // A host that already read the mark passes it (F-358); either way it is the
+  // same house's mark.
+  const houseGroup = useHouseGroupMark()
+  const group = groupFromHost !== undefined ? groupFromHost : houseGroup
   const totals = useMemo(() => batchTotals(rows, group), [rows, group])
   const issues = useMemo(() => validateBatchRows(rows, group), [rows, group])
   const selectedCount = rows.filter((r) => r.selected).length

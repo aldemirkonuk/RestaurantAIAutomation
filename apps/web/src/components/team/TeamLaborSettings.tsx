@@ -41,6 +41,7 @@ function shownTarget(s: Pick<TeamSettings, 'labor_target_pct' | 'labor_target_ch
   const pct = readLabourTarget(raw == null ? null : Number(raw), s?.labor_target_chosen === true).pct
   return pct === null ? '' : String(pct)
 }
+import { parseDecimal } from '../../lib/parseDecimal'
 
 function Toggle({
   on,
@@ -135,7 +136,8 @@ export function TeamLaborSettings() {
       setTargetPct(shown)
       return
     }
-    const n = Number(targetPct)
+    // "27,5" is a percent too (F-358); a percent has no thousands, so no house group mark.
+    const n = parseDecimal(targetPct) ?? NaN
     if (!Number.isFinite(n) || n < 1 || n > 100) {
       toast.error('Labor target must be between 1 and 100')
       setTargetPct(shown)
@@ -187,10 +189,8 @@ export function TeamLaborSettings() {
             </div>
           </div>
           <input
-            type="number"
-            min={1}
-            max={100}
-            step={0.5}
+            type="text"
+            inputMode="decimal"
             value={targetPct}
             placeholder="—"
             disabled={save.isPending || !may.target}
