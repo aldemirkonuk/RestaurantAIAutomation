@@ -516,8 +516,12 @@ export class AuthController {
    */
   @Get("invite/:code")
   @Public()
-  async getInvitePreview(@Param("code") code: string) {
-    return this.authService.getInvitePreview(code);
+  async getInvitePreview(@Param("code") code: string, @Req() req: Request) {
+    // Optional session (F-275): only to answer whether the invite was made
+    // for another address. Public either way.
+    const auth = req.headers?.authorization;
+    const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+    return this.authService.getInvitePreview(code, token);
   }
 
   /**

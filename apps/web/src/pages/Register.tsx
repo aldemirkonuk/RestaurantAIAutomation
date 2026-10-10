@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
+import { forgetJoin, takeHeldJoin } from '../lib/joinResume'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight } from 'lucide-react'
@@ -603,6 +604,8 @@ export function Register() {
         password: joinPassword,
         ...(inviteMailSecret ? { emailSecret: inviteMailSecret } : {}),
       })
+      // The join itself used the invite: nothing held is left to come back to.
+      forgetJoin()
       navigate('/', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to join restaurant')
@@ -1009,7 +1012,9 @@ export function Register() {
       </div>
       <GoogleSignInButton
         mode="register"
-        onSuccess={() => navigate('/get-started', { replace: true })}
+        // An invite this tab held before the account existed comes first
+        // (F-288); a Google account needs no verifying to reach it.
+        onSuccess={() => navigate(takeHeldJoin() ?? '/get-started', { replace: true })}
         onError={setError}
       />
     </motion.div>

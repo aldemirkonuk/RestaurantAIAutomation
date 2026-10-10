@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
-import { rememberJoin } from '../lib/joinResume'
+import { holdJoin, rememberJoin } from '../lib/joinResume'
 
 type HouseRole = 'owner' | 'manager' | 'staff'
 
@@ -50,7 +50,10 @@ export function ProtectedRoute({
   }
 
   // Not Authenticated — must redirect before any role checks to avoid infinite spinner
+  // A studio invite opened signed out is held in this tab, so someone who
+  // creates a new account from the sign-in page comes back to it (F-288).
   if (!isAuthenticated) {
+    holdJoin(location.pathname)
     return <Navigate to={redirectTo} state={{ from: location }} replace />
   }
 

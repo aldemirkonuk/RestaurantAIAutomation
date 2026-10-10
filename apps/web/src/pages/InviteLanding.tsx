@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret, withInviteMailSecret } from '../lib/inviteMailSecret'
 import { useAuth } from '../contexts/AuthContext'
-import { forgetJoin, rememberJoin } from '../lib/joinResume'
+import { forgetJoin, holdJoin, rememberJoin } from '../lib/joinResume'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { toast } from 'sonner'
@@ -28,6 +28,9 @@ type Preview =
       city?: string | null
       inviter?: string | null
       role?: string
+      /** Sent only to a signed-in caller (F-275): the invite was made for
+       * an address other than theirs. Never the address itself. */
+      madeForAnotherAddress?: boolean
     }
 
 /** Copy per reason (0149 row 49: "names which" — no more one collapsed
@@ -98,7 +101,10 @@ export function InviteLanding() {
     } finally {
       setLoadingPreview(false)
     }
-  }, [code])
+    // Read again when the account changes: whether the invite was made for
+    // another address depends on who is signed in (F-275).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, user?.userId])
 
   useEffect(() => {
     void loadPreview()
@@ -108,6 +114,15 @@ export function InviteLanding() {
   useEffect(() => {
     forgetJoin()
   }, [])
+
+  // Signed out, this tab holds the invite while its person creates an
+  // account and verifies it, so that brings them back here (F-288).
+  useEffect(() => {
+    if (!isAuthenticated && code) holdJoin(`/invite/${encodeURIComponent(code)}`)
+  }, [isAuthenticated, code])
+
+  const anotherAddress =
+    'This invitation was sent to a different email address. If it is meant for you, sign out and sign in with the address it was sent to.'
 
   const verifyFirst = () => {
     if (!code) return
@@ -233,6 +248,11 @@ export function InviteLanding() {
                       Not you? Sign out
                     </button>
                   </p>
+                  {valid.madeForAnotherAddress && (
+                    <p className="mdv-alert" role="alert" data-testid="invite-other-address">
+                      {anotherAddress}
+                    </p>
+                  )}
                   {unverified ? (
                     <>
                       <p>
@@ -375,6 +395,15 @@ export function InviteLanding() {
                 Not you? Sign out
               </button>
             </p>
+            {preview.madeForAnotherAddress && (
+              <p
+                className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3"
+                role="alert"
+                data-testid="invite-other-address"
+              >
+                {anotherAddress}
+              </p>
+            )}
             {acceptError && (
               <p className="text-sm text-rose-500 mb-3">{acceptError}</p>
             )}

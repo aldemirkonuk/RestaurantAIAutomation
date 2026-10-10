@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { useAuth } from "../contexts/AuthContext";
-import { pendingJoin } from "../lib/joinResume";
+import { pendingJoin, takeHeldJoin } from "../lib/joinResume";
 
 /**
  * ProtectedRoute and the session's house (ADR 0164): a session in no house is
@@ -92,11 +92,11 @@ describe("ProtectedRoute", () => {
   // F-288: the studio is not scoped to a house, and its invitee often has none.
   describe("a studio invite (F-288)", () => {
     const U = "11111111-1111-4111-8111-111111111111";
-    function renderStudioInvite(user: Record<string, unknown>) {
+    function renderStudioInvite(user: Record<string, unknown> | null) {
       vi.mocked(useAuth).mockReturnValue({
         user,
         loading: false,
-        isAuthenticated: true,
+        isAuthenticated: !!user,
       } as any);
       return render(
         <MemoryRouter initialEntries={["/studio/invite/tok_123"]}>
@@ -131,6 +131,21 @@ describe("ProtectedRoute", () => {
       localStorage.clear();
       renderWith({ userId: U, emailVerified: false, restaurantId: "" });
       expect(pendingJoin(U)).toBeNull();
+    });
+
+    it("holds the invite in this tab for someone signed out, who may go on to sign up", () => {
+      sessionStorage.clear();
+      renderStudioInvite(null);
+      expect(screen.getByTestId("where")).toHaveTextContent(
+        "/login from /studio/invite/tok_123",
+      );
+      expect(takeHeldJoin()).toBe("/studio/invite/tok_123");
+    });
+
+    it("holds nothing for an ordinary page opened signed out", () => {
+      sessionStorage.clear();
+      renderWith(null);
+      expect(takeHeldJoin()).toBeNull();
     });
   });
 });

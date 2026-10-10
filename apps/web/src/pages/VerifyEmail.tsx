@@ -1,6 +1,6 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
-import { pendingJoin } from '../lib/joinResume'
+import { pendingJoin, rememberJoin, takeHeldJoin } from '../lib/joinResume'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -38,6 +38,15 @@ export function VerifyEmail() {
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+
+  // A new account with no house, made in a tab that was holding an invite
+  // (F-288): the invite becomes this account's, so verifying (often in a new
+  // tab, from the mail) brings them back to it.
+  useEffect(() => {
+    if (!user?.userId || user.restaurantId) return
+    const held = takeHeldJoin()
+    if (held) rememberJoin(held, user.userId)
+  }, [user?.userId, user?.restaurantId])
 
   const token = searchParams.get('token')
   // Back to this very link after signing in (Login honours `redirect`).
