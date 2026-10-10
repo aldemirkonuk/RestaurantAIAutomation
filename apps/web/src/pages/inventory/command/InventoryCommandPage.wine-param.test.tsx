@@ -15,7 +15,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const setSearchQuery = vi.fn();
@@ -123,12 +123,17 @@ vi.mock('../../../components/insights/ContextualInsights', () => ({
 
 import { InventoryCommandPage } from './InventoryCommandPage';
 
+function Where() {
+  return <div data-testid="where">{useLocation().search}</div>;
+}
+
 function harness(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <InventoryCommandPage />
+        <Where />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -162,5 +167,25 @@ describe('?wine= deep link', () => {
 
     const input = screen.getByPlaceholderText(/Search wines, producers, grapes/i) as HTMLInputElement;
     expect(input.value).toBe('Barolo');
+  });
+});
+
+/**
+ * F-550: the command palette's "Add wine" sends `/inventory?add=1`. Before,
+ * it sent `/wines?add=1` and no page read `add`, so the person landed on a
+ * list with nothing opened.
+ */
+describe('?add=1 deep link', () => {
+  it('opens the add-wine chooser and drops the param', async () => {
+    harness('/inventory?add=1');
+
+    expect(await screen.findByText('Single Wine')).toBeInTheDocument();
+    expect(screen.getByTestId('where').textContent).toBe('');
+  });
+
+  it('keeps the chooser shut without the param', () => {
+    harness('/inventory');
+
+    expect(screen.queryByText('Single Wine')).not.toBeInTheDocument();
   });
 });

@@ -1593,6 +1593,7 @@ export default function ReceiptsNext() {
     else params.delete('tab');
     params.delete('doc');
     params.delete('credit');
+    params.delete('order');
     setSearchParams(params);
   };
   /*
@@ -1612,8 +1613,32 @@ export default function ReceiptsNext() {
     const params = new URLSearchParams(searchParams);
     if (id) params.set('doc', id);
     else params.delete('doc');
+    params.delete('order');
     setSearchParams(params);
   };
+  /*
+   * `?order=<id>` opens THAT order's paper (F-552). The manager queue's "Edit
+   * line items at the desk" sends it, and landing on the whole desk after a
+   * manager picked one delivery is how the wrong receipt gets edited. A paper
+   * pairs with its orders through the links, not the row, so the desk asks
+   * which papers are linked to the order. One paper opens; none or several is
+   * said in words, and nothing is picked for the person.
+   */
+  const rid = useActiveRestaurantId();
+  const askedOrder = searchParams.get('order');
+  const orderPapersQ = useQuery({
+    queryKey: ['receipts-next', 'order-papers', rid, askedOrder],
+    queryFn: () => documentsApi.forOrder(askedOrder!),
+    enabled: !!askedOrder && !selectedId,
+  });
+  useEffect(() => {
+    const papers = orderPapersQ.data;
+    if (!askedOrder || selectedId || papers?.length !== 1) return;
+    const params = new URLSearchParams(searchParams);
+    params.set('doc', papers[0].id);
+    params.delete('order');
+    setSearchParams(params, { replace: true });
+  }, [askedOrder, selectedId, orderPapersQ.data, searchParams, setSearchParams]);
   const [showVerified, setShowVerified] = useState(false);
   const selected =
     data.queue.find((d) => d.id === selectedId) ??
@@ -1801,6 +1826,21 @@ export default function ReceiptsNext() {
           >
             The credit ledger is kept for the owner and managers of this house, so it is not shown
             here. The receipts are below.
+          </p>
+        )}
+
+        {tab === 'receipts' && askedOrder && !selectedId && (orderPapersQ.isError || (orderPapersQ.data && orderPapersQ.data.length !== 1)) && (
+          <p
+            role="status"
+            data-testid="order-papers-note"
+            className="mb-4"
+            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}
+          >
+            {orderPapersQ.isError
+              ? `${sentence(serverMessage(orderPapersQ.error, 'The papers for that order could not be read.'))} Find it in the list below.`
+              : orderPapersQ.data!.length === 0
+                ? 'No delivery note or invoice is attached to that order yet, so there are no line items to edit. It appears here once its paper is read in.'
+                : `That order has ${orderPapersQ.data!.length} papers. Pick the one to edit in the list below.`}
           </p>
         )}
 

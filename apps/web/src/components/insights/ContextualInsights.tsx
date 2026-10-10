@@ -3,7 +3,7 @@
  *
  * One component embedded on /inventory, /orders, /providers. It scopes the
  * engine's insight feed to the host page's categories (optionally to one
- * entity), and offers Act / Explain / Pin / Dismiss with the SAME disposition
+ * entity), and offers Explain / Pin / Dismiss with the SAME disposition
  * store as Recommendations + the Reports panel, so dismiss/snooze/pin sync
  * across every surface. Deep-links to Browse-All and Recommendations are
  * stable. Deterministic sentences only — no fabricated %.
@@ -26,7 +26,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Lightbulb,
-  ArrowRight,
   Pin,
   X,
   ChevronDown,
@@ -52,8 +51,6 @@ interface HostConfig {
   categories: string[];
   /** Dimensions to pre-filter Browse-All to. */
   browseDims: string[];
-  /** Where "Act" routes for this host. */
-  actRoute: string;
 }
 
 const HOST_CONFIG: Record<InsightHost, HostConfig> = {
@@ -61,19 +58,16 @@ const HOST_CONFIG: Record<InsightHost, HostConfig> = {
     title: "Inventory insights",
     categories: ["inventory", "risk", "forecast"],
     browseDims: ["wine", "wine_type"],
-    actRoute: "/inventory",
   },
   orders: {
     title: "Purchasing insights",
     categories: ["purchasing", "risk"],
     browseDims: ["vendor"],
-    actRoute: "/orders",
   },
   providers: {
     title: "Vendor insights",
     categories: ["purchasing", "risk"],
     browseDims: ["vendor"],
-    actRoute: "/vendors",
   },
 };
 
@@ -304,17 +298,14 @@ export function ContextualInsights({
   };
 
   /*
-   * A hand-off: it only opens the page where the work is done, so it records
-   * nothing (ADR 0112 F10, amended 2026-09-25 — the founder, sketch 122 Q2:
-   * "A hand-off that only opens another page records nothing"). It used to
-   * post an `acted` stamp fire-and-forget; since PR #483 that field is the
-   * gated, audited "Mark as briefed" stamp, so the post would have named the
-   * clicker as the briefer, or been refused (403 `not_your_note`) unseen
-   * while the page navigated away (PR #483 audit, R4).
+   * There is no "Act" here (F-551). It was a hand-off to `actRoute?insight=`,
+   * and every host's route (/inventory, /orders, /vendors) was a page that
+   * reads no `insight` param: on /inventory it reloaded the page the person
+   * was already on and did nothing. A button that does nothing is removed
+   * rather than kept; Explain, Pin and Dismiss are the acts this rail has.
+   * Earlier: it must never post the `acted` stamp either (ADR 0112 F10,
+   * amended 2026-09-25; PR #483 audit, R4).
    */
-  const act = (ins: Insight) => {
-    window.location.href = `${cfg.actRoute}?insight=${encodeURIComponent(ins.ruleKey)}&from=${host}`;
-  };
 
   const browseHref = `/recommendations/catalog?dim=${cfg.browseDims[0]}`;
 
@@ -400,12 +391,6 @@ export function ContextualInsights({
                             {ins.sentence}
                           </span>
                           <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => act(ins)}
-                              className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md"
-                            >
-                              Act <ArrowRight className="w-3 h-3" />
-                            </button>
                             <button
                               onClick={() => setExpanded(isOpen ? null : ins.ruleKey)}
                               className="px-2 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-100 rounded-md"

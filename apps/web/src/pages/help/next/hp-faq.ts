@@ -72,12 +72,15 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
       'By email, in "Reach a person" below on this page. If that section says no address was configured, none was set for this build; there is no default one and no other channel.',
   },
   {
-    // guidance/components/LearnPanel.tsx (startPageTour/resetTips);
-    // components/layout/Sidebar.tsx — "Learn & Help" entry at the bottom.
+    // guidance/components/PageTipStrip.tsx ("Take tour", "Don't show
+    // again"). F-553: this used to send people to "Learn & Help, at the bottom
+    // of the sidebar" — LearnPanel (startPageTour/resetTips), which mounts only
+    // in the legacy components/layout/Sidebar.tsx, never under HouseShell.
+    // Say what the house's layout really offers until replay is mounted there.
     slug: 'page-tours',
     question: 'Where are the page tours and the tips?',
     answer:
-      'Learn & Help, at the bottom of the sidebar. From there you can replay any page’s tour or bring back the tips you dismissed.',
+      'A page offers its tour in the tip at the top of the page — choose “Take tour” there. If you chose “Don’t show again”, that tip stays away: there is not yet a place to bring it back or to replay that page’s tour.',
   },
   {
     // settings/next/st-format.ts SECTION_IDS/COLLAPSED_SECTIONS: `services`
