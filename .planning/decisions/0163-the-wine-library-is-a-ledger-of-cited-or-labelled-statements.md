@@ -239,7 +239,7 @@ where marked "this writer"; the rest come from the lanes):
      `price_glass`, `color`, `sweetness_level`, `tasting_notes` and `description`
      (`services/agent-orchestrator/api/studio_routes.py:1031-1048`).
      `master_wine_library` has none of these columns (information_schema, this writer).
-     The retry drops only the three audit columns (`:1064-1072`).
+     The retry drops only the three audit columns (`:1064-1072`). [Corrected 2026-10-10, F-856: fixed by `fix/sim-studio-promote` (6dc0c9fbd, F-754): `promote_to_library` now builds its row with `override_service.build_library_row`, which writes none of these six columns; claim `ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT` is now `resolved`.]
    - **The other two promotion paths fail too.** The override auto-promotion and the
      quality PATCH select enrichment columns that the submissions table lacks
      (`services/override_service.py:356-360`, `api/quality_routes.py:205-210`; the lane
@@ -2004,7 +2004,7 @@ yet in `OPEN-DECISIONS.md` or an ADR — CLAUDE.md §5's "a decision made and
 not written down did not happen" applies to it until 0165 lands. Found in
 round 2's research and re-verified against this checkout on 2026-09-18):
 
-- **Path 1 — `promote_to_library`'s direct insert.** The insert payload at
+- **Path 1 — `promote_to_library`'s direct insert.** [Corrected 2026-10-10, F-856: fixed by `fix/sim-studio-promote` (6dc0c9fbd, F-754): `promote_to_library` now builds its row with `override_service.build_library_row`, which writes none of these six columns; claim `ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT` is now `resolved`.] The insert payload at
   `services/agent-orchestrator/api/studio_routes.py:1031-1048` (function
   starts at `:926`) sets `price`, `price_glass`, `color`, `sweetness_level`,
   `tasting_notes` and `description`. `master_wine_library`'s schema

@@ -44,7 +44,9 @@ Found in the dashboard walk-through, P9 and P10.
 - `/inventory?wine=<name>` is a link contract between the dashboard (`RailPanels.tsx:183`) and /inventory, and must be renamed on both sides at once.
 - "Bottles" and "In the cellar" are kept until food lands.
 
-## Two order routes the dashboard reads still send prices to staff — OPEN — 2026-10-01
+## Two order routes the dashboard reads still send prices to staff — ~~OPEN~~ CLOSED on 2026-10-10 — 2026-10-01
+
+**Closed 2026-10-10 (F-856).** `fix/sim-dashboard-day` (e23be3b1a, F-433) sends both routes through `apps/api-gateway/src/procurement/order-amounts-for-role.ts`: a role that does not hold the house's money gets an allowlist of non-money keys and `amountsWithheld: true`. Claim `TD-2026-10-01-ORDER-ROUTES-PRICES-TO-STAFF` is now `resolved` and pins it. The text below is the original finding, kept as written.
 
 Found by the PR #579 audit (both reviewers). Line citations are at `6806498668cb`.
 

@@ -185,7 +185,7 @@ The POS writer never writes such a line, because it fails closed on an explicit 
 3. **The 90-day divisor over a shorter history.** `advanced-analytics.service.ts:285` divides by `sinceDays` even when the house's history is shorter (60 days at Tuzlu).
 4. **Master-wine demand against per-row stock.** `getInventoryScience` keys demand on `master_wine_id` (`analytics.service.ts:635-651` [2026-10-07, re-pinned at the merge of `origin/main` ca3582988: now `:627-643`]), while stock is per `restaurant_inventory` row. Two rows of one wine, for example two sizes, share one demand.
 5. **Glass revenue.** Menu engineering's margin per bottle is the bottle menu price less cost. Glass revenue per bottle-equivalent is not used.
-6. **The web quadrant register.**
+6. **The web quadrant register.** [Corrected 2026-10-10, F-856: the quadrant part below is fixed by `fix/sim-menu-costing` (61bf0a10c): the register types velocity as `number | null` and keeps a null one off the plot with a sentence saying it is not measured, and the "No quadrant" tile counts `counts.unclassified + counts.unmeasured`. Claim `AW02-WEB-QUADRANT-NULL-VELOCITY` is now `resolved`. The restock bullet below is not covered by that claim and is unchanged.]
    - In `apps/web/src/pages/reports/next/rp-registers-house.tsx`:
      - `:23` types `velocityPerDay` as `number`;
      - `:61` reads a null velocity as 0;
