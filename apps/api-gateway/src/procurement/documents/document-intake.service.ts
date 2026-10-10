@@ -1609,7 +1609,8 @@ export class DocumentIntakeService {
       .from("procurement_documents")
       .update({
         notes: before ? `${before}\n${sentence}` : sentence,
-        ...(reopenable ? { status: "needs_review" } : {}),
+        // undefined is left out of the request: a reviewed paper keeps its status.
+        status: reopenable ? "needs_review" : undefined,
       })
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId);
