@@ -41,6 +41,13 @@ import {
   lastHouseFor,
   rememberHouse,
 } from "../lib/houseMemory";
+import { ROLE_RECHECK_EVENT, askRoleRecheck } from "../lib/roleRecheck";
+
+// The real 403 handler, registered on the mocked instance when the module
+// loaded; taken now, before `vi.clearAllMocks` forgets the call.
+const rejectedHandler = h.instance.interceptors.response.use.mock.calls[0]?.[1] as (
+  e: unknown,
+) => Promise<unknown>;
 
 const U = "11111111-1111-4111-8111-111111111111";
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -409,5 +416,91 @@ describe("the role in this house after a roster change (F-193)", () => {
     });
 
     await waitFor(() => expect(auth().activeRole).toBe("manager"));
+  });
+});
+
+describe("a role changed by someone else reaches the open page (F-930)", () => {
+  let houseRole = "manager";
+  let roleReply: () => Promise<unknown>;
+  beforeEach(() => {
+    localStorage.setItem("accessToken", jwt({ sub: U, restaurantId: A }));
+    houseRole = "manager";
+    roleReply = async () => ({ data: { role: houseRole } });
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url === "/api/v1/auth/me") {
+        return {
+          data: {
+            user: {
+              userId: U,
+              email: "p@house.test",
+              restaurantId: A,
+              role: "manager",
+              emailVerified: true,
+            },
+          },
+        };
+      }
+      if (url === "/api/v1/auth/me/role") return roleReply();
+      return { data: [{ id: A, name: "Moda" }] };
+    });
+  });
+  const roleReads = () =>
+    h.instance.get.mock.calls.filter((c) => c[0] === "/api/v1/auth/me/role").length;
+
+  it("a refused request asks, and the demoted manager's desk becomes staff", async () => {
+    const auth = await mount();
+    await waitFor(() => expect(auth().activeRole).toBe("manager"));
+
+    houseRole = "staff";
+    const heard = vi.fn();
+    window.addEventListener(ROLE_RECHECK_EVENT, heard);
+    await act(async () => {
+      await rejectedHandler({
+        response: { status: 403, data: { message: "Only owners and managers can perform this action" } },
+        config: { url: "/api/v1/team/members" },
+      }).catch(() => {});
+    });
+    window.removeEventListener(ROLE_RECHECK_EVENT, heard);
+
+    expect(heard).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(auth().activeRole).toBe("staff"));
+  });
+
+  it("the house and email refusals keep their own answers and do not ask", async () => {
+    const heard = vi.fn();
+    window.addEventListener(ROLE_RECHECK_EVENT, heard);
+    for (const code of ["HOUSE_REQUIRED", "EMAIL_NOT_VERIFIED"]) {
+      await rejectedHandler({ response: { status: 403, data: { code } }, config: { url: "/x" } }).catch(() => {});
+    }
+    await rejectedHandler({ response: { status: 403 }, config: { url: "/api/v1/auth/me/role" } }).catch(() => {});
+    window.removeEventListener(ROLE_RECHECK_EVENT, heard);
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it("the tab being shown again reads the role again, and a promoted staff member gets the manager desk", async () => {
+    houseRole = "staff";
+    const auth = await mount();
+    await waitFor(() => expect(auth().activeRole).toBe("staff"));
+
+    houseRole = "manager";
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(auth().activeRole).toBe("manager"));
+  });
+
+  it("a re-read over a dropped connection keeps the role it had, and many asks make one read", async () => {
+    const auth = await mount();
+    await waitFor(() => expect(auth().activeRole).toBe("manager"));
+    const before = roleReads();
+
+    roleReply = async () => Promise.reject(new Error("Network Error"));
+    await act(async () => {
+      askRoleRecheck();
+      askRoleRecheck();
+      askRoleRecheck();
+    });
+    await waitFor(() => expect(roleReads()).toBe(before + 1));
+    expect(auth().activeRole).toBe("manager");
   });
 });

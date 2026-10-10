@@ -216,3 +216,34 @@ describe('a coverage rule asks for someone, once (F-718)', () => {
     expect(api.createCoverageTemplate).not.toHaveBeenCalled();
   });
 });
+
+// F-933: the gateway refuses a manager removing an owner, so a manager is not
+// offered a Remove on a co-owner's row; an owner still is.
+describe('Remove on an owner follows who is looking (F-933)', () => {
+  const coOwner = { ...row, id: 'm-own', user_id: 'u-co', role: 'owner' };
+  function drawAs(viewerIsOwner: boolean) {
+    render(
+      <MemberSheet
+        member={coOwner as never}
+        moneyVisible={false}
+        viewerIsOwner={viewerIsOwner}
+        ownerCount={2}
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+  }
+
+  it('a manager sees why there is no Remove, not a Remove that always fails', () => {
+    drawAs(false);
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
+    expect(screen.getByText(/Only an owner can remove an owner/)).toBeInTheDocument();
+  });
+
+  it('an owner is offered Remove on a co-owner', () => {
+    drawAs(true);
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.queryByText(/Only an owner can remove an owner/)).toBeNull();
+  });
+});

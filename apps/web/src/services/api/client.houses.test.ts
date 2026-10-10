@@ -35,6 +35,7 @@ vi.mock("axios", () => ({
 import "./client";
 import { HOUSE_ENDED_KEY } from "../../lib/houseMemory";
 import { SESSION_ENDED_EVENT, SESSION_ENDED_WORDS } from "../../lib/sessionEnded";
+import { ROLE_RECHECK_EVENT } from "../../lib/roleRecheck";
 
 const U = "11111111-1111-4111-8111-111111111111";
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -188,5 +189,26 @@ describe("apiClient refreshes through the one shared refresh (F-610)", () => {
     expect(h.instance).toHaveBeenCalledWith(
       expect.objectContaining({ headers: { Authorization: "Bearer a2" } }),
     );
+  });
+});
+
+describe("a role refusal asks the session to read its role again (F-930)", () => {
+  it("a plain 403 asks; HOUSE_REQUIRED does not", async () => {
+    const heard = vi.fn();
+    window.addEventListener(ROLE_RECHECK_EVENT, heard);
+    try {
+      await h.handlers.onError!({
+        response: { status: 403, data: { message: "Only owners can perform this action" } },
+        config: { url: "/team/members/m1" },
+      }).catch(() => {});
+      expect(heard).toHaveBeenCalledTimes(1);
+      await h.handlers.onError!({
+        response: { status: 403, data: { code: "HOUSE_REQUIRED" } },
+        config: { url: "/inventory" },
+      }).catch(() => {});
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(ROLE_RECHECK_EVENT, heard);
+    }
   });
 });

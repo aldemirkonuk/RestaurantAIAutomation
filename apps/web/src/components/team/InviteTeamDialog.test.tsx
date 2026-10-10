@@ -35,7 +35,7 @@ const INVITE = {
   inviteUrl: 'https://app.mudavym.com/invite/AB12CD34',
 }
 
-function draw(shellOn: boolean, opts: { anchored?: boolean } = {}) {
+function draw(shellOn: boolean, opts: { anchored?: boolean; inviterIsOwner?: boolean } = {}) {
   if (shellOn) claimMudavymShell(Symbol('page'), 'paper')
   const anchor = document.createElement('button')
   document.body.appendChild(anchor)
@@ -46,6 +46,7 @@ function draw(shellOn: boolean, opts: { anchored?: boolean } = {}) {
       onClose={onClose}
       restaurantId="rest-1"
       anchorRef={opts.anchored ? { current: anchor } : undefined}
+      inviterIsOwner={opts.inviterIsOwner}
     />,
   )
   return { ...view, onClose }
@@ -161,4 +162,21 @@ describe('with a Mudavym page on screen', () => {
     await waitFor(() => expect(screen.getAllByText('AB12CD34').length).toBeGreaterThan(0))
     expect(screen.getAllByText(/It expires Sep 11, 2026\./).length).toBeGreaterThan(0)
   })
+})
+
+// F-934: only an owner changes a role afterwards, so a manager inviting is not
+// told they can; they are told who can.
+describe('who can change the role later', () => {
+  for (const shellOn of [true, false]) {
+    it(`tells a manager an owner can, and an owner they can (${shellOn ? 'Mudavym' : 'legacy'})`, () => {
+      const manager = draw(shellOn)
+      expect(screen.getByText('An owner can change their role later in Settings → Team.')).toBeInTheDocument()
+      expect(screen.queryByText('You can change their role later in Settings → Team.')).toBeNull()
+      manager.unmount()
+      resetMudavymShell()
+      draw(shellOn, { inviterIsOwner: true })
+      expect(screen.getByText('You can change their role later in Settings → Team.')).toBeInTheDocument()
+      expect(screen.queryByText('An owner can change their role later in Settings → Team.')).toBeNull()
+    })
+  }
 })

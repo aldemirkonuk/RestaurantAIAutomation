@@ -31,6 +31,11 @@ import {
 } from "../lib/houseMemory";
 import { forgetJoin } from "../lib/joinResume";
 import { doRefresh } from "../lib/sessionRefresh";
+import {
+  ROLE_RECHECK_EVENT,
+  askRoleRecheck,
+  isRoleRefusal,
+} from "../lib/roleRecheck";
 import { syncManager } from "../lib/sync-manager";
 import {
   currentQueueOwner,
@@ -356,6 +361,8 @@ api.interceptors.response.use(
     ) {
       goToChooser();
     }
+    // F-930: any other 403 may be a role changed under the page.
+    if (isRoleRefusal(error)) askRoleRecheck();
     return Promise.reject(error);
   },
 );
@@ -383,6 +390,9 @@ function tokenSubject(accessToken: string | null): string | null {
  * covers one full window plus margin. `Retry-After` is honoured when the
  * gateway sends it.
  */
+/** The shortest gap between two role re-reads asked for by F-930's triggers. */
+const ROLE_RECHECK_GAP_MS = 5_000;
+
 const ME_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000];
 const ME_RETRY_AFTER_CAP_MS = 60_000;
 
@@ -753,16 +763,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         const r = data.role as string | null | undefined;
         if (r && ["owner", "manager", "staff"].includes(r)) {
-          setRoleRead({ house: tid, role: r as "owner" | "manager" | "staff" });
+          const role = r as "owner" | "manager" | "staff";
+          // The same answer keeps the same object, so a re-read that finds
+          // nothing changed does not redraw every reader of the role (F-930).
+          setRoleRead((prev) =>
+            prev && prev.house === tid && prev.role === role
+              ? prev
+              : { house: tid, role },
+          );
         } else setRoleRead(null);
-      } catch {
-        if (!cancelled) setRoleRead(null);
+      } catch (err) {
+        if (cancelled) return;
+        // A re-read that could not reach the gateway keeps the role it had
+        // for this house; only an answer clears it (F-930: a re-read on every
+        // return to the tab must not blank the desk over a dropped connection).
+        const status = (err as { response?: { status?: number } })?.response
+          ?.status;
+        const transient =
+          status === undefined || status === 429 || status >= 500;
+        setRoleRead((prev) =>
+          transient && prev && prev.house === tid ? prev : null,
+        );
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [user, activeRestaurantId, roleEpoch]);
+
+  // F-930: a role changed by someone else reaches this page too. A refused
+  // request or the "your role changed" notice asks (lib/roleRecheck), and so
+  // does the tab being shown again; the role is then read again. At most one
+  // read per few seconds, however many refusals arrive together.
+  const lastRoleRecheck = React.useRef(0);
+  useEffect(() => {
+    const recheck = () => {
+      const now = Date.now();
+      if (now - lastRoleRecheck.current < ROLE_RECHECK_GAP_MS) return;
+      lastRoleRecheck.current = now;
+      setRoleEpoch((n) => n + 1);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") recheck();
+    };
+    window.addEventListener(ROLE_RECHECK_EVENT, recheck);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener(ROLE_RECHECK_EVENT, recheck);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   // Public refresh — can be called after chain/location changes to update the branch switcher
   const refreshBranches = useCallback(async () => {
