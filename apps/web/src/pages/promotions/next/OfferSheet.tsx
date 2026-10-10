@@ -185,8 +185,8 @@ export function OfferSheet({ offer, today, onClose, onDismiss, onRestore, busy }
             Put away for the house
           </button>
         )}
-        <a className="pn-btn pn-btn--quiet" href={`/orders?new=1&promo=${encodeURIComponent(offer.id)}`}>
-          Draft an order
+        <a className="pn-btn pn-btn--quiet" href="/orders?new=1">
+          Write a new order
         </a>
       </div>
       <p className="pn-sheet__note">

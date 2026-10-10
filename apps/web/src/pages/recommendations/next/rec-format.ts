@@ -242,45 +242,50 @@ export interface Hand {
 }
 
 /**
- * Where "Act" takes you, with the rule carried along so the target page can
- * pick it up (`?rec=…&from=recommendations`). Copied from the legacy page's
- * `actTarget` — this is real routing knowledge, not a new claim.
+ * Where "Act" takes you. Copied from the legacy page's `actTarget` — this is
+ * real routing knowledge, not a new claim.
+ *
+ * A link carries only what its page READS (F-478). The `rec`, `from` and
+ * `draft` params these links used to carry were read by no page, so a
+ * "Draft the PO" opened the order list with nothing drafted. What is read:
+ * `/orders?new=1` opens the order composer (OrdersNext), `?tab=target-margin`
+ * opens that Settings tab, and `#locked-prices` scrolls /menu to its section.
+ * Every other link opens its page and says no more than that.
  */
 export function handOf(ruleKey: string, category: string): Hand {
-  const q = `rec=${encodeURIComponent(ruleKey)}&from=recommendations`;
   const byRule: Record<string, Hand> = {
-    stockout_imminent: { href: `/orders?${q}&draft=1`, label: 'Draft the PO', where: 'Orders' },
-    dead_stock_capital: { href: `/promotions?${q}`, label: 'Create the promo', where: 'Promotions' },
-    plowhorse_repricing: { href: `/reports?${q}`, label: 'Open the menu report', where: 'Reports' },
-    puzzle_activation: { href: `/promotions?${q}`, label: 'Feature by-the-glass', where: 'Promotions' },
-    vendor_concentration: { href: `/vendors?${q}`, label: 'Compare vendors', where: 'Vendors' },
-    revenue_concentration: { href: `/inventory?${q}`, label: 'Protect top sellers', where: 'Inventory' },
-    spend_acceleration: { href: `/orders?${q}`, label: 'Audit open orders', where: 'Orders' },
-    pairing_promotion: { href: `/promotions?${q}`, label: 'Promote the pairing', where: 'Promotions' },
-    staff_spread: { href: `/team?${q}`, label: 'Open the roster', where: 'Team' },
+    stockout_imminent: { href: '/orders?new=1', label: 'Draft the PO', where: 'Orders' },
+    dead_stock_capital: { href: '/promotions', label: 'Create the promo', where: 'Promotions' },
+    plowhorse_repricing: { href: '/reports', label: 'Open the menu report', where: 'Reports' },
+    puzzle_activation: { href: '/promotions', label: 'Feature by-the-glass', where: 'Promotions' },
+    vendor_concentration: { href: '/vendors', label: 'Compare vendors', where: 'Vendors' },
+    revenue_concentration: { href: '/inventory', label: 'Protect top sellers', where: 'Inventory' },
+    spend_acceleration: { href: '/orders', label: 'Audit open orders', where: 'Orders' },
+    pairing_promotion: { href: '/promotions', label: 'Promote the pairing', where: 'Promotions' },
+    staff_spread: { href: '/team', label: 'Open the roster', where: 'Team' },
     // ADR 0193: each advised price is accepted with one tap on its own row,
     // under "Your price" on Inventory; the target itself lives in Settings.
-    margin_to_target: { href: `/inventory?${q}`, label: 'Review your prices', where: 'Inventory' },
-    margin_advice_blind: { href: `/inventory?${q}`, label: 'See which wines', where: 'Inventory' },
-    margin_target_unset: { href: `/settings?tab=target-margin&${q}`, label: 'Set your target', where: 'Settings' },
+    margin_to_target: { href: '/inventory', label: 'Review your prices', where: 'Inventory' },
+    margin_advice_blind: { href: '/inventory', label: 'See which wines', where: 'Inventory' },
+    margin_target_unset: { href: '/settings?tab=target-margin', label: 'Set your target', where: 'Settings' },
     // ADR 0193 round 3: the locks live on /menu, under Locked prices.
-    price_locks_to_review: { href: `/menu?${q}#locked-prices`, label: 'Look at the locks', where: 'Menu' },
+    price_locks_to_review: { href: '/menu#locked-prices', label: 'Look at the locks', where: 'Menu' },
   };
   const hit = ownRow(byRule, ruleKey);
   if (hit) return hit;
   if (ruleKey.startsWith('goal_behind'))
-    return { href: `/reports?${q}`, label: 'Open the goal', where: 'Reports' };
+    return { href: '/reports', label: 'Open the goal', where: 'Reports' };
   const byCategory: Record<string, Hand> = {
-    inventory: { href: `/inventory?${q}`, label: 'Open Inventory', where: 'Inventory' },
-    purchasing: { href: `/orders?${q}`, label: 'Open Orders', where: 'Orders' },
-    risk: { href: `/orders?${q}`, label: 'Review the risk', where: 'Orders' },
-    sales: { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' },
-    efficiency: { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' },
-    staff: { href: `/team?${q}`, label: 'Open the roster', where: 'Team' },
-    basket: { href: `/promotions?${q}`, label: 'Open Promotions', where: 'Promotions' },
-    goals: { href: `/reports?${q}`, label: 'Open Goals', where: 'Reports' },
+    inventory: { href: '/inventory', label: 'Open Inventory', where: 'Inventory' },
+    purchasing: { href: '/orders', label: 'Open Orders', where: 'Orders' },
+    risk: { href: '/orders', label: 'Review the risk', where: 'Orders' },
+    sales: { href: '/reports', label: 'Open Reports', where: 'Reports' },
+    efficiency: { href: '/reports', label: 'Open Reports', where: 'Reports' },
+    staff: { href: '/team', label: 'Open the roster', where: 'Team' },
+    basket: { href: '/promotions', label: 'Open Promotions', where: 'Promotions' },
+    goals: { href: '/reports', label: 'Open Goals', where: 'Reports' },
   };
-  return ownRow(byCategory, category) ?? { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' };
+  return ownRow(byCategory, category) ?? { href: '/reports', label: 'Open Reports', where: 'Reports' };
 }
 
 /** A hand as the person looking at the card holds it. */

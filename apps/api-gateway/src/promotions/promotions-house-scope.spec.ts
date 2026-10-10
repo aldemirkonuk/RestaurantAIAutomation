@@ -65,6 +65,12 @@ function fakeSupabase(tables: Record<string, Row[]>, calls: Call[]) {
                 limit = to - from + 1;
                 return api;
               };
+            case "maybeSingle":
+              return () =>
+                Promise.resolve({
+                  data: (tables[table] ?? []).find((r) => preds.every((p) => p(r))) ?? null,
+                  error: null,
+                });
             case "then":
               return (resolve: any) => {
                 const matched = (tables[table] ?? [])
@@ -365,5 +371,27 @@ describe("readForHouse — the per-wine minimum reaches the grade through the of
     }).readForHouse(HOUSE, { now: NOW });
     expect(read.offers[0].grade.qualification?.basis).toBe("per_wine");
     expect(read.offers[0].grade.qualification?.state).toBe("not_shown");
+  });
+});
+
+describe("readForHouse — an offer's end is read on the house's own day (F-481)", () => {
+  // 03:00 UTC on the 26th is 20:00 on the 25th in Los Angeles.
+  const LATE_EVENING = new Date("2026-09-26T03:00:00Z");
+  const endsOn25th = offerRow({ id: "o-25", end_date: "2026-09-25" });
+
+  it("an offer ending today is still open on the house's evening, though the UTC day has turned", async () => {
+    const read = await service({
+      restaurants: [{ id: HOUSE, timezone: "America/Los_Angeles", country: "US" }],
+      provider_promotions: [endsOn25th],
+    }).readForHouse(HOUSE, { now: LATE_EVENING });
+    expect(read.offers.map((o) => o.state)).toEqual(["open"]);
+  });
+
+  it("the same offer has passed once the house's own day has turned", async () => {
+    const read = await service({
+      restaurants: [{ id: HOUSE, timezone: "America/Los_Angeles", country: "US" }],
+      provider_promotions: [endsOn25th],
+    }).readForHouse(HOUSE, { now: new Date("2026-09-26T08:00:00Z") });
+    expect(read.offers.map((o) => o.state)).toEqual(["passed"]);
   });
 });

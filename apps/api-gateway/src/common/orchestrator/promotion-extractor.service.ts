@@ -58,13 +58,24 @@ export class PromotionExtractorService {
       const promo = extractPromotion(ctx.subject, ctx.body, now, zone);
       if (!promo) return { stored: false, reason: "no promo terms extracted" };
 
-      // Dedup: same provider already has an active promo with this signature?
+      const applicableWines = await this.matchApplicableWines(
+        ctx.restaurantId,
+        `${ctx.subject ?? ""}\n${ctx.body ?? ""}`,
+      );
+
+      // Dedup on the OFFER, not on equal terms (F-480): the same vendor, the
+      // same wines, the same terms and window, from the same message. Equal
+      // terms alone let "15% off 6+ until Oct 31" on Barolo swallow the same
+      // vendor's Burgundy offer, and let one the owner put away swallow every
+      // later mail with those terms. What this still catches is the one real
+      // duplicate: the same message read twice.
+      const identity = `${promo.signature}|${[...applicableWines].sort().join(",")}`;
       const { data: dupes } = await this.databaseService.supabase
         .from("provider_promotions")
         .select("id")
         .eq("provider_id", ctx.providerId)
-        .eq("is_active", true)
-        .contains("conditions", { signature: promo.signature })
+        .eq("source_conversation_id", ctx.conversationId)
+        .contains("conditions", { identity })
         .limit(1);
       if (dupes?.length) return { stored: false, reason: "duplicate promo" };
 
@@ -75,11 +86,6 @@ export class PromotionExtractorService {
         discount_value.amount = promo.discount_amount;
       if (promo.free_shipping) discount_value.free_shipping = true;
       if (promo.currency) discount_value.currency = promo.currency;
-
-      const applicableWines = await this.matchApplicableWines(
-        ctx.restaurantId,
-        `${ctx.subject ?? ""}\n${ctx.body ?? ""}`,
-      );
 
       // D4 — priority (relevance × savings × urgency × trust) → interrupt / surface / digest.
       const daysToExpiry =
@@ -121,6 +127,7 @@ export class PromotionExtractorService {
 
       const conditions: Record<string, any> = {
         signature: promo.signature,
+        identity,
         priority: bucket,
       };
       if (promo.threshold_qty != null) conditions.min_qty = promo.threshold_qty;

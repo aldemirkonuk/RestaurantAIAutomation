@@ -386,7 +386,8 @@ describe("ApprovalThresholdsService", () => {
         },
       ],
       procurement_orders: [
-        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-01T08:00:00Z", total_cost: "100", final_price: "10" },
+        // DELIVERED: only a price paid becomes the next comparison (F-479).
+        { provider_id: "p1", inventory_id: "i1", status: "DELIVERED", requested_at: "2026-09-01T08:00:00Z", total_cost: "100", final_price: "10" },
         // +30% on the same item — over the 12% the house allows.
         { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-02T08:00:00Z", total_cost: "130", final_price: "13" },
         // A different item, so no comparison exists for it yet.

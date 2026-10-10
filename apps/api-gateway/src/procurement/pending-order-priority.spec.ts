@@ -120,6 +120,7 @@ function makeDb(opts: DbOpts) {
         },
         neq: () => q,
         in: () => q,
+        not: () => q,
         gte: () => q,
         lte: () => q,
         limit: () => q,

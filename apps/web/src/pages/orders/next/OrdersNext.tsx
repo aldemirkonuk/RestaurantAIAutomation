@@ -216,7 +216,9 @@ export default function OrdersNext() {
   /* A link that asks for a NEW order opens the composer. `?new=1` is the
      command palette's "New order" (F-477); `?draft=new&inventoryId=&qty=` is
      /inventory's "Draft PO, N btl" (F-549), which also starts the composer
-     with that wine and that many bottles. Neither was read before, so both
+     with that wine and that many bottles. A vendor offer's "Write a new order"
+     and a recommendation's "Draft the PO" (F-478) send `?new=1` too. Neither
+     was read before, so both
      landed on the ledger with nothing opened. Waits for the vendor list, so
      the add-a-vendor-first guard still speaks; the params are then dropped,
      so a reload or Back does not reopen it. */

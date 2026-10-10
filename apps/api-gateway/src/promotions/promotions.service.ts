@@ -470,8 +470,8 @@ export class PromotionsService {
   ): Promise<PromotionsReadDto> {
     const now = opts.now ?? new Date();
     const db = this.databaseService.supabase;
-
-    // 0. The house's clock, so "today" is the house's date (F-260).
+    // 0. The house's clock, so "today" is the house's date (F-260; the same
+    //    defect the house-lifecycle sim filed again as F-481).
     const zoneRes = await db.from("restaurants").select("timezone").eq("id", restaurantId).limit(1);
     if (zoneRes.error) {
       throw new Error(`The house's time zone (restaurants) could not be read: ${zoneRes.error.message}`);

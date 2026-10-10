@@ -635,7 +635,7 @@ describe('RecommendationsNext — the standing book', () => {
     fireEvent.click(within(row).getByText('Draft the PO →'));
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith(
-        expect.stringContaining('/orders?rec=stockout_imminent'),
+        '/orders?new=1',
       ),
     );
     expect(setDisposition).not.toHaveBeenCalled();
@@ -2404,7 +2404,7 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     expect(navigate).not.toHaveBeenCalled();
     // Q7 "Keep both verbs": the hand-off is still there, and records nothing.
     fireEvent.click(within(row).getByText('Open Reports →'));
-    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/reports?rec=sales_below_weekday_baseline'));
+    expect(navigate).toHaveBeenCalledWith('/reports');
     expect(setDisposition).toHaveBeenCalledTimes(1);
   });
 
@@ -2438,7 +2438,7 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     draw();
     fireEvent.keyDown(window, { key: 'j' });
     fireEvent.keyDown(window, { key: 'a' });
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/orders?')));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/orders?new=1'));
     expect(setDisposition).not.toHaveBeenCalled();
   });
 
@@ -2560,7 +2560,7 @@ describe('founder item 87 — a Promotions hand is a manager’s for staff (OD-1
         fireEvent.click(within(row).getByRole('button', { name: `${label} →` }));
         await waitFor(() =>
           expect(navigate).toHaveBeenCalledWith(
-            `/promotions?rec=${ruleKey}&from=recommendations`,
+            '/promotions',
           ),
         );
         unmount();
@@ -2591,7 +2591,7 @@ describe('founder item 87 — a Promotions hand is a manager’s for staff (OD-1
     expect(within(row).getByText('Yours, in Orders')).toBeInTheDocument();
     fireEvent.click(within(row).getByText('Draft the PO →'));
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/orders?rec=stockout_imminent')),
+      expect(navigate).toHaveBeenCalledWith('/orders?new=1'),
     );
   });
 });

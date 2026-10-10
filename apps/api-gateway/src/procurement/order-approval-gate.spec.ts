@@ -101,6 +101,10 @@ function makeDb(opts: {
     from(table: string) {
       let op: "select" | "insert" | "update" = "select";
       let selectedColumns = "";
+      // Filters the prior-price probe applies, honoured here so a stub row the
+      // query would never return is not handed back (F-479).
+      let statusIn: string[] | null = null;
+      let pricedOnly = false;
 
       const settle = (shape: "one" | "many") => {
         if (table === "restaurants") {
@@ -145,7 +149,14 @@ function makeDb(opts: {
           // read selects six. Told apart by the projection so one stub can
           // answer both without either quietly receiving the other's rows.
           if (selectedColumns.includes("final_price, requested_at"))
-            return { data: opts.priorPrices ?? [], error: null };
+            return {
+              data: (opts.priorPrices ?? []).filter(
+                (r) =>
+                  (statusIn === null || statusIn.includes(r.status)) &&
+                  (!pricedOnly || r.final_price !== null),
+              ),
+              error: null,
+            };
           return { data: opts.ledgerRows ?? [], error: null };
         }
         return { data: shape === "many" ? [] : null, error: null };
@@ -206,9 +217,16 @@ function makeDb(opts: {
         },
         eq: () => q,
         neq: () => q,
+        in: (col: string, values: string[]) => {
+          if (col === "status") statusIn = values;
+          return q;
+        },
+        not: (col: string, op: string, value: unknown) => {
+          if (col === "final_price" && op === "is" && value === null) pricedOnly = true;
+          return q;
+        },
         gte: () => q,
         gt: () => q,
-        in: () => q,
         lte: () => q,
         order: () => q,
         limit: () => q,
@@ -472,6 +490,7 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       priorPrices: [
         {
           final_price: 420,
+          status: "DELIVERED", // a price PAID is the comparison (F-479)
           currency: "USD",
           procurement_order_items: [{ price_uom: "case", price_pack_size: 12 }],
         },
@@ -623,6 +642,56 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
   });
 });
 
+describe("approveOrder — price_jump compares against the last price PAID (F-479)", () => {
+  function priceJumpRule(percent: number): ThresholdRow {
+    return {
+      rule: "price_jump",
+      enabled: true,
+      amountLimit: null,
+      percentLimit: percent,
+      requiredRole: "owner",
+      setBy: null,
+      updatedAt: null,
+    };
+  }
+
+  it("a CANCELLED cheap order newer than the last delivery does not make a normal reorder a jump", async () => {
+    // Newest first, as the probe orders them. The cancelled draft at 200 would
+    // make 400 a 100% jump; the last price actually paid was 390.
+    const { db, calls } = makeDb({
+      order: ORDER_ROW,
+      priorOrdersToVendor: 3,
+      priorPrices: [
+        { final_price: 200, status: "CANCELLED", requested_at: "2026-10-01" },
+        { final_price: 390, status: "DELIVERED", requested_at: "2026-09-01" },
+      ],
+    });
+    const svc = service(db, thresholdsStub([priceJumpRule(20)]), orgsStub("manager"));
+
+    await sealedApprove(svc);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+  });
+
+  it("a newer UNPRICED or pending order does not hide a real jump over the last price paid", async () => {
+    const { db, calls } = makeDb({
+      order: ORDER_ROW,
+      priorOrdersToVendor: 3,
+      priorPrices: [
+        { final_price: null, status: "PENDING", requested_at: "2026-10-02" },
+        { final_price: 420, status: "PENDING", requested_at: "2026-10-01" },
+        { final_price: 250, status: "COMPLETED", requested_at: "2026-09-01" },
+      ],
+    });
+    const svc = service(db, thresholdsStub([priceJumpRule(20)]), orgsStub("manager"));
+
+    // 400 over the 250 paid is 60% — the rule names the jump, not the seal.
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      /60\.0% above the last price this house paid/,
+    );
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+  });
+});
+
 describe("approveOrder — a house with no policy, and a policy that cannot be read", () => {
   it("NO rule at all: seals exactly as before", async () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 999999 } });
@@ -734,6 +803,33 @@ describe("approvalGate — what the page is allowed to draw", () => {
     expect(big.mayApprove).toBe(false);
     expect(big.requiredRole).toBe("owner");
     expect(big.sentence).toContain("1000 ceiling");
+  });
+
+  it("a CANCELLED cheaper order is not the price a pending order is measured against (F-479)", async () => {
+    const jump: ThresholdRow = {
+      rule: "price_jump",
+      enabled: true,
+      amountLimit: null,
+      percentLimit: 20,
+      requiredRole: "owner",
+      setBy: null,
+      updatedAt: null,
+    };
+    const { db } = makeDb({
+      // Oldest first, as the walk reads them.
+      ledgerRows: [
+        { id: "o-paid", status: "DELIVERED", provider_id: "p1", inventory_id: "inv-1", total_cost: 390, final_price: 390 },
+        { id: "o-void", status: "CANCELLED", provider_id: "p1", inventory_id: "inv-1", total_cost: 200, final_price: 200 },
+        { id: "o-now", status: "PENDING", provider_id: "p1", inventory_id: "inv-1", total_cost: 400, final_price: 400 },
+      ],
+    });
+    const svc = service(db, thresholdsStub([jump]), orgsStub("manager"));
+
+    const gate = await svc.approvalGate(REST, USER);
+
+    const now = gate.orders.find((o) => o.orderId === "o-now")!;
+    expect(now.mayApprove).toBe(true);
+    expect(now.sentence).toBeNull();
   });
 
   it("an unreadable ledger says so and lists NOTHING — never an empty book", async () => {

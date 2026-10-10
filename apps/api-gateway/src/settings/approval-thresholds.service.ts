@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
+import { ORDER_GOODS_ARRIVED_STATUSES } from "../procurement/order-transitions";
 import {
   SettingsAuditService,
   type FieldChange,
@@ -395,7 +396,11 @@ export class ApprovalThresholdsService {
       };
       if (r.inventory_id && priced.price !== null && priced.price > 0) {
         premium = pricePremium(priced, lastPriceByItem.get(r.inventory_id) ?? null);
-        lastPriceByItem.set(r.inventory_id, priced);
+        // Only a price that was paid becomes the next order's comparison —
+        // the same rule the gate's `readPricePremium` reads by (F-479).
+        if ((ORDER_GOODS_ARRIVED_STATUSES as readonly string[]).includes(r.status ?? "")) {
+          lastPriceByItem.set(r.inventory_id, priced);
+        }
       }
 
       tests.push({
