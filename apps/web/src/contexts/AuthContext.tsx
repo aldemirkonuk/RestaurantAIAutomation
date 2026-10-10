@@ -525,7 +525,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         delete api.defaults.headers.common["Authorization"];
         delete api.defaults.headers.common["X-Restaurant-Id"];
         setUser(null);
-        setActiveRole(null);
+        setRoleRead(null);
+        // A house another tab moved to before signing out is no one's now.
+        setHouseMovedTo(null);
         return;
       }
       // A refresh or a house switch keeps the person; a different person
