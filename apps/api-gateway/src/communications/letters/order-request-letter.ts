@@ -541,8 +541,9 @@ function linkViews(text: string): string[] {
  * no `i` flag), because a URL parser reads "\\" as "/" there: "http:\\\\x",
  * "http:/\\x" and "https:\\/intranet" read "http://x" /
  * "https://intranet". The scheme word may hold such runs between its
- * letters ("ht\ntp:\\\\x"), as a URL parser removes tab, line feed and
- * carriage return. The fold is off only
+ * letters ("ht\ntp:\\\\x"): tab, line feed and carriage return because a
+ * URL parser removes them, U+2028 and U+2029 on purpose to fail closed (a
+ * parser keeps them, but the letter join removes them too). The fold is off only
  * when the character right before the scheme word, once format and control
  * characters are stripped, is a letter: a tab or line break is not one, so
  * "Thanks\nhttp:\\\\intranet" and "x\thttp:\\\\x" are refused (the fold runs
