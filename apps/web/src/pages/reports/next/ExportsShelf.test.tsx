@@ -42,6 +42,7 @@ const base: ReportExport = {
   requestedAt: '2026-09-17T09:00:00.000Z',
   startedAt: '2026-09-17T09:00:00.000Z',
   finishedAt: '2026-09-17T09:00:02.000Z',
+  fileStem: 'mudavym-meyhouse-ledger-as-of-2026-09-17',
 };
 
 function desk(over: Partial<ExportDesk> = {}): ExportDesk {
@@ -354,7 +355,7 @@ describe('useReportExports — the desk (OD-81)', () => {
     urlApi.createObjectURL = vi.fn((b: Blob) => (created.push(b), 'blob:x'));
     urlApi.revokeObjectURL = vi.fn();
     const clicks = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-      expect(this.download).toBe('mudavym-ledger-2026-09-17.csv');
+      expect(this.download).toBe('mudavym-meyhouse-ledger-as-of-2026-09-17.csv');
     });
     try {
       const { result } = renderHook(() => useReportExports({ queryRoot: 'reports-next' }), { wrapper: wrapper() });

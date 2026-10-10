@@ -7,6 +7,7 @@ import {
   EXPORT_CUTTINGS,
   countWithheld,
   isExportableCutting,
+  TILL_REFUNDS_NOT_TAKEN_OFF,
 } from "./report-export-cuttings";
 import { PAYLOADS } from "./__fixtures__/cutting-payloads";
 
@@ -127,6 +128,17 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(figure(doc, "Taken")).toBe(0);
     expect(figure(doc, "Checks")).toBe(0);
     expect(isWithheld(figure(doc, "Average check"))).toBe(true);
+  });
+
+  it("through the till: says refunds are not taken off whenever it carries a figure (F-412)", () => {
+    const doc = EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 });
+    expect(doc.notes).toContain(TILL_REFUNDS_NOT_TAKEN_OFF);
+    expect(TILL_REFUNDS_NOT_TAKEN_OFF).toMatch(/^Refunds are not taken off\./);
+    const zero = EXPORT_CUTTINGS.till.write({ posConnected: true, revenue: 0, checkCount: 0, from: "2026-09-10", to: "2026-09-17", days: 7, dailySeries: [] }, { days: 7 });
+    expect(zero.notes).toContain(TILL_REFUNDS_NOT_TAKEN_OFF);
+    // No figure, nothing to qualify.
+    const none = EXPORT_CUTTINGS.till.write({ posConnected: false, revenue: null, checkCount: null }, { days: 30 });
+    expect(none.notes).toEqual([]);
   });
 
   it("through the till: the average is the page's own revenue ÷ checks", () => {

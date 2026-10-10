@@ -15,6 +15,7 @@ const HEADER: ExportHeader = {
   title: "Figures of record",
   windowLabel: "365 days of COGS; the cellar as it stands today",
   writtenAt: "2026-09-17T09:00:00.000Z",
+  timezone: "Europe/Istanbul",
   withheldCount: 2,
 };
 
@@ -90,7 +91,8 @@ describe("renderCsv (OD-81)", () => {
       "House,Meyhouse",
       "Cutting,Figures of record",
       "Window,365 days of COGS; the cellar as it stands today",
-      "Written,2026-09-17T09:00:00.000Z",
+      // F-413: on the house's clock, zone named — the same clock as its days.
+      'Written,"2026-09-17 12:00, house time (Europe/Istanbul)"',
       "Money,\"TRY, the house's reporting currency; money is written as a bare number\"",
       'Withheld,"2 figures the engine could not compute are written as ""withheld"", never as 0"',
     ]);
@@ -126,6 +128,13 @@ describe("renderHtml (OD-81)", () => {
     expect(html).toContain("@page { size: A4;");
     expect(html).toContain("@media print { .screen-only { display: none; }");
     expect(html).toContain("<h1>Figures of record</h1>");
+  });
+
+  it("writes Written on the house's clock, and says so when the house has no zone (F-413)", () => {
+    expect(html).toContain("Written 2026-09-17 12:00, house time (Europe/Istanbul)");
+    const unzoned = renderHtml(DOC, { ...HEADER, timezone: null });
+    expect(unzoned).toContain("Written 2026-09-17 09:00 UTC; this house has no time zone set");
+    expect(unzoned).not.toContain("2026-09-17T09:00:00.000Z");
   });
 
   it("says money has no currency when the house has not stated one", () => {
