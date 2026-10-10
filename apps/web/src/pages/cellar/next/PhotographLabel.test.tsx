@@ -22,7 +22,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PhotographLabel from './PhotographLabel';
 import { scanWineLabel } from '../../../services/wineDetection';
@@ -240,5 +240,33 @@ describe('PhotographLabel — Not this bottle, and the error paths', () => {
     fireEvent.click(screen.getByTestId('label-confirm-yes'));
     const err = await screen.findByTestId('label-submit-error');
     expect(err).toHaveTextContent('the gateway refused it');
+  });
+
+  it('Try again says it is submitting while the retry is in flight (F-211)', async () => {
+    mockScan.mockResolvedValue(wine());
+    mockSubmit.mockRejectedValueOnce(new Error('the gateway refused it'));
+    mockSubmit.mockImplementationOnce(() => new Promise(() => {}));
+    mount();
+    await capture();
+    fireEvent.click(screen.getByTestId('label-confirm-yes'));
+    await screen.findByTestId('label-submit-error');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Submitting the reading…')).toBeInTheDocument();
+    expect(screen.queryByTestId('label-submit-error')).not.toBeInTheDocument();
+  });
+});
+
+describe('PhotographLabel — a reading the person walked away from (F-211)', () => {
+  it('a read that lands after Close is dropped, never shown', async () => {
+    let land: (w: DetectedWine) => void = () => {};
+    mockScan.mockImplementation(() => new Promise<DetectedWine>((resolve) => { land = resolve; }));
+    const { onClose } = mount();
+    await fireCapture();
+    await waitFor(() => expect(mockScan).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
+    await act(async () => { land(wine()); });
+    expect(screen.queryByTestId('label-confirm')).not.toBeInTheDocument();
+    expect(screen.getByTestId('label-take-photo')).toBeInTheDocument();
   });
 });

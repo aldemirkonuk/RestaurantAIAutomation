@@ -120,7 +120,10 @@ export interface IsThisTheBottlePanelProps {
   onClose: () => void;
   /** "Not this bottle" — the reading is thrown away and nothing is written. */
   onRejected: () => void;
-  /** Called after the gateway accepted the submission. */
+  /**
+   * Called after the gateway accepted the submission. When given, the panel
+   * does not also call `onClose`: the caller advances to its next reading.
+   */
   onConfirmed?: (submissionId: string | null) => void;
 }
 
@@ -182,10 +185,13 @@ export function IsThisTheBottlePanel({
         country: answered.country?.trim() || undefined,
         region: answered.region?.trim() || undefined,
       });
-      onConfirmed?.(data?.id ?? null);
       setMine({});
       setFixing(false);
-      onClose();
+      // A caller that takes the confirmation moves on to its next reading
+      // itself. Closing as well dropped every reading still queued behind
+      // this one (F-207), so close only when nobody takes it.
+      if (onConfirmed) onConfirmed(data?.id ?? null);
+      else onClose();
     } catch (e) {
       const status = (e as { response?: { status?: number } })?.response?.status;
       // Only a definite refusal may say "nothing was written" (F-338): a

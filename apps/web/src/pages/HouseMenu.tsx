@@ -8,22 +8,18 @@ import {
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
-import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+import {
+  MENU_KINDS,
+  absentFamilies,
+  isKitchenLine,
+  lineNeedsPencil,
+  lineSourceCrop,
+  pencilReason,
+  readProof,
+} from '../lib/firstProof'
 
-const sectionOrder = [
-  'wine',
-  'red',
-  'white',
-  'rose',
-  'sparkling',
-  'beer',
-  'cider',
-  'whiskey',
-  'spirit',
-  'cocktail',
-  'soft drink',
-  'sake',
-]
+// A legacy 'wine' line sorts first; every other section is the gateway's own.
+const sectionOrder: string[] = ['wine', ...MENU_KINDS]
 
 function markFor(item: MenuImportReviewItem): 'ink' | 'pencil' | 'ring' {
   if (!lineNeedsPencil(item)) return 'ink'
@@ -36,8 +32,12 @@ function sectionName(value: string) {
     white: 'White wine',
     rose: 'Rosé',
     sparkling: 'Sparkling wine',
+    orange: 'Orange wine',
+    dessert: 'Dessert wine',
+    fortified: 'Fortified wine',
     spirit: 'Spirits',
     'soft drink': 'Soft drinks',
+    'non-alcoholic': 'Non-alcoholic',
   }
   return names[value] ?? value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
@@ -159,9 +159,11 @@ export default function HouseMenu() {
   }
 
   const pencilled = drinkItems.filter((item) => lineNeedsPencil(item)).length
-  const absent = sectionOrder.filter(
-    (section) => !drinkItems.some((item) => item.category?.toLowerCase().trim() === section),
-  )
+  // The kinds of drink with no line here, and the sections a new line for
+  // them can go in (F-024).
+  const absentKinds = absentFamilies(drinkItems)
+  const absent = absentKinds.map((family) => family.key)
+  const addChoices = absentKinds.flatMap((family) => family.kinds.filter((kind) => kind !== 'wine'))
 
   const place = async (item: MenuImportReviewItem, category: string) => {
     setSaving(item.menuItemId)
@@ -185,7 +187,7 @@ export default function HouseMenu() {
   }
 
   const addAbsent = async () => {
-    const category = addSection || absent[0]
+    const category = addSection || addChoices[0]
     if (!addName.trim() || !category || !proof) return
     setSaving('add')
     setAddError(null)
@@ -264,7 +266,7 @@ export default function HouseMenu() {
                             {[item.producer, item.name, item.vintage].filter(Boolean).join(' · ')}
                           </strong>
                           {markFor(item) === 'pencil' && (
-                            <span className="mt-1 block text-xs italic text-[#6d685f]">Worth a second look</span>
+                            <span className="mt-1 block text-xs italic text-[#6d685f]">{pencilReason(item)}</span>
                           )}
                           {markFor(item) === 'ring' && (
                             <span className="mt-1 block text-xs italic text-[#6d685f]">Needs a place</span>
@@ -307,7 +309,7 @@ export default function HouseMenu() {
                           <div>
                             <p className="text-xs uppercase tracking-wider text-[#6d685f]">Place this line</p>
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {sectionOrder.map((choice) => (
+                              {MENU_KINDS.map((choice) => (
                                 <button
                                   key={choice}
                                   type="button"
@@ -343,7 +345,7 @@ export default function HouseMenu() {
               Not on this menu: {absent.slice(0, 4).map(sectionName).join(', ')}. Pour any of these?{' '}
               <button type="button" onClick={() => {
                 setAdding((value) => !value)
-                setAddSection(absent[0] ?? '')
+                setAddSection(addChoices[0] ?? '')
               }} className="text-[#1a5e6b] underline">
                 Add it.
               </button>
@@ -369,11 +371,11 @@ export default function HouseMenu() {
                   <span className="block text-xs uppercase tracking-wider">Section</span>
                   <select
                     aria-label="New line section"
-                    value={addSection || absent[0]}
+                    value={addSection || addChoices[0]}
                     onChange={(event) => setAddSection(event.target.value)}
                     className="mt-1 bg-transparent outline-none"
                   >
-                    {absent.map((section) => (
+                    {addChoices.map((section) => (
                       <option key={section} value={section}>{sectionName(section)}</option>
                     ))}
                   </select>

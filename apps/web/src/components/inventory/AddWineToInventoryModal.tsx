@@ -43,8 +43,29 @@ import {
 } from "../../hooks/useUnsavedWorkGuard";
 import { useModalDialog } from "../../hooks/useModalDialog";
 import { formatStatedMoney } from "../../lib/currency";
+import {
+  getErrorMessage,
+  getErrorStatus,
+  isUnconfirmedWrite,
+} from "../../services/api/client";
 
 type TabType = "search" | "photo";
+
+/**
+ * Why an add did not land, in the owner's words (F-205). A 5xx or a lost
+ * answer may still have written the row, so it never claims "nothing was
+ * added".
+ */
+function addRefusalWords(error: unknown, wineName: string): string {
+  const status = getErrorStatus(error);
+  if (status === 409)
+    return `${wineName} is already in the cellar, so nothing was added. Change its count on its own row.`;
+  if (status === 403 || status === 401)
+    return "This account may not add a wine with a price. Nothing was added: leave the prices blank, or ask an owner or a manager.";
+  if (isUnconfirmedWrite(error))
+    return `We could not confirm ${wineName} was added. Look for it in the cellar before trying again.`;
+  return `${wineName} was not added (${getErrorMessage(error)}). Nothing was written, and what you typed is still here.`;
+}
 
 interface VolumeFields {
   bottleSizeMl: number;
@@ -71,7 +92,7 @@ interface AddWineToInventoryModalProps {
     threshold: number,
     storageLocationId?: string,
     volumeFields?: VolumeFields,
-  ) => void;
+  ) => void | Promise<void>;
   /**
    * Who is adding, in which house (`<person>:<house>`). With it, a picked
    * wine and what was typed about it are kept for this tab, so a refresh or a
@@ -315,11 +336,13 @@ export function AddWineToInventoryModal({
 
   const handleClose = () => {
     applyDraft(null);
+    setAddRefusal(null);
     onClose();
   };
 
   const handleSelectWine = (wine: WineType) => {
     setSelectedWine(wine);
+    setAddRefusal(null);
     setQuantity(wine.liveStock || 1);
     setThreshold(wine.threshold || 10);
     // The shared library's reference price is a REFERENCE, not this
@@ -330,8 +353,14 @@ export function AddWineToInventoryModal({
     setIsSample(false);
   };
 
-  const handleAddToInventory = () => {
-    if (selectedWine && unreadablePrice === null) {
+  // F-205: the add is awaited. The sheet used to close before the write, so a
+  // refusal (already in the cellar, not allowed, a bad field) was never said.
+  // It now stays open, says why, and keeps what the person typed.
+  const [adding, setAdding] = useState(false);
+  const [addRefusal, setAddRefusal] = useState<string | null>(null);
+
+  const handleAddToInventory = async () => {
+    if (selectedWine && unreadablePrice === null && !adding) {
       const volumeFields: VolumeFields = {
         bottleSizeMl,
         saleType,
@@ -361,13 +390,22 @@ export function AddWineToInventoryModal({
             ? {}
             : { costPerBottle }),
       };
-      onAddWine(
-        selectedWine,
-        quantity,
-        threshold,
-        selectedStorageLocationId,
-        volumeFields,
-      );
+      setAdding(true);
+      setAddRefusal(null);
+      try {
+        await onAddWine(
+          selectedWine,
+          quantity,
+          threshold,
+          selectedStorageLocationId,
+          volumeFields,
+        );
+      } catch (error) {
+        setAddRefusal(addRefusalWords(error, selectedWine.name));
+        return;
+      } finally {
+        setAdding(false);
+      }
       handleClose();
     }
   };
@@ -453,7 +491,9 @@ export function AddWineToInventoryModal({
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-hidden flex">
+            {/* Below md the configure panel stacks under the list: a 384px
+                sidebar beside the list overflowed a phone-width sheet (F-208). */}
+            <div className="flex-1 overflow-y-auto md:overflow-hidden flex flex-col md:flex-row">
               {/* Search Tab */}
               {activeTab === "search" && (
                 <div className="flex-1 flex flex-col overflow-hidden">
@@ -602,7 +642,7 @@ export function AddWineToInventoryModal({
 
               {/* Selected Wine Configuration Sidebar - Shows when wine is selected */}
               {selectedWine && (
-                <div className="w-96 border-l border-gray-200 bg-gray-50 flex flex-col">
+                <div className="w-full md:w-96 border-t md:border-t-0 md:border-l border-gray-200 bg-gray-50 flex flex-col">
                   <div className="p-4 border-b border-gray-200 bg-white">
                     <h3 className="font-semibold text-gray-900 mb-1">
                       Configure Inventory
@@ -1059,13 +1099,18 @@ export function AddWineToInventoryModal({
                         “{unreadablePrice}” is not an amount — fix or clear it to add this wine.
                       </p>
                     )}
+                    {addRefusal && (
+                      <p role="alert" className="mb-3 text-sm text-red-700">
+                        {addRefusal}
+                      </p>
+                    )}
                     <button
-                      onClick={handleAddToInventory}
-                      disabled={unreadablePrice !== null}
+                      onClick={() => void handleAddToInventory()}
+                      disabled={unreadablePrice !== null || adding}
                       className="w-full px-4 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-40"
                     >
                       <Save className="w-5 h-5" />
-                      Add to Inventory
+                      {adding ? "Adding…" : "Add to Inventory"}
                     </button>
                   </div>
                 </div>
