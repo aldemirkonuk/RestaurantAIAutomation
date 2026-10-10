@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshControl, View } from "react-native";
+import { Alert, RefreshControl, View } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, {
   FadeInDown,
@@ -355,7 +355,11 @@ export default function TodayScreen() {
                         the same answer, so it is dismiss-only. */}
                     {!f.alreadyDone ? (
                       <PressableScale
-                        onPress={() => useOutbox.getState().retryFailed(f.id)}
+                        onPress={() => {
+                          // A newer count for this order waits (F-1028).
+                          const refused = useOutbox.getState().retryFailed(f.id);
+                          if (refused) Alert.alert("Not sent again", refused);
+                        }}
                         accessibilityLabel={`Try ${f.label} again`}
                         style={{ paddingHorizontal: space.sm }}
                       >

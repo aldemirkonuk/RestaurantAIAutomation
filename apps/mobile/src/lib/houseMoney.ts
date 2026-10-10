@@ -193,3 +193,74 @@ export function readHousePrice(
   const n = Number(`${intPart || "0"}.${frac || "0"}`);
   return Number.isFinite(n) ? { ok: true, value: n } : notANumber;
 }
+
+/**
+ * A calendar day the house's way (F-1029): its formats tag, and its zone when
+ * one is known, so an event at 00:30 in Istanbul is not dated the day before
+ * on a phone set to Detroit. No zone, or one this device cannot read, keeps
+ * the phone's own zone, as before.
+ */
+export function houseDay(
+  value: string | Date | null | undefined,
+  locale: string | null | undefined,
+  timeZone: string | null | undefined,
+  opts: Intl.DateTimeFormatOptions,
+): string {
+  if (value == null || value === "") return "";
+  const at = value instanceof Date ? value : new Date(value);
+  if (isNaN(at.getTime())) return "";
+  const tag = usableLocale(locale);
+  if (timeZone) {
+    try {
+      return at.toLocaleDateString(tag, { ...opts, timeZone });
+    } catch {
+      // An unknown zone falls through to the phone's own.
+    }
+  }
+  return at.toLocaleDateString(tag, opts);
+}
+
+// ── What the house paid for its stock (F-1027) ───────────────────────
+// The gateway leaves `wac` out for anyone who does not hold the house's money
+// (F-562). Reading a missing cost as 0 printed "₺0 idle" to staff, and
+// understated an owner's figure with no word. A wine with no cost is named,
+// never counted as free.
+
+interface CostedStock {
+  quantity?: number | null;
+  lotLiveQty?: number | null;
+  wac?: number | null;
+}
+
+/** Bottles × cost over the wines that have one; `unpriced` counts the rest. */
+export function stockValue(items: CostedStock[]): {
+  value: number | null;
+  unpriced: number;
+} {
+  let value: number | null = null;
+  let unpriced = 0;
+  for (const i of items) {
+    const qty = Number(i.quantity ?? i.lotLiveQty ?? 0);
+    if (!(qty > 0)) continue;
+    if (typeof i.wac !== "number" || !Number.isFinite(i.wac)) {
+      unpriced += 1;
+      continue;
+    }
+    value = (value ?? 0) + qty * i.wac;
+  }
+  return { value, unpriced };
+}
+
+/** The "Sitting still" line: a count for staff, a cost for the owner and managers. */
+export function idleStockWords(
+  dead: CostedStock[],
+  seesMoney: boolean,
+  money: (value: number) => string,
+): string {
+  if (!dead.length) return "None";
+  const wines = `${dead.length} wine${dead.length === 1 ? "" : "s"}`;
+  if (!seesMoney) return `${wines} · value kept for the owner and managers`;
+  const { value, unpriced } = stockValue(dead);
+  if (value == null) return `${wines} · no cost recorded`;
+  return `${wines} · ${money(value)} idle${unpriced ? ` (${unpriced} with no cost)` : ""}`;
+}

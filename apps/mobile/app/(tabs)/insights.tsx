@@ -21,7 +21,14 @@ import {
   readState,
   resolvePulseStripView,
 } from "@/components/today/pulseStripView";
-import { houseDecimal, houseMoney } from "@/lib/houseMoney";
+import {
+  houseDecimal,
+  houseMoney,
+  idleStockWords,
+  stockValue,
+} from "@/lib/houseMoney";
+import { holdsHouseMoney } from "@/lib/receiptMoney";
+import { useSession } from "@/state/session";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
@@ -48,6 +55,8 @@ export default function InsightsScreen() {
   const pulse = useTodayPulse();
   // F-885: the house's money and grouping, never a defaulted dollar.
   const money = (value: number) => houseMoney(value, pulse.data);
+  // Staff get no cost on the wire (F-562), so they see counts, not money (F-1027).
+  const seesMoney = holdsHouseMoney(useSession((s) => s.user?.role));
   const inventory = useInventory();
   const summary = useInventorySummary();
   const insights = useInsightFeed();
@@ -75,16 +84,14 @@ export default function InsightsScreen() {
       .slice(0, 5);
     const reorder = items.filter((i) => i.reorderSuggested);
     const dead = items.filter((i) => i.deadStock);
-    const deadValue = dead.reduce(
-      (sum, i) => sum + (i.quantity ?? i.lotLiveQty ?? 0) * (i.wac ?? 0),
-      0,
-    );
+    // The summary read sends no value; the cellar's own costs give it (F-1027).
+    const cellar = stockValue(items);
     const abc = { A: 0, B: 0, C: 0 } as Record<"A" | "B" | "C", number>;
     for (const i of items) {
       if (i.abcClass && abc[i.abcClass] != null) abc[i.abcClass] += 1;
     }
     const abcTotal = abc.A + abc.B + abc.C;
-    return { movers, reorder, dead, deadValue, abc, abcTotal };
+    return { movers, reorder, dead, cellar, abc, abcTotal };
   }, [inventory.data]);
 
   const maxVelocity = analytics.movers[0]?.velocityPerDay ?? 1;
@@ -280,14 +287,20 @@ export default function InsightsScreen() {
                 summary.data.totalBottles ?? summary.data.total_bottles ?? summary.data.totalItems ?? "–",
               )}
             />
-            <SummaryMetric
-              label="Cellar value"
-              value={
-                summary.data.totalValue ?? summary.data.total_value
-                  ? money(Number(summary.data.totalValue ?? summary.data.total_value))
-                  : "–"
-              }
-            />
+            {seesMoney ? (
+              <SummaryMetric
+                label={
+                  analytics.cellar.unpriced
+                    ? `Cellar value · ${analytics.cellar.unpriced} with no cost`
+                    : "Cellar value"
+                }
+                value={
+                  cellarRead === "ready" && analytics.cellar.value != null
+                    ? money(analytics.cellar.value)
+                    : "–"
+                }
+              />
+            ) : null}
             <SummaryMetric
               label="Low stock"
               value={String(summary.data.lowStockCount ?? summary.data.low_stock_count ?? "–")}
@@ -365,11 +378,7 @@ export default function InsightsScreen() {
           <Hairline />
           <Row
             label="Sitting still"
-            value={
-              analytics.dead.length
-                ? `${analytics.dead.length} wines · ${money(analytics.deadValue)} idle`
-                : "None"
-            }
+            value={idleStockWords(analytics.dead, seesMoney, money)}
           />
           {analytics.abcTotal > 0 ? (
             <>

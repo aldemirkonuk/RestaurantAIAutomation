@@ -8,6 +8,7 @@ import {
   AuthShell,
 } from "@/components/auth/AuthShell";
 import { useSession } from "@/state/session";
+import { confirmSignOut } from "@/lib/confirmSignOut";
 
 /**
  * A signed-in session that belongs to no restaurant.
@@ -50,10 +51,13 @@ export default function NoAccessScreen() {
 
       <AuthLink
         label="Sign out"
-        onPress={() => {
-          void signOut();
-          router.replace("/login");
-        }}
+        onPress={() =>
+          // Says first what stays unsent on this phone (F-1026).
+          confirmSignOut(() => {
+            void signOut();
+            router.replace("/login");
+          })
+        }
       />
     </AuthShell>
   );

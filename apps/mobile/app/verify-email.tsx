@@ -10,6 +10,7 @@ import {
 } from "@/components/auth/AuthShell";
 import { haptic } from "@/design/haptics";
 import { requestThenAdopt, useSession } from "@/state/session";
+import { confirmSignOut } from "@/lib/confirmSignOut";
 import { verifyTokenFromPaste } from "@/auth/deepLink";
 import {
   authErrorMessage,
@@ -201,10 +202,13 @@ export default function VerifyEmailScreen() {
       {status === "signedIn" ? (
         <AuthLink
           label="Sign out"
-          onPress={() => {
-            void signOut();
-            router.replace("/login");
-          }}
+          onPress={() =>
+            // Says first what stays unsent on this phone (F-1026).
+            confirmSignOut(() => {
+              void signOut();
+              router.replace("/login");
+            })
+          }
         />
       ) : (
         <AuthLink

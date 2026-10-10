@@ -13,18 +13,27 @@ import { useSession } from "@/state/session";
  */
 export function confirmSignOut(signOut: () => void | Promise<void>): void {
   const session = useSession.getState();
-  const words = signOutWords(
-    unsentAtSignOut(useOutbox.getState().entries, session.user?.id),
-  );
+  const unsent = unsentAtSignOut(useOutbox.getState().entries, session.user);
+  const words = signOutWords(unsent);
   if (!words) {
     void signOut();
     return;
   }
-  Alert.alert("Not sent yet", words, [
-    { text: "Cancel", style: "cancel" },
-    ...(session.status === "signedIn"
-      ? [{ text: "Send now", onPress: () => useOutbox.getState().flush() }]
-      : []),
-    { text: "Sign out anyway", style: "destructive" as const, onPress: () => void signOut() },
-  ]);
+  // "Send now" sends what waits for the house that is open, and nothing else
+  // (F-1026): it is offered only when there is some, and says so when other
+  // houses' work stays behind.
+  const sendNow = session.status === "signedIn" && unsent.here > 0;
+  Alert.alert(
+    "Not sent yet",
+    sendNow && unsent.otherHouses > 0
+      ? `${words} Send now sends only what is for the house you are in.`
+      : words,
+    [
+      { text: "Cancel", style: "cancel" },
+      ...(sendNow
+        ? [{ text: "Send now", onPress: () => useOutbox.getState().flush() }]
+        : []),
+      { text: "Sign out anyway", style: "destructive" as const, onPress: () => void signOut() },
+    ],
+  );
 }

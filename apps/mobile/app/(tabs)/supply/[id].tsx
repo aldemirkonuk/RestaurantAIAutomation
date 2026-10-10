@@ -31,6 +31,7 @@ import {
   waitingFor,
 } from "@/state/outbox";
 import { useSession } from "@/state/session";
+import { houseDay } from "@/lib/houseMoney";
 
 export default function OrderDetailScreen() {
   const router = useRouter();
@@ -245,13 +246,12 @@ export default function OrderDetailScreen() {
                           ? "You / AI"
                           : (c.providers?.name ?? "Vendor")}
                         {c.created_at
-                          ? `  ·  ${new Date(c.created_at).toLocaleDateString(
-                              undefined,
-                              {
-                                month: "short",
-                                day: "numeric",
-                              },
-                            )}`
+                          ? // The house's words (F-1029); the house's zone is
+                            // not on this screen's reads yet, so the phone's.
+                            `  ·  ${houseDay(c.created_at, house.locale, null, {
+                              month: "short",
+                              day: "numeric",
+                            })}`
                           : ""}
                       </AppText>
                       <AppText variant="footnote" numberOfLines={4}>
