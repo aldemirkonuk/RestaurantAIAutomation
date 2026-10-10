@@ -617,14 +617,28 @@ export class NotificationsController {
     const userId = scopeOwnUserId(req, body?.userId);
     this.logger.log(`Sending test notification to user ${userId}`);
 
-    await this.notificationsService.sendToUser(userId, {
-      type: "system_alert",
-      title: "Mudavym test",
-      body: "Notifications are working! You'll receive alerts here.",
-      requireInteraction: false,
-    });
+    // F-539: the test push follows the caller's own Push switch and quiet
+    // hours in this house, and says so when it stayed quiet.
+    const held = await this.notificationsService.sendToUser(
+      userId,
+      {
+        type: "system_alert",
+        title: "Mudavym test",
+        body: "Notifications are working! You'll receive alerts here.",
+        requireInteraction: false,
+      },
+      req?.user?.restaurantId ? String(req.user.restaurantId) : null,
+    );
 
-    return { success: true, message: "Test notification sent" };
+    return {
+      success: true,
+      message:
+        held === "push_off"
+          ? "Test sent to the app. Your phone stays quiet because Push is off in your settings."
+          : held === "quiet_hours"
+            ? "Test sent to the app. Your phone stays quiet because you are inside your quiet hours."
+            : "Test notification sent",
+    };
   }
 
   // =========================================================================
