@@ -223,6 +223,8 @@ export interface ReportExport {
   title: string
   windowLabel: string
   windowDays: number | null
+  /** The till's calendar month, YYYY-MM on the house's calendar (F-1013). Absent from a gateway that predates it. */
+  windowMonth?: string | null
   status: ReportExportStatus
   /** Present exactly when status is failed. */
   failureReason: string | null
@@ -268,8 +270,15 @@ export async function listReportExports(
   return { exports: data.exports, total: typeof data.total === 'number' ? data.total : null }
 }
 
-/** `days` only for the till — the one cutting whose window the reader picks. */
-export async function requestReportExport(input: { cutting: string; days?: number }): Promise<ReportExport> {
+/**
+ * `days` or `month` (YYYY-MM, F-1013) only for the till — the one cutting
+ * whose window the reader picks — and never both.
+ */
+export async function requestReportExport(input: {
+  cutting: string
+  days?: number
+  month?: string
+}): Promise<ReportExport> {
   const { data } = await apiClient.post<ReportExport>('/reports/exports', input)
   return data
 }

@@ -66,7 +66,8 @@ export interface ExportDesk {
   /** The last act that did not go through, in the gateway's own words. */
   error: string | null;
   clearError: () => void;
-  request: (cutting: string, days: number | null) => void;
+  /** `days` for the till's last N days, or `month` (YYYY-MM) for a calendar month of it (F-1013). */
+  request: (cutting: string, days: number | null, month?: string | null) => void;
   retry: (id: string) => void;
   download: (exp: ReportExport, format: ReportExportFormat) => void;
 }
@@ -178,12 +179,12 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
   );
 
   const request = useCallback(
-    (cutting: string, days: number | null) => {
+    (cutting: string, days: number | null, month: string | null = null) => {
       // A new export is always the newest — page 1 — regardless of where the
       // reader was paging when they asked for it.
       setPage(1);
       void run('new', 'The export', () =>
-        requestReportExport(days == null ? { cutting } : { cutting, days }),
+        requestReportExport(month ? { cutting, month } : days == null ? { cutting } : { cutting, days }),
       );
     },
     [run],

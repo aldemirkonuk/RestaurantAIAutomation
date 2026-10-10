@@ -152,9 +152,8 @@ export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null
 
   const takesWindow = chosen !== null && CATALOGUE[chosen].takesWindow === true;
   // An export of the till re-reads its register later (a retry, a queue), so
-  // it keeps its window on the row — and that row holds days, not a month.
-  // Until it can hold one, a month is refused here in words rather than
-  // written as "the last N days" under a July title (F-128).
+  // it keeps its window on the row: the last N days, or the calendar month
+  // the till is set to (F-1013) — never a month written as "the last N days".
   const monthHeld = takesWindow ? tillMonth : null;
 
   return (
@@ -194,18 +193,18 @@ export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null
                 <span className="rp-cap">over the last {tillDays} days, as the till is set</span>
               )}
               {monthHeld !== null && (
-                <span className="rp-note" role="note">
-                  A month of the till cannot be written up yet — only the last 7, 30 or 90 days
-                  can. Read {monthLabel(monthHeld)} on the sheet, or set the till back to a number
-                  of days to write it up.
-                </span>
+                <span className="rp-cap">over {monthLabel(monthHeld)}, as the till is set</span>
               )}
               <button
                 type="button"
                 className="rp-btn rp-ink rp-focus"
                 data-strong="true"
-                disabled={chosen === null || monthHeld !== null || desk.busy === 'new'}
-                onClick={() => chosen && desk.request(chosen, takesWindow ? tillDays : null)}
+                disabled={chosen === null || desk.busy === 'new'}
+                onClick={() => {
+                  if (!chosen) return;
+                  if (monthHeld !== null) desk.request(chosen, null, monthHeld);
+                  else desk.request(chosen, takesWindow ? tillDays : null);
+                }}
               >
                 {desk.busy === 'new' ? 'Asking…' : 'Write it up'}
               </button>
