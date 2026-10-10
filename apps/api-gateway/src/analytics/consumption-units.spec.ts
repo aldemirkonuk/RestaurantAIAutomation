@@ -1404,3 +1404,131 @@ describe("the wine mover compares the days the house was open in both weeks (F-7
     for (const r of out) expect(r.sentence ?? "").not.toContain("14%");
   });
 });
+
+/**
+ * F-1014 (wave-37 sim): since ADR 0115 a drink that is not a wine (rakı,
+ * beer, spirits) has no master wine — `master_wine_id` is null on its house
+ * row — while the till still writes its lines by inventory_id. The per-item
+ * readers keyed by master wine, so a rakı that sold every night read zero
+ * demand, never reached the reorder list, sat as a Dog in menu engineering,
+ * and every such drink took one shared kind in seasonality. They now key by
+ * the house item, the ledger's key.
+ */
+describe("a drink that is not a wine is read by its house item (F-1014)", () => {
+  /** A drink with no master wine, as ADR 0115 leaves rakı and beer. */
+  const drink = (
+    n: number,
+    kind: string,
+    extra: Record<string, unknown> = {},
+  ) => item(n, { master_wine_id: null, kind, ...extra });
+  const noMaster = (rows: any[]) =>
+    rows.map((r) => ({
+      ...r,
+      restaurant_inventory: { ...r.restaurant_inventory, master_wine_id: null },
+    }));
+
+  it("the restock list: a rakı that sells has demand and goes on the reorder list", async () => {
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [drink(7, "spirit", { stock_live: 1 }), item(1)],
+        wine_consumption_log: [
+          ...noMaster(lines(7, 40, BOTTLE)),
+          ...lines(1, 4, BOTTLE),
+        ],
+      }),
+    ).getInventoryScience(RESTAURANT);
+    const raki = out.skus.find((s: any) => s.id === "inv-7");
+    expect(raki.avgDailyDemand).toBeCloseTo(40 / 90, 12);
+    expect(raki.needsReorder).toBe(true);
+    expect(out.reorderList.map((s: any) => s.id)).toContain("inv-7");
+    // The wine beside it keeps its own figure.
+    const wine = out.skus.find((s: any) => s.id === "inv-1");
+    expect(wine.avgDailyDemand).toBeCloseTo(4 / 90, 12);
+  });
+
+  it("the restock list: a rakı with a line it cannot count is unassessed, not read as zero", async () => {
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [drink(7, "spirit")],
+        wine_consumption_log: noMaster([
+          ...lines(7, 10, BOTTLE),
+          ...lines(7, 1, NO_FIGURE),
+        ]),
+      }),
+    ).getInventoryScience(RESTAURANT);
+    const raki = out.skus.find((s: any) => s.id === "inv-7");
+    expect(raki.demandUnknown).toBe(true);
+    expect(raki.avgDailyDemand).toBeNull();
+    expect(out.unassessed).toBe(1);
+  });
+
+  it("menu engineering: a beer that sells has its velocity", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [drink(8, "beer")],
+      wine_consumption_log: noMaster(lines(8, 30, BOTTLE)),
+    }).getMenuEngineering(RESTAURANT, 90);
+    const beer = out.items.find((i: any) => i.id === "inv-8");
+    expect(beer.velocityPerDay).toBeCloseTo(30 / 90, 12);
+  });
+
+  it("seasonality: a beer and a rakı keep their own kinds", async () => {
+    const out: any = await advanced({
+      restaurants: UTC_HOUSE,
+      restaurant_inventory: [drink(8, "beer"), drink(7, "spirit")],
+      wine_consumption_log: noMaster([
+        ...lines(8, 12, BOTTLE),
+        ...lines(7, 12, BOTTLE),
+      ]),
+    }).getSeasonality(RESTAURANT, 90);
+    expect(out.categoryProfiles.map((p: any) => p.type).sort()).toEqual([
+      "beer",
+      "spirit",
+    ]);
+  });
+});
+
+/**
+ * F-1016 (wave-37 sim): "Revenue rides on very few wines" was worked out from
+ * the shelf — sell price × bottles on hand — so a sold-out or unpriced wine
+ * counted as a zero and a deep cellar of one wine read as concentrated
+ * revenue. It is now worked out from what each drink sold in the window.
+ */
+describe("revenue concentration is over what sold, not the shelf (F-1016)", () => {
+  const sold = (n: number, count: number, revenue: number | null) =>
+    lines(n, count, BOTTLE).map((r) => ({ ...r, total_revenue: revenue }));
+
+  it("two drinks that sold alike are not concentrated, however deep one shelf is", async () => {
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [
+          item(1, { stock_live: 100 }), // deep, sold nothing
+          item(2, { stock_live: 0 }), // sold out
+          item(3, { menu_price_current: null }), // glass-only, unpriced
+        ],
+        wine_consumption_log: [...sold(2, 5, 60), ...sold(3, 5, 60)],
+      }),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.revenueConcentration.gini).toBeCloseTo(0, 12);
+    expect(out.revenueConcentration.soldCount).toBe(2);
+  });
+
+  it("a drink with a sale that carries no price is left out and counted, never read as 0", async () => {
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [item(1), item(2), item(3)],
+        wine_consumption_log: [
+          ...sold(1, 5, 60),
+          ...sold(2, 5, 60),
+          ...sold(3, 4, 60),
+          ...sold(3, 1, null),
+        ],
+      }),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.revenueConcentration.gini).toBeCloseTo(0, 12);
+    expect(out.revenueConcentration.soldCount).toBe(2);
+    expect(out.revenueConcentration.unpricedLeftOut).toBe(1);
+    expect(out.basis.revenueConcentration).toContain(
+      "1 drink(s) left out because a sale carried no price",
+    );
+  });
+});

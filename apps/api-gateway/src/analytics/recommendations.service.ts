@@ -830,7 +830,7 @@ export class RecommendationsService {
 
     const gini = ctx.risk?.revenueConcentration?.gini;
     rule("revenue_concentration", (gini ?? 0) > 0.6, () => ({
-      observation: `Revenue rides on very few wines (Gini ${gini.toFixed(2)}).`,
+      observation: `Revenue rides on very few drinks (Gini ${gini.toFixed(2)}).`,
       recommendation:
         "Protect the top sellers' stock first (raise their service level to 98%), then use pairing prompts to spread demand to adjacent wines.",
       rationale:
