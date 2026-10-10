@@ -18,11 +18,7 @@ import { HttpException, HttpStatus } from "@nestjs/common";
 import { InventoryLedgerController } from "./inventory-ledger.controller";
 import { InventoryLedgerService } from "./inventory-ledger.service";
 import { FakeDb } from "../notifications/producers/testing/fake-db";
-import {
-  TransactionSource,
-  TransactionType,
-  StockType,
-} from "./dto/inventory-ledger.dto";
+import { TransactionSource, TransactionType, StockType } from "./dto/inventory-ledger.dto";
 
 const HOUSE = "house-1";
 const ITEM = "11111111-1111-4111-8111-111111111111";
@@ -33,12 +29,7 @@ const CELLAR = "44444444-4444-4444-8444-444444444444";
 function build(onHand: number) {
   const db = new FakeDb();
   db.tables.restaurant_inventory = [
-    {
-      id: ITEM,
-      restaurant_id: HOUSE,
-      master_wine_id: "55555555-5555-4555-8555-555555555555",
-      wine_name: "Yakut",
-    },
+    { id: ITEM, restaurant_id: HOUSE, master_wine_id: "55555555-5555-4555-8555-555555555555", wine_name: "Yakut" },
   ];
   db.tables.inventory_transactions = [];
   // Both places are this house's (F-435 checks a zone id before the move).
@@ -49,40 +40,16 @@ function build(onHand: number) {
   const calls: Record<string, any>[] = [];
   db.rpcHandlers.apply_stock_movement = (args) => {
     calls.push(args);
-    if (
-      args.p_delta > 0 &&
-      args.p_unit_cost != null &&
-      args.p_cost_provenance == null
-    )
-      return {
-        data: null,
-        error: {
-          message:
-            "apply_stock_movement: p_unit_cost was given without p_cost_provenance.",
-        },
-      };
+    if (args.p_delta > 0 && args.p_unit_cost != null && args.p_cost_provenance == null)
+      return { data: null, error: { message: "apply_stock_movement: p_unit_cost was given without p_cost_provenance." } };
     if (onHand + args.p_delta < 0)
-      return {
-        data: null,
-        error: {
-          message: `stock would go negative: ${onHand} + ${args.p_delta}`,
-        },
-      };
+      return { data: null, error: { message: `stock would go negative: ${onHand} + ${args.p_delta}` } };
     const id = db.id("txn");
-    db.tables.inventory_transactions.push({
-      id,
-      restaurant_id: args.p_restaurant_id,
-      inventory_id: args.p_inventory_id,
-      quantity_change: args.p_delta,
-    });
+    db.tables.inventory_transactions.push({ id, restaurant_id: args.p_restaurant_id, inventory_id: args.p_inventory_id, quantity_change: args.p_delta });
     return { data: id, error: null };
   };
-  const service = new InventoryLedgerService(
-    { supabase: db, getClient: () => db } as any,
-    { createEvent: async () => undefined } as any,
-  );
-  for (const l of ["error", "warn", "log"])
-    (service as any).logger[l] = jest.fn();
+  const service = new InventoryLedgerService({ supabase: db, getClient: () => db } as any, { createEvent: async () => undefined } as any);
+  for (const l of ["error", "warn", "log"]) (service as any).logger[l] = jest.fn();
   const controller = new InventoryLedgerController(service);
   (controller as any).logger.error = jest.fn();
   const post = (over: Record<string, unknown>) =>
@@ -107,9 +74,7 @@ describe("POST /inventory-ledger/transactions — F-646", () => {
     const err = await t.post({ quantityChange: -5 }).catch((e) => e);
     expect(err).toBeInstanceOf(HttpException);
     expect(err.getStatus()).toBe(HttpStatus.BAD_REQUEST);
-    expect(err.message).toBe(
-      "The books show 2 bottles, so 5 can't come off. Count the shelf first, then try again.",
-    );
+    expect(err.message).toBe("The books show 2 bottles, so 5 can't come off. Count the shelf first, then try again.");
   });
 
   it("(a) a refusal the service already worded keeps its 400", async () => {
@@ -120,49 +85,27 @@ describe("POST /inventory-ledger/transactions — F-646", () => {
 
   it("(b) a write-off names the place it came FROM", async () => {
     const t = build(5);
-    await t.post({
-      quantityChange: -1,
-      fromLocationId: BAR,
-      toLocationId: CELLAR,
-    });
+    await t.post({ quantityChange: -1, fromLocationId: BAR, toLocationId: CELLAR });
     expect(t.calls[0].p_location_id).toBe(BAR);
   });
 
   it("(b) bottles coming in go TO their place", async () => {
     const t = build(5);
-    await t.post({
-      transactionType: TransactionType.PURCHASE,
-      quantityChange: 2,
-      fromLocationId: BAR,
-      toLocationId: CELLAR,
-    });
+    await t.post({ transactionType: TransactionType.PURCHASE, quantityChange: 2, fromLocationId: BAR, toLocationId: CELLAR });
     expect(t.calls[0].p_location_id).toBe(CELLAR);
   });
 
   it("(c) a unit cost is accepted, labelled as a person's entry", async () => {
     const t = build(0);
     await expect(
-      t.post({
-        transactionType: TransactionType.PURCHASE,
-        quantityChange: 6,
-        unitCost: 18.5,
-      }),
+      t.post({ transactionType: TransactionType.PURCHASE, quantityChange: 6, unitCost: 18.5 }),
     ).resolves.toBeDefined();
-    expect(t.calls[0]).toMatchObject({
-      p_unit_cost: 18.5,
-      p_cost_provenance: "manual",
-    });
+    expect(t.calls[0]).toMatchObject({ p_unit_cost: 18.5, p_cost_provenance: "manual" });
   });
 
   it("(c) no unit cost sends no provenance", async () => {
     const t = build(0);
-    await t.post({
-      transactionType: TransactionType.PURCHASE,
-      quantityChange: 6,
-    });
-    expect(t.calls[0]).toMatchObject({
-      p_unit_cost: null,
-      p_cost_provenance: null,
-    });
+    await t.post({ transactionType: TransactionType.PURCHASE, quantityChange: 6 });
+    expect(t.calls[0]).toMatchObject({ p_unit_cost: null, p_cost_provenance: null });
   });
 });

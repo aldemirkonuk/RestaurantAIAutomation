@@ -49,8 +49,7 @@ const ACT_WORDS: Readonly<Record<DocumentMoneyAct, string>> = {
   extraction: "Filling a vendor document with a reading",
   match: "Pairing a vendor document's lines with the order",
   line_link: "Confirming or undoing a line pairing on a vendor document",
-  receipt_price:
-    "Putting the invoice price or a price override on a delivery's receipt",
+  receipt_price: "Putting the invoice price or a price override on a delivery's receipt",
 };
 
 /**

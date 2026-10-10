@@ -90,12 +90,7 @@ const ROWS = [
 
 function menus(rows: Record<string, any>[]) {
   const t = progressTable(rows);
-  const svc = new MenusService(
-    { supabase: t.client } as any,
-    {} as any,
-    {} as any,
-    {} as any,
-  );
+  const svc = new MenusService({ supabase: t.client } as any, {} as any, {} as any, {} as any);
   return { svc, t };
 }
 
@@ -136,9 +131,7 @@ describe("PATCH /onboarding/progress writes the session's house (F-240)", () => 
   it("ticks the second house's row and leaves the first house's alone", async () => {
     const { svc, t } = menus(ROWS);
 
-    await svc.updateOnboardingProgress("owner", HOUSE_2, {
-      vendor_added: true,
-    } as any);
+    await svc.updateOnboardingProgress("owner", HOUSE_2, { vendor_added: true } as any);
 
     expect(t.updates).toHaveLength(1);
     expect(t.updates[0].patch).toEqual({ vendor_added: true });
@@ -171,29 +164,17 @@ describe("Add a location writes the new house's checklist (F-240)", () => {
     const supabase = {
       from: (table: string) => {
         if (table === "organization_members")
-          return chain(
-            { data: [{ organization_id: ORG, role: "owner" }], error: null },
-            table,
-          );
+          return chain({ data: [{ organization_id: ORG, role: "owner" }], error: null }, table);
         if (table === "restaurants")
           return {
-            ...chain(
-              { data: [{ id: HOUSE_1, organization_id: ORG }], error: null },
-              table,
-            ),
+            ...chain({ data: [{ id: HOUSE_1, organization_id: ORG }], error: null }, table),
             insert: (row: any) => {
               inserts.push({ table, row });
-              return chain(
-                { data: { id: NEW_HOUSE, name: "Second" }, error: null },
-                table,
-              );
+              return chain({ data: { id: NEW_HOUSE, name: "Second" }, error: null }, table);
             },
           };
         if (table === "user_restaurant_access")
-          return chain(
-            { data: [{ restaurant_id: HOUSE_1 }], error: null },
-            table,
-          );
+          return chain({ data: [{ restaurant_id: HOUSE_1 }], error: null }, table);
         return chain({ data: null, error: null }, table);
       },
     };
@@ -210,9 +191,7 @@ describe("Add a location writes the new house's checklist (F-240)", () => {
     });
 
     expect(created.id).toBe(NEW_HOUSE);
-    const progress = inserts.filter(
-      (i) => i.table === "user_onboarding_progress",
-    );
+    const progress = inserts.filter((i) => i.table === "user_onboarding_progress");
     expect(progress).toEqual([
       {
         table: "user_onboarding_progress",

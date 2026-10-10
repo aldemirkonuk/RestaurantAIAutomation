@@ -109,9 +109,7 @@ function stub(opts: { pending?: unknown; readError?: string }) {
       databaseService: { supabase: { from: () => builder } },
       // WHO is not what this block tests (staff-ask-manager-sends.spec.ts runs
       // the real authority service); this stands in for "a manager".
-      requireSendAuthority: jest
-        .fn()
-        .mockResolvedValue({ mode: "send", basis: "manager", grant: null }),
+      requireSendAuthority: jest.fn().mockResolvedValue({ mode: "send", basis: "manager", grant: null }),
       sealChallenges: {
         issue: (p: unknown) => {
           issued.push(p);
@@ -189,9 +187,7 @@ describe("sendDraftedReply", () => {
   it("checks who may send before reading or sending the letter", async () => {
     const { ProcurementService } = await import("./procurement.service");
     const approveDraft = jest.fn();
-    const requireSendAuthority = jest
-      .fn()
-      .mockRejectedValue(new Error("may only ask"));
+    const requireSendAuthority = jest.fn().mockRejectedValue(new Error("may only ask"));
     await expect(
       ProcurementService.prototype.sendDraftedReply.call(
         { requireSendAuthority, approveDraft } as never,
@@ -233,12 +229,8 @@ describe("sendDraftedReply", () => {
 
   it("carries an ABSENT challenge to redemption too — there is no unsealed branch any more", async () => {
     const { ProcurementService } = await import("./procurement.service");
-    const approveDraft = jest
-      .fn()
-      .mockResolvedValue({ conversationId: "c", sentAt: "t" });
-    const requireSendAuthority = jest
-      .fn()
-      .mockResolvedValue({ mode: "send", basis: "manager", grant: null });
+    const approveDraft = jest.fn().mockResolvedValue({ conversationId: "c", sentAt: "t" });
+    const requireSendAuthority = jest.fn().mockResolvedValue({ mode: "send", basis: "manager", grant: null });
     await ProcurementService.prototype.sendDraftedReply.call(
       { requireSendAuthority, approveDraft } as never,
       "rest-A",
@@ -247,16 +239,11 @@ describe("sendDraftedReply", () => {
       {},
       undefined,
     );
-    expect(approveDraft).toHaveBeenCalledWith(
-      "rest-A",
-      "ord-1",
-      {},
-      {
-        userId: "manager",
-        challenge: undefined,
-        grantId: null,
-      },
-    );
+    expect(approveDraft).toHaveBeenCalledWith("rest-A", "ord-1", {}, {
+      userId: "manager",
+      challenge: undefined,
+      grantId: null,
+    });
   });
 
   it("redeems against the actual pending draft and actual recipient before claiming or dispatch", async () => {
@@ -331,9 +318,7 @@ describe("a letter for a cancelled, turned-down or failed order", () => {
       },
     });
     await expect(mint(s)).rejects.toThrow(words);
-    await expect(mint(s)).rejects.toThrow(
-      /No seal was issued and nothing was sent/,
-    );
+    await expect(mint(s)).rejects.toThrow(/No seal was issued and nothing was sent/);
     expect(s.issued).toHaveLength(0);
   });
 
@@ -382,9 +367,7 @@ describe("a letter for a cancelled, turned-down or failed order", () => {
         {},
         { userId: "manager", challenge: "tok", grantId: null },
       ),
-    ).rejects.toThrow(
-      "This order was cancelled, so its letter cannot go to the vendor. Nothing was sent.",
-    );
+    ).rejects.toThrow("This order was cancelled, so its letter cannot go to the vendor. Nothing was sent.");
     expect(redeem).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });

@@ -100,9 +100,7 @@ describe("CalendarController", () => {
           // The owner/manager gate on someone else's link. Who may pass it is
           // `calendar-links.gate.spec.ts`'s job.
           provide: OrganizationsService,
-          useValue: {
-            assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
-          },
+          useValue: { assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     })
@@ -494,10 +492,7 @@ describe("CalendarController", () => {
       expect(mockDayRecord.houseToday).toHaveBeenCalledWith("restaurant-456");
       expect(mockCalendarService.listEvents).toHaveBeenCalledWith(
         "restaurant-456",
-        expect.objectContaining({
-          startDate: "2001-01-15",
-          endDate: "2001-01-15",
-        }),
+        expect.objectContaining({ startDate: "2001-01-15", endDate: "2001-01-15" }),
       );
     });
 
@@ -505,10 +500,7 @@ describe("CalendarController", () => {
       await controller.getUpcomingEvents(user);
       expect(mockCalendarService.listEvents).toHaveBeenCalledWith(
         "restaurant-456",
-        expect.objectContaining({
-          startDate: "2001-01-15",
-          endDate: "2001-02-14",
-        }),
+        expect.objectContaining({ startDate: "2001-01-15", endDate: "2001-02-14" }),
       );
     });
 

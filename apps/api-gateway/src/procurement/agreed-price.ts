@@ -296,7 +296,10 @@ export function describeAgreedPrice(input: {
   const money = moneyIn(price, input.currency, { unrecorded: "bare" });
   if (!input.stated) return money;
   const { priceUom, pricePackSize } = input.stated;
-  const pack = pricePackSize > 1 ? ` (${pricePackSize} bottles)` : "";
+  const pack =
+    pricePackSize > 1
+      ? ` (${pricePackSize} bottles)`
+      : "";
   return `${money} per ${priceUom}${pack}`;
 }
 
@@ -947,7 +950,6 @@ export interface EmbeddedPriceUnitLine {
  */
 export function embeddedOrderLines(value: unknown): EmbeddedPriceUnitLine[] {
   if (Array.isArray(value)) return value as EmbeddedPriceUnitLine[];
-  if (value && typeof value === "object")
-    return [value as EmbeddedPriceUnitLine];
+  if (value && typeof value === "object") return [value as EmbeddedPriceUnitLine];
   return [];
 }

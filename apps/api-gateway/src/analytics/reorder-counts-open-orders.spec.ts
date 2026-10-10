@@ -84,11 +84,7 @@ describe("reorder science counts bottles already on order (F-630)", () => {
 
   it("an open order with no bottle count is not counted, and says it could not be", async () => {
     const out: any = await science([
-      {
-        inventory_id: "inv-1",
-        bottles_total: null,
-        expected_delivery_date: null,
-      },
+      { inventory_id: "inv-1", bottles_total: null, expected_delivery_date: null },
     ]);
     expect(out.reorderList[0].onOrder).toBeNull();
   });

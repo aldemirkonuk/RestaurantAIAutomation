@@ -74,11 +74,7 @@ function outcomeOfFailure(
       sentence: `${label} could not be read (${status}).`,
     };
   }
-  return {
-    state: "unreadable",
-    status: 500,
-    sentence: `${label} could not be read.`,
-  };
+  return { state: "unreadable", status: 500, sentence: `${label} could not be read.` };
 }
 
 /** `YYYY-MM-DD` for `instant` as read in `tz` — `Intl`, not a locale trick:
@@ -151,7 +147,10 @@ export class HouseDayService {
       limit: 100,
     });
 
-    const plans: Record<DayRegisterKey, () => Promise<Answer>> = {
+    const plans: Record<
+      DayRegisterKey,
+      () => Promise<Answer>
+    > = {
       // The door and unverified receiving routes carry no role gate (only the
       // decision queue does, ADR 0167; house-counter.service.ts's own note) —
       // every member reads this.
@@ -179,9 +178,7 @@ export class HouseDayService {
           ticks: today.map((d) => ({
             id: `delivery-${d.orderId}`,
             at: d.countedAt,
-            label: d.orderNumber
-              ? `Order ${d.orderNumber} — counted at the door`
-              : "Counted at the door",
+            label: d.orderNumber ? `Order ${d.orderNumber} — counted at the door` : "Counted at the door",
             // `order` is what /orders opens on; `highlight` was read by no page (F-217).
             href: `/orders?order=${encodeURIComponent(d.orderId)}`,
           })),
@@ -276,38 +273,26 @@ export class HouseDayService {
       const res = await this.operatingHours.getOperatingHours(userId, house);
       if (res.timezone === null) {
         return [
-          {
-            state: "not_recorded",
-            windows: [],
-            sentence: "This house's timezone is not set.",
-          },
+          { state: "not_recorded", windows: [], sentence: "This house's timezone is not set." },
           null,
         ];
       }
       if (res.operatingHours === null) {
         return [
-          {
-            state: "not_recorded",
-            windows: [],
-            sentence: "Hours not set — no prep, doors or close today.",
-          },
+          { state: "not_recorded", windows: [], sentence: "Hours not set — no prep, doors or close today." },
           res.timezone,
         ];
       }
-      const windows = this.windowsForToday(res.operatingHours, res.timezone);
+      const windows = this.windowsForToday(
+        res.operatingHours,
+        res.timezone,
+      );
       return [{ state: "recorded", windows }, res.timezone];
     } catch (err) {
       this.logger.warn(
         `house day hours for ${house}: ${(err as Error)?.message ?? err}`,
       );
-      return [
-        {
-          state: "unreadable",
-          windows: [],
-          sentence: "Hours could not be read.",
-        },
-        null,
-      ];
+      return [{ state: "unreadable", windows: [], sentence: "Hours could not be read." }, null];
     }
   }
 
@@ -357,10 +342,7 @@ export class HouseDayService {
       const answer = await Promise.race([
         load(),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new RegisterTimeout()),
-            DAY_REGISTER_TIMEOUT_MS,
-          );
+          timer = setTimeout(() => reject(new RegisterTimeout()), DAY_REGISTER_TIMEOUT_MS);
         }),
       ]);
       return {

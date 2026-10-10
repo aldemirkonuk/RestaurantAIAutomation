@@ -47,15 +47,13 @@ interface Harness {
 const roleGate = {
   allow: true,
   calls: [] as Array<{ userId: string; restaurantId: string; action: string }>,
-  assert: jest.fn(
-    async (userId: string, restaurantId: string, action: string) => {
-      roleGate.calls.push({ userId, restaurantId, action });
-      if (!roleGate.allow)
-        throw new ForbiddenException(
-          `Only a manager or an owner of this restaurant can ${action}.`,
-        );
-    },
-  ),
+  assert: jest.fn(async (userId: string, restaurantId: string, action: string) => {
+    roleGate.calls.push({ userId, restaurantId, action });
+    if (!roleGate.allow)
+      throw new ForbiddenException(
+        `Only a manager or an owner of this restaurant can ${action}.`,
+      );
+  }),
 };
 
 beforeEach(() => {
@@ -78,10 +76,7 @@ async function build(supabaseHolder: any): Promise<ProcurementService> {
         provide: OrchestratorService,
         useValue: { publishEvent: jest.fn(), triggerDraftHttp: jest.fn() },
       },
-      {
-        provide: SealChallengeService,
-        useValue: new SealChallengeService(supabaseHolder),
-      },
+      { provide: SealChallengeService, useValue: new SealChallengeService(supabaseHolder) },
       {
         // The REAL helper's contract, stubbed at its boundary: it either
         // returns or it throws a ForbiddenException with a sentence. Which
@@ -220,10 +215,7 @@ async function makeService(
               : { data: { ...order }, error: null }
             : { data: null, error: null },
         then: (resolve: any, reject: any) =>
-          Promise.resolve({ data: tableRows[table] ?? [], error: null }).then(
-            resolve,
-            reject,
-          ),
+          Promise.resolve({ data: tableRows[table] ?? [], error: null }).then(resolve, reject),
       };
       return q;
     },
@@ -263,9 +255,9 @@ describe("a cancellation has to say why", () => {
     expect(err.getStatus()).toBe(400);
     expect(String(err.message)).toMatch(/has to say why/);
     expect(String(err.message)).toMatch(/Nothing was changed/);
-    expect(
-      h.updates.filter((u) => u.table === "procurement_orders"),
-    ).toHaveLength(0);
+    expect(h.updates.filter((u) => u.table === "procurement_orders")).toHaveLength(
+      0,
+    );
   });
 
   it("refuses a missing reason the same way", async () => {
@@ -299,14 +291,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
 
     // A replay is a second cancellation, not a retry.
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "again",
-        token,
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "again", token, "house_decision"),
     );
     expect(String(err.message)).toMatch(/already been spent|already cancelled/);
   });
@@ -314,14 +299,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
   it("refuses a cancel with no seal at all, and writes nothing", async () => {
     const h = await makeService();
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "changed our mind",
-        null,
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "changed our mind", null, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/must be proven rather than asserted/);
@@ -351,14 +329,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const h = await makeService(undefined, [approvalSeal]);
 
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "not needed",
-        token,
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "not needed", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/different act on this order/);
@@ -371,14 +342,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const h = await makeService();
     const token = await mint(h, OTHER_MANAGER);
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "mine now",
-        token,
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "mine now", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/issued to somebody else/);
@@ -390,14 +354,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const token = await mint(h);
     h.order.total_cost = "20000.00";
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "too expensive",
-        token,
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "too expensive", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/changed after the seal was issued/);
@@ -411,14 +368,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const token = await mint(h);
     h.order.status = ProcurementOrderStatus.DELIVERED;
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "too late",
-        token,
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "too late", token, "house_decision"),
     );
     // The transition check runs first and refuses with the louder sentence.
     expect(err.getStatus()).toBe(422);
@@ -484,14 +434,7 @@ describe("a cancelled order does not email its vendor", () => {
   it("cascades AUTO_SEND_SCHEDULED as well as PENDING_APPROVAL", async () => {
     const h = await makeService();
     const token = await mint(h);
-    await h.service.cancelOrder(
-      HOUSE,
-      ORDER_ID,
-      MANAGER,
-      "no longer needed",
-      token,
-      "house_decision",
-    );
+    await h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "no longer needed", token, "house_decision");
 
     const cascade = h.updates.find(
       (u) => u.table === "procurement_conversations",
@@ -549,33 +492,20 @@ describe("the PATCH route is held to the same table", () => {
 
   // F-300: approving and delivering have their own acts, as cancelling does.
   it.each([
-    [
-      ProcurementOrderStatus.PENDING,
-      ProcurementOrderStatus.APPROVED,
-      /holding to confirm/,
-    ],
-    [
-      ProcurementOrderStatus.APPROVED,
-      ProcurementOrderStatus.DELIVERED,
-      /booked in at the door/,
-    ],
-  ])(
-    "refuses %s -> %s by PATCH, even from a manager, and writes nothing",
-    async (from, to, words) => {
-      const h = await makeService({ status: from });
-      const err = await refusal(() =>
-        h.service.updateOrder(HOUSE, ORDER_ID, { status: to } as any, {
-          actorUserId: MANAGER,
-        }),
-      );
-      expect(err.getStatus()).toBe(422);
-      expect(String(err.message?.message ?? err.message)).toMatch(words);
-      expect(h.order.status).toBe(from);
-      expect(
-        h.updates.filter((u) => u.table === "procurement_orders"),
-      ).toHaveLength(0);
-    },
-  );
+    [ProcurementOrderStatus.PENDING, ProcurementOrderStatus.APPROVED, /holding to confirm/],
+    [ProcurementOrderStatus.APPROVED, ProcurementOrderStatus.DELIVERED, /booked in at the door/],
+  ])("refuses %s -> %s by PATCH, even from a manager, and writes nothing", async (from, to, words) => {
+    const h = await makeService({ status: from });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { status: to } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(String(err.message?.message ?? err.message)).toMatch(words);
+    expect(h.order.status).toBe(from);
+    expect(h.updates.filter((u) => u.table === "procurement_orders")).toHaveLength(0);
+  });
 
   it("refuses a status write from someone who is not a manager or an owner", async () => {
     roleGate.allow = false;
@@ -623,38 +553,26 @@ describe("the PATCH route is held to the same table", () => {
       ),
     );
     expect(err.getStatus()).toBe(422);
-    expect(String(err.message?.message ?? err.message)).toMatch(
-      /before it is approved/,
-    );
+    expect(String(err.message?.message ?? err.message)).toMatch(/before it is approved/);
     expect(h.order.final_price).toBe(40);
     expect(h.order.total_cost).toBe("2000.00");
   });
 
   it("refuses a price change from someone who is not a manager or an owner", async () => {
     roleGate.allow = false;
-    const h = await makeService({
-      status: ProcurementOrderStatus.PENDING,
-      final_price: 40,
-    });
+    const h = await makeService({ status: ProcurementOrderStatus.PENDING, final_price: 40 });
     const err = await refusal(() =>
       h.service.updateOrder(HOUSE, ORDER_ID, { finalPrice: 4 } as any, {
         actorUserId: MANAGER,
       }),
     );
     expect(err.getStatus()).toBe(403);
-    expect(roleGate.assert).toHaveBeenCalledWith(
-      MANAGER,
-      HOUSE,
-      "change what an order costs",
-    );
+    expect(roleGate.assert).toHaveBeenCalledWith(MANAGER, HOUSE, "change what an order costs");
     expect(h.order.final_price).toBe(40);
   });
 
   it("lets a manager set the price while the order is still pending", async () => {
-    const h = await makeService({
-      status: ProcurementOrderStatus.PENDING,
-      final_price: 40,
-    });
+    const h = await makeService({ status: ProcurementOrderStatus.PENDING, final_price: 40 });
     await h.service.updateOrder(HOUSE, ORDER_ID, { finalPrice: 42 } as any, {
       actorUserId: MANAGER,
     });
@@ -681,9 +599,7 @@ describe("the PATCH route is held to the same table", () => {
     expect(err.getResponse().message).toMatch(/\(1\.00\).*\(30000\.00\)/);
     expect(err.getResponse().message).not.toMatch(/\$/);
     expect(h.order.total_cost).toBe(30000);
-    expect(h.updates.filter((u) => u.table === "procurement_orders")).toEqual(
-      [],
-    );
+    expect(h.updates.filter((u) => u.table === "procurement_orders")).toEqual([]);
   });
 
   it("[REVERT-FAILS] says a lira order's refused totals in lira, grouped the house's way (F-889)", async () => {
@@ -697,11 +613,7 @@ describe("the PATCH route is held to the same table", () => {
         currency: "TRY",
       },
       [],
-      {
-        restaurants: [
-          { currency: "TRY", country: "TR", timezone: "Europe/Istanbul" },
-        ],
-      },
+      { restaurants: [{ currency: "TRY", country: "TR", timezone: "Europe/Istanbul" }] },
     );
     const err = await refusal(() =>
       h.service.updateOrder(HOUSE, ORDER_ID, { totalCost: 1 } as any, {
@@ -754,9 +666,7 @@ describe("the PATCH route is held to the same table", () => {
   // bottles and the invoice check that closing short asks for, and a closed
   // order can never be checked against its invoice.
   it("refuses to close a partly received order by PATCH, and writes nothing", async () => {
-    const h = await makeService({
-      status: ProcurementOrderStatus.PARTIALLY_RECEIVED,
-    });
+    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
     const err = await refusal(() =>
       h.service.updateOrder(
         HOUSE,
@@ -896,6 +806,7 @@ describe("the PATCH route is held to the same table", () => {
   });
 });
 
+
 /**
  * ADR 0125 Q1 — the founder, 2026-09-05: "Manager or owner, like approval."
  *
@@ -908,11 +819,7 @@ describe("ending an order is a manager's or an owner's act", () => {
   it("asks the same helper the approval gate asks, naming the act", async () => {
     const h = await makeService();
     await mint(h);
-    expect(roleGate.assert).toHaveBeenCalledWith(
-      MANAGER,
-      HOUSE,
-      "cancel an order",
-    );
+    expect(roleGate.assert).toHaveBeenCalledWith(MANAGER, HOUSE, "cancel an order");
   });
 
   it("refuses to MINT a seal for somebody who may not cancel", async () => {
@@ -933,23 +840,14 @@ describe("ending an order is a manager's or an owner's act", () => {
     // The manager is demoted between the hold and the write.
     roleGate.allow = false;
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "no longer needed",
-        token,
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "no longer needed", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
     // The seal is left UNSPENT: a refused act burns nothing.
     expect(h.seals.filter((s) => s.redeemed_at)).toHaveLength(0);
     // And nothing was filed as though it had happened.
-    expect(h.audits.filter((a) => a.action === "order_cancelled")).toHaveLength(
-      0,
-    );
+    expect(h.audits.filter((a) => a.action === "order_cancelled")).toHaveLength(0);
   });
 
   it("checks the role BEFORE the state, so the person is told the true reason", async () => {
@@ -969,14 +867,7 @@ describe("ending an order is a manager's or an owner's act", () => {
     const h = await makeService();
     (h.service as any).organizations = undefined;
     const err = await refusal(() =>
-      h.service.cancelOrder(
-        HOUSE,
-        ORDER_ID,
-        MANAGER,
-        "because",
-        "anything",
-        "house_decision",
-      ),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "because", "anything", "house_decision"),
     );
     expect(err.getStatus()).toBe(500);
     expect(String(err.message)).toMatch(/could not be established/);
@@ -994,45 +885,18 @@ describe("ending an order is a manager's or an owner's act", () => {
  * whose shelf holds what was accepted. `checked` adds the desk's verification
  * against an invoice for what came.
  */
-function shelfOf(
-  counted: number,
-  refused: number,
-  checked: boolean,
-): Record<string, Row[]> {
+function shelfOf(counted: number, refused: number, checked: boolean): Record<string, Row[]> {
   const accepted = counted - refused;
   return {
     restaurant_inventory: [{ id: "inv-1", uom: "bottle" }],
-    procurement_order_items: [
-      { order_id: ORDER_ID, unit_type: "bottle", bottles_per_unit: 1 },
-    ],
+    procurement_order_items: [{ order_id: ORDER_ID, unit_type: "bottle", bottles_per_unit: 1 }],
     inventory_transactions: [
-      {
-        order_id: ORDER_ID,
-        inventory_id: "inv-1",
-        quantity_change: accepted,
-        idempotency_key: "door-receipt:e1",
-      },
+      { order_id: ORDER_ID, inventory_id: "inv-1", quantity_change: accepted, idempotency_key: "door-receipt:e1" },
     ],
     procurement_receipt_events: [
-      {
-        order_id: ORDER_ID,
-        stage: "case_count",
-        counted_qty_bottles: counted,
-        rejected_qty_bottles: refused,
-        occurred_at: "2026-10-01T10:00:00Z",
-      },
+      { order_id: ORDER_ID, stage: "case_count", counted_qty_bottles: counted, rejected_qty_bottles: refused, occurred_at: "2026-10-01T10:00:00Z" },
       ...(checked
-        ? [
-            {
-              order_id: ORDER_ID,
-              stage: "reconciled",
-              outcome: null,
-              counted_qty_bottles: accepted,
-              rejected_qty_bottles: 0,
-              invoice_qty_bottles: counted,
-              occurred_at: "2026-10-01T12:00:00Z",
-            },
-          ]
+        ? [{ order_id: ORDER_ID, stage: "reconciled", outcome: null, counted_qty_bottles: accepted, rejected_qty_bottles: 0, invoice_qty_bottles: counted, occurred_at: "2026-10-01T12:00:00Z" }]
         : []),
     ],
   };
@@ -1049,12 +913,7 @@ const PARTLY = {
 describe("closing a short order (F-104)", () => {
   it("closes a partly received order, with the reason on the audit row", async () => {
     const h = await makeService(PARTLY, [], shelfOf(4, 0, true));
-    await h.service.closeOrderShort(
-      HOUSE,
-      ORDER_ID,
-      MANAGER,
-      "vendor is out of the 2010",
-    );
+    await h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "vendor is out of the 2010");
     expect(h.order.status).toBe(ProcurementOrderStatus.COMPLETED);
     const audit = h.audits.find((a) => a.action === "order_closed_short");
     expect(audit).toBeDefined();
@@ -1064,12 +923,8 @@ describe("closing a short order (F-104)", () => {
   });
 
   it("refuses without a reason, and changes nothing", async () => {
-    const h = await makeService({
-      status: ProcurementOrderStatus.PARTIALLY_RECEIVED,
-    });
-    const err = await refusal(() =>
-      h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "  "),
-    );
+    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "  "));
     expect(err.getStatus()).toBe(400);
     expect(String(err.message)).toMatch(/has to say why/);
     expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
@@ -1082,9 +937,7 @@ describe("closing a short order (F-104)", () => {
       h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done with it"),
     );
     expect(err.getStatus()).toBe(422);
-    expect(JSON.stringify(err.getResponse())).toMatch(
-      /Only an order that is partly received/,
-    );
+    expect(JSON.stringify(err.getResponse())).toMatch(/Only an order that is partly received/);
     expect(h.order.status).toBe(ProcurementOrderStatus.DELIVERED);
     expect(h.audits).toHaveLength(0);
   });
@@ -1096,9 +949,7 @@ describe("closing a short order (F-104)", () => {
    */
   it("refuses an order where everything came", async () => {
     const h = await makeService(PARTLY, [], shelfOf(6, 0, true));
-    const err = await refusal(() =>
-      h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done"),
-    );
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done"));
     expect(err.getStatus()).toBe(422);
     expect(err.getResponse().reason).toBe("close_short_nothing_owed");
     expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
@@ -1107,18 +958,14 @@ describe("closing a short order (F-104)", () => {
 
   it("counts bottles sent back at the door as delivered, not owed", async () => {
     const h = await makeService(PARTLY, [], shelfOf(6, 2, true));
-    const err = await refusal(() =>
-      h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done"),
-    );
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done"));
     expect(err.getResponse().reason).toBe("close_short_nothing_owed");
     expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
   });
 
   it("refuses a short order not yet checked against its invoice, so the check stays open", async () => {
     const h = await makeService(PARTLY, [], shelfOf(4, 0, false));
-    const err = await refusal(() =>
-      h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short"),
-    );
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short"));
     expect(err.getStatus()).toBe(422);
     expect(err.getResponse().reason).toBe("close_short_invoice_unchecked");
     expect(err.getResponse().message).toMatch(/^2 bottles still to come/);
@@ -1127,18 +974,14 @@ describe("closing a short order (F-104)", () => {
 
   it("refuses when what is still owed cannot be read", async () => {
     const h = await makeService({ ...PARTLY, inventory_id: null });
-    const err = await refusal(() =>
-      h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short"),
-    );
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short"));
     expect(err.getResponse().reason).toBe("close_short_owed_unknown");
     expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
   });
 
   it("is a manager's or owner's act", async () => {
     roleGate.allow = false;
-    const h = await makeService({
-      status: ProcurementOrderStatus.PARTIALLY_RECEIVED,
-    });
+    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
     const err = await refusal(() =>
       h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short shipped"),
     );

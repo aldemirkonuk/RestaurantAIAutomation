@@ -82,13 +82,11 @@ function makeDb(
             data: result.data,
             error: result.error ?? null,
             count:
-              result.count ??
-              (Array.isArray(result.data) ? result.data.length : 1),
+              result.count ?? (Array.isArray(result.data) ? result.data.length : 1),
           });
         }
         const t = tables[table];
-        if (t && !Array.isArray(t))
-          return resolve({ data: null, error: t.error });
+        if (t && !Array.isArray(t)) return resolve({ data: null, error: t.error });
         return resolve({
           data: (t ?? []).filter((r) => filters.every((f) => f(r))),
           error: null,
@@ -153,9 +151,9 @@ describe("the orders routes join the vendor's name", () => {
 
   it("embeds providers on the detail route and on the pending queue", async () => {
     const detail = makeDb({ data: orderRow() });
-    expect(
-      (await service(detail.db).getOrder("rest-1", "ord-1")).providerName,
-    ).toBe("Vinifera Imports");
+    expect((await service(detail.db).getOrder("rest-1", "ord-1")).providerName).toBe(
+      "Vinifera Imports",
+    );
     expect(detail.selects[0]).toContain("provider:provider_id(name)");
 
     const pending = makeDb({ data: [orderRow({ status: "APPROVAL_NEEDED" })] });
@@ -168,11 +166,7 @@ describe("the orders routes join the vendor's name", () => {
     ["a null embed — the FK is null", null, null],
     ["an embed with no name", {}, null],
     ["an embed whose name is blank", { name: "   " }, null],
-    [
-      "a one-element array, which PostgREST can return",
-      [{ name: "Acme" }],
-      "Acme",
-    ],
+    ["a one-element array, which PostgREST can return", [{ name: "Acme" }], "Acme"],
     ["an empty array", [], null],
   ])("reads %s", async (_label, provider, expected) => {
     const { db } = makeDb({ data: orderRow({ provider }) });
@@ -199,10 +193,7 @@ describe("the orders routes join the vendor's name", () => {
     // `JSON.stringify` drops it. `in` on the in-memory object would therefore
     // be testing the wrong side of the boundary.
     const svc: any = service(makeDb({ data: null }).db);
-    const notJoined: Record<string, unknown> = {
-      ...orderRow(),
-      wine_name: "Barolo Riserva",
-    };
+    const notJoined: Record<string, unknown> = { ...orderRow(), wine_name: "Barolo Riserva" };
     delete notJoined.provider;
     const wire = JSON.parse(JSON.stringify(svc.mapOrderRow(notJoined)));
     expect("providerName" in wire).toBe(false);
@@ -219,12 +210,7 @@ describe("the orders routes join the vendor's name", () => {
 describe("what the order received is the ledger's count (ADR 0192)", () => {
   /** A 5-case order at 12 a case, as the line states it. */
   const caseOrder = () =>
-    orderRow({
-      quantity: 5,
-      unit_type: "case",
-      bottles_total: 60,
-      status: "DELIVERED",
-    });
+    orderRow({ quantity: 5, unit_type: "case", bottles_total: 60, status: "DELIVERED" });
   const item = { id: "inv-1", restaurant_id: "rest-1", uom: "bottle" };
   const line = {
     id: "line-1",
@@ -233,12 +219,7 @@ describe("what the order received is the ledger's count (ADR 0192)", () => {
     unit_type: "case",
     bottles_per_unit: 12,
   };
-  const ledgerRow = (
-    id: string,
-    change: number,
-    key: string,
-    over: Row = {},
-  ) => ({
+  const ledgerRow = (id: string, change: number, key: string, over: Row = {}) => ({
     id,
     restaurant_id: "rest-1",
     order_id: "ord-1",
@@ -302,18 +283,12 @@ describe("what the order received is the ledger's count (ADR 0192)", () => {
   });
 
   it("the list route reads the ledger ONCE for the whole page, not once per order", async () => {
-    const two = [
-      caseOrder(),
-      { ...caseOrder(), id: "ord-2", inventory_id: "inv-1" },
-    ];
+    const two = [caseOrder(), { ...caseOrder(), id: "ord-2", inventory_id: "inv-1" }];
     const { db, reads } = makeDb(
       { data: two, count: 2 },
       {
         restaurant_inventory: [item],
-        procurement_order_items: [
-          line,
-          { ...line, id: "line-2", order_id: "ord-2" },
-        ],
+        procurement_order_items: [line, { ...line, id: "line-2", order_id: "ord-2" }],
         inventory_transactions: [
           ledgerRow("t1", 24, "door-receipt:a"),
           ledgerRow("t2", 7, "door-receipt:b", { order_id: "ord-2" }),
@@ -331,31 +306,25 @@ describe("what the order received is the ledger's count (ADR 0192)", () => {
   it.each([
     ["the canonical field", { quantityReceivedInOrderUom: 5 }],
     ["its deprecated alias", { quantityReceived: 5 }],
-  ])(
-    "updateOrder refuses %s before anything is read or written",
-    async (_l, body) => {
-      // It used to write the column from the body with no stock movement, so any
-      // caller could make an order "receive" a number the shelf never saw.
-      const { db, reads } = makeDb({ data: orderRow() });
-      let thrown: any;
-      try {
-        await service(db).updateOrder("rest-1", "ord-1", body as any);
-      } catch (e) {
-        thrown = e;
-      }
-      expect(thrown?.getStatus?.()).toBe(400);
-      expect(thrown.getResponse().reason).toBe("received_is_the_ledger");
-      expect(thrown.getResponse().message).toContain("ADR 0192");
-      expect(reads).toHaveLength(0);
-    },
-  );
+  ])("updateOrder refuses %s before anything is read or written", async (_l, body) => {
+    // It used to write the column from the body with no stock movement, so any
+    // caller could make an order "receive" a number the shelf never saw.
+    const { db, reads } = makeDb({ data: orderRow() });
+    let thrown: any;
+    try {
+      await service(db).updateOrder("rest-1", "ord-1", body as any);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown?.getStatus?.()).toBe(400);
+    expect(thrown.getResponse().reason).toBe("received_is_the_ledger");
+    expect(thrown.getResponse().message).toContain("ADR 0192");
+    expect(reads).toHaveLength(0);
+  });
 
   it("sends NO received key from a route that did not read the ledger", () => {
     const svc: any = service(makeDb({ data: null }).db);
-    const row: Record<string, unknown> = {
-      ...orderRow(),
-      wine_name: "Barolo Riserva",
-    };
+    const row: Record<string, unknown> = { ...orderRow(), wine_name: "Barolo Riserva" };
     const wire = JSON.parse(JSON.stringify(svc.mapOrderRow(row)));
     expect("received" in wire).toBe(false);
   });

@@ -323,9 +323,7 @@ export function carryFractionFor(
  * (`>= 0.01 AND <= 25.000` percent), so a value that reaches here is already
  * known to be a percent and not a fraction.
  */
-export function percentPerMonthToFraction(
-  percent: number | null,
-): number | null {
+export function percentPerMonthToFraction(percent: number | null): number | null {
   if (percent === null || !Number.isFinite(percent)) return null;
   return percent / 100;
 }
@@ -531,8 +529,7 @@ export function backtestCadence(
     worstGrossFraction: gross.length === 0 ? null : Math.min(...gross),
     bestGrossFraction: gross.length === 0 ? null : Math.max(...gross),
     benchmarkMeanGrossFraction: benchMean,
-    benchmarkHitRate:
-      benchmarkSums.length === 0 ? null : benchmarkHits / benchmarkSums.length,
+    benchmarkHitRate: benchmarkSums.length === 0 ? null : benchmarkHits / benchmarkSums.length,
     lift: outMean === null || benchMean === null ? null : outMean - benchMean,
     outcomes,
   };
@@ -658,8 +655,7 @@ export function valueBacktest(
     ...base,
     netFractionPerFire: nets === null ? null : mean(nets),
     lossRate: nets === null ? null : (losses as number[]).length / nets.length,
-    meanLossFraction:
-      losses === null || losses.length === 0 ? null : mean(losses),
+    meanLossFraction: losses === null || losses.length === 0 ? null : mean(losses),
   };
 
   if (phi === null) {
@@ -742,8 +738,7 @@ export function valueBacktest(
 export type MoneyState = "stated" | "unmeasured" | "too_small";
 
 export function moneyState(v: CadenceValuation): MoneyState {
-  if (v.withheld === null && v.moneyPerFire !== null && v.currency)
-    return "stated";
+  if (v.withheld === null && v.moneyPerFire !== null && v.currency) return "stated";
   if (v.withheld === "below_spend_floor") return "too_small";
   return "unmeasured";
 }

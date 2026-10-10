@@ -385,12 +385,7 @@ export class ProviderIntelligenceController {
     @CurrentUser() user: AuthUser,
   ) {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Starting a conversation with a vendor",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Starting a conversation with a vendor");
     try {
       const restaurantId = houseOf(user);
       // The vendor must be this house's (ADR 0147). Without this, a house
@@ -432,12 +427,7 @@ export class ProviderIntelligenceController {
     @CurrentUser() user: AuthUser,
   ) {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Starting a vendor's onboarding conversation",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Starting a vendor's onboarding conversation");
     try {
       const restaurantId = houseOf(user);
       // Same fence as outreach: another house's vendor is a 404 (ADR 0147).

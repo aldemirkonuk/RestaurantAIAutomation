@@ -72,10 +72,7 @@ export class MenusController {
   }
 
   @Post("items")
-  @ApiOperation({
-    summary:
-      "Add one wine to a menu. On the current menu, owner or manager only",
-  })
+  @ApiOperation({ summary: "Add one wine to a menu. On the current menu, owner or manager only" })
   async addMenuItem(
     @Body() dto: AddMenuItemDto,
     @CurrentUser() user: { userId: string; restaurantId?: string },
@@ -90,10 +87,7 @@ export class MenusController {
     // house.
     const role =
       user.restaurantId && user.userId
-        ? await this.organizations.resolveRestaurantRole(
-            user.userId,
-            user.restaurantId,
-          )
+        ? await this.organizations.resolveRestaurantRole(user.userId, user.restaurantId)
         : null;
     return this.menusService.addMenuItem(
       dto,
@@ -251,8 +245,7 @@ export class MenuVersionsController {
 
   @Get()
   @ApiOperation({
-    summary:
-      "Every menu this house has read, newest first, with the current one and the last one used",
+    summary: "Every menu this house has read, newest first, with the current one and the last one used",
     description: "A failed read is a 500, never an empty history.",
   })
   async list(@CurrentUser("restaurantId") restaurantId: string) {
@@ -270,9 +263,7 @@ export class MenuVersionsController {
     @CurrentUser("role") role: string | null,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
-    return this.menusService.getVersion(this.house(restaurantId), menuId, {
-      rawLine: seesRawLine(role),
-    });
+    return this.menusService.getVersion(this.house(restaurantId), menuId, { rawLine: seesRawLine(role) });
   }
 
   @Get(":menuId/source")
@@ -289,10 +280,9 @@ export class MenuVersionsController {
 
   @Get(":menuId/plan")
   @ApiOperation({
-    summary:
-      "What choosing this menu would do, per line and per kind, before anyone chooses it",
+    summary: "What choosing this menu would do, per line and per kind, before anyone chooses it",
     description:
-      'ADR 0193 round 3 (L13; the founder, 2026-09-21: "add a section to that where you can lock price"). Per line and per kind: the house price, the menu price and the result (change, unchanged, held_by_lock, blank_kept, blank_never_priced, not_linked, new_wine); for a price that would be replaced, who set it and when; the lock that holds a kind; every open lock whose wine is NOT on this menu (kept, dormant); and a fingerprint that make-current requires. Nothing is written. A failed read is a 500, never a plan with a hole in it.',
+      "ADR 0193 round 3 (L13; the founder, 2026-09-21: \"add a section to that where you can lock price\"). Per line and per kind: the house price, the menu price and the result (change, unchanged, held_by_lock, blank_kept, blank_never_priced, not_linked, new_wine); for a price that would be replaced, who set it and when; the lock that holds a kind; every open lock whose wine is NOT on this menu (kept, dormant); and a fingerprint that make-current requires. Nothing is written. A failed read is a 500, never a plan with a hole in it.",
   })
   async plan(
     @CurrentUser("restaurantId") restaurantId: string,
@@ -304,19 +294,12 @@ export class MenuVersionsController {
   @Post(":menuId/make-current")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary:
-      "Make a kept menu the current one — owner or manager only, naming the plan it was shown",
+    summary: "Make a kept menu the current one — owner or manager only, naming the plan it was shown",
     description:
       "Requires the fingerprint of GET /menu-versions/:menuId/plan: 400 without it, 409 (nothing changed) when the plan recomputed now differs. Archives the house's current menu (who and when: that is 'the last one used'), stamps this one current, then carries its lines to the house's inventory and prices DATED BY THE CHOICE (an older menu chosen again brings its prices back), except a kind a price lock holds, which is reported and named. A blank price keeps the house's price and flags the line; a line with no price for a wine the house has none for is flagged too. Says per outcome how many lines did what, and names any line whose price failed or was held.",
   })
-  @ApiResponse({
-    status: 403,
-    description: "The caller is not an owner or manager of this restaurant.",
-  })
-  @ApiResponse({
-    status: 409,
-    description: "The plan changed since it was shown. Nothing was changed.",
-  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "The plan changed since it was shown. Nothing was changed." })
   async makeCurrent(
     @CurrentUser("restaurantId") restaurantId: string,
     @CurrentUser("userId") userId: string,
@@ -329,12 +312,7 @@ export class MenuVersionsController {
       house,
       "choose the current menu",
     );
-    return this.menusService.makeCurrent(
-      house,
-      menuId,
-      userId,
-      dto?.fingerprint ?? null,
-    );
+    return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null);
   }
 }
 

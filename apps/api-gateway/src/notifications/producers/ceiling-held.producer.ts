@@ -206,11 +206,7 @@ export class CeilingHeldProducer {
         {
           restaurantId,
           producer: PRODUCER,
-          audience: (readers ??= await goalReaders(
-            client,
-            restaurantId,
-            audience,
-          )),
+          audience: (readers ??= await goalReaders(client, restaurantId, audience)),
           tally,
           now,
         },
@@ -269,17 +265,12 @@ export class CeilingHeldProducer {
       );
     }
 
-    if (
-      tally.emitted === 0 &&
-      tally.withheldReason === null &&
-      noGoalReader(readers)
-    ) {
+    if (tally.emitted === 0 && tally.withheldReason === null && noGoalReader(readers)) {
       tally.withheldReason = NO_GOAL_READER;
     }
     if (tally.emitted === 0 && tally.withheldReason === null) {
       const bits = [`${goals.length} ceiling goal(s) with a deadline`];
-      if (stillOpen > 0)
-        bits.push(`${stillOpen} whose period has not closed yet`);
+      if (stillOpen > 0) bits.push(`${stillOpen} whose period has not closed yet`);
       if (breached > 0) {
         bits.push(
           `${breached} that closed OVER the ceiling — this producer reports the success only, and "you went over by N" is a notification nobody has asked for yet`,

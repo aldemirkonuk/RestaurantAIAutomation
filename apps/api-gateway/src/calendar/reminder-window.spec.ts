@@ -49,27 +49,13 @@ describe("zoneOffsetMs — a wall time is only an instant once you say whose wal
 describe("zonedWallTimeToInstant", () => {
   it("turns 09:00 New York into the right UTC instant in winter", () => {
     expect(
-      zonedWallTimeToInstant(
-        2026,
-        1,
-        15,
-        9,
-        0,
-        "America/New_York",
-      ).toISOString(),
+      zonedWallTimeToInstant(2026, 1, 15, 9, 0, "America/New_York").toISOString(),
     ).toBe("2026-01-15T14:00:00.000Z");
   });
 
   it("turns 09:00 New York into the right UTC instant in summer", () => {
     expect(
-      zonedWallTimeToInstant(
-        2026,
-        7,
-        15,
-        9,
-        0,
-        "America/New_York",
-      ).toISOString(),
+      zonedWallTimeToInstant(2026, 7, 15, 9, 0, "America/New_York").toISOString(),
     ).toBe("2026-07-15T13:00:00.000Z");
   });
 
@@ -77,27 +63,13 @@ describe("zonedWallTimeToInstant", () => {
     // US DST starts 2026-03-08. 09:00 local that day is UTC-4, not UTC-5 —
     // the single-pass version of this function gets it wrong by an hour.
     expect(
-      zonedWallTimeToInstant(
-        2026,
-        3,
-        8,
-        9,
-        0,
-        "America/New_York",
-      ).toISOString(),
+      zonedWallTimeToInstant(2026, 3, 8, 9, 0, "America/New_York").toISOString(),
     ).toBe("2026-03-08T13:00:00.000Z");
   });
 
   it("handles a zone east of UTC", () => {
     expect(
-      zonedWallTimeToInstant(
-        2026,
-        1,
-        15,
-        9,
-        0,
-        "Europe/Istanbul",
-      ).toISOString(),
+      zonedWallTimeToInstant(2026, 1, 15, 9, 0, "Europe/Istanbul").toISOString(),
     ).toBe("2026-01-15T06:00:00.000Z");
   });
 });
@@ -168,32 +140,20 @@ describe("reminderDueAt", () => {
     // entry is 19:00 Saturday — 23 hours earlier, not 24. Subtracting 24h
     // landed at 18:00 Saturday.
     const spring = reminderDueAt(
-      {
-        start_date: "2026-03-08",
-        start_time: "19:00",
-        reminder_days_before: 1,
-      },
+      { start_date: "2026-03-08", start_time: "19:00", reminder_days_before: 1 },
       "America/New_York",
     );
     expect(spring?.startAt.toISOString()).toBe("2026-03-08T23:00:00.000Z");
     expect(spring?.dueAt.toISOString()).toBe("2026-03-08T00:00:00.000Z");
     // Fall-back is Sunday 2026-11-01: 19:00 Saturday EDT, 25 hours earlier.
     const fall = reminderDueAt(
-      {
-        start_date: "2026-11-01",
-        start_time: "19:00",
-        reminder_days_before: 1,
-      },
+      { start_date: "2026-11-01", start_time: "19:00", reminder_days_before: 1 },
       "America/New_York",
     );
     expect(fall?.dueAt.toISOString()).toBe("2026-10-31T23:00:00.000Z");
     // Across a month boundary, too.
     const monthStart = reminderDueAt(
-      {
-        start_date: "2026-03-01",
-        start_time: "09:00",
-        reminder_days_before: 2,
-      },
+      { start_date: "2026-03-01", start_time: "09:00", reminder_days_before: 2 },
       "Europe/Istanbul",
     );
     expect(monthStart?.dueAt.toISOString()).toBe("2026-02-27T06:00:00.000Z");
@@ -266,12 +226,8 @@ describe("isWithinQuietHours", () => {
     // One instant, two houses: 06:00 in Istanbul (quiet) and 23:00 in New York
     // (also quiet) — but 14:00 in Istanbul vs 06:00 New York separates them.
     const instant = new Date("2026-01-15T11:00:00Z"); // 14:00 Istanbul, 06:00 NY
-    expect(isWithinQuietHours(instant, "Europe/Istanbul", overnight)).toBe(
-      false,
-    );
-    expect(isWithinQuietHours(instant, "America/New_York", overnight)).toBe(
-      true,
-    );
+    expect(isWithinQuietHours(instant, "Europe/Istanbul", overnight)).toBe(false);
+    expect(isWithinQuietHours(instant, "America/New_York", overnight)).toBe(true);
   });
 
   it("handles a same-day window", () => {

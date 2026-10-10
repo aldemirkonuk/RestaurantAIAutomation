@@ -2,11 +2,7 @@ import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
-import {
-  A_MANAGER,
-  A_SEAL,
-  GATES_AFTER_LEDGER,
-} from "./testing/passing-vendor-gates";
+import { A_MANAGER, A_SEAL, GATES_AFTER_LEDGER } from "./testing/passing-vendor-gates";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { CreateOrderDto } from "./dto/procurement.dto";
@@ -371,12 +367,7 @@ describe("createOrder — unit arithmetic", () => {
 });
 
 describe("createOrder — the total is worked out, never taken on the caller's word (F-732)", () => {
-  const big = {
-    inventoryId: "inv-1",
-    providerId: "prov-1",
-    quantity: 600,
-    quotedPrice: 50,
-  } as any;
+  const big = { inventoryId: "inv-1", providerId: "prov-1", quantity: 600, quotedPrice: 50 } as any;
 
   it("[REVERT-FAILS] refuses a $1 total on 600 at $50, in words, and writes nothing", async () => {
     // The owner's $2,500 ceiling reads total_cost; a $1 total slipped a
@@ -384,22 +375,14 @@ describe("createOrder — the total is worked out, never taken on the caller's w
     const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
     await expect(
       service(db).createOrder("rest-1", USER, { ...big, totalCost: 1 }),
-    ).rejects.toThrow(
-      /\(1\.00\) is not what the quantity at the agreed price comes to \(30000\.00\)/,
-    );
+    ).rejects.toThrow(/\(1\.00\) is not what the quantity at the agreed price comes to \(30000\.00\)/);
     expect(calls.orderInserts).toHaveLength(0);
   });
 
   it("[REVERT-FAILS] says the refused totals in the order's own money, never as dollars (F-829)", async () => {
     const { db } = makeDb({ insertedOrder, inventory: inventoryRow });
-    const refusal = service(db).createOrder("rest-1", USER, {
-      ...big,
-      currency: "TRY",
-      totalCost: 1,
-    });
-    await expect(refusal).rejects.toThrow(
-      /\(TRY.1\.00\) is not what .* comes to \(TRY.30000\.00\)/,
-    );
+    const refusal = service(db).createOrder("rest-1", USER, { ...big, currency: "TRY", totalCost: 1 });
+    await expect(refusal).rejects.toThrow(/\(TRY.1\.00\) is not what .* comes to \(TRY.30000\.00\)/);
     await expect(refusal).rejects.not.toThrow(/\$/);
   });
 
@@ -407,20 +390,10 @@ describe("createOrder — the total is worked out, never taken on the caller's w
     const { db } = makeDb({
       insertedOrder,
       inventory: inventoryRow,
-      restaurant: {
-        currency: "TRY",
-        country: "TR",
-        timezone: "Europe/Istanbul",
-      },
+      restaurant: { currency: "TRY", country: "TR", timezone: "Europe/Istanbul" },
     });
-    const refusal = service(db).createOrder("rest-1", USER, {
-      ...big,
-      currency: "TRY",
-      totalCost: 1,
-    });
-    await expect(refusal).rejects.toThrow(
-      "(₺1,00) is not what the quantity at the agreed price comes to (₺30.000,00)",
-    );
+    const refusal = service(db).createOrder("rest-1", USER, { ...big, currency: "TRY", totalCost: 1 });
+    await expect(refusal).rejects.toThrow("(₺1,00) is not what the quantity at the agreed price comes to (₺30.000,00)");
   });
 
   it("stores 600 × $50 as $30,000 when no total is sent, so the ceiling sees the real figure", async () => {
@@ -528,16 +501,10 @@ describe("price_history finally has a writer", () => {
       orderLine: bottleLine,
       inventory: inventoryRow,
     });
-    await service(db).confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        finalPrice: 36.5,
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await service(db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      finalPrice: 36.5,
+      sendConfirmation: false,
+    }, A_SEAL);
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     const p = calls.priceHistoryInserts[0];
@@ -557,15 +524,9 @@ describe("price_history finally has a writer", () => {
       orderLine: bottleLine,
       inventory: inventoryRow,
     });
-    await service(db).confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await service(db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      sendConfirmation: false,
+    }, A_SEAL);
     expect(calls.priceHistoryInserts[0].price).toBe(38);
   });
 
@@ -580,15 +541,9 @@ describe("price_history finally has a writer", () => {
       orderLine: bottleLine,
       inventory: inventoryRow,
     });
-    await service(priced.db).confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await service(priced.db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      sendConfirmation: false,
+    }, A_SEAL);
     expect(priced.calls.priceHistoryInserts).toHaveLength(1);
 
     const unpriced = makeDb({
@@ -601,15 +556,9 @@ describe("price_history finally has a writer", () => {
       orderLine: { ...bottleLine, final_unit_price: null },
       inventory: inventoryRow,
     });
-    await service(unpriced.db).confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await service(unpriced.db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      sendConfirmation: false,
+    }, A_SEAL);
     expect(unpriced.calls.priceHistoryInserts).toHaveLength(0);
   });
 
@@ -631,16 +580,10 @@ describe("price_history finally has a writer", () => {
       },
       inventory: inventoryRow,
     });
-    await service(db).confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        finalPrice: 420,
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await service(db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      finalPrice: 420,
+      sendConfirmation: false,
+    }, A_SEAL);
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     const p = calls.priceHistoryInserts[0];
@@ -666,16 +609,10 @@ describe("price_history finally has a writer", () => {
       },
       inventory: inventoryRow,
     });
-    await service(db).confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        finalPrice: 38,
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await service(db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      finalPrice: 38,
+      sendConfirmation: false,
+    }, A_SEAL);
     // Pre-fix this wrote $38.00 under `unit: "BOTTLE"` on no evidence at all.
     expect(calls.priceHistoryInserts).toHaveLength(0);
   });
@@ -694,16 +631,10 @@ describe("price_history finally has a writer", () => {
       },
       inventory: inventoryRow,
     });
-    await service(db).confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        finalPrice: 399,
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await service(db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      finalPrice: 399,
+      sendConfirmation: false,
+    }, A_SEAL);
 
     // Pre-fix (`:5205-5209` at 611f7682) the header took 399 and the line kept
     // 420 — the divergence ADR 0119 Q2 exists to end. The database now refuses
@@ -724,22 +655,14 @@ describe("price_history finally has a writer", () => {
     });
     const svc = service(db);
     const logged: string[] = [];
-    jest
-      .spyOn((svc as any).logger, "warn")
-      .mockImplementation((...a: any[]) => {
-        logged.push(String(a[0]));
-      });
+    jest.spyOn((svc as any).logger, "warn").mockImplementation((...a: any[]) => {
+      logged.push(String(a[0]));
+    });
 
-    await svc.confirmDeal(
-      "rest-1",
-      insertedOrder.id,
-      A_MANAGER,
-      {
-        finalPrice: 41,
-        sendConfirmation: false,
-      },
-      A_SEAL,
-    );
+    await svc.confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+      finalPrice: 41,
+      sendConfirmation: false,
+    }, A_SEAL);
 
     // Legal — the echo trigger permits it precisely because there is nothing to
     // disagree with — and said out loud, because no invoice can be matched
@@ -780,15 +703,9 @@ describe("price_history finally has a writer", () => {
       return q;
     };
     await expect(
-      service(db).confirmDeal(
-        "rest-1",
-        insertedOrder.id,
-        A_MANAGER,
-        {
-          sendConfirmation: false,
-        },
-        A_SEAL,
-      ),
+      service(db).confirmDeal("rest-1", insertedOrder.id, A_MANAGER, {
+        sendConfirmation: false,
+      }, A_SEAL),
     ).resolves.toMatchObject({ confirmed: true });
     // The write must have been ATTEMPTED — otherwise this passes against code
     // that has no price writer at all, which is the state it exists to rule out.

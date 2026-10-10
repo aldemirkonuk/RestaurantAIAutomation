@@ -46,27 +46,15 @@ export const HISTORY_COLUMNS: ReadonlyArray<
 > = [
   ["shifts", "member_id", (sb) => sb.from("shifts")],
   ["time_off_requests", "member_id", (sb) => sb.from("time_off_requests")],
-  [
-    "team_member_wage_changes",
-    "member_id",
-    (sb) => sb.from("team_member_wage_changes"),
-  ],
+  ["team_member_wage_changes", "member_id", (sb) => sb.from("team_member_wage_changes")],
   ["team_certifications", "member_id", (sb) => sb.from("team_certifications")],
   // Cascade from team_members: a delete would take these with it.
   ["server_sales", "member_id", (sb) => sb.from("server_sales")],
   ["schedule_receipts", "member_id", (sb) => sb.from("schedule_receipts")],
   ["team_availability", "member_id", (sb) => sb.from("team_availability")],
   ["house_area_members", "member_id", (sb) => sb.from("house_area_members")],
-  [
-    "team_note_recipients",
-    "member_id",
-    (sb) => sb.from("team_note_recipients"),
-  ],
-  [
-    "team_note_deliveries",
-    "member_id",
-    (sb) => sb.from("team_note_deliveries"),
-  ],
+  ["team_note_recipients", "member_id", (sb) => sb.from("team_note_recipients")],
+  ["team_note_deliveries", "member_id", (sb) => sb.from("team_note_deliveries")],
   ["house_away_held", "member_id", (sb) => sb.from("house_away_held")],
   // Set to null by a delete: the record would lose who it was about.
   ["swap_requests", "from_member_id", (sb) => sb.from("swap_requests")],
@@ -138,11 +126,7 @@ export async function retireLapsedInvitePlaceholders(
   sb: any,
   logger: Logger,
   restaurantId: string,
-  members: Array<{
-    id: string;
-    invite_id?: string | null;
-    user_id?: string | null;
-  }>,
+  members: Array<{ id: string; invite_id?: string | null; user_id?: string | null }>,
 ): Promise<Set<string>> {
   const inviteIds = [
     ...new Set(

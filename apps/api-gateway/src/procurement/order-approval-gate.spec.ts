@@ -6,11 +6,7 @@ import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { ApprovalThresholdsService } from "../settings/approval-thresholds.service";
 import { OrganizationsService } from "../organizations/organizations.service";
-import {
-  roleSatisfies,
-  refusalSentence,
-  policyNote,
-} from "./order-approval-gate";
+import { roleSatisfies, refusalSentence, policyNote } from "./order-approval-gate";
 import type { ThresholdRow } from "../settings/approval-thresholds";
 
 /**
@@ -56,10 +52,7 @@ const REST = "rest-1";
 const ORDER = "44444444-4444-4444-8444-444444444444";
 const USER = "22222222-2222-4222-8222-222222222222";
 
-function ceiling(
-  amount: number,
-  requiredRole: "owner" | "manager" = "owner",
-): ThresholdRow {
+function ceiling(amount: number, requiredRole: "owner" | "manager" = "owner"): ThresholdRow {
   return {
     rule: "manager_ceiling",
     enabled: true,
@@ -106,12 +99,7 @@ function makeDb(opts: {
   /** `restaurants.currency` — the currency the ceiling is in (F-648). */
   houseCurrency?: string | null;
 }) {
-  const calls: Calls = {
-    orderUpdates: [],
-    auditInserts: [],
-    seals: [],
-    notificationUpdates: [],
-  };
+  const calls: Calls = { orderUpdates: [], auditInserts: [], seals: [], notificationUpdates: [] };
 
   const supabase: any = {
     from(table: string) {
@@ -125,10 +113,7 @@ function makeDb(opts: {
 
       const settle = (shape: "one" | "many") => {
         if (table === "restaurants") {
-          return {
-            data: { currency: opts.houseCurrency ?? null },
-            error: null,
-          };
+          return { data: { currency: opts.houseCurrency ?? null }, error: null };
         }
         if (table === "providers") {
           if (opts.countErrors)
@@ -169,9 +154,7 @@ function makeDb(opts: {
         if (table === "system_audit_log") {
           return {
             data: null,
-            error: opts.auditFails
-              ? { message: "audit table unreachable" }
-              : null,
+            error: opts.auditFails ? { message: "audit table unreachable" } : null,
           };
         }
         if (table === "procurement_orders") {
@@ -187,7 +170,8 @@ function makeDb(opts: {
               return { data: null, error: opts.orderReadError };
             return { data: opts.order ?? null, error: null };
           }
-          if (opts.ledgerError) return { data: null, error: opts.ledgerError };
+          if (opts.ledgerError)
+            return { data: null, error: opts.ledgerError };
           return { data: opts.ledgerRows ?? [], error: null };
         }
         return { data: shape === "many" ? [] : null, error: null };
@@ -208,8 +192,7 @@ function makeDb(opts: {
           return api;
         };
         api.maybeSingle = async () => ({
-          data:
-            calls.seals.find((sl: Row) => sl.token_hash === tokenHash) ?? null,
+          data: calls.seals.find((sl: Row) => sl.token_hash === tokenHash) ?? null,
           error: null,
         });
         api.insert = (row: Row) => {
@@ -234,10 +217,7 @@ function makeDb(opts: {
                 return Promise.resolve({ data: [], error: null }).then(res);
               }
               row.redeemed_at = String(patch.redeemed_at);
-              return Promise.resolve({
-                data: [{ id: row.id }],
-                error: null,
-              }).then(res);
+              return Promise.resolve({ data: [{ id: row.id }], error: null }).then(res);
             },
           });
           return upd;
@@ -259,8 +239,7 @@ function makeDb(opts: {
           return q;
         },
         not: (col: string, op: string, value: unknown) => {
-          if (col === "orders.final_price" && op === "is" && value === null)
-            pricedOnly = true;
+          if (col === "orders.final_price" && op === "is" && value === null) pricedOnly = true;
           return q;
         },
         gte: () => q,
@@ -302,12 +281,8 @@ function makeDb(opts: {
   return { db, calls };
 }
 
-const events = {
-  createEvent: jest.fn().mockResolvedValue({}),
-} as unknown as EventsService;
-const ledger = {
-  recordTransaction: jest.fn().mockResolvedValue({}),
-} as unknown as InventoryLedgerService;
+const events = { createEvent: jest.fn().mockResolvedValue({}) } as unknown as EventsService;
+const ledger = { recordTransaction: jest.fn().mockResolvedValue({}) } as unknown as InventoryLedgerService;
 
 function thresholdsStub(
   rows: ThresholdRow[],
@@ -436,11 +411,7 @@ describe("refusalSentence and policyNote — the words the person reads", () => 
 describe("approveOrder — the ceiling", () => {
   it("BELOW the ceiling: a manager seals it, and no refusal is filed", async () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 900 } });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(1000)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await sealedApprove(svc);
 
@@ -450,11 +421,7 @@ describe("approveOrder — the ceiling", () => {
 
   it("AT the ceiling: a manager seals it — a house that set 1000 allowed 1000", async () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 1000 } });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(1000)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await sealedApprove(svc);
 
@@ -464,11 +431,7 @@ describe("approveOrder — the ceiling", () => {
 
   it("ABOVE the ceiling: a manager is refused with the rule and the number in words", async () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 1001 } });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(1000)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -477,9 +440,7 @@ describe("approveOrder — the ceiling", () => {
     // Nothing was sealed.
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
     // The order is parked where the row itself says it is waiting.
-    expect(calls.orderUpdates.some((u) => u.status === "APPROVAL_NEEDED")).toBe(
-      true,
-    );
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVAL_NEEDED")).toBe(true);
   });
 
   it("ABOVE the ceiling: the OWNER seals the same order", async () => {
@@ -494,11 +455,7 @@ describe("approveOrder — the ceiling", () => {
 
   it("the refusal message carries the whole sentence, not a code", async () => {
     const { db } = makeDb({ order: { ...ORDER_ROW, total_cost: 5000 } });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(1000)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /over the 1000 ceiling this house set for a manager/,
@@ -527,11 +484,7 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       order: { ...ORDER_ROW, total_cost: 2400, currency: "GBP" },
       houseCurrency: "USD",
     });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(2500)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(2500)]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /in GBP, while the 2500 ceiling this house set for a manager is in USD/,
@@ -544,11 +497,7 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       order: { ...ORDER_ROW, total_cost: 2400, currency: "USD" },
       houseCurrency: "USD",
     });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(2500)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(2500)]), orgsStub("manager"));
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -568,11 +517,7 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
         },
       ],
     });
-    const svc = service(
-      db,
-      thresholdsStub([priceJump(5)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /8\.6% above the last price this house paid/,
@@ -589,11 +534,7 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       },
       priorPrices: [{ final_price: 35, currency: "USD" }],
     });
-    const svc = service(
-      db,
-      thresholdsStub([priceJump(5)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -604,11 +545,7 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       order: { ...ORDER_ROW, final_price: 400, currency: "USD" },
       priorPrices: [{ final_price: 30, currency: "GBP" }],
     });
-    const svc = service(
-      db,
-      thresholdsStub([priceJump(5)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -625,11 +562,7 @@ describe("approveOrder — an unknown fact never fires a rule", () => {
       order: ORDER_ROW,
       countErrors: true,
     });
-    const svc = service(
-      db,
-      thresholdsStub([newVendorRule()]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
     await sealedApprove(svc);
 
@@ -638,11 +571,7 @@ describe("approveOrder — an unknown fact never fires a rule", () => {
 
   it("a genuine first order to a vendor DOES fire new_vendor", async () => {
     const { db, calls } = makeDb({ order: ORDER_ROW, priorOrdersToVendor: 0 });
-    const svc = service(
-      db,
-      thresholdsStub([newVendorRule()]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /first order this house has placed with this vendor/,
@@ -652,11 +581,7 @@ describe("approveOrder — an unknown fact never fires a rule", () => {
 
   it("a vendor already ordered from does NOT fire new_vendor", async () => {
     const { db, calls } = makeDb({ order: ORDER_ROW, priorOrdersToVendor: 3 });
-    const svc = service(
-      db,
-      thresholdsStub([newVendorRule()]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -674,19 +599,10 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
       order: FIRST_LINE,
       vendorOrders: [
         { id: ORDER, status: "PENDING", requested_at: AT, created_at: AT },
-        {
-          id: "99999999-9999-4999-8999-999999999999",
-          status: "PENDING",
-          requested_at: AT,
-          created_at: "2026-10-01T10:00:01Z",
-        },
+        { id: "99999999-9999-4999-8999-999999999999", status: "PENDING", requested_at: AT, created_at: "2026-10-01T10:00:01Z" },
       ],
     });
-    const svc = service(
-      db,
-      thresholdsStub([newVendorRule()]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /first order this house has placed with this vendor/,
@@ -698,26 +614,12 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
     const { db } = makeDb({
       order: FIRST_LINE,
       vendorOrders: [
-        {
-          id: "o-cancelled",
-          status: "CANCELLED",
-          requested_at: "2026-09-01T00:00:00Z",
-          created_at: "2026-09-01T00:00:00Z",
-        },
-        {
-          id: "o-rejected",
-          status: "rejected",
-          requested_at: "2026-09-02T00:00:00Z",
-          created_at: "2026-09-02T00:00:00Z",
-        },
+        { id: "o-cancelled", status: "CANCELLED", requested_at: "2026-09-01T00:00:00Z", created_at: "2026-09-01T00:00:00Z" },
+        { id: "o-rejected", status: "rejected", requested_at: "2026-09-02T00:00:00Z", created_at: "2026-09-02T00:00:00Z" },
         { id: ORDER, status: "PENDING", requested_at: AT, created_at: AT },
       ],
     });
-    const svc = service(
-      db,
-      thresholdsStub([newVendorRule()]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /first order this house has placed with this vendor/,
@@ -725,33 +627,15 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
   });
 
   it("the later line of the same cart is not first — only the earliest is held", async () => {
-    const LATER = {
-      ...ORDER_ROW,
-      requested_at: AT,
-      created_at: "2026-10-01T10:00:01Z",
-    };
+    const LATER = { ...ORDER_ROW, requested_at: AT, created_at: "2026-10-01T10:00:01Z" };
     const { db, calls } = makeDb({
       order: LATER,
       vendorOrders: [
-        {
-          id: "00000000-0000-4000-8000-000000000001",
-          status: "PENDING",
-          requested_at: AT,
-          created_at: AT,
-        },
-        {
-          id: ORDER,
-          status: "PENDING",
-          requested_at: AT,
-          created_at: LATER.created_at,
-        },
+        { id: "00000000-0000-4000-8000-000000000001", status: "PENDING", requested_at: AT, created_at: AT },
+        { id: ORDER, status: "PENDING", requested_at: AT, created_at: LATER.created_at },
       ],
     });
-    const svc = service(
-      db,
-      thresholdsStub([newVendorRule()]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -759,56 +643,18 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
 
   it("[REVERT-FAILS] the /orders walk marks the same line the gate holds", async () => {
     const ledgerRows = [
-      {
-        id: "o-cancelled",
-        status: "CANCELLED",
-        provider_id: "p1",
-        inventory_id: null,
-        requested_at: "2026-09-01T00:00:00Z",
-        created_at: "2026-09-01T00:00:00Z",
-        total_cost: 10,
-        final_price: null,
-      },
-      {
-        id: "o-b",
-        status: "PENDING",
-        provider_id: "p1",
-        inventory_id: null,
-        requested_at: AT,
-        created_at: AT,
-        total_cost: 10,
-        final_price: null,
-      },
-      {
-        id: "o-a",
-        status: "PENDING",
-        provider_id: "p1",
-        inventory_id: null,
-        requested_at: AT,
-        created_at: AT,
-        total_cost: 10,
-        final_price: null,
-      },
+      { id: "o-cancelled", status: "CANCELLED", provider_id: "p1", inventory_id: null, requested_at: "2026-09-01T00:00:00Z", created_at: "2026-09-01T00:00:00Z", total_cost: 10, final_price: null },
+      { id: "o-b", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: AT, created_at: AT, total_cost: 10, final_price: null },
+      { id: "o-a", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: AT, created_at: AT, total_cost: 10, final_price: null },
     ];
     // The walk reads the pending orders whole (ADR 0292, F-331) and asks each
     // one's vendor history with the gate's own probe, so the probe is fed the
     // same ledger the database would hand it.
     const { db } = makeDb({
       ledgerRows,
-      vendorOrders: ledgerRows.map(
-        ({ id, status, requested_at, created_at }) => ({
-          id,
-          status,
-          requested_at,
-          created_at,
-        }),
-      ),
+      vendorOrders: ledgerRows.map(({ id, status, requested_at, created_at }) => ({ id, status, requested_at, created_at })),
     });
-    const svc = service(
-      db,
-      thresholdsStub([newVendorRule()]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
     const gate = await svc.approvalGate(REST, USER);
     const held = gate.orders.filter((o) => !o.mayApprove).map((o) => o.orderId);
@@ -841,11 +687,7 @@ describe("approveOrder — price_jump compares against the last price PAID (F-47
         { final_price: 390, status: "DELIVERED", requested_at: "2026-09-01" },
       ],
     });
-    const svc = service(
-      db,
-      thresholdsStub([priceJumpRule(20)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([priceJumpRule(20)]), orgsStub("manager"));
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -861,11 +703,7 @@ describe("approveOrder — price_jump compares against the last price PAID (F-47
         { final_price: 250, status: "COMPLETED", requested_at: "2026-09-01" },
       ],
     });
-    const svc = service(
-      db,
-      thresholdsStub([priceJumpRule(20)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([priceJumpRule(20)]), orgsStub("manager"));
 
     // 400 over the 250 paid is 60% — the rule names the jump, not the seal.
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
@@ -877,9 +715,7 @@ describe("approveOrder — price_jump compares against the last price PAID (F-47
 
 describe("approveOrder — a house with no policy, and a policy that cannot be read", () => {
   it("NO rule at all: seals exactly as before", async () => {
-    const { db, calls } = makeDb({
-      order: { ...ORDER_ROW, total_cost: 999999 },
-    });
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 999999 } });
     const svc = service(db, thresholdsStub([]), orgsStub("staff"));
 
     await sealedApprove(svc);
@@ -892,10 +728,7 @@ describe("approveOrder — a house with no policy, and a policy that cannot be r
     const { db, calls } = makeDb({ order: ORDER_ROW });
     const svc = service(
       db,
-      thresholdsStub([], {
-        readable: false,
-        reason: "the table is not present",
-      }),
+      thresholdsStub([], { readable: false, reason: "the table is not present" }),
       orgsStub("owner"),
     );
 
@@ -931,11 +764,7 @@ describe("approveOrder — a house with no policy, and a policy that cannot be r
 describe("approveOrder — the refusal is filed", () => {
   it("writes one system_audit_log row naming the rule, the roles and the amount", async () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 } });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(1000)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -959,15 +788,8 @@ describe("approveOrder — the refusal is filed", () => {
   });
 
   it("an audit row that FAILS to write does not turn the 403 into a 500", async () => {
-    const { db } = makeDb({
-      order: { ...ORDER_ROW, total_cost: 7500 },
-      auditFails: true,
-    });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(1000)]),
-      orgsStub("manager"),
-    );
+    const { db } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 }, auditFails: true });
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -979,37 +801,12 @@ describe("approvalGate — what the page is allowed to draw", () => {
   it("marks each pending order with the role it needs and whether the caller has it", async () => {
     const { db } = makeDb({
       ledgerRows: [
-        {
-          id: "o-small",
-          status: "PENDING",
-          provider_id: "p1",
-          inventory_id: null,
-          total_cost: 100,
-          final_price: null,
-        },
-        {
-          id: "o-big",
-          status: "PENDING",
-          provider_id: "p1",
-          inventory_id: null,
-          total_cost: 9000,
-          final_price: null,
-        },
-        {
-          id: "o-done",
-          status: "DELIVERED",
-          provider_id: "p1",
-          inventory_id: null,
-          total_cost: 9000,
-          final_price: null,
-        },
+        { id: "o-small", status: "PENDING", provider_id: "p1", inventory_id: null, total_cost: 100, final_price: null },
+        { id: "o-big", status: "PENDING", provider_id: "p1", inventory_id: null, total_cost: 9000, final_price: null },
+        { id: "o-done", status: "DELIVERED", provider_id: "p1", inventory_id: null, total_cost: 9000, final_price: null },
       ],
     });
-    const svc = service(
-      db,
-      thresholdsStub([ceiling(1000)]),
-      orgsStub("manager"),
-    );
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     const gate = await svc.approvalGate(REST, USER);
 
@@ -1017,10 +814,7 @@ describe("approvalGate — what the page is allowed to draw", () => {
     expect(gate.callerRole).toBe("manager");
     expect(gate.policySet).toBe(true);
     // Only orders still waiting for a signature are listed.
-    expect(gate.orders.map((o) => o.orderId).sort()).toEqual([
-      "o-big",
-      "o-small",
-    ]);
+    expect(gate.orders.map((o) => o.orderId).sort()).toEqual(["o-big", "o-small"]);
 
     const small = gate.orders.find((o) => o.orderId === "o-small")!;
     expect(small.mayApprove).toBe(true);
@@ -1045,30 +839,9 @@ describe("approvalGate — what the page is allowed to draw", () => {
     const { db } = makeDb({
       // Oldest first, as the walk reads them.
       ledgerRows: [
-        {
-          id: "o-paid",
-          status: "DELIVERED",
-          provider_id: "p1",
-          inventory_id: "inv-1",
-          total_cost: 390,
-          final_price: 390,
-        },
-        {
-          id: "o-void",
-          status: "CANCELLED",
-          provider_id: "p1",
-          inventory_id: "inv-1",
-          total_cost: 200,
-          final_price: 200,
-        },
-        {
-          id: "o-now",
-          status: "PENDING",
-          provider_id: "p1",
-          inventory_id: "inv-1",
-          total_cost: 400,
-          final_price: 400,
-        },
+        { id: "o-paid", status: "DELIVERED", provider_id: "p1", inventory_id: "inv-1", total_cost: 390, final_price: 390 },
+        { id: "o-void", status: "CANCELLED", provider_id: "p1", inventory_id: "inv-1", total_cost: 200, final_price: 200 },
+        { id: "o-now", status: "PENDING", provider_id: "p1", inventory_id: "inv-1", total_cost: 400, final_price: 400 },
       ],
     });
     const svc = service(db, thresholdsStub([jump]), orgsStub("manager"));
@@ -1094,14 +867,7 @@ describe("approvalGate — what the page is allowed to draw", () => {
   it("a house with no rule says 'no threshold is set for this house'", async () => {
     const { db } = makeDb({
       ledgerRows: [
-        {
-          id: "o1",
-          status: "PENDING",
-          provider_id: "p1",
-          inventory_id: null,
-          total_cost: 50000,
-          final_price: null,
-        },
+        { id: "o1", status: "PENDING", provider_id: "p1", inventory_id: null, total_cost: 50000, final_price: null },
       ],
     });
     const svc = service(db, thresholdsStub([]), orgsStub("staff"));
@@ -1120,25 +886,15 @@ describe("approveOrder — the people who may seal a parked order are told (F-52
   function told(role: string | null, rule = ceiling(1000)) {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 } });
     const notifications = {
-      persistForRestaurant: jest
-        .fn()
-        .mockResolvedValue({ inserted: 1, ids: ["n1"] }),
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1, ids: ["n1"] }),
     };
     const authority = {
-      ownersAndManagers: jest
-        .fn()
-        .mockResolvedValue({ owners: [OWNER], managers: [MANAGER, USER] }),
+      ownersAndManagers: jest.fn().mockResolvedValue({ owners: [OWNER], managers: [MANAGER, USER] }),
       namesOf: jest.fn().mockResolvedValue(new Map([[USER, "Selin"]])),
     };
     const svc = new ProcurementService(
-      db,
-      events,
-      ledger,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      db, events, ledger,
+      undefined, undefined, undefined, undefined, undefined,
       notifications as any,
       thresholdsStub([rule]),
       orgsStub(role),
@@ -1151,13 +907,10 @@ describe("approveOrder — the people who may seal a parked order are told (F-52
   it("a manager refused by an owner's ceiling: the owners get one line naming the order, once per order", async () => {
     const { svc, notifications } = told("manager");
 
-    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
 
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
-    const [rest, payload, opts] =
-      notifications.persistForRestaurant.mock.calls[0];
+    const [rest, payload, opts] = notifications.persistForRestaurant.mock.calls[0];
     expect(rest).toBe(REST);
     // `order_pending` + `metadata.orderId` is what lights the bell's "Approve it".
     expect(payload.type).toBe("order_pending");
@@ -1175,9 +928,7 @@ describe("approveOrder — the people who may seal a parked order are told (F-52
   it("a staff member refused by a manager's rule: owners and managers are told", async () => {
     const { svc, notifications } = told("staff", ceiling(1000, "manager"));
 
-    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
 
     const [, , opts] = notifications.persistForRestaurant.mock.calls[0];
     expect(opts.onlyUserIds).toEqual([OWNER, MANAGER]);

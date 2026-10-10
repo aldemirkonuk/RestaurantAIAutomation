@@ -68,8 +68,7 @@ class OrdersQuery {
     return this;
   }
   async maybeSingle() {
-    if (this.db.failOrderRead)
-      return { data: null, error: { message: this.db.failOrderRead } };
+    if (this.db.failOrderRead) return { data: null, error: { message: this.db.failOrderRead } };
     const row = this.db.orders.find(
       (o) => o.id === this.id && o.restaurant_id === this.restaurantId,
     );
@@ -107,8 +106,7 @@ class CreditsQuery {
   }
   async maybeSingle() {
     if (this.insertRow) return this.doInsert(false);
-    if (this.db.failCreditsRead)
-      return { data: null, error: { message: this.db.failCreditsRead } };
+    if (this.db.failCreditsRead) return { data: null, error: { message: this.db.failCreditsRead } };
     const row = this.db.credits.find((r) => this.filters.every((f) => f(r)));
     return { data: row ?? null, error: null };
   }
@@ -123,30 +121,18 @@ class CreditsQuery {
    * `openCreditClaim`'s list read of the order's live claims (F-465).
    */
   then<T1 = { data: Row | null; error: Row | null }, T2 = never>(
-    onfulfilled?:
-      | ((value: {
-          data: Row | null;
-          error: Row | null;
-        }) => T1 | PromiseLike<T1>)
-      | null,
+    onfulfilled?: ((value: { data: Row | null; error: Row | null }) => T1 | PromiseLike<T1>) | null,
     onrejected?: ((reason: unknown) => T2 | PromiseLike<T2>) | null,
   ) {
     if (this.insertRow) return this.maybeSingle().then(onfulfilled, onrejected);
     const list = this.db.failCreditsRead
       ? { data: null, error: { message: this.db.failCreditsRead } }
-      : {
-          data: this.db.credits.filter((r) => this.filters.every((f) => f(r))),
-          error: null,
-        };
+      : { data: this.db.credits.filter((r) => this.filters.every((f) => f(r))), error: null };
     return Promise.resolve(list as any).then(onfulfilled, onrejected);
   }
   private async doInsert(wantSingle: boolean) {
-    if (!this.insertRow)
-      throw new Error(
-        "FakeDb: .single()/.maybeSingle() with no prior insert()",
-      );
-    if (this.db.failCreditsInsert)
-      return { data: null, error: { message: this.db.failCreditsInsert } };
+    if (!this.insertRow) throw new Error("FakeDb: .single()/.maybeSingle() with no prior insert()");
+    if (this.db.failCreditsInsert) return { data: null, error: { message: this.db.failCreditsInsert } };
     if (this.db.raceOnInsert) {
       this.db.raceOnInsert = false;
       // A concurrent request's insert is what a real 23505 means: by the
@@ -183,15 +169,7 @@ class CreditsQuery {
     this.db.credits.push(row);
     this.db.creditInserts.push({ row: this.insertRow });
     if (!wantSingle) return { data: row, error: null };
-    return {
-      data: {
-        id: row.id,
-        claimed_amount: row.claimed_amount,
-        currency: row.currency,
-        state: row.state,
-      },
-      error: null,
-    };
+    return { data: { id: row.id, claimed_amount: row.claimed_amount, currency: row.currency, state: row.state }, error: null };
   }
 }
 
@@ -212,12 +190,8 @@ function make(over: { role?: "owner" | "manager" | "staff" | null } = {}) {
   const db = new FakeDb();
   const role = over.role ?? "manager";
   const organizations = {
-    assertCanManageRestaurant: async (
-      _userId: string,
-      restaurantId: string,
-      action: string,
-    ) => {
-      if (restaurantId !== REST || (role !== "owner" && role !== "manager")) {
+    assertCanManageRestaurant: async (_userId: string, restaurantId: string, action: string) => {
+      if (restaurantId !== REST || role !== "owner" && role !== "manager") {
         throw new ForbiddenException(
           `Only a manager or an owner may ${action}. Nothing was changed.`,
         );
@@ -244,43 +218,43 @@ describe("openNeverArrivedCreditClaim — the founder's box, round 6z", () => {
   it("refuses a caller who is not a manager or an owner", async () => {
     const { db, svc } = make({ role: "staff" });
     db.orders.push(order());
-    await expect(
-      svc.openNeverArrivedCreditClaim(REST, ORDER, USER),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.openNeverArrivedCreditClaim(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(db.creditInserts).toHaveLength(0);
   });
 
   it("404s an order that is not this restaurant's", async () => {
     const { db, svc } = make();
     db.orders.push(order({ restaurant_id: OTHER_REST }));
-    await expect(
-      svc.openNeverArrivedCreditClaim(REST, ORDER, USER),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.openNeverArrivedCreditClaim(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it("refuses an order that was not cancelled never_arrived", async () => {
     const { db, svc } = make();
     db.orders.push(order({ cancel_reason_code: "house_decision" }));
-    await expect(
-      svc.openNeverArrivedCreditClaim(REST, ORDER, USER),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(svc.openNeverArrivedCreditClaim(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
     expect(db.creditInserts).toHaveLength(0);
   });
 
   it("refuses an order that is not CANCELLED at all", async () => {
     const { db, svc } = make();
     db.orders.push(order({ status: "CONFIRMED", cancel_reason_code: null }));
-    await expect(
-      svc.openNeverArrivedCreditClaim(REST, ORDER, USER),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(svc.openNeverArrivedCreditClaim(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
   });
 
   it("refuses an order with no positive total to claim back", async () => {
     const { db, svc } = make();
     db.orders.push(order({ total_cost: 0 }));
-    await expect(
-      svc.openNeverArrivedCreditClaim(REST, ORDER, USER),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(svc.openNeverArrivedCreditClaim(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
   });
 
   it("opens a claim for the order's own total, vendor and currency", async () => {
@@ -343,9 +317,9 @@ describe("openNeverArrivedCreditClaim — the founder's box, round 6z", () => {
     const { db, svc } = make();
     db.orders.push(order());
     db.failCreditsInsert = "connection reset";
-    await expect(
-      svc.openNeverArrivedCreditClaim(REST, ORDER, USER),
-    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(svc.openNeverArrivedCreditClaim(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
   });
 });
 

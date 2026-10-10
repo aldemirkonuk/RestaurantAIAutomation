@@ -33,7 +33,10 @@ import {
 } from "./dto/providers.dto";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
-import { ProvidersService, type ProviderCopyResult } from "./providers.service";
+import {
+  ProvidersService,
+  type ProviderCopyResult,
+} from "./providers.service";
 import type { VendorMenuSupply } from "./vendor-menu-supply";
 import {
   parseWineQuery,
@@ -431,12 +434,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<BulkImportResultDto> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Importing vendors",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Importing vendors");
     try {
       // The house comes from the token. The body's `restaurantId` is only
       // compared against it (JwtAuthGuard's assertTenantMatch); before this,
@@ -475,12 +473,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Adding a vendor",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Adding a vendor");
     try {
       return await this.providersService.createProvider(
         dto,
@@ -659,12 +652,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Editing a vendor's record",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor's record");
     try {
       return await this.providersService.updateProvider(
         providerId,
@@ -685,12 +673,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Removing a vendor",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Removing a vendor");
     try {
       await this.providersService.softDeleteProvider(
         providerId,
@@ -755,12 +738,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Rating a vendor",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Rating a vendor");
     try {
       await this.providersService.rateProvider(houseOf(user), providerId, dto);
       return { success: true };
@@ -799,12 +777,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderContactResponseDto> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Adding a vendor contact",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Adding a vendor contact");
     try {
       return await this.providersService.addProviderContact(
         providerId,
@@ -826,12 +799,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderContactResponseDto> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Editing a vendor contact",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor contact");
     try {
       return await this.providersService.updateProviderContact(
         providerId,
@@ -853,12 +821,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Removing a vendor contact",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Removing a vendor contact");
     try {
       await this.providersService.deleteProviderContact(
         providerId,
@@ -884,12 +847,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Recording when a vendor was last contacted",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Recording when a vendor was last contacted");
     try {
       return await this.providersService.updateLastContactDate(
         providerId,
@@ -966,12 +924,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Editing a vendor's profile",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor's profile");
     try {
       return await this.providersService.updateIntelligence(
         providerId,
@@ -1032,12 +985,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ) {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Adding a vendor branch",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Adding a vendor branch");
     try {
       return await this.providersService.createProviderLocation(
         providerId,
@@ -1058,12 +1006,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ) {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Editing a vendor branch",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor branch");
     try {
       return await this.providersService.updateProviderLocation(
         providerId,
@@ -1084,12 +1027,7 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ) {
     // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Removing a vendor branch",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Removing a vendor branch");
     try {
       const after = await this.providersService.deleteProviderLocation(
         providerId,
@@ -1126,12 +1064,7 @@ export class ProvidersController {
   }> {
     // Recording a past purchase against a vendor is a money act: manager or
     // owner only, the same rule as every other vendor write (VEN-W30).
-    await assertVendorWriter(
-      this.organizations,
-      actorOf(user),
-      houseOf(user),
-      "Recording a past purchase from a vendor",
-    );
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Recording a past purchase from a vendor");
     try {
       return await this.providersService.createRetroactiveOrder(
         providerId,

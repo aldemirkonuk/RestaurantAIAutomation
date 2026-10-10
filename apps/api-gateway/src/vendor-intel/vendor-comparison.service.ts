@@ -617,8 +617,7 @@ export class VendorComparisonService {
           unitVolumeMl: r.unit_volume_ml ?? undefined,
           yieldFactor: Number(r.yield_factor) || 1,
         });
-        if (unitPrice !== null && Number.isFinite(unitPrice))
-          out.push(unitPrice);
+        if (unitPrice !== null && Number.isFinite(unitPrice)) out.push(unitPrice);
       }
       return out;
     } catch (e: any) {
@@ -684,9 +683,7 @@ export class VendorComparisonService {
       );
     } catch (err) {
       if (!(err instanceof WholeReadError)) throw err;
-      this.logger.error(
-        `Failed to sweep vendor price observations: ${err.message}`,
-      );
+      this.logger.error(`Failed to sweep vendor price observations: ${err.message}`);
       if (err.reason !== "read_failed") throw err;
       throw new InternalServerErrorException(
         `Could not read the price register: ${err.detail}`,
@@ -772,12 +769,8 @@ export class VendorComparisonService {
           `Could not read identity labels for the compare panel (${idErr.message}); rows will show the identity id instead.`,
         );
       } else {
-        for (const idRow of (idRows ?? []) as Array<{
-          id: string;
-          display_label: string | null;
-        }>) {
-          if (idRow.display_label)
-            identityLabels[idRow.id] = idRow.display_label;
+        for (const idRow of (idRows ?? []) as Array<{ id: string; display_label: string | null }>) {
+          if (idRow.display_label) identityLabels[idRow.id] = idRow.display_label;
         }
       }
     }
@@ -843,9 +836,7 @@ export class VendorComparisonService {
               ? r.raw.notes
               : null,
         identityId: r.identity_id ?? null,
-        identityLabel: r.identity_id
-          ? (identityLabels[r.identity_id] ?? null)
-          : null,
+        identityLabel: r.identity_id ? (identityLabels[r.identity_id] ?? null) : null,
         normalizedUnitPrice: normalizeUnitPrice(observations[i]).unitPrice,
         provenance: provenanceById.get(r.id) ?? EMPTY_PROVENANCE,
       })),
@@ -878,25 +869,16 @@ export class VendorComparisonService {
     const out = new Map<string, ObservationProvenance>();
     if (!restaurantId) return out;
     const own = rows.filter((r) => r.restaurant_id === restaurantId);
-    const ids = own.map((r) => ({
-      id: r.id as string,
-      ids: provenanceIdsOf(r),
-    }));
-    const uniq = (xs: Array<string | null>) => [
-      ...new Set(xs.filter((x): x is string => !!x)),
-    ];
+    const ids = own.map((r) => ({ id: r.id as string, ids: provenanceIdsOf(r) }));
+    const uniq = (xs: Array<string | null>) =>
+      [...new Set(xs.filter((x): x is string => !!x))];
     const documentIds = uniq(ids.map((x) => x.ids.documentId));
     const lineIds = uniq(ids.map((x) => x.ids.documentLineId));
     const messageIds = uniq(ids.map((x) => x.ids.conversationMessageId));
     const contactIds = uniq(ids.map((x) => x.ids.sourceContactId));
     if (!documentIds.length && !messageIds.length && !contactIds.length) {
       for (const x of ids) {
-        if (
-          x.ids.recorded.documentId ||
-          x.ids.recorded.conversationMessageId ||
-          x.ids.recorded.contactId ||
-          x.ids.recorded.sentence
-        )
+        if (x.ids.recorded.documentId || x.ids.recorded.conversationMessageId || x.ids.recorded.contactId || x.ids.recorded.sentence)
           out.set(x.id, provenanceFor(x.ids, emptyReads()));
       }
       return out;
@@ -933,20 +915,12 @@ export class VendorComparisonService {
       if (error) reads.failed.lines = error.message;
       else
         for (const l of (data ?? []) as any[])
-          (
-            reads.lines as Map<
-              string,
-              ProvenanceDocumentLine & { documentId: string }
-            >
-          ).set(l.id, {
+          (reads.lines as Map<string, ProvenanceDocumentLine & { documentId: string }>).set(l.id, {
             id: l.id,
             documentId: l.document_id,
             lineNo: l.line_no ?? null,
             description: l.description ?? null,
-            unitPrice:
-              l.unit_price === null || l.unit_price === undefined
-                ? null
-                : Number(l.unit_price),
+            unitPrice: l.unit_price === null || l.unit_price === undefined ? null : Number(l.unit_price),
             qty: l.qty === null || l.qty === undefined ? null : Number(l.qty),
             uom: l.uom ?? null,
           });
@@ -972,16 +946,12 @@ export class VendorComparisonService {
     // inner join to the contact's vendor — the same boundary the writer
     // checked (`assertProvenanceIsThisHouses`).
     const messageVendorIds = uniq(
-      [...(reads.messages as Map<string, MessageRow>).values()].map(
-        (m) => m.provider_id,
-      ),
+      [...(reads.messages as Map<string, MessageRow>).values()].map((m) => m.provider_id),
     );
     if (contactIds.length || messageVendorIds.length) {
       let q = db
         .from("provider_contacts")
-        .select(
-          "id, provider_id, name, email, role, providers!inner(restaurant_id)",
-        )
+        .select("id, provider_id, name, email, role, providers!inner(restaurant_id)")
         .eq("providers.restaurant_id", restaurantId);
       const clauses: string[] = [];
       if (contactIds.length) clauses.push(`id.in.(${contactIds.join(",")})`);
@@ -1000,8 +970,7 @@ export class VendorComparisonService {
             role: c.role ?? null,
           }),
         );
-        for (const c of list)
-          (reads.contacts as Map<string, ContactRow>).set(c.id, c);
+        for (const c of list) (reads.contacts as Map<string, ContactRow>).set(c.id, c);
         reads.vendorContacts = list;
       }
     }
@@ -1026,9 +995,7 @@ export class VendorComparisonService {
   ): Promise<void> {
     const db = this.databaseService.supabase;
     const cannotCheck = (what: string, message: string) => {
-      this.logger.error(
-        `Could not check the ${what} named on a recorded price: ${message}`,
-      );
+      this.logger.error(`Could not check the ${what} named on a recorded price: ${message}`);
       return new InternalServerErrorException(
         `The ${what} named with this price could not be checked (${message}), so the price was not recorded. Try again.`,
       );
@@ -1107,12 +1074,7 @@ export class VendorComparisonService {
   }): Promise<{
     providerId: string;
     messages: Array<ReturnType<typeof messageOf>>;
-    contacts: Array<{
-      id: string;
-      name: string | null;
-      email: string | null;
-      role: string | null;
-    }>;
+    contacts: Array<{ id: string; name: string | null; email: string | null; role: string | null }>;
   }> {
     const db = this.databaseService.supabase;
     const { data: provider, error: providerError } = await db
@@ -1126,30 +1088,26 @@ export class VendorComparisonService {
         `Could not read the vendor: ${providerError.message}`,
       );
     if (!provider)
-      throw new BadRequestException(
-        "That vendor is not one of this house's vendors.",
-      );
+      throw new BadRequestException("That vendor is not one of this house's vendors.");
 
     const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
-    const [
-      { data: msgs, error: msgError },
-      { data: contacts, error: contactError },
-    ] = await Promise.all([
-      db
-        .from("procurement_conversations")
-        .select(
-          "id, provider_id, order_id, channel, direction, message_text, email_headers, received_at, sent_at, created_at, raw_deleted_at",
-        )
-        .eq("restaurant_id", params.restaurantId)
-        .eq("provider_id", params.providerId)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-      db
-        .from("provider_contacts")
-        .select("id, name, email, role")
-        .eq("provider_id", params.providerId)
-        .order("name", { ascending: true }),
-    ]);
+    const [{ data: msgs, error: msgError }, { data: contacts, error: contactError }] =
+      await Promise.all([
+        db
+          .from("procurement_conversations")
+          .select(
+            "id, provider_id, order_id, channel, direction, message_text, email_headers, received_at, sent_at, created_at, raw_deleted_at",
+          )
+          .eq("restaurant_id", params.restaurantId)
+          .eq("provider_id", params.providerId)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+        db
+          .from("provider_contacts")
+          .select("id, name, email, role")
+          .eq("provider_id", params.providerId)
+          .order("name", { ascending: true }),
+      ]);
     if (msgError)
       throw new InternalServerErrorException(
         `Could not read this vendor's messages: ${msgError.message}`,

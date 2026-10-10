@@ -15,13 +15,7 @@ import {
 function controller(roles: Record<string, string | null | Error>) {
   const organizations = new OrganizationsService({} as never);
   jest.spyOn(organizations, "getBranchesForUser").mockResolvedValue([
-    {
-      id: "h-1",
-      name: "Meyhane",
-      city: null,
-      chain_id: null,
-      chain_name: null,
-    },
+    { id: "h-1", name: "Meyhane", city: null, chain_id: null, chain_name: null },
     { id: "h-2", name: "Bistro", city: null, chain_id: null, chain_name: null },
   ] as any);
   jest
@@ -75,27 +69,20 @@ describe("GET /inventory/across-houses", () => {
       "h-1": "owner",
       "h-2": new RestaurantRoleUnreadableError("down"),
     });
-    await expect(
-      c.getInventoryAcrossHouses({ userId: "u-1" }),
-    ).rejects.toMatchObject({
+    await expect(c.getInventoryAcrossHouses({ userId: "u-1" })).rejects.toMatchObject({
       status: 503,
     });
   });
 
   it("a session naming nobody reads nothing", async () => {
     const { c, read } = controller({ "h-1": "owner" });
-    await expect(c.getInventoryAcrossHouses({})).rejects.toBeInstanceOf(
-      HttpException,
-    );
+    await expect(c.getInventoryAcrossHouses({})).rejects.toBeInstanceOf(HttpException);
     expect(read).not.toHaveBeenCalled();
   });
 });
 
 describe("InventoryService.readHouseCurrency", () => {
-  function service(result: {
-    data: unknown;
-    error: { message: string } | null;
-  }) {
+  function service(result: { data: unknown; error: { message: string } | null }) {
     const chain: any = {
       from: () => chain,
       select: () => chain,
@@ -107,19 +94,13 @@ describe("InventoryService.readHouseCurrency", () => {
 
   it("names the recorded code, a missing one as null, and a failed read as unreadable", async () => {
     await expect(
-      service({ data: { currency: "TRY" }, error: null }).readHouseCurrency(
-        "h-1",
-      ),
+      service({ data: { currency: "TRY" }, error: null }).readHouseCurrency("h-1"),
     ).resolves.toEqual({ code: "TRY", readable: true });
     await expect(
-      service({ data: { currency: null }, error: null }).readHouseCurrency(
-        "h-1",
-      ),
+      service({ data: { currency: null }, error: null }).readHouseCurrency("h-1"),
     ).resolves.toEqual({ code: null, readable: true });
     await expect(
-      service({ data: null, error: { message: "down" } }).readHouseCurrency(
-        "h-1",
-      ),
+      service({ data: null, error: { message: "down" } }).readHouseCurrency("h-1"),
     ).resolves.toEqual({ code: null, readable: false });
   });
 });

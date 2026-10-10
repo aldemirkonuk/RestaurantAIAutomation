@@ -14,12 +14,7 @@ import { ReportCuttingReader } from "./report-cutting-reader.service";
 import { ReportExportsController } from "./report-exports.controller";
 import { ReportExportsService } from "./report-exports.service";
 import { MemorySupabase } from "./__fixtures__/memory-supabase";
-import {
-  HOUSE_A,
-  HOUSE_B,
-  MANAGER_A,
-  PAYLOADS,
-} from "./__fixtures__/cutting-payloads";
+import { HOUSE_A, HOUSE_B, MANAGER_A, PAYLOADS } from "./__fixtures__/cutting-payloads";
 
 /**
  * OD-81 — `/reports/exports` over real HTTP: Nest's router, the real
@@ -75,11 +70,7 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
 
     app = moduleRef.createNestApplication({ logger: false });
     app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     await app.listen(0, "127.0.0.1");
     base = `${await app.getUrl()}`.replace("[::1]", "127.0.0.1");
@@ -99,11 +90,7 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
       method,
       headers: {
         "content-type": "application/json",
-        ...(opts.house === undefined
-          ? { "x-test-house": HOUSE_A }
-          : opts.house
-            ? { "x-test-house": opts.house }
-            : {}),
+        ...(opts.house === undefined ? { "x-test-house": HOUSE_A } : opts.house ? { "x-test-house": opts.house } : {}),
         ...(opts.role ? { "x-test-role": opts.role } : {}),
       },
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
@@ -140,14 +127,10 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
       });
       await started.settled;
     }
-    const page1 = await (
-      await call("GET", "/reports/exports?limit=2&offset=0")
-    ).json();
+    const page1 = await (await call("GET", "/reports/exports?limit=2&offset=0")).json();
     expect(page1.exports).toHaveLength(2);
     expect(page1.total).toBeGreaterThanOrEqual(3);
-    const page2 = await (
-      await call("GET", "/reports/exports?limit=2&offset=2")
-    ).json();
+    const page2 = await (await call("GET", "/reports/exports?limit=2&offset=2")).json();
     expect(page2.total).toBe(page1.total);
     // No id on page 1 reappears on page 2.
     const page1Ids = new Set(page1.exports.map((e: { id: string }) => e.id));
@@ -155,42 +138,28 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
   });
 
   it("queues with 202, writes, and serves the CSV and the print page to its own house", async () => {
-    const res = await call("POST", "/reports/exports", {
-      body: { cutting: "ledger" },
-    });
+    const res = await call("POST", "/reports/exports", { body: { cutting: "ledger" } });
     expect(res.status).toBe(202);
     const body = await res.json();
     expect(body).toMatchObject({ cutting: "ledger", status: "queued" });
     await settled(body.id);
 
-    const csv = await call(
-      "GET",
-      `/reports/exports/${body.id}/download?format=csv`,
-    );
+    const csv = await call("GET", `/reports/exports/${body.id}/download?format=csv`);
     expect(csv.status).toBe(200);
     expect(csv.headers.get("content-type")).toBe("text/csv; charset=utf-8");
-    expect(csv.headers.get("content-disposition")).toMatch(
-      /^attachment; filename="mudavym-[a-z0-9-]+-ledger-as-of-\d{4}-\d{2}-\d{2}(-utc)?\.csv"$/,
-    );
+    expect(csv.headers.get("content-disposition")).toMatch(/^attachment; filename="mudavym-[a-z0-9-]+-ledger-as-of-\d{4}-\d{2}-\d{2}(-utc)?\.csv"$/);
     expect(csv.headers.get("cache-control")).toBe("private, no-store");
     expect(await csv.text()).toContain("Cost of goods (365d),withheld,TRY,");
 
-    const html = await call(
-      "GET",
-      `/reports/exports/${body.id}/download?format=html`,
-    );
+    const html = await call("GET", `/reports/exports/${body.id}/download?format=html`);
     expect(html.status).toBe(200);
-    expect(html.headers.get("content-security-policy")).toBe(
-      "default-src 'none'; style-src 'unsafe-inline'",
-    );
+    expect(html.headers.get("content-security-policy")).toBe("default-src 'none'; style-src 'unsafe-inline'");
     expect(html.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await html.text()).toContain("<h1>Figures of record</h1>");
   });
 
   it("answers 404 to another house for the read, the download and the retry", async () => {
-    const started = await exportsService.requestExport(HOUSE_A, MANAGER_A, {
-      cutting: "ledger",
-    });
+    const started = await exportsService.requestExport(HOUSE_A, MANAGER_A, { cutting: "ledger" });
     await started.settled;
     const id = started.export.id;
     for (const [method, path] of [
@@ -202,65 +171,27 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
       const res = await call(method, path, { house: HOUSE_B });
       expect([method, path, res.status]).toEqual([method, path, 404]);
     }
-    const list = await (
-      await call("GET", "/reports/exports", { house: HOUSE_B })
-    ).json();
-    expect(
-      list.exports.find((e: { id: string }) => e.id === id),
-    ).toBeUndefined();
+    const list = await (await call("GET", "/reports/exports", { house: HOUSE_B })).json();
+    expect(list.exports.find((e: { id: string }) => e.id === id)).toBeUndefined();
   });
 
   it("is for owners and managers only", async () => {
     for (const role of ["staff", "sommelier", "viewer"]) {
-      const res = await call("POST", "/reports/exports", {
-        role,
-        body: { cutting: "ledger" },
-      });
+      const res = await call("POST", "/reports/exports", { role, body: { cutting: "ledger" } });
       expect([role, res.status]).toEqual([role, 403]);
-      expect([
-        role,
-        (await call("GET", "/reports/exports", { role })).status,
-      ]).toEqual([role, 403]);
+      expect([role, (await call("GET", "/reports/exports", { role })).status]).toEqual([role, 403]);
     }
-    expect(
-      (await call("GET", "/reports/exports", { role: "owner" })).status,
-    ).toBe(200);
-    expect((await call("GET", "/reports/exports", { house: "" })).status).toBe(
-      403,
-    );
+    expect((await call("GET", "/reports/exports", { role: "owner" })).status).toBe(200);
+    expect((await call("GET", "/reports/exports", { house: "" })).status).toBe(403);
   });
 
   it("refuses a body that names a house, an unknown cutting, a bad format and a non-uuid id", async () => {
-    expect(
-      (
-        await call("POST", "/reports/exports", {
-          body: { cutting: "ledger", restaurantId: HOUSE_B },
-        })
-      ).status,
-    ).toBe(400);
-    expect(
-      (await call("POST", "/reports/exports", { body: { cutting: "writing" } }))
-        .status,
-    ).toBe(400);
-    expect(
-      (
-        await call("POST", "/reports/exports", {
-          body: { cutting: "till", days: 0 },
-        })
-      ).status,
-    ).toBe(400);
-    const started = await exportsService.requestExport(HOUSE_A, MANAGER_A, {
-      cutting: "ledger",
-    });
+    expect((await call("POST", "/reports/exports", { body: { cutting: "ledger", restaurantId: HOUSE_B } })).status).toBe(400);
+    expect((await call("POST", "/reports/exports", { body: { cutting: "writing" } })).status).toBe(400);
+    expect((await call("POST", "/reports/exports", { body: { cutting: "till", days: 0 } })).status).toBe(400);
+    const started = await exportsService.requestExport(HOUSE_A, MANAGER_A, { cutting: "ledger" });
     await started.settled;
-    expect(
-      (
-        await call(
-          "GET",
-          `/reports/exports/${started.export.id}/download?format=pdf`,
-        )
-      ).status,
-    ).toBe(400);
+    expect((await call("GET", `/reports/exports/${started.export.id}/download?format=pdf`)).status).toBe(400);
     expect((await call("GET", "/reports/exports/not-a-uuid")).status).toBe(400);
   });
 
@@ -276,40 +207,23 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
     }).id as string;
     const res = await call("GET", `/reports/exports/${id}/download?format=csv`);
     expect(res.status).toBe(409);
-    expect((await res.json()).message).toBe(
-      "This export was not written: Not written: the register timed out",
-    );
+    expect((await res.json()).message).toBe("This export was not written: Not written: the register timed out");
     const retry = await call("POST", `/reports/exports/${id}/retry`);
     expect(retry.status).toBe(202);
-    expect(await retry.json()).toMatchObject({
-      id,
-      status: "queued",
-      attempts: 2,
-    });
+    expect(await retry.json()).toMatchObject({ id, status: "queued", attempts: 2 });
   });
 
   it("a store that refuses the list is a 500 with its message, not an empty 200", async () => {
-    mem.failNext(
-      "report_exports",
-      "select",
-      "permission denied for table report_exports",
-    );
+    mem.failNext("report_exports", "select", "permission denied for table report_exports");
     const res = await call("GET", "/reports/exports");
     expect(res.status).toBe(500);
-    expect((await res.json()).message).toBe(
-      "permission denied for table report_exports",
-    );
+    expect((await res.json()).message).toBe("permission denied for table report_exports");
   });
 
   it("retires POST /reports/generate with 410, naming the real export, and files no phantom row", async () => {
     const before = mem.rows("generated_reports").length;
     const res = await call("POST", "/reports/generate", {
-      body: {
-        reportType: "financial_summary",
-        title: "t",
-        periodStart: "2026-09-01",
-        periodEnd: "2026-09-16",
-      },
+      body: { reportType: "financial_summary", title: "t", periodStart: "2026-09-01", periodEnd: "2026-09-16" },
     });
     expect(res.status).toBe(410);
     expect((await res.json()).message).toContain("POST /reports/exports");

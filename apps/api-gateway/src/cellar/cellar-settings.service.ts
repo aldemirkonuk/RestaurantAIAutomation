@@ -15,8 +15,7 @@ import {
  * `set_by` / `set_at` are shared by both fields, so they only ever say who
  * touched either one last.
  */
-export const HOLD_CEREMONY_AUDIT_ACTION =
-  "cellar_hold_ceremony_changed" as const;
+export const HOLD_CEREMONY_AUDIT_ACTION = "cellar_hold_ceremony_changed" as const;
 export const TILES_AUDIT_ACTION = "cellar_tiles_changed" as const;
 
 /**
@@ -122,9 +121,7 @@ export class CellarSettingsService {
     }
 
     const row = data as SettingsRow | null;
-    const storedMeasures = row
-      ? sanitizeMeasures(row.gazetteer_measures)
-      : null;
+    const storedMeasures = row ? sanitizeMeasures(row.gazetteer_measures) : null;
     const stamps = row ? await this.fieldStamps(restaurantId) : null;
     const createdMs = row?.created_at ? Date.parse(row.created_at) : NaN;
     const legacyRow =
@@ -250,7 +247,7 @@ export class CellarSettingsService {
     const nextCeremony = dto.holdCeremony ?? before.holdCeremony;
     const nextMeasures =
       dto.gazetteerMeasures !== undefined
-        ? (sanitizeMeasures(dto.gazetteerMeasures) ?? [])
+        ? sanitizeMeasures(dto.gazetteerMeasures) ?? []
         : before.gazetteerMeasuresConfigured
           ? before.gazetteerMeasures
           : null;
@@ -277,9 +274,7 @@ export class CellarSettingsService {
       throw Object.assign(
         new Error(
           `The house's cellar settings were not saved: ${error.message}${
-            MISSING_RELATION_CODES.has(
-              String((error as { code?: string }).code),
-            )
+            MISSING_RELATION_CODES.has(String((error as { code?: string }).code))
               ? " (the restaurant_cellar_settings table is not on this database yet — the migration has not been applied)"
               : ""
           }`,

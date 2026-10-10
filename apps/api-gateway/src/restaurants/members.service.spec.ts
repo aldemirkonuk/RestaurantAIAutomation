@@ -26,47 +26,14 @@ const SAM = "user-sam";
 function seed(): StubDb {
   return makeStubDb({
     user_restaurant_access: [
-      {
-        id: "a1",
-        user_id: OWNER,
-        restaurant_id: RID,
-        role: "owner",
-        is_active: true,
-      },
-      {
-        id: "a2",
-        user_id: SECOND_OWNER,
-        restaurant_id: RID,
-        role: "owner",
-        is_active: true,
-      },
-      {
-        id: "a3",
-        user_id: SAM,
-        restaurant_id: RID,
-        role: "staff",
-        is_active: true,
-      },
+      { id: "a1", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true },
+      { id: "a2", user_id: SECOND_OWNER, restaurant_id: RID, role: "owner", is_active: true },
+      { id: "a3", user_id: SAM, restaurant_id: RID, role: "staff", is_active: true },
     ],
     users: [
-      {
-        user_id: OWNER,
-        restaurant_id: RID,
-        role: "owner",
-        email: "ada@example.test",
-      },
-      {
-        user_id: SECOND_OWNER,
-        restaurant_id: RID,
-        role: "owner",
-        email: "bo@example.test",
-      },
-      {
-        user_id: SAM,
-        restaurant_id: RID,
-        role: "staff",
-        email: "sam@example.test",
-      },
+      { user_id: OWNER, restaurant_id: RID, role: "owner", email: "ada@example.test" },
+      { user_id: SECOND_OWNER, restaurant_id: RID, role: "owner", email: "bo@example.test" },
+      { user_id: SAM, restaurant_id: RID, role: "staff", email: "sam@example.test" },
     ],
     notifications: [],
     system_audit_log: [],
@@ -147,50 +114,14 @@ describe("MembersService.getMembers — a failed read is not an empty roster", (
   function seedRoster(): StubDb {
     return makeStubDb({
       user_restaurant_access: [
-        {
-          id: "a2",
-          user_id: SECOND_OWNER,
-          restaurant_id: RID,
-          role: "owner",
-          is_active: true,
-          created_at: "2026-02-01T00:00:00Z",
-        },
-        {
-          id: "a1",
-          user_id: OWNER,
-          restaurant_id: RID,
-          role: "owner",
-          is_active: true,
-          created_at: "2026-01-01T00:00:00Z",
-        },
-        {
-          id: "a3",
-          user_id: SAM,
-          restaurant_id: RID,
-          role: "staff",
-          is_active: true,
-          created_at: "2026-03-01T00:00:00Z",
-        },
+        { id: "a2", user_id: SECOND_OWNER, restaurant_id: RID, role: "owner", is_active: true, created_at: "2026-02-01T00:00:00Z" },
+        { id: "a1", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true, created_at: "2026-01-01T00:00:00Z" },
+        { id: "a3", user_id: SAM, restaurant_id: RID, role: "staff", is_active: true, created_at: "2026-03-01T00:00:00Z" },
       ],
       users: [
-        {
-          user_id: OWNER,
-          restaurant_id: RID,
-          role: "owner",
-          email: "ada@example.test",
-        },
-        {
-          user_id: SECOND_OWNER,
-          restaurant_id: RID,
-          role: "owner",
-          email: "bo@example.test",
-        },
-        {
-          user_id: SAM,
-          restaurant_id: RID,
-          role: "staff",
-          email: "sam@example.test",
-        },
+        { user_id: OWNER, restaurant_id: RID, role: "owner", email: "ada@example.test" },
+        { user_id: SECOND_OWNER, restaurant_id: RID, role: "owner", email: "bo@example.test" },
+        { user_id: SAM, restaurant_id: RID, role: "staff", email: "sam@example.test" },
       ],
     });
   }
@@ -330,12 +261,7 @@ describe("MembersService.addMember — a manager adds a manager or staff, never 
   it("adds by the exact address only: % and _ match nobody else (F-189)", async () => {
     // class-validator's @IsEmail accepts all of these. Through `.ilike` each
     // matched another house's member and added them here.
-    for (const probe of [
-      "%@other.test",
-      "v_ctim@other.test",
-      "%_%@other.test",
-      "VIC%",
-    ]) {
+    for (const probe of ["%@other.test", "v_ctim@other.test", "%_%@other.test", "VIC%"]) {
       const db = seedAdd("owner");
       db.tables.users.push({
         user_id: "user-victim",
@@ -347,21 +273,14 @@ describe("MembersService.addMember — a manager adds a manager or staff, never 
         service(db).addMember(ACTOR, RID, probe, "staff"),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(
-        db.tables.user_restaurant_access.filter(
-          (r) => r.user_id === "user-victim",
-        ),
+        db.tables.user_restaurant_access.filter((r) => r.user_id === "user-victim"),
       ).toEqual([]);
     }
   });
 
   it("still finds the person when the address is typed in another case", async () => {
     const db = seedAdd("owner");
-    await service(db).addMember(
-      ACTOR,
-      RID,
-      "  NewComer@Example.TEST ",
-      "staff",
-    );
+    await service(db).addMember(ACTOR, RID, "  NewComer@Example.TEST ", "staff");
 
     expect(addedRows(db).map((r) => r.role)).toEqual(["staff"]);
   });
@@ -683,16 +602,10 @@ describe("MembersService.updateMemberRole — owners hand over, and one owner al
     const db = seed();
     db.errors["user_restaurant_access:update"] = {
       code: "23514",
-      message:
-        "house_keeps_an_owner: this change would leave the house with no owner",
+      message: "house_keeps_an_owner: this change would leave the house with no owner",
     };
 
-    const refused = service(db).updateMemberRole(
-      OWNER,
-      RID,
-      SECOND_OWNER,
-      "manager",
-    );
+    const refused = service(db).updateMemberRole(OWNER, RID, SECOND_OWNER, "manager");
     await expect(refused).rejects.toBeInstanceOf(BadRequestException);
     await expect(refused).rejects.toThrow(/no owner/);
     expect(db.tables.system_audit_log).toHaveLength(0);
@@ -953,13 +866,7 @@ describe("MembersService.updateMemberRole — leaving manager clears the pay swi
   function seedPay(): StubDb {
     return makeStubDb({
       user_restaurant_access: [
-        {
-          id: "a1",
-          user_id: OWNER,
-          restaurant_id: RID,
-          role: "owner",
-          is_active: true,
-        },
+        { id: "a1", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true },
         {
           id: "a4",
           user_id: MANAGER,
@@ -970,18 +877,8 @@ describe("MembersService.updateMemberRole — leaving manager clears the pay swi
         },
       ],
       users: [
-        {
-          user_id: OWNER,
-          restaurant_id: RID,
-          role: "owner",
-          email: "ada@example.test",
-        },
-        {
-          user_id: MANAGER,
-          restaurant_id: RID,
-          role: "manager",
-          email: "mo@example.test",
-        },
+        { user_id: OWNER, restaurant_id: RID, role: "owner", email: "ada@example.test" },
+        { user_id: MANAGER, restaurant_id: RID, role: "manager", email: "mo@example.test" },
       ],
       notifications: [],
       system_audit_log: [],
@@ -1030,9 +927,7 @@ describe("MembersService.removeMember — a removal without a roster row is reco
     expect(row.changes?.self_leave).toBe(false);
     expect(db.tables.notifications).toHaveLength(1);
     expect(db.tables.notifications[0].user_id).toBe(SAM);
-    expect(String(db.tables.notifications[0].message)).toMatch(
-      /An owner removed you/,
-    );
+    expect(String(db.tables.notifications[0].message)).toMatch(/An owner removed you/);
   });
 
   it("files a leave as a leave, with no 'you were removed' notice", async () => {

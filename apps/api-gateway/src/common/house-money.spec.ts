@@ -38,9 +38,7 @@ describe("houseMoney — a figure in the house's own money", () => {
 describe("houseMoney in the house's own formats (F-866)", () => {
   it("a Turkish house reads its sign and its own grouping", () => {
     expect(houseMoney(12400.4, "TRY", { locale: "tr-TR" })).toBe("₺12.400");
-    expect(houseMoney(12400, "TRY", { compact: true, locale: "tr-TR" })).toBe(
-      "₺12,4k",
-    );
+    expect(houseMoney(12400, "TRY", { compact: true, locale: "tr-TR" })).toBe("₺12,4k");
   });
 
   it("a German house puts the sign where it writes it", () => {
@@ -70,45 +68,17 @@ describe("readHouseMoney", () => {
 
   it("reads the code and the formats of the house's country, else its zone", async () => {
     expect(
-      await readHouseMoney(
-        client({
-          data: [{ currency: "try", country: "Türkiye", timezone: null }],
-          error: null,
-        }),
-        "r1",
-      ),
+      await readHouseMoney(client({ data: [{ currency: "try", country: "Türkiye", timezone: null }], error: null }), "r1"),
     ).toEqual({ currency: "TRY", locale: "tr-TR" });
     expect(
-      await readHouseMoney(
-        client({
-          data: [
-            { currency: null, country: null, timezone: "Europe/Istanbul" },
-          ],
-          error: null,
-        }),
-        "r1",
-      ),
+      await readHouseMoney(client({ data: [{ currency: null, country: null, timezone: "Europe/Istanbul" }], error: null }), "r1"),
     ).toEqual({ currency: null, locale: "tr-TR" });
   });
 
   it("answers both null for a failed read, a throw, or no client", async () => {
     const none = { currency: null, locale: null };
-    expect(
-      await readHouseMoney(
-        client({ data: null, error: { message: "no" } }),
-        "r1",
-      ),
-    ).toEqual(none);
-    expect(
-      await readHouseMoney(
-        {
-          from: () => {
-            throw new Error("down");
-          },
-        },
-        "r1",
-      ),
-    ).toEqual(none);
+    expect(await readHouseMoney(client({ data: null, error: { message: "no" } }), "r1")).toEqual(none);
+    expect(await readHouseMoney({ from: () => { throw new Error("down"); } }, "r1")).toEqual(none);
     expect(await readHouseMoney(null, "r1")).toEqual(none);
   });
 });

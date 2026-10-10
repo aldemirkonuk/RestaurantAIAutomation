@@ -62,6 +62,7 @@ export interface InsightEvidence {
   n?: number;
 }
 
+
 const fmtNum = (v: number) =>
   Math.abs(v) >= 100
     ? v.toFixed(0)

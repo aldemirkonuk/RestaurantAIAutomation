@@ -70,10 +70,7 @@ const req = { user: { userId: U, restaurantId: A } } as any;
 
 describe("an order link names which of your houses holds it (F-245)", () => {
   it("names the other house of yours that holds it", async () => {
-    const res = await new AuthController(service(world())).houseHolding(
-      req,
-      IN_B,
-    );
+    const res = await new AuthController(service(world())).houseHolding(req, IN_B);
     expect(res).toEqual({
       success: true,
       house: { id: B, name: "Kadikoy", city: "Istanbul" },
@@ -106,11 +103,11 @@ describe("an order link names which of your houses holds it (F-245)", () => {
 
   it("refuses an id that is not an order id before reading anything", async () => {
     const controller = new AuthController(service(world()));
-    await expect(
-      controller.houseHolding(req, "not-an-id"),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      controller.houseHolding(req, undefined as any),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(controller.houseHolding(req, "not-an-id")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(controller.houseHolding(req, undefined as any)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 });

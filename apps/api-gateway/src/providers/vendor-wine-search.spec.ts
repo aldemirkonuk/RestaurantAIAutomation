@@ -274,9 +274,7 @@ describe("the query", () => {
     const typedTurkish = parseWineQuery("Kavaklıdere")!;
     expect(matchesWine(typedAscii, "Kavaklıdere Yakut", null)).toBe(true);
     expect(matchesWine(typedTurkish, "KAVAKLIDERE YAKUT", null)).toBe(true);
-    expect(matchesWine(parseWineQuery("izmir")!, "İZMİR Beyaz", null)).toBe(
-      true,
-    );
+    expect(matchesWine(parseWineQuery("izmir")!, "İZMİR Beyaz", null)).toBe(true);
     const narrowing = likeToRegex(accentBlindLike(typedTurkish.words[0]));
     expect(narrowing.test("KAVAKLIDERE YAKUT")).toBe(true);
     expect(narrowing.test("Kavaklıdere Yakut")).toBe(true);
@@ -802,9 +800,7 @@ describe("Find new vendors — a name search over curated catalogue sightings (i
       (s) => s.table === "vendor_price_observations",
     ).length;
     // ceiling + 1 rows, a page at a time — never the whole register.
-    expect(vpoReads).toBe(
-      Math.ceil((CATALOGUE_SIGHTINGS_CEILING + 1) / PAGE_ROWS),
-    );
+    expect(vpoReads).toBe(Math.ceil((CATALOGUE_SIGHTINGS_CEILING + 1) / PAGE_ROWS));
     // Nothing downstream is read for a refused search.
     expect(seen.filter((s) => s.table === "master_wine_library")).toEqual([]);
     expect(seen.filter((s) => s.table === "vendor_catalogue")).toEqual([]);

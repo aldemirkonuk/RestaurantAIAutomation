@@ -92,14 +92,7 @@ describe("cancelOrder — compare-and-set on the state it read (F-350)", () => {
   it("refuses with a 409 naming the new state when an approval landed meanwhile, and the approval stands", async () => {
     const h = harness({ approvedMeanwhile: true });
     const err = await h.svc
-      .cancelOrder(
-        HOUSE,
-        ORDER,
-        USER,
-        "changed our mind",
-        "seal",
-        "house_decision",
-      )
+      .cancelOrder(HOUSE, ORDER, USER, "changed our mind", "seal", "house_decision")
       .catch((e) => e);
     expect(err.getStatus?.()).toBe(409);
     expect(err.getResponse().message).toMatch(

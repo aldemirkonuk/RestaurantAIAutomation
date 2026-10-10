@@ -245,7 +245,9 @@ function dbOver(rowsByTable: Rows) {
     from(table: string) {
       const all = [
         ...(rowsByTable[table] ?? (table === "restaurants" ? HOUSE_ROW : [])),
-      ].sort((a, b) => String(a.id ?? "").localeCompare(String(b.id ?? "")));
+      ].sort((a, b) =>
+        String(a.id ?? "").localeCompare(String(b.id ?? "")),
+      );
       let cursor: string | null = null;
       let lim: number | null = null;
       let counted = false;
@@ -1043,9 +1045,7 @@ describe("the week's shape files each bottle on the house's day (F-185, ADR 0296
     }).format(new Date(evening(5)));
     expect(out.bestDay).toBe(laDay);
     expect(out.timezone).toBe("America/Los_Angeles");
-    expect(out.basis.weekday).toContain(
-      "the house's day (America/Los_Angeles)",
-    );
+    expect(out.basis.weekday).toContain("the house's day (America/Los_Angeles)");
   });
 
   it("W2: a house with no zone draws no week and says why, never UTC days", async () => {
@@ -1079,22 +1079,11 @@ describe("category profiles group by kind of drink, wines by colour", () => {
   });
 
   it("beverageCategoryOf: kind first, a wine's colour next, a stored 'wine' is not evidence", () => {
-    expect(
-      beverageCategoryOf({ primary_type: "unknown", beverage_kind: "spirit" }),
-    ).toBe("spirit");
-    expect(
-      beverageCategoryOf({ primary_type: "red", beverage_kind: "wine" }),
-    ).toBe("red");
-    expect(
-      beverageCategoryOf({ primary_type: "unknown", beverage_kind: "wine" }),
-    ).toBe("wine");
+    expect(beverageCategoryOf({ primary_type: "unknown", beverage_kind: "spirit" })).toBe("spirit");
+    expect(beverageCategoryOf({ primary_type: "red", beverage_kind: "wine" })).toBe("red");
+    expect(beverageCategoryOf({ primary_type: "unknown", beverage_kind: "wine" })).toBe("wine");
     expect(beverageCategoryOf(null, "beer")).toBe("beer");
-    expect(
-      beverageCategoryOf(
-        { primary_type: "unknown", beverage_kind: "unknown" },
-        "wine",
-      ),
-    ).toBe("unknown");
+    expect(beverageCategoryOf({ primary_type: "unknown", beverage_kind: "unknown" }, "wine")).toBe("unknown");
   });
 });
 

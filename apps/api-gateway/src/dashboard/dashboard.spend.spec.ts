@@ -262,8 +262,6 @@ describe("DashboardService — a delivery with no price is counted, not summed a
     expect(day.procurement_spend).toBe(0);
 
     const points: any[] = await service.getSalesChart("r1", "year");
-    expect(points.find((p) => p.date === "2026-08")?.procurementSpend).toBe(
-      250,
-    );
+    expect(points.find((p) => p.date === "2026-08")?.procurementSpend).toBe(250);
   });
 });

@@ -196,11 +196,7 @@ export const TILL_PAGE_ROWS = 1000;
 export const ROW_RECORD_LINE_LIMIT = 400;
 
 /** The sentence a book read to its cap carries, empty or not. */
-function cappedBookReason(
-  lines: string,
-  never: string,
-  found: boolean,
-): string {
+function cappedBookReason(lines: string, never: string, found: boolean): string {
   return found
     ? `Only the newest ${ROW_RECORD_LINE_LIMIT} ${lines} that could name this were read, so older ones are not listed here.`
     : `The newest ${ROW_RECORD_LINE_LIMIT} ${lines} that could name this were read and none does. Older ones were not read, so this does not say it was ${never}.`;
@@ -260,10 +256,7 @@ export class BeveragesService {
 
   constructor(private readonly dbService: DatabaseService) {}
 
-  private explain(
-    error: { message: string; code?: string },
-    table: string,
-  ): Error {
+  private explain(error: { message: string; code?: string }, table: string): Error {
     return new Error(
       MISSING_RELATION_CODES.has(String(error.code))
         ? `public.${table} is not on this database yet (migration not applied)`
@@ -465,9 +458,7 @@ export class BeveragesService {
     restaurantId: string,
     register: RegisterId,
     opts: { search?: string; catalogueLimit: number; ledgerLimit: number },
-  ): Promise<
-    RegisterResult & { unregistered: { label: string; books: string[] }[] }
-  > {
+  ): Promise<RegisterResult & { unregistered: { label: string; books: string[] }[] }> {
     const types = beverageTypesForRegister(register);
 
     // F-592: a search ALSO reads the catalogue narrowed by the search, before
@@ -476,9 +467,7 @@ export class BeveragesService {
     // 401. The plain read stays: a house row's membership and overlay come from
     // the catalogue rows read, and must not change because a word was typed.
     const [plain, found, ledger] = await Promise.all([
-      this.readRegisterCatalogue(register, types, {
-        catalogueLimit: opts.catalogueLimit,
-      }),
+      this.readRegisterCatalogue(register, types, { catalogueLimit: opts.catalogueLimit }),
       opts.search?.trim()
         ? this.readRegisterCatalogue(register, types, opts)
         : Promise.resolve(null),
@@ -496,8 +485,7 @@ export class BeveragesService {
       };
     }
     const catalogueTruncated =
-      (searched ? searched.length : (plain.status.rows ?? 0)) >=
-      opts.catalogueLimit;
+      (searched ? searched.length : (plain.status.rows ?? 0)) >= opts.catalogueLimit;
 
     const result = composeRegister({
       restaurantId,
@@ -525,13 +513,7 @@ export class BeveragesService {
     const rows = q
       ? result.rows.filter((r) =>
           fold(
-            [
-              r.name,
-              r.producer,
-              r.catalogue?.beverageType,
-              r.catalogue?.region,
-              r.catalogue?.country,
-            ]
+            [r.name, r.producer, r.catalogue?.beverageType, r.catalogue?.region, r.catalogue?.country]
               .filter(Boolean)
               .join(" "),
           ).includes(q),
@@ -604,16 +586,12 @@ export class BeveragesService {
       .limit(opts.catalogueLimit);
 
     if (error) {
-      this.logger.error(
-        `Failed to read the ${register} catalogue: ${error.message}`,
-      );
+      this.logger.error(`Failed to read the ${register} catalogue: ${error.message}`);
       return {
         rows: null,
         status: {
           readable: false,
-          reason: MISSING_RELATION_CODES.has(
-            String((error as { code?: string }).code),
-          )
+          reason: MISSING_RELATION_CODES.has(String((error as { code?: string }).code))
             ? "public.beverages is not on this database yet (migration not applied)"
             : error.message,
           rows: null,
@@ -622,10 +600,7 @@ export class BeveragesService {
     }
 
     const rows = (data ?? []) as unknown as CatalogueRow[];
-    return {
-      rows,
-      status: { readable: true, reason: null, rows: rows.length },
-    };
+    return { rows, status: { readable: true, reason: null, rows: rows.length } };
   }
 
   /* ── cocktails: the one register this house can actually write ─────────── */
@@ -680,28 +655,19 @@ export class BeveragesService {
     mayPrice: boolean,
   ) {
     if (dto.price !== undefined && !mayPrice) {
-      await this.assertCocktailPriceUnchanged(
-        restaurantId,
-        cocktailId,
-        dto.price,
-      );
+      await this.assertCocktailPriceUnchanged(restaurantId, cocktailId, dto.price);
     }
-    const patch: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     // Only fields the caller actually sent. A PATCH that nulled every absent
     // field would erase a row's method and glass on a price edit.
     if (dto.name !== undefined) patch.name = dto.name.trim();
-    if (dto.displayName !== undefined)
-      patch.display_name = dto.displayName?.trim() ?? null;
-    if (dto.menuSection !== undefined)
-      patch.menu_section = dto.menuSection?.trim() ?? null;
+    if (dto.displayName !== undefined) patch.display_name = dto.displayName?.trim() ?? null;
+    if (dto.menuSection !== undefined) patch.menu_section = dto.menuSection?.trim() ?? null;
     if (dto.method !== undefined) patch.method = dto.method?.trim() ?? null;
     if (dto.glass !== undefined) patch.glass = dto.glass?.trim() ?? null;
     if (dto.garnish !== undefined) patch.garnish = dto.garnish?.trim() ?? null;
     if (dto.price !== undefined && mayPrice) patch.price = dto.price;
-    if (dto.description !== undefined)
-      patch.description = dto.description?.trim() ?? null;
+    if (dto.description !== undefined) patch.description = dto.description?.trim() ?? null;
 
     const { data, error } = await this.dbService
       .getClient()
@@ -718,9 +684,7 @@ export class BeveragesService {
       .maybeSingle();
 
     if (error) {
-      this.logger.error(
-        `Failed to update cocktail ${cocktailId}: ${error.message}`,
-      );
+      this.logger.error(`Failed to update cocktail ${cocktailId}: ${error.message}`);
       throw this.explain(error, "cocktails");
     }
     if (!data) {
@@ -774,9 +738,7 @@ export class BeveragesService {
       .maybeSingle();
 
     if (error) {
-      this.logger.error(
-        `Failed to retire cocktail ${cocktailId}: ${error.message}`,
-      );
+      this.logger.error(`Failed to retire cocktail ${cocktailId}: ${error.message}`);
       throw this.explain(error, "cocktails");
     }
     if (!data) {
@@ -871,10 +833,7 @@ export class BeveragesService {
         // Take the new lines back out so the recipe is the old one, not both.
         const undo =
           newIds.length > 0
-            ? await client
-                .from("cocktail_ingredients")
-                .delete()
-                .in("id", newIds)
+            ? await client.from("cocktail_ingredients").delete().in("id", newIds)
             : { error: null };
         if (undo.error) {
           throw new Error(
@@ -946,7 +905,10 @@ export class BeveragesService {
    * `house_beverage_ledger` does (migration 20260903120000:187-198), so a line
    * cannot arrive from another house by way of a null on the child row.
    */
-  async readRowRecord(restaurantId: string, label: string): Promise<RowRecord> {
+  async readRowRecord(
+    restaurantId: string,
+    label: string,
+  ): Promise<RowRecord> {
     const trimmed = label.trim();
     const [menu, invoice, order, quote, pos] = await Promise.all([
       this.readMenuLines(restaurantId, trimmed),
@@ -1212,7 +1174,8 @@ export class BeveragesService {
         qty: null,
         // The normalized unit price where the observation carries one, because
         // a case price and a bottle price on the same axis is not a series.
-        unitPrice: seriesNum(r.normalized_unit_price) ?? seriesNum(r.raw_price),
+        unitPrice:
+          seriesNum(r.normalized_unit_price) ?? seriesNum(r.raw_price),
         total: null,
         note: seriesStr(r.source_type),
         matchedBy: how,

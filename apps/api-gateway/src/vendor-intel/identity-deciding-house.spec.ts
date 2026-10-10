@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  NotFoundException,
-} from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { IdentityService } from "./identity.service";
 import { VendorIntelController } from "./vendor-intel.controller";
 
@@ -34,8 +30,7 @@ type Tables = Record<string, Row[]>;
 
 function makeStore(seed: Tables) {
   const tables: Tables = {};
-  for (const [k, v] of Object.entries(seed))
-    tables[k] = v.map((r) => ({ ...r }));
+  for (const [k, v] of Object.entries(seed)) tables[k] = v.map((r) => ({ ...r }));
   let seq = 0;
 
   const from = (table: string) => {
@@ -53,8 +48,7 @@ function makeStore(seed: Tables) {
       for (const c of columns) out[c] = r[c] === undefined ? null : r[c];
       return out;
     };
-    const matching = () =>
-      tables[table].filter((r) => filters.every((f) => f(r)));
+    const matching = () => tables[table].filter((r) => filters.every((f) => f(r)));
 
     const run = () => {
       if (mode === "update" || mode === "delete") {
@@ -129,10 +123,7 @@ function makeStore(seed: Tables) {
       insert: (payload: Row) => {
         seq += 1;
         // A uuid, because the undo route refuses anything else as a decision id.
-        const row = {
-          id: `dddddddd-0000-4000-8000-${String(seq).padStart(12, "0")}`,
-          ...payload,
-        };
+        const row = { id: `dddddddd-0000-4000-8000-${String(seq).padStart(12, "0")}`, ...payload };
         tables[table].push(row);
         return {
           select: (cols: string) => ({
@@ -144,14 +135,10 @@ function makeStore(seed: Tables) {
         };
       },
       upsert: (payload: Row) => {
-        tables[table].push({
-          id: `eeeeeeee-0000-4000-8000-${String(++seq).padStart(12, "0")}`,
-          ...payload,
-        });
+        tables[table].push({ id: `eeeeeeee-0000-4000-8000-${String(++seq).padStart(12, "0")}`, ...payload });
         return Promise.resolve({ data: null, error: null });
       },
-      then: (resolve: any, reject: any) =>
-        Promise.resolve(run()).then(resolve, reject),
+      then: (resolve: any, reject: any) => Promise.resolve(run()).then(resolve, reject),
     };
     return b;
   };
@@ -167,44 +154,15 @@ const LEGACY_PUB = "d0000000-0000-4000-8000-000000000001";
 const LEGACY_H1 = "d0000000-0000-4000-8000-000000000002";
 
 // The token objects JwtStrategy.validate builds. `restaurantId` is the active house.
-const AYLIN = {
-  userId: "u-aylin",
-  name: "Aylin",
-  email: "aylin@one.test",
-  role: "staff",
-  restaurantId: HOUSE_1,
-};
-const DENIZ = {
-  userId: "u-deniz",
-  name: "Deniz",
-  email: "deniz@one.test",
-  role: "manager",
-  restaurantId: HOUSE_1,
-};
-const MERT = {
-  userId: "u-mert",
-  name: "Mert",
-  email: "mert@two.test",
-  role: "staff",
-  restaurantId: HOUSE_2,
-};
-const SELIN = {
-  userId: "u-selin",
-  name: "Selin",
-  email: "selin@two.test",
-  role: "manager",
-  restaurantId: HOUSE_2,
-};
+const AYLIN = { userId: "u-aylin", name: "Aylin", email: "aylin@one.test", role: "staff", restaurantId: HOUSE_1 };
+const DENIZ = { userId: "u-deniz", name: "Deniz", email: "deniz@one.test", role: "manager", restaurantId: HOUSE_1 };
+const MERT = { userId: "u-mert", name: "Mert", email: "mert@two.test", role: "staff", restaurantId: HOUSE_2 };
+const SELIN = { userId: "u-selin", name: "Selin", email: "selin@two.test", role: "manager", restaurantId: HOUSE_2 };
 
 function seed(extra: Partial<Tables> = {}): Tables {
   return {
     beverage_identities: [
-      {
-        id: "ident-1",
-        display_label: "Krug Vintage Brut 2008 (750ml)",
-        identity_key: "k1",
-        standing: "library",
-      },
+      { id: "ident-1", display_label: "Krug Vintage Brut 2008 (750ml)", identity_key: "k1", standing: "library" },
     ],
     beverage_identity_candidates: [
       // A shared-register candidate: no house, every house reads it.
@@ -236,9 +194,7 @@ function seed(extra: Partial<Tables> = {}): Tables {
     ],
     beverage_identity_decisions: [],
     price_index_postings: [{ id: "post-1", identity_id: null }],
-    restaurant_inventory: [
-      { id: "inv-1", restaurant_id: HOUSE_1, identity_id: null },
-    ],
+    restaurant_inventory: [{ id: "inv-1", restaurant_id: HOUSE_1, identity_id: null }],
     ...extra,
   } as Tables;
 }
@@ -257,12 +213,7 @@ function makeApp(tables: Tables = seed()) {
   );
   const log = async (user: { restaurantId: string }) =>
     ((await controller.identityDecisions(user, "50")) as any).items as any[];
-  const decide = (
-    user: any,
-    candidateId: string,
-    decision: "confirmed" | "rejected",
-    extra: object = {},
-  ) =>
+  const decide = (user: any, candidateId: string, decision: "confirmed" | "rejected", extra: object = {}) =>
     controller.identityDecide(user, { candidateId, decision, ...extra } as any);
   const undo = (user: any, decisionId: string) =>
     controller.identityUndo(user, { decisionId } as any);
@@ -270,27 +221,11 @@ function makeApp(tables: Tables = seed()) {
   const posting = () => store.tables.price_index_postings[0];
   const candidate = (id: string) =>
     store.tables.beverage_identity_candidates.find((c) => c.id === id)!;
-  return {
-    store,
-    controller,
-    log,
-    decide,
-    undo,
-    decisions,
-    posting,
-    candidate,
-  };
+  return { store, controller, log, decide, undo, decisions, posting, candidate };
 }
 
 /** Every value a leaked person could appear as. */
-const PERSON_TRACES = [
-  /Aylin/,
-  /aylin@one\.test/,
-  /u-aylin/,
-  /Deniz/,
-  /deniz@one\.test/,
-  /u-deniz/,
-];
+const PERSON_TRACES = [/Aylin/, /aylin@one\.test/, /u-aylin/, /Deniz/, /deniz@one\.test/, /u-deniz/];
 
 describe("a shared-register decision names the house that took it", () => {
   it("records the token's active house, and ignores a house the body names", async () => {
@@ -309,19 +244,14 @@ describe("a shared-register decision names the house that took it", () => {
     const app = makeApp();
     const d = (await app.decide(AYLIN, CAND_H1, "confirmed")) as any;
     await app.undo(DENIZ, d.decisionId);
-    expect(app.decisions().map((r) => r.deciding_restaurant_id)).toEqual([
-      HOUSE_1,
-      HOUSE_1,
-    ]);
+    expect(app.decisions().map((r) => r.deciding_restaurant_id)).toEqual([HOUSE_1, HOUSE_1]);
   });
 });
 
 describe("the deciding house reads the person; another house reads the outcome and when", () => {
   it("shows the name inside the deciding house", async () => {
     const app = makeApp();
-    await app.decide(AYLIN, CAND_PUB, "confirmed", {
-      note: "same cuvee, same bottle",
-    });
+    await app.decide(AYLIN, CAND_PUB, "confirmed", { note: "same cuvee, same bottle" });
 
     const [mine] = await app.log(DENIZ);
     expect(mine.decided_by_label).toBe("Aylin");
@@ -335,9 +265,7 @@ describe("the deciding house reads the person; another house reads the outcome a
 
   it("hides the person, the role and the note from another house, and keeps the outcome and when", async () => {
     const app = makeApp();
-    await app.decide(AYLIN, CAND_PUB, "confirmed", {
-      note: "Aylin checked the label",
-    });
+    await app.decide(AYLIN, CAND_PUB, "confirmed", { note: "Aylin checked the label" });
     const stored = app.decisions()[0];
 
     const [theirs] = await app.log(SELIN);
@@ -369,9 +297,7 @@ describe("only the deciding house may take a shared decision back", () => {
     expect(refusal.getStatus()).toBe(403);
     expect(refusal.message).toMatch(/taken in another house/);
     // Owners may undo too (and the legacy admin alias), so the sentence names both.
-    expect(refusal.message).toMatch(
-      /Only an owner or manager of the house that took it/,
-    );
+    expect(refusal.message).toMatch(/Only an owner or manager of the house that took it/);
 
     expect(app.posting().identity_id).toBe("ident-1");
     expect(app.decisions()).toHaveLength(1);
@@ -406,9 +332,7 @@ describe("only the deciding house may take a shared decision back", () => {
     const one = (await app.log(DENIZ)).find((r) => r.id === second.decisionId)!;
     expect(one.decided_by_label).toBeNull();
 
-    await expect(app.undo(DENIZ, second.decisionId)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(app.undo(DENIZ, second.decisionId)).rejects.toBeInstanceOf(ForbiddenException);
     await expect(app.undo(SELIN, second.decisionId)).resolves.toBeDefined();
   });
 });
@@ -448,16 +372,15 @@ describe("a shared decision logged before the deciding house was recorded", () =
       expect(row.decided_in).toBe("unrecorded");
       expect(row.person_shown).toBe(false);
       expect(row.undo_refusal).toMatch(/before Mudavym recorded which house/);
-      for (const trace of PERSON_TRACES)
-        expect(JSON.stringify(row)).not.toMatch(trace);
+      for (const trace of PERSON_TRACES) expect(JSON.stringify(row)).not.toMatch(trace);
     }
   });
 
   it("refuses its undo to every house with a reason, and clears nothing", async () => {
     const app = makeApp({
       ...legacy(),
-      beverage_identity_candidates: seed().beverage_identity_candidates.map(
-        (c) => (c.id === CAND_PUB ? { ...c, status: "confirmed" } : c),
+      beverage_identity_candidates: seed().beverage_identity_candidates.map((c) =>
+        c.id === CAND_PUB ? { ...c, status: "confirmed" } : c,
       ),
     });
     for (const manager of [DENIZ, SELIN]) {
@@ -493,9 +416,7 @@ describe("a house's own rows are unchanged", () => {
           undoes_decision_id: null,
         },
       ],
-      restaurant_inventory: [
-        { id: "inv-1", restaurant_id: HOUSE_1, identity_id: "ident-1" },
-      ],
+      restaurant_inventory: [{ id: "inv-1", restaurant_id: HOUSE_1, identity_id: "ident-1" }],
     });
 
   it("a house row logged before the column still names the person inside its house, and never reaches another", async () => {
@@ -520,9 +441,7 @@ describe("a house's own rows are unchanged", () => {
     expect(theirs.getStatus()).toBe(404);
     expect(missing).toBeInstanceOf(NotFoundException);
     expect(theirs.getResponse()).toEqual(missing.getResponse());
-    expect(app.store.tables.restaurant_inventory[0].identity_id).toBe(
-      "ident-1",
-    );
+    expect(app.store.tables.restaurant_inventory[0].identity_id).toBe("ident-1");
     expect(app.decisions()).toHaveLength(1);
 
     const out = (await app.undo(DENIZ, LEGACY_H1)) as any;
@@ -559,28 +478,16 @@ describe("deciding another house's candidate says nothing about it", () => {
           undoes_decision_id: null,
         },
       ],
-      restaurant_inventory: [
-        { id: "inv-1", restaurant_id: HOUSE_1, identity_id: "ident-1" },
-      ],
+      restaurant_inventory: [{ id: "inv-1", restaurant_id: HOUSE_1, identity_id: "ident-1" }],
     });
-    decided.beverage_identity_candidates =
-      decided.beverage_identity_candidates.map((c) =>
-        c.id === CAND_H1
-          ? {
-              ...c,
-              status: "confirmed",
-              decided_by: "u-aylin",
-              decided_at: "2026-09-16T09:00:00Z",
-            }
-          : c,
-      );
+    decided.beverage_identity_candidates = decided.beverage_identity_candidates.map((c) =>
+      c.id === CAND_H1 ? { ...c, status: "confirmed", decided_by: "u-aylin", decided_at: "2026-09-16T09:00:00Z" } : c,
+    );
 
     for (const tables of [seed(), decided]) {
       const app = makeApp(tables);
       const before = JSON.stringify(app.store.tables);
-      const theirs = await app
-        .decide(MERT, CAND_H1, "rejected")
-        .catch((e) => e);
+      const theirs = await app.decide(MERT, CAND_H1, "rejected").catch((e) => e);
       const missing = await app
         .decide(MERT, "c0000000-0000-4000-8000-999999999999", "rejected")
         .catch((e) => e);
@@ -597,14 +504,7 @@ describe("a shared candidate that reads decided with nothing logged behind it", 
   const stranded = () => {
     const t = seed();
     t.beverage_identity_candidates = t.beverage_identity_candidates.map((c) =>
-      c.id === CAND_PUB
-        ? {
-            ...c,
-            status: "confirmed",
-            decided_by: "u-aylin",
-            decided_at: "2026-09-16T09:00:00Z",
-          }
-        : c,
+      c.id === CAND_PUB ? { ...c, status: "confirmed", decided_by: "u-aylin", decided_at: "2026-09-16T09:00:00Z" } : c,
     );
     return t;
   };
@@ -613,9 +513,7 @@ describe("a shared candidate that reads decided with nothing logged behind it", 
     const app = makeApp(stranded());
     const before = JSON.stringify(app.store.tables);
     for (const person of [AYLIN, MERT]) {
-      const err = await app
-        .decide(person, CAND_PUB, "rejected")
-        .catch((e) => e);
+      const err = await app.decide(person, CAND_PUB, "rejected").catch((e) => e);
       expect(err).toBeInstanceOf(ConflictException);
       expect(err.message).toMatch(/no logged decision stands behind it/);
     }
@@ -658,12 +556,8 @@ describe("two houses deciding one shared candidate at the same moment", () => {
     ]);
 
     const settled = [one, two];
-    const won = settled.filter(
-      (r) => r.status === "fulfilled",
-    ) as PromiseFulfilledResult<any>[];
-    const lost = settled.filter(
-      (r) => r.status === "rejected",
-    ) as PromiseRejectedResult[];
+    const won = settled.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<any>[];
+    const lost = settled.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
     expect(won).toHaveLength(1);
     expect(lost).toHaveLength(1);
     expect(lost[0].reason).toBeInstanceOf(ConflictException);
@@ -674,9 +568,7 @@ describe("two houses deciding one shared candidate at the same moment", () => {
     expect(app.decisions()).toHaveLength(1);
     expect(app.decisions()[0].id).toBe(winner.decisionId);
     expect(app.candidate(CAND_PUB).status).toBe(winner.status);
-    expect(app.posting().identity_id).toBe(
-      winner.status === "confirmed" ? "ident-1" : null,
-    );
+    expect(app.posting().identity_id).toBe(winner.status === "confirmed" ? "ident-1" : null);
   });
 
   it("after the race, undoing the winner leaves a pending candidate with no link behind it", async () => {
@@ -686,8 +578,7 @@ describe("two houses deciding one shared candidate at the same moment", () => {
       app.decide(MERT, CAND_PUB, "rejected"),
     ]);
     const winnerIsOne = one.status === "fulfilled";
-    const winner = ((winnerIsOne ? one : two) as PromiseFulfilledResult<any>)
-      .value;
+    const winner = ((winnerIsOne ? one : two) as PromiseFulfilledResult<any>).value;
     await app.undo(winnerIsOne ? DENIZ : SELIN, winner.decisionId);
 
     expect(app.candidate(CAND_PUB).status).toBe("pending");

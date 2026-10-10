@@ -252,13 +252,7 @@ export class ExperimentEndedProducer {
       }
 
       const outcome = await this.ledger.emit(
-        {
-          restaurantId: founderHouseId,
-          producer: PRODUCER,
-          audience,
-          tally,
-          now,
-        },
+        { restaurantId: founderHouseId, producer: PRODUCER, audience, tally, now },
         {
           // DEDUPED ON THE EXPERIMENT KEY, so it fires once and not once per
           // sweep for the rest of the quarter. The claim index

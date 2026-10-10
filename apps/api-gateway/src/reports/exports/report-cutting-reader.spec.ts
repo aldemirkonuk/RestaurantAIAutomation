@@ -6,10 +6,7 @@ import { holdsHouseMoney } from "../../procurement/documents/document-money-gate
 import { RecommendationActionsService } from "../../analytics/recommendation-actions.service";
 import { ReportCuttingReader } from "./report-cutting-reader.service";
 import { ReportExportsController } from "./report-exports.controller";
-import {
-  EXPORTABLE_CUTTINGS,
-  type ExportableCutting,
-} from "./report-export-cuttings";
+import { EXPORTABLE_CUTTINGS, type ExportableCutting } from "./report-export-cuttings";
 
 /**
  * OD-81 — an export reads a cutting the way the /reports page reads it.
@@ -115,60 +112,20 @@ function build(stored: unknown[] | null = null) {
  */
 const PAGE: Record<
   ExportableCutting,
-  {
-    path: string;
-    call: (c: AnalyticsController, days: number) => Promise<unknown>;
-  }
+  { path: string; call: (c: AnalyticsController, days: number) => Promise<unknown> }
 > = {
-  reading: {
-    path: "`/analytics/insights/${rid}?limit=40`",
-    call: (c) =>
-      c.getInsights(RID, undefined, undefined, "40", undefined, OWNER),
-  },
-  till: {
-    path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`",
-    call: (c, d) => c.getPosRevenue(RID, String(d)),
-  },
-  goals: {
-    path: "`/analytics/goals/${rid}/progress`",
-    call: (c) => c.listGoalsWithProgress(RID, undefined, OWNER),
-  },
-  bench: {
-    path: "`/analytics/overview/${rid}`",
-    call: (c) => c.getOverview(RID, OWNER),
-  },
-  pacing: {
-    path: "`/analytics/cashflow/${rid}`",
-    call: (c) => c.getCashflow(RID, OWNER),
-  },
-  week: {
-    path: "`/analytics/seasonality/${rid}`",
-    call: (c) => c.getSeasonality(RID),
-  },
-  ahead: {
-    path: "`/analytics/forecast/${rid}?horizon=14`",
-    call: (c) => c.getForecast(RID, undefined, "14"),
-  },
-  quadrants: {
-    path: "`/analytics/menu-engineering/${rid}`",
-    call: (c) => c.getMenuEngineering(RID, OWNER),
-  },
-  ledger: {
-    path: "`/analytics/financial/${rid}`",
-    call: (c) => c.getFinancial(RID, undefined, OWNER),
-  },
-  seats: {
-    path: "`/analytics/table-performance/${rid}?sinceDays=90`",
-    call: (c) => c.getTablePerformance(RID, "90"),
-  },
-  service: {
-    path: "`/analytics/waiters/${rid}?sinceDays=90`",
-    call: (c) => c.getWaiters(RID, "90"),
-  },
-  restock: {
-    path: "`/analytics/inventory-science/${rid}`",
-    call: (c) => c.getInventoryScience(RID, undefined, undefined, OWNER),
-  },
+  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, OWNER) },
+  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
+  goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, OWNER) },
+  bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID, OWNER) },
+  pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID, OWNER) },
+  week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
+  ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
+  quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID, OWNER) },
+  ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined, OWNER) },
+  seats: { path: "`/analytics/table-performance/${rid}?sinceDays=90`", call: (c) => c.getTablePerformance(RID, "90") },
+  service: { path: "`/analytics/waiters/${rid}?sinceDays=90`", call: (c) => c.getWaiters(RID, "90") },
+  restock: { path: "`/analytics/inventory-science/${rid}`", call: (c) => c.getInventoryScience(RID, undefined, undefined, OWNER) },
 };
 
 describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () => {
@@ -177,38 +134,26 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     const web = ["trade", "house", "bench", "goals"]
       .map((f) =>
         readFileSync(
-          join(
-            __dirname,
-            `../../../../web/src/pages/reports/next/rp-registers-${f}.tsx`,
-          ),
+          join(__dirname, `../../../../web/src/pages/reports/next/rp-registers-${f}.tsx`),
           "utf8",
         ),
       )
       .join("\n");
     for (const [id, p] of Object.entries(PAGE))
-      expect([
-        id,
-        web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`),
-      ]).toEqual([id, true]);
+      expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
   });
 
   it("goals: the page still refuses staff, so asking it as the owner weakens nothing", async () => {
     const { controller } = build();
-    await expect(
-      controller.listGoalsWithProgress(RID, undefined, { role: "staff" }),
-    ).rejects.toMatchObject({
+    await expect(controller.listGoalsWithProgress(RID, undefined, { role: "staff" })).rejects.toMatchObject({
       status: 403,
     });
   });
 
   it("is exported only by someone who holds the house's money, so the export's full figures reach no one the page withholds them from", async () => {
-    const roles = Reflect.getMetadata(
-      ROLES_KEY,
-      ReportExportsController,
-    ) as string[];
+    const roles = Reflect.getMetadata(ROLES_KEY, ReportExportsController) as string[];
     expect([...roles].sort()).toEqual(["manager", "owner"]);
-    for (const role of roles)
-      expect([role, holdsHouseMoney(role)]).toEqual([role, true]);
+    for (const role of roles) expect([role, holdsHouseMoney(role)]).toEqual([role, true]);
     // And the page itself still withholds from a reader without the money.
     const { controller } = build();
     const staff = { role: "staff" };
@@ -219,10 +164,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       ledger: await controller.getFinancial(RID, undefined, staff),
     };
     for (const [id, answer] of Object.entries(asStaff)) {
-      expect([
-        id,
-        (answer as { amountsWithheld?: boolean }).amountsWithheld,
-      ]).toEqual([id, true]);
+      expect([id, (answer as { amountsWithheld?: boolean }).amountsWithheld]).toEqual([id, true]);
     }
   });
 
@@ -230,15 +172,8 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     it(`${id}: answers exactly what the page's endpoint answers`, async () => {
       const days = 7;
       const { controller, reader } = build();
-      const fromPage = (await PAGE[id].call(controller, days)) as Record<
-        string,
-        unknown
-      >;
-      const fromExport = await reader.read(
-        RID,
-        id,
-        id === "till" ? days : null,
-      );
+      const fromPage = (await PAGE[id].call(controller, days)) as Record<string, unknown>;
+      const fromExport = await reader.read(RID, id, id === "till" ? days : null);
       if (id === "till") {
         // The endpoint also attaches a per-wine consumption breakdown that the
         // till cutting never reads; everything else must match.
@@ -255,11 +190,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
         expect(hiddenForYou).toBe(0);
         expect(personalSnoozesReadable).toBe(false);
         expect(fromExport).toEqual(rest);
-        expect((fromExport as { withheld?: unknown }).withheld).toEqual({
-          dismissed: 1,
-          snoozed: 2,
-          done: 3,
-        });
+        expect((fromExport as { withheld?: unknown }).withheld).toEqual({ dismissed: 1, snoozed: 2, done: 3 });
       } else {
         expect(fromExport).toEqual(fromPage);
       }
@@ -269,18 +200,10 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
   it("reading: on a cold start both compute once, live, and persist — the same call", async () => {
     const page = build([]);
     const exp = build([]);
-    const fromPage = await page.controller.getInsights(
-      RID,
-      undefined,
-      undefined,
-      "40",
-    );
+    const fromPage = await page.controller.getInsights(RID, undefined, undefined, "40");
     const fromExport = await exp.reader.read(RID, "reading", null);
     expect(fromExport).toEqual(fromPage);
-    expect(exp.insights.generate).toHaveBeenCalledWith(RID, {
-      categories: undefined,
-      persist: true,
-    });
+    expect(exp.insights.generate).toHaveBeenCalledWith(RID, { categories: undefined, persist: true });
   });
 
   it("reading: a cache whose every row is withheld is an answer — neither side recomputes", async () => {
@@ -294,14 +217,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     });
     page.insights.readStored.mockImplementation(allWithheld);
     exp.insights.readStored.mockImplementation(allWithheld);
-    const fromPage = (await page.controller.getInsights(
-      RID,
-      undefined,
-      undefined,
-      "40",
-      undefined,
-      OWNER,
-    )) as Record<string, unknown>;
+    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40", undefined, OWNER)) as Record<string, unknown>;
     const fromExport = await exp.reader.read(RID, "reading", null);
     const { hiddenForYou, personalSnoozesReadable, ...rest } = fromPage;
     expect(fromExport).toEqual(rest);
@@ -314,20 +230,13 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     });
     expect(page.insights.generate).not.toHaveBeenCalled();
     expect(exp.insights.generate).not.toHaveBeenCalled();
-    expect(exp.insights.readStored).toHaveBeenCalledWith(RID, {
-      categories: undefined,
-      limit: 40,
-    });
+    expect(exp.insights.readStored).toHaveBeenCalledWith(RID, { categories: undefined, limit: 40 });
   });
 
   it("does not swallow a register that throws: the export service fails the export with it", async () => {
     const { reader } = build();
     const broken = new ReportCuttingReader(
-      {
-        getFinancialSummary: jest.fn(async () => {
-          throw new Error("boom");
-        }),
-      } as never,
+      { getFinancialSummary: jest.fn(async () => { throw new Error("boom"); }) } as never,
       null as never,
       null as never,
       null as never,

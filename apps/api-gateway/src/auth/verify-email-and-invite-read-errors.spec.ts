@@ -126,12 +126,7 @@ describe("AuthService#getInvitePreview — a failed read is not a missing invite
     const { svc } = makeService({
       organization_invites: [
         {
-          data: {
-            id: "i1",
-            role: "staff",
-            expires_at: future(),
-            used_at: past(),
-          },
+          data: { id: "i1", role: "staff", expires_at: future(), used_at: past() },
           error: null,
         },
       ],
@@ -249,12 +244,7 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
     const { svc } = makeService({
       email_verifications: [
         {
-          data: {
-            id: "v1",
-            user_id: "u1",
-            expires_at: past(),
-            verified_at: null,
-          },
+          data: { id: "v1", user_id: "u1", expires_at: past(), verified_at: null },
           error: null,
         },
       ],
@@ -268,12 +258,7 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
     const { svc, chains } = makeService({
       email_verifications: [
         {
-          data: {
-            id: "v1",
-            user_id: "u1",
-            expires_at: future(),
-            verified_at: null,
-          },
+          data: { id: "v1", user_id: "u1", expires_at: future(), verified_at: null },
           error: null,
         },
         { data: null, error: null },
@@ -349,12 +334,7 @@ describe("AuthService#verifyEmail — the link needs a session of its own accoun
 
   it("signed in to ANOTHER account: 403 LINK_FOR_ANOTHER_ACCOUNT, before the link's state is said, and the link is not spent", async () => {
     const used = {
-      data: {
-        id: "v1",
-        user_id: "u1",
-        expires_at: past(),
-        verified_at: past(),
-      },
+      data: { id: "v1", user_id: "u1", expires_at: past(), verified_at: past() },
       error: null,
     };
     for (const row of [live, used]) {
@@ -390,11 +370,7 @@ describe("AuthService#verifyEmail — the link needs a session of its own accoun
           error: null,
         },
         {
-          data: {
-            user_id: "u1",
-            email_verified: true,
-            restaurant_id: "home-house",
-          },
+          data: { user_id: "u1", email_verified: true, restaurant_id: "home-house" },
           error: null,
         },
       ],

@@ -18,12 +18,7 @@ function fixture(prior: Record<string, unknown> | null, faults: string[] = []) {
   const tables: Record<string, any[]> = {
     integration_oauth_connections: prior ? [{ ...prior }] : [],
     house_inbox_cursors: prior
-      ? [
-          {
-            connection_id: CONN,
-            last_internal_date: Date.parse("2026-08-01T00:00:00Z"),
-          },
-        ]
+      ? [{ connection_id: CONN, last_internal_date: Date.parse("2026-08-01T00:00:00Z") }]
       : [],
   };
   const db = {
@@ -39,44 +34,24 @@ function fixture(prior: Record<string, unknown> | null, faults: string[] = []) {
           const rows = tables[table] ?? (tables[table] = []);
           if (action === "upsert") {
             const at = rows.findIndex(
-              (r) =>
-                r.user_id === payload.user_id &&
-                r.integration_id === payload.integration_id,
+              (r) => r.user_id === payload.user_id && r.integration_id === payload.integration_id,
             );
             if (at >= 0) Object.assign(rows[at], payload);
             else rows.push({ id: CONN, ...payload });
             return { data: null, error: null };
           }
           const found = rows.filter((row) => filters.every((m) => m(row)));
-          if (action === "delete")
-            tables[table] = rows.filter((r) => !found.includes(r));
+          if (action === "delete") tables[table] = rows.filter((r) => !found.includes(r));
           return { data: found, error: null };
         };
         const query: any = {
           select: () => query,
-          delete: () => {
-            action = "delete";
-            return query;
-          },
-          upsert: (value: any) => {
-            action = "upsert";
-            payload = value;
-            return query;
-          },
-          eq: (key: string, value: any) => {
-            filters.push((row) => row[key] === value);
-            return query;
-          },
-          is: (key: string, value: any) => {
-            filters.push((row) => (row[key] ?? null) === value);
-            return query;
-          },
-          maybeSingle: async () => {
-            const r = run();
-            return { ...r, data: r.data?.[0] ?? null };
-          },
-          then: (resolve: any, reject: any) =>
-            Promise.resolve().then(run).then(resolve, reject),
+          delete: () => { action = "delete"; return query; },
+          upsert: (value: any) => { action = "upsert"; payload = value; return query; },
+          eq: (key: string, value: any) => { filters.push((row) => row[key] === value); return query; },
+          is: (key: string, value: any) => { filters.push((row) => (row[key] ?? null) === value); return query; },
+          maybeSingle: async () => { const r = run(); return { ...r, data: r.data?.[0] ?? null }; },
+          then: (resolve: any, reject: any) => Promise.resolve().then(run).then(resolve, reject),
         };
         return query;
       },
@@ -88,21 +63,13 @@ function fixture(prior: Record<string, unknown> | null, faults: string[] = []) {
     decrypt: (t: string) => t.slice(4),
     tryDecrypt: () => null,
   };
-  const oauth = new IntegrationsOauthService(
-    db as never,
-    { get: () => undefined } as never,
-    crypto as never,
-  );
+  const oauth = new IntegrationsOauthService(db as never, { get: () => undefined } as never, crypto as never);
   const store = (account: string | null) =>
     (oauth as any).storeConnection({
       userId: USER,
       restaurantId: HOUSE,
       definition: INTEGRATION_DEFINITIONS.gmail_read,
-      tokens: {
-        access_token: "a",
-        refresh_token: "r",
-        scope: "https://www.googleapis.com/auth/gmail.readonly",
-      },
+      tokens: { access_token: "a", refresh_token: "r", scope: "https://www.googleapis.com/auth/gmail.readonly" },
       account,
       consentReceiptId: "seal",
     });
@@ -140,13 +107,9 @@ describe("reconnecting Gmail reading starts from the new consent (F-762)", () =>
   });
 
   it("does not switch the grant back on when the old cursor cannot be cleared", async () => {
-    const f = fixture(grant({ revoked_at: "2026-08-01T00:00:00Z" }), [
-      "house_inbox_cursors:delete",
-    ]);
+    const f = fixture(grant({ revoked_at: "2026-08-01T00:00:00Z" }), ["house_inbox_cursors:delete"]);
     await expect(f.store("owner@house.test")).rejects.toThrow(/reading point/);
-    expect(f.tables.integration_oauth_connections[0].revoked_at).toBe(
-      "2026-08-01T00:00:00Z",
-    );
+    expect(f.tables.integration_oauth_connections[0].revoked_at).toBe("2026-08-01T00:00:00Z");
     expect(f.tables.house_inbox_cursors).toHaveLength(1);
   });
 

@@ -92,9 +92,9 @@ describe("resendVerification — an account with no verification row", () => {
   it("sends instead of throwing when no row has ever existed", async () => {
     const { service, sent } = makeService([]);
 
-    await expect(service.resendVerification("u1", "a@b.com")).resolves.toEqual({
-      sent: true,
-    });
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).resolves.toEqual({ sent: true });
     expect(sent).toHaveLength(1);
   });
 
@@ -105,9 +105,9 @@ describe("resendVerification — an account with no verification row", () => {
       { id: "v0", verified_at: minutesAgo(600), created_at: minutesAgo(600) },
     ]);
 
-    await expect(service.resendVerification("u1", "a@b.com")).resolves.toEqual({
-      sent: true,
-    });
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).resolves.toEqual({ sent: true });
     expect(sent).toHaveLength(1);
   });
 
@@ -124,9 +124,7 @@ describe("resendVerification — an account with no verification row", () => {
 
     expect(sent).toHaveLength(1);
     const html = sent[0].html as string;
-    expect(html).toContain(
-      'href="https://mudavym.com/verify-email?token=fresh-token"',
-    );
+    expect(html).toContain('href="https://mudavym.com/verify-email?token=fresh-token"');
     // The raw comma-joined string must never leak into a mailed verify link.
     expect(html).not.toContain(",https://www.mudavym.com");
   });
@@ -155,9 +153,9 @@ describe("resendVerification — an account with no verification row", () => {
       },
     ]);
 
-    await expect(service.resendVerification("u1", "a@b.com")).resolves.toEqual({
-      sent: true,
-    });
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).resolves.toEqual({ sent: true });
     expect(sent).toHaveLength(1);
   });
 
@@ -189,10 +187,9 @@ describe("resendVerification — an account already verified (F-440)", () => {
       { email_verified: true },
     );
 
-    await expect(service.resendVerification("u1", "a@b.com")).resolves.toEqual({
-      sent: false,
-      alreadyVerified: true,
-    });
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).resolves.toEqual({ sent: false, alreadyVerified: true });
     expect(sent).toHaveLength(0);
     expect(inserted).toHaveLength(0);
   });

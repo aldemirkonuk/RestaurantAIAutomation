@@ -32,11 +32,7 @@ function bare(over: Partial<InsightRecord> = {}): InsightRecord {
     evidence: {} as any,
     subject: null,
     periodKey: null,
-    suppression: {
-      key: RULE,
-      scope: "rule" as any,
-      keys: { rule: RULE } as any,
-    },
+    suppression: { key: RULE, scope: "rule" as any, keys: { rule: RULE } as any },
     periodStart: null,
     periodEnd: null,
     ...over,
@@ -69,20 +65,8 @@ function makeClient(rowsByTable: Record<string, any[]>) {
       const rows = rowsByTable[table] ?? [];
       const builder: any = {};
       for (const m of [
-        "select",
-        "eq",
-        "neq",
-        "gt",
-        "gte",
-        "lt",
-        "lte",
-        "in",
-        "is",
-        "or",
-        "not",
-        "order",
-        "limit",
-        "range",
+        "select", "eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "or",
+        "not", "order", "limit", "range",
       ])
         builder[m] = () => builder;
       builder.maybeSingle = () =>
@@ -115,20 +99,14 @@ async function liveKey(restaurants: any[]) {
     .spyOn(svc as any, "computeGoalsFamily")
     .mockImplementation((_bundle: any, push: any) =>
       push(
-        (svc as any).record(
-          TYPE,
-          "goals",
-          "goal",
-          {
-            measureLabel: "revenue",
-            unit: "ratio",
-            goalName: "October revenue",
-            goalProgressPct: 0.4,
-            goalDaysLeft: 10,
-            goalOnTrack: false,
-          },
-          { effectPct: -0.6, n: 14 },
-        ),
+        (svc as any).record(TYPE, "goals", "goal", {
+          measureLabel: "revenue",
+          unit: "ratio",
+          goalName: "October revenue",
+          goalProgressPct: 0.4,
+          goalDaysLeft: 10,
+          goalOnTrack: false,
+        }, { effectPct: -0.6, n: 14 }),
       ),
     );
   const out = await svc.generate("r1", { persist: false });
@@ -142,14 +120,8 @@ describe("generate() keys firings on the house's week (F-796)", () => {
     jest.useFakeTimers({
       now: SUNDAY_EVENING_LA,
       doNotFake: [
-        "setTimeout",
-        "clearTimeout",
-        "setInterval",
-        "clearInterval",
-        "setImmediate",
-        "clearImmediate",
-        "nextTick",
-        "queueMicrotask",
+        "setTimeout", "clearTimeout", "setInterval", "clearInterval",
+        "setImmediate", "clearImmediate", "nextTick", "queueMicrotask",
       ],
     });
   });

@@ -20,20 +20,8 @@ const WEEK = "2026-09-07"; // a Monday
 function seed(status: "draft" | "published"): StubDb {
   return makeStubDb({
     user_restaurant_access: [
-      {
-        id: "a1",
-        user_id: STAFF,
-        restaurant_id: RID,
-        role: "staff",
-        is_active: true,
-      },
-      {
-        id: "a2",
-        user_id: MANAGER,
-        restaurant_id: RID,
-        role: "manager",
-        is_active: true,
-      },
+      { id: "a1", user_id: STAFF, restaurant_id: RID, role: "staff", is_active: true },
+      { id: "a2", user_id: MANAGER, restaurant_id: RID, role: "manager", is_active: true },
     ],
     users: [
       { user_id: STAFF, restaurant_id: RID, role: "staff" },
@@ -41,13 +29,7 @@ function seed(status: "draft" | "published"): StubDb {
     ],
     restaurants: [{ id: RID, timezone: "America/Los_Angeles", country: "US" }],
     team_members: [
-      {
-        id: "m-staff",
-        restaurant_id: RID,
-        user_id: STAFF,
-        display_name: "Sam",
-        hourly_wage: 20,
-      },
+      { id: "m-staff", restaurant_id: RID, user_id: STAFF, display_name: "Sam", hourly_wage: 20 },
     ],
     team_settings: [{ restaurant_id: RID, labor_tracking_enabled: true }],
     schedules: [{ id: "s1", restaurant_id: RID, week_start: WEEK, status }],
@@ -99,10 +81,7 @@ afterEach(() => jest.useRealTimers());
 
 describe("F-506: a draft week is not out to staff", () => {
   it("gives staff the draft schedule row but none of its shifts", async () => {
-    jest.useFakeTimers({
-      now: BEFORE_OPEN,
-      doNotFake: ["nextTick", "setImmediate"],
-    });
+    jest.useFakeTimers({ now: BEFORE_OPEN, doNotFake: ["nextTick", "setImmediate"] });
     const out = await service(seed("draft")).getMyWeek(STAFF, RID, WEEK);
     expect(out.schedule?.status).toBe("draft");
     expect(out.mine).toEqual([]);
@@ -110,72 +89,46 @@ describe("F-506: a draft week is not out to staff", () => {
   });
 
   it("gives staff their shifts once the week is published", async () => {
-    jest.useFakeTimers({
-      now: BEFORE_OPEN,
-      doNotFake: ["nextTick", "setImmediate"],
-    });
+    jest.useFakeTimers({ now: BEFORE_OPEN, doNotFake: ["nextTick", "setImmediate"] });
     const out = await service(seed("published")).getMyWeek(STAFF, RID, WEEK);
     expect(out.mine.map((s: any) => s.id)).toEqual(["sh-mine"]);
     expect(out.open.map((s: any) => s.id)).toEqual(["sh-open"]);
   });
 
   it("leaves a manager's view of a draft week as it was", async () => {
-    jest.useFakeTimers({
-      now: BEFORE_OPEN,
-      doNotFake: ["nextTick", "setImmediate"],
-    });
+    jest.useFakeTimers({ now: BEFORE_OPEN, doNotFake: ["nextTick", "setImmediate"] });
     const out = await service(seed("draft")).getMyWeek(MANAGER, RID, WEEK);
     expect(out.open.map((s: any) => s.id)).toEqual(["sh-open"]);
   });
 
   it("refuses a staff claim on a draft week, in words, and writes nothing", async () => {
-    jest.useFakeTimers({
-      now: BEFORE_OPEN,
-      doNotFake: ["nextTick", "setImmediate"],
-    });
+    jest.useFakeTimers({ now: BEFORE_OPEN, doNotFake: ["nextTick", "setImmediate"] });
     const db = seed("draft");
-    const claim = service(db).assignCover(STAFF, RID, "sh-open", {
-      memberId: "m-staff",
-    } as any);
+    const claim = service(db).assignCover(STAFF, RID, "sh-open", { memberId: "m-staff" } as any);
     await expect(claim).rejects.toBeInstanceOf(ConflictException);
     await expect(claim).rejects.toThrow(/isn't out yet/);
     expect(db.opsOn("shifts", "update")).toHaveLength(0);
   });
 
   it("still lets staff take an open shift on a published week", async () => {
-    jest.useFakeTimers({
-      now: BEFORE_OPEN,
-      doNotFake: ["nextTick", "setImmediate"],
-    });
+    jest.useFakeTimers({ now: BEFORE_OPEN, doNotFake: ["nextTick", "setImmediate"] });
     const db = seed("published");
-    await service(db).assignCover(STAFF, RID, "sh-open", {
-      memberId: "m-staff",
-    } as any);
-    expect(db.tables.shifts.find((s) => s.id === "sh-open")?.member_id).toBe(
-      "m-staff",
-    );
+    await service(db).assignCover(STAFF, RID, "sh-open", { memberId: "m-staff" } as any);
+    expect(db.tables.shifts.find((s) => s.id === "sh-open")?.member_id).toBe("m-staff");
   });
 });
 
 describe("F-507: a shift that is over cannot be taken", () => {
   it("leaves an ended open shift out of the open list", async () => {
-    jest.useFakeTimers({
-      now: AFTER_OPEN,
-      doNotFake: ["nextTick", "setImmediate"],
-    });
+    jest.useFakeTimers({ now: AFTER_OPEN, doNotFake: ["nextTick", "setImmediate"] });
     const out = await service(seed("published")).getMyWeek(STAFF, RID, WEEK);
     expect(out.open).toEqual([]);
   });
 
   it("refuses a staff claim on an ended shift and writes nothing", async () => {
-    jest.useFakeTimers({
-      now: AFTER_OPEN,
-      doNotFake: ["nextTick", "setImmediate"],
-    });
+    jest.useFakeTimers({ now: AFTER_OPEN, doNotFake: ["nextTick", "setImmediate"] });
     const db = seed("published");
-    const claim = service(db).assignCover(STAFF, RID, "sh-open", {
-      memberId: "m-staff",
-    } as any);
+    const claim = service(db).assignCover(STAFF, RID, "sh-open", { memberId: "m-staff" } as any);
     await expect(claim).rejects.toBeInstanceOf(ConflictException);
     await expect(claim).rejects.toThrow(/already ended/);
     expect(db.opsOn("shifts", "update")).toHaveLength(0);
@@ -221,9 +174,7 @@ describe("F-507: a shift that is over cannot be taken", () => {
     });
     const out = await service(db).getMyWeek(STAFF, RID, WEEK);
     expect(out.open).toEqual([]);
-    const claim = service(db).assignCover(STAFF, RID, "sh-open", {
-      memberId: "m-staff",
-    } as any);
+    const claim = service(db).assignCover(STAFF, RID, "sh-open", { memberId: "m-staff" } as any);
     await expect(claim).rejects.toThrow(/already ended/);
   });
 });

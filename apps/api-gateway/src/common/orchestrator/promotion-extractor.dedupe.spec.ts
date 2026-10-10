@@ -22,10 +22,7 @@ function makeStore(inventory: string[]) {
       table === "provider_promotions"
         ? promotions
         : table === "restaurant_inventory"
-          ? inventory.map((wine_name) => ({
-              wine_name,
-              restaurant_id: "house-A",
-            }))
+          ? inventory.map((wine_name) => ({ wine_name, restaurant_id: "house-A" }))
           : [];
     const run = () => {
       if (insertRow) {
@@ -33,10 +30,7 @@ function makeStore(inventory: string[]) {
         promotions.push(row);
         return { data: row, error: null };
       }
-      return {
-        data: rows().filter((r) => filters.every((f) => f(r))),
-        error: null,
-      };
+      return { data: rows().filter((r) => filters.every((f) => f(r))), error: null };
     };
     const q: any = {
       select: () => q,
@@ -66,9 +60,7 @@ function makeStore(inventory: string[]) {
 }
 
 function extractor(store: ReturnType<typeof makeStore>) {
-  const gateway = {
-    emitRoleNotification: jest.fn().mockResolvedValue(undefined),
-  };
+  const gateway = { emitRoleNotification: jest.fn().mockResolvedValue(undefined) };
   return new PromotionExtractorService(store as any, gateway as any);
 }
 
@@ -116,10 +108,7 @@ describe("vendor offers are deduped by the offer, not by equal terms (F-480)", (
     // Put away by the owner: only the dismissal is stamped (promotions.service.ts).
     store.promotions[0].dismissed_at = "2026-10-02T09:00:00Z";
 
-    const again = await svc.extractAndStore({
-      ...ctx,
-      conversationId: "msg-2",
-    });
+    const again = await svc.extractAndStore({ ...ctx, conversationId: "msg-2" });
     expect(again).toEqual({ stored: true });
     expect(store.promotions).toHaveLength(2);
   });

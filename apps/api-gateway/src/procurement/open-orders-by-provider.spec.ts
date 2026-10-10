@@ -18,14 +18,8 @@ import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.ser
 
 type Row = { provider_id: string | null };
 
-function makeDb(
-  pages: Array<{ data: Row[] | null; error?: { message: string } | null }>,
-) {
-  const calls: {
-    eqs: [string, unknown][];
-    ins: [string, unknown][];
-    ranges: [number, number][];
-  } = {
+function makeDb(pages: Array<{ data: Row[] | null; error?: { message: string } | null }>) {
+  const calls: { eqs: [string, unknown][]; ins: [string, unknown][]; ranges: [number, number][] } = {
     eqs: [],
     ins: [],
     ranges: [],
@@ -67,17 +61,9 @@ const rows = (provider: string, n: number): Row[] =>
 describe("countOpenOrdersByProvider", () => {
   it("counts each vendor's open orders for the house", async () => {
     const { db, calls } = makeDb([
-      {
-        data: [
-          ...rows("prov-a", 3),
-          ...rows("prov-b", 1),
-          { provider_id: null },
-        ],
-      },
+      { data: [...rows("prov-a", 3), ...rows("prov-b", 1), { provider_id: null }] },
     ]);
-    await expect(
-      service(db).countOpenOrdersByProvider("rest-1"),
-    ).resolves.toEqual({
+    await expect(service(db).countOpenOrdersByProvider("rest-1")).resolves.toEqual({
       "prov-a": 3,
       "prov-b": 1,
     });
@@ -104,9 +90,7 @@ describe("countOpenOrdersByProvider", () => {
       { data: rows("prov-a", 1000) },
       { data: rows("prov-a", 200) },
     ]);
-    await expect(
-      service(db).countOpenOrdersByProvider("rest-1"),
-    ).resolves.toEqual({
+    await expect(service(db).countOpenOrdersByProvider("rest-1")).resolves.toEqual({
       "prov-a": 1200,
     });
     expect(calls.ranges).toEqual([
@@ -117,24 +101,16 @@ describe("countOpenOrdersByProvider", () => {
 
   it("answers {} for a house with nothing open (a real zero, read)", async () => {
     const { db } = makeDb([{ data: [] }]);
-    await expect(
-      service(db).countOpenOrdersByProvider("rest-1"),
-    ).resolves.toEqual({});
+    await expect(service(db).countOpenOrdersByProvider("rest-1")).resolves.toEqual({});
   });
 
   it("refuses a failed read with 503, without the database's own words", async () => {
     const { db } = makeDb([
-      {
-        data: null,
-        error: { message: "canceling statement due to statement timeout" },
-      },
+      { data: null, error: { message: "canceling statement due to statement timeout" } },
     ]);
     const err = await service(db)
       .countOpenOrdersByProvider("rest-1")
-      .then(
-        () => null,
-        (e: unknown) => e,
-      );
+      .then(() => null, (e: unknown) => e);
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     expect(String((err as Error).message)).not.toMatch(/statement timeout/);
   });
@@ -151,18 +127,14 @@ describe("GET /procurement/orders/open/by-provider", () => {
     await expect(ctrl.countOpenOrdersByProvider(user)).resolves.toEqual({
       counts: { "prov-a": 2 },
     });
-    expect((svc as any).countOpenOrdersByProvider).toHaveBeenCalledWith(
-      "rest-1",
-    );
+    expect((svc as any).countOpenOrdersByProvider).toHaveBeenCalledWith("rest-1");
   });
 
   it("keeps the service's 503 rather than re-wrapping it", async () => {
     const svc = {
       countOpenOrdersByProvider: jest
         .fn()
-        .mockRejectedValue(
-          new ServiceUnavailableException("Could not read open orders"),
-        ),
+        .mockRejectedValue(new ServiceUnavailableException("Could not read open orders")),
     } as unknown as ProcurementService;
     const ctrl = new ProcurementController(svc);
     await expect(ctrl.countOpenOrdersByProvider(user)).rejects.toBeInstanceOf(

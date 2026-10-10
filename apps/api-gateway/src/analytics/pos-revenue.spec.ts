@@ -427,11 +427,7 @@ describe("GoalsService.getPosRevenueWindow", () => {
   it("(m) reads a whole past calendar month, first day to last", async () => {
     const { service } = makeGoals({ pos_checks: probeThen([]) });
     const result = await service.getPosRevenueWindow("r1", 30, "2026-07");
-    expect(result).toMatchObject({
-      from: "2026-07-01",
-      to: "2026-07-31",
-      days: 31,
-    });
+    expect(result).toMatchObject({ from: "2026-07-01", to: "2026-07-31", days: 31 });
   });
 
   it("(m2) ends a month still running on the house's today", async () => {
@@ -443,12 +439,12 @@ describe("GoalsService.getPosRevenueWindow", () => {
 
   it("(m3) refuses a month not yet begun, and a month written wrong", async () => {
     const { service } = makeGoals({ pos_checks: probeThen([]) });
-    await expect(
-      service.getPosRevenueWindow("r1", 30, "2026-10"),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      service.getPosRevenueWindow("r1", 30, "2026-13"),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.getPosRevenueWindow("r1", 30, "2026-10")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(service.getPosRevenueWindow("r1", 30, "2026-13")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   // ── F-086 / A-027: Tuzlu Rüzgar's days, on Tuzlu's clock ──────────────
@@ -728,7 +724,9 @@ describe("GoalsService goal progress on the house's days (j)", () => {
 
   it("(j4) a weekly goal past its deadline counts the week that held the deadline", async () => {
     const { service } = makeGoals({
-      analytics_goals: [{ ...goal, period: "week", deadline: "2026-08-25" }],
+      analytics_goals: [
+        { ...goal, period: "week", deadline: "2026-08-25" },
+      ],
       // Aug 22 LA (the week before), Aug 24 LA (the deadline's week, which
       // opened Sunday Aug 23), Aug 31 LA (after the deadline).
       pos_checks: [
@@ -1353,23 +1351,14 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
   });
 
   it("passes a calendar month through, and answers a refused month as the caller's mistake (F-128)", async () => {
-    goals.getPosRevenueWindow.mockResolvedValue({
-      posConnected: false,
-      dailySeries: [],
-    });
+    goals.getPosRevenueWindow.mockResolvedValue({ posConnected: false, dailySeries: [] });
     await controller.getPosRevenue("r1", undefined, "2026-07");
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
-      "r1",
-      30,
-      "2026-07",
-    );
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, "2026-07");
 
-    goals.getPosRevenueWindow.mockRejectedValue(
-      new BadRequestException("not begun"),
+    goals.getPosRevenueWindow.mockRejectedValue(new BadRequestException("not begun"));
+    await expect(controller.getPosRevenue("r1", undefined, "2027-01")).rejects.toBeInstanceOf(
+      BadRequestException,
     );
-    await expect(
-      controller.getPosRevenue("r1", undefined, "2027-01"),
-    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -1638,38 +1627,11 @@ describe("goal pace for levels, unmeasured goals and percent targets (F-183, F-1
     const created = "2026-08-12T00:00:00Z";
     const goals = [
       // Met "at most" goal: the old arithmetic read 2/15 as behind.
-      {
-        id: "a",
-        name: "Spend cap",
-        metric_key: "purchase_spend",
-        target_value: 15,
-        current_value: 2,
-        direction: "at_most",
-        deadline: "2026-09-12",
-        created_at: created,
-      },
+      { id: "a", name: "Spend cap", metric_key: "purchase_spend", target_value: 15, current_value: 2, direction: "at_most", deadline: "2026-09-12", created_at: created },
       // Nothing measured: the old arithmetic read the stored 0 as 0% done.
-      {
-        id: "b",
-        name: "Avg check",
-        metric_key: "avg_check",
-        target_value: 30,
-        current_value: 0,
-        direction: "at_least",
-        deadline: "2026-09-12",
-        created_at: created,
-      },
+      { id: "b", name: "Avg check", metric_key: "avg_check", target_value: 30, current_value: 0, direction: "at_least", deadline: "2026-09-12", created_at: created },
       // Genuinely behind, a running total chased upward.
-      {
-        id: "c",
-        name: "Covers",
-        metric_key: "checks",
-        target_value: 600,
-        current_value: 60,
-        direction: "at_least",
-        deadline: "2026-09-12",
-        created_at: created,
-      },
+      { id: "c", name: "Covers", metric_key: "checks", target_value: 600, current_value: 60, direction: "at_least", deadline: "2026-09-12", created_at: created },
     ];
     const progress: Record<string, any> = {
       a: { onTrack: true, progressPct: 2 / 15 },
@@ -1678,60 +1640,30 @@ describe("goal pace for levels, unmeasured goals and percent targets (F-183, F-1
     const goalsService = {
       listGoals: async () => goals,
       getGoalProgress: async (_r: string, id: string) => {
-        if (!progress[id])
-          throw new Error("No check has been filed since this goal was set");
+        if (!progress[id]) throw new Error("No check has been filed since this goal was set");
         return progress[id];
       },
     };
     const client: any = {
       from: () => {
         const b: any = {};
-        for (const m of [
-          "select",
-          "order",
-          "limit",
-          "insert",
-          "eq",
-          "gte",
-          "in",
-          "is",
-          "gt",
-          "neq",
-        ])
-          b[m] = () => b;
+        for (const m of ["select", "order", "limit", "insert", "eq", "gte", "in", "is", "gt", "neq"]) b[m] = () => b;
         b.maybeSingle = async () => ({ data: null, error: null });
-        b.then = (res: any, rej: any) =>
-          Promise.resolve({ data: [], error: null }).then(res, rej);
+        b.then = (res: any, rej: any) => Promise.resolve({ data: [], error: null }).then(res, rej);
         return b;
       },
     };
     const svc = new RecommendationsService(
-      {
-        getFinancialSummary: async () => null,
-        getRiskProfile: async () => null,
-        getInventoryScience: async () => null,
-      } as any,
-      {
-        getMenuEngineering: async () => null,
-        getSeasonality: async () => null,
-        getCashflow: async () => null,
-      } as any,
+      { getFinancialSummary: async () => null, getRiskProfile: async () => null, getInventoryScience: async () => null } as any,
+      { getMenuEngineering: async () => null, getSeasonality: async () => null, getCashflow: async () => null } as any,
       { generate: async () => ({ insights: [] }) } as any,
       goalsService as any,
-      {
-        readDispositions: async () => ({
-          map: new Map(),
-          readable: true,
-          problem: null,
-        }),
-      } as any,
+      { readDispositions: async () => ({ map: new Map(), readable: true, problem: null }) } as any,
       { supabase: client, getClient: () => client } as any,
     );
 
     const out = await svc.getRecommendations("r1");
-    const cards = out.recommendations.filter((r) =>
-      r.ruleKey.startsWith("goal_behind_"),
-    );
+    const cards = out.recommendations.filter((r) => r.ruleKey.startsWith("goal_behind_"));
 
     expect(cards.map((c) => c.ruleKey)).toEqual(["goal_behind_c"]);
     expect(cards[0].observation).toBe(

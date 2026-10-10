@@ -85,11 +85,7 @@ describe("mobile feed — a delivery discrepancy is its own card (F-349)", () =>
         title: "Delivery discrepancy: Barolo",
         message: "Short by 2 bottles.",
         createdAt,
-        metadata: {
-          orderId: "o-1",
-          matchStatus: "short_shipped",
-          backorderQty: 2,
-        },
+        metadata: { orderId: "o-1", matchStatus: "short_shipped", backorderQty: 2 },
       },
     ]);
     expect(feed.items).toHaveLength(1);
@@ -113,10 +109,7 @@ describe("mobile feed — a delivery discrepancy is its own card (F-349)", () =>
         metadata: { orderId: "o-1", quantity: 10 },
       },
     ]);
-    expect(feed.items[0]).toMatchObject({
-      kind: "receipt_verification",
-      orderId: "o-1",
-    });
+    expect(feed.items[0]).toMatchObject({ kind: "receipt_verification", orderId: "o-1" });
     expect(feed.counts.receiptVerifications).toBe(1);
   });
 });

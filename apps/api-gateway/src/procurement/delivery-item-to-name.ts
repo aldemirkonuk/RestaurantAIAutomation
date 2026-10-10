@@ -102,26 +102,16 @@ export async function raiseDeliveryItemToName(
       restaurant_id: input.restaurantId,
       order_id: input.orderId,
       why: input.why,
-      bottles_resolved:
-        input.why === "zero_bottles"
-          ? 0
-          : Math.max(0, Math.trunc(input.bottlesResolved)),
+      bottles_resolved: input.why === "zero_bottles" ? 0 : Math.max(0, Math.trunc(input.bottlesResolved)),
       raised_by: input.raisedBy,
     });
     if (error) {
-      if ((error as { code?: string }).code === "23505")
-        return { ok: true, created: false };
-      return {
-        ok: false,
-        error: `the ask to name the item could not be recorded (${error.message})`,
-      };
+      if ((error as { code?: string }).code === "23505") return { ok: true, created: false };
+      return { ok: false, error: `the ask to name the item could not be recorded (${error.message})` };
     }
     return { ok: true, created: true };
   } catch (err: any) {
-    return {
-      ok: false,
-      error: `the ask to name the item could not be recorded (${err?.message ?? String(err)})`,
-    };
+    return { ok: false, error: `the ask to name the item could not be recorded (${err?.message ?? String(err)})` };
   }
 }
 
@@ -142,10 +132,8 @@ export type CloseElsewhereOutcome =
 export type BookedElsewhereVia = "receiving_door" | "verification";
 
 const BOOKED_ELSEWHERE_REASON: Record<BookedElsewhereVia, string> = {
-  receiving_door:
-    "The receiving door booked this order's stock before its item was named.",
-  verification:
-    "A verification booked this order's stock before its item was named.",
+  receiving_door: "The receiving door booked this order's stock before its item was named.",
+  verification: "A verification booked this order's stock before its item was named.",
 };
 
 /**
@@ -174,10 +162,7 @@ export async function closeDeliveryItemToNameBookedElsewhere(
       .eq("status", "open")
       .select("id");
     if (error) {
-      return {
-        ok: false,
-        error: `the ask to name the item could not be closed (${error.message})`,
-      };
+      return { ok: false, error: `the ask to name the item could not be closed (${error.message})` };
     }
     // F-526: the owners' and managers' "Name the item of ORD-…" line clears
     // with the ask. Also when nothing was open to close: the ask is then
@@ -186,17 +171,11 @@ export async function closeDeliveryItemToNameBookedElsewhere(
       groupKey: `delivery_item_to_name:${input.orderId}`,
     });
     if (!bell.ok) {
-      return {
-        ok: false,
-        error: `the ask is closed, but its line on the bell could not be cleared (${bell.error})`,
-      };
+      return { ok: false, error: `the ask is closed, but its line on the bell could not be cleared (${bell.error})` };
     }
     return { ok: true, closed: Array.isArray(data) && data.length > 0 };
   } catch (err: any) {
-    return {
-      ok: false,
-      error: `the ask to name the item could not be closed (${err?.message ?? String(err)})`,
-    };
+    return { ok: false, error: `the ask to name the item could not be closed (${err?.message ?? String(err)})` };
   }
 }
 
@@ -244,13 +223,10 @@ export async function readOpenDeliveryItemsToName(
     );
   }
   const byId = new Map(
-    (
-      (orders ?? []) as Array<{
-        id: string;
-        order_number: string | null;
-        inventory_id: string | null;
-      }>
-    ).map((o) => [o.id, o]),
+    ((orders ?? []) as Array<{ id: string; order_number: string | null; inventory_id: string | null }>).map((o) => [
+      o.id,
+      o,
+    ]),
   );
   return rows.map((r) => ({
     orderId: r.order_id,
@@ -284,10 +260,7 @@ export async function nameDeliveredItem(
     client: Client;
     logger: Pick<Logger, "error" | "warn">;
     /** Strict: a failed role read THROWS, and that refuses. */
-    isOwnerOrManager: (
-      userId: string,
-      restaurantId: string,
-    ) => Promise<boolean>;
+    isOwnerOrManager: (userId: string, restaurantId: string) => Promise<boolean>;
   },
   input: {
     restaurantId: string;
@@ -299,9 +272,7 @@ export async function nameDeliveredItem(
 ): Promise<NamedDelivery> {
   const { client, logger } = deps;
   if (!input.userId?.trim()) {
-    throw new ForbiddenException(
-      "A named person is required to name a delivery's item. Nothing was booked.",
-    );
+    throw new ForbiddenException("A named person is required to name a delivery's item. Nothing was booked.");
   }
 
   // WHO: an owner or a manager, read strictly.
@@ -332,9 +303,7 @@ export async function nameDeliveredItem(
     );
   }
   if (!askData) {
-    throw new NotFoundException(
-      "This delivery is not waiting for its item to be named in this house. Nothing was booked.",
-    );
+    throw new NotFoundException("This delivery is not waiting for its item to be named in this house. Nothing was booked.");
   }
   const ask = askData as DeliveryItemToNameRow;
   // A stale ask says WHY, instead of the generic "already named" 409 that
@@ -376,11 +345,7 @@ export async function nameDeliveredItem(
     }
     bottles = input.bottles;
   }
-  if (
-    !Number.isSafeInteger(bottles) ||
-    bottles < 1 ||
-    bottles > NAMED_BOTTLES_MAX
-  ) {
+  if (!Number.isSafeInteger(bottles) || bottles < 1 || bottles > NAMED_BOTTLES_MAX) {
     throw new BadRequestException(
       `The bottles to book must be a whole number from 1 to ${NAMED_BOTTLES_MAX}; got ${String(bottles)}. Nothing was booked.`,
     );
@@ -394,20 +359,10 @@ export async function nameDeliveredItem(
     .eq("id", input.orderId)
     .maybeSingle();
   if (orderError) {
-    throw new InternalServerErrorException(
-      `The order could not be read (${orderError.message}). Nothing was booked.`,
-    );
+    throw new InternalServerErrorException(`The order could not be read (${orderError.message}). Nothing was booked.`);
   }
-  if (!orderData)
-    throw new NotFoundException(
-      "No such order in this house. Nothing was booked.",
-    );
-  const order = orderData as {
-    id: string;
-    status: string;
-    inventory_id: string | null;
-    order_number: string | null;
-  };
+  if (!orderData) throw new NotFoundException("No such order in this house. Nothing was booked.");
+  const order = orderData as { id: string; status: string; inventory_id: string | null; order_number: string | null };
   if (!ARRIVED.has(String(order.status))) {
     throw new ConflictException(
       `This order reads "${String(order.status)}", not delivered, so its stock is not booked by naming. Nothing was booked.`,
@@ -427,14 +382,10 @@ export async function nameDeliveredItem(
     .eq("id", input.inventoryId)
     .maybeSingle();
   if (itemError) {
-    throw new InternalServerErrorException(
-      `The item could not be read (${itemError.message}). Nothing was booked.`,
-    );
+    throw new InternalServerErrorException(`The item could not be read (${itemError.message}). Nothing was booked.`);
   }
   if (!itemData) {
-    throw new UnprocessableEntityException(
-      "That item is not an item of this house. Nothing was booked.",
-    );
+    throw new UnprocessableEntityException("That item is not an item of this house. Nothing was booked.");
   }
   const item = itemData as { shadow_stock?: number | null };
 
@@ -444,9 +395,7 @@ export async function nameDeliveredItem(
   // any earlier booking of this order. A failed read of either refuses.
   const door = await deliveryHasBookedOrder(client, input.orderId);
   if (!door.ok) {
-    throw new InternalServerErrorException(
-      `${door.error} The item was not named.`,
-    );
+    throw new InternalServerErrorException(`${door.error} The item was not named.`);
   }
   if (door.value.booked) {
     // The proactive close (receiving.service.ts, delivery-stock.service.ts)
@@ -483,15 +432,11 @@ export async function nameDeliveredItem(
     // keys carry no delivery id) and a verification correction
     // (`receipt-verify:`). Best-effort on WHICH one, from the key it booked
     // under; either way the ask stops being listed as open.
-    const bookedKey = String(
-      (earlier[0] as { idempotency_key?: string })?.idempotency_key ?? "",
-    );
+    const bookedKey = String((earlier[0] as { idempotency_key?: string })?.idempotency_key ?? "");
     await closeDeliveryItemToNameBookedElsewhere(client, {
       restaurantId: input.restaurantId,
       orderId: input.orderId,
-      via: bookedKey.startsWith("receipt-verify:")
-        ? "verification"
-        : "receiving_door",
+      via: bookedKey.startsWith("receipt-verify:") ? "verification" : "receiving_door",
     });
     throw new ConflictException({
       reason: "delivery_item_booked_elsewhere",
@@ -517,9 +462,7 @@ export async function nameDeliveredItem(
     .eq("status", "open")
     .select("id");
   if (claimError) {
-    throw new InternalServerErrorException(
-      `The item could not be named (${claimError.message}). Nothing was booked.`,
-    );
+    throw new InternalServerErrorException(`The item could not be named (${claimError.message}). Nothing was booked.`);
   }
   if (!Array.isArray(claimed) || claimed.length === 0) {
     throw new ConflictException(
@@ -530,13 +473,7 @@ export async function nameDeliveredItem(
   const putBackAsk = async (why: string) => {
     const { data: reopened, error: reopenError } = await client
       .from("delivery_item_to_name")
-      .update({
-        status: "open",
-        named_by: null,
-        named_at: null,
-        named_inventory_id: null,
-        bottles_booked: null,
-      })
+      .update({ status: "open", named_by: null, named_at: null, named_inventory_id: null, bottles_booked: null })
       .eq("id", ask.id)
       .eq("status", "named")
       .eq("named_at", namedAt)
@@ -574,10 +511,7 @@ export async function nameDeliveredItem(
   // THE BOOKING, under the key markDelivered books under.
   let bookingError: string | null = null;
   try {
-    const shadowRelease = Math.min(
-      bottles,
-      Number(item.shadow_stock ?? 0) || 0,
-    );
+    const shadowRelease = Math.min(bottles, Number(item.shadow_stock ?? 0) || 0);
     if (shadowRelease > 0) {
       const shadow = await client.rpc("apply_stock_movement", {
         p_inventory_id: input.inventoryId,
@@ -603,8 +537,7 @@ export async function nameDeliveredItem(
       p_transaction_type: "purchase",
       p_source: "order",
       p_performed_by: input.userId,
-      p_reason:
-        "delivery's item named by an owner or a manager — physical receipt",
+      p_reason: "delivery's item named by an owner or a manager — physical receipt",
       // No unit cost: nobody has read an invoice here; the lot lands estimated
       // and verification settles it (as the door does).
       p_order_id: input.orderId,
@@ -625,9 +558,7 @@ export async function nameDeliveredItem(
         .eq("id", input.orderId)
         .eq("inventory_id", input.inventoryId);
       if (unlinkError) {
-        logger.error(
-          `nameDeliveredItem: order ${input.orderId} stays linked to ${input.inventoryId} after a failed booking (${unlinkError.message}).`,
-        );
+        logger.error(`nameDeliveredItem: order ${input.orderId} stays linked to ${input.inventoryId} after a failed booking (${unlinkError.message}).`);
       }
     }
     throw new UnprocessableEntityException({
@@ -642,18 +573,13 @@ export async function nameDeliveredItem(
   // audit row, research. Each failure is said or logged, not swallowed.
   // F-351: lowered by a delta in one statement (floored at 0), never read and
   // written back, so an approval on the same item at the same moment is kept.
-  const { error: inTransitError } = await client.rpc(
-    "move_in_transit_by_delta",
-    {
-      p_restaurant_id: input.restaurantId,
-      p_inventory_id: input.inventoryId,
-      p_delta: -bottles,
-    },
-  );
+  const { error: inTransitError } = await client.rpc("move_in_transit_by_delta", {
+    p_restaurant_id: input.restaurantId,
+    p_inventory_id: input.inventoryId,
+    p_delta: -bottles,
+  });
   if (inTransitError) {
-    logger.warn(
-      `nameDeliveredItem: order ${input.orderId} booked, but the in-transit counter was not lowered (${inTransitError.message})`,
-    );
+    logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but the in-transit counter was not lowered (${inTransitError.message})`);
   }
   const { error: eventError } = await client.from("inventory_events").insert({
     restaurant_id: input.restaurantId,
@@ -662,16 +588,10 @@ export async function nameDeliveredItem(
     quantity_change: bottles,
     source: "procurement",
     idempotency_key: `order-delivered:${input.orderId}`,
-    metadata: {
-      orderId: input.orderId,
-      namedBy: input.userId,
-      via: "delivery_item_to_name",
-    },
+    metadata: { orderId: input.orderId, namedBy: input.userId, via: "delivery_item_to_name" },
   });
   if (eventError) {
-    logger.warn(
-      `nameDeliveredItem: order ${input.orderId} booked, but its order_delivered event was not written (${eventError.message})`,
-    );
+    logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but its order_delivered event was not written (${eventError.message})`);
   }
 
   const sentence = `The delivery's item was named and ${bottles} bottles were booked.`;
@@ -696,16 +616,12 @@ export async function nameDeliveredItem(
       reason: sentence,
     });
     if (auditError) {
-      logger.error(
-        `delivery_item_named happened but the audit row failed to write: ${auditError.message}`,
-      );
+      logger.error(`delivery_item_named happened but the audit row failed to write: ${auditError.message}`);
     } else {
       audited = true;
     }
   } catch (err: any) {
-    logger.error(
-      `delivery_item_named happened but the audit row failed to write: ${err?.message ?? String(err)}`,
-    );
+    logger.error(`delivery_item_named happened but the audit row failed to write: ${err?.message ?? String(err)}`);
   }
 
   // F-526: the item is named, so the "Name the item of ORD-…" line clears
@@ -714,9 +630,7 @@ export async function nameDeliveredItem(
     groupKey: `delivery_item_to_name:${input.orderId}`,
   });
   if (!bell.ok) {
-    logger.warn(
-      `nameDeliveredItem: order ${input.orderId} booked, but its line on the bell was not cleared (${bell.error}).`,
-    );
+    logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but its line on the bell was not cleared (${bell.error}).`);
   }
 
   const research = await queueResearchIfLibraryLacks(client, {
@@ -727,9 +641,7 @@ export async function nameDeliveredItem(
     queuedBy: input.userId,
   });
   if (research && !research.ok) {
-    logger.error(
-      `nameDeliveredItem: order ${input.orderId} booked, but its item was not queued for research: ${research.error}`,
-    );
+    logger.error(`nameDeliveredItem: order ${input.orderId} booked, but its item was not queued for research: ${research.error}`);
   }
 
   const researchSays =
@@ -742,9 +654,7 @@ export async function nameDeliveredItem(
           : research.status === "not_findable"
             ? " Its name does not say which wine it is, so it was not sent for research; name it on Inventory."
             : "";
-  const auditSays = audited
-    ? ""
-    : " The naming is on the delivery's record, but the audit log row could not be written.";
+  const auditSays = audited ? "" : " The naming is on the delivery's record, but the audit log row could not be written.";
 
   return {
     orderId: input.orderId,

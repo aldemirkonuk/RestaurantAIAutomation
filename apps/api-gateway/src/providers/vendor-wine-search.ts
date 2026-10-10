@@ -438,25 +438,21 @@ export async function readCatalogueWineListers(
   // whose own text lacks that word but whose library row has it is missed —
   // stated in ADR 0221's bracket.
   const longest = [...query.words].sort((a, b) => b.length - a.length)[0];
-  const sightings = await readAll(
-    "The price sightings",
-    (after) => {
-      let q = scopePriceRegisterRead(
-        db
-          .from("vendor_price_observations")
-          .select(
-            "id, vendor_catalogue_id, master_wine_id, product_name_raw, source_type, observed_at",
-          ),
-        VENDOR_PRICE_OBSERVATIONS,
-        { kind: "houseAndOpenMarket", restaurantId },
-      )
-        .not("vendor_catalogue_id", "is", null)
-        .ilike("product_name_raw", accentBlindLike(longest));
-      if (after) q = q.gt("id", after);
-      return q;
-    },
-    CATALOGUE_SIGHTINGS_CEILING,
-  );
+  const sightings = await readAll("The price sightings", (after) => {
+    let q = scopePriceRegisterRead(
+      db
+        .from("vendor_price_observations")
+        .select(
+          "id, vendor_catalogue_id, master_wine_id, product_name_raw, source_type, observed_at",
+        ),
+      VENDOR_PRICE_OBSERVATIONS,
+      { kind: "houseAndOpenMarket", restaurantId },
+    )
+      .not("vendor_catalogue_id", "is", null)
+      .ilike("product_name_raw", accentBlindLike(longest));
+    if (after) q = q.gt("id", after);
+    return q;
+  }, CATALOGUE_SIGHTINGS_CEILING);
 
   const library = await readLibraryWines(
     db,

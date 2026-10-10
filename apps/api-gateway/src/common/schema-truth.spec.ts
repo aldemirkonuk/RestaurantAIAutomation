@@ -20,9 +20,7 @@ const MIGRATIONS = path.resolve(__dirname, "../../../../supabase/migrations");
 
 function columnsOf(table: string): Set<string> {
   const cols = new Set<string>();
-  for (const f of fs
-    .readdirSync(MIGRATIONS)
-    .filter((x) => x.endsWith(".sql"))) {
+  for (const f of fs.readdirSync(MIGRATIONS).filter((x) => x.endsWith(".sql"))) {
     const sql = fs.readFileSync(path.join(MIGRATIONS, f), "utf8");
     const create = new RegExp(
       `CREATE TABLE (?:IF NOT EXISTS )?(?:public\\.)?${table} \\(([\\s\\S]*?)\\n\\);`,
@@ -151,13 +149,9 @@ describe("known_personnel has no column, so the service does not name it (F-559)
 
 /** The values a `CHECK (col = ANY (ARRAY['a', ...]))` constraint allows. */
 function checkValues(constraint: string): string[] {
-  for (const f of fs
-    .readdirSync(MIGRATIONS)
-    .filter((x) => x.endsWith(".sql"))) {
+  for (const f of fs.readdirSync(MIGRATIONS).filter((x) => x.endsWith(".sql"))) {
     const sql = fs.readFileSync(path.join(MIGRATIONS, f), "utf8");
-    const m = new RegExp(`CONSTRAINT ${constraint} CHECK \\((.*)$`, "m").exec(
-      sql,
-    );
+    const m = new RegExp(`CONSTRAINT ${constraint} CHECK \\((.*)$`, "m").exec(sql);
     if (m) return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
   }
   return [];
@@ -227,8 +221,7 @@ describe("every notification title fits notifications.title (F-560)", () => {
         else if (e.name.endsWith(".ts") && !e.name.endsWith(".spec.ts")) {
           const src = fs.readFileSync(p, "utf8");
           const rel = path.relative(SRC, p);
-          const insert =
-            /from\(\s*"notifications"\s*\)\s*\.(?:insert|upsert)\(/g;
+          const insert = /from\(\s*"notifications"\s*\)\s*\.(?:insert|upsert)\(/g;
           for (const m of src.matchAll(insert)) {
             // The row is built in the insert or just above it (a rows map):
             // take the `title:` line nearest the insert call.

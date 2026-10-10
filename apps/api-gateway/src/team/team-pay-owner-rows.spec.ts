@@ -771,24 +771,9 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
     if (zone !== null) db.tables.restaurants[0].timezone = zone;
     // The owner's week: before, on, and after the day of the demotion.
     db.tables.shifts.push(
-      shift({
-        id: "sh-owner-day",
-        member_id: "m-owner",
-        shift_date: "2026-09-08",
-        labor_cost: 300,
-      }),
-      shift({
-        id: "sh-owner-after",
-        member_id: "m-owner",
-        shift_date: "2026-09-09",
-        labor_cost: 300,
-      }),
-      shift({
-        id: "sh-owner-late",
-        member_id: "m-owner",
-        shift_date: "2026-09-10",
-        labor_cost: 300,
-      }),
+      shift({ id: "sh-owner-day", member_id: "m-owner", shift_date: "2026-09-08", labor_cost: 300 }),
+      shift({ id: "sh-owner-after", member_id: "m-owner", shift_date: "2026-09-09", labor_cost: 300 }),
+      shift({ id: "sh-owner-late", member_id: "m-owner", shift_date: "2026-09-10", labor_cost: 300 }),
     );
     return db;
   }
@@ -866,14 +851,10 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
   it("the by-id replies follow the same line: an owner-period shift's PATCH reply has no cost, a later one's has", async () => {
     const db = await afterDemotion();
     const svc = scheduleOf(db);
-    const inside = await svc.updateShift(MANAGER, RID, "sh-owner", {
-      note: "x",
-    } as any);
+    const inside = await svc.updateShift(MANAGER, RID, "sh-owner", { note: "x" } as any);
     expect("labor_cost" in inside).toBe(false);
     expect(inside.pay_withheld).toBe("owner");
-    const after = await svc.updateShift(MANAGER, RID, "sh-owner-after", {
-      note: "x",
-    } as any);
+    const after = await svc.updateShift(MANAGER, RID, "sh-owner-after", { note: "x" } as any);
     expect(after.labor_cost).toBe(300);
   });
 
@@ -894,12 +875,7 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
     await changeRole(db, "owner", "2026-09-09T21:30:00.000Z"); // 00:30 on 09-10
     // While an owner again, every figure of theirs is the owners'.
     const whileOwner = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
-    for (const id of [
-      "sh-owner",
-      "sh-owner-day",
-      "sh-owner-after",
-      "sh-owner-late",
-    ])
+    for (const id of ["sh-owner", "sh-owner-day", "sh-owner-after", "sh-owner-late"])
       expect("labor_cost" in costOf(whileOwner, id)).toBe(false);
     await changeRole(db, "manager", "2026-09-10T12:00:00.000Z");
     const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
@@ -917,10 +893,7 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
       db,
       (table, filters) =>
         table === "system_audit_log" &&
-        filters.some(
-          (f: any) =>
-            f.column === "action" && f.value === "member_role_changed",
-        ),
+        filters.some((f: any) => f.column === "action" && f.value === "member_role_changed"),
     );
     const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
     expect(week.labor.moneyVisible).toBe(false);
@@ -975,12 +948,7 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
 });
 
 describe("item 80 — the owner-period rule itself", () => {
-  const change = (
-    user: string,
-    from: string,
-    to: string,
-    at: string | null,
-  ) => ({
+  const change = (user: string, from: string, to: string, at: string | null) => ({
     entity_id: user,
     changes: { role: { from, to } },
     created_at: at,
@@ -1004,40 +972,23 @@ describe("item 80 — the owner-period rule itself", () => {
     ];
     expect(formerOwnerPeriods(rows, users, new Set(["m1"]), null).size).toBe(0);
     expect(
-      formerOwnerPeriods(
-        [change("u1", "staff", "manager", "2026-09-08T12:00:00Z")],
-        users,
-        new Set(),
-        null,
-      ).size,
+      formerOwnerPeriods([change("u1", "staff", "manager", "2026-09-08T12:00:00Z")], users, new Set(), null).size,
     ).toBe(0);
   });
 
   it("a demotion whose time does not parse is not ended; one made owner and never demoted on the record is open", () => {
     expect(
-      formerOwnerPeriods(
-        [change("u1", "owner", "manager", "not a time")],
-        users,
-        new Set(),
-        null,
-      ).get("m1"),
+      formerOwnerPeriods([change("u1", "owner", "manager", "not a time")], users, new Set(), null).get("m1"),
     ).toEqual([{ from: null, to: null }]);
     expect(
-      formerOwnerPeriods(
-        [change("u1", "staff", "owner", "2026-09-08T12:00:00Z")],
-        users,
-        new Set(),
-        "UTC",
-      ).get("m1"),
+      formerOwnerPeriods([change("u1", "staff", "owner", "2026-09-08T12:00:00Z")], users, new Set(), "UTC").get("m1"),
     ).toEqual([{ from: "2026-09-08", to: null }]);
   });
 
   it("the day with no zone is the widest: a start at UTC-12, an end at UTC+14", () => {
     expect(houseDay("2026-09-08T11:00:00Z", null, "start")).toBe("2026-09-07");
     expect(houseDay("2026-09-08T12:00:00Z", null, "end")).toBe("2026-09-09");
-    expect(houseDay("2026-09-08T22:00:00Z", "Europe/Istanbul", "end")).toBe(
-      "2026-09-09",
-    );
+    expect(houseDay("2026-09-08T22:00:00Z", "Europe/Istanbul", "end")).toBe("2026-09-09");
     expect(houseDay("garbage", "UTC", "end")).toBeNull();
   });
 
@@ -1054,17 +1005,10 @@ describe("item 80 — the owner-period rule itself", () => {
     expect(seesShiftMoneyOf(on, "m1", null)).toBe(false);
     expect(seesShiftMoneyOf(on, "m2", "2026-09-01")).toBe(true);
     expect(seesShiftMoneyOf(on, null, "2026-09-01")).toBe(true);
-    const unknown = {
-      role: "manager" as const,
-      payAccess: true,
-      ownerMembers: new Set<string>(),
-    };
+    const unknown = { role: "manager" as const, payAccess: true, ownerMembers: new Set<string>() };
     expect(seesShiftMoneyOf(unknown, "m2", "2026-09-01")).toBe(false);
     expect(seesShiftMoneyOf("owner", "m1", "2026-09-08")).toBe(true);
-    const row = shiftForViewer(
-      { id: "x", member_id: "m1", shift_date: "2026-09-07", labor_cost: 300 },
-      on,
-    );
+    const row = shiftForViewer({ id: "x", member_id: "m1", shift_date: "2026-09-07", labor_cost: 300 }, on);
     expect("labor_cost" in row).toBe(false);
     expect((row as any).pay_withheld).toBe("owner");
   });

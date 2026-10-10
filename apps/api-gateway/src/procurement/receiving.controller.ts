@@ -58,9 +58,7 @@ export class LineHistoryQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(80)
-  @Matches(LINE_HISTORY_CURSOR_RE, {
-    message: "before must be a page marker this history gave out",
-  })
+  @Matches(LINE_HISTORY_CURSOR_RE, { message: "before must be a page marker this history gave out" })
   before?: string;
 }
 
@@ -442,4 +440,5 @@ export class ReceivingController {
       );
     }
   }
+
 }

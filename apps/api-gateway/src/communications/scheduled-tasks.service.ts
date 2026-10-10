@@ -131,12 +131,8 @@ export class ScheduledTasksService implements OnModuleInit {
       .filter((e) => e);
 
     this.logger.log("Scheduled tasks service initialized");
-    this.logger.log(
-      `Manager Emails: ${this.managerEmails.map(maskEmail).join(", ")}`,
-    );
-    this.logger.log(
-      `Manager Phone: ${this.managerPhone ? maskPhone(this.managerPhone) : "Not configured"}`,
-    );
+    this.logger.log(`Manager Emails: ${this.managerEmails.map(maskEmail).join(", ")}`);
+    this.logger.log(`Manager Phone: ${this.managerPhone ? maskPhone(this.managerPhone) : "Not configured"}`);
   }
 
   /**
@@ -224,7 +220,10 @@ export class ScheduledTasksService implements OnModuleInit {
     recipients: ResolvedRecipients | null,
     channels: NotificationChannel[],
   ): void {
-    if (recipients?.lookupFailed && addressCount(recipients, channels) === 0) {
+    if (
+      recipients?.lookupFailed &&
+      addressCount(recipients, channels) === 0
+    ) {
       throw new RecipientLookupFailedError(
         send,
         tenant.id,
@@ -612,12 +611,9 @@ export class ScheduledTasksService implements OnModuleInit {
           });
         }
 
-        this.failIfLookupFailed(
-          "recurring-order-reminder",
-          tenant,
-          recipients,
-          ["email"],
-        );
+        this.failIfLookupFailed("recurring-order-reminder", tenant, recipients, [
+          "email",
+        ]);
       },
     );
   }

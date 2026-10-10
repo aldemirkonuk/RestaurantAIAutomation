@@ -63,10 +63,7 @@ function makeDb(opts: { providerReadError?: string } = {}) {
         }
         // Anything past the fences is out of this spec's scope: refuse loudly
         // so a test that expected a refusal cannot pass by writing.
-        return {
-          data: null,
-          error: { message: `unexpected read of ${table}` },
-        };
+        return { data: null, error: { message: `unexpected read of ${table}` } };
       };
 
       const q: any = {

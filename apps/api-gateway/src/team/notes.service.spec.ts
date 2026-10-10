@@ -28,76 +28,19 @@ function seed(errors: Record<string, { message: string }> = {}): StubDb {
   return makeStubDb(
     {
       user_restaurant_access: [
-        {
-          id: "a1",
-          user_id: MANAGER,
-          restaurant_id: RID,
-          role: "manager",
-          is_active: true,
-        },
-        {
-          id: "a2",
-          user_id: SAM,
-          restaurant_id: RID,
-          role: "staff",
-          is_active: true,
-        },
-        {
-          id: "a3",
-          user_id: RAY,
-          restaurant_id: RID,
-          role: "staff",
-          is_active: true,
-        },
+        { id: "a1", user_id: MANAGER, restaurant_id: RID, role: "manager", is_active: true },
+        { id: "a2", user_id: SAM, restaurant_id: RID, role: "staff", is_active: true },
+        { id: "a3", user_id: RAY, restaurant_id: RID, role: "staff", is_active: true },
       ],
       users: [
-        {
-          user_id: MANAGER,
-          restaurant_id: RID,
-          role: "manager",
-          name: "Moe",
-          email: "moe@example.test",
-        },
-        {
-          user_id: SAM,
-          restaurant_id: RID,
-          role: "staff",
-          name: "Sam",
-          email: "sam@example.test",
-        },
-        {
-          user_id: RAY,
-          restaurant_id: RID,
-          role: "staff",
-          name: "Ray",
-          email: "ray@example.test",
-        },
+        { user_id: MANAGER, restaurant_id: RID, role: "manager", name: "Moe", email: "moe@example.test" },
+        { user_id: SAM, restaurant_id: RID, role: "staff", name: "Sam", email: "sam@example.test" },
+        { user_id: RAY, restaurant_id: RID, role: "staff", name: "Ray", email: "ray@example.test" },
       ],
       team_members: [
-        {
-          id: "m-moe",
-          created_at: "2026-01-01T00:00:00Z",
-          restaurant_id: RID,
-          user_id: MANAGER,
-          display_name: "Moe",
-          status: "active",
-        },
-        {
-          id: "m-sam",
-          created_at: "2026-01-02T00:00:00Z",
-          restaurant_id: RID,
-          user_id: SAM,
-          display_name: "Sam",
-          status: "active",
-        },
-        {
-          id: "m-ray",
-          created_at: "2026-01-03T00:00:00Z",
-          restaurant_id: RID,
-          user_id: RAY,
-          display_name: "Ray",
-          status: "active",
-        },
+        { id: "m-moe", created_at: "2026-01-01T00:00:00Z", restaurant_id: RID, user_id: MANAGER, display_name: "Moe", status: "active" },
+        { id: "m-sam", created_at: "2026-01-02T00:00:00Z", restaurant_id: RID, user_id: SAM, display_name: "Sam", status: "active" },
+        { id: "m-ray", created_at: "2026-01-03T00:00:00Z", restaurant_id: RID, user_id: RAY, display_name: "Ray", status: "active" },
       ],
       team_settings: [],
       team_notes: [],
@@ -116,9 +59,7 @@ function seed(errors: Record<string, { message: string }> = {}): StubDb {
 
 function svc(db: StubDb) {
   const team = new TeamService(asDatabaseService(db));
-  const notifications = {
-    persistForRestaurant: jest.fn(async () => ({ inserted: 0 })),
-  } as any;
+  const notifications = { persistForRestaurant: jest.fn(async () => ({ inserted: 0 })) } as any;
   const push = {
     sendToUsers: jest.fn(async () => ({
       outcome: "no_device_registered",
@@ -137,13 +78,7 @@ function svc(db: StubDb) {
     co.usage,
   );
   return {
-    notes: new NotesService(
-      asDatabaseService(db),
-      team,
-      notifications,
-      push,
-      text,
-    ),
+    notes: new NotesService(asDatabaseService(db), team, notifications, push, text),
     notifications,
     push,
     text,
@@ -168,9 +103,10 @@ describe("NotesService — a note survives the page that wrote it", () => {
     expect(note.week_start).toBe(WEEK);
     // `public.users.user_id`, never an auth.users id — the two are disjoint.
     expect(note.author_user_id).toBe(MANAGER);
-    expect(
-      db.tables.team_note_recipients.map((r: any) => r.member_id).sort(),
-    ).toEqual(["m-ray", "m-sam"]);
+    expect(db.tables.team_note_recipients.map((r: any) => r.member_id).sort()).toEqual([
+      "m-ray",
+      "m-sam",
+    ]);
   });
 
   it("delivers to the inbox, hands nothing to a push service nobody can receive on, and emails nobody", async () => {
@@ -249,9 +185,7 @@ describe("NotesService — a note survives the page that wrote it", () => {
 
     // A failed receipt read is NOT a note with no receipts. `null` is the only
     // honest value, and the flag carries the gateway's own sentence.
-    const broken = seed({
-      "team_note_deliveries:select": { message: "connection reset" },
-    });
+    const broken = seed({ "team_note_deliveries:select": { message: "connection reset" } });
     await svc(broken).notes.create(MANAGER, RID, {
       weekStart: WEEK,
       body: "Saturday moves to seven.",
@@ -265,9 +199,7 @@ describe("NotesService — a note survives the page that wrote it", () => {
 
   it("refuses a note that names nobody on this roster, and writes nothing", async () => {
     const db = seed();
-    await expect(write(db, ["m-somebody-else"])).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(write(db, ["m-somebody-else"])).rejects.toBeInstanceOf(ForbiddenException);
     expect(db.tables.team_notes).toHaveLength(0);
     expect(db.tables.team_note_recipients).toHaveLength(0);
   });
@@ -280,10 +212,7 @@ describe("NotesService — a note survives the page that wrote it", () => {
     expect(res.readable).toBe(true);
     expect(res.notes).toHaveLength(1);
     expect(res.notes[0].body).toBe("Saturday moves to seven.");
-    expect(res.notes[0].recipients.map((r: any) => r.name).sort()).toEqual([
-      "Ray",
-      "Sam",
-    ]);
+    expect(res.notes[0].recipients.map((r: any) => r.name).sort()).toEqual(["Ray", "Sam"]);
   });
 
   it("says the register could not be read rather than reporting a quiet week", async () => {
@@ -337,9 +266,9 @@ describe("NotesService — unopened is a state, not a silence", () => {
     // them apart — `.is("opened_at", null)` matches nothing in both cases —
     // and reporting one shape for both let a person reading somebody else's
     // note get a quiet success.
-    await expect(
-      svc(db).notes.markOpened(SAM, RID, noteId),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc(db).notes.markOpened(SAM, RID, noteId)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     // And nothing of Ray's moved because Sam asked.
     expect(
       db.tables.team_note_recipients.find((r: any) => r.member_id === "m-ray")
@@ -390,28 +319,20 @@ describe("NotesService — a staff member sees only what was addressed to them",
 
     const asSam: any = await svc(db).notes.list(SAM, RID, WEEK);
     const note = asSam.notes[0];
-    expect(note.recipients.map((r: any) => [r.memberId, r.openedAt])).toEqual([
-      ["m-sam", null],
-    ]);
-    expect(note.deliveries.every((d: any) => d.memberId === "m-sam")).toBe(
-      true,
-    );
+    expect(note.recipients.map((r: any) => [r.memberId, r.openedAt])).toEqual([["m-sam", null]]);
+    expect(note.deliveries.every((d: any) => d.memberId === "m-sam")).toBe(true);
     expect(note.deliveries.length).toBeGreaterThan(0);
 
     // The manager still sees everyone.
     const asMoe: any = await svc(db).notes.list(MANAGER, RID, WEEK);
-    expect(
-      asMoe.notes[0].recipients.map((r: any) => r.memberId).sort(),
-    ).toEqual(["m-ray", "m-sam"]);
+    expect(asMoe.notes[0].recipients.map((r: any) => r.memberId).sort()).toEqual(["m-ray", "m-sam"]);
     expect(asMoe.notes[0].openedCount).toBe(1);
   });
 
   it("shows a staff caller with no roster row nothing, not every note", async () => {
     const db = seed();
     await write(db);
-    db.tables.team_members = db.tables.team_members.filter(
-      (m: any) => m.user_id !== SAM,
-    );
+    db.tables.team_members = db.tables.team_members.filter((m: any) => m.user_id !== SAM);
 
     const asSam: any = await svc(db).notes.list(SAM, RID, WEEK);
     expect(asSam.notes).toEqual([]);
@@ -425,35 +346,21 @@ describe("NotesService — a staff member sees only what was addressed to them",
  */
 describe("NotesService — a note to someone Away waits until they are back", () => {
   const TODAY = houseLocalDay(new Date(), "UTC");
-  const UNTIL = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 4 * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
+  const UNTIL = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 4 * 86_400_000).toISOString().slice(0, 10);
 
   function awaySeed(errors: Record<string, { message: string }> = {}): StubDb {
     const db = seed(errors);
     db.tables.restaurants = [{ id: RID, timezone: "UTC" }];
-    db.tables.house_away = [
-      { restaurant_id: RID, user_id: SAM, away_from: TODAY, away_until: UNTIL },
-    ];
+    db.tables.house_away = [{ restaurant_id: RID, user_id: SAM, away_from: TODAY, away_until: UNTIL }];
     db.tables.house_away_held = [];
     return db;
   }
 
   function withHold(db: StubDb) {
     const base = svc(db);
-    const hold = new AwayHoldService(
-      asDatabaseService(db),
-      new AreaRoutingService(asDatabaseService(db)),
-    );
+    const hold = new AwayHoldService(asDatabaseService(db), new AreaRoutingService(asDatabaseService(db)));
     const team = new TeamService(asDatabaseService(db));
-    const notes = new NotesService(
-      asDatabaseService(db),
-      team,
-      base.notifications,
-      base.push,
-      base.text,
-      hold,
-    );
+    const notes = new NotesService(asDatabaseService(db), team, base.notifications, base.push, base.text, hold);
     return { notes, notifications: base.notifications };
   }
 
@@ -468,14 +375,10 @@ describe("NotesService — a note to someone Away waits until they are back", ()
 
     // The record is the same: both are recipients.
     expect(res.addressed).toBe(2);
-    expect(
-      db.tables.team_note_recipients.map((r: any) => r.member_id).sort(),
-    ).toEqual(["m-ray", "m-sam"]);
+    expect(db.tables.team_note_recipients.map((r: any) => r.member_id).sort()).toEqual(["m-ray", "m-sam"]);
     // Only Ray's inbox was written now.
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
-    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({
-      onlyUserIds: [RAY],
-    });
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [RAY] });
     // One hold for Sam, pointing at the note; the words stay on team_notes.
     expect(db.tables.house_away_held).toHaveLength(1);
     expect(db.tables.house_away_held[0]).toMatchObject({
@@ -491,29 +394,11 @@ describe("NotesService — a note to someone Away waits until they are back", ()
     // The sender reads "Away until …" — in the response and on every receipt.
     expect(res.away).toMatchObject({ readable: true, holdFailed: false });
     expect(res.away.held).toEqual([
-      {
-        memberId: "m-sam",
-        until: UNTIL,
-        detail: expect.stringMatching(
-          /^Away until \d{1,2} [A-Z][a-z]{2}\. It waits/,
-        ),
-      },
+      { memberId: "m-sam", until: UNTIL, detail: expect.stringMatching(/^Away until \d{1,2} [A-Z][a-z]{2}\. It waits/) },
     ]);
-    const sams = db.tables.team_note_deliveries.filter(
-      (d: any) => d.member_id === "m-sam",
-    );
-    expect(sams.map((d: any) => d.channel).sort()).toEqual([
-      "inbox",
-      "push",
-      "sms",
-      "whatsapp",
-    ]);
-    expect(
-      sams.every(
-        (d: any) =>
-          d.state === "held_away" && d.detail.startsWith("Away until "),
-      ),
-    ).toBe(true);
+    const sams = db.tables.team_note_deliveries.filter((d: any) => d.member_id === "m-sam");
+    expect(sams.map((d: any) => d.channel).sort()).toEqual(["inbox", "push", "sms", "whatsapp"]);
+    expect(sams.every((d: any) => d.state === "held_away" && d.detail.startsWith("Away until "))).toBe(true);
     expect(res.receipts.byState.heldAway).toBe(4);
     expect(res.receipts.byState.delivered).toBe(1);
   });
@@ -527,9 +412,7 @@ describe("NotesService — a note to someone Away waits until they are back", ()
       memberIds: ["m-sam", "m-ray"],
     } as any);
     expect(res.away).toEqual({ readable: false, holdFailed: false, held: [] });
-    expect(
-      notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds.sort(),
-    ).toEqual([RAY, SAM].sort());
+    expect(notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds.sort()).toEqual([RAY, SAM].sort());
     expect(db.tables.house_away_held).toEqual([]);
   });
 
@@ -542,12 +425,8 @@ describe("NotesService — a note to someone Away waits until they are back", ()
       memberIds: ["m-sam"],
     } as any);
     expect(res.away).toEqual({ readable: true, holdFailed: true, held: [] });
-    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({
-      onlyUserIds: [SAM],
-    });
-    expect(
-      db.tables.team_note_deliveries.some((d: any) => d.state === "held_away"),
-    ).toBe(false);
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
+    expect(db.tables.team_note_deliveries.some((d: any) => d.state === "held_away")).toBe(false);
   });
 
   it("does not hold for a person whose Away has not begun yet", async () => {
@@ -556,14 +435,8 @@ describe("NotesService — a note to someone Away waits until they are back", ()
       { restaurant_id: RID, user_id: SAM, away_from: UNTIL, away_until: UNTIL },
     ];
     const { notes, notifications } = withHold(db);
-    await notes.create(MANAGER, RID, {
-      weekStart: WEEK,
-      body: "x",
-      memberIds: ["m-sam"],
-    } as any);
-    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({
-      onlyUserIds: [SAM],
-    });
+    await notes.create(MANAGER, RID, { weekStart: WEEK, body: "x", memberIds: ["m-sam"] } as any);
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
     expect(db.tables.house_away_held).toEqual([]);
   });
 });

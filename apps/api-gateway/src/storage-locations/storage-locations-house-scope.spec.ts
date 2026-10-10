@@ -332,38 +332,15 @@ describe("storage-locations — a zone with bottles in it is not deleted (F-691)
   function withBottles(lots: number, mapped: number) {
     return fakeDb({
       storage_locations: [
-        {
-          id: ZONE_OF_A,
-          restaurant_id: HOUSE_A,
-          zone: "A cellar",
-          deleted_at: null,
-        },
+        { id: ZONE_OF_A, restaurant_id: HOUSE_A, zone: "A cellar", deleted_at: null },
       ],
       inventory_lots: [
-        {
-          id: "l1",
-          restaurant_id: HOUSE_A,
-          location_id: ZONE_OF_A,
-          stock_state: "live",
-          qty: lots,
-        },
+        { id: "l1", restaurant_id: HOUSE_A, location_id: ZONE_OF_A, stock_state: "live", qty: lots },
         // Another house's lot in a zone of the same id is not counted.
-        {
-          id: "l2",
-          restaurant_id: HOUSE_B,
-          location_id: ZONE_OF_A,
-          stock_state: "live",
-          qty: 9,
-        },
+        { id: "l2", restaurant_id: HOUSE_B, location_id: ZONE_OF_A, stock_state: "live", qty: 9 },
       ],
       wine_location_mappings: [
-        {
-          id: "m1",
-          restaurant_id: HOUSE_A,
-          wine_id: WINE,
-          location_id: ZONE_OF_A,
-          quantity: mapped,
-        },
+        { id: "m1", restaurant_id: HOUSE_A, wine_id: WINE, location_id: ZONE_OF_A, quantity: mapped },
       ],
     });
   }
@@ -391,8 +368,6 @@ describe("storage-locations — a zone with bottles in it is not deleted (F-691)
   it("an empty zone deletes", async () => {
     const { db } = withBottles(0, 0);
     const svc = new StorageLocationsService(db);
-    await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).resolves.toEqual({
-      success: true,
-    });
+    await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).resolves.toEqual({ success: true });
   });
 });

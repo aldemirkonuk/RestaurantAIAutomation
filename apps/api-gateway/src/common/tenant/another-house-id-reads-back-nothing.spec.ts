@@ -36,9 +36,7 @@ function fakeClient(tables: Record<string, Row[]>) {
     let head = false;
     let patch: Row | null = null;
     const run = () => {
-      const rows = (tables[table] ?? []).filter((r) =>
-        filters.every((f) => f(r)),
-      );
+      const rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
       if (patch) writes.push({ table, patch });
       return rows;
     };
@@ -81,20 +79,8 @@ function fakeClient(tables: Record<string, Row[]>) {
 const dbOf = (client: any) => ({ getClient: () => client }) as any;
 
 const providers = [
-  {
-    id: "prov-a",
-    restaurant_id: A,
-    name: "Ada Şarap",
-    company_name: null,
-    tax_id: "A-TAX",
-  },
-  {
-    id: "prov-b",
-    restaurant_id: B,
-    name: "Bora Bağ",
-    company_name: "Bora Bağcılık A.Ş.",
-    tax_id: "B-TAX",
-  },
+  { id: "prov-a", restaurant_id: A, name: "Ada Şarap", company_name: null, tax_id: "A-TAX" },
+  { id: "prov-b", restaurant_id: B, name: "Bora Bağ", company_name: "Bora Bağcılık A.Ş.", tax_id: "B-TAX" },
 ];
 
 describe("an id from another house reads back nothing of that house", () => {
@@ -103,11 +89,7 @@ describe("an id from another house reads back nothing of that house", () => {
       providers,
       restaurants: [{ id: A, name: "House A" }],
     });
-    const svc = new CanonicalDocumentService(
-      dbOf(client),
-      {} as any,
-      {} as any,
-    );
+    const svc = new CanonicalDocumentService(dbOf(client), {} as any, {} as any);
     const resolve = (pid: string) => (svc as any).resolveParties(A, pid);
 
     const own = await resolve("prov-a");
@@ -156,34 +138,19 @@ describe("an id from another house reads back nothing of that house", () => {
         item("oi-b", "order-b", B, "Bora Kalecik"),
       ],
     });
-    const svc = new DeliveryService(
-      dbOf(client),
-      {} as any,
-      {} as any,
-      {} as any,
-    );
+    const svc = new DeliveryService(dbOf(client), {} as any, {} as any, {} as any);
     jest.spyOn(svc as any, "linesFor").mockResolvedValue({
       ok: true,
       value: {
         lines: [
-          {
-            id: "dl-1",
-            vendorSku: "SKU-1",
-            description: "Öküzgözü",
-            vintage: 2021,
-            qtyBottles: 5,
-            unitPrice: 10,
-          },
+          { id: "dl-1", vendorSku: "SKU-1", description: "Öküzgözü", vintage: 2021, qtyBottles: 5, unitPrice: 10 },
         ],
         identify: (id: string) => ({ id }) as any,
       },
     });
     const links = [{ document_id: "doc-1", role: "invoice" }];
     const scan = (orderId: string) =>
-      (svc as any).scanAgainstTheOrder(
-        { id: "del-1", restaurant_id: A, order_id: orderId },
-        links,
-      );
+      (svc as any).scanAgainstTheOrder({ id: "del-1", restaurant_id: A, order_id: orderId }, links);
 
     expect((await scan("order-a")).status).toBe("compared");
     const foreign = await scan("order-b");
@@ -217,23 +184,11 @@ describe("an id from another house reads back nothing of that house", () => {
     const user = { userId: "u-a", restaurantId: A };
 
     await expect(
-      ctl.transition(
-        "cr-1",
-        {
-          to: "credited",
-          creditedAmount: 80,
-          creditDocumentId: "doc-b",
-        } as any,
-        user,
-      ),
+      ctl.transition("cr-1", { to: "credited", creditedAmount: 80, creditDocumentId: "doc-b" } as any, user),
     ).rejects.toMatchObject({ status: 404 });
     expect(writes).toHaveLength(0);
 
-    await ctl.transition(
-      "cr-1",
-      { to: "credited", creditedAmount: 80, creditDocumentId: "doc-a" } as any,
-      user,
-    );
+    await ctl.transition("cr-1", { to: "credited", creditedAmount: 80, creditDocumentId: "doc-a" } as any, user);
     expect(writes).toHaveLength(1);
     expect(writes[0].patch.credit_document_id).toBe("doc-a");
   });
@@ -253,17 +208,11 @@ describe("an id from another house reads back nothing of that house", () => {
     const user = { restaurantId: A };
 
     await expect(
-      ctl.scrape(user, {
-        url: "https://example.com/list",
-        providerId: "prov-b",
-      }),
+      ctl.scrape(user, { url: "https://example.com/list", providerId: "prov-b" }),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(extractFromUrl).not.toHaveBeenCalled();
 
-    await ctl.scrape(user, {
-      url: "https://example.com/list",
-      providerId: "prov-a",
-    });
+    await ctl.scrape(user, { url: "https://example.com/list", providerId: "prov-a" });
     expect(extractFromUrl).toHaveBeenCalledTimes(1);
   });
 });

@@ -233,11 +233,7 @@ export function filingCurrency(args: {
   const matched = args.hasMatchedOrder === true || order !== "";
 
   if (file !== "" && isCurrency(file))
-    return {
-      kind: "file",
-      code: file,
-      from: `the document's own ${args.fileField}`,
-    };
+    return { kind: "file", code: file, from: `the document's own ${args.fileField}` };
 
   if (isCurrency(order))
     return {
@@ -397,7 +393,10 @@ export function currencyAgreement(
     };
   if (codes.includes(filed)) return { kind: "agrees" };
 
-  const couldBe = codes.length === 1 ? codes[0] : `one of ${codes.join(", ")}`;
+  const couldBe =
+    codes.length === 1
+      ? codes[0]
+      : `one of ${codes.join(", ")}`;
   return {
     kind: "disagrees",
     sentence:
@@ -790,19 +789,18 @@ export function planRefile(args: {
   };
 
   /** The header columns in column order, with the words a sentence uses. */
-  const headerWords: ReadonlyArray<readonly [keyof typeof keptHeader, string]> =
-    [
-      ["subtotal", "subtotal"],
-      ["freight", "freight"],
-      ["fuel_surcharge", "fuel surcharge"],
-      ["split_case_fee", "split-case fee"],
-      ["delivery_fee", "delivery fee"],
-      ["deposit_total", "deposit total"],
-      ["tax", "tax"],
-      ["other_charges", "other charges"],
-      ["discount_total", "discount total"],
-      ["total", "total"],
-    ];
+  const headerWords: ReadonlyArray<readonly [keyof typeof keptHeader, string]> = [
+    ["subtotal", "subtotal"],
+    ["freight", "freight"],
+    ["fuel_surcharge", "fuel surcharge"],
+    ["split_case_fee", "split-case fee"],
+    ["delivery_fee", "delivery fee"],
+    ["deposit_total", "deposit total"],
+    ["tax", "tax"],
+    ["other_charges", "other charges"],
+    ["discount_total", "discount total"],
+    ["total", "total"],
+  ];
 
   // EACH LINE ON ITS OWN. A line that still carries money keeps exactly what it
   // carries — that is a manager's correction and nothing may overwrite it. A
@@ -971,9 +969,7 @@ function withheldSnapshot(
  */
 /** "line 2", "lines 1 and 3", "lines 1, 2 and 4". */
 function linesNamed(nos: readonly number[]): string {
-  return nos.length === 1
-    ? `line ${nos[0]}`
-    : `lines ${andList(nos.map(String))}`;
+  return nos.length === 1 ? `line ${nos[0]}` : `lines ${andList(nos.map(String))}`;
 }
 
 /** "a", "a and b", "a, b and c". */
@@ -1114,12 +1110,7 @@ export function applyCurrencyRules(args: {
   });
   if (versusOrder)
     return withholdMoney(
-      {
-        ...doc,
-        ...filedTag,
-        currency: filed.code,
-        currencyFiledFrom: filed.from,
-      },
+      { ...doc, ...filedTag, currency: filed.code, currencyFiledFrom: filed.from },
       versusOrder,
     );
 
@@ -1163,13 +1154,7 @@ export function applyCurrencyRules(args: {
   const agreement = currencyAgreement(filed.code, seen);
   if (agreement.kind === "disagrees")
     return withholdMoney(
-      {
-        ...doc,
-        ...filedTag,
-        currency: filed.code,
-        currencyFiledFrom: from,
-        warnings,
-      },
+      { ...doc, ...filedTag, currency: filed.code, currencyFiledFrom: from, warnings },
       agreement.sentence,
     );
 
@@ -1179,9 +1164,7 @@ export function applyCurrencyRules(args: {
     currency: filed.code,
     currencyFiledFrom: from,
     warnings:
-      agreement.kind === "unreadable"
-        ? [...warnings, agreement.note]
-        : warnings,
+      agreement.kind === "unreadable" ? [...warnings, agreement.note] : warnings,
   };
 }
 

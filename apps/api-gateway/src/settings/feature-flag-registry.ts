@@ -235,8 +235,7 @@ export const INACTIVE_FEATURE_FLAGS: Array<{
     // [2026-09-28, ADR 0149 cutover: this pointed at the legacy /reports
     // panel CheckScannerSection.tsx, a stub (no scan was ever read) deleted
     // with that page — CUTOVER-MANIFEST-2026-09-28.md, group `reports`.]
-    capability:
-      "none built — the legacy stub was deleted at the ADR 0149 cutover",
+    capability: "none built — the legacy stub was deleted at the ADR 0149 cutover",
   },
   {
     key: "enable_auto_procurement",

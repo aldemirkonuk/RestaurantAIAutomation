@@ -493,8 +493,7 @@ export function statedTax(doc: ParsedDocument): number {
   if (doc.tax != null) return doc.tax;
   const rows = doc.taxBreakdown ?? [];
   if (!rows.length) return 0;
-  if (!rows.every((r) => r.amount != null && Number.isFinite(r.amount)))
-    return 0;
+  if (!rows.every((r) => r.amount != null && Number.isFinite(r.amount))) return 0;
   return rows.reduce((acc, r) => acc + (r.amount as number), 0);
 }
 

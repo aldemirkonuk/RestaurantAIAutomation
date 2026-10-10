@@ -18,10 +18,8 @@ import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { EventsController } from "./events.controller";
 
 const proto = EventsController.prototype as unknown as Record<string, object>;
-const guardsOn = (name: string): unknown[] =>
-  Reflect.getMetadata(GUARDS_METADATA, proto[name]) ?? [];
-const isPublic = (name: string) =>
-  Reflect.getMetadata(IS_PUBLIC_KEY, proto[name]) === true;
+const guardsOn = (name: string): unknown[] => Reflect.getMetadata(GUARDS_METADATA, proto[name]) ?? [];
+const isPublic = (name: string) => Reflect.getMetadata(IS_PUBLIC_KEY, proto[name]) === true;
 
 const SERVICE_ROUTES = ["getMetrics"];
 const HOUSE_ROUTES = ["createEvent", "listEvents"];
@@ -36,10 +34,7 @@ describe("GET /events/metrics is for the service key only (F-437)", () => {
   it("every public handler on this controller carries the service key", () => {
     for (const name of Object.getOwnPropertyNames(proto)) {
       if (name === "constructor" || !isPublic(name)) continue;
-      expect([name, guardsOn(name)]).toEqual([
-        name,
-        expect.arrayContaining([ServiceKeyGuard]),
-      ]);
+      expect([name, guardsOn(name)]).toEqual([name, expect.arrayContaining([ServiceKeyGuard])]);
     }
   });
 
@@ -54,8 +49,6 @@ describe("GET /events/metrics is for the service key only (F-437)", () => {
     const onTheClass = Object.getOwnPropertyNames(proto).filter(
       (n) => n !== "constructor" && typeof proto[n] === "function",
     );
-    expect(onTheClass.sort()).toEqual(
-      [...SERVICE_ROUTES, ...HOUSE_ROUTES].sort(),
-    );
+    expect(onTheClass.sort()).toEqual([...SERVICE_ROUTES, ...HOUSE_ROUTES].sort());
   });
 });

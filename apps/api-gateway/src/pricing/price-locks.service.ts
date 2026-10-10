@@ -6,21 +6,9 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import {
-  MarginAdviceService,
-  type InventoryPriceRow,
-} from "./margin-advice.service";
-import {
-  confirmedPourFrom,
-  readHouseTargetMargin,
-  targetsFrom,
-} from "./target-margin.service";
-import {
-  type LockKind,
-  lockFromRow,
-  readOpenLocks,
-  readPeople,
-} from "./price-locks";
+import { MarginAdviceService, type InventoryPriceRow } from "./margin-advice.service";
+import { confirmedPourFrom, readHouseTargetMargin, targetsFrom } from "./target-margin.service";
+import { type LockKind, lockFromRow, readOpenLocks, readPeople } from "./price-locks";
 
 /**
  * A house holds a price (ADR 0193, round 3).
@@ -88,12 +76,7 @@ export interface LockView {
   menuPrice: number | null;
   markers: LockMarker[];
   /** The advice for this kind at the held price, when it could be computed. */
-  advice: {
-    state: string;
-    sentence: string;
-    advisedPrice: number | null;
-    gapPct: number | null;
-  } | null;
+  advice: { state: string; sentence: string; advisedPrice: number | null; gapPct: number | null } | null;
   /** Why the advice is unknown, when it is (`advice_unknown`). */
   adviceUnknownReason: string | null;
 }
@@ -108,12 +91,7 @@ export interface LockReadout {
   scope: "this house";
   currentMenus: Array<{ menuId: string; name: string | null }>;
   locks: LockView[];
-  counts: {
-    open: number;
-    onCurrentMenu: number;
-    notOnCurrentMenu: number;
-    toReview: number;
-  };
+  counts: { open: number; onCurrentMenu: number; notOnCurrentMenu: number; toReview: number };
   /** Whether the people behind the locks could be named (L25). */
   namesReadable: boolean;
   namesReason: string | null;
@@ -150,9 +128,7 @@ export interface OpenLockRecord {
 const PAGE_ROWS = 1000;
 
 function money(n: number | null | undefined): string {
-  return n === null || n === undefined || !Number.isFinite(Number(n))
-    ? "no price"
-    : Number(n).toFixed(2);
+  return n === null || n === undefined || !Number.isFinite(Number(n)) ? "no price" : Number(n).toFixed(2);
 }
 
 function num(v: unknown): number | null {
@@ -173,16 +149,11 @@ function recordFrom(raw: unknown): OpenLockRecord {
 }
 
 /** A lock act's SQL refusal, as the HTTP answer it means. */
-export function lockActError(
-  error: { code?: string; message?: string },
-  what: string,
-): Error {
+export function lockActError(error: { code?: string; message?: string }, what: string): Error {
   const message = String(error.message ?? "").replace(/^[a-z_]+: /, "");
   switch (error.code) {
     case "P0002":
-      return new NotFoundException(
-        `${message || `No ${what} of this house by that id.`}`,
-      );
+      return new NotFoundException(`${message || `No ${what} of this house by that id.`}`);
     case "22023":
       return new BadRequestException(message);
     case "HPL02":
@@ -196,9 +167,7 @@ export function lockActError(
         "That price is already locked (another lock was set a moment ago). Nothing was changed.",
       );
     default:
-      return new InternalServerErrorException(
-        `The ${what} was not changed: ${error.message ?? "no reason given"}`,
-      );
+      return new InternalServerErrorException(`The ${what} was not changed: ${error.message ?? "no reason given"}`);
   }
 }
 
@@ -218,12 +187,7 @@ export class PriceLocksService {
   async list(restaurantId: string): Promise<LockReadout> {
     const client = this.databaseService.client;
     const generatedAt = new Date().toISOString();
-    const empty = {
-      open: 0,
-      onCurrentMenu: 0,
-      notOnCurrentMenu: 0,
-      toReview: 0,
-    };
+    const empty = { open: 0, onCurrentMenu: 0, notOnCurrentMenu: 0, toReview: 0 };
     const read = await readOpenLocks(client, restaurantId);
     if (read.error !== null) {
       return {
@@ -246,10 +210,7 @@ export class PriceLocksService {
     const inventoryIds = [...new Set(locks.map((l) => l.inventoryId))];
 
     // The wines behind the locks, active or not.
-    const wines = new Map<
-      string,
-      InventoryPriceRow & Record<string, unknown>
-    >();
+    const wines = new Map<string, InventoryPriceRow & Record<string, unknown>>();
     if (inventoryIds.length > 0) {
       const { data, error } = await client
         .from("restaurant_inventory")
@@ -258,44 +219,30 @@ export class PriceLocksService {
         )
         .eq("restaurant_id", restaurantId)
         .in("id", inventoryIds);
-      if (error)
-        missing.push(`the locked wines could not be read (${error.message})`);
-      else
-        for (const w of (data ?? []) as Array<Record<string, unknown>>)
-          wines.set(String(w.id), w as never);
+      if (error) missing.push(`the locked wines could not be read (${error.message})`);
+      else for (const w of (data ?? []) as Array<Record<string, unknown>>) wines.set(String(w.id), w as never);
     }
 
     // The current menu (one, normally; more only for a house that never chose).
     const menus = await this.currentMenuLines(restaurantId);
-    if (menus.error)
-      missing.push(`the current menu could not be read (${menus.error})`);
+    if (menus.error) missing.push(`the current menu could not be read (${menus.error})`);
 
     // Advice inputs for the locked wines.
     const [targets, rollup] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       inventoryIds.length === 0
-        ? Promise.resolve({ data: [], error: null } as {
-            data: unknown[];
-            error: { message: string } | null;
-          })
+        ? Promise.resolve({ data: [], error: null } as { data: unknown[]; error: { message: string } | null })
         : client
             .from("inventory_lot_rollup")
-            .select(
-              "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
-            )
+            .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count")
             .eq("restaurant_id", restaurantId)
             .in("inventory_id", inventoryIds),
     ]);
     const adviceReadable = targets.error === null && !rollup.error;
-    if (targets.error !== null)
-      missing.push(`the target margin could not be read (${targets.error})`);
-    if (rollup.error)
-      missing.push(
-        `the recorded costs could not be read (${rollup.error.message})`,
-      );
+    if (targets.error !== null) missing.push(`the target margin could not be read (${targets.error})`);
+    if (rollup.error) missing.push(`the recorded costs could not be read (${rollup.error.message})`);
     const lots = new Map<string, Record<string, unknown>>();
-    for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>)
-      lots.set(String(r.inventory_id), r);
+    for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) lots.set(String(r.inventory_id), r);
     const terms = {
       ...targetsFrom(targets.row),
       pourMl: confirmedPourFrom(targets.row),
@@ -318,10 +265,7 @@ export class PriceLocksService {
     const views: LockView[] = locks.map((l) => {
       const w = wines.get(l.inventoryId) ?? null;
       const master = w ? String(w.master_wine_id ?? "") : null;
-      const lib = (w?.master_wine_library ?? null) as {
-        name?: string | null;
-        vintage?: number | null;
-      } | null;
+      const lib = (w?.master_wine_library ?? null) as { name?: string | null; vintage?: number | null } | null;
       const markers: LockMarker[] = [];
       // Unknown until both the current menu and this lock's wine were read.
       let dormant: boolean | null = null;
@@ -331,53 +275,28 @@ export class PriceLocksService {
           markers.push("no_current_menu");
           dormant = true;
         } else {
-          const onMenu = master
-            ? menus.lines.filter((x) => x.wineLibraryId === master)
-            : [];
+          const onMenu = master ? menus.lines.filter((x) => x.wineLibraryId === master) : [];
           if (w) dormant = onMenu.length === 0;
           if (dormant === true) markers.push("not_on_current_menu");
           const prices = onMenu
             .map((x) => (l.kind === "bottle" ? x.bottle : x.glass))
             .filter((p): p is number => p !== null);
           menuPrice = prices[0] ?? null;
-          if (prices.some((p) => Math.abs(p - l.lockedPrice) >= 0.005))
-            markers.push("menu_differs");
+          if (prices.some((p) => Math.abs(p - l.lockedPrice) >= 0.005)) markers.push("menu_differs");
         }
       }
-      if (
-        w &&
-        (w.is_active === false || (w as { deleted_at?: unknown }).deleted_at)
-      )
-        markers.push("wine_removed");
-      if (
-        accessKnown &&
-        !this.managesHouse(
-          l.lockedBy,
-          access.roles,
-          people.people.get(l.lockedBy),
-          restaurantId,
-        )
-      ) {
+      if (w && (w.is_active === false || (w as { deleted_at?: unknown }).deleted_at)) markers.push("wine_removed");
+      if (accessKnown && !this.managesHouse(l.lockedBy, access.roles, people.people.get(l.lockedBy), restaurantId)) {
         markers.push("author_without_access");
       }
       let advice: LockView["advice"] = null;
       let adviceUnknownReason: string | null = null;
       if (w && adviceReadable) {
-        const wa = this.marginAdvice.adviseWine(
-          w,
-          lots.get(l.inventoryId) ?? null,
-          terms,
-        );
+        const wa = this.marginAdvice.adviseWine(w, lots.get(l.inventoryId) ?? null, terms);
         const a = l.kind === "bottle" ? wa.bottle : wa.glass;
         if (a) {
-          advice = {
-            state: a.state,
-            sentence: a.sentence,
-            advisedPrice: a.advisedPrice,
-            gapPct: a.gapPct,
-          };
-          if (a.state === "raise" || a.state === "lower")
-            markers.push("off_target");
+          advice = { state: a.state, sentence: a.sentence, advisedPrice: a.advisedPrice, gapPct: a.gapPct };
+          if (a.state === "raise" || a.state === "lower") markers.push("off_target");
           else if (a.state !== "on_target") {
             markers.push("advice_unknown");
             adviceUnknownReason = a.sentence;
@@ -387,34 +306,22 @@ export class PriceLocksService {
           adviceUnknownReason = `This wine is not sold by the ${l.kind}, so there is no ${l.kind} advice.`;
         }
       }
-      const housePrice = w
-        ? num(l.kind === "bottle" ? w.menu_price_current : w.menu_price_glass)
-        : null;
+      const housePrice = w ? num(l.kind === "bottle" ? w.menu_price_current : w.menu_price_glass) : null;
       return {
         lockId: l.lockId,
         inventoryId: l.inventoryId,
         kind: l.kind,
         lockedPrice: l.lockedPrice,
         lockedAt: l.lockedAt,
-        ageDays: Math.max(
-          0,
-          Math.floor((now - new Date(l.lockedAt).getTime()) / 86_400_000),
-        ),
+        ageDays: Math.max(0, Math.floor((now - new Date(l.lockedAt).getTime()) / 86_400_000)),
         note: l.note,
         movedFromLockId: l.movedFromLockId,
-        lockedBy: {
-          userId: l.lockedBy,
-          name: people.people.get(l.lockedBy)?.name ?? null,
-        },
+        lockedBy: { userId: l.lockedBy, name: people.people.get(l.lockedBy)?.name ?? null },
         wine: {
-          name:
-            (w?.wine_name as string | null | undefined) ?? lib?.name ?? null,
+          name: (w?.wine_name as string | null | undefined) ?? lib?.name ?? null,
           vintage: lib?.vintage ?? null,
           masterWineId: master,
-          active: w
-            ? w.is_active !== false &&
-              !(w as { deleted_at?: unknown }).deleted_at
-            : null,
+          active: w ? w.is_active !== false && !(w as { deleted_at?: unknown }).deleted_at : null,
           housePrice,
         },
         dormant,
@@ -425,9 +332,7 @@ export class PriceLocksService {
       };
     });
 
-    const toReview = views.filter((v) =>
-      v.markers.some((m) => REVIEW_MARKERS.includes(m)),
-    ).length;
+    const toReview = views.filter((v) => v.markers.some((m) => REVIEW_MARKERS.includes(m))).length;
     return {
       restaurantId,
       generatedAt,
@@ -443,14 +348,9 @@ export class PriceLocksService {
         toReview,
       },
       namesReadable,
-      namesReason: namesReadable
-        ? null
-        : `the people behind these locks could not be named: ${people.error}`,
+      namesReason: namesReadable ? null : `the people behind these locks could not be named: ${people.error}`,
       markersReadable: missing.length === 0,
-      markersReason:
-        missing.length === 0
-          ? null
-          : `Some facts about these locks are not shown: ${missing.join("; ")}.`,
+      markersReason: missing.length === 0 ? null : `Some facts about these locks are not shown: ${missing.join("; ")}.`,
     };
   }
 
@@ -463,26 +363,19 @@ export class PriceLocksService {
     note?: string | null,
   ): Promise<LockActResult> {
     if (kind !== "bottle" && kind !== "glass") {
-      throw new BadRequestException(
-        "A lock holds the bottle or the glass price. Nothing was locked.",
-      );
+      throw new BadRequestException("A lock holds the bottle or the glass price. Nothing was locked.");
     }
-    const { data, error } = await this.databaseService.client.rpc(
-      "lock_house_menu_price",
-      {
-        p_restaurant_id: restaurantId,
-        p_inventory_id: inventoryId,
-        p_kind: kind,
-        p_actor: actorUserId,
-        p_note: note ?? null,
-      },
-    );
+    const { data, error } = await this.databaseService.client.rpc("lock_house_menu_price", {
+      p_restaurant_id: restaurantId,
+      p_inventory_id: inventoryId,
+      p_kind: kind,
+      p_actor: actorUserId,
+      p_note: note ?? null,
+    });
     if (error) throw lockActError(error, "wine");
     const r = (data ?? {}) as Record<string, unknown>;
     if (r.outcome !== "locked" || !r.lock) {
-      throw new InternalServerErrorException(
-        "The lock answered no outcome; whether the price is locked is unknown.",
-      );
+      throw new InternalServerErrorException("The lock answered no outcome; whether the price is locked is unknown.");
     }
     const lock = recordFrom(r.lock);
     return {
@@ -501,21 +394,16 @@ export class PriceLocksService {
     actorUserId: string,
     note?: string | null,
   ): Promise<LockActResult> {
-    const { data, error } = await this.databaseService.client.rpc(
-      "release_house_price_lock",
-      {
-        p_restaurant_id: restaurantId,
-        p_lock_id: lockId,
-        p_actor: actorUserId,
-        p_note: note ?? null,
-      },
-    );
+    const { data, error } = await this.databaseService.client.rpc("release_house_price_lock", {
+      p_restaurant_id: restaurantId,
+      p_lock_id: lockId,
+      p_actor: actorUserId,
+      p_note: note ?? null,
+    });
     if (error) throw lockActError(error, "lock");
     const r = (data ?? {}) as Record<string, unknown>;
     if (r.outcome !== "released" || !r.lock) {
-      throw new InternalServerErrorException(
-        "The release answered no outcome; whether the lock is released is unknown.",
-      );
+      throw new InternalServerErrorException("The release answered no outcome; whether the lock is released is unknown.");
     }
     const lock = recordFrom(r.lock);
     const housePrice = num(r.house_price);
@@ -537,20 +425,15 @@ export class PriceLocksService {
     note?: string | null,
   ): Promise<LockActResult> {
     if (typeof price !== "number" || !Number.isFinite(price) || price < 0) {
-      throw new BadRequestException(
-        "Say the new price, a number of 0 or more. Nothing was changed.",
-      );
+      throw new BadRequestException("Say the new price, a number of 0 or more. Nothing was changed.");
     }
-    const { data, error } = await this.databaseService.client.rpc(
-      "change_locked_house_menu_price",
-      {
-        p_restaurant_id: restaurantId,
-        p_lock_id: lockId,
-        p_price: price,
-        p_actor: actorUserId,
-        p_note: note ?? null,
-      },
-    );
+    const { data, error } = await this.databaseService.client.rpc("change_locked_house_menu_price", {
+      p_restaurant_id: restaurantId,
+      p_lock_id: lockId,
+      p_price: price,
+      p_actor: actorUserId,
+      p_note: note ?? null,
+    });
     if (error) throw lockActError(error, "lock");
     const r = (data ?? {}) as Record<string, unknown>;
     if (r.outcome === "unchanged" && r.lock) {
@@ -564,16 +447,13 @@ export class PriceLocksService {
       };
     }
     if (r.outcome !== "changed_and_locked" || !r.lock) {
-      throw new InternalServerErrorException(
-        "The change answered no outcome; whether the price changed is unknown.",
-      );
+      throw new InternalServerErrorException("The change answered no outcome; whether the price changed is unknown.");
     }
     const lock = recordFrom(r.lock);
     return {
       outcome: "changed_and_locked",
       lock,
-      previousLockId:
-        typeof r.previous_lock_id === "string" ? r.previous_lock_id : null,
+      previousLockId: typeof r.previous_lock_id === "string" ? r.previous_lock_id : null,
       housePrice: lock.lockedPrice,
       sentence: `The ${lock.kind} price is now ${money(lock.lockedPrice)} (it was ${money(num(r.previous_price))}) and stays locked.`,
     };
@@ -592,39 +472,31 @@ export class PriceLocksService {
     note?: string | null,
   ): Promise<LockActResult> {
     if (typeof targetInventoryId !== "string" || targetInventoryId === "") {
-      throw new BadRequestException(
-        "Say which wine of this house the lock moves to. Nothing was changed.",
-      );
+      throw new BadRequestException("Say which wine of this house the lock moves to. Nothing was changed.");
     }
     if (typeof price !== "number" || !Number.isFinite(price) || price < 0) {
       throw new BadRequestException(
         "Say the price the wine is locked at: a move never guesses one. Nothing was changed.",
       );
     }
-    const { data, error } = await this.databaseService.client.rpc(
-      "move_house_price_lock",
-      {
-        p_restaurant_id: restaurantId,
-        p_lock_id: lockId,
-        p_target_inventory_id: targetInventoryId,
-        p_price: price,
-        p_actor: actorUserId,
-        p_note: note ?? null,
-      },
-    );
+    const { data, error } = await this.databaseService.client.rpc("move_house_price_lock", {
+      p_restaurant_id: restaurantId,
+      p_lock_id: lockId,
+      p_target_inventory_id: targetInventoryId,
+      p_price: price,
+      p_actor: actorUserId,
+      p_note: note ?? null,
+    });
     if (error) throw lockActError(error, "lock");
     const r = (data ?? {}) as Record<string, unknown>;
     if (r.outcome !== "moved" || !r.lock) {
-      throw new InternalServerErrorException(
-        "The move answered no outcome; where the lock is now is unknown.",
-      );
+      throw new InternalServerErrorException("The move answered no outcome; where the lock is now is unknown.");
     }
     const lock = recordFrom(r.lock);
     return {
       outcome: "moved",
       lock,
-      previousLockId:
-        typeof r.previous_lock_id === "string" ? r.previous_lock_id : null,
+      previousLockId: typeof r.previous_lock_id === "string" ? r.previous_lock_id : null,
       housePrice: lock.lockedPrice,
       sentence: `The lock moved: this wine's ${lock.kind} price is ${money(lock.lockedPrice)} and locked. The old lock is released and kept on the record.`,
     };
@@ -651,15 +523,12 @@ export class PriceLocksService {
     if (wineErr || !menus || menus.error) {
       return `The lock is released. ${stays}. Whether the current menu reads another price could not be read (${wineErr?.message ?? menus?.error}).`;
     }
-    const master =
-      (wine as { master_wine_id?: string } | null)?.master_wine_id ?? null;
+    const master = (wine as { master_wine_id?: string } | null)?.master_wine_id ?? null;
     const prices = menus.lines
       .filter((x) => master !== null && x.wineLibraryId === master)
       .map((x) => (lock.kind === "bottle" ? x.bottle : x.glass))
       .filter((p): p is number => p !== null);
-    const other = prices.find(
-      (p) => housePrice === null || Math.abs(p - housePrice) >= 0.005,
-    );
+    const other = prices.find((p) => housePrice === null || Math.abs(p - housePrice) >= 0.005);
     if (other !== undefined) {
       return `The lock is released. The current menu reads ${money(other)}; the house price stays ${money(housePrice)} until a menu is chosen or a manager changes it.`;
     }
@@ -669,11 +538,7 @@ export class PriceLocksService {
   /** The current menu(s) of this house and their live lines, keyset-paged. A failed page is an error. */
   async currentMenuLines(restaurantId: string): Promise<{
     menus: Array<{ menuId: string; name: string | null }>;
-    lines: Array<{
-      wineLibraryId: string | null;
-      bottle: number | null;
-      glass: number | null;
-    }>;
+    lines: Array<{ wineLibraryId: string | null; bottle: number | null; glass: number | null }>;
     error: string | null;
   }> {
     const client = this.databaseService.client;
@@ -683,17 +548,11 @@ export class PriceLocksService {
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
     if (menuErr) return { menus: [], lines: [], error: menuErr.message };
-    const menus = (
-      (menuRows ?? []) as Array<{ id: string; name?: string | null }>
-    ).map((m) => ({
+    const menus = ((menuRows ?? []) as Array<{ id: string; name?: string | null }>).map((m) => ({
       menuId: m.id,
       name: m.name ?? null,
     }));
-    const lines: Array<{
-      wineLibraryId: string | null;
-      bottle: number | null;
-      glass: number | null;
-    }> = [];
+    const lines: Array<{ wineLibraryId: string | null; bottle: number | null; glass: number | null }> = [];
     for (const m of menus) {
       let after: string | null = null;
       for (;;) {
@@ -704,15 +563,12 @@ export class PriceLocksService {
           .eq("restaurant_id", restaurantId)
           .neq("status", "discarded");
         if (after) q = q.gt("id", after);
-        const { data, error } = await q
-          .order("id", { ascending: true })
-          .limit(PAGE_ROWS);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
         if (error) return { menus, lines: [], error: error.message };
         const rows = (data ?? []) as Array<Record<string, unknown>>;
         for (const r of rows) {
           lines.push({
-            wineLibraryId:
-              typeof r.wine_library_id === "string" ? r.wine_library_id : null,
+            wineLibraryId: typeof r.wine_library_id === "string" ? r.wine_library_id : null,
             bottle: num(r.bottle_price),
             glass: num(r.by_glass_price),
           });
@@ -738,11 +594,7 @@ export class PriceLocksService {
       .eq("is_active", true)
       .in("user_id", userIds);
     if (error) return { roles, error: error.message };
-    for (const r of (data ?? []) as Array<{
-      user_id: string;
-      role?: string | null;
-    }>)
-      roles.set(r.user_id, r.role ?? null);
+    for (const r of (data ?? []) as Array<{ user_id: string; role?: string | null }>) roles.set(r.user_id, r.role ?? null);
     return { roles, error: null };
   }
 

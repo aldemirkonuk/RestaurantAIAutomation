@@ -305,8 +305,7 @@ describe("on time — before the house's midnight, with its denominator", () => 
       "2 orders are past the expected date and nobody here has said whether they arrived — unconfirmed, not counted.",
     );
     const cancelledLegacy = built.entries.find(
-      (e) =>
-        e.measure === "onTime" && e.source.id === "out-2026-09-02-CANCELLED",
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-02-CANCELLED",
     );
     expect(cancelledLegacy).toMatchObject({
       counted: false,
@@ -358,28 +357,20 @@ describe("on time — before the house's midnight, with its denominator", () => 
     // 5 on-time arrivals + 1 never_arrived miss = 6 sample, 5 hits.
     expect(m).toMatchObject({ outcome: "answered", sample: 6, hits: 5 });
     const neverArrived = built.entries.find(
-      (e) =>
-        e.measure === "onTime" && e.source.id === "out-2026-09-06-CANCELLED",
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-06-CANCELLED",
     );
-    expect(neverArrived).toMatchObject({
-      counted: true,
-      hit: false,
-      open: false,
-    });
+    expect(neverArrived).toMatchObject({ counted: true, hit: false, open: false });
     expect(neverArrived?.detail).toContain("never arrived, and cancelled");
     const couldNotSupply = built.entries.find(
-      (e) =>
-        e.measure === "onTime" && e.source.id === "out-2026-09-10-CANCELLED",
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-10-CANCELLED",
     );
     expect(couldNotSupply).toMatchObject({
       counted: false,
       hit: null,
-      excludedBecause:
-        "cancelled — the vendor said it could not supply this order",
+      excludedBecause: "cancelled — the vendor said it could not supply this order",
     });
     const houseDecision = built.entries.find(
-      (e) =>
-        e.measure === "onTime" && e.source.id === "out-2026-09-11-CANCELLED",
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-11-CANCELLED",
     );
     expect(houseDecision).toMatchObject({
       counted: false,
@@ -387,8 +378,7 @@ describe("on time — before the house's midnight, with its denominator", () => 
       excludedBecause: "cancelled by the house",
     });
     const prePlacement = built.entries.find(
-      (e) =>
-        e.measure === "onTime" && e.source.id === "out-2026-09-12-CANCELLED",
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-12-CANCELLED",
     );
     expect(prePlacement).toBeUndefined();
   });
@@ -405,8 +395,7 @@ describe("on time — before the house's midnight, with its denominator", () => 
     ];
     const built = build(regs({ arrivals: ok(rows) }));
     const entry = built.entries.find(
-      (e) =>
-        e.measure === "onTime" && e.source.id === "out-2026-09-06-CANCELLED",
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-06-CANCELLED",
     );
     expect(entry).toMatchObject({ counted: false, hit: null });
     expect(entry?.excludedBecause).toBe("no expected date");
@@ -889,28 +878,17 @@ describe("reply time — our message to their next reply, same thread", () => {
           gmail_thread_id: `m${i}`,
           channel: "email",
         }),
-        msg(
-          "inbound",
-          `2026-09-0${i + 1}T${String(8 + h).padStart(2, "0")}:00:00Z`,
-          null,
-          {
-            gmail_thread_id: `m${i}`,
-            channel: "email",
-          },
-        ),
+        msg("inbound", `2026-09-0${i + 1}T${String(8 + h).padStart(2, "0")}:00:00Z`, null, {
+          gmail_thread_id: `m${i}`,
+          channel: "email",
+        }),
       ]),
       // WhatsApp: 1 h and 3 h, then a send still waiting
-      msg("outbound", "2026-09-05T08:00:00Z", "msg:w1", {
-        channel: "whatsapp",
-      }),
+      msg("outbound", "2026-09-05T08:00:00Z", "msg:w1", { channel: "whatsapp" }),
       msg("inbound", "2026-09-05T09:00:00Z", "msg:w2", { channel: "whatsapp" }),
-      msg("outbound", "2026-09-06T08:00:00Z", "msg:w3", {
-        channel: "whatsapp",
-      }),
+      msg("outbound", "2026-09-06T08:00:00Z", "msg:w3", { channel: "whatsapp" }),
       msg("inbound", "2026-09-06T11:00:00Z", "msg:w4", { channel: "whatsapp" }),
-      msg("outbound", "2026-09-07T08:00:00Z", "msg:w5", {
-        channel: "whatsapp",
-      }),
+      msg("outbound", "2026-09-07T08:00:00Z", "msg:w5", { channel: "whatsapp" }),
     ];
     const m = measure(build(regs({ mail: ok(rows) })).card, "replyTime");
     expect(m).toMatchObject({ outcome: "answered", sample: 5, open: 1 });
@@ -1193,7 +1171,8 @@ describe("the Docket is the figures' rows", () => {
     const card = build(regs()).card;
     expect(card.alerting).toEqual({
       built: false,
-      sentence: "These figures send no alerts.",
+      sentence:
+        "These figures send no alerts.",
     });
   });
 });

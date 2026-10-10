@@ -22,9 +22,7 @@ describe("htmlToText", () => {
     });
 
     it("removes a script tag carrying attributes", () => {
-      const out = htmlToText(
-        '<script type="text/javascript">evil()</script>ok',
-      );
+      const out = htmlToText('<script type="text/javascript">evil()</script>ok');
       expect(out).not.toContain("evil()");
       expect(out).toBe("ok");
     });
@@ -92,11 +90,7 @@ describe("htmlToText", () => {
           });
         const indexOfSpy = jest
           .spyOn(String.prototype, "indexOf")
-          .mockImplementation(function (
-            this: string,
-            needle: string,
-            from?: number,
-          ) {
+          .mockImplementation(function (this: string, needle: string, from?: number) {
             const at = indexOf.call(this, needle, from);
             scanned += (at === -1 ? this.length : at) - Math.max(0, from ?? 0);
             return at;
@@ -164,21 +158,17 @@ describe("htmlToText", () => {
 
     it("joins across inline tags by default, spaces them when asked", () => {
       expect(htmlToText("$<b>18</b>.40")).toBe("$18.40");
-      expect(
-        htmlToText("Hello<b>world</b>", 0, { spaceForInlineTags: true }),
-      ).toBe("Hello world");
+      expect(htmlToText("Hello<b>world</b>", 0, { spaceForInlineTags: true })).toBe(
+        "Hello world",
+      );
     });
 
     it("keeps paragraph gaps by default, one break per boundary when asked", () => {
       expect(htmlToText("<p>A</p><p>B</p>")).toBe("A\n\nB");
-      expect(
-        htmlToText("<p>A</p><p>B</p>", 0, { oneBreakPerBoundary: true }),
-      ).toBe("A\nB");
+      expect(htmlToText("<p>A</p><p>B</p>", 0, { oneBreakPerBoundary: true })).toBe("A\nB");
       // <br> always breaks, so an explicit empty line survives.
       expect(
-        htmlToText("<div>A</div><div><br></div><div>B</div>", 0, {
-          oneBreakPerBoundary: true,
-        }),
+        htmlToText("<div>A</div><div><br></div><div>B</div>", 0, { oneBreakPerBoundary: true }),
       ).toBe("A\n\nB");
     });
   });

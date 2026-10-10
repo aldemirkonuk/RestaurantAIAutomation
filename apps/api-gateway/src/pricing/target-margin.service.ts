@@ -154,9 +154,7 @@ export interface WinePourRow {
  * (20260922230900), so a confirmation here always describes this number.
  * Null means: use the house's confirmed pour.
  */
-export function confirmedWinePourFrom(
-  row: WinePourRow | null | undefined,
-): number | null {
+export function confirmedWinePourFrom(row: WinePourRow | null | undefined): number | null {
   if (!row?.pour_size_confirmed_at || !row.pour_size_confirmed_by) return null;
   const ml = asNumber(row.pour_size_ml);
   return ml !== null && ml >= POUR_MIN_ML && ml <= POUR_MAX_ML ? ml : null;
@@ -167,12 +165,7 @@ export interface WinePourReadout {
   inventoryId: string;
   wineName: string | null;
   /** This wine's own confirmed pour; null = it uses the house's confirmed pour. */
-  pour: {
-    confirmed: boolean;
-    ml: number | null;
-    confirmedAt: string | null;
-    confirmedBy: string | null;
-  };
+  pour: { confirmed: boolean; ml: number | null; confirmedAt: string | null; confirmedBy: string | null };
   audited: boolean;
   auditReason: string | null;
 }
@@ -207,25 +200,15 @@ export class TargetMarginService {
   ) {}
 
   async read(restaurantId: string): Promise<TargetMarginReadout> {
-    const house = await readHouseTargetMargin(
-      this.databaseService.client,
-      restaurantId,
-    );
+    const house = await readHouseTargetMargin(this.databaseService.client, restaurantId);
     if (house.error !== null) {
-      this.logger.error(
-        `Could not read the target margin for ${restaurantId}: ${house.error}`,
-      );
+      this.logger.error(`Could not read the target margin for ${restaurantId}: ${house.error}`);
       return {
         restaurantId,
         bottlePct: null,
         glassPct: null,
         bandPct: null,
-        pour: {
-          confirmed: false,
-          ml: null,
-          confirmedAt: null,
-          confirmedBy: null,
-        },
+        pour: { confirmed: false, ml: null, confirmedAt: null, confirmedBy: null },
         readable: false,
         reason: house.error,
         statedAt: null,
@@ -251,14 +234,8 @@ export class TargetMarginService {
     body: { bottlePct?: unknown; glassPct?: unknown; bandPct?: unknown },
     actorUserId: string,
   ): Promise<TargetMarginReadout> {
-    const bottle = checkPct(
-      "bottle",
-      body.bottlePct === undefined ? null : body.bottlePct,
-    );
-    const glass = checkPct(
-      "glass",
-      body.glassPct === undefined ? null : body.glassPct,
-    );
+    const bottle = checkPct("bottle", body.bottlePct === undefined ? null : body.bottlePct);
+    const glass = checkPct("glass", body.glassPct === undefined ? null : body.glassPct);
     if (bottle === null && glass === null) {
       throw new BadRequestException(
         "Name a target for bottles, for glasses, or both. Nothing was recorded.",
@@ -276,10 +253,7 @@ export class TargetMarginService {
       );
     }
 
-    const before = await readHouseTargetMargin(
-      this.databaseService.client,
-      restaurantId,
-    );
+    const before = await readHouseTargetMargin(this.databaseService.client, restaurantId);
     if (before.error !== null) {
       // Refuse rather than write over a value this write could not see.
       throw new InternalServerErrorException(
@@ -302,9 +276,7 @@ export class TargetMarginService {
       .eq("id", restaurantId);
 
     if (error) {
-      this.logger.error(
-        `Could not record the target margin for ${restaurantId}: ${error.message}`,
-      );
+      this.logger.error(`Could not record the target margin for ${restaurantId}: ${error.message}`);
       throw new InternalServerErrorException(
         `Could not record the target margin. Nothing was changed. ${error.message}`,
       );
@@ -312,10 +284,7 @@ export class TargetMarginService {
 
     const fields: Record<string, { from: unknown; to: unknown }> = {};
     if (previous.bottlePct !== bottle)
-      fields.target_margin_bottle_pct = {
-        from: previous.bottlePct,
-        to: bottle,
-      };
+      fields.target_margin_bottle_pct = { from: previous.bottlePct, to: bottle };
     if (previous.glassPct !== glass)
       fields.target_margin_glass_pct = { from: previous.glassPct, to: glass };
     if (previous.bandPct !== band)
@@ -363,10 +332,7 @@ export class TargetMarginService {
       );
     }
 
-    const before = await readHouseTargetMargin(
-      this.databaseService.client,
-      restaurantId,
-    );
+    const before = await readHouseTargetMargin(this.databaseService.client, restaurantId);
     if (before.error !== null) {
       throw new InternalServerErrorException(
         `The house's pour could not be read, so nothing was changed: ${before.error}`,
@@ -383,9 +349,7 @@ export class TargetMarginService {
       })
       .eq("id", restaurantId);
     if (error) {
-      this.logger.error(
-        `Could not confirm the pour for ${restaurantId}: ${error.message}`,
-      );
+      this.logger.error(`Could not confirm the pour for ${restaurantId}: ${error.message}`);
       throw new InternalServerErrorException(
         `Could not confirm the pour size. Nothing was changed. ${error.message}`,
       );
@@ -435,9 +399,7 @@ export class TargetMarginService {
     const client = this.databaseService.client;
     const { data: before, error: readErr } = await client
       .from("restaurant_inventory")
-      .select(
-        "id, wine_name, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at",
-      )
+      .select("id, wine_name, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at")
       .eq("id", inventoryId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -446,30 +408,21 @@ export class TargetMarginService {
         `This wine's pour could not be read, so nothing was changed: ${readErr.message}`,
       );
     }
-    if (!before)
-      throw new NotFoundException(
-        "No wine of this house by that id. Nothing was changed.",
-      );
+    if (!before) throw new NotFoundException("No wine of this house by that id. Nothing was changed.");
     const row = before as WinePourRow & { wine_name?: string | null };
     const previous = confirmedWinePourFrom(row);
     const now = new Date().toISOString();
     const patch =
       ml === null
         ? { pour_size_confirmed_by: null, pour_size_confirmed_at: null }
-        : {
-            pour_size_ml: ml,
-            pour_size_confirmed_by: actorUserId,
-            pour_size_confirmed_at: now,
-          };
+        : { pour_size_ml: ml, pour_size_confirmed_by: actorUserId, pour_size_confirmed_at: now };
     const { error } = await client
       .from("restaurant_inventory")
       .update(patch)
       .eq("id", inventoryId)
       .eq("restaurant_id", restaurantId);
     if (error) {
-      this.logger.error(
-        `Could not confirm the pour of ${restaurantId}/${inventoryId}: ${error.message}`,
-      );
+      this.logger.error(`Could not confirm the pour of ${restaurantId}/${inventoryId}: ${error.message}`);
       throw new InternalServerErrorException(
         `This wine's pour was not confirmed. Nothing was changed. ${error.message}`,
       );
@@ -511,8 +464,7 @@ export class TargetMarginService {
       pour: {
         confirmed: pourMl !== null,
         ml: pourMl,
-        confirmedAt:
-          pourMl !== null ? (row?.pour_size_confirmed_at ?? null) : null,
+        confirmedAt: pourMl !== null ? (row?.pour_size_confirmed_at ?? null) : null,
         confirmedBy:
           pourMl !== null && row?.pour_size_confirmed_by
             ? { userId: row.pour_size_confirmed_by, name: pourAuthorName }
@@ -536,9 +488,7 @@ export class TargetMarginService {
       .eq("user_id", userId)
       .maybeSingle();
     if (error) {
-      this.logger.warn(
-        `The target margin's author could not be named: ${error.message}`,
-      );
+      this.logger.warn(`The target margin's author could not be named: ${error.message}`);
       return null;
     }
     return (data as { name?: string | null } | null)?.name ?? null;

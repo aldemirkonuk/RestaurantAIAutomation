@@ -132,12 +132,7 @@ function textLines(source: string): Array<{ line: number; text: string }> {
     .filter(({ text, i }) => {
       const t = text.trim();
       // A comment is how a defect gets described so it is not re-introduced.
-      if (
-        t.startsWith("//") ||
-        t.startsWith("*") ||
-        t.startsWith("/*") ||
-        t.startsWith("#")
-      ) {
+      if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || t.startsWith("#")) {
         return false;
       }
       // Operator output, never a reader's — logs are out of scope by design.
@@ -153,9 +148,7 @@ function offences(files: string[]): string[] {
     const source = fs.readFileSync(file, "utf8");
     for (const { line, text } of textLines(source)) {
       if (EMOJI.test(text)) {
-        found.push(
-          `${path.relative(GATEWAY_SRC, file)}:${line} — ${text.trim()}`,
-        );
+        found.push(`${path.relative(GATEWAY_SRC, file)}:${line} — ${text.trim()}`);
       }
     }
   }
@@ -212,10 +205,7 @@ describe("no notification producer writes an emoji into a stored title", () => {
         // with `_notify` — `procurement_agent._notify_voice_negotiation_success`
         // publishes a bus event and writes no row, and sweeping it in would
         // have made this file fail over text no reader of /notifications sees.
-        return (
-          s.includes('table("notifications")') ||
-          s.includes("notify_restaurant(")
-        );
+        return s.includes('table("notifications")') || s.includes("notify_restaurant(");
       });
     const names = py.map((f) => path.relative(ORCHESTRATOR, f));
     // The funnel and at least one agent that writes its words through it.
@@ -229,10 +219,7 @@ describe("no notification producer writes an emoji into a stored title", () => {
     // Proves the regex and the line filter are load-bearing rather than a
     // pair of predicates that happen to be true of every line.
     const tmp = path.join(__dirname, "__emoji_probe.tmp.ts");
-    fs.writeFileSync(
-      tmp,
-      'const x = { title: "\u{1F6A8} 50 wines dropped below par" };\n',
-    );
+    fs.writeFileSync(tmp, 'const x = { title: "\u{1F6A8} 50 wines dropped below par" };\n');
     try {
       expect(offences([tmp])).toHaveLength(1);
     } finally {
@@ -240,10 +227,7 @@ describe("no notification producer writes an emoji into a stored title", () => {
     }
     // …and that a comment mentioning the rule is not an offence
     const tmp2 = path.join(__dirname, "__emoji_probe2.tmp.ts");
-    fs.writeFileSync(
-      tmp2,
-      '// title: "\u{1F6A8} was here" — the defect, described\n',
-    );
+    fs.writeFileSync(tmp2, '// title: "\u{1F6A8} was here" — the defect, described\n');
     try {
       expect(offences([tmp2])).toEqual([]);
     } finally {

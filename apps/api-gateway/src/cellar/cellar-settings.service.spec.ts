@@ -59,11 +59,7 @@ function makeClient(opts: {
   return {
     upsertCallCount: () => upsertCalls,
     audit,
-    record: async (c: {
-      actorUserId: string;
-      action: string;
-      fields: AuditRow["fields"];
-    }) => {
+    record: async (c: { actorUserId: string; action: string; fields: AuditRow["fields"] }) => {
       tick += 1;
       audit.unshift({
         actor_id: c.actorUserId,
@@ -90,14 +86,7 @@ function makeClient(opts: {
           eq: () => ({
             maybeSingle: async () => {
               if (missing) {
-                return {
-                  data: null,
-                  error: {
-                    code: "42P01",
-                    message:
-                      'relation "restaurant_cellar_settings" does not exist',
-                  },
-                };
+                return { data: null, error: { code: "42P01", message: 'relation "restaurant_cellar_settings" does not exist' } };
               }
               if (opts.readError) {
                 return { data: null, error: opts.readError };
@@ -108,10 +97,7 @@ function makeClient(opts: {
         }),
         upsert: async (next: Record<string, unknown>) => {
           upsertCalls += 1;
-          if (missing)
-            return {
-              error: { code: "42P01", message: "relation does not exist" },
-            };
+          if (missing) return { error: { code: "42P01", message: "relation does not exist" } };
           if (opts.upsertError) return { error: opts.upsertError };
           row = {
             hold_ceremony: next.hold_ceremony as string,
@@ -129,9 +115,7 @@ function makeClient(opts: {
   };
 }
 
-async function serviceWith(
-  client: ReturnType<typeof makeClient>,
-): Promise<CellarSettingsService> {
+async function serviceWith(client: ReturnType<typeof makeClient>): Promise<CellarSettingsService> {
   const moduleRef = await Test.createTestingModule({
     providers: [
       CellarSettingsService,
@@ -208,12 +192,7 @@ describe("CellarSettingsService.read", () => {
   it("distinguishes an EMPTY chosen set ('show none') from never having configured one", async () => {
     const service = await serviceWith(
       makeClient({
-        row: {
-          hold_ceremony: "hold",
-          gazetteer_measures: [],
-          set_by: "user-1",
-          set_at: "2026-09-17T00:00:00Z",
-        },
+        row: { hold_ceremony: "hold", gazetteer_measures: [], set_by: "user-1", set_at: "2026-09-17T00:00:00Z" },
       }),
     );
 
@@ -227,21 +206,11 @@ describe("CellarSettingsService.write", () => {
   it("writes one field and leaves the other's stored choice untouched (a PATCH, not a full replace)", async () => {
     const service = await serviceWith(
       makeClient({
-        row: {
-          hold_ceremony: "hold",
-          gazetteer_measures: ["bottles", "titles"],
-          set_by: "user-1",
-          set_at: "2026-09-16T00:00:00Z",
-        },
+        row: { hold_ceremony: "hold", gazetteer_measures: ["bottles", "titles"], set_by: "user-1", set_at: "2026-09-16T00:00:00Z" },
       }),
     );
 
-    const out = await service.write(
-      RID,
-      { holdCeremony: "auto" },
-      "user-2",
-      "owner",
-    );
+    const out = await service.write(RID, { holdCeremony: "auto" }, "user-2", "owner");
     expect(out.holdCeremony).toBe("auto");
     // gazetteerMeasures was not in this write's DTO, so the prior choice survives.
     expect(out.gazetteerMeasures).toEqual(["bottles", "titles"]);
@@ -251,12 +220,7 @@ describe("CellarSettingsService.write", () => {
   it("writes an unconfigured house's first choice against the page's own defaults", async () => {
     const service = await serviceWith(makeClient({ row: null }));
 
-    const out = await service.write(
-      RID,
-      { gazetteerMeasures: ["registers"] },
-      "user-1",
-      "staff",
-    );
+    const out = await service.write(RID, { gazetteerMeasures: ["registers"] }, "user-1", "staff");
     expect(out.gazetteerMeasures).toEqual(["registers"]);
     // holdCeremony was not sent and this house never configured it, so the
     // default ('hold') is written explicitly rather than left null — but it
@@ -277,41 +241,33 @@ describe("CellarSettingsService.write", () => {
     // list on nothing more than a flaky read. This pins that the write now
     // never reaches the database at all in that case.
     const client = makeClient({
-      row: {
-        hold_ceremony: "auto",
-        gazetteer_measures: ["bottles", "par"],
-        set_by: "user-1",
-        set_at: "2026-09-16T00:00:00Z",
-      },
+      row: { hold_ceremony: "auto", gazetteer_measures: ["bottles", "par"], set_by: "user-1", set_at: "2026-09-16T00:00:00Z" },
       readError: { message: "ECONNREFUSED" },
     });
     const service = await serviceWith(client);
 
-    await expect(
-      service.write(RID, { holdCeremony: "auto" }, "user-2", "owner"),
-    ).rejects.toThrow(/could not be read.*ECONNREFUSED/);
+    await expect(service.write(RID, { holdCeremony: "auto" }, "user-2", "owner")).rejects.toThrow(
+      /could not be read.*ECONNREFUSED/,
+    );
     expect(client.upsertCallCount()).toBe(0);
   });
 
   it("throws, naming the missing migration, when the table does not exist yet", async () => {
     const service = await serviceWith(makeClient({ missingTable: true }));
 
-    await expect(
-      service.write(RID, { holdCeremony: "auto" }, "user-1", "owner"),
-    ).rejects.toThrow(/migration has not been applied/);
+    await expect(service.write(RID, { holdCeremony: "auto" }, "user-1", "owner")).rejects.toThrow(
+      /migration has not been applied/,
+    );
   });
 
   it("throws the database's own message on any other write failure", async () => {
     const service = await serviceWith(
-      makeClient({
-        row: null,
-        upsertError: { code: "23505", message: "duplicate key" },
-      }),
+      makeClient({ row: null, upsertError: { code: "23505", message: "duplicate key" } }),
     );
 
-    await expect(
-      service.write(RID, { holdCeremony: "auto" }, "user-1", "owner"),
-    ).rejects.toThrow(/duplicate key/);
+    await expect(service.write(RID, { holdCeremony: "auto" }, "user-1", "owner")).rejects.toThrow(
+      /duplicate key/,
+    );
   });
 });
 
@@ -324,50 +280,35 @@ describe("CellarSettingsService.write — the order-hold ceremony is owner/manag
     "allows a %s to change the ceremony",
     async (role) => {
       const service = await serviceWith(makeClient({ row: null }));
-      const out = await service.write(
-        RID,
-        { holdCeremony: "auto" },
-        "user-1",
-        role,
-      );
+      const out = await service.write(RID, { holdCeremony: "auto" }, "user-1", role);
       expect(out.holdCeremony).toBe("auto");
     },
   );
 
   it("refuses staff, naming who may change it, and writes nothing", async () => {
     const client = makeClient({
-      row: {
-        hold_ceremony: "hold",
-        gazetteer_measures: ["bottles"],
-        set_by: "user-1",
-        set_at: "2026-09-16T00:00:00Z",
-      },
+      row: { hold_ceremony: "hold", gazetteer_measures: ["bottles"], set_by: "user-1", set_at: "2026-09-16T00:00:00Z" },
     });
     const service = await serviceWith(client);
 
-    await expect(
-      service.write(RID, { holdCeremony: "auto" }, "user-2", "staff"),
-    ).rejects.toThrow(/owner or a manager/);
+    await expect(service.write(RID, { holdCeremony: "auto" }, "user-2", "staff")).rejects.toThrow(
+      /owner or a manager/,
+    );
     expect(client.upsertCallCount()).toBe(0);
   });
 
   it("refuses a null/absent role — fails closed, never open by default", async () => {
     const service = await serviceWith(makeClient({ row: null }));
 
-    await expect(
-      service.write(RID, { holdCeremony: "auto" }, "user-1", null),
-    ).rejects.toThrow(/owner or a manager/);
+    await expect(service.write(RID, { holdCeremony: "auto" }, "user-1", null)).rejects.toThrow(
+      /owner or a manager/,
+    );
   });
 
   it("does NOT gate a gazetteerMeasures-only write — the founder restricted the ceremony, not the tiles", async () => {
     const service = await serviceWith(makeClient({ row: null }));
 
-    const out = await service.write(
-      RID,
-      { gazetteerMeasures: ["bottles", "registers"] },
-      "user-1",
-      "staff",
-    );
+    const out = await service.write(RID, { gazetteerMeasures: ["bottles", "registers"] }, "user-1", "staff");
     expect(out.gazetteerMeasures).toEqual(["bottles", "registers"]);
   });
 
@@ -376,12 +317,7 @@ describe("CellarSettingsService.write — the order-hold ceremony is owner/manag
     const service = await serviceWith(client);
 
     await expect(
-      service.write(
-        RID,
-        { holdCeremony: "auto", gazetteerMeasures: ["bottles"] },
-        "user-1",
-        "staff",
-      ),
+      service.write(RID, { holdCeremony: "auto", gazetteerMeasures: ["bottles"] }, "user-1", "staff"),
     ).rejects.toThrow(/owner or a manager/);
     expect(client.upsertCallCount()).toBe(0);
   });
@@ -393,12 +329,7 @@ describe("CellarSettingsService — each field keeps its own setter (F-503)", ()
     const service = await serviceWith(client);
 
     await service.write(RID, { holdCeremony: "auto" }, "owner-1", "owner");
-    const out = await service.write(
-      RID,
-      { gazetteerMeasures: ["bottles"] },
-      "staff-1",
-      "staff",
-    );
+    const out = await service.write(RID, { gazetteerMeasures: ["bottles"] }, "staff-1", "staff");
 
     expect(out.holdCeremonyConfigured).toBe(true);
     expect(out.holdCeremonySetBy).toBe("owner-1");
@@ -413,24 +344,15 @@ describe("CellarSettingsService — each field keeps its own setter (F-503)", ()
 
     await service.write(RID, { holdCeremony: "hold" }, "owner-1", "owner");
     await service.write(RID, { holdCeremony: "hold" }, "owner-1", "owner");
-    await service.write(
-      RID,
-      { gazetteerMeasures: ["titles"] },
-      "owner-1",
-      "owner",
-    );
+    await service.write(RID, { gazetteerMeasures: ["titles"] }, "owner-1", "owner");
 
     expect(client.audit.map((r) => r.action)).toEqual([
       "cellar_tiles_changed",
       "cellar_hold_ceremony_changed",
     ]);
     // Choosing the default ceremony is still a choice: from nothing to "hold".
-    expect(client.audit[1].fields).toEqual({
-      hold_ceremony: { from: null, to: "hold" },
-    });
-    expect(client.audit[0].fields).toEqual({
-      gazetteer_measures: { from: null, to: ["titles"] },
-    });
+    expect(client.audit[1].fields).toEqual({ hold_ceremony: { from: null, to: "hold" } });
+    expect(client.audit[0].fields).toEqual({ gazetteer_measures: { from: null, to: ["titles"] } });
   });
 
   it("a row from before per-field stamps still reads as a chosen ceremony", async () => {

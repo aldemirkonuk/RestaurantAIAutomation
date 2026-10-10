@@ -7,10 +7,9 @@ import { DatabaseService } from "../database/database.service";
  * on the dedup key and records the source's own defects; and it never claims a
  * write it did not make.
  */
-function makeDb(alreadyStored = 0): {
-  db: DatabaseService;
-  upserts: unknown[][];
-} {
+function makeDb(
+  alreadyStored = 0,
+): { db: DatabaseService; upserts: unknown[][] } {
   const upserts: unknown[][] = [];
   const client = {
     from() {
@@ -21,9 +20,7 @@ function makeDb(alreadyStored = 0): {
           upserts.push(rows);
           return Promise.resolve({
             error: null,
-            count: opts?.count
-              ? Math.max(0, rows.length - alreadyStored)
-              : null,
+            count: opts?.count ? Math.max(0, rows.length - alreadyStored) : null,
           });
         },
       };
@@ -48,10 +45,7 @@ describe("PriceIndexFetchService", () => {
   it("parses the Iowa fixture and upserts survivors on the dedup key", async () => {
     const { db, upserts } = makeDb();
     const svc = new PriceIndexFetchService(db);
-    const outcome = await svc.fetchOne("iowa-liquor-products", {
-      offline: true,
-      today: new Date("2026-09-04T00:00:00Z"),
-    });
+    const outcome = await svc.fetchOne("iowa-liquor-products", { offline: true, today: new Date("2026-09-04T00:00:00Z") });
     expect(outcome.rowsRead).toBe(24);
     expect(outcome.written).toBe(20);
     // The source's own defects, surfaced not hidden.
@@ -70,10 +64,7 @@ describe("PriceIndexFetchService", () => {
     // A re-read of an edition already on file: 20 sent, all 20 duplicates.
     const { db, upserts } = makeDb(20);
     const svc = new PriceIndexFetchService(db);
-    const outcome = await svc.fetchOne("iowa-liquor-products", {
-      offline: true,
-      today: new Date("2026-09-04T00:00:00Z"),
-    });
+    const outcome = await svc.fetchOne("iowa-liquor-products", { offline: true, today: new Date("2026-09-04T00:00:00Z") });
     expect(upserts[0]).toHaveLength(20);
     expect(outcome.written).toBe(0);
     expect(svc.lastRunFor("iowa-liquor-products")?.written).toBe(0);
@@ -82,10 +73,7 @@ describe("PriceIndexFetchService", () => {
   it("records the run for the status endpoint", async () => {
     const { db } = makeDb();
     const svc = new PriceIndexFetchService(db);
-    await svc.fetchOne("oregon-olcc-monthly-pricing", {
-      offline: true,
-      today: new Date("2026-09-04T00:00:00Z"),
-    });
+    await svc.fetchOne("oregon-olcc-monthly-pricing", { offline: true, today: new Date("2026-09-04T00:00:00Z") });
     const run = svc.lastRunFor("oregon-olcc-monthly-pricing");
     expect(run?.written).toBe(12);
     expect(run?.issuedAt).toBe("2026-09-01");
@@ -95,10 +83,7 @@ describe("PriceIndexFetchService", () => {
     const { db } = makeDb();
     const svc = new PriceIndexFetchService(db);
     await expect(
-      svc.fetchOne("michigan-lcc-spirits-price-book", {
-        offline: true,
-        today: new Date("2026-09-04T00:00:00Z"),
-      }),
+      svc.fetchOne("michigan-lcc-spirits-price-book", { offline: true, today: new Date("2026-09-04T00:00:00Z") }),
     ).rejects.toThrow();
   });
 });

@@ -55,16 +55,12 @@ function serviceOver(opts: { owned?: boolean } = {}) {
           if (table === "stock_outs" && op === "insert") {
             writes.push({ op, row: payload });
             const open = rows.some(
-              (r) =>
-                r.inventory_id === payload.inventory_id && r.ended_at == null,
+              (r) => r.inventory_id === payload.inventory_id && r.ended_at == null,
             );
             if (open) {
               result = {
                 data: null,
-                error: {
-                  code: "23505",
-                  message: "stock_outs_one_open_per_item",
-                },
+                error: { code: "23505", message: "stock_outs_one_open_per_item" },
               };
             } else {
               seq += 1;
@@ -105,12 +101,7 @@ describe("a drink can be 86'd and the stock-out is kept (F-145)", () => {
   it("marks it sold out with why and who, and reads it back as open", async () => {
     const { svc, writes } = serviceOver();
 
-    const state = await svc.startStockOut(
-      HOUSE,
-      ITEM,
-      { cause: "ran_out", note: " glass list " },
-      "user-kerem",
-    );
+    const state = await svc.startStockOut(HOUSE, ITEM, { cause: "ran_out", note: " glass list " }, "user-kerem");
 
     expect(writes).toEqual([
       {
@@ -124,23 +115,14 @@ describe("a drink can be 86'd and the stock-out is kept (F-145)", () => {
         },
       },
     ]);
-    expect(state.open).toMatchObject({
-      cause: "ran_out",
-      startedBy: "user-kerem",
-      endedAt: null,
-    });
+    expect(state.open).toMatchObject({ cause: "ran_out", startedBy: "user-kerem", endedAt: null });
   });
 
   it("answers a second tap with the stock-out already open, not a second one", async () => {
     const { svc, rows } = serviceOver();
     await svc.startStockOut(HOUSE, ITEM, { cause: "ran_out" }, "user-a");
 
-    const state = await svc.startStockOut(
-      HOUSE,
-      ITEM,
-      { cause: "broken" },
-      "user-b",
-    );
+    const state = await svc.startStockOut(HOUSE, ITEM, { cause: "broken" }, "user-b");
 
     expect(rows).toHaveLength(1);
     expect(state.open).toMatchObject({ cause: "ran_out", startedBy: "user-a" });
@@ -154,18 +136,15 @@ describe("a drink can be 86'd and the stock-out is kept (F-145)", () => {
 
     expect(state.open).toBeNull();
     expect(state.recent).toHaveLength(1);
-    expect(state.recent[0]).toMatchObject({
-      cause: "broken",
-      endedBy: "user-b",
-    });
+    expect(state.recent[0]).toMatchObject({ cause: "broken", endedBy: "user-b" });
     expect(state.recent[0].endedAt).not.toBeNull();
   });
 
   it("refuses a stock-out with no reason, and writes nothing", async () => {
     const { svc, writes } = serviceOver();
-    await expect(
-      svc.startStockOut(HOUSE, ITEM, { cause: "" }, "user-a"),
-    ).rejects.toThrow(HttpException);
+    await expect(svc.startStockOut(HOUSE, ITEM, { cause: "" }, "user-a")).rejects.toThrow(
+      HttpException,
+    );
     await expect(
       svc.startStockOut(HOUSE, ITEM, { cause: "sold_well" }, "user-a"),
     ).rejects.toThrow(HttpException);
@@ -177,9 +156,9 @@ describe("a drink can be 86'd and the stock-out is kept (F-145)", () => {
     await expect(
       foreign.svc.startStockOut(HOUSE, ITEM, { cause: "ran_out" }, "user-a"),
     ).rejects.toThrow(ForbiddenException);
-    await expect(
-      foreign.svc.endStockOut(HOUSE, ITEM, "user-a"),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(foreign.svc.endStockOut(HOUSE, ITEM, "user-a")).rejects.toThrow(
+      ForbiddenException,
+    );
     expect(foreign.writes).toEqual([]);
 
     const own = serviceOver();

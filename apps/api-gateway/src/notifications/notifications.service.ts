@@ -85,20 +85,8 @@ function withoutMoney(data: Record<string, unknown>): Record<string, unknown> {
 @Injectable()
 export class NotificationsService {
   /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
-  restoreArrival(
-    restaurantId: string,
-    actorId: string,
-    batchId: string,
-    rowId: string,
-  ) {
-    return restoreArrivalEntry(
-      this.databaseService,
-      "notifications",
-      restaurantId,
-      actorId,
-      batchId,
-      rowId,
-    );
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.databaseService, "notifications", restaurantId, actorId, batchId, rowId);
   }
 
   private readonly logger = new Logger(NotificationsService.name);
@@ -176,14 +164,12 @@ export class NotificationsService {
       .emit("notification:new", payload);
 
     const hold = restaurantId
-      ? ((
-          await pushHolds(
-            this.databaseService.supabase,
-            restaurantId,
-            [userId],
-            (line) => this.logger.warn(line),
-          )
-        ).get(userId) ?? null)
+      ? (await pushHolds(
+          this.databaseService.supabase,
+          restaurantId,
+          [userId],
+          (line) => this.logger.warn(line),
+        )).get(userId) ?? null
       : null;
     if (hold) return hold;
 
@@ -606,11 +592,7 @@ export class NotificationsService {
     // `javascript:` or off-site link here took over the account of whoever
     // clicked. See `safe-action-path.ts` for why a prefix test is not enough.
     let actionUrl: string | undefined;
-    if (
-      data.actionUrl !== undefined &&
-      data.actionUrl !== null &&
-      data.actionUrl !== ""
-    ) {
+    if (data.actionUrl !== undefined && data.actionUrl !== null && data.actionUrl !== "") {
       const safe = safeActionPath(data.actionUrl);
       if (safe === null) {
         throw new BadRequestException(
@@ -776,11 +758,7 @@ export class NotificationsService {
         const allow = new Set(opts.onlyUserIds);
         userIds = userIds.filter((id) => allow.has(id));
       } else if (this.areaRouting && userIds.length) {
-        const decision = await this.areaRouting.route(
-          restaurantId,
-          userIds,
-          label,
-        );
+        const decision = await this.areaRouting.route(restaurantId, userIds, label);
         userIds = [...new Set([...decision.alert, ...decision.inboxOnly])];
         alertIds = decision.alert;
         routing = {
@@ -830,9 +808,7 @@ export class NotificationsService {
         action_label: payload.actionLabel ?? null,
         group_key: payload.groupKey ?? null,
         metadata:
-          label !== null
-            ? { ...(payload.metadata ?? {}), area: label }
-            : (payload.metadata ?? {}),
+          label !== null ? { ...(payload.metadata ?? {}), area: label } : (payload.metadata ?? {}),
         created_at: now,
       }));
 
@@ -871,17 +847,14 @@ export class NotificationsService {
         // is Away. Inbox-only rows get no live ping in the last-resort step,
         // because those owners are Away.
         const narrowed =
-          routing !== undefined &&
-          (routing.step !== "everyone" || routing.heldAway > 0);
-        const liveIds = routing?.step === "owners_inbox_only" ? [] : userIds;
-        const emitTo =
-          opts.onlyUserIds || narrowed
-            ? liveIds.length
-              ? this.websocketGateway.server.to(
-                  liveIds.map((id) => `user:${id}`),
-                )
-              : null
-            : this.websocketGateway.server.to(`restaurant:${restaurantId}`);
+          routing !== undefined && (routing.step !== "everyone" || routing.heldAway > 0);
+        const liveIds =
+          routing?.step === "owners_inbox_only" ? [] : userIds;
+        const emitTo = opts.onlyUserIds || narrowed
+          ? liveIds.length
+            ? this.websocketGateway.server.to(liveIds.map((id) => `user:${id}`))
+            : null
+          : this.websocketGateway.server.to(`restaurant:${restaurantId}`);
         emitTo?.emit("notification:new", {
           event: "NewNotification",
           data: {

@@ -71,24 +71,9 @@ describe("delivery weekdays", () => {
     const rows: OrderFact[] = [];
     // Six Mondays, six Wednesdays, six Fridays across September 2026.
     for (const d of [
-      "2026-09-07",
-      "2026-09-14",
-      "2026-09-21",
-      "2026-09-28",
-      "2026-10-05",
-      "2026-10-12",
-      "2026-09-09",
-      "2026-09-16",
-      "2026-09-23",
-      "2026-09-30",
-      "2026-10-07",
-      "2026-10-14",
-      "2026-09-11",
-      "2026-09-18",
-      "2026-09-25",
-      "2026-10-02",
-      "2026-10-09",
-      "2026-10-16",
+      "2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28", "2026-10-05", "2026-10-12",
+      "2026-09-09", "2026-09-16", "2026-09-23", "2026-09-30", "2026-10-07", "2026-10-14",
+      "2026-09-11", "2026-09-18", "2026-09-25", "2026-10-02", "2026-10-09", "2026-10-16",
     ]) {
       rows.push(order({ deliveredAt: `${d}T09:00:00Z` }));
     }
@@ -121,13 +106,8 @@ describe("delivery weekdays", () => {
 
   it("refuses to call seven scattered days a pattern", () => {
     const rows = [
-      "2026-09-07",
-      "2026-09-08",
-      "2026-09-09",
-      "2026-09-10",
-      "2026-09-11",
-      "2026-09-12",
-      "2026-09-13",
+      "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10",
+      "2026-09-11", "2026-09-12", "2026-09-13",
     ].map((d) => order({ deliveredAt: `${d}T09:00:00Z` }));
     const f = inferDeliveryWeekdays(rows, "UTC");
     expect(f.known).toBe(true);
@@ -156,24 +136,9 @@ describe("lead time", () => {
       );
     }
     // Three that took a fortnight.
-    rows.push(
-      order({
-        requestedAt: "2026-08-01T08:00:00Z",
-        deliveredAt: "2026-08-15T08:00:00Z",
-      }),
-    );
-    rows.push(
-      order({
-        requestedAt: "2026-08-02T08:00:00Z",
-        deliveredAt: "2026-08-16T08:00:00Z",
-      }),
-    );
-    rows.push(
-      order({
-        requestedAt: "2026-08-03T08:00:00Z",
-        deliveredAt: "2026-08-17T08:00:00Z",
-      }),
-    );
+    rows.push(order({ requestedAt: "2026-08-01T08:00:00Z", deliveredAt: "2026-08-15T08:00:00Z" }));
+    rows.push(order({ requestedAt: "2026-08-02T08:00:00Z", deliveredAt: "2026-08-16T08:00:00Z" }));
+    rows.push(order({ requestedAt: "2026-08-03T08:00:00Z", deliveredAt: "2026-08-17T08:00:00Z" }));
 
     const f = inferLeadTime(rows, "UTC");
     expect(f.known).toBe(true);
@@ -187,18 +152,9 @@ describe("lead time", () => {
   it("DROPS an arrival dated before its own placement rather than clamping it to zero", () => {
     const f = inferLeadTime(
       [
-        order({
-          requestedAt: "2026-09-10T08:00:00Z",
-          deliveredAt: "2026-09-01T08:00:00Z",
-        }),
-        order({
-          requestedAt: "2026-09-01T08:00:00Z",
-          deliveredAt: "2026-09-03T08:00:00Z",
-        }),
-        order({
-          requestedAt: "2026-09-04T08:00:00Z",
-          deliveredAt: "2026-09-06T08:00:00Z",
-        }),
+        order({ requestedAt: "2026-09-10T08:00:00Z", deliveredAt: "2026-09-01T08:00:00Z" }),
+        order({ requestedAt: "2026-09-01T08:00:00Z", deliveredAt: "2026-09-03T08:00:00Z" }),
+        order({ requestedAt: "2026-09-04T08:00:00Z", deliveredAt: "2026-09-06T08:00:00Z" }),
       ],
       "UTC",
     );
@@ -213,12 +169,7 @@ describe("lead time", () => {
 
   it("counts in whole local days, so a 23:50 order delivered at 08:00 is one day and not zero", () => {
     const f = inferLeadTime(
-      [
-        order({
-          requestedAt: "2026-09-01T20:50:00Z",
-          deliveredAt: "2026-09-02T05:00:00Z",
-        }),
-      ],
+      [order({ requestedAt: "2026-09-01T20:50:00Z", deliveredAt: "2026-09-02T05:00:00Z" })],
       ISTANBUL,
     );
     expect(f.known).toBe(true);
@@ -228,12 +179,7 @@ describe("lead time", () => {
 
   it("says the ledger cannot be differenced when every row is backwards", () => {
     const f = inferLeadTime(
-      [
-        order({
-          requestedAt: "2026-09-10T08:00:00Z",
-          deliveredAt: "2026-09-01T08:00:00Z",
-        }),
-      ],
+      [order({ requestedAt: "2026-09-10T08:00:00Z", deliveredAt: "2026-09-01T08:00:00Z" })],
       "UTC",
     );
     expect(f.known).toBe(false);
@@ -246,23 +192,11 @@ describe("order cutoff — a bracket, never a time", () => {
   it("brackets the cutoff between the latest hit and the earliest miss", () => {
     const rows = [
       // Made the one-day turnaround, placed 09:00 and 13:40.
-      order({
-        requestedAt: "2026-09-01T09:00:00Z",
-        deliveredAt: "2026-09-02T08:00:00Z",
-      }),
-      order({
-        requestedAt: "2026-09-03T13:40:00Z",
-        deliveredAt: "2026-09-04T08:00:00Z",
-      }),
+      order({ requestedAt: "2026-09-01T09:00:00Z", deliveredAt: "2026-09-02T08:00:00Z" }),
+      order({ requestedAt: "2026-09-03T13:40:00Z", deliveredAt: "2026-09-04T08:00:00Z" }),
       // Missed it, placed 15:10 and 17:00 — two days.
-      order({
-        requestedAt: "2026-09-07T15:10:00Z",
-        deliveredAt: "2026-09-09T08:00:00Z",
-      }),
-      order({
-        requestedAt: "2026-09-08T17:00:00Z",
-        deliveredAt: "2026-09-10T08:00:00Z",
-      }),
+      order({ requestedAt: "2026-09-07T15:10:00Z", deliveredAt: "2026-09-09T08:00:00Z" }),
+      order({ requestedAt: "2026-09-08T17:00:00Z", deliveredAt: "2026-09-10T08:00:00Z" }),
     ];
     const f = inferOrderCutoff(rows, "UTC");
     expect(f.known).toBe(true);
@@ -277,14 +211,8 @@ describe("order cutoff — a bracket, never a time", () => {
 
   it("reports a floor with NO ceiling — and low confidence — when nothing has ever missed", () => {
     const rows = [
-      order({
-        requestedAt: "2026-09-01T09:00:00Z",
-        deliveredAt: "2026-09-02T08:00:00Z",
-      }),
-      order({
-        requestedAt: "2026-09-03T18:00:00Z",
-        deliveredAt: "2026-09-04T08:00:00Z",
-      }),
+      order({ requestedAt: "2026-09-01T09:00:00Z", deliveredAt: "2026-09-02T08:00:00Z" }),
+      order({ requestedAt: "2026-09-03T18:00:00Z", deliveredAt: "2026-09-04T08:00:00Z" }),
     ];
     const f = inferOrderCutoff(rows, "UTC");
     expect(f.known).toBe(true);
@@ -299,14 +227,8 @@ describe("order cutoff — a bracket, never a time", () => {
     // 08:00 took two days (a holiday, say); 16:00 took one. A naive
     // implementation would return "after 16:00, before 08:00".
     const rows = [
-      order({
-        requestedAt: "2026-09-01T08:00:00Z",
-        deliveredAt: "2026-09-03T08:00:00Z",
-      }),
-      order({
-        requestedAt: "2026-09-04T16:00:00Z",
-        deliveredAt: "2026-09-05T08:00:00Z",
-      }),
+      order({ requestedAt: "2026-09-01T08:00:00Z", deliveredAt: "2026-09-03T08:00:00Z" }),
+      order({ requestedAt: "2026-09-04T16:00:00Z", deliveredAt: "2026-09-05T08:00:00Z" }),
     ];
     const f = inferOrderCutoff(rows, "UTC");
     expect(f.known).toBe(true);
@@ -317,12 +239,7 @@ describe("order cutoff — a bracket, never a time", () => {
 
   it("will not bracket anything from a single order", () => {
     const f = inferOrderCutoff(
-      [
-        order({
-          requestedAt: "2026-09-01T09:00:00Z",
-          deliveredAt: "2026-09-02T08:00:00Z",
-        }),
-      ],
+      [order({ requestedAt: "2026-09-01T09:00:00Z", deliveredAt: "2026-09-02T08:00:00Z" })],
       "UTC",
     );
     expect(f.known).toBe(false);
@@ -357,20 +274,11 @@ describe("minimum order — an upper bound and nothing more", () => {
 describe("payment terms are not inferable, and the bundle says so", () => {
   it("never returns a payment-terms value, whatever the orders look like", () => {
     const bundle = inferTerms(
-      [
-        order({
-          requestedAt: "2026-09-01T09:00:00Z",
-          deliveredAt: "2026-09-02T08:00:00Z",
-          totalCost: 100,
-          status: "delivered",
-        }),
-      ],
+      [order({ requestedAt: "2026-09-01T09:00:00Z", deliveredAt: "2026-09-02T08:00:00Z", totalCost: 100, status: "delivered" })],
       { zone: "UTC", isColumnDefault: false },
     );
     expect(bundle.paymentTerms.known).toBe(false);
-    expect(bundle.paymentTerms.reason).toMatch(
-      /no invoice here records when it was paid/,
-    );
+    expect(bundle.paymentTerms.reason).toMatch(/no invoice here records when it was paid/);
     expect(bundle.ordersRead).toBe(1);
     expect(bundle.zone.zone).toBe("UTC");
   });

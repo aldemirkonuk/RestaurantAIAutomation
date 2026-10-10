@@ -382,20 +382,8 @@ describe("F-661: a year on one side only is never linked automatically", () => {
   it("the whole-menu path holds the same line", async () => {
     const lib = new FakeLibrary();
     lib.candidates = [
-      {
-        input_index: 0,
-        id: "yakut-2019",
-        library_tier: 1,
-        confidence: 90,
-        vintage: 2019,
-      },
-      {
-        input_index: 1,
-        id: "yakut-2019",
-        library_tier: 1,
-        confidence: 100,
-        vintage: 2019,
-      },
+      { input_index: 0, id: "yakut-2019", library_tier: 1, confidence: 90, vintage: 2019 },
+      { input_index: 1, id: "yakut-2019", library_tier: 1, confidence: 100, vintage: 2019 },
     ];
     const service = await makeService(lib);
 
@@ -412,19 +400,11 @@ describe("F-661: a year on one side only is never linked automatically", () => {
   });
 
   it("the rule itself: both years, or neither", () => {
-    expect(autoLinksTo({ confidence: 90, vintage: 2019 }, null, 85)).toBe(
-      false,
-    );
-    expect(autoLinksTo({ confidence: 90, vintage: null }, 2019, 85)).toBe(
-      false,
-    );
-    expect(autoLinksTo({ confidence: 100, vintage: null }, null, 85)).toBe(
-      true,
-    );
+    expect(autoLinksTo({ confidence: 90, vintage: 2019 }, null, 85)).toBe(false);
+    expect(autoLinksTo({ confidence: 90, vintage: null }, 2019, 85)).toBe(false);
+    expect(autoLinksTo({ confidence: 100, vintage: null }, null, 85)).toBe(true);
     expect(autoLinksTo({ confidence: 96, vintage: 2015 }, 2015, 85)).toBe(true);
-    expect(autoLinksTo({ confidence: 80, vintage: 2015 }, 2015, 85)).toBe(
-      false,
-    );
+    expect(autoLinksTo({ confidence: 80, vintage: 2015 }, 2015, 85)).toBe(false);
     expect(autoLinksTo(undefined, null, 85)).toBe(false);
   });
 });

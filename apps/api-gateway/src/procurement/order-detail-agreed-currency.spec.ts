@@ -84,8 +84,6 @@ describe("order detail names the agreement line's money (F-800)", () => {
   it("sends nothing when the line could not be read, never a guessed money", async () => {
     const res = await getOrder({ error: "connection reset" });
     expect(res.agreedCurrency).toBeUndefined();
-    expect(JSON.parse(JSON.stringify(res))).not.toHaveProperty(
-      "agreedCurrency",
-    );
+    expect(JSON.parse(JSON.stringify(res))).not.toHaveProperty("agreedCurrency");
   });
 });

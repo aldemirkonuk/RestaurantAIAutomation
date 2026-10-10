@@ -157,11 +157,7 @@ export class AnalyticsService {
         .eq("restaurant_id", restaurantId),
       // The house's stated currency: its menu prices are in it, and a cost in
       // other money is not set against them (F-343).
-      client
-        .from("restaurants")
-        .select("currency")
-        .eq("id", restaurantId)
-        .maybeSingle(),
+      client.from("restaurants").select("currency").eq("id", restaurantId).maybeSingle(),
       // Bottles already ordered and not yet here (F-630): reorder science
       // counts them before it says "order today".
       client
@@ -182,9 +178,7 @@ export class AnalyticsService {
     this.reportSlice("procurement_orders", openRes);
     // Unread or unstated, the house's money is null and a lot is read as before.
     const houseCurrency =
-      houseRes.status === "fulfilled"
-        ? (houseRes.value.data?.currency ?? null)
-        : null;
+      houseRes.status === "fulfilled" ? (houseRes.value.data?.currency ?? null) : null;
 
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
@@ -205,10 +199,7 @@ export class AnalyticsService {
     >();
     for (const o of openRead ?? []) {
       if (!o.inventory_id) continue;
-      const was = onOrder.get(o.inventory_id) ?? {
-        bottles: 0,
-        nextArrival: null,
-      };
+      const was = onOrder.get(o.inventory_id) ?? { bottles: 0, nextArrival: null };
       const bottles = Number(o.bottles_total);
       const due = o.expected_delivery_date
         ? String(o.expected_delivery_date).slice(0, 10)

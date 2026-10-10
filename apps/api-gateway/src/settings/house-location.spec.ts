@@ -148,12 +148,7 @@ function make() {
   ];
   db.tables.user_restaurant_access = [
     { user_id: "owner-a", restaurant_id: A, role: "owner", is_active: true },
-    {
-      user_id: "manager-a",
-      restaurant_id: A,
-      role: "manager",
-      is_active: true,
-    },
+    { user_id: "manager-a", restaurant_id: A, role: "manager", is_active: true },
     { user_id: "staff-a", restaurant_id: A, role: "staff", is_active: true },
   ];
   db.tables.system_audit_log = [];
@@ -174,11 +169,7 @@ function make() {
 
 const houseA = (db: FakeDb) => db.tables.restaurants.find((r) => r.id === A)!;
 const houseB = (db: FakeDb) => db.tables.restaurants.find((r) => r.id === B)!;
-const PLACE = {
-  street: "12 Rıhtım Caddesi",
-  latitude: 40.9905,
-  longitude: 29.0253,
-};
+const PLACE = { street: "12 Rıhtım Caddesi", latitude: 40.9905, longitude: 29.0253 };
 
 describe("PUT /settings/location", () => {
   it("writes an owner's picked address and point on THIS house, audited with both values", async () => {

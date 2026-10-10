@@ -102,14 +102,10 @@ function makeDb(opts: {
       const settle = (shape: "one" | "many" | "list") => {
         if (table === "procurement_orders") {
           if (op === "update") {
-            if (opts.updateError)
-              return { data: null, error: opts.updateError };
+            if (opts.updateError) return { data: null, error: opts.updateError };
             // The conditional advance selects "id" and resolves as a LIST.
             if (sawNextDueEq && shape === "list") {
-              return {
-                data: opts.advanceMatched ?? [{ id: PARENT.id }],
-                error: null,
-              };
+              return { data: opts.advanceMatched ?? [{ id: PARENT.id }], error: null };
             }
             return {
               data: { ...(opts.order ?? PARENT), ...(payload ?? {}) },
@@ -228,16 +224,11 @@ describe("setting a recurrence", () => {
 
   it("writes the rule, the anchor, the derived next date and who set it", async () => {
     const { service, calls } = makeService({ order: PARENT });
-    await service.setRecurrence(
-      "rest-1",
-      "order-parent",
-      "11111111-1111-4111-8111-111111111111",
-      {
-        frequency: "weekly",
-        anchorDay: 1,
-        startsOn: "2026-09-05",
-      },
-    );
+    await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+      frequency: "weekly",
+      anchorDay: 1,
+      startsOn: "2026-09-05",
+    });
 
     expect(calls.orderUpdates).toHaveLength(1);
     const patch = calls.orderUpdates[0];
@@ -248,9 +239,7 @@ describe("setting a recurrence", () => {
     // sent a date and the DTO has no field for one.
     expect(patch.recurrence_next_due_on).toBe("2026-09-08");
     expect(patch.recurrence_status).toBe("active");
-    expect(patch.recurrence_status_by).toBe(
-      "11111111-1111-4111-8111-111111111111",
-    );
+    expect(patch.recurrence_status_by).toBe("11111111-1111-4111-8111-111111111111");
     expect(typeof patch.recurrence_status_at).toBe("string");
   });
 
@@ -259,14 +248,9 @@ describe("setting a recurrence", () => {
       order: { ...PARENT, approved_at: null, status: "PENDING" },
     });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-parent",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "weekly",
-        },
-      ),
+      service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+        frequency: "weekly",
+      }),
     ).rejects.toMatchObject({
       response: { reason: "not_approved" },
     });
@@ -277,16 +261,11 @@ describe("setting a recurrence", () => {
     const { service, calls } = makeService({
       order: { ...PARENT, status: "DELIVERED" },
     });
-    await service.setRecurrence(
-      "rest-1",
-      "order-parent",
-      "11111111-1111-4111-8111-111111111111",
-      {
-        frequency: "monthly",
-        anchorDay: 12,
-        startsOn: "2026-09-05",
-      },
-    );
+    await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+      frequency: "monthly",
+      anchorDay: 12,
+      startsOn: "2026-09-05",
+    });
     expect(calls.orderUpdates[0].recurrence_next_due_on).toBe("2026-09-12");
   });
 
@@ -299,14 +278,9 @@ describe("setting a recurrence", () => {
       },
     });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-child",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "weekly",
-        },
-      ),
+      service.setRecurrence("rest-1", "order-child", "11111111-1111-4111-8111-111111111111", {
+        frequency: "weekly",
+      }),
     ).rejects.toMatchObject({ response: { reason: "child_cannot_recur" } });
     expect(calls.orderUpdates).toHaveLength(0);
   });
@@ -314,44 +288,29 @@ describe("setting a recurrence", () => {
   it("refuses a rule this house cannot run, by reason", async () => {
     const { service } = makeService({ order: PARENT });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-parent",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "fortnightly",
-        },
-      ),
+      service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+        frequency: "fortnightly",
+      }),
     ).rejects.toMatchObject({ response: { reason: "unknown_frequency" } });
   });
 
   it("refuses an anchor outside its frequency's range", async () => {
     const { service } = makeService({ order: PARENT });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-parent",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "monthly",
-          anchorDay: 32,
-        },
-      ),
+      service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+        frequency: "monthly",
+        anchorDay: 32,
+      }),
     ).rejects.toMatchObject({ response: { reason: "anchor_out_of_range" } });
   });
 
   it("takes 31 as the last day of the month, and a 30-day month gets its 30th (F-307)", async () => {
     const { service, calls } = makeService({ order: PARENT });
-    await service.setRecurrence(
-      "rest-1",
-      "order-parent",
-      "11111111-1111-4111-8111-111111111111",
-      {
-        frequency: "monthly",
-        anchorDay: 31,
-        startsOn: "2026-09-05",
-      },
-    );
+    await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+      frequency: "monthly",
+      anchorDay: 31,
+      startsOn: "2026-09-05",
+    });
     expect(calls.orderUpdates).toHaveLength(1);
     expect(calls.orderUpdates[0].recurrence_anchor_day).toBe(31);
     expect(calls.orderUpdates[0].recurrence_next_due_on).toBe("2026-09-30");
@@ -360,14 +319,9 @@ describe("setting a recurrence", () => {
   it("404s on an order that is not this restaurant's, rather than writing", async () => {
     const { service, calls } = makeService({ order: null });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-elsewhere",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "weekly",
-        },
-      ),
+      service.setRecurrence("rest-1", "order-elsewhere", "11111111-1111-4111-8111-111111111111", {
+        frequency: "weekly",
+      }),
     ).rejects.toThrow(/No order with that id/);
     expect(calls.orderUpdates).toHaveLength(0);
   });
@@ -378,28 +332,18 @@ describe("setting a recurrence", () => {
       orderReadError: { message: "connection reset" },
     });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-parent",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "weekly",
-        },
-      ),
+      service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+        frequency: "weekly",
+      }),
     ).rejects.toMatchObject({ message: "connection reset" });
   });
 
   it("files an audit row naming the actor and both ends of the move", async () => {
     const { service, calls } = makeService({ order: PARENT });
-    await service.setRecurrence(
-      "rest-1",
-      "order-parent",
-      "11111111-1111-4111-8111-111111111111",
-      {
-        frequency: "weekly",
-        startsOn: "2026-09-05",
-      },
-    );
+    await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+      frequency: "weekly",
+      startsOn: "2026-09-05",
+    });
     expect(calls.auditInserts).toHaveLength(1);
     const row = calls.auditInserts[0];
     expect(row.action).toBe(RECURRENCE_ACTS.SET);
@@ -420,14 +364,9 @@ describe("setting a recurrence", () => {
       auditError: { message: "audit table is full" },
     });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-parent",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "weekly",
-        },
-      ),
+      service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+        frequency: "weekly",
+      }),
     ).resolves.toBeDefined();
   });
 
@@ -435,14 +374,9 @@ describe("setting a recurrence", () => {
     for (const status of ["CANCELLED", "REJECTED", "FAILED"]) {
       const { service, calls } = makeService({ order: { ...PARENT, status } });
       await expect(
-        service.setRecurrence(
-          "rest-1",
-          "order-parent",
-          "11111111-1111-4111-8111-111111111111",
-          {
-            frequency: "weekly",
-          },
-        ),
+        service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+          frequency: "weekly",
+        }),
       ).rejects.toMatchObject({ response: { reason: "order_closed" } });
       expect(calls.orderUpdates).toHaveLength(0);
     }
@@ -453,14 +387,9 @@ describe("setting a recurrence", () => {
       order: { ...ACTIVE, recurrence_status: "ended" },
     });
     await expect(
-      service.setRecurrence(
-        "rest-1",
-        "order-parent",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "monthly",
-        },
-      ),
+      service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+        frequency: "monthly",
+      }),
     ).rejects.toMatchObject({ response: { reason: "already_ended" } });
     expect(calls.orderUpdates).toHaveLength(0);
   });
@@ -473,15 +402,10 @@ describe("setting a recurrence", () => {
         recurrence_status_by: "33333333-3333-4333-8333-333333333333",
       },
     });
-    await service.setRecurrence(
-      "rest-1",
-      "order-parent",
-      "11111111-1111-4111-8111-111111111111",
-      {
-        frequency: "monthly",
-        startsOn: "2026-09-10",
-      },
-    );
+    await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+      frequency: "monthly",
+      startsOn: "2026-09-10",
+    });
     const patch = calls.orderUpdates[0];
     expect(patch.recurrence_status).toBe("paused");
     expect(patch).not.toHaveProperty("recurrence_status_by");
@@ -493,16 +417,11 @@ describe("setting a recurrence", () => {
     // Pre-fix the stored next date was 2026-06-02, and the generator would have
     // raised one order a morning for fourteen mornings to catch up.
     const { service, calls } = makeService({ order: PARENT });
-    await service.setRecurrence(
-      "rest-1",
-      "order-parent",
-      "11111111-1111-4111-8111-111111111111",
-      {
-        frequency: "weekly",
-        anchorDay: 1,
-        startsOn: "2026-06-01",
-      },
-    );
+    await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+      frequency: "weekly",
+      anchorDay: 1,
+      startsOn: "2026-06-01",
+    });
     const patch = calls.orderUpdates[0];
     // Today is pinned to Saturday 2026-09-05; the next Tuesday is the 8th.
     expect(patch.recurrence_next_due_on).toBe("2026-09-08");
@@ -521,14 +440,9 @@ describe("setting a recurrence", () => {
         order: PARENT,
         house: { timezone: "America/Los_Angeles", country: "US" },
       });
-      await service.setRecurrence(
-        "rest-1",
-        "order-parent",
-        "11111111-1111-4111-8111-111111111111",
-        {
-          frequency: "daily",
-        },
-      );
+      await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+        frequency: "daily",
+      });
       expect(calls.orderUpdates[0].recurrence_anchored_on).toBe("2026-09-07");
       expect(calls.orderUpdates[0].recurrence_next_due_on).toBe("2026-09-07");
     } finally {
@@ -557,11 +471,7 @@ const ACTIVE = {
 describe("pausing, resuming and ending", () => {
   it("pauses with who and when, and files the paper", async () => {
     const { service, calls } = makeService({ order: ACTIVE });
-    await service.pauseRecurrence(
-      "rest-1",
-      "order-parent",
-      "22222222-2222-4222-8222-222222222222",
-    );
+    await service.pauseRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222");
     expect(calls.orderUpdates[0]).toMatchObject({
       recurrence_status: "paused",
       recurrence_status_by: "22222222-2222-4222-8222-222222222222",
@@ -574,11 +484,7 @@ describe("pausing, resuming and ending", () => {
 
   it("ends with who and when", async () => {
     const { service, calls } = makeService({ order: ACTIVE });
-    await service.endRecurrence(
-      "rest-1",
-      "order-parent",
-      "22222222-2222-4222-8222-222222222222",
-    );
+    await service.endRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222");
     expect(calls.orderUpdates[0].recurrence_status).toBe("ended");
     expect(calls.auditInserts[0].action).toBe(RECURRENCE_ACTS.ENDED);
   });
@@ -589,11 +495,7 @@ describe("pausing, resuming and ending", () => {
     // about it. If a recurrence ever auto-approves, this test is the one that
     // has to change first.
     const { service, calls } = makeService({ order: ACTIVE });
-    await service.endRecurrence(
-      "rest-1",
-      "order-parent",
-      "22222222-2222-4222-8222-222222222222",
-    );
+    await service.endRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222");
     expect(calls.auditInserts[0].changes.sealed).toBe(false);
     expect(service.endRecurrence.length).toBe(3); // (restaurantId, orderId, userId) — no challenge
   });
@@ -601,11 +503,7 @@ describe("pausing, resuming and ending", () => {
   it("refuses to pause an order that does not recur", async () => {
     const { service, calls } = makeService({ order: PARENT });
     await expect(
-      service.pauseRecurrence(
-        "rest-1",
-        "order-parent",
-        "22222222-2222-4222-8222-222222222222",
-      ),
+      service.pauseRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222"),
     ).rejects.toMatchObject({ response: { reason: "not_recurring" } });
     expect(calls.orderUpdates).toHaveLength(0);
   });
@@ -615,22 +513,14 @@ describe("pausing, resuming and ending", () => {
       order: { ...ACTIVE, recurrence_status: "ended" },
     });
     await expect(
-      service.resumeRecurrence(
-        "rest-1",
-        "order-parent",
-        "22222222-2222-4222-8222-222222222222",
-      ),
+      service.resumeRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222"),
     ).rejects.toMatchObject({ response: { reason: "already_ended" } });
   });
 
   it("refuses a move to the state it is already in", async () => {
     const { service } = makeService({ order: ACTIVE });
     await expect(
-      service.resumeRecurrence(
-        "rest-1",
-        "order-parent",
-        "22222222-2222-4222-8222-222222222222",
-      ),
+      service.resumeRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222"),
     ).rejects.toMatchObject({ response: { reason: "already_there" } });
   });
 
@@ -646,13 +536,11 @@ describe("pausing, resuming and ending", () => {
       recurrence_next_due_on: "2026-03-03",
     };
     const { service, calls } = makeService({ order: paused });
-    jest.spyOn(service as any, "today").mockReturnValue("2026-09-05");
+    jest
+      .spyOn(service as any, "today")
+      .mockReturnValue("2026-09-05");
 
-    await service.resumeRecurrence(
-      "rest-1",
-      "order-parent",
-      "22222222-2222-4222-8222-222222222222",
-    );
+    await service.resumeRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222");
     const rolled = calls.orderUpdates[0].recurrence_next_due_on as string;
     expect(rolled >= "2026-09-05").toBe(true);
     // Still a Tuesday: the roll uses the rule, it does not just take today.
@@ -669,11 +557,7 @@ describe("pausing, resuming and ending", () => {
     };
     const { service, calls } = makeService({ order: paused });
     jest.spyOn(service as any, "today").mockReturnValue("2026-09-05");
-    await service.resumeRecurrence(
-      "rest-1",
-      "order-parent",
-      "22222222-2222-4222-8222-222222222222",
-    );
+    await service.resumeRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222");
     expect(calls.orderUpdates[0].recurrence_next_due_on).toBe("2026-12-01");
     expect(calls.auditInserts[0].changes.detail.rolledForward).toBe(false);
     (service as any).today.mockRestore();
@@ -688,11 +572,7 @@ describe("pausing, resuming and ending", () => {
       },
     });
     await expect(
-      service.resumeRecurrence(
-        "rest-1",
-        "order-parent",
-        "22222222-2222-4222-8222-222222222222",
-      ),
+      service.resumeRecurrence("rest-1", "order-parent", "22222222-2222-4222-8222-222222222222"),
     ).rejects.toMatchObject({ response: { reason: "unreadable_rule" } });
     expect(calls.orderUpdates).toHaveLength(0);
   });
@@ -785,9 +665,7 @@ describe("the generator", () => {
     const [, , dto] = calls.createOrderArgs[0];
     expect(dto.managerNotes).toContain("ORD-2026-00042");
     expect(dto.managerNotes).toContain("occurrence 2026-09-08");
-    expect(dto.managerNotes).toMatch(
-      /price read from that order on \d{4}-\d{2}-\d{2}/,
-    );
+    expect(dto.managerNotes).toMatch(/price read from that order on \d{4}-\d{2}-\d{2}/);
   });
 
   it("raises the child as the person who owns the rule, not as a string 'system'", async () => {
@@ -848,10 +726,7 @@ describe("the generator", () => {
       recurrence_anchored_on: "2026-01-31",
       recurrence_next_due_on: "2026-02-28",
     };
-    const { service, calls } = makeService({
-      dueRows: [monthEnd],
-      order: monthEnd,
-    });
+    const { service, calls } = makeService({ dueRows: [monthEnd], order: monthEnd });
     await service.generateDueRecurrences(at("2026-02-28"));
     const advance = calls.orderUpdates.find(
       (u) => "recurrence_next_due_on" in u && Object.keys(u).length === 1,
@@ -864,10 +739,7 @@ describe("the generator", () => {
     // Tuesdays. Minting all of them would put fourteen orders in front of a
     // manager who wanted one; catching up a step a day is visible and refusable.
     const overdue = { ...DUE, recurrence_next_due_on: "2026-08-11" };
-    const { service, calls } = makeService({
-      dueRows: [overdue],
-      order: overdue,
-    });
+    const { service, calls } = makeService({ dueRows: [overdue], order: overdue });
     const out = await service.generateDueRecurrences(at("2026-09-08"));
     expect(out.created).toBe(1);
     expect(calls.createOrderArgs).toHaveLength(1);
@@ -878,9 +750,7 @@ describe("the generator", () => {
       { dueRows: [DUE], order: DUE },
       {
         createOrder: async () => {
-          const err: any = new Error(
-            "duplicate key value violates unique constraint",
-          );
+          const err: any = new Error("duplicate key value violates unique constraint");
           err.code = "23505";
           throw err;
         },
@@ -905,7 +775,9 @@ describe("the generator", () => {
     );
     await service.generateDueRecurrences(at("2026-09-08"));
     expect(
-      calls.orderUpdates.some((u) => u.recurrence_next_due_on === "2026-09-15"),
+      calls.orderUpdates.some(
+        (u) => u.recurrence_next_due_on === "2026-09-15",
+      ),
     ).toBe(true);
   });
 
@@ -1054,12 +926,7 @@ describe("the generator", () => {
       order: DUE,
     });
     const out = await service.generateDueRecurrences(at("2026-09-08"));
-    expect(out).toMatchObject({
-      due: 1,
-      failed: 1,
-      created: 0,
-      error: "connection reset",
-    });
+    expect(out).toMatchObject({ due: 1, failed: 1, created: 0, error: "connection reset" });
     expect(calls.createOrderArgs).toHaveLength(0);
     expect(calls.orderUpdates).toHaveLength(0);
   });
@@ -1070,12 +937,7 @@ describe("the generator", () => {
         dueRows: [
           DUE,
           { ...DUE, id: "p2", order_number: "ORD-2" },
-          {
-            ...DUE,
-            id: "p3",
-            order_number: "ORD-3",
-            recurrence_frequency: "yearly",
-          },
+          { ...DUE, id: "p3", order_number: "ORD-3", recurrence_frequency: "yearly" },
         ],
       },
       {
@@ -1094,12 +956,7 @@ describe("the generator", () => {
     expect(
       out.created + out.collided + out.failed + out.skipped + out.drifted,
     ).toBe(out.due);
-    expect(out).toMatchObject({
-      created: 1,
-      collided: 1,
-      drifted: 1,
-      failed: 0,
-    });
+    expect(out).toMatchObject({ created: 1, collided: 1, drifted: 1, failed: 0 });
   });
 });
 
@@ -1166,12 +1023,8 @@ describe("the migration and this service say the same thing", () => {
   });
 
   it("tombstones the two dead baseline columns rather than writing them", () => {
-    expect(sql).toContain(
-      "COMMENT ON COLUMN public.procurement_orders.is_recurring",
-    );
-    expect(sql).toContain(
-      "COMMENT ON COLUMN public.procurement_orders.cron_schedule",
-    );
+    expect(sql).toContain("COMMENT ON COLUMN public.procurement_orders.is_recurring");
+    expect(sql).toContain("COMMENT ON COLUMN public.procurement_orders.cron_schedule");
   });
 
   it("proves what it did with in-file assertions", () => {

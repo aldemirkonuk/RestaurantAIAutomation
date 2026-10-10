@@ -273,9 +273,7 @@ export class WineSubmissionsService {
     try {
       const result = await this.processPendingSubmissions();
       // A row that failed and stays pending was not settled; say so apart.
-      const retrying = result.results.filter(
-        (r) => r.status === "pending",
-      ).length;
+      const retrying = result.results.filter((r) => r.status === "pending").length;
       const settled = result.processed - retrying;
       if (settled > 0 || retrying > 0) {
         this.logger.log(
@@ -284,9 +282,7 @@ export class WineSubmissionsService {
         );
       }
     } catch (err: any) {
-      this.logger.error(
-        `wine-submissions-process-pending failed: ${err?.message ?? String(err)}`,
-      );
+      this.logger.error(`wine-submissions-process-pending failed: ${err?.message ?? String(err)}`);
     }
   }
 

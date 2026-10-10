@@ -311,10 +311,7 @@ describe("Q6 — a split case is its own agreement line", () => {
     // A broken case, priced as the broken case it is — the shape Q6 says to
     // write.
     expect(
-      splitCaseOwnLineRefusal({
-        priceUom: "split_case",
-        unitType: "split_case",
-      }),
+      splitCaseOwnLineRefusal({ priceUom: "split_case", unitType: "split_case" }),
     ).toBeNull();
     // A broken case bought as loose bottles, priced per split case.
     expect(
@@ -325,9 +322,7 @@ describe("Q6 — a split case is its own agreement line", () => {
     expect(
       splitCaseOwnLineRefusal({ priceUom: "bottle", unitType: "case" }),
     ).toBeNull();
-    expect(
-      splitCaseOwnLineRefusal({ priceUom: null, unitType: "case" }),
-    ).toBeNull();
+    expect(splitCaseOwnLineRefusal({ priceUom: null, unitType: "case" })).toBeNull();
   });
 });
 

@@ -132,12 +132,7 @@ describe("usualCurrencyCoverage — the count", () => {
     // fraction and nobody would be asked to state its currency.
     const { supabase } = makeDb({
       rows: [
-        {
-          id: "a",
-          name: "Null Flag Wines",
-          usual_currency: null,
-          is_active: null,
-        },
+        { id: "a", name: "Null Flag Wines", usual_currency: null, is_active: null },
       ],
     });
 
@@ -216,9 +211,9 @@ describe("usualCurrencyCoverage — the count", () => {
     await expect(
       svc(supabase).usualCurrencyCoverage("rest-1"),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
-    await expect(svc(supabase).usualCurrencyCoverage("rest-1")).rejects.toThrow(
-      /statement timeout/,
-    );
+    await expect(
+      svc(supabase).usualCurrencyCoverage("rest-1"),
+    ).rejects.toThrow(/statement timeout/);
   });
 });
 
@@ -226,18 +221,8 @@ describe("usualCurrencyCoverage — VEN-W13, codes written from invoices", () =>
   it("counts them as on file and says how many came from invoices", async () => {
     const { supabase } = makeDb({
       rows: [
-        {
-          id: "a",
-          name: "A",
-          usual_currency: "USD",
-          usual_currency_source: "invoices",
-        },
-        {
-          id: "b",
-          name: "B",
-          usual_currency: "EUR",
-          usual_currency_source: "person",
-        },
+        { id: "a", name: "A", usual_currency: "USD", usual_currency_source: "invoices" },
+        { id: "b", name: "B", usual_currency: "EUR", usual_currency_source: "person" },
         { id: "c", name: "C", usual_currency: null },
       ],
     });
@@ -266,14 +251,8 @@ describe("usualCurrencyCoverage — VEN-W13, codes written from invoices", () =>
           then: (res: any) =>
             res(
               cols.includes("usual_currency_source")
-                ? {
-                    data: null,
-                    error: { code: "42703", message: "column does not exist" },
-                  }
-                : {
-                    data: [{ id: "a", name: "A", usual_currency: "USD" }],
-                    error: null,
-                  },
+                ? { data: null, error: { code: "42703", message: "column does not exist" } }
+                : { data: [{ id: "a", name: "A", usual_currency: "USD" }], error: null },
             ),
         };
         return q;
@@ -310,13 +289,7 @@ describe("setUsualCurrency before the VEN-W13 migration", () => {
                       "Could not find the 'usual_currency_invoice_count' column of 'providers' in the schema cache",
                   },
                 }
-              : {
-                  data: {
-                    usual_currency: "USD",
-                    usual_currency_set_at: "2026-10-01T00:00:00Z",
-                  },
-                  error: null,
-                };
+              : { data: { usual_currency: "USD", usual_currency_set_at: "2026-10-01T00:00:00Z" }, error: null };
           },
         };
         return q;
@@ -324,12 +297,7 @@ describe("setUsualCurrency before the VEN-W13 migration", () => {
     };
     const s = svc(supabase);
     (s as any).getUsualCurrency = async () => ({ code: null });
-    const out = await s.setUsualCurrency({
-      providerId: "p1",
-      restaurantId: "rest-1",
-      code: "USD",
-      userId: "u1",
-    });
+    const out = await s.setUsualCurrency({ providerId: "p1", restaurantId: "rest-1", code: "USD", userId: "u1" });
     expect(out.code).toBe("USD");
     expect(writes).toHaveLength(2);
     expect(writes[1]).not.toHaveProperty("usual_currency_source");

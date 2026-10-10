@@ -101,10 +101,7 @@ export class BeveragesController {
 
   @Get("cocktails/:restaurantId")
   @ApiOperation({ summary: "List this restaurant's cocktails" })
-  @ApiResponse({
-    status: 200,
-    description: "Rows, plus unattributed reference count",
-  })
+  @ApiResponse({ status: 200, description: "Rows, plus unattributed reference count" })
   async listCocktails(
     @Param("restaurantId") restaurantId: string,
     @Query() query: ListCocktailsQueryDto,
@@ -227,10 +224,7 @@ export class BeveragesController {
     const mayPrice =
       dto.price !== undefined && user?.userId
         ? ["owner", "manager"].includes(
-            (await this.organizations.resolveRestaurantRole(
-              user.userId,
-              restaurantId,
-            )) ?? "",
+            (await this.organizations.resolveRestaurantRole(user.userId, restaurantId)) ?? "",
           )
         : false;
     return this.guard(() =>
@@ -247,11 +241,7 @@ export class BeveragesController {
     @Param("cocktailId", new ParseUUIDPipe()) cocktailId: string,
     @CurrentUser() user: { userId?: string },
   ) {
-    await this.assertManages(
-      user,
-      restaurantId,
-      "take a cocktail off the list",
-    );
+    await this.assertManages(user, restaurantId, "take a cocktail off the list");
     return this.guard(() =>
       this.beverages.deleteCocktail(restaurantId, cocktailId),
     );
@@ -291,16 +281,10 @@ export class BeveragesController {
   ): Promise<void> {
     if (!user?.userId) {
       throw new ForbiddenException(
-        "This session names no one, so it cannot " +
-          action +
-          ". Nothing was changed.",
+        "This session names no one, so it cannot " + action + ". Nothing was changed.",
       );
     }
-    await this.organizations.assertCanManageRestaurant(
-      user.userId,
-      restaurantId,
-      action,
-    );
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, action);
   }
 
   /**

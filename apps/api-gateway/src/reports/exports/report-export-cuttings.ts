@@ -121,9 +121,7 @@ const pctOf = (v: unknown): number | null => {
 /** A timestamptz's UTC calendar day, said as one — the export has no house clock. */
 const utcDay = (v: string): string => {
   const t = Date.parse(v);
-  return Number.isNaN(t)
-    ? v
-    : `${new Date(t).toISOString().slice(0, 10)} (UTC)`;
+  return Number.isNaN(t) ? v : `${new Date(t).toISOString().slice(0, 10)} (UTC)`;
 };
 
 /**
@@ -132,15 +130,9 @@ const utcDay = (v: string): string => {
  * the gateway did not say). Only a `checksInWindow > 0` branch may blame a
  * missing field — there are checks, and none of them carries it.
  */
-function emptyWindowLine(
-  s: Record<string, unknown>,
-  sinceDays: number,
-): string | null {
+function emptyWindowLine(s: Record<string, unknown>, sinceDays: number): string | null {
   if (num(s.checksInWindow) !== 0) return null;
-  const latest =
-    typeof s.latestCheckAt === "string" && s.latestCheckAt
-      ? s.latestCheckAt
-      : null;
+  const latest = typeof s.latestCheckAt === "string" && s.latestCheckAt ? s.latestCheckAt : null;
   return latest
     ? `No POS check was opened in the last ${sinceDays} days — the latest this house has was opened ${utcDay(latest)}. The window is empty; no field is missing.`
     : "No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.";
@@ -170,8 +162,7 @@ function writeReading(payload: unknown): ExportDoc {
     });
 
   const counts = new Map<string, number>();
-  for (const r of rows)
-    counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+  for (const r of rows) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
   const standIn = rows.filter((r) => r.standIn > 0).length;
 
   return doc({
@@ -328,34 +319,11 @@ function writePacing(payload: unknown): ExportDoc {
       ? "No delivered purchase order falls in either 30-day window, so there is no pace to read."
       : null,
     figures: [
-      f(
-        "Paid out, the last 30 days",
-        figure(last, "the cashflow register returned no figure"),
-        "money",
-      ),
-      f(
-        "Paid out, the 30 days before",
-        figure(prev, "the cashflow register returned no figure"),
-        "money",
-      ),
-      f(
-        "Pace",
-        figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"),
-        "percent",
-      ),
-      f(
-        "Committed, not yet delivered",
-        figure(
-          c.committedOpenOrders,
-          "the cashflow register returned no figure",
-        ),
-        "money",
-      ),
-      f(
-        "Open orders",
-        figure(c.openOrderCount, "the cashflow register returned no figure"),
-        "count",
-      ),
+      f("Paid out, the last 30 days", figure(last, "the cashflow register returned no figure"), "money"),
+      f("Paid out, the 30 days before", figure(prev, "the cashflow register returned no figure"), "money"),
+      f("Pace", figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"), "percent"),
+      f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
+      f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
     ],
     tables:
       projection && projection.length > 0
@@ -426,28 +394,9 @@ function writeWeek(payload: unknown): ExportDoc {
       ? "Every weekday reads zero over the last 90 days — the consumption log recorded no movement, so the week has no shape yet."
       : null,
     figures: [
-      f(
-        "Busiest day",
-        ranked && best
-          ? best
-          : withheld("More than one weekday shares the highest mean"),
-        "text",
-      ),
-      f(
-        "Quietest day",
-        ranked && worst
-          ? worst
-          : withheld("More than one weekday shares the lowest mean"),
-        "text",
-      ),
-      f(
-        "28-day trend, per day",
-        figure(
-          pctOf(w.trendPerDayPct),
-          "the seasonality register returned no trend",
-        ),
-        "percent",
-      ),
+      f("Busiest day", ranked && best ? best : withheld("More than one weekday shares the highest mean"), "text"),
+      f("Quietest day", ranked && worst ? worst : withheld("More than one weekday shares the lowest mean"), "text"),
+      f("28-day trend, per day", figure(pctOf(w.trendPerDayPct), "the seasonality register returned no trend"), "percent"),
     ],
     tables: [
       {
@@ -519,27 +468,10 @@ function writeAhead(payload: unknown): ExportDoc {
 
   return doc({
     figures: [
-      f(
-        `Next ${horizon} days`,
-        figure(
-          a.totalForecastDemand,
-          "the forecast register withheld its total",
-        ),
-        "bottles",
-      ),
+      f(`Next ${horizon} days`, figure(a.totalForecastDemand, "the forecast register withheld its total"), "bottles"),
       // The engine returns MAPE in percent; the page divides by 100 to print it.
-      f(
-        "Backtest error (MAPE)",
-        mape === null
-          ? withheld("Not scoreable on this history")
-          : { n: mape, unit: "percent" },
-        "percent",
-      ),
-      f(
-        "Model",
-        typeof a.model === "string" && a.model ? a.model : withheld(unfitted),
-        "text",
-      ),
+      f("Backtest error (MAPE)", mape === null ? withheld("Not scoreable on this history") : { n: mape, unit: "percent" }, "percent"),
+      f("Model", typeof a.model === "string" && a.model ? a.model : withheld(unfitted), "text"),
     ],
     tables: [
       {
@@ -548,10 +480,7 @@ function writeAhead(payload: unknown): ExportDoc {
           { label: "Day", unit: "text" },
           { label: "Projected bottles", unit: "bottles" },
         ],
-        rows: forecast.map((x) => [
-          x.date,
-          figure(x.value, "the model returned no value for this day"),
-        ]),
+        rows: forecast.map((x) => [x.date, figure(x.value, "the model returned no value for this day")]),
         note: "Every row is the model's expectation. None of it is trade that happened.",
       },
       {
@@ -560,10 +489,7 @@ function writeAhead(payload: unknown): ExportDoc {
           { label: "Day", unit: "text" },
           { label: "Bottles", unit: "bottles" },
         ],
-        rows: hist.map((x) => [
-          x.date,
-          figure(x.value, "no value recorded for this day"),
-        ]),
+        rows: hist.map((x) => [x.date, figure(x.value, "no value recorded for this day")]),
       },
     ],
     basis,
@@ -618,16 +544,8 @@ function writeQuadrants(payload: unknown): ExportDoc {
           : (unclassified ?? 0) + (unmeasuredCount ?? 0),
         "count",
       ),
-      f(
-        "Median bottles per day",
-        figure(medians.velocityPerDay, "the register published no median"),
-        "bottles",
-      ),
-      f(
-        "Median margin per bottle",
-        figure(medians.marginPerBottle, "no wine carries a recorded cost"),
-        "money",
-      ),
+      f("Median bottles per day", figure(medians.velocityPerDay, "the register published no median"), "bottles"),
+      f("Median margin per bottle", figure(medians.marginPerBottle, "no wine carries a recorded cost"), "money"),
     ],
     tables:
       items.length === 0
@@ -683,54 +601,15 @@ function writeLedger(payload: unknown): ExportDoc {
   const costBasis = "Needs a complete cost basis";
   return doc({
     figures: [
-      f(
-        "Cellar at cost",
-        figure(
-          d.inventoryValue,
-          "Not every on-hand row carries a recorded cost",
-        ),
-        "money",
-      ),
-      f(
-        "Cost of goods (365d)",
-        figure(
-          d.cogs,
-          "No delivered order came back for the window — which is either no buying or a read that failed",
-        ),
-        "money",
-      ),
-      f(
-        "Sell-price valuation",
-        figure(d.revenue, "No inventory row came back"),
-        "money",
-      ),
+      f("Cellar at cost", figure(d.inventoryValue, "Not every on-hand row carries a recorded cost"), "money"),
+      f("Cost of goods (365d)", figure(d.cogs, "No delivered order came back for the window — which is either no buying or a read that failed"), "money"),
+      f("Sell-price valuation", figure(d.revenue, "No inventory row came back"), "money"),
       f("Gross margin", figure(d.grossMargin, costBasis), "ratio"),
       f("COGS ratio", figure(d.cogsRatio, costBasis), "ratio"),
-      f(
-        "Inventory turns",
-        figure(
-          d.inventoryTurnover,
-          `${costBasis} and a year of delivered orders`,
-        ),
-        "count",
-      ),
-      f(
-        "Days of inventory",
-        figure(
-          d.daysInventoryOutstanding,
-          `${costBasis} and a year of delivered orders`,
-        ),
-        "days",
-      ),
+      f("Inventory turns", figure(d.inventoryTurnover, `${costBasis} and a year of delivered orders`), "count"),
+      f("Days of inventory", figure(d.daysInventoryOutstanding, `${costBasis} and a year of delivered orders`), "days"),
       f("GMROI", figure(d.gmroi, costBasis), "count"),
-      f(
-        "Capital sitting still",
-        figure(
-          d.deadStockCapital,
-          "No movement signal recorded, or an idle row has no cost",
-        ),
-        "money",
-      ),
+      f("Capital sitting still", figure(d.deadStockCapital, "No movement signal recorded, or an idle row has no cost"), "money"),
     ],
     notes: [
       cc && cc.complete === false
@@ -739,13 +618,7 @@ function writeLedger(payload: unknown): ExportDoc {
           : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from part of the cellar.`
         : "",
     ],
-    basis: sentences(
-      b.revenue,
-      b.cogs,
-      b.inventoryValue,
-      b.deadStock,
-      b.costDerived,
-    ),
+    basis: sentences(b.revenue, b.cogs, b.inventoryValue, b.deadStock, b.costDerived),
   });
 }
 
@@ -813,13 +686,7 @@ function writeSeats(payload: unknown): ExportDoc {
     figures: [
       f("Tables in the room", tables.length, "count"),
       f("Tables that took a check", served.length, "count"),
-      f(
-        "Busiest by takings",
-        served.length > 0
-          ? served[0].label
-          : withheld("No check has been attributed to any table"),
-        "text",
-      ),
+      f("Busiest by takings", served.length > 0 ? served[0].label : withheld("No check has been attributed to any table"), "text"),
     ],
     tables: [
       {
@@ -875,14 +742,7 @@ function writeService(payload: unknown): ExportDoc {
   }));
   const figures = [
     f("Servers with a check", waiters.length, "count"),
-    f(
-      "Table-adjusted fit (R²)",
-      figure(
-        adj ? adj.r2 : null,
-        "Needs 10 checks across at least two tables before a server can be separated from their section",
-      ),
-      "ratio",
-    ),
+    f("Table-adjusted fit (R²)", figure(adj ? adj.r2 : null, "Needs 10 checks across at least two tables before a server can be separated from their section"), "ratio"),
   ];
   if (waiters.length === 0) {
     const n = num(s.checksInWindow);
@@ -951,16 +811,8 @@ function writeRestock(payload: unknown): ExportDoc {
   const figures = [
     f("Wines on the register", skuCount, "count"),
     f("Below their reorder point", reorderCount, "count"),
-    f(
-      "Service level",
-      figure(p.serviceLevel, "the register returned no service level"),
-      "ratio",
-    ),
-    f(
-      "Lead time assumed",
-      figure(p.leadTimeDays, "the register returned no lead time"),
-      "days",
-    ),
+    f("Service level", figure(p.serviceLevel, "the register returned no service level"), "ratio"),
+    f("Lead time assumed", figure(p.leadTimeDays, "the register returned no lead time"), "days"),
   ];
   if (skuCount === 0)
     return doc({
@@ -974,8 +826,7 @@ function writeRestock(payload: unknown): ExportDoc {
       figures,
       basis,
     });
-  const unmeasured =
-    "no measured demand — it cannot run out on a rate nobody has observed";
+  const unmeasured = "no measured demand — it cannot run out on a rate nobody has observed";
   return doc({
     figures,
     tables: [
@@ -1017,9 +868,7 @@ function writeBench(payload: unknown): ExportDoc {
   const se = obj(d.seasonality);
   const cfMissing = "the cashflow lens did not answer inside the overview call";
   const seMissing = "the weekday lens did not answer inside the overview call";
-  const cfWhy = cashflowMissing
-    ? cfMissing
-    : "the cashflow register returned no figure";
+  const cfWhy = cashflowMissing ? cfMissing : "the cashflow register returned no figure";
   const tie = se.tie === true;
   // F-573: a null goals lens is a read that failed, not "no goal is running".
   // Each goal is typed by its metric's unit, and its current figure is the
@@ -1043,37 +892,13 @@ function writeBench(payload: unknown): ExportDoc {
       "Buying, the last 30 days against the 30 before",
       typed(last, "money", cfWhy),
       typed(prev, "money", cfWhy),
-      typed(
-        pctOf(cf.paceDeltaPct),
-        "percent",
-        cashflowMissing
-          ? cfMissing
-          : "the server withholds a pace when the two windows are not comparable",
-      ),
+      typed(pctOf(cf.paceDeltaPct), "percent", cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"),
     ],
     [
       "The week's own extremes (busiest, quietest, trend per day)",
-      seasonalityMissing
-        ? withheld(seMissing)
-        : tie
-          ? withheld("shared — more than one weekday holds the extreme")
-          : typeof se.bestDay === "string"
-            ? se.bestDay
-            : withheld("no weekday is separable"),
-      seasonalityMissing
-        ? withheld(seMissing)
-        : tie
-          ? withheld("shared — more than one weekday holds the extreme")
-          : typeof se.worstDay === "string"
-            ? se.worstDay
-            : withheld("no weekday is separable"),
-      typed(
-        pctOf(se.trendPerDayPct),
-        "percent",
-        seasonalityMissing
-          ? seMissing
-          : "the seasonality register returned no trend",
-      ),
+      seasonalityMissing ? withheld(seMissing) : tie ? withheld("shared — more than one weekday holds the extreme") : typeof se.bestDay === "string" ? se.bestDay : withheld("no weekday is separable"),
+      seasonalityMissing ? withheld(seMissing) : tie ? withheld("shared — more than one weekday holds the extreme") : typeof se.worstDay === "string" ? se.worstDay : withheld("no weekday is separable"),
+      typed(pctOf(se.trendPerDayPct), "percent", seasonalityMissing ? seMissing : "the seasonality register returned no trend"),
     ],
     ...arr(se.weekdayProfile).map((w): Cell[] => [
       `${str(w.day)}, mean per service`,
@@ -1099,36 +924,10 @@ function writeBench(payload: unknown): ExportDoc {
     figures: [
       f("Bought, the last 30 days", figure(last, cfWhy), "money"),
       f("Bought, the 30 before", figure(prev, cfWhy), "money"),
-      f(
-        "Pace against last month",
-        figure(
-          pctOf(cf.paceDeltaPct),
-          cashflowMissing
-            ? cfMissing
-            : "the server withholds a pace when the two windows are not comparable",
-        ),
-        "percent",
-      ),
-      f(
-        "Committed, not yet delivered",
-        figure(cf.committedOpenOrders, cfWhy),
-        "money",
-      ),
-      f(
-        "Trend per day, last 28 days",
-        figure(
-          pctOf(se.trendPerDayPct),
-          seasonalityMissing
-            ? seMissing
-            : "the seasonality register returned no trend",
-        ),
-        "percent",
-      ),
-      f(
-        "Goals running",
-        goalsUnread ? withheld(goalsMissing) : goals.length,
-        "count",
-      ),
+      f("Pace against last month", figure(pctOf(cf.paceDeltaPct), cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
+      f("Committed, not yet delivered", figure(cf.committedOpenOrders, cfWhy), "money"),
+      f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
+      f("Goals running", goalsUnread ? withheld(goalsMissing) : goals.length, "count"),
     ],
     tables: [
       {
@@ -1153,11 +952,7 @@ function writeBench(payload: unknown): ExportDoc {
           ? "No goal is running, so there is nothing to measure against a baseline."
           : "Each goal's middle figure is its reading from the last time the goal was opened on the goals desk, not a live count.",
     ],
-    basis: sentences(
-      obj(cf.basis).outflow,
-      obj(se.basis).weekday,
-      obj(se.basis).extremes,
-    ),
+    basis: sentences(obj(cf.basis).outflow, obj(se.basis).weekday, obj(se.basis).extremes),
   });
 }
 
@@ -1186,9 +981,7 @@ function writeGoals(payload: unknown): ExportDoc {
       unit: goalUnit(str(entry.unit) || "count"),
       deadline: typeof g.deadline === "string" ? g.deadline : null,
       unreadable:
-        entry.unreadable === true
-          ? str(entry.reason) || "reason not given"
-          : null,
+        entry.unreadable === true ? str(entry.reason) || "reason not given" : null,
       current: num(entry.current),
       target: num(entry.target),
       progress: num(entry.progressPct),
@@ -1214,25 +1007,9 @@ function writeGoals(payload: unknown): ExportDoc {
         : null,
     figures: [
       f("Goals running", total, "count"),
-      f(
-        "On pace",
-        paced
-          ? goals.filter((g) => g.onTrack === true).length
-          : withheld(noPace),
-        "count",
-      ),
-      f(
-        "Behind",
-        paced
-          ? goals.filter((g) => g.onTrack === false).length
-          : withheld(noPace),
-        "count",
-      ),
-      f(
-        "Could not be scored",
-        goals.filter((g) => g.unreadable).length,
-        "count",
-      ),
+      f("On pace", paced ? goals.filter((g) => g.onTrack === true).length : withheld(noPace), "count"),
+      f("Behind", paced ? goals.filter((g) => g.onTrack === false).length : withheld(noPace), "count"),
+      f("Could not be scored", goals.filter((g) => g.unreadable).length, "count"),
     ],
     tables:
       goals.length === 0
@@ -1256,30 +1033,10 @@ function writeGoals(payload: unknown): ExportDoc {
                 return [
                   g.name,
                   g.metric,
-                  unreadable
-                    ? withheld(unreadable)
-                    : typed(
-                        g.current,
-                        g.unit,
-                        "the goal's current value was not computed",
-                      ),
+                  unreadable ? withheld(unreadable) : typed(g.current, g.unit, "the goal's current value was not computed"),
                   typed(g.target, g.unit, "no target recorded"),
-                  unreadable
-                    ? withheld(unreadable)
-                    : figure(
-                        g.progress,
-                        "the goal's progress was not computed",
-                      ),
-                  g.onTrack === null
-                    ? withheld(
-                        g.paceUnread ??
-                          (g.deadline
-                            ? "the pace was not computed"
-                            : "no deadline, so no pace"),
-                      )
-                    : g.onTrack
-                      ? "on pace"
-                      : "behind",
+                  unreadable ? withheld(unreadable) : figure(g.progress, "the goal's progress was not computed"),
+                  g.onTrack === null ? withheld(g.paceUnread ?? (g.deadline ? "the pace was not computed" : "no deadline, so no pace")) : g.onTrack ? "on pace" : "behind",
                   g.deadline,
                 ];
               }),
@@ -1311,80 +1068,18 @@ function writeGoals(payload: unknown): ExportDoc {
  */
 export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
   Object.freeze({
-    reading: {
-      title: "The reading",
-      window: () => "the stored insight feed, recomputed hourly",
-      takesWindow: false,
-      write: writeReading,
-    },
-    till: {
-      title: "Through the till",
-      window: (days) => `the last ${days ?? 30} days of POS checks`,
-      takesWindow: true,
-      write: writeTill,
-    },
-    goals: {
-      title: "Goals",
-      window: () => "each goal counted from the day it was set",
-      takesWindow: false,
-      write: writeGoals,
-    },
-    bench: {
-      title: "Against ourselves",
-      window: () =>
-        "180 days of buying, 90 days of weekdays, each goal since it was set",
-      takesWindow: false,
-      write: writeBench,
-    },
-    pacing: {
-      title: "Spend pacing",
-      window: () => "180 days of purchasing, compared in two 30-day windows",
-      takesWindow: false,
-      write: writePacing,
-    },
-    week: {
-      title: "The week’s shape",
-      window: () => "the last 90 days of the consumption log",
-      takesWindow: false,
-      write: writeWeek,
-    },
-    ahead: {
-      title: "What’s coming",
-      window: () => "120 days of history, 14 days ahead",
-      takesWindow: false,
-      write: writeAhead,
-    },
-    quadrants: {
-      title: "Margin against movement",
-      window: () => "the list as it stands, against 90 days of movement",
-      takesWindow: false,
-      write: writeQuadrants,
-    },
-    ledger: {
-      title: "Figures of record",
-      window: () => "365 days of COGS; the cellar as it stands today",
-      takesWindow: false,
-      write: writeLedger,
-    },
-    seats: {
-      title: "The room",
-      window: () => "the last 90 days of POS checks",
-      takesWindow: false,
-      write: writeSeats,
-    },
-    service: {
-      title: "Who served it",
-      window: () => "the last 90 days of POS checks",
-      takesWindow: false,
-      write: writeService,
-    },
-    restock: {
-      title: "What to buy back",
-      window: () =>
-        "demand over the last 90 days, at the service level in the params",
-      takesWindow: false,
-      write: writeRestock,
-    },
+    reading: { title: "The reading", window: () => "the stored insight feed, recomputed hourly", takesWindow: false, write: writeReading },
+    till: { title: "Through the till", window: (days) => `the last ${days ?? 30} days of POS checks`, takesWindow: true, write: writeTill },
+    goals: { title: "Goals", window: () => "each goal counted from the day it was set", takesWindow: false, write: writeGoals },
+    bench: { title: "Against ourselves", window: () => "180 days of buying, 90 days of weekdays, each goal since it was set", takesWindow: false, write: writeBench },
+    pacing: { title: "Spend pacing", window: () => "180 days of purchasing, compared in two 30-day windows", takesWindow: false, write: writePacing },
+    week: { title: "The week’s shape", window: () => "the last 90 days of the consumption log", takesWindow: false, write: writeWeek },
+    ahead: { title: "What’s coming", window: () => "120 days of history, 14 days ahead", takesWindow: false, write: writeAhead },
+    quadrants: { title: "Margin against movement", window: () => "the list as it stands, against 90 days of movement", takesWindow: false, write: writeQuadrants },
+    ledger: { title: "Figures of record", window: () => "365 days of COGS; the cellar as it stands today", takesWindow: false, write: writeLedger },
+    seats: { title: "The room", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeSeats },
+    service: { title: "Who served it", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeService },
+    restock: { title: "What to buy back", window: () => "demand over the last 90 days, at the service level in the params", takesWindow: false, write: writeRestock },
   });
 
 export { countWithheld };

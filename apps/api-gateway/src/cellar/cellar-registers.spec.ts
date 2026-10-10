@@ -77,9 +77,7 @@ describe("registersForLabel", () => {
     expect(registersForLabel("Yeni Rakı")).toEqual(["spirits"]);
     expect(registersForLabel("RAKI")).toEqual(["spirits"]);
     expect(registersForLabel("Çay")).toEqual(["non_alcoholic"]);
-    expect(registersForLabel("Sıcak İçecekler · Çay")).toEqual([
-      "non_alcoholic",
-    ]);
+    expect(registersForLabel("Sıcak İçecekler · Çay")).toEqual(["non_alcoholic"]);
   });
 });
 
@@ -150,9 +148,7 @@ describe("inferRegisters", () => {
     const soft = by(rows, "soft_drinks");
     expect(soft.carried).toBe(true);
     expect(soft.confidence).toBe("likely");
-    expect(soft.basis).toContain(
-      "nothing of the kind is counted in the cellar",
-    );
+    expect(soft.basis).toContain("nothing of the kind is counted in the cellar");
   });
 
   it("the founder's non-alcoholic house: soft drinks and nothing else", () => {
@@ -165,18 +161,9 @@ describe("inferRegisters", () => {
       ]),
       hasAnyEvidence: true,
     });
-    const on = rows
-      .filter((r) => r.carried === true)
-      .map((r) => r.id)
-      .sort();
+    const on = rows.filter((r) => r.carried === true).map((r) => r.id).sort();
     expect(on).toEqual(["non_alcoholic", "soft_drinks"]);
-    for (const off of [
-      "wines",
-      "beer",
-      "whiskey",
-      "spirits",
-      "cocktails",
-    ] as RegisterId[]) {
+    for (const off of ["wines", "beer", "whiskey", "spirits", "cocktails"] as RegisterId[]) {
       expect(by(rows, off).carried).toBe(false);
       expect(by(rows, off).confidence).toBe("none");
     }
@@ -213,9 +200,7 @@ describe("applyAnswers", () => {
     hasAnyEvidence: true,
   });
 
-  const stored = (
-    a: Partial<StoredAnswer> & { carried: boolean },
-  ): StoredAnswer => ({
+  const stored = (a: Partial<StoredAnswer> & { carried: boolean }): StoredAnswer => ({
     source: "confirmed",
     confirmedAt: "2026-09-03T10:00:00.000Z",
     ...a,
@@ -236,10 +221,7 @@ describe("applyAnswers", () => {
     const rows = applyAnswers(
       booksSayBeer,
       new Map([
-        [
-          "beer" as RegisterId,
-          stored({ carried: true, source: "inferred", confirmedAt: null }),
-        ],
+        ["beer" as RegisterId, stored({ carried: true, source: "inferred", confirmedAt: null })],
       ]),
     );
     const beer = by(rows, "beer");
@@ -268,9 +250,7 @@ describe("applyAnswers", () => {
   it("MANUAL-ON that the books already agree with does not nag", () => {
     const rows = applyAnswers(
       booksSayBeer,
-      new Map([
-        ["beer" as RegisterId, stored({ carried: true, source: "manual" })],
-      ]),
+      new Map([["beer" as RegisterId, stored({ carried: true, source: "manual" })]]),
     );
     const beer = by(rows, "beer");
     expect(beer.needsEvidence).toBe(false);
@@ -288,12 +268,7 @@ describe("applyAnswers", () => {
     });
     const rows = applyAnswers(
       booksSayCocktails,
-      new Map([
-        [
-          "cocktails" as RegisterId,
-          stored({ carried: false, source: "manual" }),
-        ],
-      ]),
+      new Map([["cocktails" as RegisterId, stored({ carried: false, source: "manual" })]]),
     );
     const c = by(rows, "cocktails");
     expect(c.carried).toBe(false);
@@ -304,12 +279,7 @@ describe("applyAnswers", () => {
   it("strands nothing when the register is OFF and the books are empty too", () => {
     const rows = applyAnswers(
       booksSayBeer,
-      new Map([
-        [
-          "whiskey" as RegisterId,
-          stored({ carried: false, source: "confirmed" }),
-        ],
-      ]),
+      new Map([["whiskey" as RegisterId, stored({ carried: false, source: "confirmed" })]]),
     );
     expect(by(rows, "whiskey").strandedItems).toBe(0);
   });
@@ -325,9 +295,7 @@ describe("applyAnswers", () => {
     });
     const rows = applyAnswers(
       unreadable,
-      new Map([
-        ["beer" as RegisterId, stored({ carried: false, source: "confirmed" })],
-      ]),
+      new Map([["beer" as RegisterId, stored({ carried: false, source: "confirmed" })]]),
     );
     expect(by(rows, "beer").strandedItems).toBeNull();
   });
@@ -335,9 +303,7 @@ describe("applyAnswers", () => {
   it("never asks for rows behind a register that is switched OFF", () => {
     const rows = applyAnswers(
       booksSayBeer,
-      new Map([
-        ["whiskey" as RegisterId, stored({ carried: false, source: "manual" })],
-      ]),
+      new Map([["whiskey" as RegisterId, stored({ carried: false, source: "manual" })]]),
     );
     expect(by(rows, "whiskey").needsEvidence).toBe(false);
   });
@@ -361,21 +327,17 @@ describe("placeMenuLine", () => {
   it("prefers the section header over the item name", () => {
     // A cocktail named after a wine grape belongs to the section it is printed
     // under, not to the grape in its name.
-    expect(
-      placeMenuLine({ category: "Signature Cocktails", name: "Merlot Sour" }),
-    ).toEqual(["cocktails"]);
+    expect(placeMenuLine({ category: "Signature Cocktails", name: "Merlot Sour" }))
+      .toEqual(["cocktails"]);
   });
 
   it("falls back to the item name when the section says nothing", () => {
-    expect(
-      placeMenuLine({ category: "House Selection", name: "Draft Lager" }),
-    ).toContain("beer");
+    expect(placeMenuLine({ category: "House Selection", name: "Draft Lager" }))
+      .toContain("beer");
   });
 
   it("places nothing when neither the section nor the name names a register", () => {
-    expect(
-      placeMenuLine({ category: "Starters", name: "Popcorn Shrimp" }),
-    ).toEqual([]);
+    expect(placeMenuLine({ category: "Starters", name: "Popcorn Shrimp" })).toEqual([]);
     expect(placeMenuLine({ category: null, name: null })).toEqual([]);
   });
 });
@@ -396,12 +358,9 @@ describe("tallyMenuLines", () => {
     // The symmetric half of the bug already fixed in the other direction: a
     // "Whiskey & Rye" section credits whiskey AND spirits, and that is two
     // signals about one line, not two lines.
-    const tally = tallyMenuLines([
-      { category: "Whiskey & Rye", name: "Redbreast 12" },
-    ]);
-    expect(
-      placeMenuLine({ category: "Whiskey & Rye", name: "Redbreast 12" }).length,
-    ).toBeGreaterThan(1);
+    const tally = tallyMenuLines([{ category: "Whiskey & Rye", name: "Redbreast 12" }]);
+    expect(placeMenuLine({ category: "Whiskey & Rye", name: "Redbreast 12" }).length)
+      .toBeGreaterThan(1);
     expect(tally).toEqual({ read: 1, placed: 1, notPlaced: 0 });
   });
 
@@ -416,11 +375,7 @@ describe("tallyMenuLines", () => {
         name: `Today's plate ${i + 1}`,
       })),
     ];
-    expect(tallyMenuLines(chalkboard)).toEqual({
-      read: 9,
-      placed: 2,
-      notPlaced: 7,
-    });
+    expect(tallyMenuLines(chalkboard)).toEqual({ read: 9, placed: 2, notPlaced: 7 });
   });
 
   it("reads an empty menu as zero read rather than refusing to answer", () => {
@@ -436,9 +391,7 @@ describe("tallyMenuLines", () => {
  * returns nothing for, and `notPlaced` is its length on every menu.
  */
 describe("unplacedMenuLines", () => {
-  const MENUS: Array<
-    Array<{ id: string; category: string | null; name: string | null }>
-  > = [
+  const MENUS: Array<Array<{ id: string; category: string | null; name: string | null }>> = [
     [],
     [
       { id: "a", category: "Wines by the glass", name: "Barolo" },
@@ -468,9 +421,7 @@ describe("unplacedMenuLines", () => {
 
   it("is the count: notPlaced === the list's length, on every menu", () => {
     for (const menu of MENUS) {
-      expect(tallyMenuLines(menu).notPlaced).toBe(
-        unplacedMenuLines(menu).length,
-      );
+      expect(tallyMenuLines(menu).notPlaced).toBe(unplacedMenuLines(menu).length);
     }
   });
 });

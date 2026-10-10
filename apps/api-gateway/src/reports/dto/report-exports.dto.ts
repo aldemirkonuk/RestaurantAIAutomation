@@ -48,9 +48,7 @@ export class ReportExportResponseDto {
   @ApiProperty({ description: "The cutting's title as the page prints it." })
   title: string;
 
-  @ApiProperty({
-    description: "The window line the page prints under the title.",
-  })
+  @ApiProperty({ description: "The window line the page prints under the title." })
   windowLabel: string;
 
   @ApiProperty({ type: Number, nullable: true })
@@ -62,16 +60,14 @@ export class ReportExportResponseDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description:
-      "Why the export was not written. Present exactly when status is failed.",
+    description: "Why the export was not written. Present exactly when status is failed.",
   })
   failureReason: string | null;
 
   @ApiProperty({
     type: Number,
     nullable: true,
-    description:
-      "Figures written as withheld rather than as a number. Null until written.",
+    description: "Figures written as withheld rather than as a number. Null until written.",
   })
   withheldCount: number | null;
 

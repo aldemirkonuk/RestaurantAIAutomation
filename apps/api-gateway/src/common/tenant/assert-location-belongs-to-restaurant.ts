@@ -65,14 +65,10 @@ export async function assertLocationsBelongToRestaurant(
     );
   }
 
-  const owned = new Set(
-    ((data as { id: string }[] | null) ?? []).map((r) => r.id),
-  );
+  const owned = new Set(((data as { id: string }[] | null) ?? []).map((r) => r.id));
   const foreign = ids.filter((id) => !owned.has(id));
   if (foreign.length) {
-    logger?.warn(
-      `${context} rejected a location not of this house: ${foreign.join(", ")}`,
-    );
+    logger?.warn(`${context} rejected a location not of this house: ${foreign.join(", ")}`);
     throw new HttpException(
       "No storage location of this house has that id.",
       HttpStatus.NOT_FOUND,

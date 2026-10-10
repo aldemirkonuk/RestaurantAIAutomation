@@ -501,11 +501,7 @@ export class MembersService {
         );
       }
       await this.team.removeFromHouse(
-        {
-          userId: actorUserId,
-          role: actor.role,
-          via: "MembersService.removeMember",
-        },
+        { userId: actorUserId, role: actor.role, via: "MembersService.removeMember" },
         restaurantId,
         rosterRow.id,
         null,
@@ -519,18 +515,9 @@ export class MembersService {
     // `team_member_removed` row and notice the roster path files, so a person
     // added from Settings (who never gets a roster row) does not leave with no
     // record (F-581).
-    const removal = {
-      actorUserId,
-      actorRole: actor.role,
-      targetRole,
-      selfLeave,
-    };
+    const removal = { actorUserId, actorRole: actor.role, targetRole, selfLeave };
     if (!targetAccess) {
-      await this.stopCalendarLinkOfLeaver(
-        actorUserId,
-        restaurantId,
-        targetUserId,
-      );
+      await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
       await this.clearUsersRowHouse(targetUserId, restaurantId);
       this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
       await cancelPendingInvitesFrom(
@@ -547,11 +534,7 @@ export class MembersService {
     // person is still a member by their access row, which is the truth; the
     // other order could leave them a member by a `users` row nobody meant to
     // keep (v3.0-TECH-DEBT 44.1j).
-    await this.stopCalendarLinkOfLeaver(
-      actorUserId,
-      restaurantId,
-      targetUserId,
-    );
+    await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
     await this.clearUsersRowHouse(targetUserId, restaurantId);
 
     const { error } = await this.databaseService.supabase
@@ -815,9 +798,7 @@ export class MembersService {
       .is("used_at", null)
       .maybeSingle();
     if (readErr) {
-      this.logger.error(
-        `revokeInvite could not read the invite: ${readErr.message}`,
-      );
+      this.logger.error(`revokeInvite could not read the invite: ${readErr.message}`);
       throw new InternalServerErrorException("Failed to revoke invite");
     }
 

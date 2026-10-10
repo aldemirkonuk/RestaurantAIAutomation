@@ -952,9 +952,7 @@ describe("registerAccount", () => {
   });
 
   it("says a failed Google link plainly and removes the account it made (H5)", async () => {
-    const run = makeService({
-      then: { user_oauth_accounts: [{ error: EMAIL_TAKEN }] },
-    });
+    const run = makeService({ then: { user_oauth_accounts: [{ error: EMAIL_TAKEN }] } });
     (run.svc as any).verifyGoogleToken = jest.fn().mockResolvedValue({
       email: "selin@example.com",
       name: "Selin Kaya",

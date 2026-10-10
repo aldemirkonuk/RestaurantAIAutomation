@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  ServiceUnavailableException,
-} from "@nestjs/common";
+import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { MembersService } from "../restaurants/members.service";
 import { TeamService } from "../team/team.service";
@@ -67,10 +64,7 @@ function makeService(seed: {
     { sign: () => "tok", signAsync: async () => "tok" } as any,
     { get: () => undefined } as any,
     asDatabaseService(db),
-    {
-      isBlacklisted: async () => false,
-      blacklist: async () => undefined,
-    } as any,
+    { isBlacklisted: async () => false, blacklist: async () => undefined } as any,
     { sendEmail: async () => undefined } as any,
   );
   const gateway = { evictFromHouse: jest.fn() };
@@ -96,20 +90,13 @@ function wireRemoval(svc: AuthService, db: any, gateway?: any) {
 }
 
 const housesEvicted = (gateway: { evictFromHouse: jest.Mock }) =>
-  [
-    ...new Set(gateway.evictFromHouse.mock.calls.map((c) => `${c[0]}@${c[1]}`)),
-  ].sort();
+  [...new Set(gateway.evictFromHouse.mock.calls.map((c) => `${c[0]}@${c[1]}`))].sort();
 
 describe("deleteAccount — evicts sockets and cancels pending invites for every house it removed", () => {
   it("evicts the deleted account from its one active house and cancels the invite it issued there", async () => {
     const { svc, db, gateway } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "staff",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
       ],
       invites: [invite({ restaurant_id: HOUSE_A })],
     });
@@ -125,18 +112,8 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
   it("evicts from EVERY active house, not just one, when the account belonged to several", async () => {
     const { svc, gateway } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "manager",
-          is_active: true,
-        },
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_B,
-          role: "staff",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "manager", is_active: true },
+        { user_id: USER, restaurant_id: HOUSE_B, role: "staff", is_active: true },
       ],
     });
 
@@ -150,12 +127,7 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
   it("does not evict from an already-inactive row, and does not crash with no websocketGateway wired", async () => {
     const db = makeStubDb({
       user_restaurant_access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "staff",
-          is_active: false,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: false },
       ],
       users: [{ user_id: USER, email: "leaving@example.com" }],
     });
@@ -163,10 +135,7 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
       { sign: () => "tok", signAsync: async () => "tok" } as any,
       { get: () => undefined } as any,
       asDatabaseService(db),
-      {
-        isBlacklisted: async () => false,
-        blacklist: async () => undefined,
-      } as any,
+      { isBlacklisted: async () => false, blacklist: async () => undefined } as any,
       { sendEmail: async () => undefined } as any,
     );
     // websocketGateway left undefined, same as every pre-existing spec here.
@@ -178,12 +147,7 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
   it("refuses with 503 when the pre-delete houses read errors, and deletes nothing (round 5, 2026-09-21 — ci.yml:527's check_read_errors_not_swallowed.py)", async () => {
     const { svc, db, gateway } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "staff",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
       ],
       errors: {
         "user_restaurant_access:select": { message: "connection reset" },
@@ -203,12 +167,7 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
   it("still blocks deletion when the account is the sole owner of a house, before anything is evicted", async () => {
     const { svc, gateway } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "owner",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
       ],
     });
 
@@ -229,12 +188,7 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   const ORG = "org-1";
   const coOwnedHouse = [
     { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
-    {
-      user_id: "other-owner",
-      restaurant_id: HOUSE_A,
-      role: "owner",
-      is_active: true,
-    },
+    { user_id: "other-owner", restaurant_id: HOUSE_A, role: "owner", is_active: true },
   ];
 
   it("refuses in plain words and deletes nothing when no one else owns the organisation", async () => {
@@ -260,12 +214,7 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   it("answers with the organisation refusal first when the account is also a sole house owner", async () => {
     const { svc, db } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "owner",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
       ],
       orgMembers: [{ organization_id: ORG, user_id: USER, role: "owner" }],
     });
@@ -279,12 +228,7 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   it("tells a sole house owner who is not the last organisation owner to make another member an owner", async () => {
     const { svc, db } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "owner",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
       ],
       orgMembers: [
         { organization_id: ORG, user_id: USER, role: "owner" },
@@ -314,9 +258,7 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   it("refuses with 503 when the organisation read fails, and deletes nothing", async () => {
     const { svc, db } = makeService({
       access: coOwnedHouse,
-      errors: {
-        "organization_members:select": { message: "connection reset" },
-      },
+      errors: { "organization_members:select": { message: "connection reset" } },
     });
 
     await expect(svc.deleteAccount(USER)).rejects.toBeInstanceOf(
@@ -375,32 +317,14 @@ describe("deleteAccount — refused up front when records keep the person's name
   it("names the records and writes nothing: still in every house, sign-in links kept, no account delete tried", async () => {
     const { svc, db, gateway } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "manager",
-          is_active: true,
-        },
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_B,
-          role: "staff",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "manager", is_active: true },
+        { user_id: USER, restaurant_id: HOUSE_B, role: "staff", is_active: true },
       ],
       oauth: [{ user_id: USER, provider: "google", provider_user_id: "g-1" }],
       invites: [invite({ restaurant_id: HOUSE_A })],
       blockers: [
-        {
-          table_name: "team_notes",
-          column_name: "author_user_id",
-          row_count: 3,
-        },
-        {
-          table_name: "menu_price_versions",
-          column_name: "changed_by",
-          row_count: 12,
-        },
+        { table_name: "team_notes", column_name: "author_user_id", row_count: 3 },
+        { table_name: "menu_price_versions", column_name: "changed_by", row_count: 12 },
       ],
       errors: RESTRICTED,
     });
@@ -414,10 +338,7 @@ describe("deleteAccount — refused up front when records keep the person's name
     expect(db.ops.filter((o) => o.op !== "select")).toEqual([]);
     expect(gateway.evictFromHouse).not.toHaveBeenCalled();
     expect(
-      db.tables.user_restaurant_access.map((r) => [
-        r.restaurant_id,
-        r.is_active,
-      ]),
+      db.tables.user_restaurant_access.map((r) => [r.restaurant_id, r.is_active]),
     ).toEqual([
       [HOUSE_A, true],
       [HOUSE_B, true],
@@ -432,16 +353,9 @@ describe("deleteAccount — refused up front when records keep the person's name
   it("refuses with 503 and writes nothing when the check itself cannot be read", async () => {
     const { svc, db, gateway } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "staff",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
       ],
-      errors: {
-        "rpc:account_delete_blockers": { message: "connection reset" },
-      },
+      errors: { "rpc:account_delete_blockers": { message: "connection reset" } },
     });
 
     await expect(svc.deleteAccount(USER)).rejects.toBeInstanceOf(
@@ -454,12 +368,7 @@ describe("deleteAccount — refused up front when records keep the person's name
   it("if the account delete is still refused after the check, the sign-in links stay and the message says the houses were left", async () => {
     const { svc, db } = makeService({
       access: [
-        {
-          user_id: USER,
-          restaurant_id: HOUSE_A,
-          role: "staff",
-          is_active: true,
-        },
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
       ],
       oauth: [{ user_id: USER, provider: "google", provider_user_id: "g-1" }],
       errors: RESTRICTED,

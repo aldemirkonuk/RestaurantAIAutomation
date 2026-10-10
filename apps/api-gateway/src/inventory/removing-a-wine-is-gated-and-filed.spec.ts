@@ -14,45 +14,31 @@ function controller(role: string | null) {
   const organizations = new OrganizationsService({} as never);
   jest.spyOn(organizations, "resolveRestaurantRole").mockResolvedValue(role);
   const softDeleteItem = jest.fn(async () => ({ audited: true }));
-  const c = new InventoryController(
-    { softDeleteItem } as any,
-    organizations,
-    {} as any,
-  );
+  const c = new InventoryController({ softDeleteItem } as any, organizations, {} as any);
   return { c, softDeleteItem };
 }
 
 describe("DELETE inventory item — who may remove a wine", () => {
-  it.each(["owner", "manager"])(
-    "a %s may remove, and the service is told who",
-    async (role) => {
-      const { c, softDeleteItem } = controller(role);
-      await expect(
-        c.deleteInventoryItem("rest-1", "inv-1", { userId: "u-1" }),
-      ).resolves.toEqual({
-        success: true,
-        audited: true,
-      });
-      expect(softDeleteItem).toHaveBeenCalledWith("rest-1", "inv-1", "u-1");
-    },
-  );
+  it.each(["owner", "manager"])("a %s may remove, and the service is told who", async (role) => {
+    const { c, softDeleteItem } = controller(role);
+    await expect(c.deleteInventoryItem("rest-1", "inv-1", { userId: "u-1" })).resolves.toEqual({
+      success: true,
+      audited: true,
+    });
+    expect(softDeleteItem).toHaveBeenCalledWith("rest-1", "inv-1", "u-1");
+  });
 
-  it.each(["staff", null])(
-    "%s is refused and nothing is removed",
-    async (role) => {
-      const { c, softDeleteItem } = controller(role as string | null);
-      await expect(
-        c.deleteInventoryItem("rest-1", "inv-1", { userId: "u-1" }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-      expect(softDeleteItem).not.toHaveBeenCalled();
-    },
-  );
+  it.each(["staff", null])("%s is refused and nothing is removed", async (role) => {
+    const { c, softDeleteItem } = controller(role as string | null);
+    await expect(c.deleteInventoryItem("rest-1", "inv-1", { userId: "u-1" })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(softDeleteItem).not.toHaveBeenCalled();
+  });
 
   it("a session naming nobody cannot remove a wine", async () => {
     const { c, softDeleteItem } = controller("owner");
-    await expect(
-      c.deleteInventoryItem("rest-1", "inv-1", {}),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(c.deleteInventoryItem("rest-1", "inv-1", {})).rejects.toMatchObject({ status: 403 });
     expect(softDeleteItem).not.toHaveBeenCalled();
   });
 });
@@ -74,22 +60,10 @@ function fakeDb(opts: {
         calls.push({ table, op: "insert", args: [p] });
         return Promise.resolve({ error: opts.auditError ?? null });
       },
-      eq: (...a: any[]) => (
-        calls.push({ table, op: `${op}.eq`, args: a }),
-        chain
-      ),
-      in: (...a: any[]) => (
-        calls.push({ table, op: `${op}.in`, args: a }),
-        chain
-      ),
-      lte: (...a: any[]) => (
-        calls.push({ table, op: `${op}.lte`, args: a }),
-        chain
-      ),
-      or: (...a: any[]) => (
-        calls.push({ table, op: `${op}.or`, args: a }),
-        chain
-      ),
+      eq: (...a: any[]) => (calls.push({ table, op: `${op}.eq`, args: a }), chain),
+      in: (...a: any[]) => (calls.push({ table, op: `${op}.in`, args: a }), chain),
+      lte: (...a: any[]) => (calls.push({ table, op: `${op}.lte`, args: a }), chain),
+      or: (...a: any[]) => (calls.push({ table, op: `${op}.or`, args: a }), chain),
       then: (res: any, rej: any) => {
         if (op === "update") {
           calls.push({ table, op: "update", args: [payload] });
@@ -113,14 +87,7 @@ function service(db: ReturnType<typeof fakeDb>) {
 describe("softDeleteItem — the zero-stock rule and the record", () => {
   it("refuses in plain words while bottles are left, and writes nothing", async () => {
     const db = fakeDb({
-      rows: [
-        {
-          id: "inv-1",
-          wine_name: "Opus One 2018",
-          stock_live: 3,
-          shadow_stock: 0,
-        },
-      ],
+      rows: [{ id: "inv-1", wine_name: "Opus One 2018", stock_live: 3, shadow_stock: 0 }],
     });
     const err = await service(db)
       .softDeleteItem("rest-1", "inv-1", "u-1")
@@ -130,68 +97,29 @@ describe("softDeleteItem — the zero-stock rule and the record", () => {
     expect(err.message).toBe(
       "Opus One 2018 still has 3 bottles on the books. Count it down to zero with a reason first, so the bottles leave on the record. Nothing was removed.",
     );
-    expect(db.calls.some((c) => c.op === "update" || c.op === "insert")).toBe(
-      false,
-    );
+    expect(db.calls.some((c) => c.op === "update" || c.op === "insert")).toBe(false);
   });
 
   it("counts shadow bottles too", async () => {
     const db = fakeDb({
-      rows: [
-        {
-          id: "inv-1",
-          wine_name: null,
-          master_wine_library: { name: "Barolo" },
-          stock_live: 0,
-          shadow_stock: 1,
-        },
-      ],
+      rows: [{ id: "inv-1", wine_name: null, master_wine_library: { name: "Barolo" }, stock_live: 0, shadow_stock: 1 }],
     });
-    await expect(
-      service(db).softDeleteItem("rest-1", "inv-1", "u-1"),
-    ).rejects.toMatchObject({
-      message: expect.stringContaining(
-        "Barolo still has 1 bottle on the books",
-      ),
+    await expect(service(db).softDeleteItem("rest-1", "inv-1", "u-1")).rejects.toMatchObject({
+      message: expect.stringContaining("Barolo still has 1 bottle on the books"),
     });
   });
 
   it("at zero, removes with the zero-stock filter on the write and files who did it", async () => {
     const db = fakeDb({
-      rows: [
-        {
-          id: "inv-1",
-          wine_name: "Opus One 2018",
-          stock_live: 0,
-          shadow_stock: null,
-        },
-      ],
+      rows: [{ id: "inv-1", wine_name: "Opus One 2018", stock_live: 0, shadow_stock: null }],
     });
-    await expect(
-      service(db).softDeleteItem("rest-1", "inv-1", "u-1"),
-    ).resolves.toEqual({ audited: true });
+    await expect(service(db).softDeleteItem("rest-1", "inv-1", "u-1")).resolves.toEqual({ audited: true });
     expect(db.calls).toEqual(
       expect.arrayContaining([
-        {
-          table: "restaurant_inventory",
-          op: "update",
-          args: [{ is_active: false }],
-        },
-        {
-          table: "restaurant_inventory",
-          op: "update.lte",
-          args: ["stock_live", 0],
-        },
-        {
-          table: "restaurant_inventory",
-          op: "update.or",
-          args: ["shadow_stock.is.null,shadow_stock.lte.0"],
-        },
-        {
-          table: "restaurant_inventory",
-          op: "update.eq",
-          args: ["restaurant_id", "rest-1"],
-        },
+        { table: "restaurant_inventory", op: "update", args: [{ is_active: false }] },
+        { table: "restaurant_inventory", op: "update.lte", args: ["stock_live", 0] },
+        { table: "restaurant_inventory", op: "update.or", args: ["shadow_stock.is.null,shadow_stock.lte.0"] },
+        { table: "restaurant_inventory", op: "update.eq", args: ["restaurant_id", "rest-1"] },
       ]),
     );
     const audit = db.calls.find((c) => c.table === "system_audit_log");
@@ -208,19 +136,10 @@ describe("softDeleteItem — the zero-stock rule and the record", () => {
 
   it("stock that lands between the read and the write refuses the removal", async () => {
     const db = fakeDb({
-      rows: [
-        {
-          id: "inv-1",
-          wine_name: "Opus One 2018",
-          stock_live: 0,
-          shadow_stock: 0,
-        },
-      ],
+      rows: [{ id: "inv-1", wine_name: "Opus One 2018", stock_live: 0, shadow_stock: 0 }],
       gone: [],
     });
-    await expect(
-      service(db).softDeleteItem("rest-1", "inv-1", "u-1"),
-    ).rejects.toMatchObject({
+    await expect(service(db).softDeleteItem("rest-1", "inv-1", "u-1")).rejects.toMatchObject({
       status: 409,
       message: expect.stringContaining("Nothing was removed."),
     });
@@ -229,18 +148,9 @@ describe("softDeleteItem — the zero-stock rule and the record", () => {
 
   it("a failed audit write does not undo the removal, and says so", async () => {
     const db = fakeDb({
-      rows: [
-        {
-          id: "inv-1",
-          wine_name: "Opus One 2018",
-          stock_live: 0,
-          shadow_stock: 0,
-        },
-      ],
+      rows: [{ id: "inv-1", wine_name: "Opus One 2018", stock_live: 0, shadow_stock: 0 }],
       auditError: { message: "boom" },
     });
-    await expect(
-      service(db).softDeleteItem("rest-1", "inv-1", "u-1"),
-    ).resolves.toEqual({ audited: false });
+    await expect(service(db).softDeleteItem("rest-1", "inv-1", "u-1")).resolves.toEqual({ audited: false });
   });
 });

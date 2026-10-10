@@ -442,8 +442,7 @@ export class StockCountRecordDto {
 export class ReconcileResultDto {
   @ApiProperty({
     type: StockCountRecordDto,
-    description:
-      "Always present — the count is recorded whether or not it changed anything.",
+    description: "Always present — the count is recorded whether or not it changed anything.",
   })
   count: StockCountRecordDto;
 

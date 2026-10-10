@@ -676,12 +676,7 @@ describe("DeliveryService", () => {
     // difference and let rule A agree with the vendor silent.
     it("refuses the house accepting its OWN position, and writes nothing", async () => {
       db.answers.delivery_proposals = {
-        data: {
-          id: "prop-1",
-          delivery_id: DEL,
-          status: "open",
-          side: "restaurant",
-        },
+        data: { id: "prop-1", delivery_id: DEL, status: "open", side: "restaurant" },
         error: null,
       };
       db.answers.deliveries = { data: deliveryRow(), error: null };
@@ -696,12 +691,7 @@ describe("DeliveryService", () => {
 
     it("accepts the vendor's position for the house", async () => {
       db.answers.delivery_proposals = {
-        data: {
-          id: "prop-1",
-          delivery_id: DEL,
-          status: "open",
-          side: "vendor",
-        },
+        data: { id: "prop-1", delivery_id: DEL, status: "open", side: "vendor" },
         error: null,
       };
       db.updateAnswers.delivery_proposals = {
@@ -741,19 +731,11 @@ describe("DeliveryService", () => {
   describe("counter — an accepted position is settled", () => {
     it("refuses to answer an accepted position, and writes nothing", async () => {
       db.answers.delivery_proposals = {
-        data: {
-          id: "prop-1",
-          delivery_id: DEL,
-          status: "accepted",
-          side: "vendor",
-        },
+        data: { id: "prop-1", delivery_id: DEL, status: "accepted", side: "vendor" },
         error: null,
       };
       db.answers.deliveries = {
-        data: deliveryRow({
-          state: "AGREED",
-          agreed_at: "2026-08-15T09:00:00Z",
-        }),
+        data: deliveryRow({ state: "AGREED", agreed_at: "2026-08-15T09:00:00Z" }),
         error: null,
       };
       const res = await service.counter(REST, "prop-1", "u1", {
@@ -1003,10 +985,7 @@ describe("DeliveryService", () => {
     // sim F-667: two broken bottles found while unpacking, filed after Agree.
     it("refuses while a position filed after Agree is still open, and posts no cost", async () => {
       db.answers.deliveries = {
-        data: deliveryRow({
-          state: "AGREED",
-          agreed_at: "2026-08-15T09:00:00Z",
-        }),
+        data: deliveryRow({ state: "AGREED", agreed_at: "2026-08-15T09:00:00Z" }),
         error: null,
       };
       db.answers.delivery_proposals = {
@@ -1020,19 +999,14 @@ describe("DeliveryService", () => {
         expect(res.error).toMatch(/1 position\(s\) .* still open/);
       }
       expect(
-        db.writes.filter(
-          (w) => w.table === "deliveries" && w.verb === "update",
-        ),
+        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
       ).toEqual([]);
       expect(db.rpcCalls).toEqual([]);
     });
 
     it("refuses rather than verifying when the positions could not be read", async () => {
       db.answers.deliveries = {
-        data: deliveryRow({
-          state: "AGREED",
-          agreed_at: "2026-08-15T09:00:00Z",
-        }),
+        data: deliveryRow({ state: "AGREED", agreed_at: "2026-08-15T09:00:00Z" }),
         error: null,
       };
       db.answers.delivery_proposals = {

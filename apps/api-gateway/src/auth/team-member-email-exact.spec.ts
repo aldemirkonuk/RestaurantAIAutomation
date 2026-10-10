@@ -86,7 +86,9 @@ describe("ensureTeamMemberForInvite matches the exact address", () => {
   });
 
   it("still finds the same address written in a different case", async () => {
-    const { svc, db } = makeService([{ ...ana(), email: "Ana.X@Tuzlu.com" }]);
+    const { svc, db } = makeService([
+      { ...ana(), email: "Ana.X@Tuzlu.com" },
+    ]);
     await svc.ensureTeamMemberForInvite({
       restaurantId: HOUSE,
       inviteId: "invite-new",

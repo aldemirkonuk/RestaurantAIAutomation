@@ -52,25 +52,15 @@ function fakeClient() {
         update: () => chain,
         order: () => chain,
         limit: () => chain,
-        eq: (col: string, val: unknown) => (
-          filters.push((r) => r[col] === val),
-          chain
-        ),
-        is: (col: string, val: unknown) => (
-          filters.push((r) => (r[col] ?? null) === val),
-          chain
-        ),
-        in: (col: string, vals: unknown[]) => (
-          filters.push((r) => vals.includes(r[col])),
-          chain
-        ),
+        eq: (col: string, val: unknown) => (filters.push((r) => r[col] === val), chain),
+        is: (col: string, val: unknown) => (filters.push((r) => (r[col] ?? null) === val), chain),
+        in: (col: string, vals: unknown[]) => (filters.push((r) => vals.includes(r[col])), chain),
         maybeSingle: () =>
           Promise.resolve({
             data: table === "restaurant_inventory" ? { id: ITEM_OF_A } : null,
             error: null,
           }),
-        single: () =>
-          Promise.resolve({ data: null, error: { message: "stubbed read" } }),
+        single: () => Promise.resolve({ data: null, error: { message: "stubbed read" } }),
         then: (res: any, rej: any) =>
           Promise.resolve({ data: rows(), error: null }).then(res, rej),
       };
@@ -113,12 +103,7 @@ describe("stock writes refuse another house's storage location (F-435)", () => {
       it(`B's zone as ${side} is a 404 and the RPC is never called`, async () => {
         const t = inventoryService();
         expect(
-          await statusOf(
-            t.svc.transferStock(HOUSE_A, ITEM_OF_A, {
-              [side]: ZONE_OF_B,
-              qty: 1,
-            }),
-          ),
+          await statusOf(t.svc.transferStock(HOUSE_A, ITEM_OF_A, { [side]: ZONE_OF_B, qty: 1 })),
         ).toBe(404);
         expect(t.rpc).not.toHaveBeenCalled();
       });
@@ -127,42 +112,23 @@ describe("stock writes refuse another house's storage location (F-435)", () => {
     it("control: A's own zones (and unassigned) reach the RPC", async () => {
       const t = inventoryService();
       await t.svc
-        .transferStock(HOUSE_A, ITEM_OF_A, {
-          fromLocationId: null,
-          toLocationId: ZONE_OF_A,
-          qty: 1,
-        })
+        .transferStock(HOUSE_A, ITEM_OF_A, { fromLocationId: null, toLocationId: ZONE_OF_A, qty: 1 })
         .catch(() => undefined);
-      expect(t.rpc).toHaveBeenCalledWith(
-        "transfer_stock",
-        expect.objectContaining({ p_to_location_id: ZONE_OF_A }),
-      );
+      expect(t.rpc).toHaveBeenCalledWith("transfer_stock", expect.objectContaining({ p_to_location_id: ZONE_OF_A }));
     });
   });
 
   describe("pour (record_glass_pour)", () => {
     it("B's zone is a 404 and the RPC is never called", async () => {
       const t = inventoryService();
-      expect(
-        await statusOf(
-          t.svc.recordPour(HOUSE_A, ITEM_OF_A, {
-            pours: 1,
-            locationId: ZONE_OF_B,
-          }),
-        ),
-      ).toBe(404);
+      expect(await statusOf(t.svc.recordPour(HOUSE_A, ITEM_OF_A, { pours: 1, locationId: ZONE_OF_B }))).toBe(404);
       expect(t.rpc).not.toHaveBeenCalled();
     });
 
     it("control: A's own zone reaches the RPC", async () => {
       const t = inventoryService();
-      await t.svc
-        .recordPour(HOUSE_A, ITEM_OF_A, { pours: 1, locationId: ZONE_OF_A })
-        .catch(() => undefined);
-      expect(t.rpc).toHaveBeenCalledWith(
-        "record_glass_pour",
-        expect.objectContaining({ p_location_id: ZONE_OF_A }),
-      );
+      await t.svc.recordPour(HOUSE_A, ITEM_OF_A, { pours: 1, locationId: ZONE_OF_A }).catch(() => undefined);
+      expect(t.rpc).toHaveBeenCalledWith("record_glass_pour", expect.objectContaining({ p_location_id: ZONE_OF_A }));
     });
   });
 
@@ -171,11 +137,7 @@ describe("stock writes refuse another house's storage location (F-435)", () => {
       const t = inventoryService();
       expect(
         await statusOf(
-          t.svc.createInventoryItem(HOUSE_A, {
-            wineId: "w1",
-            stockLive: 3,
-            storageLocationId: ZONE_OF_B,
-          } as any),
+          t.svc.createInventoryItem(HOUSE_A, { wineId: "w1", stockLive: 3, storageLocationId: ZONE_OF_B } as any),
         ),
       ).toBe(404);
       expect(t.touched).toEqual(["storage_locations"]);
@@ -185,11 +147,7 @@ describe("stock writes refuse another house's storage location (F-435)", () => {
     it("control: A's own zone gets past the gate", async () => {
       const t = inventoryService();
       await t.svc
-        .createInventoryItem(HOUSE_A, {
-          wineId: "w1",
-          stockLive: 3,
-          storageLocationId: ZONE_OF_A,
-        } as any)
+        .createInventoryItem(HOUSE_A, { wineId: "w1", stockLive: 3, storageLocationId: ZONE_OF_A } as any)
         .catch(() => undefined);
       expect(t.touched).toContain("restaurant_inventory");
     });
@@ -201,10 +159,7 @@ describe("stock writes refuse another house's storage location (F-435)", () => {
       const out: any = await t.svc.bulkCreateInventoryItems(HOUSE_A, {
         items: [{ wineId: "w1", stockLive: 2, storageLocationId: ZONE_OF_B }],
       } as any);
-      expect(out.results[0]).toMatchObject({
-        status: "failed",
-        error: "No storage location of this house has that id.",
-      });
+      expect(out.results[0]).toMatchObject({ status: "failed", error: "No storage location of this house has that id." });
       expect(t.touched).toEqual(["storage_locations"]);
       expect(t.rpc).not.toHaveBeenCalled();
     });
@@ -214,50 +169,27 @@ describe("stock writes refuse another house's storage location (F-435)", () => {
       const out: any = await t.svc.bulkCreateInventoryItems(HOUSE_A, {
         items: [{ wineId: "w1", stockLive: 2, storageLocationId: ZONE_OF_A }],
       } as any);
-      expect(out.results[0].error).not.toBe(
-        "No storage location of this house has that id.",
-      );
-      expect(
-        t.touched.filter((x) => x !== "storage_locations").length,
-      ).toBeGreaterThan(0);
+      expect(out.results[0].error).not.toBe("No storage location of this house has that id.");
+      expect(t.touched.filter((x) => x !== "storage_locations").length).toBeGreaterThan(0);
     });
   });
 
   describe("ledger transaction (apply_stock_movement)", () => {
     const dto = (loc: Record<string, string>) =>
-      ({
-        inventoryId: ITEM_OF_A,
-        quantityChange: 1,
-        transactionType: "adjustment",
-        source: "manual",
-        ...loc,
-      }) as any;
+      ({ inventoryId: ITEM_OF_A, quantityChange: 1, transactionType: "adjustment", source: "manual", ...loc }) as any;
 
     for (const side of ["fromLocationId", "toLocationId"] as const) {
       it(`B's zone as ${side} is a 404 and the RPC is never called`, async () => {
         const t = ledgerService();
-        expect(
-          await statusOf(
-            t.svc.createTransaction(
-              HOUSE_A,
-              "user-a",
-              dto({ [side]: ZONE_OF_B }),
-            ),
-          ),
-        ).toBe(404);
+        expect(await statusOf(t.svc.createTransaction(HOUSE_A, "user-a", dto({ [side]: ZONE_OF_B })))).toBe(404);
         expect(t.rpc).not.toHaveBeenCalled();
       });
     }
 
     it("control: A's own zone reaches the RPC", async () => {
       const t = ledgerService();
-      await t.svc
-        .createTransaction(HOUSE_A, "user-a", dto({ toLocationId: ZONE_OF_A }))
-        .catch(() => undefined);
-      expect(t.rpc).toHaveBeenCalledWith(
-        "apply_stock_movement",
-        expect.objectContaining({ p_location_id: ZONE_OF_A }),
-      );
+      await t.svc.createTransaction(HOUSE_A, "user-a", dto({ toLocationId: ZONE_OF_A })).catch(() => undefined);
+      expect(t.rpc).toHaveBeenCalledWith("apply_stock_movement", expect.objectContaining({ p_location_id: ZONE_OF_A }));
     });
   });
 });
@@ -266,23 +198,13 @@ describe("assertLocationsBelongToRestaurant", () => {
   it("one foreign id among owned ones refuses the whole write", async () => {
     const { client } = fakeClient();
     await expect(
-      assertLocationsBelongToRestaurant(
-        client as any,
-        HOUSE_A,
-        [ZONE_OF_A, ZONE_OF_B],
-        "t",
-      ),
+      assertLocationsBelongToRestaurant(client as any, HOUSE_A, [ZONE_OF_A, ZONE_OF_B], "t"),
     ).rejects.toBeInstanceOf(HttpException);
   });
 
   it("null and undefined mean unassigned and read nothing", async () => {
     const { client, touched } = fakeClient();
-    await assertLocationsBelongToRestaurant(
-      client as any,
-      HOUSE_A,
-      [null, undefined, ""],
-      "t",
-    );
+    await assertLocationsBelongToRestaurant(client as any, HOUSE_A, [null, undefined, ""], "t");
     expect(touched).toEqual([]);
   });
 
@@ -293,21 +215,11 @@ describe("assertLocationsBelongToRestaurant", () => {
           select: () => c,
           eq: () => c,
           in: () => c,
-          then: (res: any) =>
-            res({ data: null, error: { message: "connection reset" } }),
+          then: (res: any) => res({ data: null, error: { message: "connection reset" } }),
         };
         return c;
       },
     };
-    expect(
-      await statusOf(
-        assertLocationsBelongToRestaurant(
-          client as any,
-          HOUSE_A,
-          [ZONE_OF_A],
-          "t",
-        ),
-      ),
-    ).toBe(500);
+    expect(await statusOf(assertLocationsBelongToRestaurant(client as any, HOUSE_A, [ZONE_OF_A], "t"))).toBe(500);
   });
 });

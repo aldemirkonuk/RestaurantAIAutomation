@@ -102,8 +102,7 @@ const LANDLINE: ReadonlySet<string> = new Set([
 /** Is this a value the API will store? Anything else is refused, not coerced. */
 export function isPhoneType(value: unknown): value is PhoneType {
   return (
-    typeof value === "string" &&
-    (PHONE_TYPES as readonly string[]).includes(value)
+    typeof value === "string" && (PHONE_TYPES as readonly string[]).includes(value)
   );
 }
 

@@ -2,13 +2,7 @@ import { IsIn, IsObject, IsOptional, IsUUID, Matches } from "class-validator";
 import { WineExtractItem } from "../wine-extract-item.interface";
 
 /** The optional cadence tag a person may give a menu (ADR 0193, menu versions). */
-export const MENU_CADENCES = [
-  "weekly",
-  "monthly",
-  "quarterly",
-  "yearly",
-  "none",
-] as const;
+export const MENU_CADENCES = ["weekly", "monthly", "quarterly", "yearly", "none"] as const;
 export type MenuCadence = (typeof MENU_CADENCES)[number];
 
 export class ImportMenuDto {

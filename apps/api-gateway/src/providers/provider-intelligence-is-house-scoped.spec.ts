@@ -859,27 +859,17 @@ describe("confirming a learned fact is owners and managers only", () => {
     return { supabase, controller, organizations, verify };
   }
 
-  it.each(["owner", "manager"])(
-    "%s confirms, recorded against them",
-    async (role) => {
-      const { controller, supabase, organizations, verify } = setupAs(role);
+  it.each(["owner", "manager"])("%s confirms, recorded against them", async (role) => {
+    const { controller, supabase, organizations, verify } = setupAs(role);
 
-      await expect(
-        controller.verifyKnowledge(FACT_A, userA),
-      ).resolves.toBeTruthy();
+    await expect(controller.verifyKnowledge(FACT_A, userA)).resolves.toBeTruthy();
 
-      expect(organizations.resolveRestaurantRole).toHaveBeenCalledWith(
-        "user-a",
-        HOUSE_A,
-      );
-      expect(verify).toHaveBeenCalledWith(FACT_A, "user-a", HOUSE_A);
-      const row = supabase.tables.provider_knowledge.find(
-        (r) => r.id === FACT_A,
-      );
-      expect(row?.verified).toBe(true);
-      expect(row?.verified_by).toBe("user-a");
-    },
-  );
+    expect(organizations.resolveRestaurantRole).toHaveBeenCalledWith("user-a", HOUSE_A);
+    expect(verify).toHaveBeenCalledWith(FACT_A, "user-a", HOUSE_A);
+    const row = supabase.tables.provider_knowledge.find((r) => r.id === FACT_A);
+    expect(row?.verified).toBe(true);
+    expect(row?.verified_by).toBe("user-a");
+  });
 
   it.each([["staff"], ["viewer"], [null]])(
     "role %s is refused with 403 and the fact is not changed",
@@ -888,17 +878,13 @@ describe("confirming a learned fact is owners and managers only", () => {
 
       const call = controller.verifyKnowledge(FACT_A, userA);
       await expect(call).rejects.toBeInstanceOf(HttpException);
-      await expect(
-        controller.verifyKnowledge(FACT_A, userA),
-      ).rejects.toMatchObject({
+      await expect(controller.verifyKnowledge(FACT_A, userA)).rejects.toMatchObject({
         status: 403,
       });
 
       expect(verify).not.toHaveBeenCalled();
       expect(supabase.queried).not.toContain("provider_knowledge");
-      const row = supabase.tables.provider_knowledge.find(
-        (r) => r.id === FACT_A,
-      );
+      const row = supabase.tables.provider_knowledge.find((r) => r.id === FACT_A);
       expect(row?.verified).toBe(false);
       expect(row?.verified_by).toBeUndefined();
     },
@@ -928,10 +914,7 @@ describe("confirming a learned fact is owners and managers only", () => {
     await controller.verifyKnowledge(FACT_A, userA);
     const graph = await controller.getKnowledge(PROV_A, undefined, userA);
 
-    expect(graph.pricing[0]).toMatchObject({
-      verified: true,
-      verifiedByName: null,
-    });
+    expect(graph.pricing[0]).toMatchObject({ verified: true, verifiedByName: null });
   });
 
   it("a session that names no person is refused before the role is asked", async () => {

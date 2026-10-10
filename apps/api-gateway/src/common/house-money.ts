@@ -32,8 +32,7 @@ export function houseMoney(
       ? (v / 1000).toFixed(1).replace(".", decimalMark(locale)) + "k"
       : v.toFixed(0)
     : v.toLocaleString(locale, { maximumFractionDigits: 0 });
-  const code =
-    typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  const code = typeof currency === "string" ? currency.trim().toUpperCase() : "";
   if (!/^[A-Z]{3}$/.test(code)) return body;
   let parts: Intl.NumberFormatPart[];
   try {
@@ -51,14 +50,8 @@ export function houseMoney(
   parts.forEach((p, i) => {
     if (numeric.has(p.type)) last = i;
   });
-  const before = parts
-    .slice(0, first)
-    .map((p) => p.value)
-    .join("");
-  const after = parts
-    .slice(last + 1)
-    .map((p) => p.value)
-    .join("");
+  const before = parts.slice(0, first).map((p) => p.value).join("");
+  const after = parts.slice(last + 1).map((p) => p.value).join("");
   return `${before}${body}${after}`;
 }
 
@@ -103,11 +96,7 @@ export async function readHouseMoney(
       .limit(1);
     if (error) return { currency: null, locale: null };
     const row = (Array.isArray(data) ? data[0] : data) as
-      | {
-          currency?: unknown;
-          country?: string | null;
-          timezone?: string | null;
-        }
+      | { currency?: unknown; country?: string | null; timezone?: string | null }
       | null
       | undefined;
     const code = row?.currency;

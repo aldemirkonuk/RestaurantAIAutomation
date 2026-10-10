@@ -107,11 +107,7 @@ export class AdvancedAnalyticsService {
         .eq("restaurant_id", restaurantId),
       // The house's stated currency: its menu prices are in it, and a cost in
       // other money is not set against them (F-343).
-      client
-        .from("restaurants")
-        .select("currency")
-        .eq("id", restaurantId)
-        .maybeSingle(),
+      client.from("restaurants").select("currency").eq("id", restaurantId).maybeSingle(),
     ]);
     if (invRes.status === "fulfilled" && invRes.value.error)
       this.logQueryFailure("restaurant_inventory", invRes.value.error);
@@ -121,9 +117,7 @@ export class AdvancedAnalyticsService {
       this.logQueryFailure("restaurants", houseRes.value.error);
     // Unread or unstated, the house's money is null and a lot is read as before.
     const houseCurrency =
-      houseRes.status === "fulfilled"
-        ? (houseRes.value.data?.currency ?? null)
-        : null;
+      houseRes.status === "fulfilled" ? (houseRes.value.data?.currency ?? null) : null;
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
@@ -150,9 +144,7 @@ export class AdvancedAnalyticsService {
         // no bottle price, and its glass price needs a confirmed pour.
         glassPrice: Number(i.menu_price_glass) || 0,
         bottleMl:
-          Number(i.bottle_size_ml) ||
-          Number(i.master_wine_library?.bottle_size_ml) ||
-          null,
+          Number(i.bottle_size_ml) || Number(i.master_wine_library?.bottle_size_ml) || null,
         winePourMl: confirmedWinePourFrom(i),
         // A margin computed against an unknown cost is unknown. Defaulting the
         // cost to 0 would report the entire menu price as margin.
@@ -358,14 +350,8 @@ export class AdvancedAnalyticsService {
     // its glass price times the glasses a bottle pours at the CONFIRMED pour
     // (F-472). Velocity is bottles a day, so both axes stay per bottle. A wine
     // with neither is left out BY NAME, never dropped without a word.
-    const leftOut: Array<{
-      id: string;
-      name: string;
-      reason: "no_price" | "glass_pour_unconfirmed";
-    }> = [];
-    const priced: Array<
-      (typeof inventory)[number] & { priceBasis: "bottle" | "glass" }
-    > = [];
+    const leftOut: Array<{ id: string; name: string; reason: "no_price" | "glass_pour_unconfirmed" }> = [];
+    const priced: Array<(typeof inventory)[number] & { priceBasis: "bottle" | "glass" }> = [];
     for (const i of inventory) {
       if (i.unitPrice > 0) {
         priced.push({ ...i, priceBasis: "bottle" });
@@ -377,11 +363,7 @@ export class AdvancedAnalyticsService {
       }
       const pourMl = i.winePourMl ?? housePourMl;
       if (pourMl == null || i.bottleMl == null) {
-        leftOut.push({
-          id: i.id,
-          name: i.name,
-          reason: "glass_pour_unconfirmed",
-        });
+        leftOut.push({ id: i.id, name: i.name, reason: "glass_pour_unconfirmed" });
         continue;
       }
       const unitPrice = (i.glassPrice * i.bottleMl) / pourMl;
@@ -875,9 +857,7 @@ export class AdvancedAnalyticsService {
     // record that counted them. With no zone the days are UTC days, and the
     // basis says so.
     const zone = frame.zone;
-    const today = zone
-      ? houseToday(zone)
-      : new Date().toISOString().slice(0, 10);
+    const today = zone ? houseToday(zone) : new Date().toISOString().slice(0, 10);
     const byDay = new Map<string, number>();
     for (const o of delivered as any[]) {
       const at = o.delivered_at || o.created_at || null;

@@ -12,16 +12,10 @@ describe("the house's sales by table and by server are the owner's or a manager'
   it.each([
     ["getTablePerformance", "table-performance/:restaurantId"],
     ["getWaiters", "waiters/:restaurantId"],
-  ] as const)(
-    "guards %s with RolesGuard and ['owner', 'manager']",
-    (name, path) => {
-      const handler = AnalyticsController.prototype[name];
-      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
-        "owner",
-        "manager",
-      ]);
-      expect(Reflect.getMetadata("__guards__", handler)).toContain(RolesGuard);
-      expect(Reflect.getMetadata("path", handler)).toBe(path);
-    },
-  );
+  ] as const)("guards %s with RolesGuard and ['owner', 'manager']", (name, path) => {
+    const handler = AnalyticsController.prototype[name];
+    expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual(["owner", "manager"]);
+    expect(Reflect.getMetadata("__guards__", handler)).toContain(RolesGuard);
+    expect(Reflect.getMetadata("path", handler)).toBe(path);
+  });
 });

@@ -7,10 +7,7 @@ import { ParsedDocument } from "./parsed-document";
  * test can say which rows were — and were not — written.
  */
 
-type Answer = {
-  data: unknown;
-  error: { message: string; code?: string } | null;
-};
+type Answer = { data: unknown; error: { message: string; code?: string } | null };
 type Op = {
   table: string;
   verb: "select" | "insert" | "update";
@@ -103,7 +100,9 @@ function build(opts: {
     {} as never,
     vendorResolution as never,
   );
-  jest.spyOn(service as any, "route").mockResolvedValue(opts.parsed ?? parse());
+  jest
+    .spyOn(service as any, "route")
+    .mockResolvedValue(opts.parsed ?? parse());
   jest
     .spyOn(service as any, "persistOriginalBytes")
     .mockResolvedValue({ path: "p", failure: null });
@@ -139,19 +138,14 @@ const orderRow = (op: Op): Answer | undefined =>
 const freshInsert = (op: Op): Answer | undefined => {
   if (op.table !== "procurement_documents") return undefined;
   if (op.verb === "insert") return { data: { id: "doc-new" }, error: null };
-  if (op.verb === "select" && has(op, "sha256"))
-    return { data: null, error: null };
-  if (op.verb === "select" && has(op, "doc_number"))
-    return { data: [], error: null };
-  if (op.verb === "select")
-    return { data: { notes: null, status: "received" }, error: null };
+  if (op.verb === "select" && has(op, "sha256")) return { data: null, error: null };
+  if (op.verb === "select" && has(op, "doc_number")) return { data: [], error: null };
+  if (op.verb === "select") return { data: { notes: null, status: "received" }, error: null };
   return undefined;
 };
 
 const links = (ops: Op[]) =>
-  ops.filter(
-    (o) => o.table === "procurement_document_links" && o.verb === "insert",
-  );
+  ops.filter((o) => o.table === "procurement_document_links" && o.verb === "insert");
 
 describe("F-745 — a door photo is filed to its order only when the paper fits", () => {
   it("does not file a paper that prints another order's number, and says so", async () => {
@@ -184,11 +178,7 @@ describe("F-745 — a door photo is filed to its order only when the paper fits"
               data: {
                 id: "doc-first",
                 provider_id: "prov-A",
-                extracted: {
-                  docType: "invoice",
-                  poNumber: "PO-0043",
-                  lines: [],
-                },
+                extracted: { docType: "invoice", poNumber: "PO-0043", lines: [] },
               },
               error: null,
             };
@@ -220,11 +210,7 @@ describe("F-745 — a door photo is filed to its order only when the paper fits"
     const note = ops.find(
       (o) => o.table === "procurement_documents" && o.verb === "update",
     )!;
-    expect(note.filters).toContainEqual([
-      "in",
-      "status",
-      ["received", "needs_review"],
-    ]);
+    expect(note.filters).toContainEqual(["in", "status", ["received", "needs_review"]]);
   });
 
   it("does not file a paper whose printed vendor is another vendor on file", async () => {
@@ -251,22 +237,16 @@ describe("F-745 — a door photo is filed to its order only when the paper fits"
       link_method: "manual",
       confidence: 1,
     });
-    expect(r.orderLink).toEqual({
-      orderId: ORDER,
-      linked: true,
-      conflict: null,
-    });
+    expect(r.orderLink).toEqual({ orderId: ORDER, linked: true, conflict: null });
   });
 });
 
 describe("F-746 — a second photo of a paper already on file", () => {
   /** INV-1001 is on file, filed under vendor A, whose tax id is VKN. */
   const onFile = (op: Op): Answer | undefined => {
-    if (op.table === "providers")
-      return { data: [{ id: "prov-A" }], error: null };
+    if (op.table === "providers") return { data: [{ id: "prov-A" }], error: null };
     if (op.table !== "procurement_documents") return undefined;
-    if (op.verb === "select" && has(op, "sha256"))
-      return { data: null, error: null };
+    if (op.verb === "select" && has(op, "sha256")) return { data: null, error: null };
     if (op.verb === "select" && has(op, "doc_number"))
       return {
         data: [
@@ -278,8 +258,7 @@ describe("F-746 — a second photo of a paper already on file", () => {
         ],
         error: null,
       };
-    if (op.verb === "insert")
-      return { data: { id: "doc-second" }, error: null };
+    if (op.verb === "insert") return { data: { id: "doc-second" }, error: null };
     return undefined;
   };
 
@@ -290,9 +269,7 @@ describe("F-746 — a second photo of a paper already on file", () => {
     const r = await service.ingest(photo());
     expect(r).toMatchObject({ documentId: "doc-first", duplicate: true });
     expect(
-      ops.filter(
-        (o) => o.table === "procurement_documents" && o.verb === "insert",
-      ),
+      ops.filter((o) => o.table === "procurement_documents" && o.verb === "insert"),
     ).toHaveLength(0);
     const lookup = ops.find(
       (o) => o.table === "procurement_documents" && has(o, "doc_number"),
@@ -307,10 +284,7 @@ describe("F-746 — a second photo of a paper already on file", () => {
         if (op.table === "procurement_documents" && has(op, "doc_number")) {
           const a = onFile(op)!;
           return {
-            data: (a.data as object[]).map((r) => ({
-              ...r,
-              status: "superseded",
-            })),
+            data: (a.data as object[]).map((r) => ({ ...r, status: "superseded" })),
             error: null,
           };
         }
@@ -345,9 +319,7 @@ describe("F-746 — a second photo of a paper already on file", () => {
     const r = await service.ingest(photo({ orderId: null }));
     expect(r).toMatchObject({ documentId: "doc-new", duplicate: false });
     expect(
-      ops.filter(
-        (o) => o.table === "procurement_documents" && o.verb === "insert",
-      ),
+      ops.filter((o) => o.table === "procurement_documents" && o.verb === "insert"),
     ).toHaveLength(1);
   });
 
@@ -378,11 +350,7 @@ describe("F-747 — the same bytes again", () => {
         orderRow(op) ??
         (op.table === "procurement_documents" && has(op, "sha256")
           ? {
-              data: {
-                id: "doc-first",
-                provider_id: "prov-A",
-                extracted: stored,
-              },
+              data: { id: "doc-first", provider_id: "prov-A", extracted: stored },
               error: null,
             }
           : undefined),
@@ -405,18 +373,11 @@ describe("F-747 — the same bytes again", () => {
     const { service, ops } = build({
       respond: (op) =>
         op.table === "procurement_documents" && has(op, "sha256")
-          ? {
-              data: { id: "doc-first", provider_id: null, extracted: null },
-              error: null,
-            }
+          ? { data: { id: "doc-first", provider_id: null, extracted: null }, error: null }
           : undefined,
     });
     const r = await service.ingest(photo({ orderId: null }));
-    expect(r).toMatchObject({
-      documentId: "doc-first",
-      duplicate: true,
-      parsed: null,
-    });
+    expect(r).toMatchObject({ documentId: "doc-first", duplicate: true, parsed: null });
     expect(r.orderLink).toBeUndefined();
     expect(links(ops)).toHaveLength(0);
   });

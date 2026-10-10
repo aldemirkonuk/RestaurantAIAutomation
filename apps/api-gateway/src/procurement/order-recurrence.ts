@@ -360,17 +360,11 @@ export function nextOccurrenceOn(
     }
     case "monthly": {
       const stepped = addMonths(y, m, 1, 1);
-      return {
-        ok: true,
-        value: isoOf(snapToMonthDay(stepped, day ?? startDay)),
-      };
+      return { ok: true, value: isoOf(snapToMonthDay(stepped, day ?? startDay)) };
     }
     case "quarterly": {
       const stepped = addMonths(y, m, 1, 3);
-      return {
-        ok: true,
-        value: isoOf(snapToMonthDay(stepped, day ?? startDay)),
-      };
+      return { ok: true, value: isoOf(snapToMonthDay(stepped, day ?? startDay)) };
     }
   }
   // Unreachable for a member of the union; reached only by a caller that cast

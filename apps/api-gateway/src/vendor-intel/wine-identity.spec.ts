@@ -21,17 +21,9 @@ describe("normalizeIdentityText", () => {
     );
     expect(normalizeIdentityText("İZMİR")).toBe("izmir");
     expect(
-      hashWineIdentity({
-        producer: "Kavaklıdere",
-        name: "Kalecik Karası",
-        vintage: 2021,
-      }),
+      hashWineIdentity({ producer: "Kavaklıdere", name: "Kalecik Karası", vintage: 2021 }),
     ).toBe(
-      hashWineIdentity({
-        producer: "KAVAKLIDERE",
-        name: "KALECIK KARASI",
-        vintage: 2021,
-      }),
+      hashWineIdentity({ producer: "KAVAKLIDERE", name: "KALECIK KARASI", vintage: 2021 }),
     );
   });
 

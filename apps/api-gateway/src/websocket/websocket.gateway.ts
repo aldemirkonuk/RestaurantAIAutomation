@@ -241,11 +241,8 @@ export class WebsocketGateway
   }
 
   async handleConnection(client: Socket): Promise<void> {
-    const {
-      userId,
-      restaurantId: claimedRestaurantId,
-      sessionVersion,
-    } = this.extractAuthContext(client);
+    const { userId, restaurantId: claimedRestaurantId, sessionVersion } =
+      this.extractAuthContext(client);
     if (!userId) {
       client.emit("error", "Unauthorized");
       client.disconnect(true);
@@ -457,7 +454,9 @@ export class WebsocketGateway
       .eq("is_active", true)
       .limit(1);
     if (error) {
-      throw new Error(`user_restaurant_access read failed: ${error.message}`);
+      throw new Error(
+        `user_restaurant_access read failed: ${error.message}`,
+      );
     }
     return (data?.length ?? 0) > 0;
   }
@@ -485,10 +484,7 @@ export class WebsocketGateway
       .socketsLeave(memberRoom(restaurantId, userId));
 
     for (const metadata of this.clients.values()) {
-      if (
-        metadata.userId === userId &&
-        metadata.restaurantId === restaurantId
-      ) {
+      if (metadata.userId === userId && metadata.restaurantId === restaurantId) {
         metadata.restaurantId = null;
         metadata.subscribedRooms.delete(room);
       }

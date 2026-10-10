@@ -141,10 +141,7 @@ describe("resolveStatedPriceUnit — half a statement is refused, not completed"
 
   it("normalises a plural to the singular the CHECK constraint accepts", () => {
     const r = resolveStatedPriceUnit({ priceUom: "Cases", pricePackSize: 12 });
-    expect(r).toEqual({
-      ok: true,
-      stated: { priceUom: "case", pricePackSize: 12 },
-    });
+    expect(r).toEqual({ ok: true, stated: { priceUom: "case", pricePackSize: 12 } });
   });
 
   it("refuses a bottle priced per twelve — that is a case price with the wrong word", () => {
@@ -166,33 +163,24 @@ describe("resolveStatedPriceUnit — half a statement is refused, not completed"
     // item and they are not related by division. A schema that forced the two
     // units to agree could not record ordinary trade.
     const r = resolveStatedPriceUnit({ priceUom: "bottle", pricePackSize: 1 });
-    expect(r).toEqual({
-      ok: true,
-      stated: { priceUom: "bottle", pricePackSize: 1 },
-    });
+    expect(r).toEqual({ ok: true, stated: { priceUom: "bottle", pricePackSize: 1 } });
   });
 });
 
 describe("readStatedPriceUnit — a row states both halves or it states nothing", () => {
   it("reads the pair off a row", () => {
-    expect(
-      readStatedPriceUnit({ price_uom: "case", price_pack_size: 12 }),
-    ).toEqual({
+    expect(readStatedPriceUnit({ price_uom: "case", price_pack_size: 12 })).toEqual({
       priceUom: "case",
       pricePackSize: 12,
     });
   });
 
   it("reads a NULL pair as unstated", () => {
-    expect(
-      readStatedPriceUnit({ price_uom: null, price_pack_size: null }),
-    ).toBeNull();
+    expect(readStatedPriceUnit({ price_uom: null, price_pack_size: null })).toBeNull();
   });
 
   it("reads a half-written row as UNSTATED, never as half a claim", () => {
-    expect(
-      readStatedPriceUnit({ price_uom: "case", price_pack_size: null }),
-    ).toBeNull();
+    expect(readStatedPriceUnit({ price_uom: "case", price_pack_size: null })).toBeNull();
   });
 
   it("reads a missing row as unstated", () => {
@@ -466,9 +454,9 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
       finalPrice: 120,
       currency: "USD",
     };
-    expect(
-      describeConfirmedOrderTerms({ ...input, statedPriceUnit: null }),
-    ).toBe(preFixSentence(input));
+    expect(describeConfirmedOrderTerms({ ...input, statedPriceUnit: null })).toBe(
+      preFixSentence(input),
+    );
     expect(describeConfirmedOrderTerms(input)).toBe(preFixSentence(input));
   });
 
@@ -512,9 +500,7 @@ describe("describeAgreedPrice — the phrase the page and the vendor both read",
   });
 
   it("shows a bare figure when no unit is stated, rather than inventing one", () => {
-    expect(
-      describeAgreedPrice({ price: 35, stated: null, currency: "USD" }),
-    ).toBe("$35.00");
+    expect(describeAgreedPrice({ price: 35, stated: null, currency: "USD" })).toBe("$35.00");
   });
 
   it("is null when there is no price at all", () => {
@@ -574,7 +560,8 @@ function makeDb() {
     from(table: string) {
       let op: "select" | "insert" | "update" | "delete" = "select";
       const settle = (shape: "one" | "many") => {
-        if (table === "providers") return { data: null, count: 1, error: null };
+        if (table === "providers")
+          return { data: null, count: 1, error: null };
         if (table === "restaurant_inventory")
           return { data: INVENTORY_ROW, error: null };
         if (table === "procurement_orders") {
@@ -597,8 +584,7 @@ function makeDb() {
         limit: () => q,
         insert(payload: Row) {
           op = "insert";
-          if (table === "procurement_order_items")
-            calls.lineInserts.push(payload);
+          if (table === "procurement_order_items") calls.lineInserts.push(payload);
           if (table === "procurement_orders") calls.orderInserts.push(payload);
           return q;
         },
@@ -660,9 +646,7 @@ describe("createOrder — the pair reaches the row, or the order is refused", ()
     // `check_order_capture_contract.py` reads payload keys without executing
     // them, and a conditional spread is a key set it cannot read.
     expect(Object.prototype.hasOwnProperty.call(line, "price_uom")).toBe(true);
-    expect(Object.prototype.hasOwnProperty.call(line, "price_pack_size")).toBe(
-      true,
-    );
+    expect(Object.prototype.hasOwnProperty.call(line, "price_pack_size")).toBe(true);
   });
 
   it("writes BOTH as null when no unit is stated — never a defaulted 'bottle'", async () => {
@@ -778,12 +762,8 @@ describe("the header's price unit is folded from the lines", () => {
   });
 
   it("a half-written pair is UNSTATED, never half a claim", () => {
-    expect(
-      foldOrderPriceUnit([{ price_uom: "case", price_pack_size: null }]),
-    ).toBeNull();
-    expect(
-      foldOrderPriceUnit([{ price_uom: null, price_pack_size: 12 }]),
-    ).toBeNull();
+    expect(foldOrderPriceUnit([{ price_uom: "case", price_pack_size: null }])).toBeNull();
+    expect(foldOrderPriceUnit([{ price_uom: null, price_pack_size: 12 }])).toBeNull();
   });
 
   /*
@@ -864,9 +844,7 @@ describe("every working is said in the price's own money (F-341)", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
     expect(r.working).toContain("× €420.00");
-    expect(r.working).toContain(
-      "Goods €2100.00, less allowance €100.00, plus deposit €30.00",
-    );
+    expect(r.working).toContain("Goods €2100.00, less allowance €100.00, plus deposit €30.00");
     expect(r.working).not.toContain("$");
   });
 
@@ -899,11 +877,7 @@ describe("every working is said in the price's own money (F-341)", () => {
 
   it("states the letter's price in the agreement's money, bare when unknown", () => {
     expect(
-      describeAgreedPrice({
-        price: 420,
-        stated: fiveCases.stated,
-        currency: "EUR",
-      }),
+      describeAgreedPrice({ price: 420, stated: fiveCases.stated, currency: "EUR" }),
     ).toBe("€420.00 per case (12 bottles)");
     expect(describeAgreedPrice({ price: 35, stated: null })).toBe("35.00");
     expect(
@@ -923,15 +897,9 @@ describe("every working is said in the price's own money (F-341)", () => {
 
 describe("moneyIn in the house's formats (F-889)", () => {
   it("[REVERT-FAILS] groups and marks a figure the house's way when its locale is given", () => {
-    expect(moneyIn(30000, "TRY", { digits: 2, locale: "tr-TR" })).toBe(
-      "₺30.000,00",
-    );
-    expect(moneyIn(2100, "USD", { digits: 2, locale: "en-US" })).toBe(
-      "$2,100.00",
-    );
-    expect(moneyIn(1240.5, null, { unrecorded: "bare", locale: "tr-TR" })).toBe(
-      "1.240,50",
-    );
+    expect(moneyIn(30000, "TRY", { digits: 2, locale: "tr-TR" })).toBe("₺30.000,00");
+    expect(moneyIn(2100, "USD", { digits: 2, locale: "en-US" })).toBe("$2,100.00");
+    expect(moneyIn(1240.5, null, { unrecorded: "bare", locale: "tr-TR" })).toBe("1.240,50");
   });
 
   it("keeps the old ungrouped shape when no locale is given, so no recorded sentence moves", () => {

@@ -182,14 +182,7 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
   it("turning it back on is its own audit row, so the trail keeps who turned it off", async () => {
     const { db, calls } = recordingDb();
     const svc = new RecommendationActionsService(db);
-    await svc.setTypeEnabled(
-      "r-1",
-      TYPE,
-      false,
-      "u-first",
-      "disagree",
-      "owner",
-    );
+    await svc.setTypeEnabled("r-1", TYPE, false, "u-first", "disagree", "owner");
     await svc.setTypeEnabled("r-1", TYPE, true, "u-second", null, "manager");
     const rows = calls.filter((c) => c.table === "system_audit_log");
     expect(rows.map((r) => [r.payload.action, r.payload.actor_id])).toEqual([
@@ -235,27 +228,13 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
       svc.setTypeEnabled("r-1", TYPE, false, "u-actor", null, "owner"),
     ).rejects.toThrow(/needs a reason/);
     await expect(
-      svc.setTypeEnabled(
-        "r-1",
-        TYPE,
-        false,
-        "u-actor",
-        "because I said so",
-        "owner",
-      ),
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "because I said so", "owner"),
     ).rejects.toThrow(/needs a reason/);
     // Round 3: neither former label turns a whole type off — "Already
     // handled" is done and "Not now" is one person's snooze, and a type is
     // neither.
     await expect(
-      svc.setTypeEnabled(
-        "r-1",
-        TYPE,
-        false,
-        "u-actor",
-        "already_handled",
-        "owner",
-      ),
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "already_handled", "owner"),
     ).rejects.toThrow(/needs a reason/);
     await expect(
       svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "not_now", "owner"),
@@ -272,6 +251,7 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
     expect(calls).toEqual([]);
   });
 });
+
 
 /**
  * F-385: the house's dispositions are read WHOLE. An unranged select stopped
@@ -322,8 +302,7 @@ describe("RecommendationActionsService.readDispositions", () => {
       getClient: () => ({
         from: () => {
           const b: any = {};
-          for (const m of ["select", "eq", "order", "gt", "limit"])
-            b[m] = () => b;
+          for (const m of ["select", "eq", "order", "gt", "limit"]) b[m] = () => b;
           b.then = (resolve: any, reject: any) =>
             Promise.resolve({ data: null, error: { message: "timeout" } }).then(
               resolve,
@@ -333,9 +312,7 @@ describe("RecommendationActionsService.readDispositions", () => {
         },
       }),
     } as any;
-    const out = await new RecommendationActionsService(db).readDispositions(
-      "r-1",
-    );
+    const out = await new RecommendationActionsService(db).readDispositions("r-1");
     expect(out.readable).toBe(false);
     expect(out.map.size).toBe(0);
   });

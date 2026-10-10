@@ -67,9 +67,7 @@ const isCurrency = isIso4217;
 
 export type VendorCurrencyRefusal = { ok: false; because: string };
 export type VendorCurrencyAccepted = { ok: true; code: string };
-export type VendorCurrencyInput =
-  | VendorCurrencyAccepted
-  | VendorCurrencyRefusal;
+export type VendorCurrencyInput = VendorCurrencyAccepted | VendorCurrencyRefusal;
 
 /**
  * What a person typed, accepted or refused in a sentence.
@@ -310,7 +308,9 @@ function coverageBase(args: { stated: number; total: number }): string {
   // answer is "none of them" is the absence-reported-as-health fault with a
   // heading on it: a reader cannot tell it from a panel that failed to load.
   if (total === 0)
-    return "No vendors yet. Once one is in the book, the currency they invoice in can be noted on it.";
+    return (
+      "No vendors yet. Once one is in the book, the currency they invoice in can be noted on it."
+    );
   if (total === 1)
     return stated === 1
       ? "Your one vendor has a usual currency on file. Orders to them start in it, and it can be changed on the order."

@@ -2090,28 +2090,26 @@ export class PosHubService {
       reason: string,
       key: string,
     ) =>
-      call(() =>
-        db.rpc("apply_stock_movement", {
-          p_inventory_id: inventoryId,
-          p_stock_state: "live",
-          p_delta: delta,
-          p_transaction_type: delta > 0 ? "return" : "sale",
-          p_source: "pos",
-          p_reason: reason,
-          p_idempotency_key: key,
-          // ADR 0141 — the house this check belongs to. `it.inventory_id`
-          // comes from a `pos_item_mappings` row read for this restaurant;
-          // the row belonging here does not make the item it names belong
-          // here, and a mis-seeded mapping used to move another house's
-          // shelf on every sale.
-          p_restaurant_id: restaurantId,
-          // ADR 0281: a sale and its void are both dated by the closed_at
-          // their check carries. A void lands on the sale's day only when
-          // the till re-sends the sale's closed_at on it; a till that
-          // stamps the void with its own time dates the return then.
-          p_occurred_at: when.at,
-        }),
-      );
+      call(() => db.rpc("apply_stock_movement", {
+        p_inventory_id: inventoryId,
+        p_stock_state: "live",
+        p_delta: delta,
+        p_transaction_type: delta > 0 ? "return" : "sale",
+        p_source: "pos",
+        p_reason: reason,
+        p_idempotency_key: key,
+        // ADR 0141 — the house this check belongs to. `it.inventory_id`
+        // comes from a `pos_item_mappings` row read for this restaurant;
+        // the row belonging here does not make the item it names belong
+        // here, and a mis-seeded mapping used to move another house's
+        // shelf on every sale.
+        p_restaurant_id: restaurantId,
+        // ADR 0281: a sale and its void are both dated by the closed_at
+        // their check carries. A void lands on the sale's day only when
+        // the till re-sends the sale's closed_at on it; a till that
+        // stamps the void with its own time dates the return then.
+        p_occurred_at: when.at,
+      }));
     const pour = (
       inventoryId: string,
       pours: number,
@@ -2119,19 +2117,17 @@ export class PosHubService {
       reason: string,
       key: string,
     ) =>
-      call(() =>
-        db.rpc("record_glass_pour", {
-          p_inventory_id: inventoryId,
-          p_pours: pours,
-          p_pour_ml: pourMl,
-          p_location_id: null,
-          p_source: "pos",
-          p_reason: reason,
-          p_idempotency_key: key,
-          // ADR 0281: dated by the check, not by its arrival.
-          p_occurred_at: when.at,
-        }),
-      );
+      call(() => db.rpc("record_glass_pour", {
+        p_inventory_id: inventoryId,
+        p_pours: pours,
+        p_pour_ml: pourMl,
+        p_location_id: null,
+        p_source: "pos",
+        p_reason: reason,
+        p_idempotency_key: key,
+        // ADR 0281: dated by the check, not by its arrival.
+        p_occurred_at: when.at,
+      }));
     const fail = (name: string, message: string, lines: number) => {
       this.logger.warn(
         `Stock effect failed for ${name} on check ${check.externalCheckId}: ${message}`,

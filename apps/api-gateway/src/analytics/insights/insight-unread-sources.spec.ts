@@ -61,9 +61,8 @@ const READS = Object.keys(BUNDLE_READ_WORDS) as Array<
 function clientFor(answers: Partial<Record<string, Answer>>) {
   return {
     from(table: string) {
-      const a: Answer = answers[table] ?? {
-        rows: table === "restaurants" ? HOUSE_ROW : [],
-      };
+      const a: Answer =
+        answers[table] ?? { rows: table === "restaurants" ? HOUSE_ROW : [] };
       let gt: string | null = null;
       let limit = Number.POSITIVE_INFINITY;
       let counted = false;
@@ -601,13 +600,7 @@ describe("the goal card keeps the goals desk's pace", () => {
   it("a 'this month' goal set on the 20th is paced from the 1st, through the 31st", async () => {
     jest.useFakeTimers({
       now: new Date("2026-10-25T12:00:00Z"),
-      doNotFake: [
-        "nextTick",
-        "setImmediate",
-        "setTimeout",
-        "setInterval",
-        "queueMicrotask",
-      ],
+      doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
     });
     try {
       const xs = await cards({
@@ -784,9 +777,7 @@ function generatorFor(opts: {
   house?: { timezone: string | null; country: string | null };
 }) {
   const client = makeClient({
-    restaurants: [
-      opts.house ?? { timezone: ZONE, country: "US", currency: "USD" },
-    ],
+    restaurants: [opts.house ?? { timezone: ZONE, country: "US", currency: "USD" }],
     pos_checks: opts.checks,
     wine_consumption_log: [],
     procurement_orders: [],

@@ -352,7 +352,7 @@ export class InventoryLedgerController {
   @ApiOperation({
     summary: "Reconcile inventory with physical count",
     description:
-      'ADR 0078: the count is recorded whether or not it changed anything. A count that MATCHES stock returns 200 with `transaction: null` — it used to return 400 ("No adjustment needed - counts match"), so a manager who counted a shelf and found it correct got an error and the correct outcome left no record anywhere.',
+      "ADR 0078: the count is recorded whether or not it changed anything. A count that MATCHES stock returns 200 with `transaction: null` — it used to return 400 (\"No adjustment needed - counts match\"), so a manager who counted a shelf and found it correct got an error and the correct outcome left no record anywhere.",
   })
   @ApiParam({ name: "inventoryId", description: "Inventory item ID" })
   @ApiResponse({

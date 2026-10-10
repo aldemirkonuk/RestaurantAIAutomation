@@ -179,9 +179,7 @@ function heldLineRows() {
 // ---------------------------------------------------------------------------
 describe("rule 1: an 810 with no CUR takes the house's own currency", () => {
   it("files a Turkish house's CUR-less 810 as TRY, not as USD", () => {
-    const [doc] = parseX12(invoice810(null), {
-      houseCurrency: "TRY",
-    }).documents;
+    const [doc] = parseX12(invoice810(null), { houseCurrency: "TRY" }).documents;
 
     expect(doc.currency).toBe("TRY");
     expect(doc.currency).not.toBe("USD");
@@ -222,9 +220,8 @@ describe("rule 1: an 810 with no CUR takes the house's own currency", () => {
   });
 
   it("lets the file's own CUR win over the house's currency", () => {
-    const [doc] = parseX12(invoice810("EUR"), {
-      houseCurrency: "TRY",
-    }).documents;
+    const [doc] = parseX12(invoice810("EUR"), { houseCurrency: "TRY" })
+      .documents;
 
     expect(doc.currency).toBe("EUR");
     expect(doc.total).toBe(528);
@@ -232,9 +229,7 @@ describe("rule 1: an 810 with no CUR takes the house's own currency", () => {
   });
 
   it("refuses a file-stated currency that is not an ISO 4217 code, and falls to the house", () => {
-    const [doc] = parseX12(invoice810("TL"), {
-      houseCurrency: "TRY",
-    }).documents;
+    const [doc] = parseX12(invoice810("TL"), { houseCurrency: "TRY" }).documents;
     // `TL` is how a Turkish invoice writes it and it is not a code. The house's
     // own TRY answers instead — never the two-letter string, which a
     // varchar(3) would happily hold as a fourth kind of lira.
@@ -343,9 +338,8 @@ describe("rule 2: the model reads the invoice's money and a disagreement holds i
     expect(seenCodes({ code: null, asPrinted: "$", where: "x" })).toContain(
       "CAD",
     );
-    expect(
-      currencyAgreement("USD", { code: null, asPrinted: "$", where: "x" }),
-    ).toEqual({ kind: "agrees" });
+    expect(currencyAgreement("USD", { code: null, asPrinted: "$", where: "x" }))
+      .toEqual({ kind: "agrees" });
     const refutes = currencyAgreement("TRY", {
       code: null,
       asPrinted: "$",
@@ -355,16 +349,16 @@ describe("rule 2: the model reads the invoice's money and a disagreement holds i
   });
 
   it("prefers the model's own stated code over the glyph", () => {
-    expect(seenCodes({ code: "eur", asPrinted: "$", where: "x" })).toEqual([
-      "EUR",
-    ]);
+    expect(
+      seenCodes({ code: "eur", asPrinted: "$", where: "x" }),
+    ).toEqual(["EUR"]);
   });
 
   it("reads Türk Lirası, TL and ₺ as the same currency", () => {
     for (const printed of ["₺", "TL", "T.L.", "Türk Lirası", "TRY"])
-      expect(seenCodes({ code: null, asPrinted: printed, where: "x" })).toEqual(
-        ["TRY"],
-      );
+      expect(seenCodes({ code: null, asPrinted: printed, where: "x" })).toEqual([
+        "TRY",
+      ]);
   });
 
   it("the sighting can never SET the currency, only hold it", () => {
@@ -574,13 +568,7 @@ describe("rule 3: a deliberate change re-files the money and says what moved", (
       next: "TRY",
       provenance: {
         header: "withheld",
-        headerRestored: [
-          "subtotal",
-          "freight",
-          "deposit total",
-          "tax",
-          "total",
-        ],
+        headerRestored: ["subtotal", "freight", "deposit total", "tax", "total"],
         linesKept: [],
         linesRestored: [1],
         linesWithout: [],
@@ -660,7 +648,8 @@ describe("B3: the order's currency sits between the file's and the house's", () 
       fileField: FIELD,
     });
     expect(filed).toMatchObject({ kind: "house", code: "TRY" });
-    if (filed.kind === "house") expect(filed.from).toContain("names none");
+    if (filed.kind === "house")
+      expect(filed.from).toContain("names none");
   });
 
   it("falls to the HOUSE with a DIFFERENT sentence when there is no order at all", () => {
@@ -686,9 +675,7 @@ describe("B3: the order's currency sits between the file's and the house's", () 
     expect(filed.kind).toBe("none");
     if (filed.kind === "none") {
       expect(filed.because).toContain("states no CUR02");
-      expect(filed.because).toContain(
-        "the order it is matched to names no currency",
-      );
+      expect(filed.because).toContain("the order it is matched to names no currency");
       expect(filed.because).toContain("never stated its own currency");
       expect(filed.because).toContain("no USD default");
     }
@@ -1030,10 +1017,7 @@ describe("a restatement never reverts a hand-corrected line", () => {
     it("is NOT mixed when every line still carries its own money", () => {
       const plan = planRefile({
         row: moneyRow(),
-        lines: [
-          mixedRows()[0],
-          { ...mixedRows()[1], unit_price: 99, line_total: 990 },
-        ],
+        lines: [mixedRows()[0], { ...mixedRows()[1], unit_price: 99, line_total: 990 }],
         extracted: withholdMoney(twoLines(), "held earlier"),
       });
       expect(plan!.source).toBe("current_rows");
@@ -1043,12 +1027,7 @@ describe("a restatement never reverts a hand-corrected line", () => {
       const plan = planRefile({
         row: heldRow(),
         lines: [
-          {
-            ...mixedRows()[0],
-            unit_price: null,
-            line_total: null,
-            deposit: null,
-          },
+          { ...mixedRows()[0], unit_price: null, line_total: null, deposit: null },
           mixedRows()[1],
         ],
         extracted: withholdMoney(twoLines(), "held earlier"),
@@ -1065,16 +1044,7 @@ describe("a restatement never reverts a hand-corrected line", () => {
         row: moneyRow(),
         lines: [
           mixedRows()[0],
-          {
-            line_no: 3,
-            qty: 6,
-            uom: "bottle",
-            pack_size: 1,
-            unit_price: null,
-            line_total: null,
-            allowance: null,
-            deposit: null,
-          },
+          { line_no: 3, qty: 6, uom: "bottle", pack_size: 1, unit_price: null, line_total: null, allowance: null, deposit: null },
         ],
         extracted: withholdMoney(twoLines(), "held earlier"),
       });
@@ -1114,20 +1084,12 @@ describe("a restatement never reverts a hand-corrected line", () => {
       expect(plan!.document.total).toBe(11306.4);
       expect(plan!.provenance).toEqual({
         header: "withheld",
-        headerRestored: [
-          "subtotal",
-          "freight",
-          "deposit total",
-          "tax",
-          "total",
-        ],
+        headerRestored: ["subtotal", "freight", "deposit total", "tax", "total"],
         linesKept: [1],
         linesRestored: [2],
         linesWithout: [],
       });
-      expect(plan!.sourceSaid).toContain(
-        "the header came from the withheld reading",
-      );
+      expect(plan!.sourceSaid).toContain("the header came from the withheld reading");
     });
 
     it("HELD ROW: the tie-out is recomputed over the resulting lines and the restored header", () => {
@@ -1155,12 +1117,7 @@ describe("a restatement never reverts a hand-corrected line", () => {
 
     it("HELD ROW: plans nothing to write when neither reading has money", () => {
       const unpriced = [
-        {
-          ...mixedRows()[0],
-          unit_price: null,
-          line_total: null,
-          deposit: null,
-        },
+        { ...mixedRows()[0], unit_price: null, line_total: null, deposit: null },
         mixedRows()[1],
       ];
       expect(
@@ -1174,22 +1131,13 @@ describe("a restatement never reverts a hand-corrected line", () => {
           tax: null,
           total: null,
           lines: [
-            {
-              ...extracted().lines[0],
-              unitPrice: null,
-              lineTotal: null,
-              deposit: null,
-            },
+            { ...extracted().lines[0], unitPrice: null, lineTotal: null, deposit: null },
           ],
         }),
         "held with nothing to keep",
       );
       expect(
-        planRefile({
-          row: heldRow(),
-          lines: unpriced,
-          extracted: emptySnapshot,
-        }),
+        planRefile({ row: heldRow(), lines: unpriced, extracted: emptySnapshot }),
       ).toBeNull();
     });
 
@@ -1290,8 +1238,7 @@ describe("documentMoneyState / receivingPriceRefusal", () => {
   it("says so rather than falling silent when the reading gives no reason", () => {
     const state = documentMoneyState({ currency: null, extracted: null });
     expect(state.priced).toBe(false);
-    if (!state.priced)
-      expect(state.reason).toContain("not filed under any currency");
+    if (!state.priced) expect(state.reason).toContain("not filed under any currency");
   });
 
   it("a lowercase or symbolic currency is NOT a filed currency", () => {

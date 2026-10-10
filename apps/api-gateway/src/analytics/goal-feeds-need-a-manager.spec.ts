@@ -11,29 +11,13 @@ const proto = AnalyticsController.prototype as any;
 const GOAL_ID = "11111111-2222-3333-4444-555555555555";
 
 const INSIGHTS = [
-  {
-    candidate_key: "overall.revenue.goal_pace",
-    category: "goals",
-    headline: "Revenue goal 40% done",
-  },
-  {
-    candidate_key: "overall.revenue.vs_same_weekday",
-    category: "sales",
-    headline: "Wednesday up",
-  },
+  { candidate_key: "overall.revenue.goal_pace", category: "goals", headline: "Revenue goal 40% done" },
+  { candidate_key: "overall.revenue.vs_same_weekday", category: "sales", headline: "Wednesday up" },
 ];
 
 const RECS = [
-  {
-    ruleKey: `goal_behind_${GOAL_ID}`,
-    category: "goals",
-    observation: 'Goal "Food cost" is behind',
-  },
-  {
-    ruleKey: "low_margin_items",
-    category: "pricing",
-    observation: "Two dishes earn little",
-  },
+  { ruleKey: `goal_behind_${GOAL_ID}`, category: "goals", observation: 'Goal "Food cost" is behind' },
+  { ruleKey: "low_margin_items", category: "pricing", observation: "Two dishes earn little" },
 ];
 
 function insightsSelf() {
@@ -68,41 +52,21 @@ function recsSelf() {
 }
 
 describe("GET /analytics/insights — goal insights only for owners and managers (F-814)", () => {
-  it.each(["owner", "manager", "Manager "])(
-    "%s sees the goal insight",
-    async (role) => {
-      const out = await insightsSelf().getInsights(
-        "r1",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        {
-          userId: "u1",
-          role,
-        },
-      );
-      expect(out.insights.map((i: any) => i.category)).toEqual([
-        "goals",
-        "sales",
-      ]);
-    },
-  );
+  it.each(["owner", "manager", "Manager "])("%s sees the goal insight", async (role) => {
+    const out = await insightsSelf().getInsights("r1", undefined, undefined, undefined, undefined, {
+      userId: "u1",
+      role,
+    });
+    expect(out.insights.map((i: any) => i.category)).toEqual(["goals", "sales"]);
+  });
 
   it.each(["staff", "chef", "admin", null, undefined])(
     "%s gets the feed without the goal insight",
     async (role) => {
-      const out = await insightsSelf().getInsights(
-        "r1",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        {
-          userId: "u1",
-          role,
-        },
-      );
+      const out = await insightsSelf().getInsights("r1", undefined, undefined, undefined, undefined, {
+        userId: "u1",
+        role,
+      });
       expect(out.insights.map((i: any) => i.category)).toEqual(["sales"]);
       expect(out.source).toBe("stored");
     },
@@ -111,15 +75,10 @@ describe("GET /analytics/insights — goal insights only for owners and managers
 
 describe("GET /analytics/recommendations — goal cards only for owners and managers (F-814)", () => {
   it.each(["owner", "manager"])("%s sees the goal card", async (role) => {
-    const out: any = await proto.getRecommendations.call(
-      recsSelf(),
-      "r1",
-      undefined,
-      {
-        userId: "u1",
-        role,
-      },
-    );
+    const out: any = await proto.getRecommendations.call(recsSelf(), "r1", undefined, {
+      userId: "u1",
+      role,
+    });
     expect(out.recommendations.map((r: any) => r.ruleKey)).toEqual([
       `goal_behind_${GOAL_ID}`,
       "low_margin_items",
@@ -129,18 +88,11 @@ describe("GET /analytics/recommendations — goal cards only for owners and mana
   it.each(["staff", "chef", "admin", undefined])(
     "%s gets the feed without the goal card",
     async (role) => {
-      const out: any = await proto.getRecommendations.call(
-        recsSelf(),
-        "r1",
-        undefined,
-        {
-          userId: "u1",
-          role,
-        },
-      );
-      expect(out.recommendations.map((r: any) => r.ruleKey)).toEqual([
-        "low_margin_items",
-      ]);
+      const out: any = await proto.getRecommendations.call(recsSelf(), "r1", undefined, {
+        userId: "u1",
+        role,
+      });
+      expect(out.recommendations.map((r: any) => r.ruleKey)).toEqual(["low_margin_items"]);
       expect(out.rulesEvaluated).toBe(2);
     },
   );
@@ -153,24 +105,9 @@ describe("GET /analytics/recommendations — goal cards only for owners and mana
  * way. An insight put away by category "goals" goes with it.
  */
 const PUT_AWAY = [
-  {
-    ruleKey: `goal_behind_${GOAL_ID}`,
-    category: null,
-    status: "dismissed",
-    observation: 'Goal "Food cost" is behind its linear pace (40% done).',
-  },
-  {
-    ruleKey: "overall.revenue.goal_pace",
-    category: "goals",
-    status: "done",
-    observation: "Revenue goal 40% done",
-  },
-  {
-    ruleKey: "low_margin_items",
-    category: "pricing",
-    status: "snoozed",
-    observation: "Two dishes earn little",
-  },
+  { ruleKey: `goal_behind_${GOAL_ID}`, category: null, status: "dismissed", observation: 'Goal "Food cost" is behind its linear pace (40% done).' },
+  { ruleKey: "overall.revenue.goal_pace", category: "goals", status: "done", observation: "Revenue goal 40% done" },
+  { ruleKey: "low_margin_items", category: "pricing", status: "snoozed", observation: "Two dishes earn little" },
 ];
 
 function actionsSelf() {
@@ -185,40 +122,20 @@ function actionsSelf() {
 }
 
 const READS: Array<[string, (self: any, user: any) => Promise<any>]> = [
-  [
-    "GET recommendations/:rid/actions",
-    (self, user) =>
-      proto.listRecommendationActions.call(self, "r1", "all", user),
-  ],
-  [
-    "GET recommendations/:rid/history",
-    (self, user) => proto.recommendationHistory.call(self, "r1", user),
-  ],
-  [
-    "GET recommendations/:rid/snoozed-for-me",
-    (self, user) => proto.listSnoozedForMe.call(self, "r1", user),
-  ],
+  ["GET recommendations/:rid/actions", (self, user) => proto.listRecommendationActions.call(self, "r1", "all", user)],
+  ["GET recommendations/:rid/history", (self, user) => proto.recommendationHistory.call(self, "r1", user)],
+  ["GET recommendations/:rid/snoozed-for-me", (self, user) => proto.listSnoozedForMe.call(self, "r1", user)],
 ];
 
-describe.each(READS)(
-  "%s — put-away goal cards only for owners and managers (F-814)",
-  (_name, read) => {
-    it.each(["owner", "manager"])("%s sees them", async (role) => {
-      const out = await read(actionsSelf(), { userId: "u1", role });
-      expect(out.items.map((r: any) => r.ruleKey)).toEqual(
-        PUT_AWAY.map((r) => r.ruleKey),
-      );
-    });
+describe.each(READS)("%s — put-away goal cards only for owners and managers (F-814)", (_name, read) => {
+  it.each(["owner", "manager"])("%s sees them", async (role) => {
+    const out = await read(actionsSelf(), { userId: "u1", role });
+    expect(out.items.map((r: any) => r.ruleKey)).toEqual(PUT_AWAY.map((r) => r.ruleKey));
+  });
 
-    it.each(["staff", "chef", "admin", undefined])(
-      "%s gets the rest without them",
-      async (role) => {
-        const out = await read(actionsSelf(), { userId: "u1", role });
-        expect(out.items.map((r: any) => r.ruleKey)).toEqual([
-          "low_margin_items",
-        ]);
-        expect(JSON.stringify(out)).not.toContain("Food cost");
-      },
-    );
-  },
-);
+  it.each(["staff", "chef", "admin", undefined])("%s gets the rest without them", async (role) => {
+    const out = await read(actionsSelf(), { userId: "u1", role });
+    expect(out.items.map((r: any) => r.ruleKey)).toEqual(["low_margin_items"]);
+    expect(JSON.stringify(out)).not.toContain("Food cost");
+  });
+});

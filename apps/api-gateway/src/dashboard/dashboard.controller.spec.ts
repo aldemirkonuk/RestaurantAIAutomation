@@ -260,11 +260,7 @@ describe("DashboardController", () => {
 
       mockDashboardService.getSalesChart.mockResolvedValue(expectedResponse);
 
-      const result = await controller.getSalesChart(
-        restaurantId,
-        undefined,
-        OWNER,
-      );
+      const result = await controller.getSalesChart(restaurantId, undefined, OWNER);
 
       expect(result).toEqual(expectedResponse);
       expect(Array.isArray(result)).toBe(true);
@@ -338,10 +334,7 @@ describe("DashboardController", () => {
         expectedResponse,
       );
 
-      const result = await controller.getInventoryBreakdown(
-        restaurantId,
-        OWNER,
-      );
+      const result = await controller.getInventoryBreakdown(restaurantId, OWNER);
 
       expect(result).toEqual(expectedResponse);
       expect(result).toHaveProperty("byType");
@@ -372,46 +365,30 @@ describe("DashboardController", () => {
   describe("DASH-W22 — staff get counts, not money", () => {
     const restaurantId = "restaurant-123";
     const stats = {
-      totalWines: 3,
-      totalBottles: 40,
-      totalVolumeMl: 30000,
-      totalVolumeOz: 1014,
-      lowStockItems: 1,
-      pendingOrders: 2,
-      todayProcurementSpend: 384,
-      weekProcurementSpend: 900,
-      monthProcurementSpend: 4210,
-      todayDeliveries: 2,
-      monthBottlesIn: 48,
-      timezone: "America/Chicago",
+      totalWines: 3, totalBottles: 40, totalVolumeMl: 30000, totalVolumeOz: 1014,
+      lowStockItems: 1, pendingOrders: 2,
+      todayProcurementSpend: 384, weekProcurementSpend: 900, monthProcurementSpend: 4210,
+      todayDeliveries: 2, monthBottlesIn: 48, timezone: "America/Chicago",
     };
 
-    it.each([["staff"], [null], [undefined]])(
-      "withholds the spend on the stat cards for role %p",
-      async (role) => {
-        mockDashboardService.getStats.mockResolvedValue({ ...stats });
-        const result: any = await controller.getStats(restaurantId, {
-          role,
-        } as any);
-        expect(result.todayProcurementSpend).toBeNull();
-        expect(result.weekProcurementSpend).toBeNull();
-        expect(result.monthProcurementSpend).toBeNull();
-        expect(result.amounts).toBe("withheld");
-        expect(result.todayDeliveries).toBe(2);
-        expect(result.monthBottlesIn).toBe(48);
-        expect(result.totalBottles).toBe(40);
-      },
-    );
+    it.each([["staff"], [null], [undefined]])("withholds the spend on the stat cards for role %p", async (role) => {
+      mockDashboardService.getStats.mockResolvedValue({ ...stats });
+      const result: any = await controller.getStats(restaurantId, { role } as any);
+      expect(result.todayProcurementSpend).toBeNull();
+      expect(result.weekProcurementSpend).toBeNull();
+      expect(result.monthProcurementSpend).toBeNull();
+      expect(result.amounts).toBe("withheld");
+      expect(result.todayDeliveries).toBe(2);
+      expect(result.monthBottlesIn).toBe(48);
+      expect(result.totalBottles).toBe(40);
+    });
 
-    it.each([["Staff"], ["bogus"]])(
-      "withholds the spend for role %p, read as /ask reads it",
-      async (role) => {
-        mockDashboardService.getStats.mockResolvedValue({ ...stats });
-        const result: any = await controller.getStats(restaurantId, { role });
-        expect(result.monthProcurementSpend).toBeNull();
-        expect(result.amounts).toBe("withheld");
-      },
-    );
+    it.each([["Staff"], ["bogus"]])("withholds the spend for role %p, read as /ask reads it", async (role) => {
+      mockDashboardService.getStats.mockResolvedValue({ ...stats });
+      const result: any = await controller.getStats(restaurantId, { role });
+      expect(result.monthProcurementSpend).toBeNull();
+      expect(result.amounts).toBe("withheld");
+    });
 
     // The /ask table is read through policyFor: case-blind, and `admin` reads
     // the owner row, as RolesGuard lets it through every owner gate.
@@ -425,35 +402,13 @@ describe("DashboardController", () => {
     });
 
     it("withholds each day's spend on the month ledger, keeping deliveries and bottles", async () => {
-      (mockDashboardService as any).getCalendarRevenue = jest
-        .fn()
-        .mockResolvedValue({
-          year: 2026,
-          month: 10,
-          restaurant_id: restaurantId,
-          daily: [
-            {
-              date: "2026-10-01",
-              procurement_spend: 384,
-              bottles_sold: 12,
-              events: [],
-              order_count: 1,
-            },
-          ],
-          monthly_procurement_spend: 384,
-          monthly_bottles: 12,
-        });
-      const result: any = await controller.getCalendarRevenue(
-        restaurantId,
-        "2026",
-        "10",
-        { role: "staff" },
-      );
-      expect(result.daily[0]).toMatchObject({
-        procurement_spend: null,
-        bottles_sold: 12,
-        order_count: 1,
+      (mockDashboardService as any).getCalendarRevenue = jest.fn().mockResolvedValue({
+        year: 2026, month: 10, restaurant_id: restaurantId,
+        daily: [{ date: "2026-10-01", procurement_spend: 384, bottles_sold: 12, events: [], order_count: 1 }],
+        monthly_procurement_spend: 384, monthly_bottles: 12,
       });
+      const result: any = await controller.getCalendarRevenue(restaurantId, "2026", "10", { role: "staff" });
+      expect(result.daily[0]).toMatchObject({ procurement_spend: null, bottles_sold: 12, order_count: 1 });
       expect(result.monthly_procurement_spend).toBeNull();
       expect(result.monthly_bottles).toBe(12);
       expect(result.amounts).toBe("withheld");
@@ -461,82 +416,29 @@ describe("DashboardController", () => {
 
     // F-339: the per-currency spend lines are amounts as well — a withheld
     // role is sent neither the day's nor the month's.
-    it.each([["staff"], ["bogus"], [null]])(
-      "withholds the per-currency spend lines for role %p",
-      async (role) => {
-        const byCcy = [
-          { currency: "TRY", amount: 12000 },
-          { currency: "EUR", amount: 400 },
-        ];
-        (mockDashboardService as any).getCalendarRevenue = jest
-          .fn()
-          .mockResolvedValue({
-            year: 2026,
-            month: 10,
-            restaurant_id: restaurantId,
-            daily: [
-              {
-                date: "2026-10-01",
-                procurement_spend: null,
-                procurement_spend_by_currency: byCcy,
-                bottles_sold: 12,
-                events: [],
-                order_count: 2,
-              },
-            ],
-            monthly_procurement_spend: null,
-            monthly_procurement_spend_by_currency: byCcy,
-            monthly_bottles: 12,
-          });
-        const result: any = await controller.getCalendarRevenue(
-          restaurantId,
-          "2026",
-          "10",
-          { role } as any,
-        );
-        expect(result.daily[0]).not.toHaveProperty(
-          "procurement_spend_by_currency",
-        );
-        expect(result).not.toHaveProperty(
-          "monthly_procurement_spend_by_currency",
-        );
-        expect(JSON.stringify(result)).not.toContain("12000");
-        expect(result.daily[0]).toMatchObject({
-          bottles_sold: 12,
-          order_count: 2,
-        });
-        expect(result.amounts).toBe("withheld");
-      },
-    );
+    it.each([["staff"], ["bogus"], [null]])("withholds the per-currency spend lines for role %p", async (role) => {
+      const byCcy = [{ currency: "TRY", amount: 12000 }, { currency: "EUR", amount: 400 }];
+      (mockDashboardService as any).getCalendarRevenue = jest.fn().mockResolvedValue({
+        year: 2026, month: 10, restaurant_id: restaurantId,
+        daily: [{ date: "2026-10-01", procurement_spend: null, procurement_spend_by_currency: byCcy, bottles_sold: 12, events: [], order_count: 2 }],
+        monthly_procurement_spend: null, monthly_procurement_spend_by_currency: byCcy, monthly_bottles: 12,
+      });
+      const result: any = await controller.getCalendarRevenue(restaurantId, "2026", "10", { role } as any);
+      expect(result.daily[0]).not.toHaveProperty("procurement_spend_by_currency");
+      expect(result).not.toHaveProperty("monthly_procurement_spend_by_currency");
+      expect(JSON.stringify(result)).not.toContain("12000");
+      expect(result.daily[0]).toMatchObject({ bottles_sold: 12, order_count: 2 });
+      expect(result.amounts).toBe("withheld");
+    });
 
     it("keeps the per-currency spend lines for an owner", async () => {
-      const byCcy = [
-        { currency: "TRY", amount: 12000 },
-        { currency: "EUR", amount: 400 },
-      ];
-      (mockDashboardService as any).getCalendarRevenue = jest
-        .fn()
-        .mockResolvedValue({
-          year: 2026,
-          month: 10,
-          restaurant_id: restaurantId,
-          daily: [
-            {
-              date: "2026-10-01",
-              procurement_spend: null,
-              procurement_spend_by_currency: byCcy,
-            },
-          ],
-          monthly_procurement_spend: null,
-          monthly_procurement_spend_by_currency: byCcy,
-          monthly_bottles: 0,
-        });
-      const result: any = await controller.getCalendarRevenue(
-        restaurantId,
-        "2026",
-        "10",
-        { role: "owner" },
-      );
+      const byCcy = [{ currency: "TRY", amount: 12000 }, { currency: "EUR", amount: 400 }];
+      (mockDashboardService as any).getCalendarRevenue = jest.fn().mockResolvedValue({
+        year: 2026, month: 10, restaurant_id: restaurantId,
+        daily: [{ date: "2026-10-01", procurement_spend: null, procurement_spend_by_currency: byCcy }],
+        monthly_procurement_spend: null, monthly_procurement_spend_by_currency: byCcy, monthly_bottles: 0,
+      });
+      const result: any = await controller.getCalendarRevenue(restaurantId, "2026", "10", { role: "owner" });
       expect(result.daily[0].procurement_spend_by_currency).toEqual(byCcy);
       expect(result.monthly_procurement_spend_by_currency).toEqual(byCcy);
     });
@@ -545,53 +447,31 @@ describe("DashboardController", () => {
     // role is read as staff, so it is asked for no sales either.
     it("asks the month for sales only for a role that sees them", async () => {
       const read = jest.fn().mockResolvedValue({
-        year: 2026,
-        month: 10,
-        restaurant_id: restaurantId,
-        daily: [],
-        monthly_procurement_spend: 0,
-        monthly_bottles: 0,
+        year: 2026, month: 10, restaurant_id: restaurantId, daily: [],
+        monthly_procurement_spend: 0, monthly_bottles: 0,
       });
       (mockDashboardService as any).getCalendarRevenue = read;
       for (const [user, withSales] of [
-        [{ role: "staff" }, false],
-        [{ role: "bogus" }, false],
-        [{}, false],
-        [undefined, false],
-        [{ role: "owner" }, true],
-        [{ role: "manager" }, true],
-        [{ role: "admin" }, true],
+        [{ role: "staff" }, false], [{ role: "bogus" }, false], [{}, false], [undefined, false],
+        [{ role: "owner" }, true], [{ role: "manager" }, true], [{ role: "admin" }, true],
       ] as const) {
         read.mockClear();
-        await controller.getCalendarRevenue(
-          restaurantId,
-          "2026",
-          "10",
-          user as any,
-        );
-        expect(read).toHaveBeenCalledWith(restaurantId, 2026, 10, {
-          withSales,
-        });
+        await controller.getCalendarRevenue(restaurantId, "2026", "10", user as any);
+        expect(read).toHaveBeenCalledWith(restaurantId, 2026, 10, { withSales });
       }
     });
 
     it("refuses the money-only routes to staff, in words, before reading anything", async () => {
       (mockDashboardService as any).getDashboardSummary = jest.fn();
       const staff = { role: "staff" };
-      await expect(
-        controller.getSalesChart(restaurantId, "month", staff),
-      ).rejects.toThrow("Amounts are for the house's owners and managers.");
-      await expect(
-        controller.getInventoryBreakdown(restaurantId, staff),
-      ).rejects.toThrow(ForbiddenException);
-      await expect(
-        controller.getDashboardSummary(restaurantId, staff),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(controller.getSalesChart(restaurantId, "month", staff)).rejects.toThrow(
+        "Amounts are for the house's owners and managers.",
+      );
+      await expect(controller.getInventoryBreakdown(restaurantId, staff)).rejects.toThrow(ForbiddenException);
+      await expect(controller.getDashboardSummary(restaurantId, staff)).rejects.toThrow(ForbiddenException);
       expect(mockDashboardService.getSalesChart).not.toHaveBeenCalled();
       expect(mockDashboardService.getInventoryBreakdown).not.toHaveBeenCalled();
-      expect(
-        (mockDashboardService as any).getDashboardSummary,
-      ).not.toHaveBeenCalled();
+      expect((mockDashboardService as any).getDashboardSummary).not.toHaveBeenCalled();
     });
   });
 });

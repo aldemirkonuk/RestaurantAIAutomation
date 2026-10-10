@@ -35,10 +35,7 @@ function fakeSupabase(answers: {
         inserts.push({ table, row });
         return b;
       },
-      then: (
-        resolve: (r: Result) => unknown,
-        reject: (e: unknown) => unknown,
-      ) => {
+      then: (resolve: (r: Result) => unknown, reject: (e: unknown) => unknown) => {
         if (table === "providers") result = answers.providers;
         else if (table === "procurement_orders") result = answers.openOrders;
         else if (table === "procurement_conversations")
@@ -82,14 +79,7 @@ function build(insert: Result) {
   jest.spyOn(logger, "log").mockImplementation(() => undefined);
   jest.spyOn(logger, "warn").mockImplementation(() => undefined);
   const error = jest.spyOn(logger, "error").mockImplementation(() => undefined);
-  return {
-    service,
-    db,
-    websocketGateway,
-    promotionExtractor,
-    error,
-    log: logger.log,
-  };
+  return { service, db, websocketGateway, promotionExtractor, error, log: logger.log };
 }
 
 const message = {
@@ -119,9 +109,7 @@ describe("handleInboundEmail: a second copy of one message (F-047)", () => {
       expect.stringContaining("already stored gmail_message_id=gm-1"),
     );
     // Nothing downstream runs for the copy that lost.
-    expect(
-      h.websocketGateway.emitRestaurantNotification,
-    ).not.toHaveBeenCalled();
+    expect(h.websocketGateway.emitRestaurantNotification).not.toHaveBeenCalled();
     expect(h.promotionExtractor.extractAndStore).not.toHaveBeenCalled();
   });
 
@@ -136,8 +124,6 @@ describe("handleInboundEmail: a second copy of one message (F-047)", () => {
     expect(h.error).toHaveBeenCalledWith(
       expect.stringContaining("DB insert failed"),
     );
-    expect(
-      h.websocketGateway.emitRestaurantNotification,
-    ).not.toHaveBeenCalled();
+    expect(h.websocketGateway.emitRestaurantNotification).not.toHaveBeenCalled();
   });
 });

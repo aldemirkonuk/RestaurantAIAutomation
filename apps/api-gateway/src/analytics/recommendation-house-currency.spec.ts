@@ -93,31 +93,18 @@ describe("recommendation cards print the house's own money (F-341)", () => {
  */
 describe("recommendation cards in the house's formats, tagged as money", () => {
   it("a Turkish house reads its own sign and grouping", async () => {
-    const out = await serviceFor("TRY", { country: "TR" }).getRecommendations(
-      "r-1",
-    );
-    const dead = out.recommendations.find(
-      (r) => r.ruleKey === "dead_stock_capital",
-    );
+    const out = await serviceFor("TRY", { country: "TR" }).getRecommendations("r-1");
+    const dead = out.recommendations.find((r) => r.ruleKey === "dead_stock_capital");
     expect(dead?.observation).toBe(
       "₺12.400 is locked in inventory that has not moved in 90 days (top: Old Rioja).",
     );
   });
 
-  it.each([["TRY"], [null]])(
-    "currency %s: the cards that print an amount are tagged",
-    async (code) => {
-      const out = await serviceFor(code).getRecommendations("r-1");
-      const tagged = out.recommendations
-        .filter((r) => r.amounts === true)
-        .map((r) => r.ruleKey);
-      expect(tagged.sort()).toEqual([
-        "dead_stock_capital",
-        "spend_acceleration",
-      ]);
-      // The stored acts of the same cards are cut by rule; the two lists agree.
-      for (const key of tagged)
-        expect(RULES_THAT_PRINT_MONEY.has(key)).toBe(true);
-    },
-  );
+  it.each([["TRY"], [null]])("currency %s: the cards that print an amount are tagged", async (code) => {
+    const out = await serviceFor(code).getRecommendations("r-1");
+    const tagged = out.recommendations.filter((r) => r.amounts === true).map((r) => r.ruleKey);
+    expect(tagged.sort()).toEqual(["dead_stock_capital", "spend_acceleration"]);
+    // The stored acts of the same cards are cut by rule; the two lists agree.
+    for (const key of tagged) expect(RULES_THAT_PRINT_MONEY.has(key)).toBe(true);
+  });
 });

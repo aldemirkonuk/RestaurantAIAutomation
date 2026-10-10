@@ -21,11 +21,7 @@ import { AskAiService } from "./ask-ai.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
 import { ConfirmDto, ProposeDto } from "./dto/ask-ai.dto";
 
-type AuthedUser = {
-  userId: string;
-  restaurantId: string;
-  role?: string | null;
-};
+type AuthedUser = { userId: string; restaurantId: string; role?: string | null };
 
 /**
  * What the retired unsealed confirm answers, word for word, so a client still

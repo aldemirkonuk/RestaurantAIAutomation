@@ -97,9 +97,7 @@ export function goalWindow(
       goalPeriodStart(goal.period, zone));
   // The period's own end, when it closes before the deadline: the pace of a
   // weekly goal is judged against this week, not the months to its deadline.
-  const periodEnd = periodic
-    ? goalPeriodEndAfter(goal.period, periodStart)
-    : null;
+  const periodEnd = periodic ? goalPeriodEndAfter(goal.period, periodStart) : null;
   return { periodStart, periodEnd, deadlineDay };
 }
 
@@ -130,9 +128,7 @@ export function goalSchedule(
 ): GoalSchedule {
   const afterDeadline = shiftHouseDay(win.deadlineDay, 1);
   const lastEnd =
-    win.periodEnd && win.periodEnd < afterDeadline
-      ? win.periodEnd
-      : afterDeadline;
+    win.periodEnd && win.periodEnd < afterDeadline ? win.periodEnd : afterDeadline;
   const startAt = localMidnight(win.periodStart, zone).getTime();
   const endAt = localMidnight(lastEnd, zone).getTime();
   const deadlineEnd = localMidnight(afterDeadline, zone).getTime();

@@ -25,9 +25,7 @@ export const NO_GOAL_READER =
   "A goal had news, but no owner or manager was in this sweep's audience — the goal's figures are not sent to anyone else.";
 
 export function noGoalReader(readers: ProducerAudience | null): boolean {
-  return (
-    readers !== null && readers.ready.length + readers.deferred.length === 0
-  );
+  return readers !== null && readers.ready.length + readers.deferred.length === 0;
 }
 
 export async function goalReaders(

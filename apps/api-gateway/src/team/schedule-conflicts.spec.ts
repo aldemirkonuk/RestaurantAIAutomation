@@ -242,23 +242,9 @@ describe("a shift never lands on approved leave, an inactive person or a clash",
 
   it("refuses a manager's cover and a staff claim over leave, in the reader's own words", async () => {
     // F-506/F-507: a staff claim needs a published week and a shift not yet over.
-    jest.useFakeTimers({
-      doNotFake: [
-        "nextTick",
-        "setImmediate",
-        "setTimeout",
-        "setInterval",
-        "queueMicrotask",
-      ],
-      now: new Date("2026-10-01T12:00:00Z"),
-    });
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"], now: new Date("2026-10-01T12:00:00Z") });
     const db = seed();
-    db.tables.schedules.push({
-      id: "sch-fri",
-      restaurant_id: RID,
-      week_start: "2026-10-05",
-      status: "published",
-    });
+    db.tables.schedules.push({ id: "sch-fri", restaurant_id: RID, week_start: "2026-10-05", status: "published" });
     db.tables.shifts.push({
       id: "open1",
       restaurant_id: RID,

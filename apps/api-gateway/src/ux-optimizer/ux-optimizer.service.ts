@@ -1327,9 +1327,7 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       } catch (stampError) {
         this.logger.warn(
           `experiment ${spec.key}: the window was not stamped on this exposure — ${
-            stampError instanceof Error
-              ? stampError.message
-              : String(stampError)
+            stampError instanceof Error ? stampError.message : String(stampError)
           }`,
         );
       }
@@ -1399,9 +1397,7 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
        * same cases, so the comparison holds and the absolute number does not.
        */
       abandoned: counts.abandoned,
-      since: stored
-        ? await this.firstExperimentEventAt(spec.key, restaurantId)
-        : null,
+      since: stored ? await this.firstExperimentEventAt(spec.key, restaurantId) : null,
       houseScopedOnly: true,
       /**
        * False once the window has closed. The counts above are still this

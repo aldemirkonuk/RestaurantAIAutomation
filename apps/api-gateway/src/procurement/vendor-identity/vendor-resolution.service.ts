@@ -108,7 +108,9 @@ export class VendorResolutionService {
 
   // -------------------------------------------------------------------------
 
-  private async decide(input: ResolveVendorInput): Promise<VendorResolution> {
+  private async decide(
+    input: ResolveVendorInput,
+  ): Promise<VendorResolution> {
     const client = this.db.getClient();
 
     // ---- 0. our own paper never names a provider --------------------------
@@ -195,7 +197,10 @@ export class VendorResolutionService {
     if (rows.length === 1) {
       const p = rows[0];
       const name = p.company_name || p.name || "this vendor";
-      if (input.existingProviderId && input.existingProviderId !== p.id)
+      if (
+        input.existingProviderId &&
+        input.existingProviderId !== p.id
+      )
         return unresolved(
           identity,
           `This document is already filed under a different vendor, but its printed tax identity ${identity.printed} belongs to ${name}. Nothing was changed; the disagreement is recorded.`,
@@ -364,7 +369,8 @@ export class VendorResolutionService {
     restaurantId: string,
     documentId: string,
   ): Promise<
-    { ok: true; value: LatestResolution | null } | { ok: false; error: string }
+    | { ok: true; value: LatestResolution | null }
+    | { ok: false; error: string }
   > {
     const { data, error } = await this.db
       .getClient()
@@ -407,13 +413,7 @@ function unresolved(
   identity: TaxIdentity | null,
   reason: string,
 ): VendorResolution {
-  return {
-    state: "unresolved",
-    providerId: null,
-    source: null,
-    identity,
-    reason,
-  };
+  return { state: "unresolved", providerId: null, source: null, identity, reason };
 }
 
 function unavailable(
@@ -452,9 +452,7 @@ function schemeWord(i: TaxIdentity): string {
 
 /** The document's jurisdiction, where it implies a country. */
 function countryFromJurisdiction(j: string | null | undefined): string | null {
-  const v = String(j ?? "")
-    .trim()
-    .toUpperCase();
+  const v = String(j ?? "").trim().toUpperCase();
   if (v === "TR") return "TR";
   if (v.startsWith("US")) return "US";
   return null;

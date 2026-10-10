@@ -71,9 +71,7 @@ describe("UpdateCalendarEventDto — null clears (F-196)", () => {
       eventTimeEnd: null,
       eventDateEnd: null,
     });
-    expect(
-      await validate(dto, { whitelist: true, forbidNonWhitelisted: true }),
-    ).toEqual([]);
+    expect(await validate(dto, { whitelist: true, forbidNonWhitelisted: true })).toEqual([]);
   });
 });
 
@@ -96,11 +94,7 @@ describe("CalendarService.updateEvent — clearing a field (F-196)", () => {
   it("clears both clock times when an entry is made all day", async () => {
     const { svc, writes } = harness();
     await svc.updateEvent("r-1", "u-1", "ev-1", { allDay: true });
-    expect(writes[0]).toMatchObject({
-      all_day: true,
-      start_time: null,
-      end_time: null,
-    });
+    expect(writes[0]).toMatchObject({ all_day: true, start_time: null, end_time: null });
   });
 });
 

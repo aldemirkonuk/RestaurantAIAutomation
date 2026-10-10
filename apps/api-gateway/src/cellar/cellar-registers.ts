@@ -192,210 +192,51 @@ export function normalizeLabel(text: string): string {
  */
 const REGISTER_WORDS: Record<RegisterId, readonly string[]> = {
   wines: [
-    "wine",
-    "wines",
-    "red",
-    "reds",
-    "white",
-    "whites",
-    "rose",
-    "roses",
-    "sparkling",
-    "champagne",
-    "prosecco",
-    "cava",
-    "cremant",
-    "orange",
-    "fortified",
-    "port",
-    "sherry",
-    "madeira",
-    "riesling",
-    "chardonnay",
-    "sauvignon",
-    "pinot",
-    "cabernet",
-    "merlot",
-    "syrah",
-    "shiraz",
-    "tempranillo",
-    "sangiovese",
-    "nebbiolo",
-    "malbec",
-    "grenache",
-    "zinfandel",
-    "bottles",
-    "glass",
-    "btg",
-    "vin",
-    "vins",
-    "vino",
-    "vini",
-    "sarap",
+    "wine", "wines", "red", "reds", "white", "whites", "rose", "roses",
+    "sparkling", "champagne", "prosecco", "cava", "cremant", "orange",
+    "fortified", "port", "sherry", "madeira", "riesling", "chardonnay",
+    "sauvignon", "pinot", "cabernet", "merlot", "syrah", "shiraz",
+    "tempranillo", "sangiovese", "nebbiolo", "malbec", "grenache", "zinfandel",
+    "bottles", "glass", "btg", "vin", "vins", "vino", "vini", "sarap",
   ],
   beer: [
-    "beer",
-    "beers",
-    "ale",
-    "ales",
-    "lager",
-    "lagers",
-    "ipa",
-    "ipas",
-    "stout",
-    "stouts",
-    "pilsner",
-    "porter",
-    "saison",
-    "hefeweizen",
-    "witbier",
-    "draft",
-    "draught",
-    "tap",
-    "taps",
-    "brew",
-    "brews",
-    "brewery",
-    "cerveza",
-    "bira",
-    "biere",
-    "bieres",
-    "bier",
+    "beer", "beers", "ale", "ales", "lager", "lagers", "ipa", "ipas", "stout",
+    "stouts", "pilsner", "porter", "saison", "hefeweizen", "witbier", "draft",
+    "draught", "tap", "taps", "brew", "brews", "brewery", "cerveza", "bira",
+    "biere", "bieres", "bier",
   ],
   whiskey: [
-    "whiskey",
-    "whiskeys",
-    "whisky",
-    "whiskies",
-    "bourbon",
-    "bourbons",
-    "rye",
-    "scotch",
-    "islay",
-    "speyside",
-    "malt",
-    "malts",
+    "whiskey", "whiskeys", "whisky", "whiskies", "bourbon", "bourbons", "rye",
+    "scotch", "islay", "speyside", "malt", "malts",
   ],
   spirits: [
-    "spirit",
-    "spirits",
-    "liquor",
-    "liquors",
-    "gin",
-    "gins",
-    "vodka",
-    "vodkas",
-    "rum",
-    "rums",
-    "tequila",
-    "tequilas",
-    "mezcal",
-    "brandy",
-    "cognac",
-    "armagnac",
-    "calvados",
-    "grappa",
-    "raki",
-    "ouzo",
-    "pisco",
-    "cachaca",
-    "liqueur",
-    "liqueurs",
-    "amaro",
-    "amari",
-    "aperitif",
-    "digestif",
-    "agave",
-    "absinthe",
-    "schnapps",
-    "bitters",
+    "spirit", "spirits", "liquor", "liquors", "gin", "gins", "vodka", "vodkas",
+    "rum", "rums", "tequila", "tequilas", "mezcal", "brandy", "cognac",
+    "armagnac", "calvados", "grappa", "raki", "ouzo", "pisco", "cachaca",
+    "liqueur", "liqueurs", "amaro", "amari", "aperitif", "digestif", "agave",
+    "absinthe", "schnapps", "bitters",
     // Whiskey's own words are NOT repeated here — SUBSET_OF below carries
     // "bourbon implies spirits" once, rather than in two word lists that would
     // drift apart the first time one of them gained a word.
   ],
   cocktails: [
-    "cocktail",
-    "cocktails",
-    "martini",
-    "martinis",
-    "negroni",
-    "highball",
-    "highballs",
-    "spritz",
-    "sour",
-    "sours",
-    "old fashioned",
-    "oldfashioned",
-    "margarita",
-    "margaritas",
-    "daiquiri",
-    "manhattan",
-    "mule",
-    "punch",
-    "signature",
-    "mixology",
-    "shaken",
-    "stirred",
-    "aperitivo",
+    "cocktail", "cocktails", "martini", "martinis", "negroni", "highball",
+    "highballs", "spritz", "sour", "sours", "old fashioned", "oldfashioned",
+    "margarita", "margaritas", "daiquiri", "manhattan", "mule", "punch",
+    "signature", "mixology", "shaken", "stirred", "aperitivo",
   ],
   non_alcoholic: [
-    "non alcoholic",
-    "nonalcoholic",
-    "nonalc",
-    "alcohol free",
-    "alcoholfree",
-    "zero proof",
-    "zeroproof",
-    "mocktail",
-    "mocktails",
-    "coffee",
-    "espresso",
-    "cappuccino",
-    "latte",
-    "tea",
-    "teas",
-    "chai",
-    "matcha",
-    "kombucha",
-    "juice",
-    "juices",
-    "smoothie",
-    "smoothies",
-    "lemonade",
-    "soda",
-    "sodas",
-    "cola",
-    "water",
-    "waters",
-    "ayran",
-    "kahve",
-    "cay",
+    "non alcoholic", "nonalcoholic", "nonalc", "alcohol free", "alcoholfree",
+    "zero proof", "zeroproof", "mocktail", "mocktails", "coffee", "espresso",
+    "cappuccino", "latte", "tea", "teas", "chai", "matcha", "kombucha",
+    "juice", "juices", "smoothie", "smoothies", "lemonade", "soda", "sodas",
+    "cola", "water", "waters", "ayran", "kahve", "cay",
   ],
   soft_drinks: [
-    "soft drink",
-    "soft drinks",
-    "softdrink",
-    "softdrinks",
-    "soda",
-    "sodas",
-    "cola",
-    "colas",
-    "coke",
-    "pepsi",
-    "sprite",
-    "fanta",
-    "lemonade",
-    "juice",
-    "juices",
-    "iced tea",
-    "icedtea",
-    "sparkling water",
-    "still water",
-    "mineral water",
-    "tonic",
-    "ginger ale",
-    "root beer",
-    "gazoz",
+    "soft drink", "soft drinks", "softdrink", "softdrinks", "soda", "sodas",
+    "cola", "colas", "coke", "pepsi", "sprite", "fanta", "lemonade", "juice",
+    "juices", "iced tea", "icedtea", "sparkling water", "still water",
+    "mineral water", "tonic", "ginger ale", "root beer", "gazoz",
   ],
 };
 
@@ -421,9 +262,7 @@ const SUBSET_OF: Partial<Record<RegisterId, RegisterId>> = {
  * points at. A label may point at several: "Whiskey & Rye" is whiskey AND
  * spirits, and both are true.
  */
-export function registersForLabel(
-  label: string | null | undefined,
-): RegisterId[] {
+export function registersForLabel(label: string | null | undefined): RegisterId[] {
   if (!label) return [];
   const hay = normalizeLabel(label);
   if (hay.trim() === "") return [];
@@ -515,9 +354,7 @@ export interface CurrentMenuLineTally extends MenuLineTally {
  * than computed beside it: there is one filter, and `tallyMenuLines` is a
  * reading of its output. Order is kept as given.
  */
-export function unplacedMenuLines<T extends MenuLine>(
-  lines: readonly T[],
-): T[] {
+export function unplacedMenuLines<T extends MenuLine>(lines: readonly T[]): T[] {
   return lines.filter((line) => placeMenuLine(line).length === 0);
 }
 
@@ -658,7 +495,9 @@ export function inferRegisters(input: InferenceInput): RegisterReadout[] {
     const nameOnly = NAME_ONLY_REGISTERS.includes(id);
 
     const byKind =
-      input.kindCounts === null ? null : sumKindsFor(id, input.kindCounts);
+      input.kindCounts === null
+        ? null
+        : sumKindsFor(id, input.kindCounts);
     const byName =
       input.inventoryNameCounts === null
         ? null
@@ -666,8 +505,7 @@ export function inferRegisters(input: InferenceInput): RegisterReadout[] {
     const inventoryRows =
       byKind === null && byName === null ? null : (byKind ?? 0) + (byName ?? 0);
 
-    let menuRows =
-      input.menuCounts === null ? null : (input.menuCounts.get(id) ?? 0);
+    let menuRows = input.menuCounts === null ? null : (input.menuCounts.get(id) ?? 0);
     if (id === "cocktails" && input.cocktailRows !== null) {
       menuRows = (menuRows ?? 0) + input.cocktailRows;
     }

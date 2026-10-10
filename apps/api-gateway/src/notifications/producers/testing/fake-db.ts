@@ -72,21 +72,11 @@ export class FakeDb {
    * (`organizations/testing/grant-ledger-fake.ts` models the grant functions;
    * the SQL itself is proven against a real database in PGlite).
    */
-  rpcHandlers: Record<
-    string,
-    (args: Record<string, any>) => { data: any; error: any }
-  > = {};
+  rpcHandlers: Record<string, (args: Record<string, any>) => { data: any; error: any }> = {};
 
-  async rpc(
-    name: string,
-    args: Record<string, any> = {},
-  ): Promise<{ data: any; error: any }> {
+  async rpc(name: string, args: Record<string, any> = {}): Promise<{ data: any; error: any }> {
     const handler = this.rpcHandlers[name];
-    if (!handler)
-      return {
-        data: null,
-        error: { message: `function ${name} is not modelled by this fake` },
-      };
+    if (!handler) return { data: null, error: { message: `function ${name} is not modelled by this fake` } };
     return handler(args);
   }
 }
@@ -160,10 +150,7 @@ export class FakeQuery {
     this.payload = Array.isArray(rows) ? rows : [rows];
     return this;
   }
-  upsert(
-    rows: Row[],
-    opts?: { onConflict?: string; ignoreDuplicates?: boolean },
-  ) {
+  upsert(rows: Row[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) {
     this.mode = "upsert";
     this.payload = rows;
     this.ignoreDuplicates = opts?.ignoreDuplicates === true;
@@ -235,10 +222,7 @@ export class FakeQuery {
    * fails the test instead of quietly matching every row.
    */
   or(expr: string) {
-    const clauses = expr
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
+    const clauses = expr.split(",").map((c) => c.trim()).filter(Boolean);
     const preds: Predicate[] = clauses.map((clause) => {
       const isNull = /^([\w.]+)\.is\.null$/.exec(clause);
       if (isNull) return (r: Row) => (r[isNull[1]] ?? null) === null;
@@ -286,10 +270,8 @@ export class FakeQuery {
 
   private async run(single: boolean): Promise<any> {
     const failure = this.db.failures[this.table];
-    if (failure)
-      return { data: null, error: { message: failure }, count: null };
-    const rows =
-      this.db.tables[this.table] ?? (this.db.tables[this.table] = []);
+    if (failure) return { data: null, error: { message: failure }, count: null };
+    const rows = this.db.tables[this.table] ?? (this.db.tables[this.table] = []);
 
     if (this.mode === "insert" || this.mode === "upsert") {
       const written: Row[] = [];
@@ -298,8 +280,7 @@ export class FakeQuery {
       for (const row of this.payload) {
         if (partial && partial.where(row)) {
           const clash = rows.some(
-            (r) =>
-              partial.where(r) && partial.key.every((k) => r[k] === row[k]),
+            (r) => partial.where(r) && partial.key.every((k) => r[k] === row[k]),
           );
           if (clash) {
             return {
@@ -423,8 +404,7 @@ export function fakeNotifications(
       async (restaurantId: string, payload: any, opts: any) => {
         const targets: string[] = opts?.onlyUserIds ?? members;
         const forced = insertedOverride?.();
-        const inserted =
-          forced === null || forced === undefined ? targets.length : forced;
+        const inserted = forced === null || forced === undefined ? targets.length : forced;
         const ids = inserted ? targets.map((u) => `notif-${u}`) : [];
         if (db && inserted) {
           const rows =

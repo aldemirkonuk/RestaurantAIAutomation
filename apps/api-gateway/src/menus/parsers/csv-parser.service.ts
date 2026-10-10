@@ -136,16 +136,10 @@ export type GroupMark = "." | ",";
 const bareNumber = (raw: string) =>
   raw.replace(/[\s\u00a0\u202f'’]/g, "").replace(/^[^0-9.,-]+|[^0-9.,]+$/g, "");
 
-export function readPriceCell(
-  raw: string,
-  group: GroupMark | null = null,
-): PriceReading {
+export function readPriceCell(raw: string, group: GroupMark | null = null): PriceReading {
   if (!/[0-9]/.test(raw)) return { kind: "none" };
   const s = bareNumber(raw);
-  if (
-    /^-[0-9.,]*[0-9]$/.test(s) &&
-    readPriceCell(s.slice(1), group).kind === "price"
-  ) {
+  if (/^-[0-9.,]*[0-9]$/.test(s) && readPriceCell(s.slice(1), group).kind === "price") {
     return { kind: "negative" };
   }
   if (!/^[0-9][0-9.,]*$/.test(s)) return { kind: "unclear" };
@@ -164,8 +158,7 @@ export function readPriceCell(
     const at = s.lastIndexOf(dec);
     const intPart = s.slice(0, at);
     const frac = s.slice(at + 1);
-    if (!/^[0-9]{1,2}$/.test(frac) || !grouped(intPart, thou))
-      return { kind: "unclear" };
+    if (!/^[0-9]{1,2}$/.test(frac) || !grouped(intPart, thou)) return { kind: "unclear" };
     return value(`${intPart.split(thou).join("")}.${frac}`);
   }
 
@@ -229,11 +222,7 @@ export class CsvParserService {
       return this.nothing("The file has no rows under its column names.");
     }
     return this.readRows(
-      records.map((r) => ({
-        number: r.line,
-        cells: r.cells,
-        raw: r.raw.trim(),
-      })),
+      records.map((r) => ({ number: r.line, cells: r.cells, raw: r.raw.trim() })),
       [],
       houseGroup,
     );
@@ -245,10 +234,7 @@ export class CsvParserService {
    * the list is passed over. A formula cell is read by its saved result and a
    * rich-text cell by its text (F-683); a cell with no readable value is named.
    */
-  async readExcel(
-    base64: string,
-    houseGroup: GroupMark | null = null,
-  ): Promise<MenuRead> {
+  async readExcel(base64: string, houseGroup: GroupMark | null = null): Promise<MenuRead> {
     const ExcelJS = await import("exceljs");
     const buffer = Buffer.from(base64, "base64");
     const workbook = new ExcelJS.Workbook();
@@ -288,9 +274,7 @@ export class CsvParserService {
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           const read = readExcelValue(cell.value);
           if ("unreadable" in read) {
-            unreadable.push(
-              `row ${rowNumber}, column ${columnLetter(colNumber)}: ${read.unreadable}`,
-            );
+            unreadable.push(`row ${rowNumber}, column ${columnLetter(colNumber)}: ${read.unreadable}`);
             cells[colNumber - 1] = "";
           } else {
             cells[colNumber - 1] = read.value;
@@ -303,10 +287,7 @@ export class CsvParserService {
       if (result.items.length > 0) return result;
       first ??= result;
     }
-    return (
-      first ??
-      this.nothing("The spreadsheet has no rows under its column names.")
-    );
+    return first ?? this.nothing("The spreadsheet has no rows under its column names.");
   }
 
   /**
@@ -316,11 +297,7 @@ export class CsvParserService {
    * prices settle them, else by the house's (`houseGroup`, from its country).
    * When the file's prices disagree with each other, neither is guessed.
    */
-  private readRows(
-    rows: Row[],
-    unreadable: string[] = [],
-    houseGroup: GroupMark | null = null,
-  ): MenuRead {
+  private readRows(rows: Row[], unreadable: string[] = [], houseGroup: GroupMark | null = null): MenuRead {
     let headerAt = rows.findIndex(
       (r, i) => i < 10 && this.fieldMapFor(r.cells).includes("name"),
     );
@@ -346,15 +323,11 @@ export class CsvParserService {
 
     const hasPriceColumn = fieldMap.some((f) => f && PRICE_FIELDS.has(f));
     const said = fileGroupMark(
-      rows
-        .slice(headerAt + 1)
-        .flatMap((r) =>
-          fieldMap.flatMap((f, i) =>
-            f && PRICE_FIELDS.has(f) && typeof r.cells[i] === "string"
-              ? [String(r.cells[i]).trim()]
-              : [],
-          ),
+      rows.slice(headerAt + 1).flatMap((r) =>
+        fieldMap.flatMap((f, i) =>
+          f && PRICE_FIELDS.has(f) && typeof r.cells[i] === "string" ? [String(r.cells[i]).trim()] : [],
         ),
+      ),
     );
     const group = said === "conflict" ? null : (said ?? houseGroup);
     const items: WineExtractItem[] = [];
@@ -362,14 +335,7 @@ export class CsvParserService {
     const negative: string[] = [];
     for (const row of rows.slice(headerAt + 1)) {
       if (row.cells.every((c) => String(c ?? "").trim() === "")) continue;
-      const item = this.buildItem(
-        fieldMap,
-        row.cells,
-        row.number,
-        unclear,
-        negative,
-        group,
-      );
+      const item = this.buildItem(fieldMap, row.cells, row.number, unclear, negative, group);
       if (!item) {
         notes.dropped.push({ row: row.number, reason: "no name" });
         continue;
@@ -379,10 +345,7 @@ export class CsvParserService {
       // not read is not one: it is kept, and the cell is named).
       const onlyName = Object.keys(item).every((k) => k === "name");
       if (hasPriceColumn && onlyName && !unreadableRows.has(row.number)) {
-        notes.dropped.push({
-          row: row.number,
-          reason: `"${item.name}" looks like a heading (no price)`,
-        });
+        notes.dropped.push({ row: row.number, reason: `"${item.name}" looks like a heading (no price)` });
         continue;
       }
       if (row.raw !== undefined) item.raw_text = row.raw;
@@ -393,17 +356,12 @@ export class CsvParserService {
     if (items.length === 0) {
       const counts = new Map<string, number>();
       for (const d of notes.dropped) {
-        const why =
-          d.reason === "no name"
-            ? "had no name"
-            : "looked like headings with no price";
+        const why = d.reason === "no name" ? "had no name" : "looked like headings with no price";
         counts.set(why, (counts.get(why) ?? 0) + 1);
       }
       const said = [...counts].map(([why, n]) => `${n} ${why}`).join(", ");
       return this.nothing(
-        said
-          ? `Every row was skipped: ${said}.`
-          : "The file has no rows under its column names.",
+        said ? `Every row was skipped: ${said}.` : "The file has no rows under its column names.",
         notes,
       );
     }
@@ -411,20 +369,14 @@ export class CsvParserService {
   }
 
   private fieldMapFor(cells: Cell[]): Array<keyof WineExtractItem | null> {
-    return cells.map(
-      (c) => HEADER_MAP[normalizeMenuHeader(String(c ?? ""))] ?? null,
-    );
+    return cells.map((c) => HEADER_MAP[normalizeMenuHeader(String(c ?? ""))] ?? null);
   }
 
   private nothing(
     cause: string,
     notes: MenuReadNotes = { ignoredColumns: [], dropped: [], unreadable: [] },
   ): MenuRead {
-    return {
-      items: [],
-      notes,
-      emptyCause: `Nothing was read from this file, so nothing was kept. ${cause}`,
-    };
+    return { items: [], notes, emptyCause: `Nothing was read from this file, so nothing was kept. ${cause}` };
   }
 
   private buildItem(
@@ -462,14 +414,10 @@ export class CsvParserService {
 
     if (!item.name) return null;
     if (unclearHere.length > 0) {
-      unclear.push(
-        `row ${rowNumber} (${item.name}): ${unclearHere.join(", ")}`,
-      );
+      unclear.push(`row ${rowNumber} (${item.name}): ${unclearHere.join(", ")}`);
     }
     if (negativeHere.length > 0) {
-      negative.push(
-        `row ${rowNumber} (${item.name}): ${negativeHere.join(", ")}`,
-      );
+      negative.push(`row ${rowNumber} (${item.name}): ${negativeHere.join(", ")}`);
     }
     return item as WineExtractItem;
   }
@@ -481,8 +429,7 @@ export class CsvParserService {
    */
   private refuseUnclear(unclear: string[], negative: string[] = []): void {
     const name = (list: string[]) =>
-      list.slice(0, 5).join("; ") +
-      (list.length > 5 ? `; and ${list.length - 5} more` : "");
+      list.slice(0, 5).join("; ") + (list.length > 5 ? `; and ${list.length - 5} more` : "");
     if (negative.length > 0) {
       throw new BadRequestException(
         `A price can't be below zero, so nothing was imported. Check ${name(negative)}.`,
@@ -568,27 +515,18 @@ export function splitRecords(
 }
 
 /** An ExcelJS cell value as text or a number, or why it has none (F-683). */
-function readExcelValue(
-  value: unknown,
-): { value: Cell } | { unreadable: string } {
+function readExcelValue(value: unknown): { value: Cell } | { unreadable: string } {
   if (value === null || value === undefined) return { value: "" };
   if (typeof value === "number" || typeof value === "string") return { value };
   if (typeof value === "boolean") return { value: String(value) };
   if (value instanceof Date) return { value: value.toISOString().slice(0, 10) };
   const v = value as Record<string, unknown>;
   if (Array.isArray(v.richText)) {
-    return {
-      value: (v.richText as Array<{ text?: string }>)
-        .map((r) => r.text ?? "")
-        .join(""),
-    };
+    return { value: (v.richText as Array<{ text?: string }>).map((r) => r.text ?? "").join("") };
   }
   if ("formula" in v || "sharedFormula" in v) {
     if (v.result === undefined || v.result === null) {
-      return {
-        unreadable:
-          "a formula with no saved value (open the file in Excel and save it again)",
-      };
+      return { unreadable: "a formula with no saved value (open the file in Excel and save it again)" };
     }
     return readExcelValue(v.result);
   }
@@ -601,7 +539,6 @@ const rowOf = (note: string) => Number(/^row (\d+)/.exec(note)?.[1]);
 
 function columnLetter(n: number): string {
   let s = "";
-  for (; n > 0; n = Math.floor((n - 1) / 26))
-    s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  for (; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
   return s;
 }

@@ -114,191 +114,41 @@ async function boot(controller: Type<unknown>): Promise<{
 /** [label, controller, method, path, body] */
 const ROUTES: Array<[string, Type<unknown>, string, string, unknown]> = [
   // F-311
-  [
-    "POS check import",
-    PosHubController,
-    "POST",
-    `/pos-hub/import/${HOUSE}`,
-    [],
-  ],
+  ["POS check import", PosHubController, "POST", `/pos-hub/import/${HOUSE}`, []],
   // F-312
-  [
-    "add a wine with its cost",
-    InventoryController,
-    "POST",
-    `/inventory/${HOUSE}/items`,
-    { wineId: "w1", stockLive: 6, costPerBottle: 18 },
-  ],
-  [
-    "add a wine as a free sample",
-    InventoryController,
-    "POST",
-    `/inventory/${HOUSE}/items`,
-    { wineId: "w1", stockLive: 6, costPerBottle: 0, costProvenance: "sample" },
-  ],
-  [
-    "receive a batch naming a cost",
-    InventoryController,
-    "POST",
-    `/inventory/${HOUSE}/items/bulk`,
-    {
-      items: [
-        { wineId: "w1", stockLive: 6 },
-        { wineId: "w2", stockLive: 3, costPerBottle: 22 },
-      ],
-    },
-  ],
-  [
-    "record an auction lot",
-    InventoryController,
-    "POST",
-    "/inventory/auction-lots",
-    { inventoryId: "i1" },
-  ],
+  ["add a wine with its cost", InventoryController, "POST", `/inventory/${HOUSE}/items`, { wineId: "w1", stockLive: 6, costPerBottle: 18 }],
+  ["add a wine as a free sample", InventoryController, "POST", `/inventory/${HOUSE}/items`, { wineId: "w1", stockLive: 6, costPerBottle: 0, costProvenance: "sample" }],
+  ["receive a batch naming a cost", InventoryController, "POST", `/inventory/${HOUSE}/items/bulk`, { items: [{ wineId: "w1", stockLive: 6 }, { wineId: "w2", stockLive: 3, costPerBottle: 22 }] }],
+  ["record an auction lot", InventoryController, "POST", "/inventory/auction-lots", { inventoryId: "i1" }],
   // F-314
-  [
-    "dismiss a deal",
-    ProcurementController,
-    "POST",
-    "/procurement/orders/o1/dismiss-deal",
-    {},
-  ],
+  ["dismiss a deal", ProcurementController, "POST", "/procurement/orders/o1/dismiss-deal", {}],
   // F-317
-  [
-    "put a position on a delivery",
-    DeliveriesController,
-    "POST",
-    "/procurement/deliveries/d1/proposals",
-    { side: "restaurant", reason: "SHORT" },
-  ],
-  [
-    "counter a proposal",
-    DeliveriesController,
-    "POST",
-    "/procurement/deliveries/proposals/p1/counter",
-    { side: "restaurant", reason: "SHORT" },
-  ],
-  [
-    "accept a proposal",
-    DeliveriesController,
-    "POST",
-    "/procurement/deliveries/proposals/p1/accept",
-    {},
-  ],
-  [
-    "accept a difference as billed",
-    DeliveriesController,
-    "POST",
-    "/procurement/deliveries/d1/accept-as-billed",
-    { documentId: "doc1", lineNo: 1, reason: "fine" },
-  ],
-  [
-    "agree a delivery",
-    DeliveriesController,
-    "POST",
-    "/procurement/deliveries/d1/agree",
-    {},
-  ],
-  [
-    "verify a delivery",
-    DeliveriesController,
-    "POST",
-    "/procurement/deliveries/d1/verify",
-    {},
-  ],
+  ["put a position on a delivery", DeliveriesController, "POST", "/procurement/deliveries/d1/proposals", { side: "restaurant", reason: "SHORT" }],
+  ["counter a proposal", DeliveriesController, "POST", "/procurement/deliveries/proposals/p1/counter", { side: "restaurant", reason: "SHORT" }],
+  ["accept a proposal", DeliveriesController, "POST", "/procurement/deliveries/proposals/p1/accept", {}],
+  ["accept a difference as billed", DeliveriesController, "POST", "/procurement/deliveries/d1/accept-as-billed", { documentId: "doc1", lineNo: 1, reason: "fine" }],
+  ["agree a delivery", DeliveriesController, "POST", "/procurement/deliveries/d1/agree", {}],
+  ["verify a delivery", DeliveriesController, "POST", "/procurement/deliveries/d1/verify", {}],
   // F-315
-  [
-    "set an insight cadence",
-    AnalyticsController,
-    "PUT",
-    `/analytics/insight-prefs/${HOUSE}/sales`,
-    { cadence: "daily" },
-  ],
-  [
-    "add a floor table",
-    AnalyticsController,
-    "POST",
-    `/analytics/tables/${HOUSE}`,
-    { label: "T1", seats: 4 },
-  ],
-  [
-    "set the venue profile",
-    AnalyticsController,
-    "PUT",
-    `/analytics/venue/${HOUSE}`,
-    { features: { has_pool: true } },
-  ],
-  [
-    "turn the consultants on",
-    AnalyticsController,
-    "PUT",
-    `/analytics/consultants/${HOUSE}/toggle`,
-    { enabled: true },
-  ],
-  [
-    "run the finance consultant",
-    AnalyticsController,
-    "POST",
-    `/analytics/consult/${HOUSE}`,
-    { persona: "finance" },
-  ],
+  ["set an insight cadence", AnalyticsController, "PUT", `/analytics/insight-prefs/${HOUSE}/sales`, { cadence: "daily" }],
+  ["add a floor table", AnalyticsController, "POST", `/analytics/tables/${HOUSE}`, { label: "T1", seats: 4 }],
+  ["set the venue profile", AnalyticsController, "PUT", `/analytics/venue/${HOUSE}`, { features: { has_pool: true } }],
+  ["turn the consultants on", AnalyticsController, "PUT", `/analytics/consultants/${HOUSE}/toggle`, { enabled: true }],
+  ["run the finance consultant", AnalyticsController, "POST", `/analytics/consult/${HOUSE}`, { persona: "finance" }],
   // F-299
-  [
-    "set a goal",
-    AnalyticsController,
-    "POST",
-    `/analytics/goals/${HOUSE}`,
-    { name: "More wine", metricKey: "wine_revenue", targetValue: 9000 },
-  ],
-  [
-    "edit a goal",
-    AnalyticsController,
-    "PATCH",
-    `/analytics/goals/${HOUSE}/g1`,
-    { targetValue: 12000 },
-  ],
-  [
-    "change a goal's status",
-    AnalyticsController,
-    "PUT",
-    `/analytics/goals/${HOUSE}/g1/status`,
-    { status: "archived" },
-  ],
+  ["set a goal", AnalyticsController, "POST", `/analytics/goals/${HOUSE}`, { name: "More wine", metricKey: "wine_revenue", targetValue: 9000 }],
+  ["edit a goal", AnalyticsController, "PATCH", `/analytics/goals/${HOUSE}/g1`, { targetValue: 12000 }],
+  ["change a goal's status", AnalyticsController, "PUT", `/analytics/goals/${HOUSE}/g1/status`, { status: "archived" }],
   // F-299, the reads: a goal's target and progress are money-class, as /ask holds them
-  [
-    "read the goals",
-    AnalyticsController,
-    "GET",
-    `/analytics/goals/${HOUSE}`,
-    undefined,
-  ],
-  [
-    "read the goals' progress",
-    AnalyticsController,
-    "GET",
-    `/analytics/goals/${HOUSE}/progress`,
-    undefined,
-  ],
-  [
-    "read one goal's progress",
-    AnalyticsController,
-    "GET",
-    `/analytics/goals/${HOUSE}/g1/progress`,
-    undefined,
-  ],
-  [
-    "ask which analysis shows a goal",
-    AnalyticsController,
-    "POST",
-    `/analytics/goals/${HOUSE}/g1/cutting-spec`,
-    {},
-  ],
+  ["read the goals", AnalyticsController, "GET", `/analytics/goals/${HOUSE}`, undefined],
+  ["read the goals' progress", AnalyticsController, "GET", `/analytics/goals/${HOUSE}/progress`, undefined],
+  ["read one goal's progress", AnalyticsController, "GET", `/analytics/goals/${HOUSE}/g1/progress`, undefined],
+  ["ask which analysis shows a goal", AnalyticsController, "POST", `/analytics/goals/${HOUSE}/g1/cutting-spec`, {}],
 ];
 
 /** The goal reads (and the cutting a goal asks for) gate in the controller, so their refusal is in words. */
 const isGoalRead = (method: string, path: string) =>
-  path.includes("/goals/") &&
-  (method === "GET" || path.endsWith("/cutting-spec"));
+  path.includes("/goals/") && (method === "GET" || path.endsWith("/cutting-spec"));
 
 const apps = new Map<Type<unknown>, { app: INestApplication; base: string }>();
 
@@ -354,25 +204,13 @@ describe.each(ROUTES)("%s", (_label, controller, method, path, body) => {
 
 describe("what stays open to staff", () => {
   it("adds a wine with no cost for staff (its cost is recorded as unknown)", async () => {
-    const res = await call(
-      InventoryController,
-      "POST",
-      `/inventory/${HOUSE}/items`,
-      "staff",
-      { wineId: "w1", stockLive: 6 },
-    );
+    const res = await call(InventoryController, "POST", `/inventory/${HOUSE}/items`, "staff", { wineId: "w1", stockLive: 6 });
     expect(res.status).toBe(201);
     expect(calls).toContain("InventoryService.createInventoryItem");
   });
 
   it("receives a batch with no cost for staff", async () => {
-    const res = await call(
-      InventoryController,
-      "POST",
-      `/inventory/${HOUSE}/items/bulk`,
-      "staff",
-      { items: [{ wineId: "w1", stockLive: 6, costPerBottle: null }] },
-    );
+    const res = await call(InventoryController, "POST", `/inventory/${HOUSE}/items/bulk`, "staff", { items: [{ wineId: "w1", stockLive: 6, costPerBottle: null }] });
     expect(res.status).toBe(201);
     expect(calls).toContain("InventoryService.bulkCreateInventoryItems");
   });
@@ -403,9 +241,7 @@ function chainWorld(orgRole: string | null): StubDb {
     restaurant_chains: [
       { id: "chain-1", organization_id: CHAIN_ORG, name: "Harbour" },
     ],
-    restaurants: [
-      { id: "house-1", organization_id: CHAIN_ORG, chain_id: "chain-1" },
-    ],
+    restaurants: [{ id: "house-1", organization_id: CHAIN_ORG, chain_id: "chain-1" }],
     // An owner of the house, so only the organisation row decides here; the
     // house-role half of the rule (F-935) is pinned in
     // `organizations/chains-owner-and-reads.spec.ts`.
@@ -416,8 +252,7 @@ function chainWorld(orgRole: string | null): StubDb {
   });
 }
 
-const chainService = (db: StubDb) =>
-  new OrganizationsService(asDatabaseService(db));
+const chainService = (db: StubDb) => new OrganizationsService(asDatabaseService(db));
 
 const ACTS: Array<[string, (s: OrganizationsService) => Promise<unknown>]> = [
   ["create a group", (s) => s.createChain(P, { name: "Seaside" })],

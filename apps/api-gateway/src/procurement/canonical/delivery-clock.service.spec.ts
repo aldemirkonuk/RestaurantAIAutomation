@@ -585,15 +585,13 @@ describe("DeliveryClockService", () => {
 
     it("names TTK 21/2 for a Turkish objection window", () => {
       expect(lapseDeeming("objection_window", "TR")).toMatch(/TTK 21\/2/);
-      expect(lapseDeeming("objection_window", "TR")).not.toMatch(
-        /delivery date/,
-      );
+      expect(lapseDeeming("objection_window", "TR")).not.toMatch(/delivery date/);
     });
 
     it("says so when the eight days were counted from the delivery date (sim F-668)", () => {
-      expect(lapseDeeming("objection_window", "TR", "delivery_date")).toMatch(
-        /showed no date of its own.*counted from the delivery date/,
-      );
+      expect(
+        lapseDeeming("objection_window", "TR", "delivery_date"),
+      ).toMatch(/showed no date of its own.*counted from the delivery date/);
     });
 
     it("says the money may already have left for a payment clock", () => {

@@ -169,8 +169,7 @@ function withholdsAwayActions(role: unknown): boolean {
  */
 export const LOGS_UNNAMED_FOR_STAFF: readonly string[] =
   STAFF_WITHHELD_ACTIONS.filter(
-    (a) =>
-      !(LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF as readonly string[]).includes(a),
+    (a) => !(LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF as readonly string[]).includes(a),
   );
 
 /** What a reader is shown for a person this house cannot name. */
@@ -203,8 +202,7 @@ function valueWords(v: unknown): string {
 function fieldChanges(
   changes: unknown,
 ): Array<{ field: string; from: unknown; to: unknown }> {
-  if (!changes || typeof changes !== "object" || Array.isArray(changes))
-    return [];
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
   const c = changes as Record<string, unknown>;
   const nested = c.fields;
   const source =
@@ -214,12 +212,7 @@ function fieldChanges(
   const out: Array<{ field: string; from: unknown; to: unknown }> = [];
   for (const [key, value] of Object.entries(source)) {
     if (key === "register" || key === "subject" || key === "fields") continue;
-    if (
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      "to" in value
-    ) {
+    if (value && typeof value === "object" && !Array.isArray(value) && "to" in value) {
       const v = value as { from?: unknown; to?: unknown };
       out.push({ field: key, from: v.from ?? null, to: v.to ?? null });
     }
@@ -232,10 +225,7 @@ function changeWords(
   fields: Array<{ field: string; from: unknown; to: unknown }>,
 ): string {
   return fields
-    .map(
-      (f) =>
-        `${f.field.replace(/_/g, " ")}: ${valueWords(f.from)} → ${valueWords(f.to)}`,
-    )
+    .map((f) => `${f.field.replace(/_/g, " ")}: ${valueWords(f.from)} → ${valueWords(f.to)}`)
     .join("; ");
 }
 
@@ -379,12 +369,8 @@ export class LogsTimelineService {
       // night's voids could not find one. `voided` is said first. The server
       // is the till's own name for whoever rang it up (F-482).
       return data.map((r: any) => {
-        const state =
-          r.voided === true ? "voided" : r.closed_at ? "closed" : "opened";
-        const server =
-          typeof r.server_name === "string" && r.server_name.trim()
-            ? r.server_name.trim()
-            : null;
+        const state = r.voided === true ? "voided" : r.closed_at ? "closed" : "opened";
+        const server = typeof r.server_name === "string" && r.server_name.trim() ? r.server_name.trim() : null;
         return {
           id: r.id,
           source: "pos_checks" as const,
@@ -467,7 +453,9 @@ export class LogsTimelineService {
         rows.map((r: any) => r.performed_by),
       );
       return rows.map((r: any) => {
-        const by = r.performed_by ? nameFor(names, r.performed_by) : null;
+        const by = r.performed_by
+          ? nameFor(names, r.performed_by)
+          : null;
         return {
           id: r.id,
           source: "inventory_transactions" as const,
@@ -573,9 +561,7 @@ export class LogsTimelineService {
         const hide = unnamed(r.action);
         const fields = fieldChanges(r.changes);
         const subject =
-          !hide &&
-          typeof r.changes?.subject === "string" &&
-          r.changes.subject.trim()
+          !hide && typeof r.changes?.subject === "string" && r.changes.subject.trim()
             ? r.changes.subject.trim()
             : null;
         const actorName = hide
@@ -633,9 +619,7 @@ export class LogsTimelineService {
   ): Promise<Map<string, string> | null> {
     const out = new Map<string, string>();
     const unique = [
-      ...new Set(
-        ids.filter((v): v is string => typeof v === "string" && v.length > 0),
-      ),
+      ...new Set(ids.filter((v): v is string => typeof v === "string" && v.length > 0)),
     ];
     if (unique.length === 0) return out;
     try {
@@ -658,9 +642,7 @@ export class LogsTimelineService {
         out.set(u.user_id, u.name?.trim() || u.email || "A team member");
       }
     } catch (err: any) {
-      this.logger.warn(
-        `/logs could not name the people on this page: ${err?.message ?? err}`,
-      );
+      this.logger.warn(`/logs could not name the people on this page: ${err?.message ?? err}`);
       return null;
     }
     return out;

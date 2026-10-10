@@ -319,8 +319,7 @@ export class OrderRecurrenceService {
 
     // A paused series stays paused: a new rule is not a resume. Who paused it,
     // and when, stay as they were, because nobody moved it.
-    const to: OrderRecurrenceStatus =
-      current === "paused" ? "paused" : "active";
+    const to: OrderRecurrenceStatus = current === "paused" ? "paused" : "active";
     const rule: Record<string, unknown> = {
       recurrence_frequency: plan.value.frequency,
       recurrence_anchor_day: plan.value.anchorDay,
@@ -645,10 +644,7 @@ export class OrderRecurrenceService {
         houseDay = await this.todayInHouse(row.restaurant_id, now);
         houseDays.set(row.restaurant_id, houseDay);
       }
-      if (
-        row.recurrence_next_due_on &&
-        !isDueOn(row.recurrence_next_due_on, houseDay)
-      ) {
+      if (row.recurrence_next_due_on && !isDueOn(row.recurrence_next_due_on, houseDay)) {
         continue;
       }
       rows.push(row);
@@ -660,9 +656,7 @@ export class OrderRecurrenceService {
     // read is not "every vendor is on": nothing is raised, nothing advances,
     // and the next run tries again.
     const vendors = new Map<string, VendorSwitch>();
-    const providerIds = [
-      ...new Set(rows.map((r) => r.provider_id).filter(Boolean)),
-    ];
+    const providerIds = [...new Set(rows.map((r) => r.provider_id).filter(Boolean))];
     if (providerIds.length > 0) {
       const { data: vendorRows, error: vendorError } =
         await this.databaseService.supabase
@@ -680,9 +674,7 @@ export class OrderRecurrenceService {
         this.recordRun(out);
         return out;
       }
-      for (const v of (vendorRows ?? []) as Array<
-        VendorSwitch & { id: string }
-      >) {
+      for (const v of (vendorRows ?? []) as Array<VendorSwitch & { id: string }>) {
         vendors.set(v.id, v);
       }
     }
@@ -891,7 +883,10 @@ export class OrderRecurrenceService {
    * `recurrence_next_due_on` makes the update a compare-and-set, so two runs
    * overlapping cannot advance the same series twice.
    */
-  private async advanceParent(row: RecurrenceRow, to: string): Promise<void> {
+  private async advanceParent(
+    row: RecurrenceRow,
+    to: string,
+  ): Promise<void> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({ recurrence_next_due_on: to })

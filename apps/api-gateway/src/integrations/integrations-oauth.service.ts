@@ -70,8 +70,7 @@ export const INTEGRATION_RETURN_REASONS = [
   "membership_unreadable",
   "held_by_another_house",
 ] as const;
-export type IntegrationReturnReason =
-  (typeof INTEGRATION_RETURN_REASONS)[number];
+export type IntegrationReturnReason = (typeof INTEGRATION_RETURN_REASONS)[number];
 
 /**
  * Why a completed provider round trip still connected nothing, when the cause
@@ -229,8 +228,7 @@ export class IntegrationsOauthService {
    * once; it never decides whether the product works.
    */
   private configuredFrontendUrls(): URL[] {
-    const raw =
-      this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
+    const raw = this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
     const parsed: URL[] = [];
     for (const entry of raw.split(",")) {
       const trimmed = entry.trim();
@@ -245,9 +243,7 @@ export class IntegrationsOauthService {
         parsed.push(url);
       } else if (!this.reportedFrontendEntries.has(trimmed)) {
         this.reportedFrontendEntries.add(trimmed);
-        this.logger.warn(
-          `FRONTEND_URL entry is not an http(s) URL and is ignored: "${trimmed.slice(0, 120)}"`,
-        );
+        this.logger.warn(`FRONTEND_URL entry is not an http(s) URL and is ignored: "${trimmed.slice(0, 120)}"`);
       }
     }
     return parsed;
@@ -412,11 +408,7 @@ export class IntegrationsOauthService {
    */
   safeReturnPath(returnPath?: string): string {
     const fallback = "/settings";
-    if (
-      !returnPath ||
-      !returnPath.startsWith("/") ||
-      returnPath.startsWith("//")
-    ) {
+    if (!returnPath || !returnPath.startsWith("/") || returnPath.startsWith("//")) {
       return fallback;
     }
     // Control characters and backslashes are the point of the check: browsers
@@ -455,9 +447,7 @@ export class IntegrationsOauthService {
   }
 
   authorizationTarget(integrationId: IntegrationId): string {
-    const url = new URL(
-      this.buildProviderUrl(INTEGRATION_DEFINITIONS[integrationId], ""),
-    );
+    const url = new URL(this.buildProviderUrl(INTEGRATION_DEFINITIONS[integrationId], ""));
     url.searchParams.delete("state");
     return url.toString();
   }
@@ -479,10 +469,7 @@ export class IntegrationsOauthService {
       url.searchParams.set("scope", scope);
       url.searchParams.set("state", state);
       if (verifier) {
-        url.searchParams.set(
-          "code_challenge",
-          createHash("sha256").update(verifier).digest("base64url"),
-        );
+        url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
         url.searchParams.set("code_challenge_method", "S256");
       }
       // access_type=offline is the only way to get a refresh token from Google,
@@ -504,10 +491,7 @@ export class IntegrationsOauthService {
     url.searchParams.set("scope", scope);
     url.searchParams.set("state", state);
     if (verifier) {
-      url.searchParams.set(
-        "code_challenge",
-        createHash("sha256").update(verifier).digest("base64url"),
-      );
+      url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
       url.searchParams.set("code_challenge_method", "S256");
     }
     url.searchParams.set("prompt", "consent");
@@ -536,8 +520,7 @@ export class IntegrationsOauthService {
     // words. /settings showed nothing at all, so a ten-minute timeout left the
     // owner on a page that looked as if nothing had happened (F-763).
     const fallback = `${this.webAppUrl()}/connections`;
-    if (!params.state)
-      return this.resultUrl(fallback, "error", "missing_state");
+    if (!params.state) return this.resultUrl(fallback, "error", "missing_state");
     if (!STATE_PATTERN.test(params.state)) {
       return this.resultUrl(fallback, "error", "invalid_state");
     }
@@ -551,11 +534,7 @@ export class IntegrationsOauthService {
       .maybeSingle();
     // A legacy state minted before ADR 0144 carries no receipt and no proof
     // hash, so nothing could ever complete it; refuse it here.
-    if (
-      error ||
-      !stateRow?.consent_receipt_id ||
-      !stateRow.browser_proof_hash
-    ) {
+    if (error || !stateRow?.consent_receipt_id || !stateRow.browser_proof_hash) {
       return this.resultUrl(fallback, "error", "invalid_state");
     }
     // From here the state row is known, so a refusal goes back to the page
@@ -564,10 +543,7 @@ export class IntegrationsOauthService {
     const startedAt = `${this.webAppUrl()}${this.safeReturnPath(stateRow.return_path)}`;
     const refused = (reason: IntegrationReturnReason) =>
       this.resultUrl(startedAt, "error", reason, stateRow.integration_id);
-    if (
-      params.provider !== stateRow.provider ||
-      (!params.code && !params.error)
-    ) {
+    if (params.provider !== stateRow.provider || (!params.code && !params.error)) {
       return refused("invalid_callback");
     }
 
@@ -634,10 +610,7 @@ export class IntegrationsOauthService {
   }
 
   /** Kill a live state: nothing parked in it can ever be exchanged. */
-  private async poisonState(
-    state: string,
-    reason = "A second provider callback arrived for one state; the grant was voided.",
-  ): Promise<void> {
+  private async poisonState(state: string, reason = "A second provider callback arrived for one state; the grant was voided."): Promise<void> {
     const { error } = await this.db.client
       .from("integration_oauth_states")
       .update({
@@ -674,55 +647,32 @@ export class IntegrationsOauthService {
     }
     const returnBase = `${stateRow.frontend_origin}${this.safeReturnPath(stateRow.return_path)}`;
     const refused = (reason: IntegrationReturnReason) => ({
-      destination: this.resultUrl(
-        returnBase,
-        "error",
-        reason,
-        stateRow.integration_id,
-      ),
+      destination: this.resultUrl(returnBase, "error", reason, stateRow.integration_id),
     });
 
     try {
-      const payload = JSON.parse(
-        this.crypto.decrypt(stateRow.callback_payload_encrypted),
-      );
+      const payload = JSON.parse(this.crypto.decrypt(stateRow.callback_payload_encrypted));
       if (payload.error) return refused(payload.error);
 
-      const definition =
-        INTEGRATION_DEFINITIONS[stateRow.integration_id as IntegrationId];
-      if (!definition || !payload.code)
-        throw new Error("Invalid callback payload");
+      const definition = INTEGRATION_DEFINITIONS[stateRow.integration_id as IntegrationId];
+      if (!definition || !payload.code) throw new Error("Invalid callback payload");
 
       // Membership is checked on BOTH sides of the exchange: the provider round
       // trip can outlast a revocation, and nothing is stored for a person who
       // no longer works in the house.
-      await this.assertConsentMembership(
-        stateRow.user_id,
-        stateRow.restaurant_id,
-      );
+      await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
       const verifier = this.crypto.decrypt(stateRow.pkce_verifier_encrypted);
-      const tokens = await this.exchangeCode(
-        definition,
-        payload.code,
-        verifier,
-      );
+      const tokens = await this.exchangeCode(definition, payload.code, verifier);
       if (!tokens.access_token) throw new Error("No access token returned");
 
       const namesAccount = definition.scopes.some(({ scope }) =>
-        [
-          "email",
-          "https://www.googleapis.com/auth/userinfo.email",
-          "User.Read",
-        ].includes(scope),
+        ["email", "https://www.googleapis.com/auth/userinfo.email", "User.Read"].includes(scope),
       );
       const account = namesAccount
         ? await this.fetchAccountEmail(definition.provider, tokens.access_token)
         : null;
 
-      await this.assertConsentMembership(
-        stateRow.user_id,
-        stateRow.restaurant_id,
-      );
+      await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
       // F-459, again after the round trip: another tab may have connected the
       // same grant in another house since this flow started.
       if (
@@ -742,14 +692,7 @@ export class IntegrationsOauthService {
         account,
         consentReceiptId: stateRow.consent_receipt_id,
       });
-      return {
-        destination: this.resultUrl(
-          returnBase,
-          "connected",
-          undefined,
-          definition.id,
-        ),
-      };
+      return { destination: this.resultUrl(returnBase, "connected", undefined, definition.id) };
     } catch (err) {
       if (err instanceof ConsentMembershipRefusal) {
         this.logger.warn(
@@ -762,8 +705,7 @@ export class IntegrationsOauthService {
       // status — never a token or a client secret) are logged so a real
       // exchange failure stays diagnosable in production (KL audit D11);
       // main previously logged only the integration id.
-      const errorClass =
-        err instanceof Error ? err.constructor.name : typeof err;
+      const errorClass = err instanceof Error ? err.constructor.name : typeof err;
       const errorDetail = err instanceof Error ? err.message : String(err);
       this.logger.warn(
         `Integration exchange could not be completed for ${stateRow.integration_id}: ${errorClass}: ${errorDetail}`,
@@ -848,10 +790,7 @@ export class IntegrationsOauthService {
    * `CalendarLinksService.roleOf` reads it). A failed read throws — it is
    * never "not a member", and never "still a member".
    */
-  private async worksIn(
-    userId: string,
-    restaurantId: string,
-  ): Promise<boolean> {
+  private async worksIn(userId: string, restaurantId: string): Promise<boolean> {
     const { data, error } = await this.db.client
       .from("user_restaurant_access")
       .select("user_id, valid_until")
@@ -902,11 +841,7 @@ export class IntegrationsOauthService {
    * so a wrong secret can be told apart from "no such live state" and the
    * state poisoned rather than left live for a retry.
    */
-  private async consumeBrowserState(
-    state: string,
-    browserProof: string,
-    deliverySecret: string,
-  ) {
+  private async consumeBrowserState(state: string, browserProof: string, deliverySecret: string) {
     if (
       !STATE_PATTERN.test(state) ||
       !HEX_256_PATTERN.test(browserProof) ||
@@ -938,10 +873,7 @@ export class IntegrationsOauthService {
     }
 
     const proofOk = digestsMatch(data.browser_proof_hash ?? "", proofHash);
-    const deliveryOk = digestsMatch(
-      data.browser_delivery_secret_hash ?? "",
-      deliveryHash,
-    );
+    const deliveryOk = digestsMatch(data.browser_delivery_secret_hash ?? "", deliveryHash);
     if (!proofOk || !deliveryOk) {
       // A live, parked state that this attempt could not correctly claim.
       // Poison it immediately so a later attempt — the sealer retrying with
@@ -1081,14 +1013,12 @@ export class IntegrationsOauthService {
     // Google omits refresh_token when the user already granted these scopes to
     // an earlier connection; keeping the stored one avoids downgrading a
     // working connection to access-token-only.
-    const refreshToken =
-      tokens.refresh_token ??
-      (await this.storedRefreshToken(
-        params.userId,
-        definition.id,
-        params.restaurantId,
-        params.account,
-      ));
+    const refreshToken = tokens.refresh_token ?? await this.storedRefreshToken(
+      params.userId,
+      definition.id,
+      params.restaurantId,
+      params.account,
+    );
 
     if (definition.id === GMAIL_READ_INTEGRATION_ID) {
       await this.restartReadingAtConsent(params.userId, params.account);
@@ -1149,10 +1079,7 @@ export class IntegrationsOauthService {
       .eq("user_id", userId)
       .eq("integration_id", GMAIL_READ_INTEGRATION_ID)
       .maybeSingle();
-    if (error)
-      throw new Error(
-        `The earlier reading grant could not be read: ${error.message}`,
-      );
+    if (error) throw new Error(`The earlier reading grant could not be read: ${error.message}`);
     if (!prior) return;
     const sameMailbox =
       !!account &&
@@ -1164,9 +1091,7 @@ export class IntegrationsOauthService {
       .delete()
       .eq("connection_id", String(prior.id));
     if (dropError) {
-      throw new Error(
-        `The earlier reading point could not be cleared: ${dropError.message}`,
-      );
+      throw new Error(`The earlier reading point could not be cleared: ${dropError.message}`);
     }
   }
 
@@ -1186,10 +1111,7 @@ export class IntegrationsOauthService {
       .eq("account_email", account)
       .is("revoked_at", null)
       .maybeSingle();
-    if (error)
-      throw new ServiceUnavailableException(
-        "The prior connection could not be read.",
-      );
+    if (error) throw new ServiceUnavailableException("The prior connection could not be read.");
 
     return this.crypto.tryDecrypt(data?.refresh_token_encrypted);
   }
@@ -1412,10 +1334,7 @@ export class IntegrationsOauthService {
   private async peopleFor(
     ids: string[],
   ): Promise<Map<string, { name: string | null; email: string | null }>> {
-    const out = new Map<
-      string,
-      { name: string | null; email: string | null }
-    >();
+    const out = new Map<string, { name: string | null; email: string | null }>();
     const unique = Array.from(new Set(ids.filter(Boolean)));
     if (unique.length === 0) return out;
 

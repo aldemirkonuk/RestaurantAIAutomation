@@ -10,21 +10,12 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
-import {
-  PromotionsService,
-  type PromotionsReadDto,
-} from "./promotions.service";
+import { PromotionsService, type PromotionsReadDto } from "./promotions.service";
 
 type AuthUser = { userId?: string; restaurantId?: string | null };
 
@@ -83,11 +74,7 @@ export class PromotionsController {
       "paid, and — for a bundle — the aggregate worth when every named wine has one.",
   })
   @ApiQuery({ name: "includeDismissed", required: false, type: Boolean })
-  @ApiResponse({
-    status: 200,
-    description:
-      "The house's offers and the ledger window they were read against",
-  })
+  @ApiResponse({ status: 200, description: "The house's offers and the ledger window they were read against" })
   @ApiResponse({ status: 403, description: "Not owner or manager" })
   async read(
     @CurrentUser() user: AuthUser,
@@ -106,14 +93,10 @@ export class PromotionsController {
   @Post(":id/dismiss")
   @ApiOperation({
     summary: "Put an offer away for the whole house",
-    description:
-      "House-wide, not per-device (ADR 0144 §4) — records who and when.",
+    description: "House-wide, not per-device (ADR 0144 §4) — records who and when.",
   })
   @ApiResponse({ status: 200, description: "Dismissed" })
-  @ApiResponse({
-    status: 404,
-    description: "No such offer on this house's table",
-  })
+  @ApiResponse({ status: 404, description: "No such offer on this house's table" })
   async dismiss(
     @CurrentUser() user: AuthUser,
     @Param("id", new ParseUUIDPipe()) id: string,
@@ -134,14 +117,10 @@ export class PromotionsController {
   @Post(":id/restore")
   @ApiOperation({
     summary: "Bring a put-away offer back to the house's table",
-    description:
-      "Records who restored it, and the dismissal it took back, in the house log.",
+    description: "Records who restored it, and the dismissal it took back, in the house log.",
   })
   @ApiResponse({ status: 200, description: "Restored" })
-  @ApiResponse({
-    status: 404,
-    description: "No such offer on this house's table",
-  })
+  @ApiResponse({ status: 404, description: "No such offer on this house's table" })
   async restore(
     @CurrentUser() user: AuthUser,
     @Param("id", new ParseUUIDPipe()) id: string,

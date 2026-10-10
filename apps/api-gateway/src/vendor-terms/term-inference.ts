@@ -156,10 +156,7 @@ export interface LocalMoment {
  * falling back to now(): a row with a broken date must drop out of the sample,
  * not quietly join it wearing today's date.
  */
-export function localMoment(
-  iso: string | null,
-  zone: string,
-): LocalMoment | null {
+export function localMoment(iso: string | null, zone: string): LocalMoment | null {
   if (!iso) return null;
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return null;
@@ -179,8 +176,7 @@ export function localMoment(
   return {
     date,
     // `hour12: false` emits "24" for midnight in some ICU versions.
-    minuteOfDay:
-      ((hour % 24) * 60 + (Number.isFinite(minute) ? minute : 0)) % 1440,
+    minuteOfDay: ((hour % 24) * 60 + (Number.isFinite(minute) ? minute : 0)) % 1440,
     weekday: weekdayOfDateString(date),
   };
 }
@@ -265,10 +261,7 @@ export function median(values: number[]): number | null {
 export function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null;
   const s = [...values].sort((x, y) => x - y);
-  const idx = Math.min(
-    s.length - 1,
-    Math.max(0, Math.ceil((p / 100) * s.length) - 1),
-  );
+  const idx = Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1));
   return s[idx];
 }
 
@@ -433,9 +426,7 @@ export function inferLeadTime(
     confidence: lower(base, dispersion),
     basis:
       `${gaps.length} receipt${gaps.length === 1 ? "" : "s"} with both dates` +
-      (negatives > 0
-        ? `, ${negatives} dropped for arriving before placement`
-        : ""),
+      (negatives > 0 ? `, ${negatives} dropped for arriving before placement` : ""),
   };
 }
 
@@ -513,9 +504,7 @@ export function inferOrderCutoff(
   const notBefore = Math.max(...made.map((s) => s.minute));
   const laterMisses = missedAll.filter((s) => s.minute > notBefore);
   const notAfter =
-    laterMisses.length > 0
-      ? Math.min(...laterMisses.map((s) => s.minute))
-      : null;
+    laterMisses.length > 0 ? Math.min(...laterMisses.map((s) => s.minute)) : null;
 
   const base = confidenceFromCount(sample.length);
   // A bracket wider than six hours has not narrowed anything worth trusting;
@@ -562,14 +551,10 @@ export interface MinimumOrderFinding {
  * proves nothing about what a vendor will accept, and including it would make
  * the bound wrong in the one direction that matters.
  */
-export function inferMinimumOrder(
-  orders: OrderFact[],
-): Finding<MinimumOrderFinding> {
+export function inferMinimumOrder(orders: OrderFact[]): Finding<MinimumOrderFinding> {
   const totals = orders
     .filter((o) => DELIVERED_STATUSES.has(String(o.status ?? "").toLowerCase()))
-    .map((o) =>
-      typeof o.totalCost === "number" ? o.totalCost : Number(o.totalCost),
-    )
+    .map((o) => (typeof o.totalCost === "number" ? o.totalCost : Number(o.totalCost)))
     .filter((v) => Number.isFinite(v) && v > 0)
     .sort((a, b) => a - b);
 
@@ -610,7 +595,10 @@ export interface InferredTerms {
   zone: ZoneUse;
 }
 
-export function inferTerms(orders: OrderFact[], zone: ZoneUse): InferredTerms {
+export function inferTerms(
+  orders: OrderFact[],
+  zone: ZoneUse,
+): InferredTerms {
   return {
     deliveryWeekdays: inferDeliveryWeekdays(orders, zone.zone),
     leadTime: inferLeadTime(orders, zone.zone),

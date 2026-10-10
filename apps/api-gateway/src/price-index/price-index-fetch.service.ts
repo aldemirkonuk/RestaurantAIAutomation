@@ -33,11 +33,7 @@ import {
   tally,
 } from "./price-index.types";
 import { SOURCES } from "./price-index.registry";
-import {
-  priceIndexFetchArmed,
-  refuseStale,
-  PRICE_INDEX_FETCH_FLAG,
-} from "./staleness";
+import { priceIndexFetchArmed, refuseStale, PRICE_INDEX_FETCH_FLAG } from "./staleness";
 import {
   fetchCalifornia,
   fetchDefra,
@@ -153,10 +149,9 @@ export class PriceIndexFetchService {
       refusalsByReason: tally(run.refusals),
       issuedAt: run.issuedAt,
       ageDays: verdict.ageDays,
-      silentBecause:
-        run.sightings.length === 0
-          ? "nothing survived the parser's checks"
-          : null,
+      silentBecause: run.sightings.length === 0
+        ? "nothing survived the parser's checks"
+        : null,
     };
     this.record(sourceKey, outcome);
     return outcome;

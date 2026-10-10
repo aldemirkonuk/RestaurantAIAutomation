@@ -190,8 +190,7 @@ export class MarketPriceProducer {
       // colon rather than one segment.
       const first = key.indexOf(":");
       const last = key.lastIndexOf(":");
-      if (first > -1 && last > first)
-        saidProducts.add(key.slice(first + 1, last));
+      if (first > -1 && last > first) saidProducts.add(key.slice(first + 1, last));
     }
 
     // The house's number formats (F-888): a lira house reads "₺41,50", where
@@ -260,7 +259,7 @@ export class MarketPriceProducer {
             // vendor-send request rows).
             priority: "low",
             actionUrl: `/vendor-prices?product=${encodeURIComponent(item.productKey)}`,
-            actionLabel: "Compare vendors", // a control, never a claim
+            actionLabel: "Compare vendors",  // a control, never a claim
             metadata: {
               productKey: item.productKey,
               productName: label,

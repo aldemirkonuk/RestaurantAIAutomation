@@ -25,20 +25,10 @@ import {
   RunClocksDto,
 } from "./dto/deliveries.dto";
 
-type AuthedUser = {
-  userId: string;
-  restaurantId: string;
-  role?: string | null;
-};
+type AuthedUser = { userId: string; restaurantId: string; role?: string | null };
 
 /** The delivery acts that settle what the house owes, by the name the refusal speaks. */
-type DeliveryMoneyAct =
-  | "propose"
-  | "counter"
-  | "accept"
-  | "accept_as_billed"
-  | "agree"
-  | "verify";
+type DeliveryMoneyAct = "propose" | "counter" | "accept" | "accept_as_billed" | "agree" | "verify";
 
 const DELIVERY_ACT_WORDS: Readonly<Record<DeliveryMoneyAct, string>> = {
   propose: "Putting the house's position on a delivery on the record",
@@ -58,10 +48,7 @@ const DELIVERY_ACT_WORDS: Readonly<Record<DeliveryMoneyAct, string>> = {
  * token's role): owners and managers. The door stays open: creating the
  * delivery, attaching its paper and the door count are not gated here.
  */
-function assertMaySettleDelivery(
-  user: AuthedUser | undefined,
-  act: DeliveryMoneyAct,
-): void {
+function assertMaySettleDelivery(user: AuthedUser | undefined, act: DeliveryMoneyAct): void {
   const role = user?.role ? String(user.role).trim() : "";
   if (holdsHouseMoney(role || null)) return;
   throw new HttpException(

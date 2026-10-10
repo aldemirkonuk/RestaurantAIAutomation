@@ -40,9 +40,7 @@ const num = (v: unknown): number | null => {
  * Absent reads as not voided; a value that is neither yes nor no is returned
  * as `unread` so ingest() can refuse the check and say why.
  */
-export const readVoided = (
-  v: unknown,
-): { voided: boolean; unread?: unknown } => {
+export const readVoided = (v: unknown): { voided: boolean; unread?: unknown } => {
   if (v === null || v === undefined || v === "") return { voided: false };
   if (typeof v === "boolean") return { voided: v };
   if (typeof v === "number") {
@@ -70,12 +68,9 @@ export const readVoided = (
  * guessed: it comes back as `unread`, and so does anything else that is not
  * a number. Currency signs and spaces are dropped first.
  */
-export const readMoney = (
-  v: unknown,
-): { value: number | null; unread?: unknown } => {
+export const readMoney = (v: unknown): { value: number | null; unread?: unknown } => {
   if (v === null || v === undefined || v === "") return { value: null };
-  if (typeof v === "number")
-    return Number.isFinite(v) ? { value: v } : { value: null, unread: v };
+  if (typeof v === "number") return Number.isFinite(v) ? { value: v } : { value: null, unread: v };
   if (typeof v !== "string") return { value: null, unread: v };
   const s = v.replace(/[\s\u00a0₺$€£]|TL|TRY/gi, "");
   if (s === "") return { value: null };
@@ -90,11 +85,7 @@ export const readMoney = (
     // comes once, after the groups: "1,25.50" and "1.2,5" are not amounts.
     const [whole, frac, ...extra] = s.split(decimal);
     const groups = whole.split(group);
-    if (
-      extra.length > 0 ||
-      frac.includes(group) ||
-      groups.slice(1).some((g) => g.length !== 3)
-    ) {
+    if (extra.length > 0 || frac.includes(group) || groups.slice(1).some((g) => g.length !== 3)) {
       return { value: null, unread: v };
     }
     plain = `${groups.join("")}.${frac}`;
@@ -127,8 +118,7 @@ const moneyOf = (r: any) => {
   for (const field of ["subtotal", "total", "tip"] as const) {
     const m = readMoney(r[field]);
     out[field] = m.value;
-    if ("unread" in m && !out.moneyUnread)
-      out.moneyUnread = { field, value: m.unread };
+    if ("unread" in m && !out.moneyUnread) out.moneyUnread = { field, value: m.unread };
   }
   (Array.isArray(r.items) ? r.items : []).forEach((it: any, i: number) => {
     const m = readMoney(it?.price);
@@ -141,9 +131,7 @@ const moneyOf = (r: any) => {
 
 const voidedOf = (v: unknown): { voided: boolean; voidedUnread?: unknown } => {
   const r = readVoided(v);
-  return "unread" in r
-    ? { voided: false, voidedUnread: r.unread }
-    : { voided: r.voided };
+  return "unread" in r ? { voided: false, voidedUnread: r.unread } : { voided: r.voided };
 };
 const cents = (v: unknown): number | null => {
   const n = num(v);
@@ -168,10 +156,7 @@ const instantOf = (v: unknown): string | null => {
 const modifierIdsOf = (mods: unknown, idOf: (m: any) => unknown): string[] =>
   (Array.isArray(mods) ? mods : [])
     .map((m) => idOf(m))
-    .filter(
-      (id): id is string | number =>
-        typeof id === "string" || typeof id === "number",
-    )
+    .filter((id): id is string | number => typeof id === "string" || typeof id === "number")
     .map(String)
     .filter((id) => id !== "");
 
@@ -193,9 +178,7 @@ export const genericAdapter: PosAdapter = {
         ...voidedOf(r.voided ?? r.is_voided),
         externalCheckId: String(r.externalCheckId ?? r.external_check_id),
         openedAt: String(r.openedAt ?? r.opened_at ?? new Date().toISOString()),
-        sourceVersion: versionOf(
-          r.sourceVersion ?? r.source_version ?? r.version,
-        ),
+        sourceVersion: versionOf(r.sourceVersion ?? r.source_version ?? r.version),
         sourceModifiedAt: instantOf(
           r.sourceModifiedAt ??
             r.source_modified_at ??
@@ -301,10 +284,7 @@ export const squareAdapter: PosAdapter = {
             category: null,
             qty: num(li.quantity) ?? 1,
             price: cents(li.base_price_money?.amount) ?? 0,
-            modifierIds: modifierIdsOf(
-              li.modifiers,
-              (m) => m?.catalog_object_id,
-            ),
+            modifierIds: modifierIdsOf(li.modifiers, (m) => m?.catalog_object_id),
           }),
         ),
         raw: o,

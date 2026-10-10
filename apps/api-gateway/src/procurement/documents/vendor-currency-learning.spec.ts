@@ -22,13 +22,7 @@ function client(opts: { explode?: boolean } = {}) {
               return (res: any) =>
                 res(
                   table === "providers"
-                    ? {
-                        data: {
-                          usual_currency: "EUR",
-                          usual_currency_source: "person",
-                        },
-                        error: null,
-                      }
+                    ? { data: { usual_currency: "EUR", usual_currency_source: "person" }, error: null }
                     : { data: [], error: null },
                 );
             return () => q;

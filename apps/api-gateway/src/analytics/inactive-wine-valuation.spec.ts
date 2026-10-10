@@ -34,10 +34,7 @@ function makeClient(rowsByTable: Rows) {
         }).then(resolve, reject);
       // The house's currency read (F-343) asks for one row (integ stub).
       builder.maybeSingle = jest.fn(() =>
-        Promise.resolve({
-          data: (rowsByTable[table] ?? [])[0] ?? null,
-          error: null,
-        }),
+        Promise.resolve({ data: (rowsByTable[table] ?? [])[0] ?? null, error: null }),
       );
       return builder;
     }),

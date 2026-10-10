@@ -28,9 +28,7 @@ function makeAuthService(opts: {
 
   const from = jest.fn((table: string) => {
     if (table === "email_verifications") return emailVerificationsChain;
-    throw new Error(
-      `verification-email-identity.spec: unexpected table "${table}"`,
-    );
+    throw new Error(`verification-email-identity.spec: unexpected table "${table}"`);
   });
 
   const configService = {
@@ -52,9 +50,7 @@ function makeAuthService(opts: {
 
 describe("queueEmailVerification — account mail identity (ADR 0143)", () => {
   it("sends as Mudavym, with the Mudavym subject and a body free of WineOps strings", async () => {
-    const sendEmail = jest
-      .fn()
-      .mockResolvedValue({ success: true, messageId: "m1" });
+    const sendEmail = jest.fn().mockResolvedValue({ success: true, messageId: "m1" });
     const service = makeAuthService({
       token: "tok-abc123",
       sendEmail,
@@ -70,17 +66,13 @@ describe("queueEmailVerification — account mail identity (ADR 0143)", () => {
     // No From override: absent means gmail.service's "Mudavym" default.
     expect(call.fromName ?? "Mudavym").toBe("Mudavym");
     expect(call.subject).toBe("Verify your Mudavym account");
-    expect(call.html).toContain(
-      "https://mudavym.com/verify-email?token=tok-abc123",
-    );
+    expect(call.html).toContain("https://mudavym.com/verify-email?token=tok-abc123");
     expect(call.html).toContain("Mudavym");
     expect(call.html.toLowerCase()).not.toContain("wineops");
   });
 
   it("falls back to the production frontend URL when FRONTEND_URL is unset", async () => {
-    const sendEmail = jest
-      .fn()
-      .mockResolvedValue({ success: true, messageId: "m2" });
+    const sendEmail = jest.fn().mockResolvedValue({ success: true, messageId: "m2" });
     const service = makeAuthService({ token: "tok-xyz", sendEmail });
 
     await (service as any).queueEmailVerification("u2", "second@example.test");
@@ -92,26 +84,16 @@ describe("queueEmailVerification — account mail identity (ADR 0143)", () => {
   });
 
   it("logs a warning and does not throw when the send fails", async () => {
-    const sendEmail = jest
-      .fn()
-      .mockResolvedValue({ success: false, error: "SMTP down" });
-    const service = makeAuthService({
-      token: "tok-fail",
-      sendEmail,
-      frontendUrl: "https://mudavym.com",
-    });
-    const warn = jest
-      .spyOn((service as any).logger, "warn")
-      .mockImplementation(() => {});
+    const sendEmail = jest.fn().mockResolvedValue({ success: false, error: "SMTP down" });
+    const service = makeAuthService({ token: "tok-fail", sendEmail, frontendUrl: "https://mudavym.com" });
+    const warn = jest.spyOn((service as any).logger, "warn").mockImplementation(() => {});
 
     await expect(
       (service as any).queueEmailVerification("u3", "third@example.test"),
     ).resolves.toBeUndefined();
 
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Verification email not delivered to t•••@example.test",
-      ),
+      expect.stringContaining("Verification email not delivered to t•••@example.test"),
     );
   });
 });

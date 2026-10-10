@@ -208,9 +208,7 @@ export class CommunicationsService {
     lowStockCount: number;
     pendingOrders: number;
   }): Promise<CommunicationResultDto> {
-    this.logger.log(
-      `Sending daily summary SMS to: ${maskPhone(data.recipientPhone)}`,
-    );
+    this.logger.log(`Sending daily summary SMS to: ${maskPhone(data.recipientPhone)}`);
 
     const result = await this.smsService.sendDailySummary({
       to: data.recipientPhone,

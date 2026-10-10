@@ -316,7 +316,9 @@ export function describeScheduleSubject(row: {
  * from arming one and not the other, and the failure would be silent in the
  * direction that sends email.
  */
-export { RECURRING_REMINDER_FLAG } from "../communications/recurring-order-reminder";
+export {
+  RECURRING_REMINDER_FLAG,
+} from "../communications/recurring-order-reminder";
 import {
   RECURRING_REMINDER_FLAG,
   recurringRemindersEnabled,

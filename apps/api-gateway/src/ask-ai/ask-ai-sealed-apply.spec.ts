@@ -6,7 +6,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { AskAiService, PROPOSAL_SEAL_ACT } from "./ask-ai.service";
-import { AskAiController, UNSEALED_CONFIRM_RETIRED } from "./ask-ai.controller";
+import {
+  AskAiController,
+  UNSEALED_CONFIRM_RETIRED,
+} from "./ask-ai.controller";
 import { hashCallArgs } from "../common/seal/seal-token";
 import { DatabaseService } from "../database/database.service";
 import { ProcurementService } from "../procurement/procurement.service";
@@ -157,21 +160,13 @@ function makeBindingSeals() {
     issue: jest.fn(async (params: any) => {
       n += 1;
       const challenge = `seal-${n}`;
-      minted.set(challenge, {
-        argsHash: hashCallArgs(params.args),
-        spent: false,
-      });
-      return {
-        challenge,
-        expiresAt: "2026-09-21T14:04:11Z",
-        action: params.action,
-      };
+      minted.set(challenge, { argsHash: hashCallArgs(params.args), spent: false });
+      return { challenge, expiresAt: "2026-09-21T14:04:11Z", action: params.action };
     }),
     redeem: jest.fn(async (params: any) => {
       const seal = minted.get(params.challenge ?? "");
       if (!seal) throw new ForbiddenException("No seal was carried.");
-      if (seal.spent)
-        throw new ForbiddenException("That seal has already been spent.");
+      if (seal.spent) throw new ForbiddenException("That seal has already been spent.");
       if (seal.argsHash !== hashCallArgs(params.args)) {
         throw new ForbiddenException(
           "This proposal changed after the seal was issued, so nothing was changed.",
@@ -386,7 +381,7 @@ describe("applying behind the seal", () => {
   });
 });
 
-describe('an edit is applied only inside its seal ("Never without the seal", 2026-09-21)', () => {
+describe("an edit is applied only inside its seal (\"Never without the seal\", 2026-09-21)", () => {
   const EDIT = { inventoryId: INV, providerId: PROV_2, quantity: 8 };
 
   it("mints on the edit: the seal binds the stored proposal AND the edited payload", async () => {
@@ -415,10 +410,7 @@ describe('an edit is applied only inside its seal ("Never without the seal", 202
     const { client } = makeClient(proposal());
     const svc = makeService(client, {}, seals);
     await expect(
-      svc.issueProposalSeal("r1", "u1", "act-1", {
-        ...EDIT,
-        providerId: FOREIGN,
-      }),
+      svc.issueProposalSeal("r1", "u1", "act-1", { ...EDIT, providerId: FOREIGN }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(seals.issue).not.toHaveBeenCalled();
   });
@@ -428,12 +420,7 @@ describe('an edit is applied only inside its seal ("Never without the seal", 202
     const { client } = makeClient(proposal());
     const createOrder = jest.fn(async () => ({ id: "order-9" }));
     const svc = makeService(client, { createOrder }, seals);
-    const { challenge } = await svc.issueProposalSeal(
-      "r1",
-      "u1",
-      "act-1",
-      EDIT,
-    );
+    const { challenge } = await svc.issueProposalSeal("r1", "u1", "act-1", EDIT);
     const res = await svc.confirmSealed("r1", "u1", "act-1", challenge, EDIT);
     expect(res).toMatchObject({ executed: true, edited: true });
     expect(createOrder).toHaveBeenCalledWith(
@@ -462,17 +449,9 @@ describe('an edit is applied only inside its seal ("Never without the seal", 202
     const { client, writes } = makeClient(proposal());
     const createOrder = jest.fn(async () => ({ id: "order-9" }));
     const svc = makeService(client, { createOrder }, seals);
-    const { challenge } = await svc.issueProposalSeal(
-      "r1",
-      "u1",
-      "act-1",
-      EDIT,
-    );
+    const { challenge } = await svc.issueProposalSeal("r1", "u1", "act-1", EDIT);
     await expect(
-      svc.confirmSealed("r1", "u1", "act-1", challenge, {
-        ...EDIT,
-        quantity: 80,
-      }),
+      svc.confirmSealed("r1", "u1", "act-1", challenge, { ...EDIT, quantity: 80 }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(writes).toEqual([]);
     expect(createOrder).not.toHaveBeenCalled();
@@ -483,12 +462,7 @@ describe('an edit is applied only inside its seal ("Never without the seal", 202
     const { client } = makeClient(proposal());
     const createOrder = jest.fn(async () => ({ id: "order-9" }));
     const svc = makeService(client, { createOrder }, seals);
-    const { challenge } = await svc.issueProposalSeal(
-      "r1",
-      "u1",
-      "act-1",
-      EDIT,
-    );
+    const { challenge } = await svc.issueProposalSeal("r1", "u1", "act-1", EDIT);
     await expect(
       svc.confirmSealed("r1", "u1", "act-1", challenge),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -512,38 +486,21 @@ describe("the sealed routes carry the edit through", () => {
     const svc = { issueProposalSeal: jest.fn(async () => ({})) };
     const controller = new AskAiController(svc as unknown as AskAiService);
     await controller.sealChallenge("act-1", { payload: EDIT }, user);
-    expect(svc.issueProposalSeal).toHaveBeenCalledWith(
-      "r1",
-      "u1",
-      "act-1",
-      EDIT,
-    );
+    expect(svc.issueProposalSeal).toHaveBeenCalledWith("r1", "u1", "act-1", EDIT);
   });
 
   it("sealed-confirm carries the header's seal and the body's edit", async () => {
     const svc = { confirmSealed: jest.fn(async () => ({})) };
     const controller = new AskAiController(svc as unknown as AskAiService);
     await controller.sealedConfirm("act-1", { payload: EDIT }, user, "seal-9");
-    expect(svc.confirmSealed).toHaveBeenCalledWith(
-      "r1",
-      "u1",
-      "act-1",
-      "seal-9",
-      EDIT,
-    );
+    expect(svc.confirmSealed).toHaveBeenCalledWith("r1", "u1", "act-1", "seal-9", EDIT);
   });
 
   it("an untouched apply carries no edit and a missing header is null, not a seal", async () => {
     const svc = { confirmSealed: jest.fn(async () => ({})) };
     const controller = new AskAiController(svc as unknown as AskAiService);
     await controller.sealedConfirm("act-1", {}, user, undefined);
-    expect(svc.confirmSealed).toHaveBeenCalledWith(
-      "r1",
-      "u1",
-      "act-1",
-      null,
-      undefined,
-    );
+    expect(svc.confirmSealed).toHaveBeenCalledWith("r1", "u1", "act-1", null, undefined);
   });
 });
 

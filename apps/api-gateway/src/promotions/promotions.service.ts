@@ -254,11 +254,7 @@ export interface LedgerSummaryDto {
  */
 export interface HouseScopeDto {
   /** The house's CURRENT menus (status active). Empty = no menu read yet: the page opens on "Everything I stock". */
-  menus: Array<{
-    menu_id: string;
-    name: string | null;
-    read_at: string | null;
-  }>;
+  menus: Array<{ menu_id: string; name: string | null; read_at: string | null }>;
   coverage: MenuCoverage;
   shelf: { rows: number; active: number; counted: number };
 }
@@ -294,10 +290,7 @@ interface OfferRow {
   created_at: string | null;
   dismissed_at: string | null;
   dismissed_by: string | null;
-  providers:
-    | { id: string; name: string }
-    | { id: string; name: string }[]
-    | null;
+  providers: { id: string; name: string } | { id: string; name: string }[] | null;
 }
 
 /**
@@ -305,10 +298,7 @@ interface OfferRow {
  * write to the projected stock column (`check_no_direct_stock_writes.sh`
  * flags any `<column>:`); this module only READS them.
  */
-type ShelfCounters = Record<
-  "stock_live" | "threshold_min",
-  number | string | null
->;
+type ShelfCounters = Record<"stock_live" | "threshold_min", number | string | null>;
 
 interface ShelfDbRow extends ShelfCounters {
   id: string;
@@ -317,10 +307,7 @@ interface ShelfDbRow extends ShelfCounters {
   is_active: boolean | null;
   deleted_at: string | null;
   last_counted_at: string | null;
-  master_wine_library:
-    | { beverage_kind: string | null }
-    | { beverage_kind: string | null }[]
-    | null;
+  master_wine_library: { beverage_kind: string | null } | { beverage_kind: string | null }[] | null;
 }
 
 interface PaidRow {
@@ -334,10 +321,7 @@ interface PaidRow {
   quantity: number | string | null;
   effective_date: string | null;
   source: string;
-  master_wine_library:
-    | { name: string; vintage: number | null }
-    | { name: string; vintage: number | null }[]
-    | null;
+  master_wine_library: { name: string; vintage: number | null } | { name: string; vintage: number | null }[] | null;
 }
 
 interface SightingRow {
@@ -384,16 +368,13 @@ export function houseDay(now: Date, zone: string | null): string {
 }
 
 function num(v: unknown): number | null {
-  const n =
-    typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
+  const n = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
   return Number.isFinite(n) ? n : null;
 }
 
 function stringList(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return v.filter(
-    (x): x is string => typeof x === "string" && x.trim().length > 0,
-  );
+  return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
 }
 
 function discountOf(dv: Record<string, unknown> | null) {
@@ -419,10 +400,7 @@ export function minimumOf(
   const c = conditions ?? {};
   const quantity = num(c.min_qty);
   if (quantity == null || !(quantity > 0)) return null;
-  const unit =
-    typeof c.min_qty_unit === "string" && c.min_qty_unit
-      ? c.min_qty_unit
-      : null;
+  const unit = typeof c.min_qty_unit === "string" && c.min_qty_unit ? c.min_qty_unit : null;
   return { quantity, unit, mixed: saysMixed(c, offerText) };
 }
 
@@ -438,29 +416,19 @@ export function minimumOf(
  */
 const MIXED_PHRASE =
   /\b(mixed\s+(case|cases|order|orders|lot|lots|pallet|pallets)|mix[\s-]*(and|&|n|'n')[\s-]*match|(may|can)\s+be\s+mixed|mixing\s+(allowed|permitted|welcome))\b/i;
-const MIXED_NEGATION =
-  /\b(no|not|non|cannot|can't|never|without)[\s-]+(be\s+)?mix/i;
+const MIXED_NEGATION = /\b(no|not|non|cannot|can't|never|without)[\s-]+(be\s+)?mix/i;
 
-export function saysMixed(
-  conditions: Record<string, unknown> | null,
-  offerText: string | null,
-): boolean {
+export function saysMixed(conditions: Record<string, unknown> | null, offerText: string | null): boolean {
   const c = conditions ?? {};
   if (c.mixed === true || c.mixed_case === true) return true;
   if (c.mixed === false || c.mixed_case === false) return false;
-  const words = [
-    offerText ?? "",
-    typeof c.valid_text === "string" ? c.valid_text : "",
-  ].join(" \n ");
+  const words = [offerText ?? "", typeof c.valid_text === "string" ? c.valid_text : ""].join(" \n ");
   if (MIXED_NEGATION.test(words)) return false;
   return MIXED_PHRASE.test(words);
 }
 
 /** The offer's state, said as a word rather than left to the reader to infer. */
-export function offerState(
-  row: { end_date: string | null; dismissed_at: string | null },
-  today: string,
-): OfferState {
+export function offerState(row: { end_date: string | null; dismissed_at: string | null }, today: string): OfferState {
   if (row.dismissed_at) return "dismissed";
   if (!row.end_date) return "undated";
   return row.end_date < today ? "passed" : "open";
@@ -481,16 +449,13 @@ export class PromotionsService {
    */
   private async readAll<T extends { id: string }>(
     register: string,
-    page: (
-      after: string | null,
-    ) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+    page: (after: string | null) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
   ): Promise<T[]> {
     const out: T[] = [];
     let after: string | null = null;
     for (;;) {
       const { data, error } = await page(after);
-      if (error)
-        throw new Error(`${register} could not be read: ${error.message}`);
+      if (error) throw new Error(`${register} could not be read: ${error.message}`);
       const rows = (data ?? []) as T[];
       out.push(...rows);
       if (rows.length < PAGE_ROWS) break;
@@ -507,41 +472,28 @@ export class PromotionsService {
     const db = this.databaseService.supabase;
     // 0. The house's clock, so "today" is the house's date (F-260; the same
     //    defect the house-lifecycle sim filed again as F-481).
-    const zoneRes = await db
-      .from("restaurants")
-      .select("timezone")
-      .eq("id", restaurantId)
-      .limit(1);
+    const zoneRes = await db.from("restaurants").select("timezone").eq("id", restaurantId).limit(1);
     if (zoneRes.error) {
-      throw new Error(
-        `The house's time zone (restaurants) could not be read: ${zoneRes.error.message}`,
-      );
+      throw new Error(`The house's time zone (restaurants) could not be read: ${zoneRes.error.message}`);
     }
-    const timeZone = resolveZone(
-      ((zoneRes.data ?? []) as { timezone: string | null }[])[0]?.timezone,
-    );
+    const timeZone = resolveZone(((zoneRes.data ?? []) as { timezone: string | null }[])[0]?.timezone);
     const today = houseDay(now, timeZone);
-    const since = isoDate(
-      new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000),
-    );
+    const since = isoDate(new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000));
 
     // 1. The offers — this house's, live, on the table unless asked for the
     //    put-away ones too. Read whole (keyset pages), then ordered ends-soonest
     //    with undated last, as the single read used to return them.
     const offerRows = (
-      await this.readAll<OfferRow>(
-        "The offers register (provider_promotions)",
-        (after) => {
-          let q = db
-            .from("provider_promotions")
-            .select(OFFER_COLUMNS)
-            .eq("restaurant_id", restaurantId)
-            .eq("is_active", true);
-          if (!opts.includeDismissed) q = q.is("dismissed_at", null);
-          if (after) q = q.gt("id", after);
-          return q.order("id", { ascending: true }).limit(PAGE_ROWS);
-        },
-      )
+      await this.readAll<OfferRow>("The offers register (provider_promotions)", (after) => {
+        let q = db
+          .from("provider_promotions")
+          .select(OFFER_COLUMNS)
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true);
+        if (!opts.includeDismissed) q = q.is("dismissed_at", null);
+        if (after) q = q.gt("id", after);
+        return q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      })
     ).sort((a, b) => {
       if (a.end_date === b.end_date) return a.id.localeCompare(b.id);
       if (a.end_date == null) return 1;
@@ -550,41 +502,24 @@ export class PromotionsService {
     });
 
     // 2. The vendors' names, for ledger lines that carry only an id.
-    const providersRes = await db
-      .from("providers")
-      .select("id, name")
-      .eq("restaurant_id", restaurantId);
+    const providersRes = await db.from("providers").select("id, name").eq("restaurant_id", restaurantId);
     if (providersRes.error) {
-      throw new Error(
-        `The vendor roster (providers) could not be read: ${providersRes.error.message}`,
-      );
+      throw new Error(`The vendor roster (providers) could not be read: ${providersRes.error.message}`);
     }
     const providerName = new Map<string, string>();
-    for (const p of (providersRes.data ?? []) as { id: string; name: string }[])
-      providerName.set(p.id, p.name);
+    for (const p of (providersRes.data ?? []) as { id: string; name: string }[]) providerName.set(p.id, p.name);
 
     // 3. The shelf: the bridge the extractor's wine names came over
     //    (restaurant_inventory.wine_name → master_wine_id) and the rows the
     //    house-first scope reads. Read whole — it used to stop at 2000 rows, a silent
     //    cap every rung's count would have inherited (research-filters F12).
-    const shelfDb = await this.readAll<ShelfDbRow>(
-      "The shelf (restaurant_inventory)",
-      (after) => {
-        let q = db
-          .from("restaurant_inventory")
-          .select(SHELF_COLUMNS)
-          .eq("restaurant_id", restaurantId);
-        if (after) q = q.gt("id", after);
-        return q.order("id", { ascending: true }).limit(PAGE_ROWS);
-      },
-    );
-    const named = shelfDb.filter(
-      (r) => typeof r.wine_name === "string" && r.wine_name.trim(),
-    );
-    const bridge: WineBridge[] = named.map((r) => ({
-      name: r.wine_name as string,
-      productKey: r.master_wine_id ?? null,
-    }));
+    const shelfDb = await this.readAll<ShelfDbRow>("The shelf (restaurant_inventory)", (after) => {
+      let q = db.from("restaurant_inventory").select(SHELF_COLUMNS).eq("restaurant_id", restaurantId);
+      if (after) q = q.gt("id", after);
+      return q.order("id", { ascending: true }).limit(PAGE_ROWS);
+    });
+    const named = shelfDb.filter((r) => typeof r.wine_name === "string" && r.wine_name.trim());
+    const bridge: WineBridge[] = named.map((r) => ({ name: r.wine_name as string, productKey: r.master_wine_id ?? null }));
     const shelf: ShelfRow[] = named.map((r) => ({
       name: r.wine_name as string,
       productKey: r.master_wine_id ?? null,
@@ -603,10 +538,7 @@ export class PromotionsService {
       menuId: l.menu_id,
       name: typeof l.name === "string" ? l.name : null,
       category: typeof l.category === "string" ? l.category : null,
-      wineLibraryId:
-        typeof l.wine_library_id === "string" && l.wine_library_id
-          ? l.wine_library_id
-          : null,
+      wineLibraryId: typeof l.wine_library_id === "string" && l.wine_library_id ? l.wine_library_id : null,
     }));
     const shelfIndex = indexShelf(shelf);
     const menuIndex = indexMenu(menuLines);
@@ -635,17 +567,13 @@ export class PromotionsService {
       if (!(PRICE_SERIES_UNITS as readonly string[]).includes(r.unit)) continue;
       const wine = one(r.master_wine_library);
       const productName = wine
-        ? [wine.name, wine.vintage != null ? String(wine.vintage) : ""]
-            .join(" ")
-            .trim()
+        ? [wine.name, wine.vintage != null ? String(wine.vintage) : ""].join(" ").trim()
         : null;
       paid.push({
         kind: "paid",
         ref: `price_history:${r.id}`,
         providerId: r.provider_id ?? null,
-        providerName: r.provider_id
-          ? (providerName.get(r.provider_id) ?? null)
-          : null,
+        providerName: r.provider_id ? (providerName.get(r.provider_id) ?? null) : null,
         productKey: r.master_wine_id ?? null,
         identityId: r.identity_id ?? null,
         productName,
@@ -666,9 +594,7 @@ export class PromotionsService {
       "The price register (vendor_price_observations)",
       () =>
         scopePriceRegisterRead(
-          db
-            .from(VENDOR_PRICE_OBSERVATIONS)
-            .select(SIGHTING_COLUMNS, { count: "exact" }),
+          db.from(VENDOR_PRICE_OBSERVATIONS).select(SIGHTING_COLUMNS, { count: "exact" }),
           VENDOR_PRICE_OBSERVATIONS,
           { kind: "houseAndOpenMarket", restaurantId },
         )
@@ -686,12 +612,7 @@ export class PromotionsService {
       const price = num(r.raw_price);
       const pack = r.pack_size ?? null;
       const volume = r.unit_volume_ml ?? null;
-      if (
-        price == null ||
-        r.is_outlier === true ||
-        !(pack && pack > 0) ||
-        !(volume && volume > 0)
-      ) {
+      if (price == null || r.is_outlier === true || !(pack && pack > 0) || !(volume && volume > 0)) {
         skippedSightings += 1;
         continue;
       }
@@ -706,9 +627,7 @@ export class PromotionsService {
         skippedSightings += 1;
         continue;
       }
-      const scope: LedgerLine["scope"] = r.restaurant_id
-        ? "house"
-        : "open_market";
+      const scope: LedgerLine["scope"] = r.restaurant_id ? "house" : "open_market";
       if (scope === "house") houseSightings += 1;
       else marketSightings += 1;
       sightings.push({
@@ -716,9 +635,7 @@ export class PromotionsService {
         ref: `vendor_price_observations:${r.id}`,
         providerId: r.provider_id ?? null,
         providerName:
-          (r.provider_id ? providerName.get(r.provider_id) : undefined) ??
-          r.vendor_name_raw ??
-          null,
+          (r.provider_id ? providerName.get(r.provider_id) : undefined) ?? r.vendor_name_raw ?? null,
         productKey: r.master_wine_id ?? null,
         // The register carries no identity_id column (`vendor_price_
         // observations` was not part of the ADR 0124 Q5 backfill) — a
@@ -729,9 +646,7 @@ export class PromotionsService {
         price: Math.round(norm.unitPrice * 100) / 100,
         unit: "bottle",
         currency: r.currency ?? null,
-        date:
-          r.effective_date ??
-          (r.observed_at ? r.observed_at.slice(0, 10) : null),
+        date: r.effective_date ?? (r.observed_at ? r.observed_at.slice(0, 10) : null),
         source: r.source_type,
         scope,
         // A sighting prices what was SEEN, not what was bought — it never
@@ -753,10 +668,7 @@ export class PromotionsService {
           providerId: row.provider_id,
           wines,
           discount: discountOf(row.discount_value),
-          minimum: minimumOf(
-            row.conditions,
-            [row.name, row.description].filter(Boolean).join(" \n "),
-          ),
+          minimum: minimumOf(row.conditions, [row.name, row.description].filter(Boolean).join(" \n ")),
         },
         ledger,
         bridge,
@@ -766,8 +678,7 @@ export class PromotionsService {
       return {
         id: row.id,
         provider_id: row.provider_id,
-        provider_name:
-          provider?.name ?? providerName.get(row.provider_id) ?? null,
+        provider_name: provider?.name ?? providerName.get(row.provider_id) ?? null,
         name: row.name,
         promo_type: row.promo_type,
         description: row.description ?? null,
@@ -787,10 +698,13 @@ export class PromotionsService {
       };
     });
 
-    const oldestPaid = paid.reduce<string | null>((min, l) => {
-      const d = l.date ? l.date.slice(0, 10) : null;
-      return d && (min === null || d < min) ? d : min;
-    }, null);
+    const oldestPaid = paid.reduce<string | null>(
+      (min, l) => {
+        const d = l.date ? l.date.slice(0, 10) : null;
+        return d && (min === null || d < min) ? d : min;
+      },
+      null,
+    );
 
     return {
       read_at: now.toISOString(),
@@ -806,30 +720,17 @@ export class PromotionsService {
         market_sightings: marketSightings,
         skipped_sightings: skippedSightings,
         caps: {
-          paid_lines: {
-            cap: PAID_LINES_CAP,
-            reached: paidRead.reached,
-            total: paidRead.total,
-          },
-          sightings: {
-            cap: SIGHTINGS_CAP,
-            reached: sightingsRead.reached,
-            total: sightingsRead.total,
-          },
+          paid_lines: { cap: PAID_LINES_CAP, reached: paidRead.reached, total: paidRead.total },
+          sightings: { cap: SIGHTINGS_CAP, reached: sightingsRead.reached, total: sightingsRead.total },
         },
       },
       house: {
-        menus: current.menus.map((m) => ({
-          menu_id: m.menuId,
-          name: m.name,
-          read_at: m.readAt,
-        })),
+        menus: current.menus.map((m) => ({ menu_id: m.menuId, name: m.name, read_at: m.readAt })),
         coverage: menuCoverage(menuLines),
         shelf: {
           rows: shelf.length,
           active: shelf.filter((r) => r.active).length,
-          counted: shelf.filter((r) => r.active && r.lastCountedAt != null)
-            .length,
+          counted: shelf.filter((r) => r.active && r.lastCountedAt != null).length,
         },
       },
     };
@@ -851,20 +752,13 @@ export class PromotionsService {
       .select("id, dismissed_at")
       .maybeSingle();
     if (error) {
-      throw new Error(
-        `The offer could not be put away (provider_promotions): ${error.message}`,
-      );
+      throw new Error(`The offer could not be put away (provider_promotions): ${error.message}`);
     }
     if (!data) {
       throw new NotFoundException("No such offer on this house's table.");
     }
-    this.logger.log(
-      `Offer ${id} dismissed for restaurant ${restaurantId} by ${userId}`,
-    );
-    return {
-      dismissed: true,
-      dismissed_at: (data as { dismissed_at: string }).dismissed_at ?? stamp,
-    };
+    this.logger.log(`Offer ${id} dismissed for restaurant ${restaurantId} by ${userId}`);
+    return { dismissed: true, dismissed_at: (data as { dismissed_at: string }).dismissed_at ?? stamp };
   }
 
   /**
@@ -887,9 +781,7 @@ export class PromotionsService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (curErr) {
-      throw new Error(
-        `The offer could not be restored (provider_promotions): ${curErr.message}`,
-      );
+      throw new Error(`The offer could not be restored (provider_promotions): ${curErr.message}`);
     }
     if (!cur) {
       throw new NotFoundException("No such offer on this house's table.");
@@ -901,10 +793,8 @@ export class PromotionsService {
       entity_type: "provider_promotion",
       entity_id: id,
       changes: {
-        dismissed_at:
-          (cur as { dismissed_at: string | null }).dismissed_at ?? null,
-        dismissed_by:
-          (cur as { dismissed_by: string | null }).dismissed_by ?? null,
+        dismissed_at: (cur as { dismissed_at: string | null }).dismissed_at ?? null,
+        dismissed_by: (cur as { dismissed_by: string | null }).dismissed_by ?? null,
       },
       restaurant_id: restaurantId,
       reason: null,
@@ -922,9 +812,7 @@ export class PromotionsService {
       .select("id")
       .maybeSingle();
     if (error) {
-      throw new Error(
-        `The offer could not be restored (provider_promotions): ${error.message}`,
-      );
+      throw new Error(`The offer could not be restored (provider_promotions): ${error.message}`);
     }
     if (!data) {
       throw new NotFoundException("No such offer on this house's table.");

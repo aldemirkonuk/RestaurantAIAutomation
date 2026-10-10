@@ -729,11 +729,7 @@ describe("every live notice and phone push names its house (F-522, F-523)", () =
   it("the person's own row names its house", async () => {
     const w = world();
     const staff = await w.connect(STAFF);
-    const svc = new NotificationsService(
-      w.gateway,
-      { get: () => undefined } as any,
-      w.databaseService,
-    );
+    const svc = new NotificationsService(w.gateway, { get: () => undefined } as any, w.databaseService);
     await svc.createNotification({
       userId: STAFF,
       restaurantId: HOUSE,
@@ -747,60 +743,28 @@ describe("every live notice and phone push names its house (F-522, F-523)", () =
   it("a house-wide and a role notice name their house", async () => {
     const w = world();
     const owner = await w.connect(OWNER);
-    w.gateway.emitRestaurantNotification(HOUSE, {
-      id: "n1",
-      title: "t",
-      message: "m",
-      type: "info",
-    });
-    await w.gateway.emitRoleNotification(HOUSE, ["owner"], {
-      id: "n2",
-      title: "t",
-      message: "m",
-      type: "info",
-    });
-    expect(
-      notificationsTo(owner).map((n) => n.payload.data.restaurant_id),
-    ).toEqual([HOUSE, HOUSE]);
+    w.gateway.emitRestaurantNotification(HOUSE, { id: "n1", title: "t", message: "m", type: "info" });
+    await w.gateway.emitRoleNotification(HOUSE, ["owner"], { id: "n2", title: "t", message: "m", type: "info" });
+    expect(notificationsTo(owner).map((n) => n.payload.data.restaurant_id)).toEqual([HOUSE, HOUSE]);
   });
 
   it("a targeted write names its house on the socket and in the push, whatever the caller's data says", async () => {
     const w = world();
     const owner = await w.connect(OWNER);
     const pushes: any[] = [];
-    const expo = {
-      sendToUsers: async (_ids: string[], msg: any) => void pushes.push(msg),
-    };
+    const expo = { sendToUsers: async (_ids: string[], msg: any) => void pushes.push(msg) };
     const db = {
       ...w.databaseService,
       getRestaurantMemberIds: async () => [OWNER, MANAGER, STAFF],
     };
-    const svc = new NotificationsService(
-      w.gateway,
-      { get: () => undefined } as any,
-      db,
-      undefined,
-      expo as any,
-    );
+    const svc = new NotificationsService(w.gateway, { get: () => undefined } as any, db, undefined, expo as any);
     await svc.persistForRestaurant(
       HOUSE,
-      {
-        type: "delivery_overdue",
-        title: "Delivery overdue",
-        message: "m",
-        priority: "high",
-        actionUrl: "/orders/o1",
-      },
-      {
-        onlyUserIds: [OWNER],
-        pushData: { orderId: "o1", restaurantId: OTHER_HOUSE },
-      },
+      { type: "delivery_overdue", title: "Delivery overdue", message: "m", priority: "high", actionUrl: "/orders/o1" },
+      { onlyUserIds: [OWNER], pushData: { orderId: "o1", restaurantId: OTHER_HOUSE } },
     );
     expect(notificationsTo(owner)[0].payload.data.restaurant_id).toBe(HOUSE);
     expect(pushes).toHaveLength(1);
-    expect(pushes[0].data).toMatchObject({
-      orderId: "o1",
-      restaurantId: HOUSE,
-    });
+    expect(pushes[0].data).toMatchObject({ orderId: "o1", restaurantId: HOUSE });
   });
 });

@@ -209,46 +209,27 @@ describe("InventoryService", () => {
     function notFoundThenInserted() {
       mockSingle
         .mockResolvedValueOnce({ data: { name: "Rioja" }, error: null })
-        .mockResolvedValueOnce({
-          data: null,
-          error: { code: "PGRST116", message: "not found" },
-        })
-        .mockResolvedValueOnce({
-          data: { id: "inv-par", wine_name: "Rioja" },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
+        .mockResolvedValueOnce({ data: { id: "inv-par", wine_name: "Rioja" }, error: null });
     }
 
     it("keeps a stated par of 0", async () => {
       notFoundThenInserted();
-      await service.createInventoryItem("rest-1", {
-        wineId: "mw-p",
-        stockLive: 1,
-        thresholdMin: 0,
-      } as any);
+      await service.createInventoryItem("rest-1", { wineId: "mw-p", stockLive: 1, thresholdMin: 0 } as any);
       expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(0);
     });
 
     it("uses the house's default par when none is given", async () => {
       notFoundThenInserted();
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { default_threshold_min: 4 },
-        error: null,
-      });
-      await service.createInventoryItem("rest-1", {
-        wineId: "mw-p",
-        stockLive: 1,
-      } as any);
+      mockMaybeSingle.mockResolvedValueOnce({ data: { default_threshold_min: 4 }, error: null });
+      await service.createInventoryItem("rest-1", { wineId: "mw-p", stockLive: 1 } as any);
       expect(mockSupabaseChain.from).toHaveBeenCalledWith("restaurants");
       expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(4);
     });
 
     it("falls back to the column's own default (3), not 6, when the house row is unread", async () => {
       notFoundThenInserted();
-      await service.createInventoryItem("rest-1", {
-        wineId: "mw-p",
-        stockLive: 1,
-      } as any);
+      await service.createInventoryItem("rest-1", { wineId: "mw-p", stockLive: 1 } as any);
       expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(3);
     });
   });
@@ -266,49 +247,32 @@ describe("InventoryService", () => {
         Promise.resolve({ data: [], error: null }),
       );
       const select = mockSupabaseChain.select;
-      const row = {
-        id: "inv-v",
-        wine_name: "Narince",
-        master_wine_library: null,
-        restaurants: null,
-      };
-      const result = (service as any).mapInventoryItem(
-        row,
-        undefined,
-        undefined,
-        {
-          velocity_per_day: 2,
-          velocity_days: 3,
-          is_new: true,
-        },
-      );
+      const row = { id: "inv-v", wine_name: "Narince", master_wine_library: null, restaurants: null };
+      const result = (service as any).mapInventoryItem(row, undefined, undefined, {
+        velocity_per_day: 2,
+        velocity_days: 3,
+        is_new: true,
+      });
       expect(result.velocityPerDay).toBe(2);
       expect(result.velocityDays).toBe(3);
       expect(result.velocityIsNew).toBe(true);
 
       await (service as any).fetchAnalytics("r-1");
-      const cols = select.mock.calls
-        .map(([c]: [string]) => c)
-        .find((c: string) => c?.includes("velocity_per_day"));
+      const cols = select.mock.calls.map(([c]: [string]) => c).find((c: string) => c?.includes("velocity_per_day"));
       expect(cols).toContain("velocity_days");
       expect(cols).toContain("is_new");
     });
   });
 
   describe("the house bottle price is menu_price_current (ADR 0193)", () => {
-    const priceRpc = (
-      result: Record<string, unknown> | null,
-      error: unknown = null,
-    ) =>
+    const priceRpc = (result: Record<string, unknown> | null, error: unknown = null) =>
       mockRpc.mockImplementation(async (fn: string) =>
         fn === "set_house_menu_price"
           ? { data: result, error }
           : { data: null, error: null },
       );
     const priceCalls = () =>
-      mockRpc.mock.calls.filter(
-        ([fn]: [string]) => fn === "set_house_menu_price",
-      );
+      mockRpc.mock.calls.filter(([fn]: [string]) => fn === "set_house_menu_price");
 
     it("maps row.menu_price_current to menuPriceBottle via mapInventoryItem", () => {
       const row = {
@@ -357,37 +321,20 @@ describe("InventoryService", () => {
       expect(result.menuPriceBottle).toBeUndefined();
       // A key never SET and a key mapped to undefined both read undefined; this
       // is the assertion that tells "mapped, and null" from "never mapped".
-      expect(
-        Object.prototype.hasOwnProperty.call(result, "menuPriceBottle"),
-      ).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(result, "menuPriceBottle")).toBe(true);
     });
 
     it("a price named on create goes through set_house_menu_price BY THE PERSON, never in the INSERT (founder answer 5)", async () => {
-      priceRpc({
-        outcome: "changed",
-        bottle_price: 62,
-        glass_price: null,
-        previous_bottle: null,
-        previous_glass: null,
-      });
+      priceRpc({ outcome: "changed", bottle_price: 62, glass_price: null, previous_bottle: null, previous_glass: null });
       mockSingle
-        .mockResolvedValueOnce({
-          data: { name: "Barolo Riserva" },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: null,
-          error: { code: "PGRST116", message: "not found" },
-        })
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
         .mockResolvedValueOnce({
           data: {
             id: "inv-7",
             wine_name: "Barolo Riserva",
             menu_price_current: 62,
-            master_wine_library: {
-              name: "Barolo Riserva",
-              bottle_size_ml: 750,
-            },
+            master_wine_library: { name: "Barolo Riserva", bottle_size_ml: 750 },
             restaurants: { default_pour_ml: 150, measurement_unit: "oz" },
           },
           error: null,
@@ -426,33 +373,15 @@ describe("InventoryService", () => {
     });
 
     it("a price write that fails after the wine is added is SAID in the response, not swallowed", async () => {
-      priceRpc(null, {
-        code: "22023",
-        message: "a price change names the person who made it",
-      });
+      priceRpc(null, { code: "22023", message: "a price change names the person who made it" });
       mockSingle
-        .mockResolvedValueOnce({
-          data: { name: "Barolo Riserva" },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: null,
-          error: { code: "PGRST116", message: "not found" },
-        })
-        .mockResolvedValueOnce({
-          data: { id: "inv-10", wine_name: "Barolo Riserva" },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
+        .mockResolvedValueOnce({ data: { id: "inv-10", wine_name: "Barolo Riserva" }, error: null });
 
       const result: any = await service.createInventoryItem(
         "rest-1",
-        {
-          wineId: "mw-6",
-          providerId: null,
-          thresholdMin: 6,
-          thresholdMax: 24,
-          menuPriceGlass: 14,
-        } as any,
+        { wineId: "mw-6", providerId: null, thresholdMin: 6, thresholdMax: 24, menuPriceGlass: 14 } as any,
         null,
       );
       expect(result.priceChange).toMatchObject({ outcome: "failed" });
@@ -465,19 +394,14 @@ describe("InventoryService", () => {
       // library row (resolveBulkLineWine), the house's existing row (none),
       // and the library name for the new row's label; the insert returns the id.
       mockMaybeSingle
-        .mockResolvedValueOnce({
-          data: { id: "mw-9", name: "Rioja", library_tier: 1 },
-          error: null,
-        })
+        .mockResolvedValueOnce({ data: { id: "mw-9", name: "Rioja", library_tier: 1 }, error: null })
         .mockResolvedValueOnce({ data: null, error: null })
         .mockResolvedValueOnce({ data: { name: "Rioja" }, error: null });
       mockSingle.mockResolvedValueOnce({ data: { id: "inv-11" }, error: null });
 
       const out: any = await service.bulkCreateInventoryItems(
         "rest-1",
-        {
-          items: [{ wineId: "mw-9", menuPriceBottle: 40, menuPriceGlass: 9 }],
-        } as any,
+        { items: [{ wineId: "mw-9", menuPriceBottle: 40, menuPriceGlass: 9 }] } as any,
         "user-8",
       );
       const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
@@ -490,26 +414,14 @@ describe("InventoryService", () => {
         p_changed_by: "user-8",
         p_change_source: "manual",
       });
-      expect(out.results[0]).toMatchObject({
-        status: "created",
-        priceSync: "changed",
-      });
+      expect(out.results[0]).toMatchObject({ status: "created", priceSync: "changed" });
     });
 
     it("omits the bottle price from the INSERT when the caller never sent it -- never a silent 0", async () => {
       mockSingle
-        .mockResolvedValueOnce({
-          data: { name: "Barolo Riserva" },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: null,
-          error: { code: "PGRST116", message: "not found" },
-        })
-        .mockResolvedValueOnce({
-          data: { id: "inv-8", wine_name: "Barolo Riserva" },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
+        .mockResolvedValueOnce({ data: { id: "inv-8", wine_name: "Barolo Riserva" }, error: null });
 
       await service.createInventoryItem("rest-1", {
         wineId: "mw-4",
@@ -525,32 +437,15 @@ describe("InventoryService", () => {
     });
 
     it("an edit goes through set_house_menu_price as 'manual' with the actor from the JWT, and no plain UPDATE touches a price", async () => {
-      priceRpc({
-        outcome: "changed",
-        bottle_price: 70,
-        glass_price: 15,
-        previous_bottle: 62,
-        previous_glass: 15,
-      });
+      priceRpc({ outcome: "changed", bottle_price: 70, glass_price: 15, previous_bottle: 62, previous_glass: 15 });
       // ownership (maybeSingle), old values (single), reload (single).
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-9" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
       mockSingle
         .mockResolvedValueOnce({
-          data: {
-            stock_live: 3,
-            shadow_stock: 0,
-            threshold_min: 6,
-            master_wine_id: "mw-5",
-          },
+          data: { stock_live: 3, shadow_stock: 0, threshold_min: 6, master_wine_id: "mw-5" },
           error: null,
         })
-        .mockResolvedValueOnce({
-          data: { id: "inv-9", menu_price_current: 70 },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { id: "inv-9", menu_price_current: 70 }, error: null });
 
       const result: any = await service.updateInventoryItem(
         "rest-1",
@@ -579,83 +474,42 @@ describe("InventoryService", () => {
     });
 
     it("a refused price change (the writer's 22023: nobody named) is a 400 and NOTHING else in the PATCH is written", async () => {
-      priceRpc(null, {
-        code: "22023",
-        message: "a price change names the person who made it",
-      });
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-9" },
-        error: null,
-      });
+      priceRpc(null, { code: "22023", message: "a price change names the person who made it" });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
 
       await expect(
-        service.updateInventoryItem(
-          "rest-1",
-          "inv-9",
-          { menuPriceGlass: 12, thresholdMin: 5 } as any,
-          null,
-        ),
+        service.updateInventoryItem("rest-1", "inv-9", { menuPriceGlass: 12, thresholdMin: 5 } as any, null),
       ).rejects.toMatchObject({ status: 400 });
       expect(mockSupabaseChain.update).not.toHaveBeenCalled();
     });
 
     it("the writer's P0002 (not this house's wine) is a 404", async () => {
       priceRpc(null, { code: "P0002", message: "no inventory item" });
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-9" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
 
       await expect(
-        service.updateInventoryItem(
-          "rest-1",
-          "inv-9",
-          { menuPriceBottle: 70 } as any,
-          "user-7",
-        ),
+        service.updateInventoryItem("rest-1", "inv-9", { menuPriceBottle: 70 } as any, "user-7"),
       ).rejects.toMatchObject({ status: 404 });
     });
 
     it("an answer with no outcome is an error, never a quiet success", async () => {
       priceRpc({});
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-9" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
 
       await expect(
-        service.updateInventoryItem(
-          "rest-1",
-          "inv-9",
-          { menuPriceBottle: 70 } as any,
-          "user-7",
-        ),
+        service.updateInventoryItem("rest-1", "inv-9", { menuPriceBottle: 70 } as any, "user-7"),
       ).rejects.toMatchObject({ status: 500 });
       expect(mockSupabaseChain.update).not.toHaveBeenCalled();
     });
 
     it("null clears a price through the same writer (the manager may take a price off)", async () => {
       priceRpc({ outcome: "changed", bottle_price: 62, glass_price: null });
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-9" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
       mockSingle
-        .mockResolvedValueOnce({
-          data: { stock_live: 3, shadow_stock: 0, threshold_min: 6 },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: { id: "inv-9", menu_price_current: 62, menu_price_glass: null },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { stock_live: 3, shadow_stock: 0, threshold_min: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-9", menu_price_current: 62, menu_price_glass: null }, error: null });
 
-      await service.updateInventoryItem(
-        "rest-1",
-        "inv-9",
-        { menuPriceGlass: null } as any,
-        "user-7",
-      );
+      await service.updateInventoryItem("rest-1", "inv-9", { menuPriceGlass: null } as any, "user-7");
       expect(priceCalls()[0][1]).toMatchObject({
         p_set_glass: true,
         p_glass_price: null,
@@ -691,10 +545,7 @@ describe("InventoryService", () => {
     it("commits through record_stock_count with a count:{inventoryId}:{clientCountId} idempotency key", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 8,
         clientCountId: "client-count-42",
@@ -719,33 +570,22 @@ describe("InventoryService", () => {
     // F-291: a count of one shelf names the shelf, so the database compares and
     // corrects that shelf only; a count of every shelf sends no location at all.
     it("passes the counted shelf as p_location_id, and sends none for a count of every shelf", async () => {
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 6,
         clientCountId: "shelf-1",
         locationId: "loc-cellar",
       });
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 9,
         clientCountId: "all-1",
       });
 
-      const counts = mockRpc.mock.calls.filter(
-        (c) => c[0] === "record_stock_count",
-      );
+      const counts = mockRpc.mock.calls.filter((c) => c[0] === "record_stock_count");
       expect(counts).toHaveLength(2);
       expect(counts[0][1]).toEqual(
-        expect.objectContaining({
-          p_counted_qty: 6,
-          p_location_id: "loc-cellar",
-        }),
+        expect.objectContaining({ p_counted_qty: 6, p_location_id: "loc-cellar" }),
       );
       expect(counts[1][1]).not.toHaveProperty("p_location_id");
     });
@@ -754,10 +594,7 @@ describe("InventoryService", () => {
     it("returns the recorded count when the count agrees — variance 0, no movement", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       mockRpc.mockResolvedValueOnce({
         data: {
           count_id: "count-9",
@@ -794,10 +631,7 @@ describe("InventoryService", () => {
     it("surfaces both the count and the movement when the count disagrees", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       mockRpc.mockResolvedValueOnce({
         data: {
           count_id: "count-10",
@@ -829,14 +663,8 @@ describe("InventoryService", () => {
     it("hands a retried count the identical key, so the retry is de-duplicable", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       const dto = { countedQty: 8, clientCountId: "client-count-retry" };
       await service.recordSpotCount("rest-1", "inv-1", { ...dto });
       await service.recordSpotCount("rest-1", "inv-1", { ...dto });
@@ -856,10 +684,7 @@ describe("InventoryService", () => {
     it("does not stamp last_counted_at in a separate write that could fail alone", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 8,
         clientCountId: "client-count-43",
@@ -875,10 +700,7 @@ describe("InventoryService", () => {
       // ADR 0141, Correction: without an owned item the ownership check refuses
       // first -- a ForbiddenException IS an HttpException, so this test would
       // pass without ever reaching the RPC error it exists to test.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       mockRpc.mockResolvedValueOnce({
         data: null,
         error: { message: "inventory not found" },
@@ -921,10 +743,7 @@ describe("InventoryService", () => {
       mockLimit.mockResolvedValue({ data: [], error: null });
       chain.gt = jest.fn().mockReturnThis();
       chain.limit = mockLimit;
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
     });
 
     it("refuses, without moving stock, a six-hour-old count the stock has moved past", async () => {
@@ -1006,23 +825,13 @@ describe("InventoryService", () => {
             : moves.filter((m) => m.at > after!);
         return { data: rows.map(() => ({ id: "x" })), error: null };
       });
-      mockRpc.mockImplementation(
-        async (fn: string, args: Record<string, unknown>) => {
-          if (fn !== "record_stock_count") return { data: null, error: null };
-          const at =
-            (args.p_counted_at as string | null) ?? new Date().toISOString();
-          counts.push({ key: args.p_idempotency_key as string, at });
-          moves.push({ at });
-          return {
-            data: {
-              count_id: "c",
-              counted_qty: args.p_counted_qty,
-              counted_at: at,
-            },
-            error: null,
-          };
-        },
-      );
+      mockRpc.mockImplementation(async (fn: string, args: Record<string, unknown>) => {
+        if (fn !== "record_stock_count") return { data: null, error: null };
+        const at = (args.p_counted_at as string | null) ?? new Date().toISOString();
+        counts.push({ key: args.p_idempotency_key as string, at });
+        moves.push({ at });
+        return { data: { count_id: "c", counted_qty: args.p_counted_qty, counted_at: at }, error: null };
+      });
       mockMaybeSingle.mockResolvedValue({ data: { id: "inv-1" }, error: null });
 
       const older = await statusOf(
@@ -1041,9 +850,7 @@ describe("InventoryService", () => {
       );
 
       expect([older, newer]).toEqual([200, 200]);
-      const sent = mockRpc.mock.calls.filter(
-        (c) => c[0] === "record_stock_count",
-      );
+      const sent = mockRpc.mock.calls.filter((c) => c[0] === "record_stock_count");
       expect(sent.map((c) => c[1].p_counted_qty)).toEqual([12, 10]);
       // Each count is stored at the time it was taken, not when it arrived.
       const at = sent.map((c) => Date.parse(c[1].p_counted_at));
@@ -1061,9 +868,7 @@ describe("InventoryService", () => {
         countedAgoMs: SIX_HOURS,
         locationId: "loc-cellar",
       });
-      const sent = mockRpc.mock.calls.find(
-        (c) => c[0] === "record_stock_count",
-      );
+      const sent = mockRpc.mock.calls.find((c) => c[0] === "record_stock_count");
       expect(sent?.[1].p_location_id).toBe("loc-cellar");
       const at = Date.parse(sent?.[1].p_counted_at);
       expect(Math.abs(Date.now() - SIX_HOURS - at)).toBeLessThan(5_000);
@@ -1085,10 +890,7 @@ describe("InventoryService", () => {
         try {
           await p;
         } catch (e) {
-          return {
-            status: (e as HttpException).getStatus(),
-            said: (e as HttpException).message,
-          };
+          return { status: (e as HttpException).getStatus(), said: (e as HttpException).message };
         }
         return { status: 200, said: "" };
       };
@@ -1096,40 +898,22 @@ describe("InventoryService", () => {
         id: "txn-bar-sale",
         from_location_id: null,
         to_location_id: null,
-        metadata: {
-          lots_taken: [{ lot_id: "lot-bar", qty: 1, location_id: "loc-bar" }],
-        },
+        metadata: { lots_taken: [{ lot_id: "lot-bar", qty: 1, location_id: "loc-bar" }] },
       };
 
       it("is applied after a count and a sale on another shelf", async () => {
         mockLimit
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({
-            data: [
-              {
-                id: "count-bar",
-                location_id: "loc-bar",
-                transaction_id: "txn-bar-count",
-              },
-            ],
+            data: [{ id: "count-bar", location_id: "loc-bar", transaction_id: "txn-bar-count" }],
             error: null,
           })
           .mockResolvedValueOnce({
             data: [
               // The bar count's own correction, which records no shelf.
-              {
-                id: "txn-bar-count",
-                from_location_id: null,
-                to_location_id: null,
-                metadata: {},
-              },
+              { id: "txn-bar-count", from_location_id: null, to_location_id: null, metadata: {} },
               barSale,
-              {
-                id: "txn-move",
-                from_location_id: "loc-bar",
-                to_location_id: "loc-terrace",
-                metadata: {},
-              },
+              { id: "txn-move", from_location_id: "loc-bar", to_location_id: "loc-terrace", metadata: {} },
             ],
             error: null,
           });
@@ -1141,13 +925,7 @@ describe("InventoryService", () => {
         mockLimit
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({
-            data: [
-              {
-                id: "count-cellar",
-                location_id: "loc-cellar",
-                transaction_id: null,
-              },
-            ],
+            data: [{ id: "count-cellar", location_id: "loc-cellar", transaction_id: null }],
             error: null,
           });
         const r = await refusalOf(cellarCount());
@@ -1160,9 +938,7 @@ describe("InventoryService", () => {
         mockLimit
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({
-            data: [
-              { id: "count-all", location_id: null, transaction_id: "txn-all" },
-            ],
+            data: [{ id: "count-all", location_id: null, transaction_id: "txn-all" }],
             error: null,
           });
         expect((await refusalOf(cellarCount())).status).toBe(409);
@@ -1174,21 +950,12 @@ describe("InventoryService", () => {
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({
-            data: [
-              barSale,
-              {
-                ...barSale,
-                id: "txn-cellar-sale",
-                metadata: { lots_taken: [{ location_id: "loc-cellar" }] },
-              },
-            ],
+            data: [barSale, { ...barSale, id: "txn-cellar-sale", metadata: { lots_taken: [{ location_id: "loc-cellar" }] } }],
             error: null,
           });
         const r = await refusalOf(cellarCount());
         expect(r.status).toBe(409);
-        expect(r.said).toMatch(
-          /Bottles on this shelf were sold, received or moved/,
-        );
+        expect(r.said).toMatch(/Bottles on this shelf were sold, received or moved/);
         expect(countRpcCalls()).toBe(0);
       });
 
@@ -1197,14 +964,7 @@ describe("InventoryService", () => {
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({
-            data: [
-              {
-                id: "txn-in",
-                from_location_id: "loc-bar",
-                to_location_id: "loc-cellar",
-                metadata: {},
-              },
-            ],
+            data: [{ id: "txn-in", from_location_id: "loc-bar", to_location_id: "loc-cellar", metadata: {} }],
             error: null,
           });
         expect((await refusalOf(cellarCount())).status).toBe(409);
@@ -1216,14 +976,7 @@ describe("InventoryService", () => {
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({ data: [], error: null })
           .mockResolvedValueOnce({
-            data: [
-              {
-                id: "txn-delivery",
-                from_location_id: null,
-                to_location_id: null,
-                metadata: {},
-              },
-            ],
+            data: [{ id: "txn-delivery", from_location_id: null, to_location_id: null, metadata: {} }],
             error: null,
           });
         const r = await refusalOf(cellarCount());
@@ -1239,17 +992,12 @@ describe("InventoryService", () => {
         countedQty: 12,
         clientCountId: "live-2",
       });
-      const sent = mockRpc.mock.calls.find(
-        (c) => c[0] === "record_stock_count",
-      );
+      const sent = mockRpc.mock.calls.find((c) => c[0] === "record_stock_count");
       expect(sent?.[1].p_counted_at).toBeNull();
     });
 
     it("lets a count that already landed replay instead of refusing it", async () => {
-      mockLimit.mockResolvedValueOnce({
-        data: [{ id: "count-landed" }],
-        error: null,
-      });
+      mockLimit.mockResolvedValueOnce({ data: [{ id: "count-landed" }], error: null });
 
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 12,
@@ -1264,9 +1012,7 @@ describe("InventoryService", () => {
       const from = mockSupabaseChain.from.mock;
       const after = Math.max(
         ...from.calls
-          .map((c, i) =>
-            c[0] === "stock_counts" ? from.invocationCallOrder[i] : 0,
-          )
+          .map((c, i) => (c[0] === "stock_counts" ? from.invocationCallOrder[i] : 0))
           .filter((o) => o < before),
       );
       const gateFilters = mockSupabaseChain.eq.mock.calls.filter((_c, i) => {
@@ -1291,10 +1037,7 @@ describe("InventoryService", () => {
     });
 
     it("answers 503, not 400, when the check cannot read the stock", async () => {
-      mockLimit.mockResolvedValueOnce({
-        data: null,
-        error: { message: "fetch failed" },
-      });
+      mockLimit.mockResolvedValueOnce({ data: null, error: { message: "fetch failed" } });
       const status = await statusOf(
         service.recordSpotCount("rest-1", "inv-1", {
           countedQty: 12,
@@ -1311,10 +1054,7 @@ describe("InventoryService", () => {
         error: { message: "TypeError: fetch failed", code: "" },
       });
       const status = await statusOf(
-        service.recordSpotCount("rest-1", "inv-1", {
-          countedQty: 8,
-          clientCountId: "t1",
-        }),
+        service.recordSpotCount("rest-1", "inv-1", { countedQty: 8, clientCountId: "t1" }),
       );
       expect(status).toBe(503);
     });
@@ -1322,16 +1062,10 @@ describe("InventoryService", () => {
     it("answers 503 on a statement timeout", async () => {
       mockRpc.mockResolvedValueOnce({
         data: null,
-        error: {
-          message: "canceling statement due to statement timeout",
-          code: "57014",
-        },
+        error: { message: "canceling statement due to statement timeout", code: "57014" },
       });
       const status = await statusOf(
-        service.recordSpotCount("rest-1", "inv-1", {
-          countedQty: 8,
-          clientCountId: "t2",
-        }),
+        service.recordSpotCount("rest-1", "inv-1", { countedQty: 8, clientCountId: "t2" }),
       );
       expect(status).toBe(503);
     });
@@ -1342,10 +1076,7 @@ describe("InventoryService", () => {
         error: { message: "inventory inv-1 not found", code: "P0001" },
       });
       const status = await statusOf(
-        service.recordSpotCount("rest-1", "inv-1", {
-          countedQty: 8,
-          clientCountId: "t3",
-        }),
+        service.recordSpotCount("rest-1", "inv-1", { countedQty: 8, clientCountId: "t3" }),
       );
       expect(status).toBe(400);
     });
@@ -1388,15 +1119,9 @@ describe("InventoryService", () => {
     it("passes performedBy to transfer_stock", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       // F-435: and the zone it moves to must be the house's own.
-      mockSupabaseChain.in.mockResolvedValueOnce({
-        data: [{ id: "loc-2" }],
-        error: null,
-      });
+      mockSupabaseChain.in.mockResolvedValueOnce({ data: [{ id: "loc-2" }], error: null });
       await service.transferStock(
         "rest-1",
         "inv-1",
@@ -1413,10 +1138,7 @@ describe("InventoryService", () => {
     it("passes performedBy to record_glass_pour", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordPour(
         "rest-1",
         "inv-1",
@@ -1434,10 +1156,7 @@ describe("InventoryService", () => {
       // ADR 0141, second correction: updateInventoryItem now checks ownership
       // before any write, so the item must belong to the house for the path to
       // reach set_stock_absolute at all.
-      mockMaybeSingle.mockResolvedValueOnce({
-        data: { id: "inv-1" },
-        error: null,
-      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       // 1: the informational old-values read. 2: the post-write re-fetch, which
       // mapInventoryItem dereferences.
       mockSingle
@@ -1597,25 +1316,14 @@ describe("InventoryService", () => {
   describe("createInventoryItem — re-adding a removed wine (F-693)", () => {
     // F-435 checks the zone is this house's; this mock chain is not a query.
     beforeEach(() => {
-      jest
-        .spyOn(locationGuard, "assertLocationsBelongToRestaurant")
-        .mockResolvedValue(undefined);
+      jest.spyOn(locationGuard, "assertLocationsBelongToRestaurant").mockResolvedValue(undefined);
     });
     afterEach(() => jest.restoreAllMocks());
     const removed = () => {
       mockSingle
-        .mockResolvedValueOnce({
-          data: { name: "Barolo Riserva" },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: { id: "inv-old", is_active: false },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: { id: "inv-old", wine_name: "Barolo Riserva" },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-old", is_active: false }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-old", wine_name: "Barolo Riserva" }, error: null });
     };
 
     it("applies what the form says and keeps the vendor it was not told to change", async () => {
@@ -1645,26 +1353,15 @@ describe("InventoryService", () => {
 
     it("a named vendor is written", async () => {
       removed();
-      await service.createInventoryItem("rest-1", {
-        wineId: "mw-9",
-        providerId: "prov-2",
-      } as any);
-      expect(mockSupabaseChain.update.mock.calls[0][0].provider_id).toBe(
-        "prov-2",
-      );
+      await service.createInventoryItem("rest-1", { wineId: "mw-9", providerId: "prov-2" } as any);
+      expect(mockSupabaseChain.update.mock.calls[0][0].provider_id).toBe("prov-2");
     });
 
     it("says so when the bottles typed in were not recorded", async () => {
       removed();
-      mockRpc.mockResolvedValueOnce({
-        data: null,
-        error: { message: "lot refused" },
-      });
+      mockRpc.mockResolvedValueOnce({ data: null, error: { message: "lot refused" } });
       await expect(
-        service.createInventoryItem("rest-1", {
-          wineId: "mw-9",
-          stockLive: 12,
-        } as any),
+        service.createInventoryItem("rest-1", { wineId: "mw-9", stockLive: 12 } as any),
       ).rejects.toThrow("its 12 bottles were not recorded");
     });
   });

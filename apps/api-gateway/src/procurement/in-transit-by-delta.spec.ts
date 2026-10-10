@@ -29,14 +29,8 @@ function harness() {
           if (table === "restaurant_inventory") inventoryWrites.push(p);
           return q;
         },
-        single: async () => ({
-          data: { shadow_stock: 6, in_transit_quantity: 6 },
-          error: null,
-        }),
-        maybeSingle: async () => ({
-          data: { shadow_stock: 6, in_transit_quantity: 6 },
-          error: null,
-        }),
+        single: async () => ({ data: { shadow_stock: 6, in_transit_quantity: 6 }, error: null }),
+        maybeSingle: async () => ({ data: { shadow_stock: 6, in_transit_quantity: 6 }, error: null }),
         then: (res: any, rej: any) =>
           Promise.resolve({ data: null, error: null }).then(res, rej),
       };
@@ -62,27 +56,17 @@ describe("in-transit moves by a delta (F-351)", () => {
     const h = harness();
     await h.svc.reserveOrderShadowStock(HOUSE, ITEM, 4);
     expect(h.rpc.filter((c) => c.name === "move_in_transit_by_delta")).toEqual([
-      {
-        name: "move_in_transit_by_delta",
-        args: { p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: 4 },
-      },
+      { name: "move_in_transit_by_delta", args: { p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: 4 } },
     ]);
-    expect(h.inventoryWrites.filter((w) => "in_transit_quantity" in w)).toEqual(
-      [],
-    );
+    expect(h.inventoryWrites.filter((w) => "in_transit_quantity" in w)).toEqual([]);
   });
 
   it("a release takes the quantity off in one call and writes no absolute figure", async () => {
     const h = harness();
     await h.svc.releaseOrderShadowStock(HOUSE, ITEM, 6);
     expect(h.rpc.filter((c) => c.name === "move_in_transit_by_delta")).toEqual([
-      {
-        name: "move_in_transit_by_delta",
-        args: { p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: -6 },
-      },
+      { name: "move_in_transit_by_delta", args: { p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: -6 } },
     ]);
-    expect(h.inventoryWrites.filter((w) => "in_transit_quantity" in w)).toEqual(
-      [],
-    );
+    expect(h.inventoryWrites.filter((w) => "in_transit_quantity" in w)).toEqual([]);
   });
 });

@@ -141,12 +141,7 @@ describe("WinesService.mapWine — the wine's own detail on the wire", () => {
       country: "France",
       region: "Saint-Émilion",
       appellation: null,
-      wine_structure: {
-        body: "medium-full",
-        acidity: "medium-high",
-        tannins: "medium-high",
-        sweetness: "dry",
-      },
+      wine_structure: { body: "medium-full", acidity: "medium-high", tannins: "medium-high", sweetness: "dry" },
       primary_aromas: ["dark cherry", "plum", "blackcurrant"],
       serving_temp_celsius: 18,
       glass_type: "Bordeaux",
@@ -245,9 +240,7 @@ describe("WinesService.mapWine — the reference price's currency on the wire", 
   });
 
   it("says null when the library never recorded one -- never a dollar default", () => {
-    expect(
-      map(row({ price_reference_currency: null })).priceCurrency,
-    ).toBeNull();
+    expect(map(row({ price_reference_currency: null })).priceCurrency).toBeNull();
     expect(map(row({})).priceCurrency).toBeNull();
   });
 });

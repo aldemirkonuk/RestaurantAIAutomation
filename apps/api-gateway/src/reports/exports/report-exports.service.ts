@@ -113,11 +113,7 @@ function byteLength(s: string): number {
 
 function messageOf(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
-  if (
-    err &&
-    typeof err === "object" &&
-    typeof (err as { message?: unknown }).message === "string"
-  )
+  if (err && typeof err === "object" && typeof (err as { message?: unknown }).message === "string")
     return (err as { message: string }).message;
   return "no reason was given";
 }
@@ -208,24 +204,19 @@ export class ReportExportsService {
         cutting,
         error: error?.message,
       });
-      throw (
-        error ??
-        new InternalServerErrorException("The export could not be queued.")
-      );
+      throw error ?? new InternalServerErrorException("The export could not be queued.");
     }
     const row = data as unknown as ExportRow;
 
-    const { error: auditError } = await this.db
-      .from("system_audit_log")
-      .insert({
-        actor_type: "user",
-        actor_id: actorId,
-        action: "report_export_requested",
-        entity_type: "report_export",
-        entity_id: row.id,
-        changes: { cutting, window_days: days },
-        restaurant_id: restaurantId,
-      });
+    const { error: auditError } = await this.db.from("system_audit_log").insert({
+      actor_type: "user",
+      actor_id: actorId,
+      action: "report_export_requested",
+      entity_type: "report_export",
+      entity_id: row.id,
+      changes: { cutting, window_days: days },
+      restaurant_id: restaurantId,
+    });
     if (auditError)
       this.logger.error("Export queued but the audit row failed to write", {
         restaurantId,
@@ -297,10 +288,7 @@ export class ReportExportsService {
     restaurantId: string,
     opts: { limit?: number; offset?: number } = {},
   ): Promise<ReportExportListResponseDto> {
-    const limit = Math.min(
-      100,
-      Math.max(1, Math.trunc(opts.limit ?? 20) || 20),
-    );
+    const limit = Math.min(100, Math.max(1, Math.trunc(opts.limit ?? 20) || 20));
     const offset = Math.max(0, Math.trunc(opts.offset ?? 0) || 0);
     await this.failStaleQueued(restaurantId);
 
@@ -338,8 +326,7 @@ export class ReportExportsService {
   ): Promise<ReportExportResponseDto> {
     await this.failStaleQueued(restaurantId);
     const row = await this.readRow(restaurantId, exportId);
-    const house =
-      row.status === "ready" ? await this.readHouseNaming(restaurantId) : null;
+    const house = row.status === "ready" ? await this.readHouseNaming(restaurantId) : null;
     return this.toDto(row, house);
   }
 
@@ -350,9 +337,7 @@ export class ReportExportsService {
   ): Promise<ExportDownload> {
     const { data, error } = await this.db
       .from(REPORT_EXPORTS_TABLE)
-      .select(
-        `id, cutting, window_days, status, failure_reason, finished_at, ${format}`,
-      )
+      .select(`id, cutting, window_days, status, failure_reason, finished_at, ${format}`)
       .eq("id", exportId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -382,19 +367,15 @@ export class ReportExportsService {
       this.fileStem(
         {
           cutting: String(row.cutting),
-          window_days:
-            typeof row.window_days === "number" ? row.window_days : null,
-          finished_at:
-            typeof row.finished_at === "string" ? row.finished_at : null,
+          window_days: typeof row.window_days === "number" ? row.window_days : null,
+          finished_at: typeof row.finished_at === "string" ? row.finished_at : null,
         },
         house,
       ) ?? `mudavym-${String(row.cutting)}-undated`;
     return {
       filename: `${stem}.${format}`,
       contentType:
-        format === "csv"
-          ? "text/csv; charset=utf-8"
-          : "text/html; charset=utf-8",
+        format === "csv" ? "text/csv; charset=utf-8" : "text/html; charset=utf-8",
       body,
     };
   }
@@ -471,8 +452,7 @@ export class ReportExportsService {
       });
       return;
     }
-    const boundary = ((data ?? [])[0] as { requested_at?: string } | undefined)
-      ?.requested_at;
+    const boundary = ((data ?? [])[0] as { requested_at?: string } | undefined)?.requested_at;
     if (!boundary) return; // at or under the cap already
 
     const { error: deleteError } = await this.db
@@ -516,12 +496,9 @@ export class ReportExportsService {
       .select("id", { count: "exact", head: true })
       .lt("requested_at", cutoff);
     if (countError) {
-      this.logger.error(
-        "Report export retention: could not count expired exports",
-        {
-          error: countError.message,
-        },
-      );
+      this.logger.error("Report export retention: could not count expired exports", {
+        error: countError.message,
+      });
       throw countError;
     }
 
@@ -530,22 +507,16 @@ export class ReportExportsService {
       .delete()
       .lt("requested_at", cutoff);
     if (deleteError) {
-      this.logger.error(
-        "Report export retention: could not delete expired exports",
-        {
-          error: deleteError.message,
-        },
-      );
+      this.logger.error("Report export retention: could not delete expired exports", {
+        error: deleteError.message,
+      });
       throw deleteError;
     }
 
     return { deleted: count ?? 0 };
   }
 
-  private async readRow(
-    restaurantId: string,
-    exportId: string,
-  ): Promise<ExportRow> {
+  private async readRow(restaurantId: string, exportId: string): Promise<ExportRow> {
     const { data, error } = await this.db
       .from(REPORT_EXPORTS_TABLE)
       .select(ROW_COLUMNS)
@@ -602,14 +573,11 @@ export class ReportExportsService {
    */
   private settle(row: ExportRow): Promise<void> {
     return this.run(row).catch((err) => {
-      this.logger.error(
-        "A report export attempt threw outside its own handling",
-        {
-          restaurantId: row.restaurant_id,
-          exportId: row.id,
-          error: messageOf(err),
-        },
-      );
+      this.logger.error("A report export attempt threw outside its own handling", {
+        restaurantId: row.restaurant_id,
+        exportId: row.id,
+        error: messageOf(err),
+      });
     });
   }
 
@@ -624,9 +592,7 @@ export class ReportExportsService {
       const payload = await this.reader
         .read(row.restaurant_id, cutting, row.window_days)
         .catch((err) => {
-          throw new Error(
-            `the ${spec.title} register could not be read: ${messageOf(err)}`,
-          );
+          throw new Error(`the ${spec.title} register could not be read: ${messageOf(err)}`);
         });
       const doc = spec.write(payload, { days: row.window_days });
 
@@ -636,40 +602,26 @@ export class ReportExportsService {
         .eq("id", row.restaurant_id)
         .maybeSingle();
       if (houseError)
-        throw new Error(
-          `the house's name and currency could not be read: ${houseError.message}`,
-        );
-      if (!house)
-        throw new Error("the house this export belongs to could not be found");
+        throw new Error(`the house's name and currency could not be read: ${houseError.message}`);
+      if (!house) throw new Error("the house this export belongs to could not be found");
 
       withheldCount = countWithheld(doc);
       const header = {
-        houseName:
-          typeof house.name === "string" && house.name ? house.name : null,
-        currency:
-          typeof house.currency === "string" && house.currency
-            ? house.currency
-            : null,
+        houseName: typeof house.name === "string" && house.name ? house.name : null,
+        currency: typeof house.currency === "string" && house.currency ? house.currency : null,
         title: row.title,
         windowLabel: row.window_label,
         writtenAt: new Date().toISOString(),
         // The same zone the till files its days on (`readHouseZone`), so
         // "Written" and the days in the file are one clock (F-413).
-        timezone: houseFrame(
-          house as { timezone?: string | null; country?: string | null },
-        ).zone,
+        timezone: houseFrame(house as { timezone?: string | null; country?: string | null }).zone,
         // The printed file groups its figures the house's way (F-889).
-        locale: houseFrame(
-          house as { timezone?: string | null; country?: string | null },
-        ).locale,
+        locale: houseFrame(house as { timezone?: string | null; country?: string | null }).locale,
         withheldCount,
       };
       csv = renderCsv(doc, header);
       html = renderHtml(doc, header);
-      if (
-        byteLength(csv) > MAX_ARTIFACT_BYTES ||
-        byteLength(html) > MAX_ARTIFACT_BYTES
-      )
+      if (byteLength(csv) > MAX_ARTIFACT_BYTES || byteLength(html) > MAX_ARTIFACT_BYTES)
         throw new Error(
           `the written files are larger than the ${MAX_ARTIFACT_BYTES / (1024 * 1024)} MB an export may hold`,
         );
@@ -727,15 +679,12 @@ export class ReportExportsService {
       .eq("status", "queued");
     if (error)
       // The row stays queued; the stale sweep fails it within STALE_QUEUED_MS.
-      this.logger.error(
-        "A report export failed and the failure could not be recorded",
-        {
-          restaurantId: row.restaurant_id,
-          exportId: row.id,
-          reason,
-          error: error.message,
-        },
-      );
+      this.logger.error("A report export failed and the failure could not be recorded", {
+        restaurantId: row.restaurant_id,
+        exportId: row.id,
+        reason,
+        error: error.message,
+      });
   }
 
   /**
@@ -753,20 +702,13 @@ export class ReportExportsService {
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
-      this.logger.error(
-        "Failed to read the house for an export's file name; naming it neutrally",
-        {
-          restaurantId,
-          error: error.message,
-        },
-      );
+      this.logger.error("Failed to read the house for an export's file name; naming it neutrally", {
+        restaurantId,
+        error: error.message,
+      });
       return { name: null, zone: null };
     }
-    const h = (data ?? null) as {
-      name?: unknown;
-      timezone?: string | null;
-      country?: string | null;
-    } | null;
+    const h = (data ?? null) as { name?: unknown; timezone?: string | null; country?: string | null } | null;
     return {
       name: typeof h?.name === "string" && h.name ? h.name : null,
       zone: houseFrame(h).zone,
@@ -787,10 +729,7 @@ export class ReportExportsService {
     });
   }
 
-  private toDto(
-    row: ExportRow,
-    house: HouseNaming | null = null,
-  ): ReportExportResponseDto {
+  private toDto(row: ExportRow, house: HouseNaming | null = null): ReportExportResponseDto {
     return {
       id: row.id,
       cutting: row.cutting,

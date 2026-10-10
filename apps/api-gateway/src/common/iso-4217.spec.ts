@@ -118,28 +118,11 @@ describe("the gateway's currency list mirrors the web's, exactly", () => {
     // Listed rather than described, because "we excluded the special ones" is
     // not something a later reader can check.
     const NOT_MONEY = [
-      "XAU",
-      "XAG",
-      "XPT",
-      "XPD", // metals
-      "XTS",
-      "XXX", // test, and "no currency"
-      "XBA",
-      "XBB",
-      "XBC",
-      "XBD", // bond market units
-      "XDR",
-      "XSU",
-      "XUA", // units of account
-      "BOV",
-      "CHE",
-      "CHW",
-      "CLF",
-      "COU",
-      "MXV",
-      "USN",
-      "UYI",
-      "UYW", // funds
+      "XAU", "XAG", "XPT", "XPD", // metals
+      "XTS", "XXX", // test, and "no currency"
+      "XBA", "XBB", "XBC", "XBD", // bond market units
+      "XDR", "XSU", "XUA", // units of account
+      "BOV", "CHE", "CHW", "CLF", "COU", "MXV", "USN", "UYI", "UYW", // funds
     ];
     expect(NOT_MONEY.length).toBe(22);
     expect(NOT_MONEY.filter((c) => isIso4217(c))).toEqual([]);
@@ -250,9 +233,7 @@ describe("currencyMinorUnits / roundMoney — money rounds to its own currency (
     expect(rows.length).toBe(ISO_4217_CODES.length);
     const differ = rows
       .filter((r) => currencyMinorUnits(r.code) !== r.minor)
-      .map(
-        (r) => `${r.code} web=${r.minor} gateway=${currencyMinorUnits(r.code)}`,
-      );
+      .map((r) => `${r.code} web=${r.minor} gateway=${currencyMinorUnits(r.code)}`);
     expect(differ).toEqual([]);
   });
 

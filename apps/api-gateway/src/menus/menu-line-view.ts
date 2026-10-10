@@ -34,17 +34,7 @@ import { policyFor } from "../ask-readings/reading-data-classes";
  * line: a known defect, filed in
  * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`.
  */
-export const KITCHEN_HINTS = [
-  "food",
-  "kitchen",
-  "dish",
-  "starter",
-  "dessert",
-  "entree",
-  "entrée",
-  "pasta",
-  "salad",
-];
+export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"];
 
 /** The raw line's column. Sent only when the caller's view allows it. */
 export const RAW_LINE_COLUMN = "raw_extracted_text";
@@ -83,8 +73,7 @@ export interface LineView {
 
 /** The same test as the web's `isKitchenLine`: a hint in the section or in the raw line. */
 export function isKitchenLine(category: unknown, raw: unknown): boolean {
-  const hay =
-    `${typeof category === "string" ? category : ""} ${typeof raw === "string" ? raw : ""}`.toLowerCase();
+  const hay = `${typeof category === "string" ? category : ""} ${typeof raw === "string" ? raw : ""}`.toLowerCase();
   return KITCHEN_HINTS.some((hint) => hay.includes(hint));
 }
 
@@ -107,10 +96,7 @@ export function seesRawLine(role: string | null | undefined): boolean {
  * because there is nothing to withhold. A withheld raw line is a missing key,
  * never a null: null already means "no raw line kept".
  */
-export function lineForViewer(
-  row: Record<string, unknown>,
-  view: LineView,
-): Record<string, unknown> {
+export function lineForViewer(row: Record<string, unknown>, view: LineView): Record<string, unknown> {
   const raw = row[RAW_LINE_COLUMN];
   const out: Record<string, unknown> = {};
   for (const key of MEMBER_LINE_KEYS) {

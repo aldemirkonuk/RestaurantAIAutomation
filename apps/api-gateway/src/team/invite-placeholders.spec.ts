@@ -22,31 +22,13 @@ const FUTURE = "2999-01-01T00:00:00.000Z";
 function seed(over: Record<string, any[]> = {}): StubDb {
   return makeStubDb({
     user_restaurant_access: [
-      {
-        id: "a1",
-        user_id: OWNER,
-        restaurant_id: RID,
-        role: "owner",
-        is_active: true,
-      },
+      { id: "a1", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true },
     ],
     users: [
-      {
-        user_id: OWNER,
-        restaurant_id: RID,
-        role: "owner",
-        name: "Ada",
-        email: "ada@example.test",
-      },
+      { user_id: OWNER, restaurant_id: RID, role: "owner", name: "Ada", email: "ada@example.test" },
     ],
     team_members: [
-      {
-        id: "m-owner",
-        restaurant_id: RID,
-        user_id: OWNER,
-        display_name: "Ada",
-        created_at: BEFORE,
-      },
+      { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
     ],
     team_settings: [],
     organization_invites: [],
@@ -79,20 +61,11 @@ describe("TeamService.listMembers — an expired invite's stand-in leaves the ro
     const db = seed({
       organization_invites: [invite("inv-1", { expires_at: PAST })],
       team_members: [
-        {
-          id: "m-owner",
-          restaurant_id: RID,
-          user_id: OWNER,
-          display_name: "Ada",
-          created_at: BEFORE,
-        },
+        { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
         standIn("m-ghost", "inv-1"),
       ],
     });
-    const roster = await new TeamService(asDatabaseService(db)).listMembers(
-      OWNER,
-      RID,
-    );
+    const roster = await new TeamService(asDatabaseService(db)).listMembers(OWNER, RID);
 
     expect(roster.map((m: any) => m.id)).toEqual(["m-owner"]);
     expect(ids(db)).toEqual(["m-owner"]);
@@ -102,25 +75,13 @@ describe("TeamService.listMembers — an expired invite's stand-in leaves the ro
     const db = seed({
       organization_invites: [invite("inv-1")],
       team_members: [
-        {
-          id: "m-owner",
-          restaurant_id: RID,
-          user_id: OWNER,
-          display_name: "Ada",
-          created_at: BEFORE,
-        },
+        { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
         standIn("m-coming", "inv-1"),
       ],
     });
-    const roster = await new TeamService(asDatabaseService(db)).listMembers(
-      OWNER,
-      RID,
-    );
+    const roster = await new TeamService(asDatabaseService(db)).listMembers(OWNER, RID);
 
-    expect(roster.map((m: any) => m.id).sort()).toEqual([
-      "m-coming",
-      "m-owner",
-    ]);
+    expect(roster.map((m: any) => m.id).sort()).toEqual(["m-coming", "m-owner"]);
     expect(db.opsOn("team_members", "delete")).toEqual([]);
   });
 
@@ -128,26 +89,14 @@ describe("TeamService.listMembers — an expired invite's stand-in leaves the ro
     const db = seed({
       organization_invites: [invite("inv-1", { expires_at: PAST })],
       team_members: [
-        {
-          id: "m-owner",
-          restaurant_id: RID,
-          user_id: OWNER,
-          display_name: "Ada",
-          created_at: BEFORE,
-        },
+        { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
         standIn("m-booked", "inv-1"),
       ],
       shifts: [{ id: "s1", restaurant_id: RID, member_id: "m-booked" }],
     });
-    const roster = await new TeamService(asDatabaseService(db)).listMembers(
-      OWNER,
-      RID,
-    );
+    const roster = await new TeamService(asDatabaseService(db)).listMembers(OWNER, RID);
 
-    expect(roster.map((m: any) => m.id).sort()).toEqual([
-      "m-booked",
-      "m-owner",
-    ]);
+    expect(roster.map((m: any) => m.id).sort()).toEqual(["m-booked", "m-owner"]);
     const row = db.tables.team_members.find((m: any) => m.id === "m-booked");
     expect(row?.invite_id).toBeNull();
     expect(db.opsOn("team_members", "delete")).toEqual([]);
@@ -157,13 +106,7 @@ describe("TeamService.listMembers — an expired invite's stand-in leaves the ro
     const db = seed({
       organization_invites: [invite("inv-1", { expires_at: PAST })],
       team_members: [
-        {
-          id: "m-owner",
-          restaurant_id: RID,
-          user_id: OWNER,
-          display_name: "Ada",
-          created_at: BEFORE,
-        },
+        { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
         standIn("m-typed", "inv-1", BEFORE),
       ],
     });
@@ -178,21 +121,11 @@ describe("MembersService.revokeInvite — the revoked invite's stand-in goes wit
     const db = seed({
       organization_invites: [invite("inv-1")],
       team_members: [
-        {
-          id: "m-owner",
-          restaurant_id: RID,
-          user_id: OWNER,
-          display_name: "Ada",
-          created_at: BEFORE,
-        },
+        { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
         standIn("m-ghost", "inv-1"),
       ],
     });
-    await new MembersService(asDatabaseService(db)).revokeInvite(
-      OWNER,
-      RID,
-      "inv-1",
-    );
+    await new MembersService(asDatabaseService(db)).revokeInvite(OWNER, RID, "inv-1");
 
     expect(db.tables.organization_invites).toEqual([]);
     expect(ids(db)).toEqual(["m-owner"]);
@@ -202,21 +135,11 @@ describe("MembersService.revokeInvite — the revoked invite's stand-in goes wit
     const db = seed({
       organization_invites: [invite("inv-1")],
       team_members: [
-        {
-          id: "m-owner",
-          restaurant_id: RID,
-          user_id: OWNER,
-          display_name: "Ada",
-          created_at: BEFORE,
-        },
+        { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
         { ...standIn("m-arrived", "inv-1"), user_id: "user-new" },
       ],
     });
-    await new MembersService(asDatabaseService(db)).revokeInvite(
-      OWNER,
-      RID,
-      "inv-1",
-    );
+    await new MembersService(asDatabaseService(db)).revokeInvite(OWNER, RID, "inv-1");
 
     expect(ids(db)).toEqual(["m-arrived", "m-owner"]);
   });
@@ -233,13 +156,7 @@ describe("a stand-in with any record on it is kept, never deleted", () => {
       const db = seed({
         organization_invites: [invite("inv-1", { expires_at: PAST })],
         team_members: [
-          {
-            id: "m-owner",
-            restaurant_id: RID,
-            user_id: OWNER,
-            display_name: "Ada",
-            created_at: BEFORE,
-          },
+          { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
           standIn("m-held", "inv-1"),
         ],
         ...recordOn(table, column, "m-held"),
@@ -259,22 +176,12 @@ describe("a stand-in with any record on it is kept, never deleted", () => {
       const db = seed({
         organization_invites: [invite("inv-1")],
         team_members: [
-          {
-            id: "m-owner",
-            restaurant_id: RID,
-            user_id: OWNER,
-            display_name: "Ada",
-            created_at: BEFORE,
-          },
+          { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
           standIn("m-held", "inv-1"),
         ],
         ...recordOn(table, column, "m-held"),
       });
-      await new MembersService(asDatabaseService(db)).revokeInvite(
-        OWNER,
-        RID,
-        "inv-1",
-      );
+      await new MembersService(asDatabaseService(db)).revokeInvite(OWNER, RID, "inv-1");
 
       expect(ids(db)).toEqual(["m-held", "m-owner"]);
       expect(db.opsOn("team_members", "delete")).toEqual([]);
@@ -294,26 +201,16 @@ function foreignKeysToTeamMembers(): string[] {
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql"))) {
     const sql = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
     for (const stmt of sql.split(";")) {
-      if (!/references\s+(?:public\.)?"?team_members"?\s*\(/i.test(stmt))
-        continue;
-      const table =
-        /(?:create\s+table(?:\s+if\s+not\s+exists)?|alter\s+table(?:\s+only)?(?:\s+if\s+exists)?)\s+(?:public\.)?"?(\w+)/i.exec(
-          stmt,
-        )?.[1];
+      if (!/references\s+(?:public\.)?"?team_members"?\s*\(/i.test(stmt)) continue;
+      const table = /(?:create\s+table(?:\s+if\s+not\s+exists)?|alter\s+table(?:\s+only)?(?:\s+if\s+exists)?)\s+(?:public\.)?"?(\w+)/i.exec(stmt)?.[1];
       const ref = /references\s+(?:public\.)?"?team_members"?\s*\(/gi;
       let m: RegExpExecArray | null;
       while ((m = ref.exec(stmt))) {
         const before = stmt.slice(0, m.index);
         const column =
           /foreign\s+key\s*\(\s*"?(\w+)"?[^)]*\)\s*$/i.exec(before)?.[1] ??
-          /(?:^|[,(])\s*"?(\w+)"?\s+uuid(?:\s+not\s+null)?\s*$/i.exec(
-            before,
-          )?.[1];
-        expect([file, table, column]).toEqual([
-          file,
-          expect.any(String),
-          expect.any(String),
-        ]);
+          /(?:^|[,(])\s*"?(\w+)"?\s+uuid(?:\s+not\s+null)?\s*$/i.exec(before)?.[1];
+        expect([file, table, column]).toEqual([file, expect.any(String), expect.any(String)]);
         found.add(`${table}.${column}`);
       }
     }

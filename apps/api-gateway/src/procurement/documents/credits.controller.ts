@@ -189,7 +189,7 @@ export class CreditsController {
         // none (audit round 1, R4): the window may have cut it, not the
         // vendor conversation. Only an uncapped absence is a real "[]".
         letters: byCredit
-          ? (byCredit[r.id] ?? (lettersCapped ? null : []))
+          ? byCredit[r.id] ?? (lettersCapped ? null : [])
           : null,
       })),
       lettersError,

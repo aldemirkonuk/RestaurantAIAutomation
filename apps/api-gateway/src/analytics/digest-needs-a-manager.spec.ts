@@ -226,10 +226,7 @@ describe.each(["owner", "manager"] as const)("as %s of the house", (who) => {
 
 describe("the app wires the settings log into analytics", () => {
   it("AnalyticsModule imports SettingsAuditModule", () => {
-    const imports = Reflect.getMetadata(
-      "imports",
-      AnalyticsModule,
-    ) as unknown[];
+    const imports = Reflect.getMetadata("imports", AnalyticsModule) as unknown[];
     expect(imports).toContain(SettingsAuditModule);
   });
 });

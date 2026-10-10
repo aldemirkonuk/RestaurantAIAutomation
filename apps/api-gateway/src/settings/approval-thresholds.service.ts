@@ -162,9 +162,7 @@ export class ApprovalThresholdsService {
     try {
       const { data, error } = await this.databaseService.client
         .from("restaurant_approval_thresholds")
-        .select(
-          "rule, enabled, amount_limit, percent_limit, required_role, set_by, updated_at",
-        )
+        .select("rule, enabled, amount_limit, percent_limit, required_role, set_by, updated_at")
         .eq("restaurant_id", restaurantId);
       if (error) {
         const code = (error as { code?: string }).code ?? "";
@@ -236,11 +234,7 @@ export class ApprovalThresholdsService {
     restaurantId: string,
     dto: SetApprovalThresholdDto,
     actorUserId: string | null,
-  ): Promise<{
-    readout: ThresholdsReadout;
-    audited: boolean;
-    auditReason: string | null;
-  }> {
+  ): Promise<{ readout: ThresholdsReadout; audited: boolean; auditReason: string | null }> {
     const before = (await this.read(restaurantId)).thresholds.find(
       (t) => t.rule === dto.rule,
     );
@@ -271,7 +265,11 @@ export class ApprovalThresholdsService {
     }
 
     const fields: Record<string, FieldChange> = {};
-    const compare = (key: string, from: unknown, to: unknown) => {
+    const compare = (
+      key: string,
+      from: unknown,
+      to: unknown,
+    ) => {
       if (JSON.stringify(from ?? null) !== JSON.stringify(to ?? null)) {
         fields[key] = { from: from ?? null, to: to ?? null };
       }
@@ -309,9 +307,7 @@ export class ApprovalThresholdsService {
    * rather than being left for the UI to remember.
    */
   /** `restaurants.currency`, the ceiling's currency; null when unset or unread. */
-  private async readCeilingCurrency(
-    restaurantId: string,
-  ): Promise<string | null> {
+  private async readCeilingCurrency(restaurantId: string): Promise<string | null> {
     try {
       const { data, error } = await this.databaseService.client
         .from("restaurants")
@@ -338,15 +334,17 @@ export class ApprovalThresholdsService {
       // Read whole or refused (ADR 0292, F-331). This was ascending with a
       // 4,000-row cap that PostgREST's 1,000 overrode, so the walk saw the
       // OLDEST 1,000 orders of the year and `ordersRead` printed 1000.
-      rows = await readWholeWindow<OrderRow>("This year's orders", () =>
-        this.databaseService.client
-          .from("procurement_orders")
-          .select(
-            "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
-            { count: "exact" },
-          )
-          .eq("restaurant_id", restaurantId)
-          .gte("requested_at", since),
+      rows = await readWholeWindow<OrderRow>(
+        "This year's orders",
+        () =>
+          this.databaseService.client
+            .from("procurement_orders")
+            .select(
+              "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("requested_at", since),
       );
       // The whole read comes back in id order; the walk needs time order.
       const key = (r: OrderRow) => `${r.requested_at ?? ""}\u0000${r.id}`;
@@ -390,26 +388,17 @@ export class ApprovalThresholdsService {
       const priced: PricedOrder = {
         price: num(r.final_price),
         currency: r.currency ?? null,
-        priceUnit: foldOrderPriceUnit(
-          embeddedOrderLines(r.procurement_order_items),
-        ),
+        priceUnit: foldOrderPriceUnit(embeddedOrderLines(r.procurement_order_items)),
       };
       let premium: { pct: number | null; uncomparable: string | null } = {
         pct: null,
         uncomparable: null,
       };
       if (r.inventory_id && priced.price !== null && priced.price > 0) {
-        premium = pricePremium(
-          priced,
-          lastPriceByItem.get(r.inventory_id) ?? null,
-        );
+        premium = pricePremium(priced, lastPriceByItem.get(r.inventory_id) ?? null);
         // Only a price that was paid becomes the next order's comparison —
         // the same rule the gate's `readPricePremium` reads by (F-479).
-        if (
-          (ORDER_GOODS_ARRIVED_STATUSES as readonly string[]).includes(
-            r.status ?? "",
-          )
-        ) {
+        if ((ORDER_GOODS_ARRIVED_STATUSES as readonly string[]).includes(r.status ?? "")) {
           lastPriceByItem.set(r.inventory_id, priced);
         }
       }
@@ -450,10 +439,7 @@ export class ApprovalThresholdsService {
         .select("user_id, name")
         .in("user_id", unique);
       if (error) throw new Error(error.message);
-      for (const r of (data ?? []) as Array<{
-        user_id: string;
-        name: string | null;
-      }>) {
+      for (const r of (data ?? []) as Array<{ user_id: string; name: string | null }>) {
         names.set(r.user_id, r.name ?? null);
       }
     } catch (err) {
