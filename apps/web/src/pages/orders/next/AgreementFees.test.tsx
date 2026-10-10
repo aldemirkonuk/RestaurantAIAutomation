@@ -33,7 +33,14 @@ const postMock = vi.hoisted(() =>
 );
 
 vi.mock('@/services/api/client', () => ({
-  apiClient: { post: postMock },
+  // The sheet asks the gateway which currency to offer (F-341: its total and
+  // working are said in that currency, never a hard-coded `$`).
+  apiClient: {
+    post: postMock,
+    get: vi.fn(async () => ({
+      data: { code: 'USD', basis: 'house', sentence: 'Defaulted to USD, the house’s currency.' },
+    })),
+  },
   getErrorMessage: (e: unknown) =>
     (e as { message?: string })?.message ?? 'An unexpected error occurred',
   getActiveRestaurantId: () => 'rest-1',
@@ -119,6 +126,7 @@ function wire(over: Record<string, unknown> = {}) {
     bottlesTotal: 60,
     finalPrice: 420,
     totalCost: 2100,
+    currency: 'USD',
     status: 'PENDING',
     requestedAt: '2026-09-01T10:00:00Z',
     wineName: 'Barolo Riserva',
@@ -161,7 +169,7 @@ describe('the sheet asks for the money outside the price', () => {
     expect(screen.queryByTestId('fee-split-case')).toBeNull();
   });
 
-  it('2. moves the total and prints the working when a fee is stated', () => {
+  it('2. moves the total and prints the working when a fee is stated', async () => {
     mountSheet();
     fillCaseAgreement();
     expect(screen.getByTestId('agreement-total').textContent).toContain('2,100');
@@ -171,8 +179,11 @@ describe('the sheet asks for the money outside the price', () => {
     fireEvent.change(screen.getByTestId('fee-allowance'), { target: { value: '100' } });
 
     expect(screen.getByTestId('agreement-total').textContent).toContain('2,078');
+    // Said in the currency the gateway offered (USD here), once it has answered.
+    await waitFor(() =>
+      expect(screen.getByTestId('agreement-working').textContent).toContain('Goods $2100.00'),
+    );
     const working = screen.getByTestId('agreement-working').textContent ?? '';
-    expect(working).toContain('Goods $2100.00');
     expect(working).toContain('less allowance $100.00');
     expect(working).toContain('plus deposit $30.00');
     expect(working).toContain('plus freight $48.00');
@@ -277,6 +288,7 @@ describe('the arithmetic', () => {
     quantity: 5,
     unitType: 'case' as const,
     bottlesPerUnit: 12,
+    currency: 'USD',
   };
 
   it('7. is unchanged when no fee is stated — same number AND same sentence', () => {
@@ -304,9 +316,9 @@ describe('the arithmetic', () => {
 
   it('says nothing when there is nothing to say', () => {
     expect(
-      describeFees({ allowance: null, deposit: null, freight: null }),
+      describeFees({ allowance: null, deposit: null, freight: null }, 'USD'),
     ).toBeNull();
-    expect(describeFees({ allowance: 25, deposit: null, freight: null })).toBe(
+    expect(describeFees({ allowance: 25, deposit: null, freight: null }, 'USD')).toBe(
       'an allowance of $25.00',
     );
   });

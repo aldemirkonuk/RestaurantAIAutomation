@@ -197,6 +197,9 @@ export default function OrdersNext() {
     });
 
   const now = new Date();
+  // The month's one currency, or the house's when the month has no order yet.
+  const monthCurrency =
+    data.month.thisMonthByCurrency?.[0]?.currency ?? data.houseCurrency ?? null;
 
   /* An empty vendor list stops the composer; an UNREADABLE one does not.
      A failed read drawn as "you have no vendors" would send a person off to add
@@ -311,21 +314,51 @@ export default function OrdersNext() {
             >
               {monthName.format(now)} so far
             </span>
-            <Tally
-              value={data.month.thisMonth}
-              format={fmtMoneyWhole}
-              style={{
-                display: 'block',
-                fontFamily: MONO,
-                fontSize: 30,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                lineHeight: 1.15,
-                color: 'var(--ink-1, #211C16)',
-              }}
-            />
+            {/* One line per currency, never one sum across them (F-341). */}
+            {(data.month.thisMonthByCurrency?.length ?? 0) > 1 ? (
+              data.month.thisMonthByCurrency!.map((c) => (
+                <span
+                  key={c.currency ?? 'none'}
+                  data-testid="month-line"
+                  style={{
+                    display: 'block',
+                    fontFamily: MONO,
+                    fontSize: 20,
+                    fontWeight: 600,
+                    lineHeight: 1.2,
+                    color: 'var(--ink-1, #211C16)',
+                  }}
+                >
+                  {fmtMoneyWhole(c.amount, c.currency)}
+                </span>
+              ))
+            ) : (
+              <Tally
+                value={data.month.thisMonth}
+                format={(n) => fmtMoneyWhole(n, monthCurrency)}
+                style={{
+                  display: 'block',
+                  fontFamily: MONO,
+                  fontSize: 30,
+                  fontWeight: 600,
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1.15,
+                  color: 'var(--ink-1, #211C16)',
+                }}
+              />
+            )}
             <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-              last month {data.month.lastMonth === null ? EM : fmtMoneyWhole(data.month.lastMonth)}
+              last month{' '}
+              {(data.month.lastMonthByCurrency?.length ?? 0) > 1
+                ? data.month.lastMonthByCurrency!
+                    .map((c) => fmtMoneyWhole(c.amount, c.currency))
+                    .join(' · ')
+                : data.month.lastMonth === null
+                  ? EM
+                  : fmtMoneyWhole(
+                      data.month.lastMonth,
+                      data.month.lastMonthByCurrency?.[0]?.currency ?? data.houseCurrency ?? null,
+                    )}
               {data.month.unpricedThisMonth > 0 &&
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}
             </span>
@@ -576,6 +609,9 @@ export default function OrdersNext() {
             focusOrderId={expandedId}
             onOpenResponses={(orderId) =>
               data.rows.some((r) => r.id === orderId) ? () => setResponsesFor(orderId) : undefined
+            }
+            currencyOf={(orderId) =>
+              data.rows.find((r) => r.id === orderId)?.currency ?? data.houseCurrency ?? null
             }
           />
         </div>

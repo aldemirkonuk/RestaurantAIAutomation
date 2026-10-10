@@ -254,6 +254,7 @@ export function minimumNotes(
               quantity: num(line.quantity),
               unitType: line.unitType,
               bottlesPerUnit: num(line.bottlesPerUnit),
+              currency: line.currency,
             })
           : null;
       if (value && value.ok) known += value.goods;

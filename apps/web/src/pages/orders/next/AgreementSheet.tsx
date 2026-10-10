@@ -269,8 +269,9 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
         unitType,
         bottlesPerUnit: packNum,
         fees,
+        currency: currencyToRecord,
       }),
-    [priceNum, stated, qty, unitType, packNum, fees],
+    [priceNum, stated, qty, unitType, packNum, fees, currencyToRecord],
   );
 
   const orderPackMissing = isMultiplying(unitType) && (packNum == null || packNum < 1);
@@ -728,7 +729,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
                 color: 'var(--ink-1, #211C16)',
               }}
             >
-              {total && total.ok ? fmtMoney(total.total) : EM}
+              {total && total.ok ? fmtMoney(total.total, currencyToRecord) : EM}
             </span>
           </div>
           {total && total.ok ? (

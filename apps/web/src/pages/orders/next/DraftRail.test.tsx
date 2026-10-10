@@ -80,11 +80,11 @@ const AS_STAFF = {
   sentence: 'Your hold will ask a manager to send it; your version is kept exactly as you wrote it.',
 };
 
-function draw() {
+function draw(props: Parameters<typeof DraftRail>[0] = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <DraftRail />
+      <DraftRail {...props} />
     </QueryClientProvider>,
   );
   fireEvent.click(screen.getByRole('button', { name: /Öküzgözü 2022/ }));
@@ -391,7 +391,8 @@ describe('the card tells the thread and the figure as they are', () => {
   // F-773: the headline is the vendor's latest figure when there is one.
   it('heads the card with the vendor’s latest figure, labelled', () => {
     seams.drafts = [{ ...DRAFT, quantity: 11, quotedPrice: 16, negotiatedPrice: 14 }];
-    draw();
+    // The order's currency is recorded (F-341: an unrecorded one never says `$`).
+    draw({ currencyOf: () => 'USD' });
     const fig = screen.getByTestId('draft-figure');
     expect(fig).toHaveTextContent('vendor’s latest');
     expect(fig).toHaveTextContent(/11 × \$14/);

@@ -3,6 +3,8 @@
  * em dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
+import { CURRENCY_NOT_RECORDED, currencyMinorUnits } from '@/lib/currency';
+
 export const EM = '—';
 
 /** A finite number or null. Guards against NaN and the API's occasional string. */
@@ -12,28 +14,84 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-const money = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-export function fmtMoney(v: number | null | undefined): string {
-  const n = num(v);
-  return n === null ? EM : money.format(n);
+/**
+ * Money in the currency the order was placed in (F-341).
+ *
+ * Both formatters said `currency: 'USD'` until 2026-10-09, so a € or ₺ order
+ * was sealed under a dollar sign. The caller now names the money: the order's
+ * own `procurement_orders.currency`, else the house's (`OrderRowVM.currency`
+ * resolves that). A code nobody recorded prints the number and says so, never
+ * a guessed symbol (`lib/currency.ts`). Each currency keeps its own decimals.
+ */
+function inCurrency(
+  n: number,
+  currency: string | null | undefined,
+  opts: { whole?: boolean; grouping?: boolean } = {},
+): string {
+  const code = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
+  const digits = opts.whole ? 0 : currencyMinorUnits(code) ?? 2;
+  const shape = {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: opts.grouping ?? true,
+  };
+  if (/^[A-Z]{3}$/.test(code)) {
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: code, ...shape }).format(n);
+    } catch {
+      return `${new Intl.NumberFormat('en-US', shape).format(n)} ${code}`;
+    }
+  }
+  return `${new Intl.NumberFormat('en-US', shape).format(n)} (${CURRENCY_NOT_RECORDED})`;
 }
 
-/** Whole-dollar form for the month figure ($12,480). Unknown stays a dash. */
-const moneyWhole = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-
-export function fmtMoneyWhole(v: number | null | undefined): string {
+export function fmtMoney(v: number | null | undefined, currency: string | null | undefined): string {
   const n = num(v);
-  return n === null ? EM : moneyWhole.format(n);
+  return n === null ? EM : inCurrency(n, currency);
+}
+
+/** Whole units for the month figure (€12,480). Unknown stays a dash. */
+export function fmtMoneyWhole(
+  v: number | null | undefined,
+  currency: string | null | undefined,
+): string {
+  const n = num(v);
+  return n === null ? EM : inCurrency(n, currency, { whole: true });
+}
+
+/** The working's figure: no grouping, as the working always printed it ("× €420.00"). */
+export function fmtWorking(n: number, currency: string | null | undefined): string {
+  return inCurrency(n, currency, { grouping: false });
+}
+
+/** One currency's part of a sum; `currency: null` is "the order names none". */
+export interface MoneyInCurrency {
+  currency: string | null;
+  amount: number;
+}
+
+/**
+ * A sum that never adds two currencies (F-341) — the gateway's
+ * `spendByCurrency` (dashboard.service.ts, F-339) on the page's rows: one
+ * entry per currency, in cents, and `total` is one figure only while the
+ * amounts name at most one currency. There is no exchange rate to add by.
+ */
+export function sumByCurrency(
+  items: Array<{ amount: number | null; currency: string | null | undefined }>,
+): { total: number | null; byCurrency: MoneyInCurrency[] } {
+  const by = new Map<string | null, number>();
+  for (const it of items) {
+    if (it.amount === null) continue;
+    const code =
+      typeof it.currency === 'string' && it.currency.trim() ? it.currency.trim().toUpperCase() : null;
+    by.set(code, Math.round(((by.get(code) ?? 0) + it.amount) * 100) / 100);
+  }
+  const byCurrency = Array.from(by, ([currency, amount]) => ({ currency, amount }));
+  const named = byCurrency.filter((c) => c.currency !== null).length;
+  return {
+    total: named > 1 ? null : Math.round(byCurrency.reduce((s, c) => s + c.amount, 0) * 100) / 100,
+    byCurrency,
+  };
 }
 
 export function fmtInt(v: number | null | undefined): string {
