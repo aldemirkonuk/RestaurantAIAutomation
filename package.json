@@ -17,6 +17,7 @@
     "test:coverage": "turbo run test:coverage",
     "test:e2e": "turbo run test:e2e",
     "lint": "turbo run lint",
+    "lint:check": "turbo run lint:check",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "typecheck": "turbo run typecheck",
     "type-check": "turbo run typecheck",
