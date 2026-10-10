@@ -13,7 +13,7 @@ vi.mock('../../hooks/useStorageLocations', () => ({ useStorageLocations: () => (
 vi.mock('../../hooks/useMayActForTheHouse', () => ({ useMayActForTheHouse: () => true }))
 vi.mock('../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => null }))
 
-import { BatchReceiveGrid, type BatchReceiveRow } from './BatchReceiveGrid'
+import { BatchReceiveGrid, validateBatchRows, type BatchReceiveRow } from './BatchReceiveGrid'
 
 const row: BatchReceiveRow = {
   key: 'r1',
@@ -36,5 +36,28 @@ describe('BatchReceiveGrid — the house group mark', () => {
     // 2 × 1.25, shown rounded to the whole unit.
     expect(screen.getByText('$3')).toBeInTheDocument()
     expect(screen.queryByText('$2,500')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * F-832: "1,250" in a "."-grouping house reads 1.25 while this screen prints
+ * "$1,250". Neither reading is safe to save silently, so the row is held and
+ * the question names both readings.
+ */
+describe('validateBatchRows — a cost that reads two ways', () => {
+  const typed = { ...row, cost: '1,250' }
+
+  it('holds the row when the house and the screen group with different marks', () => {
+    const issues = validateBatchRows([typed], '.', ',')
+    expect(issues).toHaveLength(1)
+    expect(issues[0].reason).toMatch(/^cost “1,250” could be 1\.25 or 1,250\.00/)
+  })
+
+  it('holds it too when the house mark is not known', () => {
+    expect(validateBatchRows([typed], null, ',')).toHaveLength(1)
+  })
+
+  it('passes "1,250" where the house and the screen both group with ","', () => {
+    expect(validateBatchRows([typed], ',', ',')).toEqual([])
   })
 })

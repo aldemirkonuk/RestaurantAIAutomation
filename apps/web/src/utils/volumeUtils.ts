@@ -1,3 +1,5 @@
+import { parseDecimal } from '../lib/parseDecimal'
+
 export type MeasurementUnit = 'ml' | 'oz'
 
 const ML_PER_OZ = 29.5735
@@ -95,13 +97,17 @@ export function glassMarginPercent(glassCost: number, glassMenuPrice: number): n
 
 // ==================== Smart Volume Parser ====================
 
+// The number in a size, as typed: "750", "1.5", "1,5" (F-834). parseDecimal
+// reads it with no house mark, so a lone comma is a decimal mark, as it is in
+// the price fields beside it ("37,5 cl", "1,5 L").
+const NUM = String.raw`(\d[\d.,]*)`
 const VOLUME_PATTERNS = [
-  { regex: /^(\d+(?:\.\d+)?)\s*L$/i, toMl: (v: number) => v * 1000 },
-  { regex: /^(\d+(?:\.\d+)?)\s*l$/,  toMl: (v: number) => v * 1000 },
-  { regex: /^(\d+(?:\.\d+)?)\s*ml$/i, toMl: (v: number) => v },
-  { regex: /^(\d+(?:\.\d+)?)\s*oz$/i, toMl: (v: number) => Math.round(v * ML_PER_OZ) },
-  { regex: /^(\d+(?:\.\d+)?)\s*fl\.?\s*oz$/i, toMl: (v: number) => Math.round(v * ML_PER_OZ) },
-  { regex: /^(\d+(?:\.\d+)?)$/, toMl: (v: number) => v },
+  { regex: new RegExp(String.raw`^${NUM}\s*L$`, 'i'), toMl: (v: number) => v * 1000 },
+  { regex: new RegExp(String.raw`^${NUM}\s*cl$`, 'i'), toMl: (v: number) => v * 10 },
+  { regex: new RegExp(String.raw`^${NUM}\s*ml$`, 'i'), toMl: (v: number) => v },
+  { regex: new RegExp(String.raw`^${NUM}\s*oz$`, 'i'), toMl: (v: number) => Math.round(v * ML_PER_OZ) },
+  { regex: new RegExp(String.raw`^${NUM}\s*fl\.?\s*oz$`, 'i'), toMl: (v: number) => Math.round(v * ML_PER_OZ) },
+  { regex: new RegExp(String.raw`^${NUM}$`), toMl: (v: number) => v },
 ]
 
 export function parseVolumeInput(input: string): { ml: number; oz: number } | null {
@@ -111,8 +117,8 @@ export function parseVolumeInput(input: string): { ml: number; oz: number } | nu
   for (const { regex, toMl } of VOLUME_PATTERNS) {
     const match = trimmed.match(regex)
     if (match) {
-      const value = parseFloat(match[1])
-      if (!Number.isFinite(value) || value <= 0) return null
+      const value = parseDecimal(match[1])
+      if (value === null || !Number.isFinite(value) || value <= 0) return null
       const ml = Math.round(toMl(value))
       return { ml, oz: mlToOz(ml) }
     }

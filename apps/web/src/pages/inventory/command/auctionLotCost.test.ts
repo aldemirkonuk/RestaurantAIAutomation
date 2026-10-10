@@ -65,3 +65,17 @@ describe('the lot working (F-342)', () => {
     ).toMatchObject({ ok: true, booked: 1166.67, lotPerBottle: 33.33 });
   });
 });
+
+describe('lotBookedCost — a typed cost that reads two ways (F-832)', () => {
+  const lot = { lotPerBottle: 100, currency: 'EUR', houseCurrency: 'TRY', exchangeRate: '', houseCost: '1,250' };
+
+  it('asks when the house and the screen read it differently, and books nothing', () => {
+    const b = lotBookedCost({ ...lot, group: '.', display: ',' });
+    expect(b.ok).toBe(false);
+    expect(!b.ok && b.why).toMatch(/^The per-bottle cost: “1,250” could be/);
+  });
+
+  it('books 1250 where the house and the screen both group with ","', () => {
+    expect(lotBookedCost({ ...lot, group: ',', display: ',' })).toMatchObject({ ok: true, booked: 1250 });
+  });
+});

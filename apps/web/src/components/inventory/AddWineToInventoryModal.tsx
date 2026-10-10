@@ -23,7 +23,7 @@ import { summarizeMenuScanPersist } from "../../lib/menuScannerPersistence";
 import { useStorageLocations } from "../../hooks/useStorageLocations";
 import { useMayActForTheHouse } from "../../hooks/useMayActForTheHouse";
 import { useHouseGroupMark } from "../../hooks/useHouseGroupMark";
-import { readOptionalAmount } from "../../lib/parseDecimal";
+import { displayGroupMark, readOptionalAmount, twoReadingsProblem } from "../../lib/parseDecimal";
 import {
   COMMON_BOTTLE_SIZES,
   COMMON_POUR_SIZES,
@@ -211,6 +211,16 @@ export function AddWineToInventoryModal({
         : showGlassFields && !glassRead.ok
           ? menuPriceGlassText
           : null;
+  /**
+   * F-832: a price the house and this screen read two ways ("1,250" in a
+   * "."-grouping house on an English screen) holds the add and asks, never
+   * guesses — the F-799 rule, as on the credit form.
+   */
+  const shownGroup = displayGroupMark();
+  const priceQuestion =
+    (!isSample ? twoReadingsProblem(costText, group, shownGroup) : null) ??
+    (showBottleFields ? twoReadingsProblem(menuPriceBottleText, group, shownGroup) : null) ??
+    (showGlassFields ? twoReadingsProblem(menuPriceGlassText, group, shownGroup) : null);
   /** A recorded number written back as text the house's own reader takes back unchanged. */
   const decimalText = (n: number) => (group === "." ? String(n).replace(".", ",") : String(n));
   const glassesPerBottle = showGlassFields
@@ -360,7 +370,7 @@ export function AddWineToInventoryModal({
   const [addRefusal, setAddRefusal] = useState<string | null>(null);
 
   const handleAddToInventory = async () => {
-    if (selectedWine && unreadablePrice === null && !adding) {
+    if (selectedWine && unreadablePrice === null && priceQuestion === null && !adding) {
       const volumeFields: VolumeFields = {
         bottleSizeMl,
         saleType,
@@ -922,7 +932,7 @@ export function AddWineToInventoryModal({
                                 setBottleSizeMl(parsed.ml);
                               }
                             }}
-                            placeholder="e.g. 750ml, 1.5L, 25.4oz"
+                            placeholder="e.g. 750ml, 75cl, 1.5L, 25.4oz"
                             className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-wine-500"
                           />
                           <p
@@ -1104,9 +1114,14 @@ export function AddWineToInventoryModal({
                         {addRefusal}
                       </p>
                     )}
+                    {unreadablePrice === null && priceQuestion !== null && (
+                      <p className="text-xs text-red-600 mb-2" role="status">
+                        {priceQuestion}
+                      </p>
+                    )}
                     <button
                       onClick={() => void handleAddToInventory()}
-                      disabled={unreadablePrice !== null || adding}
+                      disabled={unreadablePrice !== null || priceQuestion !== null || adding}
                       className="w-full px-4 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-40"
                     >
                       <Save className="w-5 h-5" />

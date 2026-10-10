@@ -18,6 +18,12 @@ vi.mock("../../hooks/useMayActForTheHouse", () => ({
 vi.mock("../../hooks/useHouseGroupMark", () => ({
   useHouseGroupMark: () => groupMark.value,
 }));
+// The mark this screen groups thousands with (F-832); null = not known, so nothing reads two ways.
+const screenMark = vi.hoisted(() => ({ value: null as "." | "," | null }));
+vi.mock("../../lib/parseDecimal", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/parseDecimal")>()),
+  displayGroupMark: () => screenMark.value,
+}));
 vi.mock("../../stores/restaurantSettingsStore", () => ({
   useRestaurantSettingsStore: () => ({ measurementUnit: "ml" }),
 }));
@@ -39,6 +45,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mayAct.value = true;
   groupMark.value = null;
+  screenMark.value = null;
   useWines.mockReturnValue({ data: [wine] });
   useStorageLocations.mockReturnValue({ locations: [] });
 });
@@ -247,3 +254,38 @@ describe("AddWineToInventoryModal — prices read the way the house writes them 
     await waitFor(() => expect(onAddWine).toHaveBeenCalled());
     expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(1.125);
   });});
+
+/**
+ * F-832: "1,250" in a "."-grouping house reads 1.25, while an English screen
+ * prints "$1,250". Neither is safe to save silently: the add is held and the
+ * question names both readings.
+ */
+describe("AddWineToInventoryModal — a price that reads two ways is asked", () => {
+  it("holds the add when the house and the screen read the cost differently", async () => {
+    groupMark.value = ".";
+    screenMark.value = ",";
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.type(screen.getByPlaceholderText(/leave blank if unknown/i), "1,250");
+
+    expect(screen.getByText(/“1,250” could be 1\.25 or 1,250\.00/)).toBeInTheDocument();
+    const add = screen.getByRole("button", { name: /Add to Inventory/i });
+    expect(add).toBeDisabled();
+    await user.click(add);
+    expect(onAddWine).not.toHaveBeenCalled();
+  });
+
+  it("saves 1250 for \"1,250\" where the house and the screen both group with \",\"", async () => {
+    groupMark.value = ",";
+    screenMark.value = ",";
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.type(screen.getByPlaceholderText(/leave blank if unknown/i), "1,250");
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(1250);
+  });
+});

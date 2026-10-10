@@ -109,6 +109,36 @@ describe('lotCost — the working, and what it refuses', () => {
   });
 });
 
+/**
+ * F-832: "£1,250" from a London catalogue was read with a Turkish house's "."
+ * mark and booked as 1.25. A lot in other money is read without the house's
+ * mark and a lone mark before three digits is asked; a lot in the house's own
+ * money is asked only when the house and the screen read it differently.
+ */
+describe('lotCost — a figure that reads two ways is asked (F-832)', () => {
+  const lot = { ...EMPTY_LOT, hammer: '1,250', premium: '0', bottles: '1' };
+
+  it('asks for a lot in another currency, whatever the house and the screen do', () => {
+    const c = lotCost(lot, '.', { screen: '.', foreignCurrency: 'GBP' });
+    expect(c.ok).toBe(false);
+    expect(!c.ok && c.why).toMatch(/^The hammer price: “1,250” could be .* or .*: this lot is in GBP/);
+  });
+
+  it('asks when the house and the screen read the house’s own money differently', () => {
+    const c = lotCost(lot, '.', { screen: ',' });
+    expect(!c.ok && c.why).toMatch(/^The hammer price: “1,250” could be/);
+  });
+
+  it('reads 1250 where the house and the screen both group with ","', () => {
+    expect(lotCost(lot, ',', { screen: ',' })).toMatchObject({ ok: true, total: 1250 });
+  });
+
+  it('a figure that reads one way is untouched by the lot’s currency', () => {
+    const c = lotCost({ ...lot, hammer: '1.250,00' }, '.', { screen: ',', foreignCurrency: 'GBP' });
+    expect(c).toMatchObject({ ok: true, total: 1250 });
+  });
+});
+
 describe('lotWords — what to copy somewhere that keeps it', () => {
   it('names what was typed, and says when nothing was', () => {
     expect(lotWords(EMPTY_LOT)).toBe('no auction details were typed');

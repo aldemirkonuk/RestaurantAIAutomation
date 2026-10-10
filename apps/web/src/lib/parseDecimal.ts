@@ -160,3 +160,34 @@ export function readingsDisagree(
   if (house === null || screen === null || house === screen) return null
   return [house, screen]
 }
+
+/**
+ * What to say when `raw` reads two ways (`readingsDisagree`), or null when it
+ * reads one way. A money field shows this and saves nothing until the figure
+ * is retyped so it reads only one way — never a guess (F-799). F-832: every
+ * money field that reads with the house's mark asks, not only the credit form.
+ * `why` replaces the standard reason, for a field whose mark is not the
+ * house's (an auction lot in another currency). `format` prints a reading the
+ * way the screen prints figures.
+ */
+export function twoReadingsProblem(
+  raw: string,
+  group: GroupMark | null,
+  display: GroupMark | null,
+  format: (n: number) => string = (n) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  why?: string,
+): string | null {
+  const both = readingsDisagree(raw, group, display)
+  if (!both) return null
+  const [a, b] = both.map(format)
+  const reason =
+    why ??
+    (group
+      ? `this house writes thousands with “${group}” but this screen writes them with “${display}”`
+      : `this screen writes thousands with “${display}” and this house may not`)
+  return (
+    `“${raw.trim()}” could be ${a} or ${b}: ${reason}. ` +
+    'Type it without a thousands mark, like 1250 or 1.25, so it reads only one way.'
+  )
+}

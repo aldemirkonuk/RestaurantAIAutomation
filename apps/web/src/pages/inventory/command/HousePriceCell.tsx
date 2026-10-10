@@ -27,7 +27,7 @@
 import { useState } from 'react'
 import { cn } from '../../../lib/utils'
 import { fmtMoneyExact } from './bits'
-import { parseDecimal, type GroupMark } from '../../../lib/parseDecimal'
+import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '../../../lib/parseDecimal'
 import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
 import { updateInventoryItem } from '../../../services/api/inventory'
 import {
@@ -158,6 +158,14 @@ export function HousePriceCell({
     const g = parsePriceInput(glassText, group)
     if (!b.ok || !g.ok) {
       setNote({ tone: 'error', text: 'A price is a number of 0 or more. Leave it empty to take the price off.' })
+      return
+    }
+    // F-832: "1,250" in a "."-grouping house on a ","-grouping screen could be
+    // 1.25 or 1250. Ask, never guess (the F-799 rule, as on the credit form).
+    const shown = displayGroupMark()
+    const asked = twoReadingsProblem(bottleText, group, shown) ?? twoReadingsProblem(glassText, group, shown)
+    if (asked) {
+      setNote({ tone: 'error', text: asked })
       return
     }
     // This wine's own pour (round 6c answer 3): empty = the house's pour.
