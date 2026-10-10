@@ -516,6 +516,15 @@ describe("the prose predicate", () => {
     ["a line feed between the slashes", "http:/\n/evil"],
     ["a carriage return between the slashes", "https:/\r/x"],
     ["a tab after the colon and a line feed between the slashes", "http:\t/\n/x"],
+    // Gate F1 at ddec65da2: a tab or line break before the colon.
+    ["a tab before the colon", "https\t://intranet"],
+    ["a line feed before the colon", "http\n://localhost/x"],
+    ["a carriage return before the colon", "HTTPS\r://x"],
+    ["U+2028 before the colon", "http\u2028://x"],
+    ["a line feed before a named scheme's colon", "javascript\n:alert"],
+    ["a line feed before a mailto colon", "mailto\n:a"],
+    ["a tab on both sides of the colon", "http\t:\t//x"],
+    ["a tab after a scheme ending in +", "web+\t://x"],
   ])("refuses a scheme split by %s", (_label, link) => {
     expect(rules(T(`Open ${link} now.`))).toContain("link");
     expect(courtesyLineOrNull(`Open ${link} now.`)).toBeNull();
@@ -534,6 +543,53 @@ describe("the prose predicate", () => {
 
   it("refuses a line ending in a colon and a line starting with // (fail closed)", () => {
     expect(rules(T("Note:\n// see below"))).toContain("link");
+  });
+
+  // Fail closed, named in ADR 0313:37: a scheme's shape, a colon and two
+  // slashes with only runs of tab, line feed, carriage return, U+2028 or
+  // U+2029 between them read as "x://"; such a run between a named scheme
+  // word and its colon reads as "data:x".
+  it.each([
+    ["a slash, a tab and a slash on the next line", "Ek:\n/\t/"],
+    ["one slash per line", "Seçenekler:\n/\n/ boş"],
+    ["tabs around the slashes", "Date:\t/\t/"],
+    ["a blank line and //", "Dear team:\n\n// ok"],
+    ["a line break before the colon and //", "Note\n:// see"],
+    ["a line break before a named scheme's colon", "Data\n:x"],
+  ])("refuses %s (fail closed)", (_label, text) => {
+    expect(rules(T(text))).toContain("link");
+  });
+
+  // A space in the gap keeps the line: only tab, line feed, carriage return,
+  // U+2028 and U+2029 are joined.
+  it.each([
+    ["a line starting with a colon and a space", "Note\n: see below"],
+    ["French, a colon on its own line", "Remarque\n: merci"],
+    ["Turkish, a colon on its own line", "Teslimat\n: sabah"],
+    ["a named scheme word and a colon on the next line", "Data\n: as before"],
+    ["a space before the colon", "Remarque :\n// merci"],
+    ["slashes after a space", "Sizes:\n/ small\n/ large"],
+  ])("keeps %s", (_label, text) => {
+    expect(rules(T(text))).not.toContain("link");
+  });
+
+  // Named in ADR 0313:37: a URL parser reads a backslash as "/" for http,
+  // https, ws and wss; the test looks for "//". Caught when stripping the
+  // backslash leaves "://", when the host is a domain, and for a named scheme.
+  it.each([
+    ["two backslashes", "http:\\\\x"],
+    ["a slash and a backslash", "http:/\\x"],
+    ["a backslash and a slash", "https:\\/intranet"],
+    ["a tab, a backslash and //", "http:\t\\//x"],
+  ])("does not catch %s in place of // (named gap)", (_label, link) => {
+    expect(rules(T(`Open ${link} now.`))).not.toContain("link");
+  });
+  it.each([
+    ["a backslash before //", "http:\\//x"],
+    ["a domain host", "http:\\\\evil.xyz"],
+    ["a named scheme", "ftp:\\\\x"],
+  ])("refuses a backslash shape with %s", (_label, link) => {
+    expect(rules(T(`Open ${link} now.`))).toContain("link");
   });
 
   // Adversary note 1 at aff7c87, named in ADR 0313:37: the link test reads

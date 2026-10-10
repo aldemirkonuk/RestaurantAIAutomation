@@ -319,9 +319,17 @@ const CURRENCY_WORD_RE = word([
  *     digit or "_" right before it ("x\u034Fjava\u034Fscript:alert",
  *     "x\tjava\tscript:alert"; see `linkViews`), and a tab or line break
  *     right after a scheme's colon when no "/" follows it
- *     ("javascript:\nalert"; see `schemeView`). A tab or line break between
- *     the colon and "//" or between the two slashes ("https:\t//x",
- *     "http:/\t/x") is caught by the scheme view;
+ *     ("javascript:\nalert"; see `schemeView`). A run of tab, line feed,
+ *     carriage return, U+2028 or U+2029 between a scheme word and its colon,
+ *     between the colon and "//", or between the two slashes ("http\t://x",
+ *     "javascript\n:alert", "https:\t//x", "http:/\t/x") is caught by the
+ *     scheme view;
+ *   - a backslash among the slashes after a scheme's colon ("http:\\x",
+ *     "http:/\\x", "http:\\/x", "http:\t\\//x"), which a browser's URL
+ *     parser reads as "/" for http, https, ws and wss. It is caught when
+ *     copy 1, which strips backslashes, reads "://" (`linkViews`:
+ *     "http:\\//x"), when the host is a domain ("http:\\\\evil.xyz"), and
+ *     for a scheme in `LINK_SCHEMES` ("ftp:\\\\x");
  *   - a link made with a fact block: the test reads the prose with each
  *     "{{token}}" replaced by a space, so "see {{signer}}.com" is clean here
  *     and renders as "see Acme.com". The shipped templates hold each token on
@@ -444,6 +452,8 @@ const VIEW2_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
 const VIEW3_SPACE_RE = /[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu;
 const SCHEME_VIEW_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
 const SCHEME_VIEW_JOIN_RE = /(?<=[\p{L}\p{N}])[\t\n\r\u2028\u2029]+(?=[\p{L}\p{N}])/gu;
+const SCHEME_VIEW_COLON_JOIN_RE =
+  /(?<=[\p{L}\p{N}+.-])[\t\n\r\u2028\u2029]+(?=:)/gu;
 const SCHEME_VIEW_SLASH_JOIN_RE =
   /(?<=:[\t\n\r\u2028\u2029]*\/)[\t\n\r\u2028\u2029]+(?=\/)|(?<=:)[\t\n\r\u2028\u2029]+(?=\/[\t\n\r\u2028\u2029]*\/)/gu;
 /**
@@ -500,11 +510,21 @@ function linkViews(text: string): string[] {
  * "java\u001Cscript:alert". Only `SCHEME_RE` is tested on it: joining two
  * lines can make a bare domain ("Thank you.\nBest" would read "you.Best"), so
  * the domain, "www." and "@" alternatives are not.
- * Such a run is also removed between a colon and a "/" that has another "/"
- * after it (with only such runs between them), and between those two
- * slashes, so "https:\t//x", "http:/\t/x" and "http:\t/\n/x" read
- * "https://x" / "http://x". So a line ending in a colon followed by a line
- * starting with "//" is refused (fail closed, pinned by a spec).
+ * Such a run is also removed between a letter, digit, "+", "." or "-" and a
+ * colon right after it ("http\t://x", "javascript\n:alert"); between a colon
+ * and a "/" that has another "/" after it (with only such runs between
+ * them); and between those two slashes. So "https:\t//x", "http:/\t/x" and
+ * "http:\t/\n/x" read "https://x" / "http://x".
+ * Refused although they hold no link (fail closed, pinned by a spec): a
+ * scheme's shape (an ASCII letter and up to 31 more ASCII letters, digits,
+ * "+", "." or "-"), then a colon, then "/" and "/", where only such runs (at
+ * least one) sit between that shape and the colon, the colon and the first
+ * "/", or the two slashes: "Note:\n// see below",
+ * "Ek:\n/\t/", "Date:\t/\t/", "Dear team:\n\n// ok", "Note\n:// see"; and
+ * such a run between a named scheme word and its colon when a non-space
+ * character follows the colon ("Data\n:x"). A space anywhere in the gap, or
+ * before the colon, keeps the line ("Sizes:\n/ small", "Remarque :\n// merci",
+ * "Note\n: see below").
  * Not caught: such a run next to any other character that is not a letter
  * or digit, as right after the colon with no "/" after it
  * ("javascript:\nalert"), because there a line break separates prose
@@ -515,6 +535,7 @@ function schemeView(text: string): string {
   return text
     .replace(SCHEME_VIEW_STRIP_RE, "")
     .replace(SCHEME_VIEW_JOIN_RE, "")
+    .replace(SCHEME_VIEW_COLON_JOIN_RE, "")
     .replace(SCHEME_VIEW_SLASH_JOIN_RE, "");
 }
 function holdsLink(text: string): boolean {
