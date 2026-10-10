@@ -170,7 +170,21 @@ describe('BottleLeaf — bottle price vs. the library\'s market average', () => 
     // The library figure is still shown too, under its own, different label —
     // this house's price never replaces it, and the two numbers differ.
     const marketAvgDd = within(facts).getByText('Market average (bottle)').nextElementSibling!;
-    expect(marketAvgDd).toHaveTextContent('$62.00');
+    // F-918: the library figure has no currency of record, so it is not
+    // printed in this house's; the house's own price keeps its sign.
+    expect(marketAvgDd).toHaveTextContent('62.00 (currency not recorded)');
+    expect(marketAvgDd).not.toHaveTextContent('$');
+  });
+
+  it('prints the same library figure the same way in a lira house and a dollar house (F-918)', () => {
+    setCellarCurrency('TRY');
+    mount(bottle({ listPrice: 62, cellar: cellarRow({ menuPriceBottle: 1850 }) }));
+    const facts = screen.getByTestId('bottle-leaf-fact-set');
+    const marketAvgDd = within(facts).getByText('Market average (bottle)').nextElementSibling!;
+    expect(marketAvgDd).toHaveTextContent('62.00 (currency not recorded)');
+    expect(marketAvgDd).not.toHaveTextContent(/TRY|₺/);
+    const bottleDd = within(facts).getByText('Bottle price (this house)').nextElementSibling!;
+    expect(bottleDd).toHaveTextContent('TRY 1,850.00');
   });
 
   it('shows the em dash, and the "set one in Inventory" note, when no bottle price is recorded', () => {

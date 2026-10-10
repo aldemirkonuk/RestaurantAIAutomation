@@ -35,13 +35,23 @@ import {
 } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { dateIn } from '../../dashboard/next/format';
+import { formatMoney } from '../../../lib/currency';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
 
-function money(n: number | null | undefined): string {
-  return n === null || n === undefined ? EM : n.toFixed(2);
+/**
+ * Money printed the way /menu's line table prints it: the house's currency,
+ * in the screen's own marks (F-919). It was a bare `toFixed(2)`, so one screen
+ * read "₺1.250,00" in the table and "1250.00" here. With no currency handed in
+ * (a caller outside /menu), the number alone, still in the screen's marks.
+ */
+function money(n: number | null | undefined, currency?: string | null): string {
+  if (n === null || n === undefined) return EM;
+  return currency === undefined
+    ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : formatMoney(n, currency);
 }
 
 /**
@@ -130,22 +140,22 @@ export function orderedRows(lines: PlanLine[]): Row[] {
 }
 
 /** One kind of one line, in the words of what choosing the menu does to it. */
-export function kindWords(line: PlanLine, k: PlanKind): string {
+export function kindWords(line: PlanLine, k: PlanKind, currency?: string | null): string {
   switch (k.result) {
     case 'change':
-      return `becomes ${money(k.menuPrice)} (now ${money(k.housePrice)})`;
+      return `becomes ${money(k.menuPrice, currency)} (now ${money(k.housePrice, currency)})`;
     case 'unchanged':
-      return `already ${money(k.housePrice)}`;
+      return `already ${money(k.housePrice, currency)}`;
     case 'held_by_lock':
-      return `stays ${money(k.lock?.lockedPrice ?? k.housePrice)}, locked`;
+      return `stays ${money(k.lock?.lockedPrice ?? k.housePrice, currency)}, locked`;
     case 'blank_kept':
-      return `blank on the menu; the house keeps ${money(k.housePrice)} (flagged)`;
+      return `blank on the menu; the house keeps ${money(k.housePrice, currency)} (flagged)`;
     case 'blank_never_priced':
       return line.flag === 'blank_no_house_price' ? 'no price on the menu or at the house (flagged)' : EM;
     case 'not_linked':
       return 'not matched to a wine, so no price';
     case 'new_wine':
-      return k.menuPrice === null ? EM : `new to the house at ${money(k.menuPrice)}`;
+      return k.menuPrice === null ? EM : `new to the house at ${money(k.menuPrice, currency)}`;
     default:
       // A result this page does not know is still shown, never dropped.
       return String(k.result).replace(/_/g, ' ');
@@ -211,9 +221,12 @@ export function MenuPlan({
   canManage,
   onDone,
   onCancel,
+  currency,
 }: {
   menuId: string;
   canManage: boolean;
+  /** The house's currency, as /menu read it for its line table. */
+  currency?: string | null;
   /** Called with what the choice did, once it is made. */
   onDone: (result: MakeCurrentResult) => void;
   onCancel?: () => void;
@@ -334,12 +347,12 @@ export function MenuPlan({
                   >
                     <td>{r.line.name}</td>
                     <td className="cl-dim">{r.k.kind}</td>
-                    <td>{money(r.k.housePrice)}</td>
-                    <td>{money(r.k.menuPrice)}</td>
+                    <td>{money(r.k.housePrice, currency)}</td>
+                    <td>{money(r.k.menuPrice, currency)}</td>
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
-                        ? `Stays ${money(r.k.lock.lockedPrice)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
-                        : `Becomes ${money(r.k.menuPrice)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
+                        ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
+                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
                     </td>
                     <td>
                       <KeepSwitch
@@ -398,8 +411,8 @@ export function MenuPlan({
                       {l.name}
                       {l.vintage ? ` ${l.vintage}` : ''}
                     </td>
-                    <td className="cl-dim">{kindWords(l, l.bottle)}</td>
-                    <td className="cl-dim">{kindWords(l, l.glass)}</td>
+                    <td className="cl-dim">{kindWords(l, l.bottle, currency)}</td>
+                    <td className="cl-dim">{kindWords(l, l.glass, currency)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -414,7 +427,7 @@ export function MenuPlan({
           <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
             {plan.dormantLocks.map((d) => (
               <li key={d.lockId}>
-                {d.wineName ?? 'A wine'} ({d.kind}) at {money(d.lockedPrice)}
+                {d.wineName ?? 'A wine'} ({d.kind}) at {money(d.lockedPrice, currency)}
                 {d.active === false ? ', removed from inventory' : ''}
               </li>
             ))}

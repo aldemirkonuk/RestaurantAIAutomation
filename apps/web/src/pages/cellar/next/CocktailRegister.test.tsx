@@ -178,6 +178,29 @@ describe('recording a recipe', () => {
     await record();
     expect(screen.getByText(/The recipe was NOT recorded — name taken\. Nothing was changed\./)).toBeInTheDocument();
   });
+
+  // F-917: the line is said from what was saved — no "first recipe ever"
+  // claim on an amend, and a clearing save says it cleared.
+  it('says how many lines were recorded, and nothing about a first recipe', async () => {
+    mock.setRecipe.mockResolvedValue({ lines: 1 });
+    draw();
+    await record();
+    expect(screen.getByText('Recipe recorded: 1 line.')).toBeInTheDocument();
+    expect(screen.queryByText(/first recipe/)).not.toBeInTheDocument();
+  });
+
+  it('a save with no lines says the recipe was cleared', async () => {
+    mock.setRecipe.mockResolvedValue({ lines: 0 });
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /Write the recipe/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the recipe/ }));
+    });
+    expect(mock.setRecipe).toHaveBeenCalledWith({ id: 'c1', lines: [] });
+    expect(screen.getByText(/Recipe cleared/)).toBeInTheDocument();
+    expect(screen.queryByText(/0 lines recorded|first recipe/)).not.toBeInTheDocument();
+  });
 });
 
 describe('taking one off the list', () => {

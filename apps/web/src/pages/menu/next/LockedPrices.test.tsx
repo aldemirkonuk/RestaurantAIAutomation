@@ -109,11 +109,11 @@ function readout(over: Partial<LockReadout> = {}): LockReadout {
   };
 }
 
-function mount(canManage: boolean) {
+function mount(canManage: boolean, currency?: string | null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <LockedPrices canManage={canManage} />
+      <LockedPrices canManage={canManage} currency={currency} />
     </QueryClientProvider>,
   );
 }
@@ -314,6 +314,22 @@ describe('Locked prices', () => {
 
   it('markerWords says nothing for a lock that fits', () => {
     expect(markerWords(lock({ markers: [] }))).toEqual([]);
+  });
+
+  // F-919: the same money the line table above prints, in the house's currency.
+  it('prints each locked price in the house\'s currency, as the line table does', async () => {
+    mockList.mockResolvedValue(readout());
+    mount(true, 'TRY');
+    const onMenu = await screen.findByTestId('locked-on-menu');
+    expect(onMenu).toHaveTextContent('Barolo 2019 (bottle) locked at TRY 50.00');
+    expect(onMenu).toHaveTextContent('the current menu reads TRY 55.00');
+    expect(screen.getByTestId('locked-off-menu')).toHaveTextContent('Soave (glass) locked at TRY 9.00');
+  });
+
+  it('a house with no currency recorded says so, never a bare figure that reads as any money', () => {
+    expect(markerWords(lock({ markers: ['menu_differs'], menuPrice: 1250 }), null)).toEqual([
+      'the current menu reads 1,250.00 (currency not recorded)',
+    ]);
   });
 });
 

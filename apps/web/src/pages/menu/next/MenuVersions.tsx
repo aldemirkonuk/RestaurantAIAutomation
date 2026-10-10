@@ -38,6 +38,7 @@ import { isUnconfirmedWrite } from '../../../services/api/client';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { dateIn } from '../../dashboard/next/format';
+import { formatMoney } from '../../../lib/currency';
 
 const EM = '—';
 
@@ -110,7 +111,7 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
 };
 
 /** What making a menu current did, in one sentence -- every outcome it was told, and every lock by name. */
-export function makeCurrentSentence(r: MakeCurrentResult): string {
+export function makeCurrentSentence(r: MakeCurrentResult, currency?: string | null): string {
   if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
@@ -127,7 +128,13 @@ export function makeCurrentSentence(r: MakeCurrentResult): string {
   if (r.flagged > 0) parts.push(`${r.flagged} flagged for a blank price`);
   const held = r.held?.length
     ? ` Held by a lock, not changed: ${r.held
-        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${h.lockedPrice.toFixed(2)}`})`)
+        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${
+          // The house's money, as the line table prints it (F-919); no currency
+          // handed in is the bare number in the screen's own marks.
+          currency === undefined
+            ? h.lockedPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : formatMoney(h.lockedPrice, currency)
+        }`})`)
         .join('; ')}.`
     : '';
   const returned = r.returned?.length
@@ -156,7 +163,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
+function ReadMenuForm({ canManage, onRead, currency }: { canManage: boolean; onRead: () => void; currency?: string | null }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
@@ -291,10 +298,11 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
             <MenuPlan
               menuId={result.menuId}
               canManage={canManage}
+              currency={currency}
               onCancel={() => setPlanning(false)}
               onDone={(r) => {
                 setPlanning(false);
-                setChosen(makeCurrentSentence(r));
+                setChosen(makeCurrentSentence(r, currency));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
               }}
@@ -373,7 +381,11 @@ function VersionRow({ v, zone, canManage, lastUsedId, planning, onPlan }: {
   );
 }
 
-export function MenuVersions({ canManage }: { canManage: boolean }) {
+export function MenuVersions({ canManage, currency }: {
+  canManage: boolean;
+  /** The house's currency, as /menu read it for its line table. */
+  currency?: string | null;
+}) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [planFor, setPlanFor] = useState<string | null>(null);
@@ -392,7 +404,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         Every menu this house reads is kept: the file and the lines it found. Reading one does not change the current
         menu or any price; choosing it does.
       </p>
-      <ReadMenuForm canManage={canManage} onRead={refresh} />
+      <ReadMenuForm canManage={canManage} onRead={refresh} currency={currency} />
       {said ? (
         <p role="status" className="cl-said" style={{ marginTop: 10 }}>
           {said}
@@ -451,10 +463,11 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 key={planFor}
                 menuId={planFor}
                 canManage={canManage}
+                currency={currency}
                 onCancel={() => setPlanFor(null)}
                 onDone={(r) => {
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r));
+                  setSaid(makeCurrentSentence(r, currency));
                   refresh();
                 }}
               />

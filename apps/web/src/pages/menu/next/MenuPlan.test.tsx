@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MenuPlan, kindWords, orderedRows, planSentence } from './MenuPlan';
+import { makeCurrentSentence } from './MenuVersions';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 
@@ -338,6 +339,10 @@ describe('every line of the menu, per kind (L13)', () => {
     expect(kindWords(l, k({ result: 'new_wine', menuPrice: 40 }))).toBe('new to the house at 40.00');
     expect(kindWords(l, k({ result: 'blank_never_priced' }))).toBe('—');
     expect(kindWords(l, k({ result: 'held_somewhere_else' as never }))).toBe('held somewhere else');
+    // F-919: in the house's currency when /menu hands it in, as the line table prints it.
+    expect(kindWords(l, k({ result: 'change', menuPrice: 1250, housePrice: 1100 }), 'TRY').replace(/\u00a0/g, ' ')).toBe(
+      'becomes TRY 1,250.00 (now TRY 1,100.00)',
+    );
   });
 });
 
@@ -365,5 +370,30 @@ describe('a menu with no lines (F-681)', () => {
       'This menu has no lines, so it cannot become the current menu.',
     );
     expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument();
+  });
+});
+
+// F-919: the sentence after "Make it current" names a held lock's price in the
+// house's money, as the line table above it prints it — never a bare toFixed.
+describe('the make-current sentence (F-919)', () => {
+  it('says a held lock\'s price in the house\'s currency', () => {
+    const s = makeCurrentSentence(
+      {
+        outcome: 'made_current',
+        menuId: 'm1',
+        previousMenuIds: [],
+        lines: 1,
+        priceSync: { locked: 1 },
+        flagged: 0,
+        failed: [],
+        held: [
+          { menuItemId: 'l1', name: 'Barolo', kind: 'bottle', lockId: 'k1', lockedPrice: 1250, lockedBy: 'u1', lockedAt: '2026-09-01T00:00:00Z' },
+        ],
+        returned: [],
+      },
+      'TRY',
+    );
+    expect(s).toMatch(/Barolo \(bottle, locked at TRY\s1,250\.00\)/);
+    expect(s).not.toContain('1250.00');
   });
 });

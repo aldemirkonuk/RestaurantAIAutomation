@@ -848,9 +848,9 @@ export default function MenuNext() {
         {/* ADR 0193 round 3: every price this house holds, kept when its wine
             leaves the menu (the founder, 2026-09-21: "add a section to that
             where you can lock price, but wha f that menu item disappears?"). */}
-        {activeRestaurantId ? <LockedPrices canManage={canManage} /> : null}
+        {activeRestaurantId ? <LockedPrices canManage={canManage} currency={currency} /> : null}
 
-        {activeRestaurantId ? <MenuVersions canManage={canManage} /> : null}
+        {activeRestaurantId ? <MenuVersions canManage={canManage} currency={currency} /> : null}
 
         <footer
           style={{

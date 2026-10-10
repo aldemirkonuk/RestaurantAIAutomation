@@ -71,6 +71,18 @@ export function money(v: number | null | undefined, currency?: string | null): s
 }
 
 /**
+ * A figure from the shared wine library (its reference price, its retail
+ * average). The library keeps no currency for these: most came off US and
+ * Turkish menus alike (ADR 0117), so printing one in this house's currency
+ * turned the same 62 into ₺62 in one house and $62 in another (F-918). It is
+ * printed as a bare number that says its currency is not recorded, until the
+ * library carries one per row.
+ */
+export function libraryMoney(v: number | null | undefined): string {
+  return money(v, null);
+}
+
+/**
  * The gateway's `price` field, read honestly: 0 is its "no reference price"
  * sentinel (`price_reference ?? 0`), not a price of zero.
  */
