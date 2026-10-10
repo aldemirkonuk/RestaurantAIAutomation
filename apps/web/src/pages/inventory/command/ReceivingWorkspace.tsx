@@ -31,6 +31,7 @@ import {
 } from '../../../services/api/documents'
 import { settingsApi } from '../../../services/api/settings'
 import { useNotificationStore } from '../../../stores'
+import { useMayActForTheHouse } from '../../../hooks/useMayActForTheHouse'
 import { CURRENCY_CODES } from '../../../lib/currency'
 /*
  * THE FIRST PRODUCTION IMPORT FROM THE GATEWAY IN THIS APP (2026-09-11, audit of
@@ -302,6 +303,13 @@ function Stepper({
 export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: Props) {
   const queryClient = useQueryClient()
   const toast = useNotificationStore()
+  /*
+   * F-805 (after F-802): the invoice price, the override reason and the freight
+   * become the lots' landed cost, and the gateway keeps them for owners and
+   * managers. Staff are not offered them and never send them, so the count they
+   * record is never refused for a price they could not see.
+   */
+  const holdsMoney = useMayActForTheHouse()
 
   // ADR 0192 — the count's unit and its starting point, from the ledger.
   const count = useMemo(() => deskCountBasis(order), [order])
@@ -409,7 +417,12 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const houseCurrency = house?.readable ? (house.code ?? null) : null
 
   const { invoice, packingSlip } = useMemo(() => pickDocuments(documents), [documents])
-  const allocatedCharges = useMemo(() => allocatedChargesFor(invoice), [invoice])
+  const allocatedCharges = useMemo(
+    () => (holdsMoney ? allocatedChargesFor(invoice) : 0),
+    [invoice, holdsMoney],
+  )
+  /** The price this desk may state: none for staff, even when the paper carries one. */
+  const statedUnitPrice = holdsMoney ? invoiceUnitPrice : null
 
   /**
    * Read the vendor's numbers off the documents.
@@ -471,7 +484,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         poCurrency: orderCurrency?.currency ?? null,
         shippedQty,
         invoiceQty,
-        invoiceUnitPrice,
+        invoiceUnitPrice: statedUnitPrice,
         invoiceCurrency: invoiceCurrency || null,
         acceptedQty,
         rejectedQty,
@@ -485,7 +498,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       orderCurrency,
       shippedQty,
       invoiceQty,
-      invoiceUnitPrice,
+      statedUnitPrice,
       invoiceCurrency,
       acceptedQty,
       rejectedQty,
@@ -507,7 +520,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
    * input is closed, and the sentence says so.
    */
   const moneyHold =
-    invoice && invoice.moneyState && invoice.moneyState.priced === false
+    holdsMoney && invoice && invoice.moneyState && invoice.moneyState.priced === false
       ? invoice.moneyState.reason
       : null
 
@@ -591,20 +604,20 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   }, [invoice, orderCurrency, houseCurrency, invoiceCurrency])
 
   /** The server refuses this pair; so does the button, with the same reason. */
-  const priceNeedsCurrency = invoiceUnitPrice != null && invoiceCurrency === ''
+  const priceNeedsCurrency = statedUnitPrice != null && invoiceCurrency === ''
 
   const style = verdictStyle(match.verdict)
   // Two stated, different moneys are not compared as numbers (F-341): no
   // "over/under agreed" figure and no override box, the price is held for the owner.
   const currencyDiffers =
     poUnitPrice != null &&
-    invoiceUnitPrice != null &&
+    statedUnitPrice != null &&
     differentMoney(orderCurrency?.currency, invoiceCurrency || null)
   const priceDiffers =
     poUnitPrice != null &&
-    invoiceUnitPrice != null &&
+    statedUnitPrice != null &&
     !currencyDiffers &&
-    Math.round(poUnitPrice * 100) !== Math.round(invoiceUnitPrice * 100)
+    Math.round(poUnitPrice * 100) !== Math.round(statedUnitPrice * 100)
   const receivedQty = acceptedQty + rejectedQty
 
   const addable = useMemo(
@@ -633,11 +646,12 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         invoiceUom: inBottles && invoiceQty != null ? 'bottle' : undefined,
         shippedUom: inBottles && shippedQty != null ? 'bottle' : undefined,
         invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
-        invoiceUnitPrice: invoiceUnitPrice ?? undefined,
+        invoiceUnitPrice: statedUnitPrice ?? undefined,
         // Sent whenever it is set, price or no price. The gateway refuses the
         // PAIR (a price with no code) and accepts a code with no price, so a
         // desk that picks the currency before typing the figure is not fought.
-        invoiceCurrency: invoiceCurrency || undefined,
+        // Never from staff, who are shown no price for it to belong to (F-805).
+        invoiceCurrency: (holdsMoney && invoiceCurrency) || undefined,
         shippedQuantityInShippedUom: shippedQty ?? undefined,
         freeGoodsQuantityInCountedUom: freeGoodsQty || undefined,
         allocatedCharges: allocatedCharges || undefined,
@@ -651,7 +665,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         // is not a proposal of zero, and the final value there is an original
         // answer rather than a correction.
         prefilledInvoiceQuantityInInvoiceUom: proposed.invoiceQty ?? undefined,
-        prefilledInvoiceUnitPrice: proposed.invoiceUnitPrice ?? undefined,
+        prefilledInvoiceUnitPrice: holdsMoney ? (proposed.invoiceUnitPrice ?? undefined) : undefined,
         prefilledShippedQuantityInShippedUom: proposed.shippedQty ?? undefined,
         prefilledFreeGoodsQuantityInCountedUom: proposed.freeGoodsQty ?? undefined,
         adjustments: extras.map((l) => ({
@@ -838,84 +852,96 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
             </div>
           </div>
 
-          {/* prices — exact match, no tolerance band */}
-          <div className="grid grid-cols-[1fr_74px_74px_280px] gap-1.5 items-center py-3 border-t border-gray-50">
-            <div className="text-xs text-gray-500">
-              Unit price
-              {/* The code travels WITH the figure, in the same cell, because a
-                  currency picked three rows away from a number is a currency
-                  people stop reading. */}
-              <select
-                aria-label="Invoice currency"
-                data-testid="receiving-invoice-currency"
-                disabled={readOnly || !!moneyHold}
-                value={invoiceCurrency}
-                onChange={(e) => {
-                  setInvoiceCurrency(e.target.value)
-                  setCurrencyPrefilled(true)
-                }}
-                className={cn(
-                  'ml-2 h-6 px-1 text-[11px] font-mono border rounded-md bg-white outline-none focus:ring-2 focus:ring-wine-500 disabled:bg-gray-50',
-                  priceNeedsCurrency ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200',
+          {/* prices — exact match, no tolerance band. Staff get one line instead
+              (F-805): the price is a manager's or an owner's to confirm. */}
+          {!holdsMoney && (
+            <p
+              data-testid="receiving-price-held"
+              className="py-3 border-t border-gray-50 text-xs text-gray-500"
+            >
+              The price on this delivery is checked by a manager or an owner; your count
+              records without it.
+            </p>
+          )}
+          {holdsMoney && (
+            <div className="grid grid-cols-[1fr_74px_74px_280px] gap-1.5 items-center py-3 border-t border-gray-50">
+              <div className="text-xs text-gray-500">
+                Unit price
+                {/* The code travels WITH the figure, in the same cell, because a
+                    currency picked three rows away from a number is a currency
+                    people stop reading. */}
+                <select
+                  aria-label="Invoice currency"
+                  data-testid="receiving-invoice-currency"
+                  disabled={readOnly || !!moneyHold}
+                  value={invoiceCurrency}
+                  onChange={(e) => {
+                    setInvoiceCurrency(e.target.value)
+                    setCurrencyPrefilled(true)
+                  }}
+                  className={cn(
+                    'ml-2 h-6 px-1 text-[11px] font-mono border rounded-md bg-white outline-none focus:ring-2 focus:ring-wine-500 disabled:bg-gray-50',
+                    priceNeedsCurrency ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200',
+                  )}
+                >
+                  <option value="">currency?</option>
+                  {CURRENCY_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="text-center font-mono text-sm text-gray-500">
+                {poUnitPrice != null ? money(poUnitPrice, orderCurrency?.currency) : '—'}
+              </div>
+              <div className="flex justify-center">
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  disabled={readOnly || !!moneyHold}
+                  aria-label="Invoice unit price"
+                  title={moneyHold ?? undefined}
+                  placeholder="—"
+                  value={moneyHold ? '' : (invoiceUnitPrice ?? '')}
+                  onChange={(e) =>
+                    setInvoiceUnitPrice(
+                      e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  className={cn(
+                    'w-[70px] h-8 text-center font-mono text-sm border rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50',
+                    priceDiffers ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200',
+                  )}
+                />
+              </div>
+              <div className="text-right">
+                {moneyHold ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                    <AlertTriangle className="w-3 h-3" /> Price held — currency not filed
+                  </span>
+                ) : poUnitPrice == null ? (
+                  <span className="text-[11px] text-gray-400">No agreed price on this order</span>
+                ) : currencyDiffers ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                    <AlertTriangle className="w-3 h-3" /> Not compared — agreed in{' '}
+                    {orderCurrency?.currency}, billed in {invoiceCurrency}. You decide.
+                  </span>
+                ) : priceDiffers ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                    <AlertTriangle className="w-3 h-3" />
+                    {money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice), orderCurrency?.currency)}/btl{' '}
+                    {(invoiceUnitPrice ?? 0) > poUnitPrice ? 'over' : 'under'} agreed
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                    <Check className="w-3 h-3" /> Matches agreed price
+                  </span>
                 )}
-              >
-                <option value="">currency?</option>
-                {CURRENCY_CODES.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
+              </div>
             </div>
-            <div className="text-center font-mono text-sm text-gray-500">
-              {poUnitPrice != null ? money(poUnitPrice, orderCurrency?.currency) : '—'}
-            </div>
-            <div className="flex justify-center">
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                disabled={readOnly || !!moneyHold}
-                aria-label="Invoice unit price"
-                title={moneyHold ?? undefined}
-                placeholder="—"
-                value={moneyHold ? '' : (invoiceUnitPrice ?? '')}
-                onChange={(e) =>
-                  setInvoiceUnitPrice(
-                    e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
-                  )
-                }
-                className={cn(
-                  'w-[70px] h-8 text-center font-mono text-sm border rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50',
-                  priceDiffers ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200',
-                )}
-              />
-            </div>
-            <div className="text-right">
-              {moneyHold ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
-                  <AlertTriangle className="w-3 h-3" /> Price held — currency not filed
-                </span>
-              ) : poUnitPrice == null ? (
-                <span className="text-[11px] text-gray-400">No agreed price on this order</span>
-              ) : currencyDiffers ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
-                  <AlertTriangle className="w-3 h-3" /> Not compared — agreed in{' '}
-                  {orderCurrency?.currency}, billed in {invoiceCurrency}. You decide.
-                </span>
-              ) : priceDiffers ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
-                  <AlertTriangle className="w-3 h-3" />
-                  {money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice), orderCurrency?.currency)}/btl{' '}
-                  {(invoiceUnitPrice ?? 0) > poUnitPrice ? 'over' : 'under'} agreed
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
-                  <Check className="w-3 h-3" /> Matches agreed price
-                </span>
-              )}
-            </div>
-          </div>
+          )}
 
           {/* B (batch 67) — a price with no code, said in words, with the codes
               this desk can take in one tap and where each comes from. Shown only
@@ -990,8 +1016,9 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
             </div>
           )}
 
-          {/* B4 — the invoice's money beside the order's. Nothing is converted. */}
-          {(orderCurrency?.failure || currencyMismatch) && (
+          {/* B4 — the invoice's money beside the order's. Nothing is converted.
+              Not drawn for staff, who are shown no price to compare (F-805). */}
+          {holdsMoney && (orderCurrency?.failure || currencyMismatch) && (
             <div
               data-testid="receiving-currency-compare"
               className={cn(

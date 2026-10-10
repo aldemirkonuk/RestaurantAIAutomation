@@ -21,6 +21,14 @@ const toastSuccess = vi.hoisted(() => vi.fn())
 const toastError = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../services/api/orders', () => ({ verifyOrderReceipt }))
+/*
+ * F-805: the price, the override and the freight are an owner's or a manager's.
+ * Every test below is a manager unless it says otherwise.
+ */
+const mayAct = vi.hoisted(() => ({ value: true }))
+vi.mock('../../../hooks/useMayActForTheHouse', () => ({
+  useMayActForTheHouse: () => mayAct.value,
+}))
 vi.mock('../../../services/api/documents', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/documents')>(
     '../../../services/api/documents',
@@ -133,6 +141,7 @@ async function enterInvoice(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mayAct.value = true
   verifyOrderReceipt.mockResolvedValue({ ...order, status: 'COMPLETED' })
   forOrder.mockResolvedValue([])
   orderBlock = null
@@ -1012,5 +1021,68 @@ describe('ReceivingWorkspace — named controls (F-402)', () => {
     expect(screen.getByRole('button', { name: 'Decrease quantity rejected' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalled()
+  })
+})
+
+/*
+ * F-805 (after F-802): the gateway refuses staff a receipt that carries an
+ * invoice price, an override reason or freight. The form must not offer staff
+ * those fields nor send them, so a count never meets that refusal.
+ */
+describe('ReceivingWorkspace — the price is a manager\'s (F-805)', () => {
+  // The paper bills $24 against an agreed $22, with $6 of freight on top.
+  const billed = () =>
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24, unitPrice: 24 }], { freight: 6, currency: 'USD' }),
+    ])
+
+  it('[REVERT-FAILS] does not offer staff the price, and sends no price, override or freight', async () => {
+    mayAct.value = false
+    billed()
+    renderWorkspace()
+    await screen.findByText(/Read from their paperwork/)
+
+    expect(screen.queryByLabelText('Invoice unit price')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Invoice currency')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText(/freight surcharge/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('receiving-price-held')).toHaveTextContent(
+      'checked by a manager or an owner',
+    )
+    // The count stays theirs, and is not held for a reason they cannot give.
+    expect(invoiceQtyInput()).toHaveValue(24)
+    expect(submit()).not.toBeDisabled()
+
+    const user = userEvent.setup()
+    await user.click(submit())
+
+    expect(verifyOrderReceipt).toHaveBeenCalledTimes(1)
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.invoiceQuantityInInvoiceUom).toBe(24)
+    expect(body.acceptedQuantityInCountedUom).toBe(24)
+    expect(body.invoiceUnitPrice).toBeUndefined()
+    expect(body.priceOverrideReason).toBeUndefined()
+    expect(body.allocatedCharges).toBeUndefined()
+    expect(body.invoiceCurrency).toBeUndefined()
+    expect(body.prefilledInvoiceUnitPrice).toBeUndefined()
+  })
+
+  it('offers a manager the price and sends the price, override and freight', async () => {
+    billed()
+    renderWorkspace()
+    await screen.findByText(/Read from their paperwork/)
+
+    expect(screen.queryByTestId('receiving-price-held')).not.toBeInTheDocument()
+    expect(invoicePriceInput()).toHaveValue(24)
+    expect(submit()).toHaveTextContent('Reason required')
+
+    const user = userEvent.setup()
+    await user.type(screen.getByPlaceholderText(/freight surcharge/), 'new vintage price')
+    await user.click(submit())
+
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.invoiceUnitPrice).toBe(24)
+    expect(body.priceOverrideReason).toBe('new vintage price')
+    expect(body.allocatedCharges).toBe(6)
+    expect(body.invoiceCurrency).toBe('USD')
   })
 })
