@@ -865,17 +865,15 @@ export class VendorTermsService {
       // 365 days" and `sources.orders.rows` printed 1000. Every inference here
       // buckets or sorts its own values, so the id order it comes back in is
       // harmless.
-      const rows = await readWholeWindow<OrderRow>(
-        "This year's orders",
-        () =>
-          this.databaseService.client
-            .from("procurement_orders")
-            .select(
-              "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status",
-              { count: "exact" },
-            )
-            .eq("restaurant_id", restaurantId)
-            .gte("requested_at", since),
+      const rows = await readWholeWindow<OrderRow>("This year's orders", () =>
+        this.databaseService.client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("requested_at", since),
       );
       return {
         rows,

@@ -73,12 +73,15 @@ function makeDb(opts: DbOpts) {
             data: inIds.map((v) => ({
               id: v,
               orders: [
-                ...Array.from({ length: earlier }, (_, i): Row => ({
-                  id: `prior-${i}`,
-                  status: "DELIVERED",
-                  requested_at: "2026-01-01T00:00:00Z",
-                  created_at: "2026-01-01T00:00:00Z",
-                })),
+                ...Array.from(
+                  { length: earlier },
+                  (_, i): Row => ({
+                    id: `prior-${i}`,
+                    status: "DELIVERED",
+                    requested_at: "2026-01-01T00:00:00Z",
+                    created_at: "2026-01-01T00:00:00Z",
+                  }),
+                ),
                 ...(opts.pending ?? [])
                   .filter((r) => r.provider_id === v)
                   .map(({ id, status, requested_at, created_at }) => ({

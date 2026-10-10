@@ -134,10 +134,24 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     const doc = EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 });
     expect(doc.notes).toContain(TILL_REFUNDS_NOT_TAKEN_OFF);
     expect(TILL_REFUNDS_NOT_TAKEN_OFF).toMatch(/^Refunds are not taken off\./);
-    const zero = EXPORT_CUTTINGS.till.write({ posConnected: true, revenue: 0, checkCount: 0, from: "2026-09-10", to: "2026-09-17", days: 7, dailySeries: [] }, { days: 7 });
+    const zero = EXPORT_CUTTINGS.till.write(
+      {
+        posConnected: true,
+        revenue: 0,
+        checkCount: 0,
+        from: "2026-09-10",
+        to: "2026-09-17",
+        days: 7,
+        dailySeries: [],
+      },
+      { days: 7 },
+    );
     expect(zero.notes).toContain(TILL_REFUNDS_NOT_TAKEN_OFF);
     // No figure, nothing to qualify.
-    const none = EXPORT_CUTTINGS.till.write({ posConnected: false, revenue: null, checkCount: null }, { days: 30 });
+    const none = EXPORT_CUTTINGS.till.write(
+      { posConnected: false, revenue: null, checkCount: null },
+      { days: 30 },
+    );
     expect(none.notes).toEqual([]);
   });
 
@@ -190,11 +204,23 @@ describe("a figure the engine did not compute is written as withheld, never as 0
 
   it("against ourselves: a goal is typed by its unit and named as its last reading; an unread goals lens is not 'no goal' (F-573)", () => {
     const bench = (activeGoals: unknown) =>
-      EXPORT_CUTTINGS.bench.write({ ...(PAYLOADS.bench as object), activeGoals }, { days: null });
+      EXPORT_CUTTINGS.bench.write(
+        { ...(PAYLOADS.bench as object), activeGoals },
+        { days: null },
+      );
     const typed = bench([
-      { name: "Lift wine attach", metric_key: "wine_attach_rate", unit: "percent", baseline_value: 0.2, current_value: 0.35, target_value: 0.4 },
+      {
+        name: "Lift wine attach",
+        metric_key: "wine_attach_rate",
+        unit: "percent",
+        baseline_value: 0.2,
+        current_value: 0.35,
+        target_value: 0.4,
+      },
     ]);
-    const row = typed.tables[0].rows.find((r) => String(r[0]).startsWith("Lift wine attach"))!;
+    const row = typed.tables[0].rows.find((r) =>
+      String(r[0]).startsWith("Lift wine attach"),
+    )!;
     expect(row[0]).toBe("Lift wine attach — baseline, last read, target");
     expect(row[2]).toEqual({ n: 0.35, unit: "ratio" });
     const unread = bench(null);

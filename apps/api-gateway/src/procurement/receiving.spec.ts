@@ -450,7 +450,9 @@ describe("recordDoorReceipt", () => {
     // A refused truck used to move the order to PARTIALLY_RECEIVED and date
     // its delivered_at, so the scorecard counted it as landed on time, and
     // PARTIALLY_RECEIVED cannot be cancelled as never arrived.
-    const { db, calls } = makeDb({ order: { ...packTwelve, status: "CONFIRMED" } });
+    const { db, calls } = makeDb({
+      order: { ...packTwelve, status: "CONFIRMED" },
+    });
 
     const r = await new ReceivingService(db).recordDoorReceipt({
       ...base,
@@ -678,9 +680,16 @@ describe("recordDoorReceipt", () => {
     const { db, calls } = makeDb({
       order: packTwelve,
       events: [
-        { order_id: "o1", stage: "reconciled", counted_qty_bottles: 72, rejected_qty_bottles: 0 },
+        {
+          order_id: "o1",
+          stage: "reconciled",
+          counted_qty_bottles: 72,
+          rejected_qty_bottles: 0,
+        },
       ],
-      ledger: [{ quantity_change: 72, idempotency_key: "receipt-verify:o1:inv1" }],
+      ledger: [
+        { quantity_change: 72, idempotency_key: "receipt-verify:o1:inv1" },
+      ],
     });
     const r = await new ReceivingService(db).recordDoorReceipt({
       ...base,
@@ -699,7 +708,9 @@ describe("recordDoorReceipt", () => {
     // is counting; that rule is unchanged.
     const { db, calls } = makeDb({
       order: packTwelve,
-      ledger: [{ quantity_change: 192, idempotency_key: "order-delivered-live:o1" }],
+      ledger: [
+        { quantity_change: 192, idempotency_key: "order-delivered-live:o1" },
+      ],
     });
     await new ReceivingService(db).recordDoorReceipt({
       ...base,
@@ -1194,7 +1205,11 @@ describe("listUnverified", () => {
         ...newer,
       ],
       orders: [
-        { id: "old-order", order_number: "PO-OLD", status: "PARTIALLY_RECEIVED" },
+        {
+          id: "old-order",
+          order_number: "PO-OLD",
+          status: "PARTIALLY_RECEIVED",
+        },
       ],
     });
 
@@ -1362,7 +1377,10 @@ describe("listUnverifiedCapped", () => {
 
     const { rows } = await new ReceivingService(db).listUnverifiedCapped("r1");
     expect(rows.map((r) => r.orderId)).toEqual(["o2"]);
-    expect(rows[0]).toMatchObject({ countedQtyBottles: 24, acceptedQtyBottles: 18 });
+    expect(rows[0]).toMatchObject({
+      countedQtyBottles: 24,
+      acceptedQtyBottles: 18,
+    });
   });
 
   it("keeps an earlier truck that was accepted when a later one is turned away whole", async () => {
@@ -1384,7 +1402,9 @@ describe("listUnverifiedCapped", () => {
           occurred_at: hoursAgo(1),
         },
       ],
-      orders: [{ id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" }],
+      orders: [
+        { id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" },
+      ],
     });
 
     const { rows } = await new ReceivingService(db).listUnverifiedCapped("r1");
@@ -1427,7 +1447,11 @@ describe("arrivedToday", () => {
 
     const start = new Date(Date.now() - 12 * 3_600_000);
     const end = new Date(Date.now() + 12 * 3_600_000);
-    const { rows } = await new ReceivingService(db).arrivedToday("r1", start, end);
+    const { rows } = await new ReceivingService(db).arrivedToday(
+      "r1",
+      start,
+      end,
+    );
     expect(rows.map((r) => r.orderId)).toEqual(["o2"]);
   });
 
@@ -2020,9 +2044,15 @@ describe("recordDoorReceipt — a closed or unapproved order takes no count (F-6
         countedUom: "case",
         idempotencyKey: `k-${status}`,
       });
-      await expect(attempt).rejects.toBeInstanceOf(UnprocessableEntityException);
+      await expect(attempt).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
       await expect(attempt).rejects.toMatchObject({
-        response: { reason: "order_not_receivable", status, message: expect.stringMatching(words) },
+        response: {
+          reason: "order_not_receivable",
+          status,
+          message: expect.stringMatching(words),
+        },
       });
       expect(calls.eventInserts).toHaveLength(0);
       expect(calls.rpc).toHaveLength(0);
@@ -2042,19 +2072,22 @@ describe("recordDoorReceipt — a closed or unapproved order takes no count (F-6
     expect(calls.rpc).toHaveLength(0);
   });
 
-  it.each(["APPROVED", "CONFIRMED", "IN_TRANSIT", "DELIVERED", "PARTIALLY_RECEIVED"])(
-    "a %s order still takes the count",
-    async (status) => {
-      const { db, calls } = makeDb({ order: { ...order, status } });
-      const r = await new ReceivingService(db).recordDoorReceipt({
-        ...base,
-        countedQty: 1,
-        countedUom: "case",
-      });
-      expect(r.stockBooked).toBe(true);
-      expect(calls.rpc).toHaveLength(1);
-    },
-  );
+  it.each([
+    "APPROVED",
+    "CONFIRMED",
+    "IN_TRANSIT",
+    "DELIVERED",
+    "PARTIALLY_RECEIVED",
+  ])("a %s order still takes the count", async (status) => {
+    const { db, calls } = makeDb({ order: { ...order, status } });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 1,
+      countedUom: "case",
+    });
+    expect(r.stockBooked).toBe(true);
+    expect(calls.rpc).toHaveLength(1);
+  });
 
   it("a retry of a tap that landed while the order was open still goes through, so its stock can be repaired", async () => {
     const { db, calls } = makeDb({

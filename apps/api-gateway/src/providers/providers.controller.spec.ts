@@ -49,7 +49,9 @@ describe("ProvidersController", () => {
           // A manager by default, so VEN-W30's vendor write gate lets the
           // write-route tests below reach the service; the refusals have
           // their own spec (vendor-write-gate.spec.ts).
-          useValue: { resolveRestaurantRole: jest.fn().mockResolvedValue("manager") },
+          useValue: {
+            resolveRestaurantRole: jest.fn().mockResolvedValue("manager"),
+          },
         },
       ],
     })

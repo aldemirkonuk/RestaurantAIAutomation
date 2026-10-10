@@ -1704,7 +1704,8 @@ export class AuthService {
     this.logger.error(
       `${where} did not create the account: ${code || "no code"} ${message ?? "no row came back"}`,
     );
-    if (code === "22001") return new BadRequestException(ACCOUNT_DETAIL_TOO_LONG);
+    if (code === "22001")
+      return new BadRequestException(ACCOUNT_DETAIL_TOO_LONG);
     // The users row's only unique key a sign-up can hit is its email: the
     // loser of a same-email race is told what the early check would have said.
     if (userRow && code === "23505") return new ConflictException(EMAIL_IN_USE);
@@ -4958,7 +4959,10 @@ export class AuthService {
       this.logger.warn(
         `deleteAccount refused for ${userId} before any write: ` +
           (blockers as AccountDeleteBlocker[])
-            .map((b) => `${b.table_name}.${b.column_name ?? "?"}=${b.row_count ?? "?"}`)
+            .map(
+              (b) =>
+                `${b.table_name}.${b.column_name ?? "?"}=${b.row_count ?? "?"}`,
+            )
             .join(", "),
       );
       throw new BadRequestException(

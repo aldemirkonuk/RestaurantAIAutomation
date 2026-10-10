@@ -36,8 +36,10 @@ function funnel(db: StubDb) {
   const pushes: Array<{ ids: string[]; data: Record<string, unknown> }> = [];
   const socket = { server: { to: () => ({ emit: () => undefined }) } };
   const expo = {
-    sendToUsers: async (ids: string[], msg: { data: Record<string, unknown> }) =>
-      void pushes.push({ ids, data: msg.data }),
+    sendToUsers: async (
+      ids: string[],
+      msg: { data: Record<string, unknown> },
+    ) => void pushes.push({ ids, data: msg.data }),
   };
   const database = {
     supabase: db.supabase,
@@ -52,7 +54,11 @@ function funnel(db: StubDb) {
     undefined,
     expo as never,
   );
-  (svc as any).logger = { log: () => undefined, warn: () => undefined, error: () => undefined };
+  (svc as any).logger = {
+    log: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  };
   return { svc, pushes };
 }
 
@@ -80,19 +86,27 @@ describe("F-528 — the phone push honours quiet hours and the Push switch", () 
   });
 
   it("at 01:00 house time, a person inside 23:00-08:00 is not pushed; the bell row is still written", async () => {
-    jest.useFakeTimers({ now: ONE_AM_ISTANBUL, doNotFake: ["nextTick", "setImmediate"] });
+    jest.useFakeTimers({
+      now: ONE_AM_ISTANBUL,
+      doNotFake: ["nextTick", "setImmediate"],
+    });
     const db = seed({ notification_preferences: [quiet(OWNER)] });
     const { svc, pushes } = funnel(db);
 
     const out = await svc.persistForRestaurant(HOUSE, LINE);
 
     expect(out.inserted).toBe(2);
-    expect(db.tables.notifications.map((r) => r.user_id).sort()).toEqual([COOK, OWNER].sort());
+    expect(db.tables.notifications.map((r) => r.user_id).sort()).toEqual(
+      [COOK, OWNER].sort(),
+    );
     expect(pushes.map((p) => p.ids)).toEqual([[COOK]]);
   });
 
   it("the window is read on the HOUSE's clock: noon in Istanbul pushes the same person", async () => {
-    jest.useFakeTimers({ now: NOON_ISTANBUL, doNotFake: ["nextTick", "setImmediate"] });
+    jest.useFakeTimers({
+      now: NOON_ISTANBUL,
+      doNotFake: ["nextTick", "setImmediate"],
+    });
     const db = seed({ notification_preferences: [quiet(OWNER)] });
     const { svc, pushes } = funnel(db);
 
@@ -102,9 +116,14 @@ describe("F-528 — the phone push honours quiet hours and the Push switch", () 
   });
 
   it("a person who switched Push off is never pushed, at any hour", async () => {
-    jest.useFakeTimers({ now: NOON_ISTANBUL, doNotFake: ["nextTick", "setImmediate"] });
+    jest.useFakeTimers({
+      now: NOON_ISTANBUL,
+      doNotFake: ["nextTick", "setImmediate"],
+    });
     const db = seed({
-      notification_preferences: [{ ...quiet(COOK), push_enabled: false, quiet_hours_enabled: false }],
+      notification_preferences: [
+        { ...quiet(COOK), push_enabled: false, quiet_hours_enabled: false },
+      ],
     });
     const { svc, pushes } = funnel(db);
 
@@ -114,7 +133,10 @@ describe("F-528 — the phone push honours quiet hours and the Push switch", () 
   });
 
   it("preferences that cannot be read push everyone, as before they were read", async () => {
-    jest.useFakeTimers({ now: ONE_AM_ISTANBUL, doNotFake: ["nextTick", "setImmediate"] });
+    jest.useFakeTimers({
+      now: ONE_AM_ISTANBUL,
+      doNotFake: ["nextTick", "setImmediate"],
+    });
     const db = seed({ notification_preferences: [quiet(OWNER)] });
     db.errors["notification_preferences:select"] = { message: "offline" };
     const { svc, pushes } = funnel(db);
@@ -136,7 +158,12 @@ describe("F-528 — the phone push honours quiet hours and the Push switch", () 
 
       await svc.persistForRestaurant(HOUSE, LINE);
 
-      expect(spy).toHaveBeenCalledWith(db.supabase, HOUSE, [OWNER, COOK], expect.any(Function));
+      expect(spy).toHaveBeenCalledWith(
+        db.supabase,
+        HOUSE,
+        [OWNER, COOK],
+        expect.any(Function),
+      );
       expect(pushes.map((p) => p.ids)).toEqual([[COOK]]);
     } finally {
       spy.mockRestore();
@@ -151,7 +178,13 @@ describe("F-530 — a push never carries house money", () => {
 
     await svc.persistForRestaurant(HOUSE, {
       ...LINE,
-      metadata: { orderId: "o1", creditDue: 120, effectiveUnitCost: 18.5, price: 22, matchStatus: "qty_short" },
+      metadata: {
+        orderId: "o1",
+        creditDue: 120,
+        effectiveUnitCost: 18.5,
+        price: 22,
+        matchStatus: "qty_short",
+      },
     });
 
     expect(pushes).toHaveLength(1);
@@ -171,11 +204,31 @@ describe("F-530 — a push never carries house money", () => {
 describe("F-526 — a line clears when its thing is dealt with", () => {
   it("the receiving door books the order: the 'Name the item' line clears for every owner and manager", async () => {
     const db = seed({
-      delivery_item_to_name: [{ id: "ask-1", restaurant_id: HOUSE, order_id: "o1", status: "open" }],
+      delivery_item_to_name: [
+        { id: "ask-1", restaurant_id: HOUSE, order_id: "o1", status: "open" },
+      ],
       notifications: [
-        { id: "n1", restaurant_id: HOUSE, user_id: OWNER, status: "unread", group_key: "delivery_item_to_name:o1" },
-        { id: "n2", restaurant_id: HOUSE, user_id: COOK, status: "unread", group_key: "delivery_item_to_name:o1" },
-        { id: "n3", restaurant_id: HOUSE, user_id: OWNER, status: "unread", group_key: "delivery_item_to_name:o2" },
+        {
+          id: "n1",
+          restaurant_id: HOUSE,
+          user_id: OWNER,
+          status: "unread",
+          group_key: "delivery_item_to_name:o1",
+        },
+        {
+          id: "n2",
+          restaurant_id: HOUSE,
+          user_id: COOK,
+          status: "unread",
+          group_key: "delivery_item_to_name:o1",
+        },
+        {
+          id: "n3",
+          restaurant_id: HOUSE,
+          user_id: OWNER,
+          status: "unread",
+          group_key: "delivery_item_to_name:o2",
+        },
       ],
     });
 
@@ -186,11 +239,17 @@ describe("F-526 — a line clears when its thing is dealt with", () => {
     });
 
     expect(out).toEqual({ ok: true, closed: true });
-    const status = Object.fromEntries(db.tables.notifications.map((r) => [r.id, r.status]));
+    const status = Object.fromEntries(
+      db.tables.notifications.map((r) => [r.id, r.status]),
+    );
     expect(status).toEqual({ n1: "read", n2: "read", n3: "unread" });
   });
 
-  function lowStock(db: StubDb, low: Array<{ id: string; wine_id: string }>, readFails = false) {
+  function lowStock(
+    db: StubDb,
+    low: Array<{ id: string; wine_id: string }>,
+    readFails = false,
+  ) {
     const supabase = {
       from: (table: string) =>
         table === "v_low_stock_items"
@@ -213,12 +272,20 @@ describe("F-526 — a line clears when its thing is dealt with", () => {
     };
     const svc = new LowStockAlertsService(
       { supabase } as any,
-      { persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 0, ids: [] }) } as any,
+      {
+        persistForRestaurant: jest
+          .fn()
+          .mockResolvedValue({ inserted: 0, ids: [] }),
+      } as any,
       { get: () => undefined } as any,
       {} as any,
       {} as any,
     );
-    (svc as any).logger = { log: () => undefined, warn: () => undefined, error: () => undefined };
+    (svc as any).logger = {
+      log: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+    };
     (svc as any).evaluateRestaurant = jest.fn();
     (svc as any).getRestaurantNames = jest.fn().mockResolvedValue(new Map());
     (svc as any).reconcileRecoveries = jest.fn();
@@ -237,7 +304,9 @@ describe("F-526 — a line clears when its thing is dealt with", () => {
   it("a restock clears the line whose wines are all back at par, and keeps the one still partly true", async () => {
     const db = seed({
       notifications: [
-        lowLine("recovered", [{ inventoryId: "inv-narince", wineId: "w-narince" }]),
+        lowLine("recovered", [
+          { inventoryId: "inv-narince", wineId: "w-narince" },
+        ]),
         lowLine("partly", [
           { inventoryId: "inv-narince", wineId: "w-narince" },
           { inventoryId: "inv-yakut", wineId: "w-yakut" },
@@ -250,13 +319,23 @@ describe("F-526 — a line clears when its thing is dealt with", () => {
 
     await svc.runEdgeSweep();
 
-    const status = Object.fromEntries(db.tables.notifications.map((r) => [r.id, r.status]));
-    expect(status).toEqual({ recovered: "read", partly: "unread", "old-shape": "read" });
+    const status = Object.fromEntries(
+      db.tables.notifications.map((r) => [r.id, r.status]),
+    );
+    expect(status).toEqual({
+      recovered: "read",
+      partly: "unread",
+      "old-shape": "read",
+    });
   });
 
   it("a failed low-stock read clears nothing: an empty answer is not 'nothing is low'", async () => {
     const db = seed({
-      notifications: [lowLine("recovered", [{ inventoryId: "inv-narince", wineId: "w-narince" }])],
+      notifications: [
+        lowLine("recovered", [
+          { inventoryId: "inv-narince", wineId: "w-narince" },
+        ]),
+      ],
     });
     const svc = lowStock(db, [], true);
 

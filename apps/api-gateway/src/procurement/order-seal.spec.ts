@@ -113,7 +113,10 @@ function harness(opts: {
                 }
                 updates.push(patch);
                 Object.assign(order, patch);
-                return Promise.resolve({ data: { ...order, inventory: null }, error: null });
+                return Promise.resolve({
+                  data: { ...order, inventory: null },
+                  error: null,
+                });
               };
               cas.maybeSingle = settle;
               cas.single = settle;
@@ -350,7 +353,9 @@ describe("ProcurementService.approveOrder — an order is approved once", () => 
       .approveOrder(HOUSE, ORDER, MANAGER, "tok")
       .catch((e) => e);
     expect(err.getStatus()).toBe(409);
-    expect(String(err.message?.message ?? err.message)).toMatch(/already approved/);
+    expect(String(err.message?.message ?? err.message)).toMatch(
+      /already approved/,
+    );
     expect(h.updates).toHaveLength(0);
     expect(h.seals[0].redeemed_at).toBeFalsy();
   });
@@ -372,7 +377,9 @@ describe("ProcurementService.approveOrder — an order is approved once", () => 
       h.service.approveOrder(HOUSE, ORDER, SECOND, "tok2"),
     ]);
     const won = results.filter((r) => r.status === "fulfilled");
-    const lost = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    const lost = results.filter(
+      (r) => r.status === "rejected",
+    ) as PromiseRejectedResult[];
     expect(won).toHaveLength(1);
     expect(lost).toHaveLength(1);
     expect(lost[0].reason.getStatus()).toBe(409);

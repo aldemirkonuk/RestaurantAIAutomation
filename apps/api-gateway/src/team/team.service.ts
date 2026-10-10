@@ -2572,7 +2572,9 @@ export class TeamService {
     const role = dto.role.trim().toLowerCase();
     const twin = (onFile ?? []).find(
       (r: any) =>
-        String(r.role ?? "").trim().toLowerCase() === role &&
+        String(r.role ?? "")
+          .trim()
+          .toLowerCase() === role &&
         (r.day_of_week ?? null) === (dto.dayOfWeek ?? null) &&
         r.shift_period === dto.shiftPeriod,
     );

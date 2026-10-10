@@ -77,7 +77,9 @@ describe("registersForLabel", () => {
     expect(registersForLabel("Yeni Rakı")).toEqual(["spirits"]);
     expect(registersForLabel("RAKI")).toEqual(["spirits"]);
     expect(registersForLabel("Çay")).toEqual(["non_alcoholic"]);
-    expect(registersForLabel("Sıcak İçecekler · Çay")).toEqual(["non_alcoholic"]);
+    expect(registersForLabel("Sıcak İçecekler · Çay")).toEqual([
+      "non_alcoholic",
+    ]);
   });
 });
 

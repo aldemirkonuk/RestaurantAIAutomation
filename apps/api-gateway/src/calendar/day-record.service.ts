@@ -375,8 +375,14 @@ export class DayRecordService {
    * A failed read of the house record throws (`readHouseZone`), never folded
    * into "no zone".
    */
-  async houseToday(restaurantId: string, now: Date = new Date()): Promise<string> {
-    const { zone } = await readHouseZone(this.databaseService.supabase, restaurantId);
+  async houseToday(
+    restaurantId: string,
+    now: Date = new Date(),
+  ): Promise<string> {
+    const { zone } = await readHouseZone(
+      this.databaseService.supabase,
+      restaurantId,
+    );
     return zone ? houseToday(zone, now) : now.toISOString().slice(0, 10);
   }
 

@@ -183,10 +183,18 @@ describe("BoundAskService.submit: model-side failures are never a books claim (K
   it("a spend-ceiling refusal AFTER a paid pick says an earlier call was paid", async () => {
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
-    call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
-    call.mockRejectedValueOnce(new ModelSpendCeilingError("over the daily allowance"));
+    call.mockResolvedValueOnce(
+      modelTextReply({ questionClass: "general_knowledge" }),
+    );
+    call.mockRejectedValueOnce(
+      new ModelSpendCeilingError("over the daily allowance"),
+    );
     await service.submit(HOUSE, USER, OWNER, dto());
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "could_not_answer", reason: "spend_ceiling", earlierCallPaid: true });
+    expect(finish.mock.calls[0][1]).toEqual({
+      kind: "could_not_answer",
+      reason: "spend_ceiling",
+      earlierCallPaid: true,
+    });
   });
 
   it("a transport failure or timeout on the model call is model_unavailable, not query_failed", async () => {

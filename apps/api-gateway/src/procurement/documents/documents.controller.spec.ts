@@ -703,7 +703,10 @@ describe("DocumentsController.list — the verdict as the rule gives it now (wal
       procurement_documents: { data: [storedRow], error: null },
       procurement_document_lines: { data: [lineRow], error: null },
     });
-    const out = await controller.list({ userId: "u1", restaurantId: "rest-1", role: "manager" } as any, "needs_review");
+    const out = await controller.list(
+      { userId: "u1", restaurantId: "rest-1", role: "manager" } as any,
+      "needs_review",
+    );
     const item = out.items[0] as Record<string, unknown>;
     expect(item.ties_out).toBe(true);
     expect(item.tie_out_delta).toBe(0);
@@ -715,7 +718,10 @@ describe("DocumentsController.list — the verdict as the rule gives it now (wal
       procurement_documents: { data: [storedRow], error: null },
       procurement_document_lines: { data: null, error: { message: "boom" } },
     });
-    const out = await controller.list({ userId: "u1", restaurantId: "rest-1", role: "manager" } as any, "needs_review");
+    const out = await controller.list(
+      { userId: "u1", restaurantId: "rest-1", role: "manager" } as any,
+      "needs_review",
+    );
     const item = out.items[0] as Record<string, unknown>;
     expect(item.ties_out).toBe(false);
     expect(item.tie_out_delta).toBe(8.63);
@@ -819,7 +825,16 @@ const m2DocRow = () => ({
     docType: "invoice",
     docNumber: "INV-7",
     total: 272,
-    lines: [{ lineNo: 1, qty: 10, uom: "bottle", packSize: 1, qtyBottles: 10, unitPrice: 24 }],
+    lines: [
+      {
+        lineNo: 1,
+        qty: 10,
+        uom: "bottle",
+        packSize: 1,
+        qtyBottles: 10,
+        unitPrice: 24,
+      },
+    ],
   },
 });
 const m2LineRow = () => ({
@@ -845,7 +860,10 @@ function m2FakeDb(tables: Record<string, unknown[]>) {
     const b: any = {};
     for (const m of ["select", "eq", "in", "order", "limit", "range"])
       b[m] = () => b;
-    b.maybeSingle = async () => ({ data: (tables[table] ?? [])[0] ?? null, error: null });
+    b.maybeSingle = async () => ({
+      data: (tables[table] ?? [])[0] ?? null,
+      error: null,
+    });
     b.then = (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
       Promise.resolve(result).then(ok, ko);
     return b;
@@ -853,12 +871,18 @@ function m2FakeDb(tables: Record<string, unknown[]>) {
   return {
     getClient: () => ({
       from: builder,
-      storage: { from: () => ({ createSignedUrl: async () => ({ data: null, error: null }) }) },
+      storage: {
+        from: () => ({
+          createSignedUrl: async () => ({ data: null, error: null }),
+        }),
+      },
     }),
   };
 }
 
-function m2Controller(extra: { canonical?: unknown; spine?: unknown; corrections?: unknown } = {}) {
+function m2Controller(
+  extra: { canonical?: unknown; spine?: unknown; corrections?: unknown } = {},
+) {
   const none = {} as never;
   return new DocumentsController(
     none,
@@ -928,8 +952,16 @@ const canonicalDeps = () => ({
     correctionLog: async () => ({
       ok: true,
       value: [
-        { path: "lines[0].netPrice", before: { value: 23 }, after: { value: 24 } },
-        { path: "lines[0].quantity", before: { value: 9 }, after: { value: 10 } },
+        {
+          path: "lines[0].netPrice",
+          before: { value: 23 },
+          after: { value: 24 },
+        },
+        {
+          path: "lines[0].quantity",
+          before: { value: 9 },
+          after: { value: 10 },
+        },
       ],
     }),
   },
@@ -941,20 +973,34 @@ describe("M2 — staff read vendor paper without its money", () => {
     expect(out.amountsWithheld).toBe(true);
     const row = out.items[0];
     for (const k of DOCUMENT_MONEY_COLUMNS) expect(row).not.toHaveProperty(k);
-    expect(row).toMatchObject({ doc_number: "INV-7", status: "needs_review", ties_out: true });
+    expect(row).toMatchObject({
+      doc_number: "INV-7",
+      status: "needs_review",
+      ties_out: true,
+    });
     expect(row.extracted).toEqual({
       docType: "invoice",
       docNumber: "INV-7",
-      lines: [{ lineNo: 1, qty: 10, uom: "bottle", packSize: 1, qtyBottles: 10 }],
+      lines: [
+        { lineNo: 1, qty: 10, uom: "bottle", packSize: 1, qtyBottles: 10 },
+      ],
     });
   });
 
   it("one paper keeps its lines' quantities and drops their prices and totals", async () => {
-    const out = (await m2Controller().detail(M2_DOC, asRole("staff") as never)) as any;
+    const out = (await m2Controller().detail(
+      M2_DOC,
+      asRole("staff") as never,
+    )) as any;
     expect(out.amountsWithheld).toBe(true);
     expect(out.document).not.toHaveProperty("total");
-    for (const k of DOCUMENT_LINE_MONEY_COLUMNS) expect(out.lines[0]).not.toHaveProperty(k);
-    expect(out.lines[0]).toMatchObject({ qty: 10, qty_bottles: 10, description: "Barolo" });
+    for (const k of DOCUMENT_LINE_MONEY_COLUMNS)
+      expect(out.lines[0]).not.toHaveProperty(k);
+    expect(out.lines[0]).toMatchObject({
+      qty: 10,
+      qty_bottles: 10,
+      description: "Barolo",
+    });
     expect(out.links).toHaveLength(1);
   });
 
@@ -977,7 +1023,9 @@ describe("M2 — staff read vendor paper without its money", () => {
     expect(l3).not.toHaveProperty("verdicts");
     expect(l3.tiesOut).toBe(true);
     expect(l3.lines[0]).toEqual({ lineIndex: 0, billed: 10 });
-    expect(out.deliveries[0].documents.every((d: object) => !("total" in d))).toBe(true);
+    expect(
+      out.deliveries[0].documents.every((d: object) => !("total" in d)),
+    ).toBe(true);
     expect(out.siblings.every((d: object) => !("total" in d))).toBe(true);
     expect(out.corrections).toEqual([
       { path: "lines[0].quantity", before: { value: 9 }, after: { value: 10 } },
@@ -988,7 +1036,10 @@ describe("M2 — staff read vendor paper without its money", () => {
     const list = (await m2Controller().list(asRole(role) as never)) as any;
     expect(list).not.toHaveProperty("amountsWithheld");
     expect(list.items[0]).toMatchObject({ total: 272, freight: 12 });
-    const one = (await m2Controller().detail(M2_DOC, asRole(role) as never)) as any;
+    const one = (await m2Controller().detail(
+      M2_DOC,
+      asRole(role) as never,
+    )) as any;
     expect(one.lines[0].unit_price).toBe(24);
     const sheet = (await m2Controller(canonicalDeps()).canonicalDocument(
       M2_DOC,

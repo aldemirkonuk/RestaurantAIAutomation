@@ -240,7 +240,9 @@ describe("WinesService.mapWine — the reference price's currency on the wire", 
   });
 
   it("says null when the library never recorded one -- never a dollar default", () => {
-    expect(map(row({ price_reference_currency: null })).priceCurrency).toBeNull();
+    expect(
+      map(row({ price_reference_currency: null })).priceCurrency,
+    ).toBeNull();
     expect(map(row({})).priceCurrency).toBeNull();
   });
 });

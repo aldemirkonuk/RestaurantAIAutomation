@@ -131,8 +131,12 @@ export class ScheduledTasksService implements OnModuleInit {
       .filter((e) => e);
 
     this.logger.log("Scheduled tasks service initialized");
-    this.logger.log(`Manager Emails: ${this.managerEmails.map(maskEmail).join(", ")}`);
-    this.logger.log(`Manager Phone: ${this.managerPhone ? maskPhone(this.managerPhone) : "Not configured"}`);
+    this.logger.log(
+      `Manager Emails: ${this.managerEmails.map(maskEmail).join(", ")}`,
+    );
+    this.logger.log(
+      `Manager Phone: ${this.managerPhone ? maskPhone(this.managerPhone) : "Not configured"}`,
+    );
   }
 
   /**

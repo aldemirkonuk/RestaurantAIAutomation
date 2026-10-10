@@ -501,7 +501,18 @@ describe("ScheduleService — T8: no emoji reaches the inbox", () => {
 describe("ScheduleService — F-348: two staff claiming one open shift", () => {
   // F-507 refuses a claim on a shift that has ended; WEEK is fixed, so the
   // house clock is pinned before it.
-  beforeAll(() => jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"], now: new Date("2026-09-01T12:00:00Z") }));
+  beforeAll(() =>
+    jest.useFakeTimers({
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "setTimeout",
+        "setInterval",
+        "queueMicrotask",
+      ],
+      now: new Date("2026-09-01T12:00:00Z"),
+    }),
+  );
   afterAll(() => jest.useRealTimers());
   const ALI = "user-ali";
   const BEA = "user-bea";
@@ -640,7 +651,9 @@ describe("ScheduleService — F-348: two staff claiming one open shift", () => {
     const db = withTwoStaff();
     const svc = service(db);
     await svc.assignCover(BEA, RID, "sh-open", { memberId: "m-bea" } as any);
-    await svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-ali" } as any);
+    await svc.assignCover(MANAGER, RID, "sh-open", {
+      memberId: "m-ali",
+    } as any);
     expect(db.tables.shifts.find((s) => s.id === "sh-open")?.member_id).toBe(
       "m-ali",
     );
@@ -654,7 +667,12 @@ describe("ScheduleService — F-348: two staff claiming one open shift", () => {
 describe("ScheduleService — F-217: a shift's link names its week", () => {
   it("a call-out's cover notice links the week of the shift", async () => {
     const db = seed();
-    db.tables.schedules.push({ id: "s1", restaurant_id: RID, week_start: WEEK, status: "published" });
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "published",
+    });
     db.tables.shifts.push({
       id: "sh-fri",
       restaurant_id: RID,
@@ -667,9 +685,16 @@ describe("ScheduleService — F-217: a shift's link names its week", () => {
       state: "assigned",
     });
 
-    const res = await service(db).reportCallout(OWNER, RID, "sh-fri", {} as any);
+    const res = await service(db).reportCallout(
+      OWNER,
+      RID,
+      "sh-fri",
+      {} as any,
+    );
 
     const payload = lastNotifications.persistForRestaurant.mock.calls[0][1];
-    expect(payload.actionUrl).toBe(`/team?shift=${(res.open as any).id}&week=${WEEK}`);
+    expect(payload.actionUrl).toBe(
+      `/team?shift=${(res.open as any).id}&week=${WEEK}`,
+    );
   });
 });

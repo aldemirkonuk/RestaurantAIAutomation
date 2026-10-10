@@ -371,7 +371,8 @@ describe("SettingsAuditService.list — a labour setting change reads back (F-37
           select: () => chain,
           eq: () => chain,
           in: (column: string, values: string[]) => {
-            if (table === "system_audit_log" && column === "action") allow = new Set(values);
+            if (table === "system_audit_log" && column === "action")
+              allow = new Set(values);
             return chain;
           },
           order: () => chain,
@@ -381,7 +382,9 @@ describe("SettingsAuditService.list — a labour setting change reads back (F-37
               table === "system_audit_log"
                 ? [LABOUR_ROW]
                 : [{ user_id: "u-owner", name: "Ayla Tuzlu", email: null }];
-            const data = allow ? all.filter((r: any) => allow!.has(r.action)) : all;
+            const data = allow
+              ? all.filter((r: any) => allow!.has(r.action))
+              : all;
             return Promise.resolve({ data, error: null }).then(resolve);
           },
         };

@@ -74,15 +74,13 @@ function goalsOver(tables: Record<string, any[]>) {
     {} as any,
     {} as any,
   );
-  jest
-    .spyOn(goals as any, "computeMetricWithSeries")
-    .mockResolvedValue({
-      current: 42,
-      dailySeries: [42],
-      dailyDates: ["2026-10-01"],
-      rowCount: 1,
-      units: undefined,
-    });
+  jest.spyOn(goals as any, "computeMetricWithSeries").mockResolvedValue({
+    current: 42,
+    dailySeries: [42],
+    dailyDates: ["2026-10-01"],
+    rowCount: 1,
+    units: undefined,
+  });
   return { goals, ops };
 }
 

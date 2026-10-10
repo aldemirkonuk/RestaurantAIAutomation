@@ -205,7 +205,10 @@ describe("no notification producer writes an emoji into a stored title", () => {
         // with `_notify` — `procurement_agent._notify_voice_negotiation_success`
         // publishes a bus event and writes no row, and sweeping it in would
         // have made this file fail over text no reader of /notifications sees.
-        return s.includes('table("notifications")') || s.includes("notify_restaurant(");
+        return (
+          s.includes('table("notifications")') ||
+          s.includes("notify_restaurant(")
+        );
       });
     const names = py.map((f) => path.relative(ORCHESTRATOR, f));
     // The funnel and at least one agent that writes its words through it.

@@ -336,7 +336,9 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, "anything", {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
 
     // Logged once, and it says the door is advertised — generic_webhook is
@@ -351,7 +353,9 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, "anything", {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(errors).toHaveBeenCalledTimes(1);
   });
@@ -382,7 +386,9 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(true);
 
     expect(warn).toHaveBeenCalledTimes(1);
@@ -406,14 +412,18 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, sigForGeneric, {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(true);
     // Same tenant, same bytes, provider A's key — must not open provider B.
     expect(
       service.verifyWebhookSignature(body, sigForGeneric, {
         provider: "toast",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
   });
 
@@ -428,13 +438,17 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, sigForA, {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(true);
     expect(
       service.verifyWebhookSignature(body, sigForA, {
         provider: "generic_webhook",
         restaurantId: R_B,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
   });
 
@@ -452,13 +466,17 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, sigA, {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(true);
     expect(
       service.verifyWebhookSignature(body, sigA, {
         provider: "generic_webhook",
         restaurantId: R_B,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
 
     // A scoped secret is the cutover switch: the legacy key no longer opens
@@ -467,7 +485,9 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(
@@ -488,13 +508,17 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, good, {
         provider: "not_a_real_pos",
         restaurantId: R_A,
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(body, good, {
         provider: "generic_webhook",
         restaurantId: "  ",
-      }, TS),
+        },
+        TS,
+      ),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(body, good, undefined as any, TS),

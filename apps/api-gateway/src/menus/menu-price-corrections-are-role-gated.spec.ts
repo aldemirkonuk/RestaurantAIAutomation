@@ -58,25 +58,38 @@ describe("PATCH /menus/items/:id — a PRICE correction is an owner's or a manag
     expect(review).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["staff", null])("%s is refused a rename before anything is written (F-920)", async (role) => {
-    const { c, review } = controller(role as string | null);
-    await expect(
-      c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, USER),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(review).not.toHaveBeenCalled();
-  });
+  it.each(["staff", null])(
+    "%s is refused a rename before anything is written (F-920)",
+    async (role) => {
+      const { c, review } = controller(role as string | null);
+      await expect(
+        c.reviewMenuItem(
+          "mi-1",
+          { fieldName: "name", newValue: "Opus" } as any,
+          USER,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(review).not.toHaveBeenCalled();
+    },
+  );
 
   it("a session naming no house cannot rename a line", async () => {
     const { c, review } = controller("owner");
     await expect(
-      c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, { userId: "u-1" }),
+      c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, {
+        userId: "u-1",
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(review).not.toHaveBeenCalled();
   });
 
   it("a SECTION correction by staff is unchanged by this gate", async () => {
     const { c, review } = controller("staff");
-    await c.reviewMenuItem("mi-1", { fieldName: "category", newValue: "Red" } as any, USER);
+    await c.reviewMenuItem(
+      "mi-1",
+      { fieldName: "category", newValue: "Red" } as any,
+      USER,
+    );
     expect(review).toHaveBeenCalledTimes(1);
   });
 });
@@ -138,37 +151,57 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
 
 describe("PATCH /menus/:rid/items/:id/discard — owner or manager only (F-268)", () => {
   function controller(role: string | null) {
-    const discard = jest.fn(async () => ({ menuItemId: "mi-1", status: "discarded" }));
-    const c = new MenusController({ discardMenuItem: discard } as any, orgs(role));
+    const discard = jest.fn(async () => ({
+      menuItemId: "mi-1",
+      status: "discarded",
+    }));
+    const c = new MenusController(
+      { discardMenuItem: discard } as any,
+      orgs(role),
+    );
     return { c, discard };
   }
 
-  it.each(["owner", "manager"])("a %s may take a line off the menu", async (role) => {
-    const { c, discard } = controller(role);
-    await c.discardMenuItem("rest-1", "mi-1", { userId: "u-1" });
-    // The person rides along for the audit row (F-484, fix/sim-logs-trace).
-    expect(discard).toHaveBeenCalledWith("rest-1", "mi-1", "u-1");
-  });
+  it.each(["owner", "manager"])(
+    "a %s may take a line off the menu",
+    async (role) => {
+      const { c, discard } = controller(role);
+      await c.discardMenuItem("rest-1", "mi-1", { userId: "u-1" });
+      // The person rides along for the audit row (F-484, fix/sim-logs-trace).
+      expect(discard).toHaveBeenCalledWith("rest-1", "mi-1", "u-1");
+    },
+  );
 
-  it.each(["staff", null])("%s is refused, and nothing is discarded", async (role) => {
-    const { c, discard } = controller(role as string | null);
-    await expect(c.discardMenuItem("rest-1", "mi-1", { userId: "u-1" })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
-    expect(discard).not.toHaveBeenCalled();
-  });
+  it.each(["staff", null])(
+    "%s is refused, and nothing is discarded",
+    async (role) => {
+      const { c, discard } = controller(role as string | null);
+      await expect(
+        c.discardMenuItem("rest-1", "mi-1", { userId: "u-1" }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(discard).not.toHaveBeenCalled();
+    },
+  );
 
   it("a session naming no one is refused", async () => {
     const { c, discard } = controller("owner");
-    await expect(c.discardMenuItem("rest-1", "mi-1", {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      c.discardMenuItem("rest-1", "mi-1", {}),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(discard).not.toHaveBeenCalled();
   });
 });
 
 describe("PATCH /menus/:rid/items/:id/restore — owner or manager only (F-268)", () => {
   function controller(role: string | null) {
-    const restore = jest.fn(async () => ({ menuItemId: "mi-1", status: "approved" }));
-    const c = new MenusController({ restoreMenuItem: restore } as any, orgs(role));
+    const restore = jest.fn(async () => ({
+      menuItemId: "mi-1",
+      status: "approved",
+    }));
+    const c = new MenusController(
+      { restoreMenuItem: restore } as any,
+      orgs(role),
+    );
     return { c, restore };
   }
 
@@ -178,17 +211,22 @@ describe("PATCH /menus/:rid/items/:id/restore — owner or manager only (F-268)"
     expect(restore).toHaveBeenCalledWith("rest-1", "mi-1");
   });
 
-  it.each(["staff", null])("%s is refused, and nothing is put back", async (role) => {
-    const { c, restore } = controller(role as string | null);
-    await expect(c.restoreMenuItem("rest-1", "mi-1", { userId: "u-1" })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
-    expect(restore).not.toHaveBeenCalled();
-  });
+  it.each(["staff", null])(
+    "%s is refused, and nothing is put back",
+    async (role) => {
+      const { c, restore } = controller(role as string | null);
+      await expect(
+        c.restoreMenuItem("rest-1", "mi-1", { userId: "u-1" }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(restore).not.toHaveBeenCalled();
+    },
+  );
 
   it("a session naming no one is refused", async () => {
     const { c, restore } = controller("owner");
-    await expect(c.restoreMenuItem("rest-1", "mi-1", {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      c.restoreMenuItem("rest-1", "mi-1", {}),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(restore).not.toHaveBeenCalled();
   });
 });

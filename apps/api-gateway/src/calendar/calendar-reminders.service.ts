@@ -236,7 +236,14 @@ export class CalendarRemindersService {
         );
       }
 
-      const ctx = { tenantId: tenant.id, timeZone, now, intended, prefs, tally };
+      const ctx = {
+        tenantId: tenant.id,
+        timeZone,
+        now,
+        intended,
+        prefs,
+        tally,
+      };
       for (const row of candidates.rows) {
         // A series row is reminded per date below, not once on its first date.
         // A rule-less repeating row is an ordinary dated entry (F-764, F-818).
@@ -668,11 +675,14 @@ export class CalendarRemindersService {
       .order("event_date", { ascending: true })
       .limit(CalendarRemindersService.CANDIDATE_CAP + 1);
     if (error) {
-      throw new Error(`could not read repeating calendar entries: ${error.message}`);
+      throw new Error(
+        `could not read repeating calendar entries: ${error.message}`,
+      );
     }
     let parents = (data ?? []) as Array<CandidateRow & Record<string, any>>;
     const truncated = parents.length > CalendarRemindersService.CANDIDATE_CAP;
-    if (truncated) parents = parents.slice(0, CalendarRemindersService.CANDIDATE_CAP);
+    if (truncated)
+      parents = parents.slice(0, CalendarRemindersService.CANDIDATE_CAP);
     if (parents.length === 0) return { rows: [], truncated };
 
     const { data: rules, error: rulesError } = await client
@@ -708,7 +718,9 @@ export class CalendarRemindersService {
     const rows: CandidateRow[] = [];
     for (const parent of parents) {
       const start = parent.start_date ?? parent.event_date;
-      const ownRules = ruleList.filter((r) => r.calendar_event_id === parent.id);
+      const ownRules = ruleList.filter(
+        (r) => r.calendar_event_id === parent.id,
+      );
       const resolved = start
         ? resolveCalendarOccurrences({
             restaurantId,
@@ -738,7 +750,8 @@ export class CalendarRemindersService {
         continue;
       }
       for (const occ of resolved.events) {
-        if (skipped.has(`${occ.recurrence_rule_id}:${occ.occurrence_date}`)) continue;
+        if (skipped.has(`${occ.recurrence_rule_id}:${occ.occurrence_date}`))
+          continue;
         rows.push({
           ...parent,
           start_date: occ.start_date,

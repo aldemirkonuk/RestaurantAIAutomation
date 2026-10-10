@@ -157,7 +157,12 @@ describe("resolveUnitCost never invents a number", () => {
     expect(
       resolveUnitCost(
         { last_purchase_price: 18 },
-        { has_invoice_cost: true, wac: 20, cost_currency: "EUR", cost_currency_count: 1 },
+        {
+          has_invoice_cost: true,
+          wac: 20,
+          cost_currency: "EUR",
+          cost_currency_count: 1,
+        },
         "TRY",
       ),
     ).toEqual({ unitCost: null, costBasis: "other_currency" });
@@ -165,16 +170,36 @@ describe("resolveUnitCost never invents a number", () => {
 
   it("refuses a WAC that averages two currencies, even with no house currency", () => {
     expect(
-      resolveUnitCost({}, { has_invoice_cost: true, wac: 20, cost_currency: null, cost_currency_count: 2 }, null)
-        .costBasis,
+      resolveUnitCost(
+        {},
+        {
+          has_invoice_cost: true,
+          wac: 20,
+          cost_currency: null,
+          cost_currency_count: 2,
+        },
+        null,
+      ).costBasis,
     ).toBe("other_currency");
   });
 
   it("keeps a WAC in the house's money, or one whose lots state no currency", () => {
-    const lot = { has_invoice_cost: true, wac: 20, cost_currency: "try", cost_currency_count: 1 };
-    expect(resolveUnitCost({}, lot, "TRY")).toEqual({ unitCost: 20, costBasis: "invoice_lot_wac" });
+    const lot = {
+      has_invoice_cost: true,
+      wac: 20,
+      cost_currency: "try",
+      cost_currency_count: 1,
+    };
+    expect(resolveUnitCost({}, lot, "TRY")).toEqual({
+      unitCost: 20,
+      costBasis: "invoice_lot_wac",
+    });
     expect(
-      resolveUnitCost({}, { has_invoice_cost: true, wac: 20, cost_currency_count: 0 }, "TRY").unitCost,
+      resolveUnitCost(
+        {},
+        { has_invoice_cost: true, wac: 20, cost_currency_count: 0 },
+        "TRY",
+      ).unitCost,
     ).toBe(20);
   });
 
@@ -334,13 +359,24 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
       cost_currency: "EUR",
       cost_currency_count: 1,
     };
-    const rows = { restaurant_inventory: [RECORDED], inventory_lot_rollup: [lot] };
-    const out = await analytics({ ...rows, restaurants: [{ currency: "TRY" }] }).getFinancialSummary(RESTAURANT);
+    const rows = {
+      restaurant_inventory: [RECORDED],
+      inventory_lot_rollup: [lot],
+    };
+    const out = await analytics({
+      ...rows,
+      restaurants: [{ currency: "TRY" }],
+    }).getFinancialSummary(RESTAURANT);
     expect(out.inventoryValue).toBeNull();
     expect(out.grossMarginDollars).toBeNull();
-    expect(out.basis.inventoryValue).toContain("different currency from the house's");
+    expect(out.basis.inventoryValue).toContain(
+      "different currency from the house's",
+    );
     // The same lot in the house's own money is valued as before: 5 × 20.
-    const same = await analytics({ ...rows, restaurants: [{ currency: "EUR" }] }).getFinancialSummary(RESTAURANT);
+    const same = await analytics({
+      ...rows,
+      restaurants: [{ currency: "EUR" }],
+    }).getFinancialSummary(RESTAURANT);
     expect(same.inventoryValue).toBe(100);
   });
 
@@ -585,7 +621,15 @@ describe("getWine360", () => {
       wine_consumption_log: [],
       restaurants: [{ currency: "TRY" }],
       inventory_lot_rollup: [
-        { inventory_id: RECORDED.id, live_qty: 5, wac: 20, has_invoice_cost: true, wac_qty: 5, cost_currency: "EUR", cost_currency_count: 1 },
+        {
+          inventory_id: RECORDED.id,
+          live_qty: 5,
+          wac: 20,
+          has_invoice_cost: true,
+          wac_qty: 5,
+          cost_currency: "EUR",
+          cost_currency_count: 1,
+        },
       ],
     });
     const out = await svc.getWine360(RESTAURANT, RECORDED.master_wine_id);

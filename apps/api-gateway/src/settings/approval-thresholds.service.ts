@@ -307,7 +307,9 @@ export class ApprovalThresholdsService {
    * rather than being left for the UI to remember.
    */
   /** `restaurants.currency`, the ceiling's currency; null when unset or unread. */
-  private async readCeilingCurrency(restaurantId: string): Promise<string | null> {
+  private async readCeilingCurrency(
+    restaurantId: string,
+  ): Promise<string | null> {
     try {
       const { data, error } = await this.databaseService.client
         .from("restaurants")
@@ -334,17 +336,15 @@ export class ApprovalThresholdsService {
       // Read whole or refused (ADR 0292, F-331). This was ascending with a
       // 4,000-row cap that PostgREST's 1,000 overrode, so the walk saw the
       // OLDEST 1,000 orders of the year and `ordersRead` printed 1000.
-      rows = await readWholeWindow<OrderRow>(
-        "This year's orders",
-        () =>
-          this.databaseService.client
-            .from("procurement_orders")
-            .select(
-              "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
-              { count: "exact" },
-            )
-            .eq("restaurant_id", restaurantId)
-            .gte("requested_at", since),
+      rows = await readWholeWindow<OrderRow>("This year's orders", () =>
+        this.databaseService.client
+          .from("procurement_orders")
+          .select(
+            "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("requested_at", since),
       );
       // The whole read comes back in id order; the walk needs time order.
       const key = (r: OrderRow) => `${r.requested_at ?? ""}\u0000${r.id}`;
@@ -388,17 +388,26 @@ export class ApprovalThresholdsService {
       const priced: PricedOrder = {
         price: num(r.final_price),
         currency: r.currency ?? null,
-        priceUnit: foldOrderPriceUnit(embeddedOrderLines(r.procurement_order_items)),
+        priceUnit: foldOrderPriceUnit(
+          embeddedOrderLines(r.procurement_order_items),
+        ),
       };
       let premium: { pct: number | null; uncomparable: string | null } = {
         pct: null,
         uncomparable: null,
       };
       if (r.inventory_id && priced.price !== null && priced.price > 0) {
-        premium = pricePremium(priced, lastPriceByItem.get(r.inventory_id) ?? null);
+        premium = pricePremium(
+          priced,
+          lastPriceByItem.get(r.inventory_id) ?? null,
+        );
         // Only a price that was paid becomes the next order's comparison —
         // the same rule the gate's `readPricePremium` reads by (F-479).
-        if ((ORDER_GOODS_ARRIVED_STATUSES as readonly string[]).includes(r.status ?? "")) {
+        if (
+          (ORDER_GOODS_ARRIVED_STATUSES as readonly string[]).includes(
+            r.status ?? "",
+          )
+        ) {
           lastPriceByItem.set(r.inventory_id, priced);
         }
       }

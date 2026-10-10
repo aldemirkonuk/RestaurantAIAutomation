@@ -729,8 +729,8 @@ export class RecommendationsService {
         category: "pricing",
         urgency: "this_week",
         score: 2.4,
-        // Each line names a price and its advised price (ADR 0193).
-        amounts: true,
+          // Each line names a price and its advised price (ADR 0193).
+          amounts: true,
         priceAdvice: adviceLines.map(({ w, a }) => ({
           inventoryId: w.inventoryId,
           wineName: w.wineName,
@@ -916,11 +916,13 @@ export class RecommendationsService {
     // behind (F-383). A goal whose progress cannot be read raises no card —
     // "not measured" is not "behind".
     const goalPaces = await Promise.all(
-      ctx.goals.slice(0, 3).map((g: any) =>
-        this.goalsService
-          .getGoalProgress(restaurantId, g.id)
-          .catch(() => null),
-      ),
+      ctx.goals
+        .slice(0, 3)
+        .map((g: any) =>
+          this.goalsService
+            .getGoalProgress(restaurantId, g.id)
+            .catch(() => null),
+        ),
     );
     for (const [i, g] of ctx.goals.slice(0, 3).entries()) {
       const pace = goalPaces[i];

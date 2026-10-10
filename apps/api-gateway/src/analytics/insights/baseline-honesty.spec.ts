@@ -119,7 +119,13 @@ function generatorFor(s: Scenario) {
     restaurant_tables: [],
     restaurant_venue_profiles: [],
     analytics_goals: [],
-    restaurants: [{ timezone: "UTC", country: null, currency: s.currency === undefined ? "USD" : s.currency }],
+    restaurants: [
+      {
+        timezone: "UTC",
+        country: null,
+        currency: s.currency === undefined ? "USD" : s.currency,
+      },
+    ],
   });
   return new InsightGeneratorService(
     { getClient: () => client, supabase: client } as any,
@@ -532,7 +538,9 @@ describe("the trend sentence counts open days and keeps calendar time (F-708)", 
       if (wd === 0 || wd === 1) continue;
       revenue.set(b, 1000 + 20 * (90 - b));
     }
-    const out = await generatorFor({ revenue }).generate("r1", { persist: false });
+    const out = await generatorFor({ revenue }).generate("r1", {
+      persist: false,
+    });
     const hit = out.insights.find(
       (i) => i.candidateKey === "overall.revenue.trend_direction",
     );

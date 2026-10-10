@@ -18,10 +18,12 @@ export class SetHouseLocationDto {
     example: "12 Rıhtım Caddesi",
   })
   @IsString({
-    message: "An address is a line of text. None was sent, so nothing was recorded.",
+    message:
+      "An address is a line of text. None was sent, so nothing was recorded.",
   })
   @MaxLength(300, {
-    message: "That address is longer than 300 characters, so nothing was recorded.",
+    message:
+      "That address is longer than 300 characters, so nothing was recorded.",
   })
   street: string;
 

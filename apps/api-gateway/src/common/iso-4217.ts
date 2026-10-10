@@ -217,11 +217,31 @@ export function notACurrencyBecause(value: unknown): string {
  * a different amount from the invoice, and kept two places on yen that have none.
  */
 const MINOR_0: ReadonlySet<string> = new Set([
-  "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW",
-  "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "ISK",
+  "JPY",
+  "KMF",
+  "KRW",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XAF",
+  "XOF",
+  "XPF",
 ]);
 const MINOR_3: ReadonlySet<string> = new Set([
-  "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND",
+  "BHD",
+  "IQD",
+  "JOD",
+  "KWD",
+  "LYD",
+  "OMR",
+  "TND",
 ]);
 
 /** How many decimal places this money HAS, or `null` for a code this gateway does not hold. */

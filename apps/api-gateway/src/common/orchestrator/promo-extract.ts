@@ -111,7 +111,8 @@ export function promoMoney(
   currency: string | null | undefined,
   amount: number | string,
 ): string {
-  const code = typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  const code =
+    typeof currency === "string" ? currency.trim().toUpperCase() : "";
   if (code === "EUR") return `€${amount}`;
   if (code === "GBP") return `£${amount}`;
   if (code === "USD") return `$${amount}`;
@@ -347,15 +348,11 @@ export function extractPromotion(
   const parts: string[] = [];
   if (discount_pct != null) parts.push(`${discount_pct}% off`);
   if (discount_amount != null)
-    parts.push(
-      `${promoMoney(currency, discount_amount)} off`,
-    );
+    parts.push(`${promoMoney(currency, discount_amount)} off`);
   if (free_shipping) parts.push("free shipping");
   if (threshold_qty != null) parts.push(`on ${threshold_qty}+`);
   if (threshold_amount != null)
-    parts.push(
-      `over ${promoMoney(currency, threshold_amount)}`,
-    );
+    parts.push(`over ${promoMoney(currency, threshold_amount)}`);
   if (valid_until) parts.push(`until ${valid_until}`);
   const summary = parts.length
     ? `${promo_type.replace(/_/g, " ")}: ${parts.join(", ")}`

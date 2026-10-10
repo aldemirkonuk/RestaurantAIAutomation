@@ -515,7 +515,12 @@ export class MembersService {
     // `team_member_removed` row and notice the roster path files, so a person
     // added from Settings (who never gets a roster row) does not leave with no
     // record (F-581).
-    const removal = { actorUserId, actorRole: actor.role, targetRole, selfLeave };
+    const removal = {
+      actorUserId,
+      actorRole: actor.role,
+      targetRole,
+      selfLeave,
+    };
     if (!targetAccess) {
       await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
       await this.clearUsersRowHouse(targetUserId, restaurantId);
@@ -798,7 +803,9 @@ export class MembersService {
       .is("used_at", null)
       .maybeSingle();
     if (readErr) {
-      this.logger.error(`revokeInvite could not read the invite: ${readErr.message}`);
+      this.logger.error(
+        `revokeInvite could not read the invite: ${readErr.message}`,
+      );
       throw new InternalServerErrorException("Failed to revoke invite");
     }
 

@@ -285,7 +285,11 @@ export class BoundAskService {
       if (error instanceof ModelPhaseFailure) {
         failureReason = error.reason;
         // Only the ceiling's line claims "nothing was charged", so only it carries the flag (F-234).
-        answer = modelFailureReply(error.reason, finding, error.reason === "spend_ceiling" && turn.paid === true);
+        answer = modelFailureReply(
+          error.reason,
+          finding,
+          error.reason === "spend_ceiling" && turn.paid === true,
+        );
       } else {
         // Not the model: the runner itself threw outside its own refusals.
         failureReason = "reading_failed";
@@ -336,7 +340,11 @@ export class BoundAskService {
   private async callModel(turn: AskTurn, options: Omit<ModelCallOptions, "gateFirstAttempt" | "retry">): Promise<any> {
     await this.enforceRoleShare(turn);
     try {
-      const result = await this.modelClient.call({ ...options, gateFirstAttempt: true, retry: false });
+      const result = await this.modelClient.call({
+        ...options,
+        gateFirstAttempt: true,
+        retry: false,
+      });
       turn.paid = true;
       return result;
     } catch (error) {

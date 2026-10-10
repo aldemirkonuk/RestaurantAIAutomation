@@ -716,7 +716,9 @@ export class PriceIndexService {
       // A failed read is not an empty source: returning 0 here made the
       // masthead say "0 of N sources holding rows" while the table was
       // unreachable (F-544). null carries "unknown" to the page.
-      this.logger.warn(`price index status read failed for ${sourceKey}: ${(err as Error)?.message ?? err}`);
+      this.logger.warn(
+        `price index status read failed for ${sourceKey}: ${(err as Error)?.message ?? err}`,
+      );
       return { rows: null, lastFetchedAt: null };
     }
   }

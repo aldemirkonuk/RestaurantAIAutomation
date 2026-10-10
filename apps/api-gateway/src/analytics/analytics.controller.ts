@@ -377,7 +377,9 @@ export class AnalyticsController {
       // F-602: staff read the reorder register without what the house paid.
       return inventoryScienceForRole(
         await this.analyticsService.getInventoryScience(restaurantId, {
-          serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
+          serviceLevel: serviceLevelStr
+            ? parseFloat(serviceLevelStr)
+            : undefined,
           leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
         }),
         user?.role,
@@ -1837,7 +1839,8 @@ export class AnalyticsController {
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Set daily recommendation digest preferences (NEW-303, owner/manager)",
+    summary:
+      "Set daily recommendation digest preferences (NEW-303, owner/manager)",
     description:
       "Body: { digestEnabled?, digestHour?, digestMinUrgency?, recipientEmail? }. Owner or manager of this house only; anyone else is 403. Persists the house's toggle, hour and urgency floor, and files the change to the settings log. The sender (analytics/digest, ADR 0149 row 26; off unless DIGEST_SEND_ENABLED) mails only members who asked for it via /recommendations/digest/subscription; recipientEmail is stored and never mailed.",
   })
@@ -1853,9 +1856,8 @@ export class AnalyticsController {
     @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
-      const before = await this.recommendationActions.getDigestPref(
-        restaurantId,
-      );
+      const before =
+        await this.recommendationActions.getDigestPref(restaurantId);
       const after = await this.recommendationActions.setDigestPref(
         restaurantId,
         body || {},
@@ -1887,7 +1889,11 @@ export class AnalyticsController {
           subject: "the house's post",
           fields,
         });
-        return { ...after, audited: receipt.recorded, auditReason: receipt.reason };
+        return {
+          ...after,
+          audited: receipt.recorded,
+          auditReason: receipt.reason,
+        };
       }
       return after;
     } catch (error) {

@@ -303,7 +303,9 @@ export class GoalsService {
     // zone, a windowed metric refuses with the zone sentence rather than
     // writing a baseline measured on UTC days.
     const house = await readHouseZone(this.dbService.getClient(), restaurantId);
-    const opens = house.zone ? this.periodStart(input.period, house.zone) : null;
+    const opens = house.zone
+      ? this.periodStart(input.period, house.zone)
+      : null;
     // A measure with nothing to read yet (no check filed) has no baseline:
     // the goal is set and stays "not measured" until a check lands (F-183).
     let baseline: number | null;
@@ -637,8 +639,15 @@ export class GoalsService {
     // `updated_at` on every GET, so opening a goal moved its "last edited"
     // time. The stored column is refreshed by `refreshStoredCurrentValues`,
     // which the hourly insight sweep runs. The window (F-628) is measureGoal's.
-    const { zone, periodStart, periodEnd, deadlineDay, current, dailySeries, units } =
-      await this.measureGoal(restaurantId, goal, house);
+    const {
+      zone,
+      periodStart,
+      periodEnd,
+      deadlineDay,
+      current,
+      dailySeries,
+      units,
+    } = await this.measureGoal(restaurantId, goal, house);
 
     const target = Number(goal.target_value) || 0;
     const progressPct = target > 0 ? current / target : 0;
@@ -994,7 +1003,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   }
 
   /** The first house date AFTER the period: `goalPeriodEndAfter`. */
-  private periodEndAfter(period: string | undefined, start: string): string | null {
+  private periodEndAfter(
+    period: string | undefined,
+    start: string,
+  ): string | null {
     return goalPeriodEndAfter(period, start);
   }
 
@@ -1429,13 +1441,23 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 function monthBounds(month: string): { first: string; last: string } | null {
   const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
   if (!m) return null;
-  const lastDay = new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();
-  return { first: `${month}-01`, last: `${month}-${String(lastDay).padStart(2, "0")}` };
+  const lastDay = new Date(
+    Date.UTC(Number(m[1]), Number(m[2]), 0),
+  ).getUTCDate();
+  return {
+    first: `${month}-01`,
+    last: `${month}-${String(lastDay).padStart(2, "0")}`,
+  };
 }
 
 /** Inclusive count of calendar days from `from` to `to`, both YYYY-MM-DD. */
 function spanOf(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+  return (
+    Math.round(
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+        86_400_000,
+    ) + 1
+  );
 }
 
 /**

@@ -42,7 +42,10 @@ import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
  * markers computed from them, and `amountsWithheld: true` at the root so a
  * page can say why. Every other marker, the prices and the counts stay.
  */
-export function locksForRole(readout: LockReadout, role: string | null | undefined): LockReadout {
+export function locksForRole(
+  readout: LockReadout,
+  role: string | null | undefined,
+): LockReadout {
   if (holdsHouseMoney(role ?? null)) return readout;
   return {
     ...readout,
@@ -51,7 +54,9 @@ export function locksForRole(readout: LockReadout, role: string | null | undefin
       ...l,
       advice: null,
       adviceUnknownReason: null,
-      markers: l.markers.filter((m) => m !== "off_target" && m !== "advice_unknown"),
+      markers: l.markers.filter(
+        (m) => m !== "off_target" && m !== "advice_unknown",
+      ),
     })),
   };
 }

@@ -472,13 +472,23 @@ export class PromotionsService {
     const db = this.databaseService.supabase;
     // 0. The house's clock, so "today" is the house's date (F-260; the same
     //    defect the house-lifecycle sim filed again as F-481).
-    const zoneRes = await db.from("restaurants").select("timezone").eq("id", restaurantId).limit(1);
+    const zoneRes = await db
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .limit(1);
     if (zoneRes.error) {
-      throw new Error(`The house's time zone (restaurants) could not be read: ${zoneRes.error.message}`);
+      throw new Error(
+        `The house's time zone (restaurants) could not be read: ${zoneRes.error.message}`,
+      );
     }
-    const timeZone = resolveZone(((zoneRes.data ?? []) as { timezone: string | null }[])[0]?.timezone);
+    const timeZone = resolveZone(
+      ((zoneRes.data ?? []) as { timezone: string | null }[])[0]?.timezone,
+    );
     const today = houseDay(now, timeZone);
-    const since = isoDate(new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000));
+    const since = isoDate(
+      new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000),
+    );
 
     // 1. The offers — this house's, live, on the table unless asked for the
     //    put-away ones too. Read whole (keyset pages), then ordered ends-soonest
@@ -594,7 +604,9 @@ export class PromotionsService {
       "The price register (vendor_price_observations)",
       () =>
         scopePriceRegisterRead(
-          db.from(VENDOR_PRICE_OBSERVATIONS).select(SIGHTING_COLUMNS, { count: "exact" }),
+          db
+            .from(VENDOR_PRICE_OBSERVATIONS)
+            .select(SIGHTING_COLUMNS, { count: "exact" }),
           VENDOR_PRICE_OBSERVATIONS,
           { kind: "houseAndOpenMarket", restaurantId },
         )
@@ -698,13 +710,10 @@ export class PromotionsService {
       };
     });
 
-    const oldestPaid = paid.reduce<string | null>(
-      (min, l) => {
-        const d = l.date ? l.date.slice(0, 10) : null;
-        return d && (min === null || d < min) ? d : min;
-      },
-      null,
-    );
+    const oldestPaid = paid.reduce<string | null>((min, l) => {
+      const d = l.date ? l.date.slice(0, 10) : null;
+      return d && (min === null || d < min) ? d : min;
+    }, null);
 
     return {
       read_at: now.toISOString(),
@@ -720,8 +729,16 @@ export class PromotionsService {
         market_sightings: marketSightings,
         skipped_sightings: skippedSightings,
         caps: {
-          paid_lines: { cap: PAID_LINES_CAP, reached: paidRead.reached, total: paidRead.total },
-          sightings: { cap: SIGHTINGS_CAP, reached: sightingsRead.reached, total: sightingsRead.total },
+          paid_lines: {
+            cap: PAID_LINES_CAP,
+            reached: paidRead.reached,
+            total: paidRead.total,
+          },
+          sightings: {
+            cap: SIGHTINGS_CAP,
+            reached: sightingsRead.reached,
+            total: sightingsRead.total,
+          },
         },
       },
       house: {
@@ -781,7 +798,9 @@ export class PromotionsService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (curErr) {
-      throw new Error(`The offer could not be restored (provider_promotions): ${curErr.message}`);
+      throw new Error(
+        `The offer could not be restored (provider_promotions): ${curErr.message}`,
+      );
     }
     if (!cur) {
       throw new NotFoundException("No such offer on this house's table.");
@@ -793,8 +812,10 @@ export class PromotionsService {
       entity_type: "provider_promotion",
       entity_id: id,
       changes: {
-        dismissed_at: (cur as { dismissed_at: string | null }).dismissed_at ?? null,
-        dismissed_by: (cur as { dismissed_by: string | null }).dismissed_by ?? null,
+        dismissed_at:
+          (cur as { dismissed_at: string | null }).dismissed_at ?? null,
+        dismissed_by:
+          (cur as { dismissed_by: string | null }).dismissed_by ?? null,
       },
       restaurant_id: restaurantId,
       reason: null,

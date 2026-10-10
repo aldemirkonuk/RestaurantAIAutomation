@@ -280,11 +280,7 @@ export class DashboardController {
     }
     try {
       const limit = limitStr ? parseInt(limitStr, 10) : 20;
-      return await this.dashboardService.getActivity(
-        restaurantId,
-        limit,
-        date,
-      );
+      return await this.dashboardService.getActivity(restaurantId, limit, date);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

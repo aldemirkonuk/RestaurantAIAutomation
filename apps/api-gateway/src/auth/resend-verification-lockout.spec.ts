@@ -187,9 +187,10 @@ describe("resendVerification — an account already verified (F-440)", () => {
       { email_verified: true },
     );
 
-    await expect(
-      service.resendVerification("u1", "a@b.com"),
-    ).resolves.toEqual({ sent: false, alreadyVerified: true });
+    await expect(service.resendVerification("u1", "a@b.com")).resolves.toEqual({
+      sent: false,
+      alreadyVerified: true,
+    });
     expect(sent).toHaveLength(0);
     expect(inserted).toHaveLength(0);
   });

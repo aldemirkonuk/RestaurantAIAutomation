@@ -503,7 +503,10 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
    */
   const MAX_ROWS = 1000;
 
-  function cappedOrders(rows: Record<string, any>[], error?: { message: string; code?: string }) {
+  function cappedOrders(
+    rows: Record<string, any>[],
+    error?: { message: string; code?: string },
+  ) {
     return () => {
       const filters: Array<(r: Record<string, any>) => boolean> = [];
       const orders: Array<{ col: string; asc: boolean }> = [];
@@ -527,16 +530,22 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
         };
       };
       const q: any = {
-        select: (_c: string, o?: { count?: string }) => ((counted = o?.count === "exact"), q),
+        select: (_c: string, o?: { count?: string }) => (
+          (counted = o?.count === "exact"),
+          q
+        ),
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
         gte: (c: string, v: any) => (filters.push((r) => r[c] >= v), q),
         gt: (c: string, v: any) => (filters.push((r) => r[c] > v), q),
         order: (col: string, o?: { ascending?: boolean }) => (
-          orders.push({ col, asc: o?.ascending !== false }), q
+          orders.push({ col, asc: o?.ascending !== false }),
+          q
         ),
         limit: (n: number) => ((limitN = n), q),
-        then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-          Promise.resolve(settle()).then(resolve, reject),
+        then: (
+          resolve: (v: unknown) => unknown,
+          reject?: (e: unknown) => unknown,
+        ) => Promise.resolve(settle()).then(resolve, reject),
       };
       return q;
     };
@@ -546,8 +555,20 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
     const { databaseService } = makeDb({
       restaurants: HOUSE,
       providers: [
-        { id: "prov-old", name: "Ege", minimum_order: null, lead_time_days: null, payment_terms: null },
-        { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: null, payment_terms: null },
+        {
+          id: "prov-old",
+          name: "Ege",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+        },
+        {
+          id: PID,
+          name: "Anadolu",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+        },
       ],
       restaurant_providers: [],
       restaurant_vendor_terms: [],
@@ -556,13 +577,15 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
     const inner = databaseService.client;
     return {
       client: {
-        from: (table: string) => (table === "procurement_orders" ? orders() : inner.from(table)),
+        from: (table: string) =>
+          table === "procurement_orders" ? orders() : inner.from(table),
       },
     } as any;
   }
 
   const day = 86_400_000;
-  const at = (daysAgo: number) => new Date(Date.now() - daysAgo * day).toISOString();
+  const at = (daysAgo: number) =>
+    new Date(Date.now() - daysAgo * day).toISOString();
 
   /**
    * 1,500 orders in the year. "Ege" was the house's vendor for the first 500
@@ -603,10 +626,17 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
   ];
 
   it("counts every order of the year, not the newest 1,000", async () => {
-    const out = await new VendorTermsService(houseWith(cappedOrders(YEAR)), makeAudit().service).read(RID);
+    const out = await new VendorTermsService(
+      houseWith(cappedOrders(YEAR)),
+      makeAudit().service,
+    ).read(RID);
 
     expect(out.windowDays).toBe(365);
-    expect(out.sources.orders).toEqual({ readable: true, reason: null, rows: 1500 });
+    expect(out.sources.orders).toEqual({
+      readable: true,
+      reason: null,
+      rows: 1500,
+    });
     const byId = new Map(out.vendors.map((v) => [v.providerId, v]));
     expect(byId.get(PID)!.ordersInWindow).toBe(1000);
     // The vendor whose orders were all older than the newest 1,000 read as
@@ -616,19 +646,34 @@ describe("VendorTermsService — the 365-day window is read whole (F-331 sibling
 
   it("a refused page keeps the database's own words, and is never a count", async () => {
     const out = await new VendorTermsService(
-      houseWith(cappedOrders(YEAR, { message: "connection reset", code: "08006" })),
+      houseWith(
+        cappedOrders(YEAR, { message: "connection reset", code: "08006" }),
+      ),
       makeAudit().service,
     ).read(RID);
-    expect(out.sources.orders).toEqual({ readable: false, reason: "connection reset", rows: null });
+    expect(out.sources.orders).toEqual({
+      readable: false,
+      reason: "connection reset",
+      rows: null,
+    });
     expect(out.vendors.every((v) => v.ordersInWindow === 0)).toBe(true);
-    expect(out.vendors[0].deliveryWeekdays.reason).toContain("could not be read");
+    expect(out.vendors[0].deliveryWeekdays.reason).toContain(
+      "could not be read",
+    );
   });
 
   it("a missing order table is named as missing, as before", async () => {
     const out = await new VendorTermsService(
-      houseWith(cappedOrders(YEAR, { message: "relation does not exist", code: "42P01" })),
+      houseWith(
+        cappedOrders(YEAR, {
+          message: "relation does not exist",
+          code: "42P01",
+        }),
+      ),
       makeAudit().service,
     ).read(RID);
-    expect(out.sources.orders.reason).toBe("the table is not present on this database");
+    expect(out.sources.orders.reason).toBe(
+      "the table is not present on this database",
+    );
   });
 });

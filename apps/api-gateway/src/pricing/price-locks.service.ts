@@ -234,7 +234,9 @@ export class PriceLocksService {
         ? Promise.resolve({ data: [], error: null } as { data: unknown[]; error: { message: string } | null })
         : client
             .from("inventory_lot_rollup")
-            .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count")
+            .select(
+              "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
+            )
             .eq("restaurant_id", restaurantId)
             .in("inventory_id", inventoryIds),
     ]);

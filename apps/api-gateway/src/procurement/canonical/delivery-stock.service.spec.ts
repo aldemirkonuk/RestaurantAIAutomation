@@ -140,7 +140,10 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
     expect(res.value.notBooked).toHaveLength(2);
     expect(res.value.notBooked[0].reason).toMatch(/names no item/);
     // The page switches on the code, never on the reason's words.
-    expect(res.value.notBooked.map((l) => l.code)).toEqual(["no_item", "no_item"]);
+    expect(res.value.notBooked.map((l) => l.code)).toEqual([
+      "no_item",
+      "no_item",
+    ]);
   });
 
   // F-730 — two lines of the same item in one count add up. Before, the
@@ -149,19 +152,24 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
   it.each([
     [6, 6, 12],
     [6, 4, 10],
-  ])("two lines of one item, %i and %i, book %i bottles", async (a, b, total) => {
-    db.answers.procurement_document_lines = {
-      data: [line({ line_no: 1, qty_bottles: a }), line({ line_no: 2, qty_bottles: b })],
-      error: null,
-    };
-    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
-    expect(res.ok).toBe(true);
-    if (!res.ok) return;
-    expect(res.value.bottlesMoved).toBe(total);
-    const moves = db.rpcCalls.filter((c) => c.fn === "apply_stock_movement");
-    expect(moves.map((c) => c.args.p_delta)).toEqual([total]);
-    expect(res.value.notBooked).toEqual([]);
-    expect(res.value.booked.map((l) => l.delta)).toEqual([total, 0]);
+  ])(
+    "two lines of one item, %i and %i, book %i bottles",
+    async (a, b, total) => {
+      db.answers.procurement_document_lines = {
+        data: [
+          line({ line_no: 1, qty_bottles: a }),
+          line({ line_no: 2, qty_bottles: b }),
+        ],
+        error: null,
+      };
+      const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.value.bottlesMoved).toBe(total);
+      const moves = db.rpcCalls.filter((c) => c.fn === "apply_stock_movement");
+      expect(moves.map((c) => c.args.p_delta)).toEqual([total]);
+      expect(res.value.notBooked).toEqual([]);
+      expect(res.value.booked.map((l) => l.delta)).toEqual([total, 0]);
   });
 
   it("a failed read of what is already booked books NOTHING (ADR 0067)", async () => {
@@ -346,15 +354,24 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
       error: null,
     };
     const stamped = () =>
-      db.writes.filter((w) => w.table === "inventory_lots" && w.verb === "update");
+      db.writes.filter(
+        (w) => w.table === "inventory_lots" && w.verb === "update",
+      );
 
     it("stamps the invoice's currency on the delivery's lots", async () => {
       db.answers.procurement_document_lines = invoiceLine;
-      db.answers.procurement_documents = { data: [{ currency: "eur" }], error: null };
+      db.answers.procurement_documents = {
+        data: [{ currency: "eur" }],
+        error: null,
+      };
       const res = await service.finaliseAtVerified(REST, DEL, USER);
       expect(res.ok).toBe(true);
       expect(stamped()).toEqual([
-        { table: "inventory_lots", verb: "update", payload: { unit_cost_currency: "EUR" } },
+        {
+          table: "inventory_lots",
+          verb: "update",
+          payload: { unit_cost_currency: "EUR" },
+        },
       ]);
     });
 
@@ -364,11 +381,21 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
         error: null,
       };
       db.answers.procurement_document_lines = invoiceLine;
-      db.answers.procurement_documents = { data: [{ currency: null }], error: null };
-      db.answers.procurement_orders = { data: { currency: "TRY" }, error: null };
+      db.answers.procurement_documents = {
+        data: [{ currency: null }],
+        error: null,
+      };
+      db.answers.procurement_orders = {
+        data: { currency: "TRY" },
+        error: null,
+      };
       await service.finaliseAtVerified(REST, DEL, USER);
       expect(stamped()).toEqual([
-        { table: "inventory_lots", verb: "update", payload: { unit_cost_currency: "TRY" } },
+        {
+          table: "inventory_lots",
+          verb: "update",
+          payload: { unit_cost_currency: "TRY" },
+        },
       ]);
     });
 

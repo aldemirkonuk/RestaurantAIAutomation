@@ -683,7 +683,9 @@ export class VendorComparisonService {
       );
     } catch (err) {
       if (!(err instanceof WholeReadError)) throw err;
-      this.logger.error(`Failed to sweep vendor price observations: ${err.message}`);
+      this.logger.error(
+        `Failed to sweep vendor price observations: ${err.message}`,
+      );
       if (err.reason !== "read_failed") throw err;
       throw new InternalServerErrorException(
         `Could not read the price register: ${err.detail}`,

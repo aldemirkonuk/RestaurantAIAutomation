@@ -117,7 +117,8 @@ export class PromotionsController {
   @Post(":id/restore")
   @ApiOperation({
     summary: "Bring a put-away offer back to the house's table",
-    description: "Records who restored it, and the dismissal it took back, in the house log.",
+    description:
+      "Records who restored it, and the dismissal it took back, in the house log.",
   })
   @ApiResponse({ status: 200, description: "Restored" })
   @ApiResponse({ status: 404, description: "No such offer on this house's table" })

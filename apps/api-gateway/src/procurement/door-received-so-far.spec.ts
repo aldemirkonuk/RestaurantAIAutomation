@@ -137,7 +137,12 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     rejected_qty_bottles: 0,
     created_at: at,
   });
-  const doorAt = (id: string, counted: number, at: string, rejected = 0): Row => ({
+  const doorAt = (
+    id: string,
+    counted: number,
+    at: string,
+    rejected = 0,
+  ): Row => ({
     ...doorEvent(id, counted, rejected),
     created_at: at,
   });
@@ -151,7 +156,11 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     // cannot be read does not stop the door (ADR 0192).
     const svc = new ReceivingService(
       fakeDb(
-        base({ procurement_receipt_events: [checked("v1", 72, "2026-10-01T10:00:00Z")] }),
+        base({
+          procurement_receipt_events: [
+            checked("v1", 72, "2026-10-01T10:00:00Z"),
+          ],
+        }),
         { inventory_transactions: "down" },
       ),
     );
@@ -171,8 +180,13 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     const svc = new ReceivingService(
       fakeDb(
         base({
-          inventory_transactions: [booked(72, "receipt-verify:o1:inv1"), booked(-2, "adjust:o1")],
-          procurement_receipt_events: [checked("v1", 72, "2026-10-01T10:00:00Z")],
+          inventory_transactions: [
+            booked(72, "receipt-verify:o1:inv1"),
+            booked(-2, "adjust:o1"),
+          ],
+          procurement_receipt_events: [
+            checked("v1", 72, "2026-10-01T10:00:00Z"),
+          ],
         }),
       ),
     );
@@ -207,7 +221,12 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     const at = "2026-10-01T09:00:00Z";
     const svc = new ReceivingService(
       fakeDb(
-        base({ procurement_receipt_events: [checked("b", 58, at), doorAt("a", 60, at)] }),
+        base({
+          procurement_receipt_events: [
+            checked("b", 58, at),
+            doorAt("a", 60, at),
+          ],
+        }),
       ),
     );
     const r = await svc.doorReceivedSoFar(REST, "o1");
@@ -233,7 +252,9 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
         }),
       ),
     );
-    await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow(/could not be read/);
+    await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow(
+      /could not be read/,
+    );
   });
 
   it("states no boxes — null, never 0 — when the order states no pack", async () => {

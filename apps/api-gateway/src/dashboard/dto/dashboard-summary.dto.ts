@@ -203,19 +203,44 @@ export class DashboardStatsDto {
   // F-701: delivered orders with no price are left out of the three spend
   // figures above and counted here, so the page can say the total is missing
   // them instead of reading as complete. Counts, not money: kept for every role.
-  @ApiProperty({ description: "Orders delivered today that carry no price, left out of todayProcurementSpend; null when the house has no time zone", nullable: true, type: Number })
+  @ApiProperty({
+    description:
+      "Orders delivered today that carry no price, left out of todayProcurementSpend; null when the house has no time zone",
+    nullable: true,
+    type: Number,
+  })
   todayProcurementUnpriced: number | null;
 
-  @ApiProperty({ description: "Orders delivered in the last 7 days that carry no price, left out of weekProcurementSpend; null when the house has no time zone", nullable: true, type: Number })
+  @ApiProperty({
+    description:
+      "Orders delivered in the last 7 days that carry no price, left out of weekProcurementSpend; null when the house has no time zone",
+    nullable: true,
+    type: Number,
+  })
   weekProcurementUnpriced: number | null;
 
-  @ApiProperty({ description: "Orders delivered this calendar month that carry no price, left out of monthProcurementSpend; null when the house has no time zone", nullable: true, type: Number })
+  @ApiProperty({
+    description:
+      "Orders delivered this calendar month that carry no price, left out of monthProcurementSpend; null when the house has no time zone",
+    nullable: true,
+    type: Number,
+  })
   monthProcurementUnpriced: number | null;
 
-  @ApiProperty({ description: "Orders delivered today, on the house's day; null when the house has no time zone", nullable: true, type: Number })
+  @ApiProperty({
+    description:
+      "Orders delivered today, on the house's day; null when the house has no time zone",
+    nullable: true,
+    type: Number,
+  })
   todayDeliveries: number | null;
 
-  @ApiProperty({ description: "Bottles on orders delivered this calendar month, on the house's days; null when the house has no time zone", nullable: true, type: Number })
+  @ApiProperty({
+    description:
+      "Bottles on orders delivered this calendar month, on the house's days; null when the house has no time zone",
+    nullable: true,
+    type: Number,
+  })
   monthBottlesIn: number | null;
 
   @ApiProperty({ enum: ["shown", "withheld"], required: false, description: "Whether the spend figures are the house's, or withheld for the caller's role" })
@@ -233,7 +258,11 @@ export class DashboardStatsDto {
 
   // F-188: the month grid's flag (DASH-G2), so the cards can say why their
   // day figures are unknown.
-  @ApiProperty({ required: false, description: "True when the house has no time zone, so no delivery is filed on a day" })
+  @ApiProperty({
+    required: false,
+    description:
+      "True when the house has no time zone, so no delivery is filed on a day",
+  })
   zone_unset?: boolean;
 }
 

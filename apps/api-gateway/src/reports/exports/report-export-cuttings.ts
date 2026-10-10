@@ -927,7 +927,11 @@ function writeBench(payload: unknown): ExportDoc {
       f("Pace against last month", figure(pctOf(cf.paceDeltaPct), cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
       f("Committed, not yet delivered", figure(cf.committedOpenOrders, cfWhy), "money"),
       f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
-      f("Goals running", goalsUnread ? withheld(goalsMissing) : goals.length, "count"),
+      f(
+        "Goals running",
+        goalsUnread ? withheld(goalsMissing) : goals.length,
+        "count",
+      ),
     ],
     tables: [
       {

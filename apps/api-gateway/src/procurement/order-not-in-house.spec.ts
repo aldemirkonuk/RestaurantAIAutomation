@@ -48,21 +48,36 @@ describe("GET /procurement/orders/:id — an order that is not in this house", (
     ["an id that is not an id (22P02)", "22P02"],
   ])("[REVERT-FAILS] %s is a NotFoundException", async (_label, code) => {
     const s = service(db({ data: null, error: { code, message: "x" } }));
-    await expect(s.getOrder("rest-1", "ord-x")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(s.getOrder("rest-1", "ord-x")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it("any other failed read is still a failure, not a not-found", async () => {
-    const s = service(db({ data: null, error: { code: "08006", message: "connection lost" } }));
-    await expect(s.getOrder("rest-1", "ord-x")).rejects.not.toBeInstanceOf(NotFoundException);
+    const s = service(
+      db({ data: null, error: { code: "08006", message: "connection lost" } }),
+    );
+    await expect(s.getOrder("rest-1", "ord-x")).rejects.not.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it("[REVERT-FAILS] the controller keeps the 404 instead of turning it into a 500", async () => {
-    const controller = new ProcurementController(
-      { getOrder: jest.fn().mockRejectedValue(new NotFoundException("This order is not in this house.")) } as any,
-    );
-    const call = controller.getOrder("ord-x", { userId: "u", restaurantId: "rest-1" });
+    const controller = new ProcurementController({
+      getOrder: jest
+        .fn()
+        .mockRejectedValue(
+          new NotFoundException("This order is not in this house."),
+        ),
+    } as any);
+    const call = controller.getOrder("ord-x", {
+      userId: "u",
+      restaurantId: "rest-1",
+    });
     await expect(call).rejects.toBeInstanceOf(HttpException);
-    await call.catch((e: HttpException) => expect(e.getStatus()).toBe(HttpStatus.NOT_FOUND));
+    await call.catch((e: HttpException) =>
+      expect(e.getStatus()).toBe(HttpStatus.NOT_FOUND),
+    );
   });
 });
 
@@ -80,13 +95,20 @@ describe("the order says when its delivery was checked", () => {
   };
 
   it("[REVERT-FAILS] carries match_verified_at as matchVerifiedAt", async () => {
-    const s = service(db({ data: { ...row, match_verified_at: "2026-10-08T10:00:00.000Z" }, error: null }));
+    const s = service(
+      db({
+        data: { ...row, match_verified_at: "2026-10-08T10:00:00.000Z" },
+        error: null,
+      }),
+    );
     const order: any = await s.getOrder("rest-1", "ord-1");
     expect(order.matchVerifiedAt).toBe("2026-10-08T10:00:00.000Z");
   });
 
   it("null is 'not checked', never the key left off", async () => {
-    const s = service(db({ data: { ...row, match_verified_at: null }, error: null }));
+    const s = service(
+      db({ data: { ...row, match_verified_at: null }, error: null }),
+    );
     const order: any = await s.getOrder("rest-1", "ord-1");
     expect("matchVerifiedAt" in order).toBe(true);
     expect(order.matchVerifiedAt).toBeNull();

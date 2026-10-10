@@ -251,7 +251,11 @@ export class ProcurementController {
   @ApiResponse({ status: 200, type: [OrderResponseDto] })
   async listPendingOrders(
     @CurrentUser()
-    user: { userId: string; restaurantId: string; role?: string | null },
+    user: {
+      userId: string;
+      restaurantId: string;
+      role?: string | null;
+    },
   ): Promise<OrderForRole[]> {
     try {
       // Staff read the queue's counts, names and states, never its amounts
@@ -433,7 +437,8 @@ export class ProcurementController {
   @Post("orders/:id/close-short")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Close a partly received order short — manager or owner, with a reason",
+    summary:
+      "Close a partly received order short — manager or owner, with a reason",
   })
   @ApiResponse({ status: 200, type: OrderResponseDto })
   @ApiResponse({ status: 400, description: "No reason was given." })
@@ -781,7 +786,8 @@ export class ProcurementController {
   async verifyReceipt(
     @Param("id") orderId: string,
     @Body() body: VerifyReceiptDto,
-    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<OrderResponseDto> {
     // F-802 (rehit of F-466): the invoice price becomes the lots' landed cost
     // and the price series, and the override reason accepts a price that

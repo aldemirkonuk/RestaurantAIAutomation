@@ -578,7 +578,11 @@ export class DeliveryClockService {
       return false;
     }
 
-    const deemed = lapseDeeming(timer.clock, delivery.jurisdiction, timer.basis);
+    const deemed = lapseDeeming(
+      timer.clock,
+      delivery.jurisdiction,
+      timer.basis,
+    );
     const upd = await this.db
       .getClient()
       .from("deliveries")

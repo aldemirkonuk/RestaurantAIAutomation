@@ -173,7 +173,9 @@ export class VendorCatalogueService {
         id,
         error: error?.message,
       });
-      throw new NotFoundException("That vendor is no longer in the curated catalogue.");
+      throw new NotFoundException(
+        "That vendor is no longer in the curated catalogue.",
+      );
     }
 
     return data as VendorCatalogueRow;

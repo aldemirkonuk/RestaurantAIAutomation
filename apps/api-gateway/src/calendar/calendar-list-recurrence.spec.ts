@@ -149,18 +149,37 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
       method: "or",
       args: ['start_date.gte."2026-09-01",end_date.gte."2026-09-01"'],
     });
-    expect(ev.some((c) => c.method === "or" && String(c.args[0]).includes("is_recurring"))).toBe(false);
-    expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
+    expect(
+      ev.some(
+        (c) => c.method === "or" && String(c.args[0]).includes("is_recurring"),
+      ),
+    ).toBe(false);
+    expect(ev).toContainEqual({
+      method: "lte",
+      args: ["start_date", "2026-09-30"],
+    });
   });
 
   it("returns a multi-day entry that began before the window and runs into it (F-198)", async () => {
     // A three-day festival from Aug 30 to Sep 1 overlaps September; reading
     // only rows that START in the window lost it.
     const db = fakeDb({ calendar_events: { data: [], error: null, count: 0 } });
-    await service(db).listEvents("r-1", { startDate: "2026-09-01", endDate: "2026-09-30" });
+    await service(db).listEvents("r-1", {
+      startDate: "2026-09-01",
+      endDate: "2026-09-30",
+    });
     const ev = db.calls.calendar_events;
-    expect(ev).not.toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
-    expect(ev.some((c) => c.method === "or" && String(c.args[0]).includes('end_date.gte."2026-09-01"'))).toBe(true);
+    expect(ev).not.toContainEqual({
+      method: "gte",
+      args: ["start_date", "2026-09-01"],
+    });
+    expect(
+      ev.some(
+        (c) =>
+          c.method === "or" &&
+          String(c.args[0]).includes('end_date.gte."2026-09-01"'),
+      ),
+    ).toBe(true);
   });
 
   it("fails the read when the rules cannot be read — never a series that stops repeating", async () => {

@@ -213,7 +213,10 @@ export class SettingsController {
     // needs a manager, or name an owner on one (that only tightens it); after
     // that, only an owner moves it. A policy that could not be read is not
     // proof the rule is a manager's, so a manager is refused then too.
-    const role = await this.organizations.resolveRestaurantRole(userId, restaurantId);
+    const role = await this.organizations.resolveRestaurantRole(
+      userId,
+      restaurantId,
+    );
     if (role !== "owner") {
       const current = await this.thresholds.read(restaurantId);
       const before = current.thresholds.find((t) => t.rule === dto.rule);

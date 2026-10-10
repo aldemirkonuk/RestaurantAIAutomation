@@ -26,8 +26,14 @@ export class ReadingSources {
   }
   /** The house's clock (F-236): its zone, and its country for the one-zone fallback. */
   houseClock(): Promise<Evidence> {
-    return this.session.read(c => c.from("restaurants").select("id,timezone,country", selected)
-      .eq("id", this.restaurantId), r => r.id === this.restaurantId);
+    return this.session.read(
+      (c) =>
+        c
+          .from("restaurants")
+          .select("id,timezone,country", selected)
+          .eq("id", this.restaurantId),
+      (r) => r.id === this.restaurantId,
+    );
   }
   lots(itemId: string): Promise<Evidence> {
     return this.session.read(c => c.from("inventory_lots")

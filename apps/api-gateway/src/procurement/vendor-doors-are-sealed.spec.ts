@@ -38,7 +38,13 @@ const VENDOR = "vendor@kavaklidere.example";
  */
 function thresholds(rows: ThresholdRow[]) {
   return {
-    read: async () => ({ restaurantId: HOUSE, thresholds: rows, policyEmpty: rows.length === 0, readable: true, reason: null }),
+    read: async () => ({
+      restaurantId: HOUSE,
+      thresholds: rows,
+      policyEmpty: rows.length === 0,
+      readable: true,
+      reason: null,
+    }),
   };
 }
 
@@ -121,7 +127,9 @@ function build(rules: ThresholdRow[] = []) {
     {
       // The role in this house, from the same access rows the authority reads.
       resolveRestaurantRole: async (userId: string) =>
-        db.tables.user_restaurant_access.find((r: any) => r.user_id === userId && r.is_active)?.role ?? null,
+        db.tables.user_restaurant_access.find(
+          (r: any) => r.user_id === userId && r.is_active,
+        )?.role ?? null,
     } as any,
     seal,
     authority,
@@ -280,14 +288,18 @@ describe("confirm-deal runs the house's approval rules, like approve (F-386)", (
 
   it("a manager over the owner's ceiling is refused at the seal, and nothing is minted", async () => {
     const t = build([ownerCeiling(1000)]);
-    await expect(t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms)).rejects.toThrow(/owner/i);
+    await expect(
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms),
+    ).rejects.toThrow(/owner/i);
     expect(t.db.tables.mcp_seal_challenges).toHaveLength(0);
     expect(t.order().status).toBe("NEGOTIATING");
   });
 
   it("a manager over the ceiling is refused at confirm too, and nothing is committed or mailed", async () => {
     const t = build([ownerCeiling(1000)]);
-    await expect(t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, "any-seal")).rejects.toThrow(/owner/i);
+    await expect(
+      t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, "any-seal"),
+    ).rejects.toThrow(/owner/i);
     expect(t.order().status).toBe("NEGOTIATING");
     expect(t.order().approved_by).toBeUndefined();
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
@@ -297,16 +309,28 @@ describe("confirm-deal runs the house's approval rules, like approve (F-386)", (
     const t = build([ownerCeiling(1000)]);
     // 150 x 6 = 900 passes; 150 x 12 = 1,800 does not.
     await expect(
-      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, { ...terms, finalPrice: 150 }),
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, {
+        ...terms,
+        finalPrice: 150,
+      }),
     ).resolves.toMatchObject({ act: "confirm_deal" });
     await expect(
-      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, { ...terms, finalPrice: 150, quantity: 12 }),
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, {
+        ...terms,
+        finalPrice: 150,
+        quantity: 12,
+      }),
     ).rejects.toThrow(/owner/i);
   });
 
   it("the owner confirms the same deal", async () => {
     const t = build([ownerCeiling(1000)]);
-    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, OWNER, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      OWNER,
+      terms,
+    );
     await t.service.confirmDeal(HOUSE, ORDER, OWNER, terms, challenge);
     expect(t.order()).toMatchObject({ status: "APPROVED", approved_by: OWNER });
   });

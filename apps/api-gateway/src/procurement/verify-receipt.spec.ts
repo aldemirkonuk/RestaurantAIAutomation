@@ -505,12 +505,20 @@ describe("verifyReceipt — only an arrived, still-open order is checked (F-349,
     async (status, words) => {
       const { db, calls } = makeDb({ orderRow: { ...deliveredOrder, status } });
       const attempt = service(db).verifyReceipt(REST, ORDER, USER, {
-        adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "extras" }],
+        adjustments: [
+          { inventoryId: OWN_INVENTORY, delta: 3, reason: "extras" },
+        ],
       } as any);
       await expect(attempt).rejects.toMatchObject({
-        response: { reason: "order_not_checkable", status, message: expect.stringMatching(words) },
+        response: {
+          reason: "order_not_checkable",
+          status,
+          message: expect.stringMatching(words),
+        },
       });
-      expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+      expect(
+        calls.rpc.filter((c) => c.name === "apply_stock_movement"),
+      ).toEqual([]);
       expect(calls.orderUpdates).toHaveLength(0);
     },
   );
@@ -873,7 +881,9 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
     // Agreed 22 EUR, billed 770 TRY. Before, this 422'd on "Billed TRY 770.00
     // against an agreed €22.00" — a difference across two moneys that means
     // nothing — and the same figure in TRY wrote price_verified = true.
-    const { db, calls } = makeDb({ orderRow: { ...caseOrder, currency: "EUR" } });
+    const { db, calls } = makeDb({
+      orderRow: { ...caseOrder, currency: "EUR" },
+    });
 
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 24,
@@ -1433,7 +1443,10 @@ describe("verifyReceipt — the verification is an event, not four order columns
     expect(calls.orderUpdates).toHaveLength(2);
     expect(calls.orderUpdates[1]).toEqual(
       Object.fromEntries(
-        Object.keys(calls.orderUpdates[0]).map((k) => [k, (bottleOrder as any)[k] ?? null]),
+        Object.keys(calls.orderUpdates[0]).map((k) => [
+          k,
+          (bottleOrder as any)[k] ?? null,
+        ]),
       ),
     );
   });
@@ -1737,7 +1750,9 @@ describe("verifyReceipt — a check already made is not written over (F-349)", (
       .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
       .catch((e) => e);
     expect(err.getStatus?.()).toBe(409);
-    expect(err.getResponse().message).toMatch(/already checked.*nothing was changed/i);
+    expect(err.getResponse().message).toMatch(
+      /already checked.*nothing was changed/i,
+    );
     expect(calls.orderUpdates).toEqual([]);
     expect(calls.receiptEvents).toEqual([]);
   });
@@ -1770,7 +1785,9 @@ describe("verifyReceipt — a check already made is not written over (F-349)", (
     const { db, calls } = makeDb({
       orderRow: { ...deliveredOrder, status: "PARTIALLY_RECEIVED" },
     });
-    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [],
+    } as any);
     expect(calls.orderUpdates).toHaveLength(1);
   });
 
@@ -1870,16 +1887,28 @@ describe("verifyReceipt — the discrepancy line is house money, and clears when
   const MANAGER = "manager-1";
   const withBell = (db: DatabaseService) => {
     const notifications = {
-      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 2, ids: [] }),
+      persistForRestaurant: jest
+        .fn()
+        .mockResolvedValue({ inserted: 2, ids: [] }),
     };
     const authority = {
-      ownersAndManagers: jest.fn().mockResolvedValue({ owners: [OWNER], managers: [MANAGER] }),
+      ownersAndManagers: jest
+        .fn()
+        .mockResolvedValue({ owners: [OWNER], managers: [MANAGER] }),
     };
     const svc = new ProcurementService(
-      db, events, ledger,
-      undefined, undefined, undefined, undefined, undefined,
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       notifications as any,
-      undefined, undefined, undefined,
+      undefined,
+      undefined,
+      undefined,
       authority as any,
     );
     return { svc, notifications };
@@ -1897,20 +1926,34 @@ describe("verifyReceipt — the discrepancy line is house money, and clears when
     } as any);
 
     const discrepancy = notifications.persistForRestaurant.mock.calls.find(
-      ([, payload]: any[]) => payload.groupKey === `receipt_discrepancy:${ORDER}`,
+      ([, payload]: any[]) =>
+        payload.groupKey === `receipt_discrepancy:${ORDER}`,
     );
     expect(discrepancy).toBeDefined();
     const [, , opts] = discrepancy as any[];
     expect(opts.onlyUserIds).toEqual([OWNER, MANAGER]);
-    expect(Object.keys(opts.pushData).sort()).toEqual(["matchStatus", "orderId"]);
+    expect(Object.keys(opts.pushData).sort()).toEqual([
+      "matchStatus",
+      "orderId",
+    ]);
   });
 
   it("writes no money line at all when the owners and managers cannot be named", async () => {
     const { db } = makeDb({ orderRow: deliveredOrder });
-    const notifications = { persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 0, ids: [] }) };
+    const notifications = {
+      persistForRestaurant: jest
+        .fn()
+        .mockResolvedValue({ inserted: 0, ids: [] }),
+    };
     const svc = new ProcurementService(
-      db, events, ledger,
-      undefined, undefined, undefined, undefined, undefined,
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       notifications as any,
     );
 
@@ -1923,7 +1966,8 @@ describe("verifyReceipt — the discrepancy line is house money, and clears when
 
     expect(
       notifications.persistForRestaurant.mock.calls.some(
-        ([, payload]: any[]) => payload.groupKey === `receipt_discrepancy:${ORDER}`,
+        ([, payload]: any[]) =>
+          payload.groupKey === `receipt_discrepancy:${ORDER}`,
       ),
     ).toBe(false);
   });

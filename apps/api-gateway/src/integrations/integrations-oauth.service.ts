@@ -70,7 +70,8 @@ export const INTEGRATION_RETURN_REASONS = [
   "membership_unreadable",
   "held_by_another_house",
 ] as const;
-export type IntegrationReturnReason = (typeof INTEGRATION_RETURN_REASONS)[number];
+export type IntegrationReturnReason =
+  (typeof INTEGRATION_RETURN_REASONS)[number];
 
 /**
  * Why a completed provider round trip still connected nothing, when the cause
@@ -790,7 +791,10 @@ export class IntegrationsOauthService {
    * `CalendarLinksService.roleOf` reads it). A failed read throws — it is
    * never "not a member", and never "still a member".
    */
-  private async worksIn(userId: string, restaurantId: string): Promise<boolean> {
+  private async worksIn(
+    userId: string,
+    restaurantId: string,
+  ): Promise<boolean> {
     const { data, error } = await this.db.client
       .from("user_restaurant_access")
       .select("user_id, valid_until")
@@ -1079,7 +1083,10 @@ export class IntegrationsOauthService {
       .eq("user_id", userId)
       .eq("integration_id", GMAIL_READ_INTEGRATION_ID)
       .maybeSingle();
-    if (error) throw new Error(`The earlier reading grant could not be read: ${error.message}`);
+    if (error)
+      throw new Error(
+        `The earlier reading grant could not be read: ${error.message}`,
+      );
     if (!prior) return;
     const sameMailbox =
       !!account &&
@@ -1091,7 +1098,9 @@ export class IntegrationsOauthService {
       .delete()
       .eq("connection_id", String(prior.id));
     if (dropError) {
-      throw new Error(`The earlier reading point could not be cleared: ${dropError.message}`);
+      throw new Error(
+        `The earlier reading point could not be cleared: ${dropError.message}`,
+      );
     }
   }
 

@@ -88,7 +88,13 @@ describe("BeveragesService.listBeverages", () => {
   it("passes a search term to or() only as a value (F-595)", async () => {
     const ors: string[] = [];
     const service = await serviceWith({ beverages: [{ data: [] }] });
-    const db = (service as unknown as { dbService: { getClient: () => { from: (t: string) => Record<string, jest.Mock> } } }).dbService;
+    const db = (
+      service as unknown as {
+        dbService: {
+          getClient: () => { from: (t: string) => Record<string, jest.Mock> };
+        };
+      }
+    ).dbService;
     const from = db.getClient().from;
     jest.spyOn(db, "getClient").mockReturnValue({
       from: (t: string) => {
@@ -100,7 +106,10 @@ describe("BeveragesService.listBeverages", () => {
         return c;
       },
     });
-    await service.listBeverages(RID, { search: "Johnnie Walker, Black", limit: 10 });
+    await service.listBeverages(RID, {
+      search: "Johnnie Walker, Black",
+      limit: 10,
+    });
     expect(ors).toEqual([
       'name.ilike."%Johnnie Walker, Black%",producer.ilike."%Johnnie Walker, Black%"',
     ]);
@@ -272,7 +281,14 @@ describe("BeveragesService.readRegister", () => {
                     { id: "b1", name: "Absolut", beverage_type: "vodka" },
                     { id: "b2", name: "Beefeater", beverage_type: "gin" },
                   ]
-                : [{ id: "b9", name: "Yeni Rakı", producer: "Mey", beverage_type: "raki" }],
+                : [
+                    {
+                      id: "b9",
+                      name: "Yeni Rakı",
+                      producer: "Mey",
+                      beverage_type: "raki",
+                    },
+                  ],
           });
           c.or = jest.fn((f: string) => {
             ors.push(f);
@@ -503,7 +519,10 @@ describe("BeveragesService cocktail writes", () => {
         from: (table: string) => {
           const self: Record<string, unknown> = {};
           let verb = "select";
-          let result: { data: unknown; error: unknown } = { data: [], error: null };
+          let result: { data: unknown; error: unknown } = {
+            data: [],
+            error: null,
+          };
           for (const m of ["eq", "is", "order"]) self[m] = jest.fn(() => self);
           self.select = jest.fn(() => {
             if (verb === "select") {
@@ -534,7 +553,11 @@ describe("BeveragesService cocktail writes", () => {
             Promise.resolve({ data: { id: COCKTAIL_ID }, error: null }),
           );
           self.then = (resolve: (v: unknown) => unknown) =>
-            Promise.resolve(table === "cocktail_ingredients" ? result : { data: [], error: null }).then(resolve);
+            Promise.resolve(
+              table === "cocktail_ingredients"
+                ? result
+                : { data: [], error: null },
+            ).then(resolve);
           return self;
         },
       }),
@@ -546,12 +569,17 @@ describe("BeveragesService cocktail writes", () => {
   }
 
   it("writes the new recipe before removing the old one, and removes only the old lines", async () => {
-    const { service, log } = await recipeService({ oldIds: ["old-1", "old-2"] });
+    const { service, log } = await recipeService({
+      oldIds: ["old-1", "old-2"],
+    });
     const out = await service.setCocktailIngredients(RID, COCKTAIL_ID, {
       lines: [{ freeText: "30 ml gin" }],
     });
     expect(out.lines).toBe(1);
-    expect(log).toEqual([["insert", 1], ["delete", "old-1", "old-2"]]);
+    expect(log).toEqual([
+      ["insert", 1],
+      ["delete", "old-1", "old-2"],
+    ]);
   });
 
   it("keeps the old recipe when the new lines cannot be written, and says so", async () => {
@@ -560,7 +588,9 @@ describe("BeveragesService cocktail writes", () => {
       insertError: { message: "value too long" },
     });
     await expect(
-      service.setCocktailIngredients(RID, COCKTAIL_ID, { lines: [{ freeText: "x" }] }),
+      service.setCocktailIngredients(RID, COCKTAIL_ID, {
+        lines: [{ freeText: "x" }],
+      }),
     ).rejects.toThrow(/Nothing was changed: the recipe you had is still there/);
     // Nothing was deleted.
     expect(log).toEqual([["insert", 1]]);
@@ -572,9 +602,15 @@ describe("BeveragesService cocktail writes", () => {
       clearError: { message: "timeout" },
     });
     await expect(
-      service.setCocktailIngredients(RID, COCKTAIL_ID, { lines: [{ freeText: "x" }] }),
+      service.setCocktailIngredients(RID, COCKTAIL_ID, {
+        lines: [{ freeText: "x" }],
+      }),
     ).rejects.toThrow(/new lines were taken back out\. Nothing was changed/);
-    expect(log).toEqual([["insert", 1], ["delete", "old-1"], ["delete", "new-0"]]);
+    expect(log).toEqual([
+      ["insert", 1],
+      ["delete", "old-1"],
+      ["delete", "new-0"],
+    ]);
   });
 
   it("never claims nothing changed when both the clear and the undo fail", async () => {

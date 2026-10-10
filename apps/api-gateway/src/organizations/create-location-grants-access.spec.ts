@@ -257,7 +257,11 @@ describe("OrganizationsService#createLocation — currency and map point", () =>
 
   it("stores the currency and the point the dialog sent", async () => {
     expect(
-      await stored({ currency: "USD", latitude: 37.7594, longitude: -122.4211 }),
+      await stored({
+        currency: "USD",
+        latitude: 37.7594,
+        longitude: -122.4211,
+      }),
     ).toEqual({ currency: "USD", latitude: 37.7594, longitude: -122.4211 });
   });
 
@@ -290,7 +294,11 @@ describe("CreateLocationDto — currency and map point", () => {
   });
 
   it("refuses a made-up currency and a point off the map", async () => {
-    const errors = await check({ currency: "XXQ", latitude: 91, longitude: 181 });
+    const errors = await check({
+      currency: "XXQ",
+      latitude: 91,
+      longitude: 181,
+    });
     expect(errors.map((e) => e.property).sort()).toEqual([
       "currency",
       "latitude",

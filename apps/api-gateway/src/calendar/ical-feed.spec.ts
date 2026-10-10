@@ -295,7 +295,9 @@ describe("iCal feed structure", () => {
   it("keeps an entry that ends when it starts as a zero-length moment that day (F-820)", () => {
     const out = feed({
       restaurant: { id: "r1", name: "R", timezone: "UTC" },
-      events: [{ ...EVENT, start_time: "10:00", end_date: null, end_time: "10:00" }],
+      events: [
+        { ...EVENT, start_time: "10:00", end_date: null, end_time: "10:00" },
+      ],
     });
 
     expect(out).toContain("DTSTART:20260803T100000Z");
@@ -305,7 +307,14 @@ describe("iCal feed structure", () => {
   it("keeps a later end date as written when the end time is before the start time", () => {
     const out = feed({
       restaurant: { id: "r1", name: "R", timezone: "UTC" },
-      events: [{ ...EVENT, start_time: "22:00", end_date: "2026-08-05", end_time: "02:00" }],
+      events: [
+        {
+          ...EVENT,
+          start_time: "22:00",
+          end_date: "2026-08-05",
+          end_time: "02:00",
+        },
+      ],
     });
 
     expect(out).toContain("DTSTART:20260803T220000Z");
@@ -313,7 +322,13 @@ describe("iCal feed structure", () => {
   });
 
   it("ends a shift that ends before it starts on the next morning, and keeps equal times a moment, as entries do (F-821)", () => {
-    const SHIFT = { id: "s1", shift_date: "2026-08-03", summary: "Bar", draft: false, calledOut: false };
+    const SHIFT = {
+      id: "s1",
+      shift_date: "2026-08-03",
+      summary: "Bar",
+      draft: false,
+      calledOut: false,
+    };
     const out = feed({
       restaurant: { id: "r1", name: "R", timezone: "UTC" },
       shifts: [
@@ -322,7 +337,8 @@ describe("iCal feed structure", () => {
       ],
     });
     const vevent = (uid: string) =>
-      out.split("BEGIN:VEVENT").find((b) => b.includes(`UID:shift-${uid}@`)) ?? "";
+      out.split("BEGIN:VEVENT").find((b) => b.includes(`UID:shift-${uid}@`)) ??
+      "";
 
     expect(vevent("late")).toContain("DTSTART:20260803T220000Z");
     expect(vevent("late")).toContain("DTEND:20260804T020000Z");

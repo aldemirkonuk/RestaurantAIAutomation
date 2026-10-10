@@ -103,7 +103,10 @@ export function percent(fraction: number, locale?: string | null): string {
  * `12.5%` — a percent goal's figure, to one place, signed, in the house's
  * formats: a lira house reads `%12,5` (F-888).
  */
-export function percentFigure(fraction: number, locale?: string | null): string {
+export function percentFigure(
+  fraction: number,
+  locale?: string | null,
+): string {
   const tenths = Number((fraction * 100).toFixed(1));
   return new Intl.NumberFormat(usableLocale(locale), {
     style: "percent",

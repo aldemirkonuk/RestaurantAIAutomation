@@ -30,9 +30,43 @@ it('does not resurrect replacements beyond the series end', () => {
  expect(dates(read([parent, replacement], [{ ...weekly, end_type: 'on_date', end_on_date: '2026-09-15' }], [{ recurrence_rule_id: 'rule', original_date: '2026-10-05', exception_type: 'modified', replacement_event_id: replacement.id }]))).toEqual(['2026-09-07', '2026-09-14']);
 });
 // F-199: "every month" from the 29th-31st used to skip the short months.
-it('lands a month-end series on the last day of each shorter month', () => {
- expect(dates(read([{ ...parent, start_date: '2026-01-31' }], [{ ...weekly, frequency: 'monthly', days_of_week: null }], [], '2026-01-01', '2026-05-31'))).toEqual(['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30', '2026-05-31']);
- expect(dates(read([{ ...parent, start_date: '2027-12-30' }], [{ ...weekly, frequency: 'monthly', days_of_week: null, end_type: 'after_count', end_after_count: 3 }], [], '2027-12-01', '2028-06-30'))).toEqual(['2027-12-30', '2028-01-30', '2028-02-29']);
+it("lands a month-end series on the last day of each shorter month", () => {
+  expect(
+    dates(
+      read(
+        [{ ...parent, start_date: "2026-01-31" }],
+        [{ ...weekly, frequency: "monthly", days_of_week: null }],
+        [],
+        "2026-01-01",
+        "2026-05-31",
+      ),
+    ),
+  ).toEqual([
+    "2026-01-31",
+    "2026-02-28",
+    "2026-03-31",
+    "2026-04-30",
+    "2026-05-31",
+  ]);
+  expect(
+    dates(
+      read(
+        [{ ...parent, start_date: "2027-12-30" }],
+        [
+          {
+            ...weekly,
+            frequency: "monthly",
+            days_of_week: null,
+            end_type: "after_count",
+            end_after_count: 3,
+          },
+        ],
+        [],
+        "2027-12-01",
+        "2028-06-30",
+      ),
+    ),
+  ).toEqual(["2027-12-30", "2028-01-30", "2028-02-29"]);
 });
 it('supports leap-day yearly rules and counted weekly intervals', () => {
  expect(dates(read([{ ...parent, start_date: '2024-02-29' }], [{ ...weekly, frequency: 'yearly', days_of_week: null }], [], '2024-01-01', '2028-12-31'))).toEqual(['2024-02-29', '2028-02-29']);

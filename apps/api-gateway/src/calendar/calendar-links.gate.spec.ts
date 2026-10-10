@@ -143,7 +143,9 @@ describe("DELETE /calendar/ical-links/:userId — stopping someone's link is own
 describe("DELETE /calendar/event-types/:id — deleting a house's type is owner/manager only (F-694)", () => {
   it.each(["owner", "manager"] as const)("%s may delete it", async (role) => {
     const { controller: c, calendar } = controller(role);
-    await expect(c.deleteEventType("t-1", USER)).resolves.toEqual({ success: true });
+    await expect(c.deleteEventType("t-1", USER)).resolves.toEqual({
+      success: true,
+    });
     expect(calendar.deleteEventType).toHaveBeenCalledWith("t-1", "r-1");
   });
 

@@ -654,9 +654,9 @@ export function computeMatch(input: MatchInput): MatchResult {
       : currencyDiffers
         ? `Agreed ${agreed(poUnitPrice)}, billed ${billed(invoiceUnitPrice as number)}. ${notComparedSentence}`
         : priceMismatch
-        ? `Agreed ${agreed(poUnitPrice)} vs billed ${billed(invoiceUnitPrice)}` +
+          ? `Agreed ${agreed(poUnitPrice)} vs billed ${billed(invoiceUnitPrice)}` +
           (overrideReason ? " — accepted by override" : "")
-        : `Both ${agreed(poUnitPrice as number)}`,
+          : `Both ${agreed(poUnitPrice as number)}`,
   });
 
   // --- bill vs PO: did they bill for what we ordered? ------------------------------------
@@ -715,9 +715,7 @@ export function computeMatch(input: MatchInput): MatchResult {
   // The BILLING axis, so free goods come off: the vendor may not bill for what
   // they gave us. This is the one comparison billableReceived belongs in.
   const billedNetOfRefused =
-    hasInvoice &&
-    rejectedQty > 0 &&
-    keptBillable === (invoiceQty as number);
+    hasInvoice && rejectedQty > 0 && keptBillable === (invoiceQty as number);
   const physicalMatchesBill =
     hasInvoice &&
     (billableReceived === (invoiceQty as number) || billedNetOfRefused);
@@ -818,16 +816,16 @@ export function computeMatch(input: MatchInput): MatchResult {
       invoiceQty,
       receivedQty,
       billableReceived,
-      keptBillable,
+    keptBillable,
       acceptedQty,
       rejectedQty,
       freeGoodsQty,
       backorderQty,
       poUnitPrice,
       invoiceUnitPrice,
-      agreed,
-      billed,
-    });
+    agreed,
+    billed,
+  });
 
   return {
     verdict,

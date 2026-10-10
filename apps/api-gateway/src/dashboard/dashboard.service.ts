@@ -286,9 +286,11 @@ export interface SpendInCurrency {
  *
  * Same rule as the receiving queue's `totalAtRiskByCurrency`.
  */
-export function spendByCurrency(
-  orders: any[],
-): { total: number | null; byCurrency: SpendInCurrency[]; unpricedCount: number } {
+export function spendByCurrency(orders: any[]): {
+  total: number | null;
+  byCurrency: SpendInCurrency[];
+  unpricedCount: number;
+} {
   const by = new Map<string | null, number>();
   // An order with no price is left out and counted (F-701): not $0, and not
   // one bottle's `final_price` standing in for the whole order.
@@ -305,11 +307,16 @@ export function spendByCurrency(
         : null;
     by.set(code, cents((by.get(code) ?? 0) + spend));
   }
-  const byCurrency = Array.from(by, ([currency, amount]) => ({ currency, amount }));
+  const byCurrency = Array.from(by, ([currency, amount]) => ({
+    currency,
+    amount,
+  }));
   const named = byCurrency.filter((c) => c.currency !== null).length;
   return {
     total:
-      named > 1 ? null : cents(byCurrency.reduce((sum, c) => sum + c.amount, 0)),
+      named > 1
+        ? null
+        : cents(byCurrency.reduce((sum, c) => sum + c.amount, 0)),
     byCurrency,
     unpricedCount,
   };
@@ -1256,7 +1263,9 @@ export class DashboardService {
           readAll("The house's orders", (after) => {
             let q = client
               .from("procurement_orders")
-              .select("id, status, total_cost, final_price, currency, bottles_total, quantity, delivered_at")
+              .select(
+                "id, status, total_cost, final_price, currency, bottles_total, quantity, delivered_at",
+              )
               .eq("restaurant_id", restaurantId);
             if (after) q = q.gt("id", after);
             return q;
@@ -1622,10 +1631,7 @@ export class DashboardService {
       // tomorrow overdue at 17:00 today in Los Angeles (F-430). A house with
       // no zone has no day of its own, so a date is overdue only once it has
       // passed everywhere: the last zone to leave a day is UTC-12.
-      const houseToday = localDateIn(
-        new Date(),
-        zone ?? "Etc/GMT+12",
-      );
+      const houseToday = localDateIn(new Date(), zone ?? "Etc/GMT+12");
       for (const order of overdue) {
         if (
           order.expected_delivery_date &&

@@ -119,8 +119,16 @@ export function resolveCalendarOccurrences(input: {
       const monthDelta = (date.getUTCFullYear() - anchorDate.getUTCFullYear()) * 12 + date.getUTCMonth() - anchorDate.getUTCMonth();
       const monthDayMatches = rule.week_of_month != null
         ? Math.floor((date.getUTCDate() - 1) / 7) + 1 === rule.week_of_month && weekdays.includes(date.getUTCDay()) && (rule.day_of_month == null || date.getUTCDate() === rule.day_of_month)
-        // Monthly past the month's end falls on its last day (F-199); a yearly Feb 29 still waits for a leap year. Same rule as the web's expand-series.ts.
-        : date.getUTCDate() === (rule.frequency === 'monthly' ? Math.min(rule.day_of_month ?? anchorDate.getUTCDate(), new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate()) : (rule.day_of_month ?? anchorDate.getUTCDate()));
+          : // Monthly past the month's end falls on its last day (F-199); a yearly Feb 29 still waits for a leap year. Same rule as the web's expand-series.ts.
+            date.getUTCDate() ===
+            (rule.frequency === "monthly"
+              ? Math.min(
+                  rule.day_of_month ?? anchorDate.getUTCDate(),
+                  new Date(
+                    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0),
+                  ).getUTCDate(),
+                )
+              : (rule.day_of_month ?? anchorDate.getUTCDate()));
       const qualifies = rule.frequency === 'daily' ? (cursor - anchor) % interval === 0
         : rule.frequency === 'weekly' ? Math.floor((cursor - anchorWeek) / 7) % interval === 0 && weekdays.includes(date.getUTCDay())
         : rule.frequency === 'monthly' ? monthDelta % interval === 0 && monthDayMatches

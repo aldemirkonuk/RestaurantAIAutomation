@@ -71,8 +71,12 @@ describe("answer 1: each firing is one card", () => {
   it("names the firing on the house's calendar when given its zone (F-384)", () => {
     // Sunday 27 Sept, 18:00 in Los Angeles: Monday 28 Sept, ISO W40, in UTC.
     const at = new Date("2026-09-28T01:00:00Z");
-    expect(firingGrain("day", at, "America/Los_Angeles")).toBe("fire:day:2026-09-27");
-    expect(firingGrain("week", at, "America/Los_Angeles")).toBe("fire:week:2026-W39");
+    expect(firingGrain("day", at, "America/Los_Angeles")).toBe(
+      "fire:day:2026-09-27",
+    );
+    expect(firingGrain("week", at, "America/Los_Angeles")).toBe(
+      "fire:week:2026-W39",
+    );
     expect(firingGrain("day", at)).toBe("fire:day:2026-09-28");
     expect(firingGrain("week", at)).toBe("fire:week:2026-W40");
   });
@@ -923,15 +927,17 @@ describe("the feed keys a subject-less rule by its firing", () => {
   it("keys the firing on the house's clock, not UTC's", async () => {
     jest.setSystemTime(Date.parse("2026-10-01T03:00:00.000Z"));
     try {
-      const la = await feed({ zone: "America/Los_Angeles" }).svc.getRecommendations(RID);
-      expect(la.recommendations.find((r) => r.ruleKey === RULE)!.periodKey).toBe(
-        "fire:month:2026-09",
-      );
+      const la = await feed({
+        zone: "America/Los_Angeles",
+      }).svc.getRecommendations(RID);
+      expect(
+        la.recommendations.find((r) => r.ruleKey === RULE)!.periodKey,
+      ).toBe("fire:month:2026-09");
       // No zone to read: UTC, as before.
       const utc = await feed({}).svc.getRecommendations(RID);
-      expect(utc.recommendations.find((r) => r.ruleKey === RULE)!.periodKey).toBe(
-        "fire:month:2026-10",
-      );
+      expect(
+        utc.recommendations.find((r) => r.ruleKey === RULE)!.periodKey,
+      ).toBe("fire:month:2026-10");
     } finally {
       jest.setSystemTime(NOW);
     }

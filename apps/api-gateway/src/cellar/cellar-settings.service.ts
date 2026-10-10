@@ -15,7 +15,8 @@ import {
  * `set_by` / `set_at` are shared by both fields, so they only ever say who
  * touched either one last.
  */
-export const HOLD_CEREMONY_AUDIT_ACTION = "cellar_hold_ceremony_changed" as const;
+export const HOLD_CEREMONY_AUDIT_ACTION =
+  "cellar_hold_ceremony_changed" as const;
 export const TILES_AUDIT_ACTION = "cellar_tiles_changed" as const;
 
 /**

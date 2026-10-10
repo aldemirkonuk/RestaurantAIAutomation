@@ -25,9 +25,24 @@ const NOW = new Date("2026-10-01T12:00:00Z");
 function build(progress: any) {
   const db = new FakeDb();
   db.tables.user_restaurant_access = [
-    { restaurant_id: TENANT, user_id: "user-1", role: "owner", is_active: true },
-    { restaurant_id: TENANT, user_id: "user-2", role: "manager", is_active: true },
-    { restaurant_id: TENANT, user_id: "user-3", role: "staff", is_active: true },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-1",
+      role: "owner",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-2",
+      role: "manager",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-3",
+      role: "staff",
+      is_active: true,
+    },
   ];
   const database = fakeDatabase(db, MEMBERS);
   const notifications = fakeNotifications(MEMBERS);
@@ -136,9 +151,9 @@ describe("CeilingHeldProducer", () => {
     const { db, notifications, producer } = build(HELD);
     db.tables.analytics_goals.push(ceiling());
     db.failures.user_restaurant_access = "permission denied";
-    await expect(producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW)).rejects.toThrow(
-      /user_restaurant_access/,
-    );
+    await expect(
+      producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW),
+    ).rejects.toThrow(/user_restaurant_access/);
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
   });
 

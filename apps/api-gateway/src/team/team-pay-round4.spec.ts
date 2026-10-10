@@ -642,7 +642,15 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
   it("the shift writers: an owner's shift comes back to a switched-on manager without its cost, and is still priced", async () => {
     const db = seed({ managerPay: true });
     // Tuesday: the same 09:00 for the same person would be a double booking (F-377).
-    db.tables.shifts.push(shift({ id: "sh-open", member_id: null, state: "open", labor_cost: null, shift_date: "2026-09-08" }));
+    db.tables.shifts.push(
+      shift({
+        id: "sh-open",
+        member_id: null,
+        state: "open",
+        labor_cost: null,
+        shift_date: "2026-09-08",
+      }),
+    );
     const svc = scheduleOf(db);
     const created = await svc.createShift(MANAGER, RID, {
       memberId: "m-owner",
@@ -689,7 +697,14 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
 
     // Unassigned alone, with nothing else changed, it is priced as nobody's too.
     // Tuesday: the same 09:00 for the same person would be a double booking (F-377).
-    db.tables.shifts.push(shift({ id: "sh4", member_id: "m-owner", labor_cost: 300, shift_date: "2026-09-08" }));
+    db.tables.shifts.push(
+      shift({
+        id: "sh4",
+        member_id: "m-owner",
+        labor_cost: 300,
+        shift_date: "2026-09-08",
+      }),
+    );
     const bare = await svc.updateShift(MANAGER, RID, "sh4", { memberId: null } as any);
     expect(bare.labor_cost).toBeNull();
     expect(db.tables.shifts.find((s) => s.id === "sh4")?.labor_cost).toBeNull();
@@ -786,9 +801,17 @@ describe("R5 — recordOwnWageChange says when the owner was not told", () => {
     expect(inserted.filter((i) => i.table === "notifications")).toHaveLength(0);
   });
 
-  it("[REVERT-FAILS] the figures are grouped the house's way, not \"1234.50 TRY\" (F-888)", async () => {
-    const { sb, inserted } = sbWith({ data: [{ user_id: OWNER }], error: null });
-    await recordOwnWageChange(sb, logger, { ...change, before: 1234.5, after: 1300, locale: "tr-TR" });
+  it('[REVERT-FAILS] the figures are grouped the house\'s way, not "1234.50 TRY" (F-888)', async () => {
+    const { sb, inserted } = sbWith({
+      data: [{ user_id: OWNER }],
+      error: null,
+    });
+    await recordOwnWageChange(sb, logger, {
+      ...change,
+      before: 1234.5,
+      after: 1300,
+      locale: "tr-TR",
+    });
     const notice = inserted.find((i) => i.table === "notifications")!.row;
     expect(notice.message).toContain("from ₺1.234,50 to ₺1.300,00");
     expect(notice.message).not.toContain("1234.50");

@@ -127,9 +127,7 @@ function makeDb(opts: DbOpts = {}) {
     },
     rpc: async (fn: string, args: Row) => {
       calls.rpc.push({ fn, args });
-      const res = opts.rpc
-        ? opts.rpc(fn, args)
-        : { data: "tx-1", error: null };
+      const res = opts.rpc ? opts.rpc(fn, args) : { data: "tx-1", error: null };
       // A refused write leaves no row for the ledger read to find.
       if (!res.error) booked.push({ fn, args });
       return res;
@@ -888,7 +886,10 @@ describe("a closed_at the import does not read is refused, not imported (ADR 028
 
 describe("a voided flag the import does not read is refused, not guessed (sim F-397)", () => {
   it("writes nothing for the check and says how to write it", async () => {
-    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
     const res = await ingest(service, [
       check("c-v", "2026-07-14T21:00:00Z", [line(BOTTLE)], { voided: "maybe" }),
     ]);
@@ -903,12 +904,17 @@ describe("a voided flag the import does not read is refused, not guessed (sim F-
 
 describe('voided: "false" from a till is a sale, not a void (sim F-397)', () => {
   it("depletes the bottle instead of returning one", async () => {
-    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
     await ingest(service, [
       check("c-f", "2026-07-14T21:00:00Z", [line(BOTTLE)], { voided: "false" }),
     ]);
     expect(calls.checks[0].voided).toBe(false);
-    const deltas = calls.rpc.map((c) => c.args.p_delta).filter((d) => d !== undefined);
+    const deltas = calls.rpc
+      .map((c) => c.args.p_delta)
+      .filter((d) => d !== undefined);
     expect(deltas.length).toBeGreaterThan(0);
     expect(deltas.every((d) => Number(d) < 0)).toBe(true);
   });
@@ -916,7 +922,10 @@ describe('voided: "false" from a till is a sale, not a void (sim F-397)', () => 
 
 describe("an amount the import does not read is refused, not stored wrong (sim F-396)", () => {
   it("writes nothing for the check and names the field", async () => {
-    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
     const res = await ingest(service, [
       check("c-m", "2026-07-14T21:00:00Z", [line(BOTTLE)], { total: "1.350" }),
     ]);
@@ -928,9 +937,15 @@ describe("an amount the import does not read is refused, not stored wrong (sim F
   });
 
   it("stores a Turkish-written total as the amount it says", async () => {
-    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
     await ingest(service, [
-      check("c-t", "2026-07-14T21:00:00Z", [line(BOTTLE)], { total: "1.350,50", tip: "100,00" }),
+      check("c-t", "2026-07-14T21:00:00Z", [line(BOTTLE)], {
+        total: "1.350,50",
+        tip: "100,00",
+      }),
     ]);
     expect(calls.checks[0]).toMatchObject({ total: 1350.5, tip: 100 });
   });

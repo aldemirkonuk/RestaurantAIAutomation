@@ -528,7 +528,13 @@ describe("DayRecordService", () => {
     // "today" filed the LA evening still running as a passed day.
     jest.useFakeTimers({
       now: new Date("2026-10-10T03:00:00Z"),
-      doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "setTimeout",
+        "setInterval",
+        "queueMicrotask",
+      ],
     });
     try {
       const { service } = makeService({
@@ -550,7 +556,12 @@ describe("DayRecordService", () => {
         weather: WEATHER({ forecastInAdvance: [] }),
         timezone: "America/Los_Angeles",
       });
-      const out = await service.windowFor("r1", "2026-10-09", "2026-10-09", OWNER);
+      const out = await service.windowFor(
+        "r1",
+        "2026-10-09",
+        "2026-10-09",
+        OWNER,
+      );
       expect(out.days).toHaveLength(0);
     } finally {
       jest.useRealTimers();
@@ -1227,7 +1238,13 @@ describe("DayRecordService — net takings and the house currency", () => {
     async (hour) => {
       jest.useFakeTimers({
         now: new Date(Date.UTC(2026, 9, 10, hour, 30)),
-        doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+        doNotFake: [
+          "nextTick",
+          "setImmediate",
+          "setTimeout",
+          "setInterval",
+          "queueMicrotask",
+        ],
       });
       try {
         await expectUnreadableCurrencyKeptApart();

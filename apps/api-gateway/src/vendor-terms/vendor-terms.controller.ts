@@ -109,12 +109,7 @@ export class VendorTermsController {
     try {
       // The author comes from the JWT and nowhere else. `public.users.user_id`,
       // never `auth.users` — the two are disjoint and no FK would catch it.
-      return await this.terms.write(
-        restaurantId,
-        providerId,
-        dto,
-        author,
-      );
+      return await this.terms.write(restaurantId, providerId, dto, author);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

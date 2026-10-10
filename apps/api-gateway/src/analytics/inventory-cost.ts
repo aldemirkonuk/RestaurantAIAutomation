@@ -184,8 +184,11 @@ function wacIsInHouseMoney(
   const count = Number(lot.cost_currency_count ?? 0);
   if (Number.isFinite(count) && count > 1) return false;
   const code =
-    typeof lot.cost_currency === "string" ? lot.cost_currency.trim().toUpperCase() : "";
-  const house = typeof houseCurrency === "string" ? houseCurrency.trim().toUpperCase() : "";
+    typeof lot.cost_currency === "string"
+      ? lot.cost_currency.trim().toUpperCase()
+      : "";
+  const house =
+    typeof houseCurrency === "string" ? houseCurrency.trim().toUpperCase() : "";
   return !code || !house || code === house;
 }
 

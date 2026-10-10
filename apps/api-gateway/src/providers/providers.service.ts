@@ -439,7 +439,10 @@ export class ProvidersService {
         skip("Not one of this house's vendors.");
         continue;
       }
-      if (row.catalogue_vendor_id && haveCatalogue.has(row.catalogue_vendor_id)) {
+      if (
+        row.catalogue_vendor_id &&
+        haveCatalogue.has(row.catalogue_vendor_id)
+      ) {
         skip("Already on that house's list.");
         continue;
       }
@@ -695,7 +698,9 @@ export class ProvidersService {
         providerId,
         restaurantId,
       });
-      throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
+      throw new NotFoundException(
+        "That vendor is not in this house's book; it may have been removed.",
+      );
     }
 
     const provider = this.mapProviderRow(data as ProviderRow);
@@ -1896,7 +1901,10 @@ export class ProvidersService {
         `This vendor's usual currency could not be read (${error.message}). That is a failed read, not an empty field — nothing here says the vendor has stated no currency.`,
       );
     }
-    if (!data) throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
+    if (!data)
+      throw new NotFoundException(
+        "That vendor is not in this house's book; it may have been removed.",
+      );
 
     const row = data as unknown as {
       name?: string | null;
@@ -2065,7 +2073,9 @@ export class ProvidersService {
       );
     }
     if (!data)
-      throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
+      throw new NotFoundException(
+        "That vendor is not in this house's book; it may have been removed.",
+      );
 
     return {
       code: (data as { usual_currency: string }).usual_currency,

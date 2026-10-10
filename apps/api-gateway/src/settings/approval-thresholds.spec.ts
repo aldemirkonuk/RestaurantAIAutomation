@@ -122,19 +122,25 @@ describe("decideApproval — across currencies and price units (F-648)", () => {
 
   it("keeps the old reading when either currency is unknown", () => {
     expect(
-      decideApproval(ceil, order({ total: 2400, currency: null, ceilingCurrency: "USD" }))
-        .requiredRole,
+      decideApproval(
+        ceil,
+        order({ total: 2400, currency: null, ceilingCurrency: "USD" }),
+      ).requiredRole,
     ).toBeNull();
     expect(
-      decideApproval(ceil, order({ total: 2400, currency: "USD", ceilingCurrency: "USD" }))
-        .requiredRole,
+      decideApproval(
+        ceil,
+        order({ total: 2400, currency: "USD", ceilingCurrency: "USD" }),
+      ).requiredRole,
     ).toBeNull();
   });
 
   it("reports price_jump untestable when the prices cannot be compared", () => {
     const d = decideApproval(
       [row({ rule: "price_jump", percentLimit: 5 })],
-      order({ priceUncomparable: "the last price was in GBP and this one is in USD" }),
+      order({
+        priceUncomparable: "the last price was in GBP and this one is in USD",
+      }),
     );
     expect(d.requiredRole).toBeNull();
     expect(d.untestable).toEqual(["price_jump"]);
@@ -165,14 +171,20 @@ describe("pricePremium", () => {
   it("refuses to compare a keg price with a bottle price", () => {
     const r = pricePremium(
       { price: 38, currency: "USD", priceUnit: null },
-      { price: 200, currency: "USD", priceUnit: { priceUom: "keg", pricePackSize: 1 } },
+      {
+        price: 200,
+        currency: "USD",
+        priceUnit: { priceUom: "keg", pricePackSize: 1 },
+      },
     );
     expect(r.pct).toBeNull();
     expect(r.uncomparable).toMatch(/keg/);
   });
 
   it("has no premium without an earlier price", () => {
-    expect(pricePremium({ price: 38, currency: "USD", priceUnit: null }, null)).toEqual({
+    expect(
+      pricePremium({ price: 38, currency: "USD", priceUnit: null }, null),
+    ).toEqual({
       pct: null,
       uncomparable: null,
     });
@@ -351,9 +363,36 @@ describe("ApprovalThresholdsService", () => {
       ],
       procurement_orders: [
         // p1: a cancelled draft, then a two-line first cart — one first order.
-        { id: "x", status: "CANCELLED", provider_id: "p1", inventory_id: null, requested_at: "2026-09-01T08:00:00Z", created_at: "2026-09-01T08:00:00Z", total_cost: "10", final_price: null },
-        { id: "a", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z", total_cost: "10", final_price: null },
-        { id: "b", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z", total_cost: "10", final_price: null },
+        {
+          id: "x",
+          status: "CANCELLED",
+          provider_id: "p1",
+          inventory_id: null,
+          requested_at: "2026-09-01T08:00:00Z",
+          created_at: "2026-09-01T08:00:00Z",
+          total_cost: "10",
+          final_price: null,
+        },
+        {
+          id: "a",
+          status: "PENDING",
+          provider_id: "p1",
+          inventory_id: null,
+          requested_at: "2026-09-02T08:00:00Z",
+          created_at: "2026-09-02T08:00:00Z",
+          total_cost: "10",
+          final_price: null,
+        },
+        {
+          id: "b",
+          status: "PENDING",
+          provider_id: "p1",
+          inventory_id: null,
+          requested_at: "2026-09-02T08:00:00Z",
+          created_at: "2026-09-02T08:00:00Z",
+          total_cost: "10",
+          final_price: null,
+        },
       ],
       users: [],
     });
@@ -387,7 +426,14 @@ describe("ApprovalThresholdsService", () => {
       ],
       procurement_orders: [
         // DELIVERED: only a price paid becomes the next comparison (F-479).
-        { provider_id: "p1", inventory_id: "i1", status: "DELIVERED", requested_at: "2026-09-01T08:00:00Z", total_cost: "100", final_price: "10" },
+        {
+          provider_id: "p1",
+          inventory_id: "i1",
+          status: "DELIVERED",
+          requested_at: "2026-09-01T08:00:00Z",
+          total_cost: "100",
+          final_price: "10",
+        },
         // +30% on the same item — over the 12% the house allows.
         { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-02T08:00:00Z", total_cost: "130", final_price: "13" },
         // A different item, so no comparison exists for it yet.
@@ -552,7 +598,12 @@ describe("ApprovalThresholdsService — a failed name lookup is not an unsigned 
 
 describe("the first order to a vendor — one test for the gate, the walk and the count (F-731)", () => {
   const T = "2026-10-01T10:00:00Z";
-  const row = (id: string, status: string, requested_at: string | null, created_at = requested_at) => ({
+  const row = (
+    id: string,
+    status: string,
+    requested_at: string | null,
+    created_at = requested_at,
+  ) => ({
     id,
     status,
     provider_id: "p1",
@@ -583,12 +634,18 @@ describe("the first order to a vendor — one test for the gate, the walk and th
   });
 
   it("an order with no vendor is unknown, never 'not first'", () => {
-    const flags = firstOrderToVendorById([{ ...row("n", "PENDING", T), provider_id: null }]);
+    const flags = firstOrderToVendorById([
+      { ...row("n", "PENDING", T), provider_id: null },
+    ]);
     expect(flags.get("n")).toBeNull();
   });
 
   it("the gate's single-order form agrees with the ledger form", () => {
-    const rows = [row("a", "PENDING", T), row("b", "PENDING", T), row("x", "CANCELLED", "2026-01-01T00:00:00Z")];
+    const rows = [
+      row("a", "PENDING", T),
+      row("b", "PENDING", T),
+      row("x", "CANCELLED", "2026-01-01T00:00:00Z"),
+    ];
     const flags = firstOrderToVendorById(rows);
     for (const r of rows) {
       expect(isFirstOrderToVendorAmong(r, rows)).toBe(flags.get(r.id));
@@ -597,8 +654,26 @@ describe("the first order to a vendor — one test for the gate, the walk and th
 
   it("a page cut short says 'unknown' unless it reached this order", () => {
     const self = row("s", "PENDING", T);
-    expect(isFirstOrderToVendorAmong(self, [row("x", "CANCELLED", "2026-01-01T00:00:00Z")], false)).toBeNull();
-    expect(isFirstOrderToVendorAmong(self, [row("x", "CANCELLED", "2026-01-01T00:00:00Z"), self], false)).toBe(true);
-    expect(isFirstOrderToVendorAmong(self, [row("p", "DELIVERED", "2026-01-01T00:00:00Z")], false)).toBe(false);
+    expect(
+      isFirstOrderToVendorAmong(
+        self,
+        [row("x", "CANCELLED", "2026-01-01T00:00:00Z")],
+        false,
+      ),
+    ).toBeNull();
+    expect(
+      isFirstOrderToVendorAmong(
+        self,
+        [row("x", "CANCELLED", "2026-01-01T00:00:00Z"), self],
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      isFirstOrderToVendorAmong(
+        self,
+        [row("p", "DELIVERED", "2026-01-01T00:00:00Z")],
+        false,
+      ),
+    ).toBe(false);
   });
 });

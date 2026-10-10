@@ -2080,7 +2080,9 @@ export class DocumentsController {
     const { data: doc, error: readError } = await this.db
       .getClient()
       .from("procurement_documents")
-      .select("id, restaurant_id, provider_id, doc_type, currency, status, extracted, total")
+      .select(
+        "id, restaurant_id, provider_id, doc_type, currency, status, extracted, total",
+      )
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
       .maybeSingle();
@@ -2278,7 +2280,10 @@ export class DocumentsController {
      * failures, and they are logged here.
      */
     const docVendor = (doc as { provider_id?: string | null }).provider_id;
-    if ((doc as { doc_type?: string | null }).doc_type === "invoice" && docVendor) {
+    if (
+      (doc as { doc_type?: string | null }).doc_type === "invoice" &&
+      docVendor
+    ) {
       try {
         const learned = await learnUsualCurrencyFromInvoices(
           this.db.getClient(),

@@ -106,15 +106,21 @@ describe("renderCsv in the house's marks (F-907)", () => {
       .split("\r\n");
     const table = lira.indexOf("The list");
     expect(lira[table + 1]).toBe("Wine;Margin per bottle (TRY);Change");
-    expect(lira[table + 2]).toBe(`"'=HYPERLINK(""http://evil"")";withheld;-3,25 %`);
+    expect(lira[table + 2]).toBe(
+      `"'=HYPERLINK(""http://evil"")";withheld;-3,25 %`,
+    );
     // A comma inside a cell needs no quotes now; a ';' inside one does.
     expect(lira[table + 3].endsWith(";-12,5;0,4 share, 0–1")).toBe(true);
-    expect(lira).toContain('Window;"365 days of COGS; the cellar as it stands today"');
+    expect(lira).toContain(
+      'Window;"365 days of COGS; the cellar as it stands today"',
+    );
     expect(lira).toContain("Sell-price valuation;5400;TRY;");
   });
 
   it("keeps ',' and '.' for an en-US house or one with no formats tag", () => {
-    expect(renderCsv(DOC, { ...HEADER, locale: "en-US" })).toBe(renderCsv(DOC, HEADER));
+    expect(renderCsv(DOC, { ...HEADER, locale: "en-US" })).toBe(
+      renderCsv(DOC, HEADER),
+    );
     expect(renderCsv(DOC, HEADER)).toContain(",-12.5,");
   });
 });
@@ -151,9 +157,13 @@ describe("renderHtml (OD-81)", () => {
   });
 
   it("writes Written on the house's clock, and says so when the house has no zone (F-413)", () => {
-    expect(html).toContain("Written 2026-09-17 12:00, house time (Europe/Istanbul)");
+    expect(html).toContain(
+      "Written 2026-09-17 12:00, house time (Europe/Istanbul)",
+    );
     const unzoned = renderHtml(DOC, { ...HEADER, timezone: null });
-    expect(unzoned).toContain("Written 2026-09-17 09:00 UTC; this house has no time zone set");
+    expect(unzoned).toContain(
+      "Written 2026-09-17 09:00 UTC; this house has no time zone set",
+    );
     expect(unzoned).not.toContain("2026-09-17T09:00:00.000Z");
   });
 
@@ -166,7 +176,9 @@ describe("renderHtml (OD-81)", () => {
 
   it("[REVERT-FAILS] groups the printed figures the house's way (F-889)", () => {
     const lira = renderHtml(DOC, { ...HEADER, locale: "tr-TR" });
-    expect(lira).toContain(`<dt>Sell-price valuation</dt><dd>5.400,00 TRY</dd>`);
+    expect(lira).toContain(
+      `<dt>Sell-price valuation</dt><dd>5.400,00 TRY</dd>`,
+    );
     expect(lira).not.toContain("5,400.00");
     expect(lira).toContain(">-12,50<");
     expect(lira).toContain(">%40,0<");

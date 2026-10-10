@@ -11,11 +11,7 @@
  * house had switched off.
  */
 import { HttpStatus, Logger } from "@nestjs/common";
-import {
-  PosHubService,
-  categoryIsFood,
-  copyIsStale,
-} from "./pos-hub.service";
+import { PosHubService, categoryIsFood, copyIsStale } from "./pos-hub.service";
 import { squareAdapter, toastAdapter } from "./pos-adapters";
 import { DatabaseService } from "../database/database.service";
 
@@ -206,7 +202,10 @@ describe("F-639: ingest keeps the newest copy", () => {
   });
 
   it("stores the version it was given, so the next copy is judged against it", async () => {
-    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
     await ingest(service, [
       check("c-1", {
         sourceVersion: 7,
@@ -231,7 +230,10 @@ describe("F-639: ingest keeps the newest copy", () => {
   });
 
   it("a late 'closed' copy after the void was booked takes nothing off stock again", async () => {
-    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
     await ingest(service, [check("c-1")]);
     await ingest(service, [check("c-1", { voided: true })]);
     const before = calls.rpc.length;
@@ -257,10 +259,21 @@ describe("F-640: every unmapped drink is asked about", () => {
     const { service, calls } = makeDb();
     const res = await ingest(service, [
       check("c-2", {}, [
-        { name: "Kavaklıdere Öküzgözü 2022", externalItemId: "a", qty: 1, price: 30 },
+        {
+          name: "Kavaklıdere Öküzgözü 2022",
+          externalItemId: "a",
+          qty: 1,
+          price: 30,
+        },
         { name: "Efes Draft", externalItemId: "b", qty: 2, price: 8 },
         { name: "Yeni Rakı 35cl", externalItemId: "c", qty: 1, price: 20 },
-        { name: "Kale salad", externalItemId: "d", qty: 1, price: 12, category: "Salads" },
+        {
+          name: "Kale salad",
+          externalItemId: "d",
+          qty: 1,
+          price: 12,
+          category: "Salads",
+        },
       ]),
     ]);
     expect(calls.queued.map((r) => r.external_item_id).sort()).toEqual([
@@ -291,7 +304,10 @@ describe("F-640: every unmapped drink is asked about", () => {
 
 describe("F-641: a size the hub cannot name is asked about", () => {
   it("a modifier no mapping names queues the line as no_sale_volume and moves nothing", async () => {
-    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
     await ingest(service, [
       check("c-4", {}, [
         {
@@ -305,7 +321,10 @@ describe("F-641: a size the hub cannot name is asked about", () => {
     ]);
     expect(calls.rpc).toHaveLength(0);
     expect(calls.queued).toEqual([
-      expect.objectContaining({ external_item_id: "btl-1", reason: "no_sale_volume" }),
+      expect.objectContaining({
+        external_item_id: "btl-1",
+        reason: "no_sale_volume",
+      }),
     ]);
     expect(calls.checks[0].items[0].modifier_ids).toEqual(["glass-mod"]);
   });
@@ -391,20 +410,26 @@ describe("F-639 / F-641: adapters carry versions and modifiers", () => {
 describe("F-643: a house can unplug its till", () => {
   it("no row is a feed never switched, and is taken", async () => {
     const { service } = makeDb();
-    await expect(service.assertConnected("r-1", "toast")).resolves.toBeUndefined();
+    await expect(
+      service.assertConnected("r-1", "toast"),
+    ).resolves.toBeUndefined();
   });
   it("a switched-off feed is refused with 409 in plain words", async () => {
     const { service } = makeDb({ connection: { enabled: false } });
-    await expect(service.assertConnected("r-1", "toast")).rejects.toMatchObject({
-      status: HttpStatus.CONFLICT,
-      message: expect.stringMatching(/disconnected toast/),
-    });
+    await expect(service.assertConnected("r-1", "toast")).rejects.toMatchObject(
+      {
+        status: HttpStatus.CONFLICT,
+        message: expect.stringMatching(/disconnected toast/),
+      },
+    );
   });
   it("a read that fails refuses with 503 rather than taking the feed", async () => {
     const { service } = makeDb({ connectionError: { message: "down" } });
-    await expect(service.assertConnected("r-1", "toast")).rejects.toMatchObject({
-      status: HttpStatus.SERVICE_UNAVAILABLE,
-    });
+    await expect(service.assertConnected("r-1", "toast")).rejects.toMatchObject(
+      {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+      },
+    );
   });
   it("setConnection writes one row per house and provider, with who changed it", async () => {
     const { service, calls } = makeDb();
@@ -440,7 +465,13 @@ describe("F-643: a house can unplug its till", () => {
     const ok = new PosHubService({
       getClient: () =>
         clientWith({
-          data: [{ provider: "toast", enabled: false, changed_at: "2026-10-10T09:00:00Z" }],
+          data: [
+            {
+              provider: "toast",
+              enabled: false,
+              changed_at: "2026-10-10T09:00:00Z",
+            },
+          ],
           error: null,
         }),
     } as unknown as DatabaseService);

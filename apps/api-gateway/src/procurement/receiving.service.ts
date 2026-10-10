@@ -880,8 +880,10 @@ export class ReceivingService {
       .in("stage", ["case_count", "reconciled"]);
     if (error) throw new Error(error.message);
 
-    const enteredAt = (r: { created_at?: string | null; occurred_at?: string | null }) =>
-      String(r.created_at ?? r.occurred_at ?? "");
+    const enteredAt = (r: {
+      created_at?: string | null;
+      occurred_at?: string | null;
+    }) => String(r.created_at ?? r.occurred_at ?? "");
     // Two events stamped in the same instant fall back to their id, so the
     // checkpoint they fold into is the same on every read (F-862).
     const rows = [...(data ?? [])].sort((a, b) =>
@@ -903,7 +905,9 @@ export class ReceivingService {
         verified = true;
         const checked =
           r.counted_qty_bottles == null ? NaN : Number(r.counted_qty_bottles);
-        receivedBottles = Number.isFinite(checked) ? Math.max(0, checked) : null;
+        receivedBottles = Number.isFinite(checked)
+          ? Math.max(0, checked)
+          : null;
         continue;
       }
       const accepted = Math.max(
@@ -1150,19 +1154,17 @@ export class ReceivingService {
       outcome: string | null;
       occurred_at: string;
       stage: string;
-    }>(
-      "The deliveries counted at the door",
-      () =>
-        this.db
-          .getClient()
-          .from("procurement_receipt_events")
-          .select(
-            "id, order_id, counted_qty_bottles, rejected_qty_bottles, outcome, occurred_at, stage",
-            {
-              count: "exact",
-            },
-          )
-          .eq("restaurant_id", restaurantId),
+    }>("The deliveries counted at the door", () =>
+      this.db
+        .getClient()
+        .from("procurement_receipt_events")
+        .select(
+          "id, order_id, counted_qty_bottles, rejected_qty_bottles, outcome, occurred_at, stage",
+          {
+            count: "exact",
+          },
+        )
+        .eq("restaurant_id", restaurantId),
     );
     const capped = false;
 
@@ -1298,7 +1300,9 @@ export class ReceivingService {
     const { data, error } = await this.db
       .getClient()
       .from("procurement_receipt_events")
-      .select("order_id, occurred_at, outcome, counted_qty_bottles, rejected_qty_bottles")
+      .select(
+        "order_id, occurred_at, outcome, counted_qty_bottles, rejected_qty_bottles",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("stage", "case_count")
       .gte("occurred_at", start.toISOString())

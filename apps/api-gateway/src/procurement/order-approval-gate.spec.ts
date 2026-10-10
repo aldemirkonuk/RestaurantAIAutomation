@@ -99,7 +99,12 @@ function makeDb(opts: {
   /** `restaurants.currency` — the currency the ceiling is in (F-648). */
   houseCurrency?: string | null;
 }) {
-  const calls: Calls = { orderUpdates: [], auditInserts: [], seals: [], notificationUpdates: [] };
+  const calls: Calls = {
+    orderUpdates: [],
+    auditInserts: [],
+    seals: [],
+    notificationUpdates: [],
+  };
 
   const supabase: any = {
     from(table: string) {
@@ -113,7 +118,10 @@ function makeDb(opts: {
 
       const settle = (shape: "one" | "many") => {
         if (table === "restaurants") {
-          return { data: { currency: opts.houseCurrency ?? null }, error: null };
+          return {
+            data: { currency: opts.houseCurrency ?? null },
+            error: null,
+          };
         }
         if (table === "providers") {
           if (opts.countErrors)
@@ -239,7 +247,8 @@ function makeDb(opts: {
           return q;
         },
         not: (col: string, op: string, value: unknown) => {
-          if (col === "orders.final_price" && op === "is" && value === null) pricedOnly = true;
+          if (col === "orders.final_price" && op === "is" && value === null)
+            pricedOnly = true;
           return q;
         },
         gte: () => q,
@@ -484,7 +493,11 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       order: { ...ORDER_ROW, total_cost: 2400, currency: "GBP" },
       houseCurrency: "USD",
     });
-    const svc = service(db, thresholdsStub([ceiling(2500)]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([ceiling(2500)]),
+      orgsStub("manager"),
+    );
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /in GBP, while the 2500 ceiling this house set for a manager is in USD/,
@@ -497,7 +510,11 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       order: { ...ORDER_ROW, total_cost: 2400, currency: "USD" },
       houseCurrency: "USD",
     });
-    const svc = service(db, thresholdsStub([ceiling(2500)]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([ceiling(2500)]),
+      orgsStub("manager"),
+    );
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -517,7 +534,11 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
         },
       ],
     });
-    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([priceJump(5)]),
+      orgsStub("manager"),
+    );
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /8\.6% above the last price this house paid/,
@@ -534,7 +555,11 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       },
       priorPrices: [{ final_price: 35, currency: "USD" }],
     });
-    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([priceJump(5)]),
+      orgsStub("manager"),
+    );
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -545,7 +570,11 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
       order: { ...ORDER_ROW, final_price: 400, currency: "USD" },
       priorPrices: [{ final_price: 30, currency: "GBP" }],
     });
-    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([priceJump(5)]),
+      orgsStub("manager"),
+    );
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -599,10 +628,19 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
       order: FIRST_LINE,
       vendorOrders: [
         { id: ORDER, status: "PENDING", requested_at: AT, created_at: AT },
-        { id: "99999999-9999-4999-8999-999999999999", status: "PENDING", requested_at: AT, created_at: "2026-10-01T10:00:01Z" },
+        {
+          id: "99999999-9999-4999-8999-999999999999",
+          status: "PENDING",
+          requested_at: AT,
+          created_at: "2026-10-01T10:00:01Z",
+        },
       ],
     });
-    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([newVendorRule()]),
+      orgsStub("manager"),
+    );
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /first order this house has placed with this vendor/,
@@ -614,12 +652,26 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
     const { db } = makeDb({
       order: FIRST_LINE,
       vendorOrders: [
-        { id: "o-cancelled", status: "CANCELLED", requested_at: "2026-09-01T00:00:00Z", created_at: "2026-09-01T00:00:00Z" },
-        { id: "o-rejected", status: "rejected", requested_at: "2026-09-02T00:00:00Z", created_at: "2026-09-02T00:00:00Z" },
+        {
+          id: "o-cancelled",
+          status: "CANCELLED",
+          requested_at: "2026-09-01T00:00:00Z",
+          created_at: "2026-09-01T00:00:00Z",
+        },
+        {
+          id: "o-rejected",
+          status: "rejected",
+          requested_at: "2026-09-02T00:00:00Z",
+          created_at: "2026-09-02T00:00:00Z",
+        },
         { id: ORDER, status: "PENDING", requested_at: AT, created_at: AT },
       ],
     });
-    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([newVendorRule()]),
+      orgsStub("manager"),
+    );
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /first order this house has placed with this vendor/,
@@ -627,15 +679,33 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
   });
 
   it("the later line of the same cart is not first — only the earliest is held", async () => {
-    const LATER = { ...ORDER_ROW, requested_at: AT, created_at: "2026-10-01T10:00:01Z" };
+    const LATER = {
+      ...ORDER_ROW,
+      requested_at: AT,
+      created_at: "2026-10-01T10:00:01Z",
+    };
     const { db, calls } = makeDb({
       order: LATER,
       vendorOrders: [
-        { id: "00000000-0000-4000-8000-000000000001", status: "PENDING", requested_at: AT, created_at: AT },
-        { id: ORDER, status: "PENDING", requested_at: AT, created_at: LATER.created_at },
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          status: "PENDING",
+          requested_at: AT,
+          created_at: AT,
+        },
+        {
+          id: ORDER,
+          status: "PENDING",
+          requested_at: AT,
+          created_at: LATER.created_at,
+        },
       ],
     });
-    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([newVendorRule()]),
+      orgsStub("manager"),
+    );
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -643,18 +713,56 @@ describe("approveOrder — the first order to a vendor, one test everywhere (F-7
 
   it("[REVERT-FAILS] the /orders walk marks the same line the gate holds", async () => {
     const ledgerRows = [
-      { id: "o-cancelled", status: "CANCELLED", provider_id: "p1", inventory_id: null, requested_at: "2026-09-01T00:00:00Z", created_at: "2026-09-01T00:00:00Z", total_cost: 10, final_price: null },
-      { id: "o-b", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: AT, created_at: AT, total_cost: 10, final_price: null },
-      { id: "o-a", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: AT, created_at: AT, total_cost: 10, final_price: null },
+      {
+        id: "o-cancelled",
+        status: "CANCELLED",
+        provider_id: "p1",
+        inventory_id: null,
+        requested_at: "2026-09-01T00:00:00Z",
+        created_at: "2026-09-01T00:00:00Z",
+        total_cost: 10,
+        final_price: null,
+      },
+      {
+        id: "o-b",
+        status: "PENDING",
+        provider_id: "p1",
+        inventory_id: null,
+        requested_at: AT,
+        created_at: AT,
+        total_cost: 10,
+        final_price: null,
+      },
+      {
+        id: "o-a",
+        status: "PENDING",
+        provider_id: "p1",
+        inventory_id: null,
+        requested_at: AT,
+        created_at: AT,
+        total_cost: 10,
+        final_price: null,
+      },
     ];
     // The walk reads the pending orders whole (ADR 0292, F-331) and asks each
     // one's vendor history with the gate's own probe, so the probe is fed the
     // same ledger the database would hand it.
     const { db } = makeDb({
       ledgerRows,
-      vendorOrders: ledgerRows.map(({ id, status, requested_at, created_at }) => ({ id, status, requested_at, created_at })),
+      vendorOrders: ledgerRows.map(
+        ({ id, status, requested_at, created_at }) => ({
+          id,
+          status,
+          requested_at,
+          created_at,
+        }),
+      ),
     });
-    const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([newVendorRule()]),
+      orgsStub("manager"),
+    );
 
     const gate = await svc.approvalGate(REST, USER);
     const held = gate.orders.filter((o) => !o.mayApprove).map((o) => o.orderId);
@@ -687,7 +795,11 @@ describe("approveOrder — price_jump compares against the last price PAID (F-47
         { final_price: 390, status: "DELIVERED", requested_at: "2026-09-01" },
       ],
     });
-    const svc = service(db, thresholdsStub([priceJumpRule(20)]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([priceJumpRule(20)]),
+      orgsStub("manager"),
+    );
 
     await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -703,7 +815,11 @@ describe("approveOrder — price_jump compares against the last price PAID (F-47
         { final_price: 250, status: "COMPLETED", requested_at: "2026-09-01" },
       ],
     });
-    const svc = service(db, thresholdsStub([priceJumpRule(20)]), orgsStub("manager"));
+    const svc = service(
+      db,
+      thresholdsStub([priceJumpRule(20)]),
+      orgsStub("manager"),
+    );
 
     // 400 over the 250 paid is 60% — the rule names the jump, not the seal.
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
@@ -839,9 +955,30 @@ describe("approvalGate — what the page is allowed to draw", () => {
     const { db } = makeDb({
       // Oldest first, as the walk reads them.
       ledgerRows: [
-        { id: "o-paid", status: "DELIVERED", provider_id: "p1", inventory_id: "inv-1", total_cost: 390, final_price: 390 },
-        { id: "o-void", status: "CANCELLED", provider_id: "p1", inventory_id: "inv-1", total_cost: 200, final_price: 200 },
-        { id: "o-now", status: "PENDING", provider_id: "p1", inventory_id: "inv-1", total_cost: 400, final_price: 400 },
+        {
+          id: "o-paid",
+          status: "DELIVERED",
+          provider_id: "p1",
+          inventory_id: "inv-1",
+          total_cost: 390,
+          final_price: 390,
+        },
+        {
+          id: "o-void",
+          status: "CANCELLED",
+          provider_id: "p1",
+          inventory_id: "inv-1",
+          total_cost: 200,
+          final_price: 200,
+        },
+        {
+          id: "o-now",
+          status: "PENDING",
+          provider_id: "p1",
+          inventory_id: "inv-1",
+          total_cost: 400,
+          final_price: 400,
+        },
       ],
     });
     const svc = service(db, thresholdsStub([jump]), orgsStub("manager"));
@@ -886,15 +1023,25 @@ describe("approveOrder — the people who may seal a parked order are told (F-52
   function told(role: string | null, rule = ceiling(1000)) {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 } });
     const notifications = {
-      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1, ids: ["n1"] }),
+      persistForRestaurant: jest
+        .fn()
+        .mockResolvedValue({ inserted: 1, ids: ["n1"] }),
     };
     const authority = {
-      ownersAndManagers: jest.fn().mockResolvedValue({ owners: [OWNER], managers: [MANAGER, USER] }),
+      ownersAndManagers: jest
+        .fn()
+        .mockResolvedValue({ owners: [OWNER], managers: [MANAGER, USER] }),
       namesOf: jest.fn().mockResolvedValue(new Map([[USER, "Selin"]])),
     };
     const svc = new ProcurementService(
-      db, events, ledger,
-      undefined, undefined, undefined, undefined, undefined,
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       notifications as any,
       thresholdsStub([rule]),
       orgsStub(role),
@@ -907,10 +1054,13 @@ describe("approveOrder — the people who may seal a parked order are told (F-52
   it("a manager refused by an owner's ceiling: the owners get one line naming the order, once per order", async () => {
     const { svc, notifications } = told("manager");
 
-    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
 
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
-    const [rest, payload, opts] = notifications.persistForRestaurant.mock.calls[0];
+    const [rest, payload, opts] =
+      notifications.persistForRestaurant.mock.calls[0];
     expect(rest).toBe(REST);
     // `order_pending` + `metadata.orderId` is what lights the bell's "Approve it".
     expect(payload.type).toBe("order_pending");
@@ -928,7 +1078,9 @@ describe("approveOrder — the people who may seal a parked order are told (F-52
   it("a staff member refused by a manager's rule: owners and managers are told", async () => {
     const { svc, notifications } = told("staff", ceiling(1000, "manager"));
 
-    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
 
     const [, , opts] = notifications.persistForRestaurant.mock.calls[0];
     expect(opts.onlyUserIds).toEqual([OWNER, MANAGER]);

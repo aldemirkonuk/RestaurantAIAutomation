@@ -500,7 +500,9 @@ describe("describeAgreedPrice — the phrase the page and the vendor both read",
   });
 
   it("shows a bare figure when no unit is stated, rather than inventing one", () => {
-    expect(describeAgreedPrice({ price: 35, stated: null, currency: "USD" })).toBe("$35.00");
+    expect(
+      describeAgreedPrice({ price: 35, stated: null, currency: "USD" }),
+    ).toBe("$35.00");
   });
 
   it("is null when there is no price at all", () => {
@@ -844,7 +846,9 @@ describe("every working is said in the price's own money (F-341)", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
     expect(r.working).toContain("× €420.00");
-    expect(r.working).toContain("Goods €2100.00, less allowance €100.00, plus deposit €30.00");
+    expect(r.working).toContain(
+      "Goods €2100.00, less allowance €100.00, plus deposit €30.00",
+    );
     expect(r.working).not.toContain("$");
   });
 
@@ -877,7 +881,11 @@ describe("every working is said in the price's own money (F-341)", () => {
 
   it("states the letter's price in the agreement's money, bare when unknown", () => {
     expect(
-      describeAgreedPrice({ price: 420, stated: fiveCases.stated, currency: "EUR" }),
+      describeAgreedPrice({
+        price: 420,
+        stated: fiveCases.stated,
+        currency: "EUR",
+      }),
     ).toBe("€420.00 per case (12 bottles)");
     expect(describeAgreedPrice({ price: 35, stated: null })).toBe("35.00");
     expect(
@@ -897,9 +905,15 @@ describe("every working is said in the price's own money (F-341)", () => {
 
 describe("moneyIn in the house's formats (F-889)", () => {
   it("[REVERT-FAILS] groups and marks a figure the house's way when its locale is given", () => {
-    expect(moneyIn(30000, "TRY", { digits: 2, locale: "tr-TR" })).toBe("₺30.000,00");
-    expect(moneyIn(2100, "USD", { digits: 2, locale: "en-US" })).toBe("$2,100.00");
-    expect(moneyIn(1240.5, null, { unrecorded: "bare", locale: "tr-TR" })).toBe("1.240,50");
+    expect(moneyIn(30000, "TRY", { digits: 2, locale: "tr-TR" })).toBe(
+      "₺30.000,00",
+    );
+    expect(moneyIn(2100, "USD", { digits: 2, locale: "en-US" })).toBe(
+      "$2,100.00",
+    );
+    expect(moneyIn(1240.5, null, { unrecorded: "bare", locale: "tr-TR" })).toBe(
+      "1.240,50",
+    );
   });
 
   it("keeps the old ungrouped shape when no locale is given, so no recorded sentence moves", () => {

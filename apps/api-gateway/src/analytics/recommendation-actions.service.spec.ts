@@ -252,7 +252,6 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
   });
 });
 
-
 /**
  * F-385: the house's dispositions are read WHOLE. An unranged select stopped
  * at PostgREST's 1,000 rows, so past that many acted keys every later
@@ -302,7 +301,8 @@ describe("RecommendationActionsService.readDispositions", () => {
       getClient: () => ({
         from: () => {
           const b: any = {};
-          for (const m of ["select", "eq", "order", "gt", "limit"]) b[m] = () => b;
+          for (const m of ["select", "eq", "order", "gt", "limit"])
+            b[m] = () => b;
           b.then = (resolve: any, reject: any) =>
             Promise.resolve({ data: null, error: { message: "timeout" } }).then(
               resolve,
@@ -312,7 +312,9 @@ describe("RecommendationActionsService.readDispositions", () => {
         },
       }),
     } as any;
-    const out = await new RecommendationActionsService(db).readDispositions("r-1");
+    const out = await new RecommendationActionsService(db).readDispositions(
+      "r-1",
+    );
     expect(out.readable).toBe(false);
     expect(out.map.size).toBe(0);
   });

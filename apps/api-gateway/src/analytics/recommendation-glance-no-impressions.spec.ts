@@ -17,7 +17,10 @@ function call(recordImpressions?: string) {
   const seen: Array<Record<string, unknown>> = [];
   const self = {
     recommendationsService: {
-      getRecommendations: async (_rid: string, opts: Record<string, unknown>) => {
+      getRecommendations: async (
+        _rid: string,
+        opts: Record<string, unknown>,
+      ) => {
         seen.push(opts);
         return { recommendations: [] };
       },

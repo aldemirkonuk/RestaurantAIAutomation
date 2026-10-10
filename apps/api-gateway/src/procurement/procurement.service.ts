@@ -355,7 +355,9 @@ function pricedOrder(row: {
   return {
     price: toFiniteNumber(row.final_price ?? null),
     currency: row.currency ?? null,
-    priceUnit: foldOrderPriceUnit(embeddedOrderLines(row.procurement_order_items)),
+    priceUnit: foldOrderPriceUnit(
+      embeddedOrderLines(row.procurement_order_items),
+    ),
   };
 }
 
@@ -621,16 +623,23 @@ export function draftSubjectLine(
  *
  * Returns the refusal in the owner's words, or null when the letter may go.
  */
-const ORDER_LETTER_CLOSED_WORDS: Partial<Record<ProcurementOrderStatus, string>> = {
+const ORDER_LETTER_CLOSED_WORDS: Partial<
+  Record<ProcurementOrderStatus, string>
+> = {
   [ProcurementOrderStatus.CANCELLED]: "was cancelled",
   [ProcurementOrderStatus.REJECTED]: "was turned down",
   [ProcurementOrderStatus.FAILED]: "was closed as failed",
 };
 
-export function closedOrderLetterRefusal(status: unknown, tail: string): string | null {
+export function closedOrderLetterRefusal(
+  status: unknown,
+  tail: string,
+): string | null {
   const state = readOrderStatus(status);
   const words = state ? ORDER_LETTER_CLOSED_WORDS[state] : undefined;
-  return words ? `This order ${words}, so its letter cannot go to the vendor. ${tail}` : null;
+  return words
+    ? `This order ${words}, so its letter cannot go to the vendor. ${tail}`
+    : null;
 }
 
 /**
@@ -1246,7 +1255,9 @@ export class ProcurementService {
       dto.totalCost !== undefined && dto.totalCost !== null
         ? Number(dto.totalCost)
         : null;
-    const tolerance = fulfilled ? 0.005 * Math.max(bottlesTotal, 1) + 1e-9 : 0.005;
+    const tolerance = fulfilled
+      ? 0.005 * Math.max(bottlesTotal, 1) + 1e-9
+      : 0.005;
     const totalAgrees =
       callerTotal === null ||
       (fulfilled
@@ -2978,8 +2989,7 @@ export class ProcurementService {
         providerError &&
         (providerError as { code?: string }).code === "42703"
       )
-        ({ data: provider, error: providerError } =
-          await readProvider(false));
+        ({ data: provider, error: providerError } = await readProvider(false));
       if (providerError) {
         // A failed read is not an empty one: the default sentence must not
         // print "the vendor" as if no vendor were known, and it must not print
@@ -3780,7 +3790,9 @@ export class ProcurementService {
       await this.assertMayChangeOrder(
         restaurantId,
         opts?.actorUserId,
-        writesMoney ? "change what an order costs" : "change where an order stands",
+        writesMoney
+          ? "change what an order costs"
+          : "change where an order stands",
       );
     }
 
@@ -4165,7 +4177,11 @@ export class ProcurementService {
           "wired into procurement), so nothing was changed.",
       );
     }
-    await this.organizations.assertCanManageRestaurant(userId, restaurantId, action);
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      action,
+    );
   }
 
   /**
@@ -4495,7 +4511,9 @@ export class ProcurementService {
   ): Promise<OrderResponseDto> {
     const spokenReason = (reason ?? "").trim();
     if (spokenReason === "") {
-      throw new BadRequestException(ProcurementService.CLOSE_SHORT_NEEDS_A_REASON);
+      throw new BadRequestException(
+        ProcurementService.CLOSE_SHORT_NEEDS_A_REASON,
+      );
     }
     if (!this.organizations) {
       throw new InternalServerErrorException(
@@ -4524,7 +4542,11 @@ export class ProcurementService {
       });
     }
     const short = decideCloseShort(
-      await readOneShelfReceived(this.databaseService.supabase, restaurantId, row as any),
+      await readOneShelfReceived(
+        this.databaseService.supabase,
+        restaurantId,
+        row as any,
+      ),
     );
     if (!short.allowed) {
       throw new UnprocessableEntityException({
@@ -4590,7 +4612,9 @@ export class ProcurementService {
    * cannot be read. Never a statement about what a vendor charges: callers use
    * it only where the agreement line names no money of its own.
    */
-  private async readHouseCurrency(restaurantId: string): Promise<string | null> {
+  private async readHouseCurrency(
+    restaurantId: string,
+  ): Promise<string | null> {
     const { data, error } = await this.databaseService.supabase
       .from("restaurants")
       .select("currency")
@@ -4823,7 +4847,9 @@ export class ProcurementService {
     try {
       const { data: row, error } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("inventory_id, quantity, unit_type, bottles_total, reserved_bottles")
+        .select(
+          "inventory_id, quantity, unit_type, bottles_total, reserved_bottles",
+        )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         .maybeSingle();
@@ -4839,8 +4865,16 @@ export class ProcurementService {
       const quantity = Number(order.quantity);
       if (!order.inventory_id || !(quantity > 0)) return;
 
-      const units = await this.resolveOrderMatchUnits(restaurantId, orderId, order);
-      const bottles = reservationBottles(quantity, units.unitType, units.bottlesPerUnit);
+      const units = await this.resolveOrderMatchUnits(
+        restaurantId,
+        orderId,
+        order,
+      );
+      const bottles = reservationBottles(
+        quantity,
+        units.unitType,
+        units.bottlesPerUnit,
+      );
       const { data: claimed, error: claimError } =
         await this.databaseService.supabase
           .from("procurement_orders")
@@ -4873,7 +4907,9 @@ export class ProcurementService {
           .eq("reserved_bottles", bottles);
       }
     } catch (e: any) {
-      this.logger.warn(`reserveOrderOnce failed for order ${orderId}: ${e?.message}`);
+      this.logger.warn(
+        `reserveOrderOnce failed for order ${orderId}: ${e?.message}`,
+      );
     }
   }
 
@@ -5406,7 +5442,10 @@ export class ProcurementService {
           .select("id")
           .maybeSingle();
       if (approveError || !approved) {
-        return { approved: false, why: "the order changed while it was being approved" };
+        return {
+          approved: false,
+          why: "the order changed while it was being approved",
+        };
       }
       await this.reserveOrderOnce(restaurantId, orderId);
       return { approved: true };
@@ -5414,7 +5453,10 @@ export class ProcurementService {
       this.logger.warn(
         `approveAcceptedOrderAsAgent failed for order ${orderId}: ${e?.message}`,
       );
-      return { approved: false, why: "the house's approval rules could not be checked" };
+      return {
+        approved: false,
+        why: "the house's approval rules could not be checked",
+      };
     }
   }
 
@@ -5503,7 +5545,8 @@ export class ProcurementService {
 
     await this.parkOrderAwaitingApproval(restaurantId, orderId, row.status);
     await this.tellSealHolders(restaurantId, orderId, {
-      orderNumber: (orderRow as { order_number?: string | null }).order_number ?? null,
+      orderNumber:
+        (orderRow as { order_number?: string | null }).order_number ?? null,
       requiredRole: decision.requiredRole,
       refusedUserId: userId,
     });
@@ -6027,7 +6070,8 @@ export class ProcurementService {
   ): Promise<string[]> {
     if (!this.vendorSendAuthority) return [];
     try {
-      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(restaurantId);
+      const { owners, managers } =
+        await this.vendorSendAuthority.ownersAndManagers(restaurantId);
       return [...new Set(ownersOnly ? owners : [...owners, ...managers])];
     } catch (err: any) {
       this.logger.warn(
@@ -6048,20 +6092,28 @@ export class ProcurementService {
   private async tellSealHolders(
     restaurantId: string,
     orderId: string,
-    input: { orderNumber: string | null; requiredRole: string; refusedUserId: string },
+    input: {
+      orderNumber: string | null;
+      requiredRole: string;
+      refusedUserId: string;
+    },
   ): Promise<void> {
     if (!this.notificationsService) return;
     try {
       const ownersOnly = input.requiredRole === "owner";
-      const audience = (await this.moneyHoldersHere(restaurantId, ownersOnly)).filter(
-        (id) => id !== input.refusedUserId,
-      );
+      const audience = (
+        await this.moneyHoldersHere(restaurantId, ownersOnly)
+      ).filter((id) => id !== input.refusedUserId);
       if (audience.length === 0) {
-        this.logger.warn(`Order ${orderId} waits for a seal, but nobody who may seal it could be told; /orders lists it.`);
+        this.logger.warn(
+          `Order ${orderId} waits for a seal, but nobody who may seal it could be told; /orders lists it.`,
+        );
         return;
       }
       const names = this.vendorSendAuthority
-        ? await this.vendorSendAuthority.namesOf([input.refusedUserId]).catch(() => new Map<string, string>())
+        ? await this.vendorSendAuthority
+            .namesOf([input.refusedUserId])
+            .catch(() => new Map<string, string>())
         : new Map<string, string>();
       const who = names.get(input.refusedUserId) ?? "A member of the team";
       const order = input.orderNumber ?? "An order";
@@ -6083,17 +6135,28 @@ export class ProcurementService {
         { onlyUserIds: audience, dedupeWithinMinutes: 365 * 24 * 60 },
       );
     } catch (err: any) {
-      this.logger.warn(`Order ${orderId} waits for a seal, but the people who may seal it were not told (${err?.message ?? String(err)}).`);
+      this.logger.warn(
+        `Order ${orderId} waits for a seal, but the people who may seal it were not told (${err?.message ?? String(err)}).`,
+      );
     }
   }
 
   /** F-526: the "waits for your seal" line clears once the order is sealed or ended. */
-  private async clearSealLine(restaurantId: string, orderId: string): Promise<void> {
-    const bell = await resolveBellLines(this.databaseService.supabase, restaurantId, {
-      groupKey: `order_awaiting_seal:${orderId}`,
-    });
+  private async clearSealLine(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<void> {
+    const bell = await resolveBellLines(
+      this.databaseService.supabase,
+      restaurantId,
+      {
+        groupKey: `order_awaiting_seal:${orderId}`,
+      },
+    );
     if (!bell.ok) {
-      this.logger.warn(`Order ${orderId}'s "waits for your seal" line was not cleared (${bell.error}).`);
+      this.logger.warn(
+        `Order ${orderId}'s "waits for your seal" line was not cleared (${bell.error}).`,
+      );
     }
   }
 
@@ -6588,9 +6651,7 @@ export class ProcurementService {
           const { data: item, error: itemError } =
             await this.databaseService.supabase
               .from("restaurant_inventory")
-              .select(
-                "master_wine_id, wine_name, display_name, shadow_stock",
-              )
+              .select("master_wine_id, wine_name, display_name, shadow_stock")
               .eq("restaurant_id", restaurantId)
               .eq("id", inventoryId)
               .maybeSingle();
@@ -6616,7 +6677,10 @@ export class ProcurementService {
             // F-494) — not the bottles that arrived. Releasing the received
             // count drained other orders' reservations whenever an order in
             // cases had reserved its case count, or reserved nothing at all.
-            const reserved = await this.takeOrderReservation(restaurantId, orderId);
+            const reserved = await this.takeOrderReservation(
+              restaurantId,
+              orderId,
+            );
             takenReservation = reserved.bottles;
             const shadowRelease = Math.min(reserved.bottles, currentShadow);
 
@@ -6678,21 +6742,24 @@ export class ProcurementService {
               stockNotMoved = live.error.message ?? String(live.error);
             } else {
               if (shadowRelease > 0) {
-                const shadow = await this.databaseService.supabase.rpc("apply_stock_movement", {
-                  p_inventory_id: inventoryId,
-                  p_stock_state: "shadow",
-                  p_delta: -shadowRelease,
-                  p_transaction_type: "adjustment",
-                  p_source: "order",
-                  p_reason: "shadow released on delivery",
-                  p_order_id: orderId,
-                  p_idempotency_key: `order-delivered-shadow:${orderId}`,
-                  // ADR 0141. `order.inventoryId` comes off the order row, which
-                  // was read scoped to this restaurant — but the COLUMN carries no
-                  // tenant constraint, so the row belonging here does not make the
-                  // item belong here.
-                  p_restaurant_id: restaurantId,
-                });
+                const shadow = await this.databaseService.supabase.rpc(
+                  "apply_stock_movement",
+                  {
+                    p_inventory_id: inventoryId,
+                    p_stock_state: "shadow",
+                    p_delta: -shadowRelease,
+                    p_transaction_type: "adjustment",
+                    p_source: "order",
+                    p_reason: "shadow released on delivery",
+                    p_order_id: orderId,
+                    p_idempotency_key: `order-delivered-shadow:${orderId}`,
+                    // ADR 0141. `order.inventoryId` comes off the order row, which
+                    // was read scoped to this restaurant — but the COLUMN carries no
+                    // tenant constraint, so the row belonging here does not make the
+                    // item belong here.
+                    p_restaurant_id: restaurantId,
+                  },
+                );
                 // The booking stands without it; a shadow figure left reserved
                 // is logged, not hidden, and stays on the order's record.
                 if (shadow?.error) {
@@ -7645,8 +7712,8 @@ export class ProcurementService {
         reason: "order_not_checkable",
         status: check.from ?? null,
         message: check.sentence,
-        });
-      }
+      });
+    }
 
     // F-349. A receipt that states no match (the mobile "Counts match" tap,
     // an old offline payload) completes the order. On an order a match has
@@ -7823,8 +7890,7 @@ export class ProcurementService {
       orderedBottlesPerUnit: orderUnits.bottlesPerUnit,
       poUnitPrice,
       // Words only (F-341): each price is said in its own money, never "$".
-      poCurrency:
-        agreedLine.currency ?? (orderRow as any).currency ?? null,
+      poCurrency: agreedLine.currency ?? (orderRow as any).currency ?? null,
       shippedQtyInShippedUom: shippedQuantity ?? null,
       shippedUom: body.shippedUom ?? null,
       shippedBottlesPerUnit: body.shippedBottlesPerUnit ?? null,
@@ -8413,18 +8479,12 @@ export class ProcurementService {
     // Best-effort: a failure here must not strand a delivery that has already
     // been counted, and the claim can be raised again from the discrepancy queue.
     if (match)
-      await this.openCreditClaim(
-        restaurantId,
-        orderId,
-        userId,
-        match,
-        {
-          provider_id: (orderRow as any).provider_id ?? null,
-          // The claim is units at the BILLED price, so it is in the invoice's
-          // money; the order's only when the invoice states none (F-341).
-          currency: billedMoney ?? (orderRow as any).currency ?? null,
-        },
-      );
+      await this.openCreditClaim(restaurantId, orderId, userId, match, {
+        provider_id: (orderRow as any).provider_id ?? null,
+        // The claim is units at the BILLED price, so it is in the invoice's
+        // money; the order's only when the invoice states none (F-341).
+        currency: billedMoney ?? (orderRow as any).currency ?? null,
+      });
 
     // F-371. Only the tap whose compare-and-set won writes its history line.
     // If the line then cannot be written, the order is put back the way it
@@ -8615,7 +8675,9 @@ export class ProcurementService {
         { groupKey: `receipt_discrepancy:${orderId}` },
       );
       if (!bell.ok) {
-        this.logger.warn(`verifyReceipt: order ${orderId}'s old discrepancy line was not cleared (${bell.error}).`);
+        this.logger.warn(
+          `verifyReceipt: order ${orderId}'s old discrepancy line was not cleared (${bell.error}).`,
+        );
       }
     }
 
@@ -9034,7 +9096,9 @@ export class ProcurementService {
       // When the three-way match was checked (F-710). The key test: a route
       // that does not read the column sends no key; `null` is "not checked".
       matchVerifiedAt:
-        "match_verified_at" in row ? (row.match_verified_at ?? null) : undefined,
+        "match_verified_at" in row
+          ? (row.match_verified_at ?? null)
+          : undefined,
       // The key test again: `null` is "the row names no currency", absence is
       // "this route did not read the column". `currencyCode` reads membership,
       // so a stored value that names no currency reads as none, not as money.
@@ -9157,7 +9221,9 @@ export class ProcurementService {
 
     const { data: pending, error } = await this.databaseService.supabase
       .from("procurement_conversations")
-      .select("id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact), procurement_orders!inner(status)")
+      .select(
+        "id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact), procurement_orders!inner(status)",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("status", "PENDING_APPROVAL")
@@ -9806,12 +9872,18 @@ export class ProcurementService {
     // and manager it went to, not only for the one who sent it. Matched by
     // type and order, so a line written before it carried a group key clears too.
     if (requester) {
-      const bell = await resolveBellLines(this.databaseService.supabase, restaurantId, {
-        type: "vendor_send_requested",
-        orderId,
-      });
+      const bell = await resolveBellLines(
+        this.databaseService.supabase,
+        restaurantId,
+        {
+          type: "vendor_send_requested",
+          orderId,
+        },
+      );
       if (!bell.ok) {
-        this.logger.warn(`The letter for order ${orderId} went, but its "asks you to send" line was not cleared (${bell.error}).`);
+        this.logger.warn(
+          `The letter for order ${orderId} went, but its "asks you to send" line was not cleared (${bell.error}).`,
+        );
       }
     }
     if (requester && requester !== actor.userId) {
@@ -11051,7 +11123,10 @@ export class ProcurementService {
     const qty = Number(opts.quantity ?? order?.quantity);
     const currency = typeof order?.currency === "string" && order.currency.trim() ? order.currency.trim().toUpperCase() : null;
     // Rounded to the order's own minor unit (F-452): a 1.255-dinar deal is not a 1.26 one.
-    const value = Number.isFinite(price) && Number.isFinite(qty) ? roundMoney(price * qty, currency) : null;
+    const value =
+      Number.isFinite(price) && Number.isFinite(qty)
+        ? roundMoney(price * qty, currency)
+        : null;
     return { value, currency };
   }
 
@@ -11074,7 +11149,10 @@ export class ProcurementService {
     const unitPrice = Number(opts.finalPrice);
     await this.assertApprovalAllowed(restaurantId, orderId, userId, {
       total: this.dealAmount(order, opts).value,
-      unitPrice: opts.finalPrice != null && Number.isFinite(unitPrice) ? unitPrice : null,
+      unitPrice:
+        opts.finalPrice != null && Number.isFinite(unitPrice)
+          ? unitPrice
+          : null,
     });
   }
 
@@ -11108,7 +11186,13 @@ export class ProcurementService {
       canAsk: true,
     });
     // Everything that would refuse the confirmation refuses the SEAL, first.
-    await this.assertDealConfirmable(restaurantId, orderId, userId, order, opts);
+    await this.assertDealConfirmable(
+      restaurantId,
+      orderId,
+      userId,
+      order,
+      opts,
+    );
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), so nothing can be confirmed.",
@@ -11326,7 +11410,13 @@ export class ProcurementService {
       throw new ForbiddenException("The vendor does not belong to this house. Nothing was confirmed.");
     }
     // Before the seal is spent: a refusal here commits nothing and mails nothing.
-    await this.assertDealConfirmable(restaurantId, orderId, userId, order, opts);
+    await this.assertDealConfirmable(
+      restaurantId,
+      orderId,
+      userId,
+      order,
+      opts,
+    );
     if (!this.sealChallenges) {
       throw new InternalServerErrorException("The deal's seal cannot be checked. Nothing was confirmed.");
     }

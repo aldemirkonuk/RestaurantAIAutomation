@@ -391,7 +391,11 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       });
       db.getClient.mockReturnValue(
         makeClient({
-          v_low_stock_items: [low("two-of-five", 2), low("four-of-five", 4), low("none-of-five", 0)],
+          v_low_stock_items: [
+            low("two-of-five", 2),
+            low("four-of-five", 4),
+            low("none-of-five", 0),
+          ],
         }),
       );
 
@@ -459,10 +463,21 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       db.getClient.mockReturnValue(
         makeClient({
           v_low_stock_items: [
-            { id: "inv-1", stock_live: 1, threshold_min: 6, wine_name: "1er Cru Montmains", vintage: 2023 },
+            {
+              id: "inv-1",
+              stock_live: 1,
+              threshold_min: 6,
+              wine_name: "1er Cru Montmains",
+              vintage: 2023,
+            },
           ],
           procurement_orders: [
-            { id: "po-7", status: "SENT", expected_delivery_date: "2020-01-01", created_at: "2019-12-20T00:00:00Z" },
+            {
+              id: "po-7",
+              status: "SENT",
+              expected_delivery_date: "2020-01-01",
+              created_at: "2019-12-20T00:00:00Z",
+            },
           ],
           restaurant_inventory: [
             {

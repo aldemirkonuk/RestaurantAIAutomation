@@ -523,11 +523,16 @@ describe("createRetroactiveOrder — the invoice total is a total", () => {
     // 100 over 12 bottles is 8.33 a bottle, which works back out to 99.96.
     // The 4 cents are rounding, not a disagreement: the invoice is what was paid.
     const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
-    await services(db).providers.createRetroactiveOrder(PROVIDER, "rest-1", USER, {
-      ...caseInvoice,
-      quantity: 1,
-      invoiceTotal: 100,
-    });
+    await services(db).providers.createRetroactiveOrder(
+      PROVIDER,
+      "rest-1",
+      USER,
+      {
+        ...caseInvoice,
+        quantity: 1,
+        invoiceTotal: 100,
+      },
+    );
 
     const p = calls.orderInserts[0];
     expect(p.final_price).toBe(8.33);

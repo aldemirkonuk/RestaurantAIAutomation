@@ -206,7 +206,11 @@ export class CeilingHeldProducer {
         {
           restaurantId,
           producer: PRODUCER,
-          audience: (readers ??= await goalReaders(client, restaurantId, audience)),
+          audience: (readers ??= await goalReaders(
+            client,
+            restaurantId,
+            audience,
+          )),
           tally,
           now,
         },
@@ -265,7 +269,11 @@ export class CeilingHeldProducer {
       );
     }
 
-    if (tally.emitted === 0 && tally.withheldReason === null && noGoalReader(readers)) {
+    if (
+      tally.emitted === 0 &&
+      tally.withheldReason === null &&
+      noGoalReader(readers)
+    ) {
       tally.withheldReason = NO_GOAL_READER;
     }
     if (tally.emitted === 0 && tally.withheldReason === null) {

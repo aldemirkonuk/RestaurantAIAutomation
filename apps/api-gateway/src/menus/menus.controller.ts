@@ -72,7 +72,10 @@ export class MenusController {
   }
 
   @Post("items")
-  @ApiOperation({ summary: "Add one wine to a menu. On the current menu, owner or manager only" })
+  @ApiOperation({
+    summary:
+      "Add one wine to a menu. On the current menu, owner or manager only",
+  })
   async addMenuItem(
     @Body() dto: AddMenuItemDto,
     @CurrentUser() user: { userId: string; restaurantId?: string },

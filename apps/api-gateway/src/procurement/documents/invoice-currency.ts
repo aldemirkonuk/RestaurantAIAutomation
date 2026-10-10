@@ -1110,7 +1110,12 @@ export function applyCurrencyRules(args: {
   });
   if (versusOrder)
     return withholdMoney(
-      { ...doc, ...filedTag, currency: filed.code, currencyFiledFrom: filed.from },
+      {
+        ...doc,
+        ...filedTag,
+        currency: filed.code,
+        currencyFiledFrom: filed.from,
+      },
       versusOrder,
     );
 
@@ -1154,7 +1159,13 @@ export function applyCurrencyRules(args: {
   const agreement = currencyAgreement(filed.code, seen);
   if (agreement.kind === "disagrees")
     return withholdMoney(
-      { ...doc, ...filedTag, currency: filed.code, currencyFiledFrom: from, warnings },
+      {
+        ...doc,
+        ...filedTag,
+        currency: filed.code,
+        currencyFiledFrom: from,
+        warnings,
+      },
       agreement.sentence,
     );
 

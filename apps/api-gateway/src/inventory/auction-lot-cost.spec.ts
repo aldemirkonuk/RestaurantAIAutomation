@@ -29,10 +29,23 @@ describe("lotBookedCost", () => {
 
   it("a stated rate scales the exact per-bottle cost, so cents are rounded once (F-342)", () => {
     expect(
-      lotBookedCost({ hammer: 90, premium: 10, bottles: 3, currency: "GBP", houseCurrency: "TRY", exchangeRate: 35 }),
+      lotBookedCost({
+        hammer: 90,
+        premium: 10,
+        bottles: 3,
+        currency: "GBP",
+        houseCurrency: "TRY",
+        exchangeRate: 35,
+      }),
     ).toMatchObject({ ok: true, booked: 1166.67, lotPerBottle: 33.33 });
     expect(
-      lotBookedCost({ hammer: 100.1, premium: 20.02, bottles: 1, currency: "GBP", houseCurrency: "GBP" }),
+      lotBookedCost({
+        hammer: 100.1,
+        premium: 20.02,
+        bottles: 1,
+        currency: "GBP",
+        houseCurrency: "GBP",
+      }),
     ).toMatchObject({ ok: true, booked: 120.12, lotPerBottle: 120.12 });
   });
 

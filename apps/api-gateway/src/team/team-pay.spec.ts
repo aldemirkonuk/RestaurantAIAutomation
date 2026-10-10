@@ -25,7 +25,12 @@ import {
   WAGE_RETENTION_CRON,
   WageRecordRetentionService,
 } from "./wage-record-retention.service";
-import { asDatabaseService, defaultRpc, makeStubDb, StubDb } from "./testing/supabase-stub";
+import {
+  asDatabaseService,
+  defaultRpc,
+  makeStubDb,
+  StubDb,
+} from "./testing/supabase-stub";
 import { MembersService } from "../restaurants/members.service";
 import { AuthService } from "../auth/auth.service";
 
@@ -320,7 +325,15 @@ describe("W1 — a manager's week carries hours, never money", () => {
   it("strips labor_cost from the shift writers' replies to a manager", async () => {
     const db = seed();
     // Tuesday: the same 09:00 for the same person would be a double booking (F-377).
-    db.tables.shifts.push(shift({ id: "sh-open", member_id: null, state: "open", labor_cost: null, shift_date: "2026-09-08" }));
+    db.tables.shifts.push(
+      shift({
+        id: "sh-open",
+        member_id: null,
+        state: "open",
+        labor_cost: null,
+        shift_date: "2026-09-08",
+      }),
+    );
     const svc = scheduleOf(db);
 
     const created = await svc.createShift(MANAGER, RID, {
@@ -663,11 +676,13 @@ describe("a failed week read is an error, not an empty week", () => {
     "my-week refuses when %s cannot be read, rather than an empty week",
     async (table) => {
       const db = seed();
-      await expect(scheduleOf(db).getMyWeek(STAFF, RID, WEEK)).resolves.toBeDefined();
+      await expect(
+        scheduleOf(db).getMyWeek(STAFF, RID, WEEK),
+      ).resolves.toBeDefined();
       db.errors[`${table}:select`] = { message: "boom" };
-      await expect(scheduleOf(db).getMyWeek(STAFF, RID, WEEK)).rejects.toBeInstanceOf(
-        InternalServerErrorException,
-      );
+      await expect(
+        scheduleOf(db).getMyWeek(STAFF, RID, WEEK),
+      ).rejects.toBeInstanceOf(InternalServerErrorException);
     },
   );
 });
@@ -700,15 +715,23 @@ describe("F-923 — a time-off request runs forward", () => {
   // first missed day onward themselves; no manager step comes before it is sent.
   it("files a range that began in the past and runs on, from the staff member", async () => {
     const db = seed();
-    const past = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
-    const ahead = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+    const past = new Date(Date.now() - 3 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const ahead = new Date(Date.now() + 2 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
     const req = await teamOf(db).createTimeOff(STAFF, RID, {
       memberId: "m-staff",
       startDate: past,
       endDate: ahead,
     } as any);
     expect([req.start_date, req.end_date]).toEqual([past, ahead]);
-    expect((db.tables.time_off_requests ?? []).some((r: any) => r.start_date === past)).toBe(true);
+    expect(
+      (db.tables.time_off_requests ?? []).some(
+        (r: any) => r.start_date === past,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -1088,7 +1111,9 @@ describe("F-191 — the person who asked for time off hears the answer", () => {
       startDate: "2026-09-08",
       endDate: "2026-09-10",
     } as any);
-    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, { status: "denied" } as any);
+    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "denied",
+    } as any);
     expect(reviewed.requesterNotified).toBe(true);
     const told = db.tables.notifications.filter((n) => n.user_id === STAFF);
     expect(told).toHaveLength(1);
@@ -1101,9 +1126,15 @@ describe("F-191 — the person who asked for time off hears the answer", () => {
 
   it("keeps the decision when the notice cannot be written, and says it was not sent", async () => {
     const db = seed();
-    const req = await teamOf(db).createTimeOff(STAFF, RID, { memberId: "m-staff", startDate: WEEK, endDate: WEEK } as any);
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
     db.errors["notifications:insert"] = { message: "boom" };
-    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, { status: "approved" } as any);
+    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+    } as any);
     expect(reviewed.status).toBe("approved");
     expect(reviewed.requesterNotified).toBe(false);
   });
@@ -1141,8 +1172,14 @@ describe("F-191 — the person who asked for time off hears the answer", () => {
 
   it("sends no notice to a reviewer deciding their own request", async () => {
     const db = seed();
-    const req = await teamOf(db).createTimeOff(MANAGER, RID, { memberId: "m-manager", startDate: WEEK, endDate: WEEK } as any);
-    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, { status: "approved" } as any);
+    const req = await teamOf(db).createTimeOff(MANAGER, RID, {
+      memberId: "m-manager",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+    } as any);
     expect(reviewed.requesterNotified).toBe(false);
     expect(db.tables.notifications).toHaveLength(0);
   });
@@ -2415,7 +2452,9 @@ describe("K5 — every door out of a house releases the person's shifts (ADR 024
     await teamOf(db).deleteMember(OWNER, RID, "m-staff");
 
     const told = db.tables.notifications.filter((n) => n.user_id === STAFF);
-    expect(told.map((n) => n.message)).toEqual([expect.stringMatching(/^An owner removed you/)]);
+    expect(told.map((n) => n.message)).toEqual([
+      expect.stringMatching(/^An owner removed you/),
+    ]);
   });
 
   it("the database's last-owner refusal is answered in plain words, and access stays (F-582)", async () => {
@@ -2424,15 +2463,20 @@ describe("K5 — every door out of a house releases the person's shifts (ADR 024
     const db = world();
     db.errors["user_restaurant_access:delete"] = {
       code: "23514",
-      message: "house_keeps_an_owner: this change would leave the house with no owner",
+      message:
+        "house_keeps_an_owner: this change would leave the house with no owner",
     };
 
-    await expect(teamOf(db).deleteMember(OWNER, RID, "m-staff")).rejects.toThrow(
+    await expect(
+      teamOf(db).deleteMember(OWNER, RID, "m-staff"),
+    ).rejects.toThrow(
       new ForbiddenException(
         "That would leave the restaurant with no owner. Another owner may have just changed their own role. Make someone else an owner first.",
       ),
     );
-    expect(db.tables.user_restaurant_access.some((r) => r.user_id === STAFF)).toBe(true);
+    expect(
+      db.tables.user_restaurant_access.some((r) => r.user_id === STAFF),
+    ).toBe(true);
     expect(db.tables.team_members.some((m) => m.id === "m-staff")).toBe(true);
   });
 

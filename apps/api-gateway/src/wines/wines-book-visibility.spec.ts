@@ -25,15 +25,44 @@ const HOUSE_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 type Row = Record<string, any>;
 
 const ROWS: Row[] = [
-  { id: "shared", name: "Barolo", country: "Italy", primary_type: "red", deleted_at: null, provisional_for_restaurant_id: null },
-  { id: "a-own", name: "House White Wine", country: "Turkey", primary_type: "white", deleted_at: null, provisional_for_restaurant_id: HOUSE_A },
-  { id: "b-own", name: "House Red Wine", country: "Georgia", primary_type: "orange", deleted_at: null, provisional_for_restaurant_id: HOUSE_B },
-  { id: "merged-away", name: "Barolo (copy)", country: "Chile", primary_type: "red", deleted_at: "2026-10-01T00:00:00Z", provisional_for_restaurant_id: null },
+  {
+    id: "shared",
+    name: "Barolo",
+    country: "Italy",
+    primary_type: "red",
+    deleted_at: null,
+    provisional_for_restaurant_id: null,
+  },
+  {
+    id: "a-own",
+    name: "House White Wine",
+    country: "Turkey",
+    primary_type: "white",
+    deleted_at: null,
+    provisional_for_restaurant_id: HOUSE_A,
+  },
+  {
+    id: "b-own",
+    name: "House Red Wine",
+    country: "Georgia",
+    primary_type: "orange",
+    deleted_at: null,
+    provisional_for_restaurant_id: HOUSE_B,
+  },
+  {
+    id: "merged-away",
+    name: "Barolo (copy)",
+    country: "Chile",
+    primary_type: "red",
+    deleted_at: "2026-10-01T00:00:00Z",
+    provisional_for_restaurant_id: null,
+  },
 ];
 
 /** One PostgREST condition, `col op value`, against one row. */
 function holds(row: Row, col: string, op: string, value: string): boolean {
-  if (op === "is" && value === "null") return row[col] === null || row[col] === undefined;
+  if (op === "is" && value === "null")
+    return row[col] === null || row[col] === undefined;
   if (op === "eq") return String(row[col]) === value;
   if (op === "neq") return String(row[col]) !== value;
   throw new Error(`unmodelled filter ${col}.${op}.${value}`);
@@ -48,7 +77,9 @@ function matches(row: Row, params: URLSearchParams): boolean {
         const [col, op, ...rest] = p.split(".");
         if (op === "ilike") {
           const needle = rest.join(".").replace(/[%"]/g, "").toLowerCase();
-          return String(row[col] ?? "").toLowerCase().includes(needle);
+          return String(row[col] ?? "")
+            .toLowerCase()
+            .includes(needle);
         }
         return holds(row, col, op, rest.join("."));
       });
@@ -108,7 +139,9 @@ describe("F-496 the wine book shows a house only the shared library and its own 
   });
 
   it("no house, or a house id that is not a uuid, sees the shared library only", async () => {
-    expect(ids(await book().searchWines({} as GetWinesQueryDto))).toEqual(["shared"]);
+    expect(ids(await book().searchWines({} as GetWinesQueryDto))).toEqual([
+      "shared",
+    ]);
     expect(
       ids(await book().searchWines({} as GetWinesQueryDto, "x,id.not.is.null")),
     ).toEqual(["shared"]);
@@ -142,7 +175,9 @@ describe("F-496 the wine book shows a house only the shared library and its own 
       {} as any,
       {} as any,
     );
-    await controller.searchWines({} as GetWinesQueryDto, { restaurantId: HOUSE_A });
+    await controller.searchWines({} as GetWinesQueryDto, {
+      restaurantId: HOUSE_A,
+    });
     await controller.getById("a-own", { restaurantId: HOUSE_A });
     expect(searchWines).toHaveBeenCalledWith({}, HOUSE_A);
     expect(getWineById).toHaveBeenCalledWith("a-own", HOUSE_A);

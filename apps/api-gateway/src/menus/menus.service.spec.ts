@@ -119,7 +119,8 @@ function makeFakeSupabase(
       then(resolve: any) {
         if (inserted) return resolve({ data: inserted, error: null });
         if (!updatePatch && readFails()) return resolve({ data: null, error: { message: readFails() } });
-        if (updatePatch && updateFails()) return resolve({ data: null, error: { message: updateFails() } });
+        if (updatePatch && updateFails())
+          return resolve({ data: null, error: { message: updateFails() } });
         const rows = matching();
         if (updatePatch) for (const row of rows) Object.assign(row, updatePatch);
         resolve({ data: rows, error: null });
@@ -237,22 +238,65 @@ describe("MenusService.getMenu", () => {
   // F-618: the line keeps its own price (ADR 0193 item 3); the house's price
   // is sent beside it, from this house only, so the page can mark a difference.
   const pricedMenu = () => ({
-    restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" }],
+    restaurant_menus: [
+      {
+        id: "menu-1",
+        restaurant_id: "rest-1",
+        name: "Wine List",
+        status: "active",
+      },
+    ],
     menu_items: [
-      { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Yakut", bottle_price: 80, by_glass_price: 14, inventory_item_id: "inv-1" },
-      { id: "mi-2", menu_id: "menu-1", restaurant_id: "rest-1", name: "Unlinked", bottle_price: 40, inventory_item_id: null },
-      { id: "mi-3", menu_id: "menu-1", restaurant_id: "rest-1", name: "Foreign", bottle_price: 50, inventory_item_id: "inv-9" },
+      {
+        id: "mi-1",
+        menu_id: "menu-1",
+        restaurant_id: "rest-1",
+        name: "Yakut",
+        bottle_price: 80,
+        by_glass_price: 14,
+        inventory_item_id: "inv-1",
+      },
+      {
+        id: "mi-2",
+        menu_id: "menu-1",
+        restaurant_id: "rest-1",
+        name: "Unlinked",
+        bottle_price: 40,
+        inventory_item_id: null,
+      },
+      {
+        id: "mi-3",
+        menu_id: "menu-1",
+        restaurant_id: "rest-1",
+        name: "Foreign",
+        bottle_price: 50,
+        inventory_item_id: "inv-9",
+      },
     ],
     restaurant_inventory: [
-      { id: "inv-1", restaurant_id: "rest-1", menu_price_current: 95, menu_price_glass: null },
-      { id: "inv-9", restaurant_id: "rest-2", menu_price_current: 999, menu_price_glass: 99 },
+      {
+        id: "inv-1",
+        restaurant_id: "rest-1",
+        menu_price_current: 95,
+        menu_price_glass: null,
+      },
+      {
+        id: "inv-9",
+        restaurant_id: "rest-2",
+        menu_price_current: 999,
+        menu_price_glass: 99,
+      },
     ],
   });
 
   it("sends each linked line this house's own price beside the line's, and nothing for another house's row", async () => {
     const result: any = await makeService(pricedMenu()).getMenu("rest-1");
     const byId = Object.fromEntries(result.items.map((i: any) => [i.id, i]));
-    expect(byId["mi-1"]).toMatchObject({ bottle_price: 80, house_bottle_price: 95, house_glass_price: null });
+    expect(byId["mi-1"]).toMatchObject({
+      bottle_price: 80,
+      house_bottle_price: 95,
+      house_glass_price: null,
+    });
     expect(byId["mi-2"]).not.toHaveProperty("house_bottle_price");
     expect(byId["mi-3"]).not.toHaveProperty("house_bottle_price");
     expect(result.housePricesReadable).toBe(true);
@@ -263,7 +307,9 @@ describe("MenusService.getMenu", () => {
     tables.__readFails = [{ restaurant_inventory: "timeout" }];
     const result: any = await makeService(tables).getMenu("rest-1");
     expect(result.items).toHaveLength(3);
-    expect(result.items.some((i: any) => "house_bottle_price" in i)).toBe(false);
+    expect(result.items.some((i: any) => "house_bottle_price" in i)).toBe(
+      false,
+    );
     expect(result.housePricesReadable).toBe(false);
     expect(result.housePricesReason).toContain("timeout");
   });
@@ -289,7 +335,10 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   const MEMBER_KEYS = [
     "id", "name", "producer", "category", "vintage", "region", "country", "grape_variety",
     "by_glass_price", "bottle_price", "wine_library_id", "inventory_item_id", "source", "status",
-    "review_notes", "price_flag", "price_flag_note", "created_at",
+    "review_notes",
+    "price_flag",
+    "price_flag_note",
+    "created_at",
   ];
   const ROOT_KEYS = ["menuId", "name", "status", "items"];
 
@@ -404,7 +453,14 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
     const { service } = house();
     for (const r of [await service.getMenu("rest-1"), await service.getMenu("rest-1", { rawLine: false })] as any[]) {
       // F-618: getMenu also says whether the house's own prices were read.
-      expect(Object.keys(r).sort()).toEqual([...ROOT_KEYS, "rawLineWithheld", "housePricesReadable", "housePricesReason"].sort());
+      expect(Object.keys(r).sort()).toEqual(
+        [
+          ...ROOT_KEYS,
+          "rawLineWithheld",
+          "housePricesReadable",
+          "housePricesReason",
+        ].sort(),
+      );
       expect(r.rawLineWithheld).toBe(true);
       expect(Object.keys(byName(r.items, "Barolo")).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
       expect(byName(r.items, "Tiramisu").kitchen_line).toBe(true);
@@ -412,7 +468,9 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
       for (const secret of SECRETS) expect(text).not.toContain(secret);
     }
     const holder: any = await service.getMenu("rest-1", { rawLine: true });
-    expect(Object.keys(holder).sort()).toEqual([...ROOT_KEYS, "housePricesReadable", "housePricesReason"].sort());
+    expect(Object.keys(holder).sort()).toEqual(
+      [...ROOT_KEYS, "housePricesReadable", "housePricesReason"].sort(),
+    );
   });
 
   it("a getVersion call that names no view withholds", async () => {
@@ -533,7 +591,11 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
     const service = makeService(tables);
 
     const result = await service.discardMenuItem("rest-1", "mi-1");
-    expect(result).toEqual({ menuItemId: "mi-1", status: "discarded", audited: true });
+    expect(result).toEqual({
+      menuItemId: "mi-1",
+      status: "discarded",
+      audited: true,
+    });
 
     // The row stays — a soft remove, never a DELETE.
     expect(tables.menu_items).toHaveLength(1);
@@ -565,13 +627,23 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
 
   it("keeps the status the line had, and a second discard does not overwrite it (F-268)", async () => {
     const tables: Record<string, Row[]> = {
-      menu_items: [{ id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "flagged" }],
+      menu_items: [
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          status: "flagged",
+        },
+      ],
     };
     const service = makeService(tables);
 
     await service.discardMenuItem("rest-1", "mi-1");
     await service.discardMenuItem("rest-1", "mi-1");
-    expect(tables.menu_items[0]).toMatchObject({ status: "discarded", prior_status: "flagged" });
+    expect(tables.menu_items[0]).toMatchObject({
+      status: "discarded",
+      prior_status: "flagged",
+    });
   });
 
   // F-484: a discard used to leave no who or when anywhere.
@@ -590,7 +662,12 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
         },
       ],
       restaurant_menus: [
-        { id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" },
+        {
+          id: "menu-1",
+          restaurant_id: "rest-1",
+          name: "Wine List",
+          status: "active",
+        },
       ],
       system_audit_log: [],
     };
@@ -620,7 +697,13 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
   it("keeps the discard and says audited: false when the audit row cannot be written", async () => {
     const tables: Record<string, Row[]> = {
       menu_items: [
-        { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Opus One", status: "approved" },
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          name: "Opus One",
+          status: "approved",
+        },
       ],
     };
     const supabase = makeFakeSupabase(tables);
@@ -637,64 +720,117 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
     );
 
     const result = await service.discardMenuItem("rest-1", "mi-1", "user-7");
-    expect(result).toEqual({ menuItemId: "mi-1", status: "discarded", audited: false });
+    expect(result).toEqual({
+      menuItemId: "mi-1",
+      status: "discarded",
+      audited: false,
+    });
     expect(tables.menu_items[0].status).toBe("discarded");
   });
 });
 
 describe("MenusService.restoreMenuItem — a discarded line can be put back (F-268)", () => {
   const house = () => ({
-    restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" }],
+    restaurant_menus: [
+      {
+        id: "menu-1",
+        restaurant_id: "rest-1",
+        name: "Wine List",
+        status: "active",
+      },
+    ],
   });
 
   it("puts the line back at the status it had, and getMenu serves it again", async () => {
     const tables: Record<string, Row[]> = {
       ...house(),
       menu_items: [
-        { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Raki", category: "Spirits", status: "flagged" },
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          name: "Raki",
+          category: "Spirits",
+          status: "flagged",
+        },
       ],
     };
     const service = makeService(tables);
     await service.discardMenuItem("rest-1", "mi-1");
-    expect((await service.getDiscardedLines("rest-1")).items.map((r) => r.id)).toEqual(["mi-1"]);
+    expect(
+      (await service.getDiscardedLines("rest-1")).items.map((r) => r.id),
+    ).toEqual(["mi-1"]);
 
     const result = await service.restoreMenuItem("rest-1", "mi-1");
     expect(result).toEqual({ menuItemId: "mi-1", status: "flagged" });
-    expect(tables.menu_items[0]).toMatchObject({ status: "flagged", prior_status: null });
-    expect((await service.getMenu("rest-1")).items.map((r) => r.id)).toEqual(["mi-1"]);
+    expect(tables.menu_items[0]).toMatchObject({
+      status: "flagged",
+      prior_status: null,
+    });
+    expect((await service.getMenu("rest-1")).items.map((r) => r.id)).toEqual([
+      "mi-1",
+    ]);
     expect((await service.getDiscardedLines("rest-1")).items).toEqual([]);
   });
 
   it("a line discarded before its status was kept comes back in review", async () => {
     const tables: Record<string, Row[]> = {
       ...house(),
-      menu_items: [{ id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "discarded" }],
+      menu_items: [
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          status: "discarded",
+        },
+      ],
     };
     const service = makeService(tables);
 
-    expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({ menuItemId: "mi-1", status: "in_review" });
+    expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({
+      menuItemId: "mi-1",
+      status: "in_review",
+    });
     expect(tables.menu_items[0].status).toBe("in_review");
   });
 
   it("leaves a line that is not discarded as it is", async () => {
     const tables: Record<string, Row[]> = {
-      menu_items: [{ id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "approved" }],
+      menu_items: [
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          status: "approved",
+        },
+      ],
     };
     const service = makeService(tables);
 
-    expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({ menuItemId: "mi-1", status: "approved" });
+    expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({
+      menuItemId: "mi-1",
+      status: "approved",
+    });
     expect(tables.menu_items[0].status).toBe("approved");
   });
 
   it("404s for another house's line, and writes nothing", async () => {
     const tables: Record<string, Row[]> = {
       menu_items: [
-        { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "discarded", prior_status: "approved" },
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          status: "discarded",
+          prior_status: "approved",
+        },
       ],
     };
     const service = makeService(tables);
 
-    await expect(service.restoreMenuItem("rest-2", "mi-1")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.restoreMenuItem("rest-2", "mi-1"),
+    ).rejects.toBeInstanceOf(NotFoundException);
     expect(tables.menu_items[0].status).toBe("discarded");
   });
 
@@ -846,7 +982,9 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     const tables: Record<string, Row[]> = {
       menu_items: [line()],
       restaurant_menus: [CURRENT()],
-      restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" }],
+      restaurant_inventory: [
+        { id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" },
+      ],
     };
     const service = makeService(tables, { rpc: changed });
     await service.reviewMenuItem("mi-1", "user-1", "rest-1", {
@@ -861,9 +999,13 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     const tables: Record<string, Row[]> = {
       menu_items: [line()],
       restaurant_menus: [CURRENT()],
-      restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" }],
+      restaurant_inventory: [
+        { id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" },
+      ],
     };
-    (tables as any).__updateFails = [{ restaurant_inventory: "permission denied" }];
+    (tables as any).__updateFails = [
+      { restaurant_inventory: "permission denied" },
+    ];
     const service = makeService(tables, { rpc: changed });
     await expect(
       service.reviewMenuItem("mi-1", "user-1", "rest-1", {
@@ -1075,27 +1217,62 @@ describe("MenusService — every menu read is kept as its own version", () => {
   });
 
   it("names the CSV columns it did not read, as the file spells them (F-070)", async () => {
-    const service = makeService(base(), { wineSubmissions, csvParser: new CsvParserService() });
-    const file = "Name,Producer,Cost,Bottle, Notes \nBarolo,Vietti,38,120,house pour\n";
-    const r = await service.importMenu({ method: "csv", data: { csvContent: file }, restaurantId: "rest-1" } as any, "user-1");
+    const service = makeService(base(), {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
+    const file =
+      "Name,Producer,Cost,Bottle, Notes \nBarolo,Vietti,38,120,house pour\n";
+    const r = await service.importMenu(
+      {
+        method: "csv",
+        data: { csvContent: file },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
     expect(r.unreadColumns).toEqual(["Cost", "Notes"]);
     // A file whose every column is read says none.
-    const clean = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
+    const clean = await service.importMenu(
+      {
+        method: "csv",
+        data: { csvContent: csv },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
     expect(clean.unreadColumns).toEqual([]);
   });
 
   it("F-947: a CSV price like 1.250 is read by the house's mark it was sent with", async () => {
     const tables: Record<string, Row[]> = base();
-    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    const service = makeService(tables, {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
     const file = "name,bottle_price\nOpus One,1.250\n";
     const r = await service.importMenu(
-      { method: "csv", data: { csvContent: file }, restaurantId: "rest-1", groupMark: "." } as any,
+      {
+        method: "csv",
+        data: { csvContent: file },
+        restaurantId: "rest-1",
+        groupMark: ".",
+      } as any,
       "user-1",
     );
-    expect(tables.menu_items.find((l) => l.menu_id === r.menuId)!.bottle_price).toBe(1250);
+    expect(
+      tables.menu_items.find((l) => l.menu_id === r.menuId)!.bottle_price,
+    ).toBe(1250);
     // Without the mark the same file is still refused, never guessed.
     await expect(
-      service.importMenu({ method: "csv", data: { csvContent: file }, restaurantId: "rest-1" } as any, "user-1"),
+      service.importMenu(
+        {
+          method: "csv",
+          data: { csvContent: file },
+          restaurantId: "rest-1",
+        } as any,
+        "user-1",
+      ),
     ).rejects.toThrow(/nothing was imported/);
   });
 
@@ -1113,14 +1290,23 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
   it("F-680: a file that reads as no line is refused with its cause: no version, no 'menu uploaded'", async () => {
     const tables: Record<string, Row[]> = base();
-    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    const service = makeService(tables, {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
     const run = () =>
       service.importMenu(
-        { method: "csv", data: { csvContent: "Etiket;Bağ\nYakut;Kavaklıdere\n" }, restaurantId: "rest-1" } as any,
+        {
+          method: "csv",
+          data: { csvContent: "Etiket;Bağ\nYakut;Kavaklıdere\n" },
+          restaurantId: "rest-1",
+        } as any,
         "user-1",
       );
     await expect(run()).rejects.toBeInstanceOf(BadRequestException);
-    await expect(run()).rejects.toThrow(/could not find a column for the drink's name.*Etiket, Bağ/);
+    await expect(run()).rejects.toThrow(
+      /could not find a column for the drink's name.*Etiket, Bağ/,
+    );
     expect(tables.restaurant_menus).toHaveLength(1);
     expect(tables.user_onboarding_progress).toHaveLength(0);
     expect(tables.__storage ?? []).toHaveLength(0);
@@ -1128,18 +1314,38 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
   it("F-680: a scan that found no drink is refused, and no version is kept", async () => {
     const tables: Record<string, Row[]> = base();
-    const service = makeService(tables, { wineSubmissions, scanParser: { parse: async () => [] } });
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: { parse: async () => [] },
+    });
     await expect(
-      service.importMenu({ method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1" } as any, "user-1"),
+      service.importMenu(
+        {
+          method: "scan",
+          data: { imageBase64: "JVBERi0=" },
+          restaurantId: "rest-1",
+        } as any,
+        "user-1",
+      ),
     ).rejects.toThrow(/could not find any drinks/);
     expect(tables.restaurant_menus).toHaveLength(1);
     expect(tables.user_onboarding_progress).toHaveLength(0);
   });
 
   it("F-017: the reply names the columns that were not read and the rows that were skipped", async () => {
-    const service = makeService(base(), { wineSubmissions, csvParser: new CsvParserService() });
+    const service = makeService(base(), {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
     const r = await service.importMenu(
-      { method: "csv", data: { csvContent: "Wine Name,Bottle,Price,Notes\nRED WINES,,,\nOpus One,62,62,lovely\n" }, restaurantId: "rest-1" } as any,
+      {
+        method: "csv",
+        data: {
+          csvContent:
+            "Wine Name,Bottle,Price,Notes\nRED WINES,,,\nOpus One,62,62,lovely\n",
+        },
+        restaurantId: "rest-1",
+      } as any,
       "user-1",
     );
     expect(r.itemsExtracted).toBe(1);
@@ -1147,7 +1353,9 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.unreadColumns).toEqual(["Price", "Notes"]);
     expect(r.read).toEqual({
       ignoredColumns: ["Price", "Notes"],
-      dropped: [{ row: 2, reason: '"RED WINES" looks like a heading (no price)' }],
+      dropped: [
+        { row: 2, reason: '"RED WINES" looks like a heading (no price)' },
+      ],
       unreadable: [],
     });
   });
@@ -1257,13 +1465,22 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
     // F-946: the house removed the wine; a menu made current lists it again.
     it("brings back a wine the house removed when the chosen menu lists it", async () => {
-      const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      const { tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64 },
+      ]);
       tables.restaurant_inventory[0].is_active = false;
       const r = await choose(service, read.menuId);
 
-      expect(r).toMatchObject({ outcome: "made_current", lines: 1, failed: [] });
+      expect(r).toMatchObject({
+        outcome: "made_current",
+        lines: 1,
+        failed: [],
+      });
       expect(tables.restaurant_inventory).toHaveLength(1);
-      expect(tables.restaurant_inventory[0]).toMatchObject({ id: "inv-1", is_active: true });
+      expect(tables.restaurant_inventory[0]).toMatchObject({
+        id: "inv-1",
+        is_active: true,
+      });
       expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
     });
 
@@ -1297,13 +1514,31 @@ describe("MenusService — every menu read is kept as its own version", () => {
     it("F-681: a menu with no lines is not made current; the house's menu stays", async () => {
       const calls: RpcCall[] = [];
       const tables: Record<string, Row[]> = base();
-      tables.restaurant_menus.push({ id: "menu-empty", restaurant_id: "rest-1", status: "draft" });
-      const service = makeService(tables, { rpcCalls: calls, rpc: makeCurrentRpc(tables) });
-      await expect(service.makeCurrent("rest-1", "menu-empty", "user-2", "any-fingerprint")).rejects.toThrow(
+      tables.restaurant_menus.push({
+        id: "menu-empty",
+        restaurant_id: "rest-1",
+        status: "draft",
+      });
+      const service = makeService(tables, {
+        rpcCalls: calls,
+        rpc: makeCurrentRpc(tables),
+      });
+      await expect(
+        service.makeCurrent(
+          "rest-1",
+          "menu-empty",
+          "user-2",
+          "any-fingerprint",
+        ),
+      ).rejects.toThrow(
         /no lines, so making it current would empty the house's menu/,
       );
-      expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(0);
-      expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
+      expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(
+        0,
+      );
+      expect(
+        tables.restaurant_menus.find((m) => m.id === "menu-old")!.status,
+      ).toBe("active");
     });
 
     it("another house's menu id is a 404", async () => {
@@ -1351,11 +1586,20 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
     it("a large menu is carried in sets and side by side, never one line after another (F-448)", async () => {
       const N = 300;
-      const lines = Array.from({ length: N }, (_, i) => ({ name: `Wine ${i}`, bottle_price: 40 + (i % 7) }));
+      const lines = Array.from({ length: N }, (_, i) => ({
+        name: `Wine ${i}`,
+        bottle_price: 40 + (i % 7),
+      }));
       const many = {
         resolveLibraryWinesBatch: async (items: unknown[]) =>
-          items.map((_, i) => ({ masterWineId: `mw-big-${i}`, matched: true, libraryTier: 1, confidence: 99 })),
-        normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+          items.map((_, i) => ({
+            masterWineId: `mw-big-${i}`,
+            matched: true,
+            libraryTier: 1,
+            confidence: 99,
+          })),
+        normalizeText: (t: string | null | undefined) =>
+          t ? t.toLowerCase() : null,
       };
       const calls: RpcCall[] = [];
       const tables: Record<string, Row[]> = base();
@@ -1379,7 +1623,11 @@ describe("MenusService — every menu read is kept as its own version", () => {
         }) as any,
       });
       const read = await service.importMenu(
-        { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+        {
+          method: "scan",
+          data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+          restaurantId: "rest-1",
+        } as any,
         "user-1",
       );
       const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
@@ -1399,13 +1647,24 @@ describe("MenusService — every menu read is kept as its own version", () => {
       };
 
       const r = await service.makeCurrent("rest-1", read.menuId, "user-2", fp);
-      expect(r).toMatchObject({ outcome: "made_current", lines: N, priceSync: { changed: N }, failed: [] });
-      expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(N);
+      expect(r).toMatchObject({
+        outcome: "made_current",
+        lines: N,
+        priceSync: { changed: N },
+        failed: [],
+      });
+      expect(
+        calls.filter(([fn]) => fn === "set_house_menu_price"),
+      ).toHaveLength(N);
       // The plan's read plus the carry's reads of 100 at a time, plus the
       // inserts' `.select("id")` for the new wines -- not one read per line.
       expect(houseRowReads - N).toBeLessThanOrEqual(10);
       expect(widest).toBeGreaterThan(1);
-      expect(tables.menu_items.filter((l) => l.menu_id === read.menuId).every((l) => l.inventory_item_id)).toBe(true);
+      expect(
+        tables.menu_items
+          .filter((l) => l.menu_id === read.menuId)
+          .every((l) => l.inventory_item_id),
+      ).toBe(true);
     });
 
     it("a switch that returns no outcome is an error, never a success", async () => {
@@ -1439,12 +1698,18 @@ describe("MenusService — every menu read is kept as its own version", () => {
   it("F-699: the menus and the plan carry the house's zone, so the page prints the house's day; none set is null", async () => {
     const tables: Record<string, Row[]> = {
       restaurants: [{ id: "rest-1", timezone: "America/Los_Angeles" }],
-      restaurant_menus: [{ id: "m1", restaurant_id: "rest-1", status: "draft" }],
+      restaurant_menus: [
+        { id: "m1", restaurant_id: "rest-1", status: "draft" },
+      ],
       menu_items: [],
     };
     const service = makeService(tables);
-    expect((await service.listVersions("rest-1")).timezone).toBe("America/Los_Angeles");
-    expect((await service.planFor("rest-1", "m1")).timezone).toBe("America/Los_Angeles");
+    expect((await service.listVersions("rest-1")).timezone).toBe(
+      "America/Los_Angeles",
+    );
+    expect((await service.planFor("rest-1", "m1")).timezone).toBe(
+      "America/Los_Angeles",
+    );
     tables.restaurants[0].timezone = null;
     expect((await service.listVersions("rest-1")).timezone).toBeNull();
   });
@@ -1485,10 +1750,22 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const tables: Record<string, Row[]> = base();
     const stockBefore = tables.restaurant_inventory.length;
     const resolve = jest.fn(wineSubmissions.resolveLibraryWinesBatch);
-    const service = makeService(tables, { wineSubmissions: { ...wineSubmissions, resolveLibraryWinesBatch: resolve } });
+    const service = makeService(tables, {
+      wineSubmissions: {
+        ...wineSubmissions,
+        resolveLibraryWinesBatch: resolve,
+      },
+    });
     await expect(
-      service.addMenuItem({ menuId: "menu-old", name: "Opus One" } as any, "staff-1", "rest-1", false),
-    ).rejects.toThrow(/Only an owner or a manager can add a line to the current menu/);
+      service.addMenuItem(
+        { menuId: "menu-old", name: "Opus One" } as any,
+        "staff-1",
+        "rest-1",
+        false,
+      ),
+    ).rejects.toThrow(
+      /Only an owner or a manager can add a line to the current menu/,
+    );
     expect(tables.menu_items).toHaveLength(0);
     expect(tables.restaurant_inventory).toHaveLength(stockBefore);
     expect(resolve).not.toHaveBeenCalled();
@@ -1629,17 +1906,34 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
 
   it("F-696: the plan names the current menu this choice takes off and counts the lines that leave with it; a different one current by the choice is a plan that moved", async () => {
     const { tables, service } = setup();
-    tables.restaurant_menus.find((m) => m.id === "menu-old")!.name = "Wine list";
+    tables.restaurant_menus.find((m) => m.id === "menu-old")!.name =
+      "Wine list";
     // A discarded line is already off the menu; it does not leave with it.
-    tables.menu_items.push({ id: "old-2", menu_id: "menu-old", restaurant_id: "rest-1", name: "Gone", status: "discarded" });
+    tables.menu_items.push({
+      id: "old-2",
+      menu_id: "menu-old",
+      restaurant_id: "rest-1",
+      name: "Gone",
+      status: "discarded",
+    });
     const plan = await service.planFor("rest-1", "menu-new");
-    expect(plan.retiring).toEqual([{ menuId: "menu-old", name: "Wine list", lines: 1 }]);
+    expect(plan.retiring).toEqual([
+      { menuId: "menu-old", name: "Wine list", lines: 1 },
+    ]);
     // The menu already current takes nothing off.
     expect((await service.planFor("rest-1", "menu-old")).retiring).toEqual([]);
     // Another menu became current after the plan was shown: the choice is refused.
-    tables.restaurant_menus.find((m) => m.id === "menu-old")!.status = "archived";
-    tables.restaurant_menus.push({ id: "menu-other", restaurant_id: "rest-1", status: "active", name: "Cocktails" });
-    await expect(service.makeCurrent("rest-1", "menu-new", "user-1", plan.fingerprint)).rejects.toBeInstanceOf(ConflictException);
+    tables.restaurant_menus.find((m) => m.id === "menu-old")!.status =
+      "archived";
+    tables.restaurant_menus.push({
+      id: "menu-other",
+      restaurant_id: "rest-1",
+      status: "active",
+      name: "Cocktails",
+    });
+    await expect(
+      service.makeCurrent("rest-1", "menu-new", "user-1", plan.fingerprint),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it("L11, as the founder confirmed it (\"The menu sets it, locks keep\"): a price a PERSON set after this menu was read is marked setAfterRead; a menu's own, or one set before the read, is not", async () => {
@@ -1693,7 +1987,10 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     const { tables, service } = setup();
     const n1 = tables.menu_items.find((m) => m.id === "n-1")!;
     const inv1 = tables.restaurant_inventory.find((r) => r.id === "inv-1")!;
-    const barolo = async () => (await service.planFor("rest-1", "menu-new")).lines.find((l) => l.menuItemId === "n-1")!;
+    const barolo = async () =>
+      (await service.planFor("rest-1", "menu-new")).lines.find(
+        (l) => l.menuItemId === "n-1",
+      )!;
 
     // The menu prints no year; the locked wine is the 2019.
     n1.vintage = null;

@@ -318,7 +318,9 @@ describe("a letter for a cancelled, turned-down or failed order", () => {
       },
     });
     await expect(mint(s)).rejects.toThrow(words);
-    await expect(mint(s)).rejects.toThrow(/No seal was issued and nothing was sent/);
+    await expect(mint(s)).rejects.toThrow(
+      /No seal was issued and nothing was sent/,
+    );
     expect(s.issued).toHaveLength(0);
   });
 
@@ -367,7 +369,9 @@ describe("a letter for a cancelled, turned-down or failed order", () => {
         {},
         { userId: "manager", challenge: "tok", grantId: null },
       ),
-    ).rejects.toThrow("This order was cancelled, so its letter cannot go to the vendor. Nothing was sent.");
+    ).rejects.toThrow(
+      "This order was cancelled, so its letter cannot go to the vendor. Nothing was sent.",
+    );
     expect(redeem).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });

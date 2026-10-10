@@ -20,7 +20,12 @@ import { VendorTermsService } from "./vendor-terms.service";
  */
 @Module({
   // OrganizationsModule: the role half of VEN-W30's write gate.
-  imports: [DatabaseModule, AuthModule, SettingsAuditModule, OrganizationsModule],
+  imports: [
+    DatabaseModule,
+    AuthModule,
+    SettingsAuditModule,
+    OrganizationsModule,
+  ],
   controllers: [VendorTermsController],
   providers: [VendorTermsService],
   exports: [VendorTermsService],

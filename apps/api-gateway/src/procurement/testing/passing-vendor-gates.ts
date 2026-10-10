@@ -38,7 +38,12 @@ export const PASSING_AUTHORITY = {
  * in `order-approval-gate.spec.ts` and `vendor-doors-are-sealed.spec.ts`.
  */
 export const PASSING_THRESHOLDS = {
-  read: async () => ({ thresholds: [], policyEmpty: true, readable: true, reason: null }),
+  read: async () => ({
+    thresholds: [],
+    policyEmpty: true,
+    readable: true,
+    reason: null,
+  }),
 };
 
 export const PASSING_ORGANIZATIONS = {
@@ -58,7 +63,16 @@ export const GATES_AFTER_LEDGER = [
   PASSING_SEAL,
   PASSING_AUTHORITY,
 ] as unknown as [
-  undefined, undefined, undefined, undefined, undefined, undefined, any, any, any, any,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  any,
+  any,
+  any,
+  any,
 ];
 
 /** The actor and the seal a gated call carries in these specs. */

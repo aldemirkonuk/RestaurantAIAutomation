@@ -172,7 +172,9 @@ export class NotesService {
     }
 
     const isStaff = role === "staff";
-    const mine = isStaff ? await this.team.ownMemberId(userId, restaurantId) : null;
+    const mine = isStaff
+      ? await this.team.ownMemberId(userId, restaurantId)
+      : null;
     // A staff caller gets back only their OWN recipient and delivery rows. The
     // full list told every waiter when each colleague opened the note and how
     // it reached them (an "Away until …" hold included), and the page, handed
@@ -183,10 +185,14 @@ export class NotesService {
       .filter((n: any) =>
         // A staff caller with no roster row is addressed by nothing — it is not
         // a licence to read every note.
-        isStaff ? recipients.some((r) => r.note_id === n.id && r.member_id === mine) : true,
+        isStaff
+          ? recipients.some((r) => r.note_id === n.id && r.member_id === mine)
+          : true,
       )
       .map((n: any) => {
-        const to = recipients.filter((r) => r.note_id === n.id && visible(r.member_id));
+        const to = recipients.filter(
+          (r) => r.note_id === n.id && visible(r.member_id),
+        );
         return {
           id: n.id,
           weekStart: n.week_start,

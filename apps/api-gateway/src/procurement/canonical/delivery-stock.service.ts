@@ -246,7 +246,8 @@ export class DeliveryStockService {
     if (!already.ok) return already;
 
     // Pass one: which lines can be booked, onto which item, for how many.
-    const countable: { lineNo: number; inventoryId: string; wanted: number }[] = [];
+    const countable: { lineNo: number; inventoryId: string; wanted: number }[] =
+      [];
     for (const line of lines) {
       const label = line.description ?? line.vendor_sku ?? `line ${line.line_no}`;
       if (line.line_no == null) {
@@ -296,14 +297,18 @@ export class DeliveryStockService {
     // keyed on the item's first line. Its later lines report delta 0.
     const wantedPerItem = new Map<string, number>();
     for (const c of countable)
-      wantedPerItem.set(c.inventoryId, (wantedPerItem.get(c.inventoryId) ?? 0) + c.wanted);
+      wantedPerItem.set(
+        c.inventoryId,
+        (wantedPerItem.get(c.inventoryId) ?? 0) + c.wanted,
+      );
 
     // Pass two: book each item once.
     const settled = new Set<string>();
     for (const { lineNo, inventoryId } of countable) {
       const delta = settled.has(inventoryId)
         ? 0
-        : (wantedPerItem.get(inventoryId) ?? 0) - (already.value.get(inventoryId) ?? 0);
+        : (wantedPerItem.get(inventoryId) ?? 0) -
+          (already.value.get(inventoryId) ?? 0);
       settled.add(inventoryId);
       if (delta === 0) {
         booked.push({
@@ -720,7 +725,9 @@ export class DeliveryStockService {
       );
       return;
     }
-    const ids = ((docs.data ?? []) as { document_id: string }[]).map((d) => d.document_id);
+    const ids = ((docs.data ?? []) as { document_id: string }[]).map(
+      (d) => d.document_id,
+    );
     const stated = new Set<string>();
     if (ids.length) {
       const read = await client
@@ -752,7 +759,8 @@ export class DeliveryStockService {
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         .maybeSingle();
-      code = (order.data as { currency?: string | null } | null)?.currency ?? null;
+      code =
+        (order.data as { currency?: string | null } | null)?.currency ?? null;
     }
     if (!code || !/^[A-Z]{3}$/.test(code)) return;
     const write = await client

@@ -282,7 +282,10 @@ function makeService(
       limit: () => b,
       range: (lo: number, hi: number) => {
         reads.push([lo, hi]);
-        page = rows.slice(lo, Math.min(hi + 1, lo + (opts.serverMaxRows ?? Infinity)));
+        page = rows.slice(
+          lo,
+          Math.min(hi + 1, lo + (opts.serverMaxRows ?? Infinity)),
+        );
         return b;
       },
       // The sweep reads through `scopePriceRegisterRead` (ADR 0117 addendum),

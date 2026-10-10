@@ -139,7 +139,10 @@ export interface VendorOrderStamp {
 
 const NEVER_PLACED_STATUSES = new Set(["CANCELLED", "REJECTED"]);
 
-function compareTime(a: string | null | undefined, b: string | null | undefined): number {
+function compareTime(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
   const ta = a ? Date.parse(a) : NaN;
   const tb = b ? Date.parse(b) : NaN;
   if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
@@ -149,7 +152,10 @@ function compareTime(a: string | null | undefined, b: string | null | undefined)
 }
 
 /** Negative when `a` was requested before `b`. */
-export function compareVendorOrders(a: VendorOrderStamp, b: VendorOrderStamp): number {
+export function compareVendorOrders(
+  a: VendorOrderStamp,
+  b: VendorOrderStamp,
+): number {
   return (
     compareTime(a.requested_at, b.requested_at) ||
     compareTime(a.created_at, b.created_at) ||
@@ -158,7 +164,9 @@ export function compareVendorOrders(a: VendorOrderStamp, b: VendorOrderStamp): n
 }
 
 /** Whether this order counts as one the house placed with the vendor. */
-export function countsAsPlacedWithVendor(status: string | null | undefined): boolean {
+export function countsAsPlacedWithVendor(
+  status: string | null | undefined,
+): boolean {
   return !NEVER_PLACED_STATUSES.has((status ?? "").toUpperCase());
 }
 
@@ -178,7 +186,10 @@ export function isFirstOrderToVendorAmong(
       sawSelf = true;
       continue;
     }
-    if (countsAsPlacedWithVendor(o.status) && compareVendorOrders(o, self) < 0) {
+    if (
+      countsAsPlacedWithVendor(o.status) &&
+      compareVendorOrders(o, self) < 0
+    ) {
       return false;
     }
   }
@@ -228,7 +239,11 @@ export function pricePremium(
   const none = { pct: null, uncomparable: null };
   if (!prior || current.price === null || current.price <= 0) return none;
   if (prior.price === null || prior.price <= 0) return none;
-  if (current.currency && prior.currency && current.currency !== prior.currency) {
+  if (
+    current.currency &&
+    prior.currency &&
+    current.currency !== prior.currency
+  ) {
     return {
       pct: null,
       uncomparable: `the last price was in ${prior.currency} and this one is in ${current.currency}`,
@@ -316,7 +331,10 @@ export function decideApproval(
         order.ceilingCurrency &&
         order.currency !== order.ceilingCurrency
       ) {
-        decision.requiredRole = strongest(decision.requiredRole, row.requiredRole);
+        decision.requiredRole = strongest(
+          decision.requiredRole,
+          row.requiredRole,
+        );
         decision.firedBy.push(rule);
         decision.reasons.push(
           `in ${order.currency}, while the ${row.amountLimit} ceiling this house set for a manager is in ${order.ceilingCurrency}, and no exchange rate is kept here to compare the two`,

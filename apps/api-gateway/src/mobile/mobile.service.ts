@@ -203,7 +203,8 @@ export class MobileService {
             entityId: notifOrderId ?? n.id,
             title: n.title ?? "Delivery discrepancy",
             subtitle:
-              n.message ?? "The delivery did not match the order or the invoice.",
+              n.message ??
+              "The delivery did not match the order or the invoice.",
             quantity: meta.backorderQty ?? null,
             priority: "critical",
             createdAt: n.createdAt ?? n.created_at ?? new Date().toISOString(),
@@ -353,7 +354,12 @@ export class MobileService {
     }
     const zone = houseFrame(house.data?.[0] ?? null).zone;
     if (!zone) {
-      return { state: "zone_unset", today: null, lastWeek: null, windowStart: null };
+      return {
+        state: "zone_unset",
+        today: null,
+        lastWeek: null,
+        windowStart: null,
+      };
     }
 
     const today = localDateIn(now, zone);
@@ -371,7 +377,10 @@ export class MobileService {
           .select("id, subtotal, opened_at, closed_at")
           .eq("restaurant_id", restaurantId)
           .eq("voided", false)
-          .gte("opened_at", new Date(from.getTime() - CHECK_LOOKBACK_MS).toISOString())
+          .gte(
+            "opened_at",
+            new Date(from.getTime() - CHECK_LOOKBACK_MS).toISOString(),
+          )
           .lt("opened_at", to.toISOString());
         if (after) q = q.gt("id", after);
         return q;
@@ -392,7 +401,12 @@ export class MobileService {
       throw new Error(`pos_checks read failed: ${first.error.message}`);
     }
     if (!first.data || first.data.length === 0) {
-      return { state: "no_register", today: null, lastWeek: null, windowStart: start.toISOString() };
+      return {
+        state: "no_register",
+        today: null,
+        lastWeek: null,
+        windowStart: start.toISOString(),
+      };
     }
 
     const takings = (

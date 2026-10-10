@@ -83,7 +83,12 @@ export type BoundReply =
       sourceLabel: "Not from the house's books";
       text: ModelKnowledgeText;
     }
-  | { kind: "could_not_answer"; reason: ModelFailureReason; finding?: Finding; earlierCallPaid?: true }
+  | {
+      kind: "could_not_answer";
+      reason: ModelFailureReason;
+      finding?: Finding;
+      earlierCallPaid?: true;
+    }
   | { kind: "not_permitted"; reason: "class_not_visible"; readingId: ReadingId; classes: DataClass[]; line: string }
   /** An unbuilt question class whose data class the role does not see (round 6r, "Classify now"). */
   | { kind: "not_permitted"; reason: "class_not_visible"; questionClass: ClassifiedUnbuiltQuestion; classes: DataClass[]; line: string }
@@ -219,8 +224,17 @@ export function couldNotReadReply(detail: FailureDetail, readingId?: ReadingId, 
 }
 
 /** A model-side failure, carrying the Finding when the books were already read, and whether an earlier call was paid. */
-export function modelFailureReply(reason: ModelFailureReason, finding?: Finding, earlierCallPaid = false): BoundReply {
-  return { kind: "could_not_answer", reason, ...(finding ? { finding } : {}), ...(earlierCallPaid ? { earlierCallPaid: true as const } : {}) };
+export function modelFailureReply(
+  reason: ModelFailureReason,
+  finding?: Finding,
+  earlierCallPaid = false,
+): BoundReply {
+  return {
+    kind: "could_not_answer",
+    reason,
+    ...(finding ? { finding } : {}),
+    ...(earlierCallPaid ? { earlierCallPaid: true as const } : {}),
+  };
 }
 
 const joinNames = (names: string[]) =>
@@ -294,8 +308,12 @@ export function isBoundReply(raw: unknown): raw is BoundReply {
     }
   }
   if (raw.kind === "could_not_answer") {
-    return MODEL_FAILURE_REASONS.includes(raw.reason as ModelFailureReason) && attachedFindingOk &&
-      (raw.earlierCallPaid === undefined || (raw.earlierCallPaid === true && raw.reason === "spend_ceiling"));
+    return (
+      MODEL_FAILURE_REASONS.includes(raw.reason as ModelFailureReason) &&
+      attachedFindingOk &&
+      (raw.earlierCallPaid === undefined ||
+        (raw.earlierCallPaid === true && raw.reason === "spend_ceiling"))
+    );
   }
   if (raw.kind === "not_permitted") {
     // Never carries a Finding -- the books were never queried for a refusal

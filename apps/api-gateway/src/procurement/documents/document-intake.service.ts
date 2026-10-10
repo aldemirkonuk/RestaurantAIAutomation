@@ -511,8 +511,7 @@ export class DocumentIntakeService {
       // The same bytes again (F-747). Still filed to the order it was sent
       // with, and answered with what was read the first time — "nothing
       // legible" would be a claim about a paper we read perfectly well.
-      if (existing.data?.id)
-        return this.answerDuplicate(input, existing.data);
+      if (existing.data?.id) return this.answerDuplicate(input, existing.data);
 
       const parsed = await this.route(input, bytes);
 
@@ -1501,7 +1500,8 @@ export class DocumentIntakeService {
         parsed,
         vendorProviderId,
       );
-      if (conflict) await this.noteOnDocument(documentId, restaurantId, conflict);
+      if (conflict)
+        await this.noteOnDocument(documentId, restaurantId, conflict);
       else await this.link(documentId, orderId, restaurantId, "manual", 1);
       answer = { orderId, linked: !conflict, conflict };
     } else if (parsed) await this.autoLink(documentId, restaurantId, parsed);
@@ -1664,7 +1664,11 @@ export class DocumentIntakeService {
   private async findSamePaper(
     input: IntakeInput,
     parsed: ParsedDocument,
-  ): Promise<{ id: string; provider_id: string | null; extracted: unknown } | null> {
+  ): Promise<{
+    id: string;
+    provider_id: string | null;
+    extracted: unknown;
+  } | null> {
     const number = parsed.docNumber?.trim();
     if (!number || parsed.docType === "unknown") return null;
     const client = this.db.getClient();
@@ -1713,7 +1717,10 @@ export class DocumentIntakeService {
         vendorTaxId?: string | null;
         vendorCountry?: string | null;
       };
-      const was = normalizeTaxId(ex.vendorTaxId ?? null, ex.vendorCountry ?? country);
+      const was = normalizeTaxId(
+        ex.vendorTaxId ?? null,
+        ex.vendorCountry ?? country,
+      );
       return was.ok && was.identity.normalized === tax.identity.normalized;
     });
     return hit ?? null;

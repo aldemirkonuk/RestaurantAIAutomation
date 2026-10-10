@@ -164,12 +164,14 @@ export class NotificationsService {
       .emit("notification:new", payload);
 
     const hold = restaurantId
-      ? (await pushHolds(
-          this.databaseService.supabase,
-          restaurantId,
-          [userId],
-          (line) => this.logger.warn(line),
-        )).get(userId) ?? null
+      ? ((
+          await pushHolds(
+            this.databaseService.supabase,
+            restaurantId,
+            [userId],
+            (line) => this.logger.warn(line),
+          )
+        ).get(userId) ?? null)
       : null;
     if (hold) return hold;
 

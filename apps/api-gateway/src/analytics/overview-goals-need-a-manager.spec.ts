@@ -12,12 +12,19 @@ const OVERVIEW = {
   cashflow: { spendLast30d: 0 },
   insights: [],
   activeGoals: [
-    { name: "Food cost", baseline_value: 34, current_value: 31, target_value: 28 },
+    {
+      name: "Food cost",
+      baseline_value: 34,
+      current_value: 31,
+      target_value: 28,
+    },
   ],
 };
 
 function controller() {
-  const advanced = { getOverview: jest.fn().mockResolvedValue({ ...OVERVIEW }) };
+  const advanced = {
+    getOverview: jest.fn().mockResolvedValue({ ...OVERVIEW }),
+  };
   const c = new (AnalyticsController as any)(
     {},
     advanced,
@@ -35,11 +42,14 @@ function controller() {
 }
 
 describe("GET /analytics/overview — goals only for owners and managers (F-794)", () => {
-  it.each(["owner", "manager", "Owner "])("%s gets the active goals", async (role) => {
-    const { c } = controller();
-    const out: any = await c.getOverview("r1", { role });
-    expect(out.activeGoals).toEqual(OVERVIEW.activeGoals);
-  });
+  it.each(["owner", "manager", "Owner "])(
+    "%s gets the active goals",
+    async (role) => {
+      const { c } = controller();
+      const out: any = await c.getOverview("r1", { role });
+      expect(out.activeGoals).toEqual(OVERVIEW.activeGoals);
+    },
+  );
 
   it.each(["staff", "chef", "admin", null, undefined])(
     "%s gets the overview without the goals key",

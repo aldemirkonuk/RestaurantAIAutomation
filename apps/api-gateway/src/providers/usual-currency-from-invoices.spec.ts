@@ -25,15 +25,25 @@ describe("printedCurrencyOf — only what the page printed", () => {
     expect(printedCurrencyOf({ seenCode: "usd" })).toBe("USD");
   });
   it("takes the file's own code when no model looked (EDI CUR02)", () => {
-    expect(printedCurrencyOf({ filedKind: "file", filedCode: "EUR" })).toBe("EUR");
+    expect(printedCurrencyOf({ filedKind: "file", filedCode: "EUR" })).toBe(
+      "EUR",
+    );
   });
   it("never counts a code filed from the order or the house", () => {
-    expect(printedCurrencyOf({ filedKind: "house", filedCode: "TRY" })).toBeNull();
-    expect(printedCurrencyOf({ filedKind: "order", filedCode: "TRY" })).toBeNull();
+    expect(
+      printedCurrencyOf({ filedKind: "house", filedCode: "TRY" }),
+    ).toBeNull();
+    expect(
+      printedCurrencyOf({ filedKind: "order", filedCode: "TRY" }),
+    ).toBeNull();
   });
   it("leaves out a document whose sighting disagrees with its own file", () => {
     expect(
-      printedCurrencyOf({ seenCode: "EUR", filedKind: "file", filedCode: "USD" }),
+      printedCurrencyOf({
+        seenCode: "EUR",
+        filedKind: "file",
+        filedCode: "USD",
+      }),
     ).toBeNull();
   });
   it("refuses a code that is not a currency", () => {
@@ -43,11 +53,17 @@ describe("printedCurrencyOf — only what the page printed", () => {
 
 describe("decideUsualCurrency — the write", () => {
   it(`writes at ${INVOICES_TO_WRITE} agreeing invoices when nothing is on file`, () => {
-    const d = decideUsualCurrency({ evidence: inv("USD", "USD", "USD"), onFile: nothing });
+    const d = decideUsualCurrency({
+      evidence: inv("USD", "USD", "USD"),
+      onFile: nothing,
+    });
     expect(d.write).toEqual({ code: "USD", invoiceCount: 3 });
   });
   it("does not write at 2", () => {
-    const d = decideUsualCurrency({ evidence: inv("USD", "USD"), onFile: nothing });
+    const d = decideUsualCurrency({
+      evidence: inv("USD", "USD"),
+      onFile: nothing,
+    });
     expect(d.write).toBeNull();
     expect(d.state).toBe("E");
   });
@@ -148,15 +164,23 @@ describe("decideUsualCurrency — the five sheet states", () => {
     expect(d.clash).toEqual({ code: "EUR", lastInvoices: 1 });
   });
   it("E: nothing on file, too few", () => {
-    expect(decideUsualCurrency({ evidence: inv("USD"), onFile: nothing }).state).toBe("E");
-    expect(decideUsualCurrency({ evidence: [], onFile: nothing }).state).toBe("E");
+    expect(
+      decideUsualCurrency({ evidence: inv("USD"), onFile: nothing }).state,
+    ).toBe("E");
+    expect(decideUsualCurrency({ evidence: [], onFile: nothing }).state).toBe(
+      "E",
+    );
   });
 });
 
 describe("vendorCurrencySentence — the sketch's words", () => {
   const say = (
     evidence: InvoiceCurrencyEvidence[],
-    onFile: { code: string | null; source: "person" | "invoices" | null; invoiceCount: number | null },
+    onFile: {
+      code: string | null;
+      source: "person" | "invoices" | null;
+      invoiceCount: number | null;
+    },
   ) =>
     vendorCurrencySentence({
       code: onFile.code,
@@ -169,7 +193,11 @@ describe("vendorCurrencySentence — the sketch's words", () => {
 
   it("A", () => {
     expect(
-      say(inv("USD", "USD", "USD", "USD"), { code: "USD", source: "invoices", invoiceCount: 4 }),
+      say(inv("USD", "USD", "USD", "USD"), {
+        code: "USD",
+        source: "invoices",
+        invoiceCount: 4,
+      }),
     ).toBe(
       "All 4 invoices from ALDEMIR DISTRIBUTION were printed in USD, so orders to them start in USD. You can change it on the order.",
     );
@@ -181,12 +209,22 @@ describe("vendorCurrencySentence — the sketch's words", () => {
   });
   it("C", () => {
     expect(
-      say(inv("EUR", "EUR", "EUR"), { code: "USD", source: "person", invoiceCount: null }),
-    ).toBe("Their last 3 invoices were printed in EUR. USD stays until someone switches it.");
+      say(inv("EUR", "EUR", "EUR"), {
+        code: "USD",
+        source: "person",
+        invoiceCount: null,
+      }),
+    ).toBe(
+      "Their last 3 invoices were printed in EUR. USD stays until someone switches it.",
+    );
   });
   it("D", () => {
     expect(
-      say(inv("EUR", "USD", "USD", "USD"), { code: "USD", source: "invoices", invoiceCount: 3 }),
+      say(inv("EUR", "USD", "USD", "USD"), {
+        code: "USD",
+        source: "invoices",
+        invoiceCount: 3,
+      }),
     ).toBe(
       "A later invoice was printed in EUR. Orders still start in USD; choose which one they usually invoice in.",
     );
@@ -195,14 +233,24 @@ describe("vendorCurrencySentence — the sketch's words", () => {
     expect(say(inv("USD"), nothing)).toBe(
       "1 invoice so far, printed in USD. After 2 more in the same currency it is filled in for you — or choose it now.",
     );
-    expect(say([], nothing)).toContain("No invoice from ALDEMIR DISTRIBUTION has printed a currency yet.");
+    expect(say([], nothing)).toContain(
+      "No invoice from ALDEMIR DISTRIBUTION has printed a currency yet.",
+    );
   });
   it("a person's value nothing contradicts keeps the person's sentence", () => {
-    const s = say(inv("USD"), { code: "USD", source: "person", invoiceCount: null });
+    const s = say(inv("USD"), {
+      code: "USD",
+      source: "person",
+      invoiceCount: null,
+    });
     expect(s).toContain("Stated by Aldemir Konuk");
   });
   it("an invoice-written value never names a person", () => {
-    const s = say(inv("USD", "USD", "USD"), { code: "USD", source: "invoices", invoiceCount: 3 });
+    const s = say(inv("USD", "USD", "USD"), {
+      code: "USD",
+      source: "invoices",
+      invoiceCount: 3,
+    });
     expect(s).not.toMatch(/Stated by/);
   });
 });
@@ -221,7 +269,10 @@ function stub(answers: Record<string, { data: unknown; error: unknown }[]>) {
         {
           get(_t, prop: string) {
             if (prop === "then") {
-              const next = (answers[table] ?? []).shift() ?? { data: null, error: null };
+              const next = (answers[table] ?? []).shift() ?? {
+                data: null,
+                error: null,
+              };
               return (res: (v: unknown) => void) => res(next);
             }
             return (...args: unknown[]) => {
@@ -237,7 +288,9 @@ function stub(answers: Record<string, { data: unknown; error: unknown }[]>) {
   return { client, calls };
 }
 const has = (c: Call, op: string, ...args: unknown[]) =>
-  c.ops.some(([o, a]) => o === op && JSON.stringify(a) === JSON.stringify(args));
+  c.ops.some(
+    ([o, a]) => o === op && JSON.stringify(a) === JSON.stringify(args),
+  );
 
 const docs = (codes: string[]) =>
   codes.map((code, i) => ({
@@ -283,7 +336,9 @@ describe("readInvoiceCurrencyEvidence — house-scoped, invoices only", () => {
     const { client } = stub({
       procurement_documents: [{ data: null, error: { message: "down" } }],
     });
-    await expect(readInvoiceCurrencyEvidence(client, "h", "v")).rejects.toThrow("down");
+    await expect(readInvoiceCurrencyEvidence(client, "h", "v")).rejects.toThrow(
+      "down",
+    );
   });
 });
 
@@ -291,10 +346,19 @@ describe("learnUsualCurrencyFromInvoices — the guarded write", () => {
   it("writes as the invoices, with no person, only where nothing is on file", async () => {
     const { client, calls } = stub({
       providers: [
-        { data: { usual_currency: null, usual_currency_source: null, usual_currency_invoice_count: null }, error: null },
+        {
+          data: {
+            usual_currency: null,
+            usual_currency_source: null,
+            usual_currency_invoice_count: null,
+          },
+          error: null,
+        },
         { data: [{ id: "v" }], error: null },
       ],
-      procurement_documents: [{ data: docs(["USD", "USD", "USD"]), error: null }],
+      procurement_documents: [
+        { data: docs(["USD", "USD", "USD"]), error: null },
+      ],
       procurement_document_currency_changes: [{ data: [], error: null }],
     });
     const out = await learnUsualCurrencyFromInvoices(client, "house-1", "v");
@@ -316,18 +380,32 @@ describe("learnUsualCurrencyFromInvoices — the guarded write", () => {
         { data: { usual_currency: null }, error: null },
         { data: [], error: null },
       ],
-      procurement_documents: [{ data: docs(["USD", "USD", "USD"]), error: null }],
+      procurement_documents: [
+        { data: docs(["USD", "USD", "USD"]), error: null },
+      ],
       procurement_document_currency_changes: [{ data: [], error: null }],
     });
-    expect(await learnUsualCurrencyFromInvoices(client, "h", "v")).toEqual({ kind: "raced" });
+    expect(await learnUsualCurrencyFromInvoices(client, "h", "v")).toEqual({
+      kind: "raced",
+    });
   });
   it("writes nothing over a person's value", async () => {
     const { client, calls } = stub({
-      providers: [{ data: { usual_currency: "EUR", usual_currency_source: "person" }, error: null }],
-      procurement_documents: [{ data: docs(["USD", "USD", "USD"]), error: null }],
+      providers: [
+        {
+          data: { usual_currency: "EUR", usual_currency_source: "person" },
+          error: null,
+        },
+      ],
+      procurement_documents: [
+        { data: docs(["USD", "USD", "USD"]), error: null },
+      ],
       procurement_document_currency_changes: [{ data: [], error: null }],
     });
-    expect(await learnUsualCurrencyFromInvoices(client, "h", "v")).toEqual({ kind: "left", state: "C" });
+    expect(await learnUsualCurrencyFromInvoices(client, "h", "v")).toEqual({
+      kind: "left",
+      state: "C",
+    });
     expect(calls.filter((c) => c.table === "providers")).toHaveLength(1);
   });
   it("never throws: a failed read comes back as a failure", async () => {

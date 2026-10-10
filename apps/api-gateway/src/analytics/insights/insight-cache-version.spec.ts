@@ -305,7 +305,8 @@ describe("the hourly sweep stamps a run only when it saved, and only the run (F-
       { getClient: () => client } as any,
       {
         generate: async () => ({ insights: [], persisted }),
-        staleVersionCategories: async () => new Map([["r1", new Set(["sales"])]]),
+        staleVersionCategories: async () =>
+          new Map([["r1", new Set(["sales"])]]),
       } as any,
     );
     return { svc, client };

@@ -539,9 +539,16 @@ describe("the confirmation letter names the price in the agreement's money (F-34
     providers: { name: "Kavaklidere", contact_email: "orders@vendor.test" },
   };
 
-  async function letterBody(opts: Parameters<typeof makeDb>[0]): Promise<string> {
+  async function letterBody(
+    opts: Parameters<typeof makeDb>[0],
+  ): Promise<string> {
     const { db } = makeDb(opts);
-    const svc = new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER);
+    const svc = new ProcurementService(
+      db,
+      events,
+      ledger,
+      ...GATES_AFTER_LEDGER,
+    );
     const send = jest
       .spyOn(svc as any, "sendProviderEmail")
       .mockResolvedValue({ messageId: null, threadId: null });

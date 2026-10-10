@@ -171,7 +171,10 @@ export async function closeDeliveryItemToNameBookedElsewhere(
       groupKey: `delivery_item_to_name:${input.orderId}`,
     });
     if (!bell.ok) {
-      return { ok: false, error: `the ask is closed, but its line on the bell could not be cleared (${bell.error})` };
+      return {
+        ok: false,
+        error: `the ask is closed, but its line on the bell could not be cleared (${bell.error})`,
+      };
     }
     return { ok: true, closed: Array.isArray(data) && data.length > 0 };
   } catch (err: any) {
@@ -573,13 +576,18 @@ export async function nameDeliveredItem(
   // audit row, research. Each failure is said or logged, not swallowed.
   // F-351: lowered by a delta in one statement (floored at 0), never read and
   // written back, so an approval on the same item at the same moment is kept.
-  const { error: inTransitError } = await client.rpc("move_in_transit_by_delta", {
-    p_restaurant_id: input.restaurantId,
-    p_inventory_id: input.inventoryId,
-    p_delta: -bottles,
-  });
+  const { error: inTransitError } = await client.rpc(
+    "move_in_transit_by_delta",
+    {
+      p_restaurant_id: input.restaurantId,
+      p_inventory_id: input.inventoryId,
+      p_delta: -bottles,
+    },
+  );
   if (inTransitError) {
-    logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but the in-transit counter was not lowered (${inTransitError.message})`);
+    logger.warn(
+      `nameDeliveredItem: order ${input.orderId} booked, but the in-transit counter was not lowered (${inTransitError.message})`,
+    );
   }
   const { error: eventError } = await client.from("inventory_events").insert({
     restaurant_id: input.restaurantId,
@@ -630,7 +638,9 @@ export async function nameDeliveredItem(
     groupKey: `delivery_item_to_name:${input.orderId}`,
   });
   if (!bell.ok) {
-    logger.warn(`nameDeliveredItem: order ${input.orderId} booked, but its line on the bell was not cleared (${bell.error}).`);
+    logger.warn(
+      `nameDeliveredItem: order ${input.orderId} booked, but its line on the bell was not cleared (${bell.error}).`,
+    );
   }
 
   const research = await queueResearchIfLibraryLacks(client, {

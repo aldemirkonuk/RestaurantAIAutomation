@@ -188,10 +188,9 @@ export class WinesService {
    * id is pasted into a PostgREST filter, so anything else is refused rather
    * than quoted.
    */
-  private visibleTo<Q extends { is(column: string, value: null): Q; or(filters: string): Q }>(
-    supa: Q,
-    restaurantId?: string | null,
-  ): Q {
+  private visibleTo<
+    Q extends { is(column: string, value: null): Q; or(filters: string): Q },
+  >(supa: Q, restaurantId?: string | null): Q {
     const live = supa.is("deleted_at", null);
     if (restaurantId && UUID_PATTERN.test(restaurantId)) {
       return live.or(
@@ -698,7 +697,7 @@ export class WinesService {
 
     const client = this.dbService.getClient();
     let suggestions = client.from("master_wine_library").select(
-      "id, wine_id, name, display_name, producer, vintage, price_reference, price_reference_currency, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
+        "id, wine_id, name, display_name, producer, vintage, price_reference, price_reference_currency, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
     );
     suggestions = suggestions.or(
       `name.ilike.${textValue},producer.ilike.${textValue}`,

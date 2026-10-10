@@ -188,7 +188,12 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   const ORG = "org-1";
   const coOwnedHouse = [
     { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
-    { user_id: "other-owner", restaurant_id: HOUSE_A, role: "owner", is_active: true },
+    {
+      user_id: "other-owner",
+      restaurant_id: HOUSE_A,
+      role: "owner",
+      is_active: true,
+    },
   ];
 
   it("refuses in plain words and deletes nothing when no one else owns the organisation", async () => {
@@ -214,7 +219,12 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   it("answers with the organisation refusal first when the account is also a sole house owner", async () => {
     const { svc, db } = makeService({
       access: [
-        { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
+        {
+          user_id: USER,
+          restaurant_id: HOUSE_A,
+          role: "owner",
+          is_active: true,
+        },
       ],
       orgMembers: [{ organization_id: ORG, user_id: USER, role: "owner" }],
     });
@@ -228,7 +238,12 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   it("tells a sole house owner who is not the last organisation owner to make another member an owner", async () => {
     const { svc, db } = makeService({
       access: [
-        { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
+        {
+          user_id: USER,
+          restaurant_id: HOUSE_A,
+          role: "owner",
+          is_active: true,
+        },
       ],
       orgMembers: [
         { organization_id: ORG, user_id: USER, role: "owner" },
@@ -258,7 +273,9 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
   it("refuses with 503 when the organisation read fails, and deletes nothing", async () => {
     const { svc, db } = makeService({
       access: coOwnedHouse,
-      errors: { "organization_members:select": { message: "connection reset" } },
+      errors: {
+        "organization_members:select": { message: "connection reset" },
+      },
     });
 
     await expect(svc.deleteAccount(USER)).rejects.toBeInstanceOf(
@@ -317,14 +334,32 @@ describe("deleteAccount — refused up front when records keep the person's name
   it("names the records and writes nothing: still in every house, sign-in links kept, no account delete tried", async () => {
     const { svc, db, gateway } = makeService({
       access: [
-        { user_id: USER, restaurant_id: HOUSE_A, role: "manager", is_active: true },
-        { user_id: USER, restaurant_id: HOUSE_B, role: "staff", is_active: true },
+        {
+          user_id: USER,
+          restaurant_id: HOUSE_A,
+          role: "manager",
+          is_active: true,
+        },
+        {
+          user_id: USER,
+          restaurant_id: HOUSE_B,
+          role: "staff",
+          is_active: true,
+        },
       ],
       oauth: [{ user_id: USER, provider: "google", provider_user_id: "g-1" }],
       invites: [invite({ restaurant_id: HOUSE_A })],
       blockers: [
-        { table_name: "team_notes", column_name: "author_user_id", row_count: 3 },
-        { table_name: "menu_price_versions", column_name: "changed_by", row_count: 12 },
+        {
+          table_name: "team_notes",
+          column_name: "author_user_id",
+          row_count: 3,
+        },
+        {
+          table_name: "menu_price_versions",
+          column_name: "changed_by",
+          row_count: 12,
+        },
       ],
       errors: RESTRICTED,
     });
@@ -338,7 +373,10 @@ describe("deleteAccount — refused up front when records keep the person's name
     expect(db.ops.filter((o) => o.op !== "select")).toEqual([]);
     expect(gateway.evictFromHouse).not.toHaveBeenCalled();
     expect(
-      db.tables.user_restaurant_access.map((r) => [r.restaurant_id, r.is_active]),
+      db.tables.user_restaurant_access.map((r) => [
+        r.restaurant_id,
+        r.is_active,
+      ]),
     ).toEqual([
       [HOUSE_A, true],
       [HOUSE_B, true],
@@ -353,9 +391,16 @@ describe("deleteAccount — refused up front when records keep the person's name
   it("refuses with 503 and writes nothing when the check itself cannot be read", async () => {
     const { svc, db, gateway } = makeService({
       access: [
-        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
+        {
+          user_id: USER,
+          restaurant_id: HOUSE_A,
+          role: "staff",
+          is_active: true,
+        },
       ],
-      errors: { "rpc:account_delete_blockers": { message: "connection reset" } },
+      errors: {
+        "rpc:account_delete_blockers": { message: "connection reset" },
+      },
     });
 
     await expect(svc.deleteAccount(USER)).rejects.toBeInstanceOf(
@@ -368,7 +413,12 @@ describe("deleteAccount — refused up front when records keep the person's name
   it("if the account delete is still refused after the check, the sign-in links stay and the message says the houses were left", async () => {
     const { svc, db } = makeService({
       access: [
-        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
+        {
+          user_id: USER,
+          restaurant_id: HOUSE_A,
+          role: "staff",
+          is_active: true,
+        },
       ],
       oauth: [{ user_id: USER, provider: "google", provider_user_id: "g-1" }],
       errors: RESTRICTED,

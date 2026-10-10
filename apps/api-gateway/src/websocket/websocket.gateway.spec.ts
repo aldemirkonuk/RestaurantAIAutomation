@@ -214,8 +214,15 @@ describe("WebsocketGateway — scheduled jobs on the /ws namespace (F-173)", () 
     const { jwtService, configService, databaseService } = makeDeps(
       makeSupabaseStub({ "user-1:house-A": true }),
     );
-    jwtService.verify.mockReturnValue({ sub: "user-1", restaurantId: "house-A" });
-    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    jwtService.verify.mockReturnValue({
+      sub: "user-1",
+      restaurantId: "house-A",
+    });
+    const gateway = new WebsocketGateway(
+      jwtService,
+      configService,
+      databaseService,
+    );
     const socket = makeSocket("quiet-phone");
     await gateway.handleConnection(socket);
 

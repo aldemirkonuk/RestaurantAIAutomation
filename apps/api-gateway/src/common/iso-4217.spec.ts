@@ -233,7 +233,9 @@ describe("currencyMinorUnits / roundMoney — money rounds to its own currency (
     expect(rows.length).toBe(ISO_4217_CODES.length);
     const differ = rows
       .filter((r) => currencyMinorUnits(r.code) !== r.minor)
-      .map((r) => `${r.code} web=${r.minor} gateway=${currencyMinorUnits(r.code)}`);
+      .map(
+        (r) => `${r.code} web=${r.minor} gateway=${currencyMinorUnits(r.code)}`,
+      );
     expect(differ).toEqual([]);
   });
 

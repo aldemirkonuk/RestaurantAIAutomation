@@ -43,7 +43,9 @@ describe("push bodies say money the house's way (F-889)", () => {
       price: 1240.5,
     });
     const body = sent.mock.calls[0][1].body;
-    expect(body).toBe("12 bottles of Kalecik Karası from Ege Şarap (₺1.240,50 a bottle)");
+    expect(body).toBe(
+      "12 bottles of Kalecik Karası from Ege Şarap (₺1.240,50 a bottle)",
+    );
     expect(body).not.toMatch(/\$/);
   });
 
@@ -59,7 +61,9 @@ describe("push bodies say money the house's way (F-889)", () => {
       providerName: "Ege Şarap",
     });
     const body = sent.mock.calls[0][1].body;
-    expect(body).toBe("Ege Şarap offered ₺1.400,00 a bottle for Kalecik Karası (%12,5 lower)");
+    expect(body).toBe(
+      "Ege Şarap offered ₺1.400,00 a bottle for Kalecik Karası (%12,5 lower)",
+    );
   });
 
   it("[REVERT-FAILS] a house with no recorded money reads the bare figure, never a dollar", async () => {

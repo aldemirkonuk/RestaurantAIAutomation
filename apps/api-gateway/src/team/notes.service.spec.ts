@@ -319,20 +319,28 @@ describe("NotesService — a staff member sees only what was addressed to them",
 
     const asSam: any = await svc(db).notes.list(SAM, RID, WEEK);
     const note = asSam.notes[0];
-    expect(note.recipients.map((r: any) => [r.memberId, r.openedAt])).toEqual([["m-sam", null]]);
-    expect(note.deliveries.every((d: any) => d.memberId === "m-sam")).toBe(true);
+    expect(note.recipients.map((r: any) => [r.memberId, r.openedAt])).toEqual([
+      ["m-sam", null],
+    ]);
+    expect(note.deliveries.every((d: any) => d.memberId === "m-sam")).toBe(
+      true,
+    );
     expect(note.deliveries.length).toBeGreaterThan(0);
 
     // The manager still sees everyone.
     const asMoe: any = await svc(db).notes.list(MANAGER, RID, WEEK);
-    expect(asMoe.notes[0].recipients.map((r: any) => r.memberId).sort()).toEqual(["m-ray", "m-sam"]);
+    expect(
+      asMoe.notes[0].recipients.map((r: any) => r.memberId).sort(),
+    ).toEqual(["m-ray", "m-sam"]);
     expect(asMoe.notes[0].openedCount).toBe(1);
   });
 
   it("shows a staff caller with no roster row nothing, not every note", async () => {
     const db = seed();
     await write(db);
-    db.tables.team_members = db.tables.team_members.filter((m: any) => m.user_id !== SAM);
+    db.tables.team_members = db.tables.team_members.filter(
+      (m: any) => m.user_id !== SAM,
+    );
 
     const asSam: any = await svc(db).notes.list(SAM, RID, WEEK);
     expect(asSam.notes).toEqual([]);

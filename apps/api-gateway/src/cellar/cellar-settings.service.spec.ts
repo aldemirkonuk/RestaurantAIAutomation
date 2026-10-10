@@ -59,7 +59,11 @@ function makeClient(opts: {
   return {
     upsertCallCount: () => upsertCalls,
     audit,
-    record: async (c: { actorUserId: string; action: string; fields: AuditRow["fields"] }) => {
+    record: async (c: {
+      actorUserId: string;
+      action: string;
+      fields: AuditRow["fields"];
+    }) => {
       tick += 1;
       audit.unshift({
         actor_id: c.actorUserId,
@@ -329,7 +333,12 @@ describe("CellarSettingsService — each field keeps its own setter (F-503)", ()
     const service = await serviceWith(client);
 
     await service.write(RID, { holdCeremony: "auto" }, "owner-1", "owner");
-    const out = await service.write(RID, { gazetteerMeasures: ["bottles"] }, "staff-1", "staff");
+    const out = await service.write(
+      RID,
+      { gazetteerMeasures: ["bottles"] },
+      "staff-1",
+      "staff",
+    );
 
     expect(out.holdCeremonyConfigured).toBe(true);
     expect(out.holdCeremonySetBy).toBe("owner-1");
@@ -344,15 +353,24 @@ describe("CellarSettingsService — each field keeps its own setter (F-503)", ()
 
     await service.write(RID, { holdCeremony: "hold" }, "owner-1", "owner");
     await service.write(RID, { holdCeremony: "hold" }, "owner-1", "owner");
-    await service.write(RID, { gazetteerMeasures: ["titles"] }, "owner-1", "owner");
+    await service.write(
+      RID,
+      { gazetteerMeasures: ["titles"] },
+      "owner-1",
+      "owner",
+    );
 
     expect(client.audit.map((r) => r.action)).toEqual([
       "cellar_tiles_changed",
       "cellar_hold_ceremony_changed",
     ]);
     // Choosing the default ceremony is still a choice: from nothing to "hold".
-    expect(client.audit[1].fields).toEqual({ hold_ceremony: { from: null, to: "hold" } });
-    expect(client.audit[0].fields).toEqual({ gazetteer_measures: { from: null, to: ["titles"] } });
+    expect(client.audit[1].fields).toEqual({
+      hold_ceremony: { from: null, to: "hold" },
+    });
+    expect(client.audit[0].fields).toEqual({
+      gazetteer_measures: { from: null, to: ["titles"] },
+    });
   });
 
   it("a row from before per-field stamps still reads as a chosen ceremony", async () => {

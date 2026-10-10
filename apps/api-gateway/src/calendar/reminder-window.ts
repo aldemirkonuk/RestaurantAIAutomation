@@ -134,9 +134,7 @@ export function eventStartInstant(
 }
 
 /** The entry's own date and wall-clock minutes, before any zone is applied. */
-function eventWall(
-  row: ReminderEventShape,
-): {
+function eventWall(row: ReminderEventShape): {
   date: { year: number; month: number; day: number };
   minutes: number;
 } | null {

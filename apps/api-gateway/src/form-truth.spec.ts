@@ -2,13 +2,20 @@ import { ConflictException, HttpStatus } from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { TeamService } from "./team/team.service";
-import { asDatabaseService, makeStubDb, StubDb } from "./team/testing/supabase-stub";
+import {
+  asDatabaseService,
+  makeStubDb,
+  StubDb,
+} from "./team/testing/supabase-stub";
 import {
   CreateCoverageTemplateDto,
   UpdateCertDto,
   UpdateTeamMemberDto,
 } from "./team/dto/team.dto";
-import { CreateProviderDto, UpdateProviderDto } from "./providers/dto/providers.dto";
+import {
+  CreateProviderDto,
+  UpdateProviderDto,
+} from "./providers/dto/providers.dto";
 import { CalendarService } from "./calendar/calendar.service";
 import { CalendarController } from "./calendar/calendar.controller";
 
@@ -32,9 +39,17 @@ const MANAGER = "user-manager";
 function seed(): StubDb {
   return makeStubDb({
     user_restaurant_access: [
-      { id: "a1", user_id: MANAGER, restaurant_id: RID, role: "manager", is_active: true },
+      {
+        id: "a1",
+        user_id: MANAGER,
+        restaurant_id: RID,
+        role: "manager",
+        is_active: true,
+      },
     ],
-    users: [{ user_id: MANAGER, restaurant_id: RID, role: "manager", name: "Moe" }],
+    users: [
+      { user_id: MANAGER, restaurant_id: RID, role: "manager", name: "Moe" },
+    ],
     team_members: [
       {
         id: "m1",
@@ -61,7 +76,14 @@ function seed(): StubDb {
       },
     ],
     coverage_templates: [
-      { id: "t1", restaurant_id: RID, role: "Bar", day_of_week: 5, shift_period: "pm", min_staff: 2 },
+      {
+        id: "t1",
+        restaurant_id: RID,
+        role: "Bar",
+        day_of_week: 5,
+        shift_period: "pm",
+        min_staff: 2,
+      },
     ],
     team_settings: [],
     system_audit_log: [],
@@ -87,7 +109,9 @@ describe("F-713 — an emptied field on an edit is cleared, not kept", () => {
         notes: null,
       }),
     ).toEqual([]);
-    expect(await errorsOf(UpdateCertDto, { issuedAt: null, expiresAt: null })).toEqual([]);
+    expect(
+      await errorsOf(UpdateCertDto, { issuedAt: null, expiresAt: null }),
+    ).toEqual([]);
   });
 
   it("writes the member's emptied fields as none", async () => {
@@ -121,9 +145,15 @@ describe("F-713 — an emptied field on an edit is cleared, not kept", () => {
 describe("F-718 — a coverage rule asks for someone, once", () => {
   it("refuses a rule for no one, and a fraction of a person", async () => {
     const base = { shiftPeriod: "pm", role: "Floor" };
-    expect(await errorsOf(CreateCoverageTemplateDto, { ...base, minStaff: 0 })).toEqual(["minStaff"]);
-    expect(await errorsOf(CreateCoverageTemplateDto, { ...base, minStaff: 2.5 })).toEqual(["minStaff"]);
-    expect(await errorsOf(CreateCoverageTemplateDto, { ...base, minStaff: 1 })).toEqual([]);
+    expect(
+      await errorsOf(CreateCoverageTemplateDto, { ...base, minStaff: 0 }),
+    ).toEqual(["minStaff"]);
+    expect(
+      await errorsOf(CreateCoverageTemplateDto, { ...base, minStaff: 2.5 }),
+    ).toEqual(["minStaff"]);
+    expect(
+      await errorsOf(CreateCoverageTemplateDto, { ...base, minStaff: 1 }),
+    ).toEqual([]);
   });
 
   it("refuses the same role, day and service twice, in words, and writes nothing", async () => {
@@ -158,7 +188,9 @@ describe("F-718 — a coverage rule asks for someone, once", () => {
 
 describe("F-715 — a vendor's minimum order is a whole amount, never below zero", () => {
   it("refuses a negative minimum order on add and on edit", async () => {
-    expect(await errorsOf(UpdateProviderDto, { minimumOrder: -500 })).toEqual(["minimumOrder"]);
+    expect(await errorsOf(UpdateProviderDto, { minimumOrder: -500 })).toEqual([
+      "minimumOrder",
+    ]);
     const add = await errorsOf(CreateProviderDto, { minimumOrder: -500 });
     expect(add).toContain("minimumOrder");
     expect(await errorsOf(UpdateProviderDto, { minimumOrder: 0 })).toEqual([]);
@@ -166,11 +198,20 @@ describe("F-715 — a vendor's minimum order is a whole amount, never below zero
 });
 
 describe("F-717 — a custom type name already on the calendar", () => {
-  const dto = { restaurantId: "r1", name: "Tasting", color: "#1A5E6B", icon: "tag" };
+  const dto = {
+    restaurantId: "r1",
+    name: "Tasting",
+    color: "#1A5E6B",
+    icon: "tag",
+  };
 
   function calendarService(error: { code: string; message: string }) {
     const single = jest.fn().mockResolvedValue({ data: null, error });
-    const db = { supabase: { from: () => ({ insert: () => ({ select: () => ({ single }) }) }) } };
+    const db = {
+      supabase: {
+        from: () => ({ insert: () => ({ select: () => ({ single }) }) }),
+      },
+    };
     return new CalendarService(db as never, {} as never);
   }
 
@@ -180,12 +221,16 @@ describe("F-717 — a custom type name already on the calendar", () => {
       message: "duplicate key value violates unique constraint",
     }).createEventType(dto);
     await expect(refused).rejects.toBeInstanceOf(ConflictException);
-    await expect(refused).rejects.toThrow(/A type called "Tasting" is already on this calendar/);
+    await expect(refused).rejects.toThrow(
+      /A type called "Tasting" is already on this calendar/,
+    );
   });
 
   it("the controller passes the 409 through, and still wraps other faults as a 500", async () => {
     const user = { userId: "u1", restaurantId: "r1" };
-    const taken = Object.create(CalendarController.prototype) as CalendarController;
+    const taken = Object.create(
+      CalendarController.prototype,
+    ) as CalendarController;
     Object.assign(taken, {
       calendarService: calendarService({ code: "23505", message: "dup" }),
       logger: { error: jest.fn() },
@@ -194,9 +239,14 @@ describe("F-717 — a custom type name already on the calendar", () => {
       status: HttpStatus.CONFLICT,
     });
 
-    const broken = Object.create(CalendarController.prototype) as CalendarController;
+    const broken = Object.create(
+      CalendarController.prototype,
+    ) as CalendarController;
     Object.assign(broken, {
-      calendarService: calendarService({ code: "08006", message: "connection lost" }),
+      calendarService: calendarService({
+        code: "08006",
+        message: "connection lost",
+      }),
       logger: { error: jest.fn() },
     });
     await expect(broken.createEventType(dto, user)).rejects.toMatchObject({

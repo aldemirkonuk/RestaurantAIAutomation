@@ -87,10 +87,15 @@ function build(opts: { order?: Row; item?: Row; ask?: Row | null; liveError?: st
   db.rpcHandlers.move_in_transit_by_delta = (args) => {
     inTransitMoves.push(args);
     const row = db.tables.restaurant_inventory.find(
-      (r) => r.id === args.p_inventory_id && r.restaurant_id === args.p_restaurant_id,
+      (r) =>
+        r.id === args.p_inventory_id &&
+        r.restaurant_id === args.p_restaurant_id,
     );
     if (!row) return { data: null, error: null };
-    row.in_transit_quantity = Math.max(0, Number(row.in_transit_quantity ?? 0) + args.p_delta);
+    row.in_transit_quantity = Math.max(
+      0,
+      Number(row.in_transit_quantity ?? 0) + args.p_delta,
+    );
     return { data: row.in_transit_quantity, error: null };
   };
   const roles: Record<string, string> = { [OWNER]: "owner", [STAFF]: "staff" };
@@ -206,7 +211,9 @@ describe("naming it books the stock then — once, on the record", () => {
       return book(args);
     };
     await name(t);
-    expect(t.inTransitMoves).toEqual([{ p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: -6 }]);
+    expect(t.inTransitMoves).toEqual([
+      { p_restaurant_id: HOUSE, p_inventory_id: ITEM, p_delta: -6 },
+    ]);
     expect(read.in_transit_quantity).toBe(8);
   });
 

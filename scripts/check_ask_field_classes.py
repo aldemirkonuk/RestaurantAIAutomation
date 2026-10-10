@@ -107,6 +107,48 @@ def _block(src: str, anchor: str, open_ch: str, close_ch: str) -> str:
     raise CannotCheck(f"unbalanced block after {anchor}")
 
 
+def _top_level_objects(block: str) -> list[str]:
+    """The bodies of the `{ ... }` objects at depth 0 of `block`, skipping
+    strings and comments the way `_block` does."""
+    out: list[str] = []
+    depth = 0
+    start = -1
+    i = 0
+    in_str: str | None = None
+    while i < len(block):
+        ch = block[i]
+        if in_str:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == in_str:
+                in_str = None
+        elif block.startswith("//", i):
+            nl = block.find("\n", i)
+            i = len(block) if nl < 0 else nl
+            continue
+        elif block.startswith("/*", i):
+            end = block.find("*/", i + 2)
+            i = len(block) if end < 0 else end + 2
+            continue
+        elif ch in "\"'`":
+            in_str = ch
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth < 0:
+                raise CannotCheck("unbalanced } in DECLARED")
+            if depth == 0:
+                out.append(block[start + 1 : i])
+        i += 1
+    if depth != 0:
+        raise CannotCheck("unbalanced { in DECLARED")
+    return out
+
+
 def _strings(text: str) -> list[str]:
     return re.findall(r'"([^"]*)"', text)
 
@@ -167,16 +209,19 @@ def parse_catalogue(src: str) -> dict[str, dict]:
         subject_fields[key] = _strings(body)
     declared = _block(src, "const DECLARED: readonly DeclaredReading[] =", "[", "]")
     readings: dict[str, dict] = {}
-    for line in declared.splitlines():
-        if not line.strip().startswith("{ id:"):
-            continue
+    # One entry per top-level `{ ... }` in DECLARED, however Prettier wraps it
+    # (F-960: a one-line entry and the same entry spread over 17 lines are the
+    # same reading). Every top-level object must parse -- an entry this cannot
+    # read is CANNOT CHECK, never skipped.
+    for entry in _top_level_objects(declared):
         m = re.match(
-            r'\s*\{ id: "([^"]+)".*?subject: "(\w+)".*?shelves: \[([^\]]*)\].*?shows: \[([^\]]*)\]',
-            line,
+            r'\s*id:\s*"([^"]+)".*?\bsubject:\s*"(\w+)".*?\bshelves:\s*\[([^\]]*)\].*?\bshows:\s*\[([^\]]*)\]',
+            entry,
+            re.S,
         )
         if not m:
             raise CannotCheck(
-                f"a catalogue entry has no parseable subject/shows: {line.strip()[:80]}"
+                f"a catalogue entry has no parseable subject/shows: {' '.join(entry.split())[:80]}"
             )
         rid, subject, shelves, shows = (
             m.group(1),

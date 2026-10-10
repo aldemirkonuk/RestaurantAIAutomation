@@ -79,7 +79,8 @@ describe("price locks and a wine's pour -- owner or manager only (L8)", () => {
         markers: ["off_target", "menu_differs"],
         advice: {
           state: "raise",
-          sentence: "Raise the bottle to 57.14 (now 48.00, 16% below it): today's margin is 58%, your target is 70%.",
+          sentence:
+            "Raise the bottle to 57.14 (now 48.00, 16% below it): today's margin is 58%, your target is 70%.",
           advisedPrice: 57.14,
           gapPct: -16,
         },
@@ -91,33 +92,40 @@ describe("price locks and a wine's pour -- owner or manager only (L8)", () => {
         menuPrice: null,
         markers: ["advice_unknown"],
         advice: null,
-        adviceUnknownReason: "Cannot advise: the recorded cost is 0.00, and a target margin cannot price a free bottle.",
+        adviceUnknownReason:
+          "Cannot advise: the recorded cost is 0.00, and a target margin cannot price a free bottle.",
       },
     ],
   };
 
-  it.each(["staff", "viewer", null])("%s reads each lock without its margin advice", async (role) => {
-    const { c, locks } = controller(role as string | null);
-    locks.list.mockResolvedValueOnce(ADVISED as any);
-    const out: any = await c.getLocks("rest-1", role as string | null);
-    expect(out.amountsWithheld).toBe(true);
-    expect(out.locks.map((l: any) => l.lockedPrice)).toEqual([48, 30]);
-    for (const l of out.locks) {
-      expect(l.advice).toBeNull();
-      expect(l.adviceUnknownReason).toBeNull();
-      expect(l.markers).not.toContain("off_target");
-      expect(l.markers).not.toContain("advice_unknown");
-    }
-    expect(out.locks[0].markers).toEqual(["menu_differs"]);
-    expect(JSON.stringify(out)).not.toMatch(/margin|target|cost/i);
-  });
+  it.each(["staff", "viewer", null])(
+    "%s reads each lock without its margin advice",
+    async (role) => {
+      const { c, locks } = controller(role as string | null);
+      locks.list.mockResolvedValueOnce(ADVISED as any);
+      const out: any = await c.getLocks("rest-1", role as string | null);
+      expect(out.amountsWithheld).toBe(true);
+      expect(out.locks.map((l: any) => l.lockedPrice)).toEqual([48, 30]);
+      for (const l of out.locks) {
+        expect(l.advice).toBeNull();
+        expect(l.adviceUnknownReason).toBeNull();
+        expect(l.markers).not.toContain("off_target");
+        expect(l.markers).not.toContain("advice_unknown");
+      }
+      expect(out.locks[0].markers).toEqual(["menu_differs"]);
+      expect(JSON.stringify(out)).not.toMatch(/margin|target|cost/i);
+    },
+  );
 
-  it.each(["owner", "manager"])("a %s reads the locks with the advice", async (role) => {
-    const { c, locks } = controller(role);
-    locks.list.mockResolvedValueOnce(ADVISED as any);
-    const out: any = await c.getLocks("rest-1", role);
-    expect(out).toEqual(ADVISED);
-  });
+  it.each(["owner", "manager"])(
+    "a %s reads the locks with the advice",
+    async (role) => {
+      const { c, locks } = controller(role);
+      locks.list.mockResolvedValueOnce(ADVISED as any);
+      const out: any = await c.getLocks("rest-1", role);
+      expect(out).toEqual(ADVISED);
+    },
+  );
 
   it("a session with no house is refused before any role is read", async () => {
     const { c, locks } = controller("owner");

@@ -367,7 +367,12 @@ describe("createOrder — unit arithmetic", () => {
 });
 
 describe("createOrder — the total is worked out, never taken on the caller's word (F-732)", () => {
-  const big = { inventoryId: "inv-1", providerId: "prov-1", quantity: 600, quotedPrice: 50 } as any;
+  const big = {
+    inventoryId: "inv-1",
+    providerId: "prov-1",
+    quantity: 600,
+    quotedPrice: 50,
+  } as any;
 
   it("[REVERT-FAILS] refuses a $1 total on 600 at $50, in words, and writes nothing", async () => {
     // The owner's $2,500 ceiling reads total_cost; a $1 total slipped a
@@ -375,14 +380,22 @@ describe("createOrder — the total is worked out, never taken on the caller's w
     const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
     await expect(
       service(db).createOrder("rest-1", USER, { ...big, totalCost: 1 }),
-    ).rejects.toThrow(/\(1\.00\) is not what the quantity at the agreed price comes to \(30000\.00\)/);
+    ).rejects.toThrow(
+      /\(1\.00\) is not what the quantity at the agreed price comes to \(30000\.00\)/,
+    );
     expect(calls.orderInserts).toHaveLength(0);
   });
 
   it("[REVERT-FAILS] says the refused totals in the order's own money, never as dollars (F-829)", async () => {
     const { db } = makeDb({ insertedOrder, inventory: inventoryRow });
-    const refusal = service(db).createOrder("rest-1", USER, { ...big, currency: "TRY", totalCost: 1 });
-    await expect(refusal).rejects.toThrow(/\(TRY.1\.00\) is not what .* comes to \(TRY.30000\.00\)/);
+    const refusal = service(db).createOrder("rest-1", USER, {
+      ...big,
+      currency: "TRY",
+      totalCost: 1,
+    });
+    await expect(refusal).rejects.toThrow(
+      /\(TRY.1\.00\) is not what .* comes to \(TRY.30000\.00\)/,
+    );
     await expect(refusal).rejects.not.toThrow(/\$/);
   });
 
@@ -390,10 +403,20 @@ describe("createOrder — the total is worked out, never taken on the caller's w
     const { db } = makeDb({
       insertedOrder,
       inventory: inventoryRow,
-      restaurant: { currency: "TRY", country: "TR", timezone: "Europe/Istanbul" },
+      restaurant: {
+        currency: "TRY",
+        country: "TR",
+        timezone: "Europe/Istanbul",
+      },
     });
-    const refusal = service(db).createOrder("rest-1", USER, { ...big, currency: "TRY", totalCost: 1 });
-    await expect(refusal).rejects.toThrow("(₺1,00) is not what the quantity at the agreed price comes to (₺30.000,00)");
+    const refusal = service(db).createOrder("rest-1", USER, {
+      ...big,
+      currency: "TRY",
+      totalCost: 1,
+    });
+    await expect(refusal).rejects.toThrow(
+      "(₺1,00) is not what the quantity at the agreed price comes to (₺30.000,00)",
+    );
   });
 
   it("stores 600 × $50 as $30,000 when no total is sent, so the ceiling sees the real figure", async () => {

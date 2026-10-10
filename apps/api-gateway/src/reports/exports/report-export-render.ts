@@ -127,13 +127,16 @@ interface CsvMarks {
 
 function csvMarks(locale: string | null | undefined): CsvMarks {
   const decimal =
-    new Intl.NumberFormat(usableLocale(locale)).formatToParts(1.5).find((p) => p.type === "decimal")
-      ?.value ?? ".";
+    new Intl.NumberFormat(usableLocale(locale))
+      .formatToParts(1.5)
+      .find((p) => p.type === "decimal")?.value ?? ".";
   return decimal === "," ? { sep: ";", decimal } : { sep: ",", decimal: "." };
 }
 
 function quoteIfNeeded(s: string, m: CsvMarks): string {
-  return s.includes(m.sep) || /["\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return s.includes(m.sep) || /["\r\n]/.test(s)
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
 }
 
 function csvTextIn(s: string, m: CsvMarks): string {
@@ -142,7 +145,8 @@ function csvTextIn(s: string, m: CsvMarks): string {
 
 function csvCell(c: Cell, m: CsvMarks): string {
   if (c === null) return "";
-  if (typeof c === "number") return Number.isFinite(c) ? rawNumber(c, m.decimal) : WITHHELD_WORD;
+  if (typeof c === "number")
+    return Number.isFinite(c) ? rawNumber(c, m.decimal) : WITHHELD_WORD;
   if (typeof c === "string") return csvTextIn(c, m);
   if (isWithheld(c)) return WITHHELD_WORD;
   if (isTyped(c)) return rawNumber(c.n, m.decimal);
@@ -156,7 +160,12 @@ function csvCell(c: Cell, m: CsvMarks): string {
  * unit in the cell — otherwise a spreadsheet reader could not tell 12.5 dollars
  * from 12.5 percent.
  */
-function csvTableCell(c: Cell, columnUnit: Unit, currency: string | null, m: CsvMarks): string {
+function csvTableCell(
+  c: Cell,
+  columnUnit: Unit,
+  currency: string | null,
+  m: CsvMarks,
+): string {
   if (columnUnit === "text" && isTyped(c)) {
     // Built from a number, not from text anyone typed, so there is no formula
     // to neutralise — a leading minus is a negative figure. Quoted when the
@@ -219,7 +228,11 @@ export function renderCsv(doc: ExportDoc, h: ExportHeader): string {
     push(csvText(t.title));
     push(...t.columns.map((c) => csvText(`${c.label}${unitSuffix(c.unit, h.currency)}`)));
     for (const row of t.rows)
-      push(...t.columns.map((col, i) => csvTableCell(row[i] ?? null, col.unit, h.currency, m)));
+      push(
+        ...t.columns.map((col, i) =>
+          csvTableCell(row[i] ?? null, col.unit, h.currency, m),
+        ),
+      );
     if (t.note) push("Note", csvText(t.note));
     for (const reason of withheldReasons(t)) push("Withheld", csvText(reason));
   }
@@ -261,7 +274,10 @@ function humanNumber(n: number, unit: Unit, locale: string): string {
     }).format(fraction);
   switch (unit) {
     case "money":
-      return n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString(locale, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
     case "ratio":
       return pct(n);
     case "percent":
@@ -273,14 +289,22 @@ function humanNumber(n: number, unit: Unit, locale: string): string {
   }
 }
 
-function htmlCell(c: Cell, unit: Unit, locale: string): { html: string; numeric: boolean } {
+function htmlCell(
+  c: Cell,
+  unit: Unit,
+  locale: string,
+): { html: string; numeric: boolean } {
   if (c === null) return { html: "", numeric: false };
   if (typeof c === "number")
     return { html: escapeHtml(humanNumber(c, unit, locale)), numeric: true };
   if (typeof c === "string") return { html: escapeHtml(c), numeric: false };
   if (isWithheld(c))
     return { html: `<span class="withheld">${WITHHELD_WORD}</span>`, numeric: false };
-  if (isTyped(c)) return { html: escapeHtml(humanNumber(c.n, c.unit, locale)), numeric: true };
+  if (isTyped(c))
+    return {
+      html: escapeHtml(humanNumber(c.n, c.unit, locale)),
+      numeric: true,
+    };
   return { html: "", numeric: false };
 }
 
@@ -317,7 +341,11 @@ ul.reasons, ul.plain { margin: 4pt 0 0; padding-left: 14pt; font: 8.5pt ui-sans-
 footer { margin-top: 18pt; padding-top: 6pt; border-top: 0.5pt solid #cfc6b6; font: 8pt ui-sans-serif, system-ui, sans-serif; color: #6b6255; }
 `;
 
-function htmlTable(t: ExportTable, currency: string | null, locale: string): string {
+function htmlTable(
+  t: ExportTable,
+  currency: string | null,
+  locale: string,
+): string {
   const numericCol = t.columns.map((c) => c.unit !== "text");
   const head = t.columns
     .map(

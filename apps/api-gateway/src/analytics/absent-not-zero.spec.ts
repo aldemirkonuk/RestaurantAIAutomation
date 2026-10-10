@@ -52,7 +52,8 @@ function makeClient(rowsByTable: Rows) {
       // every other single-row read answers nothing.
       builder.maybeSingle = jest.fn(() =>
         Promise.resolve({
-          data: table === "restaurants" ? (rowsByTable[table]?.[0] ?? null) : null,
+          data:
+            table === "restaurants" ? (rowsByTable[table]?.[0] ?? null) : null,
           error: null,
         }),
       );
@@ -297,7 +298,9 @@ const UTC_HOUSE = [{ timezone: "UTC" }];
 
 describe("seasonality withholds a day it cannot separate", () => {
   it("reports null for both days on a week with no movement", async () => {
-    const out: any = await advanced({ restaurants: UTC_HOUSE }).getSeasonality(RESTAURANT);
+    const out: any = await advanced({ restaurants: UTC_HOUSE }).getSeasonality(
+      RESTAURANT,
+    );
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
     // F-709: days with no movement are closures, not zeros, so nothing is
@@ -356,7 +359,9 @@ describe("seasonality withholds a day it cannot separate", () => {
 
   it("does not report the same day as both busiest and quietest", async () => {
     // The exact pre-fix payload: bestDay === worstDay === "Sunday".
-    const out: any = await advanced({ restaurants: UTC_HOUSE }).getSeasonality(RESTAURANT);
+    const out: any = await advanced({ restaurants: UTC_HOUSE }).getSeasonality(
+      RESTAURANT,
+    );
     expect(out.bestDay).not.toBe("Sunday");
     expect(out.bestDay === out.worstDay && out.bestDay !== null).toBe(false);
   });

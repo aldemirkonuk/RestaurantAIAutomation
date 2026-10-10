@@ -245,8 +245,8 @@ describe("proof, scope, absence and provenance regressions", () => {
     const finding = await run(books, "orders.late_deliveries", window);
     expect(finding.outcome).toBe("requirements_unsatisfied");
     expect(finding.reason).toBe("invalid_window");
-    // Only the house's clock is read (F-236); no order row is.
-    expect(books.calls.map(c => c.table)).toEqual(["restaurants"]);
+      // Only the house's clock is read (F-236); no order row is.
+      expect(books.calls.map((c) => c.table)).toEqual(["restaurants"]);
     expect(JSON.stringify(finding)).not.toContain("order-2099");
   });
   // Founder, 2026-09-21, round 6: staff "can ask about ... today's
@@ -263,7 +263,10 @@ describe("proof, scope, absence and provenance regressions", () => {
     expect(cells(finding).every(c => c.sourceRelations.length === 1 && c.sourceRelations[0] === "procurement_orders@due_today")).toBe(true);
     // The whole book was read (6 house rows); that count lives only in the
     // trace, after the house's own row, read for its clock (F-236).
-    expect(finding.trace.map(t => t.relation)).toEqual(["restaurants", "procurement_orders"]);
+    expect(finding.trace.map((t) => t.relation)).toEqual([
+      "restaurants",
+      "procurement_orders",
+    ]);
     expect(finding.rowsScanned).toBe(7);
   });
   test("today's deliveries: a book with no order today is a read zero; an empty book is not in your books", async () => {
@@ -281,11 +284,22 @@ describe("proof, scope, absence and provenance regressions", () => {
     const books = fixture();
     books.tables.restaurants[0].timezone = "America/Los_Angeles";
     const evening = () => new Date("2026-09-14T01:30:00Z");
-    const finding = await new ReadingRunner(books, evening).run(rid, "orders.due_today", args);
-    expect(finding.day).toEqual({ date: "2026-09-13", zone: "America/Los_Angeles" });
+    const finding = await new ReadingRunner(books, evening).run(
+      rid,
+      "orders.due_today",
+      args,
+    );
+    expect(finding.day).toEqual({
+      date: "2026-09-13",
+      zone: "America/Los_Angeles",
+    });
     expect(value(finding, "order-today:order_number")).toBe("order-today");
     // Late deliveries refuses a window that reaches the house's today.
-    const late = await new ReadingRunner(books, evening).run(rid, "orders.late_deliveries", { from: "2026-09-01", to: "2026-09-13" });
+    const late = await new ReadingRunner(books, evening).run(
+      rid,
+      "orders.late_deliveries",
+      { from: "2026-09-01", to: "2026-09-13" },
+    );
     expect(late.reason).toBe("invalid_window");
   });
   test("a house with no time zone reads today in UTC and says so; a failed house read is not 'no zone'", async () => {

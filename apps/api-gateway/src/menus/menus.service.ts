@@ -10,7 +10,11 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { CsvParserService, type MenuRead, type MenuReadNotes } from "./parsers/csv-parser.service";
+import {
+  CsvParserService,
+  type MenuRead,
+  type MenuReadNotes,
+} from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
@@ -45,7 +49,11 @@ const CARRY_READ_CHUNK = 100;
 const CARRY_CONCURRENCY = 12;
 
 /** Run `work` over `items`, at most `size` at once. Never throws past `work`. */
-async function inPool<T>(items: T[], size: number, work: (item: T) => Promise<void>): Promise<void> {
+async function inPool<T>(
+  items: T[],
+  size: number,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
   let next = 0;
   const lane = async () => {
     while (next < items.length) await work(items[next++]);
@@ -513,7 +521,10 @@ export class MenusService {
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        read = await this.csvParser.readExcel(dto.data.fileBase64, dto.groupMark ?? null);
+        read = await this.csvParser.readExcel(
+          dto.data.fileBase64,
+          dto.groupMark ?? null,
+        );
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
@@ -587,10 +598,13 @@ export class MenusService {
         : binary
           ? await this.csvParser.readExcel(content)
           : this.csvParser.read(content);
-    const items = read ? read.items : await this.scanParser.parse(content, restaurantId, true);
+    const items = read
+      ? read.items
+      : await this.scanParser.parse(content, restaurantId, true);
     if (!items.length)
       throw new BadRequestException(
-        read?.emptyCause ?? "No supported beverage items were extracted. Nothing was imported.",
+        read?.emptyCause ??
+          "No supported beverage items were extracted. Nothing was imported.",
       );
     if (items.length > 500)
       throw new BadRequestException(
@@ -835,7 +849,9 @@ export class MenusService {
   ): Promise<{ menuItemId: string; status: "discarded"; audited: boolean }> {
     const { data: row, error: readErr } = await this.dbService.supabase
       .from("menu_items")
-      .select("id, restaurant_id, status, menu_id, name, by_glass_price, bottle_price")
+      .select(
+        "id, restaurant_id, status, menu_id, name, by_glass_price, bottle_price",
+      )
       .eq("id", menuItemId)
       .maybeSingle();
 
@@ -984,7 +1000,9 @@ export class MenusService {
    * see them and put one back (F-268). Same paged read as getMenu, the other
    * half of the status split; no current menu means none.
    */
-  async getDiscardedLines(restaurantId: string): Promise<{ items: Array<Record<string, unknown>> }> {
+  async getDiscardedLines(
+    restaurantId: string,
+  ): Promise<{ items: Array<Record<string, unknown>> }> {
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
       .select("id")
@@ -1007,14 +1025,19 @@ export class MenusService {
         .eq("restaurant_id", restaurantId)
         .eq("status", "discarded");
       if (after) q = q.gt("id", after);
-      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
-      if (error) throw new Error(`Failed to load the discarded lines: ${error.message}`);
+      const { data, error } = await q
+        .order("id", { ascending: true })
+        .limit(PAGE_ROWS);
+      if (error)
+        throw new Error(`Failed to load the discarded lines: ${error.message}`);
       const rows = (data ?? []) as Array<Record<string, unknown>>;
       items.push(...rows);
       if (rows.length < PAGE_ROWS) break;
       after = String(rows[rows.length - 1].id);
     }
-    items.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")));
+    items.sort((a, b) =>
+      String(a.name ?? "").localeCompare(String(b.name ?? "")),
+    );
     return { items };
   }
 
@@ -1084,7 +1107,8 @@ export class MenusService {
     // renamed FIRST, and its error is read: if it fails, nothing is written
     // and the person is told, rather than a renamed line beside a stock row
     // that silently kept the old name (F-920).
-    const renamesStock = dto.fieldName === "name" && Boolean(menuItem.inventory_item_id);
+    const renamesStock =
+      dto.fieldName === "name" && Boolean(menuItem.inventory_item_id);
     if (renamesStock) {
       const { error: renameErr } = await this.dbService.supabase
         .from("restaurant_inventory")
@@ -1270,7 +1294,11 @@ export class MenusService {
   private async readHousePrices(
     restaurantId: string,
     items: Array<Record<string, unknown>>,
-  ): Promise<{ items: Array<Record<string, unknown>>; readable: boolean; reason: string | null }> {
+  ): Promise<{
+    items: Array<Record<string, unknown>>;
+    readable: boolean;
+    reason: string | null;
+  }> {
     const ids = [
       ...new Set(
         items
@@ -1279,8 +1307,14 @@ export class MenusService {
       ),
     ];
     if (ids.length === 0) return { items, readable: true, reason: null };
-    const prices = new Map<string, { bottle: number | null; glass: number | null }>();
-    const num = (v: unknown) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+    const prices = new Map<
+      string,
+      { bottle: number | null; glass: number | null }
+    >();
+    const num = (v: unknown) =>
+      v === null || v === undefined || !Number.isFinite(Number(v))
+        ? null
+        : Number(v);
     for (let k = 0; k < ids.length; k += 200) {
       const { data, error } = await this.dbService.supabase
         .from("restaurant_inventory")
@@ -1295,13 +1329,21 @@ export class MenusService {
         };
       }
       for (const r of (data ?? []) as Array<Record<string, unknown>>) {
-        prices.set(String(r.id), { bottle: num(r.menu_price_current), glass: num(r.menu_price_glass) });
+        prices.set(String(r.id), {
+          bottle: num(r.menu_price_current),
+          glass: num(r.menu_price_glass),
+        });
       }
     }
     return {
       items: items.map((i) => {
-        const p = typeof i.inventory_item_id === "string" ? prices.get(i.inventory_item_id) : undefined;
-        return p ? { ...i, house_bottle_price: p.bottle, house_glass_price: p.glass } : i;
+        const p =
+          typeof i.inventory_item_id === "string"
+            ? prices.get(i.inventory_item_id)
+            : undefined;
+        return p
+          ? { ...i, house_bottle_price: p.bottle, house_glass_price: p.glass }
+          : i;
       }),
       readable: true,
       reason: null,
@@ -1713,7 +1755,9 @@ export class MenusService {
         flag,
         returned: !current && locked && (!replacing || !onReplaced.has(String(wineId))),
         // F-661: a year against no year differs too ("Yakut" read beside the house's Yakut 2019).
-        vintageMismatch: locked && readYear !== (typeof libVintage === "number" ? libVintage : null),
+        vintageMismatch:
+          locked &&
+          readYear !== (typeof libVintage === "number" ? libVintage : null),
       };
     });
 
@@ -1746,9 +1790,16 @@ export class MenusService {
         .eq("status", "active")
         .neq("id", menuId);
       if (othersErr) fail("the menu that is current now", othersErr.message);
-      for (const m of (others ?? []) as Array<{ id: string; name: string | null }>) {
+      for (const m of (others ?? []) as Array<{
+        id: string;
+        name: string | null;
+      }>) {
         const onIt = await this.readLines(String(m.id), restaurantId);
-        retiring.push({ menuId: String(m.id), name: m.name ?? null, lines: onIt.length });
+        retiring.push({
+          menuId: String(m.id),
+          name: m.name ?? null,
+          lines: onIt.length,
+        });
       }
     }
 
@@ -2289,17 +2340,24 @@ export class MenusService {
       menu_price_current?: number | string | null;
       menu_price_glass?: number | string | null;
     };
-    type HouseRead = { data: HouseRow | null; error: { message: string } | null };
+    type HouseRead = {
+      data: HouseRow | null;
+      error: { message: string } | null;
+    };
 
     // The house's rows for the menu's wines, read in sets (F-448). Each wine's
     // answer, or the read's failure, is kept for its first line.
-    const wineIds = [...new Set(validItems.map((i) => i.wine_library_id as string))];
+    const wineIds = [
+      ...new Set(validItems.map((i) => i.wine_library_id as string)),
+    ];
     const prefetched = new Map<string, HouseRead>();
     for (let i = 0; i < wineIds.length; i += CARRY_READ_CHUNK) {
       const chunk = wineIds.slice(i, i + CARRY_READ_CHUNK);
       const { data, error } = await this.dbService.supabase
         .from("restaurant_inventory")
-        .select("id, master_wine_id, is_active, menu_price_current, menu_price_glass")
+        .select(
+          "id, master_wine_id, is_active, menu_price_current, menu_price_glass",
+        )
         .eq("restaurant_id", restaurantId)
         .in("master_wine_id", chunk);
       for (const wine of chunk) {
@@ -2307,7 +2365,13 @@ export class MenusService {
           wine,
           error
             ? { data: null, error }
-            : { data: ((data ?? []) as HouseRow[]).find((r) => r.master_wine_id === wine) ?? null, error: null },
+            : {
+                data:
+                  ((data ?? []) as HouseRow[]).find(
+                    (r) => r.master_wine_id === wine,
+                  ) ?? null,
+                error: null,
+              },
         );
       }
     }
@@ -2366,8 +2430,16 @@ export class MenusService {
           .eq("id", inventoryId);
         if (backErr) {
           const message = `this wine was removed from the house's inventory and could not be brought back, so no price was set: ${backErr.message}`;
-          this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
-          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+          this.logger.error(
+            `menu line ${item.id} ("${item.name}"): ${message}`,
+          );
+          priceSync.set(item.id, {
+            outcome: "failed",
+            error: message,
+            flag: null,
+            flagNote: null,
+            held: [],
+          });
           return;
         }
       }
@@ -2396,20 +2468,24 @@ export class MenusService {
       const wine = item.wine_library_id as string;
       byWine.set(wine, [...(byWine.get(wine) ?? []), item]);
     }
-    await inPool([...byWine.entries()], CARRY_CONCURRENCY, async ([wine, group]) => {
-      for (const [n, item] of group.entries()) {
-        const read: HouseRead =
-          n === 0
-            ? prefetched.get(wine)!
-            : await this.dbService.supabase
-                .from("restaurant_inventory")
-                .select("id, is_active, menu_price_current, menu_price_glass")
-                .eq("restaurant_id", restaurantId)
-                .eq("master_wine_id", wine)
-                .maybeSingle();
-        await carryLine(item, read);
-      }
-    });
+    await inPool(
+      [...byWine.entries()],
+      CARRY_CONCURRENCY,
+      async ([wine, group]) => {
+        for (const [n, item] of group.entries()) {
+          const read: HouseRead =
+            n === 0
+              ? prefetched.get(wine)!
+              : await this.dbService.supabase
+                  .from("restaurant_inventory")
+                  .select("id, is_active, menu_price_current, menu_price_glass")
+                  .eq("restaurant_id", restaurantId)
+                  .eq("master_wine_id", wine)
+                  .maybeSingle();
+          await carryLine(item, read);
+        }
+      },
+    );
 
     return { inventoryMap: result, priceSync };
   }
@@ -2526,7 +2602,10 @@ export class MenusService {
   ): Promise<void> {
     // Side by side, CARRY_CONCURRENCY at a time (F-448): one write per line,
     // never one line after another for a 2,000-line menu.
-    await inPool([...menuItemToValue.entries()], CARRY_CONCURRENCY, async ([menuItemId, value]) => {
+    await inPool(
+      [...menuItemToValue.entries()],
+      CARRY_CONCURRENCY,
+      async ([menuItemId, value]) => {
       const { error } = await this.dbService.supabase
         .from("menu_items")
         .update({ [column]: value })
@@ -2537,7 +2616,8 @@ export class MenusService {
           `Failed to backfill ${column} for menu_item ${menuItemId}: ${error.message}`,
         );
       }
-    });
+      },
+    );
   }
 
   private async markMenuUploaded(restaurantId: string): Promise<void> {
@@ -2594,7 +2674,9 @@ export class MenusService {
    */
   async getOnboardingProgress(userId: string, restaurantId: string | null) {
     if (!restaurantId)
-      throw new NotFoundException("Onboarding progress not found for this house");
+      throw new NotFoundException(
+        "Onboarding progress not found for this house",
+      );
     const { data, error } = await this.dbService.supabase
       .from("user_onboarding_progress")
       .select("*")

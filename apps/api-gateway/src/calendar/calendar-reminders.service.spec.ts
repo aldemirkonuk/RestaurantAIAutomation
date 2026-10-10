@@ -69,7 +69,10 @@ class FakeQuery {
     this.payload = Array.isArray(rows) ? rows : [rows];
     return this;
   }
-  upsert(rows: Row[], opts?: { ignoreDuplicates?: boolean; onConflict?: string }) {
+  upsert(
+    rows: Row[],
+    opts?: { ignoreDuplicates?: boolean; onConflict?: string },
+  ) {
     this.mode = "upsert";
     this.payload = rows;
     this.ignoreDuplicates = opts?.ignoreDuplicates === true;
@@ -148,7 +151,11 @@ class FakeQuery {
           // THE UNIQUE INDEX, (calendar_event_id, user_id, due_at). Without it
           // this whole file proves nothing. The upsert must name exactly those
           // columns, as PostgREST requires a matching unique index.
-          expect(this.onConflict).toEqual(["calendar_event_id", "user_id", "due_at"]);
+          expect(this.onConflict).toEqual([
+            "calendar_event_id",
+            "user_id",
+            "due_at",
+          ]);
           const clash = rows.some(
             (r) =>
               r.calendar_event_id === row.calendar_event_id &&
@@ -359,7 +366,10 @@ describe("CalendarRemindersService — a moved entry and a repeating entry (F-60
     expect(before.sent).toBe(0);
     expect(db.tables.calendar_events[0].reminder_sent).toBe(false);
 
-    const second = await service.sweepTenant(TENANT, new Date("2026-01-21T15:00:00Z"));
+    const second = await service.sweepTenant(
+      TENANT,
+      new Date("2026-01-21T15:00:00Z"),
+    );
     expect(second.sent).toBe(2);
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(2);
     expect(db.tables.calendar_events[0].reminder_sent).toBe(true);
@@ -392,32 +402,48 @@ describe("CalendarRemindersService — a moved entry and a repeating entry (F-60
 
     const first = await service.sweepTenant(TENANT, DUE);
     expect(first.sent).toBe(2);
-    expect(notifications.persistForRestaurant.mock.calls[0][1].metadata.startsAt).toBe(
-      "2026-01-15T14:00:00.000Z",
-    );
+    expect(
+      notifications.persistForRestaurant.mock.calls[0][1].metadata.startsAt,
+    ).toBe("2026-01-15T14:00:00.000Z");
     const again = await service.sweepTenant(TENANT, DUE);
     expect(again.sent).toBe(0);
 
-    const nextWeek = await service.sweepTenant(TENANT, new Date("2026-01-21T15:00:00Z"));
+    const nextWeek = await service.sweepTenant(
+      TENANT,
+      new Date("2026-01-21T15:00:00Z"),
+    );
     expect(nextWeek.sent).toBe(2);
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(2);
-    expect(notifications.persistForRestaurant.mock.calls[1][1].metadata.startsAt).toBe(
-      "2026-01-22T14:00:00.000Z",
-    );
+    expect(
+      notifications.persistForRestaurant.mock.calls[1][1].metadata.startsAt,
+    ).toBe("2026-01-22T14:00:00.000Z");
     expect(db.tables.calendar_events[0].reminder_sent).toBe(false);
   });
 
   it("skips a date the series has an exception for", async () => {
     const { db, service, notifications } = build();
     db.tables.calendar_events.push(
-      event({ id: "evt-s", start_date: "2026-01-01", event_date: "2026-01-01", is_recurring: true, recurrence_rule_id: "rule-1" }),
+      event({
+        id: "evt-s",
+        start_date: "2026-01-01",
+        event_date: "2026-01-01",
+        is_recurring: true,
+        recurrence_rule_id: "rule-1",
+      }),
     );
     db.tables.calendar_recurrence_rules.push({
-      id: "rule-1", restaurant_id: "rest-1", calendar_event_id: "evt-s",
-      frequency: "weekly", interval_value: 1, days_of_week: null, end_type: "never",
+      id: "rule-1",
+      restaurant_id: "rest-1",
+      calendar_event_id: "evt-s",
+      frequency: "weekly",
+      interval_value: 1,
+      days_of_week: null,
+      end_type: "never",
     });
     db.tables.calendar_recurrence_exceptions.push({
-      recurrence_rule_id: "rule-1", original_date: "2026-01-15", exception_type: "deleted",
+      recurrence_rule_id: "rule-1",
+      original_date: "2026-01-15",
+      exception_type: "deleted",
     });
 
     await service.sweepTenant(TENANT, DUE);
@@ -454,8 +480,13 @@ describe("CalendarRemindersService — a moved entry and a repeating entry (F-60
       }),
     );
     db.tables.calendar_recurrence_rules.push({
-      id: "rule-1", restaurant_id: "rest-1", calendar_event_id: "evt-s",
-      frequency: "weekly", interval_value: 1, days_of_week: null, end_type: "never",
+      id: "rule-1",
+      restaurant_id: "rest-1",
+      calendar_event_id: "evt-s",
+      frequency: "weekly",
+      interval_value: 1,
+      days_of_week: null,
+      end_type: "never",
     });
 
     const tally = await service.sweepTenant(TENANT, DUE);
@@ -463,15 +494,20 @@ describe("CalendarRemindersService — a moved entry and a repeating entry (F-60
     expect(tally.truncated).toBe(false);
     expect(tally.sent).toBe(2);
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
-    expect(notifications.persistForRestaurant.mock.calls[0][1].metadata.startsAt).toBe(
-      "2026-01-15T14:00:00.000Z",
-    );
+    expect(
+      notifications.persistForRestaurant.mock.calls[0][1].metadata.startsAt,
+    ).toBe("2026-01-15T14:00:00.000Z");
   });
 
   it("(F-818) reminds a rule-less repeating row once, on its own date, as a dated entry", async () => {
     const { db, service, notifications } = build();
     db.tables.calendar_events.push(
-      event({ id: "legacy-1", is_recurring: true, parent_event_id: null, recurrence_rule_id: null }),
+      event({
+        id: "legacy-1",
+        is_recurring: true,
+        parent_event_id: null,
+        recurrence_rule_id: null,
+      }),
     );
 
     const first = await service.sweepTenant(TENANT, DUE);

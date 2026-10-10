@@ -196,7 +196,11 @@ export const TILL_PAGE_ROWS = 1000;
 export const ROW_RECORD_LINE_LIMIT = 400;
 
 /** The sentence a book read to its cap carries, empty or not. */
-function cappedBookReason(lines: string, never: string, found: boolean): string {
+function cappedBookReason(
+  lines: string,
+  never: string,
+  found: boolean,
+): string {
   return found
     ? `Only the newest ${ROW_RECORD_LINE_LIMIT} ${lines} that could name this were read, so older ones are not listed here.`
     : `The newest ${ROW_RECORD_LINE_LIMIT} ${lines} that could name this were read and none does. Older ones were not read, so this does not say it was ${never}.`;
@@ -467,7 +471,9 @@ export class BeveragesService {
     // 401. The plain read stays: a house row's membership and overlay come from
     // the catalogue rows read, and must not change because a word was typed.
     const [plain, found, ledger] = await Promise.all([
-      this.readRegisterCatalogue(register, types, { catalogueLimit: opts.catalogueLimit }),
+      this.readRegisterCatalogue(register, types, {
+        catalogueLimit: opts.catalogueLimit,
+      }),
       opts.search?.trim()
         ? this.readRegisterCatalogue(register, types, opts)
         : Promise.resolve(null),
@@ -485,7 +491,8 @@ export class BeveragesService {
       };
     }
     const catalogueTruncated =
-      (searched ? searched.length : (plain.status.rows ?? 0)) >= opts.catalogueLimit;
+      (searched ? searched.length : (plain.status.rows ?? 0)) >=
+      opts.catalogueLimit;
 
     const result = composeRegister({
       restaurantId,
@@ -513,7 +520,13 @@ export class BeveragesService {
     const rows = q
       ? result.rows.filter((r) =>
           fold(
-            [r.name, r.producer, r.catalogue?.beverageType, r.catalogue?.region, r.catalogue?.country]
+            [
+              r.name,
+              r.producer,
+              r.catalogue?.beverageType,
+              r.catalogue?.region,
+              r.catalogue?.country,
+            ]
               .filter(Boolean)
               .join(" "),
           ).includes(q),
@@ -655,7 +668,11 @@ export class BeveragesService {
     mayPrice: boolean,
   ) {
     if (dto.price !== undefined && !mayPrice) {
-      await this.assertCocktailPriceUnchanged(restaurantId, cocktailId, dto.price);
+      await this.assertCocktailPriceUnchanged(
+        restaurantId,
+        cocktailId,
+        dto.price,
+      );
     }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     // Only fields the caller actually sent. A PATCH that nulled every absent
@@ -833,7 +850,10 @@ export class BeveragesService {
         // Take the new lines back out so the recipe is the old one, not both.
         const undo =
           newIds.length > 0
-            ? await client.from("cocktail_ingredients").delete().in("id", newIds)
+            ? await client
+                .from("cocktail_ingredients")
+                .delete()
+                .in("id", newIds)
             : { error: null };
         if (undo.error) {
           throw new Error(

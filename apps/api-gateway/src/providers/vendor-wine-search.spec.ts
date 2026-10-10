@@ -274,7 +274,9 @@ describe("the query", () => {
     const typedTurkish = parseWineQuery("Kavaklıdere")!;
     expect(matchesWine(typedAscii, "Kavaklıdere Yakut", null)).toBe(true);
     expect(matchesWine(typedTurkish, "KAVAKLIDERE YAKUT", null)).toBe(true);
-    expect(matchesWine(parseWineQuery("izmir")!, "İZMİR Beyaz", null)).toBe(true);
+    expect(matchesWine(parseWineQuery("izmir")!, "İZMİR Beyaz", null)).toBe(
+      true,
+    );
     const narrowing = likeToRegex(accentBlindLike(typedTurkish.words[0]));
     expect(narrowing.test("KAVAKLIDERE YAKUT")).toBe(true);
     expect(narrowing.test("Kavaklıdere Yakut")).toBe(true);

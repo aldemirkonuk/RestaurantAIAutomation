@@ -416,29 +416,82 @@ describe("DashboardController", () => {
 
     // F-339: the per-currency spend lines are amounts as well — a withheld
     // role is sent neither the day's nor the month's.
-    it.each([["staff"], ["bogus"], [null]])("withholds the per-currency spend lines for role %p", async (role) => {
-      const byCcy = [{ currency: "TRY", amount: 12000 }, { currency: "EUR", amount: 400 }];
-      (mockDashboardService as any).getCalendarRevenue = jest.fn().mockResolvedValue({
-        year: 2026, month: 10, restaurant_id: restaurantId,
-        daily: [{ date: "2026-10-01", procurement_spend: null, procurement_spend_by_currency: byCcy, bottles_sold: 12, events: [], order_count: 2 }],
-        monthly_procurement_spend: null, monthly_procurement_spend_by_currency: byCcy, monthly_bottles: 12,
-      });
-      const result: any = await controller.getCalendarRevenue(restaurantId, "2026", "10", { role } as any);
-      expect(result.daily[0]).not.toHaveProperty("procurement_spend_by_currency");
-      expect(result).not.toHaveProperty("monthly_procurement_spend_by_currency");
-      expect(JSON.stringify(result)).not.toContain("12000");
-      expect(result.daily[0]).toMatchObject({ bottles_sold: 12, order_count: 2 });
-      expect(result.amounts).toBe("withheld");
-    });
+    it.each([["staff"], ["bogus"], [null]])(
+      "withholds the per-currency spend lines for role %p",
+      async (role) => {
+        const byCcy = [
+          { currency: "TRY", amount: 12000 },
+          { currency: "EUR", amount: 400 },
+        ];
+        (mockDashboardService as any).getCalendarRevenue = jest
+          .fn()
+          .mockResolvedValue({
+            year: 2026,
+            month: 10,
+            restaurant_id: restaurantId,
+            daily: [
+              {
+                date: "2026-10-01",
+                procurement_spend: null,
+                procurement_spend_by_currency: byCcy,
+                bottles_sold: 12,
+                events: [],
+                order_count: 2,
+              },
+            ],
+            monthly_procurement_spend: null,
+            monthly_procurement_spend_by_currency: byCcy,
+            monthly_bottles: 12,
+          });
+        const result: any = await controller.getCalendarRevenue(
+          restaurantId,
+          "2026",
+          "10",
+          { role } as any,
+        );
+        expect(result.daily[0]).not.toHaveProperty(
+          "procurement_spend_by_currency",
+        );
+        expect(result).not.toHaveProperty(
+          "monthly_procurement_spend_by_currency",
+        );
+        expect(JSON.stringify(result)).not.toContain("12000");
+        expect(result.daily[0]).toMatchObject({
+          bottles_sold: 12,
+          order_count: 2,
+        });
+        expect(result.amounts).toBe("withheld");
+      },
+    );
 
     it("keeps the per-currency spend lines for an owner", async () => {
-      const byCcy = [{ currency: "TRY", amount: 12000 }, { currency: "EUR", amount: 400 }];
-      (mockDashboardService as any).getCalendarRevenue = jest.fn().mockResolvedValue({
-        year: 2026, month: 10, restaurant_id: restaurantId,
-        daily: [{ date: "2026-10-01", procurement_spend: null, procurement_spend_by_currency: byCcy }],
-        monthly_procurement_spend: null, monthly_procurement_spend_by_currency: byCcy, monthly_bottles: 0,
-      });
-      const result: any = await controller.getCalendarRevenue(restaurantId, "2026", "10", { role: "owner" });
+      const byCcy = [
+        { currency: "TRY", amount: 12000 },
+        { currency: "EUR", amount: 400 },
+      ];
+      (mockDashboardService as any).getCalendarRevenue = jest
+        .fn()
+        .mockResolvedValue({
+          year: 2026,
+          month: 10,
+          restaurant_id: restaurantId,
+          daily: [
+            {
+              date: "2026-10-01",
+              procurement_spend: null,
+              procurement_spend_by_currency: byCcy,
+            },
+          ],
+          monthly_procurement_spend: null,
+          monthly_procurement_spend_by_currency: byCcy,
+          monthly_bottles: 0,
+        });
+      const result: any = await controller.getCalendarRevenue(
+        restaurantId,
+        "2026",
+        "10",
+        { role: "owner" },
+      );
       expect(result.daily[0].procurement_spend_by_currency).toEqual(byCcy);
       expect(result.monthly_procurement_spend_by_currency).toEqual(byCcy);
     });

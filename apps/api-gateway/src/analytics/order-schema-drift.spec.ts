@@ -410,7 +410,12 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
     // delivery taken in today was in neither; and an approved or partly
     // received order sat in neither figure without a word.
     it("counts a delivery taken in today, and names the orders in neither figure", async () => {
-      const order = (id: string, status: ProcurementOrderStatus, cost: number, deliveredAt: string | null) => ({
+      const order = (
+        id: string,
+        status: ProcurementOrderStatus,
+        cost: number,
+        deliveredAt: string | null,
+      ) => ({
         id,
         provider_id: "p1",
         providers: { name: "Rioja Imports" },
@@ -425,7 +430,12 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       });
       const client = makeClient({
         procurement_orders: [
-          order("t1", ProcurementOrderStatus.COMPLETED, 700, new Date().toISOString()),
+          order(
+            "t1",
+            ProcurementOrderStatus.COMPLETED,
+            700,
+            new Date().toISOString(),
+          ),
           order("t2", ProcurementOrderStatus.APPROVED, 300, null),
           order("t3", ProcurementOrderStatus.PARTIALLY_RECEIVED, 250, day(1)),
         ],

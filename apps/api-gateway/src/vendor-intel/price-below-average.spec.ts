@@ -196,7 +196,11 @@ describe("VendorComparisonService.belowTrailingAverage", () => {
           const left = [...rows]
             .sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1))
             .filter((r) => after === null || String(r.id) > after);
-          resolve({ data: left.slice(0, Math.min(limit, 1000)), error, count: left.length });
+          resolve({
+            data: left.slice(0, Math.min(limit, 1000)),
+            error,
+            count: left.length,
+          });
         },
       };
       return q;
@@ -225,9 +229,16 @@ describe("VendorComparisonService.belowTrailingAverage", () => {
       yield_factor: 1,
     });
     const old = Array.from({ length: 1500 }, (_, i) =>
-      row(i, 100, new Date(Date.now() - (20 * 86_400_000 - i * 60_000)).toISOString()),
+      row(
+        i,
+        100,
+        new Date(Date.now() - (20 * 86_400_000 - i * 60_000)).toISOString(),
+      ),
     );
-    const { service } = makeService([...old, row(99999, 60, new Date(Date.now() - 3_600_000).toISOString())]);
+    const { service } = makeService([
+      ...old,
+      row(99999, 60, new Date(Date.now() - 3_600_000).toISOString()),
+    ]);
     const out = await service.belowTrailingAverage({ restaurantId: "rest-1" });
     expect(out.scanned.observations).toBe(1501);
   });

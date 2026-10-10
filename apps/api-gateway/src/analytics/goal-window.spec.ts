@@ -13,10 +13,16 @@ import { goalSchedule, goalWindow } from "./goal-window";
 const at = (iso: string) => new Date(iso).getTime();
 
 describe("a goal's pace runs through its deadline day (F-865)", () => {
-  const october = { periodStart: "2026-10-01", periodEnd: "2026-11-01", deadlineDay: "2026-10-31" };
+  const october = {
+    periodStart: "2026-10-01",
+    periodEnd: "2026-11-01",
+    deadlineDay: "2026-10-31",
+  };
 
   it("paces October over all 31 of its days", () => {
-    expect(goalSchedule(october, "UTC", at("2026-10-16T12:00:00Z")).totalDays).toBe(31);
+    expect(
+      goalSchedule(october, "UTC", at("2026-10-16T12:00:00Z")).totalDays,
+    ).toBe(31);
   });
 
   it("on the last day, one day is left and the day is not yet over", () => {
@@ -33,17 +39,33 @@ describe("a goal's pace runs through its deadline day (F-865)", () => {
   });
 
   it("paces a week over its seven days", () => {
-    const week = { periodStart: "2026-10-04", periodEnd: "2026-10-11", deadlineDay: "2026-10-10" };
-    expect(goalSchedule(week, "UTC", at("2026-10-05T00:00:00Z")).totalDays).toBe(7);
+    const week = {
+      periodStart: "2026-10-04",
+      periodEnd: "2026-10-11",
+      deadlineDay: "2026-10-10",
+    };
+    expect(
+      goalSchedule(week, "UTC", at("2026-10-05T00:00:00Z")).totalDays,
+    ).toBe(7);
   });
 
   it("stops at the period's own end when that comes before the deadline", () => {
-    const week = { periodStart: "2026-10-04", periodEnd: "2026-10-11", deadlineDay: "2026-12-31" };
-    expect(goalSchedule(week, "UTC", at("2026-10-05T00:00:00Z")).totalDays).toBe(7);
+    const week = {
+      periodStart: "2026-10-04",
+      periodEnd: "2026-10-11",
+      deadlineDay: "2026-12-31",
+    };
+    expect(
+      goalSchedule(week, "UTC", at("2026-10-05T00:00:00Z")).totalDays,
+    ).toBe(7);
   });
 
   it("counts the house's midnights, not UTC's", () => {
-    const s = goalSchedule(october, "Europe/Istanbul", at("2026-10-16T12:00:00Z"));
+    const s = goalSchedule(
+      october,
+      "Europe/Istanbul",
+      at("2026-10-16T12:00:00Z"),
+    );
     expect(s.startAt).toBe(at("2026-09-30T21:00:00Z"));
     expect(s.endAt).toBe(at("2026-10-31T21:00:00Z"));
   });
@@ -52,25 +74,45 @@ describe("a goal's pace runs through its deadline day (F-865)", () => {
 describe("a goal's window (F-864)", () => {
   it("a 'this month' goal set on the 20th counts from the 1st", () => {
     const w = goalWindow(
-      { period: "month", created_at: "2026-10-20T09:00:00Z", deadline: "2026-10-31" },
+      {
+        period: "month",
+        created_at: "2026-10-20T09:00:00Z",
+        deadline: "2026-10-31",
+      },
       "UTC",
       "2026-10-25",
     );
-    expect(w).toEqual({ periodStart: "2026-10-01", periodEnd: "2026-11-01", deadlineDay: "2026-10-31" });
+    expect(w).toEqual({
+      periodStart: "2026-10-01",
+      periodEnd: "2026-11-01",
+      deadlineDay: "2026-10-31",
+    });
   });
 
   it("a custom goal counts from the house day it was set", () => {
     const w = goalWindow(
-      { period: "custom", created_at: "2026-10-20T22:30:00Z", deadline: "2026-12-01" },
+      {
+        period: "custom",
+        created_at: "2026-10-20T22:30:00Z",
+        deadline: "2026-12-01",
+      },
       "America/Los_Angeles",
       "2026-10-25",
     );
-    expect(w).toEqual({ periodStart: "2026-10-20", periodEnd: null, deadlineDay: "2026-12-01" });
+    expect(w).toEqual({
+      periodStart: "2026-10-20",
+      periodEnd: null,
+      deadlineDay: "2026-12-01",
+    });
   });
 
   it("a goal past its deadline counts the period the deadline fell in", () => {
     const w = goalWindow(
-      { period: "month", created_at: "2026-09-02T09:00:00Z", deadline: "2026-09-30" },
+      {
+        period: "month",
+        created_at: "2026-09-02T09:00:00Z",
+        deadline: "2026-09-30",
+      },
       "UTC",
       "2026-10-25",
     );

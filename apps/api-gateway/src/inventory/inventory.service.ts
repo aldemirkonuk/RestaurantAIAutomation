@@ -73,7 +73,9 @@ const OVERTAKEN_SCAN_LIMIT = 200;
  * connection dropped), a timeout, a deadlock, a server going away — is
  * transient, and the phone should try again rather than give up.
  */
-export function isRequestFaultDbError(err: { code?: string } | null | undefined): boolean {
+export function isRequestFaultDbError(
+  err: { code?: string } | null | undefined,
+): boolean {
   const code = err?.code ?? "";
   return (
     code === "P0001" ||
@@ -92,7 +94,10 @@ export function isRequestFaultDbError(err: { code?: string } | null | undefined)
  */
 async function readEveryRange(
   what: string,
-  page: (from: number, to: number) => PromiseLike<{
+  page: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{
     data: any[] | null;
     error: { message?: string } | null;
     count?: number | null;
@@ -110,7 +115,8 @@ async function readEveryRange(
     if (total === null && typeof count === "number") total = count;
     rows.push(...data);
     from += data.length;
-    const more = total !== null ? rows.length < total : data.length === WHOLE_READ_PAGE;
+    const more =
+      total !== null ? rows.length < total : data.length === WHOLE_READ_PAGE;
     if (!more || data.length === 0) break;
   }
   if (total !== null && rows.length !== total) {
@@ -122,7 +128,12 @@ async function readEveryRange(
 }
 
 /** Why a drink is sold out (stock_outs_cause_known, F-145). */
-export const STOCK_OUT_CAUSES = ["ran_out", "broken", "pulled", "other"] as const;
+export const STOCK_OUT_CAUSES = [
+  "ran_out",
+  "broken",
+  "pulled",
+  "other",
+] as const;
 export type StockOutCause = (typeof STOCK_OUT_CAUSES)[number];
 
 @Injectable()
@@ -707,7 +718,11 @@ export class InventoryService {
       location_id: string | null;
       transaction_id: string | null;
     }>;
-    if (countRows.some((c) => c.location_id == null || c.location_id === locationId)) {
+    if (
+      countRows.some(
+        (c) => c.location_id == null || c.location_id === locationId,
+      )
+    ) {
       throw new HttpException(
         "This shelf was counted again after this count was taken, so this older count was not applied.",
         HttpStatus.CONFLICT,
@@ -741,14 +756,17 @@ export class InventoryService {
         r.from_location_id === locationId ||
         r.to_location_id === locationId ||
         (Array.isArray(taken) &&
-          taken.some((l) => (l as { location_id?: unknown })?.location_id === locationId));
+          taken.some(
+            (l) => (l as { location_id?: unknown })?.location_id === locationId,
+          ));
       if (touched) {
         throw new HttpException(
           "Bottles on this shelf were sold, received or moved after this count was taken, so it was not applied. Count it again.",
           HttpStatus.CONFLICT,
         );
       }
-      if (!transfer && !(Array.isArray(taken) && taken.length > 0)) shelfUnknown = true;
+      if (!transfer && !(Array.isArray(taken) && taken.length > 0))
+        shelfUnknown = true;
     }
     if (shelfUnknown) {
       throw new HttpException(
@@ -2567,8 +2585,12 @@ export class InventoryService {
     let audited = true;
     for (const r of rows.filter((x) => goneIds.has(x.id))) {
       audited =
-        (await this.recordRemoval(restaurantId, r.id, nameOf(r), actorUserId)) &&
-        audited;
+        (await this.recordRemoval(
+          restaurantId,
+          r.id,
+          nameOf(r),
+          actorUserId,
+        )) && audited;
     }
 
     if (goneIds.size < rows.length) {
@@ -2716,9 +2738,7 @@ export class InventoryService {
     // 23505: it is already sold out (one open stock-out per item). A second
     // tap, or two people at once, answers with the one already open.
     if (error && error.code !== "23505") {
-      this.logger.error(
-        `startStockOut ${inventoryId}: ${error.message}`,
-      );
+      this.logger.error(`startStockOut ${inventoryId}: ${error.message}`);
       throw new HttpException(
         "Could not mark it sold out. Nothing was marked; try again.",
         HttpStatus.SERVICE_UNAVAILABLE,

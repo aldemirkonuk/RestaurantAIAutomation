@@ -326,7 +326,8 @@ export class ReportExportsService {
   ): Promise<ReportExportResponseDto> {
     await this.failStaleQueued(restaurantId);
     const row = await this.readRow(restaurantId, exportId);
-    const house = row.status === "ready" ? await this.readHouseNaming(restaurantId) : null;
+    const house =
+      row.status === "ready" ? await this.readHouseNaming(restaurantId) : null;
     return this.toDto(row, house);
   }
 
@@ -337,7 +338,9 @@ export class ReportExportsService {
   ): Promise<ExportDownload> {
     const { data, error } = await this.db
       .from(REPORT_EXPORTS_TABLE)
-      .select(`id, cutting, window_days, status, failure_reason, finished_at, ${format}`)
+      .select(
+        `id, cutting, window_days, status, failure_reason, finished_at, ${format}`,
+      )
       .eq("id", exportId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -367,8 +370,10 @@ export class ReportExportsService {
       this.fileStem(
         {
           cutting: String(row.cutting),
-          window_days: typeof row.window_days === "number" ? row.window_days : null,
-          finished_at: typeof row.finished_at === "string" ? row.finished_at : null,
+          window_days:
+            typeof row.window_days === "number" ? row.window_days : null,
+          finished_at:
+            typeof row.finished_at === "string" ? row.finished_at : null,
         },
         house,
       ) ?? `mudavym-${String(row.cutting)}-undated`;
@@ -614,9 +619,13 @@ export class ReportExportsService {
         writtenAt: new Date().toISOString(),
         // The same zone the till files its days on (`readHouseZone`), so
         // "Written" and the days in the file are one clock (F-413).
-        timezone: houseFrame(house as { timezone?: string | null; country?: string | null }).zone,
+        timezone: houseFrame(
+          house as { timezone?: string | null; country?: string | null },
+        ).zone,
         // The printed file groups its figures the house's way (F-889).
-        locale: houseFrame(house as { timezone?: string | null; country?: string | null }).locale,
+        locale: houseFrame(
+          house as { timezone?: string | null; country?: string | null },
+        ).locale,
         withheldCount,
       };
       csv = renderCsv(doc, header);
@@ -702,13 +711,20 @@ export class ReportExportsService {
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
-      this.logger.error("Failed to read the house for an export's file name; naming it neutrally", {
-        restaurantId,
-        error: error.message,
-      });
+      this.logger.error(
+        "Failed to read the house for an export's file name; naming it neutrally",
+        {
+          restaurantId,
+          error: error.message,
+        },
+      );
       return { name: null, zone: null };
     }
-    const h = (data ?? null) as { name?: unknown; timezone?: string | null; country?: string | null } | null;
+    const h = (data ?? null) as {
+      name?: unknown;
+      timezone?: string | null;
+      country?: string | null;
+    } | null;
     return {
       name: typeof h?.name === "string" && h.name ? h.name : null,
       zone: houseFrame(h).zone,
@@ -729,7 +745,10 @@ export class ReportExportsService {
     });
   }
 
-  private toDto(row: ExportRow, house: HouseNaming | null = null): ReportExportResponseDto {
+  private toDto(
+    row: ExportRow,
+    house: HouseNaming | null = null,
+  ): ReportExportResponseDto {
     return {
       id: row.id,
       cutting: row.cutting,

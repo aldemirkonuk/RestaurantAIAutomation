@@ -248,9 +248,15 @@ describe("shared agent health", () => {
     expect(providers.every(provider => /not probed/.test(provider.status))).toBe(true);
   });
   it("describes each provider to an owner without vendor, model or route names (F-290)", () => {
-    const controller = new HealthProxyController({} as any, { get: () => "configured" } as any, {} as any);
+    const controller = new HealthProxyController(
+      {} as any,
+      { get: () => "configured" } as any,
+      {} as any,
+    );
     for (const provider of controller.getProviderHealth().providers) {
-      expect(provider.desc).not.toMatch(/claude|anthropic|haiku|sonnet|gemini|supabase|postgres|\bapi\b|\//i);
+      expect(provider.desc).not.toMatch(
+        /claude|anthropic|haiku|sonnet|gemini|supabase|postgres|\bapi\b|\//i,
+      );
     }
   });
   it("reports an unconfigured provider as unhealthy, not as unknown", () => {

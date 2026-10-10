@@ -34,8 +34,13 @@ export class ReadingRunner {
     const finding = await this.readBooks(restaurantId, id, args, version, day);
     return day.value ? { ...finding, day: day.value } : finding;
   }
-  private async readBooks(restaurantId: string, id: ReadingId, args: ReadingArgs, version: number,
-    day: { value?: Finding["day"] }): Promise<Finding> {
+  private async readBooks(
+    restaurantId: string,
+    id: ReadingId,
+    args: ReadingArgs,
+    version: number,
+    day: { value?: Finding["day"] },
+  ): Promise<Finding> {
     const descriptor = READING_CATALOGUE.find(r => r.id === id);
     // Cells may come only from the fields this Reading declares: those are
     // the fields whose data classes decided who may receive it.
@@ -304,10 +309,23 @@ export class ReadingRunner {
    * house record is a traced source like any other, so a failed read of it is
    * a failed read, never "no zone".
    */
-  private async today(s: RecordingSession, sources: ReadingSources): Promise<NonNullable<Finding["day"]>> {
+  private async today(
+    s: RecordingSession,
+    sources: ReadingSources,
+  ): Promise<NonNullable<Finding["day"]>> {
     const house = s.rows(await sources.houseClock())[0];
-    const zone = houseFrame(house ? { timezone: house.timezone as string | null, country: house.country as string | null } : null).zone;
+    const zone = houseFrame(
+      house
+        ? {
+            timezone: house.timezone as string | null,
+            country: house.country as string | null,
+          }
+        : null,
+    ).zone;
     const now = this.clock();
-    return { date: zone ? houseToday(zone, now) : now.toISOString().slice(0, 10), zone };
+    return {
+      date: zone ? houseToday(zone, now) : now.toISOString().slice(0, 10),
+      zone,
+    };
   }
 }

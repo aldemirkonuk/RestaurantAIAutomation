@@ -70,12 +70,13 @@ export class PromotionExtractorService {
       // later mail with those terms. What this still catches is the one real
       // duplicate: the same message read twice.
       const identity = `${promo.signature}|${[...applicableWines].sort().join(",")}`;
-      const { data: dupes, error: dupesError } = await this.databaseService.supabase
+      const { data: dupes, error: dupesError } =
+        await this.databaseService.supabase
         .from("provider_promotions")
         .select("id")
         .eq("provider_id", ctx.providerId)
-        .eq("source_conversation_id", ctx.conversationId)
-        .contains("conditions", { identity })
+          .eq("source_conversation_id", ctx.conversationId)
+          .contains("conditions", { identity })
         .limit(1);
       // A check that could not run is not "no duplicate": skip rather than
       // file the same offer twice.

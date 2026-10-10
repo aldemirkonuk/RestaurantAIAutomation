@@ -89,7 +89,13 @@ export function lotBookedCost(input: {
     }
     return { ok: true, booked: lotPerBottle, basis: "same_currency", lotPerBottle };
   }
-  if (rate !== null) return { ok: true, booked: cents(exactPerBottle * rate), basis: "stated_rate", lotPerBottle };
+  if (rate !== null)
+    return {
+      ok: true,
+      booked: cents(exactPerBottle * rate),
+      basis: "stated_rate",
+      lotPerBottle,
+    };
   return {
     ok: false,
     why: `The lot is in ${lot} and this house keeps its books in ${house}: state the exchange rate you used, or type what each bottle cost in ${house}. Nothing is inferred.`,

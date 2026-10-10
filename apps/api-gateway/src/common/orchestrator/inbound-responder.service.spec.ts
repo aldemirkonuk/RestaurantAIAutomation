@@ -435,7 +435,10 @@ describe("InboundResponderService (deterministic core)", () => {
       const approver = {
         calls: [] as Array<[string, string]>,
         outcome: { approved: true } as any,
-        async approveAcceptedOrderAsAgent(restaurantId: string, orderId: string) {
+        async approveAcceptedOrderAsAgent(
+          restaurantId: string,
+          orderId: string,
+        ) {
           approver.calls.push([restaurantId, orderId]);
           return approver.outcome;
         },
@@ -530,7 +533,9 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(updates.procurement_orders?.status).toBeUndefined();
       expect(approver.calls).toEqual([["r1", "o9"]]);
       expect(notes).toHaveLength(1);
-      expect(notes[0].n.title).toBe("Vendor agreed — waiting for your approval");
+      expect(notes[0].n.title).toBe(
+        "Vendor agreed — waiting for your approval",
+      );
       expect(notes[0].n.message).toContain("waiting for an owner or a manager");
     });
 
@@ -1124,7 +1129,10 @@ describe("InboundResponderService (deterministic core)", () => {
             error: priorError,
           };
         if (ops.includes("in"))
-          return { data: [{ id: "d1", status: "PENDING_APPROVAL" }], error: null };
+          return {
+            data: [{ id: "d1", status: "PENDING_APPROVAL" }],
+            error: null,
+          };
         return { data: [], error: null };
       };
       const supabase = {
@@ -1136,7 +1144,8 @@ describe("InboundResponderService (deterministic core)", () => {
               get: (_t, k: string) => {
                 if (k === "then") {
                   const r = result(table, ops);
-                  return (ok: any, bad: any) => Promise.resolve(r).then(ok, bad);
+                  return (ok: any, bad: any) =>
+                    Promise.resolve(r).then(ok, bad);
                 }
                 return (arg?: any) => {
                   ops.push(k);
@@ -1170,7 +1179,11 @@ describe("InboundResponderService (deterministic core)", () => {
           injection_suspected: false,
           ...analysis,
         });
-      s.buildDealProposal = () => ({ summary: "11 at $14", dealKind: "offer", urgency: "normal" });
+      s.buildDealProposal = () => ({
+        summary: "11 at $14",
+        dealKind: "offer",
+        urgency: "normal",
+      });
       s.isAutonomousSendEnabled = async () => false;
       s.logDecision = async () => undefined;
       s.persistManagerNotification = jest.fn(async () => undefined);
@@ -1182,7 +1195,9 @@ describe("InboundResponderService (deterministic core)", () => {
         providerId: "p1",
       });
       const ctx = writes.find(
-        (w) => w.table === "procurement_conversations" && w.payload?.conversation_context,
+        (w) =>
+          w.table === "procurement_conversations" &&
+          w.payload?.conversation_context,
       )?.payload.conversation_context;
       return { s, ws, ctx, out };
     };
@@ -1296,7 +1311,11 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(close).toBeGreaterThan(open);
 
       // The real steer and transport lines come before the fence opens.
-      expect(prompt.indexOf("MANAGER STEERING for this reply (follow it): keep it short")).toBeLessThan(open);
+      expect(
+        prompt.indexOf(
+          "MANAGER STEERING for this reply (follow it): keep it short",
+        ),
+      ).toBeLessThan(open);
       expect(prompt.indexOf("TRANSPORT SIGNALS")).toBeLessThan(open);
 
       // Nothing the vendor wrote carries a house heading or a turn header.
@@ -1355,7 +1374,11 @@ describe("InboundResponderService (deterministic core)", () => {
 
     it("shows an offer the mail states", () => {
       const p = card([
-        { price_per_bottle: 1050, quantity: 6, quote: "we can do $1,050/bottle" },
+        {
+          price_per_bottle: 1050,
+          quantity: 6,
+          quote: "we can do $1,050/bottle",
+        },
       ]);
       expect(p.finalPrice).toBe(1050);
       expect(p.sourceQuote).toBe("we can do $1,050/bottle");
@@ -1379,7 +1402,8 @@ describe("InboundResponderService (deterministic core)", () => {
       const flags = svc().computeGuardrails(
         baseAnalysis({
           vendor_offers: [],
-          reply_body: "Could you meet us at $1,090 a bottle? I will check with my manager.",
+          reply_body:
+            "Could you meet us at $1,090 a bottle? I will check with my manager.",
         }),
         1090,
         6,
@@ -1397,7 +1421,8 @@ describe("InboundResponderService (deterministic core)", () => {
       const flags = svc().computeGuardrails(
         baseAnalysis({
           vendor_offers: [],
-          reply_body: "That is a little above what we hoped — is there room to sharpen it? I will check with my manager.",
+          reply_body:
+            "That is a little above what we hoped — is there room to sharpen it? I will check with my manager.",
         }),
         1090,
         6,
@@ -1414,7 +1439,12 @@ describe("InboundResponderService (deterministic core)", () => {
    * error level instead of vanishing.
    */
   describe("logDecision — the record of an agent acting on an order", () => {
-    const ctx = { restaurantId: "r1", orderId: "o1", providerId: "p1", correlationId: "c1" };
+    const ctx = {
+      restaurantId: "r1",
+      orderId: "o1",
+      providerId: "p1",
+      correlationId: "c1",
+    };
     const flags = { needs_approval: false, reasons: [] as string[] };
 
     const withDecisionDb = (insertResult: any) => {
@@ -1436,7 +1466,8 @@ describe("InboundResponderService (deterministic core)", () => {
             eq: () => ({
               order: () => ({
                 limit: () => ({
-                  maybeSingle: () => Promise.resolve({ data: { id: "line1" }, error: null }),
+                  maybeSingle: () =>
+                    Promise.resolve({ data: { id: "line1" }, error: null }),
                 }),
               }),
             }),
@@ -1451,7 +1482,11 @@ describe("InboundResponderService (deterministic core)", () => {
         {} as any,
       ) as any;
       const errors: string[] = [];
-      s.logger = { error: (m: string) => errors.push(m), warn: () => {}, log: () => {} };
+      s.logger = {
+        error: (m: string) => errors.push(m),
+        warn: () => {},
+        log: () => {},
+      };
       return { s, inserts, orderWrites, errors };
     };
 
@@ -1464,7 +1499,15 @@ describe("InboundResponderService (deterministic core)", () => {
       const analysis = baseAnalysis({
         intent: "price_acceptance",
         deal_kind: "offer",
-        vendor_offers: [{ price_per_bottle: 1050, quantity: 6, unit: "bottle", conditions: "", quote: "" }],
+        vendor_offers: [
+          {
+            price_per_bottle: 1050,
+            quantity: 6,
+            unit: "bottle",
+            conditions: "",
+            quote: "",
+          },
+        ],
       });
       const move = await s.syncOrderState(
         { id: "o1", status: "NEGOTIATING", negotiated_price: 1200 },
@@ -1504,16 +1547,28 @@ describe("InboundResponderService (deterministic core)", () => {
     });
 
     it("a refused decision row is logged at error level, not dropped", async () => {
-      const { s, errors } = withDecisionDb({ error: { message: "violates check" } });
-      await s.logDecision(ctx, baseAnalysis(), flags, { paused: false, autoReply: false, autonomyFull: false });
+      const { s, errors } = withDecisionDb({
+        error: { message: "violates check" },
+      });
+      await s.logDecision(ctx, baseAnalysis(), flags, {
+        paused: false,
+        autoReply: false,
+        autonomyFull: false,
+      });
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toMatch(/decision on order o1 was not recorded.*violates check/);
+      expect(errors[0]).toMatch(
+        /decision on order o1 was not recorded.*violates check/,
+      );
     });
 
     it("a thrown insert is logged at error level too, and never blocks the responder", async () => {
       const { s, errors } = withDecisionDb(new Error("socket hang up"));
       await expect(
-        s.logDecision(ctx, baseAnalysis(), flags, { paused: false, autoReply: false, autonomyFull: false }),
+        s.logDecision(ctx, baseAnalysis(), flags, {
+          paused: false,
+          autoReply: false,
+          autonomyFull: false,
+        }),
       ).resolves.toBeUndefined();
       expect(errors[0]).toMatch(/socket hang up/);
     });

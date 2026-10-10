@@ -90,7 +90,11 @@ describe("htmlToText", () => {
           });
         const indexOfSpy = jest
           .spyOn(String.prototype, "indexOf")
-          .mockImplementation(function (this: string, needle: string, from?: number) {
+          .mockImplementation(function (
+            this: string,
+            needle: string,
+            from?: number,
+          ) {
             const at = indexOf.call(this, needle, from);
             scanned += (at === -1 ? this.length : at) - Math.max(0, from ?? 0);
             return at;

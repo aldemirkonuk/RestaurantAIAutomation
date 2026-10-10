@@ -256,7 +256,11 @@ describe("GET /inventory/:restaurantId withholds what the house paid (F-562)", (
     ["staff", STAFF],
     ["a session with no role", NO_ROLE],
   ])("sends %s stock and menu prices, and no cost", async (_who, user) => {
-    const [item] = await controller().getRestaurantInventory("r-1", undefined, user);
+    const [item] = await controller().getRestaurantInventory(
+      "r-1",
+      undefined,
+      user,
+    );
     for (const k of COST_KEYS) expect(item).not.toHaveProperty(k);
     expect(item.locations).toEqual([{ locationId: "loc-1", qty: 6 }]);
     expect(item).toMatchObject({
@@ -271,7 +275,11 @@ describe("GET /inventory/:restaurantId withholds what the house paid (F-562)", (
     ["an owner", OWNER],
     ["a manager", MANAGER],
   ])("sends %s the whole row", async (_who, user) => {
-    const [item] = await controller().getRestaurantInventory("r-1", undefined, user);
+    const [item] = await controller().getRestaurantInventory(
+      "r-1",
+      undefined,
+      user,
+    );
     expect(item).toEqual(row());
   });
 
@@ -291,39 +299,57 @@ describe("GET /inventory/:restaurantId withholds what the house paid (F-562)", (
     recordPour: jest.fn(async () => ({ pour: { pours: 1 }, item: row() })),
     recordSpotCount: jest.fn(async () => ({ item: row(), variance: 0 })),
   });
-  const routes: Array<[string, (c: InventoryController, u: any) => Promise<any>]> = [
+  const routes: Array<
+    [string, (c: InventoryController, u: any) => Promise<any>]
+  > = [
     ["low-stock", async (c, u) => (await c.getLowStockItems("r-1", u))[0]],
     ["item/:itemId", (c, u) => c.getInventoryItem("r-1", "inv-1", u)],
     ["toast/lookup", (c, u) => c.findByToastGuid("r-1", "g-1", u)],
     ["toast/map", (c, u) => c.mapToastItem("r-1", {} as any, u)],
     ["toast/map DELETE", (c, u) => c.unmapToastItem("r-1", "inv-1", u)],
     ["items POST", (c, u) => c.createInventoryItem("r-1", {} as any, u)],
-    ["item PATCH", (c, u) => c.updateInventoryItem("r-1", "inv-1", {} as any, u)],
+    [
+      "item PATCH",
+      (c, u) => c.updateInventoryItem("r-1", "inv-1", {} as any, u),
+    ],
     ["transfer", (c, u) => c.transferStock("r-1", "inv-1", { qty: 1 }, u)],
     ["pour", async (c, u) => (await c.recordPour("r-1", "inv-1", {}, u)).item],
     [
       "count",
       async (c, u) =>
-        (await c.recordSpotCount("r-1", "inv-1", { countedQty: 6, clientCountId: "k" }, u)).item,
+        (
+          await c.recordSpotCount(
+            "r-1",
+            "inv-1",
+            { countedQty: 6, clientCountId: "k" },
+            u,
+          )
+        ).item,
     ],
   ];
   const withService = () =>
     new InventoryController(service() as any, {} as any, {} as any);
 
-  it.each(routes)("%s sends staff the wine with no cost", async (_route, call) => {
-    for (const user of [STAFF, NO_ROLE]) {
-      const item = await call(withService(), user);
-      for (const k of COST_KEYS) expect(item).not.toHaveProperty(k);
-      expect(item.locations).toEqual([{ locationId: "loc-1", qty: 6 }]);
-      expect(item).toMatchObject({ stock_live: 6, menuPriceBottle: 120 });
-    }
-  });
+  it.each(routes)(
+    "%s sends staff the wine with no cost",
+    async (_route, call) => {
+      for (const user of [STAFF, NO_ROLE]) {
+        const item = await call(withService(), user);
+        for (const k of COST_KEYS) expect(item).not.toHaveProperty(k);
+        expect(item.locations).toEqual([{ locationId: "loc-1", qty: 6 }]);
+        expect(item).toMatchObject({ stock_live: 6, menuPriceBottle: 120 });
+      }
+    },
+  );
 
-  it.each(routes)("%s sends an owner and a manager the whole row", async (_route, call) => {
-    for (const user of [OWNER, MANAGER]) {
-      expect(await call(withService(), user)).toEqual(row());
-    }
-  });
+  it.each(routes)(
+    "%s sends an owner and a manager the whole row",
+    async (_route, call) => {
+      for (const user of [OWNER, MANAGER]) {
+        expect(await call(withService(), user)).toEqual(row());
+      }
+    },
+  );
 });
 
 describe("GET /procurement/deliveries/:id/proposals withholds the dispute's money (F-564)", () => {

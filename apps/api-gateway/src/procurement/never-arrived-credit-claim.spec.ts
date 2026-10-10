@@ -127,7 +127,10 @@ class CreditsQuery {
     if (this.insertRow) return this.maybeSingle().then(onfulfilled, onrejected);
     const list = this.db.failCreditsRead
       ? { data: null, error: { message: this.db.failCreditsRead } }
-      : { data: this.db.credits.filter((r) => this.filters.every((f) => f(r))), error: null };
+      : {
+          data: this.db.credits.filter((r) => this.filters.every((f) => f(r))),
+          error: null,
+        };
     return Promise.resolve(list as any).then(onfulfilled, onrejected);
   }
   private async doInsert(wantSingle: boolean) {

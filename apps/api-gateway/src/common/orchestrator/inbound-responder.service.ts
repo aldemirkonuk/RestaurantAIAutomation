@@ -82,7 +82,8 @@ const ORDER_SYNC_HOLD_REASONS = [
  * (ADR 0325). A fixed id that is no person's, so a row approved by the AI can
  * never be read as approved by somebody in the house.
  */
-export const INBOUND_RESPONDER_AGENT_ID = "00000000-0000-4000-8000-0000000a6e17";
+export const INBOUND_RESPONDER_AGENT_ID =
+  "00000000-0000-4000-8000-0000000a6e17";
 
 /** What the agent's approval did, and in words why not when it did not. */
 export type AgentApprovalOutcome =
@@ -477,7 +478,8 @@ export class InboundResponderService {
             analyzed_at: new Date().toISOString(),
             order_synced_at: applyNow
               ? new Date().toISOString()
-              : (prior.order_synced_at ?? (alreadyApplied ? prior.analyzed_at : null)),
+              : (prior.order_synced_at ??
+                (alreadyApplied ? prior.analyzed_at : null)),
             model: NEGOTIATION_MODEL,
           },
         })
@@ -1582,7 +1584,8 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
           ? "APPROVED"
           : (update.status ?? (currentStatus || null)),
         negotiated_price_from: this.toNum(order.negotiated_price),
-        negotiated_price_to: update.negotiated_price ?? this.toNum(order.negotiated_price),
+        negotiated_price_to:
+          update.negotiated_price ?? this.toNum(order.negotiated_price),
         agreed_price: agreedPriceToWrite,
         written: !orderWriteError,
       };
@@ -1599,11 +1602,20 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
    * the order is approved. When they keep it for a person, the owner is told
    * in plain words, since nothing else on this path reaches anyone.
    */
-  private async approveAsAgent(order: any, fromStatus: string): Promise<boolean> {
+  private async approveAsAgent(
+    order: any,
+    fromStatus: string,
+  ): Promise<boolean> {
     const restaurantId = String(order.restaurant_id ?? "");
     const outcome: AgentApprovalOutcome = this.orderApprover
-      ? await this.orderApprover.approveAcceptedOrderAsAgent(restaurantId, order.id)
-      : { approved: false, why: "the house's approval rules could not be checked" };
+      ? await this.orderApprover.approveAcceptedOrderAsAgent(
+          restaurantId,
+          order.id,
+        )
+      : {
+          approved: false,
+          why: "the house's approval rules could not be checked",
+        };
     if (outcome.approved) return true;
     this.logger.log(
       `Order ${order.id}: the vendor accepted, but the agent did not approve it — ${outcome.why}.`,
@@ -1616,7 +1628,11 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         "Approve it yourself when you are ready.",
       priority: "high",
       actionUrl: `/orders?order=${order.id}`,
-      metadata: { order_id: order.id, from_status: fromStatus, held_because: outcome.why },
+      metadata: {
+        order_id: order.id,
+        from_status: fromStatus,
+        held_because: outcome.why,
+      },
     });
     return false;
   }
@@ -1645,7 +1661,9 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     },
   ): Promise<void> {
     try {
-      const { error } = await this.databaseService.supabase.from("decision_log").insert({
+      const { error } = await this.databaseService.supabase
+        .from("decision_log")
+        .insert({
         agent_name: "InboundResponder",
         restaurant_id: ctx.restaurantId,
         // Fix for the long-standing null: the column existed but was never

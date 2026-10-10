@@ -39,11 +39,7 @@ const P = "user-p";
 
 type Row = Record<string, any>;
 
-function grant(
-  user: string,
-  house: string | null,
-  integration: string,
-): Row {
+function grant(user: string, house: string | null, integration: string): Row {
   return {
     id: `grant-${user}-${integration}`,
     user_id: user,
@@ -72,14 +68,29 @@ function world(opts: { pByUsersRowOnly?: boolean } = {}): StubDb {
     { user_id: P, restaurant_id: A, role: "staff", is_active: true },
   ];
   if (!opts.pByUsersRowOnly) {
-    access.push({ user_id: P, restaurant_id: B, role: "staff", is_active: true });
+    access.push({
+      user_id: P,
+      restaurant_id: B,
+      role: "staff",
+      is_active: true,
+    });
   }
   return makeStubDb({
     user_restaurant_access: access,
     users: [
       { user_id: OWNER_B, restaurant_id: B, role: "owner", email: "o@b.test" },
-      { user_id: OWNER2_B, restaurant_id: B, role: "owner", email: "o2@b.test" },
-      { user_id: MANAGER_B, restaurant_id: B, role: "manager", email: "m@b.test" },
+      {
+        user_id: OWNER2_B,
+        restaurant_id: B,
+        role: "owner",
+        email: "o2@b.test",
+      },
+      {
+        user_id: MANAGER_B,
+        restaurant_id: B,
+        role: "manager",
+        email: "m@b.test",
+      },
       { user_id: P, restaurant_id: B, role: "staff", email: "p@b.test" },
     ],
     team_members: [
@@ -87,7 +98,12 @@ function world(opts: { pByUsersRowOnly?: boolean } = {}): StubDb {
       { id: "m-o", restaurant_id: B, user_id: OWNER_B, display_name: "Olga" },
     ],
     restaurants: [
-      { id: A, name: "Tuzlu Rüzgar", timezone: "UTC", organization_id: "org-1" },
+      {
+        id: A,
+        name: "Tuzlu Rüzgar",
+        timezone: "UTC",
+        organization_id: "org-1",
+      },
       { id: B, name: "House B", timezone: "UTC", organization_id: "org-1" },
     ],
     integration_oauth_connections: [
@@ -116,7 +132,10 @@ function services(db: StubDb) {
     { sign: () => "tok", signAsync: async () => "tok" } as any,
     { get: () => undefined } as any,
     asDatabaseService(db),
-    { isBlacklisted: async () => false, blacklist: async () => undefined } as any,
+    {
+      isBlacklisted: async () => false,
+      blacklist: async () => undefined,
+    } as any,
     { sendEmail: async () => undefined } as any,
   );
   const team = new TeamService(asDatabaseService(db));
@@ -249,7 +268,9 @@ describe("F-458: every door that ends a membership stops the leaver's grants in 
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(stopAudits(db)).toHaveLength(0);
     expect(
-      db.tables.integration_oauth_connections.every((r) => r.revoked_at === null),
+      db.tables.integration_oauth_connections.every(
+        (r) => r.revoked_at === null,
+      ),
     ).toBe(true);
   });
 
@@ -275,9 +296,9 @@ describe("F-458, defence in depth: the token door refuses a grant whose owner no
       (r) => r.user_id === P && r.restaurant_id === B,
     )!.is_active = false;
     const { oauth } = services(db);
-    await expect(oauth.getAccessToken(P, B, "gmail_send")).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      oauth.getAccessToken(P, B, "gmail_send"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     // The inbox files this as the house having stopped (house-inbox.service.ts).
     await expect(oauth.getAccessToken(P, B, "gmail_send")).rejects.toThrow(
       /no longer works in this restaurant, so this restaurant has stopped using it/,
@@ -338,7 +359,9 @@ describe("F-459: connecting a grant in a second house never takes it from the fi
         integrationId: "gmail_read" as any,
         consent,
       }),
-    ).rejects.toThrow(/connected for Tuzlu Rüzgar.*take it away from Tuzlu Rüzgar/);
+    ).rejects.toThrow(
+      /connected for Tuzlu Rüzgar.*take it away from Tuzlu Rüzgar/,
+    );
     // No receipt, no state: no provider flow was opened.
     expect(db.tables.integration_consent_receipts).toHaveLength(0);
     expect(db.tables.integration_oauth_states).toHaveLength(0);
@@ -350,7 +373,9 @@ describe("F-459: connecting a grant in a second house never takes it from the fi
     db.tables.user_restaurant_access = db.tables.user_restaurant_access.filter(
       (r) => !(r.user_id === P && r.restaurant_id === A),
     );
-    const { authorizationUrl } = await services(db).oauth.createAuthorizationUrl({
+    const { authorizationUrl } = await services(
+      db,
+    ).oauth.createAuthorizationUrl({
       userId: P,
       restaurantId: B,
       integrationId: "gmail_read" as any,
@@ -361,7 +386,9 @@ describe("F-459: connecting a grant in a second house never takes it from the fi
 
   it("lets a reconnect in the same house through", async () => {
     const db = world();
-    const { authorizationUrl } = await services(db).oauth.createAuthorizationUrl({
+    const { authorizationUrl } = await services(
+      db,
+    ).oauth.createAuthorizationUrl({
       userId: P,
       restaurantId: B,
       integrationId: "gmail_send" as any,
@@ -373,7 +400,9 @@ describe("F-459: connecting a grant in a second house never takes it from the fi
   it("lets a grant with no recorded house be attached here", async () => {
     const db = world();
     grantOf(db, P, "gmail_read").restaurant_id = null;
-    const { authorizationUrl } = await services(db).oauth.createAuthorizationUrl({
+    const { authorizationUrl } = await services(
+      db,
+    ).oauth.createAuthorizationUrl({
       userId: P,
       restaurantId: B,
       integrationId: "gmail_read" as any,

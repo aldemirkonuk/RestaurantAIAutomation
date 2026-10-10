@@ -68,7 +68,10 @@ function fakeSupabase(tables: Record<string, Row[]>, calls: Call[]) {
             case "maybeSingle":
               return () =>
                 Promise.resolve({
-                  data: (tables[table] ?? []).find((r) => preds.every((p) => p(r))) ?? null,
+                  data:
+                    (tables[table] ?? []).find((r) =>
+                      preds.every((p) => p(r)),
+                    ) ?? null,
                   error: null,
                 });
             case "then":
@@ -76,7 +79,10 @@ function fakeSupabase(tables: Record<string, Row[]>, calls: Call[]) {
                 const matched = (tables[table] ?? [])
                   .filter((r) => preds.every((p) => p(r)))
                   .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-                const rows = matched.slice(offset, offset + Math.min(limit, MAX_ROWS));
+                const rows = matched.slice(
+                  offset,
+                  offset + Math.min(limit, MAX_ROWS),
+                );
                 resolve({ data: rows, error: null, count: matched.length });
               };
             default:
@@ -279,13 +285,21 @@ describe("readForHouse — no silent caps (F12) and the house's own rows only", 
   it("grades every paid line under the cap, past the 1000 one response holds (F-258)", async () => {
     const read = await readPaid(1500);
     expect(read.ledger.paid_lines).toBe(1500);
-    expect(read.ledger.caps.paid_lines).toEqual({ cap: PAID_LINES_CAP, reached: false, total: 1500 });
+    expect(read.ledger.caps.paid_lines).toEqual({
+      cap: PAID_LINES_CAP,
+      reached: false,
+      total: 1500,
+    });
   });
 
   it("says the cap was reached, and of how many, when the window holds more than the cap (F-258)", async () => {
     const read = await readPaid(PAID_LINES_CAP + 1);
     expect(read.ledger.paid_lines).toBe(PAID_LINES_CAP);
-    expect(read.ledger.caps.paid_lines).toEqual({ cap: PAID_LINES_CAP, reached: true, total: PAID_LINES_CAP + 1 });
+    expect(read.ledger.caps.paid_lines).toEqual({
+      cap: PAID_LINES_CAP,
+      reached: true,
+      total: PAID_LINES_CAP + 1,
+    });
   });
 
   it("a window exactly at the cap is whole, not reached", async () => {
@@ -381,7 +395,9 @@ describe("readForHouse — an offer's end is read on the house's own day (F-481)
 
   it("an offer ending today is still open on the house's evening, though the UTC day has turned", async () => {
     const read = await service({
-      restaurants: [{ id: HOUSE, timezone: "America/Los_Angeles", country: "US" }],
+      restaurants: [
+        { id: HOUSE, timezone: "America/Los_Angeles", country: "US" },
+      ],
       provider_promotions: [endsOn25th],
     }).readForHouse(HOUSE, { now: LATE_EVENING });
     expect(read.offers.map((o) => o.state)).toEqual(["open"]);
@@ -389,7 +405,9 @@ describe("readForHouse — an offer's end is read on the house's own day (F-481)
 
   it("the same offer has passed once the house's own day has turned", async () => {
     const read = await service({
-      restaurants: [{ id: HOUSE, timezone: "America/Los_Angeles", country: "US" }],
+      restaurants: [
+        { id: HOUSE, timezone: "America/Los_Angeles", country: "US" },
+      ],
       provider_promotions: [endsOn25th],
     }).readForHouse(HOUSE, { now: new Date("2026-09-26T08:00:00Z") });
     expect(read.offers.map((o) => o.state)).toEqual(["passed"]);
