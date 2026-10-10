@@ -81,7 +81,6 @@ vi.mock('@/services/api/pricing', () => ({
 }));
 vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));
 vi.mock('@/components/team/TeamLaborSettings', () => ({ TeamLaborSettings: () => null }));
-vi.mock('@/components/team/TeamGoalsSettings', () => ({ TeamGoalsSettings: () => null }));
 vi.mock('@/components/locations/AddLocationDialog', () => ({ AddLocationDialog: () => null }));
 vi.mock('@/components/locations/CreateChainDialog', () => ({ CreateChainDialog: () => null }));
 vi.mock('@/components/locations/AssignToChainDialog', () => ({ AssignToChainDialog: () => null }));
@@ -941,6 +940,14 @@ describe('SettingsNext — provenance and unknowns', () => {
     mount('/settings?tab=team');
     expect(screen.queryByLabelText('Role for Deniz')).not.toBeInTheDocument();
     expect(screen.getByText(/You are the only owner here/)).toBeInTheDocument();
+  });
+
+  // F-621: the team goals were written per account and read by nothing, so
+  // the panel is gone — the disclosure promises only what it holds.
+  it('offers no team goals, because nothing reads them', () => {
+    mount('/settings?tab=team');
+    expect(screen.queryByText('Labour & goals')).not.toBeInTheDocument();
+    expect(screen.getByText('Labour')).toBeInTheDocument();
   });
 
   // F-500 / F-501: a setting nothing reads shows its stored value and no control.

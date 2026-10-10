@@ -29,12 +29,7 @@ export default function SettingsScreen() {
     await signOut();
   };
 
-  const perms = guidance?.servicePermissions ?? {
-    email: true,
-    web: true,
-    privacy_analytics: true,
-    privacy_sharing: false,
-  };
+  const pushOn = !!guidance?.servicePermissions?.push;
 
   return (
     <>
@@ -119,8 +114,8 @@ export default function SettingsScreen() {
             Services & permissions
           </AppText>
           <AppText variant="footnote" tone="secondary">
-            Grant or revoke access only. Wine Agent does not grant email access — manage Agent
-            from Help & Learn.
+            Turn alerts on this phone on or off. Everything else about your restaurant is set on
+            the web, under Settings.
           </AppText>
 
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -131,7 +126,7 @@ export default function SettingsScreen() {
               </AppText>
             </View>
             <Switch
-              value={!!perms.push}
+              value={pushOn}
               onValueChange={async (v) => {
                 guidance?.setServicePermission("push", v);
                 if (v) await registerPush().catch(() => {});
@@ -143,38 +138,14 @@ export default function SettingsScreen() {
 
           <Hairline />
 
-          {(
-            [
-              ["email", "Email access", "Operational email from connected sender"],
-              ["web", "Web / connected apps", "Calendar feeds and vendor links"],
-              ["privacy_analytics", "Product analytics", "Anonymous usage signals"],
-              ["privacy_sharing", "Partner data sharing", "Off by default"],
-            ] as const
-          ).map(([key, title, desc]) => (
-            <View key={key}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  paddingVertical: space.xs,
-                }}
-              >
-                <View style={{ flex: 1, paddingRight: space.md }}>
-                  <AppText variant="bodyMedium">{title}</AppText>
-                  <AppText variant="caption" tone="tertiary">
-                    {desc}
-                  </AppText>
-                </View>
-                <Switch
-                  value={!!perms[key]}
-                  onValueChange={(v) => guidance?.setServicePermission(key, v)}
-                  trackColor={{ true: color.wineStrong }}
-                />
-              </View>
-              <Hairline />
-            </View>
-          ))}
+          {/* F-624: the four switches that stood here (email access, web access,
+              product analytics, partner sharing) were saved and read by nothing,
+              the same four the web consent panel declines to draw. */}
+          <AppText variant="caption" tone="tertiary">
+            Email access, web access, product analytics and partner sharing are not switches here.
+            Nothing in Mudavym reads any of them, so a switch would promise something it could not
+            keep.
+          </AppText>
         </Card>
 
         <PressableScale

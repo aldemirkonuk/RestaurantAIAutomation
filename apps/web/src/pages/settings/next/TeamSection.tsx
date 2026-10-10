@@ -27,7 +27,6 @@
 import { useRef, useState } from 'react';
 import { InviteTeamDialog } from '@/components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '@/components/team/TeamLaborSettings';
-import { TeamGoalsSettings } from '@/components/team/TeamGoalsSettings';
 import { Action, ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
 import { EM, SANS, fmtExpiry } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
@@ -221,13 +220,12 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
             <SaveFailure failed={writer.failed} what="The roster above is still the server’s." />
 
             {canManage && (
-              <Disclosure summary="Labour & goals" open={labourOpen} onToggle={() => setLabourOpen((o) => !o)}>
+              <Disclosure summary="Labour" open={labourOpen} onToggle={() => setLabourOpen((o) => !o)}>
                 <Note>
-                  These two panels are the shipping ones, not yet in the Mudavym hand — they are here so the settings stay
+                  This panel is the shipping one, not yet in the Mudavym hand — it is here so the setting stays
                   reachable while the redesign is behind its flag.
                 </Note>
                 <TeamLaborSettings />
-                <TeamGoalsSettings />
               </Disclosure>
             )}
           </>

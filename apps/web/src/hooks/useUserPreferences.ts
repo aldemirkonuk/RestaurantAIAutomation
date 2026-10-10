@@ -28,7 +28,10 @@ export interface UserPreferences {
   servicePermissions?: Partial<
     Record<'email' | 'web' | 'privacy_analytics' | 'privacy_sharing', boolean>
   >
-  /** Settings → Team → Goals */
+  /**
+   * @deprecated The Settings → Team goals panel was removed (F-621): nothing
+   * ever read these targets. Kept so previously stored blobs still parse.
+   */
   teamGoals?: {
     weeklyCountTarget?: number
     parComplianceTargetPct?: number

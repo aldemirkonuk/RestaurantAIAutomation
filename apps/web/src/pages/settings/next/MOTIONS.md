@@ -10,7 +10,7 @@ Nothing on this page moves that is not in this table.
 |---|---|---|---|
 | `st-register-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the open register's panel, once per register change — 5px rise + fade, the "show the working" page-turn. Driven by `animate()`, so reduced motion lands it instantly |
 | `st-ink` | `ink` | HOUSE · 160ms | hover / focus / checked states on contents items, toggles, choice chips, buttons and selects — border, ground and text only, plus the toggle thumb's 18px travel. Nothing else translates |
-| `st-disclosure-settle` | `settle` | HOUSE · 320ms | the two disclosures — "Labour & goals" in Team, "the steps, as far as they are known" in Calendar — as `grid-template-rows: 0fr → 1fr`, chevron on the same token |
+| `st-disclosure-settle` | `settle` | HOUSE · 320ms | the two disclosures — "Labour" in Team, "the steps, as far as they are known" in Calendar — as `grid-template-rows: 0fr → 1fr`, chevron on the same token |
 | `st-hold-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to allow AI to send** while the thumb is down (inside `HoldToApprove`). Linear on purpose: the operator is timing it against their own thumb |
 | `st-hold-tuck` | `tuck` | spring 380/32 · 300ms | an early release retreating home, with the honest line "Released at N% — nothing sent" |
 | `st-seal-stamp` | `stamp` | spring 500/26, ~11% overshoot · 360ms | the seal landing when the hold completes and autonomous sending is granted — the only overshoot on the page, and the only wax |

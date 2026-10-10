@@ -17,10 +17,17 @@
  *     `ask_training_opt_out_changed`). The switch is `AskTrainingSection`
  *     itself, not a copy: one component, so the panel and the page cannot
  *     disagree about what the switch means or who may flip it.
- *   - **Not Jev.** The owner's acceptance that turns vendor tone scoring on is
- *     ADR 0207's, on an unmerged branch; nothing on this build reads a Jev
- *     switch, so there is none to draw. It joins `CONSENT_SWITCHES` when its
- *     store lands — one entry, no new surface.
+ *   - **Vendor mail read by Jev** — `restaurants.vendor_tone_scoring_enabled`,
+ *     written through `PUT /settings/vendor-tone-scoring` (owner only,
+ *     audited `vendor_tone_scoring_changed`, register "tone-scoring"). The
+ *     switch is `MailReadingSection` itself, for the same reason as above.
+ *   - **The data and privacy terms** — the owner's acceptance
+ *     (`POST /settings/data-terms/acceptances`, audited
+ *     `house_data_terms_accepted`, register "data-terms"), which is what turns
+ *     Jev on (ADR 0207 round 4). Not a switch: it is shown as who accepted
+ *     which version and when, read from `GET /settings/data-terms`. Added
+ *     2026-10-09 (F-626): the panel had said both were "not built yet" while
+ *     the same page carried them.
  *   - **Not the four legacy consents** (email access, web access, product
  *     analytics, partner sharing): nothing reads them.
  *
@@ -39,6 +46,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import { AskTrainingSection } from './AskTrainingSection';
+import { MailReadingSection } from './MailReadingSection';
+import { useDataTerms } from '../../../hooks/queries/useDataTerms';
 import { Action, Micro, Note } from './SectionKit';
 import { EM, MONO, SANS, SERIF, fmtWhen } from './st-format';
 import type { LedgerEntry, LedgerRegister, SettingsNextData } from './useSettingsNextData';
@@ -70,14 +79,60 @@ export const CONSENT_SWITCHES: ConsentSwitchSpec[] = [
     },
     render: (data) => <AskTrainingSection data={data} />,
   },
+  {
+    key: 'tone-scoring',
+    title: 'Vendor mail read by Jev',
+    register: 'tone-scoring',
+    describe: (e) => {
+      const to = e.fields?.vendor_tone_scoring_enabled?.to;
+      const word = to === true ? 'turned it on' : to === false ? 'turned it off' : 'changed it';
+      return `${who(e)} ${word}`;
+    },
+    render: (data) => <MailReadingSection data={data} />,
+  },
+  {
+    key: 'data-terms',
+    title: 'Data and privacy terms',
+    register: 'data-terms',
+    describe: (e) => {
+      const v = e.fields?.terms_version?.to;
+      return typeof v === 'number' ? `${who(e)} accepted version ${v}` : `${who(e)} accepted them`;
+    },
+    render: () => <DataTermsConsent />,
+  },
 ];
+
+/**
+ * The acceptance on record, in words. Not a switch: an owner accepts the
+ * terms (at sign-in, or by turning on Jev above), and nobody "un-accepts"
+ * them. A failed read is said as one, never as "not accepted".
+ */
+function DataTermsConsent() {
+  const q = useDataTerms(true);
+  if (q.isPending) return <Note>Reading the terms on record…</Note>;
+  if (q.isError || !q.data || !q.data.readable) {
+    const why = q.isError ? getErrorMessage(q.error) : (q.data?.reason ?? 'no reason was given');
+    return (
+      <div role="alert">
+        <Note>Whether this house has accepted its terms could not be read — {why}. That is not the same as not accepted.</Note>
+      </div>
+    );
+  }
+  const { acceptance, version, current } = q.data;
+  if (!acceptance) {
+    return <Note>No owner has accepted this house’s data and privacy terms yet. Turning on Jev above asks for them.</Note>;
+  }
+  const by = acceptance.acceptedBy.name ?? 'an owner the record cannot name';
+  return (
+    <Note>
+      Version {acceptance.version} accepted by {by} on {fmtWhen(acceptance.acceptedAt)}.
+      {current ? ' That is the current version.' : ` The terms have changed since — version ${version} is waiting for an owner to accept it.`}
+    </Note>
+  );
+}
 
 /** What is deliberately not a switch here, and why — stated, not hidden. */
 export const NOT_SWITCHES: { title: string; why: string }[] = [
-  {
-    title: 'Vendor tone scoring',
-    why: 'Turned on by the owner accepting the data and privacy terms, which is not built yet. It joins this panel when it is.',
-  },
   {
     title: 'Email access, web access, product analytics, partner sharing',
     why: 'Four consents an older page asked for. Nothing in Mudavym reads any of them, so a switch would promise something it could not keep.',
