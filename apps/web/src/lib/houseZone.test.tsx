@@ -78,6 +78,15 @@ describe('useHouseZone', () => {
     await waitFor(() => expect(again.result.current).toBe('Asia/Tokyo'));
   });
 
+  it('a newly recorded zone reaches a reader that is already mounted (F-995)', async () => {
+    const mounted = renderHook(() => useHouseZone());
+    await waitFor(() => expect(mounted.result.current).toBeNull());
+    said.zone = 'Europe/Istanbul';
+    forgetHouseZones('r1');
+    await waitFor(() => expect(mounted.result.current).toBe('Europe/Istanbul'));
+    expect(said.calls).toBe(2);
+  });
+
   it('is null with no house picked, without reading', () => {
     localStorage.removeItem('activeRestaurantId');
     const { result } = renderHook(() => useHouseZone());

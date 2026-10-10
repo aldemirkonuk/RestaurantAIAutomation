@@ -42,7 +42,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import { Action, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
 import { EM, MONO, SANS, fmtWhen } from './st-format';
-import type { SettingsNextData } from './useSettingsNextData';
+import type { PosRegister, SettingsNextData } from './useSettingsNextData';
 
 export function PosSection({ data }: { data: SettingsNextData }) {
   const { pos, prefs, savePrefs, writer } = data;
@@ -68,6 +68,7 @@ export function PosSection({ data }: { data: SettingsNextData }) {
 
           return (
             <>
+              <TillFeedsWhileConnectionsOff reg={reg} />
               <div style={{ margin: '4px 0 0' }}><Micro tone="seal">What the till has sent</Micro></div>
               {reg.statusError ? (
                 <p role="alert" style={{ fontFamily: SANS, fontSize: 12.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: '6px 0 0' }}>
@@ -157,6 +158,51 @@ export function PosSection({ data }: { data: SettingsNextData }) {
       </Register>
       <TillTablesOpener data={data} />
     </>
+  );
+}
+
+/* ── Whether each till's checks are taken (F-996) ────────────────────────── */
+
+/**
+ * This section is drawn only while the Connections page is off for the house
+ * (`sectionsFor`); with it on, the section folds into /connections, which
+ * shows each till's switch and its Disconnect. Here the page says it is off,
+ * what that means, and which tills a refusal made earlier still turns away —
+ * otherwise "Checks received" below reads as a feed that is still taken. The
+ * flag is never changed from here.
+ */
+export function TillFeedsWhileConnectionsOff({ reg }: { reg: PosRegister }) {
+  const refused = reg.feeds?.filter((f) => !f.enabled) ?? [];
+  return (
+    <div style={{ margin: '4px 0 16px' }}>
+      <Micro tone="seal">Connections are off</Micro>
+      <p style={{ fontFamily: SANS, fontSize: 12.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: '6px 0 0' }}>
+        The Connections page is not open for this house yet, so a till cannot be connected, disconnected or
+        reconnected from here. A till that was disconnected before stays disconnected: its checks are turned away
+        and are not counted below.
+      </p>
+      {reg.feedsError ? (
+        <p role="alert" style={{ fontFamily: SANS, fontSize: 12.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: '6px 0 0' }}>
+          Which tills this house takes checks from could not be read — {reg.feedsError}. That is not the same as
+          every till being taken.
+        </p>
+      ) : !reg.feeds ? null : refused.length === 0 ? (
+        <Note role="status">No till is disconnected: this house takes checks from every till that sends them.</Note>
+      ) : (
+        refused.map((f) => (
+          <Row
+            key={f.provider}
+            label={f.providerName}
+            consequence={
+              <>
+                Disconnected{f.changedAt ? ` ${fmtWhen(f.changedAt)}` : ''}. Its checks are turned away until it is
+                reconnected on the Connections page.
+              </>
+            }
+          />
+        ))
+      )}
+    </div>
   );
 }
 
