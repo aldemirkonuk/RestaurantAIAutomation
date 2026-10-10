@@ -143,6 +143,7 @@ function RuleEditor({
   row,
   busy,
   canManage,
+  ownerOnly,
   onSave,
 }: {
   spec: (typeof RULES)[number];
@@ -157,6 +158,12 @@ function RuleEditor({
    * tell a missing feature from a permission they do not have.
    */
   canManage: boolean;
+  /**
+   * A manager looking at a rule an owner has to sign (F-419). The gateway
+   * refuses that write for a manager, because the rule is the one that stops
+   * them; the page says so beside the disabled controls.
+   */
+  ownerOnly: boolean;
   onSave: (next: { enabled: boolean; amountLimit: number | null; percentLimit: number | null; requiredRole: 'owner' | 'manager' }) => void;
 }) {
   const [amount, setAmount] = useState(
@@ -232,9 +239,9 @@ function RuleEditor({
       )}
       {!canManage && (
         <span style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', maxWidth: 340 }} role="status">
-          Only an owner or a manager of this restaurant may set a threshold. The
-          rule and the number are shown because a limit you cannot see is one you
-          cannot plan around.
+          {ownerOnly
+            ? 'An owner has to sign above this line, so only an owner can change this rule or switch it off.'
+            : 'Only an owner or a manager of this restaurant may set a threshold. The rule and the number are shown because a limit you cannot see is one you cannot plan around.'}
         </span>
       )}
     </div>
@@ -302,6 +309,10 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
 
           {RULES.map((spec) => {
             const row = findRow(reg, spec.id);
+            // A rule an owner must sign moves only for an owner (F-419); the
+            // gateway refuses a manager either way.
+            const ownerOnly = data.canManage && !data.isOwner && row?.requiredRole === 'owner';
+            const mayEdit = data.canManage && !ownerOnly;
             return (
               <Row
                 key={spec.id}
@@ -323,7 +334,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                     <Toggle
                       checked={row.enabled}
                       label={`${spec.label} — in force`}
-                      disabled={!data.canManage}
+                      disabled={!mayEdit}
                       busy={data.writer.busy === `threshold:${spec.id}`}
                       onChange={(next) =>
                         void data.saveThreshold(spec.id, {
@@ -349,7 +360,8 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                   spec={spec}
                   row={row}
                   busy={data.writer.busy === `threshold:${spec.id}`}
-                  canManage={data.canManage}
+                  canManage={mayEdit}
+                  ownerOnly={ownerOnly}
                   onSave={(next) => void data.saveThreshold(spec.id, next)}
                 />
               </Row>

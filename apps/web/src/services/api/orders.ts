@@ -129,11 +129,23 @@ export async function updateOrderStatus(
  * mint that fails or returns null does NOT approve.
  */
 export async function mintOrderSeal(orderId: string): Promise<string | null> {
-  const response = await apiClient.post<{ challenge?: string }>(
-    `${ORDERS_PATH}/${orderId}/seal-challenge`,
-    {},
-  );
-  return response.data?.challenge ?? null;
+  try {
+    const response = await apiClient.post<{ challenge?: string }>(
+      `${ORDERS_PATH}/${orderId}/seal-challenge`,
+      {},
+    );
+    return response.data?.challenge ?? null;
+  } catch (error) {
+    // The gateway refuses the SEAL for everything that would refuse the
+    // approval, with the same sentence (rule, number, who may sign). Promoted
+    // onto `.message` exactly as `approveOrder` does below, so the bulk bar can
+    // print it for the row it refused (F-416).
+    if (axios.isAxiosError(error)) {
+      const spoken = getErrorMessage(error);
+      if (spoken) error.message = spoken;
+    }
+    throw error;
+  }
 }
 
 /**
