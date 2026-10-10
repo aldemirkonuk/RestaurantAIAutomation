@@ -237,6 +237,22 @@ describe('MenuNext — money states its own house currency', () => {
 });
 
 describe('MenuNext — add', () => {
+  beforeEach(() => {
+    auth.role = 'manager';
+  });
+  afterEach(() => {
+    auth.role = null;
+  });
+
+  it.each(['staff', null])('%s see no Add form: adding to the current menu is an owner\'s or a manager\'s (F-698)', async (role) => {
+    auth.role = role;
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add to menu/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-managers-only')).toHaveTextContent('An owner or a manager adds lines to the current menu.');
+  });
+
   it('clears the form on a SUCCESSFUL add, never before', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [] }));
     mockAdd.mockResolvedValue({} as never);
@@ -291,6 +307,14 @@ describe('MenuNext — add', () => {
 // F-358: the prices were type="number" read with Number(), so "12,50" went out
 // as NaN (null in JSON) and the line was added with no price, silently.
 describe('MenuNext — a typed price is read the way the house writes it', () => {
+  // F-698: only an owner or a manager sees the Add form.
+  beforeEach(() => {
+    auth.role = 'manager';
+  });
+  afterEach(() => {
+    auth.role = null;
+  });
+
   it('sends "12,50" and "1.250,00" as 12.5 and 1250, from decimal-keypad text fields', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [] }));
     mockAdd.mockResolvedValue({ priceSync: 'not_linked' } as never);
@@ -314,6 +338,16 @@ describe('MenuNext — a typed price is read the way the house writes it', () =>
     fireEvent.change(screen.getByLabelText('Glass'), { target: { value: '12,5,0' } });
     expect(screen.getByRole('alert')).toHaveTextContent('“12,5,0” is not a price');
     expect(screen.getByRole('button', { name: /Add to menu/ })).toBeDisabled();
+  });
+});
+
+describe('MenuNext — the footer says only what is true (F-697)', () => {
+  it('never promises a guest-facing effect: no guest menu exists', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    const foot = await screen.findByText(/Discard takes a line off this house's current menu here/);
+    expect(foot).toHaveTextContent('Mudavym shows no menu to guests');
+    expect(document.body).not.toHaveTextContent(/what guests see/);
   });
 });
 

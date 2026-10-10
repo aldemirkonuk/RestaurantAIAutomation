@@ -149,6 +149,14 @@ export interface DormantLock {
   active: boolean | null;
 }
 
+/** A current menu that choosing another one takes off (F-696). */
+export interface RetiringMenu {
+  menuId: string;
+  name: string | null;
+  /** The lines on it now (discarded ones left out), every one of which leaves the menu. */
+  lines: number;
+}
+
 export interface MenuPlan {
   menuId: string;
   /** Whether this menu is already the current one (choosing it again changes nothing). */
@@ -166,9 +174,18 @@ export interface MenuPlan {
   counts: Record<PlanResult, number>;
   /** Every open lock whose wine is NOT on this menu: kept, dormant, never released by the choice (L16, L17). */
   dormantLocks: DormantLock[];
+  /**
+   * The menu this choice takes off, and how many lines leave with it (F-696).
+   * `make_menu_current` archives every other current menu of the house (ADR
+   * 0193 item 7), so a second list chosen ends the first. Empty when this
+   * menu is already current or none is.
+   */
+  retiring: RetiringMenu[];
   /** Whether the people named in the plan could be named (L25). */
   namesReadable: boolean;
   namesReason: string | null;
+  /** The house's IANA zone, for printing dates as the house's day (F-699); never decides the plan. */
+  timezone?: string | null;
 }
 
 function emptyPlanCounts(): Record<PlanResult, number> {
@@ -680,11 +697,12 @@ export class MenusService {
     dto: AddMenuItemDto,
     userId: string,
     callerRestaurantId?: string | null,
-    // Whether the caller may set a house price (owner or manager, resolved by
-    // the controller). Matters only when the menu is the CURRENT one and the
-    // line names a price: that line then sets the house's own price, which
-    // is an owner's or a manager's act (founder, 2026-09-21, answer 1).
-    callerMayPrice = false,
+    // Whether the caller is the house's owner or a manager (resolved by the
+    // controller). Matters only when the menu is the CURRENT one: a line added
+    // there is a stock row and a wine-library submission, and a priced one
+    // sets the house's own price (founder, 2026-09-21, answer 1). Adding to it
+    // is the same act as taking a line off it (F-268, F-698).
+    callerManages = false,
   ): Promise<MenuImportReviewItem> {
     if (!callerRestaurantId) {
       throw new ForbiddenException(
@@ -706,12 +724,9 @@ export class MenusService {
     }
 
     const isCurrent = menu.status === "active";
-    const namesPrice =
-      (dto.by_glass_price !== undefined && dto.by_glass_price !== null) ||
-      (dto.bottle_price !== undefined && dto.bottle_price !== null);
-    if (isCurrent && namesPrice && !callerMayPrice) {
+    if (isCurrent && !callerManages) {
       throw new ForbiddenException(
-        "Only managers and owners can put a price on the current menu: it sets the house's own price. Nothing was added.",
+        "Only an owner or a manager can add a line to the current menu: it adds the wine to the house's stock, and a price on it sets the house's own price. Nothing was added.",
       );
     }
 
@@ -1337,6 +1352,8 @@ export class MenusService {
     versions: MenuVersion[];
     namesReadable: boolean;
     namesReason: string | null;
+    /** The house's IANA zone, so the page prints each date as the house's day (F-699); null when unset or unread. */
+    timezone: string | null;
   }> {
     const rows: Array<Record<string, any>> = [];
     let after: string | null = null;
@@ -1372,7 +1389,24 @@ export class MenusService {
       versions,
       namesReadable: namesError === null,
       namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
+      timezone: await this.houseZone(restaurantId),
     };
+  }
+
+  /**
+   * The house's IANA zone (`restaurants.timezone`), so a page prints a moment
+   * as the house's day, not UTC's (F-699). Null when none is set or the read
+   * fails: the page then prints the day as stored, never the reader's clock.
+   */
+  private async houseZone(restaurantId: string): Promise<string | null> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) return null;
+    const zone = (data as { timezone?: unknown } | null)?.timezone;
+    return typeof zone === "string" && zone ? zone : null;
   }
 
   /**
@@ -1469,6 +1503,7 @@ export class MenusService {
       ...plan,
       namesReadable: error === null,
       namesReason: error === null ? null : `the people named in this plan could not be named: ${error}`,
+      timezone: await this.houseZone(restaurantId),
     };
   }
 
@@ -1646,6 +1681,25 @@ export class MenusService {
         };
       });
 
+    // F-696: the switch takes every other current menu of the house off, and
+    // its lines with it. The plan names that menu and counts its lines, and
+    // its id is decisive: a different menu current by the time of the choice
+    // is a plan that moved.
+    const retiring: RetiringMenu[] = [];
+    if (!current) {
+      const { data: others, error: othersErr } = await client
+        .from("restaurant_menus")
+        .select("id, name")
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "active")
+        .neq("id", menuId);
+      if (othersErr) fail("the menu that is current now", othersErr.message);
+      for (const m of (others ?? []) as Array<{ id: string; name: string | null }>) {
+        const onIt = await this.readLines(String(m.id), restaurantId);
+        retiring.push({ menuId: String(m.id), name: m.name ?? null, lines: onIt.length });
+      }
+    }
+
     const decisive = {
       menuId,
       lines: [...planLines]
@@ -1657,6 +1711,7 @@ export class MenusService {
           [l.glass.result, l.glass.menuPrice, l.glass.housePrice, l.glass.lock?.lockId ?? null],
         ]),
       dormant: dormantLocks.map((d) => d.lockId).sort(),
+      retiring: retiring.map((m) => m.menuId).sort(),
     };
     return {
       menuId,
@@ -1667,6 +1722,7 @@ export class MenusService {
       lines: planLines,
       counts,
       dormantLocks,
+      retiring,
       namesReadable: true,
       namesReason: null,
     };

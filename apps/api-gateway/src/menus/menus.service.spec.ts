@@ -1258,6 +1258,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.versions.find((v) => v.menuId === "m4")!.source.kept).toBe(true);
   });
 
+  it("F-699: the menus and the plan carry the house's zone, so the page prints the house's day; none set is null", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurants: [{ id: "rest-1", timezone: "America/Los_Angeles" }],
+      restaurant_menus: [{ id: "m1", restaurant_id: "rest-1", status: "draft" }],
+      menu_items: [],
+    };
+    const service = makeService(tables);
+    expect((await service.listVersions("rest-1")).timezone).toBe("America/Los_Angeles");
+    expect((await service.planFor("rest-1", "m1")).timezone).toBe("America/Los_Angeles");
+    tables.restaurants[0].timezone = null;
+    expect((await service.listVersions("rest-1")).timezone).toBeNull();
+  });
+
   it("a kept source gets a short link; one never kept says why", async () => {
     const tables: Record<string, Row[]> = {
       restaurant_menus: [
@@ -1288,6 +1301,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
       service.addMenuItem({ menuId: "menu-old", name: "Opus One", bottle_price: 70 } as any, "staff-1", "rest-1", false),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(tables.menu_items).toHaveLength(0);
+  });
+
+  it("F-698: an UNPRICED line on the CURRENT menu from staff is refused too: no line, no stock row, no library submission", async () => {
+    const tables: Record<string, Row[]> = base();
+    const stockBefore = tables.restaurant_inventory.length;
+    const resolve = jest.fn(wineSubmissions.resolveLibraryWinesBatch);
+    const service = makeService(tables, { wineSubmissions: { ...wineSubmissions, resolveLibraryWinesBatch: resolve } });
+    await expect(
+      service.addMenuItem({ menuId: "menu-old", name: "Opus One" } as any, "staff-1", "rest-1", false),
+    ).rejects.toThrow(/Only an owner or a manager can add a line to the current menu/);
+    expect(tables.menu_items).toHaveLength(0);
+    expect(tables.restaurant_inventory).toHaveLength(stockBefore);
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it("a price correction on a kept (not current) menu's line says 'not_current' and writes no house price", async () => {
@@ -1421,6 +1447,21 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(plan.namesReadable).toBe(true);
     expect(calls).toHaveLength(0);
     expect(tables.restaurant_menus.find((m) => m.id === "menu-new")!.status).toBe("draft");
+  });
+
+  it("F-696: the plan names the current menu this choice takes off and counts the lines that leave with it; a different one current by the choice is a plan that moved", async () => {
+    const { tables, service } = setup();
+    tables.restaurant_menus.find((m) => m.id === "menu-old")!.name = "Wine list";
+    // A discarded line is already off the menu; it does not leave with it.
+    tables.menu_items.push({ id: "old-2", menu_id: "menu-old", restaurant_id: "rest-1", name: "Gone", status: "discarded" });
+    const plan = await service.planFor("rest-1", "menu-new");
+    expect(plan.retiring).toEqual([{ menuId: "menu-old", name: "Wine list", lines: 1 }]);
+    // The menu already current takes nothing off.
+    expect((await service.planFor("rest-1", "menu-old")).retiring).toEqual([]);
+    // Another menu became current after the plan was shown: the choice is refused.
+    tables.restaurant_menus.find((m) => m.id === "menu-old")!.status = "archived";
+    tables.restaurant_menus.push({ id: "menu-other", restaurant_id: "rest-1", status: "active", name: "Cocktails" });
+    await expect(service.makeCurrent("rest-1", "menu-new", "user-1", plan.fingerprint)).rejects.toBeInstanceOf(ConflictException);
   });
 
   it("L11, as the founder confirmed it (\"The menu sets it, locks keep\"): a price a PERSON set after this menu was read is marked setAfterRead; a menu's own, or one set before the read, is not", async () => {

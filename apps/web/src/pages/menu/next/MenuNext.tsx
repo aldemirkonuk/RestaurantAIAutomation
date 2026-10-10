@@ -655,11 +655,20 @@ export default function MenuNext() {
             </p>
 
             <div style={{ marginTop: 16 }}>
-              <AddItemForm
-                adding={add.isPending}
-                error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
-                onAdd={(fields, opts) => add.mutate(fields, opts)}
-              />
+              {/* F-698: a line added here joins the house's stock and the wine
+                  library, so it is an owner's or a manager's, as Discard is
+                  (the gateway refuses anyone else). */}
+              {canManage ? (
+                <AddItemForm
+                  adding={add.isPending}
+                  error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
+                  onAdd={(fields, opts) => add.mutate(fields, opts)}
+                />
+              ) : (
+                <p className="cl-note" data-testid="menu-add-managers-only">
+                  An owner or a manager adds lines to the current menu.
+                </p>
+              )}
               {(() => {
                 const note = add.isSuccess ? housePriceNote(add.data) : null;
                 return note ? (
@@ -834,7 +843,9 @@ export default function MenuNext() {
         >
           <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
             Edit changes a line's name, section or prices; a price saved there is the house's own
-            price. Discard removes a line from what guests see. What it cost and who added it is
+            price.
+            Discard takes a line off this house's current menu here. Mudavym shows no menu to guests, so a
+            printed or online menu changes only when you change it. What the line cost and who added it is
             kept — nothing here is a delete, and an owner or a manager can put it back.
           </p>
         </footer>
