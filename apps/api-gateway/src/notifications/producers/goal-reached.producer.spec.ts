@@ -120,6 +120,18 @@ describe("GoalReachedProducer", () => {
     ).toContain("stands at 10,450.00 against a target of 10,000.00");
   });
 
+  it("[REVERT-FAILS] a lira house's goal groups its money the house's way, not en-US (F-887)", async () => {
+    const lira = build(REACHED);
+    lira.db.tables.restaurants[0].currency = "TRY";
+    lira.db.tables.restaurants[0].country = "TR";
+    lira.db.tables.analytics_goals.push(goalRow());
+    seedCrossing(lira.db);
+    await lira.producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(lira.notifications.persistForRestaurant.calls[0][1].message).toContain(
+      "stands at ₺10.450,00 against a target of ₺10.000,00",
+    );
+  });
+
   it("[REVERT-FAILS] sends the goal's figures only to owners and managers (F-782)", async () => {
     const { db, notifications, producer } = build(REACHED);
     db.tables.analytics_goals.push(goalRow());

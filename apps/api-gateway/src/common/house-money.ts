@@ -65,7 +65,7 @@ function decimalMark(locale: string): string {
 }
 
 /** The tag when this runtime formats with it; else en-US, the old default. */
-function usableLocale(tag: string | null | undefined): string {
+export function usableLocale(tag: string | null | undefined): string {
   if (typeof tag !== "string" || !tag.trim()) return "en-US";
   try {
     return Intl.NumberFormat.supportedLocalesOf([tag.trim()]).length > 0
@@ -78,7 +78,7 @@ function usableLocale(tag: string | null | undefined): string {
 
 /**
  * The house's money and its number formats, for the sentences above:
- * `restaurants.currency` as `readHouseCurrency` reads it, and the formats tag
+ * `restaurants.currency` (an ISO code, else null), and the formats tag
  * `houseFrame` derives from `restaurants.country` (else the zone's region).
  *
  * Never throws: a failed read answers both null — a figure with no symbol,
@@ -109,34 +109,5 @@ export async function readHouseMoney(
     };
   } catch {
     return { currency: null, locale: null };
-  }
-}
-
-/**
- * `restaurants.currency` for one house, for the sentences above.
- *
- * Never throws: a failed or refused read answers `null`, which prints a figure
- * with no symbol — the same as a house that never said, and never a dollar.
- * The callers write prose, not a ledger, so the two are not told apart here;
- * a page that must tell them apart reads `GET /settings/currency`.
- */
-export async function readHouseCurrency(
-  client: { from: (table: string) => any } | null | undefined,
-  restaurantId: string,
-): Promise<string | null> {
-  try {
-    const { data, error } = await client!
-      .from("restaurants")
-      .select("currency")
-      .eq("id", restaurantId)
-      .limit(1);
-    if (error) return null;
-    const row = Array.isArray(data) ? data[0] : data;
-    const code = (row as { currency?: unknown } | null | undefined)?.currency;
-    return typeof code === "string" && /^[A-Za-z]{3}$/.test(code.trim())
-      ? code.trim().toUpperCase()
-      : null;
-  } catch {
-    return null;
   }
 }

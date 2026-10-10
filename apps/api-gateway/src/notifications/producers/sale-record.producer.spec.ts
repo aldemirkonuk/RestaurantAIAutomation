@@ -70,6 +70,17 @@ describe("SaleRecordProducer", () => {
     expect(call.metadata.currency).toBe("TRY");
   });
 
+  it("[REVERT-FAILS] a lira house reads its takings with its own decimal mark (F-887)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.restaurants[0].currency = "TRY";
+    db.tables.restaurants[0].country = "TR";
+    db.tables.pos_checks.push(check());
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
+    expect(notifications.persistForRestaurant.calls[0][1].message).toContain(
+      "1 check, ₺218,40.",
+    );
+  });
+
   it("[REVERT-FAILS] a house that never named its money reads the figure with no symbol (F-341)", async () => {
     const { db, notifications, producer } = build();
     db.tables.restaurants[0].currency = null;

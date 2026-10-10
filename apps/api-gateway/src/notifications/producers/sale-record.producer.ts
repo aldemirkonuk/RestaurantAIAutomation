@@ -6,7 +6,7 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
-import { readHouseCurrency } from "../../common/house-money";
+import { readHouseMoney } from "../../common/house-money";
 import { money } from "./producer-copy";
 import {
   localDateIn,
@@ -107,8 +107,9 @@ export class SaleRecordProducer {
     const hours = await this.operatingHours(restaurantId);
     // The house's own money, for the takings sentence (F-341). It said `$`
     // whatever the house sold in; `null` (not recorded, or unreadable) prints
-    // the figure with no symbol rather than a guessed dollar.
-    const currency = await readHouseCurrency(
+    // the figure with no symbol rather than a guessed dollar. The figure
+    // groups the house's way, not en-US (F-887).
+    const { currency, locale } = await readHouseMoney(
       this.databaseService.getClient(),
       restaurantId,
     );
@@ -174,7 +175,7 @@ export class SaleRecordProducer {
             // `nt-format.ts:111` files under the "Sales" register.
             type: "service_closed",
             title: `Service record for ${localDate}`,
-            message: this.sentence(localDate, totals, currency),
+            message: this.sentence(localDate, totals, currency, locale),
             // A record, not a summons. Low keeps it out of the mobile push
             // fan-out (notifications.service.ts:729-745), which is right for a
             // once-a-day summary nobody has to act on.
@@ -328,10 +329,11 @@ export class SaleRecordProducer {
     localDate: string,
     totals: DayTotals,
     currency: string | null,
+    locale: string | null,
   ): string {
     const parts: string[] = [];
     parts.push(
-      `${totals.checks} check${totals.checks === 1 ? "" : "s"}, ${money(totals.revenue, currency)}.`,
+      `${totals.checks} check${totals.checks === 1 ? "" : "s"}, ${money(totals.revenue, currency, locale)}.`,
     );
 
     if (totals.covers === null) {
@@ -348,7 +350,7 @@ export class SaleRecordProducer {
 
     if (totals.topItem) {
       parts.push(
-        `Best seller by revenue: ${totals.topItem.name}, ${trimQty(totals.topItem.qty)} sold for ${money(totals.topItem.revenue, currency)}.`,
+        `Best seller by revenue: ${totals.topItem.name}, ${trimQty(totals.topItem.qty)} sold for ${money(totals.topItem.revenue, currency, locale)}.`,
       );
     } else {
       parts.push(
