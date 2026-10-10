@@ -1,6 +1,7 @@
 /**
  * F-568: the vendor sheet's Actions are held while one is on its way, and each
- * tap ends in a line saying what happened, including "already under way".
+ * tap ends in a line saying what happened, including "already asked".
+ * F-789: nothing contacts the vendor yet, so no line may say it started.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -49,17 +50,20 @@ describe('ProviderIntelligencePanel Actions (F-568)', () => {
     expect(triggerOutreach).toHaveBeenCalledTimes(1)
 
     finish({ success: true, alreadyOpen: false })
-    expect(await screen.findByTestId('vendor-action-outcome')).toHaveTextContent('Pricing request started.')
+    expect(await screen.findByTestId('vendor-action-outcome')).toHaveTextContent(
+      'Pricing request recorded. Mudavym does not contact the vendor about it yet.',
+    )
+    expect(screen.getByTestId('vendor-action-outcome')).not.toHaveTextContent(/started|under way/i)
   })
 
-  it('says when the request was already under way', async () => {
+  it('says when the request was already asked for, within the 7 days the gateway counts', async () => {
     triggerOnboarding.mockResolvedValue({ success: true, alreadyOpen: true })
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByRole('button', { name: 'Actions' }))
     await user.click(screen.getByRole('button', { name: 'Start Onboarding Flow' }))
     expect(await screen.findByTestId('vendor-action-outcome')).toHaveTextContent(
-      'Already under way with this vendor. Nothing new was started.',
+      'You already asked for this in the last 7 days. Nothing new was recorded; Mudavym does not contact the vendor about it yet.',
     )
   })
 
@@ -75,6 +79,6 @@ describe('ProviderIntelligencePanel Actions (F-568)', () => {
     mount()
     await user.click(screen.getByRole('button', { name: 'Actions' }))
     await user.click(screen.getByRole('button', { name: 'General Check-in' }))
-    expect(await screen.findByTestId('vendor-action-outcome')).toHaveTextContent('Not started: Provider not found')
+    expect(await screen.findByTestId('vendor-action-outcome')).toHaveTextContent('Not recorded: Provider not found')
   })
 })

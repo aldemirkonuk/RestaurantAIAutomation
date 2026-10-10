@@ -29,15 +29,23 @@ interface Props {
   providerName?: string
 }
 
-/** What one Actions tap did, in a line (F-568). */
-function actionOutcome(result: { alreadyOpen?: boolean } | undefined, started: string): string {
-  return result?.alreadyOpen ? 'Already under way with this vendor. Nothing new was started.' : started
+/**
+ * What one Actions tap did, in a line (F-568). The gateway only records the
+ * request; nothing contacts the vendor yet (F-789), so no line says "started".
+ * "Already asked" holds for 7 days (OPEN_SESSION_DAYS in the gateway).
+ */
+const NOT_YET = 'Mudavym does not contact the vendor about it yet.'
+
+function actionOutcome(result: { alreadyOpen?: boolean } | undefined, label: string): string {
+  return result?.alreadyOpen
+    ? `You already asked for this in the last 7 days. Nothing new was recorded; ${NOT_YET}`
+    : `${label} request recorded. ${NOT_YET}`
 }
 
 function actionRefusal(error: unknown): string {
   // The gateway keeps one open request per kind, so asking again is safe.
-  if (isUnconfirmedWrite(error)) return 'No answer came back. It may have started anyway; asking again will not start a second one.'
-  return `Not started: ${getErrorMessage(error)}`
+  if (isUnconfirmedWrite(error)) return 'No answer came back. It may have been recorded anyway; asking again will not record it twice.'
+  return `Not recorded: ${getErrorMessage(error)}`
 }
 
 export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
@@ -51,7 +59,7 @@ export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
     onMutate: () => setOutcome(null),
     onSuccess: (result, params) => {
       setShowActions(false)
-      setOutcome(actionOutcome(result, `${params.label} started.`))
+      setOutcome(actionOutcome(result, params.label))
     },
     onError: (error) => setOutcome(actionRefusal(error)),
   })
@@ -61,7 +69,7 @@ export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
     onMutate: () => setOutcome(null),
     onSuccess: (result) => {
       setShowActions(false)
-      setOutcome(actionOutcome(result, 'Onboarding started.'))
+      setOutcome(actionOutcome(result, 'Onboarding'))
     },
     onError: (error) => setOutcome(actionRefusal(error)),
   })
@@ -102,14 +110,14 @@ export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
                 General Check-in
               </button>
               <button
-                onClick={() => outreachMutation.mutate({ type: 'promo_discovery', topic: 'current promotions', label: 'Promotions question' })}
+                onClick={() => outreachMutation.mutate({ type: 'promo_discovery', topic: 'current promotions', label: 'Promotions' })}
                 disabled={actionPending}
                 className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Ask About Promos
               </button>
               <button
-                onClick={() => outreachMutation.mutate({ type: 'price_check', topic: 'updated pricing', label: 'Pricing request' })}
+                onClick={() => outreachMutation.mutate({ type: 'price_check', topic: 'updated pricing', label: 'Pricing' })}
                 disabled={actionPending}
                 className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
