@@ -3510,6 +3510,21 @@ export class ProcurementService {
             "A partly received order is closed through its own act, which a manager or owner gives with a reason once the invoice is checked and bottles are still owed — not by editing its status. Nothing was changed.",
         });
       }
+      // F-826 (rest) — the same hole one state earlier. A delivered order is
+      // completed only by `verifyReceipt`, which checks the delivery against
+      // its invoice and writes COMPLETED itself (never through here). A PATCH
+      // carrying COMPLETED closed it unchecked, and a closed order can never
+      // be checked against its invoice afterwards.
+      if (
+        from === ProcurementOrderStatus.DELIVERED &&
+        dto.status === ProcurementOrderStatus.COMPLETED
+      ) {
+        throw new UnprocessableEntityException({
+          reason: "complete_through_the_invoice_check",
+          message:
+            "A delivered order is completed when its delivery is checked against the invoice — not by editing its status. Nothing was changed.",
+        });
+      }
     }
 
     // D-06: Block location assignment while order is in a pending state.
