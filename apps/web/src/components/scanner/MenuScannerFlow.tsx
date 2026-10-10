@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -22,9 +22,12 @@ import {
 } from '../inventory/BatchReceiveGrid'
 import {
   detectedWinesToBatchRows,
+  keyForBatchSave,
   mergePersistResults,
   persistBatchToInventory,
+  stockSaveErrorMessage,
   summarizeMenuScanPersist,
+  type BatchSaveKey,
   type MenuScannerPersistResult,
 } from '../../lib/menuScannerPersistence'
 
@@ -63,8 +66,11 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
   const [isSaving, setIsSaving] = useState(false)
   const [persistResult, setPersistResult] = useState<MenuScannerPersistResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Held across an unanswered Save so re-saving the same lines cannot book them twice (F-566).
+  const saveKeyRef = useRef<BatchSaveKey | null>(null)
 
   const reset = () => {
+    saveKeyRef.current = null
     setStep('capture')
     setDetectedWines([])
     setPreviewImage(null)
@@ -122,11 +128,12 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
     if (isSaving || stockRows.length === 0) return
     setIsSaving(true)
     setError(null)
+    const lines = batchRowsToBulkLines(stockRows)
+    const saveKey = keyForBatchSave(saveKeyRef.current, lines, { source: 'menu_scan' })
+    saveKeyRef.current = saveKey
     try {
-      const result = await persistBatchToInventory(
-        batchRowsToBulkLines(stockRows),
-        { source: 'menu_scan' },
-      )
+      const result = await persistBatchToInventory(lines, { source: 'menu_scan', idempotencyKey: saveKey.key })
+      saveKeyRef.current = null
       setPersistResult((prev) => (prev ? mergePersistResults(prev, result) : result))
       onWinesAdded?.(acceptedWines, result)
 
@@ -146,8 +153,8 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
       setError(
         `${summarizeMenuScanPersist(result)} — the rows below were not saved. Fix them and save again.`,
       )
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Could not save these wines. Check your connection and try again.')
+    } catch (err) {
+      setError(stockSaveErrorMessage(err, 'Could not save these wines. Nothing was saved.'))
     } finally {
       setIsSaving(false)
     }

@@ -11,6 +11,7 @@
  * per submitted row and can leave the failures on screen to retry.
  */
 import { bulkCreateInventoryItems } from '../services/api/inventory'
+import { isUnconfirmedWrite } from '../services/api/client'
 import type {
   BulkCreateInventoryResult,
   BulkInventoryLine,
@@ -120,14 +121,60 @@ export function mergePersistResults(
 
 export async function persistBatchToInventory(
   items: BulkInventoryLine[],
-  options: { source: string; reason?: string },
+  options: { source: string; reason?: string; idempotencyKey?: string },
 ): Promise<MenuScannerPersistResult> {
-  const result = await bulkCreateInventoryItems({
-    items,
-    source: options.source,
-    ...(options.reason ? { reason: options.reason } : {}),
-  })
+  const result = await bulkCreateInventoryItems(
+    {
+      items,
+      source: options.source,
+      ...(options.reason ? { reason: options.reason } : {}),
+    },
+    undefined,
+    { idempotencyKey: options.idempotencyKey },
+  )
   return groupBulkResult(result)
+}
+
+/** The key one Save carries, and the exact batch it was made for. */
+export interface BatchSaveKey {
+  body: string
+  key: string
+}
+
+/**
+ * The Idempotency-Key for this Save (F-566). Saving the very same batch again
+ * after an unanswered attempt reuses the earlier key, so the gateway answers
+ * with the first result instead of adding the stock twice; any change to the
+ * lines makes a new key. The caller drops the key once a reply has come back.
+ */
+export function keyForBatchSave(
+  previous: BatchSaveKey | null,
+  items: BulkInventoryLine[],
+  options: { source: string; reason?: string },
+): BatchSaveKey {
+  const body = JSON.stringify({ items, source: options.source, reason: options.reason ?? null })
+  if (previous && previous.body === body) return previous
+  const nonce =
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return { body, key: `bulk-stock:${nonce}` }
+}
+
+/** What to say when a stock save went out and no answer came back. */
+export const UNCONFIRMED_STOCK_SAVE =
+  'This save was not confirmed. Some or all of these bottles may already be in stock. Check stock before saving again.'
+
+/**
+ * The line to show when a stock save throws. A timeout, a dropped connection
+ * or a server error may have landed, so it never invites a plain retry; a
+ * refusal keeps the server's own reason.
+ */
+export function stockSaveErrorMessage(err: unknown, fallback: string): string {
+  if (isUnconfirmedWrite(err)) return UNCONFIRMED_STOCK_SAVE
+  const e = err as { response?: { data?: { message?: unknown } }; message?: unknown } | null
+  const serverMessage = e?.response?.data?.message
+  if (typeof serverMessage === 'string' && serverMessage) return serverMessage
+  if (typeof e?.message === 'string' && e.message) return e.message
+  return fallback
 }
 
 /** Turns a persistence result into one human-readable toast-friendly summary line. */

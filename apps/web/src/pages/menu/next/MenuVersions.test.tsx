@@ -277,4 +277,30 @@ describe('MenuVersions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(/the menu read is waiting: nothing was sent/);
   });
+
+  it('a read with no answer says it may still be kept and fetches the kept menus again (F-567)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockRejectedValue(
+      Object.assign(new Error('timeout of 300000ms exceeded'), { isAxiosError: true, code: 'ECONNABORTED', request: {} }),
+    );
+    mount(true);
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1));
+    const file = new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    const said = await screen.findByTestId('menu-read-error');
+    expect(said).toHaveTextContent(/It may still be reading and keeping this menu/);
+    expect(said).not.toHaveTextContent(/was not read/);
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+  });
+
+  it('waits longer for a menu read than the gateway\'s 180 s model read (F-567)', async () => {
+    const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
+    const { apiClient } = await import('../../../services/api/client');
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: {} });
+    await actual.importMenu('scan', { imageBase64: 'x' });
+    const config = post.mock.calls[0][2] as { timeout?: number } | undefined;
+    expect(config?.timeout).toBeGreaterThan(180_000);
+    post.mockRestore();
+  });
 });

@@ -59,7 +59,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/mudavym';
-import { getErrorMessage } from '@/services/api/client';
+import { getErrorMessage, isUnconfirmedWrite } from '@/services/api/client';
 import { searchWines } from '@/services/api/wines';
 import { createAuctionLotRecord } from '@/services/api/inventory';
 import { settingsApi } from '@/services/api/settings';
@@ -304,8 +304,12 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       inventoryId = carried.inventoryId;
     } catch (e) {
       setBusy(false);
+      // "Nothing was written" only when the write was refused. A timeout, a
+      // dropped line or a server failure may have landed the stock (F-338).
       setFailure(
-        `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
+        isUnconfirmedWrite(e)
+          ? `No answer came back while carrying the bottles in (${getErrorMessage(e)}). They may already be in the book: check this wine's stock before carrying it in again. Your figures are still here.`
+          : `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
       );
       return;
     }

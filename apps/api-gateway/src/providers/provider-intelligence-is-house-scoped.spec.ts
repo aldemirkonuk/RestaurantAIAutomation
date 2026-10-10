@@ -594,6 +594,40 @@ describe("provider intelligence answers only for the caller's house", () => {
     ]);
   });
 
+  it("outreach and onboarding: a second tap returns the session already open instead of opening another (F-568)", async () => {
+    const { controller, supabase } = setup();
+
+    const first = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "price_check", topic: "updated pricing" },
+      userA,
+    );
+    const again = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "price_check", topic: "updated pricing" },
+      userA,
+    );
+    expect(first.alreadyOpen).toBe(false);
+    expect(again.alreadyOpen).toBe(true);
+    expect(again.sessionId).toBe(first.sessionId);
+
+    // A different kind for the same vendor is its own session.
+    const promos = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "promo_discovery" },
+      userA,
+    );
+    expect(promos.alreadyOpen).toBe(false);
+
+    await controller.triggerOnboarding(PROV_A, userA);
+    const onboardAgain = await controller.triggerOnboarding(PROV_A, userA);
+    expect(onboardAgain.alreadyOpen).toBe(true);
+
+    expect(
+      supabase.inserted.map((i) => i.row.session_type),
+    ).toEqual(["price_check", "promo_discovery", "onboarding"]);
+  });
+
   it("intelligence/leverage returns only this house's signals", async () => {
     const { controller } = setup();
 

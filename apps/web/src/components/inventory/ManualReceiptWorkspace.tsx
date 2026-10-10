@@ -11,7 +11,7 @@
  * Provider / reference / default location are receipt-level on purpose: the
  * manager sets them once and every row inherits them.
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
@@ -31,7 +31,13 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useWines } from '../../hooks/queries'
 import { useProviders } from '../../hooks/queries/useProviderQueries'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
-import { persistBatchToInventory, type MenuScannerPersistResult } from '../../lib/menuScannerPersistence'
+import {
+  keyForBatchSave,
+  persistBatchToInventory,
+  stockSaveErrorMessage,
+  type BatchSaveKey,
+  type MenuScannerPersistResult,
+} from '../../lib/menuScannerPersistence'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
   BatchReceiveGrid,
@@ -67,6 +73,8 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Held across an unanswered Save so re-saving the same lines cannot book them twice (F-566).
+  const saveKeyRef = useRef<BatchSaveKey | null>(null)
 
   const { data: searchResults = [], isFetching: isSearching } = useWines({
     search: search.trim().length >= 2 ? search.trim() : undefined,
@@ -157,6 +165,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     setShowDraftForm(false)
     setDraft(EMPTY_DRAFT)
     setError(null)
+    saveKeyRef.current = null
     onClose()
   }
 
@@ -164,11 +173,13 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     if (isSaving || rows.length === 0 || issues.length > 0) return
     setIsSaving(true)
     setError(null)
+    const lines = batchRowsToBulkLines(rows, { providerId: providerId || undefined })
+    const saveOptions = { source: 'manual_receipt', reason: reference.trim() || undefined }
+    const saveKey = keyForBatchSave(saveKeyRef.current, lines, saveOptions)
+    saveKeyRef.current = saveKey
     try {
-      const persisted = await persistBatchToInventory(
-        batchRowsToBulkLines(rows, { providerId: providerId || undefined }),
-        { source: 'manual_receipt', reason: reference.trim() || undefined },
-      )
+      const persisted = await persistBatchToInventory(lines, { ...saveOptions, idempotencyKey: saveKey.key })
+      saveKeyRef.current = null
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
 
       const failedByIndex = new Map(persisted.failed.map((f) => [f.index, f]))
@@ -209,12 +220,8 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
       setError(
         `${persisted.failed.length} of ${rows.length} line${rows.length !== 1 ? 's' : ''} could not be saved. Everything else was recorded — fix these and save again.`,
       )
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'Could not record this receipt. Check your connection and try again.',
-      )
+    } catch (err) {
+      setError(stockSaveErrorMessage(err, 'Could not record this receipt. Nothing was saved.'))
     } finally {
       setIsSaving(false)
     }
