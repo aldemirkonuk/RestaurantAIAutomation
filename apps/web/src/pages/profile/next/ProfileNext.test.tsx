@@ -29,6 +29,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -1386,6 +1387,42 @@ describe('ProfileNext — the one irreversible act', () => {
     expect(screen.getByText('Enter again to approve')).toBeInTheDocument();
     fireEvent.keyDown(hold, { key: 'Enter' });
     expect(deleteAccount).toHaveBeenCalledTimes(1);
+  });
+
+  // F-911: a refusal printed axios's "Request failed with status code 400"
+  // instead of the gateway's sentence naming why.
+  it("prints the gateway's reason when the delete or the leave is refused", async () => {
+    const refusal = (message: string) =>
+      new AxiosError('Request failed with status code 400', '400', undefined, undefined, {
+        status: 400,
+        data: { message, statusCode: 400 },
+      } as never);
+    mockData.current = base({
+      deleteAccount: vi.fn(() =>
+        Promise.reject(refusal('You are the only owner of Meyhane. Hand it over first.')),
+      ),
+      leaveRestaurant: vi.fn(() =>
+        Promise.reject(refusal("You're the only owner of this restaurant.")),
+      ),
+    });
+    draw();
+    fireEvent.change(screen.getByLabelText('Type DELETE to arm the seal'), {
+      target: { value: 'DELETE' },
+    });
+    const hold = screen.getByRole('button', { name: 'Hold to delete this account' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    expect(
+      await screen.findByText(/The account was NOT deleted — You are the only owner of Meyhane/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/status code 400/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Leave restaurant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Click again to leave' }));
+    expect(
+      await screen.findByText(/You were not removed — You're the only owner of this restaurant/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/status code 400/)).not.toBeInTheDocument();
   });
 
   // F-836: handing a house over never clears the organisation refusal, so the

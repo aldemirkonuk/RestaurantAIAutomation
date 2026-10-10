@@ -266,6 +266,37 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
     );
     expect(db.opsOn("users", "delete")).toHaveLength(0);
   });
+
+  // F-916: the sole-house-owner guard read only `data`, so a failed read
+  // looked like "owns no house" and the guard passed.
+  it("refuses at the house-owner check with 503 when that read fails, before any house is left", async () => {
+    const { svc, db, gateway } = makeService({
+      access: [
+        {
+          user_id: USER,
+          restaurant_id: HOUSE_A,
+          role: "owner",
+          is_active: true,
+        },
+      ],
+      orgMembers: [
+        { organization_id: ORG, user_id: USER, role: "owner" },
+        { organization_id: ORG, user_id: "other-owner", role: "owner" },
+      ],
+      errors: {
+        "user_restaurant_access:select": { message: "connection reset" },
+      },
+    });
+
+    const refusal = svc.deleteAccount(USER);
+    await expect(refusal).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(refusal).rejects.toThrow(
+      /Could not check who owns your restaurants\. Nothing was deleted/,
+    );
+    expect(gateway.evictFromHouse).not.toHaveBeenCalled();
+    expect(db.opsOn("user_restaurant_access", "delete")).toHaveLength(0);
+    expect(db.opsOn("users", "delete")).toHaveLength(0);
+  });
 });
 
 /**

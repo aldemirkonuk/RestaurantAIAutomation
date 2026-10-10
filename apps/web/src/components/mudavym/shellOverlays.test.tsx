@@ -294,6 +294,21 @@ describe('with a Mudavym page on screen', () => {
     expect(screen.getByText('Switch location')).toBeInTheDocument();
   });
 
+  // F-913: "Add location" was offered to every role; only an owner may open one.
+  it('offers "Add location" in the switcher to an owner only', () => {
+    asManager({ availableRestaurants: BRANCHES });
+    const { unmount } = renderShell(<RestaurantBranchSwitcher />);
+    fireEvent.click(screen.getByText('Meyhouse Palo Alto'));
+    expect(screen.getByText('Manage locations')).toBeInTheDocument();
+    expect(screen.queryByText('Add location')).toBeNull();
+    unmount();
+
+    asManager({ availableRestaurants: BRANCHES, activeRole: 'owner' });
+    renderShell(<RestaurantBranchSwitcher />);
+    fireEvent.click(screen.getByText('Meyhouse Palo Alto'));
+    expect(screen.getByText('Add location')).toBeInTheDocument();
+  });
+
   it("DashboardLayout's mobile scrim takes the house scrim, same element and same z", () => {
     // The legacy layout under the QA override (see the note above the first scrim test).
     window.localStorage.setItem('mudavym.design.shell', '0');

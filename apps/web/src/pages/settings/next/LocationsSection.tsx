@@ -26,7 +26,8 @@
  * an em dash naming itself, never a substituted date.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AddLocationDialog } from '@/components/locations/AddLocationDialog';
 import { CreateChainDialog } from '@/components/locations/CreateChainDialog';
 import { AssignToChainDialog } from '@/components/locations/AssignToChainDialog';
@@ -56,6 +57,19 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
   const [assigning, setAssigning] = useState<{ id: string; name: string } | null>(null);
   const [editing, setEditing] = useState<RestaurantBranch | null>(null);
   const addAnchor = useRef<HTMLButtonElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // F-913: the house switcher's "Add location" lands here with `action=add`.
+  // It opens the form for an owner, once; the param is dropped so a reload or
+  // a back step does not reopen it.
+  const addAsked = searchParams.get('action') === 'add';
+  useEffect(() => {
+    if (!addAsked) return;
+    if (isOwner) setAdding(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [addAsked, isOwner, searchParams, setSearchParams]);
 
   const standalone = locations.filter((b) => !b.chain_id);
   const asLite = (b: RestaurantBranch) => ({ id: b.id, name: b.name, city: b.city ?? null });
@@ -159,6 +173,7 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
         <EditLocationChainDialog
           open
           branch={editing}
+          canMoveChain={isOwner}
           chains={(chains.data ?? []).map((c) => ({ ...c, locationCount: c.location_count ?? undefined }))}
           onClose={() => setEditing(null)}
           onSaved={async () => { await refreshBranches(); setEditing(null); }}

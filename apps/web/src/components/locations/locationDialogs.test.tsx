@@ -310,6 +310,30 @@ describe('the seal, and why none of the four wears it', () => {
     );
   });
 
+  // F-912: a manager's Edit offered Standalone and every chain, and always
+  // sent chainId — so a manager could take a branch out of the owner's chain.
+  it('a manager sees the chain but cannot move the branch, and the save sends no chain', async () => {
+    const onSaved = vi.fn();
+    render(
+      <EditLocationChainDialog
+        open
+        branch={{ ...(BRANCH as object), chain_id: 'c1', chain_name: 'The Grill Co.' } as never}
+        chains={[{ id: 'c1', name: 'The Grill Co.' }]}
+        onClose={() => {}}
+        onSaved={onSaved}
+        canMoveChain={false}
+      />,
+    );
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(screen.getByText(/In The Grill Co\. — only an owner can move a branch to another chain\./)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Uptown Quay' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const body = patch.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(body).toMatchObject({ name: 'Uptown Quay' });
+    expect(body).not.toHaveProperty('chainId');
+  });
+
   it('no dialog of the four issues a DELETE', () => {
     for (const file of Object.keys(LEGACY)) {
       const src = readFileSync(

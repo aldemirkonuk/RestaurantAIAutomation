@@ -141,6 +141,7 @@ import { HouseRegister } from './HouseRegister';
 import { ConsentRegister } from './ConsentRegister';
 import { OwnNotifySection } from '../../settings/next/NotifySection';
 import { useProfileNextData, type ProfileNextData } from './useProfileNextData';
+import { getErrorMessage } from '../../../services/api/client';
 
 export interface ProfileNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
@@ -264,7 +265,8 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
       await data.leaveRestaurant();
       setExitMsg({ tone: 'done', text: 'You have left this restaurant. Re-entry needs a new invitation.' });
     } catch (e) {
-      setExitMsg({ tone: 'error', text: `You were not removed — ${String((e as Error).message)}` });
+      // F-911: the gateway's own sentence (e.g. "You're the only owner…"), not axios's status line.
+      setExitMsg({ tone: 'error', text: `You were not removed — ${getErrorMessage(e)}` });
     } finally {
       setLeaving(false);
     }
@@ -277,7 +279,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
       .catch((e: unknown) =>
         setExitMsg({
           tone: 'error',
-          text: `The account was NOT deleted — ${String((e as Error).message)}`,
+          text: `The account was NOT deleted — ${getErrorMessage(e)}`,
         }),
       );
   };
