@@ -37,7 +37,7 @@ import { Sheet } from '@/components/mudavym/Sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { VENDOR_UNNAMED } from '@/lib/mudavym/vendor';
-import { parseDecimal } from '@/lib/parseDecimal';
+import { displayGroupMark, parseDecimal, readingsDisagree } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import type {
   CreditLetterOutcome,
@@ -440,6 +440,22 @@ function SettleForm({
     }
     if (amountRaw.trim() === '' || !Number.isFinite(amount) || amount < 0) {
       setProblem('Enter the amount the vendor allowed, as a number of zero or more.');
+      return;
+    }
+    // F-799: the figures on this screen are printed the browser's way, the
+    // amount is read the house's way. When those disagree on a lone mark
+    // ("1,250" in a Turkish house on an English browser), ask — never guess.
+    const shown = displayGroupMark();
+    const both = readingsDisagree(amountRaw, group, shown);
+    if (both) {
+      const [a, b] = both.map((n) => fmtMoney(n, claim.currency));
+      const why = group
+        ? `this house writes thousands with “${group}” but this screen writes them with “${shown}”`
+        : `this screen writes thousands with “${shown}” and this house may not`;
+      setProblem(
+        `“${amountRaw.trim()}” could be ${a} or ${b}: ${why}. ` +
+          'Type it without a thousands mark, like 1250 or 1.25, so it reads only one way.',
+      );
       return;
     }
     setProblem(null);
