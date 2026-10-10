@@ -114,7 +114,7 @@ const PAGE: Record<
   ExportableCutting,
   { path: string; call: (c: AnalyticsController, days: number) => Promise<unknown> }
 > = {
-  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
+  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, OWNER) },
   till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, OWNER) },
   bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID, OWNER) },
@@ -125,7 +125,7 @@ const PAGE: Record<
   ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined, OWNER) },
   seats: { path: "`/analytics/table-performance/${rid}?sinceDays=90`", call: (c) => c.getTablePerformance(RID, "90") },
   service: { path: "`/analytics/waiters/${rid}?sinceDays=90`", call: (c) => c.getWaiters(RID, "90") },
-  restock: { path: "`/analytics/inventory-science/${rid}`", call: (c) => c.getInventoryScience(RID, undefined, undefined) },
+  restock: { path: "`/analytics/inventory-science/${rid}`", call: (c) => c.getInventoryScience(RID, undefined, undefined, OWNER) },
 };
 
 describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () => {
@@ -184,6 +184,8 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
         // The page's last step is the person's own snoozes (ADR 0191 round 3);
         // with no one looking it drops nothing and says it read no one's. The
         // export is the house's answer: everything before that step, equal.
+        // F-603: asked as the owner the export serves, the page withholds no
+        // card for the reader's role, so it adds no count of them.
         const { hiddenForYou, personalSnoozesReadable, ...rest } = fromPage;
         expect(hiddenForYou).toBe(0);
         expect(personalSnoozesReadable).toBe(false);
@@ -215,7 +217,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     });
     page.insights.readStored.mockImplementation(allWithheld);
     exp.insights.readStored.mockImplementation(allWithheld);
-    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40")) as Record<string, unknown>;
+    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40", undefined, OWNER)) as Record<string, unknown>;
     const fromExport = await exp.reader.read(RID, "reading", null);
     const { hiddenForYou, personalSnoozesReadable, ...rest } = fromPage;
     expect(fromExport).toEqual(rest);
