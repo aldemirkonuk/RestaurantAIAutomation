@@ -523,6 +523,30 @@ export function draftSubjectLine(
 }
 
 /**
+ * An order the house has closed gets no letter (owner-quarter sim F-516).
+ *
+ * The AI letter is drafted in the background, so it can land a moment AFTER
+ * `cancelOrder` cascaded the drafts that already existed. The database door
+ * (`stage_order_letter`) now refuses to stage one; this is the brace at the
+ * two places a person can still send one: the seal and the send. The same
+ * three states `stage_order_letter` refuses. COMPLETED is not among them: a
+ * reply about a delivered order (a short case, a credit) is still a letter.
+ *
+ * Returns the refusal in the owner's words, or null when the letter may go.
+ */
+const ORDER_LETTER_CLOSED_WORDS: Partial<Record<ProcurementOrderStatus, string>> = {
+  [ProcurementOrderStatus.CANCELLED]: "was cancelled",
+  [ProcurementOrderStatus.REJECTED]: "was turned down",
+  [ProcurementOrderStatus.FAILED]: "was closed as failed",
+};
+
+export function closedOrderLetterRefusal(status: unknown, tail: string): string | null {
+  const state = readOrderStatus(status);
+  const words = state ? ORDER_LETTER_CLOSED_WORDS[state] : undefined;
+  return words ? `This order ${words}, so its letter cannot go to the vendor. ${tail}` : null;
+}
+
+/**
  * THE SEAL IS REQUIRED ON EVERY VENDOR SEND (founder, 2026-09-21).
  *
  * Until this date `legacyDraftSendMayGoUnsealed()` let an ABSENT
@@ -7544,7 +7568,7 @@ export class ProcurementService {
 
     const { data: pending, error } = await this.databaseService.supabase
       .from("procurement_conversations")
-      .select("id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact)")
+      .select("id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact), procurement_orders!inner(status)")
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("status", "PENDING_APPROVAL")
@@ -7562,6 +7586,12 @@ export class ProcurementService {
         "There is no draft waiting on this order, so there is nothing to seal. It may already have been sent or discarded.",
       );
     }
+    // F-516: a letter staged after the order was closed is never sealed.
+    const closedForSeal = closedOrderLetterRefusal(
+      (pending as any).procurement_orders?.status,
+      "No seal was issued and nothing was sent.",
+    );
+    if (closedForSeal) throw new ConflictException(closedForSeal);
 
     const provider = Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers;
     const recipient = provider?.contact_email;
@@ -7884,7 +7914,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_conversations")
         .select(
-          "id, content, created_at, gmail_thread_id, message_id, email_headers, send_requested_by, send_requested_sha256, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), procurement_orders!inner(inventory:inventory_id(wine_name))",
+          "id, content, created_at, gmail_thread_id, message_id, email_headers, send_requested_by, send_requested_sha256, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), procurement_orders!inner(status, inventory:inventory_id(wine_name))",
         )
         .eq("restaurant_id", restaurantId)
         .eq("order_id", orderId)
@@ -7899,6 +7929,13 @@ export class ProcurementService {
       });
       throw new NotFoundException("No pending draft found for this order");
     }
+    // F-516: checked before the seal is spent, so a refusal here leaves the
+    // hold unspent and nothing sent.
+    const closedForSend = closedOrderLetterRefusal(
+      (conv as any).procurement_orders?.status,
+      "Nothing was sent.",
+    );
+    if (closedForSend) throw new ConflictException(closedForSend);
 
     // Gate: don't send a draft that's stale because a newer vendor reply just
     // arrived and is still being analyzed.

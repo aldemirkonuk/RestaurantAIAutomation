@@ -295,3 +295,80 @@ describe("sendDraftedReply", () => {
     expect(update).not.toHaveBeenCalled();
   });
 });
+
+/* ── a closed order gets no letter (owner-quarter sim F-516) ────────────── */
+
+/*
+ * The AI letter is drafted in the background, so it can be staged a moment
+ * after `cancelOrder` cascaded the drafts that already existed. Neither the
+ * seal nor the send looked at the order: a second manager could send a
+ * letter for an order the house shows as cancelled.
+ */
+describe("a letter for a cancelled, turned-down or failed order", () => {
+  it.each([
+    ["CANCELLED", /was cancelled/],
+    ["REJECTED", /was turned down/],
+    ["FAILED", /was closed as failed/],
+  ])("is never sealed when the order is %s", async (status, words) => {
+    const s = stub({
+      pending: {
+        id: "conv-1",
+        providers: { contact_email: "h@x.example", restaurant_id: "rest-A" },
+        procurement_orders: { status },
+      },
+    });
+    await expect(mint(s)).rejects.toThrow(words);
+    await expect(mint(s)).rejects.toThrow(/No seal was issued and nothing was sent/);
+    expect(s.issued).toHaveLength(0);
+  });
+
+  it("is still sealed while the order is open or completed", async () => {
+    for (const status of ["APPROVED", "COMPLETED", undefined]) {
+      const s = stub({
+        pending: {
+          id: "conv-1",
+          providers: { contact_email: "h@x.example", restaurant_id: "rest-A" },
+          procurement_orders: { status },
+        },
+      });
+      await expect(mint(s)).resolves.toMatchObject({ challenge: "tok" });
+    }
+  });
+
+  it("is never sent, and the seal is not spent", async () => {
+    const { ProcurementService } = await import("./procurement.service");
+    const update = jest.fn();
+    const conv = {
+      id: "late-draft",
+      content: "Dear Hasan, 24 Barolo please.",
+      created_at: "2026-10-09",
+      providers: { contact_email: "h@x.example", restaurant_id: "rest-A" },
+      procurement_orders: { status: "cancelled" },
+    };
+    const builder: any = {
+      select: () => builder,
+      eq: () => builder,
+      single: async () => ({ data: conv, error: null }),
+      update,
+    };
+    const redeem = jest.fn();
+    const self = {
+      databaseService: { supabase: { from: () => builder } },
+      newerReplyStillAnalyzing: async () => false,
+      sealChallenges: { redeem },
+      logger: { error: jest.fn() },
+      draftBlanksAtSend: async () => ({ unfillable: [], fills: [] }),
+    };
+    await expect(
+      ProcurementService.prototype.approveDraft.call(
+        self as never,
+        "rest-A",
+        "ord-1",
+        {},
+        { userId: "manager", challenge: "tok", grantId: null },
+      ),
+    ).rejects.toThrow("This order was cancelled, so its letter cannot go to the vendor. Nothing was sent.");
+    expect(redeem).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+});

@@ -22,8 +22,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.order_letter_door import (
+    ORDER_LETTER_CLOSED_STATUSES,
     ORDER_LETTER_LIVE_STATUSES,
     OrderLetterDoorMissing,
+    OrderLetterOrderClosed,
+    closed_order_status,
     live_order_letter_id,
     stage_order_letter,
 )
@@ -390,3 +393,131 @@ class TestApprovalTimeLetter:
         await agent._handle_procurement_intent(dict(INTENT))
         assert len(_letter_inserts(agent.database.supabase)) == 1
         assert "conversation.approval_needed" in _published_keys(agent)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# A closed order gets no letter (owner-quarter sim F-516)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The letter is drafted in the background, so it can land after the manager
+# cancelled the order. The door (migration a_closed_order_gets_no_letter) now
+# answers {id: null, staged: false, order_status} for a closed order, and both
+# agents read the order before any model call.
+
+
+def _closed_migration_sql() -> str:
+    files = sorted(MIGRATIONS.glob("*_a_closed_order_gets_no_letter.sql"))
+    assert len(files) == 1, files
+    return files[0].read_text()
+
+
+CLOSED = {"id": None, "staged": False, "order_status": "CANCELLED"}
+
+
+class TestTheDoorRefusesAClosedOrder:
+    def test_closed_statuses_match_the_migration(self):
+        sql = _closed_migration_sql()
+        start = sql.index("IF v_order_status IN (")
+        words = re.findall(r"'([A-Z_]+)'", sql[start : sql.index(")", start)])
+        assert set(words) == set(ORDER_LETTER_CLOSED_STATUSES), words
+
+    def test_the_replacement_keeps_the_live_statuses(self):
+        sql = _closed_migration_sql()
+        start = sql.index("AND (c.status)::text IN (")
+        block = sql[start : sql.index(")", sql.index("(", start + 25))]
+        assert set(re.findall(r"'([A-Z_]+)'", block)) == set(ORDER_LETTER_LIVE_STATUSES)
+
+    def test_a_closed_order_is_its_own_error(self):
+        with pytest.raises(OrderLetterOrderClosed) as err:
+            stage_order_letter(_supabase_answering(dict(CLOSED)), {})
+        assert err.value.order_status == "CANCELLED"
+
+    @pytest.mark.parametrize(
+        "status, closed",
+        [
+            ("CANCELLED", "CANCELLED"),
+            ("rejected", "REJECTED"),
+            ("FAILED", "FAILED"),
+            ("APPROVED", None),
+            ("COMPLETED", None),
+            (None, None),
+        ],
+    )
+    def test_early_read_names_only_closed_states(self, status, closed):
+        sb = MagicMock()
+        chain = sb.table.return_value.select.return_value
+        chain.eq.return_value = chain
+        chain.limit.return_value = chain
+        chain.execute.return_value = MagicMock(data=[{"status": status}])
+        assert closed_order_status(sb, "rest-1", "ord-1") == closed
+        sb.table.assert_called_with("procurement_orders")
+        assert [c.args for c in chain.eq.call_args_list] == [
+            ("restaurant_id", "rest-1"),
+            ("id", "ord-1"),
+        ]
+
+    def test_no_order_row_is_not_closed(self):
+        sb = MagicMock()
+        chain = sb.table.return_value.select.return_value
+        chain.eq.return_value = chain
+        chain.limit.return_value = chain
+        chain.execute.return_value = MagicMock(data=[])
+        assert closed_order_status(sb, "rest-1", "ord-1") is None
+
+
+def _order_reads_cancelled(agent):
+    chain = agent.database.supabase.table.return_value.select.return_value
+    chain.eq.return_value.eq.return_value.limit.return_value.execute.return_value = (
+        MagicMock(data=[{"status": "CANCELLED"}])
+    )
+
+
+class TestCreateTimeLetterForAClosedOrder:
+    async def test_no_model_call_no_letter_no_notice(self, comm_agent):
+        _order_reads_cancelled(comm_agent)
+        with patch(
+            "agents.provider_communication_agent.get_haiku_client"
+        ) as hc, patch.object(comm_agent, "_notify", new_callable=AsyncMock) as notify:
+            await comm_agent._handle_order_created(dict(ORDER))
+        hc.assert_not_called()
+        comm_agent.database.supabase.rpc.assert_not_called()
+        assert _letter_inserts(comm_agent.database.supabase) == []
+        notify.assert_not_awaited()
+
+    async def test_closed_while_drafting_stages_nothing_and_sends_nothing(
+        self, comm_agent
+    ):
+        comm_agent.database.supabase.rpc.return_value.execute.return_value = MagicMock(
+            data=dict(CLOSED)
+        )
+        notify = await _run_create_time(comm_agent, auto_send=True)
+        kinds = [c.kwargs.get("notification_type") for c in notify.call_args_list]
+        assert "draft_ready" not in kinds
+        keys = [
+            c.kwargs.get("routing_key")
+            for c in comm_agent.message_bus.publish.call_args_list
+        ]
+        assert "provider.draft.auto_approved" not in keys
+        assert _letter_inserts(comm_agent.database.supabase) == []
+
+
+class TestApprovalTimeLetterForAClosedOrder:
+    @pytest.mark.parametrize("intent_type", ["order_inquiry", "negotiate_price"])
+    async def test_no_model_call_no_letter(self, intent_type):
+        agent, _ = _conv_agent(live_rows=[])
+        read = agent.database.supabase.table.return_value.select.return_value
+        read.execute.return_value = MagicMock(data=[{"status": "cancelled"}])
+        await agent._handle_procurement_intent({**INTENT, "intent_type": intent_type})
+        agent._get_or_create_session.assert_not_awaited()
+        agent._generate_response.assert_not_awaited()
+        agent.database.supabase.rpc.assert_not_called()
+        assert _letter_inserts(agent.database.supabase) == []
+        assert agent.publish.await_count == 0
+
+    async def test_closed_while_drafting_stages_nothing(self):
+        agent, session = _conv_agent(rpc_data=dict(CLOSED))
+        await agent._handle_procurement_intent(dict(INTENT))
+        assert "conversation.approval_needed" not in _published_keys(agent)
+        assert _letter_inserts(agent.database.supabase) == []
+        agent._persist_session.assert_not_awaited()
+        assert "pending_conversation_id" not in session.context

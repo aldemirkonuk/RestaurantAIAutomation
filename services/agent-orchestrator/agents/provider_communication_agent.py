@@ -29,7 +29,12 @@ from services.fuzzy_matcher import (
     get_fuzzy_matcher,
 )  # noqa: F401 — available for invoice matching
 from services.model_clients import get_haiku_client, get_haiku_semaphore
-from services.order_letter_door import OrderLetterDoorMissing, stage_order_letter
+from services.order_letter_door import (
+    OrderLetterDoorMissing,
+    OrderLetterOrderClosed,
+    closed_order_status,
+    stage_order_letter,
+)
 from services.spend_logger import get_spend_logger
 
 logger = logging.getLogger(__name__)
@@ -419,6 +424,25 @@ class ProviderCommunicationAgent(BaseAgent):
             return
         await self._mark_processed(order_idem_key, {"status": "drafting"})
 
+        # F-516: an order the house already cancelled, turned down or failed
+        # gets no letter. Read before the rate limit and the model call; the
+        # staging door re-reads it under its lock and stays the authority.
+        try:
+            closed = closed_order_status(
+                self.database.supabase, restaurant_id, order_id
+            )
+        except Exception as exc:
+            closed = None
+            self.logger.warning(
+                f"Could not read order {order_id}'s status before drafting "
+                f"({exc}); the staging door still decides."
+            )
+        if closed:
+            self.logger.info(
+                f"Order {order_id} is {closed}; no create-time letter (F-516)."
+            )
+            return
+
         # Step 1: Daily rate limit (D-32-04)
         rate_key = f"negotiation_draft:{restaurant_id}:day"
         if await self._check_and_increment_rate_limit(
@@ -710,6 +734,13 @@ class ProviderCommunicationAgent(BaseAgent):
                     conv_result.data[0].get("id") if conv_result.data else None
                 )
                 staged = True
+        except OrderLetterOrderClosed as exc:
+            # F-516: the order was closed while the letter was being drafted.
+            self.logger.info(
+                f"Order {order_id} is {exc.order_status}; the create-time letter "
+                "was not staged (F-516)."
+            )
+            return
         except Exception as exc:
             self.logger.error(
                 f"Failed to insert procurement_conversation for order {order_id}: {exc}"
