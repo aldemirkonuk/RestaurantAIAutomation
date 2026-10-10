@@ -27,6 +27,7 @@ import { deadlineOf, landedVerdict } from "../procurement/delivery-deadline";
 import { overdueStanding } from "../procurement/overdue-order";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
+import { orderSpend, sumOrderSpend } from "../procurement/order-spend";
 import { HouseFrame, houseFrame } from "../common/house-frame";
 
 /**
@@ -512,23 +513,23 @@ export class AdvancedAnalyticsService {
         }
       }
       const scored = counts.onTime + counts.late;
+      // An order with no price is left out and counted (F-701): not $0, and
+      // not one bottle's `final_price` standing in for the whole order.
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
-          const cost = o.total_cost || o.final_price || 0;
-          return bottles > 0 ? cost / bottles : null;
+          const cost = orderSpend(o);
+          return bottles > 0 && cost != null ? cost / bottles : null;
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
-      const spend = delivered.reduce(
-        (s, o) => s + (o.total_cost || o.final_price || 0),
-        0,
-      );
+      const { total: spend, unpricedCount } = sumOrderSpend(delivered);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
         spend,
+        unpricedCount,
         leadTimeDays: {
           mean: E.mean(leadTimes),
           median: E.median(leadTimes),
@@ -559,6 +560,8 @@ export class AdvancedAnalyticsService {
       concentration: {
         hhi: E.herfindahlIndex(spendShare),
         effectiveVendors: E.effectiveCount(spendShare),
+        // Shares are of priced spend; these deliveries are not in them.
+        unpricedCount: vendors.reduce((n, v) => n + v.unpricedCount, 0),
       },
       note: "Lead-time stdev feeds the King safety-stock formula (leadTimeStdev param on /inventory-science).",
       generatedAt: new Date().toISOString(),
@@ -676,10 +679,14 @@ export class AdvancedAnalyticsService {
     const delivered = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_SPEND_STATUSES),
     );
-    const spendRows = delivered.map((o: any) => ({
-      date: (o.delivered_at || o.created_at || "").substring(0, 10),
-      value: o.total_cost || o.final_price || 0,
-    }));
+    // An order with no price is left out and counted (F-701).
+    const spendUnpricedCount = sumOrderSpend(delivered).unpricedCount;
+    const spendRows = delivered
+      .filter((o: any) => orderSpend(o) != null)
+      .map((o: any) => ({
+        date: (o.delivered_at || o.created_at || "").substring(0, 10),
+        value: orderSpend(o) as number,
+      }));
     const daily = this.toDaily(spendRows, 180);
 
     const last30 = daily.slice(-30).reduce((a, b) => a + b, 0);
@@ -708,10 +715,8 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    const committed = open.reduce(
-      (s: number, o: any) => s + (o.total_cost || o.final_price || 0),
-      0,
-    );
+    const { total: committed, unpricedCount: committedUnpricedCount } =
+      sumOrderSpend(open);
 
     return {
       basis: {
@@ -723,6 +728,9 @@ export class AdvancedAnalyticsService {
       projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
       committedOpenOrders: committed,
       openOrderCount: open.length,
+      // Orders the two figures above leave out because they carry no price.
+      spendUnpricedCount,
+      committedUnpricedCount,
       generatedAt: new Date().toISOString(),
     };
   }

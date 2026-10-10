@@ -5,6 +5,7 @@ import { AnalyticsService } from "./analytics.service";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import { UnpricedSpendError, sumOrderSpend } from "../procurement/order-spend";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
   HOUSE_ZONE_UNSET,
@@ -28,10 +29,7 @@ import {
   NfEventRef,
 } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
-import {
-  SCHEMA_BASIS,
-  cuttingSpecVerdict,
-} from "./goal-cutting-verdict";
+import { SCHEMA_BASIS, cuttingSpecVerdict } from "./goal-cutting-verdict";
 import {
   resolveModel,
   routingContext,
@@ -703,7 +701,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 
     const eventRef = new NfEventRef();
     /** The grader, run once per exit. `record` never throws (nf-verdict.service). */
-    const grade = (reading: Parameters<typeof cuttingSpecVerdict>[0]["reading"]) =>
+    const grade = (
+      reading: Parameters<typeof cuttingSpecVerdict>[0]["reading"],
+    ) =>
       this.nfVerdicts.record(
         eventRef,
         SCHEMA_BASIS,
@@ -931,9 +931,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * against a deadline still does (`getGoalProgress`, `paceUnread`).
      */
     if (metricKey === "days_of_inventory") {
-      const financial: any = await this.analyticsService.getFinancialSummary(
-        restaurantId,
-      );
+      const financial: any =
+        await this.analyticsService.getFinancialSummary(restaurantId);
       const dio = financial?.daysInventoryOutstanding;
       if (typeof dio !== "number" || !Number.isFinite(dio)) {
         throw new Error(
@@ -1002,8 +1001,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           (o) => o.delivered_at || o.created_at,
         );
         rowCount = orders.length;
-        for (const { row: o, day } of orders)
-          add(day, o.total_cost || o.final_price || 0);
+        // A delivery with no price refuses the total rather than adding $0,
+        // or one bottle's `final_price` as the whole order (F-701).
+        const { unpricedCount } = sumOrderSpend(orders.map(({ row }) => row));
+        if (unpricedCount > 0) throw new UnpricedSpendError(unpricedCount);
+        for (const { row: o, day } of orders) add(day, Number(o.total_cost));
       } else if (metricKey === "bottles_sold") {
         // Read whole or refused (ADR 0292): an unranged select stopped at
         // PostgREST's 1,000 rows and reported the first thousand lines as
@@ -1134,6 +1136,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       if (err instanceof WholeReadError) throw err;
       // Same for a total that would rest on a line with no bottle figure.
       if (err instanceof UncountedConsumptionError) throw err;
+      // And for a spend total that would leave out unpriced deliveries.
+      if (err instanceof UnpricedSpendError) throw err;
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 

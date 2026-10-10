@@ -40,3 +40,17 @@ export function sumOrderSpend(
   }
   return { total, unpricedCount };
 }
+
+/**
+ * A spend total refused because deliveries in its window carry no price
+ * (F-701). Thrown where a short figure would be read as the whole one — a
+ * goal's progress — the way `UncountedConsumptionError` refuses bottles sold.
+ */
+export class UnpricedSpendError extends Error {
+  constructor(readonly unpricedCount: number) {
+    super(
+      `Purchase spend could not be totalled: ${unpricedCount} ${unpricedCount === 1 ? "delivery" : "deliveries"} in this window ${unpricedCount === 1 ? "carries" : "carry"} no price, so a total would be short rather than true.`,
+    );
+    this.name = "UnpricedSpendError";
+  }
+}
