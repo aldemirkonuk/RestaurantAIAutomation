@@ -26,6 +26,7 @@ import {
 import type { PriceAdvice } from "../pricing/margin-to-target";
 import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
 import { resolveItemState, stateBookFrom } from "./insights/item-state";
+import { houseMoney, readHouseCurrency } from "../common/house-money";
 
 /**
  * A rule's own firing period, from the horizon the rule itself declares
@@ -320,6 +321,7 @@ export class RecommendationsService {
       goals,
       priceAdviceRes,
       priceLocksRes,
+      currencyRes,
     ] = await Promise.allSettled([
       this.analyticsService.getFinancialSummary(restaurantId),
       this.analyticsService.getRiskProfile(restaurantId),
@@ -340,6 +342,9 @@ export class RecommendationsService {
             return r;
           })
         : Promise.reject(new Error("price locks are not wired into this build")),
+      // The house's own money for the figures the cards print (F-341). It
+      // never rejects: null prints a figure with no symbol, never as dollars.
+      readHouseCurrency(this.dbService?.supabase, restaurantId),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -422,6 +427,8 @@ export class RecommendationsService {
     };
 
     const pct = (v: number) => `${Math.abs(v * 100).toFixed(0)}%`;
+    const money = (v: number) =>
+      houseMoney(Math.round(v), ok(currencyRes) as string | null);
 
     // ---- Sales / demand rules --------------------------------------------
     // A SALES dip only (ADR 0291): `overall.purchase_spend.vs_same_weekday`
@@ -504,7 +511,7 @@ export class RecommendationsService {
         // stock-depth test — see AnalyticsService.getFinancialSummary. Naming
         // the window keeps the claim checkable, and keeps the discount advice
         // below pointed at bottles that genuinely are not selling.
-        observation: `$${Math.round(ctx.financial.deadStockCapital).toLocaleString()} is locked in inventory that has not moved in 90 days (top: ${ctx.financial.deadStockTop[0].name}).`,
+        observation: `${money(ctx.financial.deadStockCapital)} is locked in inventory that has not moved in 90 days (top: ${ctx.financial.deadStockTop[0].name}).`,
         recommendation:
           "Build a weekend flight or staff-pick feature from the top three idle wines; if untouched after two weeks, discount to cost and reinvest the cash in A-class movers.",
         rationale:
@@ -740,7 +747,7 @@ export class RecommendationsService {
       (ctx.cashflow?.paceDeltaPct ?? 0) > 0.3 &&
         (ctx.cashflow?.spendLast30d ?? 0) > 0,
       () => ({
-        observation: `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days ($${Math.round(ctx.cashflow.spendLast30d).toLocaleString()}).`,
+        observation: `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days (${money(ctx.cashflow.spendLast30d)}).`,
         recommendation:
           "Audit open orders against days-of-cover before the next PO run; push slow-mover orders a cycle and consolidate to hit vendor volume breaks.",
         rationale:

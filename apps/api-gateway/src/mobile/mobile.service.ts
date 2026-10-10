@@ -4,6 +4,7 @@ import { ProcurementService } from "../procurement/procurement.service";
 import { ConversationsService } from "../conversations/conversations.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ToastService } from "../toast/toast.service";
+import { houseMoney, readHouseCurrency } from "../common/house-money";
 import {
   DecisionKind,
   FeedItem,
@@ -30,7 +31,7 @@ export class MobileService {
   ) {}
 
   async getFeed(userId: string, restaurantId: string): Promise<FeedResponse> {
-    const [orders, conversations, notifications] = await Promise.all([
+    const [orders, conversations, notifications, currency] = await Promise.all([
       this.procurementService.listPendingOrders(restaurantId).catch((e) => {
         this.logger.warn(`feed orders collector failed: ${e?.message}`);
         return [];
@@ -51,6 +52,9 @@ export class MobileService {
           );
           return [];
         }),
+      // The house's own money for the order amounts (F-341); null prints
+      // the figure with no symbol, never as dollars.
+      readHouseCurrency(this.databaseService.supabase, restaurantId),
     ]);
 
     const providerNames = await this.resolveProviderNames([
@@ -74,7 +78,7 @@ export class MobileService {
           title: order.wineName
             ? `Approve order: ${order.wineName}`
             : `Approve ${order.orderNumber ?? "order"}`,
-          subtitle: this.orderSubtitle(order, providerNames),
+          subtitle: this.orderSubtitle(order, providerNames, currency),
           wineName: order.wineName ?? null,
           providerName: providerNames.get(order.providerId) ?? null,
           amount,
@@ -289,6 +293,7 @@ export class MobileService {
   private orderSubtitle(
     order: any,
     providerNames: Map<string, string>,
+    houseCurrency: string | null,
   ): string {
     const parts: string[] = [];
     if (order.quantity) {
@@ -303,7 +308,8 @@ export class MobileService {
       order.finalPrice ??
       order.negotiatedPrice ??
       order.quotedPrice;
-    if (amount != null) parts.push(this.formatMoney(amount));
+    if (amount != null)
+      parts.push(houseMoney(amount, order.currency ?? houseCurrency));
     return parts.join(" · ") || "Awaiting your approval";
   }
 
@@ -333,12 +339,6 @@ export class MobileService {
 
   private truncate(text: string, max: number): string {
     return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
-  }
-
-  private formatMoney(value: number): string {
-    return `$${Number(value).toLocaleString("en-US", {
-      maximumFractionDigits: 0,
-    })}`;
   }
 
   private parseDate(iso?: string): Date | null {
