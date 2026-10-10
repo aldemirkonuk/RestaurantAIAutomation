@@ -19,6 +19,12 @@ export interface CanonicalItem {
   /** Resolved by the hub via pos_item_mappings + heuristics. */
   is_wine?: boolean;
   master_wine_id?: string | null;
+  /** F-641: the POS ids of the modifiers rung with this line (a Toast
+   *  "Glass / Bottle" size, a Square modifier). A stock line that carries
+   *  one is sized only by a mapping that names it (external_item_id
+   *  `<item id>:<modifier id>`); otherwise it is queued, never depleted at
+   *  the item's one mapped volume. */
+  modifierIds?: string[];
 }
 
 /**
@@ -54,6 +60,19 @@ export interface CanonicalCheck {
    *  hub reverses stock for every line instead of depleting it (decision B19:
    *  voids reverse glasses as well as bottles). */
   voided?: boolean;
+  /** Set only when the till sent a voided value the adapter could not read
+   *  as yes or no (the raw value, as sent). ingest() refuses such a check:
+   *  guessing either way moves stock the wrong way. */
+  voidedUnread?: unknown;
+  /** F-639: the till's own version number for this check, when it sends
+   *  one. A copy older than the stored one is not imported. */
+  sourceVersion?: number | null;
+  /** F-639: when the till last changed this check (ISO), when it says.
+   *  Compared only when the copies carry no version. */
+  sourceModifiedAt?: string | null;
+  /** Set only when a money field (subtotal, total, tip, a line price) was
+   *  present but not read as an amount: ingest() refuses the check. */
+  moneyUnread?: { field: string; value: unknown };
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */
   tableRef?: string | null;

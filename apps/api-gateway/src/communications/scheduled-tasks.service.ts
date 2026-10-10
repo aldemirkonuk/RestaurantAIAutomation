@@ -1003,7 +1003,8 @@ export class ScheduledTasksService implements OnModuleInit {
                 channels: ["in_app"],
                 restaurant_id: tenant.id,
                 type: "custom_reminder",
-                title: reminder.title,
+                // notifications.title is varchar(255) (F-560).
+                title: reminder.title?.slice(0, 255),
                 message: reminder.description || reminder.title,
                 priority: reminder.metadata?.priority || "medium",
                 status: "unread",
@@ -1621,7 +1622,8 @@ export class ScheduledTasksService implements OnModuleInit {
         channels: ["in_app"],
         restaurant_id: restaurantId,
         type: payload.type,
-        title: payload.title.slice(0, 500),
+        // notifications.title is varchar(255); a longer title fails the insert (F-560).
+        title: payload.title.slice(0, 255),
         message: payload.message,
         priority: payload.priority ?? "medium",
         status: "unread",

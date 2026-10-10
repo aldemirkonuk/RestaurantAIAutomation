@@ -13,7 +13,11 @@ import axios, { AxiosInstance } from "axios";
 import { isSafePathSegment } from "../common/http/safe-path";
 import { CacheService } from "../common/cache/cache.service";
 import { DatabaseService } from "../database/database.service";
-import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
+import {
+  PosHubService,
+  webhookTimestampIsFresh,
+  WEBHOOK_FRESHNESS_MS,
+} from "../pos-hub/pos-hub.service";
 import { ToastMenuDto, ToastMenuListResponseDto } from "./dto/toast-menu.dto";
 import {
   CreateToastOrderDto,
@@ -69,9 +73,11 @@ export class ToastService {
     private readonly configService: ConfigService,
     private readonly cacheService: CacheService,
     private readonly databaseService: DatabaseService,
+    // F-642: a Toast order is a check, and goes where every other till's
+    // checks go. The hub raises the low-stock alert this service raised.
     @Optional()
-    @Inject(forwardRef(() => LowStockAlertsService))
-    private readonly lowStockAlerts?: LowStockAlertsService,
+    @Inject(forwardRef(() => PosHubService))
+    private readonly posHub?: PosHubService,
   ) {
     this.agentOrchestratorUrl = this.configService.get<string>(
       "AGENT_ORCHESTRATOR_URL",
@@ -197,6 +203,17 @@ export class ToastService {
       this.logger.error(
         "Webhook signature verification failed - no secret configured (fail closed)",
       );
+      return false;
+    }
+
+    // F-639: the signature covers the timestamp, and a timestamp more than
+    // WEBHOOK_FRESHNESS_MS from now is refused, so a captured webhook cannot
+    // be re-sent later to roll a check back.
+    if (!webhookTimestampIsFresh(timestamp)) {
+      this.logger.error({
+        message: `Webhook refused: timestamp missing, unreadable, or more than ${WEBHOOK_FRESHNESS_MS / 60000} minutes from now`,
+        timestamp,
+      });
       return false;
     }
 
@@ -393,14 +410,22 @@ export class ToastService {
   }
 
   /**
-   * Resolve internal restaurant ID from Toast restaurant GUID
+   * Resolve internal restaurant ID from Toast restaurant GUID.
+   *
+   * F-318. This read `restaurants.toast_restaurant_guid`, a column no
+   * migration declares, so PostgREST failed the query on every webhook and
+   * every Toast event landed on "system". The house's Toast GUID lives in
+   * `pos_credentials->>restaurant_guid`, beside `pos_system` (the same mapping
+   * pos_integration_agent.py `get_restaurant_id` reads). Only a house that has
+   * Toast as its POS can claim the GUID; two houses claiming the same one is
+   * an error from `.single()` and stays unmapped rather than picking one.
    */
   private async resolveRestaurantId(toastGuid: string): Promise<string> {
-    // Try to find restaurant by toast_restaurant_guid
     const { data, error } = await this.databaseService.supabase
       .from("restaurants")
       .select("id")
-      .eq("toast_restaurant_guid", toastGuid)
+      .eq("pos_system", "toast")
+      .eq("pos_credentials->>restaurant_guid", toastGuid)
       .single();
 
     if (error || !data) {
@@ -429,7 +454,10 @@ export class ToastService {
       return undefined;
     }
 
-    // Map Toast event type to internal event type
+    // The Toast kind rides in the payload: `events.event_type` and
+    // `events.source_page` are Postgres enums (baseline :107-119, :240-253)
+    // with no POS members, so a `pos_order_*` / `toast_webhook` insert is
+    // refused with 22P02 (F-554).
     const eventTypeMap: Record<string, string> = {
       [ToastWebhookEventType.ORDER_CREATED]: "pos_order_created",
       [ToastWebhookEventType.ORDER_UPDATED]: "pos_order_updated",
@@ -439,6 +467,7 @@ export class ToastService {
     };
 
     const eventPayload = {
+      pos_event: eventTypeMap[webhookDto.eventType] || "pos_event",
       toast_event_id: webhookDto.eventId,
       toast_order_guid: webhookDto.order.guid,
       order_number: webhookDto.order.orderNumber,
@@ -465,8 +494,8 @@ export class ToastService {
       .from("events")
       .insert({
         restaurant_id: restaurantId,
-        event_type: eventTypeMap[webhookDto.eventType] || "pos_event",
-        source_page: "toast_webhook",
+        event_type: "system_event",
+        source_page: "system",
         payload: eventPayload,
         schema_version: 1,
         idempotency_key: `toast_${webhookDto.eventId}`,
@@ -484,11 +513,20 @@ export class ToastService {
         });
         return undefined;
       }
-      throw error;
+      // The event row is a log line, not the sale. A failed log must never
+      // stop the sale taking stock off the shelf (F-554), so it is said
+      // loudly and the effects below still run.
+      this.logger.error(
+        `Toast order event ${webhookDto.eventId} was not logged: ${error.message}`,
+      );
     }
 
-    // Phase 2 POS→pour: a completed sale decrements inventory (glass → pour, bottle → movement).
-    await this.applyOrderSaleEffects(restaurantId, webhookDto);
+    // F-642: the order goes through the POS hub as a Toast check: it is kept
+    // in pos_checks (so it reaches takings), and its stock moves by the
+    // check's ledger, which books a second glass of the same wine, returns
+    // only what a sale took when the order is voided, and corrects an order
+    // edited after it closed.
+    await this.ingestOrderThroughHub(restaurantId, webhookDto);
 
     // NO forward to the orchestrator. Removed 2026-09-01 — see the block comment
     // above `getWebhookMetrics` for the evidence. Short version: the POST went to
@@ -499,220 +537,76 @@ export class ToastService {
   }
 
   /**
-   * Phase 2 POS→pour: turn a completed Toast order into inventory movements.
-   * order.paid / order.closed → decrement (glass sale = record_glass_pour, bottle sale =
-   * apply_stock_movement). order.voided → reverse. Idempotent per (order, menu item), so
-   * retries and closed-then-paid both apply exactly once.
+   * F-642: hand a Toast order webhook to PosHubService.ingest as one Toast
+   * check. Until this, the webhook moved stock on its own path: it wrote no
+   * pos_checks row (no takings), keyed a sale per (order, menu item) so a
+   * second line of the same wine was swallowed as a replay, returned stock on
+   * a void whether or not a sale was booked, and ignored an order updated
+   * after it closed.
+   *
+   * An order is closed when the event says so (closed, paid, voided) or when
+   * it carries a closedAt (an update after close is then a correction). The
+   * order's updatedAt, else the event's timestamp, is the copy's modified-at,
+   * so a late retry of an earlier event is not imported (F-639).
    */
-  private async applyOrderSaleEffects(
+  private async ingestOrderThroughHub(
     restaurantId: string,
     webhookDto: ToastWebhookDto,
   ): Promise<void> {
+    const order = webhookDto.order;
+    if (!order?.guid) return;
+    if (restaurantId === "system") {
+      // F-318: no house claims this Toast GUID, so there is nowhere to keep
+      // the check; it is logged above and moves nothing.
+      this.logger.warn(
+        `Toast order ${order.guid} names no restaurant here; nothing was kept or moved`,
+      );
+      return;
+    }
+    if (!this.posHub) {
+      this.logger.error(
+        `Toast order ${order.guid} was not kept: the POS hub is not available in this process`,
+      );
+      return;
+    }
     const et = webhookDto.eventType;
-    const isSale =
+    const isVoid = et === ToastWebhookEventType.ORDER_VOIDED;
+    const final =
+      isVoid ||
       et === ToastWebhookEventType.ORDER_PAID ||
       et === ToastWebhookEventType.ORDER_CLOSED;
-    const isVoid = et === ToastWebhookEventType.ORDER_VOIDED;
-    if (!isSale && !isVoid) return; // created/updated aren't final — skip
-    const order = webhookDto.order;
-    const items = order?.items ?? [];
-    if (!order || items.length === 0) return;
+    const closedDate = order.closedAt ?? (final ? webhookDto.timestamp : null);
 
-    const db = this.databaseService.supabase;
-    const affectedInventoryIds = new Set<string>();
-
-    for (const line of items) {
-      const menuGuid = line.guid;
-      const qty = Math.max(0, Math.round(line.quantity ?? 0));
-      if (!menuGuid || qty <= 0) continue;
-
-      // Mapping-table-first resolution (decision B21/B22): pos_item_mappings
-      // is the provider-agnostic table (source='toast', external_item_id=
-      // Toast's item guid). toast_item_mappings is retired — its extra
-      // columns (sale_unit, sales rollups) were migrated onto
-      // pos_item_mappings in the SimPOS testbed spine repair.
-      const { data: mapping } = await db
-        .from("pos_item_mappings")
-        .select("inventory_id, sale_unit, item_name")
-        .eq("restaurant_id", restaurantId)
-        .in("source", ["toast", "*"])
-        .eq("external_item_id", menuGuid)
-        .maybeSingle();
-
-      let inventoryId = mapping?.inventory_id as string | undefined;
-      // B36: sale unit comes from the mapping row only — never inferred
-      // from the item name. A wrong glass/bottle unit is a silent cost
-      // error, so an unmapped sale unit falls back to "bottle" rather than
-      // guessing from a name-regex.
-      const saleUnit =
-        (mapping?.sale_unit as "glass" | "bottle" | null) ?? null;
-
-      // Fallback: single-guid mapping on restaurant_inventory.toast_item_guid
-      // (pre-dates pos_item_mappings; still honoured for older data, sale
-      // unit still resolved through the mapping table only).
-      if (!inventoryId) {
-        const { data: inv } = await db
-          .from("restaurant_inventory")
-          .select("id")
-          .eq("restaurant_id", restaurantId)
-          .eq("toast_item_guid", menuGuid)
-          .maybeSingle();
-        inventoryId = inv?.id as string | undefined;
-      }
-
-      if (!inventoryId) {
-        // B20: an unmapped POS line is queued for review, never silently
-        // dropped. supabase-js resolves { error } rather than throwing on
-        // the partial unique index, so a 23505 here just means it's
-        // already queued and open.
-        const { error: queueError } = await db
-          .from("pos_unresolved_lines")
-          .insert({
-            restaurant_id: restaurantId,
-            source: "toast",
-            external_check_id: order.guid,
-            external_item_id: menuGuid,
-            item_name: line.name ?? mapping?.item_name ?? "unknown",
-            qty,
-            price: line.unitPrice ?? null,
-            raw: line,
-          });
-        if (queueError && queueError.code !== "23505") {
-          this.logger.warn(
-            `Failed to queue unresolved Toast line ${line.name}: ${queueError.message}`,
-          );
-        }
-        continue;
-      }
-
-      // ADR 0141, second correction 2026-09-12. A mapping row read for this
-      // restaurant does not make the item it names this restaurant's:
-      // `pos_item_mappings.inventory_id` is a plain FK with no tenant
-      // constraint, and `record_glass_pour` below takes no restaurant, so a
-      // mapping stored wrongly poured another house's shelf on every glass.
-      // Only an id that a read SCOPED TO THIS HOUSE returns may move stock. A
-      // foreign id is queued for review, never poured; a FAILED read cannot
-      // say yes either, so it moves nothing and says why.
-      const { data: ownedItem, error: ownedError } = await db
-        .from("restaurant_inventory")
-        .select("id")
-        .eq("restaurant_id", restaurantId)
-        .eq("id", inventoryId)
-        .maybeSingle();
-      if (ownedError) {
-        this.logger.error(
-          `Toast line ${line.name}: could not confirm that item ${inventoryId} ` +
-            `belongs to restaurant ${restaurantId}, so no stock was moved: ${ownedError.message}`,
-        );
-        continue;
-      }
-      if (!ownedItem) {
-        this.logger.warn(
-          `Toast line ${line.name}: its mapping names item ${inventoryId}, which ` +
-            `is not this restaurant's -- queued for review, not poured`,
-        );
-        const { error: foreignQueueError } = await db
-          .from("pos_unresolved_lines")
-          .insert({
-            restaurant_id: restaurantId,
-            source: "toast",
-            external_check_id: order.guid,
-            external_item_id: menuGuid,
-            item_name: line.name ?? mapping?.item_name ?? "unknown",
-            qty,
-            price: line.unitPrice ?? null,
-            raw: {
-              ...line,
-              unresolved_detail: `the mapping names inventory item ${inventoryId}, which does not belong to this restaurant, so no stock was moved`,
-            },
-          });
-        if (foreignQueueError && foreignQueueError.code !== "23505") {
-          this.logger.warn(
-            `Failed to queue foreign-item Toast line ${line.name}: ${foreignQueueError.message}`,
-          );
-        }
-        continue;
-      }
-      inventoryId = ownedItem.id as string;
-
-      const unit: "glass" | "bottle" = saleUnit ?? "bottle";
-      // B15-equivalent idempotency key for the Toast door specifically.
-      const idem = `toast_${isVoid ? "void" : "sale"}_${order.guid}_${menuGuid}`;
-
-      // supabase-js resolves RPC failures as { error } rather than
-      // throwing — checked explicitly so a failed depletion never reports
-      // success silently (the same class of bug the receiving-door fix
-      // addressed).
-      let rpcError: { message?: string } | null = null;
-      try {
-        if (unit === "glass") {
-          if (isVoid) {
-            // B19: voids reverse glasses as well as bottles.
-            // record_glass_pour has no reversal mode, so a glass void is
-            // booked as a live-stock return of the equivalent glass count —
-            // previously this branch logged a warning and skipped entirely.
-            ({ error: rpcError } = await db.rpc("apply_stock_movement", {
-              p_inventory_id: inventoryId,
-              p_stock_state: "live",
-              p_delta: qty,
-              p_transaction_type: "return",
-              p_source: "pos",
-              p_reason: `POS void (glass): ${line.name}`,
-              p_idempotency_key: idem,
-              // ADR 0141 — the house this POS line is for. `inventoryId` is
-              // resolved from `pos_item_mappings` (or the legacy
-              // `toast_item_guid` column) read with
-              // `.eq("restaurant_id", restaurantId)`; the mapping ROW belongs
-              // here, and its `inventory_id` column carries no tenant
-              // constraint, so a stale or mis-seeded mapping could point at
-              // another house's shelf. It now refuses instead of moving it.
-              p_restaurant_id: restaurantId,
-            }));
-          } else {
-            ({ error: rpcError } = await db.rpc("record_glass_pour", {
-              p_inventory_id: inventoryId,
-              p_pours: qty,
-              p_pour_ml: null,
-              p_location_id: null,
-              p_source: "pos",
-              p_reason: `POS sale: ${line.name}`,
-              p_idempotency_key: idem,
-            }));
-          }
-        } else {
-          ({ error: rpcError } = await db.rpc("apply_stock_movement", {
-            p_inventory_id: inventoryId,
-            p_stock_state: "live",
-            p_delta: isVoid ? qty : -qty,
-            p_transaction_type: isVoid ? "return" : "sale",
-            p_source: "pos",
-            p_reason: `POS ${isVoid ? "void" : "sale"}: ${line.name}`,
-            p_idempotency_key: idem,
-            // ADR 0141 — same mapping-derived id, same refusal.
-            p_restaurant_id: restaurantId,
-          }));
-        }
-        if (rpcError) {
-          this.logger.warn(
-            `POS sale effect failed for ${line.name} (${unit}): ${rpcError.message}`,
-          );
-        } else {
-          affectedInventoryIds.add(inventoryId);
-        }
-      } catch (err: any) {
-        this.logger.warn(
-          `POS sale effect threw for ${line.name} (${unit}): ${err?.message}`,
-        );
-      }
-    }
-
-    // Real-time low-stock edge check for every wine this order touched — one
-    // grouped alert if any just crossed par. Fire-and-forget so POS ingestion
-    // is never slowed or blocked by alerting.
-    if (this.lowStockAlerts && affectedInventoryIds.size > 0) {
-      void this.lowStockAlerts
-        .evaluateInventoryItems(restaurantId, [...affectedInventoryIds])
-        .catch(() => undefined);
+    // A disconnected house refuses Toast as it refuses every till (F-643).
+    await this.posHub.assertConnected(restaurantId, "toast");
+    const result = await this.posHub.ingest(restaurantId, "toast", {
+      checks: [
+        {
+          guid: order.guid,
+          openedDate: order.createdAt ?? webhookDto.timestamp,
+          closedDate,
+          modifiedDate: order.updatedAt ?? webhookDto.timestamp,
+          voided: isVoid,
+          amount: order.subtotal ?? null,
+          totalAmount: order.total ?? null,
+          table: order.tableName ? { name: order.tableName } : undefined,
+          server: order.serverName
+            ? { firstName: order.serverName }
+            : undefined,
+          selections: (order.items ?? []).map((item) => ({
+            displayName: item.name,
+            item: { guid: item.guid },
+            quantity: item.quantity,
+            price: item.unitPrice,
+            salesCategory: item.category ? { name: item.category } : undefined,
+          })),
+        },
+      ],
+    });
+    if (result.errors.length > 0) {
+      this.logger.warn(
+        `Toast order ${order.guid}: ${result.errors.slice(0, 5).join("; ")}`,
+      );
     }
   }
 
@@ -729,6 +623,7 @@ export class ToastService {
     }
 
     const eventPayload = {
+      pos_event: `pos_stock_${webhookDto.eventType.split(".")[1]}`,
       toast_event_id: webhookDto.eventId,
       toast_item_guid: webhookDto.stock.itemGuid,
       item_name: webhookDto.stock.itemName,
@@ -743,8 +638,9 @@ export class ToastService {
       .from("events")
       .insert({
         restaurant_id: restaurantId,
-        event_type: `pos_stock_${webhookDto.eventType.split(".")[1]}`,
-        source_page: "toast_webhook",
+        // Valid enum members only (F-554); the Toast kind is in the payload.
+        event_type: "inventory_change",
+        source_page: "system",
         payload: eventPayload,
         schema_version: 1,
         idempotency_key: `toast_${webhookDto.eventId}`,
@@ -781,6 +677,7 @@ export class ToastService {
     await this.cacheService.invalidateByPattern("toast:menus:*");
 
     const eventPayload = {
+      pos_event: webhookDto.eventType.replace(".", "_"),
       toast_event_id: webhookDto.eventId,
       menu_guid: webhookDto.menu?.menuGuid,
       menu_name: webhookDto.menu?.menuName,
@@ -792,8 +689,9 @@ export class ToastService {
       .from("events")
       .insert({
         restaurant_id: restaurantId,
-        event_type: webhookDto.eventType.replace(".", "_"),
-        source_page: "toast_webhook",
+        // Valid enum members only (F-554); the Toast kind is in the payload.
+        event_type: "system_event",
+        source_page: "system",
         payload: eventPayload,
         schema_version: 1,
         idempotency_key: `toast_${webhookDto.eventId}`,

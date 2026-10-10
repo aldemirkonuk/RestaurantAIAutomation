@@ -27,6 +27,8 @@ function makeDb(insertResult: (row: Row) => { error: any }) {
         select: () => q,
         eq: () => q,
         in: () => q,
+        // What earlier imports of the check moved: nothing (sim wave 8).
+        like: async () => ({ data: [], error: null }),
         upsert: async (row: Row) => {
           if (table === "wine_consumption_log") upserts.push(row);
           return { error: null };

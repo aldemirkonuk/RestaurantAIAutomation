@@ -489,6 +489,9 @@ export class ProspectsService {
           restaurant_id: restaurantId,
           name: p.sender_name || p.domain,
           contact_email: p.sender_email ?? null,
+          // NOT NULL with no default (baseline :4858): leaving it out made
+          // every new sender's promote fail with 23502 (F-555).
+          primary_contact: {},
           is_custom: true,
           is_active: true,
         })

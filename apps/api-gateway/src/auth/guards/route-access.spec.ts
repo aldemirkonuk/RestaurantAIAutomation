@@ -122,6 +122,11 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // orders/:id/history, a line's history on the desk, with
     // @Roles("owner", "manager") on the method, the queue's rule (ADR 0167)
     // applied to the desk's newest route. It admits no admin, like the queue.
+    // A nineteenth, PosHubController, is sim F-643's own change: the owner
+    // can disconnect a till (POST connections/:restaurantId/:provider) with
+    // @Roles("owner"), owner alone because unplugging a till stops the
+    // house's sales and stock feed. Every other route on it stays "open",
+    // as it was.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -135,6 +140,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "distributor-feed/distributor-feed.controller.ts",
       "house/house-counter.controller.ts",
       "house/house-day.controller.ts",
+      "pos-hub/pos-hub.controller.ts",
       "price-index/price-index.controller.ts",
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",

@@ -6,6 +6,7 @@ import { ToastController } from "./toast.controller";
 import { ToastService } from "./toast.service";
 import { ToastAuthService } from "./toast-auth.service";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { PosHubModule } from "../pos-hub/pos-hub.module";
 
 /**
  * Toast API Module
@@ -31,6 +32,8 @@ import { NotificationsModule } from "../notifications/notifications.module";
     CacheModule,
     DatabaseModule,
     forwardRef(() => NotificationsModule),
+    // F-642: Toast order webhooks are ingested by the POS hub.
+    forwardRef(() => PosHubModule),
   ],
   controllers: [ToastController],
   providers: [ToastService, ToastAuthService],

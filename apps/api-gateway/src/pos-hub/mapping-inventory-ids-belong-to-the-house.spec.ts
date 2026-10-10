@@ -1,8 +1,6 @@
 import { ForbiddenException } from "@nestjs/common";
 import { PosHubService } from "./pos-hub.service";
 import { CatalogMatcherService } from "./catalog-matcher.service";
-import { ToastService } from "../toast/toast.service";
-import { ToastWebhookEventType } from "../toast/dto/toast-webhook.dto";
 
 /**
  * ADR 0141, second correction 2026-09-12. A POS glass line poured another
@@ -100,6 +98,8 @@ function houseClient(opts: { mappings?: Row[]; proposals?: Row[] } = {}) {
           return q;
         },
         neq: () => q,
+        // What earlier imports of the check moved: nothing (sim wave 8).
+        like: () => q,
         is: () => q,
         not: () => q,
         order: () => q,
@@ -271,54 +271,7 @@ describe("a mapping ALREADY stored with another house's item cannot pour it", ()
     expect(calls.unresolved).toHaveLength(0);
   });
 
-  function toast(client: any): ToastService {
-    const svc = Object.create(ToastService.prototype) as any;
-    svc.databaseService = { supabase: client };
-    svc.logger = quietLogger;
-    return svc as ToastService;
-  }
-
-  const toastMapping = (inventoryId: string): Row => ({
-    restaurant_id: HOUSE_B,
-    source: "toast",
-    external_item_id: "toast-item-1",
-    item_name: "House glass",
-    inventory_id: inventoryId,
-    sale_unit: "glass",
-  });
-  const toastOrder = {
-    eventId: "evt-1",
-    eventType: ToastWebhookEventType.ORDER_CLOSED,
-    restaurantGuid: "toast-rest-b",
-    timestamp: "2026-09-12T21:00:00.000Z",
-    order: {
-      guid: "order-1",
-      items: [
-        { guid: "toast-item-1", name: "House glass", quantity: 5, unitPrice: 12 },
-      ],
-    },
-  };
-
-  it("ToastService.applyOrderSaleEffects: a foreign item is queued, record_glass_pour is never called", async () => {
-    const { client, calls, rpc } = houseClient({
-      mappings: [toastMapping(ITEM_A)],
-    });
-    await (toast(client) as any).applyOrderSaleEffects(HOUSE_B, toastOrder);
-    expect(rpc).not.toHaveBeenCalled();
-    expect(calls.unresolved).toEqual([
-      expect.objectContaining({ restaurant_id: HOUSE_B, source: "toast" }),
-    ]);
-  });
-
-  it("ToastService.applyOrderSaleEffects: the caller's own item still pours (control)", async () => {
-    const { client, calls, rpc } = houseClient({
-      mappings: [toastMapping(ITEM_B)],
-    });
-    await (toast(client) as any).applyOrderSaleEffects(HOUSE_B, toastOrder);
-    expect(rpc).toHaveBeenCalledWith(
-      "record_glass_pour",
-      expect.objectContaining({ p_inventory_id: ITEM_B, p_pours: 5 }),
-    );
-    expect(calls.unresolved).toHaveLength(0);
-  });
+  // The Toast webhook's own depletion (applyOrderSaleEffects) is gone: since
+  // sim F-642 a Toast order is a check PosHubService.ingest takes, so the
+  // two applyStockEffects cases above are the Toast path's guard too.
 });
