@@ -24,7 +24,7 @@ import { useFeed, useHouses, useUnreadCount } from "@/api/queries";
 import { openHouse } from "@/auth/houseChoice";
 import { todayHeader } from "@/lib/todayHeader";
 import { useFeedLocal } from "@/state/feedLocal";
-import { useOutbox } from "@/state/outbox";
+import { useOutbox, waitingFeedItems } from "@/state/outbox";
 import { useSession } from "@/state/session";
 import type { FeedItem } from "@/api/types";
 import { TipStrip } from "@/guidance/TipStrip";
@@ -97,7 +97,9 @@ export default function TodayScreen() {
     setLocallyGone((prev) => {
       const next = new Set(prev);
       for (const f of failed) {
-        if (f.feedItemId) {
+        // A price refused after its count went through (F-949) is done: its
+        // card does not come back.
+        if (f.feedItemId && !f.priceRefused) {
           next.delete(f.feedItemId);
           useFeedLocal.getState().unhide(f.feedItemId);
         }
@@ -107,8 +109,11 @@ export default function TodayScreen() {
   }, [failed.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // hidden = items being handled outside their card (e.g. the draft screen).
+  // waiting = items whose action still waits on this phone; both in-memory
+  // sets are empty after a restart, the outbox is not (F-951).
+  const waiting = waitingFeedItems(entries, user);
   const items = (data?.items ?? []).filter(
-    (i) => !locallyGone.has(i.id) && !hidden[i.id],
+    (i) => !locallyGone.has(i.id) && !hidden[i.id] && !waiting.has(i.id),
   );
 
   // Feed Zero fires when the last visible decision leaves — once per session.
@@ -324,7 +329,9 @@ export default function TodayScreen() {
                           the house did it, someone else got there first, and the
                           409 says who and when (founder, 2026-09-05, batch 46). */}
                       <AppText variant="footnote" tone="danger">
-                        {f.alreadyDone
+                        {f.priceRefused
+                          ? `${f.label} — counted, price not taken`
+                          : f.alreadyDone
                           ? `${f.label} — already done`
                           : `${f.label} didn't go through`}
                       </AppText>
@@ -336,7 +343,7 @@ export default function TodayScreen() {
                         <AppText
                           variant="caption"
                           tone="tertiary"
-                          numberOfLines={f.alreadyDone ? 3 : 1}
+                          numberOfLines={f.priceRefused ? 6 : f.alreadyDone ? 3 : 1}
                         >
                           {f.lastError}
                         </AppText>

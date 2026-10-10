@@ -11,6 +11,7 @@ import { useSession } from "@/state/session";
 import { useHouses } from "@/api/queries";
 import { openHouse } from "@/auth/houseChoice";
 import { clearPersistedQueries } from "@/lib/queryClient";
+import { confirmSignOut } from "@/lib/confirmSignOut";
 import { registerPush, unregisterPush } from "@/lib/push";
 import { trackGuidance } from "@/guidance/analytics";
 import { useGuidanceOptional } from "@/guidance/GuidanceProvider";
@@ -28,11 +29,13 @@ export default function SettingsScreen() {
     trackGuidance("services_visited", { source: "settings" });
   }, []);
 
-  const handleSignOut = async () => {
-    // The push device is unregistered by signOut itself (src/lib/push.ts).
-    clearPersistedQueries();
-    await signOut();
-  };
+  const handleSignOut = () =>
+    // Unsent work is named before it is left behind (F-952).
+    confirmSignOut(async () => {
+      // The push device is unregistered by signOut itself (src/lib/push.ts).
+      clearPersistedQueries();
+      await signOut();
+    });
 
   const pushOn = !!guidance?.servicePermissions?.push;
 

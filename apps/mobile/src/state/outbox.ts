@@ -53,6 +53,12 @@ export interface OutboxEntry {
    * alone (F-806). It is re-sent once; a second refusal parks it.
    */
   moneyStripped?: boolean;
+  /**
+   * The house's sentence when a manager's price was refused (F-949) and the
+   * count went through alone. The entry then stays on Today, done and
+   * dismiss-only, so the manager reads why the price was not taken.
+   */
+  priceRefused?: string;
   /** Query keys to invalidate after success. */
   invalidate?: unknown[][];
   /** Feed item to restore if the entry is undone or permanently fails. */
@@ -210,6 +216,46 @@ export function waitingWork(
   return { here, otherHouses };
 }
 
+/**
+ * Feed items whose action is still waiting on this phone (F-951). The card
+ * stays hidden while its entry waits, also after the app restarts: the feed is
+ * saved to disk and so is the outbox, but the in-memory "hidden" set is not.
+ */
+export function waitingFeedItems(
+  entries: OutboxEntry[],
+  user: { id?: string } | null,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const e of entries) {
+    if (e.status === "failed" || !e.feedItemId || !user?.id) continue;
+    if (e.actorUserId === user.id) ids.add(e.feedItemId);
+  }
+  return ids;
+}
+
+/**
+ * What signing out leaves behind on this phone (F-952): every entry of this
+ * person's that has not gone through, waiting or refused. It stays here and sends only when they sign in on
+ * this phone again; nobody else who signs in sees it.
+ */
+export function unsentAtSignOut(
+  entries: OutboxEntry[],
+  userId: string | null | undefined,
+): number {
+  if (!userId) return 0;
+  return entries.filter((e) => e.actorUserId === userId && !e.alreadyDone).length;
+}
+
+/** The sign-out warning, or null when nothing of theirs is waiting. */
+export function signOutWords(unsent: number): string | null {
+  if (unsent <= 0) return null;
+  const what = unsent === 1 ? "1 thing you did has" : `${unsent} things you did have`;
+  return (
+    `${what} not been sent yet. ${unsent === 1 ? "It stays" : "They stay"} on this phone and ` +
+    `${unsent === 1 ? "sends" : "send"} only when you sign in here again; nobody else who signs in will see ${unsent === 1 ? "it" : "them"}.`
+  );
+}
+
 /** The strip's sentence, or null when nothing is waiting. */
 export function waitingWords(w: { here: number; otherHouses: number }): string | null {
   const parts: string[] = [];
@@ -275,7 +321,17 @@ async function runDispatch() {
       idempotencyKey: next.id,
       scope: { userId: next.actorUserId!, restaurantId: next.restaurantId! },
     });
-    remove(next.id);
+    if (next.priceRefused) {
+      // The count went through without the price (F-949). Keep the house's
+      // sentence on Today until the manager dismisses it.
+      mark(next.id, {
+        status: "failed",
+        alreadyDone: true,
+        lastError: `The count was saved without the price. ${next.priceRefused}`,
+      });
+    } else {
+      remove(next.id);
+    }
     for (const key of next.invalidate ?? []) {
       queryClient.invalidateQueries({ queryKey: key });
     }
@@ -298,6 +354,17 @@ async function runDispatch() {
       err.status >= 500 &&
       (err.body as { reason?: unknown } | undefined)?.reason !==
         "refresh_not_reached";
+    // "STILL BEING SAVED FROM YOUR LAST TRY" IS NOT A REFUSAL (F-950).
+    //
+    // The gateway answers 409 with reason `still_running` when this same key
+    // is still running there: a force-quit mid-send, or a slow first try that
+    // passed the 15 s timeout. The first try may yet land, so the entry waits
+    // and asks again; the stored answer comes back then. It never parks and
+    // never counts as a server error.
+    const stillRunning =
+      err instanceof ApiError &&
+      err.status === 409 &&
+      (err.body as { reason?: unknown } | undefined)?.reason === "still_running";
     // A RECEIPT REFUSED FOR ITS PRICE KEEPS ITS COUNT (F-806).
     //
     // Since F-802 the gateway answers 403 to a staff receipt that carries an
@@ -306,16 +373,36 @@ async function runDispatch() {
     // here with the bottles counted at the door. Send it once more with the
     // money taken out; the count, the rejection and the note go through, and a
     // manager checks the price.
+    //
+    // A manager's price is refused too, and nothing is written (F-949): a 409
+    // when the order's invoice has no currency filed, a 400 when the code names
+    // no currency. Sending the same price again could never clear it. The count
+    // goes once more without the price, as the refusal itself offers, and the
+    // refusal is kept so the manager reads why the price was not taken.
+    const priceRefusal =
+      err instanceof ApiError &&
+      (err.status === 400 || err.status === 409) &&
+      !stillRunning &&
+      alreadyDeliveredRefusal(err) == null;
     const countOnly =
-      err instanceof ApiError && err.status === 403 && !next.moneyStripped
+      err instanceof ApiError &&
+      (err.status === 403 || priceRefusal) &&
+      !next.moneyStripped
         ? withoutReceiptMoney(next.path, next.body)
         : null;
-    if (countOnly) {
+    if (stillRunning) {
+      const attempts = next.attempts + 1;
+      mark(next.id, { status: "pending", attempts });
+      scheduleDispatch(Math.min(30_000, 2 ** attempts * 1000));
+    } else if (countOnly) {
       mark(next.id, {
         status: "pending",
         body: countOnly,
         moneyStripped: true,
         attempts: 0,
+        ...(priceRefusal && err instanceof Error
+          ? { priceRefused: err.message }
+          : {}),
       });
       scheduleDispatch(0);
     } else if (isPermanent) {

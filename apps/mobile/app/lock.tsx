@@ -8,6 +8,7 @@ import { Screen } from "@/components/ui/Screen";
 import { color, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
 import { useSession } from "@/state/session";
+import { confirmSignOut } from "@/lib/confirmSignOut";
 
 /**
  * Biometric gate between "tokens exist" and "data visible". Devices without
@@ -73,7 +74,7 @@ export default function LockScreen() {
                 Try again
               </AppText>
             </PressableScale>
-            <PressableScale onPress={() => signOut()}>
+            <PressableScale onPress={() => confirmSignOut(signOut)}>
               <AppText variant="footnote" tone="tertiary">
                 Sign in with password instead
               </AppText>
