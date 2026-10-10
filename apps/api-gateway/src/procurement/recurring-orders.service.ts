@@ -1056,43 +1056,46 @@ export class RecurringOrdersService {
       throw err;
     }
 
-    // 2. Auto-approve if configured, otherwise notify for approval
+    // 2. Ask a person to approve it. ALWAYS — including a schedule that still
+    // says `auto_approve`. Approving takes a seal from a person's hold, so the
+    // old `approveOrder(...)` here with no seal was refused every time, and it
+    // threw BEFORE step 5: the schedule never advanced, and every morning it
+    // re-merged into its own open order with nobody told. Such a schedule is
+    // now raised for approval like any other, and the log says why.
     if (recurringOrder.auto_approve) {
-      await this.procurementService.approveOrder(
-        recurringOrder.restaurant_id,
-        order.id,
-        userId,
+      this.logger.warn(
+        `Recurring order ${recurringOrder.id} is set to approve itself, which ` +
+          `this house cannot do without a person's hold. Order ` +
+          `${order.orderNumber} was raised for approval instead.`,
       );
-      this.logger.log(`Recurring order ${order.id} auto-approved`);
-    } else {
-      const subject = describeScheduleSubject(recurringOrder);
-      try {
-        await this.orchestratorService.publishEvent(
-          "recurring.events",
-          "recurring.order.approval_needed",
-          {
-            restaurant_id: recurringOrder.restaurant_id,
-            recurring_order_id: recurringOrder.id,
-            order_id: order.id,
-            order_number: order.orderNumber,
-            wine_name: recurringOrder.wine_name,
-            quantity: recurringOrder.quantity,
-            unit_type: recurringOrder.unit_type,
-            preferred_providers: recurringOrder.provider_name
-              ? [recurringOrder.provider_name]
-              : [],
-            message: `Recurring order ${order.orderNumber} for ${subject.label} requires your approval`,
-          },
-        );
-      } catch (pubErr) {
-        // LOUD. This is the only thing that tells a human an order is sitting
-        // unapproved; losing it silently means the order never ships and
-        // nobody knows why.
-        this.logger.error(
-          `Order ${order.orderNumber} needs approval but the notification was ` +
-            `not published: ${pubErr?.message}`,
-        );
-      }
+    }
+    const subject = describeScheduleSubject(recurringOrder);
+    try {
+      await this.orchestratorService.publishEvent(
+        "recurring.events",
+        "recurring.order.approval_needed",
+        {
+          restaurant_id: recurringOrder.restaurant_id,
+          recurring_order_id: recurringOrder.id,
+          order_id: order.id,
+          order_number: order.orderNumber,
+          wine_name: recurringOrder.wine_name,
+          quantity: recurringOrder.quantity,
+          unit_type: recurringOrder.unit_type,
+          preferred_providers: recurringOrder.provider_name
+            ? [recurringOrder.provider_name]
+            : [],
+          message: `Recurring order ${order.orderNumber} for ${subject.label} requires your approval`,
+        },
+      );
+    } catch (pubErr) {
+      // LOUD. This is the only thing that tells a human an order is sitting
+      // unapproved; losing it silently means the order never ships and
+      // nobody knows why.
+      this.logger.error(
+        `Order ${order.orderNumber} needs approval but the notification was ` +
+          `not published: ${pubErr?.message}`,
+      );
     }
 
     // 3. Complete the pre-created calendar event + create the delivery event.
@@ -1224,7 +1227,8 @@ export class RecurringOrdersService {
           quantity: recurringOrder.quantity,
           unit_type: recurringOrder.unit_type,
           provider_name: recurringOrder.provider_name,
-          auto_approved: recurringOrder.auto_approve,
+          // Never true: nothing here approves (step 2).
+          auto_approved: false,
           next_order_date: nextDate,
         },
       );
