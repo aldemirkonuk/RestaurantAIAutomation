@@ -44,8 +44,10 @@ export class CreateInventoryItemDto {
   @IsOptional()
   providerId?: string;
 
-  @ApiProperty({ description: "Initial stock quantity" })
-  @IsNumber()
+  // Whole bottles: the stock ledger counts integers (ADR 0070), so 2.5 is
+  // refused here rather than failing at the write (F-1068).
+  @ApiProperty({ description: "Initial stock quantity, in whole bottles" })
+  @IsInt()
   @Min(0)
   stockLive: number;
 

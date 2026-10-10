@@ -102,15 +102,18 @@ export function readingRefusals(r: BottleReading): Record<string, string> {
   const out: Record<string, string> = {};
   if (!r.name || r.name.trim().length < 3) out.name = 'A name of at least three letters.';
   if (!r.producer || !r.producer.trim()) out.producer = 'Say who made it.';
-  if (
-    r.vintage !== null &&
-    r.vintage !== undefined &&
-    (r.vintage < 1900 || r.vintage > new Date().getFullYear())
-  ) {
-    out.vintage = `A vintage between 1900 and ${new Date().getFullYear()}, or none at all.`;
-  }
+  const v = vintageRefusal(r.vintage);
+  if (v) out.vintage = v;
   if (!r.type) out.type = 'Say what kind of wine it is.';
   return out;
+}
+
+/** Why a vintage cannot stand (1900 to this year, or none), or null when it can. */
+export function vintageRefusal(v: number | null | undefined): string | null {
+  if (v === null || v === undefined) return null;
+  return v < 1900 || v > new Date().getFullYear()
+    ? `A vintage between 1900 and ${new Date().getFullYear()}, or none at all.`
+    : null;
 }
 
 /**

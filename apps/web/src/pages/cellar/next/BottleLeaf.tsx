@@ -42,6 +42,7 @@ import {
   knowledgeNote,
   libraryHiddenWhy,
   libraryMoney,
+  decimal,
   money,
   tanninTicks,
   volume,
@@ -237,7 +238,12 @@ export default function BottleLeaf({
   restaurantId,
   onClose,
 }: BottleLeafProps) {
-  const [qty, setQty] = useState(6);
+  // A string draft, not a number: snapping '' to 1 meant clearing the field
+  // and typing 6 gave 16 (F-1070, rehit of F-866). `qty` is the whole number
+  // of bottles the draft says, or null while it says none.
+  const [qtyDraft, setQtyDraft] = useState('6');
+  const qty = /^\d+$/.test(qtyDraft.trim()) && Number(qtyDraft) >= 1 ? Number(qtyDraft) : null;
+  const qtyNote = qty === null ? 'Write a whole number of bottles, 1 or more.' : null;
   const [vendorId, setVendorId] = useState<string>(bottle.cellar?.providerId ?? '');
   const [said, setSaid] = useState<string | null>(null);
 
@@ -274,7 +280,7 @@ export default function BottleLeaf({
     ? 'This bottle is not in the cellar yet. Only a bottle in the cellar can be ordered, so bring it in first.'
     : !vendorId
       ? 'Choose the vendor this order goes to.'
-      : null;
+      : qtyNote;
 
   return (
     <div className="cl-panel" data-testid="bottle-leaf">
@@ -402,23 +408,29 @@ export default function BottleLeaf({
                   className="cl-field cl-focus cl-num"
                   type="number"
                   min={1}
-                  value={qty}
-                  onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+                  step={1}
+                  value={qtyDraft}
+                  onChange={(e) => setQtyDraft(e.target.value)}
                   style={{ width: 74 }}
                 />
                 <button
                   type="button"
                   className="cl-btn cl-focus"
-                  disabled={bringIn.isPending || !restaurantId}
+                  disabled={bringIn.isPending || !restaurantId || qty === null}
                   onClick={() =>
+                    qty !== null &&
                     bringIn.mutate(
                       { wineId: bottle.id, stockLive: qty },
                       {
                         onSuccess: () => setSaid(`Booked into the cellar — ${qty} on hand.`),
-                        onError: (e: unknown) =>
+                        onError: (e: unknown) => {
+                          // The wine can be on the list with its bottles
+                          // unrecorded (F-1068): re-read so the leaf shows it.
+                          void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
                           setSaid(
                             `Nothing was booked (${e instanceof Error ? e.message : 'no reason given'}).`,
-                          ),
+                          );
+                        },
                       },
                     )
                   }
@@ -426,6 +438,7 @@ export default function BottleLeaf({
                   {bringIn.isPending ? 'Booking…' : 'Bring into the cellar'}
                 </button>
               </div>
+              {qtyNote ? <p className="cl-note">{qtyNote}</p> : null}
             </>
           ) : (
             <>
@@ -509,8 +522,8 @@ export default function BottleLeaf({
                   : cellar.velocityPerDay === null
                     ? 'Selling pace: not measured yet — no sales of this bottle have been recorded.'
                     : cellar.daysSinceSale === null
-                      ? `Selling ~${cellar.velocityPerDay.toFixed(1)}/day.`
-                      : `Selling ~${cellar.velocityPerDay.toFixed(1)}/day · last sold ${cellar.daysSinceSale} ${cellar.daysSinceSale === 1 ? 'day' : 'days'} ago.`}
+                      ? `Selling ~${decimal(cellar.velocityPerDay, 1)}/day.`
+                      : `Selling ~${decimal(cellar.velocityPerDay, 1)}/day · last sold ${cellar.daysSinceSale} ${cellar.daysSinceSale === 1 ? 'day' : 'days'} ago.`}
               </p>
 
               <hr className="cl-rule-thin" style={{ margin: '12px 0' }} />
@@ -570,8 +583,9 @@ export default function BottleLeaf({
               className="cl-field cl-focus cl-num"
               type="number"
               min={1}
-              value={qty}
-              onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+              step={1}
+              value={qtyDraft}
+              onChange={(e) => setQtyDraft(e.target.value)}
               style={{ width: 74 }}
             />
           </div>
@@ -587,7 +601,7 @@ export default function BottleLeaf({
             {orderBlocked ? (
               <>
                 <button type="button" className="cl-btn" disabled>
-                  Order {qty}
+                  {qty === null ? 'Order' : `Order ${qty}`}
                 </button>
                 <p className="cl-note" style={{ marginTop: 6 }}>
                   {orderBlocked}
@@ -617,7 +631,7 @@ export default function BottleLeaf({
                   order.mutateAsync({
                     inventoryId: cellar!.inventoryId,
                     providerId: vendorId,
-                    quantity: qty,
+                    quantity: qty!,
                   })
                 }
               />

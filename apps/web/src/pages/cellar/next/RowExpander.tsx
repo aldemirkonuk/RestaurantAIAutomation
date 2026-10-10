@@ -47,7 +47,7 @@
 
 import { useMemo } from 'react';
 import { AlertTriangle, Ban, LineChart } from 'lucide-react';
-import { EM, catalogueMoney, money, shortDate, type RegisterId } from './cellar-format';
+import { EM, catalogueMoney, decimal, money, shortDate, type RegisterId } from './cellar-format';
 import { velocity, whenItSells, type TillLine } from './rowSeries';
 import type { BookRecordVM, RegisterRowVM, RowRecordVM } from './useCellarNextData';
 
@@ -301,7 +301,7 @@ export default function RowExpander({
         <KV k="Last paid, each" v={money(paidUnit)} />
         <KV k="On our list" v={money(listPrice)} />
         <KV k="Catalogue reference" v={catalogueMoney(reference)} />
-        <KV k="Markup" v={markup === null ? EM : `${markup.toFixed(1)}x`} />
+        <KV k="Markup" v={markup === null ? EM : `${decimal(markup, 1)}x`} />
         <p className="cl-note" style={{ marginTop: 6 }}>
           {paidUnit === null
             ? 'No invoice line carries a unit price for this, so the markup is unknown rather than 0.'
@@ -347,7 +347,7 @@ export default function RowExpander({
               <span>{vel.from}</span>
               <span>{vel.to}</span>
             </div>
-            <KV k="Per day, over that span" v={vel.perDay === null ? EM : vel.perDay.toFixed(1)} />
+            <KV k="Per day, over that span" v={vel.perDay === null ? EM : decimal(vel.perDay, 1)} />
             <p className="cl-note" style={{ marginTop: 4 }}>
               {vel.days.length} day{vel.days.length === 1 ? '' : 's'} of evidence
               {vel.clipped ? ', capped at the last 14' : ''}. Days before the first

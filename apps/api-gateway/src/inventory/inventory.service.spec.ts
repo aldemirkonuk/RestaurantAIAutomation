@@ -1523,4 +1523,50 @@ describe("InventoryService", () => {
       ).rejects.toThrow("its 12 bottles were not recorded");
     });
   });
+
+  describe("createInventoryItem — a new wine's opening stock (F-1068)", () => {
+    const fresh = () => {
+      mockSingle
+        .mockResolvedValueOnce({
+          data: { name: "Barolo Riserva" },
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { code: "PGRST116", message: "not found" },
+        })
+        .mockResolvedValueOnce({
+          data: { id: "inv-new", wine_name: "Barolo Riserva" },
+          error: null,
+        });
+    };
+
+    it("fails the add when the bottles typed in were not recorded", async () => {
+      fresh();
+      mockRpc.mockImplementation(async (fn: string) =>
+        fn === "apply_stock_movement"
+          ? { data: null, error: { message: "lot refused" } }
+          : { data: null, error: null },
+      );
+      await expect(
+        service.createInventoryItem("rest-1", {
+          wineId: "mw-10",
+          stockLive: 6,
+        } as any),
+      ).rejects.toThrow("its 6 bottles were not recorded");
+    });
+
+    it("refuses half a bottle at the door", async () => {
+      const { plainToInstance } = await import("class-transformer");
+      const { validate } = await import("class-validator");
+      const { CreateInventoryItemDto } = await import("./dto/inventory.dto");
+      const errors = await validate(
+        plainToInstance(CreateInventoryItemDto, {
+          wineId: "6f1c2a8e-3b4d-4e5f-8a9b-0c1d2e3f4a5b",
+          stockLive: 2.5,
+        }),
+      );
+      expect(errors.map((e) => e.property)).toContain("stockLive");
+    });
+  });
 });

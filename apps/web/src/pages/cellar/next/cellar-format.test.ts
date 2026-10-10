@@ -18,9 +18,12 @@ import {
   handlingSentence,
   matchNote,
   quoteSource,
+  decimal,
   shortDate,
   tanninTicks,
+  volume,
 } from './cellar-format';
+import { setHouseLocale } from '../../../lib/houseCurrency';
 
 describe('shortDate', () => {
   /**
@@ -184,5 +187,20 @@ describe('composedTastingSentence', () => {
     expect(composedTastingSentence(null, 'high', 'dry')).toBeNull();
     expect(composedTastingSentence('full', null, 'dry')).toBeNull();
     expect(composedTastingSentence('full', 'high', null)).toBeNull();
+  });
+});
+
+describe('decimals use the house mark (F-1070, rehit of F-866)', () => {
+  it('writes 1,5 and 1,50L in a lira house, 1.5 and 1.50L in a dollar house', () => {
+    setHouseLocale('tr-TR');
+    try {
+      expect(decimal(1.5, 1)).toBe('1,5');
+      expect(volume(1500)).toBe('1,50L');
+    } finally {
+      setHouseLocale('en-US');
+    }
+    expect(decimal(1.5, 1)).toBe('1.5');
+    expect(volume(1500)).toBe('1.50L');
+    expect(volume(750)).toBe('750ml');
   });
 });

@@ -16,7 +16,7 @@
  *    asserts nothing.
  */
 
-import { formatHouseMoney, getHouseCurrency } from '../../../lib/houseCurrency';
+import { formatHouseMoney, getHouseCurrency, getHouseLocale } from '../../../lib/houseCurrency';
 
 export const EM = '—';
 
@@ -119,11 +119,24 @@ export function refPrice(v: unknown): number | null {
   return n === null || n === 0 ? null : n;
 }
 
-/** "750ml" / "1.5L" / the dash. */
+/**
+ * A figure with fixed decimals, written with the house's own decimal mark —
+ * "1,5" in a lira house, beside money that already reads "₺1.250,00"
+ * (F-1070, rehit of F-866). `toFixed` always wrote ".".
+ */
+export function decimal(n: number, digits: number): string {
+  return n.toLocaleString(getHouseLocale(), {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  });
+}
+
+/** "750ml" / "1.5L" (house mark) / the dash. */
 export function volume(ml: number | null | undefined): string {
   const n = num(ml);
   if (n === null || n <= 0) return EM;
-  return n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 1 : 2)}L` : `${n}ml`;
+  return n >= 1000 ? `${decimal(n / 1000, n % 1000 === 0 ? 1 : 2)}L` : `${n}ml`;
 }
 
 /** A vintage year, or the dash. Never "NV" — that is a claim, absence is not. */
