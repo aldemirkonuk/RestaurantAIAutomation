@@ -583,15 +583,24 @@ describe("ScheduleService — F-348: two staff claiming one open shift", () => {
     const db = withTwoStaff();
     const svc = service(db);
     const realFrom = db.supabase.from.bind(db.supabase);
-    let shiftCalls = 0;
+    // Bea wins the race just as Ali's claim (the shifts UPDATE) is sent, and
+    // every read after it fails. Keyed on the claim itself, not on a call
+    // count, so a pre-claim read added elsewhere cannot move the race.
+    let raced = false;
     (db.supabase as any).from = (t: string) => {
-      if (t === "shifts" && ++shiftCalls === 3) {
-        const row = db.tables.shifts.find((s) => s.id === "sh-open")!;
-        row.member_id = "m-bea";
-        row.state = "covered";
-        db.errors[`${table}:select`] = { message: "timeout" };
+      const q = realFrom(t);
+      if (t === "shifts" && !raced) {
+        const update = q.update.bind(q);
+        q.update = (payload: any) => {
+          raced = true;
+          const row = db.tables.shifts.find((s) => s.id === "sh-open")!;
+          row.member_id = "m-bea";
+          row.state = "covered";
+          db.errors[`${table}:select`] = { message: "timeout" };
+          return update(payload);
+        };
       }
-      return realFrom(t);
+      return q;
     };
     return svc
       .assignCover(ALI, RID, "sh-open", { memberId: "m-ali" } as any)

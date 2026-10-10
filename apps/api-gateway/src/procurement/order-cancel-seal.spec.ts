@@ -648,9 +648,12 @@ describe("the PATCH route is held to the same table", () => {
   it("refuses to complete a delivered order by PATCH, and writes nothing", async () => {
     const h = await makeService({ status: ProcurementOrderStatus.DELIVERED });
     const err = await refusal(() =>
-      h.service.updateOrder(HOUSE, ORDER_ID, {
-        status: ProcurementOrderStatus.COMPLETED,
-      } as any),
+      h.service.updateOrder(
+        HOUSE,
+        ORDER_ID,
+        { status: ProcurementOrderStatus.COMPLETED } as any,
+        { actorUserId: MANAGER },
+      ),
     );
     expect(err.getStatus()).toBe(422);
     expect(err.getResponse().reason).toBe("complete_through_the_invoice_check");
