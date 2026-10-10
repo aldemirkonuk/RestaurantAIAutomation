@@ -45,6 +45,7 @@ import {
   useUnsavedWorkGuard,
   writeSessionDraft,
 } from '../../hooks/useUnsavedWorkGuard'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
   BatchReceiveGrid,
@@ -168,8 +169,10 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     limit: 25,
   })
 
-  const totals = useMemo(() => batchTotals(rows), [rows])
-  const issues = useMemo(() => validateBatchRows(rows), [rows])
+  // The house's group mark, so a typed cost reads as the grid shows it (F-779).
+  const group = useHouseGroupMark()
+  const totals = useMemo(() => batchTotals(rows, group), [rows, group])
+  const issues = useMemo(() => validateBatchRows(rows, group), [rows, group])
   const alreadyOnReceipt = useMemo(
     () => new Set(rows.map((r) => r.wineId).filter(Boolean) as string[]),
     [rows],
@@ -261,7 +264,8 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     if (isSaving || rows.length === 0 || issues.length > 0) return
     setIsSaving(true)
     setError(null)
-    const lines = batchRowsToBulkLines(rows, { providerId: providerId || undefined })
+    // Costs read with the house's group mark, as the grid shows them (F-779).
+    const lines = batchRowsToBulkLines(rows, { providerId: providerId || undefined }, group)
     const saveOptions = { source: 'manual_receipt', reason: reference.trim() || undefined }
     const saveKey = keyForBatchSave(saveKeyRef.current, lines, saveOptions)
     saveKeyRef.current = saveKey

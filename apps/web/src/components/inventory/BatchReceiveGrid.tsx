@@ -12,6 +12,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import { AlertTriangle, Check, Trash2, Wine } from 'lucide-react'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
 import { useMayActForTheHouse } from '../../hooks/useMayActForTheHouse'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 import { fmtMoney } from '../../pages/inventory/command/bits'
 import { cn } from '../../lib/utils'
 import { parseDecimal, type GroupMark } from '../../lib/parseDecimal'
@@ -194,10 +195,12 @@ export function BatchReceiveGrid({
     locationId: '',
   })
 
-  // No house group mark here: the two hosts read these rows with the same
-  // helpers and none passes one yet, and the grid must agree with what they send.
-  const totals = useMemo(() => batchTotals(rows), [rows])
-  const issues = useMemo(() => validateBatchRows(rows), [rows])
+  // The house's group mark (F-779): "1.250" is ₺1,250 here as in every other
+  // money field. Both hosts read the same mark, so the grid agrees with what
+  // they validate and send.
+  const group = useHouseGroupMark()
+  const totals = useMemo(() => batchTotals(rows, group), [rows, group])
+  const issues = useMemo(() => validateBatchRows(rows, group), [rows, group])
   const selectedCount = rows.filter((r) => r.selected).length
   const badKeys = useMemo(() => new Set(issues.map((i) => i.key)), [issues])
   const allSamples =

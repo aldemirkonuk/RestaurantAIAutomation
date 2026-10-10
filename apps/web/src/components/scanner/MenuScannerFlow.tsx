@@ -31,6 +31,7 @@ import {
   type BatchSaveKey,
   type MenuScannerPersistResult,
 } from '../../lib/menuScannerPersistence'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 
 /** Single source of truth for the step order — the header copy and the dots both read it. */
 const FLOW_STEPS = ['capture', 'processing', 'results', 'stock-setup', 'done'] as const
@@ -71,6 +72,8 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
   const saveKeyRef = useRef<BatchSaveKey | null>(null)
   // F-780: staff do not see the cost cells (F-312), so the copy does not ask them for a cost.
   const canSetCost = useMayActForTheHouse()
+  // The house's group mark, so the costs typed here read as the grid shows them (F-779).
+  const group = useHouseGroupMark()
 
   const reset = () => {
     saveKeyRef.current = null
@@ -131,7 +134,7 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
     if (isSaving || stockRows.length === 0) return
     setIsSaving(true)
     setError(null)
-    const lines = batchRowsToBulkLines(stockRows)
+    const lines = batchRowsToBulkLines(stockRows, undefined, group)
     const saveKey = keyForBatchSave(saveKeyRef.current, lines, { source: 'menu_scan' })
     saveKeyRef.current = saveKey
     try {
@@ -161,14 +164,14 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
     } finally {
       setIsSaving(false)
     }
-  }, [isSaving, stockRows, acceptedWines, onWinesAdded])
+  }, [isSaving, stockRows, acceptedWines, onWinesAdded, group])
 
   const handleRescan = useCallback(() => {
     reset()
   }, [])
 
-  const stockIssues = validateBatchRows(stockRows)
-  const stockSummary = batchTotals(stockRows)
+  const stockIssues = validateBatchRows(stockRows, group)
+  const stockSummary = batchTotals(stockRows, group)
   const savedCount = persistResult
     ? persistResult.added.length + persistResult.stockAdded.length + persistResult.reactivated.length
     : 0
