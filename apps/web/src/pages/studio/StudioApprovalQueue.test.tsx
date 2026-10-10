@@ -16,6 +16,10 @@ vi.mock('./studioApi', () => ({
   }),
   studioJsonRequest: (...args: unknown[]) => studioJsonRequest(...args),
   studioErrorMessage: (err: unknown) => String(err),
+  canReviewStudio: () => true,
+}))
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { userId: 'u-1', studioRoles: ['review_admin'] } }),
 }))
 vi.mock('./StudioLayout', () => ({ StudioLayout: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }))
