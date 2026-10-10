@@ -50,6 +50,8 @@ function makeStore(inventory: string[]) {
         return q;
       },
       single: async () => run(),
+      // readHouseZone (F-322) reads the house's zone; none is set here.
+      maybeSingle: async () => ({ data: null, error: null }),
       then: (res: any, rej: any) => Promise.resolve(run()).then(res, rej),
     };
     return q;
