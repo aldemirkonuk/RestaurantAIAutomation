@@ -39,8 +39,8 @@ for in both readings. An int or float ceiling of zero or less is
 treated as unset, without a warning: the gateway writers send
 `(price || 0) * 1.1`, so 0 is their "no price". A ceiling that is set but
 cannot be read (NaN, infinity, a bool, a string that holds no positive
-figure such as "n/a" or "0") is logged as a warning and nothing is looked
-for.
+figure such as "n/a" or "0", or a string longer than 64 characters after
+normalising) is logged as a warning and nothing is looked for.
 
 Not covered: a figure in words ("eleven hundred"), a rounded one ("about
 1,200", "1.2k"), one cut or rounded to whole units (13 for 13.60), a figure
@@ -222,6 +222,9 @@ _CEILING_TEXT = re.compile(
     rf"\s*{_AFFIX}\s*(?P<n>\d[\d,.{_APOS} ]*\d|\d)\s*{_AFFIX}\s*"
 )
 _SPACE_GROUPED = re.compile(r"\d{1,3}(?: \d{3})+(?:[.,]\d+)?")
+# _CEILING_TEXT backtracks cubically on a long run of spaces around a digit
+# (about 10 s at 3,200 characters), so a longer ceiling string is unreadable.
+_CEILING_TEXT_MAX = 64
 
 
 def _is_unset_number(value: Any) -> bool:
@@ -242,7 +245,8 @@ def _ceiling_values(value: Any) -> List[float]:
     if _is_unset_number(value):
         return []
     if isinstance(value, str):
-        m = _CEILING_TEXT.fullmatch(_normalised(value))
+        text = _normalised(value)
+        m = _CEILING_TEXT.fullmatch(text) if len(text) <= _CEILING_TEXT_MAX else None
         token = m.group("n") if m else ""
         if _SPACE_GROUPED.fullmatch(token):
             token = token.replace(" ", "")

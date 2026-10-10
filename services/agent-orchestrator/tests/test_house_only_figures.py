@@ -639,3 +639,14 @@ async def test_a_letter_that_itself_holds_the_figure_is_staged_once(monkeypatch)
 def test_a_whole_float_quantity_is_written_as_a_whole_number():
     letter = order_letter_without_ceiling({"wine_name": "Barolo", "quantity": 6.0})
     assert "quote us for 6 of Barolo?" in letter
+
+
+def test_a_long_ceiling_string_is_unreadable_and_fast():
+    # The cubic shape for _CEILING_TEXT: uncapped, about 10 s of CPU.
+    import time
+
+    start = time.thread_time()
+    assert hof._ceiling_values(" " * 1600 + "1" + " " * 1600 + "x") == []
+    assert time.thread_time() - start < 0.5
+    assert hof._ceiling_values(" " * 30 + "$1199" + " " * 29) == [1199.0]  # 64
+    assert hof._ceiling_values(" " * 30 + "$1199" + " " * 30) == []  # 65
