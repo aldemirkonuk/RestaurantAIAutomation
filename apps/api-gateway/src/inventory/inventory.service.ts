@@ -468,12 +468,15 @@ export class InventoryService {
     stockState: "live" | "shadow",
     idempotencyKey: string,
     countedAgoMs: number | undefined,
+    countedAt: string | null,
   ): Promise<void> {
-    if (countedAgoMs == null || Number(countedAgoMs) <= QUEUED_COUNT_GRACE_MS) {
+    if (
+      countedAt == null ||
+      countedAgoMs == null ||
+      Number(countedAgoMs) <= QUEUED_COUNT_GRACE_MS
+    ) {
       return;
     }
-    // The server's clock, not the phone's: the phone only says how long ago.
-    const countedAt = new Date(Date.now() - Number(countedAgoMs)).toISOString();
     const transient = (what: string, err: { message?: string }) => {
       this.logger.error(`Spot count ${what} read failed: ${err.message}`);
       return new HttpException(
@@ -597,6 +600,14 @@ export class InventoryService {
     // an agreeing count, so this constraint is created by the fix, not inherited
     // from it.
     const idempotencyKey = `count:${inventoryId}:${dto.clientCountId}`;
+    // F-777. When the count was taken, on the server's clock (the phone only
+    // says how long ago). It is checked against below AND stored as the
+    // count's time: stored as its arrival instead, the older of two queued
+    // counts of one item read as the newer, and the newer was refused.
+    const countedAt =
+      dto.countedAgoMs == null
+        ? null
+        : new Date(Date.now() - Number(dto.countedAgoMs)).toISOString();
 
     // ADR 0141, Correction 2026-09-12. This path takes an inventory id from
     // the URL and hands it to a SQL wrapper that derives the house from the
@@ -618,6 +629,7 @@ export class InventoryService {
       stockState,
       idempotencyKey,
       dto.countedAgoMs,
+      countedAt,
     );
     const { data: countResult, error: rpcErr } = await client.rpc(
       "record_stock_count",
@@ -630,6 +642,7 @@ export class InventoryService {
         p_transaction_type: "reconciliation",
         p_performed_by: dto.performedBy ?? null,
         p_reason: dto.reason ?? "Spot count",
+        p_counted_at: countedAt,
       },
     );
     if (rpcErr) {

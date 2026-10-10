@@ -711,6 +711,79 @@ describe("InventoryService", () => {
       expect(countRpcCalls()).toBe(1);
     });
 
+    // F-777. Two counts of one item taken with no signal (12, then 10 half an
+    // hour later) and sent together, oldest first. The fake database dates a
+    // count the way record_stock_count does: p_counted_at, else now().
+    it("lets the newer of two queued counts stand", async () => {
+      const counts: { key: string; at: string }[] = [];
+      const moves: { at: string }[] = [];
+      let table = "";
+      let key: string | null = null;
+      let after: string | null = null;
+      chain.from.mockImplementation((t: string) => {
+        table = t;
+        key = null;
+        after = null;
+        return chain;
+      });
+      chain.eq.mockImplementation((col: string, val: string) => {
+        if (col === "idempotency_key") key = val;
+        return chain;
+      });
+      chain.gt.mockImplementation((_col: string, val: string) => {
+        after = val;
+        return chain;
+      });
+      mockLimit.mockImplementation(async () => {
+        const rows =
+          table === "stock_counts"
+            ? counts.filter((c) => (key ? c.key === key : c.at > after!))
+            : moves.filter((m) => m.at > after!);
+        return { data: rows.map(() => ({ id: "x" })), error: null };
+      });
+      mockRpc.mockImplementation(async (fn: string, args: Record<string, unknown>) => {
+        if (fn !== "record_stock_count") return { data: null, error: null };
+        const at = (args.p_counted_at as string | null) ?? new Date().toISOString();
+        counts.push({ key: args.p_idempotency_key as string, at });
+        moves.push({ at });
+        return { data: { count_id: "c", counted_qty: args.p_counted_qty, counted_at: at }, error: null };
+      });
+      mockMaybeSingle.mockResolvedValue({ data: { id: "inv-1" }, error: null });
+
+      const older = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 12,
+          clientCountId: "cellar-1400",
+          countedAgoMs: SIX_HOURS,
+        }),
+      );
+      const newer = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 10,
+          clientCountId: "cellar-1430",
+          countedAgoMs: SIX_HOURS - 30 * 60_000,
+        }),
+      );
+
+      expect([older, newer]).toEqual([200, 200]);
+      const sent = mockRpc.mock.calls.filter((c) => c[0] === "record_stock_count");
+      expect(sent.map((c) => c[1].p_counted_qty)).toEqual([12, 10]);
+      // Each count is stored at the time it was taken, not when it arrived.
+      const at = sent.map((c) => Date.parse(c[1].p_counted_at));
+      expect(Math.abs(Date.now() - SIX_HOURS - at[0])).toBeLessThan(5_000);
+      expect(at[1] - at[0]).toBeGreaterThan(29 * 60_000);
+      mockMaybeSingle.mockReset();
+    });
+
+    it("sends no count time for a live count", async () => {
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 12,
+        clientCountId: "live-2",
+      });
+      const sent = mockRpc.mock.calls.find((c) => c[0] === "record_stock_count");
+      expect(sent?.[1].p_counted_at).toBeNull();
+    });
+
     it("lets a count that already landed replay instead of refusing it", async () => {
       mockLimit.mockResolvedValueOnce({ data: [{ id: "count-landed" }], error: null });
 
