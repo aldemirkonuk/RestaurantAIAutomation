@@ -19,6 +19,7 @@ import { vendorLine } from '@/lib/mudavym/vendor';
 import {
   NOT_RECORDED,
   SPEND_KEPT_APART,
+  barScaleOf,
   fromChecks,
   spendMoney,
   spendPartsSaid,
@@ -44,12 +45,14 @@ interface TapeProps {
    * deliveries for a role that sees no money (DASH-W22).
    */
   value: (d: DayLedger) => number | null;
+  /** The currency a bar's figure is in, when it is spend: each is scaled apart (F-1088). */
+  currencyOf?: (d: DayLedger) => string | null;
   onScrub: (date: string) => void;
 }
 
-function DayTape({ daily, selected, value, onScrub }: TapeProps) {
+function DayTape({ daily, selected, value, currencyOf, onScrub }: TapeProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const max = Math.max(1, ...daily.map((d) => value(d) ?? 0));
+  const maxOf = barScaleOf(daily, value, currencyOf);
   const idx = daily.findIndex((d) => d.date === selected);
 
   const scrubTo = (clientX: number) => {
@@ -106,7 +109,7 @@ function DayTape({ daily, selected, value, onScrub }: TapeProps) {
             data-on={d.date === selected}
             data-unknown={v == null}
             style={{
-              height: `${v == null ? 10 : Math.max(10, Math.round((v / max) * 100))}%`,
+              height: `${v == null ? 10 : Math.max(10, Math.round((v / maxOf(d)) * 100))}%`,
               opacity: v == null ? 0.35 : undefined,
             }}
           />
@@ -296,6 +299,7 @@ export function DayDetail({
         selected={day.date}
         // DASH-W22: a role that sees no money measures deliveries, not spend.
         value={(d) => (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count)}
+        currencyOf={!salesShown && seesAmounts ? (d) => d.procurement_spend_currency : undefined}
         onScrub={onScrub}
       />
 

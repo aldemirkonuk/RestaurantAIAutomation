@@ -1810,26 +1810,32 @@ export class DashboardService {
 
       const sinceStr = sinceDate.toISOString();
 
-      const [ordersResult, consumptionResult] = await Promise.allSettled([
-        client
-          .from("procurement_orders")
-          .select(
-            "id, total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
-          )
-          .eq("restaurant_id", restaurantId)
-          .in("status", ORDER_SPEND_STATUSES)
-          .gte("delivered_at", sinceStr),
-        // Read whole or refused (ADR 0292). Unranged, this stopped at
-        // PostgREST's 1,000 rows, so a year's chart drew a slice of its
-        // glasses (A-033).
-        readWholeWindow<any>("The consumption lines for the chart", () =>
+      const [ordersResult, consumptionResult, houseResult] =
+        await Promise.allSettled([
           client
-            .from("wine_consumption_log")
-            .select("id, volume_ml, quantity, created_at", { count: "exact" })
+            .from("procurement_orders")
+            .select(
+              "id, total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
+            )
             .eq("restaurant_id", restaurantId)
-            .gte("created_at", sinceStr),
-        ),
-      ]);
+            .in("status", ORDER_SPEND_STATUSES)
+            .gte("delivered_at", sinceStr),
+          // Read whole or refused (ADR 0292). Unranged, this stopped at
+          // PostgREST's 1,000 rows, so a year's chart drew a slice of its
+          // glasses (A-033).
+          readWholeWindow<any>("The consumption lines for the chart", () =>
+            client
+              .from("wine_consumption_log")
+              .select("id, volume_ml, quantity, created_at", { count: "exact" })
+              .eq("restaurant_id", restaurantId)
+              .gte("created_at", sinceStr),
+          ),
+          // An order naming no currency is in the house's money (F-1088, as
+          // F-1052 for the stat cards); a failed read is thrown, not guessed.
+          this.houseCurrencyOrNull(client, restaurantId),
+        ]);
+      if (houseResult.status !== "fulfilled") throw houseResult.reason;
+      const houseCurrency = houseResult.value;
 
       const orders =
         ordersResult.status === "fulfilled"
@@ -1850,8 +1856,9 @@ export class DashboardService {
       >();
 
       // Each bucket's spend is summed by `spendByCurrency`: an order with no
-      // price is counted, not added as 0 (F-701), and a bucket paid in two
-      // currencies is null with each one's part, not a sum (F-1039).
+      // price is counted, not added as 0 (F-701), a bucket paid in two
+      // currencies is null with each one's part, not a sum (F-1039), and an
+      // order naming no currency is the house's (F-1088).
       for (const o of orders) {
         const dateKey = groupFn(o.delivered_at || o.created_at);
         const existing = buckets.get(dateKey) || {
@@ -1878,10 +1885,13 @@ export class DashboardService {
       return Array.from(buckets.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, data]) => {
-          const paid = spendByCurrency(data.orders);
+          const paid = spendByCurrency(data.orders, houseCurrency);
           return {
             date,
             procurementSpend: paid.total,
+            // The code `procurementSpend` is in: one foreign currency is
+            // carried with its code, never as the house's money (F-1088).
+            procurementSpendCurrency: paid.currency,
             procurementSpendByCurrency: paid.byCurrency,
             procurementSpendNote: mixedSpendNote(paid.byCurrency),
             unpricedOrders: paid.unpricedCount,

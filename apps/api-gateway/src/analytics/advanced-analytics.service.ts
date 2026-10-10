@@ -75,8 +75,14 @@ import { DayExclusionsService } from "./insights/day-exclusions.service";
  * placed in more than one currency. Null when there is one figure to give.
  * Not yet paid, so "ordered in", where `mixedSpendNote` says "paid in".
  */
-function orderedInTwoNote(orders: any[]): string | null {
-  const codes = namedCurrencies(orders.filter((o) => orderSpend(o) != null));
+function orderedInTwoNote(
+  orders: any[],
+  houseCurrency: string | null = null,
+): string | null {
+  const codes = namedCurrencies(
+    orders.filter((o) => orderSpend(o) != null),
+    houseCurrency,
+  );
   return codes.length > 1
     ? `Ordered in ${codes.join(" and ")}: with no exchange rate on record these cannot be added into one figure.`
     : null;
@@ -267,22 +273,35 @@ export class AdvancedAnalyticsService {
    * The house's clock (ADR 0207 question 6). A failed read degrades like every
    * loader here — to no zone, which the deadline rule answers by counting only
    * verdicts that hold in every zone, never by assuming UTC — and says so in
-   * `onTimeDeadline.houseRecord`.
+   * `onTimeDeadline.houseRecord`. `currency` is the house's stated money
+   * (upper-cased; null when unread or unstated): an order naming no currency
+   * is in it (F-1088, as F-1052).
    */
-  private async loadHouseFrame(
-    restaurantId: string,
-  ): Promise<HouseFrame & { read: "read" | "could_not_read" | "no_record" }> {
+  private async loadHouseFrame(restaurantId: string): Promise<
+    HouseFrame & {
+      currency: string | null;
+      read: "read" | "could_not_read" | "no_record";
+    }
+  > {
     const { data, error } = await this.dbService
       .getClient()
       .from("restaurants")
-      .select("id, timezone, country")
+      .select("id, timezone, country, currency")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
       this.logQueryFailure("restaurants", error);
-      return { ...houseFrame(null), read: "could_not_read" };
+      return { ...houseFrame(null), currency: null, read: "could_not_read" };
     }
-    return { ...houseFrame(data), read: data ? "read" : "no_record" };
+    const code = data?.currency;
+    return {
+      ...houseFrame(data),
+      currency:
+        typeof code === "string" && code.trim()
+          ? code.trim().toUpperCase()
+          : null,
+      read: data ? "read" : "no_record",
+    };
   }
 
   /**
@@ -678,7 +697,9 @@ export class AdvancedAnalyticsService {
       // A vendor paid in two currencies has no one price series (F-1042):
       // a euro case beside a lira one is not a price change.
       const priced = delivered.filter((o) => orderSpend(o) != null);
-      const unitPrices = (namedCurrencies(priced).length > 1 ? [] : delivered)
+      const unitPrices = (
+        namedCurrencies(priced, house.currency).length > 1 ? [] : delivered
+      )
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
           const cost = orderSpend(o);
@@ -686,14 +707,17 @@ export class AdvancedAnalyticsService {
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
       // Summed per currency (F-1042, F-339): two named currencies give
-      // `spend: null` and say why, never lira added to euros.
-      const paid = spendByCurrency(delivered);
+      // `spend: null` and say why, never lira added to euros. An order naming
+      // no currency is the house's, and one other currency keeps its code
+      // (F-1088).
+      const paid = spendByCurrency(delivered, house.currency);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
         spend: paid.total,
+        spendCurrency: paid.currency,
         spendByCurrency: paid.byCurrency,
         spendNote: mixedSpendNote(paid.byCurrency),
         unpricedCount: paid.unpricedCount,
@@ -723,6 +747,7 @@ export class AdvancedAnalyticsService {
         (o: any) =>
           hasStatus(o.status, ORDER_ARRIVED_STATUSES) && orderSpend(o) != null,
       ),
+      house.currency,
     );
     const sharesComparable = houseCurrencies.length <= 1;
     const spendShare = vendors.map((v) => v.spend ?? 0);
@@ -929,8 +954,10 @@ export class AdvancedAnalyticsService {
     // Days are summed in one money only (F-1042): a window holding a lira and
     // a euro delivery has no one figure, so every spend figure built from the
     // days is null and `spendNote` says why.
+    // An order naming no currency is the house's (F-1088).
     const paidIn = namedCurrencies(
       delivered.filter((o: any) => orderSpend(o) != null),
+      frame.currency,
     );
     const spendNote =
       paidIn.length > 1
@@ -989,7 +1016,7 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    const committedPaid = spendByCurrency(open);
+    const committedPaid = spendByCurrency(open, frame.currency);
 
     // Orders in NEITHER figure: approved but not yet with the vendor's
     // confirmation, or partly received and still open (F-130). Neither rule
@@ -1005,7 +1032,7 @@ export class AdvancedAnalyticsService {
     // Their order value is summed the way the two figures are (F-1010): an
     // unpriced order is left out and counted, never read as one bottle's
     // `final_price` or as $0.
-    const neitherPaid = spendByCurrency(neither);
+    const neitherPaid = spendByCurrency(neither, frame.currency);
     const notCounted = {
       approved: neither.filter((o: any) => o.status === "APPROVED").length,
       partlyReceived: neither.filter(
@@ -1016,8 +1043,9 @@ export class AdvancedAnalyticsService {
           o.status !== "APPROVED" && o.status !== "PARTIALLY_RECEIVED",
       ).length,
       orderValue: neitherPaid.total,
+      orderValueCurrency: neitherPaid.currency,
       orderValueByCurrency: neitherPaid.byCurrency,
-      orderValueNote: orderedInTwoNote(neither),
+      orderValueNote: orderedInTwoNote(neither, frame.currency),
       unpriced: neitherPaid.unpricedCount,
     };
 
@@ -1034,10 +1062,14 @@ export class AdvancedAnalyticsService {
       spendPrev30d: spendNote ? null : prev30,
       paceDeltaPct: spendNote ? null : (pace?.deltaPct ?? null),
       projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
+      // The code the paid-out figures are in; one other currency keeps its
+      // code, never read as the house's (F-1088).
+      spendCurrency: spendNote ? null : (paidIn[0] ?? frame.currency),
       spendNote,
       committedOpenOrders: committedPaid.total,
+      committedCurrency: committedPaid.currency,
       committedByCurrency: committedPaid.byCurrency,
-      committedNote: orderedInTwoNote(open),
+      committedNote: orderedInTwoNote(open, frame.currency),
       openOrderCount: open.length,
       notCounted,
       // Orders the two figures above leave out because they carry no price.

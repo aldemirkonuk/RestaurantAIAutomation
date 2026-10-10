@@ -1556,4 +1556,32 @@ describe('DashboardNext — vendor spend says its own currency (F-1052, F-1055)'
       expect(screen.getByText('Paid to vendors').previousElementSibling?.textContent).toBe('€1,200'),
     );
   });
+
+  it('scales a lira day and a euro day apart, in the cell tint and the tape (F-1088)', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        pos_connected: false,
+        days: {
+          '2026-10-01': { procurement_spend: 100, procurement_spend_currency: 'TRY', order_count: 1 } as Partial<Day>,
+          '2026-10-02': { procurement_spend: 5000, procurement_spend_currency: 'EUR', order_count: 1 } as Partial<Day>,
+        },
+        monthly_procurement_spend: null,
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toMatch(/^€5[.,]0K$/));
+    // Each is the largest in its own money: both carry the full tint. One
+    // scale would draw ₺100 as 2% of €5,000 — comparing lira to euros.
+    expect(dayCell('2026-10-01').style.backgroundColor).toContain('36%');
+    expect(dayCell('2026-10-02').style.backgroundColor).toContain('36%');
+
+    fireEvent.click(dayCell('2026-10-01'));
+    await screen.findByText('Paid to vendors');
+    const bars = Array.from(document.body.querySelectorAll<HTMLElement>('.dn-tape-bar'));
+    const bar = (date: string) => bars[Number(date.slice(8)) - 1];
+    expect(bar('2026-10-01').style.height).toBe('100%');
+    expect(bar('2026-10-02').style.height).toBe('100%');
+  });
 });
