@@ -140,7 +140,7 @@ export class AnalyticsService {
         // are tagged `isActive` and the reorder and risk lenses keep only
         // active ones (see `activeOnly`).
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, is_active, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, is_active, created_at, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId),
       client
@@ -249,6 +249,9 @@ export class AnalyticsService {
               ? onOrder.get(i.id)!.bottles
               : 0,
         nextArrival: onOrder.get(i.id)?.nextArrival ?? null,
+        // When the wine was put on the list (F-687): demand is averaged over
+        // the days since, not over days it could not have sold.
+        listedAt: i.created_at ?? null,
         // A row we cannot cost has no value we can state. `qty × null` must
         // not become 0 — that is the fabrication ADR 0051 names, wearing an
         // arithmetic costume.
@@ -363,6 +366,29 @@ export class AnalyticsService {
     for (const c of consumption)
       if (c.masterWineId && c.how === "uncounted") out.add(c.masterWineId);
     return out;
+  }
+
+  /**
+   * The days a wine's demand is averaged over (F-687): the window, or fewer
+   * when the wine was listed inside it, counting the listing day as day 1 —
+   * the inventory_analytics view's rule. A sale dated before the listing
+   * (an import) moves the start back to that sale. An unknown listing date
+   * keeps the whole window, which is what every wine got before.
+   */
+  private daysOnList(
+    listedAt: string | null | undefined,
+    rows: Array<{ date: string }>,
+    sinceDays: number,
+  ): number {
+    if (!listedAt) return sinceDays;
+    let first = String(listedAt).slice(0, 10);
+    for (const r of rows) if (r.date && r.date < first) first = r.date;
+    const today = new Date().toISOString().slice(0, 10);
+    const days =
+      Math.floor((Date.parse(today) - Date.parse(first)) / 86400000) + 1;
+    return Number.isFinite(days)
+      ? Math.min(sinceDays, Math.max(1, days))
+      : sinceDays;
   }
 
   /** Aggregate rows into a dense daily series over [sinceDays, today]. */
@@ -825,7 +851,8 @@ export class AnalyticsService {
       // order that cannot be counted adds nothing, and says so (onOrder null).
       const position = i.qty + (i.onOrder ?? 0);
       const rows = demandByWine.get(i.masterWineId || "") || [];
-      const { values } = this.toDailySeries(rows, sinceDays);
+      const demandDays = this.daysOnList(i.listedAt, rows, sinceDays);
+      const { values } = this.toDailySeries(rows, demandDays);
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
         stdev: 0,
@@ -863,6 +890,7 @@ export class AnalyticsService {
         onOrder: i.onOrder,
         nextArrival: i.nextArrival ?? null,
         avgDailyDemand: profile.mean,
+        demandDays,
         demandCv: profile.cv,
         xyzClass: E.inventory.xyzClassify(profile.cv),
         daysOfCover: doc,
@@ -928,7 +956,7 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
+        demand: `bottles/day over ${sinceDays}d, or over the days since the wine was listed when that is fewer (skus[].demandDays) — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost; stockout risk and the reorder list count bottles already ordered and not yet arrived (skus[].onOrder; null when an open order states no bottle count or the orders could not be read, and then only the shelf is counted)`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:

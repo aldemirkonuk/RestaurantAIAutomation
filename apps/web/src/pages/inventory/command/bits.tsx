@@ -25,6 +25,50 @@ export function runwayDays(item: InventoryItem): number | null {
   return item.liveStock / v
 }
 
+/**
+ * The delivery wait /inventory assumes (F-081). No vendor lead time is read
+ * here yet, so the card states this number wherever it uses it.
+ */
+export const ASSUMED_LEAD_DAYS = 6
+/** Days on the shelf a suggested order should leave after the wait. */
+export const COVER_AFTER_LEAD_DAYS = 14
+
+/** A sales rate a person can read: "1.5 btl/day", "new", or a dash (F-687, F-689). */
+export function velocityLabel(item: InventoryItem): string {
+  if (item.velocityPerDay == null) return '—'
+  if (item.velocityIsNew) return 'new'
+  return `${item.velocityPerDay.toFixed(1)} btl/day`
+}
+
+export interface ReorderAdvice {
+  /** Bottles to order now; null = no par and no known rate to work it out from. */
+  suggested: number | null
+  /** Bottles short of par once what is on order arrives; null = no par set. */
+  parGap: number | null
+  /** Order when stock falls to this; null = no par and no known rate. */
+  reorderPoint: number | null
+}
+
+/**
+ * The one reorder answer the /inventory card and its draft button share
+ * (F-081, F-688). Counts bottles already on order (F-630): `onOrder` null
+ * means the count could not be read, and only the shelf is counted. A par
+ * that is not set and a rate that is not known add nothing (F-391, F-689);
+ * they are never stood in for by 10 or 0.
+ */
+export function reorderAdvice(item: InventoryItem, onOrder: number | null): ReorderAdvice {
+  const have = (item.liveStock ?? 0) + (onOrder ?? 0)
+  const par = item.threshold
+  const v = item.velocityPerDay
+  const parGap = par != null ? Math.max(0, par - have) : null
+  const rateNeed =
+    v != null ? Math.max(0, Math.ceil(v * (ASSUMED_LEAD_DAYS + COVER_AFTER_LEAD_DAYS)) - have) : null
+  const suggested = parGap == null && rateNeed == null ? null : Math.max(parGap ?? 0, rateNeed ?? 0)
+  const reorderPoint =
+    par == null && v == null ? null : Math.max(par ?? 0, v != null ? Math.ceil(v * ASSUMED_LEAD_DAYS) : 0)
+  return { suggested, parGap, reorderPoint }
+}
+
 export function marketDeltaPct(item: InventoryItem): number | null {
   const paid = item.wac ?? item.price
   if (!paid || !item.marketPrice) return null
@@ -60,7 +104,7 @@ export function rowFlags(item: InventoryItem): RowFlag[] {
 export function StockGauge({ item, compact }: { item: InventoryItem; compact?: boolean }) {
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
-  const par = item.threshold > 0 ? item.threshold : 1
+  const par = item.threshold != null && item.threshold > 0 ? item.threshold : 1
   const scale = Math.max(live + shadow, par * 1.5, 1)
   const status = classifyStock(item.liveStock, item.threshold)
   const numColor =
@@ -70,7 +114,7 @@ export function StockGauge({ item, compact }: { item: InventoryItem; compact?: b
     <div>
       <div className="flex items-baseline gap-1.5 font-mono">
         <span className={cn('text-sm font-bold', numColor)}>{live + shadow}</span>
-        <span className="text-[10px] text-gray-400">/ {item.threshold} par</span>
+        <span className="text-[10px] text-gray-400">{item.threshold != null ? `/ ${item.threshold} par` : 'no par set'}</span>
         {shadow > 0 && (
           <span className="ml-auto text-[9px] font-bold tracking-wide text-violet-600 bg-violet-50 rounded-full px-2 py-px">
             RECONCILE
@@ -80,10 +124,12 @@ export function StockGauge({ item, compact }: { item: InventoryItem; compact?: b
       <div className="relative flex h-1.5 my-1 bg-gray-100 rounded-full">
         <div className="h-full bg-blue-600 rounded-l-full" style={{ width: `${(live / scale) * 100}%` }} />
         {shadow > 0 && <div className="h-full bg-violet-600" style={{ width: `${(shadow / scale) * 100}%` }} />}
-        <div
-          className="absolute -top-1 w-0.5 h-3.5 bg-gray-900/60 rounded"
-          style={{ left: `${Math.min((par / scale) * 100, 100)}%` }}
-        />
+        {item.threshold != null && (
+          <div
+            className="absolute -top-1 w-0.5 h-3.5 bg-gray-900/60 rounded"
+            style={{ left: `${Math.min((par / scale) * 100, 100)}%` }}
+          />
+        )}
       </div>
       {!compact && (
         <div className="flex gap-2.5 font-mono text-[9px]">

@@ -239,6 +239,10 @@ export class InventoryService {
       openMl: rollup?.open_ml ?? 0,
       // Phase 2 (2d/2e): velocity / days-of-cover / reorder / ABC / dead-stock.
       velocityPerDay: analytics?.velocity_per_day ?? undefined,
+      // F-687: the days the rate is averaged over (a wine listed 3 days ago
+      // is averaged over 3, not 30), and whether it is too new to plan on.
+      velocityDays: analytics?.velocity_days ?? undefined,
+      velocityIsNew: analytics?.is_new ?? undefined,
       daysOfCover: analytics?.days_of_cover ?? undefined,
       reorderPoint: analytics?.reorder_point ?? undefined,
       reorderSuggested: analytics?.reorder_suggested ?? false,
@@ -334,7 +338,7 @@ export class InventoryService {
         client
           .from("inventory_analytics")
           .select(
-            "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
+            "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, velocity_days, is_new",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)

@@ -241,6 +241,29 @@ describe("InventoryService", () => {
   // removed before merge; these tests pin that there is one bottle price,
   // that it reaches the wire as `menuPriceBottle`, and that an edit goes
   // through `set_house_menu_price` (history row + actor), never a plain UPDATE.
+  describe("the sales rate says how many days it covers (F-687)", () => {
+    it("reads velocity_days and is_new from inventory_analytics and maps them", async () => {
+      mockSupabaseChain.eq.mockImplementationOnce(() =>
+        Promise.resolve({ data: [], error: null }),
+      );
+      const select = mockSupabaseChain.select;
+      const row = { id: "inv-v", wine_name: "Narince", master_wine_library: null, restaurants: null };
+      const result = (service as any).mapInventoryItem(row, undefined, undefined, {
+        velocity_per_day: 2,
+        velocity_days: 3,
+        is_new: true,
+      });
+      expect(result.velocityPerDay).toBe(2);
+      expect(result.velocityDays).toBe(3);
+      expect(result.velocityIsNew).toBe(true);
+
+      await (service as any).fetchAnalytics("r-1");
+      const cols = select.mock.calls.map(([c]: [string]) => c).find((c: string) => c?.includes("velocity_per_day"));
+      expect(cols).toContain("velocity_days");
+      expect(cols).toContain("is_new");
+    });
+  });
+
   describe("the house bottle price is menu_price_current (ADR 0193)", () => {
     const priceRpc = (result: Record<string, unknown> | null, error: unknown = null) =>
       mockRpc.mockImplementation(async (fn: string) =>

@@ -304,3 +304,70 @@ describe('RowExpansion — the adjust steppers are thumb-sized (F-226)', () => {
     }
   })
 })
+
+/** The value printed beside a label in the Par and reorder card. */
+const kv = (label: string) => screen.getByText(label).nextElementSibling?.textContent
+
+describe('RowExpansion — one reorder answer (F-081, F-391, F-630, F-689)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('the draft button asks for the suggested order, not par, and says so', async () => {
+    // Par 6, 8 on the shelf, selling 1 a day: 20 days of need less 8 = 12.
+    renderRow({ velocityPerDay: 1, velocityDays: 30 })
+    const btn = await screen.findByRole('button', { name: 'Draft order, 12 btl' })
+    expect(kv('Suggested order')).toBe('12 btl')
+    await userEvent.click(btn)
+    expect(navigate).toHaveBeenCalledWith('/orders?draft=new&inventoryId=inv-1&qty=12')
+    // The wait is stated where it is used, with no "+ safety" that is never computed.
+    expect(kv('Reorder point')).toBe('6 btl (6-day delivery wait)')
+    expect(screen.queryByText(/\+ safety/)).toBeNull()
+  })
+
+  it('with nothing to order, the button drafts an order without inventing par', async () => {
+    renderRow({ velocityPerDay: 0, liveStock: 8, threshold: 6 })
+    const btn = await screen.findByRole('button', { name: 'Draft an order' })
+    await userEvent.click(btn)
+    expect(navigate).toHaveBeenCalledWith('/orders?draft=new&inventoryId=inv-1')
+  })
+
+  it('subtracts bottles already ordered and not here yet', async () => {
+    getOrders.mockResolvedValue([
+      { id: 'o1', inventoryId: 'inv-1', status: 'CONFIRMED', quantity: 1, bottlesTotal: 6 },
+      { id: 'o2', inventoryId: 'inv-1', status: 'DELIVERED', quantity: 1, bottlesTotal: 12 },
+      { id: 'o3', inventoryId: 'other', status: 'IN_TRANSIT', quantity: 1, bottlesTotal: 24 },
+    ])
+    renderRow({ velocityPerDay: 1, velocityDays: 30 })
+    // 20 needed, 8 on the shelf, 6 on the way: 6, not 12.
+    expect(await screen.findByRole('button', { name: 'Draft order, 6 btl' })).toBeTruthy()
+    expect(kv('On order, not here yet')).toBe('6 btl')
+    expect(kv('Suggested order')).toBe('6 btl')
+  })
+
+  it('an unset par is shown as not set and drafts nothing on its own', async () => {
+    renderRow({ threshold: null, velocityPerDay: undefined, liveStock: 0 })
+    await screen.findByRole('button', { name: 'Draft an order' })
+    expect(kv('Par')).toBe('not set')
+    expect(kv('Suggested order')).toBe('set a par to get one')
+    expect(screen.getByRole('button', { name: 'Draft an order' })).toBeTruthy()
+  })
+
+  it('a sales rate that could not be read is said, never 0.0', async () => {
+    renderRow({ velocityPerDay: undefined, analyticsReadable: false })
+    await screen.findByRole('button', { name: 'Draft an order' })
+    expect(kv('Selling')).toBe('could not be read')
+    expect(screen.queryByText(/0\.0 btl\/day/)).toBeNull()
+    // Par 6, 8 on the shelf: nothing to order on par alone.
+    expect(screen.getByRole('button', { name: 'Draft an order' })).toBeTruthy()
+  })
+
+  it('a new wine says it is new and how many days its rate covers', async () => {
+    renderRow({ velocityPerDay: 2, velocityDays: 3, velocityIsNew: true })
+    await screen.findByText('Selling')
+    expect(kv('Selling')).toBe('new, 2.0 btl/day over 3 days')
+  })
+})
