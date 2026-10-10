@@ -231,7 +231,7 @@ describe('F-467 — the rest of a split order is at the door', () => {
     unitType: 'case',
     bottlesTotal: 120,
     wineName: 'Barolo',
-    received: { readable, backorderBottles },
+    received: { readable, backorderBottles, rejectedAtDoorBottles: 0, rejectedAtDeskBottles: null },
   })
 
   it('[REVERT-FAILS] lists a partly received order that still owes bottles, as the rest of it', async () => {
@@ -253,6 +253,36 @@ describe('F-467 — the rest of a split order is at the door', () => {
     harness(StaffBody)
 
     expect(await screen.findByText(/Nothing is out for delivery/)).toBeInTheDocument()
+    expect(screen.queryByText(/bottles still to come/)).not.toBeInTheDocument()
+  })
+
+  // F-774: a refused or broken bottle never reaches the ledger, so the ledger's
+  // backorder counts it; no truck is bringing it.
+  const refused = (id: string, backorder: number, atDoor: number, atDesk: number | null) => ({
+    ...rest(id, backorder),
+    received: {
+      readable: true,
+      backorderBottles: backorder,
+      rejectedAtDoorBottles: atDoor,
+      rejectedAtDeskBottles: atDesk,
+    },
+  })
+
+  it('[REVERT-FAILS] leaves out an order whose only missing bottles were refused (F-774)', async () => {
+    get.mockImplementation(
+      onlyForStatus('PARTIALLY_RECEIVED', [refused('door', 1, 1, null), refused('desk', 2, 0, 2)]),
+    )
+    harness(StaffBody)
+
+    expect(await screen.findByText(/Nothing is out for delivery/)).toBeInTheDocument()
+    expect(screen.queryByText(/bottles? still to come/)).not.toBeInTheDocument()
+  })
+
+  it('[REVERT-FAILS] counts only what a truck is still bringing, in the singular for one (F-774)', async () => {
+    get.mockImplementation(onlyForStatus('PARTIALLY_RECEIVED', [refused('mixed', 4, 1, 2)]))
+    harness(StaffBody)
+
+    expect(await screen.findByText(/1 bottle still to come/)).toBeInTheDocument()
     expect(screen.queryByText(/bottles still to come/)).not.toBeInTheDocument()
   })
 
