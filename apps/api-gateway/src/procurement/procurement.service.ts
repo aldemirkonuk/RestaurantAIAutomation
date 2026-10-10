@@ -7780,20 +7780,26 @@ export class ProcurementService {
        * row and the aliased quantities and nothing else — so the count is
        * exactly as it was, which is what the sentence promises.
        */
+      // Both refusals carry `receipt_price_refused` (F-1025): the phone's
+      // outbox sends the count again without the price on this reason alone,
+      // and keeps the price on any other 400 or 409 (a colleague's check, a
+      // unit that does not match), where a count-only resend is wrong.
       if (!isIso4217(body.invoiceCurrency))
-        throw new BadRequestException(
-          receivingPriceNeedsACurrency(body.invoiceUnitPrice),
-        );
+        throw new BadRequestException({
+          reason: "receipt_price_refused",
+          message: receivingPriceNeedsACurrency(body.invoiceUnitPrice),
+        });
 
       const held = await this.heldInvoiceForOrder(restaurantId, orderId);
       if (held)
-        throw new ConflictException(
-          receivingPriceRefusal({
+        throw new ConflictException({
+          reason: "receipt_price_refused",
+          message: receivingPriceRefusal({
             reason: held.reason,
             docNumber: held.docNumber,
             documentId: held.documentId,
           }),
-        );
+        });
     }
 
     // The immutable ledger states bottles and retains receipts after stock is

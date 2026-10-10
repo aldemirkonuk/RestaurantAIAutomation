@@ -81,7 +81,8 @@ interface OutboxState {
   }) => string | null;
   undo: (id: string) => boolean;
   dismissFailed: (id: string) => void;
-  retryFailed: (id: string) => void;
+  /** Null when sent again; the sentence to show when it is not (F-1028). */
+  retryFailed: (id: string) => string | null;
   flush: () => void;
   hydrate: () => void;
 }
@@ -182,6 +183,24 @@ export const useOutbox = create<OutboxState>((set, get) => ({
   },
 
   retryFailed: (id) => {
+    // THE SECOND-RECEIPT GUARD HOLDS ON TRY AGAIN TOO (F-1028). While this
+    // entry was parked its card came back, and a newer count for the same
+    // order may now wait; sending the old one as well would book the same
+    // bottles twice, or write the older count over the newer one.
+    const parked = get().entries.find((e) => e.id === id);
+    if (
+      parked?.path.endsWith("/verify-receipt") &&
+      get().entries.some(
+        (e) =>
+          e.id !== id &&
+          e.status !== "failed" &&
+          e.path === parked.path &&
+          e.actorUserId === parked.actorUserId &&
+          e.restaurantId === parked.restaurantId,
+      )
+    ) {
+      return RECEIPT_WAITING_WORDS;
+    }
     const entries = get().entries.map((e) =>
       e.id === id && e.actorUserId && e.restaurantId
         ? { ...e, status: "pending" as const, attempts: 0, serverAttempts: 0 }
@@ -190,6 +209,7 @@ export const useOutbox = create<OutboxState>((set, get) => ({
     set({ entries });
     persist(entries);
     scheduleDispatch(0);
+    return null;
   },
 
   flush: () => scheduleDispatch(0),
@@ -283,25 +303,57 @@ export const RECEIPT_WAITING_WORDS =
 
 /**
  * What signing out leaves behind on this phone (F-952): every entry of this
- * person's that has not gone through, waiting or refused. It stays here and sends only when they sign in on
- * this phone again; nobody else who signs in sees it.
+ * person's that has not gone through. Waiting ones stay here and send only
+ * when they sign in on this phone again; nobody else who signs in sees them.
+ * Refused ones (F-1026) are counted apart: they never send on their own, and
+ * the warning must not promise that they will.
  */
 export function unsentAtSignOut(
   entries: OutboxEntry[],
-  userId: string | null | undefined,
-): number {
-  if (!userId) return 0;
-  return entries.filter((e) => e.actorUserId === userId && !e.alreadyDone).length;
+  user: { id?: string | null; restaurantId?: string | null } | null | undefined,
+): { here: number; otherHouses: number; refused: number } {
+  const unsent = { here: 0, otherHouses: 0, refused: 0 };
+  if (!user?.id) return unsent;
+  for (const e of entries) {
+    if (e.actorUserId !== user.id || e.alreadyDone) continue;
+    if (e.status === "failed") unsent.refused += 1;
+    else if (e.restaurantId === user.restaurantId) unsent.here += 1;
+    else unsent.otherHouses += 1;
+  }
+  return unsent;
 }
 
 /** The sign-out warning, or null when nothing of theirs is waiting. */
-export function signOutWords(unsent: number): string | null {
-  if (unsent <= 0) return null;
-  const what = unsent === 1 ? "1 thing you did has" : `${unsent} things you did have`;
-  return (
-    `${what} not been sent yet. ${unsent === 1 ? "It stays" : "They stay"} on this phone and ` +
-    `${unsent === 1 ? "sends" : "send"} only when you sign in here again; nobody else who signs in will see ${unsent === 1 ? "it" : "them"}.`
-  );
+export function signOutWords(u: {
+  here: number;
+  otherHouses: number;
+  refused: number;
+}): string | null {
+  const waiting = u.here + u.otherHouses;
+  if (waiting <= 0 && u.refused <= 0) return null;
+  const parts: string[] = [];
+  if (waiting > 0) {
+    const one = waiting === 1;
+    parts.push(
+      `${one ? "1 thing you did has" : `${waiting} things you did have`} not been sent yet. ` +
+        `${one ? "It stays" : "They stay"} on this phone and ${one ? "sends" : "send"} only when you sign in here again.`,
+    );
+    if (u.otherHouses > 0)
+      parts.push(
+        u.otherHouses === waiting
+          ? `${one ? "It is" : "They are"} for another of your houses and ${one ? "sends" : "send"} once you open that house.`
+          : `${u.otherHouses} of them ${u.otherHouses === 1 ? "is" : "are"} for another of your houses and ${u.otherHouses === 1 ? "sends" : "send"} once you open that house.`,
+      );
+  }
+  if (u.refused > 0) {
+    const one = u.refused === 1;
+    parts.push(
+      `${one ? "1 thing the house refused waits" : `${u.refused} things the house refused wait`} on this phone for you to look at; ` +
+        `${one ? "it does" : "they do"} not send on ${one ? "its" : "their"} own.`,
+    );
+  }
+  parts.push("Nobody else who signs in will see any of it.");
+  return parts.join(" ");
 }
 
 /** The strip's sentence, or null when nothing is waiting. */
@@ -427,11 +479,18 @@ async function runDispatch() {
     // no currency. Sending the same price again could never clear it. The count
     // goes once more without the price, as the refusal itself offers, and the
     // refusal is kept so the manager reads why the price was not taken.
+    //
+    // Only a refusal OF THE PRICE (F-1025). Any other 400 or 409 on a priced
+    // receipt — a colleague checked the delivery meanwhile, the house or
+    // account changed, a unit that does not match — keeps the price and parks
+    // with the house's sentence: a count-only resend there would be written
+    // over the colleague's check, and Try again could never send the price.
     const priceRefusal =
       err instanceof ApiError &&
       (err.status === 400 || err.status === 409) &&
       !stillRunning &&
-      alreadyDeliveredRefusal(err) == null;
+      alreadyDeliveredRefusal(err) == null &&
+      isPriceRefusal(err);
     const countOnly =
       err instanceof ApiError &&
       (err.status === 403 || priceRefusal) &&
@@ -505,6 +564,25 @@ async function runDispatch() {
   } finally {
     dispatching = false;
   }
+}
+
+/**
+ * The house's sentences that refuse a receipt's price and nothing else
+ * (F-1025). The gateway's own checks say so with `receipt_price_refused`; the
+ * wire check on the currency code answers a plain 400, read by its sentences,
+ * and only when every sentence in it is about the currency.
+ */
+const CURRENCY_SENTENCE =
+  /submitted with no currency|names no currency|^invoiceCurrency must be/;
+export function isPriceRefusal(err: ApiError): boolean {
+  const body = err.body as { reason?: unknown; message?: unknown } | undefined;
+  if (body?.reason === "receipt_price_refused") return true;
+  if (err.status !== 400 || body?.reason != null) return false;
+  const said = Array.isArray(body?.message) ? body.message : [body?.message];
+  return (
+    said.length > 0 &&
+    said.every((m) => typeof m === "string" && CURRENCY_SENTENCE.test(m))
+  );
 }
 
 // Unlock/sign-in resumes only the queue belonging to the now-active principal.
