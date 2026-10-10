@@ -6,6 +6,9 @@ import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
 import { DeliveryStockService, CostReceipt } from "./delivery-stock.service";
 import type { CreditReason } from "../documents/credit-ledger";
+import { ProcurementOrderStatus } from "../dto/procurement.dto";
+import { ORDER_ARRIVED_STATUSES, hasStatus } from "../order-status";
+import { decideTransition } from "../order-transitions";
 
 /**
  * DeliveryService — the delivery's own doors (ADR 0103 D1/D3/D5/D6/D7, A2, A4, A6).
@@ -687,7 +690,9 @@ export class DeliveryService {
     if (delivery.order_id) {
       const read = await client
         .from("procurement_orders")
-        .select("id, provider_id, currency, match_status, discrepancy_notes")
+        .select(
+          "id, provider_id, currency, status, match_status, discrepancy_notes",
+        )
         .eq("id", delivery.order_id)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
@@ -699,6 +704,7 @@ export class DeliveryService {
         const o = read.data as {
           provider_id: string | null;
           currency: string | null;
+          status: string | null;
           match_status: string | null;
           discrepancy_notes: string | null;
         };
@@ -706,7 +712,9 @@ export class DeliveryService {
         const notes = (o.discrepancy_notes ?? "").trim();
         const patch: Record<string, unknown> = {};
         if (!notes.includes(rule.words))
-          patch.discrepancy_notes = notes ? `${notes} ${rule.words}` : rule.words;
+          patch.discrepancy_notes = notes
+            ? `${notes} ${rule.words}`
+            : rule.words;
         if (!o.match_status || o.match_status === "matched")
           patch.match_status = rule.match;
         if (Object.keys(patch).length) {
@@ -720,6 +728,8 @@ export class DeliveryService {
               `delivery ${delivery.id}: the ${input.reason} could not be written to order ${delivery.order_id}: ${upd.error.message}`,
             );
         }
+        if (delivery.state === "REJECTED")
+          await this.failRefusedOrder(restaurantId, delivery, o.status);
       }
     }
 
@@ -785,6 +795,67 @@ export class DeliveryService {
     if (ins.error)
       this.logger.error(
         `delivery ${delivery.id}: the ${input.reason} claim could not be opened: ${ins.error.message}`,
+      );
+  }
+
+  /**
+   * A refused truck takes its order out of the money (F-669). An order the
+   * door already booked in reads DELIVERED or partly received, so it counted
+   * in every purchase total and as an arrival for the vendor, while the stock
+   * it booked was handed back the moment the truck was refused.
+   *
+   * FAILED is the one closed state the order table allows from there
+   * (order-transitions.ts; REJECTED and CANCELLED are refused once goods have
+   * arrived), and it leaves both ORDER_SPEND_STATUSES and
+   * ORDER_ARRIVED_STATUSES. The order's notes already say why.
+   *
+   * Left alone, with the note only: an order not yet booked in (it counts in
+   * no total, and a vendor's miss returns an order to negotiation, never to a
+   * closed state — ADR 0125 Q3), a COMPLETED one (nothing leaves it), and one
+   * with another truck on it that was not refused (that truck's goods are real).
+   */
+  private async failRefusedOrder(
+    restaurantId: string,
+    delivery: DeliveryRow,
+    current: string | null,
+  ): Promise<void> {
+    if (!delivery.order_id) return;
+    if (
+      !hasStatus(current, ORDER_ARRIVED_STATUSES) ||
+      !decideTransition(current, ProcurementOrderStatus.FAILED).allowed
+    )
+      return;
+    const client = this.db.getClient();
+    const others = await client
+      .from("deliveries")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", delivery.order_id)
+      .neq("id", delivery.id)
+      .not("state", "in", '("REJECTED","CANCELLED")')
+      .limit(1);
+    if (others.error) {
+      this.logger.error(
+        `delivery ${delivery.id}: whether order ${delivery.order_id} has another truck could not be read, so it was left ${current}: ${others.error.message}`,
+      );
+      return;
+    }
+    const kept = ((others.data as { id: string }[] | null) ?? []).filter(
+      (d) => d.id !== delivery.id,
+    );
+    if (kept.length) return;
+    const upd = await client
+      .from("procurement_orders")
+      .update({
+        status: ProcurementOrderStatus.FAILED,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", delivery.order_id)
+      .eq("restaurant_id", restaurantId)
+      .eq("status", current as string);
+    if (upd.error)
+      this.logger.error(
+        `delivery ${delivery.id}: order ${delivery.order_id} could not be moved out of ${current}: ${upd.error.message}`,
       );
   }
 
@@ -1744,7 +1815,9 @@ export class DeliveryService {
    * repository's standing fault is made of. Lines the matcher could not pair are
    * counted and named separately from lines that genuinely disagree.
    */
-  private async notifyIfItDiffers(delivery: DeliveryRow): Promise<number | null> {
+  private async notifyIfItDiffers(
+    delivery: DeliveryRow,
+  ): Promise<number | null> {
     const scan = await this.scanDifferences(delivery);
     if (scan.status !== "compared") {
       if (scan.status === "unreadable")
@@ -1888,8 +1961,7 @@ export class DeliveryService {
         status: "unreadable",
         reason: `the order comparison could not run — procurement_order_items read failed: ${orderRead.error.message}`,
       };
-    if (!docLines.ok)
-      return { status: "unreadable", reason: docLines.error };
+    if (!docLines.ok) return { status: "unreadable", reason: docLines.error };
 
     const orderLines: MatchableLine[] = (
       (orderRead.data ?? []) as unknown as {

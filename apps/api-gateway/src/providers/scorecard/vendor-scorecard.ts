@@ -696,7 +696,10 @@ function cancelledEntry(
     const w = whichWindow(deadline.latest, b);
     if (!w) return null;
     const date = fmt.date(deadline.date);
-    const days = Math.max(daysPast(cancelledAtMs ?? deadline.latest, deadline), 0);
+    const days = Math.max(
+      daysPast(cancelledAtMs ?? deadline.latest, deadline),
+      0,
+    );
     return {
       ...base,
       id: `onTime:${o.id}`,
@@ -749,15 +752,21 @@ export function doorEntries(
   b: Bounds,
 ): DocketEntry[] {
   // One verdict per order line: the latest door event that carries an outcome.
+  // A truck refused with no order is its own line: it names its vendor itself
+  // (F-669), so it is attributable without an order.
   const byOrder = new Map<string, typeof rows>();
   for (const r of rows) {
-    if (!r.order_id) continue; // no order, no vendor — not attributable
-    const list = byOrder.get(r.order_id) ?? [];
+    const key =
+      r.order_id ??
+      (r.table === "deliveries" && r.provider_id ? `delivery:${r.id}` : null);
+    if (!key) continue; // no order, no vendor — not attributable
+    const list = byOrder.get(key) ?? [];
     list.push(r);
-    byOrder.set(r.order_id, list);
+    byOrder.set(key, list);
   }
   const out: DocketEntry[] = [];
-  for (const [orderId, events] of byOrder) {
+  for (const [key, events] of byOrder) {
+    const orderId = events[0].order_id;
     const sorted = [...events].sort(
       (a, c) => (ms(c.occurred_at) ?? 0) - (ms(a.occurred_at) ?? 0),
     );
@@ -767,12 +776,14 @@ export function doorEntries(
     const w = whichWindow(at, b);
     if (!w) continue;
     const base = {
-      id: `linesAsOrdered:${orderId}`,
+      id: `linesAsOrdered:${key}`,
       measure: "linesAsOrdered" as const,
       at: chosen.occurred_at,
       window: w,
       open: false,
-      title: chosen.order_number || COPY.entry.order(orderId),
+      title:
+        chosen.order_number ||
+        (orderId ? COPY.entry.order(orderId) : COPY.entry.delivery(chosen.id)),
       source: {
         table: chosen.table ?? "procurement_receipt_events",
         id: chosen.id,

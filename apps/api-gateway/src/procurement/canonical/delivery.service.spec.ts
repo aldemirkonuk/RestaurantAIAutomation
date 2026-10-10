@@ -367,6 +367,58 @@ describe("DeliveryService", () => {
         expect(writesTo("procurement_credits", "insert")).toEqual([]);
       });
 
+      const refuseOn = (status: string, trucks: Record<string, unknown>[]) => {
+        db.answers.deliveries = {
+          data: [deliveryRow({ order_id: ORDER }), ...trucks],
+          error: null,
+        };
+        db.updateAnswers.deliveries = {
+          data: deliveryRow({ order_id: ORDER, state: "REJECTED" }),
+          error: null,
+        };
+        db.answers.procurement_orders = {
+          data: {
+            id: ORDER,
+            provider_id: "prov-1",
+            currency: "TRY",
+            status,
+            match_status: "matched",
+            discrepancy_notes: null,
+          },
+          error: null,
+        };
+        return service.propose(REST, DEL, "u1", {
+          side: "restaurant",
+          reason: "WRONG_VENUE",
+        });
+      };
+      const statusWrites = () =>
+        writesTo("procurement_orders", "update")
+          .map((w) => (w.payload as { status?: string }).status)
+          .filter(Boolean);
+
+      it.each(["DELIVERED", "PARTIALLY_RECEIVED"])(
+        "a refused truck takes a %s order out of the purchase totals: it becomes FAILED",
+        async (status) => {
+          const res = await refuseOn(status, []);
+          expect(res.ok).toBe(true);
+          expect(statusWrites()).toEqual(["FAILED"]);
+        },
+      );
+
+      it.each(["CONFIRMED", "IN_TRANSIT", "COMPLETED"])(
+        "a refused truck leaves a %s order's state alone (note only)",
+        async (status) => {
+          await refuseOn(status, []);
+          expect(statusWrites()).toEqual([]);
+        },
+      );
+
+      it("a refused truck leaves the order alone when another truck on it was kept", async () => {
+        await refuseOn("DELIVERED", [{ id: "del-2" }]);
+        expect(statusWrites()).toEqual([]);
+      });
+
       it("a damaged line with money at risk opens a credit claim against the order's vendor and currency", async () => {
         db.answers.deliveries = {
           data: deliveryRow({ order_id: ORDER }),
@@ -406,9 +458,9 @@ describe("DeliveryService", () => {
           opened_by: "u1",
           evidence: { deliveryId: DEL, line: ":2", reason: "DAMAGED" },
         });
-        expect(writesTo("procurement_orders", "update")[0]?.payload).toMatchObject(
-          { match_status: "rejected" },
-        );
+        expect(
+          writesTo("procurement_orders", "update")[0]?.payload,
+        ).toMatchObject({ match_status: "rejected" });
       });
 
       it("a newer position on the same line moves the open claim instead of opening a second", async () => {
@@ -423,9 +475,9 @@ describe("DeliveryService", () => {
           moneyAtRisk: 90,
         });
         expect(writesTo("procurement_credits", "insert")).toEqual([]);
-        expect(writesTo("procurement_credits", "update")[0]?.payload).toMatchObject(
-          { claimed_amount: 90 },
-        );
+        expect(
+          writesTo("procurement_credits", "update")[0]?.payload,
+        ).toMatchObject({ claimed_amount: 90 });
       });
 
       it("leaves a claim alone once it has been asked for", async () => {
@@ -439,9 +491,9 @@ describe("DeliveryService", () => {
           lineNo: 1,
           moneyAtRisk: 90,
         });
-        expect(db.writes.filter((w) => w.table === "procurement_credits")).toEqual(
-          [],
-        );
+        expect(
+          db.writes.filter((w) => w.table === "procurement_credits"),
+        ).toEqual([]);
       });
 
       it("the vendor's own short-ship position opens no claim and touches no order", async () => {
@@ -1062,7 +1114,9 @@ describe("DeliveryService", () => {
       // And nothing moved. A refusal that still wrote AGREED would be worse
       // than no gate at all.
       expect(
-        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
+        db.writes.filter(
+          (w) => w.table === "deliveries" && w.verb === "update",
+        ),
       ).toEqual([]);
     });
 
@@ -1115,7 +1169,9 @@ describe("DeliveryService", () => {
         expect(res.error).toMatch(/could not run/i);
       }
       expect(
-        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
+        db.writes.filter(
+          (w) => w.table === "deliveries" && w.verb === "update",
+        ),
       ).toEqual([]);
     });
 

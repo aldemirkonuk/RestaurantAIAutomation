@@ -626,6 +626,53 @@ describe("the vendor scorecard is house-scoped", () => {
     });
   });
 
+  it("a truck house A refused with no order counts against the vendor it names; another vendor's or house B's does not (F-669)", async () => {
+    const { controller, db } = make();
+    db.tables.deliveries = [
+      {
+        id: "a-loose-truck",
+        restaurant_id: A,
+        provider_id: PA,
+        order_id: null,
+        state: "REJECTED",
+        updated_at: day(16, 9),
+      },
+      // Another vendor's refused truck, and house B's naming A's vendor.
+      {
+        id: "a-other-vendor-truck",
+        restaurant_id: A,
+        provider_id: "prov-A-other",
+        order_id: null,
+        state: "REJECTED",
+        updated_at: day(16, 9),
+      },
+      {
+        id: "b-loose-truck",
+        restaurant_id: B,
+        provider_id: PA,
+        order_id: null,
+        state: "REJECTED",
+        updated_at: day(16, 9),
+      },
+    ];
+    const card = await controller.card(userA, PA, "90");
+    expect(m(card, "linesAsOrdered")).toMatchObject({
+      outcome: "answered",
+      sample: 6,
+      hits: 5,
+    });
+    const docket = await controller.docket(userA, PA, "90", "linesAsOrdered");
+    const loose = docket.entries.filter((e) => e.source.orderId === null);
+    expect(loose).toEqual([
+      expect.objectContaining({
+        title: "Delivery a-loose-, no order",
+        hit: false,
+        detail: "Refused at the door (sent to the wrong restaurant).",
+        source: { table: "deliveries", id: "a-loose-truck", orderId: null },
+      }),
+    ]);
+  });
+
   it("refuses the on-time line when the arrival answers cannot be read — never reads every order as unconfirmed", async () => {
     const { controller, db } = make();
     db.tables.procurement_orders.push({

@@ -92,6 +92,7 @@ export function makeMockDb(): MockDb {
       "select",
       "eq",
       "neq",
+      "not",
       "in",
       "gte",
       "lte",
