@@ -27,6 +27,9 @@ describe("InventoryService", () => {
     is: jest.fn().mockReturnThis(),
     in: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
+    // The list's lot and location reads page by range and refuse a failed
+    // read (F-293); an empty, whole answer by default.
+    range: jest.fn().mockResolvedValue({ data: [], error: null, count: 0 }),
     single: mockSingle,
     maybeSingle: mockMaybeSingle,
     execute: mockExecute,

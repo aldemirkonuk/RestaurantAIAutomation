@@ -59,9 +59,12 @@ export class CreateInventoryTransactionDto {
   @IsUUID()
   inventoryId: string;
 
-  @ApiProperty({ description: "Wine ID" })
+  // Optional (F-292): a house item that is not a library wine has no wine id,
+  // and the movement itself keys on inventoryId; this only labels the event.
+  @ApiPropertyOptional({ description: "Wine ID" })
   @IsUUID()
-  wineId: string;
+  @IsOptional()
+  wineId?: string;
 
   @ApiProperty({ enum: TransactionType })
   @IsEnum(TransactionType)

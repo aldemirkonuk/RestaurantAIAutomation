@@ -14,6 +14,12 @@
  *
  * Submission goes through spotCountOutbox so a dead cellar signal doesn't
  * cost the count — it queues and syncs when connectivity returns.
+ *
+ * The count is of the WHOLE wine, every shelf at once (F-291): the server has
+ * no per-location count yet, and the number entered replaces the total across
+ * every location. The panel says so, so nobody counts one shelf and wipes the
+ * rest. The field opens empty (F-294): a count pre-filled with the book figure
+ * recorded "the books were right" for anyone who tapped Submit without counting.
  */
 import { useEffect, useRef, useState } from 'react'
 import { X, Mic, Camera, Loader2, Check } from 'lucide-react'
@@ -104,13 +110,14 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
   const fileRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
 
-  const [qty, setQty] = useState<string>(item.liveStock != null ? String(item.liveStock) : '')
+  const [qty, setQty] = useState<string>('')
   const [listening, setListening] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoNote, setPhotoNote] = useState<string | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const voiceSupported = !!getSpeechRecognition()
+  const shelvesHolding = (item.locations ?? []).filter((l) => l.qty > 0).length
 
   useEffect(() => {
     return () => {
@@ -214,7 +221,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h3 className="text-sm font-bold text-gray-900">Spot count</h3>
+            <h3 className="text-sm font-bold text-gray-900">Count every shelf</h3>
             <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">{item.name}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -223,6 +230,11 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
         </div>
 
         <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-600 leading-relaxed" data-testid="spot-count-scope">
+            Count every bottle of this wine in every room, then enter the total. It replaces the total for all of
+            them, so a count of one shelf would take the others off the books.
+            {shelvesHolding > 1 && ` The books have it in ${shelvesHolding} places.`}
+          </p>
           <div className="text-center">
             <input
               type="number"
@@ -231,10 +243,11 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
               value={qty}
               onChange={(e) => setQty(e.target.value)}
               className="w-full text-center text-4xl font-mono font-bold text-gray-900 border border-gray-200 rounded-xl py-4 focus:outline-none focus:ring-2 focus:ring-wine-500"
-              placeholder="0"
+              placeholder="Total"
+              aria-label="Bottles counted, every shelf"
             />
             <p className="text-[11px] text-gray-400 mt-1.5">
-              Currently on hand: {item.liveStock ?? 'unknown'} bottles
+              On the books, all shelves together: {item.liveStock ?? 'unknown'} bottles
             </p>
           </div>
 
