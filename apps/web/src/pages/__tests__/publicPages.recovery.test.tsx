@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
   axiosGet: vi.fn(),
   axiosPost: vi.fn(),
   auth: {
-    user: null as null | { email: string },
+    user: null as null | { email: string; emailVerified?: boolean },
     isAuthenticated: false,
     logout: vi.fn(),
     refreshBranches: vi.fn(),
@@ -103,6 +103,31 @@ it('gives signed-out verification a sign-in path instead of an authenticated res
     screen.queryByRole('button', { name: /Resend/ }),
   ).not.toBeInTheDocument()
   expect(h.post).not.toHaveBeenCalled()
+})
+// F-440: the address was verified on the phone; the laptop's "check your
+// email" page must say so, not keep asking for a link.
+it('tells a verified account its address is verified, with a way on, and sends nothing', () => {
+  h.auth.user = { email: 'owner@house.test', emailVerified: true }
+  h.auth.isAuthenticated = true
+  mount(<VerifyEmail />, '/verify-email')
+  expect(screen.getByRole('status')).toHaveTextContent('This address is verified.')
+  expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute('href', '/')
+  expect(
+    screen.queryByRole('button', { name: /Resend/ }),
+  ).not.toBeInTheDocument()
+  expect(h.post).not.toHaveBeenCalled()
+})
+it('turns a resend the server finds already verified into the verified answer', async () => {
+  h.auth.user = { email: 'owner@house.test', emailVerified: false }
+  h.auth.isAuthenticated = true
+  h.post.mockResolvedValueOnce({
+    data: { success: true, sent: false, alreadyVerified: true },
+  })
+  mount(<VerifyEmail />, '/verify-email')
+  fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
+  expect(await screen.findByText('This address is verified.')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute('href', '/')
+  expect(screen.queryByText(/Another verification email was requested/)).toBeNull()
 })
 // ADR 0229 fork 12 (the founder, 2026-09-28, item 81, "Link needs sign-in
 // (Recommended)"): the link verifies only for a session of its own account.

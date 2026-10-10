@@ -3,9 +3,11 @@
  * mark (founder, 2026-09-22). They used to pin under the rail forever.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+
+const h = vi.hoisted(() => ({ logout: vi.fn() }))
 
 vi.mock('../../contexts/AuthContext', async () => {
   const React = await import('react')
@@ -13,7 +15,7 @@ vi.mock('../../contexts/AuthContext', async () => {
     AuthContext: React.createContext(null),
     useAuth: () => ({
       user: { userId: 'user-1', name: 'Aldemir', role: 'manager', restaurantId: 'rest-1' },
-      logout: vi.fn(),
+      logout: h.logout,
     }),
   }
 })
@@ -69,5 +71,43 @@ describe('Sidebar — account cluster', () => {
     expect(screen.getByRole('img', { name: 'Mudavym' })).toBeInTheDocument()
     expect(screen.getByText('for restaurants')).toBeInTheDocument()
     expect(screen.queryByText('Inventory Intelligence')).toBeNull()
+  })
+})
+
+describe('Sidebar — a chosen sign-out (F-438)', () => {
+  function SignIn() {
+    const loc = useLocation()
+    return <div data-testid="sign-in">{JSON.stringify(loc.state)}</div>
+  }
+
+  it('opens a clean sign-in, carrying no page for the next person', async () => {
+    h.logout.mockResolvedValueOnce(true)
+    render(
+      <MemoryRouter initialEntries={['/reports']}>
+        <Routes>
+          <Route path="/login" element={<SignIn />} />
+          <Route path="*" element={<Sidebar />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }))
+    await waitFor(() => expect(screen.getByTestId('sign-in')).toHaveTextContent('null'))
+  })
+
+  it('stays put when the person keeps their unsent changes', async () => {
+    h.logout.mockResolvedValueOnce(false)
+    render(
+      <MemoryRouter initialEntries={['/reports']}>
+        <Routes>
+          <Route path="/login" element={<SignIn />} />
+          <Route path="*" element={<Sidebar />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }))
+    await waitFor(() => expect(h.logout).toHaveBeenCalled())
+    expect(screen.queryByTestId('sign-in')).toBeNull()
   })
 })

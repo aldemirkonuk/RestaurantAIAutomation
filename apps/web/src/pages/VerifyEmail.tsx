@@ -38,6 +38,7 @@ export function VerifyEmail() {
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+  const [verifiedElsewhere, setVerifiedElsewhere] = useState(false)
 
   // A new account with no house, made in a tab that was holding an invite
   // (F-288): the invite becomes this account's, so verifying (often in a new
@@ -58,6 +59,11 @@ export function VerifyEmail() {
   // and (ADR 0229 fork 6) removes a password they never set.
   const mustSignIn = Boolean(token) && ((!loading && !user) || refusal === 'sign-in')
   const alreadyVerified = Boolean(token) && user?.emailVerified === true && !verified
+  // No link in hand, but the address was proven elsewhere — the link opened on
+  // the phone (F-440). Known from the account, or from a resend that found it
+  // verified. Continue loads the app afresh so it reads the verified account.
+  const addressVerified =
+    !token && !verified && (user?.emailVerified === true || verifiedElsewhere)
 
   const handleVerify = async () => {
     if (!token) {
@@ -156,7 +162,13 @@ export function VerifyEmail() {
     setResending(true)
     setError(null)
     try {
-      await apiClient.post('/auth/resend-verification')
+      const { data } = await apiClient.post<{ alreadyVerified?: boolean }>(
+        '/auth/resend-verification',
+      )
+      if (data?.alreadyVerified) {
+        setVerifiedElsewhere(true)
+        return
+      }
       setLastResent(new Date())
       toast.success('Verification email requested. Check your inbox.')
     } catch (err: unknown) {
@@ -172,7 +184,7 @@ export function VerifyEmail() {
     return (
       <PublicShell
         title={
-          verified
+          verified || addressVerified
             ? 'Email verified'
             : token
               ? 'Verify your email'
@@ -182,9 +194,11 @@ export function VerifyEmail() {
         voice={
           verified
             ? 'Opening your workspace…'
-            : token
-              ? 'Confirm this address to continue.'
-              : 'Look for the verification email from Mudavym.'
+            : addressVerified
+              ? 'Nothing more to do here.'
+              : token
+                ? 'Confirm this address to continue.'
+                : 'Look for the verification email from Mudavym.'
         }
         homeHref="/login"
         footer={
@@ -213,6 +227,13 @@ export function VerifyEmail() {
                     {verifying ? 'Verifying…' : 'Verify my email'}
                   </button>
                 )
+              ) : addressVerified ? (
+                <>
+                  <p role="status">This address is verified.</p>
+                  <a className="mdv-btn mdv-btn--seal" href="/">
+                    Continue
+                  </a>
+                </>
               ) : (
                 <>
                   {user?.email && (
@@ -340,6 +361,18 @@ export function VerifyEmail() {
                 'Verify My Email'
               )}
             </Button>
+          </div>
+        ) : addressVerified ? (
+          <div className="space-y-3 text-center">
+            <p role="status" className="text-sm text-gray-600">
+              This address is verified.
+            </p>
+            <a
+              href="/"
+              className="inline-block w-full rounded-xl bg-wine-600 py-3 text-sm font-semibold text-white hover:bg-wine-700"
+            >
+              Continue
+            </a>
           </div>
         ) : (
           <div className="space-y-4">

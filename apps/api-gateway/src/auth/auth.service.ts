@@ -3635,7 +3635,7 @@ export class AuthService {
     userId: string,
     email: string,
     devBypassSession = false,
-  ): Promise<{ sent: boolean }> {
+  ): Promise<{ sent: boolean; alreadyVerified?: boolean }> {
     // ADR 0229 fork 12 (item 81): a resend honours the fork 8 lapse, as a
     // refresh does (fork 10). Past the seven days an unproven password opens
     // nothing, and the session that password opened asks for no more links:
@@ -3665,6 +3665,11 @@ export class AuthService {
           "This session was signed out because its password was never confirmed. Sign in with a code emailed to you.",
         code: SESSION_ENDED,
       });
+    }
+    // Verified on another device while this tab still asked (F-440): say so,
+    // and mint no link and send no mail for an address already proven.
+    if (account.email_verified === true) {
+      return { sent: false, alreadyVerified: true };
     }
 
     const { data: verif } = await this.databaseService.supabase

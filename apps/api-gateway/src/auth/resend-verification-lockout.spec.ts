@@ -16,6 +16,7 @@ import { BadRequestException } from "@nestjs/common";
 function makeService(
   rows: Array<Record<string, unknown>>,
   configOverrides: Record<string, unknown> = {},
+  accountOverrides: Record<string, unknown> = {},
 ) {
   const ordered = [...rows];
   const chain: any = {
@@ -58,6 +59,7 @@ function makeService(
         email_verified: false,
         password_hash: "$2b$10$registrant",
         created_at: new Date().toISOString(),
+        ...accountOverrides,
       },
       error: null,
     }),
@@ -172,5 +174,23 @@ describe("resendVerification — an account with no verification row", () => {
       service.resendVerification("u1", "a@b.com"),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("resendVerification — an account already verified (F-440)", () => {
+  it("answers alreadyVerified and mints no link and sends no mail", async () => {
+    // Verified on the phone while the laptop tab still says "check your
+    // email": no pending row, an old used one, the account row verified.
+    const { service, sent, inserted } = makeService(
+      [{ id: "v0", verified_at: minutesAgo(5), created_at: minutesAgo(600) }],
+      {},
+      { email_verified: true },
+    );
+
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).resolves.toEqual({ sent: false, alreadyVerified: true });
+    expect(sent).toHaveLength(0);
+    expect(inserted).toHaveLength(0);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { Camera, MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
@@ -106,7 +106,21 @@ function ArrivalShell({
   )
 }
 
+/**
+ * Opening a house needs a signed-in, verified person: every step saves to
+ * their account. Without this gate a signed-out visitor filled in step 01 and
+ * was told "Unauthorized" (F-439). The steps mount only once the person is
+ * known, so step 01 starts from their name rather than an empty field.
+ */
 export default function GetStarted() {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login?redirect=/get-started" replace />
+  if (user.emailVerified === false) return <Navigate to="/verify-email" replace />
+  return <GetStartedSteps />
+}
+
+function GetStartedSteps() {
   const navigate = useNavigate()
   const { user, createFirstHouse, activeRestaurantId } = useAuth()
   const [step, setStep] = useState<Step>('you')
