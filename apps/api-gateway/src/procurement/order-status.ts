@@ -60,8 +60,13 @@ export const ORDER_ARRIVED_STATUSES: readonly ProcurementOrderStatus[] = [
  * So the choice is between understating by goods-received-on-open-backorders
  * and overstating by goods-ordered-but-never-delivered. For a money figure the
  * founder reads as fact, understating is the safer error, and it self-corrects:
- * the order moves to `COMPLETED` once the three-way match closes it, at which
- * point its figures ARE final and it counts here.
+ * the order moves to `COMPLETED` once the three-way match closes it and counts
+ * here. Its `total_cost` is final only when that match had a priced invoice:
+ * verifying one writes the invoiced total there (F-700) and keeps the agreed
+ * value in `total_estimated_cost`. A `DELIVERED` order nobody has verified, or
+ * one closed without a priced invoice, still carries the agreed value, and an
+ * order placed with no price carries 0, which the spend readers count as
+ * unpriced rather than as $0 (F-701).
  *
  * Use for: spend totals, spend-by-month, cashflow, bottles delivered,
  * purchase-spend goals.

@@ -98,6 +98,14 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   // that sends neither, and an absent count is unknown, never zero.
   const counts = (s ?? {}) as { todayDeliveries?: number; monthBottlesIn?: number };
   const todayDeliveries = typeof counts.todayDeliveries === 'number' ? counts.todayDeliveries : null;
+  // F-701: a delivery with no price is left out of the spend, and the tile
+  // says so instead of reading as complete. An older gateway sends no count.
+  const unpricedNote = (n: number | undefined) =>
+    typeof n === 'number' && n > 0
+      ? `${formatNumber(n)} ${n === 1 ? 'delivery' : 'deliveries'} with no price not counted`
+      : undefined;
+  const todayUnpriced = unpricedNote(s?.todayProcurementUnpriced);
+  const monthUnpriced = unpricedNote(s?.monthProcurementUnpriced);
   const monthBottlesIn = typeof counts.monthBottlesIn === 'number' ? counts.monthBottlesIn : null;
 
   // DASH-W37: "items", never "wines" — the house holds every drink (ADR 0115,
@@ -136,7 +144,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · today"
             value={todaySpend}
             format={(n) => formatMoney(n, 'compact')}
-            sub="delivered purchase orders"
+            sub={todayUnpriced ?? 'delivered purchase orders'}
             to="/orders?station=delivered"
             loading={loading}
           />
@@ -144,7 +152,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · month"
             value={monthSpend}
             format={(n) => formatMoney(n, 'compact')}
-            sub="procurement, not sales"
+            sub={monthUnpriced ?? 'procurement, not sales'}
             to="/reports"
             loading={loading}
           />

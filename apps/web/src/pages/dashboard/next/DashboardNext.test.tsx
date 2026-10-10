@@ -22,6 +22,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { KpiRow } from './KpiRow';
+import type { DashboardStats } from '@/services/api/types';
 
 const api = vi.hoisted(() => ({
   get: vi.fn(),
@@ -1230,5 +1232,41 @@ describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
     expect(figureColumns(6)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 2rem) / 3 - 1px)), 1fr))');
     expect(figureColumns(4)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 1rem) / 2 - 1px)), 1fr))');
     expect(SECTION_COLUMNS).toBe('repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))');
+  });
+});
+
+// F-701: a delivered order with no price is left out of the spend tiles, and
+// each tile says how many instead of reading as a complete total.
+describe('KpiRow — spend left out for want of a price', () => {
+  const stats = (extra: Partial<DashboardStats>): DashboardStats => ({
+    totalWines: 3,
+    totalBottles: 40,
+    totalVolumeMl: 30000,
+    totalVolumeOz: 1014,
+    lowStockItems: 0,
+    pendingOrders: 0,
+    todayProcurementSpend: 120,
+    weekProcurementSpend: 120,
+    monthProcurementSpend: 900,
+    ...extra,
+  });
+  const draw = (s: DashboardStats) =>
+    render(
+      <MemoryRouter>
+        <KpiRow stats={s} pendingCount={0} lowStockCount={0} />
+      </MemoryRouter>,
+    );
+
+  it('names the unpriced deliveries under today and the month', () => {
+    draw(stats({ todayProcurementUnpriced: 1, monthProcurementUnpriced: 3 }));
+    expect(screen.getByText('1 delivery with no price not counted')).toBeInTheDocument();
+    expect(screen.getByText('3 deliveries with no price not counted')).toBeInTheDocument();
+  });
+
+  it('keeps the plain subtitles when every delivery is priced, or the gateway sends no count', () => {
+    draw(stats({ todayProcurementUnpriced: 0 }));
+    expect(screen.getByText('delivered purchase orders')).toBeInTheDocument();
+    expect(screen.getByText('procurement, not sales')).toBeInTheDocument();
+    expect(screen.queryByText(/with no price/)).not.toBeInTheDocument();
   });
 });

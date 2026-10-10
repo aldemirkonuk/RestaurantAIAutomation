@@ -16,6 +16,7 @@ import {
   volumeMlOf,
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import { orderSpend } from "../procurement/order-spend";
 import { houseDayBounds } from "../common/house-day";
 
 /**
@@ -28,7 +29,8 @@ import { houseDayBounds } from "../common/house-day";
  * shaping data and (b) mapping it onto the right formulas.
  *
  * Data-source conventions (documented so numbers are auditable):
- *   • Purchases / COGS   ← procurement_orders (delivered) total_cost|final_price
+ *   • Purchases / COGS   ← procurement_orders (delivered) total_cost; an
+ *                          order with none is unpriced and counted (F-701)
  *   • On-hand & cost     ← restaurant_inventory + inventory_lot_rollup.wac
  *   • Consumption/demand ← wine_consumption_log (quantity, volume_ml)
  *   • Vendor structure   ← procurement_orders.provider_id
@@ -204,7 +206,9 @@ export class AnalyticsService {
     if (error) this.logQueryFailure("procurement_orders", error);
     return (data || []).map((o: any) => ({
       providerId: o.provider_id || "unknown",
-      cost: o.total_cost || o.final_price || 0,
+      // Null when the order carries no price (F-701): not $0, and not one
+      // bottle's `final_price` standing in for the whole order.
+      cost: orderSpend(o),
       bottles: o.bottles_total || o.quantity || 0,
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
     }));
@@ -476,8 +480,13 @@ export class AnalyticsService {
     // it is the absence of any row to measure, so it is null and the basis
     // says which. A restaurant that genuinely placed orders still gets its
     // real total, including a real 0 if every order carried no cost.
-    const cogs =
-      orders.length === 0 ? null : E.stats.sum(orders.map((o) => o.cost));
+    // A delivered order with no price is left out and counted (F-701), so
+    // the page can say what the figure is missing, as costCoverage does.
+    const pricedCosts = orders
+      .map((o) => o.cost)
+      .filter((c): c is number => c != null);
+    const cogsUnpricedCount = orders.length - pricedCosts.length;
+    const cogs = orders.length === 0 ? null : E.stats.sum(pricedCosts);
 
     // Revenue basis: sell-price valuation of purchased bottles (proxy until a
     // POS revenue feed lands). Menu price is recorded, so this survives an
@@ -586,7 +595,10 @@ export class AnalyticsService {
         cogs:
           orders.length === 0
             ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
-            : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
+            : `delivered procurement_orders (trailing 365d) — ${pricedCosts.length} order${pricedCosts.length === 1 ? "" : "s"} summed` +
+              (cogsUnpricedCount > 0
+                ? `; ${cogsUnpricedCount} delivered order${cogsUnpricedCount === 1 ? "" : "s"} with no price left out`
+                : ""),
         revenue:
           inventory.length === 0
             ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
@@ -602,6 +614,7 @@ export class AnalyticsService {
       costCoverage,
       inventoryValue,
       cogs,
+      cogsUnpricedCount,
       revenue,
       grossMarginDollars: marginDollars,
       grossMargin,
@@ -802,7 +815,7 @@ export class AnalyticsService {
     for (const o of orders)
       spendByVendor.set(
         o.providerId,
-        (spendByVendor.get(o.providerId) || 0) + o.cost,
+        (spendByVendor.get(o.providerId) || 0) + (o.cost ?? 0),
       );
     const vendorWeights = Array.from(spendByVendor.values());
     const hhi = E.finance.herfindahlIndex(vendorWeights);

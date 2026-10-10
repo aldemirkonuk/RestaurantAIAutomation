@@ -146,6 +146,22 @@ describe("financial never reports an empty result set as $0", () => {
     expect(out.basis.revenue).toContain("1 inventory row valued");
   });
 
+  // F-701: an order placed with no price is written total_cost 0. It used to
+  // add $0, or one bottle's `final_price` as the whole order, and say nothing.
+  it("leaves a delivered order with no price out of COGS and counts it", async () => {
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [
+        DELIVERED,
+        { ...DELIVERED, id: "po-2", total_cost: 0, final_price: 17 },
+      ],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(480);
+    expect(out.cogsUnpricedCount).toBe(1);
+    expect(out.basis.cogs).toContain("1 order summed");
+    expect(out.basis.cogs).toContain("1 delivered order with no price left out");
+  });
+
   it("withholds every ratio that would divide by an absent COGS or revenue", async () => {
     // Inventory is fully priced here, so the cost-coverage gate is OPEN — the
     // only thing left to withhold these is the missing COGS/revenue itself.

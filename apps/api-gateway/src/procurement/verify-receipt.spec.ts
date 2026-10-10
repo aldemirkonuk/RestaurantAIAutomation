@@ -1499,3 +1499,76 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     expect(calls.orderUpdates).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// F-700 — the order's money becomes what the invoice charged
+// ---------------------------------------------------------------------------
+describe("verifyReceipt — purchases and the lot are booked at one price (F-700)", () => {
+  // Whispering Angel, the F-157 live case: 12 bottles agreed at $17.00 ($204),
+  // billed at $19.50 with $6 of freight apportioned to the line.
+  const agreed = {
+    ...deliveredOrder,
+    quantity: 12,
+    bottles_total: 12,
+    final_price: 17,
+    total_cost: 204,
+    total_estimated_cost: null,
+  };
+  const billed = {
+    invoiceQuantity: 12,
+    invoiceUnitPrice: 19.5,
+    invoiceCurrency: "USD",
+    allocatedCharges: 6,
+    acceptedQuantity: 12,
+    priceOverrideReason: "vendor raised the price; accepted",
+  };
+
+  it("writes the invoiced total to total_cost and keeps the agreed value", async () => {
+    const { db, calls } = makeDb({ orderRow: agreed, bookedBottles: 12 });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, billed as any);
+
+    expect(calls.orderUpdates[0].total_cost).toBe(240);
+    expect(calls.orderUpdates[0].total_estimated_cost).toBe(204);
+  });
+
+  it("purchases minus the change in stock at cost reconciles on a price-override receipt", async () => {
+    const { db, calls } = makeDb({ orderRow: agreed, bookedBottles: 12 });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, billed as any);
+
+    // The lot is restated at the landed unit cost over the 12 bottles in hand.
+    const reval = calls.rpc.find((c) => c.name === "revalue_lot");
+    expect(reval).toBeDefined();
+    const stockAtCost = 12 * reval!.args.p_unit_cost;
+    const purchases = calls.orderUpdates[0].total_cost;
+    expect(purchases - stockAtCost).toBeCloseTo(0, 6);
+  });
+
+  it("a second verification keeps the agreed value it found the first time", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...agreed, total_cost: 240, total_estimated_cost: 204 },
+      bookedBottles: 12,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...billed,
+      allocatedCharges: 0,
+    } as any);
+
+    expect(calls.orderUpdates[0].total_cost).toBe(234);
+    expect(calls.orderUpdates[0]).not.toHaveProperty("total_estimated_cost");
+  });
+
+  it("leaves the order's money alone when the paper carries no price", async () => {
+    const { db, calls } = makeDb({ orderRow: agreed, bookedBottles: 12 });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 12,
+      acceptedQuantity: 12,
+    } as any);
+
+    expect(calls.orderUpdates[0]).not.toHaveProperty("total_cost");
+    expect(calls.orderUpdates[0]).not.toHaveProperty("total_estimated_cost");
+  });
+});

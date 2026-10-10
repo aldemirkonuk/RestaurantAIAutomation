@@ -298,6 +298,25 @@ describe('a staff reader sees no house money on /reports (F-203)', () => {
     expect(v.notes).toEqual([AMOUNTS_WITHHELD]);
   });
 
+  // F-701: a delivered order with no price is left out of Cost of goods and
+  // the page says how many, the way it names the cellar's missing costs.
+  it('says how many delivered orders Cost of goods leaves out for want of a price', () => {
+    const base = { cogs: 1200, costCoverage: { total: 3, priced: 3, unpriced: 0, complete: true } };
+    const two = ledger.view(ledger.select({ ...base, cogsUnpricedCount: 2 }), ctx);
+    expect(two.notes).toEqual([
+      '2 delivered orders carry no price, so Cost of goods leaves them out and is short by what they cost.',
+    ]);
+    const one = ledger.view(ledger.select({ ...base, cogsUnpricedCount: 1 }), ctx);
+    expect(String(one.notes)).toContain('1 delivered order carries no price');
+    // Every order priced, or a gateway that sends no count: no note.
+    expect(ledger.view(ledger.select({ ...base, cogsUnpricedCount: 0 }), ctx).notes).toEqual([]);
+    expect(ledger.view(ledger.select(base), ctx).notes).toEqual([]);
+    // Staff read no money, so no note about it either.
+    expect(
+      ledger.view(ledger.select({ amountsWithheld: true, cogsUnpricedCount: 2 }), ctx).notes,
+    ).toEqual([AMOUNTS_WITHHELD]);
+  });
+
   it('against ourselves drops the buying figures, row and bars', () => {
     const b = bench.select({
       amountsWithheld: true,

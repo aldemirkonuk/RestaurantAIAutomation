@@ -172,6 +172,8 @@ export interface LedgerRegister {
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   inventoryValue: number | null;
   cogs: number | null;
+  /** Delivered orders with no price, left out of `cogs` (F-701). */
+  cogsUnpricedCount?: number;
   revenue: number | null;
   grossMargin: number | null;
   cogsRatio: number | null;
@@ -198,6 +200,7 @@ const ledger = analysis<LedgerRegister>({
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
       inventoryValue: num(d.inventoryValue),
       cogs: num(d.cogs),
+      cogsUnpricedCount: num(d.cogsUnpricedCount) ?? undefined,
       revenue: num(d.revenue),
       grossMargin: num(d.grossMargin),
       cogsRatio: num(d.cogsRatio),
@@ -254,13 +257,22 @@ const ledger = analysis<LedgerRegister>({
       figures,
       notes: f.amountsWithheld
         ? [AMOUNTS_WITHHELD]
-        : cc && !cc.complete
-          ? [
-              cc.total === 0
-                ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
-                : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
-            ]
-          : [],
+        : [
+            ...(cc && !cc.complete
+              ? [
+                  cc.total === 0
+                    ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
+                    : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
+                ]
+              : []),
+            // F-701: a delivery with no price is left out of Cost of goods,
+            // and said so, rather than added as $0.
+            ...(f.cogsUnpricedCount && f.cogsUnpricedCount > 0
+              ? [
+                  `${figure(f.cogsUnpricedCount)} delivered ${f.cogsUnpricedCount === 1 ? 'order carries' : 'orders carry'} no price, so Cost of goods leaves ${f.cogsUnpricedCount === 1 ? 'it' : 'them'} out and is short by what ${f.cogsUnpricedCount === 1 ? 'it' : 'they'} cost.`,
+                ]
+              : []),
+          ],
       basis: [
         f.basis?.revenue,
         f.basis?.cogs,
