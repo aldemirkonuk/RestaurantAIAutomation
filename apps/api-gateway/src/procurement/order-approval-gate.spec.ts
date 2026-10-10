@@ -90,6 +90,8 @@ function makeDb(opts: {
   ledgerRows?: Row[];
   ledgerError?: { message: string } | null;
   auditFails?: boolean;
+  /** `restaurants.currency` — the currency the ceiling is in (F-648). */
+  houseCurrency?: string | null;
 }) {
   const calls: Calls = { orderUpdates: [], auditInserts: [], seals: [] };
 
@@ -100,6 +102,9 @@ function makeDb(opts: {
       let selectedColumns = "";
 
       const settle = (shape: "one" | "many") => {
+        if (table === "restaurants") {
+          return { data: { currency: opts.houseCurrency ?? null }, error: null };
+        }
         if (table === "system_audit_log") {
           return {
             data: null,
@@ -407,6 +412,91 @@ describe("approveOrder — the ceiling", () => {
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /waits for an owner to seal it/,
     );
+  });
+});
+
+function priceJump(percent: number): ThresholdRow {
+  return {
+    rule: "price_jump",
+    enabled: true,
+    amountLimit: null,
+    percentLimit: percent,
+    requiredRole: "owner",
+    setBy: null,
+    updatedAt: null,
+  };
+}
+
+describe("approveOrder — money is compared in one currency and one unit (F-648)", () => {
+  it("[REVERT-FAILS] a GBP order under a USD ceiling is not sealed by a manager", async () => {
+    const { db, calls } = makeDb({
+      order: { ...ORDER_ROW, total_cost: 2400, currency: "GBP" },
+      houseCurrency: "USD",
+    });
+    const svc = service(db, thresholdsStub([ceiling(2500)]), orgsStub("manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      /in GBP, while the 2500 ceiling this house set for a manager is in USD/,
+    );
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+  });
+
+  it("an order in the house's own currency is tested against the ceiling as before", async () => {
+    const { db, calls } = makeDb({
+      order: { ...ORDER_ROW, total_cost: 2400, currency: "USD" },
+      houseCurrency: "USD",
+    });
+    const svc = service(db, thresholdsStub([ceiling(2500)]), orgsStub("manager"));
+
+    await sealedApprove(svc);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+  });
+
+  it("[REVERT-FAILS] a bottle price is compared with last month's CASE price per bottle", async () => {
+    // $420 per case of 12 is $35 a bottle; $38 a bottle today is +8.6%, over a
+    // 5% limit. Divided raw it read -91% and never fired.
+    const { db } = makeDb({
+      order: { ...ORDER_ROW, final_price: 38, currency: "USD" },
+      priorPrices: [
+        {
+          final_price: 420,
+          currency: "USD",
+          procurement_order_items: [{ price_uom: "case", price_pack_size: 12 }],
+        },
+      ],
+    });
+    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      /8\.6% above the last price this house paid/,
+    );
+  });
+
+  it("[REVERT-FAILS] a routine case reorder is not read as a +1,000% jump", async () => {
+    const { db, calls } = makeDb({
+      order: {
+        ...ORDER_ROW,
+        final_price: 420,
+        currency: "USD",
+        procurement_order_items: [{ price_uom: "case", price_pack_size: 12 }],
+      },
+      priorPrices: [{ final_price: 35, currency: "USD" }],
+    });
+    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
+
+    await sealedApprove(svc);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+  });
+
+  it("a last price in another currency leaves price_jump untestable, not fired on a raw division", async () => {
+    const { db, calls } = makeDb({
+      order: { ...ORDER_ROW, final_price: 400, currency: "USD" },
+      priorPrices: [{ final_price: 30, currency: "GBP" }],
+    });
+    const svc = service(db, thresholdsStub([priceJump(5)]), orgsStub("manager"));
+
+    await sealedApprove(svc);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
 });
 

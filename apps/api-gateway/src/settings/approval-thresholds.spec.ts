@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 import {
   decideApproval,
+  pricePremium,
   retrospective,
   type OrderUnderTest,
   type ThresholdRow,
@@ -102,6 +103,77 @@ describe("decideApproval", () => {
     const d = decideApproval(policy, order({ pricePremiumPct: 18.4 }));
     expect(d.firedBy).toEqual(["price_jump"]);
     expect(d.reasons[0]).toContain("18.4%");
+  });
+});
+
+describe("decideApproval — across currencies and price units (F-648)", () => {
+  const ceil = [row({ rule: "manager_ceiling", amountLimit: 2500 })];
+
+  it("[REVERT-FAILS] fires the ceiling for an order in another currency than the ceiling", () => {
+    const d = decideApproval(
+      ceil,
+      order({ total: 2400, currency: "GBP", ceilingCurrency: "USD" }),
+    );
+    expect(d.requiredRole).toBe("owner");
+    expect(d.reasons[0]).toMatch(/in GBP, while the 2500 ceiling/);
+  });
+
+  it("keeps the old reading when either currency is unknown", () => {
+    expect(
+      decideApproval(ceil, order({ total: 2400, currency: null, ceilingCurrency: "USD" }))
+        .requiredRole,
+    ).toBeNull();
+    expect(
+      decideApproval(ceil, order({ total: 2400, currency: "USD", ceilingCurrency: "USD" }))
+        .requiredRole,
+    ).toBeNull();
+  });
+
+  it("reports price_jump untestable when the prices cannot be compared", () => {
+    const d = decideApproval(
+      [row({ rule: "price_jump", percentLimit: 5 })],
+      order({ priceUncomparable: "the last price was in GBP and this one is in USD" }),
+    );
+    expect(d.requiredRole).toBeNull();
+    expect(d.untestable).toEqual(["price_jump"]);
+  });
+});
+
+describe("pricePremium", () => {
+  const perCase = { priceUom: "case" as const, pricePackSize: 12 };
+
+  it("[REVERT-FAILS] compares a bottle price with a case price per bottle", () => {
+    const r = pricePremium(
+      { price: 38, currency: "USD", priceUnit: null },
+      { price: 420, currency: "USD", priceUnit: perCase },
+    );
+    expect(r.uncomparable).toBeNull();
+    expect(r.pct).toBeCloseTo(8.571, 2);
+  });
+
+  it("refuses to compare across currencies", () => {
+    const r = pricePremium(
+      { price: 38, currency: "USD", priceUnit: null },
+      { price: 30, currency: "GBP", priceUnit: null },
+    );
+    expect(r.pct).toBeNull();
+    expect(r.uncomparable).toMatch(/GBP.*USD/);
+  });
+
+  it("refuses to compare a keg price with a bottle price", () => {
+    const r = pricePremium(
+      { price: 38, currency: "USD", priceUnit: null },
+      { price: 200, currency: "USD", priceUnit: { priceUom: "keg", pricePackSize: 1 } },
+    );
+    expect(r.pct).toBeNull();
+    expect(r.uncomparable).toMatch(/keg/);
+  });
+
+  it("has no premium without an earlier price", () => {
+    expect(pricePremium({ price: 38, currency: "USD", priceUnit: null }, null)).toEqual({
+      pct: null,
+      uncomparable: null,
+    });
   });
 });
 

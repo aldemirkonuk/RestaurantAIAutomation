@@ -343,6 +343,91 @@ export function decideTransition(
   return { allowed: false, sentence: refuseTransition(from, to), from };
 }
 
+/* ── Counting a delivery against an order (F-647) ─────────────────────────── */
+
+/**
+ * Whether the door may count a delivery into stock against an order in this
+ * state. Derived from the table, never typed twice: the door moves the order to
+ * PARTIALLY_RECEIVED, so it may count exactly where that move is legal (or the
+ * order is already there). That is APPROVED, CONFIRMED, IN_TRANSIT, DELIVERED
+ * and PARTIALLY_RECEIVED.
+ *
+ * The door used to book the bottles FIRST and only then try the status, whose
+ * refusal on a CANCELLED or COMPLETED order it logged and swallowed: the stock
+ * landed, the screen said "done", and the order's money stayed out of every
+ * spend figure (F-647, the hole the table above was written to close).
+ */
+export function decideDoorCount(rawCurrent: unknown): TransitionVerdict {
+  const from = readOrderStatus(rawCurrent);
+  if (from === null) {
+    return {
+      allowed: false,
+      sentence:
+        `This order's state could not be read, so this delivery was not counted ` +
+        `into stock. Nothing was booked. Open the order and try again.`,
+    };
+  }
+  if (
+    from === ProcurementOrderStatus.PARTIALLY_RECEIVED ||
+    canTransition(from, ProcurementOrderStatus.PARTIALLY_RECEIVED)
+  ) {
+    return { allowed: true, from };
+  }
+  if (ORDER_TERMINAL_STATUSES.includes(from)) {
+    return {
+      allowed: false,
+      from,
+      sentence:
+        `This order is already ${statusInWords(from)}, so this delivery was not ` +
+        `counted into stock. Nothing was booked. If these bottles really came, ` +
+        `raise a new order for them and count them against that one.`,
+    };
+  }
+  return {
+    allowed: false,
+    from,
+    sentence:
+      `This order is ${statusInWords(from)} and has not been approved yet, so a ` +
+      `delivery cannot be counted against it. Nothing was booked. Approve the ` +
+      `order first, then count the delivery.`,
+  };
+}
+
+/**
+ * Whether a delivery against an order in this state may be checked against its
+ * invoice. Only once goods have arrived and the order is still open: DELIVERED
+ * or PARTIALLY_RECEIVED. On a closed order the check used to re-apply its stock
+ * corrections, and on one never delivered it wrote them before the status
+ * write was refused (F-349).
+ */
+export function decideReceiptCheck(rawCurrent: unknown): TransitionVerdict {
+  const from = readOrderStatus(rawCurrent);
+  if (
+    from === ProcurementOrderStatus.DELIVERED ||
+    from === ProcurementOrderStatus.PARTIALLY_RECEIVED
+  ) {
+    return { allowed: true, from };
+  }
+  if (from === null) {
+    return {
+      allowed: false,
+      sentence:
+        `This order's state could not be read, so its delivery was not checked. ` +
+        `Nothing was changed.`,
+    };
+  }
+  return {
+    allowed: false,
+    from,
+    sentence: ORDER_TERMINAL_STATUSES.includes(from)
+      ? `This order is already ${statusInWords(from)}, so its delivery cannot be ` +
+        `checked again. Nothing was changed.`
+      : `This order is ${statusInWords(from)} and nothing has been counted in ` +
+        `against it yet, so there is no delivery to check. Nothing was changed. ` +
+        `Count the delivery at the door first.`,
+  };
+}
+
 /* ── The same table, for the database ─────────────────────────────────────── */
 
 /**
