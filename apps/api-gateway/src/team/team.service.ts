@@ -2389,7 +2389,8 @@ export class TeamService {
         channels: ["in_app"],
         restaurant_id: restaurantId,
         type: "system",
-        title: `Your time off was ${word}`,
+        // Clipped to notifications.title (F-560).
+        title: `Your time off was ${word}`.slice(0, 255),
         message: `Your request for ${days} off was ${word}.`,
         priority: "medium",
         status: "unread",
