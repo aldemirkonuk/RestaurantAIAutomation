@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 
 /**
@@ -45,6 +46,7 @@ const PREVIEW = {
 function makeService(opts: {
   invite?: any;
   caller?: any;
+  issuer?: Result;
   verify?: jest.Mock;
   blacklisted?: boolean;
 }) {
@@ -52,7 +54,9 @@ function makeService(opts: {
     chain(
       table === "organization_invites"
         ? { data: opts.invite ?? LIVE_INVITE, error: null }
-        : { data: opts.caller ?? null, error: null },
+        : table === "user_restaurant_access"
+          ? (opts.issuer ?? { data: { role: "owner" }, error: null })
+          : { data: opts.caller ?? null, error: null },
     ),
   );
   const verify = opts.verify ?? jest.fn().mockReturnValue({ sub: "u1", sv: 0 });
@@ -140,6 +144,70 @@ describe("AuthService#getInvitePreview — made for another address (F-275)", ()
     });
     await expect(svc.getInvitePreview("ABCD2345", "tok")).resolves.toEqual(
       PREVIEW,
+    );
+  });
+});
+
+/**
+ * F-1087: the preview asked only whether the code was used or past its date,
+ * so an invite whose issuer could no longer give it (demoted or removed
+ * since) showed as live on /invite/:code and was refused only at Join. It
+ * now asks the same issuer question acceptance asks, first.
+ */
+describe("AuthService#getInvitePreview — the issuer can still give it (F-1087)", () => {
+  const ISSUED = {
+    ...LIVE_INVITE,
+    role: "manager",
+    invited_by: "u-issuer",
+    restaurant_id: "h1",
+  };
+
+  it("an issuer demoted below the role they gave: valid false, reason issuer, nothing about the house", async () => {
+    const { svc, from } = makeService({
+      invite: ISSUED,
+      issuer: { data: { role: "staff" }, error: null },
+    });
+    await expect(svc.getInvitePreview("ABCD2345")).resolves.toEqual({
+      valid: false,
+      reason: "issuer",
+    });
+    const read = from.mock.results.find(
+      (_r, i) => from.mock.calls[i][0] === "user_restaurant_access",
+    )!.value;
+    expect(read.eq).toHaveBeenCalledWith("user_id", "u-issuer");
+    expect(read.eq).toHaveBeenCalledWith("restaurant_id", "h1");
+    expect(read.eq).toHaveBeenCalledWith("is_active", true);
+  });
+
+  it("an issuer no longer in the house: reason issuer", async () => {
+    const { svc } = makeService({
+      invite: ISSUED,
+      issuer: { data: null, error: null },
+    });
+    await expect(svc.getInvitePreview("ABCD2345")).resolves.toEqual({
+      valid: false,
+      reason: "issuer",
+    });
+  });
+
+  it("a manager's staff invite stays live", async () => {
+    const { svc } = makeService({
+      invite: { ...ISSUED, role: "staff" },
+      issuer: { data: { role: "manager" }, error: null },
+    });
+    await expect(svc.getInvitePreview("ABCD2345")).resolves.toMatchObject({
+      valid: true,
+      role: "staff",
+    });
+  });
+
+  it("an issuer read that fails is a 503, never a dead invite", async () => {
+    const { svc } = makeService({
+      invite: ISSUED,
+      issuer: { data: null, error: { message: "connection reset" } },
+    });
+    await expect(svc.getInvitePreview("ABCD2345")).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
     );
   });
 });

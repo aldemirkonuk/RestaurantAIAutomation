@@ -401,6 +401,13 @@ it('names which reason an invite is unavailable (0149 row 49), not one collapsed
   h.get.mockResolvedValueOnce({ data: { valid: false, reason: 'not_found' } })
   mount(<InviteLanding />, '/invite/missing-code', '/invite/:code')
   await screen.findByRole('heading', { name: 'This invitation was not found' })
+  cleanup()
+
+  // F-1087: whoever sent it can no longer invite someone in that role.
+  h.get.mockResolvedValueOnce({ data: { valid: false, reason: 'issuer' } })
+  mount(<InviteLanding />, '/invite/issuer-code', '/invite/:code')
+  await screen.findByRole('heading', { name: 'This invitation can no longer be used' })
+  expect(screen.getByText(/can no longer invite someone in this role/)).toBeInTheDocument()
 })
 
 it('carries the invite mail secret from the invite page to /register, and only when the link had one (ADR 0229 fork 9)', async () => {

@@ -169,6 +169,8 @@ describe("AuthService#getInvitePreview — a failed read is not a missing invite
           error: null,
         },
       ],
+      // The issuer can still give it (F-1087 reads this before answering).
+      user_restaurant_access: [{ data: { role: "owner" }, error: null }],
     });
     await expect(svc.getInvitePreview("ABCD2345")).resolves.toEqual({
       valid: true,

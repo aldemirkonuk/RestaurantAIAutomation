@@ -29,6 +29,7 @@ function makeService(seed: {
   access?: Record<string, any>[];
   invites?: Record<string, any>[];
   users?: Record<string, any>[];
+  team?: Record<string, any>[];
   errors?: Record<string, { message: string }>;
 }) {
   const db = makeStubDb(
@@ -37,7 +38,7 @@ function makeService(seed: {
       organization_invites: seed.invites ?? [],
       users: seed.users ?? [{ user_id: JOINER, email: "joiner@example.com" }],
       restaurants: [{ id: HOUSE, name: "House One" }],
-      team_members: [],
+      team_members: seed.team ?? [],
       organization_members: [],
     },
     seed.errors ?? {},
@@ -304,5 +305,90 @@ describe("joinViaInvite (Path A) — the issuer's standing is checked again at a
       { user_id: ISSUER, restaurant_id: HOUSE, role: "owner", is_active: true },
     ]);
     expect(db.tables.users).toEqual([]);
+  });
+});
+
+/**
+ * F-1087: a refusal at either door left the invite's /team stand-in behind.
+ * The invite stays used (ADR 0164: left consumed), and the /team read retires
+ * only the stand-ins of UNUSED lapsed invites, so nothing ever took the row
+ * away: /team kept counting someone who would never arrive. The refusal now
+ * retires it, as a revoke or an expiry does.
+ */
+describe("an issuer refusal retires the invite's /team stand-in (F-1087)", () => {
+  const MINTED = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const STAND_IN = {
+    id: "tm-stand-in",
+    restaurant_id: HOUSE,
+    invite_id: "invite-1",
+    user_id: null,
+    created_at: new Date(Date.parse(MINTED) + 1000).toISOString(),
+  };
+  const KEPT = {
+    id: "tm-owner-row",
+    restaurant_id: HOUSE,
+    invite_id: "invite-1",
+    user_id: null,
+    // Existed before the invite: kept, only unlinked.
+    created_at: new Date(Date.parse(MINTED) - 1000).toISOString(),
+  };
+
+  it("existing-user door: the stand-in goes, an older roster row is only unlinked", async () => {
+    const { svc, db } = makeService({
+      access: [
+        {
+          user_id: ISSUER,
+          restaurant_id: HOUSE,
+          role: "staff",
+          is_active: true,
+        },
+      ],
+      invites: [invite({ role: "manager", created_at: MINTED })],
+      team: [{ ...STAND_IN }, { ...KEPT }],
+    });
+
+    await expect(
+      svc.acceptInviteAsExistingUser(JOINER, "abcd1234"),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.tables.team_members).toEqual([{ ...KEPT, invite_id: null }]);
+    // Still left consumed (ADR 0164).
+    expect(db.tables.organization_invites[0].used_at).not.toBeNull();
+  });
+
+  it("join door (Path A): the stand-in goes", async () => {
+    const { svc, db } = makeService({
+      access: [],
+      invites: [invite({ role: "manager", created_at: MINTED })],
+      users: [],
+      team: [{ ...STAND_IN }],
+    });
+
+    await expect(
+      svc.joinViaInvite({
+        code: "abcd1234",
+        name: "New Joiner",
+        email: "new-joiner@example.com",
+        password: "correct-horse-battery",
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.tables.team_members).toEqual([]);
+  });
+
+  it("a granted invite keeps its stand-in for the acceptance to claim", async () => {
+    const { svc, db } = makeService({
+      access: [
+        {
+          user_id: ISSUER,
+          restaurant_id: HOUSE,
+          role: "owner",
+          is_active: true,
+        },
+      ],
+      invites: [invite({ role: "manager", created_at: MINTED })],
+      team: [{ ...STAND_IN }],
+    });
+
+    await svc.acceptInviteAsExistingUser(JOINER, "abcd1234");
+    expect(db.tables.team_members).toEqual([STAND_IN]);
   });
 });
