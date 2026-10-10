@@ -105,6 +105,8 @@ const SORTS = [
 
 type SortKey = "runway" | "velocity" | "value" | "name";
 type SortDir = "asc" | "desc";
+const SORT_KEYS = ["runway", "velocity", "value", "name"] as const;
+const ROW_FLAG_KEYS = ["low", "recon", "count", "dead", "price"] as const;
 /** Default direction per sort key (matches the dropdown's stated order). */
 const SORT_DEFAULT_DIR: Record<SortKey, SortDir> = {
   runway: "asc",
@@ -187,7 +189,14 @@ export function InventoryCommandPage() {
   // Money on this page prints in the house's own currency (sim F-341).
   useHouseCurrency();
   const [searchParams, setSearchParams] = useSearchParams();
-  const page = useInventoryPage({});
+  // F-370: the filters live in the URL, so a reload or Back lands on the list
+  // the person left. Read once here; written back (replace) as they change.
+  const [initialFilters] = useState(() => ({
+    searchQuery: searchParams.get("q") ?? undefined,
+    filterType: searchParams.get("type") ?? undefined,
+    location: searchParams.get("loc"),
+  }));
+  const page = useInventoryPage({ initialFilters });
   const {
     searchQuery,
     setSearchQuery,
@@ -316,10 +325,24 @@ export function InventoryCommandPage() {
     }, [refetchInventory]),
   );
 
-  const [view, setView] = useState<"table" | "map">("table");
-  const [sort, setSort] = useState<SortKey>("runway");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [activeFlag, setActiveFlag] = useState<RowFlag | null>(null);
+  const [view, setView] = useState<"table" | "map">(() =>
+    searchParams.get("view") === "map" ? "map" : "table",
+  );
+  const [sort, setSort] = useState<SortKey>(() => {
+    const v = searchParams.get("sort");
+    return v && (SORT_KEYS as readonly string[]).includes(v)
+      ? (v as SortKey)
+      : "runway";
+  });
+  const [sortDir, setSortDir] = useState<SortDir>(() =>
+    searchParams.get("dir") === "desc" ? "desc" : "asc",
+  );
+  const [activeFlag, setActiveFlag] = useState<RowFlag | null>(() => {
+    const v = searchParams.get("flag");
+    return v && (ROW_FLAG_KEYS as readonly string[]).includes(v)
+      ? (v as RowFlag)
+      : null;
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAddWine, setShowAddWine] = useState(false);
   /* THE FOURTH START (census 102; the founder, 2026-09-05). An auction bottle
@@ -331,6 +354,7 @@ export function InventoryCommandPage() {
   const [showManualReceipt, setShowManualReceipt] = useState(false);
   const [showStorageManager, setShowStorageManager] = useState(false);
   const [verifyOrder, setVerifyOrder] = useState<any | null>(null);
+  const [showVerifyList, setShowVerifyList] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [showAllLocations, setShowAllLocations] = useState(false);
@@ -546,6 +570,39 @@ export function InventoryCommandPage() {
     }
     void refetchInventory();
   };
+
+  // F-370: mirror the filters into the URL (replace, so Back leaves the page
+  // rather than stepping through every keystroke). Defaults are left out, and
+  // a param this page does not own — `verify`, `wine` — is never touched.
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        const put = (k: string, v: string | null, dflt: string | null) => {
+          if (v === null || v === dflt || v === "") next.delete(k);
+          else next.set(k, v);
+        };
+        put("q", searchQuery, "");
+        put("type", filterType, "all");
+        put("loc", selectedLocationFilter, null);
+        put("flag", activeFlag, null);
+        put("sort", sort, "runway");
+        put("dir", sortDir, "asc");
+        put("view", view, "table");
+        return next.toString() === prev.toString() ? prev : next;
+      },
+      { replace: true },
+    );
+  }, [
+    searchQuery,
+    filterType,
+    selectedLocationFilter,
+    activeFlag,
+    sort,
+    sortDir,
+    view,
+    setSearchParams,
+  ]);
 
   const flagCounts = useMemo(() => {
     const counts: Record<RowFlag, number> = {
@@ -960,7 +1017,9 @@ export function InventoryCommandPage() {
     );
     const menuPotential = filteredInventory.reduce(
       (s, i) =>
-        s + (i.menuPrice ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
+        // The house's bottle price (ADR 0193), not the library's `menuPrice`,
+        // which no house row carries — the sub-label never showed (F-390).
+        s + (i.menuPriceBottle ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
       0,
     );
     const runwayAlerts = filteredInventory.filter((i) => {
@@ -1238,16 +1297,51 @@ export function InventoryCommandPage() {
           Needs attention
         </span>
         {(toVerify as any[]).length > 0 && (
-          <button
-            onClick={() => setVerifyOrder((toVerify as any[])[0])}
-            className="inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3.5 py-1.5 bg-wine-600 text-white shadow-sm"
-          >
-            <PackageCheck className="w-3.5 h-3.5" />
-            Match invoice{" "}
-            <b className="font-mono text-[11px]">
-              {(toVerify as any[]).length}
-            </b>
-          </button>
+          <div className="relative">
+            <button
+              // F-177: with several deliveries waiting, the chip opened the
+              // first one's match straight away and the rest had no way in.
+              // One waiting opens it; more list them to choose from.
+              onClick={() =>
+                (toVerify as any[]).length === 1
+                  ? setVerifyOrder((toVerify as any[])[0])
+                  : setShowVerifyList((v) => !v)
+              }
+              aria-expanded={(toVerify as any[]).length > 1 ? showVerifyList : undefined}
+              className="inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3.5 py-1.5 bg-wine-600 text-white shadow-sm"
+            >
+              <PackageCheck className="w-3.5 h-3.5" />
+              Match invoice{" "}
+              <b className="font-mono text-[11px]">
+                {(toVerify as any[]).length}
+              </b>
+            </button>
+            {showVerifyList && (toVerify as any[]).length > 1 && (
+              <ul
+                data-testid="match-invoice-list"
+                className="absolute left-0 top-full mt-1.5 z-20 w-80 max-w-[calc(100vw-2rem)] max-h-80 overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-lg py-1"
+              >
+                {(toVerify as any[]).map((o) => (
+                  <li key={o.id}>
+                    <button
+                      onClick={() => {
+                        setShowVerifyList(false);
+                        setVerifyOrder(o);
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 min-h-[44px] hover:bg-gray-50"
+                    >
+                      <span className="block text-xs font-bold text-gray-800 truncate">
+                        {o.wineName || o.orderNumber || "Delivery"}
+                      </span>
+                      <span className="block text-[11px] text-gray-500 truncate">
+                        {[o.orderNumber, o.providerName].filter(Boolean).join(" · ")}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
         {/* POS lens defect 1: the only entry point to the mapping surface. A
             failed read says so instead of rendering a reassuring zero. */}
@@ -1440,7 +1534,9 @@ export function InventoryCommandPage() {
             </div>
           )}
           <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            {/* `inline-size` lets an open row size itself to what is visible
+                (100cqw) rather than to the 1330px grid behind it (F-226). */}
+            <div className="overflow-x-auto" style={{ containerType: "inline-size" }}>
               <div className="min-w-[1330px]">
                 <div
                   className="grid items-center gap-x-3 px-5 h-10 bg-gray-50 border-b border-gray-100"
@@ -1715,7 +1811,16 @@ export function InventoryCommandPage() {
                         </div>
                       </div>
                       {isOpen && (
-                        <RowExpansion item={item} locations={locations} />
+                        // F-226: the count, adjust and Apply controls were laid
+                        // out across the 1330px grid, so on a phone most of them
+                        // sat off-screen. Pinned to the visible width instead.
+                        <div
+                          data-testid="row-expansion-frame"
+                          className="sticky left-0"
+                          style={{ width: "100cqw" }}
+                        >
+                          <RowExpansion item={item} locations={locations} />
+                        </div>
                       )}
                     </div>
                   );

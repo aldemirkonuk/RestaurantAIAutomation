@@ -27,7 +27,9 @@ const notSentDoorCount = vi.hoisted(() => vi.fn())
 const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const submitDoorReceipt = vi.hoisted(() => vi.fn())
+const queuedDoorReceiptFor = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/doorOutbox', () => ({
+  queuedDoorReceiptFor,
   flushDoorOutbox,
   pendingDoorCount,
   notSentDoorCount,
@@ -118,6 +120,7 @@ beforeEach(() => {
     record = []
   })
   flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, parked: 0 }))
+  queuedDoorReceiptFor.mockResolvedValue(null)
 })
 
 const renderPage = () =>
@@ -656,5 +659,72 @@ describe('DoorNext — a bottle refused on an earlier truck is not still owed (F
     fireEvent.keyDown(seal, { key: 'Enter' })
     await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
     expect(submitDoorReceipt.mock.calls[0][0].body.expectedQtyInCountedUom).toBe(1)
+  })
+})
+
+describe('F-247 — a delivery already counted on this phone is not counted twice', () => {
+  const onPhoneNote = () => document.querySelector('[data-ux-key="door:already-on-phone"]')
+  const trySeal = async () => {
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+    const seal = screen.getByRole('button', { name: /Hold to seal/ })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+  }
+
+  it('[REVERT-FAILS] says so, and does not seal a second receipt with a new key', async () => {
+    queuedDoorReceiptFor.mockResolvedValue({ id: 'm1', idempotencyKey: 'door:o1:first', parked: false })
+    submitDoorReceipt.mockResolvedValue({ synced: false })
+    await trySeal()
+    await waitFor(() => expect(onPhoneNote()).not.toBeNull())
+    expect(onPhoneNote()?.textContent).toContain('already counted on this phone')
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    expect(submitDoorReceipt).not.toHaveBeenCalled()
+  })
+
+  it('sends Receiving the way for one that was not sent', async () => {
+    queuedDoorReceiptFor.mockResolvedValue({ id: 'm1', idempotencyKey: 'door:o1:first', parked: true })
+    renderPage()
+    await waitFor(() => expect(onPhoneNote()).not.toBeNull())
+    expect(onPhoneNote()?.textContent).toContain('Open Receiving')
+  })
+
+  it('seals as before when nothing for this order is on the phone', async () => {
+    submitDoorReceipt.mockResolvedValue({ synced: true, stockBooked: true })
+    await trySeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(onPhoneNote()).toBeNull()
+  })
+})
+
+describe('queuedDoorReceiptFor — reads the queue entry for one order', () => {
+  it('[REVERT-FAILS] returns that entry and its key, and null for another order', async () => {
+    const offline = await import('@/lib/offline-storage')
+    const spy = vi
+      .spyOn(offline.offlineStorage, 'getPendingMutationsByType')
+      .mockResolvedValue([
+        {
+          id: 'm1',
+          type: 'receiving.door',
+          data: { orderId: 'o1', orderLabel: 'PO-1', restaurantId: 'rest-A', body: { idempotencyKey: 'door:o1:first' } },
+          timestamp: new Date(),
+          retryCount: 0,
+        },
+      ] as never)
+    const real = await vi.importActual<typeof import('@/lib/doorOutbox')>('@/lib/doorOutbox')
+    expect(await real.queuedDoorReceiptFor('o1')).toEqual({
+      id: 'm1',
+      idempotencyKey: 'door:o1:first',
+      parked: false,
+    })
+    expect(await real.queuedDoorReceiptFor('o2')).toBeNull()
+    expect([...(await real.queuedDoorOrderIds())]).toEqual(['o1'])
+    spy.mockRestore()
   })
 })

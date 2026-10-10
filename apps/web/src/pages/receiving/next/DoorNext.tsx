@@ -37,7 +37,7 @@
  * way, exactly as it was already unaffected by the old default.]
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Camera, CloudOff, Loader2, X } from 'lucide-react';
 import { Seal } from '@/components/mudavym';
@@ -50,9 +50,11 @@ import {
   newIdempotencyKey,
   notSentDoorCount,
   pendingDoorCount,
+  queuedDoorReceiptFor,
   readDroppedDoorReceipts,
   submitDoorReceipt,
   type DoorFlushResult,
+  type QueuedDoorReceiptRef,
   type DroppedDoorReceipt,
 } from '@/lib/doorOutbox';
 import { useActiveRestaurantId } from './useReceivingNextData';
@@ -259,6 +261,24 @@ export default function DoorNext() {
   // reuse it so a request that landed before the connection dropped cannot
   // book the stock twice (doorOutbox's whole design).
   const idem = useRef(kept?.idem ?? newIdempotencyKey(orderId));
+  /**
+   * A receipt for THIS order already on this phone, unsent (F-247). A fresh
+   * mount makes a fresh key, and the server books a new key as a new delivery;
+   * so while one waits here the door reuses its key and does not seal a
+   * second one. Re-read on every outbox pass: once it sends, the door frees.
+   */
+  const [onPhone, setOnPhone] = useState<QueuedDoorReceiptRef | null>(null);
+  const readOnPhone = useCallback(() => {
+    void queuedDoorReceiptFor(orderId)
+      .then((ref) => {
+        if (ref?.idempotencyKey) idem.current = ref.idempotencyKey;
+        setOnPhone(ref);
+      })
+      .catch(() => setOnPhone(null));
+  }, [orderId]);
+  useEffect(() => {
+    readOnPhone();
+  }, [readOnPhone]);
 
   // One quiet entrance for the header — settle, 6px, once.
   useEffect(() => {
@@ -327,6 +347,7 @@ export default function DoorNext() {
       // result: this is also what makes the `[rid]` note below true, since a
       // lazy `useState` initializer does not re-run on a house switch.
       setDrops(readDroppedDoorReceipts(rid));
+      readOnPhone();
     };
     /**
      * The pass already accounted for.
@@ -376,7 +397,7 @@ export default function DoorNext() {
     // door screen is one order at one house, so this does not re-subscribe
     // mid-delivery; a switch re-reads that house's record rather than leaving
     // the previous one on screen.
-  }, [rid]);
+  }, [rid, readOnPhone]);
 
   /**
    * The photograph does work (point 2) — but NEVER blocks the count. The
@@ -492,14 +513,18 @@ export default function DoorNext() {
 
   const initialsOk = initials.trim().length >= 2;
   const reasonOk = outcome !== 'refused' || reason !== null;
-  const sealDisabled = submitting || !initialsOk || !reasonOk || paperHeld;
-  const sealHint = paperHeld
-    ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
-    : !initialsOk
-      ? 'Add your initials first — when a case goes missing, who signed is the question.'
-      : !reasonOk
-        ? 'Say why it was refused — the reason is what the credit stands on.'
-        : undefined;
+  const sealDisabled = submitting || !initialsOk || !reasonOk || paperHeld || onPhone !== null;
+  const sealHint = onPhone
+    ? onPhone.parked
+      ? 'This delivery is already counted on this phone and was not sent. Open Receiving to send it again or discard it.'
+      : 'This delivery is already counted on this phone. It sends by itself when the signal is back.'
+    : paperHeld
+      ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
+      : !initialsOk
+        ? 'Add your initials first — when a case goes missing, who signed is the question.'
+        : !reasonOk
+          ? 'Say why it was refused — the reason is what the credit stands on.'
+          : undefined;
 
   async function seal() {
     setSubmitting(true);
@@ -736,6 +761,21 @@ export default function DoorNext() {
             Back to Receiving
           </button>
         </Panel>
+      )}
+
+      {/* This order's own receipt, still on the phone (F-247): said before the
+          count starts, so nobody counts the same boxes a second time. Not
+          while `done` — the receipt this screen just saved is said there. */}
+      {onPhone && orderState !== 'missing' && step !== 'done' && (
+        <p
+          role="status"
+          data-ux-key="door:already-on-phone"
+          className="mx-4 mt-2 rounded-xl border border-amber-300/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-200"
+        >
+          {onPhone.parked
+            ? 'This delivery is already counted on this phone, but it was not sent. Open Receiving to send it again or discard it — do not count it twice.'
+            : 'This delivery is already counted on this phone and waiting to send. It sends by itself when the signal is back — no need to count it again.'}
+        </p>
       )}
 
       {orderState !== 'missing' && step === 'paper' && (

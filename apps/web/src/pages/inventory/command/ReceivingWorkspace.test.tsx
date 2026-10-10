@@ -954,6 +954,25 @@ describe('ReceivingWorkspace — the count starts from the ledger (ADR 0192)', (
     expect(body.countedUom).toBe('bottle')
   })
 
+  it('[REVERT-FAILS] says a case shortfall in cases, not bottles (F-177)', () => {
+    renderWorkspace({
+      order: caseOrder(
+        shelf({
+          quantityInStockUom: 48,
+          packUnit: 'case',
+          packSize: 12,
+          packs: 4,
+          looseInStockUom: 0,
+          words: '4 cases',
+        }),
+      ),
+    })
+    expect(screen.getByTestId('receiving-count-unit')).toHaveTextContent('Cases')
+    expect(screen.getByTestId('receiving-backorder-footer')).toHaveTextContent(
+      '1 case stays on backorder',
+    )
+  })
+
   it('counts a whole number of cases in cases, and declares nothing', async () => {
     const user = userEvent.setup()
     renderWorkspace({
