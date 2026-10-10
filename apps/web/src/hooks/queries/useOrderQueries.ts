@@ -42,15 +42,15 @@ export function useOrders(filters?: { status?: OrderStatus }) {
 }
 
 // ---------------------------------------------------------------------------
-// Query: Every order, read to the end of the book
+// Query: Open orders per vendor, counted by the gateway
 // ---------------------------------------------------------------------------
 
 /**
- * The whole book, not the newest page: for counts that must cover every
- * order (open orders per vendor, F-905). Keyed under `orders.all` so the
- * same realtime invalidation reaches it.
+ * `{ [providerId]: n }` over the house's whole book, not the newest page
+ * (open orders per vendor, F-905). Keyed under `orders.all` so the same
+ * realtime invalidation reaches it.
  */
-export function useEveryOrder() {
+export function useOpenOrderCountsByProvider() {
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
 
@@ -63,8 +63,8 @@ export function useEveryOrder() {
   )
 
   return useQuery({
-    queryKey: [...queryKeys.orders.all, 'every', activeRestaurantId ?? ''] as const,
-    queryFn: () => ordersApi.getEveryOrder(activeRestaurantId!),
+    queryKey: [...queryKeys.orders.all, 'open-by-provider', activeRestaurantId ?? ''] as const,
+    queryFn: () => ordersApi.getOpenOrderCountsByProvider(activeRestaurantId!),
     enabled: !!activeRestaurantId && isAuthenticated,
     staleTime: 30_000,
     refetchInterval: 60_000,

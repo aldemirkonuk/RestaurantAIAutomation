@@ -4,7 +4,7 @@
  * today's page) with the learned detail held back for the sheet (the virtue
  * of the redesign). The card gets at most three facts, all real:
  *
- *   open orders    — counted over the whole orders book (pending/approved/ordered);
+ *   open orders    — counted by the gateway over the whole orders book;
  *   lead time      — the provider's own leadTimeDays, EM when unrecorded;
  *   last contact   — lastContactDate, said plainly when absent.
  *
@@ -15,10 +15,9 @@
 
 import { useMemo } from 'react';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
-import { useEveryOrder } from '../../../hooks/queries/useOrderQueries';
+import { useOpenOrderCountsByProvider } from '../../../hooks/queries/useOrderQueries';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Provider } from '../../../services/api/providers';
-import { canonicalStatus } from '../../../lib/mudavym/status';
 import { num } from './pv-format';
 
 export interface ProviderCardVM {
@@ -29,37 +28,17 @@ export interface ProviderCardVM {
   lastContact: string | null;
 }
 
-/**
- * "Open" = live business with the vendor: not yet delivered, not closed.
- * Matched on the CANONICAL status (canonicalStatus knows the gateway's
- * SCREAMING_SNAKE variants — PENDING, APPROVAL_NEEDED, CONFIRMED, IN_TRANSIT —
- * that raw lowercasing silently dropped; audit finding, providers-audit.md).
- */
-const OPEN_STAGES = new Set([
-  'pending',
-  'pending_approval',
-  'negotiating',
-  'approved',
-  'ordered',
-  'in_transit',
-  'partially_received',
-]);
-
 export function useProvidersNextData() {
   const { activeRestaurantId } = useAuth();
   const providersQ = useProviders(activeRestaurantId ?? '');
-  // The whole book, not the newest 50 (F-905): a count over one page was
-  // wrong for any house past fifty orders, and the sort followed it.
-  const ordersQ = useEveryOrder();
+  // Counted by the gateway over the whole book (F-905): the open stages are
+  // `OPEN_ORDER_STATUSES` in procurement.service.ts. Paging every order into
+  // the browser to count them grew with the house's history.
+  const ordersQ = useOpenOrderCountsByProvider();
 
   const openByProvider = useMemo(() => {
     if (!ordersQ.data) return null;
-    const m = new Map<string, number>();
-    for (const o of ordersQ.data) {
-      if (!o.providerId || !OPEN_STAGES.has(canonicalStatus(o.status))) continue;
-      m.set(o.providerId, (m.get(o.providerId) ?? 0) + 1);
-    }
-    return m;
+    return new Map(Object.entries(ordersQ.data));
   }, [ordersQ.data]);
 
   const cards: ProviderCardVM[] = useMemo(() => {

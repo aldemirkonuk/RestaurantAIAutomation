@@ -68,46 +68,28 @@ export async function getOrders(
     : orders;
 }
 
-/** The gateway's page ceiling (OrderFilterDto `@Max(100)`). */
-const EVERY_ORDER_PAGE = 100;
-/** Past this many pages the read stops and says so rather than counting a part. */
-const EVERY_ORDER_MAX_PAGES = 100;
-
 /**
- * Every order the house has, read page by page to the end of the book.
+ * How many open orders the house has with each vendor, counted by the gateway
+ * over the whole book (F-905). `{ [providerId]: n }`; a vendor with none open
+ * is absent. A failed read rejects (the gateway answers 503), so a caller
+ * shows "not known", never a zero it did not read.
  *
- * `getOrders()` with no params is the gateway's first page — the newest 50 —
- * and a per-vendor count over it is wrong for any house past fifty orders
- * (F-140, F-905). This reads until a short page or the reported total, keeps
- * each order once (a new order landing mid-read shifts the pages), and throws
- * rather than return a part when the book is larger than the ceiling — a
- * caller then shows "not known", never a short count.
+ * This replaced reading every order page by page into the browser to count a
+ * few of them (the first fix for F-905), which grew with the house's history.
  */
-export async function getEveryOrder(restaurantId?: string): Promise<Order[]> {
+export async function getOpenOrderCountsByProvider(
+  restaurantId?: string,
+): Promise<Record<string, number>> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
-
-  const seen = new Map<string, Order>();
-  let withheld = false;
-  for (let page = 1; page <= EVERY_ORDER_MAX_PAGES; page += 1) {
-    const response = await apiClient.get<{
-      orders: Order[];
-      total?: number;
-      amountsWithheld?: true;
-    }>(`${ORDERS_PATH}`, { params: { page, limit: EVERY_ORDER_PAGE } });
-    const rows = response.data?.orders ?? [];
-    if (response.data?.amountsWithheld === true) withheld = true;
-    for (const o of rows) seen.set(o.id, o);
-    const total = response.data?.total;
-    const done =
-      rows.length < EVERY_ORDER_PAGE ||
-      (typeof total === 'number' && page * EVERY_ORDER_PAGE >= total);
-    if (done) {
-      const orders = [...seen.values()];
-      return withheld ? orders.map((o) => ({ ...o, amountsWithheld: true as const })) : orders;
-    }
+  const response = await apiClient.get<{ counts: Record<string, number> }>(
+    `${ORDERS_PATH}/open/by-provider`,
+  );
+  const counts = response.data?.counts;
+  if (!counts || typeof counts !== 'object') {
+    throw new Error('The open orders could not be counted');
   }
-  throw new Error('The orders book is too long to count here');
+  return counts;
 }
 
 /**
@@ -725,7 +707,7 @@ export async function getOrderHistory(
 
 export const ordersApi = {
   getOrders,
-  getEveryOrder,
+  getOpenOrderCountsByProvider,
   getOrder,
   createOrder,
   updateOrder,

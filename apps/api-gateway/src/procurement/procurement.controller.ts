@@ -19,6 +19,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { holdsHouseMoney } from "./documents/document-money-gate";
 import {
   OrderForRole,
@@ -208,6 +210,34 @@ export class ProcurementController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch pending order count",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get("orders/open/by-provider")
+  @UseGuards(RolesGuard)
+  // Every role in a house reads this: it is how many, never how much, and
+  // staff already see the queue's counts (DASH-W22). Named exactly, so a
+  // session with no role in the house is refused (ADR 0164).
+  @Roles("owner", "manager", "staff")
+  @ApiOperation({ summary: "Count the house's open orders per vendor" })
+  @ApiResponse({ status: 200 })
+  async countOpenOrdersByProvider(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ counts: Record<string, number> }> {
+    try {
+      // The /vendors cards' "Open orders" (F-905): counted over the whole
+      // book here, not over the newest page in the browser.
+      const counts = await this.procurementService.countOpenOrdersByProvider(
+        user.restaurantId,
+      );
+      return { counts };
+    } catch (error) {
+      // A failed read stays a 503, never `{ counts: {} }`.
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Failed to count open orders",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
