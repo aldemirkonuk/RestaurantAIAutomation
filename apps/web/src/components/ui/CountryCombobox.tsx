@@ -64,8 +64,12 @@ export function CountryCombobox({ value, onChange, className, id }: CountryCombo
             <button
               key={country}
               type="button"
-              onMouseDown={(e) => {
-                e.preventDefault()
+              // Keep focus on mouse-down, choose on click. Choosing on
+              // mouse-down closed the list before the button was released, so
+              // the release landed on whatever sat under it — on /get-started,
+              // the "This is us" button (F-009).
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
                 setQuery(country)
                 onChange(country)
                 setOpen(false)

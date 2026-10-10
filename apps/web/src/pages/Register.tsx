@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-do
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight } from 'lucide-react'
+import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight, Eye, EyeOff } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
@@ -93,6 +93,8 @@ export function Register() {
   const [joinName, setJoinName] = useState('')
   const [joinEmail, setJoinEmail] = useState('')
   const [joinPassword, setJoinPassword] = useState('')
+  // One reveal for both password boxes on whichever form is showing (F-002).
+  const [showPassword, setShowPassword] = useState(false)
   const [joinConfirm, setJoinConfirm] = useState('')
 
   // Path B account fields
@@ -736,14 +738,25 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="At least 8 characters"
               className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
-          <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
+          <div className="mt-1 flex items-center justify-between gap-3">
+            <p className={on ? 'text-xs !text-inkm-3' : 'text-xs text-gray-400'}>Min. 8 characters</p>
+            <button
+              type="button"
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((shown) => !shown)}
+              className={on ? 'flex items-center gap-1 text-xs text-seal hover:text-seal-deep' : 'flex items-center gap-1 text-xs text-wine-600 hover:text-wine-700'}
+            >
+              {showPassword ? <EyeOff className="w-3.5 h-3.5" aria-hidden /> : <Eye className="w-3.5 h-3.5" aria-hidden />}
+              {showPassword ? 'Hide password' : 'Show password'}
+            </button>
+          </div>
         </div>
 
         {/* Confirm Password */}
@@ -753,10 +766,10 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-confirm-password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               value={joinConfirm}
               onChange={(e) => setJoinConfirm(e.target.value)}
-              placeholder="••••••••"
+              placeholder="The same password again"
               className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
@@ -837,6 +850,7 @@ export function Register() {
             <input
               id="create-name"
               type="text"
+              maxLength={100}
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="John Smith"
@@ -923,14 +937,25 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="At least 8 characters"
               className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
-          <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
+          <div className="mt-1 flex items-center justify-between gap-3">
+            <p className={on ? 'text-xs !text-inkm-3' : 'text-xs text-gray-400'}>Min. 8 characters</p>
+            <button
+              type="button"
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((shown) => !shown)}
+              className={on ? 'flex items-center gap-1 text-xs text-seal hover:text-seal-deep' : 'flex items-center gap-1 text-xs text-wine-600 hover:text-wine-700'}
+            >
+              {showPassword ? <EyeOff className="w-3.5 h-3.5" aria-hidden /> : <Eye className="w-3.5 h-3.5" aria-hidden />}
+              {showPassword ? 'Hide password' : 'Show password'}
+            </button>
+          </div>
         </div>
 
         {/* Confirm Password */}
@@ -940,10 +965,10 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-confirm-password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               value={createConfirm}
               onChange={(e) => setCreateConfirm(e.target.value)}
-              placeholder="••••••••"
+              placeholder="The same password again"
               className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>

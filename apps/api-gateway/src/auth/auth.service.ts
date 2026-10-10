@@ -8,6 +8,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   InternalServerErrorException,
+  HttpException,
   Logger,
   Optional,
   forwardRef,
@@ -97,6 +98,14 @@ import {
  * What `POST /auth/sign-in-methods` answers: the ways this identity can
  * actually get in, sourced from facts rather than inference.
  */
+/** F-243: what a new owner is told when the account row was not written. */
+export const ACCOUNT_DETAIL_TOO_LONG =
+  "Could not create your account: one of its details is too long to keep. Shorten it and try again.";
+export const EMAIL_IN_USE =
+  "An account already uses this email. Sign in instead.";
+export const ACCOUNT_NOT_CREATED =
+  "Could not create your account. Something went wrong on our side; try again in a moment.";
+
 export interface SignInMethodsResult {
   /** The address as resolved (trimmed, lower-cased). */
   email: string;
@@ -1605,6 +1614,30 @@ export class AuthService {
   }
 
   /**
+   * An account the database would not create, said in fixed words (F-243).
+   * The raw code and message go to the server log only, as for a house
+   * (refuseHouseOpening): a response never carries Postgres text.
+   */
+  private refuseAccount(
+    where: string,
+    error: unknown,
+    { userRow }: { userRow: boolean },
+  ): HttpException {
+    const { code, message } = (error ?? {}) as {
+      code?: string;
+      message?: string;
+    };
+    this.logger.error(
+      `${where} did not create the account: ${code || "no code"} ${message ?? "no row came back"}`,
+    );
+    if (code === "22001") return new BadRequestException(ACCOUNT_DETAIL_TOO_LONG);
+    // The users row's only unique key a sign-up can hit is its email: the
+    // loser of a same-email race is told what the early check would have said.
+    if (userRow && code === "23505") return new ConflictException(EMAIL_IN_USE);
+    return new InternalServerErrorException(ACCOUNT_NOT_CREATED);
+  }
+
+  /**
    * Creates only an identity. The first restaurant is deliberately created
    * after verification, from the restaurant screen in the arrival flow.
    */
@@ -1627,11 +1660,8 @@ export class AuthService {
       })
       .select()
       .single();
-    if (error || !user) {
-      throw new BadRequestException(
-        `Registration failed: ${error?.message ?? "account was not created"}`,
-      );
-    }
+    if (error || !user)
+      throw this.refuseAccount("registerAccount", error, { userRow: true });
 
     this.queueEmailVerification(user.user_id, email).catch((err) =>
       this.logger.warn(
@@ -1671,11 +1701,10 @@ export class AuthService {
       })
       .select()
       .single();
-    if (error || !user) {
-      throw new BadRequestException(
-        `Registration failed: ${error?.message ?? "account was not created"}`,
-      );
-    }
+    if (error || !user)
+      throw this.refuseAccount("registerAccountWithGoogle", error, {
+        userRow: true,
+      });
 
     const { error: linkError } = await this.databaseService.supabase
       .from("user_oauth_accounts")
@@ -1689,9 +1718,9 @@ export class AuthService {
         .from("users")
         .delete()
         .eq("user_id", user.user_id);
-      throw new BadRequestException(
-        `Registration failed: ${linkError.message}`,
-      );
+      throw this.refuseAccount("registerAccountWithGoogle", linkError, {
+        userRow: false,
+      });
     }
 
     // A new account has no house yet (ADR 0213), so its session names none

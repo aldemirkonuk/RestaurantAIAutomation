@@ -860,6 +860,9 @@ export class OrganizationsService {
       cuisineType?: string;
       timezone?: string;
       chainId?: string;
+      currency?: string;
+      latitude?: number;
+      longitude?: number;
     },
   ): Promise<{ id: string; name: string }> {
     // Organisation owners only (ADR 0164, the founder 2026-09-18): the caller
@@ -982,6 +985,19 @@ export class OrganizationsService {
       .replace(/^-|-$/g, "");
     const slug = `${slugBase}-${randomUUID().slice(0, 8)}`;
 
+    // A map point is a pair or nothing (as AuthService.coordinateColumns):
+    // one coordinate alone, or a non-finite one, asserts a place it is not.
+    const { latitude, longitude } = dto;
+    const point =
+      typeof latitude === "number" &&
+      Number.isFinite(latitude) &&
+      Math.abs(latitude) <= 90 &&
+      typeof longitude === "number" &&
+      Number.isFinite(longitude) &&
+      Math.abs(longitude) <= 180
+        ? { latitude, longitude }
+        : { latitude: null, longitude: null };
+
     const { data: restaurant, error } = await this.databaseService.supabase
       .from("restaurants")
       .insert({
@@ -1012,6 +1028,10 @@ export class OrganizationsService {
         // became the new house's clock (TD-2026-09-27-CREATE-LOCATION-
         // TIMEZONE-UNVALIDATED, v3.0-TECH-DEBT.md).
         timezone: resolveSignUpTimezone(dto.timezone),
+        // F-241: what the first house records, a second house records too —
+        // the currency the dialog stated from the country, or nothing.
+        currency: dto.currency ?? null,
+        ...point,
         organization_id: organizationId,
         chain_id: dto.chainId ?? null,
       })
