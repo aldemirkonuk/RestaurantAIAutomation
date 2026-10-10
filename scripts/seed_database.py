@@ -9,6 +9,7 @@ feature_flags, provider_important_dates
 
 import json
 import os
+import re
 import sys
 import uuid
 from datetime import datetime, timedelta, date
@@ -104,6 +105,28 @@ def _table_exists(table_name):
         return False
 
 
+# F-918: master_wine_library.price_reference_currency (ISO 4217, or NULL = not
+# recorded). Written only from a code the seed record itself carries, and only
+# beside a price. Never assumed: not USD, not a symbol such as "$".
+_ISO_4217 = re.compile(r"^[A-Z]{3}$")
+_CURRENCY_KEYS = ("price_reference_currency", "price_currency", "currency")
+
+
+def price_reference_currency(record, price):
+    if price is None or price == "" or not isinstance(record, dict):
+        return None
+    for key in _CURRENCY_KEYS:
+        value = record.get(key)
+        if value is None or value == "":
+            continue
+        # The first spelling present decides; an unreadable one is not recorded.
+        if not isinstance(value, str):
+            return None
+        code = value.strip().upper()
+        return code if _ISO_4217.match(code) else None
+    return None
+
+
 def seed_master_wine_library(wines):
     """Seed master wine library table with rich data"""
     print("\n[1/15] Seeding Master Wine Library...")
@@ -123,6 +146,9 @@ def seed_master_wine_library(wines):
             "producer": _trunc(wine.get("producer", "Unknown Producer"), 140),
             "vintage": wine.get("vintage"),
             "price_reference": wine.get("price") or wine.get("price_reference"),
+            "price_reference_currency": price_reference_currency(
+                wine, wine.get("price") or wine.get("price_reference")
+            ),
             "primary_type": _trunc(
                 classification.get("primary_type") or wine.get("wine_type") or "red", 50
             ),

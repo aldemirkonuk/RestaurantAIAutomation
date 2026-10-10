@@ -5,6 +5,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
 } from "class-validator";
@@ -32,6 +33,18 @@ export class CreateWineSubmissionDto {
   )
   @IsNumber()
   priceReference?: number | null;
+
+  /**
+   * F-918: the ISO 4217 code `priceReference` is stated in, when the sender
+   * knows it. Left out, the library records the price's currency as not
+   * recorded — it is never assumed.
+   */
+  @IsOptional()
+  @Matches(/^[A-Z]{3}$/, {
+    message:
+      "priceReferenceCurrency must be a three-letter currency code, such as USD or TRY",
+  })
+  priceReferenceCurrency?: string;
 
   @IsOptional()
   @IsString()

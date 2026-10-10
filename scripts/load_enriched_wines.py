@@ -109,6 +109,29 @@ def to_num(v):
         return None
 
 
+# F-918: master_wine_library.price_reference_currency (ISO 4217, or NULL = not
+# recorded). Written only from a code the source record itself carries, and
+# only beside a price. Never assumed: not USD, not a symbol such as "$" (which
+# names several currencies), not the house's (ADR 0117 Q25).
+_ISO_4217 = re.compile(r"^[A-Z]{3}$")
+_CURRENCY_KEYS = ("price_reference_currency", "price_currency", "currency")
+
+
+def price_reference_currency(record, price):
+    if price is None or price == "" or not isinstance(record, dict):
+        return None
+    for key in _CURRENCY_KEYS:
+        value = record.get(key)
+        if value is None or value == "":
+            continue
+        # The first spelling present decides; an unreadable one is not recorded.
+        if not isinstance(value, str):
+            return None
+        code = value.strip().upper()
+        return code if _ISO_4217.match(code) else None
+    return None
+
+
 def load_env() -> dict:
     env = dict(os.environ)
     f = ROOT / ".env"
@@ -278,14 +301,14 @@ def main() -> int:
                     """INSERT INTO master_wine_library
                          (wine_id, name, producer, vintage, primary_type,
                           grape_variety, country, region, sub_region, appellation,
-                          price_reference, bottle_size_ml,
+                          price_reference, price_reference_currency, bottle_size_ml,
                           wine_structure, sensory_profile, quality_classification,
                           serving_temp_celsius, glass_type, decanting_recommended,
                           aging_potential_years, farming, aging_vessel,
                           library_tier, review_status, source, signature_source,
                           signature_hash, normalized_name, normalized_producer,
                           field_confidences, data_enrichment)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,750,
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,750,
                                %s::jsonb,%s::jsonb,%s::jsonb,
                                %s,%s,%s,%s,%s,%s,
                                %s,%s,'menu_corpus','menu_corpus',
@@ -298,6 +321,9 @@ def main() -> int:
                      e.get("country") or "Unknown", e.get("region"),
                      e.get("sub_region"), e.get("appellation"),
                      to_num(x.get("bottle_price")),
+                     # The corpus menus record no currency today, so this is
+                     # NULL for every current row; it is never assumed (F-918).
+                     price_reference_currency(x, to_num(x.get("bottle_price"))),
                      json.dumps(structure), json.dumps(sensory), json.dumps(quality),
                      to_num(e.get("serving_temp_celsius")), e.get("glass_type"),
                      e.get("decanting_recommended") if isinstance(e.get("decanting_recommended"), bool) else None,
