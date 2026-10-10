@@ -576,6 +576,7 @@ describe('CanonicalDocumentPage', () => {
           {
             lineNo: 1,
             label: 'SYNTHETIC Öküzgözü',
+            code: 'no_item',
             reason: 'this line names no item on the shelf.',
           },
         ],

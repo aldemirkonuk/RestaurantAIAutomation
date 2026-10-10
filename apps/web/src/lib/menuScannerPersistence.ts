@@ -17,7 +17,7 @@ import type {
   BulkInventoryLineResult,
 } from '../services/api/types'
 import type { DetectedWine } from '../services/wineDetection'
-import { nextBatchRowKey, type BatchReceiveRow } from '../components/inventory/BatchReceiveGrid'
+import { DRAFT_KIND_OPTIONS, nextBatchRowKey, type BatchReceiveRow } from '../components/inventory/BatchReceiveGrid'
 
 /** Default case-ish quantity for a confident read. */
 const SCAN_DEFAULT_QTY = 6
@@ -34,6 +34,16 @@ export interface MenuScannerPersistResult {
   /** Succeeded, but had no Master Library match — a provisional library entry was created. */
   provisional: BulkInventoryLineResult[]
   failed: BulkInventoryLineResult[]
+}
+
+/**
+ * The style the scan read, as a draft kind, so the new library row is
+ * classified (F-740). Only a kind the gateway accepts is sent; anything else
+ * would fail the whole line, and an absent kind is the honest "not read".
+ */
+function draftKindOf(style: string | undefined): string | undefined {
+  const v = style?.trim().toLowerCase()
+  return DRAFT_KIND_OPTIONS.some((o) => o.value === v) ? v : undefined
 }
 
 /**
@@ -57,6 +67,7 @@ export function detectedWinesToBatchRows(wines: DetectedWine[]): BatchReceiveRow
             country: wine.country,
             region: wine.region,
             grapeVariety: wine.grapeVariety ?? wine.grape,
+            category: draftKindOf(wine.wineType ?? wine.type),
           },
       name: wine.name,
       producer: wine.producer,

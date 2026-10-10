@@ -1283,6 +1283,8 @@ export class InventoryService {
         country: line.wineDraft.country ?? null,
         region: line.wineDraft.region ?? null,
         grapeVariety: line.wineDraft.grapeVariety ?? null,
+        // Lets the library row classify a beer as beer (F-740).
+        menuCategory: line.wineDraft.category ?? null,
       },
       restaurantId,
     );

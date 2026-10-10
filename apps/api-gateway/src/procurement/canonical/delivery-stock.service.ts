@@ -58,10 +58,17 @@ export interface BookedLine {
   transactionId: string | null;
 }
 
+/**
+ * Why a line was not booked, as a code the caller switches on. `reason` is the
+ * prose for a log; a page that matched on its words broke when they changed.
+ */
+export type UnbookedCode = "no_line_number" | "no_item" | "bad_quantity";
+
 export interface UnbookedLine {
   documentId: string;
   lineNo: number;
   label: string;
+  code: UnbookedCode;
   reason: string;
 }
 
@@ -239,6 +246,7 @@ export class DeliveryStockService {
           documentId,
           lineNo: -1,
           label,
+          code: "no_line_number",
           reason:
             "this line carries no line number, so it cannot be given an idempotency key — booking it could not be made safe to retry",
         });
@@ -252,6 +260,7 @@ export class DeliveryStockService {
           documentId,
           lineNo: line.line_no,
           label,
+          code: "no_item",
           reason:
             "this line names no item on the shelf. It is NOT booked and NOT guessed at from its description — a wrong guess puts the bottles on the wrong wine. Link the line to an item and re-post the count.",
         });
@@ -264,6 +273,7 @@ export class DeliveryStockService {
           documentId,
           lineNo: line.line_no,
           label,
+          code: "bad_quantity",
           reason: `the counted quantity reads ${String(line.qty_bottles)}, which is not a number of bottles`,
         });
         continue;

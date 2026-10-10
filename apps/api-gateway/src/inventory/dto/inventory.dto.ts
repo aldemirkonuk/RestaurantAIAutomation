@@ -17,6 +17,10 @@ import {
   MaxLength,
   IsDateString,
 } from "class-validator";
+import {
+  MENU_CATEGORY_VOCABULARY,
+  type MenuCategory,
+} from "../../menus/wine-extract-item.interface";
 
 /** Provenances accepted by inventory_lots.cost_provenance (see 20260729120000 migration). */
 export const COST_PROVENANCES = [
@@ -303,6 +307,15 @@ export class WineDraftDto {
   @IsString()
   @MaxLength(200)
   grapeVariety?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "What kind of drink this is, one of MENU_CATEGORY_VOCABULARY (beer, spirit, red, …). Classifies a new library row; never part of its identity.",
+    enum: MENU_CATEGORY_VOCABULARY,
+  })
+  @IsOptional()
+  @IsIn(MENU_CATEGORY_VOCABULARY)
+  category?: MenuCategory;
 }
 
 /**

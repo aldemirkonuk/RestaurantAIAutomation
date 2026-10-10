@@ -22,8 +22,9 @@ describe('doorBookingSentences', () => {
     const out = doorBookingSentences({
       booked: [],
       notBooked: [
-        { lineNo: 2, label: 'Kalecik Karası', reason: 'this line names no item on the shelf.' },
-        { lineNo: 3, label: 'Boğazkere', reason: 'the counted quantity reads x, which is not a number of bottles' },
+        // The reason's words are the gateway's to change; the sentence keys on the code.
+        { lineNo: 2, label: 'Kalecik Karası', code: 'no_item', reason: 'reworded by the gateway' },
+        { lineNo: 3, label: 'Boğazkere', code: 'bad_quantity', reason: 'the counted quantity reads x, which is not a number of bottles' },
       ],
       bottlesMoved: 0,
     })

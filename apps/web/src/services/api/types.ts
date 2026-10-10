@@ -168,6 +168,12 @@ export interface WineDraft {
   country?: string;
   region?: string;
   grapeVariety?: string;
+  /**
+   * What kind of drink it is, in the gateway's menu-category words ('beer',
+   * 'spirit', 'red', …). Classifies a new library row, so a beer received
+   * through a draft is not left 'unknown' (F-740).
+   */
+  category?: string;
 }
 
 /**

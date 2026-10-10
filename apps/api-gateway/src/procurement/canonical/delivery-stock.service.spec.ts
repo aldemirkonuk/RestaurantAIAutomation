@@ -139,6 +139,8 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
     );
     expect(res.value.notBooked).toHaveLength(2);
     expect(res.value.notBooked[0].reason).toMatch(/names no item/);
+    // The page switches on the code, never on the reason's words.
+    expect(res.value.notBooked.map((l) => l.code)).toEqual(["no_item", "no_item"]);
   });
 
   // F-730 — two lines of the same item in one count add up. Before, the

@@ -118,7 +118,8 @@ export interface DoorBooking {
   /** The booking itself failed; the count was still recorded. */
   failed?: boolean;
   booked: { lineNo: number; inventoryId: string; delta: number }[];
-  notBooked: { lineNo: number; label: string; reason: string }[];
+  /** `code` is what a sentence keys on; `reason` is the gateway's log prose. */
+  notBooked: { lineNo: number; label: string; code: "no_line_number" | "no_item" | "bad_quantity"; reason: string }[];
   bottlesMoved: number;
 }
 
@@ -142,7 +143,7 @@ export function doorBookingSentences(booking: DoorBooking | null): string[] {
   for (const l of booking.notBooked) {
     const which = l.lineNo > 0 ? `Line ${l.lineNo} (${l.label})` : l.label;
     out.push(
-      /names no item/.test(l.reason)
+      l.code === "no_item"
         ? `${which} did not go onto the shelf: it is not linked to an item yet. Link it on the sheet, then count it again.`
         : `${which} did not go onto the shelf: its count could not be read.`,
     );

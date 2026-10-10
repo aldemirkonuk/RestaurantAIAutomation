@@ -55,6 +55,27 @@ export interface BatchTotals {
   samples: number
 }
 
+/**
+ * The kinds a new drink can be given, as the gateway's menu categories
+ * (MENU_CATEGORY_VOCABULARY). Sent on the draft so the library row it creates
+ * is classified — a beer as beer, not 'unknown' (F-740).
+ */
+export const DRAFT_KIND_OPTIONS: { value: string; label: string }[] = [
+  { value: 'red', label: 'Red wine' },
+  { value: 'white', label: 'White wine' },
+  { value: 'rose', label: 'Rosé' },
+  { value: 'sparkling', label: 'Sparkling' },
+  { value: 'orange', label: 'Orange wine' },
+  { value: 'dessert', label: 'Dessert wine' },
+  { value: 'fortified', label: 'Fortified wine' },
+  { value: 'beer', label: 'Beer' },
+  { value: 'cider', label: 'Cider' },
+  { value: 'sake', label: 'Sake' },
+  { value: 'spirit', label: 'Spirit' },
+  { value: 'cocktail', label: 'Cocktail' },
+  { value: 'non-alcoholic', label: 'No alcohol' },
+]
+
 let rowSeq = 0
 /** Row keys only need to be unique within one open workspace. */
 export function nextBatchRowKey(prefix = 'row'): string {
