@@ -111,6 +111,8 @@ export function OriginalPane({
     imageUrl,
     storage_path: storagePath,
     filename,
+    // PaperPane picks its renderer by this before the filename (sim F-285).
+    content_type: contentType,
     source_channel: sourceChannel ?? '',
   } as unknown as ProcurementDocument
 

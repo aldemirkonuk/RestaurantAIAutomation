@@ -33,6 +33,23 @@
   table-layout: auto;
 }
 
+/* The standalone page: the sheet (or the door) beside the original. On a
+   phone the original goes below, so the sheet gets the whole width — side by
+   side at 375px it was left ~57px (sim F-281). */
+.cd-body {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+}
+/* The gates and the thread, side by side for the same reason. */
+.cd-gates {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+@media screen and (max-width: 639px) {
+  .cd-body,
+  .cd-gates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Wide tables scroll inside their own box; the page never scrolls sideways. */
 .cd-scroll-x {
   overflow-x: auto;
