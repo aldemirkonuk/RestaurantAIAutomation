@@ -443,3 +443,24 @@ describe('TeamNext rendering', () => {
     expect(await screen.findByRole('option', { name: /Ayşe/ })).toBeInTheDocument();
   });
 });
+
+describe('F-1115: the publish panel reads the week each time it opens', () => {
+  it('opens on the week as it stands, not as the page last saw it', async () => {
+    api.members = [member('m1', 'Ayşe', 'line')];
+    render(<TeamNext />, { wrapper });
+    const open = await screen.findByRole('button', { name: 'Publish week' });
+    // Another manager publishes, and a crew member marks it seen.
+    api.week = weekPayload({
+      schedule: {
+        id: 'sch1',
+        restaurant_id: 'r1',
+        week_start: '2026-08-31',
+        status: 'published',
+        published_at: '2026-08-30T10:00:00Z',
+      },
+      receipts: [{ id: 'rc1', schedule_id: 'sch1', member_id: 'm1', acknowledged_at: '2026-08-30T11:00:00Z' }],
+    });
+    fireEvent.click(open);
+    expect(await screen.findByText(/\(1 so far\)/)).toBeInTheDocument();
+  });
+});

@@ -32,6 +32,8 @@ import {
 } from 'lucide-react';
 import { Popover } from '@/components/mudavym';
 import { houseToday } from '@/lib/houseZone';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
+import { serverMessage } from './TeamOverlays';
 import {
   createShift,
   deleteShift,
@@ -135,6 +137,8 @@ export function WeekGrid({
   const focusCell = useRef<string | null>(null);
   /** Shifts already offered for cover in this sitting (F-398): one push each. */
   const [offered, setOffered] = useState<ReadonlySet<string>>(() => new Set());
+  /** The cover slot each call-out reported in this sitting opened (F-1113). */
+  const [slotOf, setSlotOf] = useState<ReadonlyMap<string, string>>(() => new Map());
   // `shifts ?? []` inline would be a new array on every render, so every memo
   // below it would recompute on every render — the grid is the biggest thing on
   // the page and it redraws whenever an overlay opens.
@@ -274,10 +278,31 @@ export function WeekGrid({
     },
     onSuccess: onChanged,
   });
+  // F-1116: a retry after a lost answer carries the same key, so the gateway
+  // answers with the first call-out instead of opening a second slot.
+  const calloutKey = useDraftWriteKey('callout');
   const callout = useMutation({
-    mutationFn: (shiftId: string) => reportCallout(shiftId),
-    onSuccess: onChanged,
+    mutationFn: (shiftId: string) =>
+      reportCallout(shiftId, undefined, undefined, calloutKey.keyFor({ shiftId })),
+    onSuccess: (r, shiftId) => {
+      calloutKey.renew();
+      if (r?.open?.id) setSlotOf((prev) => new Map(prev).set(shiftId, r.open.id));
+      onChanged();
+    },
+    // A refusal (already reported, already open) or a lost answer: the week is
+    // read again, so the grid shows what the call-out actually left.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e) || (e as { response?: { status?: number } })?.response?.status === 409)
+        onChanged();
+    },
   });
+  const calloutNote = !callout.isError
+    ? null
+    : writeOutcomeUnknown(callout.error)
+      ? 'We could not confirm the call-out. It may already be reported; the week has been read again, so check the shift before reporting it again.'
+      : (callout.error as { response?: { status?: number } })?.response?.status === 409
+        ? serverMessage(callout.error)
+        : null;
   const drop = useMutation({
     mutationFn: (s: Shift) => {
       rememberCell(s.member_id, s.shift_date);
@@ -295,12 +320,44 @@ export function WeekGrid({
    * message to real people.
    */
   const cover = useMutation({
-    mutationFn: (s: Shift) => offerCover(s.id, candidatesFor(s).map((m) => m.id)),
+    // F-1113: the push says "Tap to claim", so it names the open slot, never
+    // the held or called-out row nobody can claim. The candidates are still
+    // chosen against the called-out row, so its person is not asked.
+    mutationFn: (s: Shift) => {
+      const slot = coverSlotFor(s);
+      if (!slot) throw new Error('no open slot to offer');
+      return offerCover(slot.id, candidatesFor(s).map((m) => m.id));
+    },
     // Nothing records the offer against the shift, so a second press would
     // push "Shift available" to the same people again. Once sent, it stays sent
     // for as long as the page is open.
     onSuccess: (_r, s) => setOffered((prev) => new Set(prev).add(s.id)),
   });
+
+  /**
+   * The shift a cover offer may name: an open one. A called-out row's slot is
+   * the one its call-out opened, or failing that the open shift on the same
+   * window; a shift someone still holds has none until it is called out.
+   */
+  function coverSlotFor(s: Shift): Shift | null {
+    if (!s.member_id || s.state === 'open') return s;
+    if (s.state !== 'callout') return null;
+    const isOpen = (x: Shift) => !x.member_id || x.state === 'open';
+    const known = slotOf.get(s.id);
+    const byId = known ? rows.find((x) => x.id === known && isOpen(x)) : undefined;
+    return (
+      byId ??
+      rows.find(
+        (x) =>
+          isOpen(x) &&
+          x.shift_date === s.shift_date &&
+          x.start_time === s.start_time &&
+          x.end_time === s.end_time &&
+          (x.role ?? null) === (s.role ?? null),
+      ) ??
+      null
+    );
+  }
 
   function candidatesFor(s: Shift): TeamMember[] {
     const busy = new Set(
@@ -469,6 +526,7 @@ export function WeekGrid({
                     shift={selectedShift}
                     member={m}
                     candidates={candidatesFor(selectedShift)}
+                    coverSlot={coverSlotFor(selectedShift)}
                     onEdit={() => editShift({ shift: selectedShift })}
                     onDuplicate={() => duplicate.mutate(selectedShift)}
                     duplicatePending={duplicate.isPending}
@@ -476,6 +534,7 @@ export function WeekGrid({
                     onCover={() => cover.mutate(selectedShift)}
                     calloutPending={callout.isPending}
                     calloutFailed={callout.isError}
+                    calloutNote={calloutNote}
                     coverPending={cover.isPending}
                     coverFailed={cover.isError}
                     coverSent={offered.has(selectedShift.id)}
@@ -543,21 +602,23 @@ export function WeekGrid({
             <Copy size={14} aria-hidden className="mdv-item__icon" />
             <span className="mdv-item__text">Duplicate onto the same day</span>
           </button>
+          {menuFor.state !== 'callout' && (
+            <button
+              type="button"
+              className="mdv-item"
+              onClick={() => {
+                callout.mutate(menuFor.id);
+                setMenuFor(null);
+              }}
+            >
+              <CalendarX2 size={14} aria-hidden className="mdv-item__icon" />
+              <span className="mdv-item__text">Report a call-out</span>
+            </button>
+          )}
           <button
             type="button"
             className="mdv-item"
-            onClick={() => {
-              callout.mutate(menuFor.id);
-              setMenuFor(null);
-            }}
-          >
-            <CalendarX2 size={14} aria-hidden className="mdv-item__icon" />
-            <span className="mdv-item__text">Report a call-out</span>
-          </button>
-          <button
-            type="button"
-            className="mdv-item"
-            disabled={offered.has(menuFor.id)}
+            disabled={offered.has(menuFor.id) || !coverSlotFor(menuFor)}
             onClick={() => {
               cover.mutate(menuFor);
               setMenuFor(null);
@@ -603,6 +664,7 @@ function ShiftDetail({
   shift,
   member,
   candidates,
+  coverSlot,
   onEdit,
   onDuplicate,
   duplicatePending,
@@ -610,6 +672,7 @@ function ShiftDetail({
   onCover,
   calloutPending,
   calloutFailed,
+  calloutNote,
   coverPending,
   coverFailed,
   coverSent,
@@ -619,6 +682,8 @@ function ShiftDetail({
   shift: Shift;
   member: TeamMember;
   candidates: TeamMember[];
+  /** The open shift an offer would name; `null` while someone still holds this one. */
+  coverSlot: Shift | null;
   onEdit: () => void;
   onDuplicate: () => void;
   duplicatePending: boolean;
@@ -626,6 +691,8 @@ function ShiftDetail({
   onCover: () => void;
   calloutPending: boolean;
   calloutFailed: boolean;
+  /** What the gateway or the lost answer says instead of "not reported", when it says more. */
+  calloutNote: string | null;
   coverPending: boolean;
   coverFailed: boolean;
   coverSent: boolean;
@@ -679,6 +746,13 @@ function ShiftDetail({
               );
             })
           )}
+          {!coverSlot && (
+            <p className="tm-hint">
+              {shift.state === 'callout'
+                ? 'The cover slot for this call-out is no longer open, so there is nothing to offer.'
+                : `${name.text} still holds this shift, so nobody else could take it. Report a call-out first; the open shift it creates is what gets offered.`}
+            </p>
+          )}
           {coverSent && (
             <p className="tm-hint">
               Offered just now. Nothing records the offer against the shift, so this will
@@ -707,18 +781,21 @@ function ShiftDetail({
         >
           {duplicatePending ? 'Duplicating…' : 'Duplicate onto the same day'}
         </button>
+        {/* A called-out shift is reported once (F-1116). */}
+        {shift.state !== 'callout' && (
+          <button
+            type="button"
+            className="tm-ctl tm-ctl--quiet"
+            disabled={calloutPending}
+            onClick={onCallout}
+          >
+            {calloutPending ? 'Reporting…' : 'Report a call-out'}
+          </button>
+        )}
         <button
           type="button"
           className="tm-ctl tm-ctl--quiet"
-          disabled={calloutPending}
-          onClick={onCallout}
-        >
-          {calloutPending ? 'Reporting…' : 'Report a call-out'}
-        </button>
-        <button
-          type="button"
-          className="tm-ctl tm-ctl--quiet"
-          disabled={coverPending || coverSent || candidates.length === 0}
+          disabled={coverPending || coverSent || candidates.length === 0 || !coverSlot}
           onClick={onCover}
         >
           {coverPending
@@ -730,8 +807,8 @@ function ShiftDetail({
       </div>
       {calloutFailed && (
         <p className="tm-alert" role="alert">
-          The call-out was not reported, so the shift is unchanged and still shows as
-          worked.
+          {calloutNote ??
+            'The call-out was not reported, so the shift is unchanged and still shows as worked.'}
         </p>
       )}
       {coverFailed && (
