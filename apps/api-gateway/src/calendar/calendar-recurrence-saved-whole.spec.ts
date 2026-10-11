@@ -7,7 +7,7 @@
  * row exists deletes it (rule and occurrences cascade) and fails the request.
  */
 import { InternalServerErrorException } from "@nestjs/common";
-import { CalendarService } from "./calendar.service";
+import { CalendarService, NOTHING_SAVED_REASON } from "./calendar.service";
 
 type Answer = { data: unknown; error: { message: string } | null };
 
@@ -93,6 +93,22 @@ describe("createEvent with a repeat (F-545)", () => {
       /nothing was saved/,
     );
     expect(ops).toContain("calendar_events.delete");
+  });
+
+  // F-1147: the rolled-back 500 carries a typed reason, so the web can tell
+  // it from a 5xx that may have landed.
+  it("marks the rolled-back failure with reason nothing_saved", async () => {
+    const { db } = fakeDb({
+      link: { data: null, error: { message: "update refused" } },
+    });
+
+    const err = await service(db)
+      .createEvent("r-1", "u-1", dto)
+      .catch((e: InternalServerErrorException) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect((err as InternalServerErrorException).getResponse()).toMatchObject({
+      reason: NOTHING_SAVED_REASON,
+    });
   });
 
   it("fails and deletes the event when the first occurrences cannot be generated", async () => {

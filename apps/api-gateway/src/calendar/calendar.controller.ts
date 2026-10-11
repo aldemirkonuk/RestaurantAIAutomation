@@ -178,9 +178,8 @@ export class CalendarController {
     try {
       return await this.calendarService.getEvent(user.restaurantId, eventId);
     } catch (error) {
-      if (error.status === 404) {
-        throw error;
-      }
+      // Every worded refusal, not only the 404, passes through (F-1147).
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Get calendar event failed",
         eventId,
@@ -326,9 +325,8 @@ export class CalendarController {
         ruleId,
       );
     } catch (error) {
-      if (error.status === 404) {
-        throw error;
-      }
+      // Every worded refusal, not only the 404, passes through (F-1147).
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Get recurrence rule failed",
         ruleId,
@@ -422,7 +420,8 @@ export class CalendarController {
         dto,
       );
     } catch (error) {
-      if (error.status === 404) throw error;
+      // Every worded refusal, not only the 404, passes through (F-1147).
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Update event type failed",
         error: error.message,
@@ -492,7 +491,8 @@ export class CalendarController {
         dto.status,
       );
     } catch (error) {
-      if (error.status === 404) throw error;
+      // Every worded refusal, not only the 404, passes through (F-1147).
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Update event status failed",
         eventId,
