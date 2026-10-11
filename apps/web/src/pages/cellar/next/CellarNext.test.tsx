@@ -2573,4 +2573,47 @@ describe('a register read by staff (F-1300)', () => {
     const unit = within(book).getByText('Last unit price').parentElement!;
     expect(unit).toHaveTextContent('for owners and managers');
   });
+  // F-1359: the open row's record card and the series behind it read the same
+  // staff reply, whose invoice lines carry no price. They said "No invoice
+  // line carries a unit price", which is not true; the house has one.
+  function staffRecord() {
+    const inv = bookRecord();
+    return {
+      ...rowRecordVM([
+        {
+          ...inv,
+          price: [],
+          ledger: (inv.ledger as Record<string, unknown>[]).map(
+            ({ unitPrice: _u, total: _t, ...line }) => line,
+          ),
+        },
+      ]),
+      amountsWithheld: true,
+    };
+  }
+
+  it('the open row says the paid figures are for owners and managers, not that none exists', () => {
+    mock.rowRecord = { data: staffRecord(), loading: false, error: null };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const card = screen.getByTestId('row-expander');
+    expect(card).not.toHaveTextContent(/No invoice line carries a unit price/);
+    expect(within(card).getByText('Last paid, each').parentElement!).toHaveTextContent(
+      'for owners and managers',
+    );
+    expect(within(card).getByText('Markup').parentElement!).toHaveTextContent(
+      'for owners and managers',
+    );
+  });
+
+  it('the invoice series behind the row says who the prices are for, never a dash', () => {
+    mock.rowRecord = { data: staffRecord(), loading: false, error: null };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open the invoice series' }));
+    const ledger = screen.getByTestId('series-book-invoice');
+    const line = within(ledger).getByText('INV-4471', { exact: false }).closest('tr')!;
+    expect(line).toHaveTextContent('for owners and managers');
+    expect(line).not.toHaveTextContent('—');
+  });
 });
