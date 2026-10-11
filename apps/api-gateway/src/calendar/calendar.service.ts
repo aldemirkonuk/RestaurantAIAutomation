@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { resolveCalendarOccurrences } from "./calendar-occurrences";
 import { readAll } from "../providers/vendor-menu-supply";
+import { foldText } from "../common/text-fold";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
@@ -1041,9 +1042,45 @@ export class CalendarService {
     }
   }
 
+  /**
+   * F-1233: a name already on this calendar, whatever its case -- İ/ı folded
+   * the same way the web's EventSheet folds them (F-1179) -- is a 409. The
+   * table's UNIQUE (restaurant_id, name) sees only the exact spelling, so
+   * "İzmir tasting" and "izmir tasting" both went in. A failed read refuses
+   * rather than letting a duplicate through.
+   */
+  private async refuseTakenTypeName(
+    restaurantId: string,
+    name: string,
+    exceptId?: string,
+  ): Promise<void> {
+    const wanted = foldText(name.trim());
+    if (!wanted) return;
+    const { data, error } = await this.databaseService.supabase
+      .from("calendar_event_types")
+      .select("id, name")
+      .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error(`Failed to read event types: ${error.message}`);
+      throw new InternalServerErrorException(
+        "The calendar's types could not be read, so the name could not be checked. Nothing was saved; try again.",
+      );
+    }
+    const taken = [
+      ...CalendarService.DEFAULT_EVENT_TYPES,
+      ...((data ?? []) as Array<{ id: string; name: string }>),
+    ].some((t) => t.id !== exceptId && foldText(t.name.trim()) === wanted);
+    if (taken) {
+      throw new ConflictException(
+        `A type called "${name}" is already on this calendar. Pick it from the list, or give the new one another name.`,
+      );
+    }
+  }
+
   async createEventType(
     dto: CreateEventTypeDto,
   ): Promise<EventTypeResponseDto> {
+    await this.refuseTakenTypeName(dto.restaurantId, dto.name);
     const { data, error } = await this.databaseService.supabase
       .from("calendar_event_types")
       .insert({
@@ -1082,6 +1119,8 @@ export class CalendarService {
     restaurantId: string,
     dto: UpdateEventTypeDto,
   ): Promise<EventTypeResponseDto> {
+    if (dto.name !== undefined)
+      await this.refuseTakenTypeName(restaurantId, dto.name, id);
     const updatePayload: Record<string, unknown> = {};
     if (dto.name !== undefined) updatePayload.name = dto.name;
     if (dto.color !== undefined) updatePayload.color = dto.color;
