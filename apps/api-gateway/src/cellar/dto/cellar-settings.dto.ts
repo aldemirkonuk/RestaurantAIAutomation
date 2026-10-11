@@ -6,7 +6,11 @@ import {
   IsOptional,
   IsString,
 } from "class-validator";
-import { HOLD_CEREMONIES, type HoldCeremony } from "./hold-ceremony";
+import {
+  GAZETTEER_MEASURE_IDS,
+  HOLD_CEREMONIES,
+  type HoldCeremony,
+} from "./hold-ceremony";
 
 /**
  * Both fields optional, both nullable-through-omission: a write is a PATCH of
@@ -34,4 +38,20 @@ export class SetCellarSettingsDto {
   @ArrayMaxSize(12)
   @IsString({ each: true })
   gazetteerMeasures?: string[];
+
+  /**
+   * F-1374: one tile switched on or off. The service applies it to the list
+   * it reads at write time, so two people toggling different tiles from two
+   * devices no longer undo each other the way resending a cached whole list
+   * did. Not combined with `gazetteerMeasures`.
+   */
+  @ApiPropertyOptional({ enum: GAZETTEER_MEASURE_IDS })
+  @IsOptional()
+  @IsIn(GAZETTEER_MEASURE_IDS)
+  addMeasure?: string;
+
+  @ApiPropertyOptional({ enum: GAZETTEER_MEASURE_IDS })
+  @IsOptional()
+  @IsIn(GAZETTEER_MEASURE_IDS)
+  removeMeasure?: string;
 }

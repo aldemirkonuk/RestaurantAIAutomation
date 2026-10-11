@@ -223,7 +223,9 @@ export class CellarController {
         error instanceof Error ? error.message : "Failed to record the cellar settings",
         code === "CELLAR_HOLD_CEREMONY_FORBIDDEN"
           ? HttpStatus.FORBIDDEN
-          : HttpStatus.INTERNAL_SERVER_ERROR,
+          : code === "CELLAR_MEASURES_AMBIGUOUS"
+            ? HttpStatus.BAD_REQUEST
+            : HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

@@ -93,11 +93,10 @@ function CellarSettingsControls() {
   const roleForGate = (role ?? '').toLowerCase();
   const canChangeCeremony = roleForGate === 'owner' || roleForGate === 'manager' || roleForGate === 'admin';
 
+  // F-1374: send the one tile that moved. Resending the whole list from this
+  // screen's copy undid a tile someone else had just switched on another device.
   const toggleMeasure = (id: GazetteerMeasureId, on: boolean) => {
-    const next = on
-      ? [...s.gazetteerMeasures, id]
-      : s.gazetteerMeasures.filter((m) => m !== id);
-    settings.save.mutate({ gazetteerMeasures: next });
+    settings.save.mutate(on ? { addMeasure: id } : { removeMeasure: id });
   };
 
   // A FAILED read is a third state, distinct from "never configured" (which
