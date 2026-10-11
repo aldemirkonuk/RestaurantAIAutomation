@@ -943,6 +943,35 @@ describe('round 6 reads and writes', () => {
     expect(result.current.sourcesUnread).toBeNull();
   });
 
+  // F-1286: the margin said "No goal is set" right after a goal was set here.
+  it('reads the progress again after a goal is set here', async () => {
+    let book: unknown[] = [];
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/analytics/goals/r1/progress?status=active')
+        return { data: { goals: book, total: book.length, truncated: false } };
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions')) return { data: { items: [], readable: true, problem: null } };
+      if (url.startsWith('/analytics/goals/r1')) return { data: [] };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.goalBook?.goals).toEqual([]));
+    const goal = { id: 'g7', name: 'Lift wine', metric_key: 'wine_revenue', direction: 'at_least', target_value: 900 };
+    book = [{ goal, unit: 'currency', current: 120, target: 900, progressPct: 0.13 }];
+    api.post.mockResolvedValue({ data: goal });
+    await act(async () => {
+      await result.current.createGoal({
+        name: 'Lift wine',
+        metricKey: 'wine_revenue',
+        targetValue: 900,
+        direction: 'at_least',
+        period: 'month',
+      });
+    });
+    await waitFor(() => expect(result.current.goalBook?.goals).toHaveLength(1));
+    expect(result.current.goalBook!.goals[0]).toMatchObject({ name: 'Lift wine', current: 120 });
+  });
+
   it('a failed progress read is null', async () => {
     api.get.mockImplementation(async (url: string) => {
       if (url.includes('/progress')) throw new Error('down');

@@ -91,3 +91,41 @@ describe('useGoalsDesk across a house switch (F-525)', () => {
     expect(place).toHaveBeenCalledWith({ id: 'till', graph: 'area', days: 90 });
   });
 });
+
+describe('useGoalsDesk writes answer whether they were kept (F-1285)', () => {
+  const GOAL = {
+    name: 'More tables with wine',
+    metricKey: 'wine_attach_rate',
+    targetValue: 0.35,
+    deadline: null,
+    direction: 'at_least' as const,
+    period: 'week',
+  };
+
+  it('answers true once the gateway kept the goal', async () => {
+    api.post.mockResolvedValue({ data: { id: 'g9' } });
+    const { result } = setup();
+    let kept: boolean | undefined;
+    await act(async () => {
+      kept = await result.current.create(GOAL);
+    });
+    expect(kept).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('answers false on a refusal and keeps the gateway’s reason', async () => {
+    api.post.mockRejectedValue({ response: { data: { message: 'Set the time zone first.' } } });
+    api.patch.mockRejectedValue({ response: { data: { message: 'Only owners and managers.' } } });
+    const { result } = setup();
+    let kept: boolean | undefined;
+    await act(async () => {
+      kept = await result.current.create(GOAL);
+    });
+    expect(kept).toBe(false);
+    expect(result.current.error).toBe('Setting the goal did not go through: Set the time zone first.');
+    await act(async () => {
+      kept = await result.current.update('g1', { targetValue: 0.4 });
+    });
+    expect(kept).toBe(false);
+  });
+});

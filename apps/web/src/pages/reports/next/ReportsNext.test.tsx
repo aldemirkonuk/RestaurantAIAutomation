@@ -139,8 +139,9 @@ const deskStub = {
   busy: null as string | null,
   error: null as string | null,
   clearError: vi.fn(),
-  create: vi.fn(),
-  update: vi.fn(),
+  // Each write answers whether the gateway kept it (F-1285).
+  create: vi.fn((): Promise<boolean> => Promise.resolve(true)),
+  update: vi.fn((): Promise<boolean> => Promise.resolve(true)),
   archive: vi.fn(),
   ask: vi.fn(),
   asking: null as string | null,
@@ -1464,6 +1465,88 @@ describe('ReportsNext — the goals desk', () => {
     expect(deskStub.create).toHaveBeenCalledWith(
       expect.objectContaining({ metricKey: 'wine_attach_rate', targetValue: 0.35 }),
     );
+  });
+
+  // F-1285: the form closed on submit, so a refused goal lost what was typed.
+  const typeAGoal = (goals: HTMLElement) => {
+    fireEvent.click(within(goals).getByRole('button', { name: /Set a goal/ }));
+    fireEvent.change(within(goals).getByLabelText('What are we after'), {
+      target: { value: 'More tables with wine' },
+    });
+    fireEvent.change(within(goals).getByLabelText('Measure'), {
+      target: { value: 'wine_attach_rate' },
+    });
+    fireEvent.change(within(goals).getByLabelText('Target, in percent'), {
+      target: { value: '35' },
+    });
+    fireEvent.click(within(goals).getByRole('button', { name: 'Set the goal' }));
+  };
+
+  it('keeps the Set form open with what was typed when the goal is refused, and says why there', async () => {
+    deskStub.create.mockResolvedValueOnce(false);
+    deskStub.error = 'Setting the goal did not go through: set the time zone first.';
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    typeAGoal(goals);
+    await waitFor(() => expect(deskStub.create).toHaveBeenCalled());
+    await Promise.resolve();
+    const name = within(goals).getByLabelText('What are we after') as HTMLInputElement;
+    expect(name.value).toBe('More tables with wine');
+    const said = within(goals).getByText(/did not go through: set the time zone first/);
+    expect(said.closest('form')).not.toBeNull();
+  });
+
+  it('closes the Set form only once the goal was kept', async () => {
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    typeAGoal(goals);
+    await waitFor(() =>
+      expect(within(goals).queryByLabelText('What are we after')).toBeNull(),
+    );
+  });
+
+  it('keeps the Edit form open when the change is refused', async () => {
+    deskStub.update.mockResolvedValueOnce(false);
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    fireEvent.click(within(goals).getByRole('button', { name: 'Edit Lift wine revenue' }));
+    fireEvent.click(within(goals).getByRole('button', { name: 'Save the change' }));
+    await waitFor(() => expect(deskStub.update).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(within(goals).getByRole('button', { name: 'Save the change' })).toBeInTheDocument();
+  });
+
+  // F-1291: a past-deadline goal stayed active forever; the gateway now closes
+  // it, and the desk shows closed goals in their own fold.
+  it('shows the goals a deadline closed in their own fold, with the final value', () => {
+    hook.current = withRegister(
+      'goals',
+      ok(
+        decode('goals', {
+          ...GOALS,
+          closed: [
+            {
+              goal: { id: 'c1', name: 'September attach', metric_key: 'wine_attach_rate', direction: 'at_least', deadline: '2026-09-30' },
+              outcome: 'missed',
+              final: 0.346,
+              target: 0.35,
+              metricLabel: 'Wine attach rate',
+              unit: 'percent',
+            },
+            { goal: { id: 'c2', name: 'Odd' }, outcome: 'archived', final: 1, target: 2 },
+          ],
+          closedTotal: 1,
+        }),
+      ),
+    );
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    expect(within(goals).getByText('Closed at their deadline (1)')).toBeInTheDocument();
+    const rows = within(goals).getAllByTestId('rp-goal-closed');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('September attach');
+    expect(rows[0].textContent).toContain('Missed · 34.6% of 35.0%');
+    expect(rows[0].textContent).toContain('by 2026-09-30');
   });
 
   it('shows a stored share back as the percent it was typed as', () => {

@@ -10,7 +10,12 @@ import { localMidnight } from "../notifications/producers/service-day";
  * Pure: no database. The clock is a parameter.
  */
 
-/** The house date a `period` opened on, as of the house day `on`. */
+/**
+ * The house date a `period` opened on, as of the house day `on`. A week opens
+ * on Monday, as every other week in the product does (the rota's `mondayOf`,
+ * the weekly bell): a Sunday-to-Saturday goal week split the house's own
+ * weekend across two goals (F-1287).
+ */
 export function goalPeriodStart(
   period: string | undefined,
   zone: string,
@@ -23,7 +28,10 @@ export function goalPeriodStart(
     case "day":
       return today;
     case "week":
-      return shiftHouseDay(today, -new Date(Date.UTC(y, m - 1, d)).getUTCDay());
+      return shiftHouseDay(
+        today,
+        -((new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7),
+      );
     case "quarter":
       return `${y}-${two(Math.floor((m - 1) / 3) * 3 + 1)}-01`;
     case "month":

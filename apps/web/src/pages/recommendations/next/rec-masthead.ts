@@ -28,6 +28,7 @@
 import { inHouseMarks } from '@/lib/currency';
 import type { GroupMark } from '@/lib/parseDecimal';
 import { goalOfferFor, type GoalPlan } from './rec-forward';
+import { ratioPct } from '../../reports/next/rp-format';
 import type { EntryVM, GoalsVM } from './useRecommendationsNextData';
 
 /* ── the margin's rows ───────────────────────────────────────────────────── */
@@ -116,11 +117,22 @@ export function toGoalBook(data: unknown): Exclude<GoalBookVM, undefined> {
  * and a `$` on a lira house's goal would be a figure this page invented.
  * Grouped with the house's own mark (`useHouseGroupMark`, F-1251): a Turkish
  * house reads "6.180", not "6,180". An unknown mark leaves the en-US grouping.
+ *
+ * A percent goes to one decimal, through the Reports desk's `ratioPct`, and
+ * money under 1,000 keeps its cents (F-1290): rounded whole, "35% of 35% ·
+ * Behind" or "43 of 45" for 42.50 read as met while the pace word, taken from
+ * the true figure, said not. The cents take the house's marks too ("42,50").
  */
 export function inUnit(v: number | null, unit: string, group: GroupMark | null = null): string {
   if (v === null) return '—';
-  if (unit === 'percent') return `${Math.round(v * 100)}%`;
+  if (unit === 'percent') return ratioPct(v);
   if (unit === 'days') return `${inHouseMarks(Math.round(v).toLocaleString('en-US'), ',', group)} days`;
+  if (unit === 'currency' && Math.abs(v) < 1000 && Math.round(v * 100) % 100 !== 0)
+    return inHouseMarks(
+      v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      ',',
+      group,
+    );
   return inHouseMarks(Math.round(v).toLocaleString('en-US'), ',', group);
 }
 

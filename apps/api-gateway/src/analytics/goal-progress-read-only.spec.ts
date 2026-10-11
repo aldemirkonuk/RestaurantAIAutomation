@@ -29,6 +29,10 @@ function recordingDb(tables: Record<string, any[]>) {
           rec.filters.push(`${col}=${v}`);
           return b;
         },
+        in: (col: string, v: unknown[]) => {
+          rec.filters.push(`${col} in ${v.join(",")}`);
+          return b;
+        },
         order: () => b,
         limit: () => b,
         update: (payload: unknown) => {
@@ -108,7 +112,7 @@ describe("goal progress reads write nothing (F-264)", () => {
   it("R3: the sweep's refresh writes current_value alone, scoped to the house", async () => {
     const { goals, ops } = goalsOver(TABLES);
     const out = await goals.refreshStoredCurrentValues(RESTAURANT);
-    expect(out).toEqual({ refreshed: 1, failed: 0 });
+    expect(out).toEqual({ refreshed: 1, failed: 0, closed: 0 });
     const updates = ops.filter((o) => o.op === "update");
     expect(updates).toHaveLength(1);
     expect(updates[0].payload).toEqual({ current_value: 42 });
@@ -123,7 +127,7 @@ describe("goal progress reads write nothing (F-264)", () => {
       new Error("window not read whole"),
     );
     const out = await goals.refreshStoredCurrentValues(RESTAURANT);
-    expect(out).toEqual({ refreshed: 0, failed: 1 });
+    expect(out).toEqual({ refreshed: 0, failed: 1, closed: 0 });
     expect(ops.filter((o) => o.op === "update")).toEqual([]);
   });
 
@@ -152,5 +156,110 @@ describe("goal progress reads write nothing (F-264)", () => {
     await scheduler.runSweep(new Date(2026, 9, 8, 3, 0, 0));
     expect(goals.refreshStoredCurrentValues).toHaveBeenCalledWith(RESTAURANT);
     expect(generator.generate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-1291 (F-628 residual): a goal never reached achieved or missed, so a
+ * goal past its deadline stayed active forever. The hourly sweep closes it
+ * from its final window's value; progress reads still write nothing.
+ */
+describe("a goal closes at its deadline (F-1291)", () => {
+  const past = { ...GOAL, deadline: "2026-01-31", period: "custom" };
+
+  it("C1: a past-deadline goal short of its target closes as missed, once", async () => {
+    const { goals, ops } = goalsOver({ ...TABLES, analytics_goals: [past] });
+    const out = await goals.refreshStoredCurrentValues(RESTAURANT);
+    expect(out).toEqual({ refreshed: 1, failed: 0, closed: 1 });
+    const [u] = ops.filter((o) => o.op === "update");
+    expect(u.payload).toEqual({ current_value: 42, status: "missed" });
+    // Only an active goal is closed: a second sweep, or an archive in
+    // between, changes nothing.
+    expect(u.filters).toEqual(
+      expect.arrayContaining([
+        `restaurant_id=${RESTAURANT}`,
+        "id=g-1",
+        "status=active",
+      ]),
+    );
+  });
+
+  it("C2: at or past its target it closes as achieved; at most turns it round", () => {
+    expect(
+      GoalsService.closedOutcome(
+        { ...past, target_value: 40 },
+        42,
+        "2026-10-11",
+      ),
+    ).toBe("achieved");
+    expect(
+      GoalsService.closedOutcome(
+        { ...past, target_value: 42 },
+        42,
+        "2026-10-11",
+      ),
+    ).toBe("achieved");
+    expect(
+      GoalsService.closedOutcome(
+        { ...past, direction: "at_most", target_value: 40 },
+        42,
+        "2026-10-11",
+      ),
+    ).toBe("missed");
+    expect(
+      GoalsService.closedOutcome(
+        { ...past, direction: "at_most", target_value: "50" },
+        42,
+        "2026-10-11",
+      ),
+    ).toBe("achieved");
+  });
+
+  it("C3: it stays open through its deadline day, with no deadline, unread, or with no house zone", () => {
+    expect(
+      GoalsService.closedOutcome(
+        { ...past, deadline: "2026-10-11" },
+        42,
+        "2026-10-11",
+      ),
+    ).toBeNull();
+    expect(
+      GoalsService.closedOutcome({ ...past, deadline: null }, 42, "2026-10-11"),
+    ).toBeNull();
+    expect(GoalsService.closedOutcome(past, null, "2026-10-11")).toBeNull();
+    expect(GoalsService.closedOutcome(past, 42, null)).toBeNull();
+  });
+
+  it("C4: a goal whose deadline is still ahead is refreshed and left open", async () => {
+    const ahead = { ...past, deadline: "2999-12-31" };
+    const { goals, ops } = goalsOver({ ...TABLES, analytics_goals: [ahead] });
+    const out = await goals.refreshStoredCurrentValues(RESTAURANT);
+    expect(out.closed).toBe(0);
+    expect(ops.filter((o) => o.op === "update")[0].payload).toEqual({
+      current_value: 42,
+    });
+  });
+
+  it("C5: the progress read carries the closed goals for their own fold, and writes nothing", async () => {
+    const shut = {
+      ...past,
+      id: "g-2",
+      status: "missed",
+      current_value: "38.5",
+    };
+    const { goals, ops } = goalsOver({ ...TABLES, analytics_goals: [shut] });
+    const out: any = await goals.listGoalsWithProgress(RESTAURANT, "active");
+    const closedRead = ops.find((o) =>
+      o.filters.includes("status in achieved,missed"),
+    );
+    expect(closedRead).toBeDefined();
+    expect(out.closed[0]).toMatchObject({
+      outcome: "missed",
+      final: 38.5,
+      target: 100,
+      unit: "units",
+    });
+    expect(out.closedTotal).toBe(1);
+    expect(ops.filter((o) => o.op === "update")).toEqual([]);
   });
 });

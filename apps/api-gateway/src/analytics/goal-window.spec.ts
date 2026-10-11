@@ -1,4 +1,4 @@
-import { goalSchedule, goalWindow } from "./goal-window";
+import { goalPeriodStart, goalSchedule, goalWindow } from "./goal-window";
 
 /**
  * F-865: a goal's deadline day is counted in full (`houseDayBounds` ends at
@@ -117,5 +117,28 @@ describe("a goal's window (F-864)", () => {
       "2026-10-25",
     );
     expect(w.periodStart).toBe("2026-09-01");
+  });
+});
+
+describe("a goal's week opens on Monday, the product's week (F-1287)", () => {
+  it("counts a Sunday in the week that opened the Monday before", () => {
+    expect(goalPeriodStart("week", "Europe/Istanbul", "2026-10-11")).toBe(
+      "2026-10-05",
+    );
+  });
+
+  it("opens a new week on Monday and keeps it through the week", () => {
+    expect(goalPeriodStart("week", "Europe/Istanbul", "2026-10-12")).toBe(
+      "2026-10-12",
+    );
+    expect(goalPeriodStart("week", "America/New_York", "2026-10-17")).toBe(
+      "2026-10-12",
+    );
+  });
+
+  it("a weekly goal's window runs Monday to the next Monday", () => {
+    const w = goalWindow({ period: "week" }, "UTC", "2026-10-14");
+    expect(w.periodStart).toBe("2026-10-12");
+    expect(w.periodEnd).toBe("2026-10-19");
   });
 });

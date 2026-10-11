@@ -81,10 +81,28 @@ export interface GoalRow {
   zoneUnset: boolean;
 }
 
+/**
+ * A goal its deadline closed (F-1291): the gateway's hourly sweep sets it
+ * achieved or missed from its final window's value, which is the value shown.
+ */
+export interface ClosedGoalRow {
+  id: string;
+  name: string;
+  outcome: 'achieved' | 'missed';
+  metricLabel: string;
+  unit: string;
+  direction: string;
+  deadline: string | null;
+  final: number | null;
+  target: number | null;
+}
+
 export interface GoalsRegister {
   goals: GoalRow[];
   total: number;
   truncated: boolean;
+  closed: ClosedGoalRow[];
+  closedTotal: number;
   metrics: Array<{ key: string; label: string; unit: string }>;
   basis: Array<string | null | undefined>;
 }
@@ -439,6 +457,7 @@ function GoalForm({
   initial,
   submitLabel,
   busy,
+  error = null,
   onSubmit,
   onCancel,
 }: {
@@ -448,6 +467,8 @@ function GoalForm({
   initial: Partial<GoalRow> | null;
   submitLabel: string;
   busy: boolean;
+  /** Why the last write was refused, shown beside the form it came from (F-1285). */
+  error?: string | null;
   onSubmit: (v: {
     name: string;
     metricKey: string;
@@ -600,6 +621,11 @@ function GoalForm({
           Cancel
         </button>
       </div>
+      {error && (
+        <p className="rp-cap rp-goals__error" role="status">
+          {error}
+        </p>
+      )}
       {editing && (
         <p className="rp-cap">
           The measure cannot change: this goal’s baseline was taken against it when it was set, and
@@ -658,10 +684,12 @@ function ProposalCard({ desk }: { desk: GoalsDesk }) {
 function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  // An open form shows its own refusal beside what was typed (F-1285).
+  const formOpen = adding || editing !== null;
 
   return (
     <div className="rp-goals">
-      {desk.error && (
+      {desk.error && !formOpen && (
         <p className="rp-cap rp-goals__error" role="status">
           {desk.error}{' '}
           <button type="button" className="rp-mini rp-ink rp-focus" onClick={desk.clearError}>
@@ -693,16 +721,23 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                 initial={g}
                 submitLabel="Save the change"
                 busy={desk.busy === g.id}
-                onCancel={() => setEditing(null)}
-                onSubmit={(v) => {
-                  desk.update(g.id, {
-                    name: v.name,
-                    targetValue: v.targetValue,
-                    deadline: v.deadline,
-                    direction: v.direction,
-                    period: v.period,
-                  });
+                error={desk.error}
+                onCancel={() => {
+                  desk.clearError();
                   setEditing(null);
+                }}
+                onSubmit={(v) => {
+                  // Closed only once the gateway kept it; a refusal leaves
+                  // the form open with what was typed (F-1285).
+                  void desk
+                    .update(g.id, {
+                      name: v.name,
+                      targetValue: v.targetValue,
+                      deadline: v.deadline,
+                      direction: v.direction,
+                      period: v.period,
+                    })
+                    .then((kept) => kept && setEditing(null));
                 }}
               />
             ) : (
@@ -810,14 +845,17 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
           <GoalForm
             metrics={reg.metrics}
             scenarios={desk.scenarios}
-                scenarioRequest={desk.scenarioRequest}
+            scenarioRequest={desk.scenarioRequest}
             initial={null}
             submitLabel="Set the goal"
             busy={desk.busy === 'new'}
-            onCancel={() => setAdding(false)}
-            onSubmit={(v) => {
-              desk.create(v);
+            error={desk.error}
+            onCancel={() => {
+              desk.clearError();
               setAdding(false);
+            }}
+            onSubmit={(v) => {
+              void desk.create(v).then((kept) => kept && setAdding(false));
             }}
           />
         ) : (
@@ -830,6 +868,31 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
             Set a goal
           </button>
         ))}
+
+      {reg.closed.length > 0 && (
+        <details className="rp-goals__closed">
+          <summary className="rp-cap rp-focus">
+            Closed at their deadline ({reg.closedTotal})
+          </summary>
+          <ul className="rp-goals__list">
+            {reg.closed.map((c) => (
+              <li key={c.id} className="rp-goal" data-testid="rp-goal-closed">
+                <h3 className="rp-goal__name">{c.name}</h3>
+                <p className="rp-goal__line">
+                  {c.outcome === 'achieved' ? 'Achieved' : 'Missed'} ·{' '}
+                  <span className="rp-mono">{inUnit(c.final, c.unit)}</span> of{' '}
+                  <span className="rp-mono">{inUnit(c.target, c.unit)}</span> · {c.metricLabel} ·{' '}
+                  {c.direction === 'at_most' ? 'keep at most' : 'reach at least'}
+                  {c.deadline ? ` · by ${c.deadline}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {reg.closedTotal > reg.closed.length && (
+            <p className="rp-cap">The latest {reg.closed.length} are listed here.</p>
+          )}
+        </details>
+      )}
 
       {reg.truncated && (
         <p className="rp-cap">
@@ -883,10 +946,30 @@ export const goals = analysis<GoalsRegister>({
       };
     });
     const basis = obj(d.basis);
+    const closed = arr(d.closed).flatMap((entry): ClosedGoalRow[] => {
+      const g = obj(entry.goal);
+      const outcome = str(entry.outcome);
+      if (outcome !== 'achieved' && outcome !== 'missed') return [];
+      return [
+        {
+          id: str(g.id),
+          name: str(g.name) || 'Untitled goal',
+          outcome,
+          metricLabel: str(entry.metricLabel) || str(g.metric_key),
+          unit: str(entry.unit) || 'count',
+          direction: str(g.direction) || 'at_least',
+          deadline: g.deadline == null ? null : str(g.deadline),
+          final: num(entry.final),
+          target: num(entry.target),
+        },
+      ];
+    });
     return {
       goals: rows,
       total: num(d.total) ?? rows.length,
       truncated: d.truncated === true,
+      closed,
+      closedTotal: num(d.closedTotal) ?? closed.length,
       metrics: arr(d.supportedMetrics).map((m) => ({
         key: str(m.key),
         label: str(m.label) || str(m.key),

@@ -59,7 +59,7 @@ describe('the margin, read from the progress endpoint', () => {
 
   it('prints a figure in its own unit and never invents a currency symbol', () => {
     expect(inUnit(6180, 'currency')).toBe('6,180');
-    expect(inUnit(0.6, 'percent')).toBe('60%');
+    expect(inUnit(0.6, 'percent')).toBe('60.0%');
     expect(inUnit(null, 'units')).toBe('—');
   });
 
@@ -69,6 +69,16 @@ describe('the margin, read from the progress endpoint', () => {
     expect(inUnit(1234567, 'units', '.')).toBe('1.234.567');
     expect(inUnit(1500, 'days', '.')).toBe('1.500 days');
     expect(inUnit(6180, 'currency', ',')).toBe('6,180');
+  });
+
+  // F-1290: "35% of 35% · Behind" and "43 of 45" for 42.50 read as met.
+  it('keeps a percent to one decimal and money under 1,000 to its cents', () => {
+    expect(inUnit(0.346, 'percent')).toBe('34.6%');
+    expect(inUnit(42.5, 'currency')).toBe('42.50');
+    expect(inUnit(45, 'currency')).toBe('45');
+    expect(inUnit(9500.4, 'currency')).toBe('9,500');
+    // F-1251 and F-1290 together: the cents take the house's marks.
+    expect(inUnit(42.5, 'currency', '.')).toBe('42,50');
   });
 });
 

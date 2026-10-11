@@ -167,7 +167,7 @@ describe('rec-forward — the goal door', () => {
 
   it('says a goal is due at the end of its week or month on the house calendar, and that it can be moved', () => {
     // F-632: not 7 or 30 days on, on the browser's UTC date.
-    expect(PERIOD_DUE.week).toMatch(/Saturday, the last day of this week on your restaurant’s calendar/);
+    expect(PERIOD_DUE.week).toMatch(/Sunday, the last day of this week on your restaurant’s calendar/);
     expect(PERIOD_DUE.month).toMatch(/last day of this month on your restaurant’s calendar/);
   });
 

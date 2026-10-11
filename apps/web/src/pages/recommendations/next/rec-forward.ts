@@ -262,12 +262,12 @@ export const PERIOD_LABEL: Record<GoalPeriod, string> = {
  * The sheet sends no deadline: the gateway sets it to the last day of the
  * period on the house's own calendar (`GoalsService.createGoal`), because
  * this browser does not know the house's time zone and "this month" ends on
- * the house's month end, not 30 days on (F-632). A week opens on Sunday
- * there, so it ends on Saturday. The deadline can be moved afterwards
+ * the house's month end, not 30 days on (F-632). A week opens on Monday
+ * there, as every week in the product does, so it ends on Sunday (F-1287). The deadline can be moved afterwards
  * (`PATCH /analytics/goals/:rid/:goalId`, the Edit on the Reports goals desk).
  */
 export const PERIOD_DUE: Record<GoalPeriod, string> = {
-  week: 'Due on Saturday, the last day of this week on your restaurant’s calendar.',
+  week: 'Due on Sunday, the last day of this week on your restaurant’s calendar.',
   month: 'Due on the last day of this month on your restaurant’s calendar.',
 };
 
