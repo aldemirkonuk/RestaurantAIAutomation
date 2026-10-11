@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
   axiosGet: vi.fn(),
   axiosPost: vi.fn(),
   auth: {
-    user: null as null | { email: string; emailVerified?: boolean },
+    user: null as null | { email: string; emailVerified?: boolean; restaurantId?: string },
     isAuthenticated: false,
     logout: vi.fn(),
     refreshBranches: vi.fn(),
@@ -196,6 +196,19 @@ it('shows no-access account context and signs out without a fake workspace', () 
   expect(screen.getByText('reader@house.test')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
   expect(h.auth.logout).toHaveBeenCalledTimes(1)
+})
+it('sends a person who is in a house on from /no-access instead of saying they have none (F-1144)', () => {
+  h.auth.user = { email: 'reader@house.test', restaurantId: 'house-1' }
+  render(
+    <MemoryRouter initialEntries={['/no-access']}>
+      <Routes>
+        <Route path="/no-access" element={<NoAccess />} />
+        <Route path="/" element={<p>the house</p>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('the house')).toBeInTheDocument()
+  expect(screen.queryByText(/no restaurant access/)).not.toBeInTheDocument()
 })
 it('renders privacy as one document with accurate broad Excel scope', () => {
   const { container } = mount(<Privacy />, '/privacy')

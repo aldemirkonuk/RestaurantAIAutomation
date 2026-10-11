@@ -124,6 +124,7 @@ export function Login() {
     user,
     loading: authLoading,
     logout,
+    forgetEndedSession,
   } = useAuth()
   const googleRef = useRef<GoogleSignInHandle>(null)
   const on = usePublicDesign()
@@ -144,8 +145,19 @@ export function Login() {
   // known, so this page's own sign-in never shows it.
   const [arrivedSignedIn, setArrivedSignedIn] = useState<boolean | null>(null)
   useEffect(() => {
-    if (arrivedSignedIn === null && !authLoading) setArrivedSignedIn(!!user)
-  }, [arrivedSignedIn, authLoading, user])
+    if (arrivedSignedIn !== null || authLoading) return
+    // F-1142: sent here by "Sign in here" after the session ended, the tab
+    // still holds the person but the session itself is gone. Offering to
+    // continue as them looped back to a page that could not save, and the
+    // only way out was a sign-out that deletes their unsent changes. Forget
+    // them here instead (their queue stays) and show the form.
+    if (sessionEnded && user && !localStorage.getItem('accessToken')) {
+      forgetEndedSession?.()
+      setArrivedSignedIn(false)
+      return
+    }
+    setArrivedSignedIn(!!user)
+  }, [arrivedSignedIn, authLoading, user, sessionEnded, forgetEndedSession])
   const [signingOut, setSigningOut] = useState(false)
   const signOutFirst = async () => {
     setSigningOut(true)

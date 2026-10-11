@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SessionEndedPanel } from "./SessionEndedPanel";
 import { announceSessionEnded, signInAgainPath } from "../../lib/sessionEnded";
+import { AuthContext, type AuthContextType } from "../../contexts/AuthContext";
 
 /**
  * F-335: a refused sign-in is said over the page, and the page stays. The
@@ -15,18 +16,30 @@ function Where() {
   return <div data-testid="where">{`${l.pathname}${l.search}`}</div>;
 }
 
+const AYSE = "11111111-1111-4111-8111-111111111111";
+const MEHMET = "22222222-2222-4222-8222-222222222222";
+
+function jwt(sub: string): string {
+  return `h.${btoa(JSON.stringify({ sub })).replace(/=+$/, "")}.s`;
+}
+
 function setup() {
+  const auth = { user: { userId: AYSE, email: "a@house.test" } } as unknown as AuthContextType;
   render(
-    <MemoryRouter initialEntries={["/orders?vendor=7"]}>
-      <SessionEndedPanel />
-      <Where />
-      <Routes>
-        <Route path="/orders" element={<input aria-label="Quantity" defaultValue="" />} />
-        <Route path="/login" element={<p>sign-in page</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <AuthContext.Provider value={auth}>
+      <MemoryRouter initialEntries={["/orders?vendor=7"]}>
+        <SessionEndedPanel />
+        <Where />
+        <Routes>
+          <Route path="/orders" element={<input aria-label="Quantity" defaultValue="" />} />
+          <Route path="/login" element={<p>sign-in page</p>} />
+        </Routes>
+      </MemoryRouter>
+    </AuthContext.Provider>,
   );
 }
+
+afterEach(() => localStorage.clear());
 
 describe("SessionEndedPanel", () => {
   it("stays quiet until a sign-in is refused", () => {
@@ -58,9 +71,20 @@ describe("SessionEndedPanel", () => {
     act(() => announceSessionEnded());
     expect(screen.getByTestId("session-ended-here")).toBeTruthy();
     act(() => {
+      localStorage.setItem("accessToken", jwt(AYSE));
       window.dispatchEvent(new StorageEvent("storage", { key: "refreshToken", newValue: "r2" }));
     });
     expect(screen.queryByTestId("session-ended-here")).toBeNull();
+  });
+
+  it("stays open when someone else signs in in another tab (F-1141)", () => {
+    setup();
+    act(() => announceSessionEnded());
+    act(() => {
+      localStorage.setItem("accessToken", jwt(MEHMET));
+      window.dispatchEvent(new StorageEvent("storage", { key: "refreshToken", newValue: "r2" }));
+    });
+    expect(screen.getByTestId("session-ended-here")).toBeTruthy();
   });
 });
 

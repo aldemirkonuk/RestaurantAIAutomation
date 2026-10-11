@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
     resolveSignInMethods: vi.fn(),
     signInWithSession: vi.fn(),
     logout: vi.fn(),
+    forgetEndedSession: vi.fn(),
     error: null as string | null,
     loading: false,
     user: null as null | { userId: string; name: string; email: string },
@@ -132,6 +133,29 @@ describe('/login — someone is already signed in here (F-637)', () => {
     await waitFor(() => expect(h.auth.logout).toHaveBeenCalled())
     expect(screen.getByText(/You are signed in as/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Email Address')).not.toBeInTheDocument()
+  })
+
+  // F-1142: "Sign in here" on the session-ended panel arrives with ended=1
+  // while the tab still holds the person whose session is gone.
+  it('after the session ended, shows the form and why, never "signed in as"', () => {
+    draw('/login?redirect=%2Forders&ended=1')
+    expect(screen.queryByText(/You are signed in as/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('login-session-ended')).toHaveTextContent('This session was signed out.')
+    expect(screen.getByLabelText('Email Address')).toBeInTheDocument()
+    expect(h.auth.forgetEndedSession).toHaveBeenCalledTimes(1)
+    // their unsent changes are not thrown away to get here
+    expect(h.auth.logout).not.toHaveBeenCalled()
+  })
+
+  it('after the session ended, still says who when a session is back on this device', () => {
+    window.localStorage.setItem('accessToken', 'a.b.c')
+    try {
+      draw('/login?redirect=%2Forders&ended=1')
+      expect(screen.getByText(/You are signed in as/)).toBeInTheDocument()
+      expect(h.auth.forgetEndedSession).not.toHaveBeenCalled()
+    } finally {
+      window.localStorage.removeItem('accessToken')
+    }
   })
 
   it('waits for the device session to be known before deciding', () => {
