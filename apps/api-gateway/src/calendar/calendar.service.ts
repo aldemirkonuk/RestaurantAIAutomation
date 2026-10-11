@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { resolveCalendarOccurrences } from "./calendar-occurrences";
+import { readAll } from "../providers/vendor-menu-supply";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
@@ -1168,6 +1169,33 @@ export class CalendarService {
     return this.mapCalendarEvent(data);
   }
 
+  /**
+   * Every date a repeating entry falls on in [from, to], as entries the way
+   * `listEvents` returns them (F-1201; `readSeriesDates` below). For a read that
+   * files entries by date without expanding rules itself: the day line.
+   */
+  async seriesDatesIn(
+    restaurantId: string,
+    from: string,
+    to: string,
+  ): Promise<{ series: Set<string>; events: CalendarEventResponseDto[] }> {
+    const { series, rows } = await readSeriesDates(
+      this.databaseService.supabase,
+      restaurantId,
+      from,
+      to,
+      "*",
+    );
+    return {
+      series,
+      events: rows.map((row) => ({
+        ...this.mapCalendarEvent(row as CalendarEventRow),
+        parentEventId: row.series_id,
+        occurrenceDate: row.occurrence_date,
+      })),
+    };
+  }
+
   // ==========================================================================
   // RECURRING INSTANCES
   // ==========================================================================
@@ -1410,4 +1438,170 @@ export class CalendarService {
 
   // The iCal feed and its links moved to `calendar-links.service.ts` (personal
   // links, ADR 0111 review trail 2026-09-21) and `ical-render.ts`.
+}
+
+/**
+ * The dates every repeating calendar entry falls on inside [from, to]
+ * (inclusive house-date keys), for the reads that file entries by date
+ * without the calendar page's own expansion (F-1201): the dashboard's month
+ * grid and the day line. A weekly tasting that began last month used to show
+ * only on its first date there, while /calendar showed every Friday.
+ *
+ * Same series as /calendar asks for (`includeEarlierSeries`: a row that
+ * repeats, has a rule, and starts on or before `to`), expanded by the
+ * gateway's own resolver (calendar-occurrences.ts), which the web's
+ * expand-series.ts mirrors. Each occurrence keeps its series' row and takes
+ * the date as `start_date` / `event_date`, with the id /calendar gives it
+ * (`<series>__occ_<date>`), so a link to it opens the same entry.
+ *
+ * A date with an exception is left out, as the reminder sweep does
+ * (calendar-reminders.service.ts): `deleted` is off the book, and `modified`
+ * is a stored row of its own that the caller's read already holds, and so is
+any date stored as a child row of the series. A series
+ * the resolver refuses is not in `series`, so the caller keeps its stored row
+ * on its first date, as before.
+ *
+ * Every page is read (keyset), and a failed read throws: a grid drawn without
+ * its series would say "nothing on" for days that have something.
+ */
+export interface SeriesDates {
+  /** Series expanded here; the caller drops their own stored row. */
+  series: Set<string>;
+  /** One row per date, with `series_id` and `occurrence_date` set. */
+  rows: Array<Record<string, any>>;
+}
+
+const CHUNK = 100;
+
+/** `columns` is what the caller draws beside the series fields, or "*". */
+export async function readSeriesDates(
+  client: any,
+  restaurantId: string,
+  from: string,
+  to: string,
+  columns: string,
+): Promise<SeriesDates> {
+  const parents = await readAll(
+    "The house's repeating calendar entries",
+    (after) => {
+      let q = client
+        .from("calendar_events")
+        .select(
+          columns === "*"
+            ? "*"
+            : `id, restaurant_id, start_date, end_date, is_recurring, recurrence_rule_id, ${columns}`,
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("is_recurring", true)
+        .is("parent_event_id", null)
+        .not("recurrence_rule_id", "is", null)
+        .lte("start_date", to);
+      if (after) q = q.gt("id", after);
+      return q;
+    },
+  );
+  const out: SeriesDates = { series: new Set(), rows: [] };
+  if (parents.length === 0) return out;
+
+  const ruleIds = [
+    ...new Set(parents.map((p: any) => String(p.recurrence_rule_id))),
+  ];
+  const rules: any[] = [];
+  const skipped = new Set<string>();
+  for (let i = 0; i < ruleIds.length; i += CHUNK) {
+    const ids = ruleIds.slice(i, i + CHUNK);
+    const [ruleRes, exRes] = await Promise.all([
+      client
+        .from("calendar_recurrence_rules")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids),
+      client
+        .from("calendar_recurrence_exceptions")
+        .select("recurrence_rule_id, original_date, exception_type")
+        .in("recurrence_rule_id", ids),
+    ]);
+    if (ruleRes.error) {
+      throw new Error(
+        `The repeat rules could not be read (${ruleRes.error.message})`,
+      );
+    }
+    if (exRes.error) {
+      throw new Error(
+        `The repeat exceptions could not be read (${exRes.error.message})`,
+      );
+    }
+    rules.push(...(ruleRes.data ?? []));
+    for (const x of exRes.data ?? [])
+      skipped.add(
+        `${x.recurrence_rule_id}:${String(x.original_date).slice(0, 10)}`,
+      );
+  }
+
+  // A date somebody already stored as its own row (a moved or edited
+  // occurrence) is that row's; the caller's read holds it, so the series does
+  // not add a second copy of the same date.
+  const parentIds = parents.map((p: any) => String(p.id));
+  const storedDates = new Set<string>();
+  for (let i = 0; i < parentIds.length; i += CHUNK) {
+    const ids = parentIds.slice(i, i + CHUNK);
+    const children = await readAll(
+      "The house's stored repeat dates",
+      (after) => {
+        let q = client
+          .from("calendar_events")
+          .select("id, parent_event_id, occurrence_date")
+          .eq("restaurant_id", restaurantId)
+          .in("parent_event_id", ids)
+          .gte("occurrence_date", from)
+          .lte("occurrence_date", to);
+        if (after) q = q.gt("id", after);
+        return q;
+      },
+    );
+    for (const c of children as any[])
+      storedDates.add(
+        `${c.parent_event_id}:${String(c.occurrence_date).slice(0, 10)}`,
+      );
+  }
+
+  for (const parent of parents as any[]) {
+    const start = String(parent.start_date ?? "").slice(0, 10);
+    const resolved = resolveCalendarOccurrences({
+      restaurantId,
+      events: [
+        {
+          id: String(parent.id),
+          restaurant_id: restaurantId,
+          start_date: start,
+          end_date: parent.end_date
+            ? String(parent.end_date).slice(0, 10)
+            : null,
+          is_recurring: true,
+          recurrence_rule_id: String(parent.recurrence_rule_id),
+        },
+      ],
+      rules: rules.filter((r) => r.calendar_event_id === parent.id),
+      exceptions: [],
+      from,
+      to,
+    });
+    if (resolved.state !== "complete") continue;
+    out.series.add(String(parent.id));
+    for (const occ of resolved.events) {
+      const date = occ.occurrence_date ?? occ.start_date;
+      if (skipped.has(`${occ.recurrence_rule_id}:${date}`)) continue;
+      if (storedDates.has(`${parent.id}:${date}`)) continue;
+      out.rows.push({
+        ...parent,
+        id: occ.id,
+        start_date: occ.start_date,
+        end_date: occ.end_date ?? null,
+        event_date: occ.start_date,
+        series_id: String(parent.id),
+        occurrence_date: date,
+      });
+    }
+  }
+  return out;
 }

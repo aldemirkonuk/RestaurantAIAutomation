@@ -65,6 +65,26 @@ const COLUMNS: Record<string, string[]> = {
     "event_time",
     "status",
     "color",
+    "start_date",
+    "end_date",
+    "is_recurring",
+    "recurrence_rule_id",
+    "parent_event_id",
+    "occurrence_date",
+  ],
+  restaurant_inventory: [
+    "id",
+    "restaurant_id",
+    "stock_live",
+    "bottle_size_ml",
+    "deleted_at",
+    "is_active",
+  ],
+  v_low_stock_items: ["id", "restaurant_id"],
+  calendar_recurrence_exceptions: [
+    "recurrence_rule_id",
+    "original_date",
+    "exception_type",
   ],
   pos_checks: [
     "id",
@@ -117,6 +137,10 @@ function matches(row: Row, [op, col, v]: [string, string, any]): boolean {
       return x != null && cmp(x, v) < 0;
     case "lte":
       return x != null && cmp(x, v) <= 0;
+    case "is":
+      return v === null ? x == null : x === v;
+    case "not_is":
+      return v === null ? x != null : x !== v;
     default:
       throw new Error(`fake: unsupported filter ${op}`);
   }
@@ -179,6 +203,11 @@ function fakeDb(
       gt: (c: string, v: any) => (call.filters.push(["gt", c, v]), b),
       lt: (c: string, v: any) => (call.filters.push(["lt", c, v]), b),
       lte: (c: string, v: any) => (call.filters.push(["lte", c, v]), b),
+      is: (c: string, v: any) => (call.filters.push(["is", c, v]), b),
+      not: (c: string, op: string, v: any) => (
+        call.filters.push([`not_${op}`, c, v]),
+        b
+      ),
       order: (c: string, o?: { ascending?: boolean }) => (
         (call.orderBy = [c, o?.ascending !== false]),
         b
@@ -364,7 +393,7 @@ describe("AW12 — the month's calendar entries", () => {
     const reads = db.calls.filter((c) => c.table === "calendar_events");
     for (const r of reads) {
       expect(r.select).not.toBe("*");
-      expect(r.select).toBe("id, title, event_type, event_date, event_time");
+      expect(r.select).not.toMatch(/\*|description|color/);
     }
     const all = month.daily.flatMap((d: any) => d.events);
     expect(all).toHaveLength(1200);
@@ -382,6 +411,135 @@ describe("AW12 — the month's calendar entries", () => {
     await expect(
       serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10),
     ).rejects.toThrow(/statement timeout/);
+  });
+});
+
+// F-1201: a weekly Friday tasting that began in September was on the grid
+// only on its first date (a September one), so October read "nothing on"
+// while /calendar drew every Friday. Its dates now come from the same rule.
+describe("F-1201 — a repeating entry is on every date it falls on", () => {
+  const series = {
+    id: "ev-series",
+    restaurant_id: HOUSE,
+    title: "Friday tasting",
+    event_type: "tasting",
+    event_date: "2026-09-04",
+    start_date: "2026-09-04",
+    end_date: null,
+    event_time: "18:00:00",
+    status: "pending",
+    is_recurring: true,
+    recurrence_rule_id: "rule-1",
+    parent_event_id: null,
+  };
+  const rule = {
+    id: "rule-1",
+    restaurant_id: HOUSE,
+    calendar_event_id: "ev-series",
+    frequency: "weekly",
+    interval_value: 1,
+    days_of_week: [5],
+    end_type: "never",
+  };
+  // The 16th was taken off the book; the 23rd was moved to a stored row.
+  const exceptions = [
+    {
+      recurrence_rule_id: "rule-1",
+      original_date: "2026-10-16",
+      exception_type: "deleted",
+    },
+  ];
+  const moved = {
+    ...series,
+    id: "ev-moved",
+    title: "Friday tasting (late)",
+    event_date: "2026-10-23",
+    start_date: "2026-10-23",
+    event_time: "20:00:00",
+    is_recurring: false,
+    recurrence_rule_id: "rule-1",
+    parent_event_id: "ev-series",
+    occurrence_date: "2026-10-23",
+  };
+
+  it("files the series on each Friday of the month, as /calendar does", async () => {
+    const db = fakeDb({
+      restaurants: house(LA),
+      calendar_events: [series, moved],
+      calendar_recurrence_rules: [rule],
+      calendar_recurrence_exceptions: exceptions,
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10);
+    const on = (d: string) => day(month, d).events.map((e: any) => e.id);
+    expect(on("2026-10-02")).toEqual(["ev-series__occ_2026-10-02"]);
+    expect(on("2026-10-09")).toEqual(["ev-series__occ_2026-10-09"]);
+    expect(on("2026-10-16")).toEqual([]);
+    expect(on("2026-10-23")).toEqual(["ev-moved"]);
+    expect(on("2026-10-30")).toEqual(["ev-series__occ_2026-10-30"]);
+    expect(day(month, "2026-10-02").events[0]).toMatchObject({
+      title: "Friday tasting",
+      event_date: "2026-10-02",
+      event_time: "18:00:00",
+    });
+    const all = month.daily.flatMap((d: any) => d.events);
+    expect(all).toHaveLength(4);
+  });
+
+  it("keeps the series' own date in its first month", async () => {
+    const db = fakeDb({
+      restaurants: house(LA),
+      calendar_events: [series],
+      calendar_recurrence_rules: [rule],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 9);
+    const all = month.daily.flatMap((d: any) =>
+      d.events.map((e: any) => e.event_date),
+    );
+    expect(all).toEqual([
+      "2026-09-04",
+      "2026-09-11",
+      "2026-09-18",
+      "2026-09-25",
+    ]);
+  });
+
+  it("fails the month when the repeat rules cannot be read", async () => {
+    const db = fakeDb(
+      { restaurants: house(LA), calendar_events: [series] },
+      { calendar_recurrence_rules: "permission denied" },
+    );
+    await expect(
+      serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10),
+    ).rejects.toThrow(/repeat rules could not be read/);
+  });
+});
+
+// F-1205 (after F-186): the cellar tiles read restaurant_inventory and
+// v_low_stock_items unranged, so a house past 1,000 active items had "In the
+// cellar" and "across N items" counted from the first thousand. Both page now.
+describe("F-1205 — the cellar tiles count every item", () => {
+  it("counts every cellar item and every low one past the first thousand", async () => {
+    const items = Array.from({ length: 1200 }, (_, i) => ({
+      id: id("w", i),
+      restaurant_id: HOUSE,
+      stock_live: 2,
+      bottle_size_ml: 750,
+      deleted_at: null,
+      is_active: true,
+    }));
+    const low = Array.from({ length: 1050 }, (_, i) => ({
+      id: id("w", i),
+      restaurant_id: HOUSE,
+    }));
+    const db = fakeDb({
+      restaurants: house(LA),
+      restaurant_inventory: items,
+      v_low_stock_items: low,
+    });
+    const stats: any = await serviceOver(db).getStats(HOUSE);
+    expect(stats.totalWines).toBe(1200);
+    expect(stats.totalBottles).toBe(2400);
+    expect(stats.lowStockItems).toBe(1050);
   });
 });
 

@@ -140,11 +140,34 @@ export class HouseDayService {
     // call … only a second key in the aggregate's response") — so a failure
     // or a slow answer is shared between them, never one masking the other.
     const todayLocal = isoDate(localDateParts(timezone ?? "UTC", new Date()));
-    const eventsPromise = this.calendar.listEvents(house, {
-      startDate: todayLocal,
-      endDate: todayLocal,
-      includeRecurring: true,
-      limit: 100,
+    //
+    // A repeating entry ticks on every date it falls on, as /calendar draws
+    // it (F-1201): no stored row exists for its later dates, so its stored
+    // row is swapped for today's date of the series, unless today already
+    // has a stored row of its own.
+    const eventsPromise = Promise.all([
+      this.calendar.listEvents(house, {
+        startDate: todayLocal,
+        endDate: todayLocal,
+        includeRecurring: true,
+        limit: 100,
+      }),
+      this.calendar.seriesDatesIn(house, todayLocal, todayLocal),
+    ]).then(([res, repeats]) => {
+      const stored = new Set(
+        res.events
+          .filter((e) => e.parentEventId)
+          .map((e) => `${e.parentEventId}:${e.occurrenceDate}`),
+      );
+      return {
+        hasMore: res.hasMore,
+        events: [
+          ...res.events.filter((e) => !repeats.series.has(e.id)),
+          ...repeats.events.filter(
+            (e) => !stored.has(`${e.parentEventId}:${e.occurrenceDate}`),
+          ),
+        ],
+      };
     });
 
     const plans: Record<

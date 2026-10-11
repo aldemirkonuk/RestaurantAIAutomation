@@ -817,6 +817,25 @@ export class OrderFilterDto {
   @IsOptional()
   endDate?: string;
 
+  /**
+   * The orders DELIVERED in [deliveredFrom, deliveredTo), by `delivered_at`,
+   * newest delivery first; only those the spend counts (delivered, completed).
+   * The day sheet's Deliveries list reads one house day this way (F-1202).
+   */
+  @ApiPropertyOptional({
+    description: "Delivered at or after this instant (ISO 8601).",
+  })
+  @Matches(/^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:\d{2})$/)
+  @IsOptional()
+  deliveredFrom?: string;
+
+  @ApiPropertyOptional({
+    description: "Delivered before this instant (ISO 8601).",
+  })
+  @Matches(/^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:\d{2})$/)
+  @IsOptional()
+  deliveredTo?: string;
+
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
