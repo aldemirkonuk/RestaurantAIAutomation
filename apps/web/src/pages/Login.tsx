@@ -6,6 +6,7 @@ import { Mail, Lock, AlertCircle, ArrowRight, KeyRound, Fingerprint } from 'luci
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
+import { LegalLinks } from '../components/brand/LegalLinks'
 import '../components/brand/auth-house.css'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
@@ -762,10 +763,12 @@ export function Login() {
       <h2 className="mdv-ep-leaf-title">Welcome back.</h2>
       <p className="mdv-ep-leaf-lede">Your house keeps its book here.</p>
       {body}
+      <LegalLinks house />
     </EndpaperShell>
   ) : (
     <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory">
       <AuthCard>{body}</AuthCard>
+      <LegalLinks />
     </AuthShell>
   )
 }

@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Wine, Users, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight, Eye, EyeOff } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
+import { LegalLinks } from '../components/brand/LegalLinks'
 import { Button } from '../components/ui'
 import { apiClient } from '../services/api/client'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
@@ -1118,6 +1119,7 @@ export function Register() {
         <h2 className="mdv-ep-leaf-title">{ep.title}</h2>
         <p className="mdv-ep-leaf-lede">{ep.lede}</p>
         {content}
+        <LegalLinks house />
       </EndpaperShell>
     )
   }
@@ -1156,6 +1158,7 @@ export function Register() {
           </div>
         </AnimatePresence>
 
+        <LegalLinks />
         <p className="text-center text-xs text-gray-400 mt-8">© 2026 Mudavym. All rights reserved.</p>
       </motion.div>
     </div>
