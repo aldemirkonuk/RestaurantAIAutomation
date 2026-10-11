@@ -168,6 +168,33 @@ export function priorFromReceived(r: {
   return { ...base, refusedBottles: atDoor + atDesk };
 }
 
+/**
+ * The order is in single bottles, so the boxes counted at the door say nothing
+ * about how many bottles came until someone says how many are in each box
+ * (F-1154). Without it the gateway booked 2 boxes of 12 as 2 bottles; it now
+ * refuses such a count. An order that states no unit is not asked: its pack
+ * is the gateway's to work out, as before.
+ */
+export function asksBottlesPerBox(order: DoorOrderVM | null): boolean {
+  const u = order?.unitType ?? null;
+  return u !== null && (u.startsWith('bottle') || u === 'each');
+}
+
+/** The bottles per box to start from, when this order already knows one; else empty. */
+export function knownBottlesPerBox(prior: PriorReading): string {
+  return prior && prior !== 'unread' && prior.packSize && prior.packSize > 1
+    ? String(prior.packSize)
+    : '';
+}
+
+/** A whole number of bottles of at least one, or null. */
+export function readBottlesPerBox(raw: string): number | null {
+  const t = raw.trim();
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isSafeInteger(n) && n >= 1 ? n : null;
+}
+
 /** "11 boxes + 7 bottles", "5 boxes", "7 bottles". Never rounded. */
 export function boxesAndBottles(bottles: number, packSize: number): string {
   const boxes = Math.floor(bottles / packSize);

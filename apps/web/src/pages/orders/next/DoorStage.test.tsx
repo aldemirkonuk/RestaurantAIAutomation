@@ -10,9 +10,12 @@
  * F-1133 — an APPROVED order had no way to the door from /orders. Sending the
  *   letter leaves it APPROVED and the gateway's door counts against it, so the
  *   approved row offers the same door.
+ * F-1152 — "Mark delivered" was a plain <a href>, so it reloaded the whole app
+ *   to reach the door. It is a router link now: the door opens in place.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 const deliverMutate = vi.hoisted(() => vi.fn());
 vi.mock('@/services/api/orders', () => ({ mintOrderSeal: vi.fn(async () => 'seal') }));
@@ -48,16 +51,31 @@ function wire(over: Record<string, unknown> = {}) {
   } as never;
 }
 
+function DoorProbe() {
+  const at = useLocation();
+  return <p>door at {at.pathname + at.search}</p>;
+}
+
 function mount(over: Record<string, unknown> = {}) {
   render(
-    <LedgerRow
-      row={toRow(wire(over), new Map())}
-      expanded
-      onToggle={() => {}}
-      selected={false}
-      onSelectChange={() => {}}
-      bulkRunning={false}
-    />,
+    <MemoryRouter initialEntries={['/orders']}>
+      <Routes>
+        <Route
+          path="/orders"
+          element={
+            <LedgerRow
+              row={toRow(wire(over), new Map())}
+              expanded
+              onToggle={() => {}}
+              selected={false}
+              onSelectChange={() => {}}
+              bulkRunning={false}
+            />
+          }
+        />
+        <Route path="/receiving/:orderId/door" element={<DoorProbe />} />
+      </Routes>
+    </MemoryRouter>,
   );
 }
 
@@ -87,6 +105,14 @@ describe('F-1126 — "Mark delivered" opens the door count, it books nothing its
     expect(door.getAttribute('href')).toBe('/receiving/o-1/door?count=ordered');
     expect(deliverMutate).not.toHaveBeenCalled();
     expect(screen.getByText(/Nothing goes on the shelf until you confirm it/)).toBeTruthy();
+  });
+});
+
+describe('F-1152 — the door opens inside the app, not by reloading it', () => {
+  it('[REVERT-FAILS] is a router link: the tap moves the app to the door count', () => {
+    mount();
+    fireEvent.click(screen.getByRole('link', { name: 'Mark delivered' }));
+    expect(screen.getByText('door at /receiving/o-1/door?count=ordered')).toBeTruthy();
   });
 });
 

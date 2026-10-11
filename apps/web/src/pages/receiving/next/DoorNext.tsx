@@ -67,6 +67,7 @@ import {
 } from '@/hooks/useUnsavedWorkGuard';
 import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
 import {
+  asksBottlesPerBox,
   composeDoorNotes,
   creditDraft,
   doorFacts,
@@ -76,6 +77,8 @@ import {
   readPaper,
   suggestOutcome,
   inWords,
+  knownBottlesPerBox,
+  readBottlesPerBox,
   type PriorReading,
   priorFromReceived,
   OUTCOME_LABEL,
@@ -113,6 +116,8 @@ interface DoorDraft {
   documentId: string | null;
   reading: PaperReading | null;
   paperLine: string | null;
+  /** Bottles in each box, as typed, on an order in bottles (F-1154). */
+  perBox?: string;
   idem: string;
   /** `idem` was taken from a receipt already on this phone, not made here (F-1076). */
   idemBorrowed?: boolean;
@@ -208,6 +213,11 @@ export default function DoorNext() {
   /* ── the count (the loved thing) ──────────────────────────────────────── */
   const [counted, setCounted] = useState(kept?.counted ?? 1);
   const [broken, setBroken] = useState(kept?.broken ?? 0);
+  // F-1154: on an order in bottles the boxes need their bottles per box, or
+  // 2 boxes of 12 book as 2. Started from the order's own pack when it knows
+  // one, else empty — and the seal waits for it.
+  const [perBox, setPerBox] = useState(kept?.perBox ?? '');
+  const perBoxTried = useRef(kept?.perBox !== undefined && kept.perBox !== '');
   // F-1022: the broken boxes are some of the boxes delivered. Lowering the
   // delivered count takes the broken count down with it, never past it.
   useEffect(() => {
@@ -540,6 +550,15 @@ export default function DoorNext() {
     );
   }, [fromOrdered, orderState, order, prior, reading]);
 
+  const askPerBox = orderState === 'ok' && asksBottlesPerBox(order);
+  useEffect(() => {
+    if (!askPerBox || perBoxTried.current || prior === null) return;
+    perBoxTried.current = true;
+    setPerBox((v) => (v === '' ? knownBottlesPerBox(prior) : v));
+  }, [askPerBox, prior]);
+  const perBoxValue = readBottlesPerBox(perBox);
+  const perBoxOk = !askPerBox || perBoxValue !== null;
+
   const match = matchLine(counted, orderState === 'ok' ? order : null, prior);
   const suggested = suggestOutcome(match);
   const outcome: DoorOutcome = outcomeChoice ?? suggested;
@@ -562,7 +581,8 @@ export default function DoorNext() {
 
   const initialsOk = initials.trim().length >= 2;
   const reasonOk = outcome !== 'refused' || reason !== null;
-  const sealDisabled = submitting || !initialsOk || !reasonOk || paperHeld || onPhone !== null;
+  const sealDisabled =
+    submitting || !initialsOk || !reasonOk || !perBoxOk || paperHeld || onPhone !== null;
   const sealHint = onPhone
     ? onPhone.parked
       ? 'This delivery is already counted on this phone and was not sent. Open Receiving to send it again or discard it.'
@@ -571,11 +591,13 @@ export default function DoorNext() {
       ? reading?.prefill
         ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
         : "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The number filled in is what was ordered, not a count."
-      : !initialsOk
-        ? 'Add your initials first — when a case goes missing, who signed is the question.'
-        : !reasonOk
-          ? 'Say why it was refused — the reason is what the credit stands on.'
-          : undefined;
+      : !perBoxOk
+        ? 'Say how many bottles are in each box — this order is counted in bottles.'
+        : !initialsOk
+          ? 'Add your initials first — when a case goes missing, who signed is the question.'
+          : !reasonOk
+            ? 'Say why it was refused — the reason is what the credit stands on.'
+            : undefined;
 
   async function seal() {
     setSubmitting(true);
@@ -600,6 +622,8 @@ export default function DoorNext() {
         body: {
           countedQty: counted,
           countedUom: 'case',
+          // F-1154: the boxes' size, said at the door, on an order in bottles.
+          ...(askPerBox && perBoxValue !== null ? { packSize: perBoxValue } : {}),
           // Everything the door knows, each quantity carrying its unit in its
           // own name. `rejectedQty` — the unitless name — is deliberately not
           // sent: it was counted in boxes and converted as bottles, which booked
@@ -668,10 +692,11 @@ export default function DoorNext() {
       documentId,
       reading,
       paperLine,
+      perBox,
       idem: idem.current,
       idemBorrowed: borrowed.current !== null && borrowed.current === idem.current,
     } satisfies DoorDraft);
-  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine, onPhone, keyTurn]);
+  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine, perBox, onPhone, keyTurn]);
 
   useUnsavedWorkGuard(
     orderState !== 'missing' && (step === 'count' || submitting),
@@ -901,6 +926,29 @@ export default function DoorNext() {
             label="Boxes delivered"
             uxKey="door:cases"
           />
+          {askPerBox && (
+            <label className="mt-6 block">
+              <span className="text-sm font-semibold text-inkm-2">Bottles in each box</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={perBox}
+                onChange={(e) => {
+                  perBoxTried.current = true;
+                  setPerBox(e.target.value.replace(/[^0-9]/g, '').slice(0, 3));
+                }}
+                placeholder="e.g. 12"
+                autoComplete="off"
+                enterKeyHint="done"
+                className="door-input mt-2 w-full min-h-[56px] rounded-2xl border border-white/10 px-4 text-center text-2xl font-bold placeholder:text-base placeholder:font-normal focus:border-seal-ring focus:outline-none"
+                style={{ fontFamily: SERIF }}
+                data-ux-key="door:bottles-per-box"
+              />
+              <span className="mt-2 block text-xs text-inkm-3">
+                This order is in bottles. Open one box and count, if you are not sure.
+              </span>
+            </label>
+          )}
           {paperHeld && (
             <button
               type="button"
