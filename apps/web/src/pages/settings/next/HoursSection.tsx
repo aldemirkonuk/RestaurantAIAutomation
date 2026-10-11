@@ -85,14 +85,24 @@ function summarise(hours: OperatingHours | null): string {
     .join(' · ');
 }
 
+/** The gateway's own sentence (a worded 409, say), else the error's message. */
+function serverSentence(e: unknown): string {
+  const said = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (typeof said === 'string' && said) return said;
+  return (e as Error)?.message ?? '';
+}
+
 function DaySheet({
   restaurantId, initial, onClose, onSaved,
 }: {
   restaurantId: string;
   initial: OperatingHours | null;
   onClose: () => void;
-  onSaved: (next: OperatingHours | null, timezone: string | null) => void;
+  onSaved: (next: OperatingHours | null, timezone: string | null, updatedAt: string | null) => void;
 }) {
+  // The sheet saves the whole week, so it carries the week it opened on: a
+  // week another manager changed since is refused, not overwritten (F-1373).
+  const opened = { expected: initial };
   const [draft, setDraft] = useState<OperatingHours>(initial ? cloneWeek(initial) : cloneWeek(EMPTY_WEEK));
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[] | null>(null);
@@ -106,15 +116,15 @@ function DaySheet({
     setSaving(true);
     setErrors(null);
     try {
-      const res = await restaurantsApi.putOperatingHours(restaurantId, draft);
-      onSaved(res.operatingHours, res.timezone);
+      const res = await restaurantsApi.putOperatingHours(restaurantId, draft, opened);
+      onSaved(res.operatingHours, res.timezone, res.updatedAt);
     } catch (e) {
       const fromServer = operatingHoursErrorsFrom(e);
       // The gateway lists EVERY fault at once (`parseOperatingHours` collects
       // rather than stops at the first) — showing one would send a person
       // back around the loop per mistake, so all of them render, in the
       // validator's own words.
-      setErrors(fromServer ?? [(e as Error)?.message || 'Operating hours could not be saved']);
+      setErrors(fromServer ?? [serverSentence(e) || 'Operating hours could not be saved']);
     } finally {
       setSaving(false);
     }
@@ -124,10 +134,10 @@ function DaySheet({
     setSaving(true);
     setErrors(null);
     try {
-      const res = await restaurantsApi.putOperatingHours(restaurantId, null);
-      onSaved(res.operatingHours, res.timezone);
+      const res = await restaurantsApi.putOperatingHours(restaurantId, null, opened);
+      onSaved(res.operatingHours, res.timezone, res.updatedAt);
     } catch (e) {
-      setErrors([(e as Error)?.message || 'Could not record the hours as unknown']);
+      setErrors([serverSentence(e) || 'Could not record the hours as unknown']);
     } finally {
       setSaving(false);
     }
@@ -363,8 +373,9 @@ export function HoursSection({ data }: { data: SettingsNextData }) {
         restaurantId={restaurantId}
         initial={hours.data.operatingHours}
         onClose={() => setEditing(false)}
-        onSaved={(next, timezone) => {
-          hours.set({ ...(hours.data as NonNullable<typeof hours.data>), operatingHours: next, timezone, updatedAt: new Date().toISOString() });
+        onSaved={(next, timezone, updatedAt) => {
+          // The stored time from the gateway's answer, not this device's clock.
+          hours.set({ ...(hours.data as NonNullable<typeof hours.data>), operatingHours: next, timezone, updatedAt });
           setEditing(false);
         }}
       />

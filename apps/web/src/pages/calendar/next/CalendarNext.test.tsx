@@ -672,7 +672,39 @@ describe('CalendarNext — editing clears, the whole day, refusals in place', ()
     const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
     expect(patch.description).toBeNull();
     expect(patch.eventTimeEnd).toBeNull();
-    expect(patch.eventTime).toBe('09:00');
+    // The start time was not touched, so it is not sent (F-1372).
+    expect(patch).not.toHaveProperty('eventTime');
+  });
+
+  // F-1372: the sheet sent the whole entry from when it opened, status
+  // included, so a stale sheet un-cancelled an entry another manager had
+  // cancelled and its reminder fired again.
+  it('sends only the fields the sheet changed, never the status it opened with', () => {
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByPlaceholderText('What is happening'), {
+      target: { value: 'Vega Sicilia crate, side door' },
+    });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
+    expect(patch).toEqual({ title: 'Vega Sicilia crate, side door' });
+  });
+
+  it('writes nothing when the sheet is saved unchanged (F-1372)', () => {
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    expect((data.update as { mutate: ReturnType<typeof vi.fn> }).mutate).not.toHaveBeenCalled();
   });
 
   it('clears both clock times when an entry is made all day (F-196)', () => {
@@ -1884,7 +1916,8 @@ describe('CalendarNext — an all-day entry can span days (F-198)', () => {
     fireEvent.change(within(sheet).getByLabelText('Ends on (optional)'), { target: { value: typed } });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
     const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
-    expect(patch.allDay).toBe(true);
+    // Already all day, so only the end date is sent (F-1372).
+    expect(patch).not.toHaveProperty('allDay');
     expect(patch.eventDateEnd).toBe(sent);
   });
 });

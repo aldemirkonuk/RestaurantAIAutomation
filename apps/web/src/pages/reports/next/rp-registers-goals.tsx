@@ -42,7 +42,7 @@ import { analysis, arr, obj, str } from './rp-spec';
 import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
-import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
+import type { GoalPatch, GoalsDesk, ScenarioRequest } from './useGoalsDesk';
 import type { ViewCtx } from './rp-spec';
 
 /* ─────────────────────────────────────────────────────── the payload ───── */
@@ -450,6 +450,33 @@ export function readTargetText(text: string, recorded: number | null, group: Gro
   return parseDecimal(text, group);
 }
 
+/**
+ * The fields of an Edit that differ from the goal as the form opened on it
+ * (F-1371). Sending all five rewrote whatever another manager had changed in
+ * the meantime with this tab's old copy; an untouched field is now left out.
+ */
+function goalEdits(
+  opened: GoalRow,
+  v: {
+    name: string;
+    targetValue: number;
+    deadline: string | null;
+    direction: 'at_least' | 'at_most';
+    period: string;
+  },
+): GoalPatch {
+  const patch: GoalPatch = {};
+  if (v.name !== opened.name.trim()) patch.name = v.name;
+  // A share shown as 0–100 and read back can differ in the last float digit.
+  if (opened.target === null || Math.abs(v.targetValue - opened.target) > 1e-9)
+    patch.targetValue = v.targetValue;
+  if (v.deadline !== (opened.deadline ?? null)) patch.deadline = v.deadline;
+  const openedDirection = opened.direction === 'at_most' ? 'at_most' : 'at_least';
+  if (v.direction !== openedDirection) patch.direction = v.direction;
+  if (v.period !== opened.period) patch.period = v.period;
+  return patch;
+}
+
 function GoalForm({
   metrics,
   scenarios,
@@ -683,7 +710,10 @@ function ProposalCard({ desk }: { desk: GoalsDesk }) {
 
 function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
   const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
+  // The goal as it stood when Edit was pressed: the save sends only what was
+  // changed against it, so a field another manager moved since is left as
+  // they set it (F-1371).
+  const [editing, setEditing] = useState<GoalRow | null>(null);
   // An open form shows its own refusal beside what was typed (F-1285).
   const formOpen = adding || editing !== null;
 
@@ -713,12 +743,12 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
       <ul className="rp-goals__list">
         {reg.goals.map((g) => (
           <li key={g.id} className="rp-goal">
-            {editing === g.id ? (
+            {editing?.id === g.id ? (
               <GoalForm
                 metrics={reg.metrics}
                 scenarios={desk.scenarios}
                 scenarioRequest={desk.scenarioRequest}
-                initial={g}
+                initial={editing}
                 submitLabel="Save the change"
                 busy={desk.busy === g.id}
                 error={desk.error}
@@ -730,13 +760,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                   // Closed only once the gateway kept it; a refusal leaves
                   // the form open with what was typed (F-1285).
                   void desk
-                    .update(g.id, {
-                      name: v.name,
-                      targetValue: v.targetValue,
-                      deadline: v.deadline,
-                      direction: v.direction,
-                      period: v.period,
-                    })
+                    .update(g.id, goalEdits(editing, v))
                     .then((kept) => kept && setEditing(null));
                 }}
               />
@@ -760,7 +784,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                         type="button"
                         className="rp-mini rp-ink rp-focus rp-no-drag"
                         aria-label={`Edit ${g.name}`}
-                        onClick={() => setEditing(g.id)}
+                        onClick={() => setEditing(g)}
                       >
                         <Pencil size={12} strokeWidth={1.6} aria-hidden />
                         Edit

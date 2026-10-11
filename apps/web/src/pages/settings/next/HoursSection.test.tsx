@@ -191,9 +191,13 @@ describe('the day sheet — nothing is saved by opening it', () => {
       expect(api.putOperatingHours).toHaveBeenCalledWith(
         'r1',
         expect.objectContaining({ tue: [{ open: '12:00', close: '23:00' }] }),
+        { expected: null },
       ),
     );
-    expect(hours.set).toHaveBeenCalled();
+    // The register keeps the gateway's stored time, not this device's clock (F-1373).
+    expect(hours.set).toHaveBeenCalledWith(
+      expect.objectContaining({ updatedAt: '2026-09-06T09:00:00.000Z' }),
+    );
   });
 
   it('a day opened after another takes that day\'s hours, lunch and dinner both (F-030)', async () => {
@@ -205,7 +209,7 @@ describe('the day sheet — nothing is saved by opening it', () => {
     fireEvent.click(screen.getAllByLabelText('Closed')[2]);
     await userEvent.click(screen.getByRole('button', { name: /save hours/i }));
     await waitFor(() =>
-      expect(api.putOperatingHours).toHaveBeenCalledWith('r1', expect.objectContaining({ tue: split, wed: split, thu: [] })),
+      expect(api.putOperatingHours).toHaveBeenCalledWith('r1', expect.objectContaining({ tue: split, wed: split, thu: [] }), expect.anything()),
     );
   });
 
@@ -224,7 +228,7 @@ describe('the day sheet — nothing is saved by opening it', () => {
     fireEvent.click(screen.getAllByLabelText('Closed')[6]);
     await userEvent.click(screen.getByRole('button', { name: /save hours/i }));
     const week = Object.fromEntries(days.map((d) => [d, d === 'sun' ? [] : split]));
-    await waitFor(() => expect(api.putOperatingHours).toHaveBeenCalledWith('r1', week));
+    await waitFor(() => expect(api.putOperatingHours).toHaveBeenCalledWith('r1', week, expect.anything()));
   });
 
   it('records the hours as unknown instead — PUTs null, never an all-closed week', async () => {
@@ -244,7 +248,11 @@ describe('the day sheet — nothing is saved by opening it', () => {
       screen.getByRole('button', { name: /record the hours as unknown instead/i }),
     );
 
-    await waitFor(() => expect(api.putOperatingHours).toHaveBeenCalledWith('r1', null));
+    await waitFor(() =>
+      expect(api.putOperatingHours).toHaveBeenCalledWith('r1', null, {
+        expected: { ...EMPTY_WEEK, tue: [{ open: '12:00', close: '23:00' }] },
+      }),
+    );
     expect(hours.set).toHaveBeenCalled();
   });
 
@@ -272,6 +280,39 @@ describe('the day sheet — nothing is saved by opening it', () => {
     const box = await screen.findByRole('alert');
     expect(box).toHaveTextContent('not HH:MM');
     expect(box).toHaveTextContent('ranges overlap');
+    expect(hours.set).not.toHaveBeenCalled();
+  });
+});
+
+// F-1373: the sheet saved the whole week from when it opened, so two managers
+// fixing different days lost one change.
+describe('two managers on one week (F-1373)', () => {
+  it('sends the week it opened on, so the gateway can refuse a week changed since', async () => {
+    api.putOperatingHours.mockResolvedValue({ restaurantId: 'r1', timezone: 'Europe/Istanbul', operatingHours: null, updatedAt: null });
+    const read = { ...EMPTY_WEEK, tue: [{ open: '12:00', close: '23:00' }] };
+    mount({ hours: remote(hoursData({ operatingHours: read })) });
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    fireEvent.click(screen.getAllByLabelText('Closed')[4]);
+    await userEvent.click(screen.getByRole('button', { name: /save hours/i }));
+    await waitFor(() =>
+      expect(api.putOperatingHours).toHaveBeenCalledWith('r1', expect.anything(), { expected: read }),
+    );
+  });
+
+  it('says in words that someone else changed the hours, and keeps the sheet', async () => {
+    api.putOperatingHours.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { message: 'Someone else changed the opening hours after you opened this sheet, so your change was not saved.' },
+      },
+    });
+    const { hours } = mount({
+      hours: remote(hoursData({ operatingHours: { ...EMPTY_WEEK, mon: [{ open: '12:00', close: '23:00' }] } })),
+    });
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /save hours/i }));
+    const box = await screen.findByRole('alert');
+    expect(box).toHaveTextContent('Someone else changed the opening hours');
     expect(hours.set).not.toHaveBeenCalled();
   });
 });

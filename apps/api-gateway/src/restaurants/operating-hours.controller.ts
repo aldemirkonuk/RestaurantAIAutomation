@@ -57,17 +57,23 @@ export class OperatingHoursController {
   async putOperatingHours(
     @Req() req: Request & { user: AuthenticatedUser },
     @Param("restaurantId") restaurantId: string,
-    @Body() body: { operatingHours?: unknown },
+    @Body()
+    body: { operatingHours?: unknown; expectedOperatingHours?: unknown },
   ): Promise<OperatingHoursResponse> {
     const userId = (req.user as AuthenticatedUser)?.userId;
     if (!userId) throw new ForbiddenException("Missing user identity");
-    const hasKey =
-      body !== null && typeof body === "object" && "operatingHours" in body;
+    const isObject = body !== null && typeof body === "object";
+    const hasKey = isObject && "operatingHours" in body;
+    // The week the sheet opened on, when it sent one: a stored week that has
+    // moved since is refused with a 409 rather than overwritten (F-1373).
+    const sentExpected = isObject && "expectedOperatingHours" in body;
     return this.operatingHoursService.putOperatingHours(
       userId,
       restaurantId,
       hasKey ? body.operatingHours : undefined,
-      { explicit: hasKey },
+      sentExpected
+        ? { explicit: hasKey, expected: body.expectedOperatingHours }
+        : { explicit: hasKey },
     );
   }
 }
