@@ -38,7 +38,7 @@ export function usePromotionsRead(includeDismissed: boolean) {
   });
 }
 
-/** Put an offer away for the whole house (ADR 0144 §4). Undo-after (ADR 0112 F10): the card leaves once this resolves, not before. */
+/** Put an offer away for the whole house (ADR 0144 §4). Undo-after (ADR 0112 F10): the card leaves once this resolves, not before; the way back is the put-away fold's Restore (F-1288). */
 export function useDismissOffer() {
   const qc = useQueryClient();
   return useMutation({
