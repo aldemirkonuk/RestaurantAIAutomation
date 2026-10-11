@@ -298,6 +298,15 @@ describe('RecordPriceForm — pack and bottle size hold the gateway’s bounds, 
     expect(priceBoundsRefusal('1', '60001')).toMatch(/from 50 to 60000/)
   })
 
+  it('lets the browser take a 58,674 ml keg in the bottle size box too (F-1383)', () => {
+    render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
+    const vol = screen.getByLabelText('Bottle size (ml)') as HTMLInputElement
+    fireEvent.change(vol, { target: { value: '58674' } })
+    expect(vol).toHaveAttribute('max', '60000')
+    expect(vol.validity.rangeOverflow).toBe(false)
+    expect(vol.checkValidity()).toBe(true)
+  })
+
   it('holds the button and says why when the bottle size is under 50 ml', () => {
     render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
     fillRequiredFieldsExceptCurrency()

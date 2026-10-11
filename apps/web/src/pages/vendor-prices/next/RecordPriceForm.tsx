@@ -367,7 +367,7 @@ export function RecordPriceForm({
               style={{ ...inputStyle, fontFamily: MONO }}
               type="number"
               min="50"
-              max="30000"
+              max="60000"
               step="1"
               value={unitVolumeMl}
               onChange={(e) => setUnitVolumeMl(e.target.value)}
