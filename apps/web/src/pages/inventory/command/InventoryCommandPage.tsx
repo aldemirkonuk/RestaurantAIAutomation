@@ -1100,17 +1100,17 @@ export function InventoryCommandPage() {
   }, [menu]);
 
   const kpis = useMemo(() => {
+    // Live bottles only (F-1167): shadow bottles are on order, not yet on the
+    // shelf, and the house has not paid for them on hand.
     const valueOnHand = filteredInventory.reduce(
-      (s, i) =>
-        s +
-        (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
+      (s, i) => s + (i.wac ?? i.price ?? 0) * (i.liveStock ?? 0),
       0,
     );
     const menuPotential = filteredInventory.reduce(
       (s, i) =>
         // The house's bottle price (ADR 0193), not the library's `menuPrice`,
         // which no house row carries — the sub-label never showed (F-390).
-        s + (i.menuPriceBottle ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
+        s + (i.menuPriceBottle ?? 0) * (i.liveStock ?? 0),
       0,
     );
     const runwayAlerts = filteredInventory.filter((i) => {

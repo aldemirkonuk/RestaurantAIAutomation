@@ -757,6 +757,118 @@ export class InventoryLedgerService {
     return { count, transaction };
   }
 
+  /**
+   * Move an item's shadow (ordered, not yet shelved) bottles into live
+   * (F-1166, re-hit of F-143).
+   *
+   * The row's "Reconcile N into live" used to send `reconcileInventory` a count
+   * of live + shadow. That raised live by N and left shadow at N, so on hand
+   * (live + shadow) grew by N on every press. Here the server reads the shadow
+   * itself and makes two movements: live +N, then shadow -N.
+   *
+   * Two RPCs, so not one transaction (no primitive moves stock between states).
+   * Both keys are named after the item's latest shadow movement, so they stay
+   * the same until shadow -N lands: a retry, a second press or a second tab
+   * replays live +N instead of adding it again, and finishes the shadow -N.
+   * Once that lands, shadow is 0 and a further press moves nothing. Live goes
+   * first so a failure in between over-states the shelf and still shows the act,
+   * rather than losing the bottles from both counts. Not covered: a NEW shadow
+   * movement landing between a failed shadow -N and its retry changes the keys,
+   * and the retry then adds the bottles to live again.
+   */
+  async reconcileShadowIntoLive(
+    restaurantId: string,
+    userId: string,
+    inventoryId: string,
+  ): Promise<{ moved: number }> {
+    await assertInventoryBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      inventoryId,
+      "reconcileShadowIntoLive",
+      this.logger,
+    );
+
+    const { data: lots, error: lotsError } = await this.databaseService.supabase
+      .from("inventory_lots")
+      .select("qty")
+      .eq("inventory_id", inventoryId)
+      .eq("stock_state", "shadow");
+    if (lotsError) {
+      throw new BadRequestException(
+        `Could not read the bottles on order: ${lotsError.message}`,
+      );
+    }
+    const shadow = (lots ?? []).reduce(
+      (s: number, l: { qty: number | null }) => s + (l.qty ?? 0),
+      0,
+    );
+    if (shadow <= 0) return { moved: 0 };
+
+    const { data: last, error: lastError } = await this.databaseService.supabase
+      .from("inventory_transactions")
+      .select("id")
+      .eq("inventory_id", inventoryId)
+      .eq("stock_type", "shadow")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastError) {
+      throw new BadRequestException(
+        `Could not read the bottles on order: ${lastError.message}`,
+      );
+    }
+    const mark = last?.id ?? "none";
+
+    const live = await this.databaseService.supabase.rpc(
+      "apply_stock_movement",
+      {
+        p_inventory_id: inventoryId,
+        p_stock_state: "live",
+        p_delta: shadow,
+        // A move of a known N, not a count: a count goes through
+        // record_stock_count (ADR 0078), and this is not one.
+        p_transaction_type: "adjustment",
+        p_source: "reconciliation",
+        p_performed_by: userId,
+        p_reason: "Bottles on order counted onto the shelf",
+        p_idempotency_key: `reconcile-shadow-in:${inventoryId}:${mark}`,
+        p_restaurant_id: restaurantId,
+      },
+    );
+    if (live.error) {
+      throw new BadRequestException(
+        live.error.message || "The bottles could not be moved onto the shelf",
+      );
+    }
+    const out = await this.databaseService.supabase.rpc(
+      "apply_stock_movement",
+      {
+        p_inventory_id: inventoryId,
+        p_stock_state: "shadow",
+        p_delta: -shadow,
+        p_transaction_type: "adjustment",
+        p_source: "reconciliation",
+        p_performed_by: userId,
+        p_reason: "Bottles on order counted onto the shelf",
+        p_idempotency_key: `reconcile-shadow-out:${inventoryId}:${mark}`,
+        p_restaurant_id: restaurantId,
+      },
+    );
+    if (out.error) {
+      this.logger.error({
+        message: "Shadow release after live booking failed",
+        inventoryId,
+        error: out.error.message,
+      });
+      throw new BadRequestException(
+        "The bottles are on the shelf but still show as on order. Press it again to finish.",
+      );
+    }
+    return { moved: shadow };
+  }
+
   // ==========================================================================
   // HELPERS
   // ==========================================================================

@@ -718,4 +718,14 @@ describe('InventoryCommandPage — staff are shown stock, not what the house pai
     wine.click();
     expect(await screen.findByText('You paid (WAC)')).toBeInTheDocument();
   });
+
+  it('values live bottles only, not shadow ones still on order (F-1167)', async () => {
+    routeGets({ 'inventory-list': [{ ...staffRow, stockLive: 6, shadowStock: 4, wac: 40 }] });
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    const tile = screen.getByText('Value on hand').parentElement!;
+    // 6 x $40, not 10 x $40.
+    expect(tile.textContent).toMatch(/\$240(?![\d,.])/);
+    expect(tile.textContent).not.toMatch(/\$400(?![\d,.])/);
+  });
 });

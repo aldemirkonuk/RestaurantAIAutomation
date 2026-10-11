@@ -401,4 +401,22 @@ export class InventoryLedgerController {
       );
     }
   }
+
+  @Post("inventory/:inventoryId/reconcile-shadow")
+  @ApiOperation({
+    summary: "Move an item's shadow bottles into live",
+    description:
+      "F-1166: live +N and shadow -N, N read by the server. A second press, a retry or a second tab moves nothing more.",
+  })
+  @ApiParam({ name: "inventoryId", description: "Inventory item ID" })
+  async reconcileShadowIntoLive(
+    @Param("inventoryId") inventoryId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ moved: number }> {
+    return this.ledgerService.reconcileShadowIntoLive(
+      user.restaurantId,
+      user.userId,
+      inventoryId,
+    );
+  }
 }

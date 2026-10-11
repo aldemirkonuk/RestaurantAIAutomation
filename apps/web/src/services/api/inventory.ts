@@ -153,6 +153,18 @@ export async function reconcileItem(
 }
 
 /**
+ * Move an item's shadow bottles into live (F-1166). The server reads the
+ * shadow and moves exactly that many, so a second press moves nothing.
+ */
+export async function reconcileShadowItem(inventoryId: string): Promise<{ moved: number }> {
+  const response = await apiClient.post<{ moved: number }>(
+    `/inventory-ledger/inventory/${inventoryId}/reconcile-shadow`,
+    {}
+  );
+  return response.data;
+}
+
+/**
  * A manual +/- adjustment, sent as the change itself (F-292). The server adds
  * it to the stock it holds at that moment, so two managers each logging "-1
  * Breakage" take off two bottles, and a sale that landed after the page loaded
