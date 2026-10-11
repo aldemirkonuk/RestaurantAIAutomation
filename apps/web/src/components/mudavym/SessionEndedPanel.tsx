@@ -11,7 +11,7 @@
  *     back to this page after.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Panel } from './Sheet';
 import {
@@ -19,6 +19,7 @@ import {
   signInAgainPath,
   type SessionEndedDetail,
 } from '../../lib/sessionEnded';
+import { tokenSubject, useAuth } from '../../contexts/AuthContext';
 
 const ACT = {
   font: 'inherit',
@@ -35,15 +36,25 @@ export function SessionEndedPanel() {
   const location = useLocation();
   const [message, setMessage] = useState<string | null>(null);
   const here = `${location.pathname}${location.search}`;
+  const { user } = useAuth();
+  const who = useRef<string | null>(null);
+  useEffect(() => {
+    who.current = user?.userId ?? null;
+  }, [user]);
 
   useEffect(() => {
     const onEnded = (e: Event) => {
       if (window.location.pathname === '/login') return;
       setMessage((e as CustomEvent<SessionEndedDetail>).detail?.message ?? '');
     };
-    // Signed in again in another tab: this tab can save again.
+    // Signed in again in another tab: this tab can save again, but only if
+    // it is the same person (F-1141). Someone else signing in there starts
+    // this tab over as them (AuthContext), so the panel never closes over a
+    // page that still shows the first person.
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'refreshToken' && e.newValue) setMessage(null);
+      if (e.key !== 'refreshToken' || !e.newValue) return;
+      const signedIn = tokenSubject(localStorage.getItem('accessToken'));
+      if (signedIn && signedIn === who.current) setMessage(null);
     };
     window.addEventListener(SESSION_ENDED_EVENT, onEnded);
     window.addEventListener('storage', onStorage);

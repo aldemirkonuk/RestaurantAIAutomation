@@ -141,6 +141,44 @@ describe("F-212 — sign-out follows every tab", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it("after this tab's session ended, someone else signing in from another tab starts this tab over (F-1141)", async () => {
+    await mountSignedIn();
+    // This tab's refresh was refused: it removed the tokens itself, which
+    // fires no event here, and kept the person on screen.
+    act(() => {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+    });
+    act(() =>
+      otherTabWrites("accessToken", null, jwt({ sub: U2, restaurantId: H1 })),
+    );
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("after this tab's session ended, the same person signing in from another tab keeps this page", async () => {
+    const { ctx } = await mountSignedIn();
+    act(() => {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+    });
+    act(() =>
+      otherTabWrites("accessToken", null, jwt({ sub: U1, restaurantId: H1, iat: 3 })),
+    );
+    expect(reload).not.toHaveBeenCalled();
+    expect(ctx().user?.userId).toBe(U1);
+  });
+
+  it("forgetting an ended session clears this tab's person and reads without signing out", async () => {
+    const { ctx } = await mountSignedIn();
+    act(() => ctx().forgetEndedSession?.());
+    await waitFor(() => expect(ctx().user).toBeNull());
+    expect(queryClient.getQueryData(["reports", H1])).toBeUndefined();
+    expect(h.instance.post).not.toHaveBeenCalledWith(
+      expect.stringContaining("/auth/logout"),
+      expect.anything(),
+    );
+  });
+
   it("a refresh of the same person's token in another tab changes nothing", async () => {
     const { token, ctx } = await mountSignedIn();
     act(() =>

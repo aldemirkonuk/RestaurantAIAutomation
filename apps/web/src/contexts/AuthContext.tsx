@@ -288,6 +288,13 @@ export interface AuthContextType {
    * Optional only so hand-built providers (Storybook) need not stub it.
    */
   refreshUser?: () => Promise<void>;
+  /**
+   * The session already ended on the server and its tokens are gone, but this
+   * tab still holds the person (F-1142): forget them and their reads here,
+   * without the sign-out that would delete their unsent changes. Optional
+   * only so hand-built providers need not stub it.
+   */
+  forgetEndedSession?: () => void;
   isAuthenticated: boolean;
 }
 
@@ -369,7 +376,7 @@ api.interceptors.response.use(
 );
 
 /** The person (`sub`) an access token was minted for, or null. */
-function tokenSubject(accessToken: string | null): string | null {
+export function tokenSubject(accessToken: string | null): string | null {
   try {
     const sub = accessToken
       ? JSON.parse(
@@ -599,32 +606,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // there. Tabs share localStorage but not memory, so without this a tab left
   // open on a shared tablet kept showing the last person's house and name.
   // A `storage` event never fires in the tab that made the change.
+  // endSession's local half: nothing of the session stays on screen, and
+  // with no user ProtectedRoute sends this tab to sign in.
+  const forgetEndedSession = useCallback(() => {
+    forgetHouseReads(queryClient);
+    queryClient?.getMutationCache().clear();
+    delete api.defaults.headers.common["Authorization"];
+    delete api.defaults.headers.common["X-Restaurant-Id"];
+    setUser(null);
+    setRoleRead(null);
+    // A house another tab moved to before signing out is no one's now.
+    setHouseMovedTo(null);
+  }, [queryClient]);
+  const userIdNow = useRef<string | null>(null);
+  useEffect(() => {
+    userIdNow.current = user?.userId ?? null;
+  }, [user]);
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       // `key === null` is a full localStorage.clear().
       if (e.key !== null && e.key !== "accessToken") return;
       const token = localStorage.getItem("accessToken");
       if (!token) {
-        // endSession's local half: nothing of the session stays on screen,
-        // and with no user ProtectedRoute sends this tab to sign in.
-        forgetHouseReads(queryClient);
-        queryClient?.getMutationCache().clear();
-        delete api.defaults.headers.common["Authorization"];
-        delete api.defaults.headers.common["X-Restaurant-Id"];
-        setUser(null);
-        setRoleRead(null);
-        // A house another tab moved to before signing out is no one's now.
-        setHouseMovedTo(null);
+        forgetEndedSession();
         return;
       }
       // A refresh or a house switch keeps the person; a different person
       // means everything this tab holds was someone else's. Start over.
-      const before = tokenSubject(e.oldValue);
+      // F-1141: when this tab's session ended, its token was removed, so the
+      // next sign-in arrives with no old value; the person still on screen
+      // is who it must be compared with.
+      const before = tokenSubject(e.oldValue) ?? userIdNow.current;
       if (before && before !== tokenSubject(token)) window.location.reload();
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [queryClient]);
+  }, [forgetEndedSession]);
 
   // Centralized branch fetch — reused by initial load and refreshBranches()
   // IMPORTANT: preserves activeRestaurantId via the validSaved check below.
@@ -1461,6 +1478,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginWithMicrosoft,
     resolveSignInMethods,
     logout,
+    forgetEndedSession,
     deleteAccountAndSignOut,
     refreshToken: refreshTokenFn,
     refreshBranches,

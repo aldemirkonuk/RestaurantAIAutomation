@@ -19,6 +19,10 @@ export function NoAccess() {
   // account to talk about and nobody to sign out, so it is the sign-in page.
   // While the session is still being read, it says nothing yet.
   if (!user) return loading ? null : <Navigate to="/login" replace />
+  // F-1144: a person who is in a house (re-invited, then Back, or a reload
+  // of this address) has access; telling them otherwise is wrong. The house
+  // is where they belong.
+  if (user.restaurantId) return <Navigate to="/" replace />
 
   const signOut = async () => {
     clearHouseEnded()
