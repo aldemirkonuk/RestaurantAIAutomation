@@ -144,7 +144,7 @@ export async function exportWineLibraryToExcel(
     const summaryData = generateSummaryData(wines)
     
     summarySheet.columns = [
-      { header: 'Metric', key: 'metric', width: 30 },
+      { header: 'Metric', key: 'metric', width: 48 },
       { header: 'Value', key: 'value', width: 20 },
     ]
 
@@ -312,9 +312,13 @@ function getStockStatus(wine: Wine): string {
 }
 
 /**
- * Generate summary statistics for the summary sheet
+ * Generate summary statistics for the summary sheet.
+ *
+ * `wine.price` is the library's list price, which may be a reference borrowed
+ * from the library rather than what the house paid, so the sum is named as the
+ * stock at library list prices, never as the stock's value (F-1316).
  */
-function generateSummaryData(wines: Wine[]): Array<{ metric: string; value: string | number }> {
+export function generateSummaryData(wines: Wine[]): Array<{ metric: string; value: string | number }> {
   const totalWines = wines.length
   const activeWines = wines.filter(w => w.isActive !== false).length
   const inactiveWines = totalWines - activeWines
@@ -340,7 +344,7 @@ function generateSummaryData(wines: Wine[]): Array<{ metric: string; value: stri
 
   // Calculate totals
   const totalStock = wines.reduce((sum, wine) => sum + (wine.liveStock || 0), 0)
-  const totalValue = wines.reduce((sum, wine) => sum + (wine.price * (wine.liveStock || 0)), 0)
+  const totalListValue = wines.reduce((sum, wine) => sum + (wine.price * (wine.liveStock || 0)), 0)
   const avgPrice = wines.reduce((sum, wine) => sum + wine.price, 0) / totalWines
 
   return [
@@ -370,7 +374,7 @@ function generateSummaryData(wines: Wine[]): Array<{ metric: string; value: stri
       })),
     { metric: '', value: '' },
     { metric: 'Total Stock (bottles)', value: totalStock },
-    { metric: 'Total Inventory Value', value: `$${totalValue.toFixed(2)}` },
-    { metric: 'Average Price per Bottle', value: `$${avgPrice.toFixed(2)}` },
+    { metric: 'Stock at library list prices (not what you paid)', value: `$${totalListValue.toFixed(2)}` },
+    { metric: 'Average library list price per bottle', value: `$${avgPrice.toFixed(2)}` },
   ]
 }
