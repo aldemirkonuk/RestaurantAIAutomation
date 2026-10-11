@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { readWholeWindow } from "../common/read-whole-window";
+import { readForKeys, readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -124,60 +124,57 @@ export class AnalyticsService {
 
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes, houseRes, openRes] = await Promise.allSettled([
-      client
-        .from("restaurant_inventory")
-        // Column names must match the live schema exactly. PostgREST rejects
-        // the WHOLE query with 42703 on a single unknown column, and the
-        // allSettled + `data || []` below turns that rejection into an empty
-        // inventory rather than an error — so every metric downstream
-        // (inventory value, COGS ratio, turnover, GMROI, reorder science)
-        // silently reported 0/null for every restaurant. There is no
-        // wine_type/unit_price/unit_cost/reorder_point on this table: the
-        // menu price is `menu_price_current`, cost is `last_purchase_price`,
-        // the reorder trigger is `threshold_min`, and the varietal/type
-        // lives on master_wine_library.
-        // F-442: no `is_active` filter here. An inactive wine still holding
-        // bottles is stock in the cellar and counts in the valuation; rows
-        // are tagged `isActive` and the reorder and risk lenses keep only
-        // active ones (see `activeOnly`).
-        .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, is_active, created_at, master_wine_library(primary_type)",
-        )
-        .eq("restaurant_id", restaurantId),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          // cost_currency / cost_currency_count (F-343): which money the WAC is in.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
-        )
-        .eq("restaurant_id", restaurantId),
-      // The house's stated currency: its menu prices are in it, and a cost in
-      // other money is not set against them (F-343).
-      client
-        .from("restaurants")
-        .select("currency")
-        .eq("id", restaurantId)
-        .maybeSingle(),
-      // Bottles already ordered and not yet here (F-630): reorder science
-      // counts them before it says "order today".
-      client
-        .from("procurement_orders")
-        .select("inventory_id, bottles_total, expected_delivery_date")
-        .eq("restaurant_id", restaurantId)
-        .in("status", ORDER_NOT_YET_ARRIVED_STATUSES),
+    // F-1214: the cellar and its lot totals are read WHOLE or refused. Unranged
+    // they stopped at PostgREST's 1,000 rows (supabase/config.toml:18), so a
+    // house with more wines (retired vintages included, F-442) was valued on
+    // whichever thousand came back; and a failed read became `[]`, "no wine
+    // carries a cost", on /reports and in a `ready` export. A refusal now
+    // propagates, as `loadDeliveredOrders` does (ADR 0292).
+    const [inventory, [houseRes, openRes]] = await Promise.all([
+      readWholeWindow<any>("The cellar's wines", () =>
+        client
+          .from("restaurant_inventory")
+          // Column names must match the live schema exactly. PostgREST rejects
+          // the WHOLE query with 42703 on a single unknown column, and the
+          // allSettled + `data || []` that was here turned that rejection into
+          // an empty inventory rather than an error — so every metric downstream
+          // (inventory value, COGS ratio, turnover, GMROI, reorder science)
+          // silently reported 0/null for every restaurant. There is no
+          // wine_type/unit_price/unit_cost/reorder_point on this table: the
+          // menu price is `menu_price_current`, cost is `last_purchase_price`,
+          // the reorder trigger is `threshold_min`, and the varietal/type
+          // lives on master_wine_library.
+          // F-442: no `is_active` filter here. An inactive wine still holding
+          // bottles is stock in the cellar and counts in the valuation; rows
+          // are tagged `isActive` and the reorder and risk lenses keep only
+          // active ones (see `activeOnly`).
+          .select(
+            "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, is_active, created_at, master_wine_library(primary_type)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId),
+      ),
+      Promise.allSettled([
+        // The house's stated currency: its menu prices are in it, and a cost in
+        // other money is not set against them (F-343).
+        client
+          .from("restaurants")
+          .select("currency")
+          .eq("id", restaurantId)
+          .maybeSingle(),
+        // Bottles already ordered and not yet here (F-630): reorder science
+        // counts them before it says "order today".
+        client
+          .from("procurement_orders")
+          .select("inventory_id, bottles_total, expected_delivery_date")
+          .eq("restaurant_id", restaurantId)
+          .in("status", ORDER_NOT_YET_ARRIVED_STATUSES),
+      ]),
     ]);
 
     // allSettled makes a REJECTION invisible and `{ data, error }` makes a
-    // FAILED QUERY invisible; both land as `[]` here, which every metric below
-    // reads as "this restaurant has no inventory". Its sibling
-    // advanced-analytics.service.ts was hardened with logQueryFailure and this
-    // file, same directory and same tables, was not. See ADR 0067.
-    this.reportSlice("restaurant_inventory", invRes);
-    this.reportSlice("inventory_lot_rollup", rollupRes);
+    // FAILED QUERY invisible; the house's money and the open orders below
+    // each say what an unread answer means (ADR 0067).
     this.reportSlice("restaurants", houseRes);
     this.reportSlice("procurement_orders", openRes);
     // Unread or unstated, the house's money is null and a lot is read as before.
@@ -186,12 +183,27 @@ export class AnalyticsService {
         ? (houseRes.value.data?.currency ?? null)
         : null;
 
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
+    // The lot totals of exactly these wines: the view has no `id` to page on,
+    // so it is read a slice of wines at a time, whole or refused.
+    const rollupRows = await readForKeys<any>(
+      "The lot totals",
+      inventory.map((i: any) => i.id),
+      (slice) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+            // can tell a WAC that covers every on-hand bottle from one that
+            // covers a single invoiced bottle in twenty-one.
+            // cost_currency / cost_currency_count (F-343): which money the WAC is in.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", slice),
+    );
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled") {
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
-    }
+    for (const r of rollupRows) rollup.set(r.inventory_id, r);
     // Per wine: bottles on order, or null when they cannot be counted — the
     // read failed, or an open order states no bottle count. A failed read is
     // never "nothing on order" (ADR 0067).
@@ -638,10 +650,10 @@ export class AnalyticsService {
     // cost, so it cannot block the total. Only ON-HAND rows need a cost.
     const onHand = inventory.filter((i) => i.qty > 0);
     // NB `complete` is false for an EMPTY on-hand set, so an empty cellar
-    // reports null rather than $0. That is deliberate: `loadInventory` above
-    // degrades a failed PostgREST query to `[]` (see its comment), so `[]` is
-    // "no rows or no answer", and $0 for a dead query is precisely the silent
-    // zero this endpoint has already been burned by once.
+    // reports null rather than $0. That is deliberate: `[]` used to be "no
+    // rows or no answer" (a failed read now refuses instead, F-1214), and $0
+    // for an empty set is precisely the silent zero this endpoint has already
+    // been burned by once.
     const costCoverage = summarizeCostBasis(onHand);
     // Bottles of a wine marked inactive are still in the cellar, so they are
     // still stock and still valued here (F-442); the basis names how many.
@@ -846,7 +858,7 @@ export class AnalyticsService {
                   : `; paid in ${cogsCurrency}, not the house's ${houseCurrency}, so it is given in ${cogsCurrency} and inventory turns and days of stock are not taken from it`),
         revenue:
           inventory.length === 0
-            ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
+            ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned (a failed read refuses the summary rather than landing here, F-1214), and $0 would claim an empty cellar sells for nothing"
             : priced.length === 0
               ? `unit_price × on-hand qty (POS-revenue proxy) — null: none of the ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} carries a bottle price, and $0 would claim they sell for nothing`
               : `unit_price × on-hand qty (POS-revenue proxy) — ${priced.length} inventory row${priced.length === 1 ? "" : "s"} valued${priced.length < inventory.length ? `; ${inventory.length - priced.length} with no bottle price left out of revenue and of the cost the margin is taken against` : ""}`,

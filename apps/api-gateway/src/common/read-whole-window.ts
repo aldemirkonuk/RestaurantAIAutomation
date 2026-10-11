@@ -302,3 +302,56 @@ async function readOnce<T>(
   }
   return { ok: true, rows };
 }
+
+/** Keys per request in `readForKeys`: about 3.7 KB of uuids in the URL. */
+export const KEYS_PER_READ = 100;
+
+/**
+ * The rows of a view with no `id` column for a list of keys already read whole
+ * (F-1214: the lot totals of every wine in the cellar). A view cannot be paged
+ * on a cursor it does not have, so it is read a slice of keys at a time, each
+ * slice far under the server's cap. A failed slice refuses; a slice that comes
+ * back shorter than its own exact count was cut by the cap and refuses too.
+ * Nothing is returned from part of the keys.
+ */
+export async function readForKeys<T = any>(
+  what: string,
+  keys: readonly string[],
+  build: (slice: string[]) => PromiseLike<WholeWindowPage>,
+  perRead = KEYS_PER_READ,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let at = 0; at < keys.length; at += perRead) {
+    const slice = keys.slice(at, at + perRead);
+    const { data, error, count } = await build(slice);
+    if (error) {
+      throw new WholeReadError(
+        what,
+        "read_failed",
+        rows.length,
+        null,
+        `keys ${at + 1}-${at + slice.length}: ${error.code ?? "?"} ${error.message ?? String(error)}`,
+      );
+    }
+    if (!Array.isArray(data)) {
+      throw new WholeReadError(
+        what,
+        "malformed_page",
+        rows.length,
+        null,
+        `keys ${at + 1}-${at + slice.length} carried no rows and no error`,
+      );
+    }
+    if (typeof count === "number" && data.length < count) {
+      throw new WholeReadError(
+        what,
+        "row_ceiling",
+        rows.length,
+        count,
+        `keys ${at + 1}-${at + slice.length} came back with ${data.length} of ${count} rows`,
+      );
+    }
+    rows.push(...(data as T[]));
+  }
+  return rows;
+}

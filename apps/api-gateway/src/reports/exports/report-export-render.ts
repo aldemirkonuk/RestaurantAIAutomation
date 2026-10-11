@@ -199,7 +199,9 @@ export function renderCsv(doc: ExportDoc, h: ExportHeader): string {
   push(
     "Withheld",
     csvText(
-      `${h.withheldCount} figure${h.withheldCount === 1 ? "" : "s"} the engine could not compute ${h.withheldCount === 1 ? "is" : "are"} written as "${WITHHELD_WORD}", never as 0`,
+      // F-1216: since F-1145 a figure is also withheld when it was worked out
+      // in another money; the reason beside each one says which.
+      `${h.withheldCount} figure${h.withheldCount === 1 ? "" : "s"} the engine could not compute, or could not state in the house's money, ${h.withheldCount === 1 ? "is" : "are"} written as "${WITHHELD_WORD}", never as 0`,
     ),
   );
 
@@ -432,7 +434,7 @@ ${doc.tables.map((t) => htmlTable(t, h.currency, locale)).join("\n")}
 ${list("Notes", doc.notes)}
 ${list("Basis", doc.basis)}
 <footer>
-${escapeHtml(`${h.withheldCount} figure${h.withheldCount === 1 ? "" : "s"} marked "${WITHHELD_WORD}" ${h.withheldCount === 1 ? "is" : "are"} one the engine could not compute from this house's rows. A withheld figure is not zero.`)}
+${escapeHtml(`${h.withheldCount} figure${h.withheldCount === 1 ? "" : "s"} marked "${WITHHELD_WORD}" ${h.withheldCount === 1 ? "is" : "are"} one the engine could not compute from this house's rows, or could not state in the house's money. A withheld figure is not zero.`)}
 Written by Mudavym from this house's own registers; no other restaurant's books are in it.
 </footer>
 </body>

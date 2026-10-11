@@ -78,8 +78,13 @@ describe("the exportable cuttings (OD-81)", () => {
         expect([id, webSource.includes(`window: () => '${spec.window(null)}'`)]).toEqual([id, true]);
     }
     // The till's window is the one the reader picked.
-    expect(webSource).toContain("window: (ctx) => `the last ${ctx.days} days of POS checks`");
-    expect(EXPORT_CUTTINGS.till.window(7)).toBe("the last 7 days of POS checks");
+    expect(webSource).toContain(
+      "window: (ctx) => `the last ${ctx.days} days of POS checks, today so far`",
+    );
+    // F-1215: the window ends on the house's today, so it says today is unfinished.
+    expect(EXPORT_CUTTINGS.till.window(7)).toBe(
+      "the last 7 days of POS checks, today so far",
+    );
   });
 
   it("write every fixture payload without throwing", () => {
@@ -549,6 +554,36 @@ describe("two currencies are said in the file, not read as an empty window (F-10
     const empty = EXPORT_CUTTINGS.ledger.write(PAYLOADS.ledger, { days: null });
     expect(why(empty, "Cost of goods (365d)")).toContain(
       "No delivered order came back",
+    );
+  });
+
+  // F-1216: turns and days are withheld because COGS is in other money, not
+  // for want of a cost basis or a year of orders.
+  it("inventory turns and days give the currency as their reason, not the cost basis", () => {
+    const euro = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as object),
+        cogs: 4200,
+        cogsCurrency: "EUR",
+        houseCurrency: "TRY",
+      },
+      { days: null, currency: "TRY" },
+    );
+    for (const label of ["Inventory turns", "Days of inventory"]) {
+      expect(why(euro, label)).toBe(
+        "Cost of goods is in EUR, not the house's TRY, and with no exchange rate on record it is not set against the cellar",
+      );
+    }
+    const two = EXPORT_CUTTINGS.ledger.write(
+      { ...(PAYLOADS.ledger as object), cogs: null, cogsNote: ORDERED },
+      { days: null },
+    );
+    expect(why(two, "Inventory turns")).toBe(
+      `Cost of goods is withheld: ${ORDERED}`,
+    );
+    const plain = EXPORT_CUTTINGS.ledger.write(PAYLOADS.ledger, { days: null });
+    expect(why(plain, "Inventory turns")).toBe(
+      "Needs a complete cost basis and a year of delivered orders",
     );
   });
 });

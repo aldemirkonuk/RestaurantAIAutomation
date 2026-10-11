@@ -510,7 +510,7 @@ describe('ReportsNext — the sheet', () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Through the till' })).getByText(
-        'the last 30 days of POS checks',
+        'the last 30 days of POS checks, today so far',
       ),
     ).toBeInTheDocument();
   });
@@ -554,7 +554,8 @@ describe('ReportsNext — the sheet', () => {
     expect(CATALOGUE.till.path!('r1', july)).toBe('/analytics/pos-revenue/r1?month=2026-07');
     expect(CATALOGUE.till.path!('r1', { days: 30 })).toBe('/analytics/pos-revenue/r1?days=30');
     expect(CATALOGUE.till.window(july)).toBe('July 2026 of POS checks, by the house’s days');
-    expect(CATALOGUE.till.window({ days: 30 })).toBe('the last 30 days of POS checks');
+    // F-1215: a trailing window ends on the house's today, and says so.
+    expect(CATALOGUE.till.window({ days: 30 })).toBe('the last 30 days of POS checks, today so far');
   });
 
   it('cuts the till to one calendar month, and a number of days leaves the month (F-128)', () => {

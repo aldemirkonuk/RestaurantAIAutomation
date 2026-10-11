@@ -94,7 +94,8 @@ describe("renderCsv (OD-81)", () => {
       // F-413: on the house's clock, zone named — the same clock as its days.
       'Written,"2026-09-17 12:00, house time (Europe/Istanbul)"',
       "Money,\"TRY, the house's reporting currency; money is written as a bare number\"",
-      'Withheld,"2 figures the engine could not compute are written as ""withheld"", never as 0"',
+      // F-1216: a figure in another money is withheld too, and the header says so.
+      'Withheld,"2 figures the engine could not compute, or could not state in the house\'s money, are written as ""withheld"", never as 0"',
     ]);
   });
 });

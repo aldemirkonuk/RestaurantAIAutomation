@@ -771,6 +771,17 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
     unpriced > 0;
   const unpricedPrices = pc ? (num(pc.unpriced) ?? 0) : 0;
   const unpricedOrders = num(d.cogsUnpricedCount) ?? 0;
+  // F-1216: turns and days divide cost of goods by the cellar. When COGS is in
+  // another money, or blank for two moneys, that is why they are withheld, not
+  // the cost basis (the gateway's own reason, analytics.service.ts basis.cogs).
+  const cogsOwn = str(d.cogsCurrency).trim().toUpperCase();
+  const houseOwn = str(d.houseCurrency).trim().toUpperCase();
+  const turnsWhy =
+    cogsOwn && houseOwn && cogsOwn !== houseOwn
+      ? `Cost of goods is in ${cogsOwn}, not the house's ${houseOwn}, and with no exchange rate on record it is not set against the cellar`
+      : str(d.cogsNote)
+        ? `Cost of goods is withheld: ${str(d.cogsNote)}`
+        : `${costBasis} and a year of delivered orders`;
   return doc({
     figures: [
       partial
@@ -812,8 +823,12 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
       ),
       f("Gross margin", figure(d.grossMargin, costBasis), "ratio"),
       f("COGS ratio", figure(d.cogsRatio, costBasis), "ratio"),
-      f("Inventory turns", figure(d.inventoryTurnover, `${costBasis} and a year of delivered orders`), "count"),
-      f("Days of inventory", figure(d.daysInventoryOutstanding, `${costBasis} and a year of delivered orders`), "days"),
+      f("Inventory turns", figure(d.inventoryTurnover, turnsWhy), "count"),
+      f(
+        "Days of inventory",
+        figure(d.daysInventoryOutstanding, turnsWhy),
+        "days",
+      ),
       f("GMROI", figure(d.gmroi, costBasis), "count"),
       f("Capital sitting still", figure(d.deadStockCapital, "No movement signal recorded, or an idle row has no cost"), "money"),
     ],
@@ -1323,7 +1338,13 @@ function writeGoals(payload: unknown): ExportDoc {
 export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
   Object.freeze({
     reading: { title: "The reading", window: () => "the stored insight feed, recomputed hourly", takesWindow: false, write: writeReading },
-    till: { title: "Through the till", window: (days) => `the last ${days ?? 30} days of POS checks`, takesWindow: true, write: writeTill },
+    till: {
+      title: "Through the till",
+      window: (days) =>
+        `the last ${days ?? 30} days of POS checks, today so far`,
+      takesWindow: true,
+      write: writeTill,
+    },
     goals: { title: "Goals", window: () => "each goal counted from the day it was set", takesWindow: false, write: writeGoals },
     bench: { title: "Against ourselves", window: () => "180 days of buying, 90 days of weekdays, each goal since it was set", takesWindow: false, write: writeBench },
     pacing: { title: "Spend pacing", window: () => "180 days of purchasing, compared in two 30-day windows", takesWindow: false, write: writePacing },

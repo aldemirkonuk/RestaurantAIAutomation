@@ -159,7 +159,9 @@ const trailingTill = analysis<TillWindow>({
   title: 'Through the till',
   register: 'till register',
   answers: 'What guests actually paid, day by day',
-  window: (ctx) => `the last ${ctx.days} days of POS checks`,
+  // The window ends on the house's today (goals.service.ts getPosRevenueWindow),
+  // so an unfinished day is one of its days and the line says so (F-1215).
+  window: (ctx) => `the last ${ctx.days} days of POS checks, today so far`,
   path: (rid, ctx) => `/analytics/pos-revenue/${rid}?days=${ctx.days}`,
   graphs: ['area', 'line', 'bars', 'heatmap', 'table', 'figure'],
   graphNote:

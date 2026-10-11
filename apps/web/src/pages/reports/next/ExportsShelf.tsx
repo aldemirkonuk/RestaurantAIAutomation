@@ -27,6 +27,7 @@ import { failureLine } from './rp-format';
 import { monthLabel } from './rp-registers-trade';
 import type { ExportDesk } from './useReportExports';
 import { REPORT_EXPORTS_PAGE_LIMIT, type ReportExport } from '@/services/api/reports';
+import { getHouseLocale } from '@/lib/houseCurrency';
 import { useState } from 'react';
 
 /** The one analysis on the catalogue that reads no register, so has nothing to write up. */
@@ -77,9 +78,15 @@ function when(iso: string | null, zone: string | null): string {
   }
 }
 
+/** A file's size in the house's marks (F-1217, as F-992): "12,4 KB" in a lira house. */
 function size(bytes: number | null): string {
   if (bytes == null) return '';
-  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = new Intl.NumberFormat(getHouseLocale(), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(bytes / 1024);
+  return `${kb} KB`;
 }
 
 function Row({ exp, desk, zone }: { exp: ReportExport; desk: ExportDesk; zone: string | null }) {
@@ -104,7 +111,7 @@ function Row({ exp, desk, zone }: { exp: ReportExport; desk: ExportDesk; zone: s
               ? 'The withheld count was not recorded.'
               : exp.withheldCount === 0
                 ? 'Every figure in it was computed.'
-                : `${exp.withheldCount} figure${exp.withheldCount === 1 ? ' is' : 's are'} written as “withheld” — the engine could not compute ${exp.withheldCount === 1 ? 'it' : 'them'}, and none is written as 0.`}
+                : `${exp.withheldCount} figure${exp.withheldCount === 1 ? ' is' : 's are'} written as “withheld” — the engine could not compute ${exp.withheldCount === 1 ? 'it' : 'them'}, or could not state ${exp.withheldCount === 1 ? 'it' : 'them'} in the house’s money, and none is written as 0.`}
           </p>
         )}
         {exp.status === 'failed' && (
@@ -176,7 +183,8 @@ export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null
           </h2>
           <p className="rp-cap">
             A cutting written to a CSV and a page laid out for print, from the same register the
-            sheet reads. A figure the engine could not compute is written “withheld”, never 0.
+            sheet reads. A figure the engine could not compute, or could not state in the house’s
+            money, is written “withheld”, never 0.
           </p>
         </div>
 

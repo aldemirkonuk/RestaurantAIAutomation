@@ -140,6 +140,10 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(csv).toContain("House,Meyhouse");
     expect(html).toContain(`<dt>Cost of goods (365d)</dt><dd><span class="withheld">withheld</span>`);
     expect(html).toContain("8 figures marked &quot;withheld&quot; are one the engine could not compute");
+    // F-1216: or one it could not give in the house's money (F-1145).
+    expect(html).toContain(
+      "or could not state in the house&#39;s money. A withheld figure is not zero.",
+    );
   });
 
   // F-1145: the writer is told the header's money, so a euro cost of goods
@@ -433,7 +437,10 @@ describe("ReportExportsService — a report export is written, or says why not (
     const { service, goals } = build();
     const seven = await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till", days: 7 });
     await seven.settled;
-    expect(seven.export).toMatchObject({ windowDays: 7, windowLabel: "the last 7 days of POS checks" });
+    expect(seven.export).toMatchObject({
+      windowDays: 7,
+      windowLabel: "the last 7 days of POS checks, today so far",
+    });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
       HOUSE_A,
       7,

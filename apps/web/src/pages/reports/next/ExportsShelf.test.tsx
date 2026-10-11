@@ -15,6 +15,7 @@ import type { ReactNode } from 'react';
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReportExport } from '@/services/api/reports';
+import { setHouseLocale } from '@/lib/houseCurrency';
 
 const auth = vi.hoisted(() => ({ rid: 'r1' as string | null, role: 'manager' as string | null }));
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -95,6 +96,26 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     expect(line).toContain('Asked Oct 10, 04:05');
     expect(line).toContain('settled Oct 10, 04:05');
     expect(line).toContain('house time (Europe/Istanbul)');
+  });
+
+  it('says a withheld figure may be one in another money, not only one not worked out (F-1216)', () => {
+    shelf(desk({ exports: [base], total: 1 }));
+    const row = screen.getAllByRole('listitem')[0];
+    expect(
+      within(row).getByText(/could not compute them, or could not state them in the house’s money/),
+    ).toBeInTheDocument();
+  });
+
+  it('file sizes use the house’s decimal mark (F-1217)', () => {
+    setHouseLocale('tr-TR');
+    try {
+      shelf(desk({ exports: [{ ...base, csvBytes: 12698 }], total: 1 }));
+      const row = screen.getAllByRole('listitem')[0];
+      expect(row.textContent).toContain('12,4 KB');
+      expect(row.textContent).not.toContain('12.4 KB');
+    } finally {
+      setHouseLocale(null);
+    }
   });
 
   it('an export being written offers no download — there is no file yet', () => {
