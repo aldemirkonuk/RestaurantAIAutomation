@@ -92,6 +92,35 @@ const write = (db: StubDb, memberIds: string[] = ["m-sam", "m-ray"]) =>
     memberIds,
   } as any);
 
+describe("NotesService — F-1155: the inbox title names the week in the house's hand", () => {
+  const titleOf = async (restaurants?: any[]) => {
+    const db = seed();
+    if (restaurants) db.tables.restaurants = restaurants;
+    const { notes, notifications } = svc(db);
+    await notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "Hi.",
+      memberIds: ["m-sam"],
+    } as any);
+    return (notifications.persistForRestaurant.mock.calls[0] as any[])[1]
+      .title as string;
+  };
+
+  it("a Turkish house reads the date as it writes one, never the raw ISO day", async () => {
+    const title = await titleOf([
+      { id: RID, timezone: "Europe/Istanbul", country: "TR" },
+    ]);
+    expect(title).toBe("A note about the week of 31.08.2026");
+    expect(title).not.toContain(WEEK);
+  });
+
+  it("a house with no country or zone gets the plain day, not the ISO day", async () => {
+    const title = await titleOf([{ id: RID, timezone: null, country: null }]);
+    expect(title).not.toContain(WEEK);
+    expect(title).toMatch(/^A note about the week of Mon 31 Aug/);
+  });
+});
+
 describe("NotesService — a note survives the page that wrote it", () => {
   it("records the note, its author and the audience it named", async () => {
     const db = seed();

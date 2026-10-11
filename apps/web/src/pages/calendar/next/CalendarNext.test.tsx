@@ -626,7 +626,9 @@ describe('CalendarNext — honesty', () => {
       // history-truth: deleting a type now asks first.
       fireEvent.click(within(sheet).getByRole('button', { name: 'Delete' }));
     }
-    expect(within(sheet).getByText(new RegExp(`The gateway refused this write \\(${message}\\)`))).toBeInTheDocument();
+    // F-1157: the refusal in the owner's words, said once, never "gateway".
+    const notice = within(sheet).getByText(new RegExp(`${message}\\. Nothing was saved\\.$`, 'i'));
+    expect(notice.textContent).not.toMatch(/gateway/i);
   });
 });
 
@@ -1920,8 +1922,9 @@ describe('CalendarNext — a write whose answer was lost (F-1083)', () => {
       },
     });
     const sheet = writeIn(create);
-    expect(within(sheet).getByText(/The repeat could not be saved/)).toBeInTheDocument();
-    expect(within(sheet).getByText(/Nothing was saved/)).toBeInTheDocument();
+    // F-1157: the sentence already says it, so the sheet says it once.
+    const notice = within(sheet).getByText(/The repeat could not be saved/);
+    expect(notice.textContent).toBe('The repeat could not be saved, so nothing was saved. Try again.');
     expect(within(sheet).queryByText(/may already be on the calendar/)).toBeNull();
   });
 

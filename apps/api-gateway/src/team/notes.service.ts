@@ -14,6 +14,8 @@ import { TeamService } from "./team.service";
 import { CreateTeamNoteDto } from "./dto/team.dto";
 import { AwayHoldService } from "./away-hold.service";
 import { NO_SENDER_ON_RETURN, heldDetail, splitForAway } from "./away-hold";
+import { weekWords } from "./schedule.service";
+import { houseFrame as frameOf } from "../common/house-frame";
 
 /**
  * One receipt: what happened to ONE person on ONE channel.
@@ -480,12 +482,25 @@ export class NotesService {
     // ── inbox ────────────────────────────────────────────────────────────
     let inboxError: string | null = null;
     let inboxWritten: number | null = null;
+    // F-1155: the title names the week as the house writes a date, the
+    // publish notice's rule (F-1150); an unreadable house reads "Mon 7 Sep".
+    const { data: house, error: houseErr } = await this.sb
+      .from("restaurants")
+      .select("timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (houseErr) {
+      this.logger.warn(
+        `note ${noteId}: could not read the house's country: ${houseErr.message}`,
+      );
+    }
+    const { locale } = frameOf(houseErr ? null : house);
     try {
       const out = await this.notifications.persistForRestaurant(
         restaurantId,
         {
           type: "system",
-          title: `A note about the week of ${weekStart}`,
+          title: `A note about the week of ${weekWords(weekStart, locale)}`,
           message: body,
           priority: "high",
           actionUrl: "/team",

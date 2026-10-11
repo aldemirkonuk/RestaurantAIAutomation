@@ -1432,12 +1432,42 @@ export class ScheduleService {
 
     const { data: members } = await this.sb
       .from("team_members")
-      .select("user_id")
+      .select("id, user_id")
       .eq("restaurant_id", restaurantId)
       .in("id", dto.memberIds);
-    const targetUserIds = (members ?? [])
-      .map((m: any) => m.user_id)
-      .filter(Boolean);
+    // F-1158: nobody on approved time off or Away that day is asked, the
+    // grid's rule (offOn, F-1148) held here too, so a direct call cannot
+    // push "Tap to claim" to a person assignCover will refuse or who asked
+    // to be left alone. Unreadable means nobody is asked.
+    const day = String(shift.shift_date).slice(0, 10);
+    const { data: leave, error: leaveErr } = await this.sb
+      .from("time_off_requests")
+      .select("member_id")
+      .eq("restaurant_id", restaurantId)
+      .in("member_id", dto.memberIds)
+      .eq("status", "approved")
+      .lte("start_date", day)
+      .gte("end_date", day);
+    const { data: away, error: awayErr } = await this.sb
+      .from("house_away")
+      .select("user_id")
+      .eq("restaurant_id", restaurantId)
+      .lte("away_from", day)
+      .gte("away_until", day);
+    if (leaveErr || awayErr) {
+      this.logger.error(
+        `offerCover: could not read leave or Away in ${restaurantId}: ${(leaveErr ?? awayErr)!.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not check who is off that day, so nobody was asked to cover. Try again.",
+      );
+    }
+    const onLeave = new Set((leave ?? []).map((l: any) => l.member_id));
+    const isAway = new Set((away ?? []).map((a: any) => a.user_id));
+    const free = (members ?? []).filter(
+      (m: any) => !onLeave.has(m.id) && !(m.user_id && isAway.has(m.user_id)),
+    );
+    const targetUserIds = free.map((m: any) => m.user_id).filter(Boolean);
 
     if (targetUserIds.length) {
       await this.push.sendToUsers(targetUserIds, {
@@ -1451,7 +1481,11 @@ export class ScheduleService {
         },
       });
     }
-    return { offered: dto.memberIds.length, notified: targetUserIds.length };
+    return {
+      offered: free.length,
+      notified: targetUserIds.length,
+      setAside: (members ?? []).length - free.length,
+    };
   }
 
   /**
