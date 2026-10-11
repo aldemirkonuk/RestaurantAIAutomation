@@ -17,6 +17,9 @@ export const ALLOWS_NO_HOUSE_KEY = "allowsNoHouse";
  * happen to fail, and a conditional filter (`if (restaurantId) q.eq(...)`)
  * would fail OPEN. Refusing every route that did not opt in closes that whole
  * class in one place. The routes marked are all in `AuthController`, plus the
- * person's own membership list (`GET /organizations/branches`).
+ * person's own membership list (`GET /organizations/branches`) and the
+ * person's own passkeys (`PasskeysController`, marked once at class level: a
+ * passkey is the person's, not the house's -- ADR 0229, round 7, item 44;
+ * F-1262).
  */
 export const AllowsNoHouse = () => SetMetadata(ALLOWS_NO_HOUSE_KEY, true);

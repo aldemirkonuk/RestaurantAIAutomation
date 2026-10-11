@@ -21,6 +21,7 @@ import {
 } from "@nestjs/swagger";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 import { RateLimit } from "../common/rate-limit";
 import { requestSource } from "./request-source";
 import {
@@ -41,7 +42,9 @@ import {
  * Every route acts on the signed token's person. None takes a user id in any
  * shape, so there is no way to enrol, list or revoke a passkey for somebody
  * else. A passkey is the person's, not the house's (ADR 0229; the founder,
- * 2026-09-26, round 7, item 44): no house and no role gates any route here.
+ * 2026-09-26, round 7, item 44): no house and no role gates any route here,
+ * so the whole controller is marked `@AllowsNoHouse()` (F-1262; without it
+ * `JwtAuthGuard` refused a session in no house with `HOUSE_REQUIRED`).
  * The token's house, when it has one, only says where the audit row and the
  * in-app notice are filed.
  *
@@ -52,6 +55,7 @@ import {
 @ApiBearerAuth("JWT-auth")
 @Controller("passkeys")
 @UseGuards(JwtAuthGuard)
+@AllowsNoHouse()
 export class PasskeysController {
   constructor(private readonly passkeys: PasskeysService) {}
 
