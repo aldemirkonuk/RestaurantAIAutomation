@@ -21,3 +21,19 @@ export function maskPhone(phone: string): string {
   if (digits.length < 4) return "•••";
   return `•••${digits.slice(-2)}`;
 }
+
+/**
+ * The route a request matched, as its PATTERN -- "/api/v1/auth/invite/:code/accept",
+ * never the URL that was called (F-1261).
+ *
+ * A URL carries live secrets in its path and query: an invite code, a push
+ * token, a calendar-feed token. A log line that needs to say which route ran
+ * names the pattern, which is the same for every caller. With no matched route
+ * the line says so rather than falling back to the URL.
+ */
+export function logRoute(request: {
+  route?: { path?: unknown } | null;
+}): string {
+  const path = request?.route?.path;
+  return typeof path === "string" && path ? path : "(no matched route)";
+}

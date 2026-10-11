@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
+import { logRoute } from "../../common/log-mask";
 
 /**
  * ADR 0019 D2 — demo/test scaffolding must be UNREACHABLE in production.
@@ -38,10 +39,11 @@ export class NonProductionGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
+    // The route pattern, never the URL: a URL carries its query (F-1261).
     this.logger.warn(
       `Blocked non-production route in production: ${
         request?.method ?? "?"
-      } ${request?.url ?? request?.originalUrl ?? "?"}`,
+      } ${logRoute(request)}`,
     );
     // Default message "Not Found" — indistinguishable from an unmapped route.
     throw new NotFoundException();

@@ -8,6 +8,7 @@ import { Reflector } from "@nestjs/core";
 import { IS_PUBLIC_KEY } from "../../auth/decorators/public.decorator";
 import { TENANT_BYPASS_KEY } from "./tenant.decorator";
 import { assertTenantMatch } from "./assert-tenant-match";
+import { logRoute } from "../log-mask";
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -67,9 +68,14 @@ export class TenantGuard implements CanActivate {
     // APP_GUARD and marking every genuinely public route `@Public()` — a real
     // option, a larger change than this one, and a founder decision. Filed in
     // ADR 0096's rejected alternatives rather than done quietly.
+    //
+    // The line names the route PATTERN, never `request.url` (F-1261). This
+    // branch fires on every authenticated request (see above), and the URL
+    // carries live secrets in its path and query: an invite code in
+    // `/auth/invite/:code/accept`, a push token in `/mobile/devices/:token`.
     if (!request.user) {
       this.logger.warn(
-        `TenantGuard: No authenticated user on ${request.method} ${request.url} — ensure JwtAuthGuard is applied if this route requires auth`,
+        `TenantGuard: No authenticated user on ${request.method} ${logRoute(request)} — ensure JwtAuthGuard is applied if this route requires auth`,
       );
       return true;
     }
