@@ -97,11 +97,19 @@ const WINE_WORDS = ['wine', 'wines', 'şarap', 'şaraplar']
 const DRINK_WORDS = ['kırmızı', 'beyaz', 'roze', 'pembe', 'köpüklü', 'tatlı şarap', 'rakı', 'bira', 'biralar', 'viski', 'şarap']
 
 /**
- * Hints that mark food only as the section's own heading, never inside a raw
- * line (F-1272). 'tatlı' alone means sweet, so it is no hint. The same list
- * as the gateway's SECTION_HINTS.
+ * Food nouns that keep a section a kitchen one whatever drink word it also
+ * says (F-1317): "Kırmızı Et" is red meat, not red wine. The same list as the
+ * gateway's FOOD_NOUNS.
  */
-const SECTION_HINTS = ['desserts', 'tatlılar']
+const FOOD_NOUNS = ['et', 'etler', 'yemek', 'yemekler', 'yemekleri', 'tavuk', 'balık', 'balıklar', 'köfte', 'kebap', 'kebaplar', 'meze', 'mezeler', 'salata', 'salatalar', 'çorba', 'çorbalar', 'ızgara', 'ızgaralar']
+
+/**
+ * Hints that mark food only as the section's own heading, never inside a raw
+ * line (F-1272): 'tatlı' in a row means sweet. As the heading, "Tatlı" is the
+ * dessert section (F-1317) unless it also says şarap. The same list as the
+ * gateway's SECTION_HINTS.
+ */
+const SECTION_HINTS = ['desserts', 'tatlı', 'tatlılar']
 
 /**
  * The sections a line can be placed in: the gateway's MENU_CATEGORY_VOCABULARY
@@ -195,8 +203,11 @@ export function isKitchenLine(item: Pick<MenuImportReviewItem, 'category' | 'raw
   if (VOCABULARY.has(categoryOf(item))) return false
   const section = item.category ?? ''
   const sectionRuns = wordRuns(section)
-  if (sectionRuns.some((run) => [...WINE_WORDS, ...DRINK_WORDS].some((w) => run.includes(` ${w} `)))) return false
-  if (SECTION_HINTS.some((hint) => sectionRuns.some((run) => run.includes(` ${hint} `)))) return true
+  const sectionSays = (words: string[]) => sectionRuns.some((run) => words.some((w) => run.includes(` ${w} `)))
+  // A food noun beats a drink word: "Kırmızı Et" is meat (F-1317).
+  if (sectionSays(FOOD_NOUNS)) return true
+  if (sectionSays([...WINE_WORDS, ...DRINK_WORDS])) return false
+  if (sectionSays(SECTION_HINTS)) return true
   const runs = wordRuns(`${section} ${item.rawText ?? ''}`)
   return KITCHEN.some((hint) => runs.some((run) => run.includes(` ${hint} `)))
 }

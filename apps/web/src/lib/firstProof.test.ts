@@ -87,8 +87,7 @@ describe('isKitchenLine — Turkish drink sections (F-1272)', () => {
     }
   })
 
-  it("never reads 'tatlı' (sweet) alone as food", () => {
-    expect(isKitchenLine({ category: 'Tatlı', rawText: "Moscato d'Asti,Tatlı,2022,380" })).toBe(false)
+  it("never reads 'tatlı' (sweet) in a row as food", () => {
     expect(isKitchenLine({ category: null, rawText: 'Moscato,yarı tatlı,2022,380' })).toBe(false)
     expect(isKitchenLine({ category: null, rawText: 'Late harvest,2019,pairs with desserts' })).toBe(false)
   })
@@ -96,6 +95,21 @@ describe('isKitchenLine — Turkish drink sections (F-1272)', () => {
   it('still sets a dessert section aside', () => {
     expect(isKitchenLine({ category: 'Tatlılar', rawText: 'Künefe,180' })).toBe(true)
     expect(isKitchenLine({ category: 'Desserts', rawText: null })).toBe(true)
+  })
+})
+
+// F-1317: a drink word wins only when the section names no food.
+describe('isKitchenLine — Turkish kitchen sections that say a colour (F-1317)', () => {
+  it('keeps meat and dessert sections in the kitchen', () => {
+    for (const category of ['Kırmızı Et', 'Beyaz Et', 'Kırmızı Et Yemekleri', 'Tatlı', 'TATLI', 'Beyaz Peynirli Salata']) {
+      expect(isKitchenLine({ category, rawText: `X,${category},450` })).toBe(true)
+    }
+  })
+
+  it('keeps wine and rakı sections drinks', () => {
+    for (const category of ['Kırmızı Şarap', 'Tatlı Şarap', 'Rakı', 'Kırmızı']) {
+      expect(isKitchenLine({ category, rawText: `X,${category},2020,450` })).toBe(false)
+    }
   })
 })
 
