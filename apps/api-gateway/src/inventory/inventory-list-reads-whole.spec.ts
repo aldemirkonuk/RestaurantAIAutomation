@@ -43,6 +43,9 @@ function fakeClient(tables: Record<string, any[]>, failing: string[] = []) {
         order() {
           return q;
         },
+        gte() {
+          return q;
+        },
         gt(_col: string, v: string) {
           q._gt = v;
           return q;
@@ -180,6 +183,77 @@ describe("F-293: the inventory list is read whole", () => {
     await expect(inventory.getRestaurantInventory(HOUSE)).rejects.toThrow(
       /lot totals could not be read/,
     );
+  });
+});
+
+describe("F-1235: the list carries each shelf's newest count", () => {
+  const counts = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `sc-${pad(i)}`,
+      inventory_id: "inv-00000",
+      location_id: i % 2 === 0 ? "loc-0" : "loc-1",
+      counted_at: new Date(Date.UTC(2026, 9, 9) - i * 3_600_000).toISOString(),
+    }));
+
+  it("keeps the newest count per wine and shelf, newest-first", async () => {
+    const h = house(2, 2);
+    const { inventory } = services({
+      restaurant_inventory: h.items,
+      inventory_lot_rollup: h.rollup,
+      inventory_location_breakdown: h.breakdown,
+      inventory_analytics: h.analytics,
+      stock_counts: [
+        ...counts(4),
+        {
+          id: "sc-x",
+          inventory_id: "inv-00000",
+          location_id: null,
+          counted_at: "2026-10-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const rows: any[] = await inventory.getRestaurantInventory(HOUSE);
+
+    expect(rows.find((r) => r.id === "inv-00000").shelfCounts).toEqual([
+      { locationId: "loc-0", countedAt: "2026-10-09T00:00:00.000Z" },
+      { locationId: "loc-1", countedAt: "2026-10-08T23:00:00.000Z" },
+    ]);
+    // Read, and none: an empty answer, not "not known".
+    expect(rows.find((r) => r.id === "inv-00001").shelfCounts).toEqual([]);
+  });
+
+  it("is null, never fresh, when the shelf-count read fails", async () => {
+    const h = house(1, 2);
+    const { inventory } = services(
+      {
+        restaurant_inventory: h.items,
+        inventory_lot_rollup: h.rollup,
+        inventory_location_breakdown: h.breakdown,
+        inventory_analytics: h.analytics,
+      },
+      ["stock_counts"],
+    );
+
+    const rows: any[] = await inventory.getRestaurantInventory(HOUSE);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shelfCounts).toBeNull();
+  });
+
+  it("is null past the cap instead of answering from part of the counts", async () => {
+    const h = house(1, 2);
+    const { inventory } = services({
+      restaurant_inventory: h.items,
+      inventory_lot_rollup: h.rollup,
+      inventory_location_breakdown: h.breakdown,
+      inventory_analytics: h.analytics,
+      stock_counts: counts(5001),
+    });
+
+    const rows: any[] = await inventory.getRestaurantInventory(HOUSE);
+
+    expect(rows[0].shelfCounts).toBeNull();
   });
 });
 

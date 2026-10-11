@@ -75,11 +75,28 @@ export function marketDeltaPct(item: InventoryItem): number | null {
   return ((item.marketPrice - paid) / paid) * 100
 }
 
-/** Days since the last verified count; null when never counted. */
+/**
+ * Days since the stalest stocked shelf was counted; null when one was never
+ * counted. A shelf's date is the newer of its own count and the last count of
+ * every shelf (F-1235), so a house that counts shelf by shelf is not "due"
+ * forever. Without the shelf counts (not read, or no shelf stocked) it is the
+ * whole-wine date, which is never fresher than any shelf's.
+ */
 export function daysSinceCounted(item: InventoryItem): number | null {
-  if (!item.lastCounted) return null
-  const ms = Date.now() - new Date(item.lastCounted).getTime()
-  return Math.floor(ms / 86_400_000)
+  const whole = item.lastCounted ? new Date(item.lastCounted).getTime() : null
+  let at = whole
+  const stocked = (item.locations ?? []).filter((l) => l.qty > 0)
+  if (item.shelfCounts && stocked.length > 0) {
+    const counts = item.shelfCounts
+    const shelfAts = stocked.map((l) => {
+      const own = l.locationId != null ? counts.find((c) => c.locationId === l.locationId) : undefined
+      const ownAt = own ? new Date(own.countedAt).getTime() : null
+      return ownAt != null && whole != null ? Math.max(ownAt, whole) : (ownAt ?? whole)
+    })
+    at = shelfAts.some((t) => t == null) ? null : Math.min(...(shelfAts as number[]))
+  }
+  if (at == null) return null
+  return Math.floor((Date.now() - at) / 86_400_000)
 }
 
 export const COUNT_DUE_DAYS = 21

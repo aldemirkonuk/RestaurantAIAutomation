@@ -48,6 +48,11 @@ export interface InventoryItem extends Omit<Wine, "threshold"> {
   deadStock?: boolean;
   daysSinceSale?: number;
   locations?: { locationId: string | null; qty: number; wac: number | null }[];
+  /**
+   * Each shelf's newest count in the list's window (F-1235). null = not known
+   * (the read failed or was too large); the whole-wine date is used instead.
+   */
+  shelfCounts?: { locationId: string; countedAt: string }[] | null;
   lastManualAdjustment?: {
     timestamp: Date;
     managerName: string;
@@ -193,6 +198,7 @@ export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryI
     deadStock: (item as any).deadStock ?? false,
     daysSinceSale: (item as any).daysSinceSale ?? undefined,
     locations: (item as any).locations ?? [],
+    shelfCounts: (item as any).shelfCounts ?? null,
     // The library's own name, carried for SEARCH only and never rendered
     // in place of the house's alias (ADR 0124, the naming rule). Read
     // through `as any` like every other field on this object that the

@@ -74,6 +74,15 @@ const OVERTAKEN_SCAN_LIMIT = 200;
 const SHELF_COUNT_SCAN = 1000;
 
 /**
+ * The /inventory list's shelf counts (F-1235): the window read and the most
+ * rows read before the answer is "not known" (null). A shelf with no count in
+ * the window is older than the window, so it is due either way; past the cap
+ * the list falls back to the whole-wine date, which is never fresher.
+ */
+const LIST_SHELF_COUNT_DAYS = 60;
+const LIST_SHELF_COUNT_CAP = 5000;
+
+/**
  * Whether a Postgres error is the request's fault (F-250): a RAISE from the
  * function itself (P0001), bad data (class 22), a broken constraint (class
  * 23) or a refused foreign item (42501). Anything else — no code at all (the
@@ -379,6 +388,63 @@ export class InventoryService {
   }
 
   /**
+   * F-1235: each wine's shelves' newest counts, for the list's count-due flag.
+   * A count of one shelf no longer stamps last_counted_at (F-1165), so a house
+   * that counts shelf by shelf read as "due" forever. One house-wide read of
+   * the last LIST_SHELF_COUNT_DAYS, newest first, keeps the first row seen per
+   * (wine, shelf). `null` is an answer we do not have -- a failed read, or more
+   * rows than the cap -- and the page then falls back to the whole-wine date,
+   * so a shelf is never shown fresher than it is.
+   */
+  private async fetchShelfCounts(
+    restaurantId: string,
+  ): Promise<Map<
+    string,
+    Array<{ locationId: string; countedAt: string }>
+  > | null> {
+    const since = new Date(
+      Date.now() - LIST_SHELF_COUNT_DAYS * 86_400_000,
+    ).toISOString();
+    const client = this.dbService.getClient();
+    let rows: any[];
+    try {
+      rows = await readEveryRange("The shelf counts", (from, to) =>
+        from >= LIST_SHELF_COUNT_CAP
+          ? Promise.reject(new Error("more shelf counts than one list reads"))
+          : client
+              .from("stock_counts")
+              .select("id, inventory_id, location_id, counted_at", {
+                count: "exact",
+              })
+              .eq("restaurant_id", restaurantId)
+              .eq("stock_state", "live")
+              .gte("counted_at", since)
+              .order("counted_at", { ascending: false })
+              .order("id", { ascending: true })
+              .range(from, to),
+      );
+    } catch (err: any) {
+      this.logger.warn(`fetchShelfCounts failed: ${err?.message}`);
+      return null;
+    }
+    const map = new Map<
+      string,
+      Array<{ locationId: string; countedAt: string }>
+    >();
+    const seen = new Set<string>();
+    for (const r of rows) {
+      if (!r.location_id) continue;
+      const key = `${r.inventory_id}|${r.location_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const arr = map.get(r.inventory_id) ?? [];
+      arr.push({ locationId: r.location_id, countedAt: r.counted_at });
+      map.set(r.inventory_id, arr);
+    }
+    return map;
+  }
+
+  /**
    * The money one house keeps its books in, for the all-locations export
    * (F-599). `restaurants.currency` is nullable and never defaulted here; a
    * failed read is `readable: false`, never "not recorded" (ADR 0083).
@@ -404,12 +470,15 @@ export class InventoryService {
 
   async getRestaurantInventory(restaurantId: string, active = true) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const [data, rollup, locations, analytics] = await Promise.all([
-      this.dbService.getRestaurantInventory(restaurantId, active),
-      this.fetchLotRollup(restaurantId, true),
-      this.fetchLocationBreakdown(restaurantId, true),
-      this.fetchAnalytics(restaurantId),
-    ]);
+    const [data, rollup, locations, analytics, shelfCounts] = await Promise.all(
+      [
+        this.dbService.getRestaurantInventory(restaurantId, active),
+        this.fetchLotRollup(restaurantId, true),
+        this.fetchLocationBreakdown(restaurantId, true),
+        this.fetchAnalytics(restaurantId),
+        this.fetchShelfCounts(restaurantId),
+      ],
+    );
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
         row,
@@ -421,6 +490,8 @@ export class InventoryService {
       // ignores it. `false` means the analytics join itself could not be
       // read for this batch — not that this row has no analytics row.
       analyticsReadable: analytics.ok,
+      // F-1235: each shelf's newest count in the window; null = not known.
+      shelfCounts: shelfCounts ? (shelfCounts.get(row.id) ?? []) : null,
     }));
   }
 
