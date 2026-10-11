@@ -309,6 +309,68 @@ describe("a receipt refused for its price keeps its count (F-806)", () => {
     });
   });
 
+  it("re-sends a staff receipt refused for its billed quantity with the count alone (F-1180)", async () => {
+    (api as jest.Mock)
+      .mockRejectedValueOnce(refusal("Recording the invoice quantity is an owner's or a manager's job"))
+      .mockResolvedValueOnce({});
+    useOutbox.getState().enqueue({
+      path,
+      body: { countedUom: "bottle", acceptedQuantityInCountedUom: 12, invoiceQuantityInInvoiceUom: 12 },
+      label: "Receipt",
+    });
+    await jest.advanceTimersByTimeAsync(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(api).toHaveBeenCalledTimes(2);
+    expect((api as jest.Mock).mock.calls[1][1].body).toEqual({
+      countedUom: "bottle",
+      acceptedQuantityInCountedUom: 12,
+    });
+    expect(useOutbox.getState().entries).toEqual([]);
+  });
+
+  it("Try again sends a parked staff receipt without its money, never the same body (F-1180)", async () => {
+    useSession.setState({
+      status: "signedIn",
+      user: { id: "alice", email: "a@example.com", restaurantId: "r1", role: "staff" },
+    });
+    const base = { actorUserId: "alice", restaurantId: "r1", path, method: "POST" as const, label: "Receipt", createdAt: 0, holdUntil: 0, attempts: 0, status: "failed" as const };
+    useOutbox.setState({
+      entries: [
+        // Parked before F-1180: stripped of its price, refused for the billed quantity.
+        { ...base, id: "a", moneyStripped: true, body: { acceptedQuantityInCountedUom: 12, invoiceQuantityInInvoiceUom: 12 } },
+      ],
+    });
+    useOutbox.getState().retryFailed("a");
+    await jest.advanceTimersByTimeAsync(1);
+    expect((api as jest.Mock).mock.calls[0][1].body).toEqual({ acceptedQuantityInCountedUom: 12 });
+    useOutbox.setState({
+      entries: [
+        // Parked before F-1180 with no price, so it was never stripped.
+        { ...base, id: "b", body: { acceptedQuantityInCountedUom: 7, invoiceQuantityInInvoiceUom: 8, invoiceUnitPrice: 3 } },
+      ],
+    });
+    useOutbox.getState().retryFailed("b");
+    await jest.advanceTimersByTimeAsync(1);
+    expect((api as jest.Mock).mock.calls[1][1].body).toEqual({ acceptedQuantityInCountedUom: 7 });
+    expect(api).toHaveBeenCalledTimes(2);
+  });
+
+  it("Try again keeps a manager's figures as they were", async () => {
+    useSession.setState({
+      status: "signedIn",
+      user: { id: "alice", email: "a@example.com", restaurantId: "r1", role: "manager" },
+    });
+    const body = { acceptedQuantityInCountedUom: 7, invoiceQuantityInInvoiceUom: 8, invoiceUnitPrice: 3, invoiceCurrency: "USD" };
+    useOutbox.setState({
+      entries: [
+        { id: "m", actorUserId: "alice", restaurantId: "r1", path, method: "POST", label: "Receipt", createdAt: 0, holdUntil: 0, attempts: 0, status: "failed", body },
+      ],
+    });
+    useOutbox.getState().retryFailed("m");
+    await jest.advanceTimersByTimeAsync(1);
+    expect((api as jest.Mock).mock.calls[0][1].body).toEqual(body);
+  });
+
   it("parks a refused receipt that carried no price as before", async () => {
     (api as jest.Mock).mockRejectedValueOnce(refusal("Not your house."));
     useOutbox.getState().enqueue({
@@ -387,6 +449,7 @@ describe("a manager's price the house refuses keeps the count and says why (F-94
   const pricedBody = {
     countedUom: "bottle",
     acceptedQuantityInCountedUom: 12,
+    invoiceQuantityInInvoiceUom: 12,
     invoiceUnitPrice: 1250,
     invoiceCurrency: "TRY",
   };
@@ -404,9 +467,11 @@ describe("a manager's price the house refuses keeps the count and says why (F-94
     await jest.advanceTimersByTimeAsync(1);
     await jest.advanceTimersByTimeAsync(1);
     expect(api).toHaveBeenCalledTimes(2);
+    // Only the price was refused: what the paper billed goes with the count.
     expect((api as jest.Mock).mock.calls[1][1].body).toEqual({
       countedUom: "bottle",
       acceptedQuantityInCountedUom: 12,
+      invoiceQuantityInInvoiceUom: 12,
     });
     // Done, dismiss-only (no Try again), with the house's reason kept.
     expect(useOutbox.getState().entries).toEqual([
@@ -453,6 +518,15 @@ it("keeps a card hidden while its action waits, also after a restart (F-951)", (
   ] as any;
   expect([...waitingFeedItems(entries, { id: "alice" })].sort()).toEqual(["card-1", "card-2"]);
   expect(waitingFeedItems(entries, null).size).toBe(0);
+});
+
+it("finds a waiting delivery mark that carries its count in the query (F-1182)", () => {
+  const deliver = "/procurement/orders/o1/deliver";
+  const entries = [
+    { id: "a", actorUserId: "alice", restaurantId: "r1", status: "pending", path: `${deliver}?quantityReceivedInOrderUom=4` },
+  ] as any;
+  expect(waitingFor(entries, { id: "alice", restaurantId: "r1" }, deliver)?.id).toBe("a");
+  expect(waitingFor(entries, { id: "alice", restaurantId: "r1" }, "/procurement/orders/o2/deliver")).toBeNull();
 });
 
 it("keeps a card hidden while its refused receipt is shown on Today (F-1028)", () => {

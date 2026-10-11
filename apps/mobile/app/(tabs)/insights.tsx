@@ -17,7 +17,9 @@ import {
 } from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
 import {
+  GOALS_WITHHELD_WORDS,
   INSIGHTS_READ_FAILED,
+  goalsReadState,
   readState,
   resolvePulseStripView,
 } from "@/components/today/pulseStripView";
@@ -56,7 +58,8 @@ export default function InsightsScreen() {
   // F-885: the house's money and grouping, never a defaulted dollar.
   const money = (value: number) => houseMoney(value, pulse.data);
   // Staff get no cost on the wire (F-562), so they see counts, not money (F-1027).
-  const seesMoney = holdsHouseMoney(useSession((s) => s.user?.role));
+  const role = useSession((s) => s.user?.role);
+  const seesMoney = holdsHouseMoney(role);
   const inventory = useInventory();
   const summary = useInventorySummary();
   const insights = useInsightFeed();
@@ -67,7 +70,8 @@ export default function InsightsScreen() {
   const topGoalProgress = useGoalProgress(activeGoals[0]?.id);
   // F-677: a failed read is said as failed, never as "nothing yet" or zero.
   const insightsRead = readState(insights);
-  const goalsRead = readState(goals);
+  // Staff are not shown the house's goals (F-1181): withheld, not failed.
+  const goalsRead = goalsReadState(role, goals);
   const cellarRead = readState(inventory);
   const pulseView = pulse.data
     ? resolvePulseStripView(pulse.data, {
@@ -162,7 +166,11 @@ export default function InsightsScreen() {
           <AppText variant="caption" tone="tertiary">
             Goals
           </AppText>
-          {goalsRead === "loading" ? (
+          {goalsRead === "withheld" ? (
+            <AppText variant="footnote" tone="tertiary">
+              {GOALS_WITHHELD_WORDS}
+            </AppText>
+          ) : goalsRead === "loading" ? (
             <Skeleton width="100%" height={15} />
           ) : goalsRead === "failed" ? (
             <AppText variant="footnote" tone="secondary">

@@ -180,6 +180,40 @@ export function readState(q: {
   return "loading";
 }
 
+/**
+ * Who reads the house's goals (F-1181): the gateway's `mayReadGoals`
+ * (`analytics.controller.ts`), owner or manager at this house, so admin too is
+ * refused (ADR 0164). Narrower than `holdsHouseMoney`, which admits admin.
+ */
+export function readsHouseGoals(role: string | null | undefined): boolean {
+  const r = String(role ?? "")
+    .trim()
+    .toLowerCase();
+  return r === "owner" || r === "manager";
+}
+
+/**
+ * The goals read, where `withheld` is a refusal by role and not a failure
+ * (F-1181, ADR 0020): a role that does not read goals never asks, and a 403
+ * (the role changed under the phone) says the same.
+ */
+export function goalsReadState(
+  role: string | null | undefined,
+  q: { isLoading: boolean; isError: boolean; data: unknown; error?: unknown },
+): ReadState | "withheld" {
+  if (!readsHouseGoals(role)) return "withheld";
+  if (
+    q.data === undefined &&
+    (q.error as { status?: unknown } | null | undefined)?.status === 403
+  )
+    return "withheld";
+  return readState(q);
+}
+
+/** Said in the goals card when the read is withheld from this role. */
+export const GOALS_WITHHELD_WORDS =
+  "The house's goals are kept for its owners and managers.";
+
 /** The Insights wording for a failed read, in the owner's words. */
 export const INSIGHTS_READ_FAILED = {
   conclusions: "Couldn't load what the numbers say just now. Try again in a minute.",

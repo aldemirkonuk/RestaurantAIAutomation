@@ -21,7 +21,40 @@ describe("order screen — a delivery mark waiting on this phone (F-956)", () =>
   it("shuts the button and says the mark is queued while it waits", () => {
     expect(SCREEN).toContain("disabled={deliverWaiting}");
     expect(SCREEN).toContain("{DELIVERED_WAITING_WORDS}");
-    expect(SCREEN).toMatch(/if \(!order \|\| deliverWaiting\) return;/);
+    expect(SCREEN).toMatch(/if \(!order \|\| deliverWaiting \|\| arrivedCount == null\) return;/);
+  });
+});
+
+describe("order screen — the truck is counted before it is marked (F-1182)", () => {
+  const SCREEN = read("(tabs)/supply/[id].tsx");
+
+  it("never queues the bare deliver path, which books the whole order", () => {
+    expect(SCREEN).not.toMatch(/enqueue\(\{\s*path: deliverPath,/);
+    expect(SCREEN).toMatch(
+      /const path = deliverWithCountPath\(order\.id, arrivedCount\);\s*if \(!path\) return;\s*const saved = useOutbox\.getState\(\)\.enqueue\(\{\s*path,/,
+    );
+  });
+
+  it("asks for the count first and marks only on the person's word", () => {
+    expect(SCREEN).toMatch(/if \(!order \|\| deliverWaiting \|\| arrivedCount == null\) return;/);
+    expect(SCREEN).toContain("It arrived — count it in");
+    expect(SCREEN).toContain("That's my count — mark delivered");
+  });
+});
+
+describe("receive screen — what the invoice billed is a manager's (F-1180)", () => {
+  const SCREEN = read("(tabs)/cellar/receive/[orderId].tsx");
+
+  it("shows the Bottles billed stepper only inside the money gate", () => {
+    const gate = SCREEN.indexOf("{seesMoney ? (\n                    <>");
+    expect(gate).toBeGreaterThan(-1);
+    expect(SCREEN.indexOf("Bottles billed")).toBeGreaterThan(gate);
+  });
+
+  it("never sends the billed quantity for staff", () => {
+    expect(SCREEN).toMatch(
+      /invoiceQuantityInInvoiceUom: seesMoney\s*\? \(invoiceQty \?\? undefined\)\s*: undefined,/,
+    );
   });
 });
 

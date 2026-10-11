@@ -63,3 +63,30 @@ export function receiveActionLabel(status: string): string | null {
   if (status === "PARTIALLY_RECEIVED") return "Add the invoice";
   return null;
 }
+
+/**
+ * The delivery mark, carrying the count that came off the truck (F-1182,
+ * rehit of F-1126). Sent with no count, the gateway books the whole ordered
+ * quantity (`quantityReceived ?? order.quantity`), so a short truck went on
+ * the shelf in full. The count is in the order's own unit and rides the query
+ * (`procurement.controller.ts` `quantityReceivedInOrderUom`). Null when the
+ * count is not a whole number of zero or more: nothing is sent then.
+ */
+export function deliverWithCountPath(
+  orderId: string,
+  count: number,
+): string | null {
+  if (!Number.isSafeInteger(count) || count < 0) return null;
+  return `/procurement/orders/${orderId}/deliver?quantityReceivedInOrderUom=${count}`;
+}
+
+/** "3 cases", "1 bottle": the order's unit, in words, for a count. */
+export function orderUnitWords(
+  unitType: string | null | undefined,
+  n: number,
+): string {
+  const raw = String(unitType || "bottle").toLowerCase();
+  // "each" is a bottle on this app, as the receive screen counts it.
+  const unit = raw === "each" ? "bottle" : raw.replace(/_/g, " ");
+  return `${n} ${n === 1 ? unit : `${unit}s`}`;
+}

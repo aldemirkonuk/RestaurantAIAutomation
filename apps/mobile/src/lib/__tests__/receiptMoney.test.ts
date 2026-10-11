@@ -16,7 +16,7 @@ describe("holdsHouseMoney (F-806, mirrors the gateway's money row)", () => {
 
 describe("withoutReceiptMoney", () => {
   const path = "/procurement/orders/o1/verify-receipt";
-  it("takes the price, currency, override and charges out and keeps the count", () => {
+  it("takes the price, currency, override, charges and billed quantity out and keeps the count (F-1180)", () => {
     expect(
       withoutReceiptMoney(path, {
         countedUom: "bottle",
@@ -35,9 +35,46 @@ describe("withoutReceiptMoney", () => {
       acceptedQuantityInCountedUom: 11,
       rejectedQuantityInCountedUom: 1,
       rejectedReason: "broken",
-      invoiceQuantityInInvoiceUom: 12,
       note: "late truck",
     });
+  });
+  it("takes a billed quantity on its own out, as the gateway counts it as money (F-1180)", () => {
+    expect(
+      withoutReceiptMoney(path, {
+        acceptedQuantityInCountedUom: 12,
+        invoiceQuantityInInvoiceUom: 12,
+      }),
+    ).toEqual({ acceptedQuantityInCountedUom: 12 });
+    expect(
+      withoutReceiptMoney(path, {
+        acceptedQuantityInCountedUom: 12,
+        invoiceQuantity: 12,
+      }),
+    ).toEqual({ acceptedQuantityInCountedUom: 12 });
+  });
+  it("keeps the billed quantity when only a manager's price was refused (F-949)", () => {
+    expect(
+      withoutReceiptMoney(
+        path,
+        {
+          acceptedQuantityInCountedUom: 12,
+          invoiceQuantityInInvoiceUom: 12,
+          invoiceUnitPrice: 9.5,
+          invoiceCurrency: "USD",
+        },
+        { billedIsMoney: false },
+      ),
+    ).toEqual({
+      acceptedQuantityInCountedUom: 12,
+      invoiceQuantityInInvoiceUom: 12,
+    });
+    expect(
+      withoutReceiptMoney(
+        path,
+        { acceptedQuantityInCountedUom: 12, invoiceQuantityInInvoiceUom: 12 },
+        { billedIsMoney: false },
+      ),
+    ).toBeNull();
   });
   it("is null for a body with no money or another path", () => {
     expect(
