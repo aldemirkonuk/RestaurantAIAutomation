@@ -15,6 +15,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 import asyncio
 import uuid
+from urllib.parse import urlencode
 
 import pytz
 import redis.asyncio as aioredis
@@ -1798,8 +1799,13 @@ Please try again or add items to inventory manually.""",
             self.logger.warning(f"Failed to log notification: {e}")
 
     def _get_reorder_url(self, restaurant_id: str, wine_name: str) -> str:
-        """Generate reorder URL"""
-        return f"{self._get_base_url()}/inventory?wine={wine_name}&action=reorder"
+        """Generate reorder URL.
+
+        The wine name is query-encoded: a raw name like "Moët & Chandon" cut
+        the link at the "&" and the spaces broke it in SMS clients.
+        """
+        query = urlencode({"wine": wine_name, "action": "reorder"})
+        return f"{self._get_base_url()}/inventory?{query}"
 
     def _get_base_url(self) -> str:
         """

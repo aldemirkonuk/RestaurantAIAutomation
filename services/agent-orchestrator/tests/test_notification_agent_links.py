@@ -416,3 +416,69 @@ class TestPathMappings:
         assert email_kwargs["template_data"]["audit_url"] == "https://mudavym.com/logs"
 
         get_settings.cache_clear()
+
+
+class TestReorderLinkEncodesTheWineName:
+    """F-1308: the low-stock "Tap to reorder" link put the wine name into the
+    query raw, so "Moët & Chandon" cut the link at the "&" and spaces broke it
+    in SMS clients. sw.js already ran encodeURIComponent for the push."""
+
+    NAME = "Moët & Chandon Brut Şarap Çiğ İğde #1"
+
+    def test_name_round_trips_through_the_query(self, monkeypatch):
+        from urllib.parse import parse_qs, urlsplit
+
+        monkeypatch.setenv("FRONTEND_URL", "https://mudavym.com")
+        from config.settings import get_settings
+
+        get_settings.cache_clear()
+        url = _make_agent()._get_reorder_url("rest-A", self.NAME)
+        parts = urlsplit(url)
+        assert parts.path == "/inventory"
+        assert not parts.fragment
+        assert parse_qs(parts.query) == {"wine": [self.NAME], "action": ["reorder"]}
+        assert " " not in url
+        get_settings.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_sms_and_email_carry_the_encoded_link(self, monkeypatch):
+        from urllib.parse import parse_qs, urlsplit
+
+        monkeypatch.setenv("FRONTEND_URL", "https://mudavym.com")
+        from config.settings import get_settings
+
+        get_settings.cache_clear()
+        agent = _make_agent()
+
+        with (
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
+            patch.object(
+                agent, "_get_notification_preferences", AsyncMock(return_value={})
+            ),
+            patch.object(
+                agent, "_select_channels", AsyncMock(return_value=["sms", "email"])
+            ),
+            patch.object(agent, "_push_targets", AsyncMock(return_value=[])),
+            patch.object(agent, "_log_notification", AsyncMock()),
+        ):
+            await agent.send_low_stock_alert(
+                {
+                    "wine_name": self.NAME,
+                    "stock_after": 1,
+                    "threshold": 3,
+                    "estimated_stockout_days": 0.5,
+                    "restaurant_id": "rest-A",
+                }
+            )
+
+        body = agent.sms_client.send_sms.call_args.args[1]
+        sms_url = body.split("Tap to reorder: ", 1)[1].strip()
+        email_url = agent.email_client.send_template_email.call_args.kwargs[
+            "template_data"
+        ]["approval_url"]
+        for url in (sms_url, email_url):
+            assert parse_qs(urlsplit(url).query)["wine"] == [self.NAME]
+
+        get_settings.cache_clear()
