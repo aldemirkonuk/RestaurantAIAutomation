@@ -94,7 +94,9 @@ export function moneyName(code: string): string {
  *
  * Written in the house's formats (`getHouseLocale`), with the year when it is
  * not this year on the house's calendar — a claim opened last March must not
- * read like one opened this March.
+ * read like one opened this March. Digits only, in the house's day and month
+ * order, so every word on the page stays English (ADR 0207 q7, F-1279): a
+ * Turkish house reads "11/10", never "11 Eki".
  */
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -127,7 +129,7 @@ export function fmtDate(
   if (!Number.isFinite(d.getTime())) return EM;
   const thisYear = yearOf(d, at) === yearOf(now, zone);
   return new Intl.DateTimeFormat(getHouseLocale(), {
-    month: 'short',
+    month: 'numeric',
     day: 'numeric',
     ...(thisYear ? {} : { year: 'numeric' as const }),
     ...zoned(at),

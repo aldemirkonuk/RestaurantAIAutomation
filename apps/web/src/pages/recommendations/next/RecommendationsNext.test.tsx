@@ -1322,6 +1322,14 @@ describe('RecommendationsNext — the ribbon', () => {
     );
   });
 
+  it('tells staff the till is kept for owners and managers, not that it failed (F-1277)', () => {
+    mockData.current = { ...base, entries: [fired()], pos: null, posProblem: null, posHeld: true };
+    draw();
+    const note = screen.getByTestId('rc-records-note');
+    expect(note).toHaveTextContent(/kept for owners and managers/);
+    expect(note).not.toHaveTextContent(/could not be read/);
+  });
+
   it('claims nothing about any day when the till window could not be read', () => {
     mockData.current = {
       ...base,

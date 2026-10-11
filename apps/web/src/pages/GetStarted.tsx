@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Camera, MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
@@ -680,8 +681,13 @@ function GetStartedSteps() {
                 dropArrivalDraft()
                 navigate('/house', { replace: true })
               }
-              // Said here once, before the house opens, when it was not kept.
-              if (mobile.trim()) void keepWaitingMobile().then((kept) => kept && openHouse())
+              // The house opens either way (F-1280); a mobile still not kept
+              // is said on the house's toast, so the press is never dead.
+              if (mobile.trim())
+                void keepWaitingMobile().then((kept) => {
+                  if (!kept) toast(MOBILE_NOT_KEPT)
+                  openHouse()
+                })
               else openHouse()
             }}
             className="text-sm text-[#6d685f] underline underline-offset-4"

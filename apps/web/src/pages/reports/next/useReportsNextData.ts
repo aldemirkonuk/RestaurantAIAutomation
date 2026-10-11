@@ -81,8 +81,11 @@ export const ROOT = 'reports-next';
  * Goals joined them with F-299: the gateway refuses the goal reads to every
  * role but owner and manager, so staff are not offered the cutting either
  * (F-795) — otherwise their default sheet carried the refusal line.
+ *
+ * The till joined them with F-1200 (pos-revenue is owner and manager only),
+ * so staff are not offered it either (F-1277).
  */
-const OWNERS_AND_MANAGERS_ONLY: readonly AnalysisId[] = ['seats', 'service', 'goals'];
+const OWNERS_AND_MANAGERS_ONLY: readonly AnalysisId[] = ['seats', 'service', 'goals', 'till'];
 
 export function offeredFor(role: string | null | undefined): AnalysisId[] {
   if (role === 'owner' || role === 'manager') return [...ANALYSIS_IDS];

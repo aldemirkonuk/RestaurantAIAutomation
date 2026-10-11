@@ -26,6 +26,11 @@ const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, revie
   },
 }))
 
+const sonnerToast = vi.hoisted(() => vi.fn())
+vi.mock('sonner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('sonner')>()
+  return { ...actual, toast: Object.assign(sonnerToast, actual.toast) }
+})
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return { ...actual, useNavigate: () => navigate }
@@ -371,11 +376,10 @@ describe('approved arrival flow', () => {
     await waitFor(() =>
       expect(patch.mock.calls.filter(([, body]) => body?.phone === '+905321234567')).toHaveLength(2),
     )
-    expect(navigate).not.toHaveBeenCalledWith('/house', { replace: true })
-    expect(screen.getByRole('status')).toHaveTextContent('Your mobile number was not saved')
-    // Said once; the next press opens the house without holding the owner.
-    fireEvent.click(screen.getByRole('button', { name: /Skip for now/ }))
-    expect(navigate).toHaveBeenCalledWith('/house', { replace: true })
+    // The first press opens the house anyway (F-1280), and the miss goes
+    // with the owner on the house's toast instead of a line left behind.
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/house', { replace: true }))
+    expect(sonnerToast).toHaveBeenCalledWith('Your mobile number was not saved; you can add it on your profile.')
   })
 
   it('passes Use my location into Places as a search bias', async () => {

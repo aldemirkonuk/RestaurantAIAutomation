@@ -385,6 +385,12 @@ export interface RecommendationsData {
   /** Why the till window could not be read, when it could not. */
   posProblem: string | null;
   /**
+   * The till is kept for owners and managers (F-1200: the gateway refuses
+   * pos-revenue to everyone else), so it is not asked for on this person's
+   * behalf and the ribbon says why rather than reporting a failed read.
+   */
+  posHeld: boolean;
+  /**
    * Ask for a till window `days` back from today. The ribbon calls it when the
    * month on screen changes; the gateway clamps to 1–365, so a month further
    * back than a year comes back with every day `unknown`, never `none`.
@@ -1025,11 +1031,19 @@ export function useRecommendationsNextData(): RecommendationsData {
     setPosDays((prev) => (prev === days ? prev : days));
   }, []);
 
+  // A role this house has named that is not owner or manager is never sent
+  // for the till (F-1277). A role still resolving is asked for as before.
+  const posHeld = activeRole != null && !mayActForTheHouse(activeRole);
+
   useEffect(() => {
     let cancelled = false;
     setPos(undefined);
     setPosProblem(null);
     if (!rid) return;
+    if (posHeld) {
+      setPos(null);
+      return;
+    }
     apiClient
       .get<Record<string, unknown>>(`/analytics/pos-revenue/${rid}?days=${posDays}`)
       .then(({ data }) => {
@@ -1058,7 +1072,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     return () => {
       cancelled = true;
     };
-  }, [rid, posDays]);
+  }, [rid, posDays, posHeld]);
 
   /**
    * Write one goal.
@@ -1409,6 +1423,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     scenarios,
     pos,
     posProblem,
+    posHeld,
     requestPosBack,
     note,
     undo,

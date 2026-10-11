@@ -2435,9 +2435,11 @@ export class TeamService {
         `createTimeOff: the requester's name could not be read — ${memberErr.message}`,
       );
     }
-    const from = String(row.start_date ?? "").slice(0, 10);
-    const until = String(row.end_date ?? "").slice(0, 10);
-    const days = from === until ? from : `${from} to ${until}`;
+    // The days as the house writes a date (F-1278), as reviewTimeOff does.
+    const { locale } = await this.houseMoneyFor(restaurantId);
+    const from = row.start_date ? weekWords(row.start_date, locale) : "";
+    const until = row.end_date ? weekWords(row.end_date, locale) : "";
+    const days = row.start_date === row.end_date ? from : `${from} to ${until}`;
     const who = (member as any)?.display_name || "Someone on the team";
     const told = await noticeToHouseLeads(this.sb, this.logger, {
       restaurantId,
