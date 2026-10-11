@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { policyFor } from "../ask-readings/reading-data-classes";
 
 /**
@@ -28,13 +30,101 @@ import { policyFor } from "../ask-readings/reading-data-classes";
  */
 
 /**
- * The kitchen hints. The same nine as the web's `KITCHEN`
- * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two lists equal.
- * 'dessert' is also a drink section, so a dessert wine counts as a kitchen
- * line: a known defect, filed in
- * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`.
+ * The kitchen hints: words and phrases that mark a food line, in English and
+ * Turkish (F-1173). The same list as the web's `KITCHEN`
+ * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two equal, and
+ * the two `isKitchenLine`s are the same test. Matched as whole words, never
+ * as a substring: "Radish Imports" names no dish.
  */
-export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"];
+export const KITCHEN_HINTS = [
+  "food",
+  "foods",
+  "kitchen",
+  "dish",
+  "dishes",
+  "starter",
+  "starters",
+  "appetizer",
+  "appetizers",
+  "appetiser",
+  "appetisers",
+  "small plates",
+  "mains",
+  "main course",
+  "main courses",
+  "entree",
+  "entrees",
+  "entrée",
+  "entrées",
+  "sides",
+  "pasta",
+  "pizza",
+  "salad",
+  "salads",
+  "soup",
+  "soups",
+  "sandwich",
+  "sandwiches",
+  "burger",
+  "burgers",
+  "breakfast",
+  "brunch",
+  "dessert",
+  "desserts",
+  "mezze",
+  "meze",
+  "mezeler",
+  "ara sıcak",
+  "ara sıcaklar",
+  "ana yemek",
+  "ana yemekler",
+  "yemek",
+  "yemekler",
+  "başlangıç",
+  "başlangıçlar",
+  "salata",
+  "salatalar",
+  "çorba",
+  "çorbalar",
+  "ızgara",
+  "ızgaralar",
+  "kebap",
+  "kebaplar",
+  "pide",
+  "tatlı",
+  "tatlılar",
+  "kahvaltı",
+  "mutfak",
+];
+
+/**
+ * The drink sections, the web's `VOCABULARY`: the import's
+ * MENU_CATEGORY_VOCABULARY (wine-extract-item.interface.ts) and 'wine'. A
+ * line in one of them is a drink whatever its raw line names: 'dessert' is a
+ * wine section (a Muscat de Beaumes-de-Venise), and a wine whose row names a
+ * starter pairing is still a wine (F-022 on the web, F-1173 here).
+ */
+export const DRINK_SECTIONS = [
+  "wine",
+  "red",
+  "white",
+  "rose",
+  "sparkling",
+  "orange",
+  "dessert",
+  "fortified",
+  "beer",
+  "cider",
+  "sake",
+  "cocktail",
+  "spirit",
+  "whiskey",
+  "soft drink",
+  "non-alcoholic",
+];
+
+/** A section that names wine ("Dessert wines", "Kırmızı şaraplar") is a drink section too. */
+export const WINE_WORDS = ["wine", "wines", "şarap", "şaraplar"];
 
 /** The raw line's column. Sent only when the caller's view allows it. */
 export const RAW_LINE_COLUMN = "raw_extracted_text";
@@ -71,10 +161,39 @@ export interface LineView {
   rawLine: boolean;
 }
 
-/** The same test as the web's `isKitchenLine`: a hint in the section or in the raw line. */
+/**
+ * A text as its words, once per lower-casing, each padded so a hint is found
+ * only whole (" ara sıcak "). Both lower-casings: "TATLI" is "tatlı" only the
+ * Turkish way, and "Izgara" is "ızgara" only that way too.
+ */
+function wordRuns(text: string): string[] {
+  return [text.toLowerCase(), text.toLocaleLowerCase("tr")].map(
+    (lower) =>
+      ` ${lower
+        .split(/[^\p{L}\p{M}]+/u)
+        .filter(Boolean)
+        .join(" ")} `,
+  );
+}
+
+/**
+ * Whether a menu line is a kitchen (food) line, from its section and its raw
+ * line. A known drink section wins; otherwise a whole-word hint in either
+ * decides. The same test as the web's `isKitchenLine`.
+ */
 export function isKitchenLine(category: unknown, raw: unknown): boolean {
-  const hay = `${typeof category === "string" ? category : ""} ${typeof raw === "string" ? raw : ""}`.toLowerCase();
-  return KITCHEN_HINTS.some((hint) => hay.includes(hint));
+  const section = typeof category === "string" ? category : "";
+  if (DRINK_SECTIONS.includes(section.toLowerCase().trim())) return false;
+  if (
+    wordRuns(section).some((run) =>
+      WINE_WORDS.some((w) => run.includes(` ${w} `)),
+    )
+  )
+    return false;
+  const runs = wordRuns(`${section} ${typeof raw === "string" ? raw : ""}`);
+  return KITCHEN_HINTS.some((hint) =>
+    runs.some((run) => run.includes(` ${hint} `)),
+  );
 }
 
 /**
@@ -109,4 +228,47 @@ export function lineForViewer(row: Record<string, unknown>, view: LineView): Rec
     out.raw_line_withheld = true;
   }
   return out;
+}
+
+const KITCHEN_READ_ROWS = 1000;
+
+/**
+ * The house's stock rows that only kitchen lines link to (F-1170): rows a food
+ * line seeded before kitchen lines were set aside. The margin advice leaves
+ * them out. A row any drink line links to stays. Every menu of the house is
+ * read, keyset-paged; the raw line is read only to decide `isKitchenLine` and
+ * leaves this function as nothing but the row ids. A failed page is said,
+ * never an empty set.
+ */
+export async function readKitchenInventoryIds(
+  client: SupabaseClient,
+  restaurantId: string,
+): Promise<{ ids: Set<string>; error: string | null }> {
+  const kitchen = new Set<string>();
+  const drink = new Set<string>();
+  let after: string | null = null;
+  for (;;) {
+    let q = client
+      .from("menu_items")
+      .select("id, inventory_item_id, category, raw_extracted_text")
+      .eq("restaurant_id", restaurantId)
+      .not("inventory_item_id", "is", null)
+      .neq("status", "discarded");
+    if (after) q = q.gt("id", after);
+    const { data, error } = await q
+      .order("id", { ascending: true })
+      .limit(KITCHEN_READ_ROWS);
+    if (error) return { ids: new Set(), error: error.message };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    for (const r of rows) {
+      const inv = String(r.inventory_item_id);
+      (isKitchenLine(r.category, r[RAW_LINE_COLUMN]) ? kitchen : drink).add(
+        inv,
+      );
+    }
+    if (rows.length < KITCHEN_READ_ROWS) break;
+    after = String(rows[rows.length - 1].id);
+  }
+  for (const inv of drink) kitchen.delete(inv);
+  return { ids: kitchen, error: null };
 }

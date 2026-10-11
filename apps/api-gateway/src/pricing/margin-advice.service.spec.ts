@@ -26,6 +26,9 @@ interface FakeOpts {
   locksError?: { message: string } | null;
   users?: Row[];
   usersError?: { message: string } | null;
+  /** menu_items rows: which stock rows only kitchen lines link to (F-1170). */
+  menuLines?: Row[];
+  menuLinesError?: { message: string } | null;
   rpc?: (fn: string, args: Row) => { data: unknown; error: unknown };
 }
 
@@ -48,6 +51,13 @@ function fakeClient(o: FakeOpts) {
       if (table === "users") {
         if (o.usersError) return { data: null, error: o.usersError };
         return { data: (o.users ?? []).filter((r) => extra.every((f) => f(r))), error: null };
+      }
+      if (table === "menu_items") {
+        if (o.menuLinesError) return { data: null, error: o.menuLinesError };
+        return {
+          data: (o.menuLines ?? []).filter((r) => extra.every((f) => f(r))),
+          error: null,
+        };
       }
       if (table === "restaurants") return { data: o.house ?? null, error: o.houseError ?? null };
       if (table === "restaurant_inventory") {
@@ -81,6 +91,15 @@ function fakeClient(o: FakeOpts) {
       },
       in(c: string, vs: unknown[]) {
         extra.push((r) => vs.includes(r[c]));
+        return api;
+      },
+      not(c: string, op: string, v: unknown) {
+        if (op === "is" && v === null)
+          extra.push((r) => (r[c] ?? null) !== null);
+        return api;
+      },
+      neq(c: string, v: unknown) {
+        extra.push((r) => r[c] !== v);
         return api;
       },
       gt() {
@@ -252,6 +271,71 @@ describe("MarginAdviceService.adviseHouse", () => {
     for (const [, cols] of selects) {
       expect(cols).not.toMatch(/retail_price_avg|price_reference|markup_ratio/);
     }
+  });
+});
+
+// F-1170: a food line set aside on the menu gets no margin advice.
+describe("MarginAdviceService.adviseHouse -- a kitchen line's stock row is set aside", () => {
+  const FOOD = { ...WINE_A, id: "inv-food", wine_name: "Grilled octopus" };
+  const lines = [
+    {
+      id: "mi-1",
+      inventory_item_id: "inv-food",
+      category: "Starters",
+      raw_extracted_text: "Grilled octopus,,24",
+    },
+    {
+      id: "mi-2",
+      inventory_item_id: "inv-a",
+      category: "red",
+      raw_extracted_text: "Barolo,Vietti,2019,red,50",
+    },
+  ];
+
+  it("leaves out a row only kitchen lines link to, and advises the wine", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A, FOOD],
+      rollup: ROLLUP,
+      menuLines: lines,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.wines.map((w) => w.inventoryId)).toEqual(["inv-a"]);
+  });
+
+  it("keeps a row a drink line also links to", async () => {
+    const both = [
+      ...lines,
+      {
+        id: "mi-3",
+        inventory_item_id: "inv-food",
+        category: "white",
+        raw_extracted_text: null,
+      },
+    ];
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A, FOOD],
+      rollup: ROLLUP,
+      menuLines: both,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.wines.map((w) => w.inventoryId).sort()).toEqual([
+      "inv-a",
+      "inv-food",
+    ]);
+  });
+
+  it("a failed read of the menu lines is an error, not food advised as a drink", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A, FOOD],
+      rollup: ROLLUP,
+      menuLinesError: { message: "down" },
+    });
+    await expect(svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
   });
 });
 
