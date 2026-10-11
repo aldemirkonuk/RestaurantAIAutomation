@@ -27,7 +27,7 @@
 import { useState } from 'react'
 import type { CanonicalDocument } from '../../services/api/canonical'
 import type { DoorCountLine } from '../../services/api/deliveries'
-import { EM, MONO, SERIF, fmtQty, fmtReceived } from './canonical-format'
+import { EM, MONO, SERIF, documentCountry, fmtQty, fmtReceived } from './canonical-format'
 
 export interface DoorFrameProps {
   doc: CanonicalDocument
@@ -60,6 +60,9 @@ export function DoorFrame({
   booking,
 }: DoorFrameProps) {
   const adjudicated = new Map(doc.layer3.lines.map((l) => [l.lineIndex, l]))
+  /** Counts print the way the sheet above prints them: the paper's currency and country (F-1398). */
+  const currency = doc.layer1.currency.value
+  const country = documentCountry(doc.layer1.seller)
   /** The item a person linked each line to. An item inherited from the order
    *  line is a match, not a link, and is not sent (ADR 0103 A12). */
   const linkedItem = new Map(
@@ -175,7 +178,7 @@ export function DoorFrame({
               <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
                 The paperwork says{' '}
                 <strong>
-                  {fmtQty(adj?.shipped ?? adj?.billed ?? null)}{' '}
+                  {fmtQty(adj?.shipped ?? adj?.billed ?? null, currency, country)}{' '}
                   {line.unit.value ?? ''}
                 </strong>
               </span>
@@ -272,7 +275,7 @@ export function DoorFrame({
                           : 'var(--ink-1, #211C16)',
                     }}
                   >
-                    {fmtReceived(adj?.received ?? null)}
+                    {fmtReceived(adj?.received ?? null, currency, country)}
                   </span>
                 )}
               </span>

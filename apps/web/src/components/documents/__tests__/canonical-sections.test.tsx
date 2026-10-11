@@ -1438,3 +1438,55 @@ describe('a staff reader sees the document without its money (M2)', () => {
     expect(container.textContent).toContain('amount kept for owners and managers')
   })
 })
+
+/**
+ * F-1398: the sheet prints a German euro invoice as `€1.234,50`, so every
+ * other block on the same page must too. Before, the verdict sentence beside
+ * the sheet still printed `€1,234.50` from the same totals.
+ */
+describe('one page, one way of printing figures (F-1398)', () => {
+  const german = () => {
+    const d = doc({ jurisdiction: null })
+    d.layer1.currency = env('EUR')
+    d.layer1.seller = { ...party(), vatIdentifier: env('DE123456789') }
+    d.layer1.totals = { ...totals(), taxInclusiveAmount: env(1234.5) }
+    return d
+  }
+
+  it('the verdict prints the money and counts the way the sheet does', () => {
+    const d = german()
+    d.layer3.lines = [
+      adjudicated({ verdict: 'short_ship', received: 1.5, billed: 2.5, moneyAtRisk: 1234.5 }),
+    ]
+    const { container } = render(<VerdictBlock doc={d} />)
+    expect(container.textContent).toContain('€1.234,50')
+    expect(container.textContent).not.toContain('€1,234.50')
+    expect(container.textContent).toMatch(/billed 2,5 bottles, received 1,5 bottles/)
+  })
+
+  it('the door frame counts the way the sheet does', () => {
+    const d = german()
+    d.layer3.lines = [adjudicated({ received: 1.5, shipped: 2.5 })]
+    const { getByTestId } = render(<DoorFrame doc={d} />)
+    expect(getByTestId('door-received').textContent).toBe('1,5')
+  })
+
+  it('the gates and the thread stamp the day the way the sheet does', () => {
+    render(
+      <DeliveryGates
+        delivery={event({ jurisdiction: null, state: 'AGREED', agreedAt: '2026-08-15T10:00:00' })}
+        currency="EUR"
+        country="DE"
+      />,
+    )
+    expect(screen.getByTestId('delivery-gates').textContent).toContain('15.08. 10:00')
+    render(
+      <ProposalThread
+        proposals={[proposal({ proposed_at: '2026-08-15T10:00:00' })]}
+        currency="EUR"
+        country="DE"
+      />,
+    )
+    expect(document.body.textContent).toContain('15.08. 10:00 ·')
+  })
+})

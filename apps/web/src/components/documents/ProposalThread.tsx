@@ -44,6 +44,8 @@ export interface ProposalThreadProps {
   failedRead?: string | null
   jurisdiction?: string | null
   currency?: string | null
+  /** The document's own country (`documentCountry`), so a stamp reads as the sheet does (F-1398). */
+  country?: string | null
   /**
    * Absent = read-only (no delivery, or the caller has no write path).
    * Resolves `false` when the gateway refused: the form then stays open with
@@ -85,6 +87,7 @@ export function ProposalThread({
   failedRead,
   jurisdiction,
   currency,
+  country,
   onPropose,
   onCounter,
   onAccept,
@@ -195,7 +198,7 @@ export function ProposalThread({
                 : ''}
             </span>
             <span style={{ display: 'block', fontFamily: MONO, fontSize: 9, color: 'var(--ink-4, #665D50)' }}>
-              {fmtStamp(p.proposed_at, jurisdiction, currency)} · {p.status}
+              {fmtStamp(p.proposed_at, jurisdiction, currency, country)} · {p.status}
               {p.counters_proposal_id ? ' · answers an earlier position' : ''}
             </span>
 

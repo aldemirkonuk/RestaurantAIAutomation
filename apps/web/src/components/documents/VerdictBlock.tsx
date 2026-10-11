@@ -21,7 +21,16 @@ import type {
   AdjudicatedLine,
   CanonicalDocument,
 } from '../../services/api/canonical'
-import { EM, MONO, SERIF, fmtMoney, fmtQty, fmtReceived, unitWord } from './canonical-format'
+import {
+  EM,
+  MONO,
+  SERIF,
+  documentCountry,
+  fmtMoney,
+  fmtQty,
+  fmtReceived,
+  unitWord,
+} from './canonical-format'
 
 /** The unit words live in canonical-format (moved at W22, one source). */
 function unitSuffix(unit: string, qty: unknown): string {
@@ -57,6 +66,8 @@ export function exceptionSentences(doc: CanonicalDocument): {
   counted?: boolean
 }[] {
   const currency = doc.layer1.currency.value
+  /** The seller's country, so these sentences print figures the way the sheet does (F-1398). */
+  const country = documentCountry(doc.layer1.seller)
   return doc.layer3.lines
     .filter((l) => l.verdict !== 'ok')
     .map((l: AdjudicatedLine) => {
@@ -83,8 +94,8 @@ export function exceptionSentences(doc: CanonicalDocument): {
           // would be the same mis-column the four-way table just stopped making.
           sentence:
             l.billed == null && l.received !== 'not_counted'
-              ? `${name} — counted ${fmtReceived(l.received, currency)}${receivedUnit} at the door. Nothing has been ordered, despatched or billed against it, so nothing was compared.`
-              : `${name} — billed ${fmtQty(l.billed, currency)}${billedUnit}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
+              ? `${name} — counted ${fmtReceived(l.received, currency, country)}${receivedUnit} at the door. Nothing has been ordered, despatched or billed against it, so nothing was compared.`
+              : `${name} — billed ${fmtQty(l.billed, currency, country)}${billedUnit}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
           money: null,
           compared: false,
           counted: l.billed == null && l.received !== 'not_counted',
@@ -92,10 +103,10 @@ export function exceptionSentences(doc: CanonicalDocument): {
       let sentence: string
       switch (l.verdict) {
         case 'short_ship':
-          sentence = `${name} — billed ${fmtQty(l.billed, currency)}${billedUnit}, received ${fmtReceived(l.received, currency)}${l.received === 'not_counted' ? '' : receivedUnit}.`
+          sentence = `${name} — billed ${fmtQty(l.billed, currency, country)}${billedUnit}, received ${fmtReceived(l.received, currency, country)}${l.received === 'not_counted' ? '' : receivedUnit}.`
           break
         case 'over_ship':
-          sentence = `${name} — received ${fmtReceived(l.received, currency)}${receivedUnit} against ${fmtQty(l.billed, currency)}${billedUnit} billed.`
+          sentence = `${name} — received ${fmtReceived(l.received, currency, country)}${receivedUnit} against ${fmtQty(l.billed, currency, country)}${billedUnit} billed.`
           break
         case 'price_variance':
           sentence = `${name} — the unit price differs from what was agreed.`
@@ -156,6 +167,7 @@ export interface VerdictBlockProps {
 
 export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
   const currency = doc.layer1.currency.value
+  const country = documentCountry(doc.layer1.seller)
   const exceptions = exceptionSentences(doc)
   const atRisk = exceptions.reduce((sum, e) => sum + (e.money ?? 0), 0)
   const anyMoneyKnown = exceptions.some((e) => e.money != null)
@@ -258,7 +270,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
           <>
             <span data-testid="money-at-risk">
               {anyMoneyKnown
-                ? `${fmtMoney(atRisk, currency)} at risk`
+                ? `${fmtMoney(atRisk, currency, country)} at risk`
                 : 'the amount at risk is not yet computed'}
             </span>
             {' · '}
@@ -269,7 +281,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
         <span>
           {withheld
             ? 'amounts are kept for owners and managers'
-            : `billed ${fmtMoney(doc.layer1.totals.taxInclusiveAmount.value, currency)}`}
+            : `billed ${fmtMoney(doc.layer1.totals.taxInclusiveAmount.value, currency, country)}`}
         </span>
         {states.length > 0 && (
           <>
@@ -289,14 +301,14 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
         {nothingRead
           ? 'There are no lines to add up, so there is no arithmetic to check.'
           : ladder
-            ? `The stated total ${fmtMoney(ladder.stated, currency)} does not match the lines plus charges plus tax, ${fmtMoney(ladder.computed, currency)} — off by ${fmtMoney(Math.abs(ladder.delta), currency)}.`
+            ? `The stated total ${fmtMoney(ladder.stated, currency, country)} does not match the lines plus charges plus tax, ${fmtMoney(ladder.computed, currency, country)} — off by ${fmtMoney(Math.abs(ladder.delta), currency, country)}.`
             : doc.layer3.tiesOut === null
               ? 'The document states no total, so the arithmetic could not be checked. That is untested, not correct.'
               : doc.layer3.tiesOut
                 ? 'The lines add up to the stated total.'
                 : withheld
                   ? 'The lines do not add up to the stated total.'
-                  : `The lines do not add up to the stated total (off by ${fmtMoney((doc.layer3.tieOutDeltaCents ?? 0) / 100, currency)}).`}
+                  : `The lines do not add up to the stated total (off by ${fmtMoney((doc.layer3.tieOutDeltaCents ?? 0) / 100, currency, country)}).`}
       </p>
 
       {/* With no line compared, a card per line would say the heading again
@@ -348,7 +360,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
                   <>
                     {' '}
                     <strong style={{ fontFamily: MONO, fontWeight: 600 }}>
-                      {e.money == null ? EM : fmtMoney(e.money, currency)}
+                      {e.money == null ? EM : fmtMoney(e.money, currency, country)}
                     </strong>
                   </>
                 )}
