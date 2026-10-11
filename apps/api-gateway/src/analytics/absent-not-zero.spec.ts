@@ -340,10 +340,15 @@ describe("seasonality withholds a day it cannot separate", () => {
 
   it("calls a gap reliable only when it stands clear of the spread (F-709)", async () => {
     // Saturday 20.1 against Friday 20.0, with a wobble of ±3 on every day.
+    // The wobble alternates by WEEK, not by day, and the ninth week is flat, so
+    // every weekday averages exactly its base whatever day the suite runs on.
+    // With `i % 2` a weekday got five +3s and four −3s or the reverse depending
+    // on today's parity, and on 2026-10-11 (UTC) Friday out-averaged Saturday (F-1092).
     const noisy = consumption(63, (i) => {
       const wd = new Date(Date.now() - (62 - i) * 86400000).getUTCDay();
       const base = wd === 6 ? 20.1 : wd === 5 ? 20 : wd === 0 ? 5 : 10;
-      return base + (i % 2 === 0 ? 3 : -3);
+      const week = Math.floor(i / 7);
+      return base + (week === 8 ? 0 : week % 2 === 0 ? 3 : -3);
     });
     const close: any = await advanced({
       restaurants: UTC_HOUSE,
