@@ -901,7 +901,7 @@ describe('F-1126 — the door opened from /orders starts at the ordered boxes', 
 describe('F-1154 — the door asks for bottles per box on an order in bottles only', () => {
   const perBox = () =>
     document.querySelector('[data-ux-key="door:bottles-per-box"]') as HTMLInputElement | null
-  const open = async (unitType: string, packSize: number | null) => {
+  const open = async (unitType: string | null, packSize: number | null) => {
     const { receivingApi } = await import('@/services/api/receiving')
     vi.mocked(getOrder).mockResolvedValueOnce({
       id: 'o1',
@@ -955,6 +955,18 @@ describe('F-1154 — the door asks for bottles per box on an order in bottles on
   it('starts from the pack the order already knows', async () => {
     await open('bottles', 6)
     await waitFor(() => expect(perBox()?.value).toBe('6'))
+  })
+
+  it('[REVERT-FAILS] asks on an order that states no unit, which is in bottles (F-1159)', async () => {
+    await open(null, null)
+    await waitFor(() => expect(perBox()).not.toBeNull())
+    await holdSeal()
+    expect(submitDoorReceipt).not.toHaveBeenCalled()
+
+    fireEvent.change(perBox() as Element, { target: { value: '6' } })
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].body.packSize).toBe(6)
   })
 
   it('does not ask on a case order, and sends no pack of its own', async () => {

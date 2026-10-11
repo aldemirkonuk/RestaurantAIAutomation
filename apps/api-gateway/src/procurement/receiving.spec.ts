@@ -371,6 +371,8 @@ describe("recordDoorReceipt", () => {
   it("never guesses a pack size of 12", async () => {
     // A guessed pack multiplies a delivery twelvefold in the ledger — far worse
     // than under-counting, and it surfaces as a phantom overage, not as a bug.
+    // F-1159: nor a pack of 1 — an order with no unit is one in bottles, so a
+    // box count it cannot size is refused and nothing is booked.
     const { db, calls } = makeDb({
       order: {
         id: "o1",
@@ -380,14 +382,17 @@ describe("recordDoorReceipt", () => {
         quantity_received: 0,
       },
     });
-    const r = await new ReceivingService(db).recordDoorReceipt({
-      ...base,
-      countedQty: 2,
-      countedUom: "case",
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "case",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: expect.objectContaining({ reason: "pack_size_required" }),
     });
-
-    expect(r.countedQtyBottles).toBe(2);
-    expect(calls.rpc[0].args.p_delta).toBe(2);
+    expect(calls.rpc).toHaveLength(0);
   });
 
   // F-1154: a bottle order's ratio is always 1, so the door's boxes went in as
@@ -433,6 +438,38 @@ describe("recordDoorReceipt", () => {
     });
     expect(calls.rpc).toHaveLength(0);
     expect(calls.eventInserts).toHaveLength(0);
+  });
+
+  it("refuses boxes on an order with no unit that say no bottles per box (F-1159)", async () => {
+    for (const unit_type of [null, "", "  "]) {
+      const { db, calls } = makeDb({ order: { ...bottleOrder, unit_type } });
+      await expect(
+        new ReceivingService(db).recordDoorReceipt({
+          ...base,
+          countedQty: 2,
+          countedUom: "case",
+        }),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: expect.objectContaining({ reason: "pack_size_required" }),
+      });
+      expect(calls.rpc).toHaveLength(0);
+      expect(calls.eventInserts).toHaveLength(0);
+    }
+  });
+
+  it("books boxes on an order with no unit by the bottles per box said (F-1159)", async () => {
+    const { db, calls } = makeDb({
+      order: { ...bottleOrder, unit_type: null },
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      packSize: 12,
+    });
+    expect(r.countedQtyBottles).toBe(24);
+    expect(calls.rpc[0].args.p_delta).toBe(24);
   });
 
   it("still counts a case order by its own pack with no packSize sent (F-1154)", async () => {
