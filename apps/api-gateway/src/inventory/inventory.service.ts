@@ -67,6 +67,13 @@ const QUEUED_COUNT_GRACE_MS = 2 * 60_000;
 const OVERTAKEN_SCAN_LIMIT = 200;
 
 /**
+ * How many shelf counts of one wine are read to find each shelf's newest
+ * (F-1165). A wine counted more often than this answers "not known" (null),
+ * never a shelf wrongly called uncounted.
+ */
+const SHELF_COUNT_SCAN = 1000;
+
+/**
  * Whether a Postgres error is the request's fault (F-250): a RAISE from the
  * function itself (P0001), bad data (class 22), a broken constraint (class
  * 23) or a refused foreign item (42501). Anything else — no code at all (the
@@ -1227,7 +1234,44 @@ export class InventoryService {
       daily.push({ date: k, out: outMap.get(k) ?? 0, in: inMap.get(k) ?? 0 });
     }
 
+    // F-1165: which shelf was counted when. A count of one shelf no longer
+    // stamps the wine's last_counted_at (migration
+    // an_open_bottle_stays_and_a_shelf_count_stays_on_its_shelf), so each
+    // shelf's newest count is read from stock_counts.location_id. `null` is an
+    // answer we do not have -- a failed read, or more rows than one read holds
+    // -- never "no shelf was ever counted".
+    let shelfCounts: Array<{ locationId: string; countedAt: string }> | null =
+      null;
+    const counts = await client
+      .from("stock_counts")
+      .select("location_id, counted_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", itemId)
+      .eq("stock_state", "live")
+      .not("location_id", "is", null)
+      .order("counted_at", { ascending: false })
+      .limit(SHELF_COUNT_SCAN);
+    if (counts.error) {
+      this.logger.error(
+        `getItemActivity shelf-count read failed: ${counts.error.message}`,
+      );
+    } else if ((counts.data ?? []).length < SHELF_COUNT_SCAN) {
+      const newest = new Map<string, string>();
+      for (const r of (counts.data ?? []) as Array<{
+        location_id: string | null;
+        counted_at: string;
+      }>) {
+        if (r.location_id && !newest.has(r.location_id))
+          newest.set(r.location_id, r.counted_at);
+      }
+      shelfCounts = [...newest].map(([locationId, countedAt]) => ({
+        locationId,
+        countedAt,
+      }));
+    }
+
     return {
+      shelfCounts,
       daily,
       heat,
       totalOut28d: totalOut,

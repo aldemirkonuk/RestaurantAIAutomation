@@ -546,3 +546,54 @@ describe('RowExpansion — par editor', () => {
     expect(screen.getByText('6 btl')).toBeInTheDocument()
   })
 })
+
+// F-1165: a count of one shelf no longer marks the whole wine counted, so the
+// row says which shelf was counted when.
+describe('RowExpansion — which shelf was counted', () => {
+  const day = 86_400_000
+  const shelves = [
+    { id: 'loc-bar', name: 'Bar', capacity: null },
+    { id: 'loc-cellar', name: 'Cellar', capacity: null },
+  ]
+  const onShelves = {
+    lastCounted: new Date(Date.now() - 12 * day).toISOString(),
+    locations: [
+      { locationId: 'loc-bar', qty: 2, wac: null },
+      { locationId: 'loc-cellar', qty: 6, wac: null },
+    ],
+  } as Partial<InventoryItem>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('names the Bar counted today and the Cellar at the last count of every shelf', async () => {
+    getItemActivity.mockResolvedValue({
+      daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' },
+      shelfCounts: [{ locationId: 'loc-bar', countedAt: new Date().toISOString() }],
+    })
+    renderRow(onShelves, shelves)
+    expect(await screen.findByText('Bar counted today; Cellar counted 12 days ago')).toBeInTheDocument()
+  })
+
+  it('says a shelf was never counted when no count covers it', async () => {
+    getItemActivity.mockResolvedValue({
+      daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' },
+      shelfCounts: [{ locationId: 'loc-bar', countedAt: new Date(Date.now() - day).toISOString() }],
+    })
+    renderRow({ ...onShelves, lastCounted: null }, shelves)
+    expect(await screen.findByText('Bar counted yesterday; Cellar not counted yet')).toBeInTheDocument()
+  })
+
+  it('adds nothing when no shelf was counted on its own, or that is not known', async () => {
+    getItemActivity.mockResolvedValue({
+      daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' },
+      shelfCounts: null,
+    })
+    renderRow(onShelves, shelves)
+    expect(await screen.findByText('12 days ago')).toBeInTheDocument()
+    expect(screen.queryByText(/Bar counted/)).not.toBeInTheDocument()
+  })
+})
