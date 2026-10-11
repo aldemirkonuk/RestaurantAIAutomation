@@ -529,7 +529,17 @@ export class StorageLocationsService {
     );
   }
 
-  async createLocation(restaurantId: string, dto: CreateStorageLocationDto) {
+  /**
+   * `userId` is the caller (the controller has already checked they may set
+   * up zones). A zone a person adds by hand was never a seeder's guess, so it
+   * is stored `created` and confirmed by them (F-1333, migration
+   * 20260904130000); without it the cellar floor called it seeder-made.
+   */
+  async createLocation(
+    restaurantId: string,
+    dto: CreateStorageLocationDto,
+    userId?: string | null,
+  ) {
     await this.refuseBadParent(restaurantId, null, dto.parent_id);
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {
@@ -543,7 +553,15 @@ export class StorageLocationsService {
       current_occupancy: 0,
       color_code: dto.color ?? "#6b7280",
       notes: dto.notes ?? null,
+      // F-1332: the form's temperature and humidity were accepted and dropped.
+      temperature_zone: dto.temperature?.trim() || null,
+      ...(dto.humidity !== undefined && {
+        humidity_controlled: dto.humidity === "Controlled",
+      }),
       is_active: true,
+      zone_provenance: "created",
+      zone_confirmed_at: new Date().toISOString(),
+      zone_confirmed_by: userId ?? null,
     };
 
     const { data, error } = await client
@@ -575,6 +593,10 @@ export class StorageLocationsService {
       payload.current_occupancy = dto.current_count;
     if (dto.color !== undefined) payload.color_code = dto.color;
     if (dto.notes !== undefined) payload.notes = dto.notes;
+    if (dto.temperature !== undefined)
+      payload.temperature_zone = dto.temperature.trim() || null;
+    if (dto.humidity !== undefined)
+      payload.humidity_controlled = dto.humidity === "Controlled";
     payload.updated_at = new Date().toISOString();
 
     const { data, error } = await client

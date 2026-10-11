@@ -172,6 +172,32 @@ describe('the cellar floor offers a rename only to those who may set up zones', 
   })
 })
 
+// F-1333: Settings has no zones section; zones are added on /inventory.
+describe('the empty floor points at where zones are added', () => {
+  it('names Inventory > Manage locations, not Settings', () => {
+    gateway(MANAGER)
+    zones.current = {
+      data: {
+        restaurantId: RESTAURANT,
+        confirmed: [],
+        unconfirmed: [],
+        counts: { confirmed: 0, unconfirmed: 0, total: 0 },
+        readable: true,
+        reason: null,
+        confirmable: true,
+        scopeNote: 'note',
+      },
+      loading: false,
+      error: null,
+    }
+    confirmZone.current = { confirm: vi.fn(), saving: false, error: null }
+    render(wrap(<FloorStrip />))
+    const none = screen.getByTestId('floor-none')
+    expect(none).toHaveTextContent(/Inventory page, under Manage locations/)
+    expect(none).not.toHaveTextContent(/Settings/)
+  })
+})
+
 describe('the roster sheet carries the zone switch for an owner or manager', () => {
   const staffMember = {
     id: 'm-staff',

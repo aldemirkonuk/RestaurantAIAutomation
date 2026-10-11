@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsBoolean,
+  IsIn,
   IsString,
   IsNumber,
   IsOptional,
@@ -25,6 +26,15 @@ export class SetZoneSetupAccessDto {
 }
 
 /**
+ * F-1332. The zone form's humidity is the one fact storage_locations can hold
+ * about it, a yes/no (humidity_controlled), so these are the only two words
+ * the gateway takes, and the same two the read answers. The form's free-text
+ * "Description" is gone: full_location is rewritten from the zone name by a
+ * trigger on every write, so a typed description had nowhere to live.
+ */
+export const HUMIDITY_WORDS = ["Controlled", "None"] as const;
+
+/**
  * DTO for creating a new storage location
  */
 export class CreateStorageLocationDto {
@@ -32,11 +42,6 @@ export class CreateStorageLocationDto {
   @IsString()
   @MaxLength(255)
   name: string;
-
-  @ApiPropertyOptional({ description: "Location description" })
-  @IsString()
-  @IsOptional()
-  description?: string;
 
   /**
    * REQUIRED. `storage_locations.capacity_bottles` is NOT NULL, so an omitted
@@ -50,17 +55,22 @@ export class CreateStorageLocationDto {
   @Min(1)
   capacity: number;
 
-  @ApiPropertyOptional({ description: "Temperature setting (e.g. 55°F)" })
+  @ApiPropertyOptional({
+    description: "Temperature setting (e.g. 13°C). Stored in temperature_zone.",
+  })
   @IsString()
   @MaxLength(50)
   @IsOptional()
   temperature?: string;
 
-  @ApiPropertyOptional({ description: "Humidity setting (e.g. 70%)" })
-  @IsString()
-  @MaxLength(50)
+  @ApiPropertyOptional({
+    description:
+      "Whether the zone's humidity is controlled. Stored in humidity_controlled.",
+    enum: HUMIDITY_WORDS,
+  })
+  @IsIn(HUMIDITY_WORDS)
   @IsOptional()
-  humidity?: string;
+  humidity?: (typeof HUMIDITY_WORDS)[number];
 
   @ApiPropertyOptional({ description: "Notes" })
   @IsString()
@@ -104,11 +114,6 @@ export class UpdateStorageLocationDto {
   @IsOptional()
   name?: string;
 
-  @ApiPropertyOptional({ description: "Location description" })
-  @IsString()
-  @IsOptional()
-  description?: string;
-
   @ApiPropertyOptional({ description: "Capacity in bottles" })
   @IsNumber()
   @IsInt()
@@ -123,17 +128,22 @@ export class UpdateStorageLocationDto {
   @IsOptional()
   current_count?: number;
 
-  @ApiPropertyOptional({ description: "Temperature setting (e.g. 55°F)" })
+  @ApiPropertyOptional({
+    description: "Temperature setting (e.g. 13°C). Stored in temperature_zone.",
+  })
   @IsString()
   @MaxLength(50)
   @IsOptional()
   temperature?: string;
 
-  @ApiPropertyOptional({ description: "Humidity setting (e.g. 70%)" })
-  @IsString()
-  @MaxLength(50)
+  @ApiPropertyOptional({
+    description:
+      "Whether the zone's humidity is controlled. Stored in humidity_controlled.",
+    enum: HUMIDITY_WORDS,
+  })
+  @IsIn(HUMIDITY_WORDS)
   @IsOptional()
-  humidity?: string;
+  humidity?: (typeof HUMIDITY_WORDS)[number];
 
   @ApiPropertyOptional({ description: "Notes" })
   @IsString()
