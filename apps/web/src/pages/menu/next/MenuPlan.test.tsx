@@ -193,6 +193,21 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(result));
   });
 
+  it('a menu read only in part says why, and is made current only once the person confirms (F-1292)', async () => {
+    mockPlan.mockResolvedValue(plan({ partRead: 'the reading stopped before the end of the menu' }));
+    const result = { outcome: 'made_current' as const, menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: { changed: 1 }, flagged: 0, failed: [] };
+    mockMake.mockResolvedValue(result);
+    mount(true);
+    const said = await screen.findByTestId('menu-plan-part-read');
+    expect(said.textContent).toContain('Only part of this menu was read: the reading stopped before the end of the menu.');
+    const go = screen.getByRole('button', { name: 'Make it current' });
+    expect(go).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Make it current anyway, with those drinks missing' }));
+    expect(go).toBeEnabled();
+    fireEvent.click(go);
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1', true));
+  });
+
   it('while it is being made current, says what it is doing and how long it has taken (F-069)', async () => {
     mockPlan.mockResolvedValue(plan());
     mockMake.mockReturnValue(new Promise(() => {}));

@@ -1,5 +1,11 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsNotEmpty, IsString, MaxLength } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from "class-validator";
 
 /**
  * The body of `POST /menu-versions/:menuId/make-current` (ADR 0193 round 3,
@@ -14,4 +20,12 @@ export class MakeMenuCurrentDto {
   @IsNotEmpty()
   @MaxLength(128)
   fingerprint: string;
+
+  @ApiPropertyOptional({
+    description:
+      "True when the person confirmed making current a menu that was read only in part (the plan's `partRead`). Without it such a menu is refused, nothing changed (F-1292).",
+  })
+  @IsOptional()
+  @IsBoolean()
+  partReadAccepted?: boolean;
 }

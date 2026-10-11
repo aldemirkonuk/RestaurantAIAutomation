@@ -252,6 +252,9 @@ function ReadMenuForm({ canManage, onRead, currency }: { canManage: boolean; onR
         <div style={{ marginTop: 10 }} data-testid="menu-read-result">
           <p className="cl-said">
             Read {result.itemsExtracted} line{result.itemsExtracted === 1 ? '' : 's'} and kept this menu.{' '}
+            {result.partRead
+              ? `Only part of the menu was read: ${result.partRead}, so drinks may be missing. Reading it again, as a clearer photo or a smaller file, may read the rest. `
+              : ''}
             {result.source && !result.source.kept
               ? `Its file was not kept: ${result.source.failure ?? 'no reason given'}. `
               : ''}
@@ -349,6 +352,12 @@ function VersionRow({ v, zone, canManage, lastUsedId, planning, onPlan }: {
       <td className="cl-dim">
         {v.linesExtracted === null ? EM : `${v.linesExtracted} line${v.linesExtracted === 1 ? '' : 's'}`}
         {v.extractedBy?.name ? `, read by ${v.extractedBy.name}` : ''}
+        {v.partRead ? (
+          // F-1292: a menu read only in part is not the whole menu.
+          <span style={{ display: 'block' }} data-testid="menu-version-part-read">
+            Only part of the menu was read: {v.partRead}.
+          </span>
+        ) : null}
       </td>
       <td className="cl-dim">
         {v.source.kept ? (

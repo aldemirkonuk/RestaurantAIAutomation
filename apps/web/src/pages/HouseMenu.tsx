@@ -78,7 +78,13 @@ function notesSaid(notes: MenuReadNotes | null | undefined): string[] {
 /** Every file sent at once, and what each one gave (F-682). */
 function fileSaid(file: MenuFileResult): string {
   if ('failure' in file) return `${file.name}: not read. ${file.failure}`
-  return `${file.name}: ${file.itemsExtracted} line${file.itemsExtracted === 1 ? '' : 's'} read.`
+  const lines = `${file.name}: ${file.itemsExtracted} line${file.itemsExtracted === 1 ? '' : 's'} read.`
+  return file.partRead ? `${lines} ${partReadSaid(file.partRead)}` : lines
+}
+
+/** F-1292: a photo or PDF read only in part is not the whole menu. */
+function partReadSaid(reason: string): string {
+  return `Only part of this menu was read: ${reason}, so drinks may be missing. Reading it again, as a clearer photo or a smaller file, may read the rest.`
 }
 
 export default function HouseMenu() {
@@ -268,7 +274,7 @@ export default function HouseMenu() {
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">pencilled</span></p>
         </div>
 
-        {proof.files?.length || notesSaid(proof.read).length ? (
+        {proof.files?.length || notesSaid(proof.read).length || proof.partRead ? (
           <div data-testid="proof-read-notes" className="mt-6 space-y-2 text-sm text-[#6d685f]">
             {proof.files?.map((file) => (
               <div key={file.name}>
@@ -276,6 +282,9 @@ export default function HouseMenu() {
                 {'failure' in file ? null : notesSaid(file.read).map((line) => <p key={line} className="ml-4">{line}</p>)}
               </div>
             ))}
+            {!proof.files?.length && proof.partRead ? (
+              <p className="text-[#8a2b1d]">{partReadSaid(proof.partRead)}</p>
+            ) : null}
             {notesSaid(proof.read).map((line) => (
               <p key={line}>{line}</p>
             ))}

@@ -8,6 +8,7 @@ import {
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -36,6 +37,22 @@ import { readHouseMoney } from "../common/house-money";
 const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
 const SOURCE_BUCKET = "vendor-attachments";
+/**
+ * A photo or PDF read that kept only part of the menu is named so, with the
+ * reason (F-1292). The version has no column of its own for it, so its name
+ * carries it and `partReadOf` reads it back: the import reply, the list of
+ * kept menus and the plan all say it, and making it current asks first.
+ */
+const DRINKS_LIST = "Drinks list";
+const PART_READ_PREFIX = `${DRINKS_LIST}, read in part: `;
+
+/** Why a kept menu was read only in part, or null when it was read whole. */
+export function partReadOf(name: unknown): string | null {
+  return typeof name === "string" && name.startsWith(PART_READ_PREFIX)
+    ? name.slice(PART_READ_PREFIX.length) || null
+    : null;
+}
+
 /** How long a link to a kept menu source lives. */
 const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
@@ -222,6 +239,12 @@ export interface MenuPlan {
    * menu is already current or none is.
    */
   retiring: RetiringMenu[];
+  /**
+   * Why only part of this menu was read; null when it was read whole. Making
+   * it current takes every line that was not read off the house's menu, so
+   * make-current asks for `partReadAccepted` first (F-1292).
+   */
+  partRead?: string | null;
   /** Whether the people named in the plan could be named (L25). */
   namesReadable: boolean;
   namesReason: string | null;
@@ -287,6 +310,8 @@ function setByAPersonAfter(set: { at: string | null; source: string | null }, re
 export interface MenuVersion {
   menuId: string;
   name: string | null;
+  /** Why only part of this menu was read (cut short, pages skipped, parts failed); null when it was read whole (F-1292). */
+  partRead: string | null;
   status: "active" | "draft" | "archived" | string;
   current: boolean;
   cadence: MenuCadence | null;
@@ -519,6 +544,8 @@ export class MenusService {
     unreadColumns: string[];
     /** A spreadsheet read: those columns again, the rows skipped and why, the cells unread. */
     read: MenuReadNotes | null;
+    /** Why a photo or PDF was read only in part; null when it was read whole (F-1292). */
+    partRead: string | null;
   }> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
@@ -531,8 +558,14 @@ export class MenusService {
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
     let read: MenuRead | null = null;
+    const gaps: string[] = [];
     if (dto.method === "scan") {
-      items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
+      items = await this.scanParser.parse(
+        dto.data.imageBase64!,
+        restaurantId,
+        false,
+        gaps,
+      );
       sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
@@ -572,17 +605,33 @@ export class MenusService {
         : null;
 
     // 3. A new version, in draft: kept whether or not it is ever made current.
-    const menu = await this.createVersion(restaurantId, userId, dto, items, kept, menuDate);
+    const partRead = gaps.length ? [...new Set(gaps)].join("; ") : null;
+    const menu = await this.createVersion(
+      restaurantId,
+      userId,
+      dto,
+      items,
+      kept,
+      menuDate,
+      partRead,
+    );
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
     // governance submission trail. NOT current, so no inventory or price.
-    const reviewItems = await this.resolveAndPersistItems(
+    // A failure here takes the version back out (F-1296): it used to stay
+    // listed with N lines and hold none, under a bare "Internal server error".
+    const persisting = this.resolveAndPersistItems(
       items,
       restaurantId,
       menu.id,
       userId,
       dto.method,
       false,
+    );
+    const reviewItems = await this.linesOrNothingKept(
+      restaurantId,
+      menu.id,
+      persisting,
     );
 
     // 7. Mark menu_uploaded for everyone on this restaurant (matches the
@@ -598,7 +647,55 @@ export class MenusService {
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
       unreadColumns: read?.notes.ignoredColumns ?? [],
       read: read?.notes ?? null,
+      partRead,
     };
+  }
+
+  /**
+   * The lines of a just-written version, or, when they could not be matched
+   * or saved, the version taken back out and a refusal that says nothing was
+   * kept (F-1296).
+   */
+  private async linesOrNothingKept<T>(
+    restaurantId: string,
+    menuId: string,
+    persisting: Promise<T>,
+  ): Promise<T> {
+    try {
+      return await persisting;
+    } catch (err: any) {
+      this.logger.error(
+        `Menu import failed after the version was written: ${err?.message}`,
+      );
+      const left = await this.dropUnfinishedVersion(restaurantId, menuId);
+      throw new ServiceUnavailableException(
+        left
+          ? `The menu was read, but its lines could not be saved, and the empty menu it started could not be removed (${left}). It shows under Menus kept with no lines; read the menu again in a moment.`
+          : "The menu was read, but its lines could not be saved, so nothing was kept. Read the menu again in a moment.",
+      );
+    }
+  }
+
+  /**
+   * Remove a version whose lines could not be written (F-1296), its lines
+   * first. Returns null when it is gone, or the reason it is not.
+   */
+  private async dropUnfinishedVersion(
+    restaurantId: string,
+    menuId: string,
+  ): Promise<string | null> {
+    const { error: linesErr } = await this.dbService.supabase
+      .from("menu_items")
+      .delete()
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId);
+    if (linesErr) return linesErr.message;
+    const { error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .delete()
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId);
+    return error ? error.message : null;
   }
 
   /** Arrival reads evidence without creating menu, library or inventory rows. */
@@ -701,6 +798,7 @@ export class MenusService {
     items: WineExtractItem[],
     kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
+    partRead: string | null = null,
   ): Promise<{ id: string }> {
     const { data, error } = await this.dbService.supabase
       .from("restaurant_menus")
@@ -708,7 +806,7 @@ export class MenusService {
         restaurant_id: restaurantId,
         // Named for what it holds, every drink on the menu, not only the
         // wine (F-018). Versions kept before this keep their old name.
-        name: "Drinks list",
+        name: partRead ? `${PART_READ_PREFIX}${partRead}` : DRINKS_LIST,
         menu_type: "beverage",
         status: "draft",
         cadence: dto.cadence ?? null,
@@ -1614,6 +1712,7 @@ export class MenusService {
     for (const d of plan.dormantLocks) d.lockedBy = named(d.lockedBy);
     return {
       ...plan,
+      partRead: partReadOf(row.name),
       namesReadable: error === null,
       namesReason: error === null ? null : `the people named in this plan could not be named: ${error}`,
       timezone: await this.houseZone(restaurantId),
@@ -1875,6 +1974,7 @@ export class MenusService {
     menuId: string,
     userId: string,
     fingerprint?: string | null,
+    partReadAccepted = false,
   ): Promise<{
     outcome: "made_current" | "already_current";
     menuId: string;
@@ -1912,6 +2012,15 @@ export class MenusService {
     if (lines.length === 0 && version.status !== "active") {
       throw new BadRequestException(
         "This menu has no lines, so making it current would empty the house's menu. Nothing was changed.",
+      );
+    }
+    // A menu read only in part would take every line that was not read off
+    // the house's menu (F-1292). The arrival path refuses such a read; here
+    // the person may still choose it, but only having said so.
+    const partRead = partReadOf(version.name);
+    if (partRead && version.status !== "active" && partReadAccepted !== true) {
+      throw new BadRequestException(
+        `Only part of this menu was read (${partRead}). Making it current would take every drink that was not read off the house's menu. Read the menu again, or confirm that you want it current with those drinks missing. Nothing was changed.`,
       );
     }
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
@@ -2023,6 +2132,7 @@ export class MenusService {
     return {
       menuId: r.id,
       name: r.name ?? null,
+      partRead: partReadOf(r.name),
       status: r.status,
       current: r.status === "active",
       cadence: r.cadence ?? null,

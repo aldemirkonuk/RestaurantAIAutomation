@@ -289,6 +289,33 @@ describe('MenuVersions', () => {
     expect(await screen.findByTestId('menu-choice-said')).toHaveTextContent('This is now the current menu: 12 lines');
   });
 
+  it('a photo read only in part says so after the read and on its kept row (F-1292)', async () => {
+    mockList.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      versions: [version({ partRead: '1 of the 2 parts of the file could not be read' })],
+    });
+    mockImport.mockResolvedValue({
+      menuId: 'm9',
+      current: false,
+      itemsExtracted: 12,
+      submissionsCreated: 0,
+      items: [],
+      source: { kept: true, failure: null },
+      partRead: 'the reading stopped before the end of the menu',
+    });
+    mount(true);
+    expect(await screen.findByTestId('menu-version-part-read')).toHaveTextContent(
+      'Only part of the menu was read: 1 of the 2 parts of the file could not be read.',
+    );
+    const file = new File(['x'], 'menu.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByTestId('menu-read-result')).toHaveTextContent(
+      'Read 12 lines and kept this menu. Only part of the menu was read: the reading stopped before the end of the menu, so drinks may be missing.',
+    );
+  });
+
   it('names the columns of the file that were not read, and how to have one read (F-070)', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
     mockImport.mockResolvedValue({

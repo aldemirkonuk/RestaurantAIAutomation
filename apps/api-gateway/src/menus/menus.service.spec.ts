@@ -41,6 +41,7 @@ function makeFakeSupabase(
     // reads the inserted rows back; the fake appends them to the table so a
     // later read sees them, same as the real write.
     let inserted: Row[] | null = null;
+    let deleting = false;
     const extra: Array<(r: Row) => boolean> = [];
     // `tables.__readFails = [{ <table>: "<message>" }]` makes every READ of
     // that table fail with the message (writes still land), so a test can
@@ -94,6 +95,11 @@ function makeFakeSupabase(
         updatePatch = patch;
         return api;
       },
+      // `.delete().eq(...)`: removes the matching rows when awaited (F-1296).
+      delete() {
+        deleting = true;
+        return api;
+      },
       insert(rows: Row | Row[]) {
         const list = Array.isArray(rows) ? rows : [rows];
         inserted = list.map((r) => ({
@@ -122,6 +128,12 @@ function makeFakeSupabase(
         if (updatePatch && updateFails())
           return resolve({ data: null, error: { message: updateFails() } });
         const rows = matching();
+        if (deleting) {
+          tables[table] = (tables[table] || []).filter(
+            (r) => !rows.includes(r),
+          );
+          return resolve({ data: null, error: null });
+        }
         if (updatePatch) for (const row of rows) Object.assign(row, updatePatch);
         resolve({ data: rows, error: null });
       },
@@ -1428,6 +1440,63 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.pdf$/);
   });
 
+  it("a failed library match keeps nothing: no draft listing lines it does not hold, and a refusal that says so (F-1296)", async () => {
+    const tables = base();
+    const service = makeService(tables, {
+      wineSubmissions: {
+        ...wineSubmissions,
+        resolveLibraryWinesBatch: async () => {
+          throw new Error("statement timeout");
+        },
+      },
+      scanParser: {
+        parse: async () => [{ name: "Opus One", bottle_price: 62 }],
+      },
+    });
+    const read = service.importMenu(
+      {
+        method: "scan",
+        data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
+    await expect(read).rejects.toMatchObject({ status: 503 });
+    await expect(read).rejects.toThrow(/nothing was kept/);
+    expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
+    expect(tables.menu_items).toHaveLength(0);
+    expect(tables.user_onboarding_progress).toHaveLength(0);
+  });
+
+  it("a photo read only in part says why on the reply and on the kept menu (F-1292)", async () => {
+    const tables = base();
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parse: async (_b: string, _r: string, _a: boolean, gaps: string[]) => {
+          gaps.push("the reading stopped before the end of the menu");
+          return [{ name: "Opus One", bottle_price: 62 }];
+        },
+      },
+    });
+    const r = await service.importMenu(
+      {
+        method: "scan",
+        data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
+    expect(r.partRead).toBe("the reading stopped before the end of the menu");
+    const listed = await service.listVersions("rest-1");
+    expect(listed.versions.find((v) => v.menuId === r.menuId)!.partRead).toBe(
+      "the reading stopped before the end of the menu",
+    );
+    expect(
+      listed.versions.find((v) => v.menuId === "menu-old")!.partRead,
+    ).toBeNull();
+  });
+
   describe("makeCurrent — the person's choice, then the menu's prices reach the house", () => {
     const makeCurrentRpc = (tables: Record<string, Row[]>) => (fn: string, args: Row) => {
       if (fn === "make_menu_current") {
@@ -1465,6 +1534,53 @@ describe("MenusService — every menu read is kept as its own version", () => {
     /** The plan the page showed, then the choice naming it (L13). */
     const choose = async (service: MenusService, menuId: string, house = "rest-1", user = "user-2") =>
       service.makeCurrent(house, menuId, user, (await service.planFor(house, menuId)).fingerprint);
+
+    it("a menu read only in part is made current only when the person says so (F-1292)", async () => {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, {
+        wineSubmissions,
+        rpc: makeCurrentRpc(tables),
+        scanParser: {
+          parse: async (
+            _b: string,
+            _r: string,
+            _a: boolean,
+            gaps: string[],
+          ) => {
+            gaps.push("1 of the 2 parts of the file could not be read");
+            return [{ name: "Opus One", bottle_price: 64 }];
+          },
+        },
+      });
+      const read = await service.importMenu(
+        {
+          method: "scan",
+          data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+          restaurantId: "rest-1",
+        } as any,
+        "user-1",
+      );
+      const plan = await service.planFor("rest-1", read.menuId);
+      expect(plan.partRead).toBe(
+        "1 of the 2 parts of the file could not be read",
+      );
+      await expect(
+        service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint),
+      ).rejects.toThrow(
+        /Only part of this menu was read \(1 of the 2 parts of the file could not be read\).*Nothing was changed/,
+      );
+      expect(
+        tables.restaurant_menus.find((m) => m.id === "menu-old")!.status,
+      ).toBe("active");
+      const r = await service.makeCurrent(
+        "rest-1",
+        read.menuId,
+        "user-2",
+        plan.fingerprint,
+        true,
+      );
+      expect(r.outcome).toBe("made_current");
+    });
 
     it("switches the current menu, archives the old one, and carries the lines' prices by the chooser", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15 }]);

@@ -122,6 +122,18 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
     const { c, make } = controller(role);
     await c.makeCurrent("rest-1", "u-1", MENU, { fingerprint: "fp-1" });
     expect(make).toHaveBeenCalledWith("rest-1", MENU, "u-1", "fp-1");
+      // F-1292: a menu read only in part goes current only when the person said so.
+      await c.makeCurrent("rest-1", "u-1", MENU, {
+        fingerprint: "fp-1",
+        partReadAccepted: true,
+      });
+      expect(make).toHaveBeenLastCalledWith(
+        "rest-1",
+        MENU,
+        "u-1",
+        "fp-1",
+        true,
+      );
   });
 
   it.each(["staff", null])("%s is refused, and nothing is switched", async (role) => {

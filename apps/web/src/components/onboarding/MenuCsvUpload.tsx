@@ -218,7 +218,13 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
         try {
           const result = await importOne(await load())
           read.push({ name, result })
-          files.push({ name, itemsExtracted: result.itemsExtracted, read: result.read ?? null })
+          files.push({
+            name,
+            itemsExtracted: result.itemsExtracted,
+            read: result.read ?? null,
+            // F-1292: a photo or PDF read only in part says why on the proof.
+            ...(result.partRead ? { partRead: result.partRead } : {}),
+          })
         } catch (err: any) {
           // The first file with no answer back is let go as before (F-803,
           // below); a later one is named here, and the rest are still tried.
