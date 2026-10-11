@@ -78,7 +78,7 @@ const labelStyle: CSSProperties = {
 
 /**
  * The gateway's bounds on a hand-recorded price (`manual-observation.dto.ts`:
- * pack a whole 1-240 bottles, bottle size a whole 50-30000 ml), checked here
+ * pack a whole 1-240 bottles, bottle size a whole 50-60000 ml, a US half-barrel keg is 58,674), checked here
  * so a figure it would refuse is said before the click, in words (F-716).
  * A blank bottle size stays unknown. `null` = nothing to refuse.
  */
@@ -88,8 +88,8 @@ export function priceBoundsRefusal(packSize: string, unitVolumeMl: string): stri
     return 'The pack is a whole number of bottles, from 1 to 240.'
   }
   const vol = unitVolumeMl.trim()
-  if (vol !== '' && !(Number.isInteger(Number(vol)) && Number(vol) >= 50 && Number(vol) <= 30000)) {
-    return 'The bottle size is a whole number of millilitres, from 50 to 30000 (a standard bottle is 750).'
+  if (vol !== '' && !(Number.isInteger(Number(vol)) && Number(vol) >= 50 && Number(vol) <= 60000)) {
+    return 'The bottle size is a whole number of millilitres, from 50 to 60000 (a standard bottle is 750).'
   }
   return null
 }
@@ -101,7 +101,7 @@ export function recordPriceRefusal(error: unknown): string {
   const said = new Set<string>()
   for (const line of lines) {
     if (/^packSize /.test(line)) said.add('The pack is a whole number of bottles, from 1 to 240.')
-    else if (/^unitVolumeMl /.test(line)) said.add('The bottle size is a whole number of millilitres, from 50 to 30000.')
+    else if (/^unitVolumeMl /.test(line)) said.add('The bottle size is a whole number of millilitres, from 50 to 60000.')
     else if (/^price /.test(line)) said.add('The price is a number of zero or more.')
   }
   return said.size
@@ -367,7 +367,7 @@ export function RecordPriceForm({
               style={{ ...inputStyle, fontFamily: MONO }}
               type="number"
               min="50"
-              max="30000"
+              max="60000"
               step="1"
               value={unitVolumeMl}
               onChange={(e) => setUnitVolumeMl(e.target.value)}

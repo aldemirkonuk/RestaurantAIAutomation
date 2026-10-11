@@ -289,8 +289,22 @@ describe('RecordPriceForm — pack and bottle size hold the gateway’s bounds, 
     expect(priceBoundsRefusal('240', '')).toBeNull()
     expect(priceBoundsRefusal('300', '750')).toMatch(/from 1 to 240/)
     expect(priceBoundsRefusal('1.5', '750')).toMatch(/whole number of bottles/)
-    expect(priceBoundsRefusal('6', '20')).toMatch(/from 50 to 30000/)
+    expect(priceBoundsRefusal('6', '20')).toMatch(/from 50 to 60000/)
     expect(priceBoundsRefusal('6', '75.5')).toMatch(/whole number of millilitres/)
+  })
+
+  it('takes a US half-barrel keg as a bottle size, as the gateway does (F-1383)', () => {
+    expect(priceBoundsRefusal('1', '58674')).toBeNull()
+    expect(priceBoundsRefusal('1', '60001')).toMatch(/from 50 to 60000/)
+  })
+
+  it('lets the browser take a 58,674 ml keg in the bottle size box too (F-1383)', () => {
+    render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
+    const vol = screen.getByLabelText('Bottle size (ml)') as HTMLInputElement
+    fireEvent.change(vol, { target: { value: '58674' } })
+    expect(vol).toHaveAttribute('max', '60000')
+    expect(vol.validity.rangeOverflow).toBe(false)
+    expect(vol.checkValidity()).toBe(true)
   })
 
   it('holds the button and says why when the bottle size is under 50 ml', () => {
@@ -298,7 +312,7 @@ describe('RecordPriceForm — pack and bottle size hold the gateway’s bounds, 
     fillRequiredFieldsExceptCurrency()
     fireEvent.change(screen.getByLabelText(/Currency/), { target: { value: 'TRY' } })
     fireEvent.change(screen.getByLabelText('Bottle size (ml)'), { target: { value: '20' } })
-    expect(screen.getByTestId('vp-bounds')).toHaveTextContent(/from 50 to 30000/)
+    expect(screen.getByTestId('vp-bounds')).toHaveTextContent(/from 50 to 60000/)
     expect(screen.getByRole('button', { name: /record this price/i })).toBeDisabled()
   })
 

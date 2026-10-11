@@ -7,7 +7,8 @@ const ML_PER_OZ = 29.5735
 // ==================== Validation ====================
 
 export const BOTTLE_SIZE_MIN_ML = 50
-export const BOTTLE_SIZE_MAX_ML = 18000
+// A US half-barrel keg is 58,674 ml; the gateway takes up to 60,000 (F-1383).
+export const BOTTLE_SIZE_MAX_ML = 60000
 export const POUR_SIZE_MIN_ML = 30
 export const POUR_SIZE_MAX_ML = 500
 
