@@ -344,6 +344,43 @@ describe("PriceLocksService -- the acts", () => {
     expect(r.sentence).toBe("The bottle price is now 58.00 (it was 50.00) and stays locked.");
   });
 
+  // F-1232: a lock's sentences print the house's money its own way, as the advice does.
+  it("a lira house reads its lock sentences in lira, grouped its own way", async () => {
+    const t = house();
+    Object.assign(t.restaurants[0], { currency: "TRY", country: "TR" });
+    t.menu_items[0].bottle_price = "1250.00";
+    const answers: Record<string, unknown> = {
+      lock_house_menu_price: { outcome: "locked", lock: LOCK_ROW },
+      change_locked_house_menu_price: {
+        outcome: "changed_and_locked",
+        previous_price: 50,
+        lock: { ...LOCK_ROW, locked_price: 58 },
+      },
+      release_house_price_lock: {
+        outcome: "released",
+        lock: LOCK_ROW,
+        house_price: 50,
+      },
+      move_house_price_lock: {
+        outcome: "moved",
+        lock: { ...LOCK_ROW, locked_price: 42 },
+      },
+    };
+    const { svc } = service(t, (fn) => ({ data: answers[fn], error: null }));
+    expect(
+      (await svc.lock("rest-1", "inv-a", "bottle", "user-5")).sentence,
+    ).toMatch(/locked at ₺50,00 at this house/);
+    expect(
+      (await svc.changeAndKeep("rest-1", "lock-n", 58, "user-5")).sentence,
+    ).toBe("The bottle price is now ₺58,00 (it was ₺50,00) and stays locked.");
+    expect((await svc.release("rest-1", "lock-n", "user-5")).sentence).toBe(
+      "The lock is released. The current menu reads ₺1.250,00; the house price stays ₺50,00 until a menu is chosen or a manager changes it.",
+    );
+    expect(
+      (await svc.move("rest-1", "lock-b", "inv-a", 42, "user-5")).sentence,
+    ).toMatch(/price is ₺42,00 and locked/);
+  });
+
   it("L6: naming a lock that is no longer open is a 409", async () => {
     const { svc } = service(house(), () => ({ data: null, error: { code: "HPL04", message: "lock_not_open: lock lock-n is no longer the open lock on this price" } }));
     await expect(svc.changeAndKeep("rest-1", "lock-n", 58, "user-5")).rejects.toBeInstanceOf(ConflictException);

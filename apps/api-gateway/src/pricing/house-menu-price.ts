@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fmtMoney, type HouseMoneyTerms } from "./margin-to-target";
 
 /**
  * The one gateway writer of a house's own bottle and glass price (ADR 0193).
@@ -212,9 +213,19 @@ function heldFrom(raw: unknown): HeldKind[] {
   });
 }
 
-/** "the bottle price (locked at 95.00)" -- for a sentence that must name what a lock held. */
-export function heldWords(held: HeldKind[]): string {
+/**
+ * "the bottle price (locked at ₺95,00)" -- for a sentence that must name what
+ * a lock held, in the house's money and formats (F-1232). With neither known
+ * it is the bare figure, "locked at 95.00", as before.
+ */
+export function heldWords(
+  held: HeldKind[],
+  money?: HouseMoneyTerms | null,
+): string {
   return held
-    .map((h) => `the ${h.kind} price (locked${h.lockedPrice === null ? "" : ` at ${h.lockedPrice.toFixed(2)}`})`)
+    .map(
+      (h) =>
+        `the ${h.kind} price (locked${h.lockedPrice === null ? "" : ` at ${fmtMoney(h.lockedPrice, money)}`})`,
+    )
     .join(" and ");
 }
