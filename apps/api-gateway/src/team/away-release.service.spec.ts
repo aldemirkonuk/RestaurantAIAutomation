@@ -156,6 +156,27 @@ describe("AwayReleaseService — a held message arrives when they are back", () 
     expect(db.tables.house_away_held).toHaveLength(1);
   });
 
+  it("F-1339: a house with no zone but a one-zone country waits out quiet hours on that country's clock, as pushes do", async () => {
+    const db = seed({
+      restaurants: [{ id: HOUSE, timezone: null, country: "TR" }],
+      house_away_held: [message(SAM)],
+      notification_preferences: [
+        {
+          user_id: SAM,
+          restaurant_id: HOUSE,
+          quiet_hours_enabled: true,
+          quiet_hours_start: "22:00",
+          quiet_hours_end: "08:00",
+        },
+      ],
+    });
+    const { release, notifications } = harness(db);
+    // 20:00Z = 23:00 Istanbul, inside Sam's window; 20:00 in UTC is not.
+    const tally = await release.sweep(new Date("2026-09-25T20:00:00Z"));
+    expect(tally).toMatchObject({ quietHours: 1, released: 0 });
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
   it("honours a push opt-out read at delivery time, and still writes the inbox row", async () => {
     const db = seed({
       house_away_held: [message(SAM)],
@@ -275,7 +296,7 @@ describe("AwayReleaseService — a held note arrives, and its receipts say what 
     expect(notifications.persistForRestaurant).toHaveBeenCalledWith(
       HOUSE,
       expect.objectContaining({ message: "Kitchen meeting at four." }),
-      { onlyUserIds: [SAM] },
+      { onlyUserIds: [SAM], skipMobilePush: true },
     );
     expect(push.sendToUsers).toHaveBeenCalledWith([SAM], expect.anything());
     // F-1183: the note's own push (NotesService) names its house too.

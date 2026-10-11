@@ -162,6 +162,53 @@ describe("Away", () => {
   });
 });
 
+describe("a broadcast only some people asked for (F-1338, the low-stock lines)", () => {
+  const awayToday = (...ids: string[]) =>
+    ids.map((user_id) => ({
+      restaurant_id: HOUSE,
+      user_id,
+      away_from: TODAY,
+      away_until: plus(2),
+    }));
+
+  it("is still routed: a person who wants it but is Away gets no row, no push and no ping", async () => {
+    const db = seed({ house_away: awayToday(COOK) });
+    const { svc, pushed, rooms } = build(db);
+    const out = await svc.persistForRestaurant(HOUSE, PAYLOAD, {
+      wantedBy: [COOK, BARTENDER],
+    });
+    expect(rowsFor(db)).toEqual([BARTENDER]);
+    expect(pushed).toEqual([[BARTENDER]]);
+    expect(rooms).toEqual([[`user:${BARTENDER}`]]);
+    expect(out.routing).toMatchObject({
+      step: "everyone",
+      alerted: 1,
+      heldAway: 1,
+    });
+  });
+
+  it("never reaches someone who did not ask for it, not even over the restaurant room", async () => {
+    const db = seed();
+    const { svc, pushed, rooms } = build(db);
+    await svc.persistForRestaurant(HOUSE, PAYLOAD, { wantedBy: [MANAGER] });
+    expect(rowsFor(db)).toEqual([MANAGER]);
+    expect(pushed).toEqual([[MANAGER]]);
+    expect(rooms).toEqual([[`user:${MANAGER}`]]);
+  });
+
+  it("keeps the everyone-Away fallback quiet: the owner who wants it gets the row only", async () => {
+    const db = seed({ house_away: awayToday(OWNER, MANAGER, COOK, BARTENDER) });
+    const { svc, pushed, rooms } = build(db);
+    const out = await svc.persistForRestaurant(HOUSE, PAYLOAD, {
+      wantedBy: [OWNER, COOK],
+    });
+    expect(rowsFor(db)).toEqual([OWNER]);
+    expect(pushed).toEqual([]);
+    expect(rooms).toEqual([]);
+    expect(out.routing?.step).toBe("owners_inbox_only");
+  });
+});
+
 describe("an unreadable register", () => {
   it("falls back to every member — never to nobody — and says it was degraded", async () => {
     const db = seed({

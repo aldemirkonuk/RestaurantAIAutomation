@@ -107,3 +107,12 @@ describe('F-868 — the quiet-hours clock says the rule the phone push keeps', (
     ).toBeTruthy();
   });
 });
+
+describe('F-1338 — your low-stock switches are yours', () => {
+  it('says turning yours off quiets you, and no longer that anyone’s choice reaches everyone', () => {
+    mount();
+    expect(screen.getByText(/reaches your bell and phone only when your own switches want it/)).toBeTruthy();
+    expect(screen.queryByText(/an alert goes out if/)).toBeNull();
+    expect(screen.getByText('Off means no low-stock alert reaches your bell or phone. Others here still get theirs.')).toBeTruthy();
+  });
+});

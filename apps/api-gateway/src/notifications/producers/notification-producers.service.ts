@@ -4,11 +4,8 @@ import { ConfigService } from "@nestjs/config";
 import { GoalsService } from "../../analytics/goals.service";
 import { ScheduledTenantsService } from "../../communications/scheduled-tenants.service";
 import type { ScheduledTenant } from "../../communications/scheduled-tenants.service";
-import {
-  isKnownTimeZone,
-  nextTickAfter,
-  wallMinutesIn,
-} from "../../calendar/reminder-window";
+import { nextTickAfter, wallMinutesIn } from "../../calendar/reminder-window";
+import { houseClock } from "../../common/house-clock";
 import {
   ProducerLedgerService,
   type ProducerTally,
@@ -459,14 +456,16 @@ export class NotificationProducersService {
     }
   }
 
+  /** F-1339: house → country → UTC, the order push holds read (`houseClock`). */
   private zoneOf(tenant: ScheduledTenant): string {
-    if (isKnownTimeZone(tenant.timezone)) return tenant.timezone;
+    const clock = houseClock(tenant);
+    if (clock.source !== "utc") return clock.zone;
     this.logger.error(
       `NOTIFICATION_PRODUCER_TIMEZONE_UNKNOWN restaurant=${tenant.id} ` +
         `timezone=${JSON.stringify(tenant.timezone)} — falling back to UTC. ` +
         "Quiet hours and service days for this house will be wrong until the column is fixed.",
     );
-    return "UTC";
+    return clock.zone;
   }
 
   // ==========================================================================

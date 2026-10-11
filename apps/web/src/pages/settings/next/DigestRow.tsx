@@ -40,6 +40,12 @@
  * against its unmerged `recommendation_digest_subscriptions` table — tracked
  * as a named follow-up in settings.md §13.39's open items.]
  *
+ * [2026-10-11, F-1341: #391's subscriptions are on main, so the founder's
+ * "drop the free recipientEmail field WHEN #391 lands" is done here. The row
+ * no longer asks "to whom" nor prints "to <email>": who is mailed is each
+ * person's own choice on /recommendations. The hour is a 00-23 select, as
+ * the low-stock digest's is, and the row names the clock it is read on.]
+ *
  * `stated` (added to the gateway by this pass, `recommendation-actions.
  * service.ts#getDigestPref`) is what makes the empty-controls state real
  * rather than assumed: without it, every never-written house would read back
@@ -49,9 +55,11 @@
 
 import { useState } from 'react';
 import { Action, Row } from './SectionKit';
-import { EM, SANS } from './st-format';
+import { SANS } from './st-format';
 import { digestCert } from './certaintyTally';
 import type { SettingsNextData } from './useSettingsNextData';
+
+const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'));
 
 const URGENCY_OPTIONS: Array<{ value: 'now' | 'this_week' | 'this_month'; label: string }> = [
   { value: 'now', label: 'only what is due now' },
@@ -63,7 +71,6 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
   const { digest, saveDigest, writer, canManage } = data;
   const [hour, setHour] = useState('');
   const [urgency, setUrgency] = useState<'now' | 'this_week' | 'this_month' | ''>('');
-  const [email, setEmail] = useState('');
   // Single source for every branch below (including the tally's own count —
   // `certaintyTally.ts`'s `digestCert` mirrors this component exactly, rather
   // than the other way around, so the two can never disagree).
@@ -106,14 +113,13 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
 
   const reg = digest.data;
   const answered = reg.stated;
-  const canRecord = canManage && !answered ? hour.trim() !== '' && urgency !== '' && email.trim() !== '' : true;
+  const canRecord = canManage && !answered ? hour !== '' && urgency !== '' : true;
 
   const record = () =>
     void saveDigest({
       digestEnabled: true,
       digestHour: Number(hour),
       digestMinUrgency: urgency as 'now' | 'this_week' | 'this_month',
-      recipientEmail: email.trim(),
     });
 
   return (
@@ -133,8 +139,8 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
         answered
           ? `${reg.digestEnabled ? 'Yes' : 'Off'} · ${String(reg.digestHour).padStart(2, '0')}:00 · ${
               URGENCY_OPTIONS.find((o) => o.value === reg.digestMinUrgency)?.label ?? reg.digestMinUrgency
-            } · to ${reg.recipientEmail ?? EM}`
-          : 'Off until someone answers: the hour, the least urgency worth a mail, and to whom. Nothing is sent on a guess.'
+            } · on this restaurant’s clock. Each person chooses on Recommendations whether it is mailed to them.`
+          : 'Off until someone answers: the hour, on this restaurant’s clock (UTC until a time zone is set), and the least urgency worth a mail. Each person chooses on Recommendations whether it is mailed to them.'
       }
       control={
         canManage ? (
@@ -147,14 +153,15 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
             </Action>
           ) : (
             <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <input
-                aria-label="Digest hour (0-23)"
-                placeholder="hour"
-                inputMode="numeric"
+              <select
+                aria-label="Digest hour"
                 value={hour}
-                onChange={(ev) => setHour(ev.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
-                style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)', width: 56 }}
-              />
+                onChange={(ev) => setHour(ev.target.value)}
+                style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)' }}
+              >
+                <option value="" disabled>Hour…</option>
+                {HOURS.map((h) => <option key={h} value={h}>{h}:00</option>)}
+              </select>
               <select
                 aria-label="Least urgency worth a mail"
                 value={urgency}
@@ -164,13 +171,6 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
                 <option value="" disabled>Choose the least urgency…</option>
                 {URGENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <input
-                aria-label="Recipient email"
-                placeholder="to whom"
-                value={email}
-                onChange={(ev) => setEmail(ev.target.value)}
-                style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)', width: 140 }}
-              />
               <Action onClick={record} disabled={!canRecord || writer.busy === 'digest'}>
                 {writer.busy === 'digest' ? 'Recording…' : 'Record'}
               </Action>

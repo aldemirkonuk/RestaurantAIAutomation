@@ -58,7 +58,9 @@ describe('a never-written house is unstated, not the service default dressed as 
     mount();
     expect(screen.getByText(/Off until someone answers/i)).toBeInTheDocument();
     expect(screen.queryByText(/this pass/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/07:00/)).not.toBeInTheDocument();
+    // The hour <select> lists 07:00 as a choice; it must not arrive chosen.
+    expect(screen.queryByText(/· 07:00 ·/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/digest hour/i)).toHaveValue('');
     // The urgency <select> always lists "this week or sooner" as a CHOICE —
     // that is not the bug. The bug would be it arriving pre-selected, as if
     // the service's own stored default (`digestMinUrgency ?? "this_week"`)
@@ -66,17 +68,15 @@ describe('a never-written house is unstated, not the service default dressed as 
     expect(screen.getByLabelText(/least urgency worth a mail/i)).toHaveValue('');
   });
 
-  it('Record is inert until the hour, urgency and recipient are all filled', () => {
+  it('Record is inert until the hour and urgency are both chosen (F-1341: no "to whom")', () => {
     const { saveDigest } = mount();
+    expect(screen.queryByLabelText(/recipient email/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/to whom/i)).not.toBeInTheDocument();
     expect(record()).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/digest hour/i), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText(/digest hour/i), { target: { value: '09' } });
     expect(record()).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/least urgency worth a mail/i), {
       target: { value: 'now' },
-    });
-    expect(record()).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/recipient email/i), {
-      target: { value: 'owner@example.com' },
     });
     expect(record()).toBeEnabled();
     fireEvent.click(record());
@@ -84,15 +84,18 @@ describe('a never-written house is unstated, not the service default dressed as 
       digestEnabled: true,
       digestHour: 9,
       digestMinUrgency: 'now',
-      recipientEmail: 'owner@example.com',
     });
   });
 
-  it('the hour field discards anything that is not a digit', () => {
+  it('F-1341: the hour is one of 00-23, so 99 cannot be typed and saved as 23', () => {
     mount();
-    const hour = screen.getByLabelText(/digest hour/i) as HTMLInputElement;
-    fireEvent.change(hour, { target: { value: '9pm!' } });
-    expect(hour).toHaveValue('9');
+    const hour = screen.getByLabelText(/digest hour/i) as HTMLSelectElement;
+    expect(hour.tagName).toBe('SELECT');
+    const hours = Array.from(hour.options).map((o) => o.value).filter(Boolean);
+    expect(hours).toHaveLength(24);
+    expect(hours[0]).toBe('00');
+    expect(hours[23]).toBe('23');
+    expect(screen.getByText(/on this restaurant’s clock \(UTC until a time zone is set\)/)).toBeInTheDocument();
   });
 });
 
@@ -111,8 +114,10 @@ describe('an answered house gets a plain on/off toggle, not the recording form',
       ),
     });
     expect(
-      screen.getByText(/Yes · 09:00 · only what is due now · to owner@x\.com/),
+      screen.getByText(/Yes · 09:00 · only what is due now · on this restaurant’s clock\. Each person chooses on Recommendations/),
     ).toBeInTheDocument();
+    // F-1341: nothing is mailed to the stored address, so it is not shown.
+    expect(screen.queryByText(/owner@x\.com/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/digest hour/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /turn off/i }));
     expect(saveDigest).toHaveBeenCalledWith({ digestEnabled: false });

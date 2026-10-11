@@ -58,16 +58,14 @@ describe("digestClockFor", () => {
     });
   });
 
-  // #435's common/house-frame.ts (country -> zone, only when the country
-  // keeps exactly one) is NOT wired into digestClockFor in this lane: #435
-  // is still open on origin/main (checked via `gh pr view 435` before this
-  // lane started), so a country like "TR" does not yet resolve to
-  // Europe/Istanbul here. Both a single-zone country and a multi-zone one
-  // fall back the same way until that follow-up lands.
-  it("does not yet use the country step (follow-up owed once #435 merges)", () => {
-    expect(digestClockFor({ timezone: null, country: "TR" }).source).toBe(
-      "fallback",
-    );
+  // F-1339: the country step is the one push holds use (houseFrame): a
+  // country that keeps one zone gives it; a country with several does not.
+  it("runs a house with no zone but a one-zone country on that country's clock", () => {
+    expect(digestClockFor({ timezone: null, country: "TR" })).toEqual({
+      zone: "Europe/Istanbul",
+      source: "country",
+      recorded: null,
+    });
     expect(digestClockFor({ timezone: null, country: "US" }).source).toBe(
       "fallback",
     );

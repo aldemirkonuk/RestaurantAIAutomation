@@ -52,6 +52,12 @@ export interface ScheduledTenant {
   /** False when `timezone` is `TIMEZONE_NOT_SET`. Absent means "not stated". */
   timezoneIsSet?: boolean;
   /**
+   * `restaurants.country` as recorded, so a house with no zone is read on its
+   * country's clock when the country keeps just one (`houseClock`, F-1339).
+   * Optional so hand-built spec fixtures keep compiling.
+   */
+  country?: string | null;
+  /**
    * True for the single restaurant named by `DEFAULT_RESTAURANT_ID` — the one
    * that already receives scheduled mail today.
    *
@@ -155,7 +161,7 @@ export class ScheduledTenantsService {
     // empty inbox.
     const { data: rows, error } = await client
       .from("restaurants")
-      .select("id, name, timezone")
+      .select("id, name, timezone, country")
       .in("id", Array.from(ids))
       .eq("is_active", true)
       .is("deleted_at", null);
@@ -173,7 +179,7 @@ export class ScheduledTenantsService {
         this.logger.warn(
           `SCHEDULED_TENANT_TIMEZONE_UNSET restaurant=${row.id} — restaurants.timezone is empty. ` +
             "Per-tenant work inside the scheduled jobs (quiet hours, service days, reminder windows) " +
-            "will run in UTC and say so; nothing is scheduled against an invented zone.",
+            "runs on its country's clock when the country keeps one zone, else in UTC, and says so.",
         );
       }
       return {
@@ -181,6 +187,7 @@ export class ScheduledTenantsService {
         name: row.name || "Restaurant",
         timezone: zone,
         timezoneIsSet: zone !== TIMEZONE_NOT_SET,
+        country: row.country ?? null,
         isLegacyDefault: row.id === this.legacyTenantId,
       };
     });
