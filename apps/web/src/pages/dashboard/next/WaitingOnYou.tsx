@@ -46,6 +46,14 @@ import { TryAgain } from './TryAgain';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
+/**
+ * The panel's own address on the page. The KPI tile "Waiting on you" opens
+ * this panel rather than /orders (F-1204): the tile counts the same
+ * `GET /procurement/orders/pending` rows the panel lists (ADR 0256), while
+ * /orders' pending stage also holds drafts and orders still being haggled.
+ */
+export const WAITING_ON_YOU_ID = 'waiting-on-you';
+
 export interface WaitingOnYouProps {
   /** undefined = loading · null = unreachable · [] = genuinely nothing */
   pending: Order[] | null | undefined;
@@ -113,7 +121,12 @@ export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = t
   );
 
   return (
-    <section className="rounded-lg border border-paper-2 bg-paper-0 p-4" aria-label="Waiting on you">
+    <section
+      id={WAITING_ON_YOU_ID}
+      tabIndex={-1}
+      className="scroll-mt-4 rounded-lg border border-paper-2 bg-paper-0 p-4 focus:outline-none"
+      aria-label="Waiting on you"
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Seal size={18} />

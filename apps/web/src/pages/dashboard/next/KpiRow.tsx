@@ -9,10 +9,12 @@
  * endpoint misnomer is documented in services/api/dashboard.ts.
  */
 
+import type { MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { DashboardStats } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
+import { WAITING_ON_YOU_ID } from './WaitingOnYou';
 import { SPEND_KEPT_APART, spendMoney, spendPartsSaid, statsSpendOf } from './useDashboardNextData';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -23,11 +25,13 @@ interface KpiTileProps {
   format?: (n: number) => string;
   sub?: string;
   to?: string;
+  /** An element on this page to open instead of another page (F-1204). */
+  anchor?: string;
   loading?: boolean;
   accent?: boolean;
 }
 
-function KpiTile({ label, value, format, sub, to, loading, accent }: KpiTileProps) {
+function KpiTile({ label, value, format, sub, to, anchor, loading, accent }: KpiTileProps) {
   const body = (
     <div className="dn-ink h-full rounded-md border border-paper-2 bg-paper-1 px-4 py-3 hover:border-seal-ring">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-4">{label}</p>
@@ -46,6 +50,27 @@ function KpiTile({ label, value, format, sub, to, loading, accent }: KpiTileProp
       <p className="mt-1 text-[11px] leading-snug text-inkm-4">{loading ? ' ' : sub ?? ' '}</p>
     </div>
   );
+  if (anchor) {
+    // Scrolled and focused here rather than left to the browser: the address
+    // keeps no #fragment and the panel takes the keyboard where the eye goes.
+    const open = (e: MouseEvent<HTMLAnchorElement>) => {
+      const el = document.getElementById(anchor);
+      if (!el) return;
+      e.preventDefault();
+      const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView?.({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+      el.focus({ preventScroll: true });
+    };
+    return (
+      <a
+        href={`#${anchor}`}
+        onClick={open}
+        className="block h-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal rounded-md"
+      >
+        {body}
+      </a>
+    );
+  }
   return to ? (
     <Link to={to} className="block h-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal rounded-md">
       {body}
@@ -150,7 +175,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
         value={pendingCount === undefined ? null : pendingCount}
         format={(n) => formatNumber(Math.round(n))}
         sub="approvals in the queue"
-        to="/orders?station=pending"
+        anchor={WAITING_ON_YOU_ID}
         loading={pendingCount === undefined}
         accent
       />

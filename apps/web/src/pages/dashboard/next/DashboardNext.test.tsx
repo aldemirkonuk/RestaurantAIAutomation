@@ -1585,3 +1585,37 @@ describe('DashboardNext — vendor spend says its own currency (F-1052, F-1055)'
     expect(bar('2026-10-02').style.height).toBe('100%');
   });
 });
+
+describe('DashboardNext — the "Waiting on you" tile opens its own panel (F-1204)', () => {
+  // ADR 0256: the queue is GET /procurement/orders/pending. /orders' pending
+  // stage also holds drafts and orders being haggled, so a tile that sent the
+  // owner there showed a different count from the one it promised.
+  it('counts the panel’s rows and takes the owner to the panel, not to /orders', async () => {
+    routeGets({
+      '/orders/pending': [
+        { id: 'o-1', wineName: 'Barolo Cannubi', quantity: 1, unitType: 'case', totalCost: 90, status: 'APPROVAL_NEEDED', requestedAt: '2026-09-01T10:00:00Z' },
+        { id: 'o-2', wineName: 'Peroni', quantity: 2, unitType: 'case', totalCost: 40, status: 'PENDING', requestedAt: '2026-09-02T10:00:00Z' },
+        { id: 'o-3', wineName: 'Sancerre', quantity: 6, unitType: 'bottle', totalCost: 120, status: 'PENDING', requestedAt: '2026-09-03T10:00:00Z' },
+      ],
+    });
+
+    mount();
+
+    const panel = await screen.findByRole('region', { name: 'Waiting on you' });
+    await waitFor(() => expect(within(panel).getByText('Sancerre')).toBeInTheDocument());
+    const panelRows = within(panel).getAllByRole('button', { expanded: false });
+    expect(panelRows).toHaveLength(3);
+
+    const tile = screen.getByText('Waiting on you', { selector: 'p' }).closest('a')!;
+    expect(tile).not.toBeNull();
+    expect(tile.getAttribute('href')).toBe(`#${panel.id}`);
+    expect(tile.getAttribute('href')).not.toMatch(/orders/);
+    await waitFor(() => expect(tile.textContent).toContain(String(panelRows.length)));
+
+    const before = screen.getByTestId('address').textContent;
+    fireEvent.click(tile);
+    expect(document.activeElement).toBe(panel);
+    // The page stays where it is: the click opens the panel, it does not navigate.
+    expect(screen.getByTestId('address').textContent).toBe(before);
+  });
+});
