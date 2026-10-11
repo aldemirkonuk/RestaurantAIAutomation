@@ -4809,7 +4809,15 @@ export class AuthService {
     return this.getLinkedProviders(userId);
   }
 
-  async unlinkOAuthProvider(userId: string, provider: "google" | "microsoft") {
+  /**
+   * F-1395: `proveItIsYou` runs after this method's own refusals and before
+   * the first write, so a refusal never spends the emailed step-up code.
+   */
+  async unlinkOAuthProvider(
+    userId: string,
+    provider: "google" | "microsoft",
+    proveItIsYou?: () => Promise<void>,
+  ) {
     const linked = await this.getLinkedProviders(userId);
     const { data: user } = await this.databaseService.supabase
       .from("users")
@@ -4826,6 +4834,7 @@ export class AuthService {
         "Cannot unlink your only sign-in method. Set a password first.",
       );
     }
+    await proveItIsYou?.();
 
     await this.databaseService.supabase
       .from("user_oauth_accounts")
@@ -4955,7 +4964,15 @@ export class AuthService {
     await members.removeMember(userId, restaurantId, userId);
   }
 
-  async deleteAccount(userId: string): Promise<void> {
+  /**
+   * F-1395: `proveItIsYou` (the step-up check) runs after every refusal below
+   * and before the first write, so "you are the only owner" never spends the
+   * emailed code the person typed.
+   */
+  async deleteAccount(
+    userId: string,
+    proveItIsYou?: () => Promise<void>,
+  ): Promise<void> {
     // ADR 0242 (OD-204): an account that goes leaves each house through the one
     // removal path first. Checked before anything is written, so a gateway
     // without it refuses rather than deleting the account and leaving its
@@ -5091,6 +5108,7 @@ export class AuthService {
         blockedDeleteMessage(blockers as AccountDeleteBlocker[]),
       );
     }
+    await proveItIsYou?.();
 
     // Every calendar link the person holds, in every house, stops and is
     // audited before anything is deleted (ADR 0111, 2026-09-21, round 6t).

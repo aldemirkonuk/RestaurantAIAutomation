@@ -9,11 +9,13 @@
  * So the two pages such a session does reach -- /choose-house and /no-access --
  * carry the same `PasskeyRows` /profile does, behind one closed disclosure:
  * the page's own job (choose, join, or sign out) stays first, and nothing is
- * read until the person opens it.
+ * read until the person opens it. F-1396: the password, sign-ins and
+ * deleting the account follow, in `NoHouseAccount`, for the same reason.
  */
 
 import { useId, useState } from 'react';
 import { PasskeyRows } from './PasskeyRows';
+import { NoHouseAccount } from './NoHouseAccount';
 import { PF_CSS } from './pf-ui';
 
 export function NoHousePasskeys() {
@@ -21,34 +23,37 @@ export function NoHousePasskeys() {
   const panelId = useId();
 
   return (
-    <section style={{ marginTop: 24, textAlign: 'left' }} aria-label="Passkeys">
-      <button
-        type="button"
-        className="pf-focus"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          background: 'none',
-          border: 0,
-          padding: 0,
-          fontSize: 14,
-          fontWeight: 500,
-          color: 'var(--seal-deep)',
-          textDecoration: 'underline',
-          textUnderlineOffset: 4,
-          cursor: 'pointer',
-        }}
-      >
-        {open ? 'Hide your passkeys' : 'Your passkeys'}
-      </button>
-      {open && (
-        <div id={panelId} style={{ marginTop: 12 }}>
-          <style>{PF_CSS}</style>
-          <PasskeyRows />
-        </div>
-      )}
-    </section>
+    <>
+      <section style={{ marginTop: 24, textAlign: 'left' }} aria-label="Passkeys">
+        <button
+          type="button"
+          className="pf-focus"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((v) => !v)}
+          style={{
+            background: 'none',
+            border: 0,
+            padding: 0,
+            fontSize: 14,
+            fontWeight: 500,
+            color: 'var(--seal-deep)',
+            textDecoration: 'underline',
+            textUnderlineOffset: 4,
+            cursor: 'pointer',
+          }}
+        >
+          {open ? 'Hide your passkeys' : 'Your passkeys'}
+        </button>
+        {open && (
+          <div id={panelId} style={{ marginTop: 12 }}>
+            <style>{PF_CSS}</style>
+            <PasskeyRows />
+          </div>
+        )}
+      </section>
+      <NoHouseAccount />
+    </>
   );
 }
 

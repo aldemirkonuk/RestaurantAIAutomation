@@ -71,8 +71,13 @@ export function ConnectionsRegister({
         setPendingUnlink({ provider, label });
         return;
       }
-      // F-1348: the gateway's sentence, never axios's status line.
-      setSignInMsg({ tone: 'error', text: `${label} could not be unlinked — ${getErrorMessage(e)}` });
+      // F-1348: the gateway's sentence, never axios's status line. F-1395:
+      // a typed code is cleared, and the next try asks for a fresh one.
+      setPendingUnlink(null);
+      setSignInMsg({
+        tone: 'error',
+        text: `${label} could not be unlinked — ${getErrorMessage(e)}${stepUp.clearAfterRefusal()}`,
+      });
     }
   };
 

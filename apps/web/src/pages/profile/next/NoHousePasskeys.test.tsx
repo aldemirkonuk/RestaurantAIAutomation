@@ -8,7 +8,7 @@
  * boundary; `PasskeyRows.test.tsx` owns what the rows themselves say.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -24,6 +24,13 @@ vi.mock('../../../services/api/passkeys', () => ({
   sendStepUpCode: vi.fn(),
   StepUpRequired: class StepUpRequired extends Error {},
 }));
+const profile = vi.hoisted(() => ({
+  getMe: vi.fn(),
+  changePassword: vi.fn(),
+  unlinkProvider: vi.fn(),
+}));
+vi.mock('../../../services/api/profile', () => ({ profileApi: profile }));
+const deleteAccountAndSignOut = vi.hoisted(() => vi.fn());
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({
   default: { get: vi.fn(), post: vi.fn() },
@@ -50,6 +57,7 @@ function authAs(restaurantId: string) {
     loading: false,
     logout: vi.fn(),
     setActiveRestaurantId: vi.fn(),
+    deleteAccountAndSignOut,
   } as never);
 }
 
@@ -157,5 +165,78 @@ describe('NoHousePasskeys (F-1321)', () => {
     draw('/choose-house');
     expect(await screen.findByText('Moda')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Your passkeys' })).toBeNull();
+  });
+});
+
+/**
+ * F-1396: the same pages carry the password, the sign-ins and deleting the
+ * account, which the gateway serves without a house and /profile cannot.
+ */
+describe('NoHouseAccount (F-1396)', () => {
+  beforeEach(() => {
+    profile.getMe.mockResolvedValue({
+      userId: '11111111-1111-4111-8111-111111111111',
+      email: 'p@house.test',
+      name: 'P',
+      role: 'staff',
+      hasPassword: false,
+      linkedProviders: { google: true, microsoft: false },
+    });
+    profile.changePassword.mockResolvedValue(undefined);
+    deleteAccountAndSignOut.mockResolvedValue(undefined);
+  });
+
+  const openAccount = async () => {
+    expect(profile.getMe).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Password, sign-ins and deleting your account' }));
+    expect(await screen.findByText('Set a password')).toBeTruthy();
+  };
+
+  it('/no-access lets a session in no house set a first password', async () => {
+    authAs('');
+    draw('/no-access');
+    await openAccount();
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a brand new one' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'a brand new one' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    await waitFor(() =>
+      expect(profile.changePassword).toHaveBeenCalledWith({ currentPassword: undefined, newPassword: 'a brand new one' }),
+    );
+    expect(await screen.findByText(/Password saved/)).toBeTruthy();
+  });
+
+  it('/no-access says why the only sign-in cannot be unlinked', async () => {
+    authAs('');
+    draw('/no-access');
+    await openAccount();
+    expect((screen.getByRole('button', { name: 'Unlink' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/This is your only way to sign in/)).toBeTruthy();
+  });
+
+  it('/no-access lets a session in no house delete its account', async () => {
+    authAs('');
+    draw('/no-access');
+    await openAccount();
+    fireEvent.change(screen.getByLabelText('Type DELETE to arm the seal'), { target: { value: 'DELETE' } });
+    const hold = () => screen.getByRole('button', { name: 'Hold to delete this account' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    await waitFor(() => expect(deleteAccountAndSignOut).toHaveBeenCalledWith(undefined));
+  }, 20_000);
+
+  it('/choose-house offers it while the session has no house', async () => {
+    authAs('');
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        houses: [],
+        held: [
+          { membershipId: 'm1', id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Moda', city: null, role: 'staff' },
+        ],
+        accessEnded: false,
+      },
+    } as never);
+    draw('/choose-house');
+    expect(await screen.findByText('Join Moda')).toBeTruthy();
+    await openAccount();
   });
 });

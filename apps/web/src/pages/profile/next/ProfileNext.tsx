@@ -283,7 +283,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
         if (deleteStepUp.asked(e)) return;
         setExitMsg({
           tone: 'error',
-          text: `The account was NOT deleted — ${getErrorMessage(e)}`,
+          text: `The account was NOT deleted — ${getErrorMessage(e)}${deleteStepUp.clearAfterRefusal()}`,
         });
       });
   };
