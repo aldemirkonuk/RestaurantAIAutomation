@@ -540,7 +540,8 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
       return best ? { start: best.start, end: best.end } : null;
     };
     const out: GapVM[] = [];
-    for (const day of weekQ.data.coverage.days) {
+    // `coverage` is null when the rules could not be read (F-1376): no gaps to offer.
+    for (const day of weekQ.data.coverage?.days ?? []) {
       for (const g of day.gaps) {
         const unfilled = Math.max(g.required - g.staffed, 0);
         if (unfilled === 0) continue;

@@ -295,6 +295,15 @@ export interface AuthContextType {
    * only so hand-built providers need not stub it.
    */
   forgetEndedSession?: () => void;
+  /**
+   * The session is on this device but Mudavym could not be reached to read it
+   * (F-1378, rehit of F-172): `/auth/me` kept failing with a dropped
+   * connection, a 5xx or a rate limit. Not signed out, and never the sign-in
+   * form. Optional only so hand-built providers need not stub it.
+   */
+  unreachable?: boolean;
+  /** Ask `/auth/me` again after `unreachable`. */
+  retrySession?: () => void;
   isAuthenticated: boolean;
 }
 
@@ -463,6 +472,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // F-1378: the stored session could not be read for a reason that is not
+  // about who the person is. Bumping `sessionReadEpoch` reads it again.
+  const [unreachable, setUnreachable] = useState(false);
+  const [sessionReadEpoch, setSessionReadEpoch] = useState(0);
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<
     string | null
   >(null);
@@ -589,6 +602,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}, ` +
               "which is not an authentication failure.",
           );
+          // The same reading as `meRetryDelay`: the person is still signed in,
+          // Mudavym just did not answer. Say that, not the sign-in form.
+          if (
+            (status === undefined || status === 429 || status >= 500) &&
+            localStorage.getItem("accessToken")
+          ) {
+            setUnreachable(true);
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -600,6 +621,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, [sessionReadEpoch]);
+
+  const retrySession = useCallback(() => {
+    setUnreachable(false);
+    setLoading(true);
+    setSessionReadEpoch((n) => n + 1);
   }, []);
 
   // F-212: another tab of this browser signed out, or someone else signed in
@@ -1483,6 +1510,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshToken: refreshTokenFn,
     refreshBranches,
     refreshUser,
+    unreachable: unreachable && !user,
+    retrySession,
     isAuthenticated: !!user,
   };
 

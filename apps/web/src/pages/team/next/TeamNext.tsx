@@ -773,8 +773,10 @@ function TeamNextManager({
           members={data.members}
           membersFailed={data.membersFailed}
           certs={data.certs}
-          coverage={data.week?.coverage.days ?? null}
-          weekFailed={data.isError && !data.week}
+          // The gateway sends `coverage: null` (and `coverageUnread`) when it
+          // could not read the coverage rules (F-1376): "not read", never "covered".
+          coverage={data.week?.coverage?.days ?? null}
+          weekFailed={(data.isError && !data.week) || data.week?.coverage === null}
           engineIdle={engineIdle}
           lens={lens}
           labourEnabled={labor?.enabled ?? false}

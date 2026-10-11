@@ -1,5 +1,6 @@
 import type { CalendarEvent } from "@/api/types";
 import { houseClock, houseDay } from "@/lib/houseMoney";
+import type { ReadState } from "@/components/today/pulseStripView";
 
 /**
  * The Team tab's calendar lines (F-1071). `/calendar/today` and
@@ -32,5 +33,31 @@ export function eventDayLabel(e: CalendarEvent, locale: string | null | undefine
       month: "short",
       day: "numeric",
     }) || null
+  );
+}
+
+/** Said when `/calendar/today` failed and nothing saved is on the phone (F-1375). */
+export const TODAY_CALENDAR_READ_FAILED = "Couldn't read today's calendar.";
+/** Said when `/calendar/upcoming` failed and nothing saved is on the phone (F-1375). */
+export const UPCOMING_CALENDAR_READ_FAILED = "Couldn't read what's coming up.";
+
+/**
+ * "Quiet in here" only when every read answered and found nothing (F-1375,
+ * ADR 0020): the rota read says nobody is on, and both calendar reads came
+ * back empty. A failed or pending read is never quiet.
+ */
+export function teamIsQuiet(input: {
+  tonight: "loading" | "shifts" | "none" | "error";
+  today: ReadState;
+  todayCount: number;
+  upcoming: ReadState;
+  upcomingCount: number;
+}): boolean {
+  return (
+    input.tonight === "none" &&
+    input.today === "ready" &&
+    input.todayCount === 0 &&
+    input.upcoming === "ready" &&
+    input.upcomingCount === 0
   );
 }
