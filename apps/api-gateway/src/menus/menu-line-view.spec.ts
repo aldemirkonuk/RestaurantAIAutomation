@@ -10,6 +10,7 @@ import {
   menuCategoryOf,
   seesRawLine,
   KITCHEN_HINTS,
+  MEAT_SECTIONS,
   MEMBER_LINE_KEYS,
   SECTION_HINTS,
   WINE_WORDS,
@@ -54,6 +55,7 @@ describe("menu-line-view", () => {
     expect(DRINK_WORDS).toEqual(list("DRINK_WORDS"));
     expect(SECTION_HINTS).toEqual(list("SECTION_HINTS"));
     expect(FOOD_NOUNS).toEqual(list("FOOD_NOUNS"));
+    expect(MEAT_SECTIONS).toEqual(list("MEAT_SECTIONS"));
   });
 
   // F-1272: a CSV's Tür/Kategori cell is kept in Turkish, and the raw line is
@@ -125,6 +127,22 @@ describe("menu-line-view", () => {
     }
     for (const section of ["Kırmızı Şarap", "Tatlı Şarap", "Rakı"]) {
       expect(isKitchenLine(section, `X,${section},2020,450`)).toBe(false);
+    }
+  });
+
+  // F-1392: 'et' is also French "and", and a wine for fish is still a wine.
+  it("a wine word beats a food noun, and 'et' is meat only as the heading (F-1392)", () => {
+    for (const section of [
+      "Rouges et Rosés",
+      "Champagne et Crémant",
+      "Vins Blancs",
+      "Balık Şarapları",
+      "Et yanına kırmızı şaraplar",
+    ]) {
+      expect(isKitchenLine(section, "Château Margaux 2015")).toBe(false);
+    }
+    for (const section of ["Kırmızı Et", "Beyaz Et", "Et", "ET", "Etler"]) {
+      expect(isKitchenLine(section, `X,${section},450`)).toBe(true);
     }
   });
 

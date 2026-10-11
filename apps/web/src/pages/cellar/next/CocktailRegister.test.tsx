@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, render, screen, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { AxiosError } from 'axios';
 
 const mock = vi.hoisted(() => ({
@@ -16,6 +16,7 @@ const mock = vi.hoisted(() => ({
   retire: vi.fn(),
   setRecipe: vi.fn(),
   price: null as number | null,
+  recipeRows: [] as { quantity: number | null; unit: string | null; free_text: string | null }[],
 }));
 
 // The house's thousands mark and the screen's (F-879), held per test.
@@ -46,7 +47,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
     },
   }),
   useCocktailRecipe: () => ({
-    data: { cocktailId: 'c1', rows: [], count: 0, writable: true },
+    data: { cocktailId: 'c1', rows: mock.recipeRows, count: mock.recipeRows.length, writable: true },
     loading: false,
     error: null,
   }),
@@ -84,6 +85,7 @@ beforeEach(() => {
   mock.retire.mockReset();
   mock.setRecipe.mockReset();
   mock.price = null;
+  mock.recipeRows = [];
   marks.house = null;
   marks.screen = null;
 });
@@ -238,6 +240,38 @@ describe('reading a recipe measure', () => {
     const lines = await recordLines('1.2.3 ml gin');
     expect(lines).toEqual([{ quantity: undefined, unit: undefined, freeText: '1.2.3 ml gin', sortOrder: 0 }]);
     expect(screen.getByText(/“1\.2\.3 ml gin” could not be read as a number.*kept as written/)).toBeInTheDocument();
+  });
+});
+
+// F-1393: the editor was refilled with the stored number as "1.125", which a
+// house that groups with "." read back as 1125 on the next save.
+describe('amending a recorded recipe in a house that groups with "."', () => {
+  it('1⅛ oz and 1 1/3 oz come back as written and are re-sent unchanged', async () => {
+    marks.house = '.';
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /Write the recipe/ }));
+    fireEvent.change(screen.getByLabelText('Recipe lines'), { target: { value: '1⅛ oz gin\n1 1/3 oz rye' } });
+    mock.setRecipe.mockResolvedValue({ lines: 2 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the recipe/ }));
+    });
+    const first = mock.setRecipe.mock.calls[0][0].lines;
+    expect(first.map((l: { quantity: number }) => l.quantity)).toEqual([1.125, 1.333]);
+    mock.recipeRows = first.map((l: { quantity: number; unit: string; freeText: string }) => ({
+      quantity: l.quantity, unit: l.unit, free_text: l.freeText,
+    }));
+    cleanup();
+
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    expect(screen.getByText('1,125 oz')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Amend the recipe/ }));
+    expect(screen.getByLabelText('Recipe lines')).toHaveValue('1,125 oz gin\n1,333 oz rye');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the recipe/ }));
+    });
+    expect(mock.setRecipe.mock.calls[1][0].lines).toEqual(first);
   });
 });
 

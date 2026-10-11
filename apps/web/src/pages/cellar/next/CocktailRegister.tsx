@@ -145,6 +145,16 @@ function readRecipeLine(
   return { quantity: Math.round(quantity * 1000) / 1000, unit: m[9] || undefined, freeText: m[10] };
 }
 
+/**
+ * A stored measure written the way this house writes numbers (F-1393): in a
+ * house that groups with ".", 1⅛ is "1,125", because "1.125" reads back as
+ * 1125 the next time the recipe is recorded.
+ */
+function houseMeasure(quantity: number, group: GroupMark | null): string {
+  const text = String(quantity);
+  return group === '.' ? text.replace('.', ',') : text;
+}
+
 function Recipe({
   cocktailId,
   onDraft,
@@ -170,7 +180,7 @@ function Recipe({
   const start = () => {
     const lines = (recipe.data?.rows ?? [])
       .map((l) =>
-        [l.quantity ?? '', l.unit ?? '', l.free_text ?? '']
+        [l.quantity == null ? '' : houseMeasure(l.quantity, group), l.unit ?? '', l.free_text ?? '']
           .filter((v) => String(v).trim() !== '')
           .join(' '),
       )
@@ -281,7 +291,7 @@ function Recipe({
             {recipe.data!.rows.map((l, i) => (
               <li key={l.id ?? i}>
                 {l.quantity !== null && l.quantity !== undefined ? (
-                  <span className="cl-num">{l.quantity}{l.unit ? ` ${l.unit}` : ''} </span>
+                  <span className="cl-num">{houseMeasure(l.quantity, group)}{l.unit ? ` ${l.unit}` : ''} </span>
                 ) : null}
                 {l.free_text ?? EM}
               </li>

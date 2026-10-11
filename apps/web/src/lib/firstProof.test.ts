@@ -113,6 +113,21 @@ describe('isKitchenLine — Turkish kitchen sections that say a colour (F-1317)'
   })
 })
 
+// F-1392: 'et' is also French "and", and a wine for fish is still a wine.
+describe('isKitchenLine — a wine word beats a food noun (F-1392)', () => {
+  it('keeps French and Turkish wine sections drinks', () => {
+    for (const category of ['Rouges et Rosés', 'Champagne et Crémant', 'Vins Blancs', 'Balık Şarapları', 'Et yanına kırmızı şaraplar']) {
+      expect(isKitchenLine({ category, rawText: 'Château Margaux 2015' })).toBe(false)
+    }
+  })
+
+  it("reads 'et' as meat only as the heading", () => {
+    for (const category of ['Kırmızı Et', 'Beyaz Et', 'Et', 'ET', 'Etler']) {
+      expect(isKitchenLine({ category, rawText: `X,${category},450` })).toBe(true)
+    }
+  })
+})
+
 // F-1173: the same test as the gateway's (menu-line-view.ts), on whole words.
 describe('isKitchenLine — whole words, English and Turkish (F-1173)', () => {
   it('never matches inside a word', () => {
