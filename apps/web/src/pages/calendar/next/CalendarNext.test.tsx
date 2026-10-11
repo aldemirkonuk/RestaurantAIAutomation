@@ -13,7 +13,7 @@
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 
 const state = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -2211,5 +2211,64 @@ describe('CalendarNext — a custom type is drawn on its entries (F-1110)', () =
     const sheet = screen.getByRole('dialog');
     expect(within(sheet).getByRole('button', { name: 'Cellar audit' })).toBeInTheDocument();
     expect(within(sheet).queryByRole('button', { name: 'Delete the Cellar audit type' })).toBeNull();
+  });
+});
+
+/* ── F-1268: the keyboard, while a sheet is open and inside the month ─────── */
+
+describe('CalendarNext — the keyboard stays where it is pointed (F-1268)', () => {
+  const ENDED = event({ id: 'm1', title: 'Tasting with Álvaro', date: '2026-09-10', type: 'tasting' });
+  const heading = () => screen.getByRole('heading', { level: 1 });
+
+  it('[REVERT-FAILS] a bare letter does nothing while the calendar link sheet is open', () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect my calendar' }));
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(heading()).toHaveTextContent('September 2026');
+  });
+
+  it('[REVERT-FAILS] a bare letter does nothing while a meeting note is open', () => {
+    state.current = mkData({ events: [ENDED] });
+    draw();
+    fireEvent.click(screen.getByTestId('cn-note-open'));
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(heading()).toHaveTextContent('September 2026');
+  });
+
+  it('still answers a bare letter when nothing is open', () => {
+    draw();
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(heading()).toHaveTextContent('The next ninety days');
+  });
+
+  it('[REVERT-FAILS] lays the month out in weeks, with one tab stop', () => {
+    draw();
+    const grid = screen.getByRole('grid', { name: /Month ledger/ });
+    const rows = within(grid).getAllByRole('row');
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    for (const row of rows) expect(within(row).getAllByRole('gridcell')).toHaveLength(7);
+    const stops = within(grid)
+      .getAllByRole('gridcell')
+      .filter((c) => c.getAttribute('tabindex') === '0');
+    expect(stops).toHaveLength(1);
+    // the stop is today, the 15th, when today is in the month
+    expect(stops[0]).toHaveAccessibleName(/Tuesday, September 15/);
+  });
+
+  it('[REVERT-FAILS] walks the days with the arrows and leaves the month where it is', () => {
+    draw();
+    const day = (name: RegExp) => screen.getByRole('gridcell', { name });
+    const today = day(/Tuesday, September 15/);
+    act(() => today.focus());
+    fireEvent.keyDown(today, { key: 'ArrowRight' });
+    expect(day(/Wednesday, September 16/)).toHaveFocus();
+    expect(heading()).toHaveTextContent('September 2026');
+    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowDown' });
+    expect(day(/Wednesday, September 23/)).toHaveFocus();
+    expect(day(/Wednesday, September 23/)).toHaveAttribute('tabindex', '0');
+    expect(today).toHaveAttribute('tabindex', '-1');
+    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowLeft' });
+    expect(day(/Tuesday, September 22/)).toHaveFocus();
+    expect(heading()).toHaveTextContent('September 2026');
   });
 });

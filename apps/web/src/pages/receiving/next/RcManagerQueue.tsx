@@ -168,7 +168,8 @@ function LaneSpine({
 }) {
   return (
     <div
-      role="tablist"
+      // Toggle filters, not tabs: the shown lane pressed again clears (F-1269).
+      role="group"
       aria-label="Delivery outcomes"
       style={{
         display: 'flex',
@@ -183,8 +184,7 @@ function LaneSpine({
           <button
             key={lane}
             type="button"
-            role="tab"
-            aria-selected={selected}
+            aria-pressed={selected}
             data-ux-key={`receiving-next:lane-${lane}`}
             onClick={() => onSelect(selected ? null : lane)}
             style={{

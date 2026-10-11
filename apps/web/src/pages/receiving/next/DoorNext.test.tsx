@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import DoorNext from './DoorNext'
 
@@ -976,5 +976,46 @@ describe('F-1154 — the door asks for bottles per box on an order in bottles on
     await holdSeal()
     await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
     expect(submitDoorReceipt.mock.calls[0][0].body.packSize).toBeUndefined()
+  })
+})
+
+/**
+ * F-1267. A collapsed section is out of reach, not only out of sight: the
+ * broken-boxes count under a refusal and the reasons under any other outcome
+ * take no tab stop and no tap. The reasons are a named choice of one, read out
+ * with which one is picked, like the outcome row above them.
+ */
+describe('DoorNext — collapsed sections are out of reach, reasons say which is picked (F-1267)', () => {
+  const openCount = async () => {
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    await screen.findByRole('radiogroup', { name: 'Outcome' })
+  }
+  const wrapperOf = (uxKey: string) =>
+    (document.querySelector(`[data-ux-key="${uxKey}"]`) as Element).closest('.door-settle-rows')
+
+  it('[REVERT-FAILS] makes the hidden reasons inert, then the hidden broken count once refused', async () => {
+    await openCount()
+    expect(wrapperOf('door:reason-wrong_wine')).toHaveAttribute('inert')
+    expect(wrapperOf('door:damaged')).not.toHaveAttribute('inert')
+
+    fireEvent.click(screen.getByRole('radio', { name: /refused/i }))
+    expect(wrapperOf('door:reason-wrong_wine')).not.toHaveAttribute('inert')
+    expect(wrapperOf('door:damaged')).toHaveAttribute('inert')
+  })
+
+  it('[REVERT-FAILS] reads the reasons as a named choice of one, with the pick checked', async () => {
+    await openCount()
+    fireEvent.click(screen.getByRole('radio', { name: /refused/i }))
+    const reasons = screen.getByRole('radiogroup', { name: 'Refused because' })
+    const wrong = within(reasons).getByRole('radio', { name: 'Wrong wine' })
+    expect(wrong).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(wrong)
+    expect(wrong).toHaveAttribute('aria-checked', 'true')
+    expect(within(reasons).getByRole('radio', { name: 'Temperature' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
   })
 })

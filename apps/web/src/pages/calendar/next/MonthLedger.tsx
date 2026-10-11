@@ -16,7 +16,7 @@
  * has no per-occurrence route, so a drag would silently move the whole series.
  */
 
-import { useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { Seal } from '../../../components/mudavym';
 import { EM, clock, longDay, daySpan, sinceOrUntil } from './cal-format';
 import { customTypeOf, isDelivery, typeTitle, type CalEvent, type CalendarData, type EventTypeRow } from './useCalendarNextData';
@@ -283,6 +283,40 @@ export default function MonthLedger({
   const last = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
   const weeks = Math.ceil((last.getDate() + ((first.getDay() + 6) % 7)) / 7);
   const today = houseToday ?? dayKey(new Date());
+  const gridEnd = dayKey(addDays(gridStart, weeks * 7 - 1));
+  const inGrid = (key: string | null): key is string =>
+    key !== null && key >= dayKey(gridStart) && key <= gridEnd;
+
+  // One tab stop for the whole month (roving tabindex): the day last moved to,
+  // else the open day, else today, else the 1st. Arrows walk the days from it.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const active = inGrid(focusKey)
+    ? focusKey
+    : inGrid(selected)
+      ? selected
+      : inGrid(today) && parseDayKey(today).getMonth() === cursor.getMonth()
+        ? today
+        : dayKey(first);
+  const moveFocus = (from: string, e: KeyboardEvent) => {
+    const at = parseDayKey(from);
+    const weekday = (at.getDay() + 6) % 7;
+    const shift =
+      e.key === 'ArrowLeft' ? -1
+      : e.key === 'ArrowRight' ? 1
+      : e.key === 'ArrowUp' ? -7
+      : e.key === 'ArrowDown' ? 7
+      : e.key === 'Home' ? -weekday
+      : e.key === 'End' ? 6 - weekday
+      : null;
+    if (shift === null) return;
+    // Handled here, so the page's own ←/→ (previous/next month) stays out of it.
+    e.preventDefault();
+    const to = dayKey(addDays(at, shift));
+    if (!inGrid(to)) return;
+    setFocusKey(to);
+    gridRef.current?.querySelector<HTMLElement>(`[data-day="${to}"]`)?.focus();
+  };
 
   const drop = (target: string) => {
     const grabbed = dragged;
@@ -312,81 +346,95 @@ export default function MonthLedger({
           </p>
         ))}
       </div>
-      <div className="cn-grid" role="grid" aria-label={`Month ledger — ${cursor.getFullYear()}`}>
-        {Array.from({ length: weeks * 7 }, (_, i) => {
-          const d = addDays(gridStart, i);
-          const key = dayKey(d);
-          const events = data.byDay.get(key) ?? [];
-          const outside = d.getMonth() !== cursor.getMonth();
-          const shown = events.slice(0, MAX_RIBBONS);
-          // Left of today the cell holds the record; right of it, the forecast.
-          // That axis is the whole structural idea of the overlay (ADR 0111 §2).
-          const past = key < today;
-          const sky = data.weather.byDay?.get(key) ?? null;
-          const record = data.record.byDay?.get(key) ?? null;
-          return (
-            <div
-              key={key}
-              className="cn-cell cn-ink"
-              role="gridcell"
-              tabIndex={0}
-              data-outside={outside}
-              data-today={key === today}
-              data-selected={selected === key}
-              data-shut={record?.recorded?.excluded || undefined}
-              data-dropzone={over === key || undefined}
-              aria-label={`${longDay(key)} — ${events.length === 0 ? 'nothing written' : `${events.length} entries`}`}
-              onClick={() => onSelect(selected === key ? null : key)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSelect(selected === key ? null : key);
-                }
-              }}
-              onDragOver={(e) => {
-                if (!dragged) return;
-                e.preventDefault();
-                setOver(key);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                drop(key);
-              }}
-            >
-              <span className="cn-daynum">{d.getDate()}</span>
-              {past ? (
-                record ? (
-                  <DayRecordMark
-                    day={record}
-                    refused={!!data.record.window?.recordedRefusal}
-                  />
-                ) : (
-                  <SkyMark reading={sky} />
-                )
-              ) : (
-                <SkyMark reading={sky} />
-              )}
-              {shown.map((ev) => (
-                <Ribbon
-                  key={ev.id}
-                  event={ev}
-                  types={data.eventTypes}
-                  ruled={data.isRuledOff(ev)}
-                  dragging={dragged?.event.id === ev.id}
-                  onOpen={() => onOpenEvent(ev)}
-                  onDragStart={() => setDragged({ event: ev, from: key })}
-                  onDragEnd={() => {
-                    setDragged(null);
-                    setOver(null);
+      <div
+        ref={gridRef}
+        className="cn-grid"
+        role="grid"
+        aria-label={`Month ledger — ${cursor.getFullYear()}`}
+      >
+        {Array.from({ length: weeks }, (_, w) => (
+          // `display: contents` keeps the seven days on the page's own grid.
+          <div key={w} role="row" style={{ display: 'contents' }}>
+            {Array.from({ length: 7 }, (_, j) => {
+              const d = addDays(gridStart, w * 7 + j);
+              const key = dayKey(d);
+              const events = data.byDay.get(key) ?? [];
+              const outside = d.getMonth() !== cursor.getMonth();
+              const shown = events.slice(0, MAX_RIBBONS);
+              // Left of today the cell holds the record; right of it, the forecast.
+              // That axis is the whole structural idea of the overlay (ADR 0111 §2).
+              const past = key < today;
+              const sky = data.weather.byDay?.get(key) ?? null;
+              const record = data.record.byDay?.get(key) ?? null;
+              return (
+                <div
+                  key={key}
+                  className="cn-cell cn-ink"
+                  role="gridcell"
+                  tabIndex={key === active ? 0 : -1}
+                  data-day={key}
+                  data-outside={outside}
+                  data-today={key === today}
+                  data-selected={selected === key}
+                  data-shut={record?.recorded?.excluded || undefined}
+                  data-dropzone={over === key || undefined}
+                  aria-label={`${longDay(key)} — ${events.length === 0 ? 'nothing written' : `${events.length} entries`}`}
+                  onClick={() => onSelect(selected === key ? null : key)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelect(selected === key ? null : key);
+                      return;
+                    }
+                    moveFocus(key, e);
                   }}
-                />
-              ))}
-              {events.length > shown.length && (
-                <span className="cn-meta">+{events.length - shown.length} more</span>
-              )}
-            </div>
-          );
-        })}
+                  onFocus={() => setFocusKey(key)}
+                  onDragOver={(e) => {
+                    if (!dragged) return;
+                    e.preventDefault();
+                    setOver(key);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    drop(key);
+                  }}
+                >
+                  <span className="cn-daynum">{d.getDate()}</span>
+                  {past ? (
+                    record ? (
+                      <DayRecordMark
+                        day={record}
+                        refused={!!data.record.window?.recordedRefusal}
+                      />
+                    ) : (
+                      <SkyMark reading={sky} />
+                    )
+                  ) : (
+                    <SkyMark reading={sky} />
+                  )}
+                  {shown.map((ev) => (
+                    <Ribbon
+                      key={ev.id}
+                      event={ev}
+                      types={data.eventTypes}
+                      ruled={data.isRuledOff(ev)}
+                      dragging={dragged?.event.id === ev.id}
+                      onOpen={() => onOpenEvent(ev)}
+                      onDragStart={() => setDragged({ event: ev, from: key })}
+                      onDragEnd={() => {
+                        setDragged(null);
+                        setOver(null);
+                      }}
+                    />
+                  ))}
+                  {events.length > shown.length && (
+                    <span className="cn-meta">+{events.length - shown.length} more</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       <div className="cn-expand" data-open={!!selected}>

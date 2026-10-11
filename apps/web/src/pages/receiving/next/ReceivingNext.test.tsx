@@ -598,7 +598,7 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     // first paint of this case is the heaviest in the file. On a loaded CI runner
     // it crossed the 1000 ms default and the assertion read the pre-load em dash.
     expect(await screen.findByText('≥£12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Short/ })).toHaveTextContent('≥100')
+    expect(within(screen.getByRole('group', { name: 'Delivery outcomes' })).getByRole('button', { name: /Short/ })).toHaveTextContent('≥100')
   })
 
   it('does not mark a lane count as a floor when the window came back short', async () => {
@@ -611,7 +611,7 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     // lag the row's own render by a tick; waitFor settles once it catches up.
     await screen.findByText('PO-1')
     await waitFor(() => expect(atRiskHeader().getByText('£120')).toBeInTheDocument())
-    const short = screen.getByRole('tab', { name: /Short/ })
+    const short = within(screen.getByRole('group', { name: 'Delivery outcomes' })).getByRole('button', { name: /Short/ })
     expect(short).toHaveTextContent('1')
     expect(short).not.toHaveTextContent('≥1')
   })
@@ -650,6 +650,22 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
 })
 
 /* ═════════════════════════════ F6 — a measured zero is not an unknown ══ */
+
+describe('F-1269 — the delivery lanes are toggle filters, not tabs', () => {
+  it('[REVERT-FAILS] reads as a named group of pressed buttons, and a second press lets go', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ currency: 'GBP' })], totalAtRisk: 120 }))
+    harness(ManagerBody)
+    await screen.findByText('PO-1')
+    const lanes = screen.getByRole('group', { name: 'Delivery outcomes' })
+    expect(within(lanes).queryAllByRole('tab')).toHaveLength(0)
+    const short = within(lanes).getByRole('button', { name: /Short/ })
+    expect(short).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(short)
+    expect(short).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(short)
+    expect(short).toHaveAttribute('aria-pressed', 'false')
+  })
+})
 
 describe('F6 — $0 measured and $— unknown are different facts', () => {
   it('renders a measured zero as £0, not as an em dash', async () => {

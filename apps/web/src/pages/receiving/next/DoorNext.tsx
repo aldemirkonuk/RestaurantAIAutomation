@@ -126,6 +126,11 @@ interface DoorDraft {
 /** Thumb-sized. 56px is the smallest a cold, gloved hand hits reliably. */
 const TAP = 'min-h-[56px] min-w-[56px]';
 
+/** A collapsed section is out of reach, not only out of sight: no tab stop,
+ *  no tap. React 18 has no boolean `inert`, so it goes on as an empty string. */
+const inertWhen = (collapsed: boolean): Record<string, string> =>
+  collapsed ? { inert: '' } : {};
+
 /**
  * Which clock dated the delivery, in one quiet sentence, when that is not the
  * ordinary case. The phone's time is the delivery's when it is no more than 72
@@ -971,6 +976,7 @@ export default function DoorNext() {
             className="door-settle-rows grid"
             style={{ gridTemplateRows: outcome === 'refused' ? '0fr' : '1fr' }}
             aria-hidden={outcome === 'refused'}
+            {...inertWhen(outcome === 'refused')}
           >
             <div className="overflow-hidden">
               <div className="mt-7">
@@ -1036,15 +1042,18 @@ export default function DoorNext() {
             className="door-settle-rows grid"
             style={{ gridTemplateRows: outcome === 'refused' ? '1fr' : '0fr' }}
             aria-hidden={outcome !== 'refused'}
+            {...inertWhen(outcome !== 'refused')}
           >
             <div className="overflow-hidden">
               <div className="mt-4">
                 <p className="mb-2 text-sm font-semibold text-inkm-2">Refused because —</p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Refused because">
                   {REFUSAL_REASONS.map((r) => (
                     <button
                       key={r.id}
                       type="button"
+                      role="radio"
+                      aria-checked={reason === r.id}
                       onClick={() => setReason(r.id)}
                       data-ux-key={`door:reason-${r.id}`}
                       className={`min-h-[48px] rounded-xl border px-4 text-sm font-semibold ${
