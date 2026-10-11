@@ -125,7 +125,13 @@ describe("armed, and every legitimate no-op carries its reason", () => {
     process.env[COMMODITY_ALERT_DARK_FLAG] = "true";
     jest.useFakeTimers({
       now: new Date("2026-09-05T12:00:00.000Z"),
-      doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "setTimeout",
+        "setInterval",
+        "queueMicrotask",
+      ],
     });
     try {
       await fn();
