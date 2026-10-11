@@ -852,3 +852,48 @@ describe('F-1076 — the next truck gets its own key once the last one has sent'
     )
   })
 })
+
+/**
+ * F-1126: "Mark delivered" on /orders no longer books every ordered bottle in
+ * one tap. It opens this screen with `?count=ordered`, and the count starts at
+ * what the order still expects — held, like the paper's number, until a person
+ * stands by it or changes it. Without the parameter the door is unchanged.
+ */
+describe('F-1126 — the door opened from /orders starts at the ordered boxes', () => {
+  const order = { orderNumber: 'PO-0042', wineName: 'SYNTHETIC Yakut', quantity: 3, unitType: 'cases' }
+  const open = async (path: string) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <DoorNext />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(getOrder).toHaveBeenCalled())
+    fireEvent.click(await screen.findByRole('button', { name: 'No paper with this delivery' }))
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+  }
+
+  beforeEach(() => {
+    getOrder.mockResolvedValue(order)
+  })
+
+  it('[REVERT-FAILS] fills in the ordered boxes and books nothing until a person confirms', async () => {
+    await open('/receiving/o1/door?count=ordered')
+    await waitFor(() =>
+      expect(screen.getByText(/Filled in with what was ordered: 3 boxes\. Count them/)).toBeTruthy(),
+    )
+    const seal = () => screen.getByRole('button', { name: /Hold to seal — 3 boxes in/ })
+    expect(seal().getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(document.querySelector('[data-ux-key="door:confirm-paper-count"]') as Element)
+    expect(seal().getAttribute('aria-disabled')).toBe('false')
+    expect(submitDoorReceipt).not.toHaveBeenCalled()
+  })
+
+  it('leaves the count alone when the door is opened from anywhere else', async () => {
+    await open('/receiving/o1/door')
+    await screen.findByRole('button', { name: /Hold to seal/ })
+    expect(screen.queryByText(/Filled in with what was ordered/)).toBeNull()
+    expect(document.querySelector('[data-ux-key="door:confirm-paper-count"]')).toBeNull()
+  })
+})

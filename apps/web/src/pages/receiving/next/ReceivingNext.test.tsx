@@ -229,6 +229,22 @@ describe('F1 — the door counts bottles, and the order is not denominated in th
   })
 })
 
+/* ═════════════════════════ F-1133 — an approved order has a way in ══ */
+
+describe('F-1133 — an approved order is at the door', () => {
+  it('[REVERT-FAILS] lists an APPROVED order on the staff lane', async () => {
+    // Sending the letter leaves the order APPROVED, and the gateway's door
+    // counts against it (decideDoorCount). Left out, it reached no list.
+    get.mockImplementation(
+      onlyForStatus('APPROVED', [
+        { id: 'ord-ap', orderNumber: 'PO-AP', quantity: 2, unitType: 'case', bottlesTotal: 24, wineName: 'Chablis' },
+      ]),
+    )
+    harness(StaffBody)
+    expect(await screen.findByText(/24 bottles expected/)).toBeInTheDocument()
+  })
+})
+
 /* ═══════════════════════════════ F-467 — the second truck has a way in ══ */
 
 describe('F-467 — the rest of a split order is at the door', () => {
