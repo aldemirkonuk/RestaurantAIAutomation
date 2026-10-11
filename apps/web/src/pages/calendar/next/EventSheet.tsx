@@ -113,6 +113,17 @@ function refusalWords(failure: unknown): string {
   return failure instanceof Error ? failure.message : 'unknown error';
 }
 
+/**
+ * A refusal in one sentence that says "Nothing was saved" exactly once
+ * (F-1157): the house's sentence when it already says so (the repeat
+ * rollback's does, F-1147), else that sentence and then the promise.
+ */
+function refusalSentence(failure: unknown): string {
+  const words = refusalWords(failure).trim();
+  if (/nothing was saved/i.test(words)) return words;
+  return `${words}${/[.!?]$/.test(words) ? '' : '.'} Nothing was saved.`;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="cn-field">
@@ -695,10 +706,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                 before trying again.
               </>
             ) : (
-              <>
-                The gateway refused this write ({refusalWords(failure)}).
-                Nothing was saved.
-              </>
+              refusalSentence(failure)
             )}
           </p>
         )}

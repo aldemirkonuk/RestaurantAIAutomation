@@ -1003,6 +1003,70 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
     expect(pushOf(svc).mock.calls[0][1].data.shiftId).toBe((open as any).id);
   });
 
+  it("F-1158: never asks someone on approved leave or Away that day", async () => {
+    const db = seed();
+    heldShift(db);
+    for (const [id, user] of [
+      ["m-leave", "user-leave"],
+      ["m-away", "user-away"],
+      ["m-free", "user-free"],
+      ["m-pending", "user-pending"],
+    ]) {
+      db.tables.team_members.push({
+        id,
+        restaurant_id: RID,
+        user_id: user,
+        display_name: id,
+        hourly_wage: 20,
+      });
+    }
+    db.tables.time_off_requests = [
+      {
+        id: "t1",
+        restaurant_id: RID,
+        member_id: "m-leave",
+        start_date: "2026-09-06",
+        end_date: WEEK,
+        status: "approved",
+      },
+      // Asked for but not granted: still free to be asked.
+      {
+        id: "t2",
+        restaurant_id: RID,
+        member_id: "m-pending",
+        start_date: WEEK,
+        end_date: WEEK,
+        status: "pending",
+      },
+    ];
+    db.tables.house_away = [
+      {
+        restaurant_id: RID,
+        user_id: "user-away",
+        away_from: WEEK,
+        away_until: "2026-09-09",
+      },
+      // Away in another house says nothing about this one.
+      {
+        restaurant_id: OTHER_RID,
+        user_id: "user-free",
+        away_from: WEEK,
+        away_until: WEEK,
+      },
+    ];
+    const svc = service(db);
+    const { open } = await svc.reportCallout(OWNER, RID, "sh-held", {} as any);
+
+    const res = await svc.offerCover(MANAGER, RID, (open as any).id, {
+      memberIds: ["m-leave", "m-away", "m-free", "m-pending"],
+    } as any);
+    expect(pushOf(svc).mock.calls[0][0].sort()).toEqual([
+      "user-free",
+      "user-pending",
+    ]);
+    expect(res).toMatchObject({ offered: 2, notified: 2, setAside: 2 });
+  });
+
   it("a second call-out of the same shift opens no second slot and alerts nobody again", async () => {
     const db = seed();
     heldShift(db);
