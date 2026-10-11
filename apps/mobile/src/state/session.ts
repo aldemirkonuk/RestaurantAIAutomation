@@ -558,9 +558,13 @@ export async function refreshAccessToken(): Promise<string | null> {
     useSession.setState({ accessToken: access });
     // The person is no longer a member of the house this session was in (ADR
     // 0164): the new session names none. Forget it on this phone and re-read
-    // who they are, so the Today tab sends them to the chooser.
+    // who they are, so the Today tab sends them to the chooser. That house's
+    // orders, calendar and feed leave this phone too, as at sign-out (F-1349):
+    // their query keys name no house, so they would stay on screen.
     const ended: string | undefined = body.houseAccessEnded?.restaurantId;
     if (ended) {
+      clearPersistedQueries();
+      useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
       const me = useSession.getState().user;
       if (me?.id) await writeMemory(forget(await readMemory(), me.id, ended));
       await useSession.getState().refreshUser();

@@ -277,8 +277,10 @@ export interface AuthContextType {
    * only once the server has deleted it; a refused delete changes nothing. No
    * question about unsent changes: their owner is gone, so they can never be
    * sent, and the next person on this device must not inherit them.
+   * `emailCode` is the emailed code a sign-in older than ten minutes needs
+   * (F-1347).
    */
-  deleteAccountAndSignOut: () => Promise<void>;
+  deleteAccountAndSignOut: (emailCode?: string) => Promise<void>;
   refreshToken: () => Promise<void>;
   refreshBranches: () => Promise<void>;
   /**
@@ -1397,9 +1399,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [endSession]);
 
-  const deleteAccountAndSignOut = useCallback(async () => {
+  const deleteAccountAndSignOut = useCallback(async (emailCode?: string) => {
     const who = currentQueueOwner()?.userId ?? null;
-    await api.delete("/api/v1/auth/me");
+    await (emailCode
+      ? api.delete("/api/v1/auth/me", { data: { emailCode } })
+      : api.delete("/api/v1/auth/me"));
     await endSession();
     if (who) {
       try {

@@ -348,6 +348,8 @@ export class AuthController {
         // ADR 0229: the kept session carries its auth_time unchanged, as a
         // refresh and a house switch do; a password change is not a sign-in.
         authTime: req.user.authTime ?? null,
+        // F-1347: a FIRST password needs a recent sign-in or this code.
+        emailCode: body.emailCode,
       },
     );
     return { success: true, message: "Password updated", ...tokens };
@@ -429,10 +431,18 @@ export class AuthController {
   async unlinkProvider(
     @Req() req: Request & { user: any },
     @Param("provider") provider: string,
+    @Body("emailCode") emailCode?: string,
   ) {
     if (provider !== "google" && provider !== "microsoft") {
       throw new BadRequestException("Unsupported provider");
     }
+    // F-1347: a recent sign-in, or the code from POST /passkeys/step-up/code.
+    await this.authService.assertProvedItIsYou(
+      req.user.userId,
+      req.user.authTime,
+      emailCode,
+      "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then the sign-in can be removed. Nothing was changed.",
+    );
     const linkedProviders = await this.authService.unlinkOAuthProvider(
       req.user.userId,
       provider,
@@ -455,7 +465,18 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @AllowUnverified() // deleting an account you cannot verify must stay possible
   @AllowsNoHouse() // and one with no house
-  async deleteAccount(@Req() req: Request & { user: any }) {
+  async deleteAccount(
+    @Req() req: Request & { user: any },
+    @Body("emailCode") emailCode?: string,
+  ) {
+    // F-1347: a device left signed in must not close the account alone -- a
+    // recent sign-in, or the code from POST /passkeys/step-up/code.
+    await this.authService.assertProvedItIsYou(
+      req.user.userId,
+      req.user.authTime,
+      emailCode,
+      "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then the account can be deleted. Nothing was deleted.",
+    );
     await this.authService.deleteAccount(req.user.userId);
     return { success: true, message: "Account deleted" };
   }

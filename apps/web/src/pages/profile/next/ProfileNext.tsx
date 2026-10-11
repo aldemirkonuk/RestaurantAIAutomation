@@ -142,6 +142,7 @@ import { ConsentRegister } from './ConsentRegister';
 import { OwnNotifySection } from '../../settings/next/NotifySection';
 import { useProfileNextData, type ProfileNextData } from './useProfileNextData';
 import { getErrorMessage } from '../../../services/api/client';
+import { StepUpField, useStepUpCode } from './StepUpCode';
 
 export interface ProfileNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
@@ -231,6 +232,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
   const [leaving, setLeaving] = useState(false);
   const [exitMsg, setExitMsg] = useState<{ tone: 'error' | 'done'; text: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState('');
+  const deleteStepUp = useStepUpCode();
 
   useEffect(() => {
     if (!headRef.current) return;
@@ -275,13 +277,15 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
   const destroy = () => {
     setExitMsg(null);
     void data
-      .deleteAccount()
-      .catch((e: unknown) =>
+      .deleteAccount(deleteStepUp.emailCode)
+      .catch((e: unknown) => {
+        // F-1347: an old sign-in is asked for the emailed code, then holds again.
+        if (deleteStepUp.asked(e)) return;
         setExitMsg({
           tone: 'error',
           text: `The account was NOT deleted — ${getErrorMessage(e)}`,
-        }),
-      );
+        });
+      });
   };
 
   return (
@@ -438,10 +442,12 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
                 letterSpacing: '0.08em',
               }}
             />
+            <StepUpField id="pf-delete-code" stepUp={deleteStepUp} />
             <div style={{ maxWidth: 280 }}>
               <HoldToApprove
+                key={deleteStepUp.sentTo ?? 'no-code'}
                 onApprove={destroy}
-                disabled={confirmDelete !== 'DELETE'}
+                disabled={confirmDelete !== 'DELETE' || !deleteStepUp.ready || deleteStepUp.sending}
                 label="Hold to delete this account"
                 approvedLabel="Sent to the server"
               />

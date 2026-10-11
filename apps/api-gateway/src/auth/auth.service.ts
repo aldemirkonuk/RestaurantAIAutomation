@@ -71,7 +71,11 @@ import {
   newInviteEmailSecret,
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
-import { normalizeEmail } from "../passkeys/sign-in-codes.service";
+import {
+  normalizeEmail,
+  SignInCodesService,
+} from "../passkeys/sign-in-codes.service";
+import { isFreshSignIn, STEP_UP_REQUIRED } from "../passkeys/passkeys.service";
 import { escapeLikeWildcards } from "../common/like-pattern";
 import { SignInAttempts } from "./sign-in-attempts";
 import {
@@ -4202,6 +4206,40 @@ export class AuthService {
   }
 
   /**
+   * F-1347: the rule that guards adding a passkey (founder 2026-09-25, item
+   * 29; `PasskeysService.assertProvedItIsYou`), in front of the acts a
+   * picked-up, still-signed-in device must not do alone: closing the account,
+   * setting a first password (it signs every other session out, ADR 0225)
+   * and unlinking a sign-in. A sign-in in the last ten minutes proceeds;
+   * otherwise the code emailed by POST /passkeys/step-up/code, typed now.
+   * Refusals are 403 `STEP_UP_REQUIRED`, never 401: a 401 makes the web
+   * client refresh and retry. The code checker is looked up at call time for
+   * the same reason as `MembersService` (PasskeysModule imports this one);
+   * when it is missing a code is refused, never waved through.
+   */
+  async assertProvedItIsYou(
+    userId: string,
+    authTime: number | null | undefined,
+    emailCode: unknown,
+    refusal: string,
+  ): Promise<void> {
+    if (isFreshSignIn(authTime)) return;
+    if (emailCode === undefined || emailCode === null || emailCode === "") {
+      throw new ForbiddenException({
+        code: STEP_UP_REQUIRED,
+        message: refusal,
+      });
+    }
+    const codes = this.moduleRef?.get(SignInCodesService, { strict: false });
+    if (!codes) {
+      throw new InternalServerErrorException(
+        "Your code could not be checked just now. Nothing was changed; try again.",
+      );
+    }
+    await codes.verifyStepUp(userId, emailCode);
+  }
+
+  /**
    * Change (or first set) the password of a signed-in person, and sign out
    * every OTHER session of theirs (ADR 0225; the founder, 2026-09-25, round
    * 4, item 17). The session that made the change is the one kept: it gets
@@ -4217,6 +4255,7 @@ export class AuthService {
       restaurantId?: string | null;
       devBypass?: boolean;
       authTime?: number | null;
+      emailCode?: string;
     } = {},
   ): Promise<TokenPair> {
     if (!newPassword || newPassword.length < 8) {
@@ -4241,8 +4280,21 @@ export class AuthService {
       }
       const valid = await bcrypt.compare(currentPassword, user.password_hash);
       if (!valid) {
-        throw new UnauthorizedException("Current password is incorrect");
+        // F-1348: 400, never 401. A 401 reads as "this session has ended":
+        // the web client refreshed and sent the change a second time, then
+        // printed a status line instead of this sentence.
+        throw new BadRequestException(
+          "Your current password is incorrect. Nothing was changed.",
+        );
       }
+    } else {
+      // F-1347: a first password is proof of nothing, so it needs the proof.
+      await this.assertProvedItIsYou(
+        userId,
+        session.authTime,
+        session.emailCode,
+        "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then your password can be set. Nothing was changed.",
+      );
     }
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);

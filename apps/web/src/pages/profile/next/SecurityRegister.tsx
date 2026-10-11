@@ -46,6 +46,8 @@ import { EM, MONO, SANS, fmtMoment } from './pf-format';
 import { Btn, Card, ConnectionRow, Field, Note, Rail, Register, StatusLine } from './pf-ui';
 import type { ProfileNextData } from './useProfileNextData';
 import { PasskeyRows } from './PasskeyRows';
+import { StepUpField, useStepUpCode } from './StepUpCode';
+import { getErrorMessage } from '../../../services/api/client';
 
 /** A label/value pair inside a row's expanded working. */
 function Fact({ label, value }: { label: string; value: string }) {
@@ -69,6 +71,8 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
   );
   const [open, setOpen] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  // F-1347: a first password on an old sign-in asks for the emailed code.
+  const stepUp = useStepUpCode();
 
   const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id));
 
@@ -84,13 +88,16 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
     setPasswordMsg(null);
     setSavingPassword(true);
     try {
-      await data.changePassword(current, next);
+      await data.changePassword(current, next, stepUp.emailCode);
       setCurrent('');
       setNext('');
       setConfirm('');
+      stepUp.reset();
       setPasswordMsg({ tone: 'done', text: 'Password updated. Every other session on Mudavym was signed out; this one stays signed in.' });
     } catch (e) {
-      setPasswordMsg({ tone: 'error', text: `Not changed — ${String((e as Error).message)}` });
+      // F-1348: the gateway's sentence ("Your current password is incorrect"),
+      // never axios's status line.
+      if (!stepUp.asked(e)) setPasswordMsg({ tone: 'error', text: `Not changed — ${getErrorMessage(e)}` });
     } finally {
       setSavingPassword(false);
     }
@@ -156,7 +163,8 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
           value={confirm}
           onChange={setConfirm}
         />
-        <Btn onClick={() => void changePassword()} disabled={savingPassword || !next}>
+        <StepUpField id="pf-password-code" stepUp={stepUp} />
+        <Btn onClick={() => void changePassword()} disabled={savingPassword || !next || !stepUp.ready || stepUp.sending}>
           {savingPassword ? 'Saving…' : data.hasPassword === false ? 'Set password' : 'Update password'}
         </Btn>
         {passwordMsg && <StatusLine tone={passwordMsg.tone}>{passwordMsg.text}</StatusLine>}
