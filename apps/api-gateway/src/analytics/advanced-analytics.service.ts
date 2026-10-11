@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { readWholeWindow } from "../common/read-whole-window";
+import { readForKeys, readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 import { AnalyticsService } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -111,39 +111,33 @@ export class AdvancedAnalyticsService {
 
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes, houseRes] = await Promise.allSettled([
-      client
-        .from("restaurant_inventory")
-        // Same schema-drift fix as AnalyticsService.loadInventory: a single
-        // unknown column 42703s the whole PostgREST query, and allSettled
-        // swallows it into an empty inventory.
-        .select(
-          "id, wine_name, stock_live, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
-        )
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          // cost_currency / cost_currency_count (F-343): which money the WAC is in.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
-        )
-        .eq("restaurant_id", restaurantId),
+    // F-1214: read WHOLE or refused, as AnalyticsService.loadInventory is.
+    // Unranged, menu engineering and the overview saw 1,000 wines of a larger
+    // list, and a failed read became an empty one. A refusal propagates; the
+    // overview's `allSettled` turns it into a null lens.
+    const [inventory, [houseRes]] = await Promise.all([
+      readWholeWindow<any>("The cellar's wines", () =>
+        client
+          .from("restaurant_inventory")
+          // Same schema-drift fix as AnalyticsService.loadInventory: a single
+          // unknown column 42703s the whole PostgREST query.
+          .select(
+            "id, wine_name, stock_live, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true),
+      ),
       // The house's stated currency: its menu prices are in it, and a cost in
       // other money is not set against them (F-343).
-      client
-        .from("restaurants")
-        .select("currency")
-        .eq("id", restaurantId)
-        .maybeSingle(),
+      Promise.allSettled([
+        client
+          .from("restaurants")
+          .select("currency")
+          .eq("id", restaurantId)
+          .maybeSingle(),
+      ]),
     ]);
-    if (invRes.status === "fulfilled" && invRes.value.error)
-      this.logQueryFailure("restaurant_inventory", invRes.value.error);
-    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
-      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
     if (houseRes.status === "fulfilled" && houseRes.value.error)
       this.logQueryFailure("restaurants", houseRes.value.error);
     // Unread or unstated, the house's money is null and a lot is read as before.
@@ -151,11 +145,26 @@ export class AdvancedAnalyticsService {
       houseRes.status === "fulfilled"
         ? (houseRes.value.data?.currency ?? null)
         : null;
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
+    // The lot totals of these wines, a slice at a time (the view has no `id`).
+    const rollupRows = await readForKeys<any>(
+      "The lot totals",
+      inventory.map((i: any) => i.id),
+      (slice) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+            // can tell a WAC that covers every on-hand bottle from one that
+            // covers a single invoiced bottle in twenty-one.
+            // cost_currency / cost_currency_count (F-343): which money the WAC is in.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", slice),
+    );
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled")
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    for (const r of rollupRows) rollup.set(r.inventory_id, r);
     // Same fix as AnalyticsService.loadInventory: the third branch here was
     // `unitPrice * 0.6`, an undocumented magic number that was the live path
     // for ~70 of 72 production rows while `basis.margin` below called the
@@ -900,16 +909,21 @@ export class AdvancedAnalyticsService {
     // Per-category weekday winners (which type sells on which day).
     const byType = new Map<string, Array<{ date: string; value: number }>>();
     const client = this.dbService.getClient();
-    const { data: inv, error: invError } = await client
-      .from("restaurant_inventory")
-      // Varietal/type lives on master_wine_library, not restaurant_inventory.
-      .select("id, kind, master_wine_library(primary_type, beverage_kind)")
-      .eq("restaurant_id", restaurantId);
-    if (invError) this.logQueryFailure("restaurant_inventory", invError);
+    // Read whole or refused (F-1214): past 1,000 wines the rest fell to
+    // "unknown", and a failed read put every pour there.
+    const inv = await readWholeWindow<any>("The cellar's wines", () =>
+      client
+        .from("restaurant_inventory")
+        // Varietal/type lives on master_wine_library, not restaurant_inventory.
+        .select("id, kind, master_wine_library(primary_type, beverage_kind)", {
+          count: "exact",
+        })
+        .eq("restaurant_id", restaurantId),
+    );
     // By house item (ADR 0115): keyed by master wine, every drink that is not
     // a wine shared the one null key and took the last such row's kind.
     const typeByWine = new Map(
-      (inv || []).map((i: any) => [
+      inv.map((i: any) => [
         i.id,
         // F-742: by kind of drink, wines by colour.
         beverageCategoryOf(i.master_wine_library, i.kind),

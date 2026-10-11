@@ -19,10 +19,11 @@ import { ProcurementService } from "../procurement/procurement.service";
 import { SealChallengeService } from "./seal/seal-challenge.service";
 import { PosHubService } from "../pos-hub/pos-hub.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AdvancedAnalyticsService } from "../analytics/advanced-analytics.service";
 import { GoalsService } from "../analytics/goals.service";
 import { BeveragesService } from "../beverages/beverages.service";
 import { InventoryService } from "../inventory/inventory.service";
-import { WholeReadError } from "./read-whole-window";
+import { WholeReadError, readForKeys } from "./read-whole-window";
 import type { ThresholdRow } from "../settings/approval-thresholds";
 
 const MAX_ROWS = 1000;
@@ -58,6 +59,7 @@ function cappedDb(
     const filters: Array<(r: Row) => boolean> = [];
     const orders: Array<{ col: string; asc: boolean }> = [];
     let limitN: number | null = null;
+    let offsetN = 0;
     let counted = false;
     let head = false;
 
@@ -77,7 +79,10 @@ function cappedDb(
         }
         return 0;
       });
-      const data = sorted.slice(0, Math.min(limitN ?? Infinity, MAX_ROWS));
+      const data = sorted.slice(
+        offsetN,
+        offsetN + Math.min(limitN ?? Infinity, MAX_ROWS),
+      );
       reads.push({ table, returned: data.length });
       return {
         data: head ? null : data,
@@ -130,6 +135,11 @@ function cappedDb(
         return q;
       },
       limit: (n: number) => ((limitN = n), q),
+      range: (from: number, to: number) => (
+        (offsetN = from),
+        (limitN = to - from + 1),
+        q
+      ),
       maybeSingle: async () => {
         const out = settle();
         return { ...out, data: out.data?.[0] ?? null };
@@ -450,5 +460,99 @@ describe("F-334 — an item's movement chart keeps its newest days", () => {
     // The last hour can straddle midnight, so the last two days hold them.
     const [yesterday, today] = out.daily.slice(-2);
     expect(yesterday.out + today.out).toBe(300);
+  });
+});
+
+// ── F-1214 ──────────────────────────────────────────────────────────────────
+
+/** 1,400 wines, one bottle each at a recorded $10, with a lot total each. */
+const cellar = Array.from({ length: 1400 }, (_, i) => ({
+  id: pad(i),
+  restaurant_id: R,
+  wine_name: `Wine ${i}`,
+  stock_live: 1,
+  menu_price_current: 30,
+  last_purchase_price: 10,
+  threshold_min: 0,
+  master_wine_id: null,
+  is_active: true,
+  created_at: daysAgo(400),
+  master_wine_library: { primary_type: "red" },
+}));
+const lotTotals = cellar.map((w) => ({
+  inventory_id: w.id,
+  restaurant_id: R,
+  live_qty: 1,
+  wac: 10,
+  has_invoice_cost: true,
+  wac_qty: 1,
+  cost_currency: null,
+  cost_currency_count: 0,
+}));
+
+describe("F-1214 — the reports' cellar is the whole cellar, or a refusal", () => {
+  const tables = () => ({
+    restaurant_inventory: cellar,
+    inventory_lot_rollup: lotTotals,
+  });
+
+  it("Cellar at cost values all 1,400 wines, not the first thousand", async () => {
+    const { db } = cappedDb(tables());
+    const out: any = await new AnalyticsService(db).getFinancialSummary(R);
+    expect(out.costCoverage.total).toBe(1400);
+    expect(out.costCoverage.priced).toBe(1400);
+    expect(out.inventoryValue).toBe(14000);
+  });
+
+  it("a failed cellar read refuses the summary instead of an empty cellar", async () => {
+    const { db } = cappedDb(tables(), {
+      restaurant_inventory: { message: "boom" },
+    });
+    await expect(
+      new AnalyticsService(db).getFinancialSummary(R),
+    ).rejects.toBeInstanceOf(WholeReadError);
+  });
+
+  it("a failed lot-total read refuses too, never a cellar with no costs", async () => {
+    const { db } = cappedDb(tables(), {
+      inventory_lot_rollup: { message: "boom" },
+    });
+    await expect(
+      new AnalyticsService(db).getFinancialSummary(R),
+    ).rejects.toThrow(/lot totals could not be read/);
+  });
+
+  const advanced = (db: any) =>
+    new AdvancedAnalyticsService(
+      db,
+      new AnalyticsService(db),
+      {} as any,
+      {} as any,
+    );
+
+  it("menu engineering's cost loader reads all 1,400 wines", async () => {
+    const { db } = cappedDb(tables());
+    const rows: any[] = await (advanced(db) as any).loadInventoryWithCost(R);
+    expect(rows).toHaveLength(1400);
+    expect(rows.every((r) => r.unitCost === 10)).toBe(true);
+  });
+
+  it("a slice of keys cut short of its own count refuses, never answers in part", async () => {
+    await expect(
+      readForKeys("The lot totals", ["a", "b"], async () => ({
+        data: [{ inventory_id: "a" }],
+        error: null,
+        count: 2,
+      })),
+    ).rejects.toThrow(/came back with 1 of 2 rows/);
+  });
+
+  it("a failed read there refuses as well", async () => {
+    const { db } = cappedDb(tables(), {
+      restaurant_inventory: { message: "boom" },
+    });
+    await expect(
+      (advanced(db) as any).loadInventoryWithCost(R),
+    ).rejects.toBeInstanceOf(WholeReadError);
   });
 });
