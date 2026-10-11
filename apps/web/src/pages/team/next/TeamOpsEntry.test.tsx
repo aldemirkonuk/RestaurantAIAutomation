@@ -43,6 +43,7 @@ import { SalesSheet } from './SalesSheet';
 import type { TeamMember } from '../../../services/api/team';
 import { todayIso } from './tm-format';
 import { houseToday } from '@/lib/houseZone';
+import { setHouseLocale } from '@/lib/houseCurrency';
 
 const person = (id: string, name: string, status = 'active') =>
   ({ id, display_name: name, status, position: null }) as unknown as TeamMember;
@@ -262,6 +263,42 @@ describe('SalesSheet — several at once', () => {
         'rest-A',
       ),
     );
+  });
+
+  it('reads a Turkish Excel (Windows-1254) file, so Ayşe and Gökhan are found on the roster (F-1361)', async () => {
+    team.batch.mockResolvedValue({ inserted: 2, skipped: 0, skippedRows: [] });
+    const cp1254: Record<string, number> = { ş: 0xfe, ö: 0xf6 };
+    const bytes = (t: string) => new Uint8Array([...t].map((ch) => cp1254[ch] ?? ch.charCodeAt(0)));
+    setHouseLocale('tr-TR');
+    try {
+      wrap(<SalesSheet members={[person('m-ayse', 'Ayşe'), person('m-gokhan', 'Gökhan')]} restaurantId="rest-A" onClose={() => {}} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Several at once' }));
+      const file = new File([bytes('service_date,name,covers\n2026-09-24,Ayşe,30\n2026-09-24,Gökhan,12\n')], 'gece.csv', { type: 'text/csv' });
+      fireEvent.change(screen.getByTestId('sales-file-input'), { target: { files: [file] } });
+      expect((await screen.findByTestId('sales-file')).textContent).toMatch(/From gece\.csv: 2 rows read/);
+      expect(screen.queryByTestId('sales-file-refused')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Save 2 services' }));
+      await waitFor(() =>
+        expect(team.batch).toHaveBeenCalledWith(
+          [
+            { memberId: 'm-ayse', serviceDate: '2026-09-24', covers: 30, checks: 0, netSales: 0, wineSales: 0, source: 'csv' },
+            { memberId: 'm-gokhan', serviceDate: '2026-09-24', covers: 12, checks: 0, netSales: 0, wineSales: 0, source: 'csv' },
+          ],
+          'rest-A',
+        ),
+      );
+    } finally {
+      setHouseLocale('en-US');
+    }
+  });
+
+  it('refuses a file whose letters cannot be read, and sends nothing (F-1361)', async () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Several at once' }));
+    const file = new File(['service_date,name,covers\n2026-09-24,Ay\uFFFDe,30\n'], 'bad.csv', { type: 'text/csv' });
+    fireEvent.change(screen.getByTestId('sales-file-input'), { target: { files: [file] } });
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Some letters in this file could not be read/);
+    expect(screen.getByTestId('sales-count').textContent).toMatch(/0 ready to save/);
   });
 
   it('has nothing to save until a line is filled', () => {

@@ -19,7 +19,7 @@ import {
 } from '../../lib/uploadAccept'
 import { skippedMenuColumns } from '../../lib/menuColumns'
 import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../../lib/menuReadWithoutAnswer'
-import { decodeMenuCsv } from '../../lib/menuCsvText'
+import { decodeCsvBytes } from '../../lib/menuCsvText'
 
 interface MenuCsvUploadProps {
   onSuccess: MenuImportSuccess
@@ -152,7 +152,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       // Not read as UTF-8 blindly: a Turkish Excel CSV is Windows-1254 (F-1294).
       let text: string
       try {
-        text = decodeMenuCsv(reader.result as ArrayBuffer)
+        text = decodeCsvBytes(reader.result as ArrayBuffer)
       } catch (err) {
         setCsvContent(null)
         setPreview([])
@@ -197,7 +197,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
         } else {
           reader.onload = () => {
             try {
-              resolve({ scan: false, base64: null, csv: decodeMenuCsv(reader.result as ArrayBuffer) })
+              resolve({ scan: false, base64: null, csv: decodeCsvBytes(reader.result as ArrayBuffer) })
             } catch (err) {
               reject(err)
             }
