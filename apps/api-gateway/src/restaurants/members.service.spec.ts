@@ -239,6 +239,25 @@ describe("MembersService.addMember — a manager adds a manager or staff, never 
     expect(addedRows(db).map((r) => r.role)).toEqual(["manager"]);
   });
 
+  // F-1421: an account added straight to the house used to leave no row.
+  it("files who added whom, at what role, and tells the person", async () => {
+    const db = seedAdd("owner");
+    db.tables.system_audit_log = [];
+    db.tables.notifications = [];
+    await service(db).addMember(ACTOR, RID, NEW_EMAIL, "owner");
+
+    expect(db.tables.system_audit_log).toHaveLength(1);
+    expect(db.tables.system_audit_log[0]).toMatchObject({
+      actor_id: ACTOR,
+      action: "member_added",
+      entity_type: "restaurant_member",
+      entity_id: NEWCOMER,
+      restaurant_id: RID,
+      changes: { access_role: { from: null, to: "owner" } },
+    });
+    expect(db.tables.notifications).toHaveLength(1);
+  });
+
   it("refuses a manager who adds an owner, says what they may add, and writes nothing", async () => {
     const db = seedAdd("manager");
     const attempt = service(db).addMember(ACTOR, RID, NEW_EMAIL, "owner");
@@ -1198,6 +1217,23 @@ describe("MembersService invites — the book names who each is for, and an owne
     expect(db.tables.organization_invites.map((i: any) => i.id)).toEqual([
       "inv-staff",
     ]);
+  });
+
+  // F-1421: a withdrawn invite was hard-deleted with nothing filed.
+  it("withdrawing an invite files who withdrew it and who gave it", async () => {
+    const db = seedBook();
+    await service(db).revokeInvite(MAYA, RID, "INV-STAFF");
+    expect(db.tables.system_audit_log).toHaveLength(1);
+    expect(db.tables.system_audit_log[0]).toMatchObject({
+      actor_id: MAYA,
+      action: "invite_withdrawn",
+      entity_id: "inv-staff",
+      restaurant_id: RID,
+      changes: {
+        invite_role: { from: "staff", to: null },
+        invited_by: OWNER,
+      },
+    });
   });
 });
 

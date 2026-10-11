@@ -774,7 +774,11 @@ describe("MenusService.restoreMenuItem — a discarded line can be put back (F-2
     ).toEqual(["mi-1"]);
 
     const result = await service.restoreMenuItem("rest-1", "mi-1");
-    expect(result).toEqual({ menuItemId: "mi-1", status: "flagged" });
+    expect(result).toEqual({
+      menuItemId: "mi-1",
+      status: "flagged",
+      audited: true,
+    });
     expect(tables.menu_items[0]).toMatchObject({
       status: "flagged",
       prior_status: null,
@@ -802,6 +806,7 @@ describe("MenusService.restoreMenuItem — a discarded line can be put back (F-2
     expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({
       menuItemId: "mi-1",
       status: "in_review",
+      audited: true,
     });
     expect(tables.menu_items[0].status).toBe("in_review");
   });
@@ -822,6 +827,7 @@ describe("MenusService.restoreMenuItem — a discarded line can be put back (F-2
     expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({
       menuItemId: "mi-1",
       status: "approved",
+      audited: false,
     });
     expect(tables.menu_items[0].status).toBe("approved");
   });
@@ -844,6 +850,43 @@ describe("MenusService.restoreMenuItem — a discarded line can be put back (F-2
       service.restoreMenuItem("rest-2", "mi-1"),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(tables.menu_items[0].status).toBe("discarded");
+  });
+
+  // F-1419: putting a line back used to leave no who or when anywhere.
+  it("files who put the line back, which line, and the status it went back to", async () => {
+    const tables: Record<string, Row[]> = {
+      ...house(),
+      menu_items: [
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          name: "Opus One",
+          status: "discarded",
+          prior_status: "approved",
+          bottle_price: 120,
+          by_glass_price: 18,
+        },
+      ],
+      system_audit_log: [],
+    };
+    const service = makeService(tables);
+
+    await service.restoreMenuItem("rest-1", "mi-1", "user-7");
+
+    expect(tables.system_audit_log).toHaveLength(1);
+    expect(tables.system_audit_log[0]).toMatchObject({
+      actor_type: "user",
+      actor_id: "user-7",
+      action: "menu_line_restored",
+      entity_type: "menu_item",
+      entity_id: "mi-1",
+      restaurant_id: "rest-1",
+      changes: {
+        subject: "Opus One (bottle 120, glass 18) on Wine List",
+        fields: { status: { from: "discarded", to: "approved" } },
+      },
+    });
   });
 
   it("no current menu means no discarded lines", async () => {

@@ -213,7 +213,8 @@ export class MenusController {
       restaurantId,
       "put a line back on the menu",
     );
-    return this.menusService.restoreMenuItem(restaurantId, id);
+    // F-1419: filed under the person, as the discard is (F-484).
+    return this.menusService.restoreMenuItem(restaurantId, id, user.userId);
   }
 }
 

@@ -2198,7 +2198,9 @@ export class InventoryService {
     // read, not against this value).
     const { data: oldItem } = await client
       .from("restaurant_inventory")
-      .select("stock_live, shadow_stock, threshold_min, master_wine_id")
+      .select(
+        "stock_live, shadow_stock, threshold_min, master_wine_id, is_active, wine_name, master_wine_library (name)",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", itemId)
       .single();
@@ -2251,6 +2253,29 @@ export class InventoryService {
         this.logger.error(`Failed to update inventory item: ${updErr.message}`);
         throw new HttpException(updErr.message, HttpStatus.BAD_REQUEST);
       }
+    }
+
+    // F-1416: taking a wine off the list, or putting it back, is filed with
+    // who did it, like a removal (F-633). Only a real change is filed. Like
+    // the removal, a failed audit write does not undo the change; it is logged.
+    if (
+      dto.isActive !== undefined &&
+      oldItem &&
+      Boolean((oldItem as any).is_active) !== Boolean(dto.isActive)
+    ) {
+      const o = oldItem as any;
+      await this.recordInventoryItemAudit(
+        restaurantId,
+        itemId,
+        o.wine_name?.trim() ||
+          o.master_wine_library?.name?.trim() ||
+          "This wine",
+        performedBy ?? null,
+        dto.isActive
+          ? "inventory_item_reactivated"
+          : "inventory_item_deactivated",
+        { active: { from: !dto.isActive, to: dto.isActive } },
+      );
     }
 
     // Route stock changes through set_stock_absolute rather than computing a
@@ -2746,11 +2771,33 @@ export class InventoryService {
   }
 
   /** The audit half of `softDeleteItem` (F-633). Never throws. */
-  private async recordRemoval(
+  private recordRemoval(
     restaurantId: string,
     inventoryId: string,
     wineName: string,
     actorUserId: string | null,
+  ): Promise<boolean> {
+    return this.recordInventoryItemAudit(
+      restaurantId,
+      inventoryId,
+      wineName,
+      actorUserId,
+      "inventory_item_removed",
+      { in_inventory: { from: true, to: false } },
+    );
+  }
+
+  /**
+   * One `system_audit_log` row about a wine on the list: removed (F-633),
+   * taken off or put back on the list (F-1416). Never throws.
+   */
+  private async recordInventoryItemAudit(
+    restaurantId: string,
+    inventoryId: string,
+    wineName: string,
+    actorUserId: string | null,
+    action: string,
+    fields: Record<string, { from: unknown; to: unknown }>,
   ): Promise<boolean> {
     try {
       const { error } = await this.dbService
@@ -2759,7 +2806,7 @@ export class InventoryService {
         .insert({
           actor_type: actorUserId ? "user" : "system",
           actor_id: actorUserId,
-          action: "inventory_item_removed",
+          action,
           entity_type: "inventory_item",
           entity_id: inventoryId,
           restaurant_id: restaurantId,
@@ -2767,19 +2814,19 @@ export class InventoryService {
           changes: {
             // Read on /logs as "Name: inventory item removed — Opus One 2018".
             subject: wineName,
-            fields: { in_inventory: { from: true, to: false } },
+            fields,
           },
         });
       if (error) {
         this.logger.error(
-          `inventory_item_removed happened but the audit row failed to write: ${error.message}`,
+          `${action} happened but the audit row failed to write: ${error.message}`,
         );
         return false;
       }
       return true;
     } catch (err: any) {
       this.logger.error(
-        `inventory_item_removed happened but the audit row threw: ${err?.message}`,
+        `${action} happened but the audit row threw: ${err?.message}`,
       );
       return false;
     }

@@ -1007,12 +1007,22 @@ export class MenusService {
       throw new Error(`The item was not discarded: ${writeErr.message}`);
     }
 
-    const audited = await this.recordDiscard(restaurantId, before, actorUserId);
+    const audited = await this.recordMenuLineAudit(
+      restaurantId,
+      before,
+      actorUserId,
+      "menu_line_discarded",
+      "discarded",
+    );
     return { menuItemId, status: "discarded", audited };
   }
 
-  /** The audit half of `discardMenuItem` (F-484). Never throws. */
-  private async recordDiscard(
+  /**
+   * The audit half of `discardMenuItem` (F-484) and `restoreMenuItem`
+   * (F-1419): one row naming who moved the line, which line, on which menu
+   * and at what price. Never throws.
+   */
+  private async recordMenuLineAudit(
     restaurantId: string,
     row: {
       id: string;
@@ -1023,7 +1033,10 @@ export class MenusService {
       bottle_price?: number | string | null;
     },
     actorUserId: string | null,
+    action: "menu_line_discarded" | "menu_line_restored",
+    toStatus: string,
   ): Promise<boolean> {
+    const verb = action === "menu_line_restored" ? "put back" : "discarded";
     try {
       let menuName: string | null = null;
       if (row.menu_id) {
@@ -1036,7 +1049,7 @@ export class MenusService {
         // The line is still recorded; only the menu's name is left out.
         if (menuError) {
           this.logger.warn(
-            `discard of menu line ${row.id}: menu ${row.menu_id} unread (${menuError.message}); recorded without its name`,
+            `menu line ${row.id} ${verb}: menu ${row.menu_id} unread (${menuError.message}); recorded without its name`,
           );
         }
         menuName = menu?.name ?? null;
@@ -1046,7 +1059,7 @@ export class MenusService {
         .insert({
           actor_type: actorUserId ? "user" : "system",
           actor_id: actorUserId,
-          action: "menu_line_discarded",
+          action,
           entity_type: "menu_item",
           entity_id: row.id,
           restaurant_id: restaurantId,
@@ -1054,7 +1067,7 @@ export class MenusService {
           changes: {
             // Read on /logs as one phrase: "Opus One (bottle 120, glass 18) on Wine List".
             subject: discardSubject(row, menuName),
-            fields: { status: { from: row.status ?? null, to: "discarded" } },
+            fields: { status: { from: row.status ?? null, to: toStatus } },
             menu_id: row.menu_id ?? null,
             menu_name: menuName,
             bottle_price: row.bottle_price ?? null,
@@ -1063,14 +1076,14 @@ export class MenusService {
         });
       if (error) {
         this.logger.error(
-          `menu line ${row.id} was discarded but the audit row failed: ${error.message}`,
+          `menu line ${row.id} was ${verb} but the audit row failed: ${error.message}`,
         );
         return false;
       }
       return true;
     } catch (err: any) {
       this.logger.error(
-        `menu line ${row.id} was discarded but the audit row threw: ${err?.message ?? err}`,
+        `menu line ${row.id} was ${verb} but the audit row threw: ${err?.message ?? err}`,
       );
       return false;
     }
@@ -1083,14 +1096,21 @@ export class MenusService {
    * NULL) comes back 'in_review', which the page states. Tenant-scoped the
    * same way as discardMenuItem: a foreign or missing id 404s. A line that is
    * not discarded is left as it is (a second tap changes nothing).
+   *
+   * WHO AND WHEN (F-1419, 2026-10-11): like the discard, the restore files a
+   * `menu_line_restored` row naming the actor, and a failed audit write is
+   * said as `audited: false` rather than undoing the restore.
    */
   async restoreMenuItem(
     restaurantId: string,
     menuItemId: string,
-  ): Promise<{ menuItemId: string; status: string }> {
+    actorUserId: string | null = null,
+  ): Promise<{ menuItemId: string; status: string; audited: boolean }> {
     const { data: row, error: readErr } = await this.dbService.supabase
       .from("menu_items")
-      .select("id, restaurant_id, status, prior_status")
+      .select(
+        "id, restaurant_id, status, prior_status, menu_id, name, by_glass_price, bottle_price",
+      )
       .eq("id", menuItemId)
       .maybeSingle();
 
@@ -1100,9 +1120,12 @@ export class MenusService {
     if (!row || row.restaurant_id !== restaurantId) {
       throw new NotFoundException("No menu item of this restaurant");
     }
-    if (row.status !== "discarded") return { menuItemId, status: row.status };
+    if (row.status !== "discarded")
+      return { menuItemId, status: row.status, audited: false };
 
     const status: string = row.prior_status ?? "in_review";
+    // What the line was before it came back, for the audit row (F-1419).
+    const before = { ...row };
     const { error: writeErr } = await this.dbService.supabase
       .from("menu_items")
       .update({ status, prior_status: null })
@@ -1114,7 +1137,14 @@ export class MenusService {
       throw new Error(`The item was not put back: ${writeErr.message}`);
     }
 
-    return { menuItemId, status };
+    const audited = await this.recordMenuLineAudit(
+      restaurantId,
+      before,
+      actorUserId,
+      "menu_line_restored",
+      status,
+    );
+    return { menuItemId, status, audited };
   }
 
   /**

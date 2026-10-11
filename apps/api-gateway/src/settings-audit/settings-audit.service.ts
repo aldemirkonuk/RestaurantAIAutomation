@@ -261,6 +261,13 @@ export const READ_BACK_ACTIONS = [
   "member_role_changed",
   "team_member_removed",
   /**
+   * An existing account added straight to the house, and an invite withdrawn
+   * before anyone used it (F-1421, 2026-10-11). Filed by `recordAccessChange`
+   * from `MembersService`, like the two rows above.
+   */
+  "member_added",
+  "invite_withdrawn",
+  /**
    * An owner switched a manager's /team pay access (ADR 0215, founder
    * 2026-09-25 round 4 item 19, "Pay visibility only"). Filed by
    * `team/access-audit.ts`, read back so /team's trail shows who switched it.
@@ -511,10 +518,13 @@ export class SettingsAuditService {
   /**
    * Read the trail back for one house.
    *
-   * `register` is optional and filters client-side rather than in the query,
-   * because it lives inside the `changes` jsonb and a `->>` filter on a column
-   * with no index would scan. The row cap is applied first either way, so the
-   * filter narrows a page rather than searching the table.
+   * `register` is optional and filters IN the query, before the row cap
+   * (F-1418, 2026-10-11). It used to filter the capped page afterwards, so ten
+   * newer changes on other registers pushed a house's only consent change out
+   * of the page and the panel said "Nobody has changed it". The house's own
+   * rows are a small set (restaurant_id narrows first), so the `->>` read on
+   * `changes` costs little. The client-side filter stays as a belt for a
+   * stored register this build no longer knows.
    *
    * `readerRole` decides which actions are read at all (`readBackActionsFor`):
    * the rows a staff reader may not see are left out of the QUERY, so the row
@@ -538,13 +548,15 @@ export class SettingsAuditService {
 
     let rows: AuditRow[] = [];
     try {
-      const { data, error } = await this.databaseService.client
+      let query = this.databaseService.client
         .from("system_audit_log")
         .select(
           "id, actor_id, action, entity_type, entity_id, changes, created_at",
         )
         .eq("restaurant_id", restaurantId)
-        .in("action", readBackActionsFor(readerRole))
+        .in("action", readBackActionsFor(readerRole));
+      if (register) query = query.eq("changes->>register", register);
+      const { data, error } = await query
         .order("created_at", { ascending: false })
         .limit(capped);
       if (error) {
@@ -706,6 +718,8 @@ export class SettingsAuditService {
     if (
       action === "member_role_changed" ||
       action === "team_member_removed" ||
+      action === "member_added" ||
+      action === "invite_withdrawn" ||
       action === "team_pay_access_changed" ||
       action === "team_member_own_wage_set"
     ) {

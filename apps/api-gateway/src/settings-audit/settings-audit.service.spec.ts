@@ -414,3 +414,84 @@ describe("SettingsAuditService.list — a labour setting change reads back (F-37
     },
   );
 });
+
+/**
+ * F-1418 (2026-10-11). ConsentPanel asks `register=ask-training&limit=10`. The
+ * cap was applied first and the register filter after, so ten newer changes
+ * on other registers pushed the house's one consent change off the page and
+ * the panel said "Nobody has changed it". The fake below applies `.eq` and
+ * `.limit` in the order Postgres does: filter, then cap.
+ */
+describe("SettingsAuditService.list — the register filters before the cap (F-1418)", () => {
+  const consent = {
+    id: "a-consent",
+    actor_id: "u-owner",
+    action: "ask_training_opt_out_changed",
+    entity_type: "restaurant",
+    entity_id: "rest-1",
+    created_at: "2026-10-01T10:00:00Z",
+    changes: {
+      register: "ask-training",
+      subject: null,
+      fields: { opted_out: { from: false, to: true } },
+    },
+  };
+  const newer = Array.from({ length: 12 }, (_, i) => ({
+    id: `a-feat-${i}`,
+    actor_id: "u-owner",
+    action: "feature_flag_changed",
+    entity_type: "restaurant_feature_flag",
+    entity_id: "flag",
+    created_at: `2026-10-0${2 + (i % 7)}T10:00:00Z`,
+    changes: {
+      register: "features",
+      subject: "x",
+      fields: { on: { from: false, to: true } },
+    },
+  }));
+
+  function filteringDb() {
+    const client = {
+      from(table: string) {
+        const filters: Array<(r: any) => boolean> = [];
+        let cap = Infinity;
+        const chain: any = {
+          select: () => chain,
+          eq: (column: string, value: unknown) => {
+            if (column === "changes->>register")
+              filters.push((r) => r.changes?.register === value);
+            return chain;
+          },
+          in: () => chain,
+          order: () => chain,
+          limit: (n: number) => ((cap = n), chain),
+          then: (resolve: (v: unknown) => unknown) => {
+            const all = table === "system_audit_log" ? [...newer, consent] : [];
+            const data = all
+              .filter((r) => filters.every((f) => f(r)))
+              .slice(0, cap);
+            return Promise.resolve({ data, error: null }).then(resolve);
+          },
+        };
+        return chain;
+      },
+    };
+    return { client } as any;
+  }
+
+  it("finds the one consent change behind twelve newer changes elsewhere", async () => {
+    const out = await new SettingsAuditService(filteringDb()).list(
+      "rest-1",
+      10,
+      "ask-training",
+      "owner",
+    );
+    expect(out.entries.map((e) => e.id)).toEqual(["a-consent"]);
+  });
+});
+
+describe("READ_BACK_ACTIONS — a member added or an invite withdrawn reads back (F-1421)", () => {
+  it.each(["member_added", "invite_withdrawn"])("%s is read back", (a) => {
+    expect(READ_BACK_ACTIONS).toContain(a);
+  });
+});

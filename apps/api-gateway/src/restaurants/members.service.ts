@@ -797,6 +797,26 @@ export class MembersService {
       throw new InternalServerErrorException("Failed to add member");
     }
 
+    // F-1421: an account added straight to the house (an owner included) is
+    // filed like a role change or a removal, so /team and /logs say who did it.
+    await recordAccessChange(this.databaseService.supabase, this.logger, {
+      restaurantId,
+      actorUserId,
+      targetUserId: targetUser.user_id,
+      action: "member_added",
+      entityType: "restaurant_member",
+      entityId: targetUser.user_id,
+      changes: {
+        access_role: { from: null, to: role },
+        user_id: targetUser.user_id,
+        via: "MembersService.addMember",
+      },
+      notice: {
+        title: "You were added to a restaurant",
+        message: `${actorAccess.role === "owner" ? "An owner" : "A manager"} added you to this restaurant as ${role}.`,
+      },
+    });
+
     if (restaurant?.organization_id) {
       // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164):
       // adding someone to a house must not make them an owner of the
@@ -835,7 +855,7 @@ export class MembersService {
     // made, and both are gone once the invite is deleted.
     const { data: invite, error: readErr } = await this.databaseService.supabase
       .from("organization_invites")
-      .select("id, created_at, role")
+      .select("id, created_at, role, invited_by")
       .eq("code", code.toUpperCase())
       .eq("restaurant_id", restaurantId)
       .is("used_at", null)
@@ -869,12 +889,28 @@ export class MembersService {
     }
 
     // The person this invite put on /team will never arrive (F-580).
-    if (invite)
+    if (invite) {
       await retireInvitePlaceholders(
         this.databaseService.supabase,
         this.logger,
         restaurantId,
         [invite],
       );
+      // F-1421: the withdrawal is filed, naming who gave the invite and who
+      // took it back; the invite row itself is gone.
+      await recordAccessChange(this.databaseService.supabase, this.logger, {
+        restaurantId,
+        actorUserId,
+        targetUserId: null,
+        action: "invite_withdrawn",
+        entityType: "restaurant_member",
+        entityId: invite.id,
+        changes: {
+          invite_role: { from: invite.role ?? null, to: null },
+          invited_by: invite.invited_by ?? null,
+          via: "MembersService.revokeInvite",
+        },
+      });
+    }
   }
 }

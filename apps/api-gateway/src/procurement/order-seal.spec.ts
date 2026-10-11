@@ -278,6 +278,26 @@ describe("ProcurementService.approveOrder — the seal is redeemed, not asserted
     expect(h.seals[0].redeemed_at).toBeTruthy();
   });
 
+  // F-1417: who sealed an order was stored and filed nowhere.
+  it("files order_approved naming the actor, the order and the status it left", async () => {
+    const h = harness({ seals: [unspentSeal()] });
+    await h.service.approveOrder(HOUSE, ORDER, MANAGER, "tok");
+
+    const row = h.audits.find((a) => a.action === "order_approved");
+    expect(row).toMatchObject({
+      actor_type: "user",
+      actor_id: MANAGER,
+      entity_type: "procurement_order",
+      entity_id: ORDER,
+      restaurant_id: HOUSE,
+      changes: {
+        register: "orders",
+        fields: { status: { from: "pending", to: "APPROVED" } },
+        sealed: true,
+      },
+    });
+  });
+
   it("refuses the same seal a second time", async () => {
     const h = harness({ seals: [unspentSeal()] });
     await h.service.approveOrder(HOUSE, ORDER, MANAGER, "tok");

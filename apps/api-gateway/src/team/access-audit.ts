@@ -51,6 +51,10 @@ export interface AccessChange {
   action:
     | "team_member_removed"
     | "member_role_changed"
+    // F-1421 — an existing account added straight to the house, and an
+    // invite withdrawn before anyone used it.
+    | "member_added"
+    | "invite_withdrawn"
     | "team_pay_access_changed"
     // ADR 0218 — the house log for areas, leads and Away set on someone's
     // behalf. Same row shape, same receipt; one writer for "record the change".
