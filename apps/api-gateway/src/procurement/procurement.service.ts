@@ -12404,10 +12404,16 @@ export class ProcurementService {
     }));
   }
 
-  /** D2 — list an order's persisted email attachments with short-lived signed URLs. */
+  /**
+   * D2 — list an order's persisted email attachments with short-lived signed
+   * URLs. A caller who may not read the letters (`readsFiles: false`, F-1176)
+   * gets one marker per file: which letter it came with and when, never its
+   * name or a link, and nothing is signed.
+   */
   async getOrderAttachments(
     restaurantId: string,
     orderId: string,
+    opts: { readsFiles?: boolean } = {},
   ): Promise<any[]> {
     const { data, error } = await this.databaseService.supabase
       .from("conversation_attachments")
@@ -12424,6 +12430,14 @@ export class ProcurementService {
         error: error.message,
       });
       return [];
+    }
+    if (opts.readsFiles === false) {
+      return ((data as any[]) || []).map((row) => ({
+        id: row.id,
+        conversationId: row.conversation_id,
+        createdAt: row.created_at,
+        withheld: true,
+      }));
     }
     const out: any[] = [];
     for (const row of (data as any[]) || []) {

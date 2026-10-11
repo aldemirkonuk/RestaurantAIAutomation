@@ -455,12 +455,16 @@ export function useOrderConversations(orderId: string | null) {
 export interface OrderAttachmentDto {
   id: string;
   conversationId: string;
-  filename: string;
-  mimeType: string | null;
-  sizeBytes: number | null;
+  /** Absent when the file is `withheld`. */
+  filename?: string;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
   createdAt: string;
   /** short-lived signed URL to the persisted bytes (D2); null if it couldn't be signed. */
-  url: string | null;
+  url?: string | null;
+  /** F-1176: the gateway kept the file's name and link from this reader, as it
+   * keeps the letter's words (F-982). */
+  withheld?: true;
 }
 
 /** Persisted vendor email attachments for an order (D2), with signed URLs. */

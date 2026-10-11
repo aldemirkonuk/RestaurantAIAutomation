@@ -12,7 +12,9 @@
  * F-425 — `CameWithIt`: files a vendor attached to a reply are already kept and
  * listed by the gateway (`GET procurement/orders/:id/attachments`, with
  * short-lived links). Nothing on this page read them. The list is per order, so
- * only the files that came with THIS letter are shown beside it.
+ * only the files that came with THIS letter are shown beside it. Files the
+ * gateway withheld from this reader (F-1176) are said in one sentence, with no
+ * name and nothing to open.
  */
 
 import { useState, type CSSProperties } from 'react';
@@ -21,7 +23,7 @@ import { Paperclip } from 'lucide-react';
 import { procurementHistoryKeys } from '../../../hooks/queries/useConversationQueries';
 import { useCancelScheduledSend, useOrderAttachments } from '../../../hooks/queries/useDraftEmailQueries';
 import { errText } from './Compose/useComposeData';
-import { SANS } from './cm-format';
+import { LETTER_FILES_WITHHELD, SANS } from './cm-format';
 
 const NOTE: CSSProperties = { margin: 0, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #665D50)' };
 
@@ -79,8 +81,8 @@ export function AutoSendStop({ orderId }: { orderId: string | null }) {
   );
 }
 
-function size(bytes: number | null): string {
-  if (bytes === null) return '';
+function size(bytes: number | null | undefined): string {
+  if (bytes == null) return '';
   if (bytes < 1024) return ` · ${bytes} B`;
   if (bytes < 1024 * 1024) return ` · ${Math.round(bytes / 1024)} KB`;
   return ` · ${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -92,6 +94,13 @@ export function CameWithIt({ orderId, conversationId }: { orderId: string | null
   if (files.isError) return <p style={{ ...NOTE, marginTop: 6 }}>Whether any files came with this letter could not be read.</p>;
   const mine = (files.data ?? []).filter((f) => f.conversationId === conversationId);
   if (mine.length === 0) return null;
+  if (mine.some((f) => f.withheld)) {
+    return (
+      <p data-testid="book-attachments-withheld" style={{ ...NOTE, marginTop: 6 }}>
+        {LETTER_FILES_WITHHELD}
+      </p>
+    );
+  }
   return (
     <div data-testid="book-attachments" style={{ margin: '6px 0 0' }}>
       <p style={NOTE}>Came with this letter:</p>
