@@ -18,7 +18,7 @@ vi.mock('@/services/api/client', () => ({
   apiClient: { get: () => Promise.reject(rateLimited) },
 }))
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
-  useOrders: () => ({
+  useOrderWindow: () => ({
     data: undefined,
     isLoading: false,
     isError: true,

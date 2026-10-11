@@ -123,6 +123,108 @@ export async function getOrderBook(
   return withheld ? orders.map((o) => ({ ...o, amountsWithheld: true as const })) : orders;
 }
 
+/** One page of the ledger, newest first, as /orders draws it (F-1368). */
+export interface OrderPage {
+  orders: Order[];
+  page: number;
+  /** How many orders the house has in all, as the gateway counted them. */
+  total: number;
+  hasMore: boolean;
+  /** The whole book's figures, when they were asked for with this page. */
+  summary?: OrderBookSummary;
+}
+
+/**
+ * One page of the order book, newest first (F-1368). /orders draws the
+ * newest page and asks for the next only when the person loads older ones.
+ * With `summary`, the reply also carries the whole book's stage counts and
+ * month, counted by the gateway: the page's figures come from those, never
+ * from these rows. `zone` is this browser's clock, which the gateway uses
+ * only when the house has stated none.
+ */
+export async function getOrderPage(
+  page: number,
+  restaurantId?: string,
+  opts: { summary?: boolean; zone?: string | null } = {},
+): Promise<OrderPage> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<{
+    orders: Order[];
+    total: number;
+    hasMore?: boolean;
+    amountsWithheld?: true;
+    summary?: OrderBookSummary;
+  }>(`${ORDERS_PATH}`, {
+    params: {
+      page,
+      limit: BOOK_PAGE_SIZE,
+      ...(opts.summary ? { summary: 'true' } : {}),
+      ...(opts.summary && opts.zone ? { zone: opts.zone } : {}),
+    },
+  });
+  const body = response.data;
+  const rows = body?.orders ?? [];
+  const total = Number(body?.total);
+  const withheld = body?.amountsWithheld === true;
+  // A summary that did not come back counted is not one: the page then shows
+  // "not known", never a zero.
+  const summary =
+    body?.summary && typeof body.summary === 'object' && body.summary.counts
+      ? { ...body.summary, ...(withheld ? { amountsWithheld: true as const } : {}) }
+      : undefined;
+  return {
+    // Staff rows carry the root marker, as `getOrders` does (F-441).
+    orders: withheld ? rows.map((o) => ({ ...o, amountsWithheld: true as const })) : rows,
+    page,
+    total: Number.isFinite(total) ? total : rows.length,
+    hasMore: body?.hasMore === true && rows.length > 0,
+    ...(summary ? { summary } : {}),
+  };
+}
+
+/** The orders asked for by id, read in chunks of the gateway's page size (F-1368). */
+export async function getOrdersByIds(ids: string[], restaurantId?: string): Promise<Order[]> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const unique = [...new Set(ids.filter(Boolean))];
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += BOOK_PAGE_SIZE) {
+    chunks.push(unique.slice(i, i + BOOK_PAGE_SIZE));
+  }
+  const pages = await Promise.all(
+    chunks.map(async (chunk) => {
+      const response = await apiClient.get<{ orders: Order[] }>(`${ORDERS_PATH}`, {
+        params: { ids: chunk.join(','), limit: BOOK_PAGE_SIZE },
+      });
+      return response.data?.orders ?? [];
+    }),
+  );
+  return pages.flat();
+}
+
+/** One house month's committed spend, per currency (`OrderBookMonth`, gateway). */
+export interface OrderBookMonth {
+  /** `YYYY-MM` on the house's clock. */
+  month: string;
+  /** `currency: null` is "the order names none". */
+  byCurrency: Array<{ currency: string | null; amount: number }>;
+  unpriced: number;
+}
+
+/** `GET /procurement/orders?summary=true`'s `summary` — the whole book (F-1368). */
+export interface OrderBookSummary {
+  total: number;
+  counts: { pending: number; approved: number; ordered: number; delivered: number };
+  recurring: number;
+  cancelled: number;
+  zone: string;
+  thisMonth?: OrderBookMonth;
+  lastMonth?: OrderBookMonth;
+  /** Staff: the months were left out on purpose (F-441). */
+  amountsWithheld?: true;
+}
+
 /**
  * How many open orders the house has with each vendor, counted by the gateway
  * over the whole book (F-905). `{ [providerId]: n }`; a vendor with none open
@@ -766,6 +868,8 @@ export async function getOrderHistory(
 export const ordersApi = {
   getOrders,
   getOrderBook,
+  getOrderPage,
+  getOrdersByIds,
   getOpenOrderCountsByProvider,
   getOrder,
   createOrder,

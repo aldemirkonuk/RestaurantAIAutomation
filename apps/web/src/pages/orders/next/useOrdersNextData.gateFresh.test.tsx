@@ -35,8 +35,8 @@ vi.mock('@/services/api/client', () => ({
   },
 }))
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
-  useOrders: () => ({
-    data: [],
+  useOrderWindow: () => ({
+    data: { pages: [{ orders: [], page: 1, total: 0, hasMore: false }] },
     isLoading: false,
     isError: false,
     error: null,

@@ -1,6 +1,8 @@
 /**
  * OrdersNext view model — live data only, assembled from the EXISTING hooks
- * (useOrders, useProviders); nothing here invents a number. The five-stage
+ * (useOrderWindow, useProviders); nothing here invents a number. The ledger
+ * is the newest orders, a page at a time; the spine's counts and the month
+ * are the gateway's, over the whole book, sent with the first page (F-1368). The five-stage
  * spine the founder kept (pending · approved · ordered · delivered · recurring)
  * is derived from the canonical OrderStatus set via normalizeOrderStatus, with
  * `recurring` orthogonal: a repeating order sits in the recurring station
@@ -15,7 +17,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { readFailureWords } from '@/lib/readFailure';
-import { useOrders } from '@/hooks/queries/useOrderQueries';
+import { useOrderWindow } from '@/hooks/queries/useOrderQueries';
+import { getOrder, type OrderBookSummary } from '@/services/api/orders';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
 import { num, sumByCurrency, type MoneyInCurrency } from './format';
@@ -338,6 +341,40 @@ export function monthFigureOf(
 }
 
 /**
+ * The month figure from the gateway's summary (F-1368): the same committed
+ * orders and house month `monthFigureOf` reads, summed over the whole book
+ * on the server instead of over the rows this page happens to hold. An order
+ * that names no currency is filed under the house's, as `toRow` files it.
+ */
+export function monthFigureFromSummary(
+  summary: OrderBookSummary,
+  houseCurrency: string | null,
+): MonthFigure {
+  if (!summary.thisMonth || !summary.lastMonth) {
+    return { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
+  }
+  const sum = (m: NonNullable<OrderBookSummary['thisMonth']>) =>
+    sumByCurrency(m.byCurrency.map((c) => ({ amount: c.amount, currency: c.currency ?? houseCurrency })));
+  const thisSum = sum(summary.thisMonth);
+  const lastSum = sum(summary.lastMonth);
+  const [year, month] = summary.thisMonth.month.split('-').map(Number);
+  const label =
+    Number.isInteger(year) && Number.isInteger(month)
+      ? new Intl.DateTimeFormat('en-GB', { month: 'long', timeZone: 'UTC' }).format(
+          new Date(Date.UTC(year, month - 1, 15)),
+        )
+      : undefined;
+  return {
+    thisMonth: thisSum.total,
+    thisMonthByCurrency: thisSum.byCurrency,
+    lastMonth: lastSum.total,
+    lastMonthByCurrency: lastSum.byCurrency,
+    unpricedThisMonth: summary.thisMonth.unpriced,
+    label,
+  };
+}
+
+/**
  * What this house's approval rules say about one pending order.
  *
  * `GET /procurement/order-approval-gate`, one call for the whole house. The
@@ -419,6 +456,16 @@ export interface OrdersNextData {
   isError: boolean;
   errorMessage: string | null;
   refetch: () => void;
+  /** How many orders the house has in all, when known; `rows` is the newest of them. */
+  totalInBook?: number | null;
+  /** Reads the next older page; null when every order is already loaded. */
+  loadOlder?: (() => void) | null;
+  loadingOlder?: boolean;
+  /**
+   * The order a link asked for is outside the loaded rows and is being read
+   * on its own. While true, the page must not say it was not found.
+   */
+  targetPending?: boolean;
   /**
    * Per-order approval verdicts, keyed by order id. `null` while the gate has
    * not been read, so an absent entry can never be mistaken for "anyone may
@@ -599,11 +646,32 @@ export function toRow(
   };
 }
 
-export function useOrdersNextData(): OrdersNextData {
+export function useOrdersNextData(targetOrderId: string | null = null): OrdersNextData {
   const { activeRestaurantId, user } = useAuth();
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
-  const ordersQuery = useOrders();
+  // The newest orders, page by page, and the whole book's figures (F-1368).
+  const windowQuery = useOrderWindow();
   const providersQuery = useProviders(restaurantId);
+
+  const windowOrders = useMemo(() => {
+    const pages = windowQuery.data?.pages;
+    if (!pages) return undefined;
+    // An order that moved onto the next page while it was read is one order.
+    const byId = new Map<string, Order>();
+    for (const p of pages) for (const o of p.orders) if (o?.id) byId.set(o.id, o);
+    return [...byId.values()];
+  }, [windowQuery.data]);
+
+  // A link to an order older than the loaded rows reads that order alone, so
+  // `?order=` still opens it in a large house (F-1368).
+  const targetOutside =
+    !!targetOrderId && !!windowOrders && !windowOrders.some((o) => o.id === targetOrderId);
+  const targetQuery = useQuery({
+    queryKey: queryKeys.orders.detail(targetOrderId ?? ''),
+    queryFn: () => getOrder(targetOrderId!, restaurantId),
+    enabled: targetOutside && !!restaurantId,
+    retry: false,
+  });
 
   // Tenant-keyed: a restaurant switch must never carry the previous house's
   // verdicts. `retry: false` because a 403/500 here is a real state the page
@@ -641,20 +709,6 @@ export function useOrdersNextData(): OrdersNextData {
       ? houseCurrencyQuery.data.code
       : null;
 
-  // The house's clock, for the month figure (F-230). Unstated or unread, the
-  // figure files by this browser's clock, as it did before.
-  const houseZoneQuery = useQuery({
-    queryKey: ['settings', 'time-zone', restaurantId],
-    queryFn: () => settingsApi.houseTimeZone(),
-    enabled: !!restaurantId,
-    staleTime: 5 * 60_000,
-    retry: 1,
-  });
-  const houseZone =
-    houseZoneQuery.data?.readable && houseZoneQuery.data.zone
-      ? houseZoneQuery.data.zone
-      : null;
-
   // The working on each row is said in the house's marks (F-942).
   const group = useHouseGroupMark();
 
@@ -667,9 +721,12 @@ export function useOrdersNextData(): OrdersNextData {
   }, [providersQuery.data]);
 
   return useMemo(() => {
-    const raw = ordersQuery.data;
-    const known = Array.isArray(raw);
-    const rows = known ? raw.map((o) => toRow(o, providerNameById, houseCurrency, group)) : [];
+    const known = Array.isArray(windowOrders);
+    const target = targetOutside && targetQuery.data?.id === targetOrderId ? [targetQuery.data] : [];
+    const rows = known
+      ? [...windowOrders, ...target].map((o) => toRow(o, providerNameById, houseCurrency, group))
+      : [];
+    const summary = windowQuery.data?.pages[0]?.summary;
 
     const counts: Record<Stage, number | null> = {
       pending: null,
@@ -682,12 +739,20 @@ export function useOrdersNextData(): OrdersNextData {
     let cancelledCount: number | null = null;
     let month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
 
-    const amountsWithheld = rows.some((r) => r.amountsWithheld);
+    const amountsWithheld =
+      rows.some((r) => r.amountsWithheld) || summary?.amountsWithheld === true;
+
+    // The spine and the month are the gateway's, over the whole book, never
+    // the length of the rows loaded here (F-1368).
+    if (summary) {
+      for (const s of STAGES) counts[s] = summary.counts[s] ?? null;
+      recurringCount = summary.recurring;
+      cancelledCount = summary.cancelled;
+      // Withheld is not unpriced: a staff list summed to $0 here (F-441).
+      if (!amountsWithheld) month = monthFigureFromSummary(summary, houseCurrency);
+    }
 
     if (known) {
-      const oneTime = rows.filter((r) => !r.recurring);
-      for (const s of STAGES) counts[s] = oneTime.filter((r) => r.stage === s).length;
-      recurringCount = rows.filter((r) => r.recurring).length;
       /*
        * HOW MANY ROWS ACTUALLY ANSWERED THE QUESTION.
        *
@@ -699,10 +764,6 @@ export function useOrdersNextData(): OrdersNextData {
        * the station showed nothing without saying so.
        */
       recurrenceReadCount = rows.filter((r) => r.recurrence.read).length;
-      cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
-
-      // Withheld is not unpriced: a staff list summed to $0 here (F-441).
-      if (!amountsWithheld) month = monthFigureOf(rows, houseZone);
     }
 
 
@@ -734,16 +795,20 @@ export function useOrdersNextData(): OrdersNextData {
       month,
       amountsWithheld,
       hasData: known,
-      dataUpdatedAt: known && ordersQuery.dataUpdatedAt ? ordersQuery.dataUpdatedAt : null,
-      isLoading: ordersQuery.isLoading,
-      isError: ordersQuery.isError,
+      dataUpdatedAt: known && windowQuery.dataUpdatedAt ? windowQuery.dataUpdatedAt : null,
+      isLoading: windowQuery.isLoading,
+      isError: windowQuery.isError,
       // Plain words, never axios's "Request failed with status code 429" (F-403).
-      errorMessage: ordersQuery.isError ? readFailureWords(ordersQuery.error) : null,
+      errorMessage: windowQuery.isError ? readFailureWords(windowQuery.error) : null,
       // The verdicts are re-read with the orders they judge (F-1128).
       refetch: () => {
-        void ordersQuery.refetch();
+        void windowQuery.refetch();
         void gateQuery.refetch();
       },
+      totalInBook: summary?.total ?? windowQuery.data?.pages[0]?.total ?? null,
+      loadOlder: windowQuery.hasNextPage ? () => void windowQuery.fetchNextPage() : null,
+      loadingOlder: windowQuery.isFetchingNextPage,
+      targetPending: targetOutside && targetQuery.isLoading,
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, houseCurrency, group, houseZone, gateQuery.data, gateQuery.isError, gateQuery.error, gateQuery.refetch]);
+  }, [windowOrders, windowQuery.isLoading, windowQuery.isError, windowQuery.error, windowQuery.refetch, windowQuery.dataUpdatedAt, windowQuery.data, windowQuery.hasNextPage, windowQuery.fetchNextPage, windowQuery.isFetchingNextPage, targetOrderId, targetOutside, targetQuery.data, targetQuery.isLoading, providerNameById, houseCurrency, group, gateQuery.data, gateQuery.isError, gateQuery.error, gateQuery.refetch]);
 }

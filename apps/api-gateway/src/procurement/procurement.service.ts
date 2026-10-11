@@ -215,7 +215,10 @@ import {
   statusInWords,
 } from "./order-transitions";
 import { ORDER_SPEND_STATUSES, toPostgrestInList } from "./order-status";
-import { RECURRENCE_ACTS } from "./order-recurrence";
+import {
+  ORDER_RECURRENCE_FREQUENCIES,
+  RECURRENCE_ACTS,
+} from "./order-recurrence";
 import {
   CANCEL_REASON_REFUSAL_WORDS,
   CancelReasonCode,
@@ -311,6 +314,67 @@ export const OPEN_ORDER_STATUSES: string[] = [
   ProcurementOrderStatus.IN_TRANSIT,
   ProcurementOrderStatus.PARTIALLY_RECEIVED,
 ];
+
+/**
+ * Where each status sits on /orders' spine (F-1368): `stageOf` after
+ * `canonicalStatus` in `apps/web/src/pages/orders/next/useOrdersNextData.ts`,
+ * in the gateway's own vocabulary. A status not listed files as pending, as
+ * the page's `normalizeOrderStatus` does.
+ */
+const ORDER_BOOK_STAGE: Record<string, OrderBookStage | "cancelled"> = {
+  [ProcurementOrderStatus.PENDING]: "pending",
+  [ProcurementOrderStatus.APPROVAL_NEEDED]: "pending",
+  [ProcurementOrderStatus.NEGOTIATING]: "pending",
+  [ProcurementOrderStatus.APPROVED]: "approved",
+  [ProcurementOrderStatus.CONFIRMED]: "ordered",
+  [ProcurementOrderStatus.IN_TRANSIT]: "ordered",
+  [ProcurementOrderStatus.DELIVERED]: "delivered",
+  [ProcurementOrderStatus.PARTIALLY_RECEIVED]: "delivered",
+  [ProcurementOrderStatus.COMPLETED]: "delivered",
+  [ProcurementOrderStatus.CANCELLED]: "cancelled",
+  [ProcurementOrderStatus.REJECTED]: "cancelled",
+  [ProcurementOrderStatus.FAILED]: "cancelled",
+};
+
+export type OrderBookStage = "pending" | "approved" | "ordered" | "delivered";
+
+/** `zone` when this runtime can file by it, else null. */
+function readableZone(zone: string | null | undefined): string | null {
+  if (!zone) return null;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
+/** One house month's committed spend, per currency (never one sum across them). */
+export interface OrderBookMonth {
+  /** `YYYY-MM` on the clock named by `OrderBookSummary.zone`. */
+  month: string;
+  /** `currency: null` is "the order names none"; the page files it under the house's. */
+  byCurrency: Array<{ currency: string | null; amount: number }>;
+  /** Committed orders in the month with no total — stated, not zeroed. */
+  unpriced: number;
+}
+
+/**
+ * `GET /procurement/orders/summary` (F-1368): what /orders counts and sums,
+ * over the whole book, so the page reads only the newest rows it draws.
+ */
+export interface OrderBookSummary {
+  total: number;
+  /** One-time orders per stage; a repeating order sits in `recurring` instead. */
+  counts: Record<OrderBookStage, number>;
+  recurring: number;
+  cancelled: number;
+  /** The clock the months are filed by. */
+  zone: string;
+  /** Absent when the reader does not hold the house's money (F-441). */
+  thisMonth?: OrderBookMonth;
+  lastMonth?: OrderBookMonth;
+}
 
 /**
 /** How many earlier orders to one vendor the first-order test reads (F-731). */
@@ -3481,6 +3545,11 @@ export class ProcurementService {
 
     if (query.providerId) {
       supabaseQuery = supabaseQuery.eq("provider_id", query.providerId);
+    }
+
+    // Named orders only (F-1368): the calendar's linked entries, by id.
+    if (query.ids) {
+      supabaseQuery = supabaseQuery.in("id", query.ids.split(","));
     }
 
     if (query.dateFrom) {
@@ -9027,6 +9096,141 @@ export class ProcurementService {
       if (rows.length < PAGE) return counts;
     }
     throw new ServiceUnavailableException("Too many open orders to count");
+  }
+
+  /**
+   * `GET /procurement/orders/summary` — /orders' stage counts and its
+   * "<Month> so far" over the house's whole book (F-1368). The page used to
+   * read every order, page by page, into the browser to count and sum them,
+   * every minute. This reads only the few columns the figures need, paging
+   * past PostgREST's 1,000-row cap like `countOpenOrdersByProvider`.
+   *
+   * The month is the house's, by `requested_at`, and counts committed orders
+   * only (approved, ordered, delivered), as `monthFigureOf` did. A house with
+   * no zone files by `callerZone`, the reader's own clock, as the page did.
+   * With `withAmounts` false (staff), no money column is read or sent.
+   * A failed read is a 503, never zeroes.
+   */
+  async summarizeOrderBook(
+    restaurantId: string,
+    opts: { withAmounts: boolean; callerZone?: string | null; now?: Date },
+  ): Promise<OrderBookSummary> {
+    const PAGE = 1000;
+    const MAX_PAGES = 100;
+    const zone =
+      (await this.readHouseZoneForCancel(restaurantId)) ??
+      readableZone(opts.callerZone) ??
+      "UTC";
+    const monthOf = (t: string | null | undefined): string | null => {
+      if (!t) return null;
+      const d = new Date(t);
+      if (Number.isNaN(d.getTime())) return null;
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone,
+        year: "numeric",
+        month: "2-digit",
+      }).formatToParts(d);
+      const get = (type: string) => parts.find((p) => p.type === type)?.value;
+      return `${get("year")}-${get("month")}`;
+    };
+    const here = monthOf((opts.now ?? new Date()).toISOString())!;
+    const [y, m] = here.split("-").map(Number);
+    const last =
+      m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+
+    const summary: OrderBookSummary = {
+      total: 0,
+      counts: { pending: 0, approved: 0, ordered: 0, delivered: 0 },
+      recurring: 0,
+      cancelled: 0,
+      zone,
+    };
+    const months = new Map<
+      string,
+      { by: Map<string | null, number>; unpriced: number }
+    >([
+      [here, { by: new Map(), unpriced: 0 }],
+      [last, { by: new Map(), unpriced: 0 }],
+    ]);
+    const frequencies = new Set<string>(ORDER_RECURRENCE_FREQUENCIES);
+    const columns = opts.withAmounts
+      ? "status, recurrence_frequency, total_cost, currency, requested_at"
+      : "status, recurrence_frequency";
+
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const from = page * PAGE;
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select(columns)
+        .eq("restaurant_id", restaurantId)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) {
+        this.logger.error("Failed to summarize the order book", {
+          restaurantId,
+          error: error.message,
+        });
+        throw new ServiceUnavailableException("Could not read the orders");
+      }
+      const rows = (data ?? []) as unknown as Array<{
+        status: string | null;
+        recurrence_frequency: string | null;
+        total_cost?: number | string | null;
+        currency?: string | null;
+        requested_at?: string | null;
+      }>;
+      for (const r of rows) {
+        summary.total += 1;
+        const stage =
+          ORDER_BOOK_STAGE[String(r.status ?? "").toUpperCase()] ?? "pending";
+        const recurring =
+          typeof r.recurrence_frequency === "string" &&
+          frequencies.has(r.recurrence_frequency.trim().toLowerCase());
+        if (stage === "cancelled") summary.cancelled += 1;
+        if (recurring) summary.recurring += 1;
+        else if (stage !== "cancelled") summary.counts[stage] += 1;
+
+        if (!opts.withAmounts || stage === "cancelled" || stage === "pending")
+          continue;
+        const bucket = months.get(monthOf(r.requested_at) ?? "");
+        if (!bucket) continue;
+        const raw = r.total_cost;
+        const amount =
+          raw === null ||
+          raw === undefined ||
+          (typeof raw === "string" && raw.trim() === "")
+            ? null
+            : Number(raw);
+        if (amount === null || !Number.isFinite(amount)) {
+          bucket.unpriced += 1;
+          continue;
+        }
+        const code = currencyCode(r.currency);
+        bucket.by.set(
+          code,
+          Math.round(((bucket.by.get(code) ?? 0) + amount) * 100) / 100,
+        );
+      }
+      if (rows.length < PAGE) {
+        if (opts.withAmounts) {
+          const out = (key: string): OrderBookMonth => {
+            const b = months.get(key)!;
+            return {
+              month: key,
+              byCurrency: Array.from(b.by, ([currency, amount]) => ({
+                currency,
+                amount,
+              })),
+              unpriced: b.unpriced,
+            };
+          };
+          summary.thisMonth = out(here);
+          summary.lastMonth = out(last);
+        }
+        return summary;
+      }
+    }
+    throw new ServiceUnavailableException("Too many orders to summarize");
   }
 
   /**

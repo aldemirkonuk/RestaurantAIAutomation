@@ -6,7 +6,7 @@
  * stale-while-revalidate, offline support via persister.
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../../lib/query-keys'
 import { ordersApi } from '../../services/api'
 import type { Order, OrderStatus, CreateOrderRequest } from '../../services/api/types'
@@ -39,6 +39,68 @@ export function useOrders(filters?: { status?: OrderStatus }) {
     enabled: !!activeRestaurantId && isAuthenticated,
     staleTime: 30_000, // 30s stale window (agent bridge pushes updates)
     refetchInterval: 60_000, // 60s polling fallback
+    refetchOnWindowFocus: true,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Query: The ledger's window and the whole book's figures (/orders, F-1368)
+// ---------------------------------------------------------------------------
+
+/**
+ * The newest orders, a page of 100 at a time; `fetchNextPage` loads older
+ * ones. The poll and the focus re-read touch only the pages already loaded,
+ * not the house's whole history (a 5,000-order house was read in 50 serial
+ * requests every minute). The first page also carries the whole book's stage
+ * counts and month, counted by the gateway. Keyed under `orders.all`, so
+ * realtime, placements and approvals re-read it.
+ */
+export function useOrderWindow() {
+  const { activeRestaurantId, isAuthenticated } = useAuth()
+  const queryClient = useQueryClient()
+  let zone: string | null = null
+  try {
+    zone = Intl.DateTimeFormat().resolvedOptions().timeZone || null
+  } catch {
+    zone = null
+  }
+
+  useOrdersSubscription(
+    useCallback(() => {
+      if (activeRestaurantId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
+      }
+    }, [activeRestaurantId, queryClient]),
+  )
+
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.orders.all, 'window', activeRestaurantId ?? '', zone] as const,
+    queryFn: ({ pageParam }) =>
+      ordersApi.getOrderPage(pageParam, activeRestaurantId!, { summary: pageParam === 1, zone }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
+    enabled: !!activeRestaurantId && isAuthenticated,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  })
+}
+
+/**
+ * The orders these ids name, read by id in chunks (F-1368): /calendar needs
+ * only the orders its visible entries link to, never the whole book. An empty
+ * list is answered at once, without a request.
+ */
+export function useOrdersByIds(ids: string[]) {
+  const { activeRestaurantId, isAuthenticated } = useAuth()
+  const key = [...new Set(ids)].sort()
+  return useQuery({
+    queryKey: [...queryKeys.orders.all, 'by-id', activeRestaurantId ?? '', key] as const,
+    queryFn: () =>
+      key.length === 0 ? Promise.resolve([] as Order[]) : ordersApi.getOrdersByIds(key, activeRestaurantId!),
+    enabled: !!activeRestaurantId && isAuthenticated,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
 }

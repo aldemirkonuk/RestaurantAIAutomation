@@ -27,8 +27,13 @@ vi.mock('../../../contexts/RealtimeContext', () => ({
   useCalendarEventsSubscription: () => {},
 }));
 vi.mock('../../../services/api/providers', () => ({ fetchProviders: async () => [] }));
+const askedIds = vi.hoisted(() => ({ current: [] as string[][] }));
 vi.mock('../../../hooks/queries/useOrderQueries', () => ({
-  useOrders: () => ({ data: [], isError: false, isLoading: false }),
+  // Only the orders the window's entries link to (F-1368), never the book.
+  useOrdersByIds: (ids: string[]) => {
+    askedIds.current.push(ids);
+    return { data: [], isError: false, isLoading: false };
+  },
 }));
 
 import { useCalendarNextData } from './useCalendarNextData';
@@ -50,6 +55,7 @@ let rows: unknown[] = [];
 
 beforeEach(() => {
   rows = [];
+  askedIds.current = [];
   get.mockReset();
   get.mockImplementation(async (url: string) => {
     if (url.startsWith('/calendar/events')) return { data: { events: rows, total: rows.length, hasMore: false } };
@@ -69,6 +75,19 @@ const cursor = new Date(2026, 8, 15, 12);
 describe('useCalendarNextData — repeating entries (sweep row 16)', () => {
   it('runs west of Greenwich', () => {
     expect(new Date(2026, 8, 7).getTimezoneOffset()).toBeGreaterThan(0);
+  });
+
+  it('reads only the orders its entries link to, by id (F-1368)', async () => {
+    rows = [
+      { ...base, id: 'ev-a', title: 'Delivery A', eventDate: '2026-09-10', orderId: 'ord-a' },
+      { ...base, id: 'ev-b', title: 'Delivery B', eventDate: '2026-09-12', orderId: 'ord-b' },
+      { ...base, id: 'ev-c', title: 'Delivery A again', eventDate: '2026-09-14', orderId: 'ord-a' },
+      { ...base, id: 'ev-d', title: 'Staff meeting', eventDate: '2026-09-15' },
+    ];
+    const { result } = renderHook(() => useCalendarNextData('month', cursor), { wrapper });
+    await waitFor(() => expect(result.current.events.length).toBe(4));
+    expect(askedIds.current.at(-1)).toEqual(['ord-a', 'ord-b']);
+    expect(get.mock.calls.map((c) => String(c[0])).some((u) => u.startsWith('/procurement/orders'))).toBe(false);
   });
 
   it('asks the gateway for series that began before the window', async () => {
