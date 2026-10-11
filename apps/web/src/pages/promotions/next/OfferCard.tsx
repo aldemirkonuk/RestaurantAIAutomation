@@ -251,7 +251,7 @@ function CardFoot({ offer, showDraft, onOpenDetail, onDismiss, onRestore, busy }
               }}
             >
               Put away
-              <small>For the whole house — undoable just after</small>
+              <small>For the whole house — bring it back any time from &ldquo;put away&rdquo; below</small>
             </button>
           )}
         </Popover>

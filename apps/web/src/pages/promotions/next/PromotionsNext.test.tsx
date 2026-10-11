@@ -18,11 +18,12 @@ import type { OfferDto } from './promotions-format';
 
 const mockRead = vi.hoisted(() => ({ current: { data: undefined as unknown, isLoading: false, isError: false, error: null as unknown } }));
 const mutateFns = vi.hoisted(() => ({ dismiss: vi.fn(), restore: vi.fn() }));
+const mutateErr = vi.hoisted(() => ({ dismiss: null as unknown, restore: null as unknown }));
 
 vi.mock('./usePromotionsNextData', () => ({
   usePromotionsRead: () => mockRead.current,
-  useDismissOffer: () => ({ mutate: mutateFns.dismiss, isPending: false }),
-  useRestoreOffer: () => ({ mutate: mutateFns.restore, isPending: false }),
+  useDismissOffer: () => ({ mutate: mutateFns.dismiss, reset: vi.fn(), isPending: false, isError: mutateErr.dismiss != null, error: mutateErr.dismiss }),
+  useRestoreOffer: () => ({ mutate: mutateFns.restore, reset: vi.fn(), isPending: false, isError: mutateErr.restore != null, error: mutateErr.restore }),
 }));
 
 vi.mock('../../../components/mudavym', async (orig) => ({
@@ -190,6 +191,36 @@ describe('PromotionsNext — a graded offer', () => {
     fireEvent.click(screen.getByLabelText('More actions'));
     fireEvent.click(screen.getByText('Put away'));
     expect(mutateFns.dismiss).toHaveBeenCalledWith('o1');
+  });
+
+  it('a put-away that fails says so in a status line (F-1288)', () => {
+    mutateErr.dismiss = { response: { status: 500, data: { message: 'boom' } } };
+    try {
+      loadOne(offer());
+      renderPage();
+      expect(screen.getByRole('status')).toHaveTextContent('That offer could not be put away just now');
+    } finally {
+      mutateErr.dismiss = null;
+    }
+  });
+
+  it('a restore that fails says so in a status line (F-1288)', () => {
+    mutateErr.restore = { response: { status: 500, data: { message: 'boom' } } };
+    try {
+      loadOne(offer({ state: 'dismissed', dismissed_at: '2026-09-10T00:00:00.000Z' }));
+      renderPage();
+      expect(screen.getByRole('status')).toHaveTextContent('That offer could not be brought back just now');
+    } finally {
+      mutateErr.restore = null;
+    }
+  });
+
+  it('the put-away menu points at the put-away fold, not at an undo that does not exist (F-1288)', () => {
+    loadOne(offer());
+    renderPage();
+    fireEvent.click(screen.getByLabelText('More actions'));
+    expect(screen.queryByText(/undoable just after/)).not.toBeInTheDocument();
+    expect(screen.getByText(/bring it back any time from .put away. below/)).toBeInTheDocument();
   });
 
   it('opening Details shows the offer sheet with the full per-wine breakdown', () => {

@@ -166,7 +166,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
         value={lowStockCount === undefined ? null : lowStockCount}
         format={(n) => formatNumber(Math.round(n))}
         sub={lowStockCount != null && lowStockCount > 0 ? 'below their minimum' : 'items below minimum'}
-        to="/inventory"
+        to="/inventory?filter=low-stock"
         loading={lowStockCount === undefined}
         accent
       />

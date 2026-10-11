@@ -112,6 +112,10 @@ function fake(rows: Record<string, Row[]>, failInsert = false) {
     const q: any = {
       select: () => q,
       eq: (c: string, v: unknown) => (preds.push((r) => r[c] === v), q),
+      is: (c: string, v: unknown) => (
+        preds.push((r) => (r[c] ?? null) === v),
+        q
+      ),
       update: (v: unknown) => ((op = "update"), (values = v), q),
       insert: async (v: unknown) => {
         if (failInsert) return { error: { message: "denied" } };
@@ -191,5 +195,47 @@ describe("PromotionsService.restore — who restored it, and the dismissal it to
       NotFoundException,
     );
     expect(writes).toEqual([]);
+  });
+});
+
+describe("PromotionsService.dismiss — a second put-away keeps the first (F-1289)", () => {
+  it("returns the original stamp and keeps who first put it away", async () => {
+    const rows = seed();
+    const { db } = fake(rows);
+    const svc = new PromotionsService(db, {} as any);
+    await expect(
+      svc.dismiss(HOUSE, "u-moe", "o1", new Date("2026-10-02T09:00:00.000Z")),
+    ).resolves.toEqual({
+      dismissed: true,
+      dismissed_at: "2026-10-01T10:00:00.000Z",
+    });
+    expect(rows.provider_promotions[0]).toMatchObject({
+      dismissed_at: "2026-10-01T10:00:00.000Z",
+      dismissed_by: "u-ada",
+    });
+  });
+
+  it("stamps an offer still on the table", async () => {
+    const rows = seed();
+    rows.provider_promotions[0].dismissed_at = null as any;
+    rows.provider_promotions[0].dismissed_by = null as any;
+    const { db } = fake(rows);
+    const svc = new PromotionsService(db, {} as any);
+    await expect(
+      svc.dismiss(HOUSE, "u-moe", "o1", new Date("2026-10-02T09:00:00.000Z")),
+    ).resolves.toEqual({
+      dismissed: true,
+      dismissed_at: "2026-10-02T09:00:00.000Z",
+    });
+    expect(rows.provider_promotions[0].dismissed_by).toBe("u-moe");
+  });
+
+  it("another house's offer is still not found", async () => {
+    const rows = seed();
+    const { db } = fake(rows);
+    const svc = new PromotionsService(db, {} as any);
+    await expect(svc.dismiss("house-2", "u-moe", "o1")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

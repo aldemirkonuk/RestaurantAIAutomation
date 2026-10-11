@@ -179,14 +179,29 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
   const rungLabel = RUNGS.find((r) => r.id === rung)?.label ?? 'All offers';
   const selected = offers.find((o) => o.id === selectedId) ?? null;
   const busy = dismiss.isPending || restore.isPending;
+  // F-1288: a failed put-away or restore says so; one act's failure clears
+  // when the other is tried.
+  const putAwayOffer = (id: string) => {
+    restore.reset();
+    dismiss.mutate(id);
+  };
+  const restoreOffer = (id: string) => {
+    dismiss.reset();
+    restore.mutate(id);
+  };
+  const actError = dismiss.isError
+    ? actFailureSentence('put away', dismiss.error)
+    : restore.isError
+      ? actFailureSentence('brought back', restore.error)
+      : null;
   const card = (r: RankedOffer) => (
     <OfferCard
       offer={r.offer}
       tier={r.tier}
       today={today}
       onOpenDetail={setSelectedId}
-      onDismiss={(id) => dismiss.mutate(id)}
-      onRestore={(id) => restore.mutate(id)}
+      onDismiss={putAwayOffer}
+      onRestore={restoreOffer}
       busy={busy}
     />
   );
@@ -213,6 +228,12 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
             </>
           )}
         </header>
+
+        {actError && (
+          <p className="pn-banner" role="status" data-testid="pn-act-error">
+            {actError}
+          </p>
+        )}
 
         {data && ready && (
           <>
@@ -392,7 +413,7 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
                       <span className="pn-mono" style={{ fontSize: 11, color: 'var(--ink-4)' }}>
                         put away {o.dismissed_at ? houseDayWord(o.dismissed_at, data.time_zone) : ''}
                       </span>
-                      <button type="button" className="pn-btn pn-btn--quiet" disabled={busy} onClick={() => restore.mutate(o.id)}>
+                      <button type="button" className="pn-btn pn-btn--quiet" disabled={busy} onClick={() => restoreOffer(o.id)}>
                         Restore
                       </button>
                     </article>
@@ -413,12 +434,20 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
         offer={selected}
         today={today}
         onClose={() => setSelectedId(null)}
-        onDismiss={(id) => dismiss.mutate(id)}
-        onRestore={(id) => restore.mutate(id)}
+        onDismiss={putAwayOffer}
+        onRestore={restoreOffer}
         busy={busy}
       />
     </div>
   );
+}
+
+/** F-1288: the sentence for a put-away or restore that did not go through. */
+function actFailureSentence(act: 'put away' | 'brought back', err: unknown): string {
+  const f = failureOf(err);
+  if (f.expired) return 'Your session has expired — sign in again, then try once more. Nothing was changed.';
+  if (f.forbidden) return `This account cannot change the house's offers, so the offer was not ${act}.`;
+  return `That offer could not be ${act} just now — nothing was changed. Try again in a moment.`;
 }
 
 export default PromotionsNext;

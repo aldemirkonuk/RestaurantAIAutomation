@@ -178,7 +178,7 @@ export function LowStockPanel({
       title="Running low"
       action={
         <Link
-          to="/inventory"
+          to="/inventory?filter=low-stock"
           className="text-[11px] uppercase tracking-[0.1em] text-inkm-4 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
         >
           Inventory

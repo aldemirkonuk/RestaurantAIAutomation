@@ -753,7 +753,13 @@ export class PromotionsService {
     };
   }
 
-  /** Put an offer away for the whole house. Scoped to the caller's house; a foreign id is "not found". */
+  /**
+   * Put an offer away for the whole house. Scoped to the caller's house; a foreign id is "not found".
+   *
+   * F-1289: only a row still on the table is stamped, so a second "Put away"
+   * (another tab, another person) keeps the first dismisser and returns the
+   * original stamp instead of overwriting it.
+   */
   async dismiss(
     restaurantId: string,
     userId: string,
@@ -761,18 +767,36 @@ export class PromotionsService {
     now: Date = new Date(),
   ): Promise<{ dismissed: true; dismissed_at: string }> {
     const stamp = now.toISOString();
-    const { data, error } = await this.databaseService.supabase
+    const sb = this.databaseService.supabase;
+    const { data, error } = await sb
       .from("provider_promotions")
       .update({ dismissed_at: stamp, dismissed_by: userId })
       .eq("id", id)
       .eq("restaurant_id", restaurantId)
+      .is("dismissed_at", null)
       .select("id, dismissed_at")
       .maybeSingle();
     if (error) {
       throw new Error(`The offer could not be put away (provider_promotions): ${error.message}`);
     }
     if (!data) {
-      throw new NotFoundException("No such offer on this house's table.");
+      const { data: cur, error: curErr } = await sb
+        .from("provider_promotions")
+        .select("id, dismissed_at")
+        .eq("id", id)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (curErr) {
+        throw new Error(
+          `The offer could not be put away (provider_promotions): ${curErr.message}`,
+        );
+      }
+      const already = (cur as { dismissed_at: string | null } | null)
+        ?.dismissed_at;
+      if (!already) {
+        throw new NotFoundException("No such offer on this house's table.");
+      }
+      return { dismissed: true, dismissed_at: already };
     }
     this.logger.log(`Offer ${id} dismissed for restaurant ${restaurantId} by ${userId}`);
     return { dismissed: true, dismissed_at: (data as { dismissed_at: string }).dismissed_at ?? stamp };
