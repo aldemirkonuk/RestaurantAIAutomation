@@ -1516,6 +1516,21 @@ describe('ReportsNext — the goals desk', () => {
     expect(within(goals).getByRole('button', { name: 'Save the change' })).toBeInTheDocument();
   });
 
+  // F-1371: Edit sent all five fields from when it opened, so a stale tab put
+  // back the deadline another manager had moved.
+  it('sends only the fields the Edit changed', async () => {
+    deskStub.update.mockClear();
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    fireEvent.click(within(goals).getByRole('button', { name: 'Edit Lift wine revenue' }));
+    fireEvent.change(within(goals).getByLabelText('Target, in money'), {
+      target: { value: '9500' },
+    });
+    fireEvent.click(within(goals).getByRole('button', { name: 'Save the change' }));
+    await waitFor(() => expect(deskStub.update).toHaveBeenCalled());
+    expect(deskStub.update).toHaveBeenCalledWith('g1', { targetValue: 9500 });
+  });
+
   // F-1291: a past-deadline goal stayed active forever; the gateway now closes
   // it, and the desk shows closed goals in their own fold.
   it('shows the goals a deadline closed in their own fold, with the final value', () => {

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
@@ -334,5 +335,56 @@ describe("OperatingHoursService — a change files to What changed here (F-503)"
       service(seed()).putOperatingHours(STAFF, RID, BISTRO),
     ).rejects.toBeDefined();
     expect(record).not.toHaveBeenCalled();
+  });
+});
+
+describe("OperatingHoursService — two managers on one week (F-1373)", () => {
+  const TUESDAY_FIXED = {
+    ...BISTRO,
+    tue: [{ open: "11:00", close: "23:00" }],
+  };
+  const FRIDAY_FIXED = {
+    ...BISTRO,
+    fri: [{ open: "12:00", close: "01:00" }],
+  };
+
+  it("refuses a week saved over hours someone else changed since the sheet opened", async () => {
+    // The first manager already saved Tuesday; the second's sheet opened on
+    // the week before that and only touched Friday.
+    const db = seed({ operating_hours: TUESDAY_FIXED });
+    const save = service(db).putOperatingHours(OWNER, RID, FRIDAY_FIXED, {
+      explicit: true,
+      expected: BISTRO,
+    });
+    await expect(save).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service(db).putOperatingHours(OWNER, RID, FRIDAY_FIXED, {
+        explicit: true,
+        expected: BISTRO,
+      }),
+    ).rejects.toThrow(/Someone else changed the opening hours/);
+    const row = db.tables.restaurants.find((r) => r.id === RID);
+    expect(row?.operating_hours).toEqual(TUESDAY_FIXED);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("saves when the stored week is the one the sheet opened on, and answers with the stored time", async () => {
+    const db = seed({ operating_hours: BISTRO });
+    const res = await service(db).putOperatingHours(OWNER, RID, FRIDAY_FIXED, {
+      explicit: true,
+      expected: BISTRO,
+    });
+    expect(res.operatingHours).toEqual(FRIDAY_FIXED);
+    expect(res.updatedAt).not.toBe("2026-09-02T00:00:00.000Z");
+  });
+
+  it("a sheet opened on unknown hours is refused once someone has set them", async () => {
+    const db = seed({ operating_hours: BISTRO });
+    await expect(
+      service(db).putOperatingHours(OWNER, RID, FRIDAY_FIXED, {
+        explicit: true,
+        expected: null,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

@@ -211,6 +211,9 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
       void run(goalId, 'Archiving the goal', () =>
         apiClient.put(`/analytics/goals/${activeRestaurantId}/${goalId}/status`, {
           status: 'archived',
+          // The desk shows running goals only; one closed since is refused
+          // with a 409 that says so (F-1371).
+          expectedStatus: 'active',
         }),
       );
     },

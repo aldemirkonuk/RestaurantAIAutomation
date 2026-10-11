@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { AnalyticsService } from "./analytics.service";
@@ -362,19 +367,68 @@ export class GoalsService {
     return data;
   }
 
-  async updateGoalStatus(restaurantId: string, goalId: string, status: string) {
+  /**
+   * `expectedStatus` is the status the caller's page showed (F-1371). When it
+   * is sent and the goal has moved on since — another manager archived it, or
+   * it was marked achieved — nothing is written and the 409 says what it is
+   * now, rather than a stale tab quietly rewriting the other person's close.
+   */
+  async updateGoalStatus(
+    restaurantId: string,
+    goalId: string,
+    status: string,
+    expectedStatus?: string,
+  ) {
     const allowed = ["active", "achieved", "missed", "archived"];
     if (!allowed.includes(status)) throw new Error("Invalid status");
-    const { data, error } = await this.dbService
+    if (expectedStatus !== undefined && !allowed.includes(expectedStatus))
+      throw new Error("Invalid expected status");
+    let q = this.dbService
       .getClient()
       .from("analytics_goals")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("restaurant_id", restaurantId)
-      .eq("id", goalId)
-      .select()
-      .single();
+      .eq("id", goalId);
+    if (expectedStatus !== undefined) q = q.eq("status", expectedStatus);
+    const { data, error } = await q.select().maybeSingle();
     if (error) throw new Error(error.message);
+    if (!data) await this.refuseClosedGoal(restaurantId, goalId, "change");
     return data;
+  }
+
+  /**
+   * Why a guarded goal write matched no row (F-1371): the goal is gone, or
+   * someone closed it after this page read it. Always throws.
+   */
+  private async refuseClosedGoal(
+    restaurantId: string,
+    goalId: string,
+    what: "edit" | "change",
+  ): Promise<never> {
+    const { data: held, error } = await this.dbService
+      .getClient()
+      .from("analytics_goals")
+      .select("status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", goalId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!held)
+      throw new Error("No goal with that id belongs to this restaurant.");
+    const now = String((held as { status?: unknown }).status ?? "");
+    const said =
+      now === "archived"
+        ? "archived"
+        : now === "achieved"
+          ? "marked achieved"
+          : now === "missed"
+            ? "marked missed"
+            : now === "active"
+              ? "reopened"
+              : `set to ${now}`;
+    throw new ConflictException(
+      `This goal was ${said} by someone else after you opened it, so your ${what} was not written. Reload the page to see it as it stands now.`,
+    );
   }
 
   /**
@@ -463,6 +517,9 @@ export class GoalsService {
       .update(patch)
       .eq("restaurant_id", restaurantId)
       .eq("id", goalId)
+      // Only a running goal takes an edit (F-1371): an edit from a tab opened
+      // before another manager archived it must not rewrite the closed goal.
+      .eq("status", "active")
       .select()
       // `.single()` here answered a missing goal with PostgREST's own
       // "Cannot coerce the result to a single JSON object" — measured with
@@ -471,8 +528,7 @@ export class GoalsService {
       // absence be named as an absence.
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!data)
-      throw new Error("No goal with that id belongs to this restaurant.");
+    if (!data) await this.refuseClosedGoal(restaurantId, goalId, "edit");
     return data;
   }
 

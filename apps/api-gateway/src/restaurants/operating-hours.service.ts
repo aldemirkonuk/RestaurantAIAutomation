@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -62,6 +63,21 @@ function canonical(v: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(v ?? null);
+}
+
+/**
+ * A week as the reader was shown it, in one spelling, so the week a page
+ * read and the week now stored compare equal when they are the same hours.
+ * A stored week that does not parse was shown as unknown (`toResponse`), so
+ * it compares as null and a sheet opened to repair it is not refused.
+ */
+function weekKey(v: unknown): string {
+  if (v === null || v === undefined) return canonical(null);
+  try {
+    return canonical(toJson(parseOperatingHours(v)));
+  } catch {
+    return canonical(null);
+  }
 }
 
 /** Filed under the "hours" register in `system_audit_log` (F-503). */
@@ -128,12 +144,18 @@ export class OperatingHoursService {
    * `opts.explicit` says the request actually carried an `operatingHours` key.
    * A body that omitted it is REFUSED rather than treated as null: a renamed or
    * misspelt field would otherwise erase a venue's hours and report success.
+   *
+   * `opts.expected`, when sent, is the week the caller's sheet opened on
+   * (F-1373). The sheet saves the whole week, so a second manager who fixed
+   * Tuesday while the first fixed Friday lost Tuesday. Now, when the stored
+   * week is no longer the one that was read, nothing is written and a 409
+   * says so.
    */
   async putOperatingHours(
     actorUserId: string,
     restaurantId: string,
     raw: unknown,
-    opts: { explicit: boolean } = { explicit: true },
+    opts: { explicit: boolean; expected?: unknown } = { explicit: true },
   ): Promise<OperatingHoursResponse> {
     await this.membersService.assertMembership(
       actorUserId,
@@ -174,7 +196,7 @@ export class OperatingHoursService {
     // audit row whose `from` is a guess is worse than none.
     const prior = await this.databaseService.supabase
       .from("restaurants")
-      .select("operating_hours")
+      .select("operating_hours, updated_at")
       .eq("id", restaurantId)
       .maybeSingle();
     if (prior.error) {
@@ -189,14 +211,26 @@ export class OperatingHoursService {
     if (!prior.data) throw new NotFoundException("Restaurant not found");
     const previous =
       (prior.data as { operating_hours?: unknown }).operating_hours ?? null;
+    const guarded = "expected" in opts;
+    const changedSince = () =>
+      new ConflictException(
+        "Someone else changed the opening hours after you opened this sheet, so your change was not saved. " +
+          "Close it and open it again to see their hours, then make your change.",
+      );
+    if (guarded && weekKey(previous) !== weekKey(opts.expected))
+      throw changedSince();
 
-    const { data, error } = await this.databaseService.supabase
+    let write = this.databaseService.supabase
       .from("restaurants")
       .update({
         operating_hours: toStore,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", restaurantId)
+      .eq("id", restaurantId);
+    // Between the read above and this write, the row must not have moved.
+    const priorAt = (prior.data as { updated_at?: string | null }).updated_at;
+    if (guarded && priorAt) write = write.eq("updated_at", priorAt);
+    const { data, error } = await write
       .select("id, timezone, country, operating_hours, updated_at")
       .maybeSingle();
 
@@ -211,7 +245,10 @@ export class OperatingHoursService {
     }
     // An UPDATE that matched no row returns `data: null` with no error. Saying
     // "saved" over that would be the write-path form of the same lie.
-    if (!data) throw new NotFoundException("Restaurant not found");
+    if (!data) {
+      if (guarded && priorAt) throw changedSince();
+      throw new NotFoundException("Restaurant not found");
+    }
 
     const receipt: AuditReceipt =
       canonical(previous) === canonical(toStore)

@@ -125,6 +125,45 @@ function refusalSentence(failure: unknown): string {
   return `${words}${/[.!?]$/.test(words) ? '' : '.'} Nothing was saved.`;
 }
 
+/** The form's own fields, as the edit patch is built from them. */
+interface SheetFields {
+  title: string;
+  typeName: string;
+  date: string;
+  endDate: string;
+  allDay: boolean;
+  startTime: string;
+  endTime: string;
+  status: EventStatus;
+  description: string;
+  color: string;
+  remindOn: boolean;
+  remindDays: number;
+}
+
+/**
+ * The edit patch the form reads as. An emptied field goes as null, which the
+ * gateway writes as a cleared column; undefined would mean "leave it" and keep
+ * the old value (F-196). All day carries no clock time, so ticking it clears
+ * both times.
+ */
+function editPatchOf(f: SheetFields): Partial<CalendarPayload> {
+  return {
+    title: f.title.trim(),
+    eventType: enumTypeFor(f.typeName),
+    eventDate: f.date,
+    allDay: f.allDay,
+    status: f.status,
+    description: f.description.trim() || null,
+    color: f.color || undefined,
+    eventTime: f.allDay || !f.startTime ? null : f.startTime,
+    eventTimeEnd: f.allDay || !f.endTime ? null : f.endTime,
+    eventDateEnd: f.endDate || null,
+    reminderEnabled: f.remindOn,
+    reminderDaysBefore: f.remindOn ? f.remindDays : 0,
+  };
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="cn-field">
@@ -226,6 +265,15 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
    */
   const reversed = endDate !== '' && date !== '' && endDate < date;
 
+  const fields: SheetFields = {
+    title, typeName, date, endDate, allDay, startTime, endTime,
+    status, description, color, remindOn, remindDays,
+  };
+  // The form as it opened. An edit sends only what was changed against it,
+  // so a stale sheet does not put back a status, a date or a reminder another
+  // manager set since — un-cancelling an entry re-armed its reminder (F-1372).
+  const [opened] = useState(fields);
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !date) return;
@@ -246,16 +294,12 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
     };
 
     if (editing) {
-      // An emptied field goes as null, which the gateway writes as a cleared
-      // column; undefined would mean "leave it" and keep the old value (F-196).
-      // All day carries no clock time, so ticking it clears both times.
-      const patch: Partial<CalendarPayload> = {
-        ...base,
-        description: description.trim() || null,
-        eventTime: allDay || !startTime ? null : startTime,
-        eventTimeEnd: allDay || !endTime ? null : endTime,
-        eventDateEnd: endDate || null,
-      };
+      const now = editPatchOf(fields);
+      const was = editPatchOf(opened);
+      const patch: Partial<CalendarPayload> = {};
+      for (const k of Object.keys(now) as Array<keyof CalendarPayload>) {
+        if (now[k] !== was[k]) (patch as Record<string, unknown>)[k] = now[k];
+      }
       if (storedTypeOutside && !typeTouched) delete patch.eventType;
       if (storedStatusOutside && !statusTouched) delete patch.status;
       if (editing.isOccurrence) {
@@ -279,6 +323,11 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         return;
       }
       setOccurrenceRefusal(null);
+      // Nothing was changed, so there is nothing to write.
+      if (Object.keys(patch).length === 0) {
+        onClose();
+        return;
+      }
       ask('update');
       data.update.mutate(
         { id: editing.seriesId, patch },

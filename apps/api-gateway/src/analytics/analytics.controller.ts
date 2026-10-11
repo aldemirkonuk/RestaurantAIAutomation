@@ -1124,6 +1124,8 @@ export class AnalyticsController {
         body || {},
       );
     } catch (error) {
+      // A goal someone else closed keeps its 409 and its sentence (F-1371).
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to update goal",
         HttpStatus.BAD_REQUEST,
@@ -1194,15 +1196,19 @@ export class AnalyticsController {
   async updateGoalStatus(
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
-    @Body() body: { status?: string },
+    @Body() body: { status?: string; expectedStatus?: string },
   ) {
     try {
       return await this.goalsService.updateGoalStatus(
         restaurantId,
         goalId,
         body?.status || "",
+        typeof body?.expectedStatus === "string"
+          ? body.expectedStatus
+          : undefined,
       );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to update goal",
         HttpStatus.BAD_REQUEST,

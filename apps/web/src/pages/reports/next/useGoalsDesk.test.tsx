@@ -129,3 +129,19 @@ describe('useGoalsDesk writes answer whether they were kept (F-1285)', () => {
     expect(kept).toBe(false);
   });
 });
+
+// F-1371: an Archive from a stale tab re-closed a goal someone else had
+// already closed. It now carries the status the page showed.
+describe('useGoalsDesk archive (F-1371)', () => {
+  it('sends the status it expects the goal to be in', async () => {
+    api.put.mockReset();
+    api.put.mockResolvedValue({ data: {} });
+    const { result } = setup();
+    act(() => result.current.archive('g1'));
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    expect(api.put).toHaveBeenCalledWith('/analytics/goals/house-a/g1/status', {
+      status: 'archived',
+      expectedStatus: 'active',
+    });
+  });
+});

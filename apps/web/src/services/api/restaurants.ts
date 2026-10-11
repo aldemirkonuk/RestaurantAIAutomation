@@ -79,10 +79,17 @@ export const restaurantsApi = {
   async putOperatingHours(
     restaurantId: string | undefined,
     hours: OperatingHours | null,
+    /**
+     * The week the sheet opened on. When sent, a stored week that someone
+     * changed since is refused with a 409 instead of overwritten (F-1373).
+     */
+    opened?: { expected: OperatingHours | null },
   ): Promise<OperatingHoursResponse> {
     const res = await apiClient.put<OperatingHoursResponse>(
       `${base(restaurantId)}/operating-hours`,
-      { operatingHours: hours },
+      opened
+        ? { operatingHours: hours, expectedOperatingHours: opened.expected }
+        : { operatingHours: hours },
     )
     return res.data
   },
