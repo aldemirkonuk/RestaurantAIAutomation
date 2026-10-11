@@ -43,13 +43,13 @@ export const CAUSE_WORDS: Record<StockOutCause, string> = {
 /**
  * When a stock-out started, on the house's clock and in the house's way of
  * writing it -- not the reader's device (F-1104). With no zone known yet, the
- * device's clock stands in.
+ * device's clock stands in. Digits, so the words stay English (F-1344).
  */
 function when(iso: string, zone?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso).slice(0, 16);
   const tz = zone ? { timeZone: zone } : {};
-  const day = d.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'short', ...tz });
+  const day = d.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'numeric', ...tz });
   const time = d.toLocaleTimeString(getHouseLocale(), { hour: '2-digit', minute: '2-digit', ...tz });
   return `${day} ${time}`;
 }
