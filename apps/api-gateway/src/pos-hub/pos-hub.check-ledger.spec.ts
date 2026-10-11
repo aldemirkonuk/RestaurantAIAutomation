@@ -58,6 +58,8 @@ function makeDb(
     houseBottleMl?: number | null;
     consumptionFailures?: number;
     reversalError?: string;
+    /** F-1241: the first N reversal marks fail, later ones land. */
+    reversalFailures?: number;
   } = {},
 ) {
   const stock: Record<string, { sealed: number; openMl: number; ml: number }> =
@@ -72,6 +74,7 @@ function makeDb(
   // wine_consumption_log, unique on notes (the key) like the partial index.
   const consumption = new Map<string, Row>();
   let consumptionFailures = opts.consumptionFailures ?? 0;
+  let reversalFailures = opts.reversalFailures ?? 0;
 
   const client: any = {
     from(table: string) {
@@ -110,6 +113,10 @@ function makeDb(
             like: async (c: string, pattern: string) => {
               if (opts.reversalError) {
                 return { error: { message: opts.reversalError } };
+              }
+              if (reversalFailures > 0) {
+                reversalFailures--;
+                return { error: { message: "statement timeout" } };
               }
               const prefix = pattern.replace(/%$/, "").replace(/\\(.)/g, "$1");
               for (const r of consumption.values()) {
@@ -573,5 +580,42 @@ describe("a voided or corrected-down sale leaves the consumption log (F-1197)", 
     ]);
     expect(stock["inv-caymus"].sealed).toBe(12);
     expect(res.stock.consumptionNotWritten).toBe(1);
+  });
+
+  // F-1241: the stock moved but the mark did not land. The replay finds
+  // nothing to move (bottleDiff 0), and must still try the mark again.
+  it("a replayed void retries a mark that failed", async () => {
+    const { service, stock, consumption } = makeDb({ reversalFailures: 1 });
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 2)]),
+    ]);
+    const voided = () =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", 2)], { voided: true }),
+      ]);
+    expect((await voided()).stock.consumptionNotWritten).toBe(1);
+    expect(live(consumption, "inv-caymus")).toBe(2);
+    const replay = await voided();
+    expect(stock["inv-caymus"].sealed).toBe(12);
+    expect(replay.stock.consumptionNotWritten).toBe(0);
+    expect(live(consumption, "inv-caymus")).toBe(0);
+  });
+
+  it("a replayed correction down retries a mark that failed", async () => {
+    const { service, stock, consumption } = makeDb({ reversalFailures: 1 });
+    const send = (qty: number) =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", qty)]),
+      ]);
+    await send(3);
+    expect((await send(1)).stock.consumptionNotWritten).toBe(1);
+    expect(live(consumption, "inv-caymus")).toBe(3);
+    const replay = await send(1);
+    expect(stock["inv-caymus"].sealed).toBe(11);
+    expect(replay.stock.consumptionNotWritten).toBe(0);
+    expect(live(consumption, "inv-caymus")).toBe(1);
+    await send(1);
+    expect(live(consumption, "inv-caymus")).toBe(1);
+    expect(noNegative(consumption)).toBe(true);
   });
 });
