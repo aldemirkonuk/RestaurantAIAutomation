@@ -46,6 +46,8 @@ export interface CalendarFilters {
   startDate: string
   endDate: string
   eventType?: string
+  /** Also return series that began before the window, to expand (F-1201). */
+  includeEarlierSeries?: boolean
 }
 
 export interface ProviderFilters {

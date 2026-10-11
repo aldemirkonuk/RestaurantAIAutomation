@@ -66,6 +66,7 @@ const mapApiEvent = (event: ApiCalendarEvent): CalendarEvent => ({
   title: event.title,
   type: event.eventType,
   date: event.eventDate,
+  endDate: event.eventDateEnd ?? null,
   startTime: event.eventTime,
   allDay: event.allDay,
   description: event.description,
@@ -125,6 +126,8 @@ export interface CalendarEvent {
   title: string
   type: EventType
   date: string
+  /** The last day of a multi-day entry; null for a one-day one. */
+  endDate?: string | null
   startTime?: string
   endTime?: string
   allDay?: boolean
@@ -216,6 +219,9 @@ export async function fetchCalendarEvents(
   
   if (filters.eventType) {
     params.append('eventType', filters.eventType)
+  }
+  if (filters.includeEarlierSeries) {
+    params.append('includeEarlierSeries', 'true')
   }
   
   const response = await apiClient.get<CalendarEventsListResponse>(`/calendar/events?${params.toString()}`)

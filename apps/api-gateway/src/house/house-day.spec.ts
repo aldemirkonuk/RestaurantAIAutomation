@@ -82,6 +82,9 @@ function sources(over: Partial<Record<string, jest.Mock>> = {}) {
           limit: 100,
           hasMore: false,
         })),
+      seriesDatesIn:
+        over.seriesDatesIn ??
+        jest.fn(async () => ({ series: new Set<string>(), events: [] })),
     },
     operatingHours: {
       getOperatingHours:
@@ -293,6 +296,106 @@ describe("calendar and reminders — one read, two keys", () => {
     expect(reg(res, "reminders")).toMatchObject({ state: "unreadable", status: null });
     // A register that hung did not hold the ONE that answered fine.
     expect(reg(res, "deliveryArrived").state).toBe("answered");
+  });
+});
+
+// F-1201: a weekly tasting that began last month has no stored row for today
+// (no child rows are ever written), so the day line had no tick for it while
+// /calendar drew it. Today's date of the series now ticks, once.
+describe("F-1201 — a repeating entry ticks on today's date of the series", () => {
+  const seriesRow = {
+    id: "e-series",
+    title: "Monday staff tasting",
+    eventType: "tasting",
+    eventDate: "2026-08-31",
+    eventTime: "15:00",
+    allDay: false,
+  };
+  const today = {
+    ...seriesRow,
+    id: "e-series__occ_2026-09-21",
+    eventDate: "2026-09-21",
+    parentEventId: "e-series",
+    occurrenceDate: "2026-09-21",
+  };
+
+  it("ticks the series today and asks for today's dates only", async () => {
+    const seriesDatesIn = jest.fn(async () => ({
+      series: new Set(["e-series"]),
+      events: [today],
+    }));
+    const { svc } = build(
+      sources({
+        listEvents: jest.fn(async () => ({
+          events: [],
+          total: 0,
+          page: 1,
+          limit: 100,
+          hasMore: false,
+        })),
+        seriesDatesIn,
+      }),
+    );
+    const res = await svc.read(HOUSE, USER);
+    expect(seriesDatesIn).toHaveBeenCalledWith(
+      HOUSE,
+      "2026-09-21",
+      "2026-09-21",
+    );
+    expect(reg(res, "calendar")).toMatchObject({
+      state: "answered",
+      count: 1,
+      ticks: [
+        {
+          id: "e-series__occ_2026-09-21",
+          label: "Monday staff tasting",
+          href: "/calendar?event=e-series__occ_2026-09-21",
+          at: wallToInstant(TZ, 2026, 9, 21, 15, 0).toISOString(),
+        },
+      ],
+    });
+  });
+
+  it("a stored row for today wins over the rule, and the series row is not drawn twice", async () => {
+    const storedToday = {
+      ...seriesRow,
+      id: "e-moved",
+      eventDate: "2026-09-21",
+      eventTime: "17:00",
+      parentEventId: "e-series",
+      occurrenceDate: "2026-09-21",
+    };
+    const { svc } = build(
+      sources({
+        listEvents: jest.fn(async () => ({
+          events: [{ ...seriesRow, eventDate: "2026-09-21" }, storedToday],
+          total: 2,
+          page: 1,
+          limit: 100,
+          hasMore: false,
+        })),
+        seriesDatesIn: jest.fn(async () => ({
+          series: new Set(["e-series"]),
+          events: [today],
+        })),
+      }),
+    );
+    const res = await svc.read(HOUSE, USER);
+    expect((reg(res, "calendar") as any).ticks.map((t: any) => t.id)).toEqual([
+      "e-moved",
+    ]);
+  });
+
+  it("a series read that fails makes the calendar unreadable, not empty", async () => {
+    const { svc } = build(
+      sources({
+        seriesDatesIn: jest.fn(async () => {
+          throw new Error("The repeat rules could not be read (timeout)");
+        }),
+      }),
+    );
+    const res = await svc.read(HOUSE, USER);
+    expect(reg(res, "calendar")).toMatchObject({ state: "unreadable" });
   });
 });
 

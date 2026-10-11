@@ -9,6 +9,7 @@ import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useCalendarEvents } from '@/hooks/queries/useCalendarQueries';
 import type { CalendarEvent } from '@/services/api/calendar';
+import { expandSeries } from '@/pages/calendar/next/expand-series';
 import type { InventoryItem } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
 import { classifyStock } from '@/lib/inventoryStatus';
@@ -47,14 +48,24 @@ export function WeekAhead({
   const todayStr = dateIn(new Date(), zone);
   const end = parseDateStr(todayStr);
   end.setDate(end.getDate() + 6);
+  const endStr = localDateStr(end);
+  // F-1201: a repeating entry is on every date it falls on, as /calendar
+  // draws it — the same read (`includeEarlierSeries`) and the same expander.
   const query = useCalendarEvents(restaurantId ?? '', {
     startDate: todayStr,
-    endDate: localDateStr(end),
+    endDate: endStr,
+    includeEarlierSeries: true,
   });
 
-  const events: CalendarEvent[] = (query.data ?? [])
+  const expanded = expandSeries(
+    (query.data ?? []).map((e) => ({ ...e, endDate: e.endDate ?? null, isRecurring: !!e.isRecurring && !!e.recurrenceRule })),
+    todayStr,
+    endStr,
+  );
+  const events: CalendarEvent[] = expanded.events
     .slice()
     .sort((a, b) => (a.date + (a.startTime ?? '')).localeCompare(b.date + (b.startTime ?? '')));
+  const undrawn = expanded.unexpanded.length;
 
   return (
     <Panel
@@ -102,6 +113,13 @@ export function WeekAhead({
             <li className="text-[11px] text-inkm-4">and {events.length - 6} more this week</li>
           )}
         </ul>
+      )}
+      {!query.isLoading && !query.isError && undrawn > 0 && (
+        <p className="mt-2 text-[11px] text-inkm-4">
+          {undrawn === 1
+            ? 'One repeating entry could not be laid out here — the calendar has it.'
+            : `${undrawn} repeating entries could not be laid out here — the calendar has them.`}
+        </p>
       )}
     </Panel>
   );

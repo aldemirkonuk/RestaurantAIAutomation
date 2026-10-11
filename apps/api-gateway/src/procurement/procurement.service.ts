@@ -214,7 +214,7 @@ import {
   refuseUnreadableStatus,
   statusInWords,
 } from "./order-transitions";
-import { toPostgrestInList } from "./order-status";
+import { ORDER_SPEND_STATUSES, toPostgrestInList } from "./order-status";
 import { RECURRENCE_ACTS } from "./order-recurrence";
 import {
   CANCEL_REASON_REFUSAL_WORDS,
@@ -3491,8 +3491,24 @@ export class ProcurementService {
       supabaseQuery = supabaseQuery.lte("created_at", query.dateTo);
     }
 
+    // A delivered window (F-1202): the day sheet asked for orders CREATED in
+    // the 45 days around a day, newest first, one page of 100, so a busy
+    // house's older days could not be listed. It now reads what was
+    // delivered in the house day's own instants, and pages to the end.
+    const delivered = Boolean(query.deliveredFrom || query.deliveredTo);
+    if (delivered) {
+      supabaseQuery = supabaseQuery.in("status", [...ORDER_SPEND_STATUSES]);
+    }
+    if (query.deliveredFrom) {
+      supabaseQuery = supabaseQuery.gte("delivered_at", query.deliveredFrom);
+    }
+    if (query.deliveredTo) {
+      supabaseQuery = supabaseQuery.lt("delivered_at", query.deliveredTo);
+    }
+
     const { data, error, count } = await supabaseQuery
-      .order("created_at", { ascending: false })
+      .order(delivered ? "delivered_at" : "created_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(fromIndex, toIndex);
 
     if (error) {

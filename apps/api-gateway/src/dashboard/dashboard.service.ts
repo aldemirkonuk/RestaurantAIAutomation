@@ -32,6 +32,7 @@ import {
   shiftLocalDate,
 } from "../notifications/producers/service-day";
 import { readAll } from "../providers/vendor-menu-supply";
+import { readSeriesDates } from "../calendar/calendar.service";
 import { beverageCategoryOf } from "../common/beverage-category";
 
 /**
@@ -102,6 +103,33 @@ const ORDER_VERB: Record<string, string> = {
   PARTIALLY_RECEIVED: "partly received",
   COMPLETED: "closed",
   CANCELLED: "cancelled",
+  REJECTED: "turned down",
+  FAILED: "failed",
+};
+
+/**
+ * The moments an order row stamps, each with what the order became then
+ * (F-1203). A day's sheet files an order on these, so a delivery edited a
+ * week later is still "delivered" on its own day, and the later edit is not
+ * filed as a second delivery. `events` order_change types name the same
+ * moments, so the pair is told once.
+ */
+const ORDER_MOMENTS: ReadonlyArray<{
+  column: string;
+  verb: string;
+  eventType?: string;
+}> = [
+  { column: "created_at", verb: "placed", eventType: "created" },
+  { column: "approved_at", verb: "approved", eventType: "approved" },
+  { column: "confirmed_at", verb: "confirmed by the vendor" },
+  { column: "shipped_at", verb: "on its way" },
+  { column: "delivered_at", verb: "delivered", eventType: "delivered" },
+  { column: "completed_at", verb: "closed" },
+  { column: "cancelled_at", verb: "cancelled", eventType: "cancelled" },
+];
+
+/** Statuses no column stamps: filed on the row's last change, as before. */
+const UNSTAMPED_END: Record<string, string> = {
   REJECTED: "turned down",
   FAILED: "failed",
 };
@@ -483,6 +511,10 @@ export function netSalesByHouseDay(
  * Every row, keyset-paged; only the columns the page draws (AW12). Every
  * status is kept, as before: which statuses the grid should show is not
  * decided here.
+ *
+ * A repeating entry is on every date it falls on, as /calendar draws it
+ * (F-1201): its stored row is swapped for its dates in the month, and a date
+ * that already has a stored row of its own keeps that row.
  */
 async function readMonthEvents(
   client: any,
@@ -490,16 +522,32 @@ async function readMonthEvents(
   first: string,
   nextFirst: string,
 ): Promise<Map<string, CalendarDayEvent[]>> {
-  const rows = await readAll("The month's calendar events", (after) => {
-    let q = client
-      .from("calendar_events")
-      .select("id, title, event_type, event_date, event_time")
-      .eq("restaurant_id", restaurantId)
-      .gte("event_date", first)
-      .lt("event_date", nextFirst);
-    if (after) q = q.gt("id", after);
-    return q;
-  });
+  const lastDay = new Date(Date.parse(`${nextFirst}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const [stored, repeats] = await Promise.all([
+    readAll("The month's calendar events", (after) => {
+      let q = client
+        .from("calendar_events")
+        .select("id, title, event_type, event_date, event_time")
+        .eq("restaurant_id", restaurantId)
+        .gte("event_date", first)
+        .lt("event_date", nextFirst);
+      if (after) q = q.gt("id", after);
+      return q;
+    }),
+    readSeriesDates(
+      client,
+      restaurantId,
+      first,
+      lastDay,
+      "title, event_type, event_time",
+    ),
+  ]);
+  const rows = [
+    ...stored.filter((r) => !repeats.series.has(String(r.id))),
+    ...repeats.rows,
+  ];
   const byDay = new Map<string, CalendarDayEvent[]>();
   for (const r of rows) {
     const date = String(r.event_date ?? "").slice(0, 10);
@@ -1321,16 +1369,26 @@ export class DashboardService {
     try {
       const [inventoryResult, lowStockResult, ordersResult, houseResult] =
         await Promise.allSettled([
-          client
-            .from("restaurant_inventory")
-            .select("id, stock_live, bottle_size_ml")
-            .eq("restaurant_id", restaurantId)
-            .is("deleted_at", null)
-            .eq("is_active", true),
-          client
-            .from("v_low_stock_items")
-            .select("id")
-            .eq("restaurant_id", restaurantId),
+          // The cellar and its low list page too (F-1205, after F-186): an
+          // unranged select counted "In the cellar" from the first 1,000.
+          readAll("The house's cellar", (after) => {
+            let q = client
+              .from("restaurant_inventory")
+              .select("id, stock_live, bottle_size_ml")
+              .eq("restaurant_id", restaurantId)
+              .is("deleted_at", null)
+              .eq("is_active", true);
+            if (after) q = q.gt("id", after);
+            return q;
+          }),
+          readAll("The house's running-low list", (after) => {
+            let q = client
+              .from("v_low_stock_items")
+              .select("id")
+              .eq("restaurant_id", restaurantId);
+            if (after) q = q.gt("id", after);
+            return q;
+          }),
           // Every order, paged (F-186): an unranged select stopped at
           // PostgREST's 1,000 rows, so a house past that saw the spend and
           // the approval count of whichever thousand came back.
@@ -1353,8 +1411,8 @@ export class DashboardService {
       // call, and the page shows its em dash for "unknown". A
       // `wine_consumption_log` read used to ride along here and feed nothing;
       // it is gone (DASH-W8).
-      const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
-      const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
+      const inventory: any[] = valueOrThrow(inventoryResult);
+      const lowStock: any[] = valueOrThrow(lowStockResult);
       const orders: any[] = valueOrThrow(ordersResult);
       const { zone, currency: houseCurrency } = valueOrThrow(houseResult);
       const totalWines = inventory.length;
@@ -1524,19 +1582,31 @@ export class DashboardService {
       }
       const onTheDay = (query: any, column: string) =>
         bounds ? query.gte(column, bounds.start).lt(column, bounds.end) : query;
+      // A dated read takes every order with a moment on the day, not only
+      // those last touched on it (F-1203).
+      const ordersOnTheDay = (query: any) => {
+        if (!bounds) return query;
+        const inDay = (c: string) =>
+          `and(${c}.gte."${bounds!.start}",${c}.lt."${bounds!.end}")`;
+        return query.or(
+          [...ORDER_MOMENTS.map((m) => m.column), "updated_at"]
+            .map(inDay)
+            .join(","),
+        );
+      };
 
       const [ordersResult, eventsResult, inventoryResult] =
         await Promise.allSettled([
-          onTheDay(
+          ordersOnTheDay(
             client
               .from("procurement_orders")
               .select(
                 `id, order_number, status, bottles_total, quantity, created_at, updated_at,
+               approved_at, confirmed_at, shipped_at, delivered_at, completed_at, cancelled_at,
                restaurant_inventory(display_name, wine_name, master_wine_library(name, vintage)),
                providers(name)`,
               )
               .eq("restaurant_id", restaurantId),
-            "updated_at",
           )
             .order("updated_at", { ascending: false })
             .limit(limit),
@@ -1574,36 +1644,58 @@ export class DashboardService {
 
       const orders = rowsOrThrow(ordersResult, "procurement_orders");
       const orderIds = new Set<string>();
+      // `${order id}:${order_change type}` for each moment told from the row.
+      const toldMoments = new Set<string>();
+      const inBounds = (at: unknown) =>
+        typeof at === "string" &&
+        Date.parse(at) >= Date.parse(bounds!.start) &&
+        Date.parse(at) < Date.parse(bounds!.end);
       for (const o of orders) {
         orderIds.add(o.id);
-        const verb = ORDER_VERB[o.status as string];
-        if (!verb) continue;
         const inv = one(o.restaurant_inventory);
         const what = [
           wineLabel(inv),
           bottles(o.bottles_total ?? o.quantity),
         ].filter(Boolean);
         const vendor = one(o.providers)?.name;
-        activities.push({
-          id: `order-${o.id}`,
-          type: "order",
-          title: `Order ${o.order_number} ${verb}`,
-          description: what.join(", ") + (vendor ? ` from ${vendor}` : ""),
-          timestamp: o.updated_at || o.created_at,
-          entityId: o.id,
-          entityType: "procurement_order",
-        });
+        const line = (key: string, verb: string, at: string) =>
+          activities.push({
+            id: `order-${o.id}${key}`,
+            type: "order",
+            title: `Order ${o.order_number} ${verb}`,
+            description: what.join(", ") + (vendor ? ` from ${vendor}` : ""),
+            timestamp: at,
+            entityId: o.id,
+            entityType: "procurement_order",
+          });
+        if (!bounds) {
+          // Lately: where each order stands now, on its last change.
+          const verb = ORDER_VERB[o.status as string];
+          if (verb) line("", verb, o.updated_at || o.created_at);
+          continue;
+        }
+        // The day: what each order became on it, at the time it did.
+        for (const m of ORDER_MOMENTS) {
+          if (!inBounds(o[m.column])) continue;
+          line(`-${m.column}`, m.verb, o[m.column]);
+          if (m.eventType) toldMoments.add(`${o.id}:${m.eventType}`);
+        }
+        const end = UNSTAMPED_END[o.status as string];
+        if (end && inBounds(o.updated_at)) line("", end, o.updated_at);
       }
 
       const events = rowsOrThrow(eventsResult, "events");
       for (const e of events) {
         const payload =
           typeof e.payload === "string" ? JSON.parse(e.payload) : e.payload;
-        // Each order once: its own row above already says where it stands.
+        // Each order once: its own row above already says where it stands
+        // (Lately), or already told this moment (the day).
         if (
           e.event_type === "order_change" &&
           payload?.orderId &&
-          orderIds.has(payload.orderId)
+          (bounds
+            ? toldMoments.has(`${payload.orderId}:${payload.type}`)
+            : orderIds.has(payload.orderId))
         ) {
           continue;
         }

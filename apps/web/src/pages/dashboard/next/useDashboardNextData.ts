@@ -31,6 +31,7 @@ import type {
   Order,
 } from "@/services/api/types";
 import { formatMoney } from "@/lib/utils";
+import { houseMidnight } from "@/lib/houseCalendar";
 
 /* ── Gateway DTO shapes (dashboard.service.ts) ──────────────────────────── */
 
@@ -579,6 +580,25 @@ export type DayOrdersState =
   | { state: "no-zone" }
   | { state: "ready"; orders: Order[] };
 
+/** Pages a busy day may take before the list is called unknown, not short. */
+const DAY_DELIVERY_PAGES = 50;
+
+/** Every order delivered in [from, to), page by page (limit is capped at 100). */
+async function readDayDeliveries(from: string, to: string): Promise<Order[]> {
+  const out: Order[] = [];
+  for (let page = 1; page <= DAY_DELIVERY_PAGES; page++) {
+    const res = await ordersApi.getOrderHistory({
+      deliveredFrom: from,
+      deliveredTo: to,
+      limit: 100,
+      page,
+    });
+    out.push(...(res.data ?? []));
+    if (!res.hasMore || (res.data ?? []).length === 0) return out;
+  }
+  throw new Error("The day holds more deliveries than one read lists.");
+}
+
 /**
  * `zone` is the house's zone from the month ledger: a string files each
  * delivery on its house date (the gateway's rule, ADR 0290); null means the
@@ -605,28 +625,21 @@ export function useDayOrders(
     }
     const mySeq = ++seq.current;
     setState({ state: "loading" });
-    // Ask for a generous window (an order delivered on `date` may have been
-    // CREATED weeks earlier, and the server may window on either field) and
-    // filter client-side to the exact day on deliveredAt — server range
-    // semantics then cannot change what the panel claims happened this date.
-    const from = new Date(date);
-    from.setDate(from.getDate() - 45);
-    const to = new Date(date);
-    to.setDate(to.getDate() + 2);
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    ordersApi
-      // limit is capped at 100 by the gateway's validation (verified: 200 → 400).
-      .getOrderHistory({
-        startDate: fmt(from),
-        endDate: fmt(to),
-        dateFrom: fmt(from),
-        dateTo: fmt(to),
-        limit: 100,
-      })
-      .then((res) => {
+    // The house day's own instants, read by delivery and paged to the end
+    // (F-1202). It used to ask for the 100 newest orders CREATED in the 45
+    // days around the day, so a busy house's older days could not be listed,
+    // and the bounds came from the browser's clock, so a US house lost its
+    // evening deliveries. An older gateway that did not say its zone (zone
+    // undefined) keeps UTC days, as the filter below does.
+    const [y, m, d] = date.split("-").map(Number);
+    const at = (day: number) =>
+      new Date(
+        zone ? houseMidnight(zone, y, m, day) : Date.UTC(y, m - 1, day),
+      ).toISOString();
+    readDayDeliveries(at(d), at(d + 1))
+      .then((rows) => {
         if (mySeq !== seq.current) return;
-        const orders = (res.data ?? []).filter((o) =>
+        const orders = rows.filter((o) =>
           zone
             ? houseDateOf(o.deliveredAt, zone) === date
             : Boolean(o.deliveredAt && o.deliveredAt.startsWith(date)),

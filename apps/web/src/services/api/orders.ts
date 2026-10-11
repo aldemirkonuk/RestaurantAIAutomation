@@ -734,6 +734,9 @@ export async function getOrderHistory(
     endDate?: string;
     dateFrom?: string;
     dateTo?: string;
+    /** Delivered in [deliveredFrom, deliveredTo), ISO instants (F-1202). */
+    deliveredFrom?: string;
+    deliveredTo?: string;
     status?: OrderStatus;
     providerId?: string;
   },
