@@ -272,6 +272,8 @@ export function useReportsNextData(
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
   /** A calendar month the till reads instead of `tillDays` (F-128), YYYY-MM. */
   tillMonth: string | null = null,
+  /** The last full house week the till reads instead (F-1236), from the weekly bell. */
+  tillWeek: 'last' | null = null,
 ): ReportsNextData {
   const { activeRestaurantId, activeRole } = useAuth();
   const rid = activeRestaurantId;
@@ -301,12 +303,17 @@ export function useReportsNextData(
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
       return {
-        queryKey: [ROOT, id, rid, spec.takesWindow ? (tillMonth ?? tillDays) : null],
+        queryKey: [
+          ROOT,
+          id,
+          rid,
+          spec.takesWindow ? (tillMonth ?? (tillWeek ? `week:${tillWeek}` : tillDays)) : null,
+        ],
         enabled: !!rid,
         staleTime: 60_000,
         retry: 1,
         queryFn: async () => {
-          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays, month: tillMonth }));
+          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays, month: tillMonth, week: tillWeek }));
           return spec.select(data);
         },
       };

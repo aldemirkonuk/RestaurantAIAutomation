@@ -20,6 +20,12 @@ export interface ViewCtx {
    */
   month?: string | null;
   /**
+   * One Monday-to-Sunday house week the till reads instead of `days`
+   * (F-1236): `last` is the last full week, where the weekly bell opens. Null
+   * or absent means the trailing window (or the month, when one is set).
+   */
+  week?: 'last' | null;
+  /**
    * The house's IANA zone (`useHouseZone`): "this month" and the months the
    * till offers are the house's, not the reader's device's (F-909). Null or
    * absent falls back to the device's calendar.

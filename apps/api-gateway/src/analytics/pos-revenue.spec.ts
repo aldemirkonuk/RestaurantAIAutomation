@@ -451,6 +451,44 @@ describe("GoalsService.getPosRevenueWindow", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  // ── F-1236: the weekly bell's week is Monday to Sunday on the house's clock
+
+  it("(w) reads the last full house week, Monday to Sunday, not the trailing seven days", async () => {
+    // LA_TODAY is Tuesday Sep 1: the last full week is Aug 24 to Aug 30.
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    const result = await service.getPosRevenueWindow("r1", 30, null, "last");
+    expect(result).toMatchObject({
+      from: "2026-08-24",
+      to: "2026-08-30",
+      days: 7,
+    });
+  });
+
+  it("(w2) ends a week named by its Monday on the house's today while it runs", async () => {
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    const result = await service.getPosRevenueWindow(
+      "r1",
+      30,
+      null,
+      "2026-08-31",
+    );
+    expect(result).toMatchObject({ from: "2026-08-31", to: LA_TODAY, days: 2 });
+  });
+
+  it("(w3) refuses a week not begun, a day that is not a Monday, and a month with a week", async () => {
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    for (const [month, week] of [
+      [null, "2026-09-07"],
+      [null, "2026-09-01"],
+      [null, "2026-02-30"],
+      ["2026-08", "last"],
+    ] as const) {
+      await expect(
+        service.getPosRevenueWindow("r1", 30, month, week),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    }
+  });
+
   // ── F-086 / A-027: Tuzlu Rüzgar's days, on Tuzlu's clock ──────────────
 
   it("(a) files Tuzlu's opening day whole: 52 checks, $10,945 on Jul 1 — the dinners included", async () => {
@@ -1341,15 +1379,30 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
     });
 
     await controller.getPosRevenue("r1", "99999");
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365, null);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+      "r1",
+      365,
+      null,
+      null,
+    );
 
     await controller.getPosRevenue("r1", "banana");
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, null);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+      "r1",
+      30,
+      null,
+      null,
+    );
 
     // A parseable-but-tiny window clamps to the floor rather than snapping back
     // to the default — `?days=0` asking for today is a coherent request.
     await controller.getPosRevenue("r1", "0");
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1, null);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+      "r1",
+      1,
+      null,
+      null,
+    );
   });
 
   it("passes a calendar month through, and answers a refused month as the caller's mistake (F-128)", async () => {
@@ -1362,6 +1415,16 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       "r1",
       30,
       "2026-07",
+      null,
+    );
+
+    // F-1236: the weekly bell's week passes through the same way.
+    await controller.getPosRevenue("r1", undefined, undefined, "last");
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+      "r1",
+      30,
+      null,
+      "last",
     );
 
     goals.getPosRevenueWindow.mockRejectedValue(

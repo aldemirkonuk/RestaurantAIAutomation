@@ -1407,16 +1407,30 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * to its last, or to the house's today while the month is still running.
    * A month that has not begun on the house's clock is refused, not read as
    * an empty month. `days` is then the number of house days the month spans.
+   *
+   * `week` reads one Monday-to-Sunday week instead (F-1236): `last` is the
+   * last full week on the house's clock, the one that ended before today;
+   * a Monday (YYYY-MM-DD) is that week, ended at the house's today while it
+   * still runs. The weekly bell opens on `last`, so "the week" is the week
+   * the house traded, not the trailing seven days the bell happened to land
+   * in. A week not begun, or a date that is not a Monday, is refused.
    */
   async getPosRevenueWindow(
     restaurantId: string,
     days = 30,
     month: string | null = null,
+    week: string | null = null,
   ): Promise<PosRevenueWindow> {
     const monthDays = month ? monthBounds(month) : null;
     if (month && !monthDays)
       throw new BadRequestException(
         "A month is written as year and month, like 2026-07.",
+      );
+    if (month && week)
+      throw new BadRequestException("Read one month or one week, not both.");
+    if (week && week !== "last" && !isMonday(week))
+      throw new BadRequestException(
+        "A week is named by its Monday, like 2026-09-28, or as last for the last full week.",
       );
     // Both reads are by key and independent; neither error is swallowed.
     const [connected, house] = await Promise.all([
@@ -1429,10 +1443,33 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       throw new BadRequestException(
         `${month} has not begun on this house's clock, so there is nothing to read yet.`,
       );
+    if (week && today && week !== "last" && week > today)
+      throw new BadRequestException(
+        `The week of ${week} has not begun on this house's clock, so there is nothing to read yet.`,
+      );
     let from: string | null;
     let to: string | null;
     let span: number;
-    if (monthDays) {
+    if (week) {
+      // The last full week ends on the Sunday before the house's today: on a
+      // Sunday that is a week ago, since today is not yet over.
+      const monday =
+        week !== "last"
+          ? week
+          : today
+            ? shiftHouseDay(today, -(isoWeekday(today) + 6))
+            : null;
+      if (monday && today) {
+        const sunday = shiftHouseDay(monday, 6);
+        to = sunday > today ? today : sunday;
+        from = monday;
+        span = spanOf(from, to);
+      } else {
+        to = null;
+        from = null;
+        span = 7;
+      }
+    } else if (monthDays) {
       // A month still running ends on the house's today, not on days to come.
       to = !today ? null : monthDays.last > today ? today : monthDays.last;
       from = today ? monthDays.first : null;
@@ -1495,6 +1532,20 @@ function monthBounds(month: string): { first: string; last: string } | null {
     first: `${month}-01`,
     last: `${month}-${String(lastDay).padStart(2, "0")}`,
   };
+}
+
+/** 1 (Monday) to 7 (Sunday) for a YYYY-MM-DD calendar day. */
+function isoWeekday(day: string): number {
+  return new Date(`${day}T00:00:00Z`).getUTCDay() || 7;
+}
+
+/** True when `day` is a real YYYY-MM-DD calendar day that falls on a Monday. */
+function isMonday(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const d = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day
+    ? isoWeekday(day) === 1
+    : false;
 }
 
 /** Inclusive count of calendar days from `from` to `to`, both YYYY-MM-DD. */

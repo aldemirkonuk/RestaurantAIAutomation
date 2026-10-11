@@ -1375,11 +1375,18 @@ export class AnalyticsController {
     description:
       "A calendar month, YYYY-MM: its first house day to its last (or to today while it runs). Replaces `days` when given.",
   })
+  @ApiQuery({
+    name: "week",
+    required: false,
+    description:
+      "One Monday-to-Sunday house week: `last` for the last full week (the weekly bell's), or its Monday as YYYY-MM-DD. Replaces `days` when given.",
+  })
   @ApiResponse({ status: 200, description: "POS revenue window" })
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
     @Query("month") month?: string,
+    @Query("week") week?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
@@ -1390,6 +1397,7 @@ export class AnalyticsController {
         restaurantId,
         span,
         month || null,
+        week || null,
       );
       // Skipped entirely when no POS is wired: there is nothing to break down,
       // and issuing the query anyway would only make "no POS" cost two round
@@ -1409,7 +1417,7 @@ export class AnalyticsController {
           : null;
       return { ...window, consumption };
     } catch (error) {
-      // A month written wrong, or not yet begun, is the caller's to fix.
+      // A month or week written wrong, or not yet begun, is the caller's to fix.
       if (error instanceof HttpException) throw error;
       // Deliberately a 500 rather than an empty payload: "we could not load
       // this" and "you have no POS" are different sentences, and the UI shows
