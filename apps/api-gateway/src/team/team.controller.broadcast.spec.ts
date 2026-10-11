@@ -581,6 +581,11 @@ describe("TeamController.broadcast — a message to someone Away waits for them"
     expect(res.recipients.targeted).toBe(2);
     expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [RAY], skipMobilePush: true });
     expect(push.sendToUsers).toHaveBeenCalledWith([RAY], expect.anything());
+    // F-1183: the push names its house, so a two-house phone opens this one.
+    expect(push.sendToUsers.mock.calls[0][1]).toMatchObject({
+      house: RID,
+      data: { type: "team_broadcast" },
+    });
     expect(db.tables.house_away_held).toHaveLength(1);
     expect(db.tables.house_away_held[0]).toMatchObject({
       restaurant_id: RID,

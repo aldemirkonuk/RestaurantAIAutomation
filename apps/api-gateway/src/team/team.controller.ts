@@ -664,6 +664,7 @@ export class TeamController {
           title: dto.title ?? "Message from your manager",
           body: dto.message,
           priority: "high",
+          house: rid,
           data: { type: "team_broadcast", actionUrl: "/team" },
         })
       : {

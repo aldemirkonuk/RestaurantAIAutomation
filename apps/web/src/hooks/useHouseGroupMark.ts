@@ -15,6 +15,7 @@
  */
 import { useEffect, useState } from 'react'
 import { countryByName } from '@/lib/countries'
+import { localeOfCountry, setHouseCurrency, setHouseLocale } from '@/lib/houseCurrency'
 import { groupMarkForCountry, type GroupMark } from '@/lib/parseDecimal'
 import { settingsApi } from '@/services/api/settings'
 
@@ -41,6 +42,36 @@ function readGroupMark(house: string): Promise<GroupMark | null> {
     reads.set(house, read)
   }
   return read
+}
+
+/**
+ * Forget the remembered mark for one house, or for every house (F-1185, the
+ * shape of `forgetHouseZones` for F-995): its country was corrected, so the
+ * mark read off the old one is no longer the house's.
+ */
+export function forgetHouseGroupMarks(house?: string): void {
+  if (house) reads.delete(house)
+  else reads.clear()
+}
+
+/**
+ * A house's country was corrected (F-1185). Its thousands mark is forgotten,
+ * and when it is the house on screen its money and figure formats are read
+ * again, so neither waits for a reload. One read serves both. A failed read
+ * leaves the mark unknown and the last good money answer standing.
+ */
+export async function houseCountryChanged(house: string): Promise<void> {
+  forgetHouseGroupMarks(house)
+  if (!house || house !== activeHouse()) return
+  try {
+    const h = await settingsApi.houseCurrency()
+    if (house !== activeHouse()) return
+    reads.set(house, Promise.resolve(h?.readable ? groupMarkForCountry(countryByName(h.country)?.code) : null))
+    setHouseLocale(h?.readable ? localeOfCountry(h.country) : null)
+    setHouseCurrency(h?.readable ? h.code : undefined)
+  } catch {
+    // Nothing remembered: the next field reads the mark again itself.
+  }
 }
 
 /**

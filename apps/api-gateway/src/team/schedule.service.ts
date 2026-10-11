@@ -1427,6 +1427,7 @@ export class ScheduleService {
         title: "Shift available — can you cover?",
         body: `${shift.role ?? "Shift"} ${shift.shift_date} ${shift.start_time}-${shift.end_time}. Tap to claim.`,
         priority: "high",
+        house: restaurantId,
         data: {
           type: "shift_offer",
           shiftId,

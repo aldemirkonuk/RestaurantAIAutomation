@@ -17,6 +17,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { EditLocationChainDialog } from './EditLocationChainDialog';
 import { claimMudavymShell, resetMudavymShell } from '../../lib/mudavym/shellGround';
+import { forgetHouseGroupMarks, houseGroupMark } from '../../hooks/useHouseGroupMark';
+import { getHouseCurrency, getHouseLocale, setHouseCurrency, setHouseLocale } from '../../lib/houseCurrency';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
@@ -156,6 +158,32 @@ describe('an owner sets the state the market index asks for', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(patch.mock.calls[0][1]).toMatchObject({ country: 'United Kingdom', stateProvince: null });
+  });
+
+  it('a corrected country drops the old thousands mark and re-reads the money formats (F-1185)', async () => {
+    localStorage.setItem('activeRestaurantId', 'b1');
+    forgetHouseGroupMarks();
+    setHouseLocale('tr-TR');
+    setHouseCurrency('TRY');
+    let currency = { restaurantId: 'b1', code: 'TRY', country: 'Türkiye', readable: true, reason: null, statedAt: null };
+    get.mockImplementation(async (url: string) =>
+      url === '/settings/currency' ? { data: currency } : located({ country: 'Türkiye', stateProvince: null }),
+    );
+    // Read once under the old country, and remembered for the page load.
+    await expect(houseGroupMark()).resolves.toBe('.');
+
+    currency = { ...currency, code: 'USD', country: 'United States' };
+    patch.mockResolvedValueOnce({ data: { stateAndCountry: 'changed', audited: true, auditReason: null } });
+    open();
+    fireEvent.change(await screen.findByLabelText('Country'), { target: { value: 'United States' } });
+    fireEvent.change(screen.getByLabelText('State or province'), { target: { value: 'CA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(getHouseCurrency()).toBe('USD'));
+    expect(getHouseLocale()).toBe('en-US');
+    await expect(houseGroupMark()).resolves.toBe(',');
+    localStorage.removeItem('activeRestaurantId');
+    forgetHouseGroupMarks();
   });
 
   it('leaves the pair out of a name-only edit', async () => {

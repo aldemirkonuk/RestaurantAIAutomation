@@ -47,6 +47,7 @@ import { cn } from '../../lib/utils'
 import type { RestaurantBranch } from '../../contexts/AuthContext'
 import { apiClient, getErrorMessage } from '../../services/api/client'
 import { countryByName } from '../../lib/countries'
+import { houseCountryChanged } from '../../hooks/useHouseGroupMark'
 import { CountryCombobox } from '../ui/CountryCombobox'
 import { Sheet } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
@@ -228,6 +229,9 @@ export function EditLocationChainDialog({
       })
       toast.success(`${locationName.trim()} updated`)
       if (placeDirty) {
+        // F-1185: the old country's thousands mark and money formats are not
+        // this house's any more; they are read again now, not at a reload.
+        void houseCountryChanged(branch.id)
         // The receipt stays on the sheet until it is read; a toast that has
         // faded is not a record of whether the log took the change.
         setReceipt(placeReceipt(res?.data))

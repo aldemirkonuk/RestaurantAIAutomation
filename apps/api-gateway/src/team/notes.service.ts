@@ -530,6 +530,7 @@ export class NotesService {
         title: "A note from your manager",
         body,
         priority: "high",
+        house: restaurantId,
         data: { type: "team_note", actionUrl: "/team" },
       });
       pushDetail = outcome.detail;
