@@ -175,6 +175,18 @@ function Action({
   );
 }
 
+/**
+ * Inbox actions are not queued (see useNotificationActions), so with no
+ * signal they did nothing and said nothing (F-1410). This says so instead.
+ */
+function inboxFailureWords(what: string): string {
+  return `${what} didn't go through. Check the phone's signal and try again.`;
+}
+
+const sayFailed = (what: string) => ({
+  onError: () => Alert.alert("Not done", inboxFailureWords(what)),
+});
+
 export default function NotificationsScreen() {
   const router = useRouter();
   const [filter, setFilter] = useState<InboxFilter>("unread");
@@ -197,7 +209,8 @@ export default function NotificationsScreen() {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => actions.remove.mutate(item.id),
+        onPress: () =>
+          actions.remove.mutate(item.id, sayFailed("Deleting the notification")),
       },
     ]);
   };
@@ -223,7 +236,10 @@ export default function NotificationsScreen() {
             filter === "unread" && items.length > 0 ? (
               <PressableScale
                 onPress={() => {
-                  actions.markAllRead.mutate();
+                  actions.markAllRead.mutate(
+                    undefined,
+                    sayFailed("Marking all as read"),
+                  );
                 }}
                 accessibilityLabel="Mark all read"
               >
@@ -317,9 +333,18 @@ export default function NotificationsScreen() {
                 item={item}
                 filter={filter}
                 onOpen={() => open(item)}
-                onRead={() => actions.markRead.mutate(item.id)}
-                onUnread={() => actions.markUnread.mutate(item.id)}
-                onArchive={() => actions.archive.mutate(item.id)}
+                onRead={() =>
+                  actions.markRead.mutate(item.id, sayFailed("Marking it read"))
+                }
+                onUnread={() =>
+                  actions.markUnread.mutate(
+                    item.id,
+                    sayFailed("Marking it unread"),
+                  )
+                }
+                onArchive={() =>
+                  actions.archive.mutate(item.id, sayFailed("Archiving it"))
+                }
                 onDelete={() => confirmDelete(item)}
               />
             ))

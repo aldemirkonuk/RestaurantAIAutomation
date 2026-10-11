@@ -11,6 +11,7 @@ import { outboxStorage } from "@/lib/mmkv";
 import { queryClient } from "@/lib/queryClient";
 import type { FeedItem } from "@/api/types";
 import { countsMatchRequest } from "@/components/today/countsMatchRequest";
+import { useFeedLocal } from "./feedLocal";
 
 /**
  * Durable outbox — the engine under every mutation in the app.
@@ -65,6 +66,22 @@ export interface OutboxEntry {
   invalidate?: unknown[][];
   /** Feed item to restore if the entry is undone or permanently fails. */
   feedItemId?: string;
+  /**
+   * Which delivery this is (F-1408), as the screen knew it when it was
+   * queued: two parked trucks read alike under the bare label. Optional so
+   * entries saved before these fields still read.
+   */
+  orderId?: string;
+  orderNumber?: string;
+  /** The wine, else the vendor. */
+  subject?: string;
+}
+
+/** What a screen knows about the order an action is for (F-1408). */
+export interface OutboxAbout {
+  orderId?: string | null;
+  orderNumber?: string | null;
+  subject?: string | null;
 }
 
 interface OutboxState {
@@ -78,8 +95,14 @@ interface OutboxState {
     graceMs?: number;
     invalidate?: unknown[][];
     feedItemId?: string;
+    about?: OutboxAbout;
   }) => string | null;
   undo: (id: string) => boolean;
+  /**
+   * Take back an entry that has not started sending (F-1407): null when it is
+   * gone, else the sentence saying why it stays.
+   */
+  withdraw: (id: string) => string | null;
   dismissFailed: (id: string) => void;
   /** Null when sent again; the sentence to show when it is not (F-1028). */
   retryFailed: (id: string) => string | null;
@@ -159,6 +182,11 @@ export const useOutbox = create<OutboxState>((set, get) => ({
       status: graceMs > 0 ? "holding" : "pending",
       invalidate: input.invalidate,
       feedItemId: input.feedItemId,
+      ...(input.about?.orderId ? { orderId: input.about.orderId } : {}),
+      ...(input.about?.orderNumber
+        ? { orderNumber: input.about.orderNumber }
+        : {}),
+      ...(input.about?.subject ? { subject: input.about.subject } : {}),
     };
     const entries = [...get().entries, entry];
     set({ entries });
@@ -174,6 +202,22 @@ export const useOutbox = create<OutboxState>((set, get) => ({
     set({ entries });
     persist(entries);
     return true;
+  },
+
+  withdraw: (id) => {
+    // A count or a delivery mark is queued with no grace window, so Undo never
+    // reached it, and a wrong count waited to be booked with no way to take it
+    // back (F-1407). Only an entry this phone has not started sending goes:
+    // one in flight may already have reached the house.
+    const entry = get().entries.find((e) => e.id === id);
+    if (!entry) return null;
+    if (entry.status === "inflight") return WITHDRAW_INFLIGHT_WORDS;
+    if (entry.status === "failed") return null;
+    const entries = get().entries.filter((e) => e.id !== id);
+    set({ entries });
+    persist(entries);
+    if (entry.feedItemId) useFeedLocal.getState().unhide(entry.feedItemId);
+    return null;
   },
 
   dismissFailed: (id) => {
@@ -231,6 +275,58 @@ export const useOutbox = create<OutboxState>((set, get) => ({
 
   flush: () => scheduleDispatch(0),
 }));
+
+/** Why an entry being sent right now is not withdrawn (F-1407). */
+export const WITHDRAW_INFLIGHT_WORDS =
+  "This is being sent right now, so it cannot be taken back. If it goes through, open the order to correct it.";
+
+/**
+ * The confirm before withdrawing (F-1407). An entry already tried once may
+ * have reached the house with its answer lost on the way back; the house then
+ * keeps it, and the person is told so rather than promised it is gone.
+ */
+export function withdrawWords(entry: Pick<OutboxEntry, "attempts">): string {
+  return entry.attempts > 0
+    ? "It is taken off this phone and not sent. It was tried once already: if that try reached the house, the house keeps it, so check the order once the phone has signal."
+    : "It is taken off this phone and not sent. Nothing reached the house.";
+}
+
+/** The order an entry is for (F-1408): stored, else read off its path. */
+export function entryOrderId(
+  entry: Pick<OutboxEntry, "orderId" | "path">,
+): string | null {
+  if (entry.orderId) return entry.orderId;
+  const m = /^\/procurement\/orders\/([^/?]+)\//.exec(entry.path ?? "");
+  return m ? m[1] : null;
+}
+
+/**
+ * The entry's name on a waiting or parked row (F-1408): its label, then the
+ * order number and the wine or vendor when the screen knew them.
+ */
+export function entryName(
+  entry: Pick<OutboxEntry, "label" | "orderNumber" | "subject">,
+): string {
+  const about = [entry.orderNumber, entry.subject].filter(Boolean).join(" · ");
+  return about ? `${entry.label} — ${about}` : entry.label;
+}
+
+/**
+ * This person's entries in this house that wait to send (F-1407), oldest
+ * first, for the waiting list. Refused ones show on Today instead.
+ */
+export function waitingHere(
+  entries: OutboxEntry[],
+  user: { id?: string; restaurantId?: string } | null,
+): OutboxEntry[] {
+  if (!user?.id || !user.restaurantId) return [];
+  return entries.filter(
+    (e) =>
+      e.status !== "failed" &&
+      e.actorUserId === user.id &&
+      e.restaurantId === user.restaurantId,
+  );
+}
 
 /** What a press handler tells the person when `enqueue` saved nothing. */
 export const NOT_SAVED_WORDS =
@@ -328,7 +424,7 @@ export const DELIVERED_WAITING_WORDS =
 
 /** On the receive screen when this order's count already waits (F-951). */
 export const RECEIPT_WAITING_WORDS =
-  "A count for this delivery is already saved on this phone and waits to send. A second count is not taken, so the bottles are not booked twice.";
+  "A count for this delivery is already saved on this phone and waits to send. A second count is not taken, so the bottles are not booked twice. To correct it, withdraw the saved count and count again.";
 
 /**
  * What signing out leaves behind on this phone (F-952): every entry of this
@@ -444,7 +540,7 @@ async function runDispatch() {
   dispatching = true;
   mark(next.id, { status: "inflight" });
   try {
-    await api(next.path, {
+    await api(withCaptureAge(next, Date.now()), {
       method: next.method,
       body: next.body,
       idempotencyKey: next.id,
@@ -557,17 +653,22 @@ async function runDispatch() {
       // permanent — and that is exactly why 409 is the right status: the request
       // was well-formed, so repeating it could never change the answer.
       const refused = alreadyDeliveredRefusal(err);
+      // A count for a delivery the house already checked (F-1405): a colleague
+      // closed the order while this one waited. Done, not "didn't go through".
+      const checked = alreadyCheckedWords(err);
       // The server said no — surface it, don't retry into the same wall.
       mark(next.id, {
         status: "failed",
         lastError: refused
           ? alreadyDeliveredWords(refused)
+          : checked
+            ? checked
           : next.moneyStripped
             ? `This count was sent again without the invoice price and was still refused. ${err instanceof Error ? err.message : ""}`.trim()
             : err instanceof Error
               ? err.message
               : "Rejected",
-        alreadyDone: refused != null,
+        alreadyDone: refused != null || checked != null,
       });
       scheduleDispatch(0);
     } else if (
@@ -596,6 +697,48 @@ async function runDispatch() {
   } finally {
     dispatching = false;
   }
+}
+
+/**
+ * A receipt refused because the house had already checked this delivery
+ * (F-1405), as the words to show, or null. The gateway answers 409
+ * `receipt_already_checked` when a match already settled the order, and 422
+ * `order_not_checkable` naming the order's status when it is closed. Only a
+ * COMPLETED order was checked: a cancelled one was not, and is not said to be.
+ */
+export function alreadyCheckedWords(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const body = err.body as
+    | { reason?: unknown; status?: unknown; message?: unknown }
+    | undefined;
+  const said =
+    typeof body?.message === "string" && body.message
+      ? body.message
+      : "Nothing was changed.";
+  const checked =
+    (err.status === 409 && body?.reason === "receipt_already_checked") ||
+    (err.status === 422 &&
+      body?.reason === "order_not_checkable" &&
+      body?.status === "COMPLETED");
+  return checked ? `The house already checked this delivery. ${said}` : null;
+}
+
+/**
+ * The request path with how long ago the person did it (F-1406). A count or a
+ * delivery mark that waited for signal was dated when it reached the house, so
+ * a truck that came on its due day read as a late delivery. The age, not the
+ * phone's clock: a phone set to the wrong time still measures time passing.
+ * The gateway keeps it within ADR 0286's 72 hours.
+ */
+export function withCaptureAge(
+  entry: Pick<OutboxEntry, "path" | "createdAt">,
+  now: number,
+): string {
+  const base = entry.path.split("?")[0];
+  if (!/^\/procurement\/orders\/[^/]+\/(deliver|verify-receipt)$/.test(base))
+    return entry.path;
+  const ageMs = Math.max(0, Math.round(now - entry.createdAt));
+  return `${entry.path}${entry.path.includes("?") ? "&" : "?"}countedAgoMs=${ageMs}`;
 }
 
 /**

@@ -146,6 +146,7 @@ import {
 } from "./documents/invoice-currency";
 import { lastAgreementAnswer, type LastAgreement } from "./last-agreement";
 import { readHouseZone } from "../common/house-day";
+import { resolveFactTime, type FactTime } from "../common/fact-time";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -6263,7 +6264,16 @@ export class ProcurementService {
     orderId: string,
     userId: string,
     quantityReceived?: number,
+    /**
+     * How long ago the phone marked it (F-1406) and the marker's role in this
+     * house, for ADR 0286's rule. Absent from a live tap and from the web.
+     */
+    capture?: { countedAgoMs?: number; role?: string | null },
   ): Promise<OrderResponseDto> {
+    // WHOSE CLOCK DATES THIS DELIVERY (F-1406, ADR 0286). A mark queued with
+    // no signal reached the house later; dated then, a truck that came on its
+    // due day read as a late vendor delivery. The phone sends the mark's age.
+    const fact = factTimeFromAge(capture?.countedAgoMs, capture?.role);
     // What the ledger is about to be told, decided ONCE. ADR 0192: this
     // method no longer writes `procurement_orders.quantity_received` at all —
     // what an order received is what the ledger booked for it, and the door
@@ -6454,7 +6464,7 @@ export class ProcurementService {
     // twice is a guard with two answers waiting to disagree.
     // Held so a refused booking can put back exactly this write and nothing a
     // later request wrote (see the revert below).
-    const deliveredAtWritten = new Date().toISOString();
+    const deliveredAtWritten = fact.at.toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
@@ -7660,8 +7670,15 @@ export class ProcurementService {
      * Present on every HTTP call; absent only for a caller inside this
      * process, of which there is none today.
      */
-    caller?: { role?: string | null },
+    caller?: { role?: string | null; countedAgoMs?: number },
   ): Promise<OrderResponseDto> {
+    // How long ago the phone took this count (F-1406): its history lines are
+    // dated then under ADR 0286, not when the queued count found signal. Only
+    // when it was sent; a count that sends none keeps the server's time.
+    const receiptTime =
+      caller?.countedAgoMs != null
+        ? factTimeFromAge(caller.countedAgoMs, caller.role)
+        : null;
     // THE COUNT IS ANYONE'S, THE MONEY IS NOT (F-466; ADR 0167 and the
     // document money gate). Refused before anything is read or written.
     if (caller)
@@ -8139,6 +8156,7 @@ export class ProcurementService {
           invoice_qty_bottles: null,
           received_by: userId,
           notes: null,
+          ...receiptEventTime(receiptTime),
         };
       }
     }
@@ -8436,6 +8454,7 @@ export class ProcurementService {
           invoice_qty_bottles: hasInvoice ? bottles.invoiceQty : null,
           received_by: userId,
           notes: body.rejectedReason ?? null,
+          ...receiptEventTime(receiptTime),
         });
       if (eventError) {
         if (await putBack())
@@ -12478,4 +12497,39 @@ export class ProcurementService {
     }
     return out;
   }
+}
+
+/**
+ * The fact's time from a capture age the phone sent (F-1406), under ADR 0286:
+ * the age is turned into the moment of the tap, measured on this server's
+ * clock, so a phone set to the wrong time still dates it right. Nothing sent
+ * is the server's own time.
+ */
+export function factTimeFromAge(
+  countedAgoMs: number | undefined,
+  role: string | null | undefined,
+  receivedAt: Date = new Date(),
+): FactTime {
+  return resolveFactTime({
+    sentAt:
+      countedAgoMs != null
+        ? new Date(receivedAt.getTime() - countedAgoMs).toISOString()
+        : null,
+    receivedAt,
+    role: role ?? null,
+  });
+}
+
+/**
+ * A receipt history line's time and which clock gave it (ADR 0286), as the
+ * door writes them. A server-dated line sends no `occurred_at`, so the
+ * database's DEFAULT now() stamps it; the sent time is kept as evidence.
+ */
+function receiptEventTime(fact: FactTime | null): Record<string, unknown> {
+  if (!fact) return {};
+  return {
+    client_captured_at: fact.sentAt?.toISOString() ?? null,
+    occurred_at: fact.basis === "server" ? undefined : fact.at.toISOString(),
+    occurred_at_basis: fact.basis,
+  };
 }

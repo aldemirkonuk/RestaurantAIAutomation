@@ -24,7 +24,12 @@ import { useFeed, useHouses, useUnreadCount } from "@/api/queries";
 import { openHouse } from "@/auth/houseChoice";
 import { todayHeader } from "@/lib/todayHeader";
 import { useFeedLocal } from "@/state/feedLocal";
-import { useOutbox, waitingFeedItems } from "@/state/outbox";
+import {
+  entryName,
+  entryOrderId,
+  useOutbox,
+  waitingFeedItems,
+} from "@/state/outbox";
 import { useSession } from "@/state/session";
 import type { FeedItem } from "@/api/types";
 import { TipStrip } from "@/guidance/TipStrip";
@@ -325,16 +330,31 @@ export default function TodayScreen() {
                       justifyContent: "space-between",
                     }}
                   >
-                    <View style={{ flex: 1, paddingRight: space.sm }}>
+                    {/* The row names its delivery and opens its order
+                        (F-1408): two parked trucks read alike under the bare
+                        label. */}
+                    <PressableScale
+                      onPress={() => {
+                        const orderId = entryOrderId(f);
+                        if (orderId)
+                          router.push({
+                            pathname: "/supply/[id]",
+                            params: { id: orderId },
+                          });
+                      }}
+                      disabled={!entryOrderId(f)}
+                      accessibilityLabel={`Open the order for ${entryName(f)}`}
+                      style={{ flex: 1, paddingRight: space.sm }}
+                    >
                       {/* "didn't go through" is FALSE for an already-done entry:
                           the house did it, someone else got there first, and the
                           409 says who and when (founder, 2026-09-05, batch 46). */}
                       <AppText variant="footnote" tone="danger">
                         {f.priceRefused
-                          ? `${f.label} — counted, price not taken`
+                          ? `${entryName(f)} — counted, price not taken`
                           : f.alreadyDone
-                          ? `${f.label} — already done`
-                          : `${f.label} didn't go through`}
+                          ? `${entryName(f)} — already done`
+                          : `${entryName(f)} didn't go through`}
                       </AppText>
                       {f.lastError ? (
                         // One line is right for "Request failed (500)" and wrong
@@ -349,7 +369,7 @@ export default function TodayScreen() {
                           {f.lastError}
                         </AppText>
                       ) : null}
-                    </View>
+                    </PressableScale>
                     {/* Retry keeps the counted figures and sends them again
                         (F-407); dismissing threw them away and the truck had
                         to be recounted. An already-done entry would only get

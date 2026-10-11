@@ -32,6 +32,10 @@ import { api } from "@/api/client";
 import { useSession } from "../session";
 import {
   RECEIPT_WAITING_WORDS,
+  WITHDRAW_INFLIGHT_WORDS,
+  alreadyCheckedWords,
+  entryName,
+  entryOrderId,
   signOutWords,
   unsentAtSignOut,
   useOutbox,
@@ -40,7 +44,11 @@ import {
   waitingFor,
   waitingWork,
   waitingWords,
+  waitingHere,
+  withCaptureAge,
+  withdrawWords,
 } from "../outbox";
+import { useFeedLocal } from "../feedLocal";
 import { outboxStorage } from "@/lib/mmkv";
 
 beforeEach(() => {
@@ -608,4 +616,120 @@ it("a Today card knows its order's count already waits on this phone (F-980)", (
   expect(receiptWaitingFor({ orderId: "order-1" }, others, alice)).toBe(false);
   expect(receiptWaitingFor({ orderId: null }, [entry({})], alice)).toBe(false);
   expect(receiptWaitingFor({ orderId: "order-1" }, [entry({})], null)).toBe(false);
+});
+
+describe("a count for a delivery the house already checked is done, not failed (F-1405)", () => {
+  beforeEach(() => (api as jest.Mock).mockReset().mockResolvedValue({}));
+  const refused = (status: number, body: unknown) =>
+    Object.assign(new (jest.requireMock("@/api/client").ApiError)("refused"), { status, body });
+  const completed = "This order is already completed, so its delivery cannot be checked again. Nothing was changed.";
+  const settled = "This delivery was already checked and the order is complete, so nothing was changed.";
+
+  it.each([
+    [422, { reason: "order_not_checkable", status: "COMPLETED", message: completed }, completed],
+    [409, { reason: "receipt_already_checked", message: settled }, settled],
+  ])("a %i parks dismiss-only and says the house checked it", async (status, body, said) => {
+    (api as jest.Mock).mockRejectedValueOnce(refused(status, body));
+    useOutbox.getState().enqueue({ path: "/procurement/orders/o1/verify-receipt", label: "Receipt verification" });
+    await jest.advanceTimersByTimeAsync(1);
+    expect(useOutbox.getState().entries).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        alreadyDone: true,
+        lastError: `The house already checked this delivery. ${said}`,
+      }),
+    ]);
+  });
+
+  it("a cancelled order is refused, never said to be checked", () => {
+    const cancelled = "This order is already cancelled, so its delivery cannot be checked again. Nothing was changed.";
+    expect(
+      alreadyCheckedWords(refused(422, { reason: "order_not_checkable", status: "CANCELLED", message: cancelled })),
+    ).toBeNull();
+  });
+});
+
+describe("a count or delivery mark carries how long ago it was taken (F-1406)", () => {
+  beforeEach(() => (api as jest.Mock).mockReset().mockResolvedValue({}));
+
+  it("adds the age to deliver and verify-receipt, and to nothing else", () => {
+    const at = 1_000_000;
+    expect(withCaptureAge({ path: "/procurement/orders/o1/deliver?quantityReceivedInOrderUom=3", createdAt: at }, at + 7_200_000))
+      .toBe("/procurement/orders/o1/deliver?quantityReceivedInOrderUom=3&countedAgoMs=7200000");
+    expect(withCaptureAge({ path: "/procurement/orders/o1/verify-receipt", createdAt: at }, at + 5))
+      .toBe("/procurement/orders/o1/verify-receipt?countedAgoMs=5");
+    expect(withCaptureAge({ path: "/notifications/n1/read", createdAt: at }, at + 5)).toBe("/notifications/n1/read");
+  });
+
+  it("sends the age the count waited, measured when it is sent", async () => {
+    (api as jest.Mock).mockRejectedValueOnce(new Error("Network request failed"));
+    useOutbox.getState().enqueue({ path: "/procurement/orders/o1/verify-receipt", label: "Receipt verification" });
+    await jest.advanceTimersByTimeAsync(1);
+    await jest.advanceTimersByTimeAsync(2_000);
+    const [first, second] = (api as jest.Mock).mock.calls.map((c) => c[0] as string);
+    const age = (p: string) => Number(/countedAgoMs=(\d+)$/.exec(p)?.[1]);
+    expect(age(first)).toBeLessThan(100);
+    expect(age(second)).toBeGreaterThanOrEqual(2_000);
+  });
+});
+
+describe("a waiting count can be withdrawn or replaced (F-1407)", () => {
+  beforeEach(() => (api as jest.Mock).mockReset().mockResolvedValue({}));
+  const path = "/procurement/orders/o1/verify-receipt";
+
+  it("takes back a pending entry that has not started sending, and gives its card back", async () => {
+    (api as jest.Mock).mockRejectedValue(new Error("Network request failed"));
+    const id = useOutbox.getState().enqueue({ path, label: "Receipt verification", feedItemId: "card-1" })!;
+    useFeedLocal.getState().hide("card-1", id);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(useOutbox.getState().entries[0].status).toBe("pending");
+    expect(useOutbox.getState().withdraw(id)).toBeNull();
+    expect(useOutbox.getState().entries).toEqual([]);
+    expect(useFeedLocal.getState().hidden["card-1"]).toBeUndefined();
+    // Withdrawn, a new count for the same order is taken.
+    expect(waitingFor(useOutbox.getState().entries, { id: "alice", restaurantId: "r1" }, path)).toBeNull();
+  });
+
+  it("refuses to take back an entry being sent", () => {
+    useOutbox.setState({
+      entries: [{ id: "x", actorUserId: "alice", restaurantId: "r1", path, status: "inflight", attempts: 0 } as any],
+    });
+    expect(useOutbox.getState().withdraw("x")).toBe(WITHDRAW_INFLIGHT_WORDS);
+    expect(useOutbox.getState().entries).toHaveLength(1);
+  });
+
+  it("warns that an entry tried once may already have reached the house", () => {
+    expect(withdrawWords({ attempts: 0 })).toMatch(/Nothing reached the house/);
+    expect(withdrawWords({ attempts: 2 })).toMatch(/the house keeps it/);
+  });
+
+  it("lists only this person's waiting entries in this house", () => {
+    const entries = [
+      { id: "a", actorUserId: "alice", restaurantId: "r1", status: "pending" },
+      { id: "b", actorUserId: "alice", restaurantId: "r1", status: "failed" },
+      { id: "c", actorUserId: "alice", restaurantId: "r2", status: "pending" },
+      { id: "d", actorUserId: "bob", restaurantId: "r1", status: "pending" },
+    ] as any;
+    expect(waitingHere(entries, { id: "alice", restaurantId: "r1" }).map((e) => e.id)).toEqual(["a"]);
+  });
+});
+
+describe("a waiting or parked entry names its delivery (F-1408)", () => {
+  it("keeps the order number and the wine on the entry", () => {
+    const id = useOutbox.getState().enqueue({
+      path: "/procurement/orders/o1/deliver?quantityReceivedInOrderUom=3",
+      label: "Marked delivered",
+      about: { orderId: "o1", orderNumber: "PO-1042", subject: "Barolo 2019" },
+    });
+    const entry = useOutbox.getState().entries.find((e) => e.id === id)!;
+    expect(entryName(entry)).toBe("Marked delivered — PO-1042 · Barolo 2019");
+    expect(entryOrderId(entry)).toBe("o1");
+  });
+
+  it("reads an older entry's order off its path and keeps the bare label", () => {
+    const old = { label: "Receipt verification", path: "/procurement/orders/o9/verify-receipt" };
+    expect(entryName(old)).toBe("Receipt verification");
+    expect(entryOrderId(old)).toBe("o9");
+    expect(entryOrderId({ path: "/notifications/n1/read" })).toBeNull();
+  });
 });

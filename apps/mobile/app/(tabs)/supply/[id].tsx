@@ -66,6 +66,12 @@ export default function OrderDetailScreen() {
       path,
       label: "Marked delivered",
       graceMs: 0,
+      // Names the truck on the waiting and parked rows (F-1408).
+      about: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        subject: order.wineName ?? order.providerName,
+      },
       invalidate: [
         [...feedKey],
         ["orders", "pending"],
