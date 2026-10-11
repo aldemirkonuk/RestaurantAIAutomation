@@ -27,6 +27,8 @@ import {
   handoverChecks,
   HandoverCheck,
   HandoverShift,
+  HouseLabour,
+  houseLabour,
   LeavingPlan,
   addDaysIso,
   mondayOf,
@@ -1550,7 +1552,7 @@ export class TeamService {
         "Could not move this person's upcoming shifts to the open pool, so nobody was removed.",
       );
     };
-    const { clock, rows, plan } = await this.leavingPlan(
+    const { clock, rows, plan, labour } = await this.leavingPlan(
       restaurantId,
       memberId,
       deviceZone,
@@ -1576,6 +1578,7 @@ export class TeamService {
         handover.to,
         handover.shiftIds,
         refuse,
+        labour,
       );
       const block = handoverBlock(review.checks, new Set(handover.accept));
       if (block) {
@@ -1659,13 +1662,21 @@ export class TeamService {
     memberId: string,
     deviceZone: string | null | undefined,
     refuse: (what: string, err: { message: string }) => never,
-  ): Promise<{ clock: RemovalClock; rows: any[]; plan: LeavingPlan }> {
+  ): Promise<{
+    clock: RemovalClock;
+    rows: any[];
+    plan: LeavingPlan;
+    labour: HouseLabour;
+  }> {
     const { data: house, error: houseErr } = await this.sb
       .from("restaurants")
       .select("timezone, country")
       .eq("id", restaurantId)
       .maybeSingle();
     if (houseErr) refuse("read the house's clock", houseErr);
+    // The worked part and a handed-over shift are priced on the house's
+    // country's breaks (founder S195), on the wall clock as the cut is.
+    const labour: HouseLabour = { rules: houseLabour(house as any).rules };
     const clock = removalClock(
       houseFrame(house as any),
       resolveSignUpTimezone(deviceZone ?? null),
@@ -1685,7 +1696,7 @@ export class TeamService {
     if (readErr) refuse("read the upcoming shifts", readErr);
     const rows = (theirs ?? []) as any[];
 
-    let plan = planLeavingShifts(rows, clock, now, null);
+    let plan = planLeavingShifts(rows, clock, now, null, labour);
     if (plan.split.length > 0) {
       // The worked part is re-priced at their wage, read now, before any
       // write; a failed read refuses like the others.
@@ -1696,9 +1707,15 @@ export class TeamService {
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
       if (wageErr) refuse("read their wage to re-price the worked part", wageErr);
-      plan = planLeavingShifts(rows, clock, now, m?.hourly_wage ?? null);
+      plan = planLeavingShifts(
+        rows,
+        clock,
+        now,
+        m?.hourly_wage ?? null,
+        labour,
+      );
     }
-    return { clock, rows, plan };
+    return { clock, rows, plan, labour };
   }
 
   /**
@@ -1718,6 +1735,7 @@ export class TeamService {
     to: string,
     shiftIds: readonly string[],
     refuse: (what: string, err: { message: string }) => never,
+    labour: HouseLabour,
   ): Promise<HandoverReview> {
     if (to === memberId)
       throw new BadRequestException(
@@ -1758,7 +1776,7 @@ export class TeamService {
           id,
           shift_date: whole.shift_date,
           start_time: whole.start_time,
-          labor_cost: priceShift(target.hourly_wage, g),
+          labor_cost: priceShift(target.hourly_wage, g, labour),
         });
       } else if (cut) {
         const g: HandoverShift = {
@@ -1770,7 +1788,10 @@ export class TeamService {
           recorded_break_min: cut.rest.recorded_break_min,
         };
         given.push(g);
-        giveRests.push({ id, labor_cost: priceShift(target.hourly_wage, g) });
+        giveRests.push({
+          id,
+          labor_cost: priceShift(target.hourly_wage, g, labour),
+        });
       } else {
         throw new BadRequestException(
           "One of the shifts to hand over is not one of their upcoming shifts any more. Nobody was removed; reload and try again.",
@@ -1812,6 +1833,7 @@ export class TeamService {
         (theirs ?? []) as any[],
         (leave ?? []) as any[],
         allowDoubleBooking,
+        labour,
       ),
     };
   }
@@ -1867,7 +1889,7 @@ export class TeamService {
         "Could not read this person's upcoming shifts.",
       );
     };
-    const { clock, rows, plan } = await this.leavingPlan(
+    const { clock, rows, plan, labour } = await this.leavingPlan(
       restaurantId,
       memberId,
       deviceZone,
@@ -1904,6 +1926,7 @@ export class TeamService {
         to,
         shifts.map((s) => s.id),
         refuse,
+        labour,
       );
       allow = review.allowDoubleBooking;
       for (const s of shifts) s.checks = review.checks.get(s.id) ?? [];
@@ -1973,9 +1996,10 @@ export class TeamService {
 
     const { data: house, error: houseErr } = await this.sb
       .from("restaurants")
-      .select("currency, country")
+      .select("currency, country, timezone")
       .eq("id", restaurantId)
       .maybeSingle();
+    const labour = houseLabour(houseErr ? null : house);
     const money = houseErr
       ? { currency: null, country: null, readable: false }
       : {
@@ -2062,7 +2086,10 @@ export class TeamService {
           : null;
       const kept = shifts.get(id) ?? [];
       const worked = kept.filter(isWorked);
-      const hours = worked.reduce((n: number, s: any) => n + workedHours(s), 0);
+      const hours = worked.reduce(
+        (n: number, s: any) => n + workedHours(s, labour),
+        0,
+      );
       const unpriced = worked.filter((s: any) => s.labor_cost == null).length;
       const keptUntil = new Date(d.left_at);
       keptUntil.setUTCFullYear(keptUntil.getUTCFullYear() + FORMER_STAFF_RETENTION_YEARS);
@@ -2082,7 +2109,7 @@ export class TeamService {
           end_time: s.end_time,
           state: s.state,
           role: s.role ?? null,
-          workedHours: Math.round(workedHours(s) * 100) / 100,
+          workedHours: Math.round(workedHours(s, labour) * 100) / 100,
           labor_cost: s.labor_cost ?? null,
         })),
         totals: {

@@ -135,6 +135,13 @@ function trWrapper({ children }: { children: ReactNode }) {
   return wrapper({ children: <ShiftClockProvider locale="tr-Latn-TR">{children}</ShiftClockProvider> });
 }
 
+/** A house in the country of `locale` (its region). */
+function localeWrapper(locale: string) {
+  return function LocaleWrapper({ children }: { children: ReactNode }) {
+    return wrapper({ children: <ShiftClockProvider locale={locale}>{children}</ShiftClockProvider> });
+  };
+}
+
 /** A US house: no Turkish law is named. */
 function usWrapper({ children }: { children: ReactNode }) {
   return wrapper({ children: <ShiftClockProvider locale="en-Latn-US">{children}</ShiftClockProvider> });
@@ -261,7 +268,7 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
         onEditShift={() => {}}
         onChanged={() => {}}
       />,
-      { wrapper },
+      { wrapper: trWrapper },
     );
     // 10h with nothing recorded: assumed. 10h with 30 recorded: 9.5h of work
     // owes 60, so short. 10h with 60 recorded: nothing to flag.
@@ -353,12 +360,12 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
     expect(screen.getByText(/counted with a 30-minute break: the legal minimum/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Break, in minutes'), { target: { value: '20' } });
     expect(
-      screen.getByText(/under the legal minimum of 60 minutes for the 7,7h of work it leaves \(Art\. 68\)/),
+      screen.getByText(/under the legal minimum of 60 minutes for the 7,7h of work it leaves \(Labour Law 4857 Art\. 68\)/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/minutes for this shift/)).not.toBeInTheDocument();
   });
 
-  it('names no Turkish law in a US house (F-1020)', () => {
+  it('names no Turkish law in a US house (F-1020), and assumes no break there (F-155)', () => {
     render(
       <ShiftSheet
         target={{ shift: { ...baseShift, start_time: '09:00', end_time: '17:00' } as never }}
@@ -369,12 +376,52 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
       />,
       { wrapper: usWrapper },
     );
-    expect(screen.getByText(/counted with a 30-minute break, shown as assumed/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Break, in minutes'), { target: { value: '20' } });
     expect(
-      screen.getByText(/under the 60-minute break counted for the 7\.7h of work it leaves\./),
+      screen.getByText(/whole shift counts as worked: US federal law sets no break/),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/4857|Art\. 68|legal minimum/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Break, in minutes'), { target: { value: '20' } });
+    expect(screen.getByText(/Recorded: 20 minutes, not counted as work\./)).toBeInTheDocument();
+    expect(screen.queryByText(/4857|Art\. 68|legal minimum|under the/)).not.toBeInTheDocument();
+  });
+
+  it("names each country's own break law: GB's 20 minutes, Germany's 30 and 45 (F-155)", () => {
+    const sheet = (end_time: string) => (
+      <ShiftSheet
+        target={{ shift: { ...baseShift, start_time: '09:00', end_time } as never }}
+        members={[]}
+        scheduleId="sch1"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />
+    );
+    const gb = render(sheet('17:00'), { wrapper: localeWrapper('en-Latn-GB') });
+    expect(
+      screen.getByText(/counted with a 20-minute break: the legal minimum for it \(the Working Time Regulations\)/),
+    ).toBeInTheDocument();
+    gb.unmount();
+    const de = render(sheet('19:00'), { wrapper: localeWrapper('de-Latn-DE') });
+    expect(
+      screen.getByText(/counted with a 45-minute break: the legal minimum for it \(the Arbeitszeitgesetz §4\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/4857|Art\. 68/)).not.toBeInTheDocument();
+    de.unmount();
+  });
+
+  it("claims no law and assumes no break where the country's rules are not built in (F-1399)", () => {
+    render(
+      <ShiftSheet
+        target={{ shift: { ...baseShift, start_time: '09:00', end_time: '19:00' } as never }}
+        members={[]}
+        scheduleId="sch1"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper: localeWrapper('fr-Latn-FR') },
+    );
+    expect(
+      screen.getByText(/whole shift counts as worked\. Your country's break rules are not built in yet/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/4857|Art\. 68|legal minimum|assumed/)).not.toBeInTheDocument();
   });
 
   it('clears a recorded break when the editor empties it', async () => {

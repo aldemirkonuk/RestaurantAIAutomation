@@ -56,10 +56,10 @@ import {
   fmtHours,
   fmtMoneyWhole,
   houseLocale,
+  labourRules,
   recordedBreakMinutes,
   resolveName,
   todayIso,
-  WEEKLY_REVIEW_HOURS,
   weekDays,
   workedHours,
 } from './tm-format';
@@ -157,8 +157,12 @@ export function WeekGrid({
   published = false,
 }: GridProps) {
   const fmtTime = useShiftTime();
+  const region = useHouseRegion();
   /** The house's decimal mark for hours (F-1120). */
-  const hoursIn = houseLocale(useHouseRegion());
+  const hoursIn = houseLocale(region);
+  /** The house's country's labour rules (founder S195); none claimed where not built in. */
+  const rules = labourRules(region);
+  const reviewAt = rules.weeklyReviewHours;
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const today = todayIso(houseToday(zone));
   const [selected, setSelected] = useState<string | null>(null);
@@ -218,11 +222,11 @@ export function WeekGrid({
       if (!s.member_id || s.state === 'callout') continue;
       m.set(
         s.member_id,
-        (m.get(s.member_id) ?? 0) + workedHours(s),
+        (m.get(s.member_id) ?? 0) + workedHours(s, rules),
       );
     }
     return m;
-  }, [rows]);
+  }, [rows, rules]);
 
   /** Sat/Sun closes per member — the legacy fairness signal, unchanged. */
   const closesById = useMemo(() => {
@@ -254,15 +258,19 @@ export function WeekGrid({
     const id = s.member_id;
     const hours = id ? (hoursById.get(id) ?? 0) : 0;
     const closes = id ? (closesById.get(id) ?? 0) : 0;
-    const fair = hours > WEEKLY_REVIEW_HOURS || closes >= 2;
-    // A shift with no break recorded is counted with the Art. 68 minimum
-    // (ADR 0215; any length, founder round 6y): the lens says the break is
-    // assumed, and a recorded break shorter than the law asks for says that
-    // instead.
-    const assumedBreak = breakCounted(s).assumed;
-    const shortBreak = breakUnderMinimum(s);
+    const overWeek = reviewAt != null && hours > reviewAt;
+    const fair = overWeek || closes >= 2;
+    // A shift with no break recorded is counted with the minimum its house's
+    // country owes (ADR 0215; any length, founder round 6y; S195): the lens
+    // says the break is assumed, and a recorded break shorter than the law
+    // asks for says that instead.
+    const assumedBreak = breakCounted(s, rules).assumed;
+    const shortBreak = breakUnderMinimum(s, rules);
+    // A day past the country's daily ceiling (Germany's 10 hours, §3 ArbZG).
+    const longDay =
+      rules.dailyReviewHours != null && workedHours(s, rules) > rules.dailyReviewHours;
     const lapsed = id ? lapsedIds.has(id) : false;
-    const compliance = assumedBreak || shortBreak || lapsed || s.state === 'callout';
+    const compliance = assumedBreak || shortBreak || longDay || lapsed || s.state === 'callout';
     const why =
       s.state === 'callout'
         ? 'called out'
@@ -270,10 +278,12 @@ export function WeekGrid({
           ? 'credential lapsed'
           : shortBreak
             ? 'break under the legal minimum'
+            : longDay
+              ? `over ${rules.dailyReviewHours}h in a day · review`
             : assumedBreak
               ? 'break assumed · not recorded'
-              : hours > WEEKLY_REVIEW_HOURS
-                ? `over ${WEEKLY_REVIEW_HOURS}h · review`
+              : overWeek
+                ? `over ${reviewAt}h · review`
                 : closes >= 2
                   ? `${closes} weekend closes`
                   : '';
@@ -285,11 +295,11 @@ export function WeekGrid({
     const f = flagsFor(s);
     if (lens === 'labour') {
       // Hours for anyone who is not the owner: the cost is withheld, not unknown.
-      if (!moneyVisible) return fmtHours(workedHours(s), hoursIn);
+      if (!moneyVisible) return fmtHours(workedHours(s, rules), hoursIn);
       if (!labourEnabled) return 'labour off';
       // An owner's shift, to a manager who sees pay: withheld because it is
       // the owner's (founder 2026-09-27, item 71), so hours, not "not priced".
-      if (s.pay_withheld === 'owner') return fmtHours(workedHours(s), hoursIn);
+      if (s.pay_withheld === 'owner') return fmtHours(workedHours(s, rules), hoursIn);
       // An unpriced shift is unknown, not free. `?? 0` here is exactly the
       // defect ADR 0089 found in the Tonight pulse.
       return s.labor_cost == null ? `${EM} not priced` : fmtMoneyWhole(s.labor_cost, money);
@@ -560,7 +570,7 @@ export function WeekGrid({
                     </span>
                     <span
                       className="tm-membercell__h"
-                      data-over={hours !== null && hours > WEEKLY_REVIEW_HOURS ? 'true' : undefined}
+                      data-over={hours !== null && reviewAt != null && hours > reviewAt ? 'true' : undefined}
                     >
                       {shifts === null ? EM : fmtHours(hours ?? 0, hoursIn)}
                     </span>
@@ -809,8 +819,10 @@ function ShiftDetail({
   money: HouseMoney | null;
 }) {
   const fmtTime = useShiftTime();
+  const region = useHouseRegion();
   /** The house's decimal mark for hours (F-1120). */
-  const hoursIn = houseLocale(useHouseRegion());
+  const hoursIn = houseLocale(region);
+  const rules = labourRules(region);
   const name = resolveName(member);
   const coverSent = coverReach !== null;
   // F-1231: on a phone the grid scrolls sideways, and the detail spans all of
@@ -829,9 +841,9 @@ function ShiftDetail({
         <Fact k="State" v={shift.state} />
         <Fact
           k="Hours"
-          v={fmtHours(workedHours(shift), hoursIn)}
+          v={fmtHours(workedHours(shift, rules), hoursIn)}
         />
-        <Fact k="Break" v={fmtBreak(shift)} />
+        <Fact k="Break" v={fmtBreak(shift, rules)} />
         {moneyVisible && (
           <Fact
             k="Cost"

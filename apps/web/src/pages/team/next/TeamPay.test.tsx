@@ -325,10 +325,65 @@ describe('hours are worked hours, and over 45 is a review', () => {
     api.members = [member()];
     api.week = weekPayload({
       labor: { enabled: true, moneyVisible: false, totalHours: 46, overtime: [{ memberId: 'm1', hours: 46 }] },
+      country: 'Türkiye',
     });
     render(<TeamNext />, { wrapper });
     expect(await screen.findByText(/Over 45h worked — review before publishing/)).toBeInTheDocument();
     expect(screen.queryByText(/40h/)).not.toBeInTheDocument();
+  });
+});
+
+// ── F-155 / F-1385 / F-1399: the house's country's rules (founder S195) ─────
+
+describe("the review line and the cost note follow the house's country", () => {
+  const ownerWeek = (country: string | null, overtime: unknown[] = []) =>
+    weekPayload({
+      labor: {
+        enabled: true,
+        moneyVisible: true,
+        totalHours: 42,
+        totalCost: 840,
+        costComplete: true,
+        pricedShifts: 5,
+        unpricedShifts: 0,
+        targetPct: null,
+        overtime,
+        leave: { readable: true, paid: [], paidDays: 0, unknownTypeDays: 0 },
+      },
+      country,
+    });
+
+  it('a US house reviews past the 40-hour week and never names SGK', async () => {
+    api.members = [member()];
+    api.week = ownerWeek('United States', [{ memberId: 'm1', hours: 42 }]);
+    render(<TeamNext />, { wrapper });
+    expect(await screen.findByText(/Over 40h worked — review before publishing/)).toBeInTheDocument();
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(within(labour).getByText(/not employer taxes, meals or bonuses/)).toBeInTheDocument();
+    expect(screen.queryByText(/SGK|45h|45 worked/)).not.toBeInTheDocument();
+  });
+
+  it('a Turkish house keeps the 45-hour week and SGK', async () => {
+    api.week = ownerWeek('Türkiye');
+    render(<TeamNext />, { wrapper });
+    expect(await screen.findByText(/No one is scheduled over 45 worked hours/)).toBeInTheDocument();
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(within(labour).getByText(/not SGK, meals or bonuses/)).toBeInTheDocument();
+  });
+
+  it('a GB house draws the line at 48', async () => {
+    api.week = ownerWeek('United Kingdom');
+    render(<TeamNext />, { wrapper });
+    expect(await screen.findByText(/No one is scheduled over 48 worked hours/)).toBeInTheDocument();
+  });
+
+  it('a house whose country is not built in is told so, with no Turkish line', async () => {
+    api.week = ownerWeek('France');
+    render(<TeamNext />, { wrapper });
+    expect(
+      await screen.findByText(/Your country's working-time rules are not built in yet/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/SGK|over 45/)).not.toBeInTheDocument();
   });
 });
 

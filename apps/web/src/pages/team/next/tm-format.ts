@@ -254,10 +254,89 @@ export function art68BreakForWork(workedMin: number): number {
 
 /** The least of 15 / 30 / 60 minutes a shift spanning `spanMin` complies with. */
 export function art68MinimumBreak(spanMin: number): number {
-  for (const b of [15, 30, 60]) {
-    if (b >= art68BreakForWork(spanMin - b)) return b;
+  return minimumBreak(spanMin, LABOUR_RULES.TR);
+}
+
+/* ── whose rules: the house's country (founder S195, 2026-10-11) ───────────
+
+   "Every house gets its rules based on its location." The gateway's table,
+   mirrored (`pay-rules.ts` LABOUR_RULES): Türkiye 4857 (45-hour week, Art. 68
+   breaks); the US FLSA 40-hour week and no federal break; GB's Working Time
+   Regulations (48-hour average week, 20 minutes over 6 hours of work);
+   Germany's Arbeitszeitgesetz (30 minutes over 6 hours, 45 over 9, a 10-hour
+   day, 48-hour week). Any other country, or none known: nothing claimed,
+   nothing assumed — never Turkey's rules. */
+
+export interface LabourRules {
+  /** Whose rules; `null` = the house's country is not built in. */
+  country: 'TR' | 'US' | 'GB' | 'DE' | null;
+  weeklyReviewHours: number | null;
+  dailyReviewHours: number | null;
+  breakSteps: readonly number[];
+  breakForWork: (workedMin: number) => number;
+  /** The law a break figure cites, in the owner's words; `null` = none. */
+  breakLaw: string | null;
+}
+
+export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRules>> = {
+  TR: {
+    country: 'TR',
+    weeklyReviewHours: 45,
+    dailyReviewHours: null,
+    breakSteps: [15, 30, 60],
+    breakForWork: (w) => art68BreakForWork(w),
+    breakLaw: 'Labour Law 4857 Art. 68',
+  },
+  US: {
+    country: 'US',
+    weeklyReviewHours: 40,
+    dailyReviewHours: null,
+    breakSteps: [],
+    breakForWork: () => 0,
+    breakLaw: null,
+  },
+  GB: {
+    country: 'GB',
+    weeklyReviewHours: 48,
+    dailyReviewHours: null,
+    breakSteps: [20],
+    breakForWork: (w) => (w > 360 ? 20 : 0),
+    breakLaw: 'the Working Time Regulations',
+  },
+  DE: {
+    country: 'DE',
+    weeklyReviewHours: 48,
+    dailyReviewHours: 10,
+    breakSteps: [30, 45],
+    breakForWork: (w) => (w > 540 ? 45 : w > 360 ? 30 : 0),
+    breakLaw: 'the Arbeitszeitgesetz §4',
+  },
+};
+
+export const NO_LABOUR_RULES: LabourRules = {
+  country: null,
+  weeklyReviewHours: null,
+  dailyReviewHours: null,
+  breakSteps: [],
+  breakForWork: () => 0,
+  breakLaw: null,
+};
+
+/** The rules for a house's region (`useHouseRegion`, or a country name or code). */
+export function labourRules(regionOrCountry: string | null | undefined): LabourRules {
+  const raw = (regionOrCountry ?? '').trim();
+  const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : countryByName(raw || null)?.code;
+  return code && code in LABOUR_RULES
+    ? LABOUR_RULES[code as keyof typeof LABOUR_RULES]
+    : NO_LABOUR_RULES;
+}
+
+/** No break when the law owes none for the whole span; else the least that complies. */
+export function minimumBreak(spanMin: number, rules: LabourRules): number {
+  for (const b of [0, ...rules.breakSteps]) {
+    if (b >= rules.breakForWork(spanMin - b)) return b;
   }
-  return 60;
+  return rules.breakSteps[rules.breakSteps.length - 1] ?? 0;
 }
 
 export interface ShiftBreakSource {
@@ -284,41 +363,53 @@ export function recordedBreakMinutes(s: ShiftBreakSource): number | null {
   return null;
 }
 
-/** The break a shift is counted with, and whether it is assumed (any length). */
-export function breakCounted(s: ShiftBreakSource): { minutes: number; assumed: boolean } {
+/**
+ * The break a shift is counted with, and whether it is assumed (any length):
+ * the minimum the house's country owes, or nothing where it owes none or its
+ * rules are not built in. `rules` defaults to Türkiye's for older callers; a
+ * page passes its house's (`labourRules(useHouseRegion())`).
+ */
+export function breakCounted(
+  s: ShiftBreakSource,
+  rules: LabourRules = LABOUR_RULES.TR,
+): { minutes: number; assumed: boolean } {
   const recorded = recordedBreakMinutes(s);
   if (recorded != null) return { minutes: recorded, assumed: false };
   const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
   if (span <= 0) return { minutes: 0, assumed: false };
-  return { minutes: art68MinimumBreak(span), assumed: true };
+  const minutes = minimumBreak(span, rules);
+  return minutes > 0 ? { minutes, assumed: true } : { minutes: 0, assumed: false };
 }
 
 /**
- * Hours WORKED on a shift: its span minus the break it is counted with (4857
- * Art. 68 — a break is not working time), never below zero.
+ * Hours WORKED on a shift: its span minus the break it is counted with (a
+ * break is not working time), never below zero.
  */
-export function workedHours(s: ShiftBreakSource): number {
-  return Math.max(0, shiftHours(s.start_time, s.end_time) - breakCounted(s).minutes / 60);
+export function workedHours(s: ShiftBreakSource, rules: LabourRules = LABOUR_RULES.TR): number {
+  return Math.max(0, shiftHours(s.start_time, s.end_time) - breakCounted(s, rules).minutes / 60);
 }
 
 /** The break as a shift's fact: "30 min · assumed" / "45 min" / "none taken" / "none". */
-export function fmtBreak(s: ShiftBreakSource): string {
-  const b = breakCounted(s);
+export function fmtBreak(s: ShiftBreakSource, rules: LabourRules = LABOUR_RULES.TR): string {
+  const b = breakCounted(s, rules);
   if (b.assumed) return `${b.minutes} min · assumed`;
   if (recordedBreakMinutes(s) === 0) return 'none taken';
   return b.minutes > 0 ? `${b.minutes} min` : 'none';
 }
 
 /**
- * A RECORDED break shorter than Art. 68 asks for the work it leaves, at any
+ * A RECORDED break shorter than the house's law asks for the work it leaves, at any
  * shift length (the same scope as the assumption). An assumed break is never
  * under: it is the minimum. For the compliance lens; it changes no figure.
  */
-export function breakUnderMinimum(s: ShiftBreakSource): boolean {
+export function breakUnderMinimum(
+  s: ShiftBreakSource,
+  rules: LabourRules = LABOUR_RULES.TR,
+): boolean {
   const recorded = recordedBreakMinutes(s);
   if (recorded == null) return false;
   const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
-  return recorded < art68BreakForWork(span - recorded);
+  return recorded < rules.breakForWork(span - recorded);
 }
 
 /**

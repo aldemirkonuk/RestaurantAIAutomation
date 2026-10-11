@@ -69,8 +69,8 @@ import {
   fmtWeekday,
   mondayOf,
   weekFromLink,
-  WEEKLY_REVIEW_HOURS,
   houseLocale,
+  labourRules,
 } from './tm-format';
 import { MutationError, ShiftClockProvider } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
@@ -347,26 +347,37 @@ function TeamNextManager({
   /** The house's decimal mark for hours (F-1120). */
   const hoursIn = houseLocale(data.week?.country);
   /**
-   * People over the Turkish week (45 worked hours). A review, never a price:
-   * whether it is overtime pay depends on agreements Mudavym does not hold
-   * (ADR 0215). Shown to owner and manager alike — it is hours, not money.
+   * The house's country's labour rules (founder S195, 2026-10-11: "Every
+   * house gets its rules based on its location"): Türkiye's 45-hour week,
+   * the US 40, 48 in GB and Germany; elsewhere none is claimed.
+   */
+  const labour = labourRules(data.week?.country);
+  const reviewAt = labour.weeklyReviewHours;
+  /**
+   * People over the house's week. A review, never a price: whether it is
+   * overtime pay depends on agreements Mudavym does not hold (ADR 0215).
+   * Shown to owner and manager alike — it is hours, not money.
    */
   const reviewLine =
-    data.overtimeNamed.length > 0 ? (
+    reviewAt === null ? (
+      <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '8px 0 0' }}>
+        {"Your country's working-time rules are not built in yet, so no one is flagged for a long week."}
+      </p>
+    ) : data.overtimeNamed.length > 0 ? (
       <p style={{ fontSize: 12, color: 'var(--ink-2)', margin: '8px 0 0' }}>
-        {`Over ${WEEKLY_REVIEW_HOURS}h worked — review before publishing: `}
+        {`Over ${reviewAt}h worked — review before publishing: `}
         {data.overtimeNamed.map((o) => `${o.name} (${o.hours}h)`).join(', ')}
       </p>
     ) : (
       <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '8px 0 0' }}>
-        {`No one is scheduled over ${WEEKLY_REVIEW_HOURS} worked hours.`}
+        {`No one is scheduled over ${reviewAt} worked hours.`}
       </p>
     );
   /**
    * The breaks the hours rest on (ADR 0215; founder 2026-09-21, "Take all
    * five", and 2026-09-22 round 6y for shifts of 4 hours or less): a shift
-   * with no break recorded, any length, is counted with the 4857 Art. 68
-   * minimum, and the figure says so rather than passing an assumption off as
+   * with no break recorded, any length, is counted with the minimum its
+   * country owes (4857 Art. 68 in Türkiye), and the figure says so rather than passing an assumption off as
    * a record. Hours, so owner and manager alike.
    */
   const assumedLine =
@@ -578,7 +589,9 @@ function TeamNextManager({
                     : ` · target ${data.target.pct}% of sales`}
                 </span>
                 <p style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}>
-                  Wages only, for the shifts on the schedule — not SGK, meals or bonuses.
+                  {labour.country === 'TR'
+                    ? 'Wages only, for the shifts on the schedule — not SGK, meals or bonuses.'
+                    : 'Wages only, for the shifts on the schedule — not employer taxes, meals or bonuses.'}
                 </p>
                 {(labor.ownerShiftsLeftOut ?? 0) > 0 && (
                   // Founder 2026-09-27 (item 71): "if owner taking money, manager
