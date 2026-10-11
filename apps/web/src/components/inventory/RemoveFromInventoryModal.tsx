@@ -19,7 +19,7 @@ import { toast } from 'sonner'
 import { deleteInventoryItem, reconcileItem } from '../../services/api/inventory'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import { fmtMoney } from '../../pages/inventory/command/bits'
-import type { InventoryItem } from '../../pages/inventory/useInventoryPage'
+import { recordedCost, type InventoryItem } from '../../pages/inventory/useInventoryPage'
 import { useModalDialog } from '../../hooks/useModalDialog'
 
 const REMOVE_REASONS = [
@@ -53,12 +53,16 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
         const shadow = item.shadowStock ?? 0
         const openMl = item.openMl ?? 0
         const total = live + shadow
-        const value = (item.wac ?? item.price ?? 0) * total
+        // What the house paid, never the library's price (F-1311). With no
+        // recorded cost the value is withheld (null), not counted at 0.
+        const cost = recordedCost(item)
+        const value = cost == null ? (total > 0 ? null : 0) : cost * total
         return { item, live, shadow, openMl, total, value }
       }),
     [items],
   )
-  const totalValue = rows.reduce((s, r) => s + r.value, 0)
+  const totalValue = rows.reduce((s, r) => s + (r.value ?? 0), 0)
+  const withheld = rows.filter((r) => r.value == null).length
   const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0)
 
   const titleId = useId()
@@ -166,7 +170,11 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                   <span className="font-mono text-gray-500 shrink-0">
                     {live + shadow > 0 ? `${live} live / ${shadow} shadow` : 'no stock'}
                     {openMl > 0 ? ` · ${openMl}ml open` : ''}
-                    {value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>}
+                    {value == null ? (
+                      <span className="ml-2 text-gray-400">no cost recorded</span>
+                    ) : (
+                      value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>
+                    )}
                   </span>
                 </div>
               ))}
@@ -178,6 +186,13 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                 <p className="text-xs text-amber-800 leading-relaxed">
                   {totalValue > 0 ? (
                     <>This will write off <b>{fmtMoney(totalValue)}</b> in on-hand value. </>
+                  ) : null}
+                  {withheld > 0 ? (
+                    <>
+                      {withheld === 1 ? '1 wine has' : `${withheld} wines have`} no recorded cost, so{' '}
+                      {withheld === 1 ? 'its' : 'their'} value is{' '}
+                      {totalValue > 0 ? 'left out of that figure. ' : 'not shown. '}
+                    </>
                   ) : null}
                   Remaining stock is reconciled to zero and logged to the ledger with the reason below before removal —
                   nothing is deleted silently.

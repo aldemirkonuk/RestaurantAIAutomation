@@ -5,7 +5,7 @@
 import { classifyStock } from '../../../lib/inventoryStatus'
 import { cn } from '../../../lib/utils'
 import { formatHouseMoney, getHouseLocale } from '../../../lib/houseCurrency'
-import type { InventoryItem } from '../useInventoryPage'
+import { recordedCost, type InventoryItem } from '../useInventoryPage'
 
 // `currency` omitted means the house's own (lib/houseCurrency.ts). These were a
 // literal `$`, so every house read its stock value in dollars (sim F-341).
@@ -73,8 +73,12 @@ export function reorderAdvice(item: InventoryItem, onOrder: number | null): Reor
   return { suggested, parGap, reorderPoint }
 }
 
+/**
+ * How far market sits from what the house paid, in %. No recorded cost, no
+ * delta (F-1311): the library's reference price is not what this house paid.
+ */
 export function marketDeltaPct(item: InventoryItem): number | null {
-  const paid = item.wac ?? item.price
+  const paid = recordedCost(item)
   if (!paid || !item.marketPrice) return null
   return ((item.marketPrice - paid) / paid) * 100
 }

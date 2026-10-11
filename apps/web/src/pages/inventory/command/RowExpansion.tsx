@@ -16,7 +16,7 @@ import { MultiLocationCell } from '../../../components/inventory/MultiLocationCe
 import { formatVolume } from '../../../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 import { cn } from '../../../lib/utils'
-import type { InventoryItem } from '../useInventoryPage'
+import { recordedCost, type InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, fmtOneDecimal, marketDeltaPct, daysSinceCounted, shelfCountLine, HoursHeatmap, runwayDays, reorderAdvice, velocityLabel, ASSUMED_LEAD_DAYS } from './bits'
 import { getHouseLocale } from '../../../lib/houseCurrency'
@@ -260,7 +260,8 @@ export function RowExpansion({
   const addsOnTakeOff = delta > 0 && reason in TAKE_OFF_ONLY
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
-  const paid = item.wac ?? item.price
+  // What the house paid, never the library's price (F-1311).
+  const paid = recordedCost(item)
   const menuBottle = item.menuPriceBottle
   const delta$ = marketDeltaPct(item)
   const counted = daysSinceCounted(item)
@@ -428,7 +429,7 @@ export function RowExpansion({
           }
         >
           <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
-          {seesCost && <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />}
+          {seesCost && <KV k="You paid (WAC)" v={paid == null ? 'no cost recorded' : fmtMoneyExact(paid)} />}
           <KV
             k="Delta"
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}
