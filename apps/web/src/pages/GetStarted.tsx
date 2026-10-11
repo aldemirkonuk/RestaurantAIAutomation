@@ -15,6 +15,7 @@ import { apiClient } from '../services/api/client'
 import { getOnboardingProgress, importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
+import { toE164ForCountry } from '../lib/phone'
 import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
@@ -64,6 +65,8 @@ type ArrivalDraft = {
   placePoint: { latitude: number; longitude: number; googlePlaceId?: string } | null
   /** The currency picked on step 02, kept so a reload does not fall back to the country's (F-983). */
   currencyChoice?: string | null
+  /** Step 01's mobile, kept until the house's country can read it (F-1212). */
+  mobile?: string
 }
 
 /**
@@ -71,6 +74,9 @@ type ArrivalDraft = {
  * that tapped it: a shared laptop's next account starts with none selected
  * (F-984, ADR 0213 row 9).
  */
+/** The house opened, but step 01's mobile was not kept (F-1212). */
+const MOBILE_NOT_KEPT = 'Your mobile number was not saved; you can add it on your profile.'
+
 const arrivalRoleKey = (userId: string) => `mudavym:arrival-role:${userId}`
 
 function readArrivalDraft(userId: string): ArrivalDraft | null {
@@ -234,6 +240,7 @@ function GetStartedSteps() {
     setRestaurantPhone(draft.restaurantPhone)
     setPlacePoint(draft.placePoint)
     setCurrencyChoice(draft.currencyChoice ?? null)
+    if (draft.mobile) setMobile(draft.mobile)
     setStep(hasHouse ? (askedThreshold ? 'threshold' : 'menu') : 'restaurant')
   }, [askedThreshold, hasHouse, userId])
 
@@ -251,8 +258,9 @@ function GetStartedSteps() {
       restaurantPhone,
       placePoint,
       currencyChoice,
+      mobile,
     })
-  }, [address, city, country, currencyChoice, placePoint, postalCode, restaurantName, restaurantPhone, role, stateProvince, step, userId])
+  }, [address, city, country, currencyChoice, mobile, placePoint, postalCode, restaurantName, restaurantPhone, role, stateProvince, step, userId])
 
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
@@ -269,10 +277,9 @@ function GetStartedSteps() {
     setSaving(true)
     setError(null)
     try {
-      await apiClient.patch('/auth/me', {
-        name: name.trim(),
-        phone: mobile.trim() || undefined,
-      })
+      // The mobile waits for the house's country (F-1212): "0532 123 45 67"
+      // is only a number once we know it is Turkish. createHouse keeps it.
+      await apiClient.patch('/auth/me', { name: name.trim() })
       if (role && userId) {
         try {
           sessionStorage.setItem(arrivalRoleKey(userId), role)
@@ -320,6 +327,16 @@ function GetStartedSteps() {
     }
   }
 
+  /** Step 01's mobile, read in the house's country now it is known (F-1212). */
+  const keepMobile = async (houseCountry: string) => {
+    try {
+      await apiClient.patch('/auth/me', { phone: toE164ForCountry(mobile, houseCountry) })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   const createHouse = async () => {
     if (!restaurantName.trim() || !address.trim() || !city.trim() || !country.trim()) {
       setError('Restaurant name and full address are required.')
@@ -343,7 +360,12 @@ function GetStartedSteps() {
         googlePlaceId: placePoint?.googlePlaceId,
         jobRole: role ? JOB_ROLE[role] : undefined,
       })
-      setNotice(opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER)
+      const mobileKept = mobile.trim() ? await keepMobile(country) : true
+      const said = [
+        opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER,
+        mobileKept ? null : MOBILE_NOT_KEPT,
+      ].filter(Boolean)
+      setNotice(said.length ? said.join(' ') : null)
       setStep('menu')
     } catch (cause) {
       // Said from the status alone (F-006). A 409 means an earlier press
@@ -453,14 +475,14 @@ function GetStartedSteps() {
               aria-label="Mobile"
               value={mobile}
               onChange={(event) => setMobile(event.target.value)}
-              placeholder="For urgent stock alerts. Never marketing."
+              placeholder="Your own number"
               className="mt-2 block w-full bg-transparent text-base outline-none"
             />
           </label>
           {mobile.trim() && (
             <p className="text-sm text-[#6d685f]">
-              If you give a number, we may text urgent stock alerts only. Never marketing.
-              Reply <strong>STOP</strong> anytime. Optional — the account does not depend on it.
+              Kept on your profile. We send no texts unless you turn them on in Settings.
+              Optional — the account does not depend on it.
             </p>
           )}
           <fieldset>

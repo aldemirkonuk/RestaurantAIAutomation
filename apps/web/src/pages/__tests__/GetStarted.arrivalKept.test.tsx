@@ -23,6 +23,7 @@ const api = vi.hoisted(() => ({
   setDefaultThreshold: vi.fn(),
   getOnboardingProgress: vi.fn(),
   getCarriedCount: vi.fn(),
+  listMenuVersions: vi.fn(),
 }))
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -37,6 +38,7 @@ vi.mock('../../services/api/menus', async (importOriginal) => ({
   setDefaultThreshold: api.setDefaultThreshold,
   getOnboardingProgress: api.getOnboardingProgress,
   getCarriedCount: api.getCarriedCount,
+  listMenuVersions: api.listMenuVersions,
 }))
 vi.mock('../../lib/firstProof', () => ({ writeProof: vi.fn(), readProof: () => null }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => true }))
@@ -188,8 +190,10 @@ describe('the low-stock step', () => {
 })
 
 describe('the house page with no menu read (F-1063)', () => {
-  it('offers a way to read one', () => {
+  it('offers a way to read one when the house holds none (F-1211 asks the books first)', async () => {
     sessionStorage.clear()
+    api.getOnboardingProgress.mockReset().mockResolvedValue(null)
+    api.listMenuVersions.mockReset().mockResolvedValue({ current: null, lastUsed: null, versions: [] })
     render(
       <MemoryRouter initialEntries={['/house']}>
         <Routes>
@@ -198,7 +202,7 @@ describe('the house page with no menu read (F-1063)', () => {
         </Routes>
       </MemoryRouter>,
     )
-    expect(screen.getByText('No menu read yet.')).toBeTruthy()
+    expect(await screen.findByText('No menu read yet.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Read your menu' }))
     expect(screen.getByText('Get started')).toBeTruthy()
   })

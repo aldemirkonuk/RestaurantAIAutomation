@@ -17,8 +17,11 @@ export function useOnboardingProgress() {
   })
 
   return {
+    // null is an answer: this person has no checklist in this house (an
+    // invitee, F-240). `isError` is a failed read, which is not the same thing.
     progress: query.data ?? null,
     isLoading: query.isLoading,
+    isError: query.isError,
     update: mutation.mutate,
     isUpdating: mutation.isPending,
   }

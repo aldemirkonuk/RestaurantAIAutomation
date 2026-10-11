@@ -115,6 +115,9 @@ export const EMAIL_IN_USE =
   "An account already uses this email. Sign in instead.";
 export const ACCOUNT_NOT_CREATED =
   "Could not create your account. Something went wrong on our side; try again in a moment.";
+/** F-1213: what a joiner is told when their place in the house was not written. */
+export const HOUSE_ACCESS_NOT_GRANTED =
+  "Could not add you to this restaurant. Something went wrong on our side; try the invite again in a moment.";
 
 export interface SignInMethodsResult {
   /** The address as resolved (trimmed, lower-cased). */
@@ -1714,6 +1717,22 @@ export class AuthService {
   }
 
   /**
+   * A place in a house the database would not write, said in fixed words
+   * (F-1213). The raw code and message go to the server log only, as for an
+   * account (refuseAccount): a joiner never reads Postgres text.
+   */
+  private refuseHouseAccess(where: string, error: unknown): HttpException {
+    const { code, message } = (error ?? {}) as {
+      code?: string;
+      message?: string;
+    };
+    this.logger.error(
+      `${where} did not grant house access: ${code || "no code"} ${message ?? "no message"}`,
+    );
+    return new InternalServerErrorException(HOUSE_ACCESS_NOT_GRANTED);
+  }
+
+  /**
    * Creates only an identity. The first restaurant is deliberately created
    * after verification, from the restaurant screen in the arrival flow.
    */
@@ -2979,9 +2998,7 @@ export class AuthService {
 
     if (uraErr) {
       await giveInviteBack();
-      throw new BadRequestException(
-        "Failed to grant restaurant access: " + uraErr.message,
-      );
+      throw this.refuseHouseAccess("acceptInviteAsExistingUser", uraErr);
     }
 
     // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164): a
@@ -3287,9 +3304,7 @@ export class AuthService {
           .from("organization_invites")
           .update({ used_at: null, used_by_email: null })
           .eq("id", invite.id);
-        throw new BadRequestException(
-          "User creation failed: " + userErr?.message,
-        );
+        throw this.refuseAccount("joinViaInvite", userErr, { userRow: true });
       }
       user = newUser;
       addressProved = addressProvedByInvite;
@@ -3335,9 +3350,7 @@ export class AuthService {
         .from("organization_invites")
         .update({ used_at: null, used_by_email: null })
         .eq("id", invite.id);
-      throw new BadRequestException(
-        "Failed to grant restaurant access: " + uraErr.message,
-      );
+      throw this.refuseHouseAccess("joinViaInvite", uraErr);
     }
 
     if (held) {
