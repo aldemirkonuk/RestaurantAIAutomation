@@ -19,6 +19,7 @@
 
 import { useCanChangeVendors } from './useCanChangeVendors';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Stub, Wordmark } from "@/components/mudavym";
 import type { Provider } from "../../../services/api/providers";
@@ -257,6 +258,8 @@ function BucketCard({
 
 export default function ProvidersNext() {
   const data = useProvidersNextData();
+  // The house's formats tag for the terms' money (F-1137).
+  useHouseCurrency();
   // Supplies my menu -> All my vendors -> Find new vendors (founder,
   // 2026-09-26, item 36). The rules are in vendor-scope.ts.
   const scopes = useVendorScopes(data.cards, data.hasData);

@@ -24,6 +24,8 @@
  * confident "just now".
  */
 
+import { getHouseLocale } from '../houseCurrency';
+
 export const EM = '—';
 
 /* ── The vendor-terms vocabulary, spoken on two pages ─────────────────────── */
@@ -82,18 +84,21 @@ export function fmtMoney(
   currency: string | null | undefined,
 ): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EM;
+  // Grouped the house's way: a lira house reads "₺2.500", not en-GB's
+  // "TRY 2,500" — the same marks its own amount fields read (F-1137, F-908).
+  const locale = getHouseLocale();
   if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
-    return `${value.toLocaleString('en-GB')} (currency not recorded)`;
+    return `${value.toLocaleString(locale)} (currency not recorded)`;
   }
   try {
-    return new Intl.NumberFormat('en-GB', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
       maximumFractionDigits: value % 1 === 0 ? 0 : 2,
     }).format(value);
   } catch {
     // A well-formed ISO code `Intl` does not know. The number is still true.
-    return `${value.toLocaleString('en-GB')} ${currency}`;
+    return `${value.toLocaleString(locale)} ${currency}`;
   }
 }
 

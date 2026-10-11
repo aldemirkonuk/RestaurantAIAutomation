@@ -5,6 +5,8 @@
 
 import { CURRENCY_NOT_RECORDED, currencyMinorUnits, inHouseMarks } from '@/lib/currency';
 import type { GroupMark } from '@/lib/parseDecimal';
+import { getHouseLocale } from '@/lib/houseCurrency';
+import { getHouseZone } from '@/lib/houseZone';
 
 export const EM = '—';
 
@@ -126,29 +128,43 @@ export function fmtInt(v: number | null | undefined): string {
   return n === null ? EM : String(Math.round(n));
 }
 
-const sameYear = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
-const otherYear = new Intl.DateTimeFormat('en-GB', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-});
+/*
+ * Dates are the house's (F-1135, rehit of F-001): written the house's way
+ * (`getHouseLocale`) and read on the house's clock (`getHouseZone`; the page
+ * calls `useHouseZone` so it re-renders when that lands), so an order placed at 23:30 in Istanbul is not filed under
+ * the next day on a London laptop. With no zone known yet, the device's clock
+ * stands in, as everywhere else.
+ */
+function zoned(zone: string | null | undefined): { timeZone?: string } {
+  return zone ? { timeZone: zone } : {};
+}
 
-export function fmtDate(iso: string | null | undefined): string {
+/** The calendar day of `d` on the house's clock, as `YYYY-MM-DD`. */
+function dayOf(d: Date, zone: string | null | undefined): string {
+  return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', ...zoned(zone) }).format(d);
+}
+
+export function fmtDate(iso: string | null | undefined, zone: string | null = getHouseZone()): string {
   if (!iso) return EM;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return EM;
-  return d.getFullYear() === new Date().getFullYear() ? sameYear.format(d) : otherYear.format(d);
+  const thisYear = dayOf(d, zone).slice(0, 4) === dayOf(new Date(), zone).slice(0, 4);
+  return new Intl.DateTimeFormat(getHouseLocale(), {
+    day: 'numeric',
+    month: 'short',
+    ...(thisYear ? {} : { year: 'numeric' as const }),
+    ...zoned(zone),
+  }).format(d);
 }
 
-const clock = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
-
 /** When a read landed: "17:58" today, "30 Sept, 17:58" on another day (ORD-W15). */
-export function fmtReadTime(ms: number): string {
+export function fmtReadTime(ms: number, zone: string | null = getHouseZone()): string {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return EM;
-  return d.toDateString() === new Date().toDateString()
+  const clock = new Intl.DateTimeFormat(getHouseLocale(), { hour: '2-digit', minute: '2-digit', ...zoned(zone) });
+  return dayOf(d, zone) === dayOf(new Date(), zone)
     ? clock.format(d)
-    : `${fmtDate(d.toISOString())}, ${clock.format(d)}`;
+    : `${fmtDate(d.toISOString(), zone)}, ${clock.format(d)}`;
 }
 
 /** m:ss for the auto-send countdown. Clamped at zero — time owed, not negative. */

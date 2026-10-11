@@ -13,6 +13,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
+import { getHouseLocale } from '../../../lib/houseCurrency';
+import { useHouseZone } from '../../../lib/houseZone';
 
 export type StockOutCause = 'ran_out' | 'broken' | 'pulled' | 'other';
 
@@ -38,17 +40,23 @@ export const CAUSE_WORDS: Record<StockOutCause, string> = {
   other: 'other reason',
 };
 
-function when(iso: string): string {
+/**
+ * When a stock-out started, on the house's clock and in the house's way of
+ * writing it -- not the reader's device (F-1104). With no zone known yet, the
+ * device's clock stands in.
+ */
+function when(iso: string, zone?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso).slice(0, 16);
-  const day = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const tz = zone ? { timeZone: zone } : {};
+  const day = d.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'short', ...tz });
+  const time = d.toLocaleTimeString(getHouseLocale(), { hour: '2-digit', minute: '2-digit', ...tz });
   return `${day} ${time}`;
 }
 
 /** One past stock-out, in words. */
-export function pastWords(s: StockOut): string {
-  return `${when(s.startedAt)} (${CAUSE_WORDS[s.cause] ?? s.cause})`;
+export function pastWords(s: StockOut, zone?: string | null): string {
+  return `${when(s.startedAt, zone)} (${CAUSE_WORDS[s.cause] ?? s.cause})`;
 }
 
 export default function SoldOutControl({
@@ -59,6 +67,7 @@ export default function SoldOutControl({
   inventoryId: string;
 }) {
   const qc = useQueryClient();
+  const zone = useHouseZone();
   const key = ['inventory', 'stock-out', house, inventoryId];
   const base = `/inventory/${house}/item/${inventoryId}/stock-out`;
   const [cause, setCause] = useState<StockOutCause | ''>('');
@@ -98,7 +107,7 @@ export default function SoldOutControl({
     <div data-testid="sold-out" style={{ marginTop: 8 }}>
       {open ? (
         <p className="cl-note" data-testid="sold-out-open">
-          <strong>Sold out</strong> since {when(open.startedAt)}, {CAUSE_WORDS[open.cause] ?? open.cause}
+          <strong>Sold out</strong> since {when(open.startedAt, zone)}, {CAUSE_WORDS[open.cause] ?? open.cause}
           {open.note ? ` (${open.note})` : ''}.{' '}
           <button
             type="button"
@@ -144,7 +153,7 @@ export default function SoldOutControl({
       ) : null}
       {past.length > 0 ? (
         <p className="cl-note" data-testid="sold-out-past">
-          Sold out before: {past.map(pastWords).join(', ')}.
+          Sold out before: {past.map((s) => pastWords(s, zone)).join(', ')}.
         </p>
       ) : null}
     </div>

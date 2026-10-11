@@ -18,7 +18,10 @@ import { restaurantsApi } from '@/services/api/restaurants';
 import { houseToday } from './houseCalendar';
 
 const reads = new Map<string, Promise<string | null>>();
-/** The zones already read, for a formatter that cannot wait on a promise. */
+/**
+ * The answers that have landed, for the formatters that cannot take a hook or
+ * wait on a promise (`knownHouseZone`, `getHouseZone`).
+ */
 const known = new Map<string, string | null>();
 
 /** The picked house — the key `services/api/client`'s `getActiveRestaurantId` reads. */
@@ -36,7 +39,7 @@ export function readHouseZone(restaurantId: string): Promise<string | null> {
     read = restaurantsApi.getOperatingHours(restaurantId).then(
       (res) => {
         const zone = typeof res?.timezone === 'string' && res.timezone ? res.timezone : null;
-        known.set(restaurantId, zone);
+        if (reads.get(restaurantId) === read) known.set(restaurantId, zone);
         return zone;
       },
       () => {
@@ -104,6 +107,17 @@ export function useHouseZone(): string | null | undefined {
   }, [rid, epoch]);
   if (!rid) return null;
   return said && said.rid === rid ? said.zone : undefined;
+}
+
+/**
+ * The picked house's zone as last read, for formatters called deep inside a
+ * render (F-1135, F-1104) — the way `getHouseLocale` serves money. `null` until
+ * a `useHouseZone` caller's read has landed: the device's clock stands in. A
+ * page that prints dates this way calls `useHouseZone()` once at the top, so it
+ * re-renders when the answer lands.
+ */
+export function getHouseZone(): string | null {
+  return known.get(activeHouseId()) ?? null;
 }
 
 /** The house's calendar day at `now` — kept with the rest of the house calendar. */
