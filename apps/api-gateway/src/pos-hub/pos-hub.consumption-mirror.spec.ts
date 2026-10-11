@@ -27,6 +27,8 @@ function makeDb(insertResult: (row: Row) => { error: any }) {
         select: () => q,
         // F-1238: the till's copy takes over an imported row; none here.
         update: () => q,
+        // F-1324: the imported row is read before it is taken over; none here.
+        maybeSingle: async () => ({ data: null, error: null }),
         eq: () => q,
         in: () => q,
         // What earlier imports of the check moved: nothing (sim wave 8).

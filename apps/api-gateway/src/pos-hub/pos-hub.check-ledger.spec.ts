@@ -82,6 +82,8 @@ function makeDb(
         select: () => q,
         eq: () => q,
         in: () => q,
+        // F-1324: the imported row is read before it is taken over; none here.
+        maybeSingle: async () => ({ data: null, error: null }),
         like: async (_col: string, pattern: string) => {
           if (opts.ledgerError) {
             return { data: null, error: { message: opts.ledgerError } };

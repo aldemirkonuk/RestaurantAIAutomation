@@ -381,6 +381,9 @@ export default function MonthLedger({
                   aria-label={`${longDay(key)} — ${events.length === 0 ? 'nothing written' : `${events.length} entries`}`}
                   onClick={() => onSelect(selected === key ? null : key)}
                   onKeyDown={(e) => {
+                    // A ribbon inside the cell is its own button: its Enter opens
+                    // the event, so the cell only answers keys aimed at itself.
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       onSelect(selected === key ? null : key);

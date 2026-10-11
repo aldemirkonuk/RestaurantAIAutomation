@@ -40,9 +40,15 @@ function makeDb(opts: DbOpts = {}) {
         select: () => q,
         // F-1238: the till's copy takes over an imported row; none here.
         update: () => q,
-        eq: () => q,
+        eq: (col: string, val: unknown) => {
+          if (col === "source") q._source = val;
+          return q;
+        },
         in: async () => ({ data: [], error: null }),
         maybeSingle: async () => {
+          // F-1324: the imported row is read before it is taken over; none here.
+          if (table === "pos_checks" && q._source === "csv_import")
+            return { data: null, error: null };
           if (table === "pos_checks")
             return {
               data: opts.storedError ? null : (opts.stored ?? null),
