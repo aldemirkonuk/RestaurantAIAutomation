@@ -177,3 +177,59 @@ describe("item activity on the house's clock", () => {
     expect(a.daily[a.daily.length - 1].date).toBe("2026-10-09");
   });
 });
+
+/**
+ * F-1165: a count of one shelf no longer marks the whole wine counted, so the
+ * door says which shelf was counted when -- each shelf's newest count, from
+ * stock_counts.location_id. A read it cannot finish is null, never "no shelf
+ * was counted".
+ */
+describe("item activity says which shelf was counted when", () => {
+  let db: MockDb;
+  let inventory: InventoryService;
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    inventory = new InventoryService(db.client as unknown as DatabaseService);
+    db.answers.inventory_transactions = { data: [], error: null };
+  });
+
+  it("gives each shelf its newest count, newest first", async () => {
+    db.answers.stock_counts = {
+      data: [
+        { location_id: "bar", counted_at: "2026-10-10T18:00:00Z" },
+        { location_id: "cellar", counted_at: "2026-09-20T18:00:00Z" },
+        { location_id: "bar", counted_at: "2026-09-01T18:00:00Z" },
+      ],
+      error: null,
+    };
+    const a = await inventory.getItemActivity(REST, ITEM);
+    expect(a.shelfCounts).toEqual([
+      { locationId: "bar", countedAt: "2026-10-10T18:00:00Z" },
+      { locationId: "cellar", countedAt: "2026-09-20T18:00:00Z" },
+    ]);
+  });
+
+  it("a failed read is null, and the rest of the activity still answers", async () => {
+    db.answers.stock_counts = {
+      data: null,
+      error: { message: "connection reset" },
+    };
+    const a = await inventory.getItemActivity(REST, ITEM);
+    expect(a.shelfCounts).toBeNull();
+    expect(a.totalOut28d).toBe(0);
+  });
+
+  it("a read as long as the scan cap is null, not a shelf called uncounted", async () => {
+    db.answers.stock_counts = {
+      data: Array.from({ length: 1000 }, () => ({
+        location_id: "bar",
+        counted_at: "2026-10-10T18:00:00Z",
+      })),
+      error: null,
+    };
+    const a = await inventory.getItemActivity(REST, ITEM);
+    expect(a.shelfCounts).toBeNull();
+  });
+});

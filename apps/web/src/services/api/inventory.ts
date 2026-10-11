@@ -118,6 +118,12 @@ export interface ItemActivity {
   totalIn28d: number;
   /** What the door counted, in words, so an empty series is not read as silence. */
   includes: { out: string; in: string; window: string };
+  /**
+   * Each shelf's newest count of its own (F-1165), newest first. A count of one
+   * shelf does not move the wine's lastCountedAt. null: not known (the read
+   * failed or ran long), never "no shelf was counted".
+   */
+  shelfCounts?: Array<{ locationId: string; countedAt: string }> | null;
 }
 
 /**

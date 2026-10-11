@@ -18,7 +18,7 @@ import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsSt
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
-import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays, reorderAdvice, velocityLabel, ASSUMED_LEAD_DAYS } from './bits'
+import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, shelfCountLine, HoursHeatmap, runwayDays, reorderAdvice, velocityLabel, ASSUMED_LEAD_DAYS } from './bits'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
@@ -228,6 +228,8 @@ export function RowExpansion({
   const menuBottle = item.menuPriceBottle
   const delta$ = marketDeltaPct(item)
   const counted = daysSinceCounted(item)
+  // F-1165: a count of one shelf is that shelf's, not the whole wine's.
+  const shelves = shelfCountLine(item, activity?.shelfCounts, locations)
   const run = runwayDays(item)
   const velocity = item.velocityPerDay
   const { suggested, reorderPoint } = reorderAdvice(item, onOrder)
@@ -257,6 +259,7 @@ export function RowExpansion({
           <b className={cn('block text-xs font-semibold mt-px', counted != null && counted <= 21 ? 'text-gray-700' : 'text-amber-600')}>
             {counted == null ? 'never' : `${counted} days ago`}
           </b>
+          {shelves && <span className="block text-[11px] text-gray-500 mt-px">{shelves}</span>}
         </div>
         {(item.openMl ?? 0) > 0 && (
           <span className="ml-auto inline-flex items-center gap-2 text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-3 py-1">

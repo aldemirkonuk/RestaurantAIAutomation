@@ -84,6 +84,33 @@ export function daysSinceCounted(item: InventoryItem): number | null {
 
 export const COUNT_DUE_DAYS = 21
 
+/**
+ * Which shelf of this wine was counted when (F-1165): "Bar counted today;
+ * Cellar counted 12 days ago". A shelf's date is the newer of its own count and
+ * the last count of every shelf. null when no shelf was ever counted on its
+ * own (the "Last counted" line already says it all) or when that is not known.
+ */
+export function shelfCountLine(
+  item: InventoryItem,
+  shelfCounts: Array<{ locationId: string; countedAt: string }> | null | undefined,
+  names: Array<{ id: string; name: string }>,
+): string | null {
+  if (!shelfCounts || shelfCounts.length === 0) return null
+  const whole = item.lastCounted ? new Date(item.lastCounted).getTime() : null
+  const parts = (item.locations ?? [])
+    .filter((l): l is typeof l & { locationId: string } => l.locationId != null && l.qty > 0)
+    .map((l) => {
+      const own = shelfCounts.find((c) => c.locationId === l.locationId)
+      const ownAt = own ? new Date(own.countedAt).getTime() : null
+      const at = ownAt != null && whole != null ? Math.max(ownAt, whole) : (ownAt ?? whole)
+      const name = names.find((n) => n.id === l.locationId)?.name ?? 'Unnamed shelf'
+      if (at == null) return `${name} not counted yet`
+      const days = Math.floor((Date.now() - at) / 86_400_000)
+      return `${name} counted ${days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`}`
+    })
+  return parts.length > 0 ? parts.join('; ') : null
+}
+
 export type RowFlag = 'low' | 'recon' | 'count' | 'dead' | 'price'
 
 export function rowFlags(item: InventoryItem): RowFlag[] {
