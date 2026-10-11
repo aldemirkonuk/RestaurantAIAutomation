@@ -70,3 +70,21 @@ describe('Privacy page: where a question goes to be answered (round 6z)', () => 
     expect(screen.getByText(sentence)).toBeInTheDocument()
   })
 })
+
+describe('Privacy page: names the Settings section the owner finds (F-1253)', () => {
+  afterEach(() => {
+    window.localStorage.removeItem(PUBLIC_OVERRIDE_KEY)
+  })
+
+  // ConsentPanel.tsx titles the section "Questions and training"; there is no
+  // "Training use" section to find.
+  it.each([
+    ['the plate copy', null],
+    ['the legacy Section copy', 'off'],
+  ])('%s', (_copy, override) => {
+    if (override) window.localStorage.setItem(PUBLIC_OVERRIDE_KEY, override)
+    renderWithProviders(<Privacy />)
+    expect(screen.getByText(/in settings → questions and training/i)).toBeInTheDocument()
+    expect(screen.queryByText(/settings → training use/i)).toBeNull()
+  })
+})

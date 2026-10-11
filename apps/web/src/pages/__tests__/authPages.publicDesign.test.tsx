@@ -677,6 +677,22 @@ describe('auth-house.css — tokens only, focus inherited', () => {
   })
 })
 
+/* ── the privacy notice and the terms, from the door (F-1252) ───────────── */
+
+describe('/login and /register link the privacy notice and the terms', () => {
+  it.each(STATES.flatMap((st) => [true, false].map((on) => ({ ...st, on }))))(
+    '$name, switch on=$on',
+    async ({ reach, on }) => {
+      setSwitch(on)
+      await reach()
+      const line = screen.getByRole('navigation', { name: 'Privacy and terms' })
+      expect(line).toHaveTextContent('Privacy & data · Terms')
+      const links = [...line.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+      expect(links).toEqual(['/privacy', '/terms'])
+    },
+  )
+})
+
 /* ── capture (one-time proof, off by default) ───────────────────────────── */
 
 /**

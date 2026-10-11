@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { clip, escapeHtml, serializeJsonLd } from './escape';
 import { HEAD_END, HEAD_START, fillRoot, renderHeadBlock, replaceHeadBlock } from './head';
@@ -337,5 +339,14 @@ describe('build output', () => {
     expect(files['index.html']).toContain('"@type":"WebSite"');
     // Fed its own output, the plugin refuses instead of opening every route.
     expect(() => crawlFiles(files['index.html'])).toThrow(/closed default/);
+  });
+});
+
+describe('web app manifest', () => {
+  // F-1255: install prompts and crawlers read this file; it carried the
+  // sentence SITE.sentence replaced on 2026-09-17.
+  it('describes the product in SITE.sentence', () => {
+    const manifest = JSON.parse(readFileSync(resolve(process.cwd(), 'public/manifest.json'), 'utf8')) as { description: string };
+    expect(manifest.description).toBe(SITE.sentence);
   });
 });

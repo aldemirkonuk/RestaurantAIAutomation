@@ -1,7 +1,7 @@
 {
   "name": "Mudavym",
   "short_name": "Mudavym",
-  "description": "AI-powered wine inventory & procurement automation",
+  "description": "Restaurant back-office software for beverage inventory, purchasing, and checking vendor invoices against what was delivered.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

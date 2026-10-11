@@ -267,20 +267,55 @@ it('preserves unknown vendor stock and volume and recovers from a failed read', 
   expect(screen.getByText('Availability not stated')).toBeInTheDocument()
   expect(container.querySelector('table')).toBeInTheDocument()
   expect(unitPrice(listing)).toBeNull()
-  expect(unitPrice({ ...listing, volumeMl: 750 })).toBe(20)
+  expect(unitPrice({ ...listing, volumeMl: 750 })).toBeCloseTo(26.67, 2)
   // The unknown-stock -> no schema.org `availability` claim is proven server
   // side now (ADR 0158 "Integration at cutover" item 2 removed this page's
   // own JSON-LD injection; the served head is what a crawler reads, and its
-  // ItemList is covered by apps/api-gateway's vendor-portal-read-errors.spec.ts
+  // ItemList is covered by apps/api-gateway's seo/seo.spec.ts
   // and apps/web's vendor-edge.test.ts). This page no longer writes a
   // <script type="application/ld+json"> node, so there is nothing to parse here.
   expect(document.querySelector('script[type="application/ld+json"]')).toBeNull()
-  fireEvent.change(screen.getByLabelText('Find a wine'), {
+  fireEvent.change(screen.getByLabelText('Find a product'), {
     target: { value: 'absent' },
   })
   expect(
     await screen.findByText('No listings match your search.'),
   ).toBeInTheDocument()
+})
+it('finds İ/ı names whichever way the visitor types the i (F-1254)', async () => {
+  const listings = [
+    { ...listing, id: 'a', productName: 'İzmir Rakısı' },
+    { ...listing, id: 'b', productName: 'Kavaklıdere Yakut' },
+    { ...listing, id: 'c', productName: 'Efes Pilsen' },
+  ]
+  h.axiosGet.mockResolvedValueOnce({ data: { page: { ...page, listings } } })
+  mount(<VendorPortal />, '/v/vendor', '/v/:slug')
+  await screen.findByRole('heading', { name: 'The Vendor' })
+  const search = screen.getByLabelText('Find a product')
+  for (const [typed, found] of [
+    ['izmir', 'İzmir Rakısı'],
+    ['IZMIR', 'İzmir Rakısı'],
+    ['raki', 'İzmir Rakısı'],
+    ['kavaklidere', 'Kavaklıdere Yakut'],
+  ]) {
+    fireEvent.change(search, { target: { value: typed } })
+    expect(screen.getByText(/^1 of 3 listings/)).toBeInTheDocument()
+    expect(screen.getByText(found)).toBeInTheDocument()
+  }
+})
+it('speaks to any drink: a per-litre column, product words, one day (F-1255)', async () => {
+  const beer = { ...listing, id: 'beer', productName: 'Pale ale', packSize: 24, price: 48, volumeMl: 330, leadTimeDays: 1 }
+  const keg = { ...listing, id: 'keg', productName: 'Lager keg', packSize: 1, price: 100, volumeMl: 20000, leadTimeDays: 3 }
+  h.axiosGet.mockResolvedValueOnce({ data: { page: { ...page, listings: [beer, keg] } } })
+  const { container } = mount(<VendorPortal />, '/v/vendor', '/v/:slug')
+  await screen.findByRole('heading', { name: 'The Vendor' })
+  expect(unitPrice(beer)).toBeCloseTo(6.06, 2)
+  expect(unitPrice(keg)).toBe(5)
+  expect(screen.getByRole('columnheader', { name: 'Per litre' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: 'Product' })).toBeInTheDocument()
+  expect(screen.getByText('Lead time: 1 day')).toBeInTheDocument()
+  expect(screen.getByText('Lead time: 3 days')).toBeInTheDocument()
+  expect(container.textContent).not.toMatch(/750\s?ml|\bwine\b|1 days/i)
 })
 it('keeps the vendor board scroller a keyboard-reachable, labelled region', async () => {
   h.axiosGet.mockResolvedValueOnce({ data: { page } })

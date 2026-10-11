@@ -19,7 +19,7 @@ import type {
  * - Country of origin comes only from `country`. A region is not a country,
  *   and it used to be published as one.
  * - A case price is a case price. `price` is for the whole pack (the page
- *   divides by pack_size for its per-750ml column), so a pack of more than one
+ *   divides by pack_size for its per-litre column), so a pack of more than one
  *   says so with `includesObject`, never as a per-bottle Offer.
  *   `eligibleQuantity` is the order-quantity interval, so it carries the
  *   minimum order and nothing else.

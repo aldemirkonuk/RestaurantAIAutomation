@@ -120,7 +120,7 @@ export default function Privacy() {
               question, the answer, and how the answer was reached, so it can be
               checked later. To answer it, the question is sent to an AI model
               provider outside Turkey. Your house&apos;s owner can turn training use off
-              for the whole house, in Settings → Training use — asking and
+              for the whole house, in Settings → Questions and training — asking and
               answering keep working the same either way. A question asked while
               training is off is never used for training, even if the owner
               turns it back on afterward. If we ever export questions to improve
@@ -241,7 +241,7 @@ export default function Privacy() {
           <Section
             icon={MessageSquare}
             title="Questions you ask Mudavym"
-            body="When someone in your house asks Mudavym a question, we keep the question, the answer, and how the answer was reached, so it can be checked later. To answer it, the question is sent to an AI model provider outside Turkey. Your house's owner can turn training use off for the whole house, in Settings → Training use — asking and answering keep working the same either way. A question asked while training is off is never used for training, even if the owner turns it back on afterward. If we ever export questions to improve Mudavym, that export carries no question text at all, only facts such as which kind of question it was and when it was asked. No training has started."
+            body="When someone in your house asks Mudavym a question, we keep the question, the answer, and how the answer was reached, so it can be checked later. To answer it, the question is sent to an AI model provider outside Turkey. Your house's owner can turn training use off for the whole house, in Settings → Questions and training — asking and answering keep working the same either way. A question asked while training is off is never used for training, even if the owner turns it back on afterward. If we ever export questions to improve Mudavym, that export carries no question text at all, only facts such as which kind of question it was and when it was asked. No training has started."
           />
 
           <Section

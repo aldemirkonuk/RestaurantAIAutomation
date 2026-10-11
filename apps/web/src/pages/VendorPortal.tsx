@@ -3,6 +3,7 @@ import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import axios from 'axios'
+import { foldText } from '../lib/textFold'
 import { Globe, Mail, Phone, Search, Wine, AlertCircle } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
@@ -50,12 +51,31 @@ interface VendorPage {
  * No auth, no tenant. Everything here is what a vendor chose to publish.
  */
 
-/** Price per 750ml equivalent, so a case and a bottle sort against each other. */
+/**
+ * Price per litre, so a case and a bottle sort against each other — and a
+ * 330ml beer, a 700ml spirit and a 20L keg do too. A per-750ml figure was
+ * only meaningful for wine (F-1255). Null when the price or the size of one
+ * unit is not stated.
+ */
 export function unitPrice(l: Listing): number | null {
   if (l.price === null || l.packSize <= 0) return null
   const perUnit = l.price / l.packSize
   if (!l.volumeMl || l.volumeMl <= 0) return null
-  return perUnit * (750 / l.volumeMl)
+  return perUnit * (1000 / l.volumeMl)
+}
+
+/** "Lead time: 1 day", "Lead time: 3 days". */
+export function leadTimeWords(days: number): string {
+  return `Lead time: ${days} ${days === 1 ? 'day' : 'days'}`
+}
+
+/** Search: case, accents and the Turkish dotted/dotless i stop mattering. */
+export function matchesQuery(l: Listing, query: string): boolean {
+  const q = foldText(query.trim())
+  if (!q) return true
+  return [l.productName, l.producer, l.region, l.country, l.grapeVarieties]
+    .filter(Boolean)
+    .some((f) => foldText(String(f)).includes(q))
 }
 
 /** A vendor-supplied URL is untrusted input; only http(s) is safe to render
@@ -142,14 +162,7 @@ export function VendorPortal() {
 
   const visible = useMemo(() => {
     if (!page) return []
-    const q = query.trim().toLowerCase()
-    const filtered = q
-      ? page.listings.filter((l) =>
-          [l.productName, l.producer, l.region, l.country, l.grapeVarieties]
-            .filter(Boolean)
-            .some((f) => String(f).toLowerCase().includes(q)),
-        )
-      : page.listings
+    const filtered = page.listings.filter((l) => matchesQuery(l, query))
 
     const sorted = [...filtered]
     if (sortBy === 'price') {
@@ -264,7 +277,7 @@ export function VendorPortal() {
               <div className="mdv-pub__toolbar">
                 <div>
                   <label htmlFor="vendor-search" className="mdv-label">
-                    Find a wine
+                    Find a product
                   </label>
                   <input
                     id="vendor-search"
@@ -272,7 +285,7 @@ export function VendorPortal() {
                     type="search"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Wine, producer, grape or place"
+                    placeholder="Name, producer, grape or place"
                   />
                 </div>
                 <div>
@@ -286,7 +299,7 @@ export function VendorPortal() {
                     onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                   >
                     <option value="name">Name</option>
-                    <option value="price">Per 750ml, within currency</option>
+                    <option value="price">Per litre, within currency</option>
                     <option value="vintage">Vintage, newest first</option>
                   </select>
                 </div>
@@ -319,12 +332,12 @@ export function VendorPortal() {
                 >
                   <table className="mdv-pub__board" role="table">
                     <caption className="sr-only">
-                      {page.displayName} published wine catalogue
+                      {page.displayName} published catalogue
                     </caption>
                     <thead role="rowgroup">
                       <tr role="row">
                         <th scope="col" role="columnheader">
-                          Wine
+                          Product
                         </th>
                         <th scope="col" role="columnheader">
                           Vintage
@@ -339,7 +352,7 @@ export function VendorPortal() {
                           List price
                         </th>
                         <th scope="col" role="columnheader" className="mdv-pub__num">
-                          Per 750ml
+                          Per litre
                         </th>
                       </tr>
                     </thead>
@@ -383,7 +396,7 @@ export function VendorPortal() {
                               <small>Minimum order: {l.minOrderQuantity}</small>
                             )}
                             {l.leadTimeDays !== null && (
-                              <small>Lead time: {l.leadTimeDays} days</small>
+                              <small>{leadTimeWords(l.leadTimeDays)}</small>
                             )}
                           </td>
                           <td role="cell" className="mdv-pub__price mdv-pub__num">
@@ -400,7 +413,7 @@ export function VendorPortal() {
                           </td>
                           <td role="cell" className="mdv-pub__per750 mdv-pub__num">
                             <span className="mdv-pub__cellname" aria-hidden="true">
-                              Per 750ml:{' '}
+                              Per litre:{' '}
                             </span>
                             {formatMoney(unitPrice(l), l.currency)}
                           </td>
@@ -412,7 +425,7 @@ export function VendorPortal() {
               )}
               <p className="mdv-note">
                 These are published list prices. Contact the vendor for your
-                terms. A dash means the price or bottle size is not stated;
+                terms. A dash means the price or the size of one unit is not stated;
                 prices in different currencies are not converted.
               </p>
             </>
@@ -527,7 +540,7 @@ export function VendorPortal() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search producer, region, grape…"
+              placeholder="Search name, producer, region, grape…"
               aria-label="Search catalogue"
               className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-wine-500 focus:ring-4 focus:ring-wine-500/10"
             />
@@ -540,7 +553,7 @@ export function VendorPortal() {
               className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:border-wine-500"
             >
               <option value="name">Name</option>
-              <option value="price">Price per 750ml</option>
+              <option value="price">Price per litre</option>
               <option value="vintage">Vintage</option>
             </select>
           </label>
@@ -548,7 +561,7 @@ export function VendorPortal() {
 
         <p className="text-sm text-gray-500 mb-4">
           {visible.length} of {page.listings.length}{' '}
-          {page.listings.length === 1 ? 'wine' : 'wines'}
+          {page.listings.length === 1 ? 'listing' : 'listings'}
           {page.updatedAt && (
             <> · updated {new Date(page.updatedAt).toLocaleDateString()}</>
           )}
@@ -557,8 +570,8 @@ export function VendorPortal() {
         {visible.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center text-gray-500">
             {page.listings.length === 0
-              ? 'This vendor has not listed any wines yet.'
-              : 'No wines match that search.'}
+              ? 'This vendor has not listed anything yet.'
+              : 'No listings match that search.'}
           </div>
         ) : (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
@@ -567,7 +580,7 @@ export function VendorPortal() {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-left text-gray-500">
                     <th scope="col" className="px-4 py-3 font-medium">
-                      Wine
+                      Product
                     </th>
                     <th scope="col" className="px-4 py-3 font-medium">
                       Vintage
@@ -588,7 +601,7 @@ export function VendorPortal() {
                       scope="col"
                       className="px-4 py-3 font-medium text-right"
                     >
-                      Per 750ml
+                      Per litre
                     </th>
                   </tr>
                 </thead>

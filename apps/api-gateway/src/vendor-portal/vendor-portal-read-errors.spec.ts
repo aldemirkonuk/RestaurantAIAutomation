@@ -65,25 +65,10 @@ describe("public catalogue reads fail honestly", () => {
     expect(s.page.select.mock.calls[0][0]).not.toMatch(/edit_token|\*/);
     expect(s.page.eq).toHaveBeenCalledWith("slug", "vendor");
   });
-  it("does not publish unknown availability as in stock", () => {
+  it("keeps one JSON-LD builder: the served head's (F-1255)", () => {
+    // The old ItemList builder named every catalogue a "wine catalogue" and
+    // had no production caller; seo/vendor-head.ts is the one statement.
     const s = service({ data: row, error: null });
-    const json: any = s.value.buildJsonLd(
-      {
-        displayName: "Vendor",
-        listings: [
-          {
-            productName: "Wine",
-            price: 10,
-            currency: "USD",
-            inStock: null,
-            packSize: 1,
-          },
-        ],
-      } as any,
-      "https://mudavym.com/v/vendor",
-    );
-    expect(json.itemListElement[0].item.offers).not.toHaveProperty(
-      "availability",
-    );
+    expect((s.value as any).buildJsonLd).toBeUndefined();
   });
 });
