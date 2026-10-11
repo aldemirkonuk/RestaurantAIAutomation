@@ -41,6 +41,8 @@ function makeDb(opts: { tillReadError?: string } = {}) {
         select: () => q,
         // F-1238: the till's copy takes over an imported row; none here.
         update: () => q,
+        // F-1324: the imported row is read before it is taken over; none here.
+        maybeSingle: async () => ({ data: null, error: null }),
         eq: (col: string, val: unknown) => {
           filters[col] = val;
           return q;
