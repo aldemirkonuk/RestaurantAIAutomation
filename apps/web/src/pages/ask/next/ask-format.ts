@@ -19,7 +19,10 @@
  */
 
 import axios from 'axios';
-import { ASK_CLIENT_BUDGET_MS, type AskCell, type AskCount, type AskFinding, type AskFolio, type AskReading, type AskReply, type AskTrace } from '@/services/api/ask';
+import { ASK_CLIENT_BUDGET_MS, type AskCell, type AskCount, type AskFinding, type AskFolio, type AskReading, type AskReadingArgs, type AskReply, type AskTrace } from '@/services/api/ask';
+import { currencyMinorUnits } from '@/lib/currency';
+import { formatHouseMoney, getHouseLocale } from '@/lib/houseCurrency';
+import { getHouseZone } from '@/lib/houseZone';
 
 const LINK_ID = 'mudavym-fraunces';
 
@@ -102,10 +105,64 @@ export function composerProblem(
 
 /* ───────────────────────────────────────────── a figure ──── */
 
-export function fmtValue(cell: Pick<AskCell, 'value' | 'unit'>): string {
+/**
+ * A goal's measure, as the gateway's `SUPPORTED_METRICS` declares it (F-1246).
+ * A copy, not an import: Mudavym pages do not import from one another, and the
+ * recommendations page keeps the same table (`rec-forward.ts` METRICS). A
+ * percent target is stored as a share (0.35 is 35%).
+ */
+const GOAL_METRICS: Record<string, { label: string; unit: 'currency' | 'bottles' | 'checks' | 'percent' | 'days' }> = {
+  wine_revenue: { label: 'Wine revenue', unit: 'currency' },
+  bottles_sold: { label: 'Bottles sold', unit: 'bottles' },
+  purchase_spend: { label: 'Purchasing spend', unit: 'currency' },
+  checks: { label: 'Checks served', unit: 'checks' },
+  avg_check: { label: 'Average check', unit: 'currency' },
+  wine_attach_rate: { label: 'Wine attach rate', unit: 'percent' },
+  days_of_inventory: { label: 'Days of stock', unit: 'days' },
+};
+
+/** True for a currency code this product holds (ISO 4217), never for a unit like "box". */
+const isMoneyUnit = (unit: string | null): unit is string =>
+  typeof unit === 'string' && /^[A-Z]{3}$/.test(unit) && currencyMinorUnits(unit) !== null;
+
+/** A recorded instant ("2026-09-12T12:00:00Z"), not a calendar date. */
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/** An instant on the house's clock, in the house's formats; UTC, said so, when the house has no zone. */
+export function fmtInstant(iso: string, zone: string | null = getHouseZone()): string {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return iso;
+  const text = t.toLocaleString(getHouseLocale(), {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: zone ?? 'UTC',
+  });
+  return zone ? text : `${text} UTC`;
+}
+
+/**
+ * A figure in words, the house's way (F-1246): money in its currency and the
+ * house's grouping, a goal's measure by its name and unit, a recorded instant
+ * on the house's clock, and every other number grouped as the house groups.
+ */
+export function fmtValue(cell: Pick<AskCell, 'value' | 'unit'> & { key?: string }, zone: string | null = getHouseZone()): string {
   const v = cell.value;
   if (v === null || v === undefined || (typeof v === 'number' && !Number.isFinite(v))) return EM;
-  const body = typeof v === 'boolean' ? (v ? 'yes' : 'no') : typeof v === 'number' ? v.toLocaleString() : String(v);
+  if (typeof v === 'string' && cell.key?.endsWith(':metric_key')) return GOAL_METRICS[v]?.label ?? v;
+  if (typeof v === 'string' && INSTANT.test(v)) return fmtInstant(v, zone);
+  if (typeof v === 'number') {
+    if (isMoneyUnit(cell.unit)) return formatHouseMoney(v, cell.unit);
+    const metric = cell.unit ? GOAL_METRICS[cell.unit] : undefined;
+    if (metric) {
+      if (metric.unit === 'currency') return formatHouseMoney(v);
+      if (metric.unit === 'percent') return `${(v * 100).toLocaleString(getHouseLocale(), { maximumFractionDigits: 1 })}%`;
+      return `${v.toLocaleString(getHouseLocale())} ${metric.unit}`;
+    }
+  }
+  const body = typeof v === 'boolean' ? (v ? 'yes' : 'no') : typeof v === 'number' ? v.toLocaleString(getHouseLocale()) : String(v);
   return cell.unit ? `${body} ${cell.unit}` : body;
 }
 
@@ -217,6 +274,32 @@ export function dayLine(finding: Pick<AskFinding, 'day'> | null | undefined): st
     : `“Today” here is ${day.date} in UTC, because the house has no time zone set. An owner can set one in Settings.`;
 }
 
+/** A house date ("2026-09-12") as the house writes it: "12 Sept 2026" in a Turkish or British house. */
+function fmtHouseDate(day: string): string {
+  const t = new Date(`${day}T00:00:00Z`);
+  if (!ISO_DAY.test(day) || Number.isNaN(t.getTime())) return day;
+  return t.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * The period a question asked about, from its saved args (F-1247), so the
+ * folio and the book say WHICH period, not "this period". Null when the
+ * question named none.
+ */
+export function fmtPeriod(args: AskReadingArgs | null | undefined): string | null {
+  if (!args?.from || !args?.to) return null;
+  return args.from === args.to ? fmtHouseDate(args.from) : `${fmtHouseDate(args.from)} – ${fmtHouseDate(args.to)}`;
+}
+
+/** Whose days a period was counted in (F-1245). Null when the reading read no period. */
+export function periodLine(finding: Pick<AskFinding, 'period'> | null | undefined): string | null {
+  const p = finding?.period;
+  if (!p) return null;
+  return p.zone
+    ? `The days were counted on the house's clock (${p.zone}), midnight to midnight.`
+    : "The days were counted in UTC, because the house has no time zone set. An owner can set one in Settings.";
+}
+
 const KIND_TITLE: Record<AskReply['kind'], string> = {
   reading: 'Read from the house’s books',
   model_knowledge: 'Not from the house’s books',
@@ -259,10 +342,12 @@ export interface FolioView {
   choices: Array<{ id: string; label: string }>;
   /** Which date "today" was and on whose clock, when the reading read today (F-236). */
   day: string | null;
+  /** Whose days a period was counted in, when the reading read a period (F-1245). */
+  period: string | null;
 }
 
 export function folioView(folio: Pick<AskFolio, 'status' | 'answer' | 'created_at'>, now: Date = new Date()): FolioView {
-  const empty = { figures: [], finding: null, knowledge: null, choices: [], day: null };
+  const empty = { figures: [], finding: null, knowledge: null, choices: [], day: null, period: null };
   const answer = folio.answer;
   if (isInterrupted(folio, now)) {
     return {
@@ -290,6 +375,7 @@ export function folioView(folio: Pick<AskFolio, 'status' | 'answer' | 'created_a
         figures: focusCells(answer.finding, answer.focus ?? []),
         finding: answer.finding,
         day: dayLine(answer.finding),
+        period: periodLine(answer.finding),
       };
     case 'model_knowledge':
       return { ...empty, tone: 'knowledge', title: answer.sourceLabel || KIND_TITLE.model_knowledge, line: null, knowledge: answer.text };
@@ -317,6 +403,7 @@ export function folioView(folio: Pick<AskFolio, 'status' | 'answer' | 'created_a
         finding: answer.finding ?? null,
         choices,
         day: dayLine(answer.finding),
+        period: periodLine(answer.finding),
       };
     }
   }

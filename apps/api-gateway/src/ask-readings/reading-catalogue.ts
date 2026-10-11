@@ -51,13 +51,30 @@ type DeclaredReading = Omit<ReadingDescriptor, "allowedRoles" | "classes">;
 /**
  * Declared in the dated source census before implementation. Do not pad this floor.
  * [2026-09-21, round 6: `orders.due_today` added on the founder's answer (staff ask about today's deliveries).]
+ * [2026-10-10, F-1245: the three timestamp-period Readings shelve `restaurants`, the house's clock their days are cut on.]
  */
 const DECLARED: readonly DeclaredReading[] = [
   { id: "inventory.position", version: 1, title: "The recorded stock", question: "What stock is recorded for this item?", subject: "item", window: false, shelves: ["restaurant_inventory"], meaning: "Live, shadow and in-transit quantities stay in the item's recorded ledger unit.", shows: ["restaurant_inventory.uom", "restaurant_inventory.stock_live", "restaurant_inventory.shadow_stock", "restaurant_inventory.in_transit_quantity"] },
   { id: "inventory.low_stock", version: 1, title: "Below the recorded threshold", question: "Which active items are below their threshold?", subject: "none", window: false, shelves: ["restaurant_inventory", "restaurants"], meaning: "Strictly below par; an unconfigured threshold is an assumption, including when its number looks ordinary.", shows: ["restaurant_inventory.*", "restaurant_inventory.display_name", "restaurant_inventory.wine_name", "restaurant_inventory.uom", "restaurant_inventory.stock_live", "restaurant_inventory.threshold_min"] },
   { id: "inventory.in_transit", version: 1, title: "Recorded in transit", question: "Which items have stock recorded in transit?", subject: "none", window: false, shelves: ["restaurant_inventory"], meaning: "Positive quantities by item and unit; missing quantities remain unknown.", shows: ["restaurant_inventory.*", "restaurant_inventory.display_name", "restaurant_inventory.wine_name", "restaurant_inventory.uom", "restaurant_inventory.in_transit_quantity"] },
   { id: "inventory.locations", version: 1, title: "Where the stock is held", question: "Where is this item's recorded stock held?", subject: "item", window: false, shelves: ["restaurant_inventory", "inventory_lots", "storage_locations"], meaning: "Lot quantities by location and stock lane. A missing location is unassigned.", shows: ["inventory_lots.*", "inventory_lots.location_id", "inventory_lots.stock_state", "inventory_lots.qty", "storage_locations.name", "restaurant_inventory.uom"] },
-  { id: "inventory.movements", version: 1, title: "The movement record", question: "What changed this item's stock in this period?", subject: "item", window: true, shelves: ["restaurant_inventory", "inventory_transactions"], meaning: "Recorded net movements, keeping live and shadow lanes separate; not a reconstructed stock balance.", shows: ["inventory_transactions.*", "inventory_transactions.stock_type", "inventory_transactions.quantity_change", "restaurant_inventory.uom"] },
+  {
+    id: "inventory.movements",
+    version: 1,
+    title: "The movement record",
+    question: "What changed this item's stock in this period?",
+    subject: "item",
+    window: true,
+    shelves: ["restaurants", "restaurant_inventory", "inventory_transactions"],
+    meaning:
+      "Recorded net movements, keeping live and shadow lanes separate; not a reconstructed stock balance.",
+    shows: [
+      "inventory_transactions.*",
+      "inventory_transactions.stock_type",
+      "inventory_transactions.quantity_change",
+      "restaurant_inventory.uom",
+    ],
+  },
   // Open-order: the recorded category for this reading (see the module doc
   // above -- not the founder's own word).
   { id: "orders.open", version: 1, title: "The open orders", question: "Which orders are still open?", subject: "none", window: false, shelves: ["procurement_orders"], meaning: "Orders outside the current closed-status family, grouped by their actual state.", shows: ["procurement_orders.*", "procurement_orders.order_number", "procurement_orders.status", "procurement_orders.expected_delivery_date"] },
@@ -88,8 +105,35 @@ const DECLARED: readonly DeclaredReading[] = [
   // Price: the only reading that carries a price basis (a bottle's recorded cost).
   { id: "receipts.verified_line", version: 1, title: "The last verified receipt line", question: "What did the last verified receipt record for this item?", subject: "item", window: false, shelves: ["restaurant_inventory", "procurement_documents", "procurement_document_lines", "procurement_document_links", "procurement_orders", "procurement_order_items"], meaning: "An explicitly linked line on a verified receipt or invoice, with its recorded price basis and currency provenance. No inferred freight allocation.", shows: ["procurement_documents.doc_number", "procurement_documents.verified_at", "procurement_documents.currency", "procurement_document_lines.qty", "procurement_document_lines.uom", "procurement_document_lines.pack_size", "procurement_document_lines.unit_price", "procurement_document_lines.price_base_qty", "procurement_document_lines.price_base_uom"] },
   // Sales: covers and consumption -- the founder's "sales etc" example verbatim.
-  { id: "sales.check_activity", version: 1, title: "The recorded checks", question: "How many closed checks and covers were recorded in this period?", subject: "none", window: true, shelves: ["pos_checks"], meaning: "Nonvoid closed checks and known covers. Missing covers are counted separately; no currency or revenue inference.", shows: ["pos_checks.*", "pos_checks.covers"] },
-  { id: "sales.consumption", version: 1, title: "The consumption record", question: "What consumption was recorded for this item in this period?", subject: "item", window: true, shelves: ["restaurant_inventory", "wine_consumption_log"], meaning: "Recorded millilitres and separate serving counts by glass/bottle; no unstated bottle-volume conversion.", shows: ["wine_consumption_log.*", "wine_consumption_log.volume_ml", "wine_consumption_log.quantity", "wine_consumption_log.consumption_type"] },
+  {
+    id: "sales.check_activity",
+    version: 1,
+    title: "The recorded checks",
+    question: "How many closed checks and covers were recorded in this period?",
+    subject: "none",
+    window: true,
+    shelves: ["restaurants", "pos_checks"],
+    meaning:
+      "Nonvoid closed checks and known covers. Missing covers are counted separately; no currency or revenue inference.",
+    shows: ["pos_checks.*", "pos_checks.covers"],
+  },
+  {
+    id: "sales.consumption",
+    version: 1,
+    title: "The consumption record",
+    question: "What consumption was recorded for this item in this period?",
+    subject: "item",
+    window: true,
+    shelves: ["restaurants", "restaurant_inventory", "wine_consumption_log"],
+    meaning:
+      "Recorded millilitres and separate serving counts by glass/bottle; no unstated bottle-volume conversion.",
+    shows: [
+      "wine_consumption_log.*",
+      "wine_consumption_log.volume_ml",
+      "wine_consumption_log.quantity",
+      "wine_consumption_log.consumption_type",
+    ],
+  },
   { id: "calendar.upcoming", version: 1, title: "The house calendar", question: "What is in the house calendar for this period?", subject: "none", window: true, shelves: ["calendar_events", "calendar_recurrence_rules", "calendar_recurrence_exceptions"], meaning: "Stored entries and supported recurring occurrences, applying cancellations and replacements once; no demand forecast.", shows: ["calendar_events.*", "calendar_events.title", "calendar_events.start_date", "calendar_events.start_time", "calendar_events.status"] },
   // Vendor: who the house buys from -- the recorded category for this
   // reading (see the module doc above -- not the founder's own word).

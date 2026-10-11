@@ -625,12 +625,16 @@ export function fmtWakes(
   return `wakes in ${d} days`;
 }
 
-/** Clock time of the read, so the head says WHEN these numbers were true. */
-export function fmtReadAt(iso: string | null | undefined): string {
+/**
+ * Clock time of the read, so the head says WHEN these numbers were true — on
+ * the house's clock (F-1251, F-866), not the device's. No zone known: the
+ * device's clock stands in, as everywhere `useHouseZone` answers null.
+ */
+export function fmtReadAt(iso: string | null | undefined, zone?: string | null): string {
   if (!iso) return EM;
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return EM;
-  return t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(zone ? { timeZone: zone } : {}) });
 }
 
 /** Zero-padded entry number for the gutter — a position, not a figure. */

@@ -14,6 +14,7 @@
  */
 
 import { Link } from 'react-router-dom';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import {
   MARGIN_ROWS,
   fillOf,
@@ -40,6 +41,7 @@ export default function GoalsMargin({
    */
   canSee: boolean;
 }) {
+  const group = useHouseGroupMark();
   if (!canSee) {
     return (
       <aside className="rc-mast-goals" aria-label="The house's goals" data-testid="rc-mast-goals">
@@ -105,7 +107,7 @@ export default function GoalsMargin({
                 )}
                 <div className="rc-mgoal-foot">
                   <span className="rc-num">
-                    {inUnit(g.current, g.unit)} of {inUnit(g.target, g.unit)}
+                    {inUnit(g.current, g.unit, group)} of {inUnit(g.target, g.unit, group)}
                   </span>
                   <span className="rc-mgoal-pace">{pace}</span>
                 </div>

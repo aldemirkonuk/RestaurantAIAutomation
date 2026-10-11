@@ -409,9 +409,90 @@ describe("proof, scope, absence and provenance regressions", () => {
     expect((await run(fixture(), "inventory.position")).readingVersion).toBe(1);
   });
   test("timestamp windows are exact inclusive calendar dates, with no guessed period", () => {
+    // With no house zone the days are UTC days (the Finding says so, F-1245).
     expect(readingWindow({ from: "2026-09-12", to: "2026-09-12" })).toEqual({ from: "2026-09-12T00:00:00.000Z", to: "2026-09-13T00:00:00.000Z" });
     expect(() => readingWindow({ from: "2026-02-30", to: "2026-03-01" })).toThrow();
     expect(() => readingWindow({})).toThrow();
+  });
+  // F-1245: a period is the house's days, cut at its own midnights (ADR 0296).
+  test("a period is cut at the house's midnights when the house has a zone", () => {
+    expect(
+      readingWindow(
+        { from: "2026-09-12", to: "2026-09-12" },
+        "America/Los_Angeles",
+      ),
+    ).toEqual({
+      from: "2026-09-12T07:00:00.000Z",
+      to: "2026-09-13T07:00:00.000Z",
+    });
+    expect(
+      readingWindow(
+        { from: "2026-09-12", to: "2026-09-13" },
+        "Europe/Istanbul",
+      ),
+    ).toEqual({
+      from: "2026-09-11T21:00:00.000Z",
+      to: "2026-09-13T21:00:00.000Z",
+    });
+  });
+  test("period readings count the house's days and name the clock they were read on", async () => {
+    const books = fixture();
+    books.tables.restaurants[0].timezone = "America/Los_Angeles";
+    // 19:30 on 12 Sep in Los Angeles: UTC files it on the 13th.
+    books.tables.pos_checks.push(
+      house("check-dinner", {
+        closed_at: "2026-09-13T02:30:00.000Z",
+        covers: 4,
+        voided: false,
+      }),
+    );
+    books.tables.wine_consumption_log.push(
+      house("glass-dinner", {
+        inventory_id: "item-a",
+        consumption_type: "glass",
+        quantity: 1,
+        volume_ml: 150,
+        recorded_at: "2026-09-13T02:30:00.000Z",
+      }),
+    );
+    books.tables.inventory_transactions.push(
+      house("move-dinner", {
+        inventory_id: "item-a",
+        quantity_change: -1,
+        stock_type: "live",
+        transaction_date: "2026-09-13T02:30:00.000Z",
+      }),
+    );
+    const day = { from: "2026-09-12", to: "2026-09-12" };
+    const checks = await run(books, "sales.check_activity", day);
+    expect(value(checks, "covers:sum")).toBe(9);
+    expect(checks.period).toEqual({
+      from: "2026-09-12",
+      to: "2026-09-12",
+      zone: "America/Los_Angeles",
+    });
+    expect(
+      value(
+        await run(books, "sales.consumption", { ...args, ...day }),
+        "consumption:volume",
+      ),
+    ).toBe(1200);
+    expect(
+      value(
+        await run(books, "inventory.movements", { ...args, ...day }),
+        "lane:live:net",
+      ),
+    ).toBe(8);
+    // With no zone the same dinner is the 13th's, and the Finding says UTC.
+    books.tables.restaurants[0].timezone = null;
+    const utc = await run(books, "sales.check_activity", day);
+    expect(value(utc, "covers:sum")).toBe(5);
+    expect(utc.period).toEqual({
+      from: "2026-09-12",
+      to: "2026-09-12",
+      zone: null,
+    });
+    expect((await run(books, "inventory.position")).period).toBeUndefined();
   });
   test("the shared Calendar resolver counts old recurring series once, applying an owned cancellation", async () => {
     const books = fixture();

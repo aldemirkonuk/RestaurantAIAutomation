@@ -1,17 +1,20 @@
 import { AxiosError, AxiosHeaders } from 'axios';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setHouseCurrency, setHouseLocale } from '@/lib/houseCurrency';
 import type { AskFinding, AskFolio, AskReading } from '@/services/api/ask';
 import {
   EM,
   askFailure,
   composerProblem,
   fmtCount,
+  fmtPeriod,
   fmtValue,
   folioChip,
   folioView,
   groupBook,
   groupShelf,
   newRequestId,
+  periodLine,
   provenanceMark,
   traceLine,
 } from './ask-format';
@@ -237,6 +240,55 @@ describe('a request that failed (ADR 0051 error states)', () => {
     expect(askFailure(httpError(403, { message: 'Forbidden' })).kind).toBe('refused');
     expect(askFailure(httpError(400, { message: ['utterance must be shorter'] })).message).toBe('utterance must be shorter');
     expect(askFailure(httpError(409, { message: 'This question identity already belongs to a different request.' })).kind).toBe('rejected');
+  });
+});
+
+// F-1246: a Turkish house reads its figures its own way, not the device's.
+describe('a figure in the house\'s formats (F-1246)', () => {
+  afterEach(() => {
+    setHouseLocale(null);
+    setHouseCurrency(undefined);
+  });
+
+  it('prints money in its currency, grouped the house\'s way', () => {
+    setHouseLocale('tr-TR');
+    expect(fmtValue({ value: 12400.5, unit: 'TRY' })).toBe(new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(12400.5));
+    expect(fmtValue({ value: 12400.5, unit: 'TRY' })).not.toContain('TRY');
+    expect(fmtValue({ value: 1250, unit: 'ml' })).toBe('1.250 ml');
+    expect(fmtValue({ value: 2, unit: 'BOX' })).toBe('2 BOX');
+  });
+
+  it('names a goal\'s measure and prints its target in that measure\'s unit', () => {
+    setHouseLocale('tr-TR');
+    setHouseCurrency('TRY');
+    expect(fmtValue({ key: 'goal-a:metric_key', value: 'wine_revenue', unit: null })).toBe('Wine revenue');
+    expect(fmtValue({ key: 'goal-a:target_value', value: 50000, unit: 'wine_revenue' })).toBe(new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }).format(50000));
+    expect(fmtValue({ key: 'goal-b:target_value', value: 0.35, unit: 'wine_attach_rate' })).toBe('35%');
+    expect(fmtValue({ key: 'goal-c:target_value', value: 1200, unit: 'bottles_sold' })).toBe('1.200 bottles');
+    expect(fmtValue({ key: 'goal-d:metric_key', value: 'something_new', unit: null })).toBe('something_new');
+  });
+
+  it('prints a recorded instant on the house\'s clock, and says UTC when there is no zone', () => {
+    const at = '2026-09-12T21:30:00Z';
+    expect(fmtValue({ value: at, unit: null }, 'Europe/Istanbul')).toBe('Sep 13, 2026, 12:30 AM');
+    expect(fmtValue({ value: at, unit: null }, null)).toMatch(/Sep 12, 2026.*9:30.*UTC$/);
+    expect(fmtValue({ value: '2026-09-12', unit: null })).toBe('2026-09-12');
+  });
+});
+
+// F-1247, F-1245: a period reading says which period, and on whose days.
+describe('the period a question read', () => {
+  it('names the dates from the saved args, one day or a range', () => {
+    expect(fmtPeriod({ from: '2026-09-01', to: '2026-09-07' })).toBe('Sep 1, 2026 – Sep 7, 2026');
+    expect(fmtPeriod({ from: '2026-09-12', to: '2026-09-12' })).toBe('Sep 12, 2026');
+    expect(fmtPeriod({ subjectText: 'Barolo' })).toBeNull();
+    expect(fmtPeriod(undefined)).toBeNull();
+  });
+
+  it('says the house\'s clock, or UTC when the house has no zone', () => {
+    expect(periodLine({ period: { from: '2026-09-12', to: '2026-09-12', zone: 'Europe/Istanbul' } })).toMatch(/house's clock \(Europe\/Istanbul\)/);
+    expect(periodLine({ period: { from: '2026-09-12', to: '2026-09-12', zone: null } })).toMatch(/counted in UTC, because the house has no time zone set/);
+    expect(periodLine({})).toBeNull();
   });
 });
 

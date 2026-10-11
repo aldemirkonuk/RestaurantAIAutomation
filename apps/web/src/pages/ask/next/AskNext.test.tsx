@@ -318,6 +318,42 @@ describe('the book and old folios', () => {
     expect(within(doc).getByText(`as of ${day}, ${clock}`)).toBeTruthy();
   });
 
+  // F-1247 + F-1245: a period reading names its dates under the question, in
+  // the folio and in the book, and says whose days they were counted in.
+  it('a period reading shows its dates with the question, in the folio and the book', async () => {
+    const id = '55555555-5555-4555-8555-555555555555';
+    const f = folio({
+      id,
+      utterance: 'How many closed checks and covers were recorded in this period?',
+      reading_id: 'sales.check_activity',
+      reading_version: 1,
+      reading_args: { from: '2026-09-01', to: '2026-09-07' },
+      reply_kind: 'reading',
+      answer: {
+        kind: 'reading',
+        focus: [],
+        finding: {
+          readingId: 'sales.check_activity',
+          readingVersion: 1,
+          outcome: 'read',
+          reason: null,
+          asOf: new Date().toISOString(),
+          trace: [],
+          rows: [],
+          period: { from: '2026-09-01', to: '2026-09-07', zone: 'Europe/Istanbul' },
+        },
+      },
+    });
+    api.folio.mockResolvedValue(f);
+    api.folios.mockResolvedValue([f]);
+    renderAt(`/ask/f/${id}`);
+    const doc = await screen.findByRole('article', { name: 'The open folio' });
+    expect(within(doc).getByTestId('ak-period').textContent).toBe('For Sep 1, 2026 – Sep 7, 2026');
+    expect(within(doc).getByTestId('ak-period-clock').textContent).toMatch(/house's clock \(Europe\/Istanbul\)/);
+    const book = screen.getByRole('complementary');
+    await waitFor(() => expect(within(book).getByText(/For Sep 1, 2026 – Sep 7, 2026 ·/)).toBeTruthy());
+  });
+
   it('the general-knowledge card does not promise an answer with no figure (F-296)', async () => {
     renderAt();
     expect(await screen.findByText('Pairing, service, the wine itself')).toBeTruthy();

@@ -25,6 +25,8 @@
  *    that no longer stands.
  */
 
+import { inHouseMarks } from '@/lib/currency';
+import type { GroupMark } from '@/lib/parseDecimal';
 import { goalOfferFor, type GoalPlan } from './rec-forward';
 import type { EntryVM, GoalsVM } from './useRecommendationsNextData';
 
@@ -112,12 +114,14 @@ export function toGoalBook(data: unknown): Exclude<GoalBookVM, undefined> {
  * printed WITHOUT a symbol, as the reports goals desk prints it
  * (`rp-registers-goals.tsx` `inUnit`): the progress read carries no currency,
  * and a `$` on a lira house's goal would be a figure this page invented.
+ * Grouped with the house's own mark (`useHouseGroupMark`, F-1251): a Turkish
+ * house reads "6.180", not "6,180". An unknown mark leaves the en-US grouping.
  */
-export function inUnit(v: number | null, unit: string): string {
+export function inUnit(v: number | null, unit: string, group: GroupMark | null = null): string {
   if (v === null) return '—';
   if (unit === 'percent') return `${Math.round(v * 100)}%`;
-  if (unit === 'days') return `${Math.round(v)} days`;
-  return Math.round(v).toLocaleString('en-US');
+  if (unit === 'days') return `${inHouseMarks(Math.round(v).toLocaleString('en-US'), ',', group)} days`;
+  return inHouseMarks(Math.round(v).toLocaleString('en-US'), ',', group);
 }
 
 export type PaceWord = 'On pace' | 'Behind' | 'No deadline' | 'Pace unknown' | 'Not read';

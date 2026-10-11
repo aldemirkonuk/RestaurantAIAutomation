@@ -27,7 +27,7 @@
  * not be read — each in words, none as an empty page.
  */
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -42,6 +42,7 @@ import {
   composerProblem,
   ensureFraunces,
   fmtClock,
+  fmtPeriod,
   fmtWhen,
   fmtValue,
   folioChip,
@@ -57,6 +58,8 @@ import {
   type AskFailure,
 } from './ask-format';
 import { useAskNextData } from './useAskNextData';
+import { getHouseLocale, subscribeHouseCurrency } from '@/lib/houseCurrency';
+import { useHouseZone } from '@/lib/houseZone';
 import { openAskAi } from '@/components/askai/events';
 
 export interface AskNextProps {
@@ -143,6 +146,7 @@ function FolioDocument({
   busy: boolean;
 }) {
   const v = folioView(folio);
+  const period = fmtPeriod(folio.reading_args);
   const finding = v.finding;
   const rows = finding?.rows ?? [];
   return (
@@ -152,9 +156,11 @@ function FolioDocument({
         {folio.reading_id ? ` · ${readingTitle ?? folio.reading_id}${folio.reading_version ? ` · v${folio.reading_version}` : ''}` : ''}
       </p>
       <p className="ak-q">{folio.utterance}</p>
+      {period && <p className="ak-note" data-testid="ak-period">For {period}</p>}
       <p className="ak-title">{v.title}</p>
       {v.line && <p className="ak-line" data-testid="ak-line">{v.line}</p>}
       {v.day && <p className="ak-note" data-testid="ak-day">{v.day}</p>}
+      {v.period && <p className="ak-note" data-testid="ak-period-clock">{v.period}</p>}
       {v.knowledge !== null && (
         <p className="ak-line" style={{ whiteSpace: 'pre-wrap' }}>
           {v.knowledge}
@@ -250,6 +256,10 @@ export default function AskNext({ ground }: AskNextProps) {
   const queryClient = useQueryClient();
   const { activeRole } = useAuth();
   const { keys, shelf, book, folio: folioQ } = useAskNextData(folioId ?? null);
+  // Figures print in the house's formats and instants on its clock (F-1246):
+  // the page re-renders when either answer lands.
+  useSyncExternalStore(subscribeHouseCurrency, getHouseLocale, getHouseLocale);
+  useHouseZone();
 
   const [text, setText] = useState('');
   const [open, setOpen] = useState<AskReading | null>(null);
@@ -565,7 +575,10 @@ export default function AskNext({ ground }: AskNextProps) {
                 <Link key={f.id} className="ak-entry" to={`/ask/f/${f.id}`} aria-current={f.id === folioId ? 'page' : undefined}>
                   <small>{fmtClock(f.created_at)}</small>
                   <p>{f.utterance || EM}</p>
-                  <small>{folioChip(f)}</small>
+                  <small>
+                    {fmtPeriod(f.reading_args) ? `For ${fmtPeriod(f.reading_args)} · ` : ''}
+                    {folioChip(f)}
+                  </small>
                 </Link>
               ))}
             </div>
