@@ -17,7 +17,9 @@ import { DatabaseService } from "../database/database.service";
 
 type Row = Record<string, any>;
 
-function makeDb(opts: { checkReadError?: string; saleUnit?: string } = {}) {
+function makeDb(
+  opts: { checkReadError?: string; saleUnit?: string; moveError?: string } = {},
+) {
   const MAPPINGS = [
     {
       external_item_id: "caymus",
@@ -79,6 +81,34 @@ function makeDb(opts: { checkReadError?: string; saleUnit?: string } = {}) {
           return { error: null };
         },
         insert: async () => ({ error: null }),
+        // pos_checks keeps (restaurant_id, source, external_check_id) unique:
+        // moving a row onto a key another row holds is refused (23505).
+        update: (patch: Row) => {
+          const where: Record<string, unknown> = {};
+          const run = () => {
+            if (opts.moveError) return { error: { message: opts.moveError } };
+            for (const [key, r] of [...checks.entries()]) {
+              if (Object.entries(where).some(([c, v]) => r[c] !== v)) continue;
+              const moved = { ...r, ...patch };
+              const to = `${moved.restaurant_id}|${moved.source}|${moved.external_check_id}`;
+              if (to !== key && checks.has(to)) {
+                return { error: { code: "23505", message: "duplicate key" } };
+              }
+              checks.delete(key);
+              checks.set(to, moved);
+            }
+            return { error: null };
+          };
+          const u: any = {
+            eq: (col: string, val: unknown) => {
+              where[col] = val;
+              return u;
+            },
+            then: (resolve: any, reject: any) =>
+              Promise.resolve(run()).then(resolve, reject),
+          };
+          return u;
+        },
       };
       if (table === "pos_item_mappings") {
         q.in = async () => ({ data: MAPPINGS, error: null });
@@ -194,17 +224,24 @@ describe("a check imported before the till sent anything (F-1238)", () => {
   });
 
   it("an import row still standing beside the till's is left to itself", async () => {
-    // Stored twice before F-1195: each copy took its own stock. A re-send of
-    // the till's copy reads only the till's keys, so it moves nothing and
-    // returns nothing the import's row took.
+    // Stored twice before F-1195: the till's row stands beside the import's,
+    // so the import's row is not moved onto it and its stock stays its own.
     const { service, stock, checks } = makeDb();
     await service.ingest("r1", "csv_import", [theCheck]);
-    await service.ingest("r1", "generic_webhook", [theCheck]);
-    expect(checks.size).toBe(2);
-    expect(stock["inv-caymus"]).toBe(8);
+    checks.set("r1|generic_webhook|c-1", {
+      id: "chk-till",
+      restaurant_id: "r1",
+      source: "generic_webhook",
+      external_check_id: "c-1",
+    });
 
+    await service.ingest("r1", "generic_webhook", [theCheck]);
     const res = await service.ingest("r1", "generic_webhook", [theCheck]);
 
+    expect([...checks.keys()].sort()).toEqual([
+      "r1|csv_import|c-1",
+      "r1|generic_webhook|c-1",
+    ]);
     expect(stock["inv-caymus"]).toBe(8);
     expect(res.stock).toMatchObject({ booked: 0, alreadyBooked: 1 });
   });
@@ -218,5 +255,64 @@ describe("a check imported before the till sent anything (F-1238)", () => {
 
     expect(stock["inv-caymus"]).toBe(10);
     expect(res.stock).toMatchObject({ booked: 0, failed: 1 });
+  });
+});
+
+describe("the till's webhook after an import it never saw (F-1238)", () => {
+  it("stores the check once and takes its stock once", async () => {
+    const { service, checks, stock } = makeDb();
+
+    await service.ingest("r1", "csv_import", [theCheck]);
+    const res = await service.ingest("r1", "generic_webhook", [theCheck]);
+    await service.ingest("r1", "generic_webhook", [theCheck]);
+
+    expect(res.upserted).toBe(1);
+    expect([...checks.keys()]).toEqual(["r1|generic_webhook|c-1"]);
+    expect([...checks.values()][0]).toMatchObject({ total: 180, tip: 20 });
+    expect(stock["inv-caymus"]).toBe(10);
+    expect(res.stock).toMatchObject({ booked: 0, alreadyBooked: 1 });
+  });
+
+  it("a later file import lands on the till's row too", async () => {
+    const { service, checks, stock } = makeDb();
+
+    await service.ingest("r1", "csv_import", [theCheck]);
+    await service.ingest("r1", "generic_webhook", [theCheck]);
+    const again = await service.ingest("r1", "csv_import", [theCheck]);
+
+    expect(again.storedUnder).toBe("generic_webhook");
+    expect([...checks.keys()]).toEqual(["r1|generic_webhook|c-1"]);
+    expect(stock["inv-caymus"]).toBe(10);
+  });
+
+  it("moves only this house's row", async () => {
+    const { service, checks } = makeDb();
+    checks.set("r2|csv_import|c-1", {
+      id: "chk-r2",
+      restaurant_id: "r2",
+      source: "csv_import",
+      external_check_id: "c-1",
+    });
+
+    await service.ingest("r1", "generic_webhook", [theCheck]);
+
+    expect(checks.get("r2|csv_import|c-1")).toMatchObject({
+      source: "csv_import",
+    });
+    expect(checks.has("r1|generic_webhook|c-1")).toBe(true);
+  });
+
+  it("a move that fails stores nothing and takes no stock", async () => {
+    const { service, checks, stock } = makeDb({ moveError: "timeout" });
+    await service.ingest("r1", "csv_import", [theCheck]);
+
+    const res = await service.ingest("r1", "generic_webhook", [theCheck]);
+
+    expect(res.upserted).toBe(0);
+    expect(res.errors.join(" ")).toMatch(
+      /c-1: not imported, could not tell whether a file import already holds this check/,
+    );
+    expect([...checks.keys()]).toEqual(["r1|csv_import|c-1"]);
+    expect(stock["inv-caymus"]).toBe(10);
   });
 });

@@ -1440,6 +1440,23 @@ export class PosHubService {
           );
           continue;
         }
+        // F-1238: a check a file import stored before this house's till sent
+        // anything is under csv_import; the till's own copy of it takes that
+        // row over, so it is one check, not two. Its stock stays booked under
+        // the import's keys, which readCheckLedger reads for the till's copy.
+        if (source !== "csv_import") {
+          const adopted = await this.adoptImportedCheck(
+            restaurantId,
+            source,
+            check.externalCheckId,
+          );
+          if (!adopted.ok) {
+            errors.push(
+              `${check.externalCheckId}: not imported, could not tell whether a file import already holds this check, so it was not stored twice: ${adopted.message}`,
+            );
+            continue;
+          }
+        }
         // F-639: a copy older than the one stored, or one that would un-void
         // or re-open it without being newer, is not imported and moves no
         // stock. The trigger pos_checks_keep_newest holds the same rule at
@@ -1684,6 +1701,43 @@ export class PosHubService {
       }),
     );
     return found.filter((t): t is string => t !== null);
+  }
+
+  /**
+   * F-1238: a file import of checks made before this house's till sent any
+   * is stored under `csv_import` (importTill finds no till). When the till
+   * later sends one of those checks, its row is moved to the till's source
+   * once, so the till's upsert lands on it rather than beside it: one check,
+   * counted once. Moving a row that is not there moves nothing, so a re-send
+   * is a no-op. When the till's own copy is already stored beside it (both
+   * kept before F-1195), the import's row is left for a repair and the till's
+   * copy is updated as before. Any other failure is returned: storing the
+   * check anyway could store it twice.
+   */
+  private async adoptImportedCheck(
+    restaurantId: string,
+    source: string,
+    externalCheckId: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      const { error } = await this.dbService
+        .getClient()
+        .from("pos_checks")
+        .update({ source })
+        .eq("restaurant_id", restaurantId)
+        .eq("source", "csv_import")
+        .eq("external_check_id", externalCheckId);
+      if (!error) return { ok: true };
+      if (error.code === "23505") {
+        this.logger.warn(
+          `pos_checks ${externalCheckId} r=${restaurantId} is stored under both csv_import and ${source}; the csv_import row is left for a repair`,
+        );
+        return { ok: true };
+      }
+      return { ok: false, message: error.message ?? "no message" };
+    } catch (err: any) {
+      return { ok: false, message: err?.message ?? String(err) };
+    }
   }
 
   /**

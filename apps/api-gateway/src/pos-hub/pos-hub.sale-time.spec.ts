@@ -69,6 +69,8 @@ function makeDb(opts: DbOpts = {}) {
     from(table: string) {
       const q: any = {
         select: () => q,
+        // F-1238: the till's copy takes over an imported row; none here.
+        update: () => q,
         eq: () => q,
         in: async () => ({ data: [], error: null }),
         // What earlier imports of the check moved, read back from the RPCs

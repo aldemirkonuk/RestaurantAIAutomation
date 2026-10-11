@@ -39,6 +39,8 @@ function makeDb(opts: { tillReadError?: string } = {}) {
       const filters: Record<string, unknown> = {};
       const q: any = {
         select: () => q,
+        // F-1238: the till's copy takes over an imported row; none here.
+        update: () => q,
         eq: (col: string, val: unknown) => {
           filters[col] = val;
           return q;
