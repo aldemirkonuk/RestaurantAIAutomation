@@ -14,6 +14,7 @@ import type { Order } from '@/services/api/types';
 import {
   composeDoorNotes,
   creditDraft,
+  doorCountUnit,
   doorFacts,
   matchLine,
   normalizeDoorOrder,
@@ -673,5 +674,53 @@ describe('readPaper — the photograph doing work', () => {
     expect(staff?.prefill).toBe(false);
     expect(staff?.warnings).toBe(2);
     expect(staff?.doubt).toBe('the reading is unsure');
+  });
+});
+
+describe('the door counts a keg or liter order in its own unit (F-1206)', () => {
+  const kegs = normalizeDoorOrder({ quantity: 4, unitType: 'keg', bottlesTotal: 4 } as unknown as Order);
+
+  it('says kegs, not boxes or bottles', () => {
+    expect(doorCountUnit(kegs)).toEqual({ uom: 'keg', one: 'keg', many: 'kegs' });
+    expect(doorCountUnit(normalizeDoorOrder({ quantity: 20, unitType: 'liter' } as unknown as Order)).uom).toBe(
+      'liter',
+    );
+    expect(doorCountUnit(caseOrder(2)).uom).toBe('case');
+  });
+
+  it('[REVERT-FAILS] compares kegs one for one and says the shortfall in kegs', () => {
+    const m = matchLine(3, kegs);
+    expect(m?.tone).toBe('short');
+    expect(m?.text).toBe('3 of 4 kegs — one keg short.');
+    expect(suggestOutcome(m)).toBe('short');
+    expect(matchLine(3, kegs, { bottles: 1, packSize: null })?.tone).toBe('even');
+  });
+
+  it('claims no shortfall when earlier trucks could not be read', () => {
+    expect(matchLine(3, kegs, 'unread')?.tone).toBe('incomparable');
+  });
+});
+
+describe('a bottle order with bottles per box said is compared (F-1208)', () => {
+  const bottles = normalizeDoorOrder({ quantity: 24, unitType: 'bottle', bottlesTotal: 24 } as unknown as Order);
+
+  it('still declines to compare with no bottles per box', () => {
+    expect(matchLine(1, bottles)?.tone).toBe('incomparable');
+  });
+
+  it('[REVERT-FAILS] a short truck is said short and suggested short', () => {
+    const m = matchLine(1, bottles, null, 12);
+    expect(m?.text).toBe('1 box of 12: 12 of 24 bottles — 1 box short.');
+    expect(m?.deltaBoxes).toBe(-1);
+    expect(m?.deltaBottles).toBe(-12);
+    expect(suggestOutcome(m)).toBe('short');
+  });
+
+  it('counts earlier trucks and their refusals', () => {
+    const m = matchLine(1, bottles, { bottles: 6, packSize: null, refusedBottles: 6 }, 12);
+    expect(m?.tone).toBe('even');
+    expect(m?.text).toBe('1 box of 12: 18 of 24 bottles with the earlier 6, 6 bottles refused earlier — all there.');
+    expect(matchLine(2, bottles, null, 12)?.tone).toBe('even');
+    expect(matchLine(2, bottles, 'unread', 12)?.tone).toBe('incomparable');
   });
 });
