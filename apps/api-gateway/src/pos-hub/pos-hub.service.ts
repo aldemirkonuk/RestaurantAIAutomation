@@ -356,7 +356,7 @@ interface PlannedStockLine {
     name: string;
     external_item_id: string | null;
     qty: number;
-    price: number;
+    price: number | null;
     inventory_id: string | null;
   };
   inventoryId: string;
@@ -399,6 +399,13 @@ interface CheckLedger {
   byKey: Map<string, number>;
   /** F-639: a void of this check has returned stock (a `:void` key). */
   voidBooked: boolean;
+  /**
+   * F-1197: items a correction took bottles back from (a `:bottles:` key
+   * that returned stock). Their consumption rows were marked reversed and
+   * one row of what the check still holds was written, so a line's own key
+   * no longer stands for its sale and a replay must not write it.
+   */
+  cutBack: Set<string>;
 }
 
 /** Every stock key of a check begins with this (B15). */
@@ -1840,7 +1847,7 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
       is_wine: boolean;
       inventory_id: string | null;
       sale_unit: string | null;
@@ -2167,6 +2174,52 @@ export class PosHubService {
       }
       return consumption;
     };
+    // F-1197: a void or a correction that takes bottles back marks the
+    // item's consumption rows on this check reversed. A negative row is not
+    // written: ADR 0297 gives a negative bottle line no bottle figure, and
+    // every reader refuses it. Readers leave a marked row out. Idempotent:
+    // only unmarked rows are touched, never the row under `key` itself.
+    const reverseConsumption = async (
+      inventoryId: string,
+      name: string,
+      key: string,
+      bottlesOnly: boolean,
+    ): Promise<boolean> => {
+      const pattern = `${checkLedgerPrefix(
+        source,
+        check.externalCheckId,
+      ).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      let message: string | null;
+      try {
+        let q = db
+          .from("wine_consumption_log")
+          .update({ reversed_at: when.at, reversed_by_key: key })
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", inventoryId)
+          .eq("source", "pos")
+          .is("reversed_at", null)
+          .neq("notes", key);
+        if (bottlesOnly) q = q.eq("consumption_type", "bottle");
+        const { error } = await q.like("notes", pattern);
+        message = error ? (error.message ?? "no message") : null;
+      } catch (err: any) {
+        message = err?.message ?? String(err);
+      }
+      if (message === null) return true;
+      this.logger.error(
+        `wine_consumption_log reversal FAILED for ${name} ` +
+          `(r=${restaurantId}, key=${key}): ${message} — the taken-back sale ` +
+          `still counts as sold.`,
+      );
+      tally.consumptionNotWritten++;
+      report.noteFailure(
+        "consumption",
+        name,
+        "the stock moved; see the gateway log for the database error",
+        check.externalCheckId,
+      );
+      return false;
+    };
 
     const ledger =
       planned.length > 0
@@ -2183,8 +2236,16 @@ export class PosHubService {
     // and writing it again under its own would count the sale twice.
     // A voided check never writes demand (main never did), even when its
     // sale's row once failed: the sale it would record did not stand.
+    // F-1197: nor once a correction took bottles of the item back: its rows
+    // were marked reversed and one row of what stands was written, which a
+    // line's own row would count a second time.
     const replayConsumption = async (l: PlannedStockLine, amount: number) => {
-      if (!isVoid && ledger?.ok && ledger.byKey.get(l.idem) === amount) {
+      if (
+        !isVoid &&
+        ledger?.ok &&
+        !ledger.cutBack.has(l.inventoryId) &&
+        ledger.byKey.get(l.idem) === amount
+      ) {
         await consume(l, l.consumed, l.consumedQty, l.idem);
       }
       tally.alreadyBooked++;
@@ -2313,6 +2374,21 @@ export class PosHubService {
                 bottleDiff,
                 key,
               );
+            } else if (
+              bottleDiff < 0 &&
+              !isVoid &&
+              (await reverseConsumption(inventoryId, name, key, true)) &&
+              wantBottles > 0 &&
+              bottleLines[0]
+            ) {
+              // F-1197: what the check still holds, as one row under the
+              // correction's key, in place of the rows just marked.
+              await consume(
+                bottleLines[0],
+                { mode: "whole_bottle" },
+                wantBottles,
+                key,
+              );
             }
           }
         }
@@ -2356,6 +2432,14 @@ export class PosHubService {
               );
             }
           }
+          // F-1197: a voided check holds no sale, so none of the item's
+          // consumption rows on it count, bottle or glass.
+          await reverseConsumption(
+            inventoryId,
+            name,
+            `${prefix}${inventoryId}:void:${rows}`,
+            false,
+          );
           continue;
         }
         const hadMl = ledger.ml.get(inventoryId) ?? 0;
@@ -2464,6 +2548,7 @@ export class PosHubService {
         voidBooked: (tx.data as any[]).some((r: any) =>
           /:void(:\d+)?$/.test(String(r.idempotency_key)),
         ),
+        cutBack: new Set(),
       };
       const add = (m: Map<string, number>, id: string, n: number) =>
         m.set(id, (m.get(id) ?? 0) + n);
@@ -2479,6 +2564,9 @@ export class PosHubService {
         }
         add(ledger.bottles, id, -(Number(r.quantity_change) || 0));
         add(ledger.byKey, key, -(Number(r.quantity_change) || 0));
+        if (/:bottles:\d+$/.test(key) && Number(r.quantity_change) > 0) {
+          ledger.cutBack.add(id);
+        }
       }
       for (const r of pours.data as any[]) {
         const id = String(r.inventory_id);
@@ -2525,7 +2613,7 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
     },
     opts: {
       reason: "unmapped" | "no_sale_volume";
@@ -2591,7 +2679,7 @@ export class PosHubService {
     item: {
       name: string;
       qty: number;
-      price: number;
+      price: number | null;
       inventory_id: string | null;
     },
     resolved: ResolvedSaleVolume,
@@ -2617,7 +2705,17 @@ export class PosHubService {
           ? resolved.ml * qty
           : (inv?.bottleMl ?? RPC_DEFAULT_BOTTLE_ML) * qty;
       const unit = resolved.mode === "volume" ? "glass" : "bottle";
-      const unitPrice = Number(item.price) || inv?.menuPrice || null;
+      // F-1198: a till price of 0 is a comped line and stays 0. Only a line
+      // the till sent no price for falls back to the menu price; `||` used to
+      // book a comp at the full menu price.
+      const tillPrice =
+        item.price === null || item.price === undefined
+          ? null
+          : Number(item.price);
+      const unitPrice =
+        tillPrice !== null && Number.isFinite(tillPrice)
+          ? tillPrice
+          : (inv?.menuPrice ?? null);
 
       // Idempotent from 2026-08-24, matching the stock write it follows.
       //

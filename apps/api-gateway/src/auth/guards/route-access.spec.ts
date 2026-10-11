@@ -41,6 +41,8 @@ import { DeliveriesController } from "../../procurement/deliveries.controller";
  * for staff"; ADR 0145): `GET /analytics/table-performance/:restaurantId` and
  * `GET /analytics/waiters/:restaurantId` carry each table's and each server's
  * sales and tip %, so they read owner-or-manager here (sim F-203).
+ * `GET /analytics/pos-revenue/:restaurantId`, the house's takings by day and
+ * each wine's sales, followed them on the same rule (sim F-1200).
  *
  * One row changed as decided by wave 13's F-490 (2026-10-09):
  * `POST /ask-ai/actions/:id/discard` took `@Roles("owner", "manager")`, the

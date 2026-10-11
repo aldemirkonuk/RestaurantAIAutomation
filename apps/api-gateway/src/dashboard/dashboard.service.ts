@@ -1828,6 +1828,8 @@ export class DashboardService {
               .from("wine_consumption_log")
               .select("id, volume_ml, quantity, created_at", { count: "exact" })
               .eq("restaurant_id", restaurantId)
+              // F-1197: a voided or corrected-down sale is marked reversed.
+              .is("reversed_at", null)
               .gte("created_at", sinceStr),
           ),
           // An order naming no currency is in the house's money (F-1088, as

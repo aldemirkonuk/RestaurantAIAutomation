@@ -19,7 +19,16 @@ function makeClient(rowsByTable: Rows) {
     from: jest.fn((table: string) => {
       const filters: Array<[string, any]> = [];
       const builder: any = {};
-      for (const m of ["select", "gte", "in", "order", "limit", "not", "or"])
+      for (const m of [
+        "select",
+        "gte",
+        "in",
+        "order",
+        "limit",
+        "not",
+        "or",
+        "is",
+      ])
         builder[m] = jest.fn(() => builder);
       builder.eq = jest.fn((col: string, val: any) => {
         filters.push([col, val]);

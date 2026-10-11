@@ -89,6 +89,10 @@ function matches(row: Row, f: Filter): boolean {
       return v != null && compare(v, f.val) <= 0;
     case "lt":
       return v != null && compare(v, f.val) < 0;
+    case "is":
+      // PostgREST's `is.null`: a missing column reads as null, as a row
+      // written before the column existed does.
+      return f.val === null ? v == null : v === f.val;
     default:
       throw new Error(`the double does not know .${f.op}()`);
   }
@@ -113,7 +117,7 @@ function cappedDb(
         req.count = opts?.count;
         return b;
       };
-      for (const op of ["eq", "neq", "gte", "lte", "lt", "in"]) {
+      for (const op of ["eq", "neq", "gte", "lte", "lt", "in", "is"]) {
         b[op] = (col: string, val: unknown) => {
           filters.push({ op, col, val });
           return b;
@@ -1127,5 +1131,123 @@ describe("DashboardService — the sales chart counts every glass", () => {
       .getSalesChart("r1", "month")
       .catch((e) => e);
     expect(err).toBeInstanceOf(WholeReadError);
+  });
+});
+
+// ===========================================================================
+// F-1197: a sale the till voided or corrected down is marked reversed on its
+// consumption row (never written negative, ADR 0297), and every reader leaves
+// it out. Each case counted the marked lines as sold before.
+// ===========================================================================
+
+describe("F-1197 — a reversed consumption line is not consumption", () => {
+  // 30 bottle lines; every third was taken back by a void.
+  const marked = (i: number) =>
+    i % 3 === 0
+      ? { reversed_at: at(0), reversed_by_key: `pos:t:C${i}:inv:void:1` }
+      : { reversed_at: null, reversed_by_key: null };
+  const lines = spread(30, 20, 1, (i, daysAgo) => ({
+    restaurant_id: "r1",
+    inventory_id: "inv-0",
+    wine_name: "Wine 0",
+    consumption_type: "bottle",
+    quantity: 1,
+    volume_ml: 750,
+    total_revenue: 40,
+    created_at: at(daysAgo),
+    restaurant_inventory: {
+      master_wine_id: "M1",
+      wine_name: "Wine 0",
+      last_purchase_price: 15,
+    },
+    ...marked(i),
+  }));
+  const live = lines.filter((l) => l.reversed_at === null).length;
+
+  it("counts 20 of 30 lines live", () => {
+    expect(live).toBe(20);
+  });
+
+  it("the Bottles sold goal leaves a voided sale out", async () => {
+    const { db } = cappedDb({
+      wine_consumption_log: lines,
+      restaurants: [{ id: "r1", timezone: "UTC", country: null }],
+    });
+    const out = await (goalsOver(db) as any).computeMetricWithSeries(
+      "r1",
+      "bottles_sold",
+      at(60).slice(0, 10),
+      undefined,
+      "UTC",
+    );
+    expect(out.current).toBe(live);
+  });
+
+  it("the dashboard chart leaves a voided sale's glasses out", async () => {
+    const { db } = cappedDb({ wine_consumption_log: lines });
+    const points = await new DashboardService(db).getSalesChart("r1", "month");
+    expect(sum(points.map((p) => p.glasses))).toBe(live);
+  });
+
+  it("the reports' weekday shape leaves a voided sale out", async () => {
+    const { db } = cappedDb({
+      restaurants: [{ id: "r1", timezone: "UTC" }],
+      restaurant_inventory: [
+        {
+          id: "inv-0",
+          restaurant_id: "r1",
+          is_active: true,
+          wine_name: "Wine 0",
+          stock_live: 10,
+          menu_price_current: 50,
+          last_purchase_price: 20,
+          master_wine_id: "M1",
+          master_wine_library: { primary_type: "red" },
+        },
+      ],
+      wine_consumption_log: lines,
+    });
+    const out: any = await new AdvancedAnalyticsService(
+      db,
+      {} as any,
+      {} as any,
+      {} as any,
+    ).getSeasonality("r1", 90);
+    const units = sum(out.weekdayProfile.map((d: any) => d.mean * d.n));
+    expect(Math.round(units)).toBe(live);
+  });
+
+  it("analytics demand (loadConsumption) leaves a voided sale out", async () => {
+    const { db } = cappedDb({ wine_consumption_log: lines });
+    const out = await (new AnalyticsService(db) as any).loadConsumption(
+      "r1",
+      90,
+    );
+    expect(sum(out.map((c: any) => c.qty))).toBe(live);
+  });
+
+  it("the till list (getPosConsumptionBreakdown) leaves a voided sale out", async () => {
+    const { db } = cappedDb({ wine_consumption_log: lines });
+    const out = await new AnalyticsService(db).getPosConsumptionBreakdown(
+      "r1",
+      at(30).slice(0, 10),
+      at(0).slice(0, 10),
+      "UTC",
+    );
+    expect(sum(out.map((r) => r.bottlesSold))).toBe(live);
+    expect(sum(out.map((r) => r.bottleRevenue ?? 0))).toBe(live * 40);
+  });
+
+  it("the insight bundle leaves a voided sale out", async () => {
+    const { db } = cappedDb({ pos_checks: [], wine_consumption_log: lines });
+    const svc = new InsightGeneratorService(
+      db,
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
+      {} as any,
+    );
+    const bundle = await (svc as any).loadBundle("r1");
+    expect(bundle.consumption).toHaveLength(live);
   });
 });
