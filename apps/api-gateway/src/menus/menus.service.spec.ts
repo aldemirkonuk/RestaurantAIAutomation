@@ -1652,6 +1652,9 @@ describe("MenusService — every menu read is kept as its own version", () => {
       )!;
       expect(octopus).toMatchObject({ wine_library_id: null });
       expect(octopus.inventory_item_id ?? null).toBeNull();
+      // F-1297: the kitchen line is set aside, not counted as an unmatched wine.
+      expect(r.priceSync).toMatchObject({ kitchen: 1 });
+      expect(r.priceSync).not.toHaveProperty("not_linked");
       expect(tables.master_wine_library_submissions).toHaveLength(1);
       expect(tables.restaurant_inventory).toHaveLength(1);
       const price = calls.filter(([fn]) => fn === "set_house_menu_price");
@@ -1659,6 +1662,84 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(price[0][1]).toMatchObject({
         p_inventory_id: "inv-1",
         p_bottle_price: 64,
+      });
+    });
+
+    // F-1297: the plan shown before the choice says the same.
+    it("plans a kitchen line as set aside, not as a wine with no match", async () => {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, {
+        wineSubmissions,
+        rpc: makeCurrentRpc(tables),
+        scanParser: {
+          parse: async () => [
+            { name: "Grilled octopus", category: "Starters", bottle_price: 24 },
+            { name: "Opus One", bottle_price: 64 },
+          ],
+        },
+      });
+      const read = await service.importMenu(
+        {
+          method: "scan",
+          data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+          restaurantId: "rest-1",
+        } as any,
+        "user-1",
+      );
+      const plan = await service.planFor("rest-1", read.menuId);
+      const octopus = plan.lines.find((l) => l.name === "Grilled octopus")!;
+      expect(octopus.bottle.result).toBe("kitchen");
+      expect(octopus.glass.result).toBe("kitchen");
+      expect(plan.counts).toMatchObject({ kitchen: 2, not_linked: 0 });
+    });
+
+    // F-1293: a Turkish section reaches the library as the kind it names, so
+    // the classifier files rakı as a spirit and bira as a beer, never as wine.
+    it("hands the resolver the kind a Turkish drink section names", async () => {
+      const resolved: Array<Array<{ name: string; menuCategory?: string }>> =
+        [];
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, {
+        wineSubmissions: {
+          ...wineSubmissions,
+          resolveLibraryWinesBatch: async (items: any[]) => {
+            resolved.push(items);
+            return wineSubmissions.resolveLibraryWinesBatch(items);
+          },
+        },
+        scanParser: {
+          parse: async () => [
+            { name: "Yeni Rakı", category: "Rakı", bottle_price: 1400 },
+            { name: "Efes", category: "Bira", bottle_price: 150 },
+            { name: "Yakut", category: "Kırmızı şarap", bottle_price: 900 },
+            { name: "Moscato", category: "Tatlı şarap", bottle_price: 800 },
+            { name: "Mojito", category: "Kokteyller", bottle_price: 400 },
+            { name: "Ayran", category: "Alkolsüz", bottle_price: 60 },
+            { name: "Opus One", category: "red", bottle_price: 64 },
+            { name: "House pour", category: "Şarap", bottle_price: 300 },
+          ],
+        },
+      });
+      await service.importMenu(
+        {
+          method: "scan",
+          data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+          restaurantId: "rest-1",
+        } as any,
+        "user-1",
+      );
+      expect(
+        Object.fromEntries(resolved[0].map((i) => [i.name, i.menuCategory])),
+      ).toEqual({
+        "Yeni Rakı": "spirit",
+        Efes: "beer",
+        Yakut: "red",
+        Moscato: "dessert",
+        Mojito: "cocktail",
+        Ayran: "non-alcoholic",
+        "Opus One": "red",
+        // 'şarap' alone names no one kind; it goes as written.
+        "House pour": "Şarap",
       });
     });
 

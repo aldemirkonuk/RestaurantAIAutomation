@@ -24,7 +24,12 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
-import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
+import {
+  isKitchenLine,
+  lineForViewer,
+  menuCategoryOf,
+  type LineView,
+} from "./menu-line-view";
 import {
   setHouseMenuPrice,
   type HeldKind,
@@ -140,6 +145,7 @@ type PriceFlag = "blank_kept_last_known" | "blank_no_house_price";
  *   blank_kept          the line shows no price; the house keeps its own (flagged)
  *   blank_never_priced  the line shows no price and the house has none either
  *   not_linked          the line matched no wine, so there is no house price
+ *   kitchen             a kitchen (food) line, set aside: no stock row, no price (F-1297)
  *   new_wine            the house has no row for this wine yet; it is added with the menu's price
  */
 export type PlanResult =
@@ -149,6 +155,7 @@ export type PlanResult =
   | "blank_kept"
   | "blank_never_priced"
   | "not_linked"
+  | "kitchen"
   | "new_wine";
 
 export interface PlanPerson {
@@ -260,6 +267,7 @@ function emptyPlanCounts(): Record<PlanResult, number> {
     blank_kept: 0,
     blank_never_priced: 0,
     not_linked: 0,
+    kitchen: 0,
     new_wine: 0,
   };
 }
@@ -1823,7 +1831,8 @@ export class MenusService {
       const kindPlan = (kind: "bottle" | "glass", menuPrice: number | null, housePrice: number | null): PlanKind => {
         const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
         let result: PlanResult;
-        if (!wineId) result = "not_linked";
+        if (line.kitchen_line === true) result = "kitchen";
+        else if (!wineId) result = "not_linked";
         else if (!row) result = menuPrice === null ? "blank_never_priced" : "new_wine";
         else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
         else if (lock) result = "held_by_lock";
@@ -2093,7 +2102,11 @@ export class MenusService {
     let flagged = 0;
     for (const line of lines) {
       const entry = priceSync.get(line.id);
-      const outcome = entry?.outcome ?? "not_linked";
+      // A kitchen line is set aside, not an unmatched wine (F-1297).
+      const outcome =
+        line.kitchen_line === true
+          ? "kitchen"
+          : (entry?.outcome ?? "not_linked");
       counts[outcome] = (counts[outcome] ?? 0) + 1;
       if (entry?.flag) flagged += 1;
       for (const h of entry?.held ?? []) held.push({ menuItemId: line.id, name: line.name, ...h });
@@ -2229,7 +2242,9 @@ export class MenusService {
           // which is what makes a beer line on an uploaded menu come back as
           // beverage_kind='beer' instead of 'unknown' and light the Beer
           // register (cellar/cellar-registers.ts, registerForKind).
-          menuCategory: item.category,
+          // F-1293: a Turkish section ("Rakı", "Kırmızı") goes as the kind
+          // it names, since the classifier reads English words only.
+          menuCategory: menuCategoryOf(item.category),
         })),
         // A menu prints "House White" and "Red — by the glass" as often as it
         // prints a producer. Those lines are this venue's own wines and never

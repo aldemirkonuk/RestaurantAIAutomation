@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 import { setHouseCurrency } from '../lib/houseCurrency'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, getOnboardingProgress, auth } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, getMenuPlan, makeMenuCurrent, getOnboardingProgress, auth } = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
@@ -14,6 +15,8 @@ const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, revie
   addCustomProvider: vi.fn(),
   reviewMenuItem: vi.fn(),
   listMenuVersions: vi.fn(),
+  getMenuPlan: vi.fn(),
+  makeMenuCurrent: vi.fn(),
   getOnboardingProgress: vi.fn(),
   auth: {
     activeRestaurantId: undefined as string | undefined,
@@ -22,6 +25,7 @@ const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, revie
       emailVerified: boolean
       userId?: string
       restaurantId?: string
+      role?: string
     },
   },
 }))
@@ -100,7 +104,7 @@ vi.mock('../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../services/api/menus')>(
     '../services/api/menus',
   )
-  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions, getOnboardingProgress }
+  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions, getMenuPlan, makeMenuCurrent, getOnboardingProgress }
 })
 vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
@@ -1015,5 +1019,86 @@ describe('a new owner is told what each step does, and a reload resumes it', () 
     auth.user = { name: 'Deniz Ak', emailVerified: true, userId: 'user-2', restaurantId: '' }
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
     expect(screen.getByRole('heading', { name: /Welcome, Deniz/ })).toBeInTheDocument()
+  })
+})
+
+// F-1295: the nudge 'Make your menu current' lands here, so a menu read but
+// not current is said so, and an owner or a manager can choose it here.
+describe('the first proof says whether its menu is current (F-1295)', () => {
+  const mountWithQuery = () =>
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter><HouseMenu /></MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+  it('a menu read but not current is "read", and an owner makes it current from here', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, role: 'owner' }
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [{ menuId: 'menu' }] })
+    getMenuPlan.mockResolvedValue({
+      menuId: 'menu',
+      current: false,
+      readAt: null,
+      generatedAt: '2026-10-11T12:00:00Z',
+      fingerprint: 'fp-menu',
+      lines: [
+        {
+          menuItemId: 'pencil',
+          name: 'Smoky No. 4',
+          producer: null,
+          vintage: null,
+          wineLibraryId: null,
+          inventoryId: null,
+          house: null,
+          bottle: { kind: 'bottle', menuPrice: 18, housePrice: null, result: 'not_linked', lastSet: null, setAfterRead: false, lock: null },
+          glass: { kind: 'glass', menuPrice: null, housePrice: null, result: 'not_linked', lastSet: null, setAfterRead: false, lock: null },
+          flag: null,
+          returned: false,
+          vintageMismatch: false,
+        },
+      ],
+      counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 2, new_wine: 0 },
+      dormantLocks: [],
+      retiring: [],
+      namesReadable: true,
+      namesReason: null,
+    })
+    makeMenuCurrent.mockResolvedValue({ outcome: 'made_current', menuId: 'menu', previousMenuIds: [], lines: 1, priceSync: { not_linked: 1 }, flagged: 0, failed: [] })
+    mountWithQuery()
+    expect(await screen.findByTestId('proof-not-current')).toHaveTextContent('It is read but not yet your current menu, so no price has changed.')
+    expect(screen.getByRole('heading', { name: 'Your menu, read by Mudavym.' })).toBeInTheDocument()
+    expect(screen.queryByText('Your menu, set by Mudavym.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Make it current' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }))
+    await waitFor(() => expect(makeMenuCurrent).toHaveBeenCalledWith('menu', 'fp-menu'))
+    expect(await screen.findByRole('status')).toHaveTextContent('This is now the current menu: 1 line')
+    expect(screen.getByRole('heading', { name: 'Your menu, set by Mudavym.' })).toBeInTheDocument()
+    expect(screen.queryByTestId('proof-not-current')).not.toBeInTheDocument()
+  })
+
+  it('staff are told who chooses, and offered no choice', async () => {
+    auth.user = { name: 'Deniz Ak', emailVerified: true, role: 'staff' }
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    mountWithQuery()
+    expect(await screen.findByTestId('proof-not-current')).toHaveTextContent('An owner or a manager chooses whether it becomes the current menu.')
+    expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument()
+  })
+
+  it('the current menu is "set", with nothing to choose', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, role: 'owner' }
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    listMenuVersions.mockResolvedValue({ current: { menuId: 'menu' }, lastUsed: null, versions: [{ menuId: 'menu' }] })
+    mountWithQuery()
+    expect(await screen.findByRole('heading', { name: 'Your menu, set by Mudavym.' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument()
+  })
+
+  it('with no proof in this tab, a kept menu that is not current is said so', async () => {
+    listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [{ menuId: 'm1' }] })
+    mountWithQuery()
+    expect(await screen.findByRole('heading', { name: 'Your menu is read, but not yet current.' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open your menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
   })
 })

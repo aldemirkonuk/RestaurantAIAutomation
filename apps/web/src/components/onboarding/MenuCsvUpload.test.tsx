@@ -13,6 +13,7 @@ import { MenuCsvUpload } from './MenuCsvUpload'
 import HouseMenu from '../../pages/HouseMenu'
 import { importMenu } from '../../services/api/menus'
 import { FIRST_PROOF_KEY } from '../../lib/firstProof'
+import { setHouseLocale } from '../../lib/houseCurrency'
 
 vi.mock('../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../services/api/menus')>('../../services/api/menus')
@@ -89,6 +90,21 @@ describe('MenuCsvUpload: one file (F-684)', () => {
     expect(await screen.findByRole('columnheader', { name: 'Şişe' })).toBeInTheDocument()
     // The count on the button stays the preview's (MenuImportReads.test.tsx pins it).
     expect(screen.getByRole('button', { name: 'Import 1 line' })).toBeInTheDocument()
+  })
+
+  // F-1294: Turkish Excel's default CSV is Windows-1254; read as UTF-8 its
+  // headers went unread and its names were stored garbled.
+  it('reads a Turkish Excel CSV in a Turkish house, and refuses a file it cannot read', async () => {
+    setHouseLocale('tr-TR')
+    const { container } = render(<MenuCsvUpload onSuccess={vi.fn()} />)
+    // "Ad;Şişe\nYakut;850\n" as Windows-1254 bytes.
+    const bytes = new Uint8Array([0x41, 0x64, 0x3b, 0xde, 0x69, 0xfe, 0x65, 0x0a, 0x59, 0x61, 0x6b, 0x75, 0x74, 0x3b, 0x38, 0x35, 0x30, 0x0a])
+    pick(container, [new File([bytes], 'menu.csv', { type: 'text/csv' })])
+    expect(await screen.findByRole('columnheader', { name: 'Şişe' })).toBeInTheDocument()
+    pick(container, [new File(['Ad;\uFFFD\n'], 'bad.csv', { type: 'text/csv' })])
+    expect(await screen.findByText(/CSV UTF-8/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Import/ })).not.toBeInTheDocument()
+    setHouseLocale('en-US')
   })
 })
 

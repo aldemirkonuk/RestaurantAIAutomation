@@ -21,6 +21,8 @@ import {
 } from '../lib/firstProof'
 import { formatHouseMoney } from '../lib/houseCurrency'
 import { useHouseCurrency } from '../hooks/useHouseCurrency'
+import { MenuPlan } from './menu/next/MenuPlan'
+import { makeCurrentSentence } from './menu/next/MenuVersions'
 
 // A legacy 'wine' line sorts first; every other section is the gateway's own.
 const sectionOrder: string[] = ['wine', ...MENU_KINDS]
@@ -89,7 +91,10 @@ function partReadSaid(reason: string): string {
 
 export default function HouseMenu() {
   const navigate = useNavigate()
-  const { activeRestaurantId } = useAuth()
+  const { activeRestaurantId, activeRole, user } = useAuth()
+  // Choosing the current menu is an owner's or a manager's (ADR 0193).
+  const role = (activeRole ?? user?.role ?? null) as string | null
+  const canManage = role === 'owner' || role === 'manager'
   // Read so the prices re-render in the house's money when the answer lands.
   useHouseCurrency()
   // Only the proof read for THIS house (F-273): after a house switch in the
@@ -97,15 +102,24 @@ export default function HouseMenu() {
   const proof = useMemo(() => readProof(activeRestaurantId), [activeRestaurantId])
   const [items, setItems] = useState(proof?.items ?? [])
   useEffect(() => setItems(proof?.items ?? []), [proof])
-  // With no proof in this tab, ask the house's books whether a menu is
-  // already held, so a new tab never invites reading the same menu twice.
+  // Ask the house's books whether a menu is already held, so a new tab never
+  // invites reading the same menu twice, and which menu is current: a menu
+  // read is kept, not current, until an owner or a manager chooses it (F-1295).
   const [held, setHeld] = useState<'checking' | 'held' | 'none' | 'unknown'>('checking')
+  // undefined: not known (still asking, or the books could not be read).
+  const [currentId, setCurrentId] = useState<string | null | undefined>(undefined)
+  const [planning, setPlanning] = useState(false)
+  const [chosen, setChosen] = useState<string | null>(null)
   useEffect(() => {
-    if (proof) return
     let live = true
     setHeld('checking')
+    setCurrentId(undefined)
     listMenuVersions()
-      .then((v) => live && setHeld(v.current || v.versions.length > 0 ? 'held' : 'none'))
+      .then((v) => {
+        if (!live) return
+        setHeld(v.current || v.versions.length > 0 ? 'held' : 'none')
+        setCurrentId(v.current?.menuId ?? null)
+      })
       .catch(() => live && setHeld('unknown'))
     return () => {
       live = false
@@ -149,6 +163,16 @@ export default function HouseMenu() {
               <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
               <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
                 Read a menu
+              </button>
+            </>
+          ) : held === 'held' && currentId === null ? (
+            <>
+              <h1 className="mt-8 font-serif text-4xl">Your menu is read, but not yet current.</h1>
+              <p className="mt-4 text-[#6d685f]">
+                No price has changed. On your menu page, under Menus kept, an owner or a manager can make it the current menu.
+              </p>
+              <button onClick={() => navigate('/menu')} className="mt-6 text-[#1a5e6b] underline">
+                Open your menu
               </button>
             </>
           ) : held === 'held' ? (
@@ -198,6 +222,10 @@ export default function HouseMenu() {
   }
 
   const pencilled = drinkItems.filter((item) => lineNeedsPencil(item)).length
+  // Only a menu the books name as current is "set"; a read menu is kept until
+  // it is chosen (F-1295).
+  const isCurrent = currentId === proof.menuId
+  const notCurrent = currentId !== undefined && !isCurrent
   // The kinds of drink with no line here, and the sections a new line for
   // them can go in (F-024).
   const absentKinds = absentFamilies(drinkItems)
@@ -255,10 +283,48 @@ export default function HouseMenu() {
       <main className={`mx-auto px-5 py-12 sm:py-16 ${showOriginal && sourceImage ? 'grid max-w-6xl gap-10 lg:grid-cols-2' : 'max-w-4xl'}`}>
         <div>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">House menu · first proof</p>
-        <h1 className="mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
+        <h1 className="mt-3 font-serif text-5xl">
+          {isCurrent ? 'Your menu, set by Mudavym.' : 'Your menu, read by Mudavym.'}
+        </h1>
         <p className="mt-4 max-w-2xl text-[#6d685f]">
           It&apos;s a first proof — we&apos;ve pencilled the lines worth a second look.
         </p>
+        {notCurrent && chosen === null ? (
+          <div data-testid="proof-not-current" className="mt-4 max-w-2xl text-[#6d685f]">
+            <p>It is read but not yet your current menu, so no price has changed.</p>
+            {canManage ? (
+              planning ? (
+                <div className="mt-4">
+                  <MenuPlan
+                    menuId={proof.menuId}
+                    canManage={canManage}
+                    onCancel={() => setPlanning(false)}
+                    onDone={(r) => {
+                      setPlanning(false)
+                      setChosen(makeCurrentSentence(r))
+                      setCurrentId(proof.menuId)
+                    }}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPlanning(true)}
+                  className="mt-3 bg-[#1a5e6b] px-4 py-2 text-white"
+                >
+                  Make it current
+                </button>
+              )
+            ) : (
+              <p className="mt-2">An owner or a manager chooses whether it becomes the current menu.</p>
+            )}
+          </div>
+        ) : null}
+        {chosen ? (
+          <p role="status" className="mt-4 max-w-2xl text-[#6d685f]">
+            {chosen}
+          </p>
+        ) : null}
         {sourceImage ? (
           <button
             type="button"

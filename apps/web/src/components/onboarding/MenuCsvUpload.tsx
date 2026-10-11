@@ -19,6 +19,7 @@ import {
 } from '../../lib/uploadAccept'
 import { skippedMenuColumns } from '../../lib/menuColumns'
 import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../../lib/menuReadWithoutAnswer'
+import { decodeMenuCsv } from '../../lib/menuCsvText'
 
 interface MenuCsvUploadProps {
   onSuccess: MenuImportSuccess
@@ -148,12 +149,22 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     setFileBase64(null)
     const reader = new FileReader()
     reader.onload = () => {
-      const text = reader.result as string
+      // Not read as UTF-8 blindly: a Turkish Excel CSV is Windows-1254 (F-1294).
+      let text: string
+      try {
+        text = decodeMenuCsv(reader.result as ArrayBuffer)
+      } catch (err) {
+        setCsvContent(null)
+        setPreview([])
+        setHeaders([])
+        setError((err as Error).message)
+        return
+      }
       setCsvContent(text)
       parseCsvPreview(text)
     }
     reader.onerror = () => setError('Failed to read file')
-    reader.readAsText(file)
+    reader.readAsArrayBuffer(file)
   }
 
   /** Import one already-read file. */
@@ -184,9 +195,14 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             })
           reader.readAsArrayBuffer(file)
         } else {
-          reader.onload = () =>
-            resolve({ scan: false, base64: null, csv: reader.result as string })
-          reader.readAsText(file)
+          reader.onload = () => {
+            try {
+              resolve({ scan: false, base64: null, csv: decodeMenuCsv(reader.result as ArrayBuffer) })
+            } catch (err) {
+              reject(err)
+            }
+          }
+          reader.readAsArrayBuffer(file)
         }
       },
     )

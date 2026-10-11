@@ -421,6 +421,7 @@ export type PlanResult =
   | 'blank_kept'
   | 'blank_never_priced'
   | 'not_linked'
+  | 'kitchen'
   | 'new_wine'
 
 export interface PlanPerson {
@@ -468,7 +469,8 @@ export interface MenuPlan {
   /** make-current requires it, and refuses (409) when the plan changed since. */
   fingerprint: string
   lines: PlanLine[]
-  counts: Record<PlanResult, number>
+  // 'kitchen' (F-1297) is absent from a reply sent before kitchen lines had their own result.
+  counts: Record<Exclude<PlanResult, 'kitchen'>, number> & { kitchen?: number }
   dormantLocks: Array<{
     lockId: string
     inventoryId: string
