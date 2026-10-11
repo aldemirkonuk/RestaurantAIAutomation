@@ -795,7 +795,9 @@ export class ScheduleService {
     }
 
     // Notify the whole restaurant + deep-link back into /team. The sentence
-    // names the week in the house's hand; the link keeps the ISO date.
+    // names the week in the house's hand; the link keeps the ISO date. The
+    // page opens a week from `week` alone; a schedule is one week, so no id
+    // rides along (F-1151: `schedule=` had no reader).
     // F-1148: the funnel answers 0 when its insert failed (it logs and
     // swallows the error), so the count is read and handed back: a week that
     // went live while nobody was told says so, instead of "published".
@@ -808,7 +810,7 @@ export class ScheduleService {
         title: "Schedule published",
         message: `The week of ${weekWords(schedule.week_start, locale)} is live. Open it to see your shifts.`,
         priority: "high",
-        actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
+        actionUrl: `/team?week=${schedule.week_start}`,
         actionLabel: "View schedule",
         groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
         metadata: { scheduleId, weekStart: schedule.week_start },

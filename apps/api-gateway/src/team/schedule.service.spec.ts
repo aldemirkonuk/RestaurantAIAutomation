@@ -709,6 +709,22 @@ describe("ScheduleService — T8: no emoji reaches the inbox", () => {
     expect(payload.actionUrl).toContain(`week=${WEEK}`);
   });
 
+  it("links to the week by the one word /team reads (F-1151)", async () => {
+    const db = seed();
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "draft",
+      published_at: null,
+    });
+
+    await service(db).publish(MANAGER, RID, "s1", {} as any);
+
+    const payload = lastNotifications.persistForRestaurant.mock.calls[0][1];
+    expect(payload.actionUrl).toBe(`/team?week=${WEEK}`);
+  });
+
   it("keeps the call-out's urgency in `priority`, not in a picture", async () => {
     const src = fs.readFileSync(
       path.join(__dirname, "schedule.service.ts"),

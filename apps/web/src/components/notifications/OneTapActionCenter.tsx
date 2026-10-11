@@ -192,12 +192,14 @@ export function openRouteForAction(action: ActionItem): string {
     case 'low_stock':
     case 'stock_receipt':
     case 'inequality':
-      return action.wine?.id ? `/inventory?highlight=${encodeURIComponent(action.wine.id)}` : '/inventory'
+      // Inventory finds a wine by name (`?wine=`); it reads no `highlight` (F-1151).
+      return action.wine?.name ? `/inventory?wine=${encodeURIComponent(action.wine.name)}` : '/inventory'
     case 'delivery_confirm':
     case 'price_change':
     case 'vintage_sub':
+      // Orders opens a row from `?order=`; `orderId` was never read (F-1151).
       return action.details?.orderId
-        ? `/orders?orderId=${encodeURIComponent(action.details.orderId)}`
+        ? `/orders?order=${encodeURIComponent(action.details.orderId)}`
         : '/orders'
     case 'gmail_send':
     case 'gmail_contextual':

@@ -396,6 +396,21 @@ describe('openRouteForAction', () => {
     expect(openRouteForAction(action({ type: 'gmail_contextual' }))).toBe('/communications')
   })
 
+  /**
+   * F-1151: these links carried `?highlight=` and `?orderId=`, words neither
+   * page reads, so the person landed on the whole list. Inventory finds a wine
+   * by `?wine=<name>`; Orders opens a row from `?order=<id>`.
+   */
+  it('opens the wine and the order by the words their pages read', () => {
+    const wine = { id: 'w-1', name: 'Chablis 1er Cru' } as never
+    expect(openRouteForAction(action({ type: 'low_stock', wine }))).toBe(
+      '/inventory?wine=Chablis%201er%20Cru',
+    )
+    expect(
+      openRouteForAction(action({ type: 'delivery_confirm', details: { orderId: 'o-7' } as never })),
+    ).toBe('/orders?order=o-7')
+  })
+
   it('keeps every route inside the app route table', () => {
     // Paths that exist as <Route path> entries in App.tsx.
     const known = ['/', '/inventory', '/orders', '/communications']

@@ -3,8 +3,10 @@
  * opens (F-217, F-1143). Twice a sim found links whose words no page read —
  * `/orders?highlight=`, `/orders?invoice_match=`, `&deal=1&urgent=1`,
  * `/reports?type=weekly` — so the person landed on the whole page with
- * nothing opened. This guard reads the producers' source (gateway and
- * orchestrator) and the pages' source, and fails on a word with no reader.
+ * nothing opened. This guard reads the producers' source (gateway,
+ * orchestrator, and the web app's own links — F-1151 found
+ * `/inventory?highlight=` and `/orders?orderId=` there) and the pages'
+ * source, and fails on a word with no reader.
  *
  * Static on purpose: it reads files, never runs a service.
  */
@@ -29,9 +31,7 @@ const READERS: Record<string, string[]> = {
  * Known words with no reader yet, each a filed gap. Listed so the guard can
  * run today; an entry that gains a reader fails below and must be struck.
  */
-const KNOWN_UNREAD = new Set([
-  'team?schedule', // schedule.service.ts — the page reads `week`, which the same link carries
-]);
+const KNOWN_UNREAD = new Set<string>([]);
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'tests', '__tests__', '__pycache__', '.venv', 'venv']);
 
@@ -47,6 +47,22 @@ function walk(dir: string, keep: (f: string) => boolean, out: string[] = []): st
 
 const PRODUCER = /(?:action_url|actionUrl|href)["']?\s*[:=]\s*f?[`"']\/([a-z-]+)\?([^"'`\s]*)/g;
 
+/**
+ * A web link is any template literal that starts with a guarded route and a
+ * query (`to={`/orders?order=${id}`}`, `return `/inventory?wine=…``,
+ * `navigate(`…`)`). Only routes in READERS are checked from the web side —
+ * the app links to many other pages this guard does not cover yet.
+ */
+const WEB_PRODUCER = /`\/([a-z-]+)\?([^`\s]*)/g;
+const isComment = (line: string) => /^\s*(?:\*|\/\/|\/\*)/.test(line);
+
+function keysOf(query: string): string[] {
+  return query
+    .split('&')
+    .map((part) => /^([A-Za-z_-]+)=/.exec(part)?.[1])
+    .filter((k): k is string => !!k);
+}
+
 function producedLinks(): { route: string; key: string; at: string }[] {
   const files = [
     ...walk(join(REPO, 'apps/api-gateway/src'), (f) => f.endsWith('.ts') && !f.endsWith('.spec.ts')),
@@ -56,9 +72,16 @@ function producedLinks(): { route: string; key: string; at: string }[] {
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
     for (const m of text.matchAll(PRODUCER)) {
-      for (const part of m[2].split('&')) {
-        const key = /^([a-z_-]+)=/.exec(part)?.[1];
-        if (key) links.push({ route: m[1], key, at: relative(REPO, file) });
+      for (const key of keysOf(m[2])) links.push({ route: m[1], key, at: relative(REPO, file) });
+    }
+  }
+  const webFiles = walk(WEB_SRC, (f) => /\.tsx?$/.test(f) && !/\.(?:test|spec|stories)\.tsx?$/.test(f));
+  for (const file of webFiles) {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      if (isComment(line)) continue;
+      for (const m of line.matchAll(WEB_PRODUCER)) {
+        if (!(m[1] in READERS)) continue;
+        for (const key of keysOf(m[2])) links.push({ route: m[1], key, at: relative(REPO, file) });
       }
     }
   }
@@ -85,7 +108,7 @@ describe('deep links a page opens are read by that page (F-217, F-1143)', () => 
 
   it('finds the producers it guards — an empty scan proves nothing', () => {
     const seen = new Set(links.map((l) => `${l.route}?${l.key}`));
-    for (const known of ['orders?order', 'orders?tab', 'reports?type', 'inventory?verify']) {
+    for (const known of ['orders?order', 'orders?tab', 'reports?type', 'inventory?verify', 'inventory?count', 'orders?inventoryId']) {
       expect(seen, known).toContain(known);
     }
   });
