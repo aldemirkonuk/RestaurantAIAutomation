@@ -34,16 +34,36 @@ interface FakeOpts {
   menuLines?: Row[];
   menuLinesError?: { message: string } | null;
   rpc?: (fn: string, args: Row) => { data: unknown; error: unknown };
+  /**
+   * PostgREST's max_rows (F-1369): when set, every answer stops at this many
+   * rows, a page honours its id cursor and limit, and an exact count is told.
+   */
+  serverCap?: number;
 }
 
 function fakeClient(o: FakeOpts) {
   const selects: Array<[string, string]> = [];
   const inserts: Array<[string, Row]> = [];
   const rpcs: Array<[string, Row]> = [];
+  /** Every .in() list, by table, with its length (F-1369). */
+  const inLists: Array<[string, number]> = [];
   const from = (table: string) => {
     const filters: Array<[string, unknown]> = [];
     const extra: Array<(r: Row) => boolean> = [];
     let insertRow: Row | null = null;
+    let after: string | null = null;
+    let limitN: number | null = null;
+    // Under a server cap, the answer is cut as PostgREST cuts it.
+    const capped = (r: { data: any; error: any }) => {
+      if (o.serverCap === undefined || !Array.isArray(r.data)) return r;
+      let d: Row[] = r.data
+        .slice()
+        .sort((a: Row, b: Row) => (String(a.id) < String(b.id) ? -1 : 1));
+      if (after !== null) d = d.filter((x) => String(x.id) > (after as string));
+      const count = d.length;
+      if (limitN !== null) d = d.slice(0, limitN);
+      return { ...r, data: d.slice(0, o.serverCap), count };
+    };
     const rows = (): { data: any; error: any } => {
       if (table === "house_price_locks") {
         if (o.locksError) return { data: null, error: o.locksError };
@@ -84,7 +104,11 @@ function fakeClient(o: FakeOpts) {
       if (table === "inventory_lot_rollup") {
         if (o.rollupError) return { data: null, error: o.rollupError };
         return {
-          data: (o.rollup ?? []).filter((r) => filters.every(([c, v]) => r[c] === v || c === "restaurant_id")),
+          data: (o.rollup ?? []).filter(
+            (r) =>
+              filters.every(([c, v]) => r[c] === v || c === "restaurant_id") &&
+              extra.every((f) => f(r)),
+          ),
           error: null,
         };
       }
@@ -104,6 +128,7 @@ function fakeClient(o: FakeOpts) {
         return api;
       },
       in(c: string, vs: unknown[]) {
+        inLists.push([table, vs.length]);
         extra.push((r) => vs.includes(r[c]));
         return api;
       },
@@ -116,13 +141,15 @@ function fakeClient(o: FakeOpts) {
         extra.push((r) => r[c] !== v);
         return api;
       },
-      gt() {
+      gt(_c: string, v: string) {
+        after = v;
         return api;
       },
       order() {
         return api;
       },
-      limit() {
+      limit(n: number) {
+        limitN = n;
         return api;
       },
       insert(row: Row) {
@@ -140,7 +167,7 @@ function fakeClient(o: FakeOpts) {
         return { data: Array.isArray(r.data) ? r.data[0] : r.data, error: r.error };
       },
       then(resolve: any) {
-        resolve(rows());
+        resolve(capped(rows()));
       },
     };
     return api;
@@ -149,7 +176,7 @@ function fakeClient(o: FakeOpts) {
     rpcs.push([fn, args]);
     return o.rpc ? o.rpc(fn, args) : { data: { outcome: "changed" }, error: null };
   };
-  return { client: { from, rpc } as any, selects, inserts, rpcs };
+  return { client: { from, rpc } as any, selects, inserts, rpcs, inLists };
 }
 
 function service(o: FakeOpts) {
@@ -906,5 +933,61 @@ describe("MarginAdviceService -- money in the house's own (F-1174)", () => {
       .catch((e) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect(err.message).toMatch(/locked at ₺1\.250,00/);
+  });
+});
+
+// F-1369: a house past PostgREST's 1,000 rows. The wines and their lot costs
+// were read unranged, so most wines got no advice and costed ones read "no
+// recorded cost"; the uncosted ids went into one .in() of any length.
+describe("MarginAdviceService -- a house with more than 1,000 wines (F-1369)", () => {
+  const id = (i: number) => `inv-${String(i).padStart(5, "0")}`;
+  const COSTED = 1200;
+  const SOLD_OUT = 300;
+  const inventory = Array.from({ length: COSTED + SOLD_OUT }, (_, i) => ({
+    ...WINE_A,
+    id: id(i),
+    wine_name: `Wine ${i}`,
+  }));
+  const rollup = inventory.slice(0, COSTED).map((w) => ({
+    ...ROLLUP[0],
+    inventory_id: w.id,
+  }));
+  // Each sold-out wine has four costed lots on file: 1,200 rows in all.
+  const lots = inventory.slice(COSTED).flatMap((w, i) =>
+    [0, 1, 2, 3].map((k) => ({
+      id: `lot-${String(i).padStart(5, "0")}-${k}`,
+      inventory_id: w.id,
+      restaurant_id: "rest-1",
+      stock_state: "live",
+      unit_cost: String(10 + k),
+      unit_cost_currency: null,
+      cost_provenance: "invoice",
+      received_at: `2026-0${k + 1}-01T00:00:00Z`,
+    })),
+  );
+
+  it("advises every wine, on its own cost, and no .in() list runs past 150 ids", async () => {
+    const { svc, inLists } = service({
+      house: HOUSE_SET,
+      inventory,
+      rollup,
+      lots,
+      serverCap: 1000,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.wines).toHaveLength(COSTED + SOLD_OUT);
+    const byId = new Map(out.wines.map((w) => [w.inventoryId, w]));
+    for (let i = 0; i < COSTED; i++) {
+      expect(byId.get(id(i))!.costBasis).toBe("invoice_lot_wac");
+    }
+    for (let i = COSTED; i < COSTED + SOLD_OUT; i++) {
+      const w = byId.get(id(i))!;
+      expect(w.costBasis).toBe("last_paid_lot");
+      // The most recent lot: April, 13.
+      expect(w.bottleCost).toBe(13);
+    }
+    expect(out.counts.no_cost).toBe(0);
+    expect(inLists.length).toBeGreaterThan(0);
+    for (const [, n] of inLists) expect(n).toBeLessThanOrEqual(150);
   });
 });

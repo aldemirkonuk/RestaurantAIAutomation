@@ -2,6 +2,7 @@ import { restoreArrivalEntry } from "../arrival/restore-entry";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readCurrentMenuLines } from "../menus/current-menu-lines";
+import { readWholeWindow } from "../common/read-whole-window";
 import {
   applyAnswers,
   inferRegisters,
@@ -383,19 +384,29 @@ export class CellarRegistersService {
     nameCounts: Map<RegisterId, number> | null;
     unmappedKinds: Record<string, number>;
   }> {
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("restaurant_inventory")
-      .select(
-        "wine_name, master_wine_library(beverage_kind, name, primary_type)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .is("deleted_at", null);
-
-    if (error) {
+    // F-1370: read whole, keyset-paged, or not at all. Unranged, a cellar
+    // past 1,000 rows was counted from its first 1,000 and called fully read.
+    const client = this.dbService.getClient();
+    let data: InventoryKindRow[];
+    try {
+      data = await readWholeWindow<InventoryKindRow>("The cellar", () =>
+        client
+          .from("restaurant_inventory")
+          .select(
+            "id, wine_name, master_wine_library(beverage_kind, name, primary_type)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true)
+          .is("deleted_at", null),
+      );
+    } catch (err) {
       return {
-        status: { readable: false, reason: error.message, rows: null },
+        status: {
+          readable: false,
+          reason: (err as Error).message ?? String(err),
+          rows: null,
+        },
         kindCounts: null,
         nameCounts: null,
         unmappedKinds: {},
@@ -406,7 +417,7 @@ export class CellarRegistersService {
     const nameCounts = new Map<RegisterId, number>();
     const unmappedKinds: Record<string, number> = {};
 
-    for (const row of (data ?? []) as InventoryKindRow[]) {
+    for (const row of data) {
       // PostgREST returns an embedded to-one either as an object or, on some
       // relationship shapes, as a one-element array. Both are handled rather
       // than assumed, because assuming produces a silent zero.
@@ -437,7 +448,7 @@ export class CellarRegistersService {
     }
 
     return {
-      status: { readable: true, reason: null, rows: (data ?? []).length },
+      status: { readable: true, reason: null, rows: data.length },
       kindCounts,
       nameCounts,
       unmappedKinds,

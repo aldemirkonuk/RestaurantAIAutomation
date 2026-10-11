@@ -31,6 +31,7 @@ import {
 import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
 import { type OpenLock, dayOf, lockIndex, readOpenLocks, readPeople } from "./price-locks";
 import { readKitchenInventoryIds } from "../menus/menu-line-view";
+import { readForKeys, readWholeWindow } from "../common/read-whole-window";
 
 /**
  * Per-wine price advice toward the house's own target margin, and the one tap
@@ -189,6 +190,12 @@ const OTHER_MONEY_SENTENCE =
 const NOT_A_WINE_GLASS_SENTENCE =
   "No glass advice for this drink yet: the house's pour is a wine pour, and a rakı, a spirit or a beer is poured in its own measure. Bottle advice is not affected.";
 
+/**
+ * Wines per `.in()` in the last-price read (F-1369): 150 uuids keep the URL
+ * far under the gateway's limit, however many wines the house has.
+ */
+const LAST_PAID_IDS_PER_READ = 150;
+
 /** Label for the F-1172 fallback, beside `COST_BASIS_LABEL`. */
 const LAST_PAID_LABEL = "last price paid (none on hand)";
 
@@ -207,18 +214,33 @@ async function readLastPaid(
 ): Promise<{ byId: Map<string, LastPaid>; error: string | null }> {
   const byId = new Map<string, LastPaid>();
   if (inventoryIds.length === 0) return { byId, error: null };
-  const { data, error } = await client
-    .from("inventory_lots")
-    .select(
-      "inventory_id, unit_cost, unit_cost_currency, cost_provenance, received_at",
-    )
-    .eq("restaurant_id", restaurantId)
-    .eq("stock_state", "live")
-    .in("inventory_id", inventoryIds)
-    .not("unit_cost", "is", null)
-    .order("received_at", { ascending: false });
-  if (error) return { byId, error: error.message ?? String(error) };
-  const rows = ((data ?? []) as Array<Record<string, unknown>>)
+  // F-1369: the ids go a slice at a time, and each slice's lots are read
+  // whole, so neither the URL nor the 1,000-row cap cuts the answer.
+  const data: Array<Record<string, unknown>> = [];
+  try {
+    for (let at = 0; at < inventoryIds.length; at += LAST_PAID_IDS_PER_READ) {
+      const slice = inventoryIds.slice(at, at + LAST_PAID_IDS_PER_READ);
+      data.push(
+        ...(await readWholeWindow<Record<string, unknown>>(
+          "The last prices paid",
+          () =>
+            client
+              .from("inventory_lots")
+              .select(
+                "id, inventory_id, unit_cost, unit_cost_currency, cost_provenance, received_at",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId)
+              .eq("stock_state", "live")
+              .in("inventory_id", slice)
+              .not("unit_cost", "is", null),
+        )),
+      );
+    }
+  } catch (err) {
+    return { byId, error: (err as Error).message ?? String(err) };
+  }
+  const rows = data
     .slice()
     .sort((a, b) =>
       String(b.received_at ?? "").localeCompare(String(a.received_at ?? "")),
@@ -275,18 +297,23 @@ export class MarginAdviceService {
   /** Every active wine's advice. A failed read throws; it is never an empty list. */
   async adviseHouse(restaurantId: string): Promise<HouseAdvice> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup, lockRead, kitchenRead, money] =
-      await Promise.all([
+    // F-1369: the wines are read whole, keyset-paged; unranged, a house past
+    // 1,000 wines had most of them dropped from the advice.
+    const [targets, inv, lockRead, kitchenRead, money] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
-      client
-        .from("restaurant_inventory")
-        .select(INVENTORY_SELECT)
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-      client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
+      readWholeWindow<InventoryPriceRow>("The house's wines", () =>
+        client
+          .from("restaurant_inventory")
+          .select(INVENTORY_SELECT, { count: "exact" })
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true),
+      ).then(
+        (data) => ({ data, error: null }),
+        (err: Error) => ({ data: null, error: { message: err.message } }),
+      ),
       readOpenLocks(client, restaurantId),
-        readKitchenInventoryIds(client, restaurantId),
-        readHouseMoney(client, restaurantId),
+      readKitchenInventoryIds(client, restaurantId),
+      readHouseMoney(client, restaurantId),
     ]);
     if (targets.error !== null) {
       throw new InternalServerErrorException(
@@ -298,6 +325,22 @@ export class MarginAdviceService {
         `The house's wines could not be read, so no advice was computed: ${inv.error.message}`,
       );
     }
+    // The lot rollup is a view with no id to page on, so its rows are read
+    // for the wines just read, a slice of ids at a time (F-1369). Unranged,
+    // it stopped at 1,000 rows and a costed wine read "no recorded cost".
+    const rollup = await readForKeys<Record<string, unknown>>(
+      "The recorded costs",
+      (inv.data ?? []).map((row) => row.id),
+      (slice) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(ROLLUP_SELECT, { count: "exact" })
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", slice),
+    ).then(
+      (data) => ({ data, error: null }),
+      (err: Error) => ({ data: null, error: { message: err.message } }),
+    );
     if (rollup.error) {
       // Cost comes from here. Advising without it would call every wine
       // "no recorded cost" when the truth is "cost could not be read".
@@ -319,15 +362,13 @@ export class MarginAdviceService {
       locale: money.locale,
     };
     const lots = new Map<string, Record<string, unknown>>();
-    for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) {
+    for (const r of rollup.data ?? []) {
       lots.set(String(r.inventory_id), r);
     }
     // A row only kitchen lines link to is set aside, as the menu sets the
     // line aside: no margin advice for food until a food model exists
     // (F-1170, OD-113).
-    const rows = ((inv.data ?? []) as unknown as InventoryPriceRow[]).filter(
-      (row) => !kitchenRead.ids.has(row.id),
-    );
+    const rows = (inv.data ?? []).filter((row) => !kitchenRead.ids.has(row.id));
     // Only the wines with no cost on hand need their last price paid (F-1172).
     const uncosted = rows
       .filter(

@@ -513,7 +513,17 @@ describe("CellarRegistersService.readUnplaced", () => {
 
 type FakeRow = Record<string, unknown>;
 
-function filteringDb(tables: Record<string, { rows?: FakeRow[]; error?: unknown; count?: number }>) {
+type FakeTable = {
+  rows?: FakeRow[];
+  error?: unknown;
+  count?: number;
+  /** PostgREST's max_rows (F-1370): every answer stops here, and tells its exact count. */
+  cap?: number;
+  /** Added to the told count: a window that moved under the read. */
+  countDrift?: number;
+};
+
+function filteringDb(tables: Record<string, FakeTable>) {
   const reads: string[] = [];
   return {
     reads,
@@ -539,11 +549,19 @@ function filteringDb(tables: Record<string, { rows?: FakeRow[]; error?: unknown;
           self.then = (resolve: (v: unknown) => unknown) => {
             const t = tables[table] ?? {};
             let out = (t.rows ?? []).filter((r) => keep.every((k) => k(r)));
+            let count = t.count ?? null;
+            if (t.cap !== undefined) {
+              out = out
+                .slice()
+                .sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1));
+              count = out.length + (t.countDrift ?? 0);
+            }
             if (limit !== null) out = out.slice(0, limit);
+            if (t.cap !== undefined) out = out.slice(0, t.cap);
             return Promise.resolve({
               data: t.error ? null : out,
               error: t.error ?? null,
-              count: t.count ?? null,
+              count,
             }).then(resolve);
           };
           return self;
@@ -553,9 +571,7 @@ function filteringDb(tables: Record<string, { rows?: FakeRow[]; error?: unknown;
   };
 }
 
-async function filteringService(
-  tables: Record<string, { rows?: FakeRow[]; error?: unknown; count?: number }>,
-) {
+async function filteringService(tables: Record<string, FakeTable>) {
   const { db, reads } = filteringDb(tables);
   const moduleRef = await Test.createTestingModule({
     providers: [CellarRegistersService, { provide: DatabaseService, useValue: db }],
@@ -648,5 +664,56 @@ describe("CellarRegistersService — only the CURRENT menu is on the menu (A-028
     expect(out.sources.menu.rows).toBeNull();
     expect(out.sources.menu.reason).toMatch(/statement timeout/);
     await expect(service.readUnplaced(RID)).rejects.toThrow(/could not be read.*statement timeout/);
+  });
+});
+
+/* ── a cellar past PostgREST's 1,000 rows (F-1370) ──────────────────────────
+   The inventory half was read unranged, so a 1,500-bottle cellar was counted
+   from its first 1,000 and reported as fully read.                          */
+
+describe("CellarRegistersService — a cellar of more than 1,000 rows (F-1370)", () => {
+  const BEERS: FakeRow[] = Array.from({ length: 1500 }, (_, i) => ({
+    id: `inv-${String(i).padStart(5, "0")}`,
+    restaurant_id: RID,
+    is_active: true,
+    wine_name: `Lager ${i}`,
+    master_wine_library: {
+      beverage_kind: "beer",
+      name: "Lager",
+      primary_type: null,
+    },
+  }));
+  const base = {
+    restaurant_cellar_registers: { rows: [] },
+    restaurant_menus: { rows: [] },
+    menu_items: { rows: [] },
+    cocktails: { count: 0 },
+  };
+
+  it("counts every row, page by page, not the first 1,000", async () => {
+    const { service } = await filteringService({
+      ...base,
+      restaurant_inventory: { rows: BEERS, cap: 1000 },
+    });
+    const out = await service.read(RID);
+    expect(out.sources.inventory).toEqual({
+      readable: true,
+      reason: null,
+      rows: 1500,
+    });
+    expect(
+      out.registers.find((r) => r.id === "beer")!.evidence.inventoryRows,
+    ).toBe(1500);
+  });
+
+  it("says the cellar could not be read, rather than count part of it", async () => {
+    const { service } = await filteringService({
+      ...base,
+      restaurant_inventory: { rows: BEERS, cap: 1000, countDrift: 1 },
+    });
+    const out = await service.read(RID);
+    expect(out.sources.inventory.readable).toBe(false);
+    expect(out.sources.inventory.rows).toBeNull();
+    expect(out.sources.inventory.reason).toMatch(/could not be read whole/);
   });
 });
