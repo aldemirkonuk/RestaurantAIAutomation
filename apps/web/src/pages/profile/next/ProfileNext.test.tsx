@@ -65,6 +65,9 @@ vi.mock('../../../services/api/passkeys', () => ({
   getPasskeys: () =>
     Promise.resolve({ readable: true, reason: null, passkeys: [], eligible: true, eligibilityReason: null }),
   passkeysSupported: () => true,
+  sendStepUpCode: vi.fn(() =>
+    Promise.resolve({ sent: true, sentTo: 'chef@house.example', expiresInSeconds: 600 }),
+  ),
   addPasskey: vi.fn(),
   removePasskey: vi.fn(),
   checkPasskey: vi.fn(),
@@ -1431,6 +1434,111 @@ describe('ProfileNext — the one irreversible act', () => {
     draw();
     expect(screen.getByText(/If you opened a restaurant here, your account cannot be deleted yet/)).toBeInTheDocument();
     expect(screen.queryByText(/hand ownership over first/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * F-1347: closing the account, a first password and an unlink need a sign-in
+ * in the last ten minutes or an emailed code — the passkey rule. The gateway
+ * answers 403 STEP_UP_REQUIRED; the page emails a code and asks for it.
+ * F-1348: every other refusal prints the gateway's sentence, never axios's
+ * status line.
+ */
+const stepUpRefusal = () =>
+  new AxiosError('Request failed with status code 403', '403', undefined, undefined, {
+    status: 403,
+    data: { code: 'STEP_UP_REQUIRED', message: 'You signed in more than ten minutes ago.', statusCode: 403 },
+  } as never);
+
+describe('ProfileNext — proof it is you (F-1347) and plain refusals (F-1348)', () => {
+  it('asks an old sign-in for the emailed code before the account is deleted, and sends it with the next hold', async () => {
+    const deleteWithCode = vi.fn((code?: string) =>
+      code ? Promise.resolve() : Promise.reject(stepUpRefusal()),
+    );
+    mockData.current = base({ deleteAccount: deleteWithCode });
+    draw();
+    fireEvent.change(screen.getByLabelText('Type DELETE to arm the seal'), {
+      target: { value: 'DELETE' },
+    });
+    const hold = () => screen.getByRole('button', { name: 'Hold to delete this account' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+
+    const field = await screen.findByLabelText('The code we emailed you');
+    expect(screen.getByText(/we emailed a six-digit code to chef@house.example/)).toBeInTheDocument();
+    expect(screen.queryByText(/The account was NOT deleted/)).not.toBeInTheDocument();
+    expect(hold()).toBeDisabled();
+
+    fireEvent.change(field, { target: { value: '123 456' } });
+    expect(hold()).toBeEnabled();
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    await waitFor(() => expect(deleteWithCode).toHaveBeenLastCalledWith('123456'));
+  });
+
+  it('asks an old sign-in for the code before a first password is set', async () => {
+    const changePassword = vi.fn((_c: string, _n: string, code?: string) =>
+      code ? Promise.resolve() : Promise.reject(stepUpRefusal()),
+    );
+    mockData.current = base({ hasPassword: false, changePassword });
+    draw();
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a brand new one' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'a brand new one' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set password' }));
+
+    const field = await screen.findByLabelText('The code we emailed you');
+    expect(screen.getByRole('button', { name: 'Set password' })).toBeDisabled();
+    fireEvent.change(field, { target: { value: '654321' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    await waitFor(() =>
+      expect(changePassword).toHaveBeenLastCalledWith('', 'a brand new one', '654321'),
+    );
+    expect(await screen.findByText(/Password updated/)).toBeInTheDocument();
+  });
+
+  it('asks an old sign-in for the code before a sign-in is unlinked', async () => {
+    const unlinkProvider = vi.fn((_p: string, code?: string) =>
+      code ? Promise.resolve() : Promise.reject(stepUpRefusal()),
+    );
+    mockData.current = base({ unlinkProvider });
+    draw();
+    fireEvent.click(within(rowFor('Google')).getByRole('button', { name: 'Unlink' }));
+
+    const field = await screen.findByLabelText('The code we emailed you');
+    fireEvent.change(field, { target: { value: '111222' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink Google' }));
+    await waitFor(() => expect(unlinkProvider).toHaveBeenLastCalledWith('google', '111222'));
+    expect(await screen.findByText('Google unlinked.')).toBeInTheDocument();
+  });
+
+  it("prints the gateway's sentence for a wrong current password and a refused unlink", async () => {
+    const refusal = (message: string) =>
+      new AxiosError('Request failed with status code 400', '400', undefined, undefined, {
+        status: 400,
+        data: { message, statusCode: 400 },
+      } as never);
+    mockData.current = base({
+      changePassword: vi.fn(() =>
+        Promise.reject(refusal('Your current password is incorrect. Nothing was changed.')),
+      ),
+      unlinkProvider: vi.fn(() =>
+        Promise.reject(refusal('Cannot unlink your only sign-in method. Set a password first.')),
+      ),
+    });
+    draw();
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'wrong' } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a brand new one' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'a brand new one' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update password' }));
+    expect(
+      await screen.findByText('Not changed — Your current password is incorrect. Nothing was changed.'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(rowFor('Google')).getByRole('button', { name: 'Unlink' }));
+    expect(
+      await screen.findByText(/Google could not be unlinked — Cannot unlink your only sign-in method/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/status code/)).not.toBeInTheDocument();
   });
 });
 

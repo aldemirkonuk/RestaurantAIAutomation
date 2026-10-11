@@ -10,6 +10,7 @@ import { AppModule } from "../app.module";
 import { DatabaseService } from "../database/database.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { TeamService } from "../team/team.service";
+import { CODE_REFUSAL } from "../passkeys/sign-in-codes.service";
 import {
   asDatabaseService,
   defaultRpc,
@@ -290,10 +291,17 @@ async function boot(
     .useValue({
       canActivate: (ctx: ExecutionContext) => {
         const req = ctx.switchToHttp().getRequest();
+        // A sign-in from just now, unless the case names an older one: the
+        // close-account and unlink doors ask for a recent one (F-1347).
+        const authTime = req.headers["x-test-auth-time"];
         req.user = {
           userId: req.headers["x-test-user"],
           restaurantId: req.headers["x-test-house"],
           role: req.headers["x-test-role"],
+          authTime:
+            authTime === undefined
+              ? Math.floor(Date.now() / 1000)
+              : Number(authTime),
         };
         return true;
       },
@@ -319,7 +327,7 @@ async function boot(
 async function call(
   method: string,
   path: string,
-  as: { user: string; house?: string; role?: string },
+  as: { user: string; house?: string; role?: string; authTime?: number },
   body?: unknown,
 ) {
   const headers: Record<string, string> = {
@@ -328,6 +336,8 @@ async function call(
   };
   if (as.house) headers["x-test-house"] = as.house;
   if (as.role) headers["x-test-role"] = as.role;
+  if (as.authTime !== undefined)
+    headers["x-test-auth-time"] = String(as.authTime);
   const res = await fetch(`${base}${path}`, {
     method,
     headers,
@@ -443,6 +453,50 @@ describe("leave and delete account reach THE removal over the real routes (ADR 0
       state: "scheduled",
       labor_cost: 150,
     });
+  });
+
+  // F-1347: a device left signed in must not close the account, or take a
+  // sign-in off it, alone. The passkey rule (founder 2026-09-25, item 29): a
+  // sign-in in the last ten minutes, or the emailed code.
+  const ELEVEN_MINUTES_AGO = () => Math.floor(Date.now() / 1000) - 11 * 60;
+
+  it("DELETE /auth/me on a sign-in older than ten minutes, with no code, is refused 403 STEP_UP_REQUIRED and deletes nothing", async () => {
+    const res = await call("DELETE", "/auth/me", {
+      user: STAFF,
+      authTime: ELEVEN_MINUTES_AGO(),
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ code: "STEP_UP_REQUIRED" });
+    expect(res.body.message).toMatch(/email you a code/);
+    expect(removeFromHouse).not.toHaveBeenCalled();
+    expect(db.tables.users.some((u) => u.user_id === STAFF)).toBe(true);
+  });
+
+  it("DELETE /auth/me on an old sign-in checks the code it carries, through the booted code checker", async () => {
+    const res = await call(
+      "DELETE",
+      "/auth/me",
+      { user: STAFF, authTime: ELEVEN_MINUTES_AGO() },
+      { emailCode: "123456" },
+    );
+
+    // No code was ever issued, so this one is refused as a wrong code (400),
+    // not as "the checker is missing" (500): the lookup finds the real one.
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe(CODE_REFUSAL);
+    expect(removeFromHouse).not.toHaveBeenCalled();
+    expect(db.tables.users.some((u) => u.user_id === STAFF)).toBe(true);
+  });
+
+  it("DELETE /auth/me/link/:provider on an old sign-in with no code is refused 403 STEP_UP_REQUIRED", async () => {
+    const res = await call("DELETE", "/auth/me/link/google", {
+      user: STAFF,
+      authTime: ELEVEN_MINUTES_AGO(),
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ code: "STEP_UP_REQUIRED" });
   });
 
   it("DELETE /auth/me leaves every house through the same removal before the account goes", async () => {

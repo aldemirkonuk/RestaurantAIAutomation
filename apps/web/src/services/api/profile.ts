@@ -39,6 +39,8 @@ export const profileApi = {
   async changePassword(body: {
     currentPassword?: string
     newPassword: string
+    /** F-1347: a FIRST password on a sign-in older than ten minutes needs the emailed code. */
+    emailCode?: string
   }): Promise<void> {
     const { data } = await apiClient.post<{
       success: boolean
@@ -66,13 +68,16 @@ export const profileApi = {
     return { linkedProviders: data.linkedProviders }
   },
 
+  /** F-1347: on a sign-in older than ten minutes, `emailCode` is the emailed code. */
   async unlinkProvider(
     provider: 'google' | 'microsoft',
+    emailCode?: string,
   ): Promise<{ linkedProviders: LinkedProviders }> {
-    const { data } = await apiClient.delete<{
-      success: boolean
-      linkedProviders: LinkedProviders
-    }>(`/auth/me/link/${provider}`)
+    type Unlinked = { success: boolean; linkedProviders: LinkedProviders }
+    const url = `/auth/me/link/${provider}`
+    const { data } = await (emailCode
+      ? apiClient.delete<Unlinked>(url, { data: { emailCode } })
+      : apiClient.delete<Unlinked>(url))
     return { linkedProviders: data.linkedProviders }
   },
 }
