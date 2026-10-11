@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  fmtReadAt,
   fmtWakes,
   handOf,
   heldBy,
@@ -389,5 +390,14 @@ describe('fmtWakes', () => {
   it('the receipt under a snoozed entry reads the same house day', () => {
     const e = entry({ status: 'snoozed', snoozeUntil: '2026-10-11T05:00:00.000Z' });
     expect(fmtWakes(e.snoozeUntil, LA, SAT_10AM)).toBe('wakes later today');
+  });
+});
+
+// F-1251 (F-866 family): the read time is the house's clock, not the device's.
+describe('fmtReadAt', () => {
+  it('prints the read time on the house clock', () => {
+    expect(fmtReadAt('2026-09-12T21:30:00Z', 'Europe/Istanbul')).toBe('12:30 AM');
+    expect(fmtReadAt('2026-09-12T21:30:00Z', 'America/Los_Angeles')).toBe('2:30 PM');
+    expect(fmtReadAt(null, 'Europe/Istanbul')).toBe('—');
   });
 });

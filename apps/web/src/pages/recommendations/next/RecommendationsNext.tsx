@@ -699,7 +699,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               <h1 className="rc-serif rc-title">Recommendations</h1>
               <p className="rc-serif rc-voice">{voice}</p>
               <p className="rc-micro rc-readat">
-                Read at {fmtReadAt(data.generatedAt)} · one entry = one deterministic rule that fired
+                Read at {fmtReadAt(data.generatedAt, zone)} · one entry = one deterministic rule that fired
               </p>
               {/*
                 The quiet tier, as its substitute (sketch 122 Q4, the founder

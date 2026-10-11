@@ -1,6 +1,6 @@
 import { isBelowPar } from "../common/stock-status";
 import { isIso4217 } from "../common/iso-4217";
-import { houseToday } from "../common/house-day";
+import { houseDayBounds, houseToday } from "../common/house-day";
 import { houseFrame } from "../common/house-frame";
 import { ORDER_CLOSED_STATUSES } from "../procurement/order-status";
 import { READING_CATALOGUE, shownFields } from "./reading-catalogue";
@@ -16,13 +16,25 @@ const hasUnit = (row: BookRow): string => {
   return row.uom;
 };
 
-/** Date-only windows are inclusive; timestamp query bounds are [from, next day). */
-export function readingWindow(args: ReadingArgs): { from: string; to: string } {
+/**
+ * Date-only windows are inclusive; timestamp query bounds are [from, next day).
+ * The days are the house's (F-1245): with its zone, from the midnight that
+ * opens `from` to the midnight that ends `to` on the house's clock
+ * (`houseDayBounds`, ADR 0296); with none, UTC days, and the Finding says so.
+ */
+export function readingWindow(
+  args: ReadingArgs,
+  zone: string | null = null,
+): { from: string; to: string } {
   if (!args.from || !args.to) throw new ReadingFailure("missing_window");
   const valid = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
   if (!valid(args.from) || !valid(args.to) || args.from > args.to ||
     Date.parse(args.to) - Date.parse(args.from) > 366 * 86400_000) throw new ReadingFailure("invalid_window");
+  if (zone) {
+    const bounds = houseDayBounds(args.from, args.to, zone);
+    return { from: bounds.startIso, to: bounds.endIso };
+  }
   return { from: `${args.from}T00:00:00.000Z`, to: new Date(Date.parse(args.to) + 86400_000).toISOString() };
 }
 
@@ -30,16 +42,20 @@ export class ReadingRunner {
   constructor(private readonly client: any, private readonly clock: () => Date = () => new Date()) {}
   async run(restaurantId: string, id: ReadingId, args: ReadingArgs, version = 1): Promise<Finding> {
     // A Reading that reads "today" says which date and which clock (F-236).
-    const day: { value?: Finding["day"] } = {};
+    const day: { value?: Finding["day"]; period?: Finding["period"] } = {};
     const finding = await this.readBooks(restaurantId, id, args, version, day);
-    return day.value ? { ...finding, day: day.value } : finding;
+    return {
+      ...finding,
+      ...(day.value ? { day: day.value } : {}),
+      ...(day.period ? { period: day.period } : {}),
+    };
   }
   private async readBooks(
     restaurantId: string,
     id: ReadingId,
     args: ReadingArgs,
     version: number,
-    day: { value?: Finding["day"] },
+    day: { value?: Finding["day"]; period?: Finding["period"] },
   ): Promise<Finding> {
     const descriptor = READING_CATALOGUE.find(r => r.id === id);
     // Cells may come only from the fields this Reading declares: those are
@@ -51,7 +67,8 @@ export class ReadingRunner {
     if (version !== 1) return s.finish(id, args, [], "not_built", "unknown_reading_version");
     if (!descriptor) return s.finish(id, args, [], "not_built", "unknown_reading_version");
     try {
-      const window = descriptor.window ? readingWindow(args) : null;
+      // Checked before anything is read: a bad period reads no source.
+      if (descriptor.window) readingWindow(args);
       let subjectEvidence: Evidence | undefined;
       let subject: BookRow | undefined;
       if (descriptor.subject !== "none") {
@@ -74,6 +91,13 @@ export class ReadingRunner {
           s.count(s.take(e, 100), `${prefix}:shown`, "Records shown")]);
         for (const r of s.rows(s.take(e, 100))) row(`${prefix}:${String(r.id)}`,
           fields.map(([field, title]) => s.field(e, r, field, title)));
+      };
+      // A period read over timestamps is cut at the house's midnights (F-1245),
+      // and the Finding names the dates and the clock they were read on.
+      const houseWindow = async () => {
+        const zone = await this.houseZone(s, sources);
+        day.period = { from: args.from!, to: args.to!, zone };
+        return readingWindow(args, zone);
       };
       let resultEvidence: Evidence;
       switch (id) {
@@ -128,7 +152,12 @@ export class ReadingRunner {
           break;
         }
         case "inventory.movements": {
-          resultEvidence = await sources.movements(String(subject!.id), window!.from, window!.to);
+          const bounds = await houseWindow();
+          resultEvidence = await sources.movements(
+            String(subject!.id),
+            bounds.from,
+            bounds.to,
+          );
           row("coverage", [s.count(resultEvidence, "movements:count", "Recorded movements", "movements")]);
           for (const lane of [...new Set(s.rows(resultEvidence).map(r => r.stock_type))]) {
             const group = s.filter(resultEvidence, r => r.stock_type === lane);
@@ -232,7 +261,8 @@ export class ReadingRunner {
           break;
         }
         case "sales.check_activity": {
-          resultEvidence = await sources.checks(window!.from, window!.to);
+          const bounds = await houseWindow();
+          resultEvidence = await sources.checks(bounds.from, bounds.to);
           const known = s.filter(resultEvidence, r => recordedNumber(r.covers) !== null);
           row("checks", [s.count(resultEvidence, "checks:count", "Recorded closed checks", "checks"),
             s.sum(known, "covers", "covers:sum", "Known covers", "covers"),
@@ -240,7 +270,12 @@ export class ReadingRunner {
           break;
         }
         case "sales.consumption": {
-          resultEvidence = await sources.consumption(String(subject!.id), window!.from, window!.to);
+          const bounds = await houseWindow();
+          resultEvidence = await sources.consumption(
+            String(subject!.id),
+            bounds.from,
+            bounds.to,
+          );
           row("volume", [s.sum(resultEvidence, "volume_ml", "consumption:volume", "Recorded volume", "ml"),
             s.count(s.filter(resultEvidence, r => recordedNumber(r.volume_ml) === null), "volume:unknown", "Entries with unrecorded volume", "entries")]);
           for (const kind of [...new Set(s.rows(resultEvidence).map(r => r.consumption_type))]) {
@@ -313,8 +348,21 @@ export class ReadingRunner {
     s: RecordingSession,
     sources: ReadingSources,
   ): Promise<NonNullable<Finding["day"]>> {
+    const zone = await this.houseZone(s, sources);
+    const now = this.clock();
+    return {
+      date: zone ? houseToday(zone, now) : now.toISOString().slice(0, 10),
+      zone,
+    };
+  }
+
+  /** The house's zone, else its country's only zone, else null (F-236, F-1245). */
+  private async houseZone(
+    s: RecordingSession,
+    sources: ReadingSources,
+  ): Promise<string | null> {
     const house = s.rows(await sources.houseClock())[0];
-    const zone = houseFrame(
+    return houseFrame(
       house
         ? {
             timezone: house.timezone as string | null,
@@ -322,10 +370,5 @@ export class ReadingRunner {
           }
         : null,
     ).zone;
-    const now = this.clock();
-    return {
-      date: zone ? houseToday(zone, now) : now.toISOString().slice(0, 10),
-      zone,
-    };
   }
 }

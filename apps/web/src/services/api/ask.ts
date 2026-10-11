@@ -76,6 +76,8 @@ export interface AskFinding {
   choices?: Array<{ id: string; label: string }>;
   /** The date a "today" reading read as today, and on whose clock; `zone: null` = read in UTC, no zone set (F-236). */
   day?: { date: string; zone: string | null };
+  /** The period a timestamp reading read, and whose days; `zone: null` = UTC days, no zone set (F-1245). */
+  period?: { from: string; to: string; zone: string | null };
 }
 
 export type AskReply =

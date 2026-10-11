@@ -101,6 +101,12 @@ export interface Finding {
    * read in UTC, and the page says so instead of leaving it implied.
    */
   day?: { date: string; zone: string | null };
+  /**
+   * The period a timestamp Reading read, both dates inclusive, and the clock
+   * its days were cut on (F-1245). `zone: null` means the house has no zone,
+   * so the days were UTC days, and the page says so.
+   */
+  period?: { from: string; to: string; zone: string | null };
   /** Stable across reads when the measured cells and their provenance agree. */
   fingerprint: string;
 }

@@ -62,6 +62,14 @@ describe('the margin, read from the progress endpoint', () => {
     expect(inUnit(0.6, 'percent')).toBe('60%');
     expect(inUnit(null, 'units')).toBe('—');
   });
+
+  // F-1251: a Turkish house groups thousands with ".", not en-US ",".
+  it('groups a figure with the house\'s own mark', () => {
+    expect(inUnit(6180, 'currency', '.')).toBe('6.180');
+    expect(inUnit(1234567, 'units', '.')).toBe('1.234.567');
+    expect(inUnit(1500, 'days', '.')).toBe('1.500 days');
+    expect(inUnit(6180, 'currency', ',')).toBe('6,180');
+  });
 });
 
 describe('the suggestion', () => {
