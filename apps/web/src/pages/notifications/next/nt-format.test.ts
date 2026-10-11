@@ -321,35 +321,28 @@ describe('stamps are in the house\'s hand, on the house\'s clock (F-1123)', () =
   // Tuzlu's delivery at 22:10 Istanbul is 15:10 in Detroit, the reader's clock.
   const delivered = '2026-10-03T19:10:00Z';
 
-  it('prints the detail stamp in the house\'s zone and its own way of writing it', () => {
+  it('[REVERT-FAILS] prints the detail stamp in the house\'s zone, digits in its order, words in English (F-1390)', () => {
     setHouseLocale('tr-TR');
     const out = stampOf(delivered, 'Europe/Istanbul');
-    expect(out).toBe(
-      new Date(delivered).toLocaleString('tr-TR', {
-        weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-        timeZone: 'Europe/Istanbul',
-      }),
-    );
-    expect(out).toContain('22:10');
-    expect(out).not.toMatch(/PM|AM/);
+    expect(out).toBe('Sat, 3/10, 22:10');
+    expect(out).not.toMatch(/PM|AM|Eki|Cmt/);
   });
 
-  it('an older line is dated on the house\'s day, not the device\'s', () => {
+  it('[REVERT-FAILS] an older line is dated on the house\'s day, in digits (F-1390)', () => {
     setHouseLocale('tr-TR');
     // 23:30 Istanbul on Oct 1 is still Sep 30 in Detroit.
     const late = '2026-10-01T20:30:00Z';
-    expect(timeAgo(late, 'Europe/Istanbul')).toBe(
-      new Date(late).toLocaleDateString('tr-TR', { month: 'short', day: 'numeric', timeZone: 'Europe/Istanbul' }),
-    );
-    expect(timeAgo(late, 'Europe/Istanbul')).toMatch(/^1 /);
+    expect(timeAgo(late, 'Europe/Istanbul')).toBe('1/10');
   });
 
-  it('the page head names the house\'s day', () => {
+  it('[REVERT-FAILS] the page head names the house\'s day, in digits in the house\'s order (F-1390)', () => {
     setHouseLocale('en-US');
     // 01:00 Istanbul on Oct 4 is still Oct 3 in Detroit.
     const now = new Date('2026-10-03T22:00:00Z');
-    expect(houseDateLine('Europe/Istanbul', now)).toBe('Sunday, October 4');
-    expect(houseDateLine('America/Detroit', now)).toBe('Saturday, October 3');
+    expect(houseDateLine('Europe/Istanbul', now)).toBe('Sunday, 10/4');
+    expect(houseDateLine('America/Detroit', now)).toBe('Saturday, 10/3');
+    setHouseLocale('tr-TR');
+    expect(houseDateLine('Europe/Istanbul', now)).toBe('Sunday, 4/10');
   });
 
   it('with no zone read, the device\'s clock stands in and nothing throws', () => {

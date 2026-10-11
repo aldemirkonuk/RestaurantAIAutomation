@@ -61,6 +61,24 @@ export function houseStamp(t: Date, opts: Intl.DateTimeFormatOptions, zone: stri
   return t.toLocaleString(getHouseLocale(), opts);
 }
 
+/**
+ * A day in digits, in the house's day and month order, with its weekday in
+ * English: "Sun, 4/10" in a Turkish house, "Sun, 10/4" in a US one. ADR 0207
+ * q7 keeps the page's words English, so no month or weekday word comes out in
+ * the house's language (F-1390).
+ */
+function houseDay(t: Date, weekday: 'short' | 'long' | null, zone: string | null): string {
+  const digits = houseStamp(t, { month: 'numeric', day: 'numeric' }, zone);
+  if (!weekday) return digits;
+  let word: string;
+  try {
+    word = t.toLocaleDateString('en-US', { weekday, ...(zone ? { timeZone: zone } : {}) });
+  } catch {
+    word = t.toLocaleDateString('en-US', { weekday });
+  }
+  return `${word}, ${digits}`;
+}
+
 /** Relative age. An absent or unparseable stamp is an em dash, never "now". */
 export function timeAgo(iso: string | null | undefined, zone: string | null = knownHouseZone()): string {
   if (!iso) return EM;
@@ -74,7 +92,7 @@ export function timeAgo(iso: string | null | undefined, zone: string | null = kn
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  return houseStamp(new Date(iso), { month: 'short', day: 'numeric' }, zone);
+  return houseDay(new Date(iso), null, zone);
 }
 
 /** Absolute stamp for the detail — the book's own hand, on the house's clock. */
@@ -82,16 +100,12 @@ export function stampOf(iso: string | null | undefined, zone: string | null = kn
   if (!iso) return EM;
   const t = new Date(iso);
   if (!Number.isFinite(t.getTime())) return EM;
-  return houseStamp(
-    t,
-    { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
-    zone,
-  );
+  return `${houseDay(t, 'short', zone)}, ${houseStamp(t, { hour: 'numeric', minute: '2-digit' }, zone)}`;
 }
 
 /** Today's date line for the page head, on the house's day (F-1123). */
 export function houseDateLine(zone: string | null, now: Date = new Date()): string {
-  return houseStamp(now, { weekday: 'long', month: 'long', day: 'numeric' }, zone);
+  return houseDay(now, 'long', zone);
 }
 
 /**

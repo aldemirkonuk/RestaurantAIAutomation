@@ -259,7 +259,7 @@ export default function AskNext({ ground }: AskNextProps) {
   // Figures print in the house's formats and instants on its clock (F-1246):
   // the page re-renders when either answer lands.
   useSyncExternalStore(subscribeHouseCurrency, getHouseLocale, getHouseLocale);
-  useHouseZone();
+  const houseZone = useHouseZone();
 
   const [text, setText] = useState('');
   const [open, setOpen] = useState<AskReading | null>(null);
@@ -382,7 +382,10 @@ export default function AskNext({ ground }: AskNextProps) {
   }
 
   const bookFolios = book.data ?? [];
-  const days = useMemo(() => groupBook(bookFolios), [bookFolios]);
+  // The day headings read the house's clock and date order (F-1391), so they
+  // are drawn on every render: one book of 50 lines, and a memo on the folios
+  // alone kept the device's headings after the house's answer landed.
+  const days = groupBook(bookFolios, new Date(), houseZone ?? null);
 
   return (
     <div className="mudavym" data-ground={ground} style={{ minHeight: '100%', background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>

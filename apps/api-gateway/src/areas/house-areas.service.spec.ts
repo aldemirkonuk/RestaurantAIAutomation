@@ -308,6 +308,32 @@ describe("Away", () => {
     }
   });
 
+  it("reads today on the country's clock when the house names no zone (F-1389)", async () => {
+    // 22:30 UTC on 10 October is already 11 October in Istanbul (UTC+3).
+    jest.useFakeTimers({
+      now: new Date("2026-10-10T22:30:00Z"),
+      doNotFake: ["nextTick", "setImmediate"],
+    });
+    try {
+      const db = seed();
+      db.tables.restaurants[0] = { id: HOUSE, timezone: null, country: "TR" };
+      await expect(
+        service(db).setAway(staff, STAFF, {
+          from: "2026-10-10",
+          until: "2026-10-10",
+        }),
+      ).rejects.toThrow("Those dates are already over.");
+      await expect(
+        service(db).setAway(staff, STAFF, {
+          from: "2026-10-11",
+          until: "2026-10-12",
+        }),
+      ).resolves.toMatchObject({ window: { activeNow: true } });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("ends Away early: the person's own end is quiet, an owner's end is logged", async () => {
     const db = seed({
       house_away: [
