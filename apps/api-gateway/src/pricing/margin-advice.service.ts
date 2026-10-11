@@ -26,6 +26,7 @@ import {
 } from "./target-margin.service";
 import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
 import { type OpenLock, dayOf, lockIndex, readOpenLocks, readPeople } from "./price-locks";
+import { readKitchenInventoryIds } from "../menus/menu-line-view";
 
 /**
  * Per-wine price advice toward the house's own target margin, and the one tap
@@ -184,7 +185,7 @@ export class MarginAdviceService {
   /** Every active wine's advice. A failed read throws; it is never an empty list. */
   async adviseHouse(restaurantId: string): Promise<HouseAdvice> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup, lockRead] = await Promise.all([
+    const [targets, inv, rollup, lockRead, kitchenRead] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -193,6 +194,7 @@ export class MarginAdviceService {
         .eq("is_active", true),
       client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
       readOpenLocks(client, restaurantId),
+      readKitchenInventoryIds(client, restaurantId),
     ]);
     if (targets.error !== null) {
       throw new InternalServerErrorException(
@@ -211,6 +213,12 @@ export class MarginAdviceService {
         `The recorded costs could not be read, so no advice was computed: ${rollup.error.message}`,
       );
     }
+    if (kitchenRead.error !== null) {
+      // Without it a food row would be advised on as a drink (F-1170).
+      throw new InternalServerErrorException(
+        `The menu's kitchen lines could not be read, so no advice was computed: ${kitchenRead.error}`,
+      );
+    }
 
     const t: HouseTerms = {
       ...targetsFrom(targets.row),
@@ -227,7 +235,13 @@ export class MarginAdviceService {
     const byKind = lockIndex(lockRead.locks);
     const counts = emptyCounts();
     let held = 0;
-    const wines = ((inv.data ?? []) as unknown as InventoryPriceRow[]).map((row) => {
+    // A row only kitchen lines link to is set aside, as the menu sets the
+    // line aside: no margin advice for food until a food model exists
+    // (F-1170, OD-113).
+    const rows = ((inv.data ?? []) as unknown as InventoryPriceRow[]).filter(
+      (row) => !kitchenRead.ids.has(row.id),
+    );
+    const wines = rows.map((row) => {
       const w = this.adviseWine(row, lots.get(row.id) ?? null, t, byKind);
       if (w.bottle) counts[w.bottle.state] += 1;
       if (w.glass) counts[w.glass.state] += 1;

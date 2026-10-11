@@ -80,6 +80,25 @@ describe('isKitchenLine — a known drink section wins (F-022)', () => {
   })
 })
 
+// F-1173: the same test as the gateway's (menu-line-view.ts), on whole words.
+describe('isKitchenLine — whole words, English and Turkish (F-1173)', () => {
+  it('never matches inside a word', () => {
+    expect(isKitchenLine({ category: null, rawText: 'Radish Imports Rosé 2022' })).toBe(false)
+    expect(isKitchenLine({ category: null, rawText: 'Saladin Reserve 2018' })).toBe(false)
+  })
+
+  it('keeps a section that names wine a drink', () => {
+    expect(isKitchenLine({ category: 'Dessert wines', rawText: 'Tokaji Aszú 5 puttonyos' })).toBe(false)
+    expect(isKitchenLine({ category: 'Kırmızı şaraplar', rawText: 'Yakut 2019' })).toBe(false)
+  })
+
+  it('knows the sections a menu prints', () => {
+    for (const category of ['Small plates', 'Mains', 'Appetizers', 'Desserts', 'Mezeler', 'Ara Sıcaklar', 'Ana Yemekler', 'TATLILAR', 'IZGARA']) {
+      expect(isKitchenLine({ category, rawText: null })).toBe(true)
+    }
+  })
+})
+
 describe('absentFamilies — coverage from the kinds the import writes (F-024)', () => {
   it('counts red, white and non-alcoholic lines as wine and soft drinks', () => {
     const keys = absentFamilies([

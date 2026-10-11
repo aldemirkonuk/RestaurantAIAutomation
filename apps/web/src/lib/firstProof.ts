@@ -22,7 +22,75 @@ const VOCABULARY = new Set([
   'non-alcoholic',
 ])
 
-const KITCHEN = ['food', 'kitchen', 'dish', 'starter', 'dessert', 'entree', 'entrée', 'pasta', 'salad']
+/**
+ * Words and phrases that mark a kitchen (food) line, in English and Turkish
+ * (F-1173), matched as whole words. The same list as the gateway's
+ * KITCHEN_HINTS (apps/api-gateway/src/menus/menu-line-view.ts); a CLAIMS row
+ * keeps the two equal, and the two isKitchenLine tests are the same test.
+ */
+const KITCHEN = [
+  'food',
+  'foods',
+  'kitchen',
+  'dish',
+  'dishes',
+  'starter',
+  'starters',
+  'appetizer',
+  'appetizers',
+  'appetiser',
+  'appetisers',
+  'small plates',
+  'mains',
+  'main course',
+  'main courses',
+  'entree',
+  'entrees',
+  'entrée',
+  'entrées',
+  'sides',
+  'pasta',
+  'pizza',
+  'salad',
+  'salads',
+  'soup',
+  'soups',
+  'sandwich',
+  'sandwiches',
+  'burger',
+  'burgers',
+  'breakfast',
+  'brunch',
+  'dessert',
+  'desserts',
+  'mezze',
+  'meze',
+  'mezeler',
+  'ara sıcak',
+  'ara sıcaklar',
+  'ana yemek',
+  'ana yemekler',
+  'yemek',
+  'yemekler',
+  'başlangıç',
+  'başlangıçlar',
+  'salata',
+  'salatalar',
+  'çorba',
+  'çorbalar',
+  'ızgara',
+  'ızgaralar',
+  'kebap',
+  'kebaplar',
+  'pide',
+  'tatlı',
+  'tatlılar',
+  'kahvaltı',
+  'mutfak',
+]
+
+/** A section that names wine ("Dessert wines", "Kırmızı şaraplar") is a drink section. */
+const WINE_WORDS = ['wine', 'wines', 'şarap', 'şaraplar']
 
 /**
  * The sections a line can be placed in: the gateway's MENU_CATEGORY_VOCABULARY
@@ -98,13 +166,26 @@ export function lineNeedsPencil(item: Pick<MenuImportReviewItem, 'matched' | 'ne
   return !VOCABULARY.has(category)
 }
 
+/**
+ * A text as its words, once per lower-casing, each padded so a hint is found
+ * only whole. Both lower-casings: "TATLI" is "tatlı" only the Turkish way.
+ */
+function wordRuns(text: string) {
+  return [text.toLowerCase(), text.toLocaleLowerCase('tr')].map(
+    (lower) => ` ${lower.split(/[^\p{L}\p{M}]+/u).filter(Boolean).join(' ')} `,
+  )
+}
+
 export function isKitchenLine(item: Pick<MenuImportReviewItem, 'category' | 'rawText'>) {
   // A known drink section wins over a kitchen hint: 'dessert' is a wine
   // section (a Muscat de Beaumes-de-Venise), and a wine whose line names a
-  // starter pairing is still a wine (F-022, ADR 0309 owed 7).
+  // starter pairing is still a wine (F-022, ADR 0309 owed 7). Otherwise a
+  // whole-word hint in the section or the raw line decides (F-1173).
   if (VOCABULARY.has(categoryOf(item))) return false
-  const hay = `${item.category ?? ''} ${item.rawText ?? ''}`.toLowerCase()
-  return KITCHEN.some((hint) => hay.includes(hint))
+  const section = item.category ?? ''
+  if (wordRuns(section).some((run) => WINE_WORDS.some((w) => run.includes(` ${w} `)))) return false
+  const runs = wordRuns(`${section} ${item.rawText ?? ''}`)
+  return KITCHEN.some((hint) => runs.some((run) => run.includes(` ${hint} `)))
 }
 
 export function pencilledCount(items: MenuImportReviewItem[]) {
