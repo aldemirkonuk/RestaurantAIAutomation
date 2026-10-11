@@ -994,6 +994,14 @@ export class OrderResponseDto {
   @ApiProperty()
   orderNumber: string;
 
+  /**
+   * Set only by `createOrder`, and only when the request was folded into this
+   * house's open PENDING order for the same wine and vendor instead of
+   * becoming a new one (F-1131), so the cart can say which happened.
+   */
+  @ApiPropertyOptional()
+  mergedIntoOpenOrder?: boolean;
+
   @ApiProperty()
   restaurantId: string;
 

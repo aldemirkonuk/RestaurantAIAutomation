@@ -158,12 +158,10 @@ export default function OrdersNext() {
    * A read that CAME BACK with rows, found nothing matching — not "still
    * loading" and not "the fetch failed" (both are said elsewhere).
    *
-   * This does NOT mean the order does not exist or is foreign: `data.rows` is
-   * only the first page the list endpoint returns (`services/api/orders.ts`
-   * sends no `limit`; the gateway defaults to 50, newest first —
-   * `procurement.service.ts`), so a real order of this house that is merely
-   * older than the 50 most recent looks identical, from here, to one that
-   * truly does not exist or belongs to another house. The banner below says
+   * This does NOT, on its own, prove the order does not exist or is foreign:
+   * `data.rows` is the whole book as of the last read (`getOrderBook`, F-1132),
+   * so an order placed since, or one this person may not see, looks identical
+   * from here to one that truly does not exist. The banner below says
    * only what was actually checked — how many rows were loaded, not a claim
    * about the order's existence or ownership.
    */
@@ -498,8 +496,8 @@ export default function OrdersNext() {
 
         {/* ── a link asked for ONE order, and it is not among the rows this
             page loaded ── says only what was checked (§ targetMissing
-            above): the list read is one page, so "not loaded here" is never
-            widened into "does not exist" or "not this house's". */}
+            above): "not loaded here" is never widened into "does not
+            exist" or "not this house's". */}
         {targetMissing && (
           <div
             role="alert"
@@ -513,8 +511,8 @@ export default function OrdersNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            Order {targetOrderId} was not among the {data.rows.length} most recently loaded
-            orders — it may exist further back, or belong to a different house. Showing every
+            Order {targetOrderId} was not among the {data.rows.length} orders loaded for this
+            house — it may have been placed since, or belong to a different house. Showing every
             loaded order below instead.
             {targetOrderId && <OrderHeldElsewhere orderId={targetOrderId} />}
           </div>

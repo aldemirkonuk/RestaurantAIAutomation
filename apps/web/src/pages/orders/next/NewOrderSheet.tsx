@@ -518,6 +518,9 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
 
     const attempted = lines.filter((l) => !l.outcome?.ok).length;
     let placed = 0;
+    // Lines the gateway folded into an open pending order for the same wine and
+    // vendor rather than writing a new one (F-1131): said apart, never as new.
+    let merged = 0;
     const survivors: OrderLine[] = [];
     /**
      * The sheet went away mid-placement — Back, or the page closed under it
@@ -545,7 +548,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
       // the line comes back as "not known whether placed", never as unplaced.
       writeSessionDraft(cartKey(scope), { lines: survivors.concat(lines.slice(i)), inFlight: line.key } satisfies KeptCart);
       try {
-        const { data } = await apiClient.post<{ id?: string; orderNumber?: string }>(
+        const { data } = await apiClient.post<{ id?: string; orderNumber?: string; mergedIntoOpenOrder?: boolean }>(
           '/procurement/orders',
           {
             inventoryId: line.inventoryId,
@@ -575,6 +578,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
         }
         if (!data?.id && !data?.orderNumber) throw new Error('Mudavym sent back no receipt for this order. Check the order book before trying again.');
         placed += 1;
+        if (data?.mergedIntoOpenOrder === true) merged += 1;
         // The placed line leaves the composer, but it leaves a RECEIPT: the
         // account below is what the gateway answered, order number and all.
         survivors.push({
@@ -612,10 +616,14 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
 
     if (!stillCurrent()) return leftMidway([]);
     setLines(survivors);
+    const mergedWords =
+      merged === 0
+        ? ''
+        : ` ${merged === placed ? (placed === 1 ? 'It' : 'Each') : `${merged} of them`} updated the order already waiting for approval for the same wine and vendor to the new bottles and price, rather than adding a second order.`;
     setTally(
-      placed === attempted
+      (placed === attempted
         ? `All ${placed} ${placed === 1 ? 'line was' : 'lines were'} placed. Each is a pending order waiting for approval; nothing has been sent to a vendor.`
-        : `${placed} of ${attempted} were placed. Each remaining line states its refusal or an unconfirmed outcome; check the order book before retrying an unconfirmed placement.`,
+        : `${placed} of ${attempted} were placed. Each remaining line states its refusal or an unconfirmed outcome; check the order book before retrying an unconfirmed placement.`) + mergedWords,
     );
     if (placed > 0) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
