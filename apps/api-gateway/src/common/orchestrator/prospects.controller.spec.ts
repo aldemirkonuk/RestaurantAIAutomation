@@ -25,6 +25,7 @@ import { RolesGuard } from "../../auth/guards/roles.guard";
 import { ROLES_KEY } from "../../auth/decorators/roles.decorator";
 import { ProspectsController } from "./prospects.controller";
 import { ProspectsService } from "./prospects.service";
+import { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
 
 const HOUSE = "11111111-1111-4111-8111-111111111111";
 const PROSPECT = "33333333-3333-4333-8333-333333333333";
@@ -39,6 +40,8 @@ const prospects = {
   dismiss: jest.fn(),
   restore: jest.fn(),
 };
+
+const authority = { readout: jest.fn() };
 
 let app: INestApplication;
 let base: string;
@@ -68,6 +71,7 @@ beforeAll(async () => {
     providers: [
       { provide: ProspectsService, useValue: prospects },
       { provide: ConfigService, useValue: { get: () => "" } },
+      { provide: VendorSendAuthorityService, useValue: authority },
     ],
   })
     .overrideGuard(JwtAuthGuard)
@@ -110,6 +114,8 @@ beforeEach(() => {
   });
   prospects.dismiss.mockResolvedValue({ dismissed: true });
   prospects.restore.mockResolvedValue({ restored: true });
+  prospects.attachmentsFor.mockResolvedValue([]);
+  authority.readout.mockResolvedValue({ maySend: false });
 });
 
 describe("who may add a prospect as a vendor", () => {
@@ -168,5 +174,45 @@ describe("the gate did not widen past promote", () => {
     expect(prospects.list).toHaveBeenCalledWith(HOUSE);
     expect(prospects.dismiss).toHaveBeenCalledWith(HOUSE, PROSPECT);
     expect(prospects.restore).toHaveBeenCalledWith(HOUSE, PROSPECT);
+  });
+});
+
+// F-1274, the sibling of F-1176: a prospect's files follow the letter cut on
+// orders/:id/attachments. Holding the house's money, or being allowed to send
+// to vendors, opens them; anyone else is told only that files came.
+describe("who may open a prospect's files", () => {
+  it.each(["owner", "manager"])(
+    "signs them for %s without asking the send authority",
+    async (role) => {
+      const res = await call("GET", `/prospects/${PROSPECT}/attachments`, role);
+      expect(res.status).toBe(200);
+      expect(prospects.attachmentsFor).toHaveBeenCalledWith(HOUSE, PROSPECT, {
+        readsFiles: true,
+      });
+      expect(authority.readout).not.toHaveBeenCalled();
+    },
+  );
+
+  it("withholds them from a staff member who may not send to vendors", async () => {
+    const res = await call(
+      "GET",
+      `/prospects/${PROSPECT}/attachments`,
+      "staff",
+    );
+    expect(res.status).toBe(200);
+    expect(authority.readout).toHaveBeenCalledWith("user-1", HOUSE, {
+      canAsk: true,
+    });
+    expect(prospects.attachmentsFor).toHaveBeenCalledWith(HOUSE, PROSPECT, {
+      readsFiles: false,
+    });
+  });
+
+  it("opens them to a staff member who holds send authority", async () => {
+    authority.readout.mockResolvedValue({ maySend: true });
+    await call("GET", `/prospects/${PROSPECT}/attachments`, "staff");
+    expect(prospects.attachmentsFor).toHaveBeenCalledWith(HOUSE, PROSPECT, {
+      readsFiles: true,
+    });
   });
 });

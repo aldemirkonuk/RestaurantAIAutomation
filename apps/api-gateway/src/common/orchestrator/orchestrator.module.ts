@@ -21,12 +21,16 @@ import { OnboardingProxyController } from "./onboarding-proxy.controller";
 import { CommunicationsModule } from "../../communications/communications.module";
 import { PlatformOperatorGuard, PlatformOperatorService } from "./platform-operator.service";
 import { AgentOperationsController } from "./agent-operations.controller";
+// Who may read a vendor's files on /prospects (F-1274). Not circular:
+// VendorSendAuthorityModule imports DatabaseModule and nothing else.
+import { VendorSendAuthorityModule } from "../../organizations/vendor-send-authority.module";
 
 @Module({
   imports: [
     WebsocketModule,
     forwardRef(() => AuthModule),
     forwardRef(() => CommunicationsModule),
+    VendorSendAuthorityModule,
   ],
   controllers: [
     AgentOperationsController,

@@ -80,6 +80,25 @@ describe('isKitchenLine — a known drink section wins (F-022)', () => {
   })
 })
 
+describe('isKitchenLine — Turkish drink sections (F-1272)', () => {
+  it('keeps a wine in a Turkish section a drink', () => {
+    for (const category of ['Kırmızı', 'Beyaz', 'Roze', 'Pembe', 'Köpüklü', 'Tatlı şarap', 'Rakı', 'Bira', 'Viski', 'KIRMIZI']) {
+      expect(isKitchenLine({ category, rawText: `X,${category},2020,450,meze ile` })).toBe(false)
+    }
+  })
+
+  it("never reads 'tatlı' (sweet) alone as food", () => {
+    expect(isKitchenLine({ category: 'Tatlı', rawText: "Moscato d'Asti,Tatlı,2022,380" })).toBe(false)
+    expect(isKitchenLine({ category: null, rawText: 'Moscato,yarı tatlı,2022,380' })).toBe(false)
+    expect(isKitchenLine({ category: null, rawText: 'Late harvest,2019,pairs with desserts' })).toBe(false)
+  })
+
+  it('still sets a dessert section aside', () => {
+    expect(isKitchenLine({ category: 'Tatlılar', rawText: 'Künefe,180' })).toBe(true)
+    expect(isKitchenLine({ category: 'Desserts', rawText: null })).toBe(true)
+  })
+})
+
 // F-1173: the same test as the gateway's (menu-line-view.ts), on whole words.
 describe('isKitchenLine — whole words, English and Turkish (F-1173)', () => {
   it('never matches inside a word', () => {
