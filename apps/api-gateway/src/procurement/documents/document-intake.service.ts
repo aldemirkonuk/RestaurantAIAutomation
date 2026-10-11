@@ -735,6 +735,12 @@ export class DocumentIntakeService {
       }
     }
 
+    // F-1403: a spreadsheet is not a page the vision model can look at. It
+    // used to be sent as image/jpeg, fail every time, and be filed as "the
+    // extraction model could not be reached". Said as what it is, before any
+    // model call; the file is still kept (ADR 0104 D6).
+    if (isSpreadsheet(mime, name)) return this.unreadable(SPREADSHEET_NOT_READ);
+
     if (!this.extractor.available())
       return this.unreadable(
         "No extraction model is configured, so the document was stored unread.",
@@ -3043,4 +3049,19 @@ export function isDocumentLike(
 /** Order numbers compared as printed, ignoring case and spacing. */
 function samePo(po: string): string {
   return po.replace(/\s+/g, "").toUpperCase();
+}
+
+/** What a spreadsheet price list is told (F-1403), in the owner's words. */
+export const SPREADSHEET_NOT_READ =
+  "This file is a spreadsheet, and a spreadsheet price list cannot be read here yet, so it was kept unread. Send the price list as a PDF, or as the EDI 832 file your distributor can export.";
+
+/**
+ * A CSV, TSV, Excel or OpenDocument sheet, by its declared type or its name
+ * (the upload door sends a name and no type). Both arrive lower-cased.
+ */
+export function isSpreadsheet(mime: string, name: string): boolean {
+  return (
+    /csv|spreadsheet|excel|tab-separated/.test(mime) ||
+    /\.(csv|tsv|xlsx|xlsm|xls|ods|numbers)$/.test(name)
+  );
 }

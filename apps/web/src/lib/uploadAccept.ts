@@ -165,6 +165,26 @@ export function validateSelection(
 }
 
 /**
+ * What a 413 means, in words (F-1404). The gateway's body limit answers before
+ * Nest's filters with no JSON message, so the owner was shown "Request failed
+ * with status code 413". A clause, so a caller can end or embed it.
+ */
+export function tooLargeWords(file?: { name: string; size: number } | null): string {
+  const limit = formatBytes(MAX_UPLOAD_BYTES)
+  return file
+    ? `"${file.name}" is ${formatBytes(file.size)}; the limit is ${limit}`
+    : `the file is over the ${limit} limit`
+}
+
+/** The words for an upload the gateway refused as too large; null for any other failure. */
+export function tooLargeRefusal(err: unknown, file?: { name: string; size: number } | null): string | null {
+  const status = (err as { response?: { status?: number } } | null)?.response?.status
+  if (status !== 413) return null
+  const words = tooLargeWords(file)
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}, so it was not read.`
+}
+
+/**
  * Clear an <input type="file"> after handling it. Without this, picking the
  * same file twice in a row fires no `change` event and the UI silently does
  * nothing — the single most common "the upload button is broken" report.

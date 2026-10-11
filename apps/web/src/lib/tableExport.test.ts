@@ -31,6 +31,7 @@ import {
   REVOKE_AFTER_MS,
   type TableExportColumn,
 } from './tableExport'
+import { setHouseLocale } from './houseCurrency'
 
 type Row = { who: string; hours: number; cost: number | null }
 const columns: TableExportColumn<Row>[] = [
@@ -92,6 +93,40 @@ describe('CSV', () => {
     await exportTable({ format: 'tsv', rows: [{ who: '+1 555', hours: 1, cost: 1 }], columns, filename: 'x' })
     const text = new TextDecoder().decode(await bytesOf(created[0]))
     expect(text.split('\n')[1].split('\t')[0]).toBe("'+1 555")
+  })
+})
+
+describe('House marks (F-1401)', () => {
+  const row = [{ who: 'Şükrü', hours: 8.5, cost: 1234.25 }]
+
+  it('a comma-decimal house gets ";" between cells and "," as the decimal, with the BOM', async () => {
+    await exportTable({ format: 'csv', rows: row, columns, filename: 'x', locale: 'tr-TR' })
+    const bytes = await bytesOf(created[0])
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf])
+    const lines = new TextDecoder().decode(bytes).split('\n')
+    expect(lines[0]).toBe('"Who";"Hours worked";"Labour cost"')
+    expect(lines[1]).toBe('"Şükrü";"8,5";"1234,25"')
+  })
+
+  it('a point-decimal house keeps "," and "."', async () => {
+    await exportTable({ format: 'csv', rows: row, columns, filename: 'x', locale: 'en-US' })
+    const text = new TextDecoder().decode(await bytesOf(created[0]))
+    expect(text.split('\n')[1]).toBe('"Şükrü","8.5","1234.25"')
+  })
+
+  it('the house locale is the default, and TSV and the clipboard take its decimal', async () => {
+    setHouseLocale('tr-TR')
+    try {
+      await exportTable({ format: 'tsv', rows: row, columns, filename: 'x' })
+      const tsv = new TextDecoder().decode(await bytesOf(created[0]))
+      expect(tsv.split('\n')[1].split('\t')).toEqual(['Şükrü', '8,5', '1234,25'])
+      const writeText = vi.fn(async (_text: string) => {})
+      vi.stubGlobal('navigator', { clipboard: { writeText } })
+      await exportTable({ format: 'clipboard', rows: row, columns, filename: 'x' })
+      expect(writeText.mock.calls[0][0].split('\n')[1].split('\t')).toEqual(['Şükrü', '8,5', '1234,25'])
+    } finally {
+      setHouseLocale(null)
+    }
   })
 })
 

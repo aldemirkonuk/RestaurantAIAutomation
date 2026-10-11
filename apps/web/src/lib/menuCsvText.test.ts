@@ -2,8 +2,9 @@
  * F-1294: a CSV menu saved by Turkish Excel's default CSV is Windows-1254, and
  * `file.text()` read it as UTF-8, so every ş, ğ and ı was lost.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { CSV_NOT_READABLE, decodeMenuCsv, readMenuCsv } from './menuCsvText'
+import { setHouseLocale } from './houseCurrency'
 
 /** Text as Windows-1254 bytes (the Turkish letters Excel writes). */
 const cp1254 = (text: string) => {
@@ -33,5 +34,22 @@ describe('decodeMenuCsv (F-1294)', () => {
 
   it('reads a picked file', async () => {
     await expect(readMenuCsv(new File([cp1254('Ad;Şişe\n')], 'menu.csv'), 'tr-TR')).resolves.toBe('Ad;Şişe\n')
+  })
+})
+
+// F-1402: /get-started renders outside the house shell, so the locale there is
+// the en-US stand-in and a Turkish Excel file was read as Windows-1252.
+describe('decodeMenuCsv while the house locale is unknown (F-1402)', () => {
+  afterEach(() => setHouseLocale(null))
+
+  it('refuses a file that is not UTF-8 in plain words rather than guess a code page', () => {
+    setHouseLocale(null)
+    expect(() => decodeMenuCsv(cp1254('Ad;Şişe Fiyatı\nKavaklıdere Yakut;850\n'))).toThrow(CSV_NOT_READABLE)
+    expect(decodeMenuCsv(new TextEncoder().encode('Ad;Şişe\n'))).toBe('Ad;Şişe\n')
+  })
+
+  it('uses the house code page once the locale was read', () => {
+    setHouseLocale('tr-TR')
+    expect(decodeMenuCsv(cp1254('Ad;Şişe\n'))).toBe('Ad;Şişe\n')
   })
 })

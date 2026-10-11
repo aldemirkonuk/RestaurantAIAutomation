@@ -21,7 +21,7 @@ import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
 import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../lib/menuReadWithoutAnswer'
-import { SCAN_ACCEPT, isImageFile, isScannable, isTabular, resetFileInput } from '../lib/uploadAccept'
+import { SCAN_ACCEPT, isImageFile, isScannable, isTabular, resetFileInput, tooLargeRefusal, validateSelection } from '../lib/uploadAccept'
 
 type Step = 'you' | 'restaurant' | 'menu' | 'reading' | 'threshold'
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
@@ -434,6 +434,12 @@ function GetStartedSteps() {
       }
       return
     }
+    // F-1404: the same 10 MB check as "Send a file", before a byte is sent.
+    const tooBig = validateSelection([file]).errors
+    if (tooBig.length) {
+      setError(tooBig.join(' '))
+      return
+    }
     const key = `${file.name}|${file.size}|${file.lastModified}`
     const pending = unansweredRead.current
     if (pending && pending.key === key && Date.now() - pending.at < UNANSWERED_READ_WINDOW_MS) {
@@ -460,7 +466,9 @@ function GetStartedSteps() {
         setError(READ_WITHOUT_ANSWER)
         return
       }
-      setError(cause?.response?.data?.message || cause?.message || 'We could not read that menu.')
+      setError(
+        tooLargeRefusal(cause, file) || cause?.response?.data?.message || cause?.message || 'We could not read that menu.',
+      )
     } finally {
       setSaving(false)
     }
