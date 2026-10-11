@@ -18,7 +18,16 @@ function recordingDb() {
   const calls: unknown[][] = [];
   const from = (table: string) => {
     const q: any = {};
-    for (const m of ["select", "eq", "in", "gte", "lte", "lt", "order", "range"])
+    for (const m of [
+      "select",
+      "eq",
+      "in",
+      "gte",
+      "lte",
+      "lt",
+      "order",
+      "range",
+    ])
       q[m] = (...args: unknown[]) => {
         if (table === "procurement_orders") calls.push([m, ...args]);
         return q;
@@ -52,8 +61,16 @@ describe("F-1202 — the history route reads one day's deliveries whole", () => 
       "status",
       [ProcurementOrderStatus.DELIVERED, ProcurementOrderStatus.COMPLETED],
     ]);
-    expect(calls).toContainEqual(["gte", "delivered_at", "2026-10-05T04:00:00.000Z"]);
-    expect(calls).toContainEqual(["lt", "delivered_at", "2026-10-06T04:00:00.000Z"]);
+    expect(calls).toContainEqual([
+      "gte",
+      "delivered_at",
+      "2026-10-05T04:00:00.000Z",
+    ]);
+    expect(calls).toContainEqual([
+      "lt",
+      "delivered_at",
+      "2026-10-06T04:00:00.000Z",
+    ]);
     expect(calls.some((c) => c[1] === "created_at")).toBe(false);
     const orders = calls.filter((c) => c[0] === "order");
     expect(orders[0]).toEqual(["order", "delivered_at", { ascending: false }]);

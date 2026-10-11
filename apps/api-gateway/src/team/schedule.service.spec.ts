@@ -1233,7 +1233,9 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
         memberIds: ["m-ali"],
       } as any);
       const offer = offersOf()[0][1];
-      expect(offer.message).toBe(`server ${words} 09:00-17:00. Open it to claim.`);
+      expect(offer.message).toBe(
+        `server ${words} 09:00-17:00. Open it to claim.`,
+      );
       expect(offer.actionUrl).toContain(WEEK);
     },
   );
