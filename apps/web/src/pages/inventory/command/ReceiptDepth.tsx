@@ -19,6 +19,7 @@ import { useQuery } from '@tanstack/react-query'
 import { documentsApi, dashNull, type ProcurementDocument } from '../../../services/api/documents'
 import { cn } from '../../../lib/utils'
 import { formatMoney } from '../../../lib/currency'
+import { getHouseLocale } from '../../../lib/houseCurrency'
 
 const TYPE_LABELS: Record<ProcurementDocument['doc_type'], string> = {
   invoice: 'Invoice',
@@ -117,10 +118,12 @@ export function ReceiptDepth({
               </span>
               <span className="text-gray-500">
                 {/* `doc_date` is a `date` column: the day on the paper, read in
-                    UTC so it is not moved a day west of Greenwich (F-570). */}
+                    UTC so it is not moved a day west of Greenwich (F-570). In
+                    digits, in the house's day and month order (ADR 0207 q7,
+                    F-1390): "28/8", never "28 Ağu" or the device's "Aug 28". */}
                 {doc.doc_date
-                  ? new Date(doc.doc_date).toLocaleDateString(undefined, {
-                      month: 'short',
+                  ? new Date(doc.doc_date).toLocaleDateString(getHouseLocale(), {
+                      month: 'numeric',
                       day: 'numeric',
                       timeZone: 'UTC',
                     })

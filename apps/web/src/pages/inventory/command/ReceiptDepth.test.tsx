@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { ProcurementDocument } from '../../../services/api/documents'
+import { setHouseLocale } from '../../../lib/houseCurrency'
 
 const api = vi.hoisted(() => ({
   byOrder: {} as Record<string, ProcurementDocument[]>,
@@ -122,18 +123,20 @@ describe('ReceiptDepth', () => {
     // '2026-08-28' as an instant lands on 27 Aug.
     api.byOrder = { o1: [doc({ doc_date: '2026-08-28' })] }
     render(<ReceiptDepth orders={[{ id: 'o1' }]} />, { wrapper })
-    const want = new Date(Date.UTC(2026, 7, 28)).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'UTC',
-    })
-    const early = new Date(Date.UTC(2026, 7, 27)).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'UTC',
-    })
-    expect(await screen.findByText(want)).toBeInTheDocument()
-    expect(screen.queryByText(early)).toBeNull()
+    expect(await screen.findByText('8/28')).toBeInTheDocument()
+    expect(screen.queryByText('8/27')).toBeNull()
+  })
+
+  it('[REVERT-FAILS] writes the paper\'s day in digits in the house\'s order (F-1390)', async () => {
+    setHouseLocale('tr-TR')
+    try {
+      api.byOrder = { o1: [doc({ doc_date: '2026-08-28' })] }
+      render(<ReceiptDepth orders={[{ id: 'o1' }]} />, { wrapper })
+      expect(await screen.findByText('28/8')).toBeInTheDocument()
+      expect(screen.queryByText(/Ağu|Aug/)).toBeNull()
+    } finally {
+      setHouseLocale(null)
+    }
   })
 
   it('admits an empty paper trail without claiming verification', async () => {

@@ -11,7 +11,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { roleInHouse } from "../auth/house-role";
 import { AwayReleaseService } from "../team/away-release.service";
-import { isKnownTimeZone } from "../calendar/reminder-window";
+import { houseClock } from "../common/house-clock";
 import {
   type AccessChange,
   type AccessChangeReceipt,
@@ -197,15 +197,30 @@ export class HouseAreasService {
     );
   }
 
+  /**
+   * F-1389: the house's day on the same clock the Away release reads
+   * (`houseClock`: house → country → UTC), so a house with no zone but a
+   * one-zone country never sees its Away dates end a day early or late here.
+   */
   private async today(restaurantId: string): Promise<string> {
     const { data, error } = await this.sb
       .from("restaurants")
-      .select("timezone")
+      .select("timezone, country")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) this.unreadable("The house's time zone", error.message);
     const tz = data?.timezone;
-    return houseLocalDay(new Date(), typeof tz === "string" && isKnownTimeZone(tz) ? tz : "UTC");
+    const clock = houseClock({
+      timezone: typeof tz === "string" ? tz : null,
+      country: typeof data?.country === "string" ? data.country : null,
+    });
+    if (clock.source === "utc") {
+      this.logger.error(
+        `HOUSE_AREAS_TIMEZONE_UNKNOWN restaurant=${restaurantId} timezone=${JSON.stringify(tz)} — ` +
+          "Away dates are read against UTC for this house until the column is fixed.",
+      );
+    }
+    return houseLocalDay(new Date(), clock.zone);
   }
 
   // ==========================================================================

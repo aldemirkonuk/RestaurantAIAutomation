@@ -312,7 +312,8 @@ describe('the book and old folios', () => {
     api.folios.mockResolvedValue([old]);
     renderAt(`/ask/f/${id}`);
     const doc = await screen.findByRole('article', { name: 'The open folio' });
-    const day = asked.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    // English weekday, date in digits in the house's order (F-1391); en-US here.
+    const day = `${asked.toLocaleDateString('en-US', { weekday: 'short' })}, ${asked.toLocaleDateString('en-US', { day: 'numeric', month: 'numeric' })}`;
     const clock = asked.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     expect(doc.querySelector('.ak-eyebrow')?.textContent).toContain(`${day}, ${clock}`);
     expect(within(doc).getByText(`as of ${day}, ${clock}`)).toBeTruthy();

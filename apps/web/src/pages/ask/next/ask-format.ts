@@ -434,19 +434,54 @@ export interface BookDay {
   folios: AskFolio[];
 }
 
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** The zone to read a day on: the house's, else the device's (no zone read yet, or one this browser cannot use). */
+function usableZone(zone: string | null): string | undefined {
+  if (!zone) return undefined;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return zone;
+  } catch {
+    return undefined;
+  }
 }
 
-export function groupBook(folios: readonly AskFolio[], now: Date = new Date()): BookDay[] {
-  const today = dayKey(now);
-  const y = new Date(now);
-  y.setDate(y.getDate() - 1);
-  const yesterday = dayKey(y);
+/** The calendar day `d` falls on, on the house's clock (F-1391). */
+function dayKey(d: Date, zone: string | null): string {
+  // en-CA writes YYYY-MM-DD.
+  return d.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: usableZone(zone) });
+}
+
+/** The day before a YYYY-MM-DD day, by the calendar rather than 24 hours back. */
+function dayBefore(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * A day as the book heads it: its weekday in English and its date in digits,
+ * in the house's day and month order, on the house's clock — "Fri, 25/9" in a
+ * Turkish house, never the device's "Fri, Sep 25" or "25 Eyl Cum" (ADR 0207
+ * q7, F-1391).
+ */
+function dayHeading(t: Date, zone: string | null, withYear: boolean): string {
+  const timeZone = usableZone(zone);
+  const word = t.toLocaleDateString('en-US', { weekday: 'short', timeZone });
+  const digits = t.toLocaleDateString(getHouseLocale(), {
+    day: 'numeric',
+    month: 'numeric',
+    ...(withYear ? { year: 'numeric' } : {}),
+    timeZone,
+  });
+  return `${word}, ${digits}`;
+}
+
+export function groupBook(folios: readonly AskFolio[], now: Date = new Date(), zone: string | null = getHouseZone()): BookDay[] {
+  const today = dayKey(now, zone);
+  const yesterday = dayBefore(today);
   const days: BookDay[] = [];
   for (const f of folios) {
     const t = new Date(f.created_at);
-    const key = Number.isNaN(t.getTime()) ? 'undated' : dayKey(t);
+    const key = Number.isNaN(t.getTime()) ? 'undated' : dayKey(t, zone);
     let day = days.find((d) => d.key === key);
     if (!day) {
       const heading =
@@ -456,7 +491,7 @@ export function groupBook(folios: readonly AskFolio[], now: Date = new Date()): 
             ? 'Today'
             : key === yesterday
               ? 'Yesterday'
-              : t.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+              : dayHeading(t, zone, key.slice(0, 4) !== today.slice(0, 4));
       day = { key, heading, folios: [] };
       days.push(day);
     }
@@ -465,11 +500,12 @@ export function groupBook(folios: readonly AskFolio[], now: Date = new Date()): 
   return days;
 }
 
-export function fmtClock(iso: string | null | undefined): string {
+/** A folio's time of day on the house's clock, in the house's way (F-1391). */
+export function fmtClock(iso: string | null | undefined, zone: string | null = getHouseZone()): string {
   if (!iso) return 'time not recorded';
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return 'time not recorded';
-  return t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return t.toLocaleTimeString(getHouseLocale(), { hour: 'numeric', minute: '2-digit', timeZone: usableZone(zone) });
 }
 
 /**
@@ -478,19 +514,15 @@ export function fmtClock(iso: string | null | undefined): string {
  * share or the bell on a phone (where the book's day headings sit below it)
  * read last week's stock "as of 7:42 PM" with no day.
  */
-export function fmtWhen(iso: string | null | undefined, now: Date = new Date()): string {
+export function fmtWhen(iso: string | null | undefined, now: Date = new Date(), zone: string | null = getHouseZone()): string {
   if (!iso) return 'time not recorded';
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return 'time not recorded';
-  const clock = fmtClock(iso);
-  if (dayKey(t) === dayKey(now)) return clock;
-  const day = t.toLocaleDateString(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    ...(t.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
-  });
-  return `${day}, ${clock}`;
+  const clock = fmtClock(iso, zone);
+  const key = dayKey(t, zone);
+  const today = dayKey(now, zone);
+  if (key === today) return clock;
+  return `${dayHeading(t, zone, key.slice(0, 4) !== today.slice(0, 4))}, ${clock}`;
 }
 
 /* ───────────────────────────────────────────── a request that failed ──── */

@@ -8,6 +8,7 @@ import {
   composerProblem,
   fmtCount,
   fmtPeriod,
+  fmtWhen,
   fmtValue,
   folioChip,
   folioView,
@@ -209,6 +210,38 @@ describe('the book', () => {
       now,
     );
     expect(days.map((d) => d.heading)).toEqual(['Today', 'Yesterday', 'Date not recorded']);
+  });
+});
+
+describe('the book reads its days on the house\'s clock, in digits (F-1391)', () => {
+  afterEach(() => setHouseLocale(null));
+
+  // 22:00 in New York (the device here) is already 05:00 the next day in Istanbul.
+  const now = new Date('2026-09-26T02:00:00Z');
+
+  it('[REVERT-FAILS] heads an older day with an English weekday and the date in the house\'s order', () => {
+    setHouseLocale('tr-TR');
+    const days = groupBook(
+      [
+        folio({ id: 'a', created_at: '2026-09-25T22:30:00Z' }),
+        folio({ id: 'b', created_at: '2026-09-21T09:00:00Z' }),
+      ],
+      now,
+      'Europe/Istanbul',
+    );
+    // 01:30 on the 26th in Istanbul is the house's today, though the device still says the 25th.
+    expect(days.map((d) => d.heading)).toEqual(['Today', 'Mon, 21/9']);
+  });
+
+  it('[REVERT-FAILS] a folio\'s day and clock are the house\'s, in its way of writing them', () => {
+    setHouseLocale('tr-TR');
+    expect(fmtWhen('2026-09-21T09:00:00Z', now, 'Europe/Istanbul')).toBe('Mon, 21/9, 12:00');
+    expect(fmtWhen('2025-09-21T09:00:00Z', now, 'Europe/Istanbul')).toBe('Sun, 21.09.2025, 12:00');
+    expect(fmtWhen('2026-09-25T22:30:00Z', now, 'Europe/Istanbul')).toBe('1:30');
+  });
+
+  it('with no zone read, the device\'s clock stands in', () => {
+    expect(groupBook([folio({ id: 'a', created_at: '2026-09-25T22:30:00Z' })], now, null)[0].heading).toBe('Today');
   });
 });
 
