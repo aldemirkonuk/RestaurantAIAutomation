@@ -65,7 +65,6 @@ import {
 import { Card, Fact, KV, Mark, useHouseRegion, useShiftTime } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
 import { deleteOrConfirm, type ShiftSheetTarget } from './ShiftSheet';
-import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 
 export type Lens = 'coverage' | 'labour' | 'fairness' | 'compliance';
 
