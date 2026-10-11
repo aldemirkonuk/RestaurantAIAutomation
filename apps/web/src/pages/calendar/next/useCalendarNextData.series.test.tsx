@@ -245,3 +245,19 @@ describe('useCalendarNextData — a create whose answer was lost (F-1083)', () =
     await waitFor(() => expect(reads()).toBeGreaterThan(before));
   });
 });
+
+// F-1179 (rehit of F-362): the search box folded with a bare toLowerCase, so
+// "izmir" missed "İzmir" and "kavaklidere" missed "Kavaklıdere".
+describe('useCalendarNextData — the search box folds Turkish letters (F-1179)', () => {
+  const one = (id: string, title: string) => ({ ...base, id, title, eventDate: '2026-09-10' });
+
+  it('finds İzmir by "izmir" and Kavaklıdere by "KAVAKLIDERE"', async () => {
+    rows = [one('ev-1', 'İzmir tasting'), one('ev-2', 'Kavaklıdere delivery'), one('ev-3', 'Cellar count')];
+    const izmir = renderHook(() => useCalendarNextData('month', cursor, { q: 'izmir' }), { wrapper });
+    await waitFor(() => expect(izmir.result.current.events.length).toBe(3));
+    expect(izmir.result.current.shown.map((e) => e.id)).toEqual(['ev-1']);
+    const kav = renderHook(() => useCalendarNextData('month', cursor, { q: 'KAVAKLIDERE' }), { wrapper });
+    await waitFor(() => expect(kav.result.current.events.length).toBe(3));
+    expect(kav.result.current.shown.map((e) => e.id)).toEqual(['ev-2']);
+  });
+});

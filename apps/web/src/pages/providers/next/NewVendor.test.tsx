@@ -63,6 +63,11 @@ vi.mock('@/hooks/useDuplicateVendorCheck', () => ({
 vi.mock('@/hooks/useUserPreferences', () => ({
   useUserPreferences: () => ({ preferences: {}, updatePreferences: prefs.update }),
 }));
+const house = vi.hoisted(() => ({ country: null as string | null }));
+vi.mock('@/hooks/useHouseGroupMark', () => ({
+  useHouseGroupMark: () => null,
+  useHouseCountryCode: () => house.country,
+}));
 
 import { NewVendorSheet, vendorRefusals, EMPTY_VENDOR } from './NewVendorSheet';
 import { VendorTwinPanel } from './VendorTwinPanel';
@@ -108,6 +113,7 @@ beforeEach(() => {
   create.mutateAsync = vi.fn().mockResolvedValue({ id: 'p-new' });
   dup.value = { pendingMatch: null, acknowledge: vi.fn(), reset: vi.fn() };
   prefs.update.mockReset();
+  house.country = null;
 });
 
 describe('the shape and the primitive', () => {
@@ -357,6 +363,43 @@ describe('door two — a vendor of your own', () => {
     await waitFor(() =>
       expect(prefs.update).toHaveBeenCalledWith({ providerRatings: { 'p-new': 4 } }),
     );
+  });
+});
+
+describe('F-1178: the phone is read by the house country, never as +1', () => {
+  it('a Turkish house shows and sends a mobile typed without its 0 as +90', async () => {
+    house.country = 'TR';
+    draw();
+    fillCleanly();
+    fireEvent.change(screen.getByTestId('vendor-phone'), { target: { value: '532 123 45 67' } });
+    expect(screen.getByTestId('vendor-phone-as-saved')).toHaveTextContent('Saved as +90 532 123 45 67');
+    fireEvent.click(screen.getByTestId('vendor-save'));
+    await waitFor(() => expect(create.mutateAsync).toHaveBeenCalled());
+    const body = create.mutateAsync.mock.calls[0][0] as Record<string, unknown>;
+    expect(body.phone).toBe('+905321234567');
+  });
+
+  it('a number the house country cannot place is sent as typed, with no line', async () => {
+    house.country = 'TR';
+    draw();
+    fillCleanly();
+    fireEvent.change(screen.getByTestId('vendor-phone'), { target: { value: '0212 555 12 34' } });
+    expect(screen.queryByTestId('vendor-phone-as-saved')).toBeNull();
+    fireEvent.click(screen.getByTestId('vendor-save'));
+    await waitFor(() => expect(create.mutateAsync).toHaveBeenCalled());
+    const body = create.mutateAsync.mock.calls[0][0] as Record<string, unknown>;
+    expect(body.phone).toBe('0212 555 12 34');
+  });
+
+  it('an unknown house country invents no prefix', async () => {
+    draw();
+    fillCleanly();
+    fireEvent.change(screen.getByTestId('vendor-phone'), { target: { value: '5321234567' } });
+    expect(screen.queryByTestId('vendor-phone-as-saved')).toBeNull();
+    fireEvent.click(screen.getByTestId('vendor-save'));
+    await waitFor(() => expect(create.mutateAsync).toHaveBeenCalled());
+    const body = create.mutateAsync.mock.calls[0][0] as Record<string, unknown>;
+    expect(body.phone).toBe('5321234567');
   });
 });
 

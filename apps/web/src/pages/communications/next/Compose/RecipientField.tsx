@@ -22,6 +22,7 @@ import { BookUser, Plus } from 'lucide-react';
 import { apiClient } from '../../../../services/api/client';
 import type { BookEntry } from './useComposeData';
 import { EM, MONO, SANS, looksLikeAddress } from './compose-format';
+import { foldText } from '../../../../lib/textFold';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
 
@@ -63,14 +64,14 @@ export function RecipientField({
   }, [book]);
 
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = foldText(query.trim());
     if (!q) return (book ?? []).slice(0, 8);
     return (book ?? [])
       .filter(
         (e) =>
-          e.email.toLowerCase().includes(q) ||
-          e.providerName.toLowerCase().includes(q) ||
-          (e.contactName ?? '').toLowerCase().includes(q),
+          foldText(e.email).includes(q) ||
+          foldText(e.providerName).includes(q) ||
+          foldText(e.contactName).includes(q),
       )
       .slice(0, 8);
   }, [book, query]);

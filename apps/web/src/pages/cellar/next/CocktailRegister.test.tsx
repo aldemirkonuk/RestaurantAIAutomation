@@ -37,8 +37,11 @@ vi.mock('./useCellarNextData', async (orig) => ({
       rows: [{
         id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
         method: null, glass: null, garnish: null, price: mock.price, description: null,
+      }, {
+        id: 'c2', name: 'Rakı Sour', display_name: null, menu_section: 'İmza',
+        method: null, glass: null, garnish: null, price: null, description: null,
       }],
-      count: 1, truncated: false, referenceRows: null, recipesAvailable: false,
+      count: 2, truncated: false, referenceRows: null, recipesAvailable: false,
       scopeNote: 'Only cocktails this restaurant owns.',
     },
   }),
@@ -215,5 +218,20 @@ describe('taking one off the list', () => {
     const said = screen.getByTestId('cocktail-said');
     expect(said).toHaveTextContent(/“Negroni” may already be off the list/);
     expect(said).not.toHaveTextContent(/NOT retired/);
+  });
+});
+
+// F-1179 (rehit of F-362): the register's search lowercased bare, so "raki"
+// missed "Rakı" and "imza" missed "İmza".
+describe('the register search folds Turkish letters', () => {
+  it('finds Rakı by "raki" and its İmza section by "imza"', () => {
+    draw();
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'raki' } });
+    expect(screen.getByText('Rakı Sour')).toBeInTheDocument();
+    expect(screen.queryByText('Negroni')).not.toBeInTheDocument();
+    fireEvent.change(box, { target: { value: 'IMZA' } });
+    expect(screen.getByText('Rakı Sour')).toBeInTheDocument();
+    expect(screen.queryByText('Negroni')).not.toBeInTheDocument();
   });
 });

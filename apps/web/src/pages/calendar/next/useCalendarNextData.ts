@@ -33,6 +33,7 @@ import { canonicalStatus } from '../../../lib/mudavym/status';
 import { expandSeries } from './expand-series';
 import type { Order } from '../../../services/api/types';
 import { addDays, dayKey, parseDayKey, rangeFor, type CalView } from './cal-format';
+import { foldText } from '../../../lib/textFold';
 
 /* ── The gateway's own shape (calendar.dto.ts CalendarEventResponseDto) ───── */
 
@@ -652,7 +653,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
    * read — `events` above stays the honest window, so the counts in the
    * standing line and the "N hidden by the filter" note both come from it.
    */
-  const q = (filter.q ?? '').trim().toLowerCase();
+  const q = foldText((filter.q ?? '').trim());
   const typeFilter = filter.type ?? '';
   const shown = useMemo(() => {
     if (!q && !typeFilter) return events;
@@ -660,7 +661,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       if (typeFilter && e.type !== typeFilter) return false;
       if (!q) return true;
       const vendor = e.providerId ? (providersById?.get(e.providerId)?.name ?? '') : '';
-      return `${e.title} ${e.description ?? ''} ${vendor}`.toLowerCase().includes(q);
+      return foldText(`${e.title} ${e.description ?? ''} ${vendor}`).includes(q);
     });
   }, [events, q, typeFilter, providersById]);
 
