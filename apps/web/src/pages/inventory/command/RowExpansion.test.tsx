@@ -390,6 +390,30 @@ describe('RowExpansion — the menu price is the house price (F-390)', () => {
   })
 })
 
+describe('RowExpansion — "You paid" is what the house paid (F-1311)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('[REVERT-FAILS] says no cost is recorded, never the library price, when the house has no WAC', () => {
+    renderRow({ wac: undefined, price: 42, marketPrice: 60 } as Partial<InventoryItem>)
+    const paid = screen.getByText('You paid (WAC)').parentElement as HTMLElement
+    expect(paid.textContent).toContain('no cost recorded')
+    expect(paid.textContent).not.toContain('42')
+    const delta = screen.getByText('Delta').parentElement as HTMLElement
+    expect(delta.textContent).toContain('n/a')
+  })
+
+  it('shows the recorded cost when there is one', () => {
+    renderRow({ wac: 30, price: 42 } as Partial<InventoryItem>)
+    const paid = screen.getByText('You paid (WAC)').parentElement as HTMLElement
+    expect(paid.textContent).toContain('30')
+  })
+})
+
 describe('RowExpansion — the adjust steppers are thumb-sized (F-226)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
