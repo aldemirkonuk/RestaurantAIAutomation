@@ -15,6 +15,7 @@ import {
   type ChooserHouse,
 } from "../lib/houseMemory";
 import { foldText } from "../lib/textFold";
+import { NoHousePasskeys } from "./profile/next/NoHousePasskeys";
 
 /**
  * Which house today? (ADR 0164, R7; the founder, 2026-09-18: "if they own
@@ -387,6 +388,10 @@ export function ChooseHouse() {
             )}
           </ul>
         )}
+
+        {/* F-1321: /profile is out of reach without a house, and a
+            passkey is the person's, not the house's (ADR 0229, item 44). */}
+        {!user?.restaurantId && <NoHousePasskeys />}
 
         <p className={`mt-8 text-center text-sm ${ink3}`}>
           Not you?{" "}
