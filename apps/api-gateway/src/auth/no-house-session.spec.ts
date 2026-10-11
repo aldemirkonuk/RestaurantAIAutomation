@@ -11,8 +11,9 @@ import { ALLOWS_NO_HOUSE_KEY } from "../common/tenant/allows-no-house.decorator"
  *
  * The list of routes it may call is short on purpose and pinned here in full:
  * who am I, my houses, choose one, accept an invitation, my own account,
- * verify, sign out, and open a first house (ADR 0213's account-only
- * signup). A route added to it must be added to this list too, by
+ * verify, sign out, open a first house (ADR 0213's account-only
+ * signup), and the person's own passkeys (ADR 0229, round 7, item 44). A
+ * route added to it must be added to this list too, by
  * someone who has decided it belongs.
  */
 
@@ -60,11 +61,13 @@ describe("a session in no house (ADR 0164, R4)", () => {
     expect(routesMarkedNoHouse()).toEqual([
       "DELETE /auth/me",
       "DELETE /auth/me/link/:provider",
+      "DELETE /passkeys/:id",
       "GET /auth/houses",
       "GET /auth/me",
       "GET /auth/me/linked-providers",
       "GET /auth/verify",
       "GET /organizations/branches",
+      "GET /passkeys",
       "PATCH /auth/me",
       // ADR 0229 fork 13 (item 82): a held joiner's session names no house.
       "POST /auth/held-memberships/accept",
@@ -78,6 +81,13 @@ describe("a session in no house (ADR 0164, R4)", () => {
       // ADR 0229 fork 12 (item 81): the link now needs a session, which may
       // name no house (a held joiner verifying).
       "POST /auth/verify-email",
+      // ADR 0229 round 7, item 44 (F-1262): a passkey is the person's, not the
+      // house's, so the whole PasskeysController is marked.
+      "POST /passkeys/check/options",
+      "POST /passkeys/check/verify",
+      "POST /passkeys/registration/options",
+      "POST /passkeys/registration/verify",
+      "POST /passkeys/step-up/code",
     ]);
   });
 
