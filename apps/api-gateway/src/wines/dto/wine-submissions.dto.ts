@@ -15,6 +15,7 @@ import {
   MENU_CATEGORY_VOCABULARY,
   type MenuCategory,
 } from "../../menus/wine-extract-item.interface";
+import { KEG_MAX_ML } from "../../inventory/dto/inventory.dto";
 
 export class CreateWineSubmissionDto {
   @IsString()
@@ -98,7 +99,7 @@ export class CreateWineSubmissionDto {
   )
   @IsInt()
   @Min(50)
-  @Max(18000)
+  @Max(KEG_MAX_ML)
   bottleSizeMl?: number;
 }
 

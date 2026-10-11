@@ -29,6 +29,8 @@ import {
   COMMON_POUR_SIZES,
   parseVolumeInput,
   isValidBottleSize,
+  BOTTLE_SIZE_MIN_ML,
+  BOTTLE_SIZE_MAX_ML,
   isValidPourSize,
   formatVolume,
   getGlassesPerBottle,
@@ -968,7 +970,7 @@ export function AddWineToInventoryModal({
                             isValidBottleSize(customBottleParsed.ml)
                               ? `Parsed: ${customBottleParsed.ml}ml (${customBottleParsed.oz}oz)`
                               : customBottleSizeInput
-                                ? "Invalid volume (50ml – 18000ml)"
+                                ? `Invalid volume (${BOTTLE_SIZE_MIN_ML}ml – ${BOTTLE_SIZE_MAX_ML}ml)`
                                 : "Enter a volume"}
                           </p>
                         </div>

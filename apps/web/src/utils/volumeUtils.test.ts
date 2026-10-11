@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseVolumeInput } from './volumeUtils'
+import { isValidBottleSize, parseVolumeInput } from './volumeUtils'
 
 /**
  * F-834: custom bottle and pour sizes refused "1,5 L" and "37,5" while the
@@ -29,5 +29,14 @@ describe('parseVolumeInput', () => {
     expect(parseVolumeInput('abc')).toBeNull()
     expect(parseVolumeInput('1,5,0 L')).toBeNull()
     expect(parseVolumeInput('0 ml')).toBeNull()
+  })
+})
+
+describe('isValidBottleSize', () => {
+  it('takes a US half-barrel keg, as the gateway does (F-1383)', () => {
+    expect(isValidBottleSize(58674)).toBe(true)
+    expect(isValidBottleSize(parseVolumeInput('58674ml')!.ml)).toBe(true)
+    expect(isValidBottleSize(60001)).toBe(false)
+    expect(isValidBottleSize(20)).toBe(false)
   })
 })
