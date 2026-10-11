@@ -180,6 +180,26 @@ export function asksBottlesPerBox(order: DoorOrderVM | null): boolean {
   return u !== null && (u.startsWith('bottle') || u === 'each');
 }
 
+/** The unit the door counts in, and how it is said. */
+export interface DoorCountUnit {
+  /** The `countedUom` sent to the gateway. */
+  uom: 'case' | 'keg' | 'liter';
+  one: string;
+  many: string;
+}
+
+/**
+ * Boxes, except on an order in kegs or liters (F-1206). Nothing turns a box
+ * into kegs, and a box count on a keg order booked one for one as bottles; so
+ * those orders are counted in their own unit and said in its words.
+ */
+export function doorCountUnit(order: DoorOrderVM | null): DoorCountUnit {
+  const u = order?.unitType ?? '';
+  if (u.startsWith('keg')) return { uom: 'keg', one: 'keg', many: 'kegs' };
+  if (u.startsWith('lit')) return { uom: 'liter', one: 'liter', many: 'liters' };
+  return { uom: 'case', one: 'box', many: 'boxes' };
+}
+
 /** The bottles per box to start from, when this order already knows one; else empty. */
 export function knownBottlesPerBox(prior: PriorReading): string {
   return prior && prior !== 'unread' && prior.packSize && prior.packSize > 1
@@ -321,6 +341,48 @@ export function inWords(n: number): string {
   return abs < SMALL_WORDS.length ? SMALL_WORDS[abs] : String(abs);
 }
 
+/** No shortfall is claimed when earlier trucks could not be read. */
+function unreadLine(here: string): MatchLine {
+  return {
+    text:
+      `${here} — what earlier trucks brought could not be read, so no shortfall is ` +
+      `claimed here. The desk matches it.`,
+    tone: 'incomparable',
+    deltaBoxes: null,
+    deltaBottles: null,
+    deltaWords: null,
+  };
+}
+
+/**
+ * The line for a count that compares one for one with the order's own total:
+ * this truck plus earlier trucks, with refusals off what is still owed (F-813).
+ */
+function toned(
+  here: number,
+  expected: number,
+  prior: PriorReceipt | null,
+  total: (running: number, expected: number, earlier: number | null) => string,
+  words: (absDelta: number) => string,
+  wholeBoxes: (delta: number) => number | null,
+  /** A quantity in the order's unit, as said: "1 bottle", "2 kegs". */
+  count: (n: number) => string,
+): MatchLine {
+  const earlier = prior && prior.bottles > 0 ? prior.bottles : 0;
+  const refused = prior?.refusedBottles && prior.refusedBottles > 0 ? prior.refusedBottles : 0;
+  const running = here + earlier;
+  const delta = running + refused - expected;
+  const said =
+    total(running, expected, earlier > 0 ? earlier : null) +
+    (refused > 0 ? `, ${count(refused)} refused earlier` : '');
+  const base = { deltaBoxes: wholeBoxes(delta), deltaBottles: delta };
+  if (delta === 0) return { text: `${said} — all there.`, tone: 'even', ...base, deltaWords: null };
+  const w = words(Math.abs(delta));
+  return delta < 0
+    ? { text: `${said} — ${w} short.`, tone: 'short', ...base, deltaWords: w }
+    : { text: `${said} — ${w} more than ordered.`, tone: 'over', ...base, deltaWords: w };
+}
+
 /**
  * The live line under the count. Spec point 1: the delta as the count is
  * entered — "14 of 16, two short" — while the driver is still there.
@@ -337,6 +399,8 @@ export function matchLine(
   counted: number,
   order: DoorOrderVM | null,
   prior: PriorReading = null,
+  /** Bottles in each box, as stated at the door, on an order in bottles (F-1208). */
+  perBox: number | null = null,
 ): MatchLine | null {
   if (!order) return null;
   if (order.expectedBoxes !== null) {
@@ -389,6 +453,40 @@ export function matchLine(
       ...base,
       deltaWords: r.deltaWords,
     };
+  }
+  const unit = doorCountUnit(order);
+  if (unit.uom !== 'case' && order.quantity !== null) {
+    // F-1206: counted in the order's own unit, so the two compare one for one.
+    // Earlier trucks were booked one for one too.
+    const say = (n: number) => `${n} ${n === 1 ? unit.one : unit.many}`;
+    if (prior === 'unread') return unreadLine(`${say(counted)} in this truck`);
+    return toned(
+      counted,
+      order.quantity,
+      prior,
+      (running, expected, earlier) =>
+        `${running} of ${say(expected)}${earlier ? ` with the earlier ${earlier}` : ''}`,
+      (d) => `${inWords(d)} ${d === 1 ? unit.one : unit.many}`,
+      () => null,
+      say,
+    );
+  }
+  if (perBox !== null && perBox >= 1 && order.expectedBottles !== null && asksBottlesPerBox(order)) {
+    // F-1208: the bottles per box are stated, so the boxes are bottles now and
+    // a short truck is said as one — it used to seal as accepted by default.
+    const boxes = `${counted} ${counted === 1 ? 'box' : 'boxes'} of ${perBox}`;
+    if (prior === 'unread')
+      return unreadLine(`${boxes}, ${counted * perBox} bottles in this truck`);
+    return toned(
+      counted * perBox,
+      order.expectedBottles,
+      prior,
+      (running, expected, earlier) =>
+        `${boxes}: ${running} of ${expected} bottles${earlier ? ` with the earlier ${earlier}` : ''}`,
+      (d) => boxesAndBottles(d, perBox),
+      (d) => (d % perBox === 0 ? d / perBox : null),
+      (n) => `${n} ${n === 1 ? 'bottle' : 'bottles'}`,
+    );
   }
   if (order.expectedBottles !== null) {
     // Bottles and boxes do not compare at a door. State both facts, fake no delta.
@@ -576,8 +674,10 @@ export function creditDraft(input: CreditDraftInput): string | null {
   const r =
     order && prior !== 'unread' ? runningAgainstOrder(counted, order, prior) : null;
   const short = (() => {
-    if (expected === null || expected === undefined)
-      return `arrived ${counted} boxes — short of what was ordered`;
+    if (expected === null || expected === undefined) {
+      const u = doorCountUnit(order);
+      return `arrived ${counted} ${counted === 1 ? u.one : u.many} — short of what was ordered`;
+    }
     if (prior === 'unread')
       return (
         `arrived ${counted} boxes against an order of ${expected}; what earlier trucks ` +

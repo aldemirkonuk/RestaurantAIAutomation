@@ -965,4 +965,39 @@ describe('F-1154 — the door asks for bottles per box on an order in bottles on
     await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
     expect(submitDoorReceipt.mock.calls[0][0].body.packSize).toBeUndefined()
   })
+
+  it('[REVERT-FAILS] a truck refused whole seals without bottles per box (F-1207)', async () => {
+    await open('bottle', null)
+    await waitFor(() => expect(perBox()).not.toBeNull())
+    fireEvent.click(document.querySelector('[data-ux-key="door:outcome-refused"]') as Element)
+    fireEvent.click(document.querySelector('[data-ux-key="door:reason-wrong_wine"]') as Element)
+    expect(screen.getByText(/Not needed when the whole truck is refused/)).toBeTruthy()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    const body = submitDoorReceipt.mock.calls[0][0].body
+    expect(body.outcome).toBe('refused')
+    expect(body.packSize).toBeUndefined()
+  })
+
+  it('[REVERT-FAILS] with bottles per box said, a short truck is suggested short (F-1208)', async () => {
+    await open('bottle', null)
+    await waitFor(() => expect(perBox()).not.toBeNull())
+    // One box of 12 against an order of 24 bottles.
+    fireEvent.change(perBox() as Element, { target: { value: '12' } })
+    expect(await screen.findByText(/12 of 24 bottles — 1 box short/)).toBeTruthy()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].body.outcome).toBe('short')
+  })
+
+  it('[REVERT-FAILS] a keg order is counted and sent in kegs (F-1206)', async () => {
+    await open('keg', null)
+    expect(await screen.findByText('Kegs delivered')).toBeTruthy()
+    expect(perBox()).toBeNull()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    const body = submitDoorReceipt.mock.calls[0][0].body
+    expect(body.countedUom).toBe('keg')
+    expect(body.packSize).toBeUndefined()
+  })
 })

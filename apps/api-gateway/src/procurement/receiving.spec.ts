@@ -448,6 +448,96 @@ describe("recordDoorReceipt", () => {
     expect(calls.rpc[0].args.p_delta).toBe(24);
   });
 
+  // F-1207: a truck turned away whole books nothing, so it is not held up for
+  // a bottles-per-box answer, and no guessed bottle figure is written.
+  it("records a whole refusal on a bottle order with no bottles per box (F-1207)", async () => {
+    const { db, calls } = makeDb({ order: { ...bottleOrder } });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      rejectedQtyInCountedUom: 2,
+      outcome: "refused",
+      refusalReason: "wrong_wine",
+    });
+    expect(r.countedQtyBottles).toBe(0);
+    expect(calls.eventInserts).toHaveLength(1);
+    expect(calls.eventInserts[0]).toMatchObject({
+      counted_qty: 2,
+      counted_uom: "case",
+      counted_qty_bottles: null,
+      rejected_qty: 2,
+      rejected_qty_bottles: 0,
+      outcome: "refused",
+    });
+  });
+
+  it("still asks bottles per box when part of a bottle order is kept (F-1207)", async () => {
+    const { db, calls } = makeDb({ order: { ...bottleOrder } });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "case",
+        rejectedQtyInCountedUom: 1,
+        outcome: "refused",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: expect.objectContaining({ reason: "pack_size_required" }),
+    });
+    expect(calls.eventInserts).toHaveLength(0);
+  });
+
+  // F-1206: nothing turns a box into kegs, so a keg order counted in boxes
+  // booked 3 boxes as 3 of its kegs.
+  it("refuses a box count on a keg order and books nothing (F-1206)", async () => {
+    const { db, calls } = makeDb({
+      order: {
+        ...bottleOrder,
+        quantity: 4,
+        bottles_total: 4,
+        unit_type: "keg",
+      },
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 3,
+        countedUom: "case",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: expect.objectContaining({
+        reason: "counted_uom_not_order_unit",
+        message: expect.stringMatching(/in kegs/),
+      }),
+    });
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.eventInserts).toHaveLength(0);
+  });
+
+  it("books a keg order counted in kegs, one for one (F-1206)", async () => {
+    const { db, calls } = makeDb({
+      order: {
+        ...bottleOrder,
+        quantity: 4,
+        bottles_total: 4,
+        unit_type: "keg",
+      },
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 3,
+      countedUom: "keg",
+    });
+    expect(r.countedQtyBottles).toBe(3);
+    expect(calls.eventInserts[0]).toMatchObject({
+      counted_uom: "keg",
+      counted_qty: 3,
+    });
+  });
+
   it("writes no unit cost, because nobody has seen an invoice yet", async () => {
     // Guessing a cost here puts an unverified price into the books wearing the
     // authority of a real one. The lot stays 'estimated' until verifyReceipt.
