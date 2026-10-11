@@ -26,6 +26,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Notification } from '@/services/api/notifications';
+import { getHouseLocale } from '@/lib/houseCurrency';
+import { knownHouseZone } from '@/lib/houseZone';
 
 export const EM = '—';
 
@@ -43,8 +45,24 @@ export function num(v: unknown): number | null {
   return null;
 }
 
+/**
+ * A stamp in the house's hand (F-1123): the house's way of writing a date, on
+ * the house's clock — not a US date on whatever device is reading. With no
+ * zone read yet (or one this browser cannot use), the device's clock stands in.
+ */
+export function houseStamp(t: Date, opts: Intl.DateTimeFormatOptions, zone: string | null): string {
+  if (zone) {
+    try {
+      return t.toLocaleString(getHouseLocale(), { ...opts, timeZone: zone });
+    } catch {
+      /* fall through to the device's clock */
+    }
+  }
+  return t.toLocaleString(getHouseLocale(), opts);
+}
+
 /** Relative age. An absent or unparseable stamp is an em dash, never "now". */
-export function timeAgo(iso: string | null | undefined): string {
+export function timeAgo(iso: string | null | undefined, zone: string | null = knownHouseZone()): string {
   if (!iso) return EM;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return EM;
@@ -56,21 +74,24 @@ export function timeAgo(iso: string | null | undefined): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return houseStamp(new Date(iso), { month: 'short', day: 'numeric' }, zone);
 }
 
-/** Absolute stamp for the detail — the book's own hand. */
-export function stampOf(iso: string | null | undefined): string {
+/** Absolute stamp for the detail — the book's own hand, on the house's clock. */
+export function stampOf(iso: string | null | undefined, zone: string | null = knownHouseZone()): string {
   if (!iso) return EM;
   const t = new Date(iso);
   if (!Number.isFinite(t.getTime())) return EM;
-  return t.toLocaleString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return houseStamp(
+    t,
+    { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+    zone,
+  );
+}
+
+/** Today's date line for the page head, on the house's day (F-1123). */
+export function houseDateLine(zone: string | null, now: Date = new Date()): string {
+  return houseStamp(now, { weekday: 'long', month: 'long', day: 'numeric' }, zone);
 }
 
 /**

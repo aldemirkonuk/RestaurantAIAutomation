@@ -605,22 +605,10 @@ export function WebSocketProvider({
       console.log('🚨 Low stock alert:', data)
       incrementMessagesReceived()
       
-      // Show toast notification
-      const urgencyColors = {
-        critical: 'error',
-        high: 'warning',
-        medium: 'warning',
-        low: 'info',
-      } as const
-      
-      toast[urgencyColors[data.data.urgency] || 'warning'](
-        `Low Stock: ${data.data.wine_name}`,
-        {
-          description: `Only ${data.data.stock_after} bottles left (threshold: ${data.data.threshold})`,
-          duration: data.data.urgency === 'critical' ? Infinity : 5000,
-        }
-      )
-      
+      // ADR 0262 (scope): a toast is raised by the client that did the act,
+      // never by a room broadcast. This one reaches every member of the house,
+      // so it is the bell's to record and never toasts (F-124).
+
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
       void queryClient.invalidateQueries({
@@ -641,10 +629,10 @@ export function WebSocketProvider({
       console.log('📋 Order created:', data)
       incrementMessagesReceived()
       
-      toast.success('Order Created', {
-        description: `${data.data.quantity}x ${data.data.wine_name} from ${data.data.provider_name}`,
-      })
-      
+      // ADR 0262 (scope): a toast is raised by the client that did the act,
+      // never by a room broadcast. This one reaches every member of the house,
+      // so it is the bell's to record and never toasts (F-124).
+
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
@@ -659,10 +647,10 @@ export function WebSocketProvider({
       console.log('📋 Order status changed:', data)
       incrementMessagesReceived()
       
-      toast.info('Order Updated', {
-        description: `Order status: ${data.data.previous_status} → ${data.data.status}`,
-      })
-      
+      // ADR 0262 (scope): a toast is raised by the client that did the act,
+      // never by a room broadcast. This one reaches every member of the house,
+      // so it is the bell's to record and never toasts (F-124).
+
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
@@ -696,42 +684,11 @@ export function WebSocketProvider({
         | undefined
       const kind = String(nested?.type ?? flat?.type ?? 'info')
 
-      // F-522: a person in two houses gets both houses' notifications on this
-      // one socket. One for a house this tab is not in is never toasted here,
-      // unlabelled and with a View link into that house under this house's
-      // name; it waits in that house's bell. A notice that names no house is
-      // shown as before.
-      const houseOf = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : null)
-      const flatData =
-        flat?.data && typeof flat.data === 'object' ? (flat.data as Record<string, unknown>) : null
-      const house =
-        houseOf((nested as { restaurant_id?: unknown } | null)?.restaurant_id) ??
-        houseOf(flat?.restaurant_id) ??
-        houseOf(flatData?.restaurantId) ??
-        houseOf(flatData?.restaurant_id)
-      const elsewhere = house !== null && !!resolvedRestaurantId && house !== resolvedRestaurantId
-
-      const toastFn =
-        kind === 'error' || kind === 'critical'
-          ? toast.error
-          : kind === 'success'
-            ? toast.success
-            : kind === 'warning' || kind === 'high' || kind === 'inventory_low_stock'
-              ? toast.warning
-              : toast.info
-
-      if (!elsewhere)
-        toastFn(title, {
-          description: message || undefined,
-          action: actionUrl
-            ? {
-                label: 'View',
-                onClick: () => {
-                  window.location.href = actionUrl
-                },
-              }
-            : undefined,
-        })
+      // ADR 0262 (scope): a notice on this socket is a room broadcast
+      // (`persistForRestaurant` sends it to the whole house), so it is written
+      // to the bell, which the nudges below refresh, and never toasted (F-124).
+      // That also settles F-522: another house's notice was never toasted here,
+      // and now no house's is.
 
       // Force active queries to refetch even when staleTime hasn't elapsed
       void queryClient.invalidateQueries({
@@ -778,21 +735,10 @@ export function WebSocketProvider({
         }
       }
       
-      // Also show in-app toast with action
-      toast.info('🤖 AI Needs Your Approval', {
-        description: `Message to ${data.provider_name} about ${data.wine_name}`,
-        duration: 10000,
-        action: {
-          label: 'Review',
-          onClick: () => {
-            // This will trigger OneTapActionCenter (SECONDARY: 20%)
-            queryClient.invalidateQueries({ queryKey: ['onetap-actions'] })
-            // The dashboard lives at `/`; `/dashboard` was a 404 (F-179).
-            window.location.href = '/'
-          },
-        },
-      })
-      
+      // ADR 0262 (scope): a toast is raised by the client that did the act,
+      // never by a room broadcast. This one reaches every member of the house,
+      // so it is the bell's to record and never toasts (F-124).
+
       // Invalidate queries to update UI
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       queryClient.invalidateQueries({ queryKey: ['pending-approvals'] })
@@ -804,10 +750,10 @@ export function WebSocketProvider({
       console.log('✅ AI conversation resumed:', data)
       incrementMessagesReceived()
       
-      toast.success('Message Sent', {
-        description: `AI message to ${data.provider_name} was sent successfully`,
-      })
-      
+      // ADR 0262 (scope): a toast is raised by the client that did the act,
+      // never by a room broadcast. This one reaches every member of the house,
+      // so it is the bell's to record and never toasts (F-124).
+
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       queryClient.invalidateQueries({ queryKey: ['pending-approvals'] })
     })
@@ -816,14 +762,10 @@ export function WebSocketProvider({
       console.log('📊 Report ready:', data)
       incrementMessagesReceived()
       
-      toast.success('Report Ready', {
-        description: `Your ${data.data.report_type} report is ready`,
-        action: {
-          label: 'Download',
-          onClick: () => window.open(data.data.download_url, '_blank'),
-        },
-      })
-      
+      // ADR 0262 (scope): a toast is raised by the client that did the act,
+      // never by a room broadcast. This one reaches every member of the house,
+      // so it is the bell's to record and never toasts (F-124).
+
       queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
       
       window.dispatchEvent(new CustomEvent('report_event', {
@@ -836,10 +778,10 @@ export function WebSocketProvider({
       console.log('📅 Calendar event created:', data)
       incrementMessagesReceived()
       
-      toast.success('Calendar Event Created', {
-        description: data.data.title,
-      })
-      
+      // ADR 0262 (scope): a toast is raised by the client that did the act,
+      // never by a room broadcast. This one reaches every member of the house,
+      // so it is the bell's to record and never toasts (F-124).
+
       queryClient.invalidateQueries({ queryKey: queryKeys.calendar.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
       
@@ -891,15 +833,7 @@ export function WebSocketProvider({
     newSocket.on('system:message', (data: SystemMessageEvent) => {
       console.log('⚙️ System message:', data)
       incrementMessagesReceived()
-      
-      const toastFn = data.level === 'error' ? toast.error
-        : data.level === 'warning' ? toast.warning
-        : toast.info
-      
-      toastFn('System Message', {
-        description: data.message,
-        duration: data.level === 'error' ? Infinity : 5000,
-      })
+      // ADR 0262 (scope): a broadcast, so it never toasts (F-124).
     })
     
     setSocket(newSocket)

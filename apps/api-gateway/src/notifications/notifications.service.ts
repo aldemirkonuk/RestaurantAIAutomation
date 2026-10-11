@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { safeActionPath } from "./safe-action-path";
+import { foldKeyOf } from "./notification-fold-key";
 import { readHouseMoney } from "../common/house-money";
 import { money, percentFigure } from "./producers/producer-copy";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
@@ -1127,6 +1128,64 @@ export class NotificationsService {
     }
 
     return data?.length || 0;
+  }
+
+  /**
+   * Rule off a folded bell line: the named row and every unread row of this
+   * person in this house that the bell folds with it (`foldKeyOf`), however
+   * far past the bell's page of 25 they sit (F-253, F-1125). The rows are read
+   * in pages first and written after, so the write never moves the read.
+   */
+  async markFoldAsRead(params: {
+    id: string;
+    userId: string;
+    restaurantId: string;
+  }): Promise<number> {
+    const sb = this.databaseService.supabase;
+    const { data: anchor, error: anchorErr } = await sb
+      .from("notifications")
+      .select("id, type, title, metadata")
+      .eq("id", params.id)
+      .eq("user_id", params.userId)
+      .eq("restaurant_id", params.restaurantId)
+      .maybeSingle();
+    if (anchorErr) {
+      this.logger.error(`markFoldAsRead error: ${anchorErr.message}`);
+      throw anchorErr;
+    }
+    if (!anchor) throw new NotFoundException("Notification not found");
+
+    const ids = new Set<string>([anchor.id]);
+    const key = foldKeyOf(anchor);
+    if (key !== null) {
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data: rows, error } = await sb
+          .from("notifications")
+          .select("id, type, title, metadata")
+          .eq("user_id", params.userId)
+          .eq("restaurant_id", params.restaurantId)
+          .eq("status", "unread")
+          .eq("type", anchor.type)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) {
+          this.logger.error(`markFoldAsRead error: ${error.message}`);
+          throw error;
+        }
+        for (const r of rows ?? []) if (foldKeyOf(r) === key) ids.add(r.id);
+        if (!rows || rows.length < PAGE) break;
+      }
+    }
+
+    // `.in()` travels in the URL to the database, so a long fold goes in slices.
+    const all = [...ids];
+    let count = 0;
+    for (let i = 0; i < all.length; i += 100) {
+      count += await this.markBulkAsRead(all.slice(i, i + 100), params.userId);
+    }
+    return count;
   }
 
   async markAllAsRead(params: {

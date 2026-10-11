@@ -1,8 +1,9 @@
 /**
- * F-522: a person in two houses gets both houses' notifications on one
- * socket. A notification of another house is never toasted on this one (no
- * label, and a View link into the other house under this house's name); one
- * of this house, or one that names no house, is.
+ * ADR 0262 (scope, F-124): a toast is raised by the client that did the act,
+ * never by a room broadcast. Every business event on this socket is a room
+ * broadcast, so none of them toasts; each still nudges what it nudged before.
+ * F-522 (another house's notice never toasted here) is the narrower case of
+ * the same rule and stays pinned.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -77,10 +78,14 @@ const notice = (house: string | undefined, title: string) => ({
   timestamp: '2026-10-09T12:00:00Z',
 })
 
-describe('notification:new across houses (F-522)', () => {
-  it('toasts a notification of the house this tab is in', () => {
-    handlers['notification:new'](notice(HERE, 'Delivery overdue here'))
-    expect(shown()).toEqual(['Delivery overdue here'])
+describe('notification:new is the bell\'s, never a toast (ADR 0262, F-124 / F-522)', () => {
+  it('does not toast a notification of the house this tab is in, and nudges the bell', () => {
+    const nudged = vi.fn()
+    window.addEventListener('notification_sent', nudged)
+    handlers['notification:new'](notice(HERE, 'Schedule published'))
+    window.removeEventListener('notification_sent', nudged)
+    expect(shown()).toEqual([])
+    expect(nudged).toHaveBeenCalledTimes(1)
   })
 
   it('does not toast a notification of another house, and still nudges the bell', () => {
@@ -92,18 +97,46 @@ describe('notification:new across houses (F-522)', () => {
     expect(nudged).toHaveBeenCalledTimes(1)
   })
 
-  it('reads the house off the flat low-stock shape too', () => {
+  it('does not toast the flat low-stock shape, nor one that names no house', () => {
     handlers['notification:new']({
       type: 'low_stock',
       title: 'Low Stock: Chablis',
       body: 'Only 2 bottles remaining',
-      data: { restaurantId: OTHER },
+      data: { restaurantId: HERE },
     })
+    handlers['notification:new'](notice(undefined, 'No house named'))
     expect(shown()).toEqual([])
   })
+})
 
-  it('a notification that names no house is shown as before', () => {
-    handlers['notification:new'](notice(undefined, 'No house named'))
-    expect(shown()).toEqual(['No house named'])
+describe('room events never toast (ADR 0262, F-124)', () => {
+  it('another member\'s order, its status change and a low-stock crossing stay off the screen', () => {
+    const changed = vi.fn()
+    window.addEventListener('order_change', changed)
+    handlers['order:created']({
+      event: 'OrderCreated',
+      data: { order_id: 'o1', wine_name: 'Chablis', quantity: 6, provider_name: 'Kavaklıdere' },
+      timestamp: '2026-10-09T12:00:00Z',
+    })
+    handlers['order:status_changed']({
+      event: 'OrderStatusChanged',
+      data: { order_id: 'o1', status: 'confirmed', previous_status: 'pending' },
+      timestamp: '2026-10-09T12:01:00Z',
+    })
+    window.removeEventListener('order_change', changed)
+    handlers['stock:low']({
+      event: 'LowStockAlert',
+      data: { wine_id: 'w1', wine_name: 'Chablis', stock_after: 1, threshold: 6, urgency: 'critical' },
+      timestamp: '2026-10-09T12:02:00Z',
+    })
+    expect(shown()).toEqual([])
+    expect(changed).toHaveBeenCalledTimes(2)
+  })
+
+  it('a report, a calendar entry and a system message stay off the screen too', () => {
+    handlers['report:ready']({ event: 'ReportReady', data: { report_type: 'weekly', download_url: '/r.pdf' } })
+    handlers['calendar:event_created']({ event: 'CalendarEventCreated', data: { title: 'Tasting' } })
+    handlers['system:message']({ level: 'error', message: 'Down for upkeep' })
+    expect(shown()).toEqual([])
   })
 })
