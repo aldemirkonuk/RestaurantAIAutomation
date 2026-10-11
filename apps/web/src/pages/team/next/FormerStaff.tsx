@@ -20,7 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getFormerStaff, type FormerStaffPerson } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
-import { EM, fmtDayShort, fmtHours, fmtMoneyExact, fmtMoneyWhole, type HouseMoneyLike } from './tm-format';
+import { EM, fmtDayShort, fmtHours, fmtMoneyExact, fmtMoneyWhole, houseLocale, type HouseMoneyLike } from './tm-format';
 import { Alert } from './tm-bits';
 
 function day(iso: string | null | undefined): string {
@@ -38,6 +38,8 @@ const LEAVE_TYPE: Record<string, string> = {
 };
 
 function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
+  // F-1149: hours carry the house's decimal mark, read off the money's country.
+  const hoursIn = houseLocale(money.country);
   return (
     <article
       data-testid={`former-${p.memberId}`}
@@ -60,7 +62,7 @@ function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
       <p className="tm-note" style={{ marginTop: 6 }}>
         {p.totals.shiftsWorked === 0
           ? 'No worked shift kept.'
-          : `${p.totals.shiftsWorked} worked shift${p.totals.shiftsWorked === 1 ? '' : 's'}, ${fmtHours(p.totals.workedHours)} worked, ` +
+          : `${p.totals.shiftsWorked} worked shift${p.totals.shiftsWorked === 1 ? '' : 's'}, ${fmtHours(p.totals.workedHours, hoursIn)} worked, ` +
             (p.totals.cost === null
               ? `cost unknown (${p.totals.unpricedShifts} shift${p.totals.unpricedShifts === 1 ? '' : 's'} had no wage on file)`
               : `${fmtMoneyWhole(p.totals.cost, money)} in all`)}
@@ -77,7 +79,7 @@ function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
           <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: 12 }}>
             {p.shifts.map((s) => (
               <li key={s.id}>
-                {`${day(s.shift_date)} ${year(s.shift_date)} · ${s.start_time}–${s.end_time} · ${fmtHours(s.workedHours)}`}
+                {`${day(s.shift_date)} ${year(s.shift_date)} · ${s.start_time}–${s.end_time} · ${fmtHours(s.workedHours, hoursIn)}`}
                 {s.state === 'callout' ? ' · called out' : ''}
                 {` · ${s.labor_cost === null ? 'no wage on file' : fmtMoneyExact(s.labor_cost, money)}`}
               </li>

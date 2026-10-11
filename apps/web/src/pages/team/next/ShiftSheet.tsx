@@ -32,6 +32,7 @@ import {
   breakCounted,
   breakUnderMinimum,
   fmtHours,
+  houseLocale,
   mondayOf,
   resolveName,
   shiftHours,
@@ -137,7 +138,10 @@ export function ShiftSheet({
   const counted = breakCounted(preview);
   // F-1020: Labour Law 4857 is Turkey's. A house elsewhere, or one whose
   // country is not known, is told what is counted, never another country's law.
-  const turkish = useHouseRegion() === 'TR';
+  const region = useHouseRegion();
+  const turkish = region === 'TR';
+  // F-1149: the hours in the break sentence carry the house's decimal mark.
+  const hoursIn = houseLocale(region);
   const breakHint = !breakValid
     ? `A break is a whole number of minutes, less than the shift's ${spanMin}.`
     : counted.assumed
@@ -381,8 +385,8 @@ export function ShiftSheet({
                 of work, which is owed 60 (Art. 68 counts working time). */}
             {underMinimum && breakTyped !== null
               ? turkish
-                ? ` That is under the legal minimum of ${art68BreakForWork(spanMin - breakTyped)} minutes for the ${fmtHours((spanMin - breakTyped) / 60)} of work it leaves (Art. 68).`
-                : ` That is under the ${art68BreakForWork(spanMin - breakTyped)}-minute break counted for the ${fmtHours((spanMin - breakTyped) / 60)} of work it leaves.`
+                ? ` That is under the legal minimum of ${art68BreakForWork(spanMin - breakTyped)} minutes for the ${fmtHours((spanMin - breakTyped) / 60, hoursIn)} of work it leaves (Art. 68).`
+                : ` That is under the ${art68BreakForWork(spanMin - breakTyped)}-minute break counted for the ${fmtHours((spanMin - breakTyped) / 60, hoursIn)} of work it leaves.`
               : ''}
           </p>
         </label>
