@@ -605,14 +605,19 @@ export function InventoryCommandPage() {
    * reorder flow on this page to open, so that promise goes no further than
    * "the item is now visible" — stated plainly rather than built on a guess
    * at what a reorder flow should do.
+   * Once applied, `wine` is dropped and the name stays as `q` (the search
+   * box's own param), so the palette's "Search the cellar for x" from this
+   * page lands each time, even the same name twice (F-1354).
    */
-  const appliedWineParam = useRef(false);
   useEffect(() => {
     const wine = searchParams.get("wine");
-    if (!wine || appliedWineParam.current) return;
-    appliedWineParam.current = true;
+    if (!wine) return;
     setSearchQuery(wine);
-  }, [searchParams, setSearchQuery]);
+    const next = new URLSearchParams(searchParams);
+    next.delete("wine");
+    next.set("q", wine);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchQuery, setSearchParams]);
 
   /**
    * Deep-link: /inventory?add=1 — the command palette's "Add wine" (F-550).
@@ -638,7 +643,8 @@ export function InventoryCommandPage() {
 
   // F-370: mirror the filters into the URL (replace, so Back leaves the page
   // rather than stepping through every keystroke). Defaults are left out, and
-  // a param this page does not own — `verify`, `wine` — is never touched.
+  // a param this page does not own — `verify` — is never touched (`wine` is
+  // read into `q` above).
   // Only a real change navigates: react-router's functional `prev` is this
   // render's URL, not one another effect just replaced, so writing it back
   // unchanged undid `?add=1`'s removal (F-550) in the same pass.

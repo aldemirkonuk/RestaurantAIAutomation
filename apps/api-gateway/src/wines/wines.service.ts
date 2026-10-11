@@ -545,7 +545,18 @@ export class WinesService {
 
     if (query.search) {
       const v = ilikeValue(query.search);
-      supa = supa.or(`name.ilike.${v},producer.ilike.${v}`);
+      // F-1351: "kavaklidere" must find "Kavaklıdere" and "cankaya" must find
+      // "Çankaya". The folded keys (normalized_name / normalized_producer) are
+      // written by normalizeSignatureText, which folds ı/İ and accents the way
+      // common/text-fold.ts does, so the term is folded the same way and
+      // matched there too. Folded text is only [a-z0-9 ], never grammar.
+      const folded = normalizeSignatureText(query.search);
+      const f = folded ? ilikeValue(folded) : "";
+      supa = supa.or(
+        f
+          ? `name.ilike.${v},producer.ilike.${v},normalized_name.ilike.${f},normalized_producer.ilike.${f}`
+          : `name.ilike.${v},producer.ilike.${v}`,
+      );
     }
 
     if (query.type) {

@@ -42,7 +42,11 @@ const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/Dashb
 const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
 const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
-const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/ProvidersNext'))
+// The route element re-reads the address on each navigation that carries a
+// query (F-1354); the page itself reads it once, at mount.
+const ProvidersNext = lazyWithRefresh(() =>
+  import('./pages/providers/next/ProvidersNext').then((m) => ({ default: m.ProvidersNextRoute }))
+)
 const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/next/CommunicationsNext'))
 const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
 const ReceiptsNext = lazyWithRefresh(() => import('./pages/receipts/next/ReceiptsNext'))

@@ -10,6 +10,7 @@
  */
 
 import type { LucideIcon } from "lucide-react";
+import { foldText } from "../../lib/textFold";
 import {
   Home,
   Boxes,
@@ -46,7 +47,9 @@ export type CommandSection =
   | "Insights"
   | "Recent"
   | "On the counter"
-  | "Rooms";
+  | "Rooms"
+  /** The palette's hand-off when nothing matches (F-1354). */
+  | "Search";
 
 export interface Command {
   id: string;
@@ -167,8 +170,10 @@ export function breadcrumbTrail(path: string): { label: string; href: string }[]
  * earlier first match, shorter text.
  */
 export function fuzzyScore(query: string, text: string): number | null {
-  const q = query.toLowerCase().trim();
-  const t = text.toLowerCase();
+  // Folded, not just lowercased (F-1350): counter rows carry vendor and wine
+  // names, and "kavaklidere" must find "Kavaklıdere", "cankaya" "Çankaya".
+  const q = foldText(query).trim();
+  const t = foldText(text);
   if (!q) return 0;
   let qi = 0;
   let score = 0;

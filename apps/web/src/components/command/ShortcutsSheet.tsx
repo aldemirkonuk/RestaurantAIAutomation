@@ -10,47 +10,53 @@
 import { X } from "lucide-react";
 import { Panel } from "../mudavym/Sheet";
 import { useMudavymShell } from "../../lib/mudavym/shellGround";
+import { platformKeys } from "../../lib/platformKeys";
 
-const GROUPS: { title: string; items: [string, string][] }[] = [
-  {
-    title: "Global",
-    items: [
-      ["⌘ K", "Open the command palette"],
-      ["⌘ ⇧ K", "Ask AI for an action (you confirm before anything runs)"],
-      ["⌘ ⇧ O", "Jump back to a recently-viewed page"],
-      ["?", "Show this shortcut sheet"],
-      ["g then d / i / o", "Go to Dashboard / Inventory / Orders"],
-      ["g then w / r / v", "Go to Wines / Reports / Vendors (g then p still works)"],
-      ["g then c / t / n / s", "Go to Calendar / Team / Notifications / Settings"],
-      ["Esc", "Close the topmost overlay"],
-    ],
-  },
-  {
-    title: "Palette",
-    items: [
-      ["↑ / ↓", "Move selection"],
-      ["Enter", "Run the selected command"],
-      ["Home / End", "Jump to first / last"],
-    ],
-  },
-  {
-    title: "Recommendations",
-    items: [
-      ["j / k", "Move between cards"],
-      ["a / d / s", "Act / Dismiss / Snooze focused card"],
-      ["e / x", "Explain / Select focused card"],
-    ],
-  },
-  {
-    title: "Calendar",
-    items: [
-      ["t", "Jump to today"],
-      ["m / w / d / a", "Month / Week / Day / Agenda view"],
-      ["n", "New event"],
-      ["← / →", "Previous / next period"],
-    ],
-  },
-];
+// ⌘ and ⇧ on a Mac, Ctrl and Shift elsewhere — the header's own reading
+// (F-1355), so the sheet never tells a Windows owner to press ⌘.
+function shortcutGroups(): { title: string; items: [string, string][] }[] {
+  const { mod: MOD, shift: SHIFT } = platformKeys();
+  return [
+    {
+      title: "Global",
+      items: [
+        [`${MOD} K`, "Open the command palette"],
+        [`${MOD} ${SHIFT} K`, "Ask AI for an action (you confirm before anything runs)"],
+        [`${MOD} ${SHIFT} O`, "Jump back to a recently-viewed page"],
+        ["?", "Show this shortcut sheet"],
+        ["g then d / i / o", "Go to Dashboard / Inventory / Orders"],
+        ["g then w / r / v", "Go to Wines / Reports / Vendors (g then p still works)"],
+        ["g then c / t / n / s", "Go to Calendar / Team / Notifications / Settings"],
+        ["Esc", "Close the topmost overlay"],
+      ],
+    },
+    {
+      title: "Palette",
+      items: [
+        ["↑ / ↓", "Move selection"],
+        ["Enter", "Run the selected command"],
+        ["Home / End", "Jump to first / last"],
+      ],
+    },
+    {
+      title: "Recommendations",
+      items: [
+        ["j / k", "Move between cards"],
+        ["a / d / s", "Act / Dismiss / Snooze focused card"],
+        ["e / x", "Explain / Select focused card"],
+      ],
+    },
+    {
+      title: "Calendar",
+      items: [
+        ["t", "Jump to today"],
+        ["m / w / d / a", "Month / Week / Day / Agenda view"],
+        ["n", "New event"],
+        ["← / →", "Previous / next period"],
+      ],
+    },
+  ];
+}
 
 export function ShortcutsSheet({
   open,
@@ -61,6 +67,7 @@ export function ShortcutsSheet({
 }) {
   const shell = useMudavymShell();
   if (!open) return null;
+  const GROUPS = shortcutGroups();
 
   if (shell.on) {
     return (

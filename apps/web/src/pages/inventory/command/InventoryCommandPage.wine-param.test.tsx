@@ -1,7 +1,7 @@
 /**
  * `/inventory?wine=<name>` — the deep link `low-stock-alert.template.ts`'s
  * email CTA and `sw.js`'s push action both send (InventoryCommandPage.tsx
- * `appliedWineParam`).
+ * `?wine=` effect).
  *
  * R1/F5: this reader existed before the lane's
  * F1-F6 pass, but no test ever pinned it — reverting it to a no-op (or
@@ -17,8 +17,8 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const setSearchQuery = vi.fn();
@@ -144,13 +144,26 @@ function Where() {
   return <div data-testid="where">{useLocation().search}</div>;
 }
 
-function harness(path: string) {
+/** The palette's "Search the cellar for x", sent while this page is open. */
+function Go({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" data-testid={`go ${to}`} onClick={() => navigate(to)}>
+      go
+    </button>
+  );
+}
+
+function harness(path: string, goes: string[] = []) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <InventoryCommandPage />
         <Where />
+        {goes.map((to) => (
+          <Go key={to} to={to} />
+        ))}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -168,6 +181,27 @@ describe('?wine= deep link', () => {
 
     expect(setSearchQuery).toHaveBeenCalledTimes(1);
     expect(setSearchQuery).toHaveBeenCalledWith('Barolo');
+  });
+
+  // F-1354: the page stays mounted when the palette searches from it; a
+  // read-once guard left the second search a new address and the same list.
+  it('applies a second palette search made from this page, even the same name again', () => {
+    harness('/inventory?wine=Barolo', ['/inventory?wine=Chablis', '/inventory?wine=Barolo']);
+    expect(setSearchQuery).toHaveBeenLastCalledWith('Barolo');
+
+    fireEvent.click(screen.getByTestId('go /inventory?wine=Chablis'));
+    expect(setSearchQuery).toHaveBeenLastCalledWith('Chablis');
+
+    fireEvent.click(screen.getByTestId('go /inventory?wine=Barolo'));
+    expect(setSearchQuery).toHaveBeenLastCalledWith('Barolo');
+    expect(setSearchQuery).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the name as the search box\'s own ?q= and drops ?wine=', () => {
+    // The real hook's searchQuery after setSearchQuery('Barolo') (see below).
+    page.searchQuery = 'Barolo';
+    harness('/inventory?wine=Barolo');
+    expect(screen.getByTestId('where').textContent).toBe('?q=Barolo');
   });
 
   it('does not touch the search box when no wine is named', () => {
