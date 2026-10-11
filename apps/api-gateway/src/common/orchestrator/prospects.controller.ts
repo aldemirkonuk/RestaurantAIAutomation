@@ -8,6 +8,7 @@ import {
   HttpException,
   HttpStatus,
   ForbiddenException,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
@@ -15,13 +16,16 @@ import { RolesGuard } from "../../auth/guards/roles.guard";
 import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { ProspectsService } from "./prospects.service";
+import { holdsHouseMoney } from "../../procurement/documents/document-money-gate";
+import { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
 
 /**
  * Manager surface for the D1 Prospects lane: list captured cold-email outreach, add a prospect
  * as a real vendor (one tap), dismiss it, or undo a dismiss. Never sends anything.
  *
  * Adding a prospect as a vendor is owner or manager only (see `promote`). Listing, dismissing
- * and restoring stay open to any member of the house.
+ * and restoring stay open to any member of the house. A prospect's files are signed only for a
+ * caller who may read vendor letters (see `attachments`).
  *
  * The `/triage` endpoint is operator-only (unattributed cold email that could belong to any
  * tenant) and is gated by the PLATFORM_ADMIN_USER_IDS allowlist — never a tenant role, since
@@ -33,6 +37,8 @@ export class ProspectsController {
   constructor(
     private readonly prospects: ProspectsService,
     private readonly configService: ConfigService,
+    @Optional()
+    private readonly vendorSendAuthority?: VendorSendAuthorityService,
   ) {}
 
   @Get()
@@ -78,10 +84,16 @@ export class ProspectsController {
   @Get(":id/attachments")
   async attachments(
     @Param("id") id: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<any[]> {
     try {
-      return await this.prospects.attachmentsFor(user.restaurantId, id);
+      // A vendor's files (price lists, invoices) follow the letter cut on
+      // orders/:id/attachments (F-1176): anyone who may read vendor letters
+      // gets the links; anyone else learns only that files came (F-1274).
+      return await this.prospects.attachmentsFor(user.restaurantId, id, {
+        readsFiles: await this.readsLetters(user),
+      });
     } catch (error: any) {
       throw new HttpException(
         error.message || "Failed to load attachments",
@@ -143,6 +155,23 @@ export class ProspectsController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /** Whether this caller may read a vendor letter's words: a holder of the
+   * house's money, or a non-holder who may send to vendors (ADR 0175 D10). The
+   * same test as ProcurementController's. No authority service reads as no. */
+  private async readsLetters(user: {
+    userId: string;
+    restaurantId: string;
+    role?: string | null;
+  }): Promise<boolean> {
+    if (holdsHouseMoney(user?.role ?? null)) return true;
+    if (!this.vendorSendAuthority) return false;
+    return (
+      await this.vendorSendAuthority.readout(user.userId, user.restaurantId, {
+        canAsk: true,
+      })
+    ).maySend;
   }
 
   private assertPlatformAdmin(userId: string): void {

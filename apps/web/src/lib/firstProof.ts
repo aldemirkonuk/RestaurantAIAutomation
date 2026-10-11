@@ -62,7 +62,6 @@ const KITCHEN = [
   'breakfast',
   'brunch',
   'dessert',
-  'desserts',
   'mezze',
   'meze',
   'mezeler',
@@ -83,14 +82,26 @@ const KITCHEN = [
   'kebap',
   'kebaplar',
   'pide',
-  'tatlı',
-  'tatlılar',
   'kahvaltı',
   'mutfak',
 ]
 
 /** A section that names wine ("Dessert wines", "Kırmızı şaraplar") is a drink section. */
 const WINE_WORDS = ['wine', 'wines', 'şarap', 'şaraplar']
+
+/**
+ * Turkish drink sections, matched as whole words in the section (F-1272): a
+ * CSV's Tür/Kategori cell is kept as written. The same list as the gateway's
+ * DRINK_WORDS.
+ */
+const DRINK_WORDS = ['kırmızı', 'beyaz', 'roze', 'pembe', 'köpüklü', 'tatlı şarap', 'rakı', 'bira', 'biralar', 'viski', 'şarap']
+
+/**
+ * Hints that mark food only as the section's own heading, never inside a raw
+ * line (F-1272). 'tatlı' alone means sweet, so it is no hint. The same list
+ * as the gateway's SECTION_HINTS.
+ */
+const SECTION_HINTS = ['desserts', 'tatlılar']
 
 /**
  * The sections a line can be placed in: the gateway's MENU_CATEGORY_VOCABULARY
@@ -183,7 +194,9 @@ export function isKitchenLine(item: Pick<MenuImportReviewItem, 'category' | 'raw
   // whole-word hint in the section or the raw line decides (F-1173).
   if (VOCABULARY.has(categoryOf(item))) return false
   const section = item.category ?? ''
-  if (wordRuns(section).some((run) => WINE_WORDS.some((w) => run.includes(` ${w} `)))) return false
+  const sectionRuns = wordRuns(section)
+  if (sectionRuns.some((run) => [...WINE_WORDS, ...DRINK_WORDS].some((w) => run.includes(` ${w} `)))) return false
+  if (SECTION_HINTS.some((hint) => sectionRuns.some((run) => run.includes(` ${hint} `)))) return true
   const runs = wordRuns(`${section} ${item.rawText ?? ''}`)
   return KITCHEN.some((hint) => runs.some((run) => run.includes(` ${hint} `)))
 }

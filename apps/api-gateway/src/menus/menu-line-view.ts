@@ -70,7 +70,6 @@ export const KITCHEN_HINTS = [
   "breakfast",
   "brunch",
   "dessert",
-  "desserts",
   "mezze",
   "meze",
   "mezeler",
@@ -91,8 +90,6 @@ export const KITCHEN_HINTS = [
   "kebap",
   "kebaplar",
   "pide",
-  "tatlı",
-  "tatlılar",
   "kahvaltı",
   "mutfak",
 ];
@@ -125,6 +122,33 @@ export const DRINK_SECTIONS = [
 
 /** A section that names wine ("Dessert wines", "Kırmızı şaraplar") is a drink section too. */
 export const WINE_WORDS = ["wine", "wines", "şarap", "şaraplar"];
+
+/**
+ * Turkish drink sections, matched as whole words in the section (F-1272): a
+ * CSV's Tür/Kategori cell is kept as written, so "Kırmızı", "Roze" or "Tatlı
+ * şarap" reach here in Turkish. The same list as the web's `DRINK_WORDS`.
+ */
+export const DRINK_WORDS = [
+  "kırmızı",
+  "beyaz",
+  "roze",
+  "pembe",
+  "köpüklü",
+  "tatlı şarap",
+  "rakı",
+  "bira",
+  "biralar",
+  "viski",
+  "şarap",
+];
+
+/**
+ * Hints that mark food only as the section's own heading, never inside a raw
+ * line (F-1272). 'tatlı' alone means sweet, so a semi-sweet wine is no
+ * dessert; it is not a hint at all. The same list as the web's
+ * `SECTION_HINTS`.
+ */
+export const SECTION_HINTS = ["desserts", "tatlılar"];
 
 /** The raw line's column. Sent only when the caller's view allows it. */
 export const RAW_LINE_COLUMN = "raw_extracted_text";
@@ -184,12 +208,19 @@ function wordRuns(text: string): string[] {
 export function isKitchenLine(category: unknown, raw: unknown): boolean {
   const section = typeof category === "string" ? category : "";
   if (DRINK_SECTIONS.includes(section.toLowerCase().trim())) return false;
+  const sectionRuns = wordRuns(section);
   if (
-    wordRuns(section).some((run) =>
-      WINE_WORDS.some((w) => run.includes(` ${w} `)),
+    sectionRuns.some((run) =>
+      [...WINE_WORDS, ...DRINK_WORDS].some((w) => run.includes(` ${w} `)),
     )
   )
     return false;
+  if (
+    SECTION_HINTS.some((hint) =>
+      sectionRuns.some((run) => run.includes(` ${hint} `)),
+    )
+  )
+    return true;
   const runs = wordRuns(`${section} ${typeof raw === "string" ? raw : ""}`);
   return KITCHEN_HINTS.some((hint) =>
     runs.some((run) => run.includes(` ${hint} `)),
