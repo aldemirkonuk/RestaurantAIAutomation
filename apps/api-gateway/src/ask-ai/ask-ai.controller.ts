@@ -159,8 +159,9 @@ export class AskAiController {
   /**
    * Owners and managers see every open proposal in the house; anyone else sees
    * only the ones they asked for (F-490). A proposal carries the words someone
-   * typed, and only an owner or manager can apply or discard one, so a staff
-   * member has no reason to read a colleague's. `user.role` is the role in
+   * typed, only an owner or manager can apply one, and anyone else may discard
+   * only their own (F-1248), so a staff member has no reason to read a
+   * colleague's. `user.role` is the role in
    * this token's house; null or unknown ranks below manager.
    */
   @Get("actions")
