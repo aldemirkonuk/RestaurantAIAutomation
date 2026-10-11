@@ -3,7 +3,8 @@
  * EVERY value below is SYNTHETIC.
  */
 import { describe, expect, it } from 'vitest';
-import { cellText, failureReason, fmtMoney, lineFigure, moneyName, parseCell, sentence, serverMessage } from './rc2-format';
+import { setHouseLocale } from '@/lib/houseCurrency';
+import { cellText, failureReason, fmtDate, fmtMoney, lineFigure, moneyName, parseCell, sentence, serverMessage } from './rc2-format';
 
 describe('fmtMoney — the sign, where the money has one of its own (W25)', () => {
   it('prints ₺ for the lira instead of the bare code', () => {
@@ -115,5 +116,39 @@ describe('parseCell — a line correction reads by the house marks (F-1021)', ()
     expect(to).toContain(`1${house === '.' ? ',' : '.'}25`);
     expect(from).not.toBe(to);
     expect(lineFigure(null, 'TRY', true, house)).toBe('—');
+  });
+});
+
+describe('fmtDate — the house\'s day, the house\'s way (F-1209)', () => {
+  const now = new Date('2026-10-10T12:00:00Z');
+
+  it('reads an instant on the house clock, not the device', () => {
+    setHouseLocale('en-US');
+    // 22:30 UTC on Oct 1 is 01:30 on Oct 2 in Istanbul and 15:30 on Oct 1 in Los Angeles.
+    expect(fmtDate('2026-10-01T22:30:00Z', 'Europe/Istanbul', now)).toBe('Oct 2');
+    expect(fmtDate('2026-10-01T22:30:00Z', 'America/Los_Angeles', now)).toBe('Oct 1');
+  });
+
+  it('says the year when it is not this year on the house calendar', () => {
+    setHouseLocale('en-US');
+    expect(fmtDate('2025-03-04T12:00:00Z', 'Europe/Istanbul', now)).toBe('Mar 4, 2025');
+    expect(fmtDate('2025-03-04', 'Europe/Istanbul', now)).toBe('Mar 4, 2025');
+    expect(fmtDate('2026-03-04', 'Europe/Istanbul', now)).toBe('Mar 4');
+  });
+
+  it('keeps a paper date the day the paper says, in any zone', () => {
+    setHouseLocale('en-US');
+    expect(fmtDate('2026-03-02', 'America/Los_Angeles', now)).toBe('Mar 2');
+    expect(fmtDate('2026-02-30', 'America/Los_Angeles', now)).toBe('—');
+  });
+
+  it('writes the date in the house\'s own formats', () => {
+    setHouseLocale('tr-TR');
+    expect(fmtDate('2025-03-04', 'Europe/Istanbul', now)).toBe(
+      new Intl.DateTimeFormat('tr-TR', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(
+        new Date(Date.UTC(2025, 2, 4)),
+      ),
+    );
+    setHouseLocale('en-US');
   });
 });

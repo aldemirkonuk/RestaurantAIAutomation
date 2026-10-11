@@ -111,3 +111,35 @@ describe('one clock for the bars and the grid — an LA evening (F-327)', () => 
     expect(v.days.map((d) => d.date)).toEqual(['2026-10-31', '2026-11-01', '2026-11-02']);
   });
 });
+
+describe('the house’s clock, not the reader’s (F-1222, rehit of F-327)', () => {
+  // The reader is in Los Angeles; the house is in Istanbul.
+  let tz: string | undefined;
+  beforeEach(() => {
+    tz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    process.env.TZ = tz;
+  });
+
+  it('puts a Saturday 01:30 Istanbul sale on Saturday’s bar and 1am cell', () => {
+    // Sat 2026-08-29 01:30 in Istanbul is Fri 2026-08-28 15:30 in Los Angeles.
+    const sale = [line('2026-08-28T22:30:00Z', 3)];
+    const v = velocity(sale, 14, 'Europe/Istanbul');
+    expect(v.days).toEqual([{ date: '2026-08-29', qty: 3 }]);
+    const w = whenItSells(sale, 'Europe/Istanbul');
+    expect(w.buckets).toEqual([{ dow: 5, hour: 1, qty: 3 }]);
+  });
+
+  it('counts the 14-day window in the house’s days', () => {
+    const lines = Array.from({ length: 20 }, (_, i) =>
+      line(`2026-07-${String(i + 1).padStart(2, '0')}T22:30:00Z`, 1),
+    );
+    const v = velocity(lines, 14, 'Europe/Istanbul');
+    expect(v.days).toHaveLength(14);
+    expect(v.to).toBe('2026-07-21');
+    expect(v.from).toBe('2026-07-08');
+    expect(v.clipped).toBe(true);
+  });
+});

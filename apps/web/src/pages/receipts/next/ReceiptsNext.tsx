@@ -53,6 +53,8 @@ import {
 } from '@/lib/currency';
 import { displayGroupMark, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
+import { useHouseZone } from '@/lib/houseZone';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import { vendorClause } from '../../../lib/mudavym/vendor';
 import {
@@ -1696,6 +1698,9 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
+  // Dates on the house's clock, written the house's way (F-1209).
+  useHouseCurrency();
+  useHouseZone();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole, user } = useAuth();
   const creditsOffered = canSeeCreditLedger(activeRole, user?.role);

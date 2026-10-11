@@ -49,6 +49,7 @@ import { useMemo } from 'react';
 import { AlertTriangle, Ban, LineChart } from 'lucide-react';
 import { EM, catalogueMoney, decimal, money, shortDate, type RegisterId } from './cellar-format';
 import { velocity, whenItSells, type TillLine } from './rowSeries';
+import { useHouseZone } from '@/lib/houseZone';
 import type { BookRecordVM, RegisterRowVM, RowRecordVM } from './useCellarNextData';
 
 function Card({
@@ -247,8 +248,11 @@ export default function RowExpander({
     () => (pos?.readable ? pos.ledger : []).map((l) => ({ at: l.at, qty: l.qty, unitPrice: l.unitPrice })),
     [pos],
   );
-  const vel = useMemo(() => velocity(tillLines), [tillLines]);
-  const hours = useMemo(() => whenItSells(tillLines), [tillLines]);
+  // Bars and grid on the house's clock (F-1222); read here so both are redrawn
+  // when the zone lands.
+  const zone = useHouseZone() ?? null;
+  const vel = useMemo(() => velocity(tillLines, 14, zone), [tillLines, zone]);
+  const hours = useMemo(() => whenItSells(tillLines, zone), [tillLines, zone]);
 
   const maxDay = Math.max(1, ...vel.days.map((d) => d.qty));
   const maxHour = Math.max(1, ...hours.buckets.map((b) => b.qty));

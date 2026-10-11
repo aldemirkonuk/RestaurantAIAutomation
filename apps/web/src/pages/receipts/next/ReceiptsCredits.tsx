@@ -39,6 +39,8 @@ import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { VENDOR_UNNAMED } from '@/lib/mudavym/vendor';
 import { displayGroupMark, parseDecimal, twoReadingsProblem } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
+import { useHouseZone } from '@/lib/houseZone';
 import type {
   CreditLetterOutcome,
   CreditLetterRef,
@@ -836,6 +838,9 @@ function ClaimSheet({
 
 export function ReceiptsCredits() {
   const data = useReceiptsCreditsData(true);
+  // Dates on the house's clock, written the house's way (F-1209).
+  useHouseCurrency();
+  useHouseZone();
   const names = useVendorNames();
   const { activeRole, user } = useAuth();
   /*

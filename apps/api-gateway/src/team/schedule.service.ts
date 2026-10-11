@@ -42,6 +42,7 @@ import {
 } from "./dto/team.dto";
 import { readHouseZone } from "../common/house-day";
 import { houseFrame as frameOf } from "../common/house-frame";
+import { dayWords, weekWords } from "./house-date-words";
 
 /** Minutes since midnight from an "HH:MM" string. */
 function toMinutes(t: string): number {
@@ -75,37 +76,9 @@ export function servesPeriod(
   return end > 15 * 60 || end < start;
 }
 
-/** "2026-10-09" → "Fri 9 Oct", the date as the refusal says it. */
-function dayWords(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
-
-/**
- * A week's Monday as the house writes a date (F-1150): "05.10.2026" in a
- * Turkish house, "10/5/2026" in an American one — digits only, so every word
- * stays English (ADR 0207). With no locale known, the refusal's "Mon 5 Oct".
- */
-export function weekWords(iso: string, locale: string | null): string {
-  if (!locale) return dayWords(iso);
-  try {
-    return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString(
-      locale,
-      {
-        day: "numeric",
-        month: "numeric",
-        year: "numeric",
-        timeZone: "UTC",
-      },
-    );
-  } catch {
-    return dayWords(iso);
-  }
-}
+// The house's way of writing a date lives in `./house-date-words` so
+// TeamService can use it without importing this module, which imports it.
+export { weekWords };
 
 /** A shift as the one conflict check reads it. */
 type GivenShift = Pick<
@@ -1414,10 +1387,13 @@ export class ScheduleService {
     if (openErr || !openShift)
       throw new InternalServerErrorException("Failed to open cover shift");
 
+    // The day as the house writes a date, as the publish notice does (F-1229);
+    // the link keeps the ISO date.
+    const { locale } = frameOf(await this.houseFrame(restaurantId));
     await this.notifications.persistForRestaurant(restaurantId, {
       type: "system",
       title: "Shift call-out — cover needed",
-      message: `${original.role ?? "A shift"} on ${original.shift_date} ${original.start_time}-${original.end_time} is open.`,
+      message: `${original.role ?? "A shift"} on ${weekWords(original.shift_date, locale)} ${original.start_time}-${original.end_time} is open.`,
       priority: "critical",
       actionUrl: shiftLink(openShift.id, original.shift_date),
       actionLabel: "Find cover",
@@ -1496,9 +1472,11 @@ export class ScheduleService {
     const targetUserIds = free.map((m: any) => m.user_id).filter(Boolean);
 
     if (targetUserIds.length) {
+      // The day as the house writes a date (F-1229); the link keeps the ISO date.
+      const { locale } = frameOf(await this.houseFrame(restaurantId));
       await this.push.sendToUsers(targetUserIds, {
         title: "Shift available — can you cover?",
-        body: `${shift.role ?? "Shift"} ${shift.shift_date} ${shift.start_time}-${shift.end_time}. Tap to claim.`,
+        body: `${shift.role ?? "Shift"} ${weekWords(shift.shift_date, locale)} ${shift.start_time}-${shift.end_time}. Tap to claim.`,
         priority: "high",
         data: {
           type: "shift_offer",

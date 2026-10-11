@@ -1204,9 +1204,38 @@ describe("F-191 — the person who asked for time off hears the answer", () => {
     expect(told[0]).toMatchObject({
       restaurant_id: RID,
       title: "Your time off was turned down",
-      message: "Your request for 2026-09-08 to 2026-09-10 off was turned down.",
+      // F-1229: the days as a person reads them, not raw ISO; a house with no
+      // country recorded reads the refusal's own words.
+      message:
+        "Your request for Tue 8 Sept to Thu 10 Sept off was turned down.",
     });
   });
+
+  it.each([
+    [
+      { country: "Türkiye", timezone: "Europe/Istanbul" },
+      "08.09.2026 to 10.09.2026",
+    ],
+    [{ country: "US", timezone: "America/New_York" }, "9/8/2026 to 9/10/2026"],
+  ])(
+    "names the days the way the house writes a date (F-1229, %o)",
+    async (house, words) => {
+      const db = seed();
+      db.tables.restaurants = [{ id: RID, ...house }];
+      const req = await teamOf(db).createTimeOff(STAFF, RID, {
+        memberId: "m-staff",
+        startDate: "2026-09-08",
+        endDate: "2026-09-10",
+      } as any);
+      await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+        status: "approved",
+      } as any);
+      const told = db.tables.notifications.filter((n) => n.user_id === STAFF);
+      expect(told[0].message).toBe(
+        `Your request for ${words} off was approved.`,
+      );
+    },
+  );
 
   it("keeps the decision when the notice cannot be written, and says it was not sent", async () => {
     const db = seed();
