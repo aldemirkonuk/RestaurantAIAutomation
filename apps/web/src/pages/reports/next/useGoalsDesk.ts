@@ -98,8 +98,12 @@ export interface GoalsDesk {
   busy: string | null;
   error: string | null;
   clearError: () => void;
-  create: (input: NewGoal) => void;
-  update: (goalId: string, patch: GoalPatch) => void;
+  /**
+   * True once the gateway accepted the write, false when it refused or the
+   * request failed (F-1285): the form stays open on false, with what was typed.
+   */
+  create: (input: NewGoal) => Promise<boolean>;
+  update: (goalId: string, patch: GoalPatch) => Promise<boolean>;
   archive: (goalId: string) => void;
   /** Ask the book which catalogued analysis shows this goal. */
   ask: (goalId: string, goalName: string) => void;
@@ -155,13 +159,14 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
 
   /** One shape for every write: name what failed, never swallow it. */
   const run = useCallback(
-    async (key: string, what: string, fn: () => Promise<unknown>) => {
-      if (!activeRestaurantId) return;
+    async (key: string, what: string, fn: () => Promise<unknown>): Promise<boolean> => {
+      if (!activeRestaurantId) return false;
       setBusy(key);
       setError(null);
       try {
         await fn();
         refresh();
+        return true;
       } catch (err: unknown) {
         const detail =
           (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
@@ -170,6 +175,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
         // A failure that lands after a switch belongs to the house it was
         // asked in, not the one now on screen (F-910).
         if (houseNow.current === activeRestaurantId) setError(`${what} did not go through: ${detail}`);
+        return false;
       } finally {
         setBusy(null);
       }
@@ -178,8 +184,8 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
   );
 
   const create = useCallback(
-    (input: NewGoal) => {
-      void run('new', 'Setting the goal', () =>
+    (input: NewGoal) =>
+      run('new', 'Setting the goal', () =>
         apiClient.post(`/analytics/goals/${activeRestaurantId}`, {
           name: input.name,
           metricKey: input.metricKey,
@@ -188,17 +194,15 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
           direction: input.direction,
           period: input.period,
         }),
-      );
-    },
+      ),
     [activeRestaurantId, run],
   );
 
   const update = useCallback(
-    (goalId: string, patch: GoalPatch) => {
-      void run(goalId, 'The edit', () =>
+    (goalId: string, patch: GoalPatch) =>
+      run(goalId, 'The edit', () =>
         apiClient.patch(`/analytics/goals/${activeRestaurantId}/${goalId}`, patch),
-      );
-    },
+      ),
     [activeRestaurantId, run],
   );
 

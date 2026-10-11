@@ -562,6 +562,9 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [sourcesUnread, setSourcesUnread] = useState<string[] | null>(null);
   const [sourcesEmpty, setSourcesEmpty] = useState<string[] | null>(null);
   const [goalBook, setGoalBook] = useState<GoalBookVM>(undefined);
+  // Bumped after a goal is set here, so the margin re-reads its progress (F-1286).
+  const [goalBookRead, setGoalBookRead] = useState(0);
+  const goalBookOf = useRef<string | null>(null);
   const seq = useRef(0);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The offer on screen, for `restore` to read the day it should count again.
@@ -967,11 +970,15 @@ export function useRecommendationsNextData(): RecommendationsData {
   /**
    * The masthead's margin (sketch 122 direction B): the house's active goals
    * with progress, recomputed by the gateway. Read once per tenant, apart from
-   * the book, so a goal failure never takes the entries down with it.
+   * the book, so a goal failure never takes the entries down with it — and
+   * again after a goal is set here (F-1286), keeping the last reading on
+   * screen until the new one lands.
    */
   useEffect(() => {
     let cancelled = false;
-    setGoalBook(undefined);
+    const sameHouse = goalBookOf.current === rid && canSeeGoals;
+    goalBookOf.current = canSeeGoals ? rid : null;
+    if (!sameHouse) setGoalBook(undefined);
     // The margin draws the held sentence for staff, never this book (F-299).
     if (!rid || !canSeeGoals) return;
     apiClient
@@ -985,7 +992,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     return () => {
       cancelled = true;
     };
-  }, [rid, canSeeGoals]);
+  }, [rid, canSeeGoals, goalBookRead]);
 
   /** Kept for the goal sheet: a re-read after a failed one, never a second read. */
   const loadGoals = useCallback(() => {
@@ -1103,6 +1110,8 @@ export function useRecommendationsNextData(): RecommendationsData {
         // Keep the list true without a re-read: the sheet's "you already track
         // this" line must be right the moment a second entry opens.
         setGoals((prev) => (Array.isArray(prev) ? [goal, ...prev] : prev));
+        // The margin's progress is the gateway's, so it is read again (F-1286).
+        setGoalBookRead((n) => n + 1);
         say(`Goal set: “${goal.name}”. It is read in Reports, against your own numbers.`);
         return { ok: true, goal };
       } catch (err) {

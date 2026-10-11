@@ -209,8 +209,13 @@ export class GoalsService {
       .select("*")
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false });
+    // `closed` is both ends a deadline can close a goal on (F-1291).
     const { data, error } =
-      status === "all" ? await q : await q.eq("status", status);
+      status === "all"
+        ? await q
+        : status === "closed"
+          ? await q.in("status", ["achieved", "missed"])
+          : await q.eq("status", status);
     if (error) throw new Error(error.message);
     return data || [];
   }
@@ -493,9 +498,15 @@ export class GoalsService {
     // The house's zone is read once for every goal on the list (ADR 0296),
     // alongside the list itself. A failed read throws: every goal would fail
     // on it alike, and a list of six identical failures says less than one.
-    const [goals, house] = await Promise.all([
+    // With the active goals come the ones their deadlines closed (F-1291),
+    // for the desk's own fold. They are not recomputed: each carries the
+    // final window's value the sweep stored when it closed the goal.
+    const [goals, house, closedGoals] = await Promise.all([
       this.listGoals(restaurantId, status),
       readHouseZone(this.dbService.getClient(), restaurantId),
+      status === "active"
+        ? this.listGoals(restaurantId, "closed")
+        : Promise.resolve([]),
     ]);
     const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
     const progress = await Promise.all(
@@ -527,6 +538,20 @@ export class GoalsService {
       total: goals.length,
       computed: computed.length,
       truncated: goals.length > computed.length,
+      closed: closedGoals
+        .slice(0, GoalsService.MAX_CLOSED_GOALS)
+        .map((g: any) => {
+          const metric = (GoalsService.SUPPORTED_METRICS as any)[g.metric_key];
+          return {
+            goal: g,
+            outcome: g.status,
+            final: g.current_value == null ? null : Number(g.current_value),
+            target: Number(g.target_value),
+            metricLabel: metric?.label ?? g.metric_key,
+            unit: metric?.unit ?? "count",
+          };
+        }),
+      closedTotal: closedGoals.length,
       supportedMetrics: Object.entries(GoalsService.SUPPORTED_METRICS).map(
         ([key, m]) => ({ key, label: m.label, unit: m.unit }),
       ),
@@ -583,27 +608,45 @@ export class GoalsService {
    *
    * A goal whose value could not be read keeps its last stored value and is
    * counted in `failed`; it is never written as zero.
+   *
+   * A goal whose deadline day is over on the house's clock is CLOSED here
+   * (F-1291, the F-628 residual): achieved or missed from its final window's
+   * value, which `goalWindow` already stops on the deadline day, and that
+   * value is the one stored. Only a goal still `active` is closed, so a
+   * second sweep, or an owner who archived it in between, changes nothing.
+   * With no house zone the deadline's day is not known, and the goal stays
+   * open rather than being closed on the server's day.
    */
   async refreshStoredCurrentValues(
     restaurantId: string,
-  ): Promise<{ refreshed: number; failed: number }> {
+  ): Promise<{ refreshed: number; failed: number; closed: number }> {
     const [goals, house] = await Promise.all([
       this.listGoals(restaurantId, "active"),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
+    const today = house.zone ? houseToday(house.zone) : null;
     let refreshed = 0;
     let failed = 0;
+    let closed = 0;
     for (const goal of goals) {
       try {
         const { current } = await this.measureGoal(restaurantId, goal, house);
-        const { error } = await this.dbService
+        const outcome = GoalsService.closedOutcome(goal, current, today);
+        let q = this.dbService
           .getClient()
           .from("analytics_goals")
-          .update({ current_value: current })
+          .update(
+            outcome
+              ? { current_value: current, status: outcome }
+              : { current_value: current },
+          )
           .eq("restaurant_id", restaurantId)
           .eq("id", goal.id);
+        if (outcome) q = q.eq("status", "active");
+        const { error } = await q;
         if (error) throw new Error(error.message);
         refreshed += 1;
+        if (outcome) closed += 1;
       } catch (err: any) {
         failed += 1;
         this.logger.warn(
@@ -611,11 +654,34 @@ export class GoalsService {
         );
       }
     }
-    return { refreshed, failed };
+    return { refreshed, failed, closed };
+  }
+
+  /**
+   * How a goal closes, or null while it is still running: only once its
+   * deadline's house day is over, and only on a value that was read. At least
+   * a target is achieved at or above it; at most, at or below it.
+   */
+  static closedOutcome(
+    goal: { deadline?: unknown; direction?: string; target_value?: unknown },
+    current: number | null | undefined,
+    today: string | null,
+  ): "achieved" | "missed" | null {
+    if (!goal.deadline || !today) return null;
+    if (String(goal.deadline).slice(0, 10) >= today) return null;
+    const target = Number(goal.target_value);
+    if (typeof current !== "number" || !Number.isFinite(current)) return null;
+    if (!Number.isFinite(target)) return null;
+    const met =
+      goal.direction === "at_most" ? current <= target : current >= target;
+    return met ? "achieved" : "missed";
   }
 
   /** Recomputing progress is several queries per goal; six is a screenful. */
   static readonly MAX_PROGRESS_GOALS = 6;
+
+  /** The closed fold lists the latest goals a deadline closed (F-1291). */
+  static readonly MAX_CLOSED_GOALS = 12;
 
   /**
    * @param known the house's zone when the caller already read it
@@ -997,7 +1063,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 
   /**
    * The first house date of a goal's period, on the house's clock (ADR 0296).
-   * A week opens on Sunday, a quarter on its first month's 1st, and a custom
+   * A week opens on Monday, a quarter on its first month's 1st, and a custom
    * goal looks back 30 days. `goalPeriodStart` (`goal-window.ts`) holds it.
    */
   private periodStart(

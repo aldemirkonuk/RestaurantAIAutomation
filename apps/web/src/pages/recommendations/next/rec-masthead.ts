@@ -26,6 +26,7 @@
  */
 
 import { goalOfferFor, type GoalPlan } from './rec-forward';
+import { ratioPct } from '../../reports/next/rp-format';
 import type { EntryVM, GoalsVM } from './useRecommendationsNextData';
 
 /* ── the margin's rows ───────────────────────────────────────────────────── */
@@ -109,14 +110,20 @@ export function toGoalBook(data: unknown): Exclude<GoalBookVM, undefined> {
 
 /**
  * A figure in its own unit — a percent is a fraction on the wire. Money is
- * printed WITHOUT a symbol, as the reports goals desk prints it
- * (`rp-registers-goals.tsx` `inUnit`): the progress read carries no currency,
- * and a `$` on a lira house's goal would be a figure this page invented.
+ * printed WITHOUT a symbol: the progress read carries no currency, and a `$`
+ * on a lira house's goal would be a figure this page invented.
+ *
+ * A percent goes to one decimal, through the Reports desk's `ratioPct`, and
+ * money under 1,000 keeps its cents (F-1290): rounded whole, "35% of 35% ·
+ * Behind" or "43 of 45" for 42.50 read as met while the pace word, taken from
+ * the true figure, said not.
  */
 export function inUnit(v: number | null, unit: string): string {
   if (v === null) return '—';
-  if (unit === 'percent') return `${Math.round(v * 100)}%`;
+  if (unit === 'percent') return ratioPct(v);
   if (unit === 'days') return `${Math.round(v)} days`;
+  if (unit === 'currency' && Math.abs(v) < 1000 && Math.round(v * 100) % 100 !== 0)
+    return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return Math.round(v).toLocaleString('en-US');
 }
 

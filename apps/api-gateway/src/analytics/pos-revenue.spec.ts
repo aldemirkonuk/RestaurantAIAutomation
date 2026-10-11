@@ -730,15 +730,15 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     const { service } = makeGoals({
       analytics_goals: [{ ...goal, period: "week", target_value: 70 }],
       // Aug 20 LA (last-but-one week), and Aug 31 LA (this week, which
-      // opened on Sunday Aug 30).
+      // opened on Monday Aug 31, the product's week: F-1287).
       pos_checks: [checkOn("2026-08-21"), checkOn("2026-09-01")],
     });
 
     const progress: any = await service.getGoalProgress("r1", "g1");
 
     expect(progress.current).toBe(1);
-    // Aug 30 00:00 LA → Sep 6 00:00 LA is 7 days; 2 d 20 h of it have run.
-    expect(progress.expectedByNow).toBeCloseTo((70 * (2 + 20 / 24)) / 7, 6);
+    // Aug 31 00:00 LA → Sep 7 00:00 LA is 7 days; 1 d 20 h of it have run.
+    expect(progress.expectedByNow).toBeCloseTo((70 * (1 + 20 / 24)) / 7, 6);
     // The deadline is still the deadline, counted in full (F-865).
     expect(progress.daysLeft).toBe(30);
   });
@@ -768,7 +768,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     const { service } = makeGoals({
       analytics_goals: [{ ...goal, period: "week", deadline: "2026-08-25" }],
       // Aug 22 LA (the week before), Aug 24 LA (the deadline's week, which
-      // opened Sunday Aug 23), Aug 31 LA (after the deadline).
+      // opened Monday Aug 24), Aug 31 LA (after the deadline).
       pos_checks: [
         checkOn("2026-08-23"),
         checkOn("2026-08-25"),
@@ -796,9 +796,9 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       )?.args[0].deadline;
     };
     // Sep 1 in Los Angeles (Sep 2 UTC): the month ends Sep 30, the week
-    // (opened Sunday Aug 30) on Saturday Sep 5.
+    // (opened Monday Aug 31) on Sunday Sep 6 (F-1287).
     expect(await written("month")).toBe("2026-09-30");
-    expect(await written("week")).toBe("2026-09-05");
+    expect(await written("week")).toBe("2026-09-06");
     expect(await written("month", "2026-12-31")).toBe("2026-12-31");
     expect(await written("custom")).toBeNull();
   });
