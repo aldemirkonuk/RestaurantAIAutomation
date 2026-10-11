@@ -25,6 +25,8 @@ function makeDb(insertResult: (row: Row) => { error: any }) {
       const q: any = {
         _table: table,
         select: () => q,
+        // F-1238: the till's copy takes over an imported row; none here.
+        update: () => q,
         eq: () => q,
         in: () => q,
         // What earlier imports of the check moved: nothing (sim wave 8).

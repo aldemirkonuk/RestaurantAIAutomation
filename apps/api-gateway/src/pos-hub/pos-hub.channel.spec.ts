@@ -35,6 +35,8 @@ function makeService(opts: { upsertError?: string } = {}) {
     from(table: string) {
       const q: any = {
         select: () => q,
+        // F-1238: the till's copy takes over an imported row; none here.
+        update: () => q,
         eq: () => q,
         in: async () => ({ data: [], error: null }),
         // F-1195: a file import reads which till the house has; none here.
