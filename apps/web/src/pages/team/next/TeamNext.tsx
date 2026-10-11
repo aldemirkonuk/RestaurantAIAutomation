@@ -337,11 +337,15 @@ function TeamNextManager({
   useSettleOnHouseDay(zone, mondayOf, linkedWeek ? () => {} : setWeekStart);
   const [lens, setLens] = useState<Lens>('coverage');
   const [overlay, setOverlay] = useState<Overlay | null>(null);
+  /** Weeks whose last copy went unanswered (F-1117), across panel openings. */
+  const lostCopies = useRef(new Set<string>());
   const exportAnchor = useRef<HTMLButtonElement | null>(null);
 
   const data = useTeamNextData(weekStart);
   const house = useHouseAreas();
   const labor = data.labor;
+  /** The house's decimal mark for hours (F-1120). */
+  const hoursIn = houseLocale(data.week?.country);
   /**
    * People over the Turkish week (45 worked hours). A review, never a price:
    * whether it is overtime pay depends on agreements Mudavym does not hold
@@ -368,7 +372,7 @@ function TeamNextManager({
   const assumedLine =
     labor?.assumedBreak && labor.assumedBreak.shifts > 0 ? (
       <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '6px 0 0' }}>
-        {`${labor.assumedBreak.shifts} shift${labor.assumedBreak.shifts === 1 ? ' has' : 's have'} no break recorded, so ${labor.assumedBreak.shifts === 1 ? 'it is' : 'each is'} counted with the legal minimum break (assumed, ${fmtHours(labor.assumedBreak.hours)} in all). Record the real break on the shift to replace it.`}
+        {`${labor.assumedBreak.shifts} shift${labor.assumedBreak.shifts === 1 ? ' has' : 's have'} no break recorded, so ${labor.assumedBreak.shifts === 1 ? 'it is' : 'each is'} counted with the legal minimum break (assumed, ${fmtHours(labor.assumedBreak.hours, hoursIn)} in all). Record the real break on the shift to replace it.`}
       </p>
     ) : null;
   const rules = data.coverageRules;
@@ -539,7 +543,7 @@ function TeamNextManager({
               // Hours, for anyone who is not the owner (ADR 0215). The cost is
               // withheld by the gateway, not unknown, and the page says which.
               <div>
-                <span className="tm-fig">{fmtHours(labor.totalHours)}</span>
+                <span className="tm-fig">{fmtHours(labor.totalHours, hoursIn)}</span>
                 <span style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 8 }}>
                   worked, breaks taken out
                 </span>
@@ -563,7 +567,7 @@ function TeamNextManager({
               <div>
                 <span className="tm-fig">{fmtMoneyWhole(labor.totalCost, data.money)}</span>
                 <span style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 8 }}>
-                  {fmtHours(labor.totalHours)} worked
+                  {fmtHours(labor.totalHours, hoursIn)} worked
                   {data.target.pct === null
                     ? ' · no target set'
                     : ` · target ${data.target.pct}% of sales`}
@@ -873,6 +877,7 @@ function TeamNextManager({
         <CopyWeekPanel
           weekStart={weekStart}
           shiftsOnTarget={data.shifts === null ? null : data.shifts.length}
+          lostCopies={lostCopies.current}
           onClose={() => setOverlay(null)}
           onDone={refreshWeek}
         />

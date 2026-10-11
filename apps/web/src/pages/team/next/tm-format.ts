@@ -328,9 +328,15 @@ export function breakUnderMinimum(s: ShiftBreakSource): boolean {
  */
 export const WEEKLY_REVIEW_HOURS = 45;
 
-export function fmtHours(h: number | null): string {
+/**
+ * Hours to one decimal, with the house's decimal mark when its locale is
+ * known (F-1120): "7,5h" in a Turkish house, "7.5h" in an American one.
+ */
+export function fmtHours(h: number | null, locale?: string): string {
   if (h === null || !Number.isFinite(h)) return EM;
-  return `${Math.round(h * 10) / 10}h`;
+  const n = Math.round(h * 10) / 10;
+  if (!locale) return `${n}h`;
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(n)}h`;
 }
 
 /* ── who this row is ─────────────────────────────────────────────────────────

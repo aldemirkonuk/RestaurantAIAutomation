@@ -153,6 +153,32 @@ describe("a failed read never reads as an empty week", () => {
   });
 });
 
+describe("F-1119: getWeek refuses a week it could not read", () => {
+  // BEFORE: both reads destructured only `data`, so a published week came
+  // back as unpublished, or with nobody having seen it.
+  it("refuses when the schedule row cannot be read", async () => {
+    const db = seed({ "schedules:select": { message: "statement timeout" } });
+    await expect(service(db).getWeek(MANAGER, RID, TO)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+  });
+
+  it("refuses when the read receipts cannot be read", async () => {
+    const db = seed({
+      "schedule_receipts:select": { message: "connection reset" },
+    });
+    await expect(service(db).getWeek(MANAGER, RID, TO)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+  });
+
+  it("the control: a readable week is published and seen once", async () => {
+    const week = await service(seed()).getWeek(MANAGER, RID, TO);
+    expect(week.schedule?.status).toBe("published");
+    expect(week.receipts).toHaveLength(1);
+  });
+});
+
 describe("the control — the guards these reads arm still fire", () => {
   it("copyWeek still raises the ordinary conflict when the target week is not empty", async () => {
     // Without this, a change that simply threw on every path would pass the two

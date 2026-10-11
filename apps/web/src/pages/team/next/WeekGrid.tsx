@@ -52,6 +52,7 @@ import {
   fmtDayShort,
   fmtHours,
   fmtMoneyWhole,
+  houseLocale,
   recordedBreakMinutes,
   resolveName,
   todayIso,
@@ -59,9 +60,10 @@ import {
   weekDays,
   workedHours,
 } from './tm-format';
-import { Card, Fact, KV, Mark, useShiftTime } from './tm-bits';
+import { Card, Fact, KV, Mark, useHouseRegion, useShiftTime } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
-import type { ShiftSheetTarget } from './ShiftSheet';
+import { deleteOrConfirm, type ShiftSheetTarget } from './ShiftSheet';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 
 export type Lens = 'coverage' | 'labour' | 'fairness' | 'compliance';
 
@@ -119,6 +121,8 @@ export function WeekGrid({
   zone,
 }: GridProps) {
   const fmtTime = useShiftTime();
+  /** The house's decimal mark for hours (F-1120). */
+  const hoursIn = houseLocale(useHouseRegion());
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const today = todayIso(houseToday(zone));
   const [selected, setSelected] = useState<string | null>(null);
@@ -240,11 +244,11 @@ export function WeekGrid({
     const f = flagsFor(s);
     if (lens === 'labour') {
       // Hours for anyone who is not the owner: the cost is withheld, not unknown.
-      if (!moneyVisible) return fmtHours(workedHours(s));
+      if (!moneyVisible) return fmtHours(workedHours(s), hoursIn);
       if (!labourEnabled) return 'labour off';
       // An owner's shift, to a manager who sees pay: withheld because it is
       // the owner's (founder 2026-09-27, item 71), so hours, not "not priced".
-      if (s.pay_withheld === 'owner') return fmtHours(workedHours(s));
+      if (s.pay_withheld === 'owner') return fmtHours(workedHours(s), hoursIn);
       // An unpriced shift is unknown, not free. `?? 0` here is exactly the
       // defect ADR 0089 found in the Tonight pulse.
       return s.labor_cost == null ? `${EM} not priced` : fmtMoneyWhole(s.labor_cost, money);
@@ -256,10 +260,18 @@ export function WeekGrid({
     return s.role ?? s.shift_type;
   }
 
+  /**
+   * A lost answer may be a written copy or a done delete (F-1118): the week
+   * is read again, a second Duplicate of the same shift sends the same key so
+   * the gateway answers it with the copy it already made, and a second Delete
+   * that finds no shift is the first one's delete.
+   */
+  const duplicateKey = useDraftWriteKey('shift-duplicate');
+  const triedDelete = useRef(new Set<string>());
   const duplicate = useMutation({
     mutationFn: (s: Shift) => {
       rememberCell(s.member_id, s.shift_date);
-      return createShift({
+      const draft = {
         scheduleId: s.schedule_id ?? scheduleId ?? undefined,
         memberId: s.member_id ?? undefined,
         shiftDate: s.shift_date,
@@ -270,9 +282,16 @@ export function WeekGrid({
         // The copy keeps the break on record, as a copied week does (ADR
         // 0215); nothing on record stays nothing on record, so it is assumed.
         ...(recordedBreakMinutes(s) != null ? { breakMinutes: recordedBreakMinutes(s) } : {}),
-      });
+      };
+      return createShift(draft, undefined, duplicateKey.keyFor(draft));
     },
-    onSuccess: onChanged,
+    onSuccess: () => {
+      duplicateKey.renew();
+      onChanged();
+    },
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
+    },
   });
   const callout = useMutation({
     mutationFn: (shiftId: string) => reportCallout(shiftId),
@@ -281,11 +300,18 @@ export function WeekGrid({
   const drop = useMutation({
     mutationFn: (s: Shift) => {
       rememberCell(s.member_id, s.shift_date);
-      return deleteShift(s.id);
+      return deleteOrConfirm(
+        s.id,
+        () => deleteShift(s.id, undefined, `shift-delete:${s.id}`),
+        triedDelete.current,
+      );
     },
     onSuccess: () => {
       setSelected(null);
       onChanged();
+    },
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
     },
   });
   /**
@@ -415,7 +441,7 @@ export function WeekGrid({
                       className="tm-membercell__h"
                       data-over={hours !== null && hours > WEEKLY_REVIEW_HOURS ? 'true' : undefined}
                     >
-                      {shifts === null ? EM : fmtHours(hours ?? 0)}
+                      {shifts === null ? EM : fmtHours(hours ?? 0, hoursIn)}
                     </span>
                   </button>
                   {days.map((d) => {
@@ -589,8 +615,12 @@ export function WeekGrid({
       {(duplicate.isError || drop.isError) && (
         <p className="tm-alert" role="alert" style={{ margin: 12 }}>
           {duplicate.isError
-            ? 'The shift was not duplicated — the week is unchanged.'
-            : 'The shift was not deleted — it is still on the schedule.'}
+            ? writeOutcomeUnknown(duplicate.error)
+              ? 'No answer came back, so the copy may already be on the schedule. Check the week before duplicating again.'
+              : 'The shift was not duplicated — the week is unchanged.'
+            : writeOutcomeUnknown(drop.error)
+              ? 'No answer came back, so the shift may already be gone. Check the week before deleting it again.'
+              : 'The shift was not deleted — it is still on the schedule.'}
         </p>
       )}
     </div>
@@ -633,6 +663,8 @@ function ShiftDetail({
   money: HouseMoney | null;
 }) {
   const fmtTime = useShiftTime();
+  /** The house's decimal mark for hours (F-1120). */
+  const hoursIn = houseLocale(useHouseRegion());
   const name = resolveName(member);
   return (
     <div className="tm-expand">
@@ -644,7 +676,7 @@ function ShiftDetail({
         <Fact k="State" v={shift.state} />
         <Fact
           k="Hours"
-          v={fmtHours(workedHours(shift))}
+          v={fmtHours(workedHours(shift), hoursIn)}
         />
         <Fact k="Break" v={fmtBreak(shift)} />
         {moneyVisible && (

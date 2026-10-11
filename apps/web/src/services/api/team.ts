@@ -509,8 +509,11 @@ export async function updateShift(shiftId: string, body: Record<string, any>, ri
   const { data } = await apiClient.patch<Shift>(`${base(rid)}/shifts/${shiftId}`, body)
   return data
 }
-export async function deleteShift(shiftId: string, rid?: string) {
-  await apiClient.delete(`${base(rid)}/shifts/${shiftId}`)
+export async function deleteShift(shiftId: string, rid?: string, idempotencyKey?: string) {
+  await apiClient.delete(
+    `${base(rid)}/shifts/${shiftId}`,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+  )
 }
 export async function reportCallout(shiftId: string, reason?: string, rid?: string) {
   const { data } = await apiClient.post(`${base(rid)}/shifts/${shiftId}/callout`, { reason })
@@ -547,8 +550,16 @@ export async function getTimeOff(rid?: string) {
   const { data } = await apiClient.get(`${base(rid)}/time-off`)
   return data
 }
-export async function createTimeOff(body: Record<string, any>, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/time-off`, body)
+export async function createTimeOff(
+  body: Record<string, any>,
+  rid?: string,
+  idempotencyKey?: string,
+) {
+  const { data } = await apiClient.post(
+    `${base(rid)}/time-off`,
+    body,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+  )
   return data
 }
 export async function reviewTimeOff(
@@ -568,8 +579,12 @@ export async function reviewTimeOff(
 }
 
 /** The person who asked takes back a request still waiting (F-936). */
-export async function withdrawTimeOff(requestId: string, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/time-off/${requestId}/withdraw`)
+export async function withdrawTimeOff(requestId: string, rid?: string, idempotencyKey?: string) {
+  const { data } = await apiClient.post(
+    `${base(rid)}/time-off/${requestId}/withdraw`,
+    undefined,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+  )
   return data
 }
 

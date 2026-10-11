@@ -2303,7 +2303,18 @@ export class TeamService {
       if (!mine) return [];
       q = q.eq("member_id", mine);
     }
-    const { data } = await q.order("created_at", { ascending: false });
+    const { data, error } = await q.order("created_at", { ascending: false });
+    // A failed read is not an empty file (F-1119): the desk would say nobody
+    // has asked for time off, and approved leave would drop out of gap picks.
+    if (error) {
+      this.logger.error(
+        `listTimeOff: could not read time off for restaurant ` +
+          `${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the time-off requests, so none are shown.",
+      );
+    }
     if (role === "staff") return data ?? [];
     // A removed person's requests are kept five years, not listed (ADR 0215
     // item 20): before 20261201110200 the removal deleted them, and a
@@ -2496,6 +2507,11 @@ export class TeamService {
     }
     if (!cur || !mine || cur.member_id !== mine) {
       throw new NotFoundException("Request not found");
+    }
+    // A retry after a lost answer finds the person's own withdrawal (F-1118):
+    // that is done, not "already answered".
+    if (cur.status === "withdrawn") {
+      return { id: requestId, member_id: cur.member_id, status: "withdrawn" };
     }
     if (cur.status !== "pending") {
       throw new ConflictException(

@@ -196,7 +196,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
 
   /** Taking back a request nobody has answered yet (F-936). */
   const withdraw = useMutation({
-    mutationFn: (requestId: string) => withdrawTimeOff(requestId),
+    // One key per request (F-1118): a retry after a lost answer is answered
+    // with the withdrawal already made.
+    mutationFn: (requestId: string) =>
+      withdrawTimeOff(requestId, undefined, `time-off-withdraw:${requestId}`),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['team-next-my-time-off', rid] });
     },
@@ -279,8 +282,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
               'The request did not reach your manager. Nothing is on their desk.')}
         </MutationError>
         <MutationError when={withdraw.isError}>
-          {serverMessage(withdraw.error) ??
-            'The request was not withdrawn. It is still waiting for your manager.'}
+          {writeOutcomeUnknown(withdraw.error)
+            ? 'No answer came back, so the request may already be withdrawn. Check your requests before trying again.'
+            : (serverMessage(withdraw.error) ??
+              'The request was not withdrawn. It is still waiting for your manager.')}
         </MutationError>
 
         {/* F-1005: with no roster row there is nothing to confirm against; the

@@ -90,11 +90,18 @@ const house = vi.hoisted(() => ({ group: null as '.' | ',' | null }));
 vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => house.group }));
 
 import TeamNext from './TeamNext';
-import { updateTeamMember } from '../../../services/api/team';
+import {
+  copyWeek,
+  createShift,
+  deleteShift,
+  updateTeamMember,
+} from '../../../services/api/team';
 import { MemberSheet, RosterSheet } from './RosterSheet';
 import { WeekGrid } from './WeekGrid';
-import { ExportPopover, TimeOffSheet } from './TeamOverlays';
+import { CopyWeekPanel, ExportPopover, TimeOffSheet } from './TeamOverlays';
+import { ShiftSheet } from './ShiftSheet';
 import {
+  fmtHours,
   fmtMoneyExact,
   fmtMoneyWhole,
   houseLocale,
@@ -434,6 +441,8 @@ describe('paid leave is not a free week', () => {
     await vi.waitFor(() =>
       expect(api.createTimeOff).toHaveBeenCalledWith(
         expect.objectContaining({ memberId: 'm1', startDate: '2026-09-08', endDate: '2026-09-08' }),
+        undefined,
+        expect.stringMatching(/^time-off:/),
       ),
     );
   });
@@ -681,5 +690,190 @@ describe('the Status control says what Inactive does', () => {
     );
     expect(screen.getByText(/does not\s+stop them signing in/)).toBeInTheDocument();
     expect(screen.getByText(/to end their access,\s+remove them/)).toBeInTheDocument();
+  });
+});
+
+// ── F-1117 / F-1118: a write whose answer was lost is not "unchanged" ─────────
+//
+// Copy last week, Duplicate, Delete and the manager's time-off form each said
+// nothing had happened after a timeout or a 5xx, when the gateway may have
+// done it. Each now says it may have landed, reads the page again, and a
+// retry is answered as the first try's work, never as someone else's change.
+describe('a lost answer is said as unknown, and the retry does not blame anyone else', () => {
+  const lost = () =>
+    Object.assign(new Error('timeout of 30000ms exceeded'), {
+      isAxiosError: true,
+      request: {},
+      response: undefined,
+    });
+  const status = (code: number, message: string) =>
+    Object.assign(new Error(`Request failed with status code ${code}`), {
+      response: { status: code, data: { message } },
+    });
+
+  beforeEach(() => {
+    vi.mocked(copyWeek).mockReset().mockResolvedValue({});
+    vi.mocked(createShift).mockReset().mockResolvedValue({} as never);
+    vi.mocked(deleteShift).mockReset().mockResolvedValue(undefined);
+    api.createTimeOff.mockReset().mockResolvedValue({});
+  });
+
+  it('copy last week: says the copy may have landed, reads the week, and a refused retry is not "someone changed it" (F-1117)', async () => {
+    vi.mocked(copyWeek)
+      .mockRejectedValueOnce(lost())
+      .mockRejectedValueOnce(
+        status(409, 'The week of 2026-09-07 now has 3 shift(s), not the 0 you were shown, so someone changed it after you opened the page.'),
+      );
+    const onDone = vi.fn();
+    // The desk keeps what went unanswered; the seal approves once, so a retry
+    // is the panel opened again.
+    const lostCopies = new Set<string>();
+    const panel = () => (
+      <CopyWeekPanel
+        weekStart="2026-09-07"
+        shiftsOnTarget={0}
+        lostCopies={lostCopies}
+        onClose={() => {}}
+        onDone={onDone}
+      />
+    );
+    // The seal's keyboard path: Enter arms it, Enter again approves.
+    const press = () => {
+      const die = screen.getByRole('button', { name: /Hold to copy last week/ });
+      fireEvent.keyDown(die, { key: 'Enter' });
+      fireEvent.keyDown(die, { key: 'Enter' });
+    };
+    const first = render(panel(), { wrapper });
+    press();
+    expect(await screen.findByText(/may already be copied in/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing was copied/)).not.toBeInTheDocument();
+    expect(onDone).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    render(panel(), { wrapper });
+    press();
+    expect(await screen.findByText(/most likely by your own copy/)).toBeInTheDocument();
+    expect(screen.queryByText(/someone changed it/)).not.toBeInTheDocument();
+    expect(onDone).toHaveBeenCalledTimes(2);
+  });
+
+  it('time off filed by a manager: says it may be on file, reads the file again, and retries with the same key (F-1118)', async () => {
+    api.createTimeOff.mockRejectedValue(status(504, 'Gateway Timeout'));
+    const onChanged = vi.fn();
+    render(
+      <TimeOffSheet
+        requests={[]}
+        failed={false}
+        members={[member()] as never}
+        weekStart="2026-09-07"
+        onClose={() => {}}
+        onChanged={onChanged}
+      />,
+      { wrapper },
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'm1' } });
+    fireEvent.change(screen.getByLabelText('First day off'), { target: { value: '2026-09-08' } });
+    fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-09-08' } });
+    const file = screen.getByRole('button', { name: 'File it' });
+    fireEvent.click(file);
+    expect(await screen.findByText(/may already be on file/)).toBeInTheDocument();
+    expect(screen.queryByText(/The request was not filed/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Gateway Timeout')).not.toBeInTheDocument();
+    expect(onChanged).toHaveBeenCalled();
+    await vi.waitFor(() => expect(file).not.toBeDisabled());
+    fireEvent.click(file);
+    await vi.waitFor(() => expect(api.createTimeOff).toHaveBeenCalledTimes(2));
+    const [a, b] = api.createTimeOff.mock.calls.map((c) => c[2]);
+    expect(a).toMatch(/^time-off:/);
+    expect(b).toBe(a);
+  });
+
+  it('the shift sheet: a lost delete may be done, and a retry that finds no shift is the delete done (F-1118)', async () => {
+    vi.mocked(deleteShift)
+      .mockRejectedValueOnce(status(502, 'Bad Gateway'))
+      .mockRejectedValueOnce(status(404, 'Shift not found'));
+    const onChanged = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <ShiftSheet
+        target={{
+          shift: {
+            id: 'sh-9', schedule_id: 'sch1', member_id: null, shift_date: '2026-09-07',
+            start_time: '09:00', end_time: '17:00', role: null, shift_type: 'open',
+            state: 'open', note: null, shift_breaks: [],
+          } as never,
+        }}
+        members={[]}
+        scheduleId="sch1"
+        onClose={onClose}
+        onChanged={onChanged}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    const remove = screen.getByRole('button', { name: 'Remove the shift' });
+    fireEvent.click(remove);
+    expect(await screen.findByText(/may already be gone/)).toBeInTheDocument();
+    expect(screen.queryByText(/still on the schedule/)).not.toBeInTheDocument();
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(deleteShift).mock.calls[0][2]).toBe('shift-delete:sh-9');
+    await vi.waitFor(() => expect(remove).not.toBeDisabled());
+    fireEvent.click(remove);
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(screen.queryByText(/Shift not found/)).not.toBeInTheDocument();
+  });
+
+  it('the grid: a lost Duplicate may be on the schedule, and the retry sends the same key (F-1118)', async () => {
+    vi.mocked(createShift).mockRejectedValue(lost());
+    const onChanged = vi.fn();
+    const { container } = render(
+      <WeekGrid
+        weekStart="2026-08-31"
+        shifts={[
+          {
+            id: 's-1', restaurant_id: 'r1', schedule_id: 'sch1', member_id: 'm1',
+            shift_date: '2026-08-31', start_time: '09:00', end_time: '17:00', role: 'Bar',
+            shift_type: 'morning', state: 'scheduled', note: null, shift_breaks: [],
+            recorded_break_min: 30,
+          },
+        ] as never}
+        members={[member()] as never}
+        membersFailed={false}
+        certs={[]}
+        coverage={[]}
+        weekFailed={false}
+        engineIdle
+        lens="coverage"
+        labourEnabled
+        moneyVisible
+        money={TRY_HOUSE}
+        scheduleId="sch1"
+        onEditShift={() => {}}
+        onChanged={onChanged}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(container.querySelector('.tm-chip') as HTMLElement);
+    const dup = screen.getByRole('button', { name: 'Duplicate onto the same day' });
+    fireEvent.click(dup);
+    expect(await screen.findByText(/the copy may already be on the schedule/)).toBeInTheDocument();
+    expect(screen.queryByText(/the week is unchanged/)).not.toBeInTheDocument();
+    expect(onChanged).toHaveBeenCalled();
+    await vi.waitFor(() => expect(dup).not.toBeDisabled());
+    fireEvent.click(dup);
+    await vi.waitFor(() => expect(createShift).toHaveBeenCalledTimes(2));
+    const [a, b] = vi.mocked(createShift).mock.calls.map((c) => c[2]);
+    expect(a).toMatch(/^shift-duplicate:/);
+    expect(b).toBe(a);
+  });
+});
+
+// ── F-1120: hours with the house's decimal mark ──────────────────────────────
+describe('hours print with the house decimal mark', () => {
+  it('says 7,5h in a Turkish house and 7.5h in an American one', () => {
+    expect(fmtHours(7.5, houseLocale('Türkiye'))).toBe('7,5h');
+    expect(fmtHours(7.5, houseLocale('United States'))).toBe('7.5h');
+    expect(fmtHours(8, houseLocale('Türkiye'))).toBe('8h');
+    expect(fmtHours(7.5)).toBe('7.5h');
   });
 });
