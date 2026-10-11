@@ -147,6 +147,18 @@ export class InventoryLedgerService {
       "createTransaction",
       this.logger,
     );
+    // F-1334: bottles coming IN must land on a live zone. A deleted one may
+    // still be drained, but bottles filed under it are stranded.
+    if (dto.quantityChange > 0) {
+      await assertLocationsBelongToRestaurant(
+        this.databaseService.supabase,
+        restaurantId,
+        [dto.toLocationId || dto.fromLocationId],
+        "createTransaction",
+        this.logger,
+        { liveOnly: true },
+      );
+    }
 
     // record_inventory_transaction referenced a `live_stock` column that does
     // not exist on restaurant_inventory and 500'd against the real database

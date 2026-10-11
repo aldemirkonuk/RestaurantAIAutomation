@@ -105,10 +105,13 @@ function reasonOf(err: unknown): string {
  */
 function toUpdateBody(updates: Partial<StorageLocation>): Record<string, unknown> {
   const body: Record<string, unknown> = {}
-  const pass = ['name', 'description', 'capacity', 'temperature', 'humidity', 'notes', 'color'] as const
+  // No description: the gateway has no column for one and refuses it
+  // (F-1332). Humidity is 'Controlled' or 'None'; empty means not stated.
+  const pass = ['name', 'capacity', 'temperature', 'notes', 'color'] as const
   for (const k of pass) {
     if (updates[k] !== undefined) body[k] = updates[k]
   }
+  if (updates.humidity) body.humidity = updates.humidity
   if (updates.currentCount !== undefined) body.current_count = updates.currentCount
   if ('parentId' in updates) body.parent_id = updates.parentId ?? null
   return body
@@ -530,10 +533,9 @@ export function useStorageLocations() {
       try {
         const { data } = await apiClient.post(`/storage-locations/${restaurantId}`, {
           name: location.name,
-          description: location.description,
           capacity: location.capacity,
           temperature: location.temperature,
-          humidity: location.humidity,
+          humidity: location.humidity || undefined,
           notes: location.notes,
           parent_id: location.parentId,
           color: location.color,

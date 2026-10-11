@@ -207,6 +207,7 @@ export class StorageLocationsController {
       return await this.storageLocationsService.createLocation(
         restaurantId,
         dto,
+        user?.userId,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

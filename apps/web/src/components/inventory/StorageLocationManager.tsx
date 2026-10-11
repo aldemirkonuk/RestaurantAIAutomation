@@ -25,7 +25,6 @@ import {
   Loader2,
   Zap,
   RefreshCw,
-  GripVertical,
 } from 'lucide-react'
 import { useStorageLocations, useZoneSetupAccess } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
@@ -95,7 +94,6 @@ export function StorageLocationManager({
     updateWineQuantityAtLocation,
     getLocationStats,
     recalculateLocationCounts,
-    setLocations,
   } = useStorageLocations()
   // ADR 0238: who may set up zones. Read only while the manager is open; the
   // gateway's 403 is the gate, this only keeps refused controls off the page.
@@ -135,13 +133,12 @@ export function StorageLocationManager({
     overflow: number
   } | null>(null)
   const [wineSearchQuery, setWineSearchQuery] = useState('')
-  const [draggedId, setDraggedId] = useState<string | null>(null)
-  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  // F-1335: zones are not drag-reordered here. The grip only moved the cached
+  // list (no write touches display_order) and was offered to every member.
   // capacity starts EMPTY, not 100. A pre-filled denominator that the user
   // never looked at becomes a recorded fact the cellar map divides by.
   const [formData, setFormData] = useState<Partial<StorageLocation>>({
     name: '',
-    description: '',
     capacity: null,
     currentCount: 0,
     temperature: '',
@@ -195,7 +192,6 @@ export function StorageLocationManager({
   const resetForm = () => {
     setFormData({
       name: '',
-      description: '',
       capacity: null,
       currentCount: 0,
       temperature: '',
@@ -210,9 +206,9 @@ export function StorageLocationManager({
   // P0: use addLocation hook so creates are persisted to the server.
   // The form closes only once the server has stored the zone; a refused
   // create keeps the form open with what the person typed (the hook has
-  // already removed the optimistic row and toasted the reason). No parent is
-  // sent: storage_locations has no parent column yet and the gateway refuses
-  // a stated one with a 422, so the create form does not offer the picker.
+  // already removed the optimistic row and toasted the reason). The parent
+  // picked on the form is sent (storage_locations.parent_id): without it a
+  // zone made "inside" another was saved at the top level (F-1330).
   const [isSavingCreate, setIsSavingCreate] = useState(false)
   const handleCreate = async () => {
     if (isSavingCreate) return
@@ -223,12 +219,12 @@ export function StorageLocationManager({
     setIsSavingCreate(true)
     const saved = await addLocation({
       name: formData.name,
-      description: formData.description,
       capacity: formData.capacity,
       currentCount: 0,
       temperature: formData.temperature,
       humidity: formData.humidity,
       notes: formData.notes,
+      parentId: formData.parentId,
       color: formData.color || DEFAULT_COLORS[0],
     })
     setIsSavingCreate(false)
@@ -262,7 +258,6 @@ export function StorageLocationManager({
     setCapacityWarning(null)
     const saved = await updateLocation(editingLocation.id, {
       name: formData.name,
-      description: formData.description,
       capacity: newCapacity,
       temperature: formData.temperature,
       humidity: formData.humidity,
@@ -293,7 +288,6 @@ export function StorageLocationManager({
     setEditingLocation(location)
     setFormData({
       name: location.name,
-      description: location.description,
       capacity: location.capacity,
       currentCount: location.currentCount,
       temperature: location.temperature,
@@ -399,9 +393,13 @@ export function StorageLocationManager({
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-hidden flex">
+          {/* F-1336: below md the list and the form stack; side by side above. */}
+          <div
+            className="flex-1 overflow-y-auto md:overflow-hidden flex flex-col md:flex-row"
+            data-testid="zone-manager-columns"
+          >
             {/* Locations List */}
-            <div className="w-1/2 border-r border-gray-200 p-4 overflow-y-auto">
+            <div className="w-full md:w-1/2 border-b md:border-b-0 md:border-r border-gray-200 p-4 md:overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-900">Your Locations</h3>
                 {setup.maySetUp && (
@@ -434,34 +432,10 @@ export function StorageLocationManager({
                     data-testid={`zone-row-${location.name}`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    whileHover={{ scale: draggedId ? 1 : 1.01 }}
-                    whileTap={{ scale: draggedId ? 1 : 0.99 }}
-                    onDragOver={(e: React.DragEvent) => {
-                      e.preventDefault()
-                      if (location.id !== draggedId) setDragOverId(location.id)
-                    }}
-                    onDragLeave={() => setDragOverId(p => p === location.id ? null : p)}
-                    onDrop={(e: React.DragEvent) => {
-                      e.preventDefault()
-                      if (!draggedId || draggedId === location.id) { setDraggedId(null); setDragOverId(null); return }
-                      setLocations(prev => {
-                        const from = prev.findIndex(l => l.id === draggedId)
-                        const to = prev.findIndex(l => l.id === location.id)
-                        if (from === -1 || to === -1) return prev
-                        const next = [...prev]
-                        const [moved] = next.splice(from, 1)
-                        next.splice(to, 0, moved)
-                        return next
-                      })
-                      setDraggedId(null)
-                      setDragOverId(null)
-                    }}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
                     className={`p-4 rounded-xl border-2 transition-all cursor-pointer group ${
-                      draggedId === location.id
-                        ? 'opacity-40 border-gray-300 bg-gray-50 scale-[0.98]'
-                        : dragOverId === location.id
-                        ? 'border-emerald-400 bg-emerald-50/40 shadow-lg'
-                        : editingLocation?.id === location.id
+                      editingLocation?.id === location.id
                         ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-100'
                         : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md'
                     }`}
@@ -480,25 +454,6 @@ export function StorageLocationManager({
                     }
                   >
                     <div className="flex items-start gap-3">
-                      {/* Drag handle — only this element is draggable to avoid FM type conflicts */}
-                      <div
-                        draggable
-                        onDragStart={(e) => {
-                          e.stopPropagation()
-                          setDraggedId(location.id)
-                          e.dataTransfer.effectAllowed = 'move'
-                        }}
-                        onDragEnd={(e) => {
-                          e.stopPropagation()
-                          setDraggedId(null)
-                          setDragOverId(null)
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex-shrink-0 mt-0.5 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors"
-                        title="Drag to reorder"
-                      >
-                        <GripVertical className="w-4 h-4" />
-                      </div>
                       <div
                         className="w-3.5 h-3.5 rounded-full flex-shrink-0 mt-1"
                         style={{ backgroundColor: location.color }}
@@ -694,7 +649,7 @@ export function StorageLocationManager({
             </div>
 
             {/* Edit/Create Form */}
-            <div className="w-1/2 bg-gray-50 flex flex-col overflow-hidden">
+            <div className="w-full md:w-1/2 bg-gray-50 flex flex-col md:overflow-hidden">
               {(isCreating || editingLocation) ? (
                 <>
                 <div className="flex-1 overflow-y-auto p-6">
@@ -723,19 +678,6 @@ export function StorageLocationManager({
                       placeholder="e.g., Main Cellar"
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Brief description..."
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                     />
                   </div>
 
@@ -855,7 +797,7 @@ export function StorageLocationManager({
                         type="text"
                         value={formData.temperature}
                         onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
-                        placeholder="e.g., 55°F"
+                        placeholder="e.g., 13°C or 55°F"
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                         style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
                       />
@@ -864,14 +806,17 @@ export function StorageLocationManager({
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Humidity
                       </label>
-                      <input
-                        type="text"
-                        value={formData.humidity}
+                      {/* F-1332: the zone records only whether humidity is controlled. */}
+                      <select
+                        value={formData.humidity || ''}
                         onChange={(e) => setFormData({ ...formData, humidity: e.target.value })}
-                        placeholder="e.g., 70%"
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                        style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
-                      />
+                        style={{ color: '#1f2937' }}
+                      >
+                        <option value="">Not stated</option>
+                        <option value="Controlled">Controlled</option>
+                        <option value="None">Not controlled</option>
+                      </select>
                     </div>
                   </div>
 

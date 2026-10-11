@@ -1253,10 +1253,10 @@ describe("InventoryService", () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
       mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
-      // F-435: and the zone it moves to must be the house's own.
-      mockSupabaseChain.in.mockResolvedValueOnce({
-        data: [{ id: "loc-2" }],
-        error: null,
+      // F-435: and the zone it moves to must be the house's own, and
+      // (F-1334) live, so that read ends in .is("deleted_at", null).
+      mockSupabaseChain.in.mockReturnValueOnce({
+        is: () => Promise.resolve({ data: [{ id: "loc-2" }], error: null }),
       });
       await service.transferStock(
         "rest-1",

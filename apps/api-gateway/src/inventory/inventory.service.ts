@@ -531,12 +531,23 @@ export class InventoryService {
     );
     // F-435: the zones too. The RPC files the lot under whatever zone id it
     // is given, with no house tie, so another house's zone would be accepted.
+    // F-1334: a deleted zone may still be the source (its bottles must be
+    // able to leave it), never the destination, or the bottles are stranded
+    // on a shelf nobody can see.
     await assertLocationsBelongToRestaurant(
       client,
       restaurantId,
-      [dto.fromLocationId, dto.toLocationId],
+      [dto.fromLocationId],
       "transferStock",
       this.logger,
+    );
+    await assertLocationsBelongToRestaurant(
+      client,
+      restaurantId,
+      [dto.toLocationId],
+      "transferStock",
+      this.logger,
+      { liveOnly: true },
     );
     const { error } = await client.rpc("transfer_stock", {
       p_inventory_id: inventoryId,
@@ -1438,12 +1449,14 @@ export class InventoryService {
     const client = this.dbService.getClient();
     // F-435: the item's shelf and its first lot's zone must be this house's.
     // Checked before anything is written, re-activation included.
+    // F-1334: and live. Received bottles filed under a deleted zone are lost.
     await assertLocationsBelongToRestaurant(
       client,
       restaurantId,
       [dto.storageLocationId],
       "createInventoryItem",
       this.logger,
+      { liveOnly: true },
     );
 
     // Look up the canonical wine name once; used in both the re-activation and INSERT paths.
@@ -1759,6 +1772,7 @@ export class InventoryService {
           [line.storageLocationId],
           "bulkCreateInventoryItems",
           this.logger,
+          { liveOnly: true },
         );
         const resolved = await this.resolveBulkLineWine(line, restaurantId);
         const outcome = await this.receiveBulkLine(

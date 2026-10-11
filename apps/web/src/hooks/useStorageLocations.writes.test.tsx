@@ -114,6 +114,40 @@ describe('#4 — the zone edit speaks the DTO', () => {
     const body = mockRequest.mock.calls[0][0].data
     expect(body).toHaveProperty('parent_id', null)
   })
+
+  // F-1332: the gateway has no column for a description and refuses one;
+  // humidity is a yes/no, so an unstated one is not sent at all.
+  it('sends no description, and humidity only when it is stated', async () => {
+    const { result } = await mounted()
+    await act(async () => {
+      await result.current.updateLocation(LOC, {
+        name: 'Rack A',
+        description: 'under the stairs',
+        temperature: '13°C',
+        humidity: '',
+      })
+    })
+    const body = mockRequest.mock.calls[0][0].data
+    expect(body).toMatchObject({ name: 'Rack A', temperature: '13°C' })
+    expect(body).not.toHaveProperty('description')
+    expect(body).not.toHaveProperty('humidity')
+
+    mockPost.mockResolvedValueOnce({ data: { id: PARENT, name: 'Back Cellar', capacity: 24 } })
+    await act(async () => {
+      await result.current.addLocation({
+        name: 'Back Cellar',
+        description: 'x',
+        capacity: 24,
+        currentCount: 0,
+        humidity: 'Controlled',
+        parentId: LOC,
+        color: '#be123c',
+      } as never)
+    })
+    const created = mockPost.mock.calls[0][1]
+    expect(created).toMatchObject({ humidity: 'Controlled', parent_id: LOC })
+    expect(created).not.toHaveProperty('description')
+  })
 })
 
 describe('#5 — a failed zone write is rolled back and said out loud', () => {

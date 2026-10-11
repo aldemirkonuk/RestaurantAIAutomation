@@ -117,8 +117,8 @@ export default function FloorStrip() {
           ) : data.counts.total === 0 ? (
             <p className="cl-said cl-dim" data-testid="floor-none">
               This house has no storage zones on record. That is a fact about the
-              book, not about the building — add one from Settings and it will
-              appear here once it is named.
+              book, not about the building. Add one on the Inventory page, under
+              Manage locations, and it will appear here.
             </p>
           ) : null}
 
