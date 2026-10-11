@@ -252,7 +252,7 @@ export const genericAdapter: PosAdapter = {
             externalItemId: it.externalItemId ?? it.external_item_id ?? null,
             category: it.category ?? null,
             qty: qtyOf(it.qty ?? it.quantity),
-            price: readMoney(it.price).value ?? 0,
+            price: readMoney(it.price).value ?? null,
             is_wine: typeof it.is_wine === "boolean" ? it.is_wine : undefined,
             master_wine_id: it.master_wine_id ?? null,
             modifierIds: modifierIdsOf(
@@ -338,7 +338,7 @@ export const squareAdapter: PosAdapter = {
               externalItemId: li.catalog_object_id ?? null,
               category: null,
               qty: qtyOf(li.quantity),
-              price: cents(li.base_price_money?.amount) ?? 0,
+              price: cents(li.base_price_money?.amount) ?? null,
               modifierIds: modifierIdsOf(
                 li.modifiers,
                 (m) => m?.catalog_object_id,
@@ -405,7 +405,7 @@ export const cloverAdapter: PosAdapter = {
               externalItemId: li.item?.id ?? null,
               category: null,
               qty: qtyOf(li.unitQty),
-              price: cents(li.price) ?? 0,
+              price: cents(li.price) ?? null,
             }),
           ),
           raw: o,
@@ -471,7 +471,7 @@ export const toastAdapter: PosAdapter = {
               externalItemId: s.item?.guid ?? null,
               category: s.salesCategory?.name ?? null,
               qty: qtyOf(s.quantity),
-              price: num(s.price) ?? 0,
+              price: num(s.price) ?? null,
               // F-641: the menu option a modifier names (a size), not the
               // per-check selection guid, so a mapping can name it.
               modifierIds: modifierIdsOf(

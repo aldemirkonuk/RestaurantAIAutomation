@@ -14,8 +14,9 @@ export interface CanonicalItem {
   externalItemId?: string | null;
   category?: string | null;
   qty: number;
-  /** Unit price in major currency units (dollars/lira), not cents. */
-  price: number;
+  /** Unit price in major currency units (dollars/lira), not cents. Null
+   *  when the till sent none, which is not 0: a 0 is a comped line (F-1198). */
+  price: number | null;
   /** Resolved by the hub via pos_item_mappings + heuristics. */
   is_wine?: boolean;
   master_wine_id?: string | null;

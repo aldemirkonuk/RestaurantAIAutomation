@@ -76,7 +76,10 @@
   "GET /analytics/seasonality/:restaurantId (AnalyticsController.getSeasonality)": "open",
   "GET /analytics/cashflow/:restaurantId (AnalyticsController.getCashflow)": "open",
   "GET /analytics/wine/:restaurantId/:masterWineId (AnalyticsController.getWine360)": "open",
-  "GET /analytics/pos-revenue/:restaurantId (AnalyticsController.getPosRevenue)": "open",
+  "GET /analytics/pos-revenue/:restaurantId (AnalyticsController.getPosRevenue)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/overview/:restaurantId (AnalyticsController.getOverview)": "open",
   "GET /analytics/recommendations/:restaurantId (AnalyticsController.getRecommendations)": "open",
   "POST /analytics/recommendations/:restaurantId/action (AnalyticsController.setRecommendationAction)": "open",

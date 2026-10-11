@@ -112,6 +112,21 @@ describe("adapters normalize to the canonical check", () => {
     expect(check.items[1].price).toBeCloseTo(16);
   });
 
+  // F-1198: a line with no price is null, not 0, so the consumption mirror
+  // can tell it from a comped line (price 0) and fall back to the menu price.
+  it("a line with no price is null, and a 0 price stays 0", () => {
+    const [check] = genericAdapter.normalize({
+      externalCheckId: "c-comp",
+      items: [{ name: "Malbec" }, { name: "Barolo", price: 0 }],
+    });
+    expect(check.items[0].price).toBeNull();
+    expect(check.items[1].price).toBe(0);
+    const [clover] = cloverAdapter.normalize({
+      id: "clv-np",
+      lineItems: { elements: [{ name: "Şarap" }] },
+    });
+    expect(clover.items[0].price).toBeNull();
+  });
   it("clover converts epoch millis and cents", () => {
     const [check] = cloverAdapter.normalize({
       id: "clv-1",
