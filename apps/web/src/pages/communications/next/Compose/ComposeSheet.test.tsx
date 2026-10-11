@@ -328,6 +328,26 @@ describe('the house composer', () => {
     expect((alert.textContent ?? '').match(/could not be read/g)).toHaveLength(1);
   });
 
+  // F-1179 (rehit of F-362): the recipient search lowercased bare, so "tarim"
+  // missed "Tarım" and "IZMIR" missed "İzmir".
+  it('finds a booked vendor whatever the Turkish İ/ı in the search', () => {
+    mockData.current = {
+      ...base,
+      book: [
+        ...BOOK,
+        { providerId: 'p2', providerName: 'İzmir Şarap', contactName: null, email: 'satis@izsarap.com', source: 'provider' as const },
+      ],
+    };
+    open();
+    const to = screen.getByLabelText('To');
+    fireEvent.change(to, { target: { value: 'tarim' } });
+    expect(screen.getByText('Fikri Tarım Gıda')).toBeInTheDocument();
+    expect(screen.queryByText('İzmir Şarap')).not.toBeInTheDocument();
+    fireEvent.change(to, { target: { value: 'IZMIR' } });
+    expect(screen.getByText('İzmir Şarap')).toBeInTheDocument();
+    expect(screen.queryByText('Fikri Tarım Gıda')).not.toBeInTheDocument();
+  });
+
   it('offers to add an unknown address to the book rather than writing to it', () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX };
     open();

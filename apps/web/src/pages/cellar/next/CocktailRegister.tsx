@@ -49,6 +49,7 @@ import {
   type CocktailInput,
   type RegisterVM,
 } from './useCellarNextData';
+import { foldText } from '@/lib/textFold';
 
 /**
  * The gateway's own sentence for a failed write. axios's "Request failed with
@@ -281,10 +282,10 @@ export default function CocktailRegister({
   const [query, setQuery] = useState('');
 
   const rows = (data?.rows ?? []).filter((c) => {
-    const q = query.trim().toLowerCase();
+    const q = foldText(query.trim());
     if (!q) return true;
-    return [c.name, c.display_name, c.menu_section, c.method, c.glass]
-      .filter(Boolean).join(' ').toLowerCase().includes(q);
+    return foldText([c.name, c.display_name, c.menu_section, c.method, c.glass]
+      .filter(Boolean).join(' ')).includes(q);
   });
 
   const submit = async () => {

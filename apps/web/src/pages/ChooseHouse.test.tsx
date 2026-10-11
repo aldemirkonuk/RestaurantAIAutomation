@@ -262,6 +262,27 @@ describe("ChooseHouse", () => {
     ).toHaveLength(1);
   });
 
+  // F-1179: the search used the device's toLocaleLowerCase, so on an English
+  // phone "izmir" missed "İzmir" and "kadikoy" missed "Kadıköy".
+  it("finds İzmir by izmir and Kadıköy by kadikoy", async () => {
+    const many = Array.from({ length: 8 }, (_, i) => ({
+      id: `aaaaaaaa-aaaa-4aaa-8aaa-00000000000${i}`,
+      name: `House ${i}`,
+      city: null,
+    }));
+    housesAnswer([...many, { ...KADIKOY, city: "İzmir" }]);
+    renderAt();
+    const box = await screen.findByPlaceholderText("Find a house");
+    const rows = () =>
+      within(screen.getByRole("list", { name: "Your houses" })).getAllByRole(
+        "button",
+      );
+    fireEvent.change(box, { target: { value: "izmir" } });
+    expect(rows()).toHaveLength(1);
+    fireEvent.change(box, { target: { value: "kadikoy" } });
+    expect(rows()).toHaveLength(1);
+  });
+
   it("shows no search box for eight or fewer", async () => {
     housesAnswer([MODA, KADIKOY, BESIKTAS]);
     renderAt();

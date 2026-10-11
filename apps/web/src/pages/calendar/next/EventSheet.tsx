@@ -45,6 +45,7 @@ import { EM, SEAL_HEX, clock, longDay } from './cal-format';
 import ReminderRegister from './ReminderRegister';
 import { customTypeOf, type CalEvent, type CalendarData, type CalendarPayload, type EventStatus } from './useCalendarNextData';
 import { useMayActForTheHouse } from '../../../hooks/useMayActForTheHouse';
+import { foldText } from '../../../lib/textFold';
 
 /** The gateway's CalendarEventType enum (calendar.dto.ts:44-59). */
 const ENUM_TYPES = new Set([
@@ -189,11 +190,12 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const [newTypeColor, setNewTypeColor] = useState(SEAL_HEX);
 
   const custom = useMemo(() => data.eventTypes.filter((t) => !t.isDefault), [data.eventTypes]);
-  // A name already on the list, whatever its case, is said before the click;
-  // the gateway refuses the exact name with a 409 (F-717).
+  // A name already on the list, whatever its case — İ/ı folded the same on
+  // any device (F-1179) — is said before the click; the gateway refuses the
+  // exact name with a 409 (F-717).
   const typeNameTaken = useMemo(() => {
-    const wanted = newTypeName.trim().toLocaleLowerCase();
-    return wanted !== '' && data.eventTypes.some((t) => t.name.trim().toLocaleLowerCase() === wanted);
+    const wanted = foldText(newTypeName.trim());
+    return wanted !== '' && data.eventTypes.some((t) => foldText(t.name.trim()) === wanted);
   }, [newTypeName, data.eventTypes]);
   const saving = data.create.isPending || data.update.isPending;
   const writeKey = useDraftWriteKey('calendar-event');

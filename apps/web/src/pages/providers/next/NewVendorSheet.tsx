@@ -62,10 +62,37 @@ import {
 } from '@/services/api/vendors';
 import { useDuplicateVendorCheck } from '@/hooks/useDuplicateVendorCheck';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
-import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { useHouseCountryCode, useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { formatPhoneDisplay } from '@/lib/phone';
 import { parseDecimal, readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
 import { VendorTwinPanel } from './VendorTwinPanel';
 import { EM, MONO, SANS, SERIF } from './pv-format';
+
+/**
+ * A vendor phone the way the gateway will save it (F-1178) — the same rule as
+ * `normalizeVendorPhone` in
+ * `apps/api-gateway/src/providers/providers.service.ts`, so the new vendor sheet can
+ * show the saved number before it is saved:
+ *  - TR: 10 digits starting 5 (a leading 0 dropped first) becomes +90…;
+ *  - US / CA: 10 digits, or 11 starting 1, becomes +1…;
+ *  - anything else, an unknown country, or a number already in "+" form is
+ *    kept exactly as typed. No prefix is invented.
+ */
+function vendorPhoneAsSaved(value: string, countryCode: string | null | undefined): string {
+  const v = value.trim();
+  if (!v || v.startsWith('+')) return v;
+  const digits = v.replace(/\D/g, '');
+  const region = countryCode?.toUpperCase() ?? null;
+  if (region === 'TR') {
+    const national = digits.startsWith('0') ? digits.slice(1) : digits;
+    return national.length === 10 && national.startsWith('5') ? `+90${national}` : v;
+  }
+  if (region === 'US' || region === 'CA') {
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  }
+  return v;
+}
 
 /** The catalogue read, as three states plus its answer. Never two. */
 export type CatalogueRegister =
@@ -343,6 +370,11 @@ export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }:
     }));
 
   const group = useHouseGroupMark();
+  // The phone as it will be saved, read by the house's country (F-1178) —
+  // shown under the field when it differs from what was typed, and sent as
+  // shown so the screen and the record cannot disagree.
+  const houseCountry = useHouseCountryCode();
+  const phoneAsSaved = vendorPhoneAsSaved(draft.phone, houseCountry);
   const refusals = useMemo(() => vendorRefusals(draft, group), [draft, group]);
   const clean = Object.keys(refusals).length === 0;
 
@@ -384,7 +416,7 @@ export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }:
         // Empty, never assumed — "Not stated" sends nothing (founder,
         // 2026-09-21), same rule as paymentTerms below.
         primaryBusinessType: draft.businessType || undefined,
-        phone: draft.phone.trim(),
+        phone: phoneAsSaved,
         email: draft.email.trim(),
         physicalAddress: draft.address.trim(),
         restaurantId,
@@ -495,6 +527,7 @@ export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }:
     restaurantId,
     createProvider,
     draft,
+    phoneAsSaved,
     group,
     rating,
     preferences.providerRatings,
@@ -707,7 +740,15 @@ export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }:
                 onChange={(e) => set({ phone: e.target.value })}
                 data-testid="vendor-phone"
               />
-              {problem('phone')}
+              {problem('phone') ??
+                (phoneAsSaved !== draft.phone.trim() ? (
+                  <p
+                    data-testid="vendor-phone-as-saved"
+                    style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+                  >
+                    Saved as {formatPhoneDisplay(phoneAsSaved)}
+                  </p>
+                ) : null)}
             </div>
             <div>
               <label style={legend} htmlFor="nv-email">

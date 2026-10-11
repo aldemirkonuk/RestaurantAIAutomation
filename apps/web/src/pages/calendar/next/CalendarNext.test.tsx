@@ -584,6 +584,25 @@ describe('CalendarNext — honesty', () => {
     expect((data.createType as { mutate: ReturnType<typeof vi.fn> }).mutate).not.toHaveBeenCalled();
   });
 
+  // F-1179: the duplicate check used the device's toLocaleLowerCase, so on an
+  // English device "İZMİR" and "izmir" read as two names.
+  it('refuses a type name that differs only by a Turkish İ/ı (F-1179)', () => {
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+      eventTypes: [
+        { id: 'default-delivery', name: 'Delivery', color: '#3b82f6', isDefault: true },
+        { id: 'ct-2', name: 'İzmir tasting', color: SEAL_HEX, isDefault: false },
+      ],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('New type name'), { target: { value: 'izmir tasting' } });
+    expect(within(sheet).getByText(/is already on the list/)).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Add' })).toBeDisabled();
+  });
+
   it("says the gateway's own words for a refused type, not the status code", () => {
     const refused = Object.assign(new Error('Request failed with status code 409'), {
       response: { data: { message: 'A type called "Tasting" is already on this calendar.' } },

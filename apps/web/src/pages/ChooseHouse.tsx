@@ -14,6 +14,7 @@ import {
   readHouseEnded,
   type ChooserHouse,
 } from "../lib/houseMemory";
+import { foldText } from "../lib/textFold";
 
 /**
  * Which house today? (ADR 0164, R7; the founder, 2026-09-18: "if they own
@@ -125,12 +126,12 @@ export function ChooseHouse() {
 
   const visible = useMemo(() => {
     if (!ordered) return [];
-    const q = query.trim().toLocaleLowerCase();
+    const q = foldText(query.trim());
     if (!q) return ordered.houses;
     return ordered.houses.filter(
       (h) =>
-        h.name.toLocaleLowerCase().includes(q) ||
-        (h.city ?? "").toLocaleLowerCase().includes(q),
+        foldText(h.name).includes(q) ||
+        foldText(h.city).includes(q),
     );
   }, [ordered, query]);
 
