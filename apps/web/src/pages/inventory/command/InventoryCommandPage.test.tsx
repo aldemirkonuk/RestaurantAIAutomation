@@ -79,6 +79,16 @@ vi.mock('@/contexts/AuthContext', async () => ({
   }),
 }));
 
+/** What an export was handed; the file itself is not written in a test. */
+const exported = vi.hoisted(() => vi.fn());
+vi.mock('../../../lib/tableExport', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/tableExport')>()),
+  exportTable: (...args: unknown[]) => {
+    exported(...args);
+    return Promise.resolve();
+  },
+}));
+
 import { InventoryCommandPage } from './InventoryCommandPage';
 
 const unresolvedLinesBody = {
@@ -775,5 +785,94 @@ describe('InventoryCommandPage — the price advice is asked for only by an owne
     mount();
     await screen.findByText('Produttori Barbaresco');
     await waitFor(() => expect(adviceGets().length).toBeGreaterThan(0));
+  });
+});
+
+describe('InventoryCommandPage — value comes from what the house paid, and a chip values its zone (F-1281, F-1282)', () => {
+  const costed = { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2, wac: 40 };
+  const uncosted = { id: 'row-2', wineId: 'wine-2', wineName: 'Sancerre Les Monts', stockLive: 3, shadowStock: 0, thresholdMin: 2 };
+
+  /** The rows and title the last export was handed, each row read through its columns. */
+  function lastExport() {
+    const opts = exported.mock.calls.at(-1)![0] as {
+      rows: unknown[];
+      title: string;
+      columns: { header: string; value: (r: unknown) => unknown }[];
+    };
+    const cells = opts.rows.map((r) =>
+      Object.fromEntries(opts.columns.map((c) => [c.header.replace(/ \(.*\)$/, ''), c.value(r)])),
+    );
+    return { title: opts.title, cells };
+  }
+
+  async function exportValuation() {
+    fireEvent.click(screen.getByRole('button', { name: /Export valuation/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /CSV/ }));
+    await waitFor(() => expect(exported).toHaveBeenCalled());
+  }
+
+  it('[REVERT-FAILS] the tile says how many wines it left out for having no cost', async () => {
+    routeGets({ 'inventory-list': [costed, uncosted] });
+    mount();
+    await screen.findByText('Sancerre Les Monts');
+    const label = screen.getByText('Value on hand');
+    // 6 x $40; the uncosted wine is not priced at 0 or at the library's price.
+    expect(label.nextElementSibling!.textContent).toBe('$240');
+    expect(label.parentElement!.textContent).toContain('1 wine left out: no cost recorded');
+  });
+
+  it('[REVERT-FAILS] the valuation export leaves WAC blank and writes withheld, never a price', async () => {
+    routeGets({ 'inventory-list': [costed, uncosted] });
+    mount();
+    await screen.findByText('Sancerre Les Monts');
+    await exportValuation();
+    const { cells } = lastExport();
+    const sancerre = cells.find((c) => c.Wine === 'Sancerre Les Monts')!;
+    expect(sancerre.WAC).toBe('');
+    expect(sancerre.Value).toBe('withheld');
+    const barbaresco = cells.find((c) => c.Wine === 'Produttori Barbaresco')!;
+    expect(barbaresco.Value).toBe(240);
+  });
+
+  it('[REVERT-FAILS] with a chip on, the tile and the export count that zone and name it', async () => {
+    routeGets({
+      'inventory-list': [
+        {
+          ...costed,
+          stockLive: 11,
+          wac: 10,
+          locations: [
+            { locationId: 'cellar', qty: 5, wac: null },
+            { locationId: 'rack-1', qty: 2, wac: null },
+            { locationId: 'bar', qty: 4, wac: null },
+          ],
+        },
+      ],
+    });
+    const base = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string) =>
+      url === '/storage-locations/rest-A'
+        ? Promise.resolve({
+            data: [
+              { id: 'cellar', name: 'Cellar' },
+              { id: 'rack-1', name: 'Rack 1', parent_id: 'cellar' },
+              { id: 'bar', name: 'Bar' },
+            ],
+          })
+        : base(url),
+    );
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    fireEvent.click(await screen.findByRole('button', { name: 'Cellar' }));
+
+    const tile = (await screen.findByText('Value on hand in Cellar')).parentElement!;
+    // 7 bottles in the cellar and its rack at $10, not the house's 11.
+    expect(tile.textContent).toMatch(/\$70(?![\d,.])/);
+
+    await exportValuation();
+    const { title, cells } = lastExport();
+    expect(title).toBe('Inventory valuation — Cellar');
+    expect(cells[0].Live).toBe(7);
+    expect(cells[0].Value).toBe(70);
   });
 });

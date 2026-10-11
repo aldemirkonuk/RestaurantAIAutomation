@@ -243,17 +243,57 @@ export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryI
 }
 
 /**
+ * What the house paid a bottle: its recorded WAC, or null (F-1281). Never the
+ * library's reference price, nor the 0 a wine the library did not load
+ * carries -- neither is what this house paid.
+ */
+export function recordedCost(i: Pick<InventoryItem, "wac">): number | null {
+  return i.wac != null && Number.isFinite(i.wac) ? i.wac : null;
+}
+
+/** The bottles of a wine on `zoneIds`, the zone and its children (F-1282). */
+export function qtyIn(item: InventoryItem, zoneIds: Set<string>): number {
+  return (item.locations ?? []).reduce(
+    (s, l) =>
+      l.qty > 0 && l.locationId != null && zoneIds.has(l.locationId) ? s + l.qty : s,
+    0,
+  );
+}
+
+/**
  * Stock value at cost in an export (F-078). A wine with no recorded cost is
  * `withheld`, never 0.00, as in the gateway's report CSV: a spreadsheet sums a
  * 0 into a total that looks whole. With no bottles on hand it is 0 whatever
- * the cost.
+ * the cost. `units` is the bottles valued: the wine's live bottles, or one
+ * zone's under a location chip (F-1282).
  */
-export function stockValueCell(i: InventoryItem): number | string {
+export function stockValueCell(
+  i: InventoryItem,
   // Live bottles only (F-1167): shadow is on order, not on the shelf.
-  const units = i.liveStock ?? 0;
-  const cost = i.wac ?? i.price;
-  if (cost == null || !Number.isFinite(cost)) return units === 0 ? 0 : WITHHELD;
+  units: number = i.liveStock ?? 0,
+): number | string {
+  const cost = recordedCost(i);
+  if (cost == null) return units === 0 ? 0 : WITHHELD;
   return Math.round(cost * units * 100) / 100;
+}
+
+/**
+ * The value-on-hand total, and how many wines with bottles on hand it leaves
+ * out for having no recorded cost (F-1281): a total that counted them at 0
+ * would read whole when it is not.
+ */
+export function stockValueTotal(
+  items: InventoryItem[],
+  unitsOf: (i: InventoryItem) => number = (i) => i.liveStock ?? 0,
+): { value: number; withheld: number } {
+  let value = 0;
+  let withheld = 0;
+  for (const i of items) {
+    const cell = stockValueCell(i, unitsOf(i));
+    if (typeof cell === "number") value += cell;
+    else withheld++;
+  }
+  return { value, withheld };
 }
 
 /**
