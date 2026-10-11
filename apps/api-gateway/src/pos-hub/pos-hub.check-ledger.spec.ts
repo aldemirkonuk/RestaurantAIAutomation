@@ -620,4 +620,25 @@ describe("a voided or corrected-down sale leaves the consumption log (F-1197)", 
     expect(live(consumption, "inv-caymus")).toBe(1);
     expect(noNegative(consumption)).toBe(true);
   });
+
+  // F-1244: the failed mark is not replayed first; a correction up arrives
+  // next. It ends the cut's retry, so it must retry the cut before it writes
+  // the difference, or the bottles taken back count as sold for good.
+  it("a correction up retries an earlier failed mark before writing the difference", async () => {
+    const { service, stock, consumption } = makeDb({ reversalFailures: 1 });
+    const send = (qty: number) =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", qty)]),
+      ]);
+    await send(3);
+    expect((await send(1)).stock.consumptionNotWritten).toBe(1);
+    expect(live(consumption, "inv-caymus")).toBe(3);
+    const up = await send(2);
+    expect(stock["inv-caymus"].sealed).toBe(10);
+    expect(up.stock.consumptionNotWritten).toBe(0);
+    expect(live(consumption, "inv-caymus")).toBe(2);
+    await send(2);
+    expect(live(consumption, "inv-caymus")).toBe(2);
+    expect(noNegative(consumption)).toBe(true);
+  });
 });
