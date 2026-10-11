@@ -172,12 +172,13 @@ export function priorFromReceived(r: {
  * The order is in single bottles, so the boxes counted at the door say nothing
  * about how many bottles came until someone says how many are in each box
  * (F-1154). Without it the gateway booked 2 boxes of 12 as 2 bottles; it now
- * refuses such a count. An order that states no unit is not asked: its pack
- * is the gateway's to work out, as before.
+ * refuses such a count. An order that states no unit is asked too (F-1159):
+ * the order's unit defaults to bottles, and the gateway refuses it the same way.
  */
 export function asksBottlesPerBox(order: DoorOrderVM | null): boolean {
-  const u = order?.unitType ?? null;
-  return u !== null && (u.startsWith('bottle') || u === 'each');
+  if (!order) return false;
+  const u = order.unitType;
+  return u === null || u.startsWith('bottle') || u === 'each';
 }
 
 /** The bottles per box to start from, when this order already knows one; else empty. */

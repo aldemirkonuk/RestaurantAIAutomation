@@ -359,7 +359,10 @@ export class ReceivingService {
     // door's box count used to book as that many bottles — 2 boxes of 12 went
     // in as 2. A box count on an order in bottles is refused unless the door
     // says how many bottles are in each box. Case orders are unchanged.
-    const orderUnit = normalizeUom(order.unit_type ?? null);
+    // F-1159: an order with no unit stated is one in bottles — the column's
+    // own default is 'bottles' — so it is held to the same rule.
+    const statedUnit = order.unit_type?.trim() || null;
+    const orderUnit = statedUnit === null ? "bottle" : normalizeUom(statedUnit);
     if (
       (uom === "case" || uom === "pack" || uom === "split_case") &&
       !(input.packSize && input.packSize >= 1) &&
