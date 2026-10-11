@@ -63,6 +63,14 @@ describe('useInventoryPage — the location chip filters the list (F-1161)', () 
     expect(result.current.filteredInventory).toHaveLength(3)
   })
 
+  it('[REVERT-FAILS] leaves the map, zone manager and receiving list whole (F-1270)', () => {
+    const { result } = renderHook(() => useInventoryPage({ zones }))
+    act(() => result.current.setSelectedLocationFilter('bar'))
+    expect(names(result.current.filteredInventory)).toEqual(['Yakut'])
+    // The other zones and the unplaced bottles still show on the map.
+    expect(names(result.current.filteredInventoryAnyPlace)).toEqual(['Doluca', 'Kavaklidere', 'Yakut'])
+  })
+
   it('starts filtered from the URL', () => {
     const { result } = renderHook(() =>
       useInventoryPage({ zones, initialFilters: { location: 'rack-1' } }),
