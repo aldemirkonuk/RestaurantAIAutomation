@@ -28,7 +28,10 @@ import { useInventoryPage, type InventoryItem } from "../index";
 import {
   countSheetLines,
   loadEveryHouseInventory,
+  qtyIn,
+  recordedCost,
   stockValueCell,
+  stockValueTotal,
   zoneAndChildren,
   type CountSheetLine,
 } from "../useInventoryPage";
@@ -688,8 +691,13 @@ export function InventoryCommandPage() {
     const items = activeFlag
       ? filteredInventory.filter((i) => rowFlags(i).includes(activeFlag))
       : [...filteredInventory];
-    // Live bottles only, like the Value on hand tile (F-1167).
-    const val = (i: InventoryItem) => (i.wac ?? i.price ?? 0) * (i.liveStock ?? 0);
+    // Live bottles only, like the Value on hand tile (F-1167). A wine with no
+    // recorded cost sorts below every priced one, never at a borrowed price
+    // (F-1281).
+    const val = (i: InventoryItem) => {
+      const cost = recordedCost(i);
+      return cost == null ? -1 : cost * (i.liveStock ?? 0);
+    };
     // Comparator in the key's natural ascending order; sortDir flips it.
     const cmp = (a: InventoryItem, b: InventoryItem) => {
       switch (sort) {
@@ -797,12 +805,34 @@ export function InventoryCommandPage() {
   });
   const unit = moneyUnit(houseCurrency);
 
+  // With a location chip on, the value and the valuation count that zone's
+  // bottles (the zone and the zones inside it), not the wine's whole house,
+  // and say which zone (F-1282).
+  const chipZoneIds = useMemo(
+    () =>
+      selectedLocationFilter
+        ? zoneAndChildren(selectedLocationFilter, locations)
+        : null,
+    [selectedLocationFilter, locations],
+  );
+  const chipZoneName = selectedLocationFilter
+    ? (locations.find((z) => z.id === selectedLocationFilter)?.name ?? null)
+    : null;
+  const onHandOf = useCallback(
+    (i: InventoryItem) =>
+      chipZoneIds ? qtyIn(i, chipZoneIds) : (i.liveStock ?? 0),
+    [chipZoneIds],
+  );
+
   const valuationColumnsIn = useCallback(
-    (unit: string): TableExportColumn<InventoryItem>[] => [
+    (
+      unit: string,
+      unitsOf: (i: InventoryItem) => number = (i) => i.liveStock ?? 0,
+    ): TableExportColumn<InventoryItem>[] => [
       { header: "Wine", value: (i) => i.name },
       { header: "Producer", value: (i) => i.producer ?? "" },
       { header: "Type", value: (i) => i.type ?? "" },
-      { header: "Live", value: (i) => i.liveStock ?? 0 },
+      { header: "Live", value: unitsOf },
       { header: "Shadow", value: (i) => i.shadowStock ?? 0 },
       { header: "Par", value: (i) => i.threshold ?? "" },
       {
@@ -817,7 +847,8 @@ export function InventoryCommandPage() {
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: moneyHeader("WAC", unit), value: (i) => i.wac ?? i.price ?? "" },
+      // Recorded cost only, blank when there is none (F-1281).
+      { header: moneyHeader("WAC", unit), value: (i) => recordedCost(i) ?? "" },
       // The house's own prices (ADR 0193), beside -- never instead of -- Market.
       {
         header: moneyHeader("Your bottle price", unit),
@@ -828,16 +859,19 @@ export function InventoryCommandPage() {
         value: (i) => i.menuPriceGlass ?? "",
       },
       { header: moneyHeader("Market", unit), value: (i) => i.marketPrice ?? "" },
-      { header: moneyHeader("Value", unit), value: stockValueCell },
+      {
+        header: moneyHeader("Value", unit),
+        value: (i) => stockValueCell(i, unitsOf(i)),
+      },
     ],
     [],
   );
   const valuationColumns = useMemo(
     () =>
-      valuationColumnsIn(unit).filter(
+      valuationColumnsIn(unit, onHandOf).filter(
         (c) => seesCost || !isCostHeader(c.header),
       ),
-    [valuationColumnsIn, unit, seesCost],
+    [valuationColumnsIn, unit, onHandOf, seesCost],
   );
 
   // One line per wine and place, each with that place's bottles (F-1162).
@@ -892,16 +926,16 @@ export function InventoryCommandPage() {
       },
       {
         header: moneyHeader("WAC", unit),
-        value: (l) => l.item.wac ?? l.item.price ?? "",
+        value: (l) => recordedCost(l.item) ?? "",
       },
       {
         header: moneyHeader("Value", unit),
-        value: (l) => (l.first ? stockValueCell(l.item) : ""),
+        value: (l) => (l.first ? stockValueCell(l.item, onHandOf(l.item)) : ""),
       },
       { header: "Observation", value: (l) => countObservation(l.item) },
     ],
     // countObservation closes over helpers; recreate when inventory shape changes
-    [locations, measurementUnit, unit],
+    [locations, measurementUnit, unit, onHandOf],
   );
   const countSheetColumns = useMemo(
     () =>
@@ -956,7 +990,7 @@ export function InventoryCommandPage() {
       rows,
       valuationColumns,
       `inventory-valuation-${exportDay()}`,
-      "Inventory valuation",
+      chipZoneName ? `Inventory valuation — ${chipZoneName}` : "Inventory valuation",
     );
 
   // Houses may keep different money, so each row names its own and the
@@ -1017,13 +1051,10 @@ export function InventoryCommandPage() {
   const exportCountSheet = (format: TableExportFormat) =>
     runInventoryExport(
       format,
-      countSheetLines(
-        rows,
-        selectedLocationFilter ? zoneAndChildren(selectedLocationFilter, locations) : null,
-      ),
+      countSheetLines(rows, chipZoneIds),
       countSheetColumns,
       `inventory-count-${exportDay()}`,
-      "Inventory count sheet",
+      chipZoneName ? `Inventory count sheet — ${chipZoneName}` : "Inventory count sheet",
     );
 
   // Says what happened only once the browser has answered (F-600).
@@ -1131,24 +1162,26 @@ export function InventoryCommandPage() {
 
   const kpis = useMemo(() => {
     // Live bottles only (F-1167): shadow bottles are on order, not yet on the
-    // shelf, and the house has not paid for them on hand.
-    const valueOnHand = filteredInventory.reduce(
-      (s, i) => s + (i.wac ?? i.price ?? 0) * (i.liveStock ?? 0),
-      0,
+    // shelf, and the house has not paid for them on hand. A wine with no
+    // recorded cost is left out and counted, not priced (F-1281); a chip
+    // values its zone's bottles only (F-1282).
+    const { value: valueOnHand, withheld: valueWithheld } = stockValueTotal(
+      filteredInventory,
+      onHandOf,
     );
     const menuPotential = filteredInventory.reduce(
       (s, i) =>
         // The house's bottle price (ADR 0193), not the library's `menuPrice`,
         // which no house row carries — the sub-label never showed (F-390).
-        s + (i.menuPriceBottle ?? 0) * (i.liveStock ?? 0),
+        s + (i.menuPriceBottle ?? 0) * onHandOf(i),
       0,
     );
     const runwayAlerts = filteredInventory.filter((i) => {
       const r = runwayDays(i);
       return r != null && r <= 5;
     }).length;
-    return { valueOnHand, menuPotential, runwayAlerts };
-  }, [filteredInventory]);
+    return { valueOnHand, valueWithheld, menuPotential, runwayAlerts };
+  }, [filteredInventory, onHandOf]);
 
   const typeOptions = useMemo(() => {
     const types = Array.from(
@@ -1381,12 +1414,14 @@ export function InventoryCommandPage() {
         />
         {seesCost && (
           <Kpi
-            label="Value on hand"
+            label={chipZoneName ? `Value on hand in ${chipZoneName}` : "Value on hand"}
             value={figuresUnknown ? UNKNOWN : fmtMoney(kpis.valueOnHand)}
             sub={
               figuresUnknown
                 ? UNKNOWN
-                : kpis.menuPotential > 0
+                : kpis.valueWithheld > 0
+                  ? `${kpis.valueWithheld} ${kpis.valueWithheld === 1 ? "wine" : "wines"} left out: no cost recorded`
+                  : kpis.menuPotential > 0
                   ? `${fmtMoney(kpis.menuPotential)} menu`
                   : "cost basis"
             }
@@ -1775,9 +1810,11 @@ export function InventoryCommandPage() {
                   const isFocused = idx === focusedIndex;
                   const run = runwayDays(item);
                   const delta = marketDeltaPct(item);
-                  // Live bottles only, like the tile above (F-1167).
+                  // Live bottles only, like the tile above (F-1167); no
+                  // recorded cost shows a dash, never a price (F-1281).
+                  const cost = recordedCost(item);
                   const value =
-                    (item.wac ?? item.price ?? 0) * (item.liveStock ?? 0);
+                    cost == null ? null : cost * (item.liveStock ?? 0);
                   const loc = locName(item);
                   const status = classifyStock(item.liveStock, item.threshold);
                   return (

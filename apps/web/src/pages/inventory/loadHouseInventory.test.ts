@@ -92,7 +92,9 @@ describe('stockValueCell (F-078)', () => {
   })
   it('a costed wine is cost times bottles, to the cent', () => {
     expect(stockValueCell(item({ wac: 12.345 }))).toBe(37.04)
-    expect(stockValueCell(item({ price: 10 }))).toBe(30)
+  })
+  it('the library price is not what the house paid: no wac is withheld (F-1281)', () => {
+    expect(stockValueCell(item({ price: 10 }))).toBe('withheld')
   })
   it('counts live bottles only, never shadow ones on order (F-1167)', () => {
     expect(stockValueCell(item({ wac: 10, liveStock: 3, shadowStock: 10 }))).toBe(30)
