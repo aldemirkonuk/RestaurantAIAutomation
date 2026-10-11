@@ -264,6 +264,9 @@ describe("the rule table", () => {
     expect(resolveJurisdiction("Türkiye")).toBe("TR");
     expect(resolveJurisdiction("TR")).toBe("TR");
     expect(resolveJurisdiction("United Kingdom")).toBe("GB");
+    // A constituent country is the United Kingdom's rule, not UNKNOWN (F-1397).
+    expect(resolveJurisdiction("England")).toBe("GB");
+    expect(resolveJurisdiction("Scotland")).toBe("GB");
     expect(resolveJurisdiction("United States")).toBe("US");
     expect(resolveJurisdiction("United States", "California")).toBe("US-CA");
     expect(resolveJurisdiction("United States", "NY")).toBe("US");
@@ -420,6 +423,53 @@ describe("deriving the window", () => {
       (i) => i.table === "house_mail_retention_windows",
     );
     expect(written!.body.jurisdiction_source).toBe("unrecorded");
+  });
+
+  it("names a recorded country this table has not researched, not 'no country' (F-1397)", async () => {
+    const { db } = build({
+      restaurants: [
+        { id: HOUSE, country: "Germany", state_province: "Berlin" },
+      ],
+      procurement_credits: [],
+      house_mail_retention_windows: [],
+    });
+    const service = new RawMailRetentionService(db, undefined, noArchive());
+
+    const derived = await service.deriveWindow(HOUSE);
+    expect(derived.jurisdiction).toBe("UNKNOWN");
+    expect(derived.jurisdictionSource).toBe("restaurants.country");
+
+    const disclosure = await service.disclosureFor(HOUSE);
+    // Same strictest floor (ADR 0118 D14) ...
+    expect(disclosure.jurisdiction.factsFloorYears).toBe(10);
+    // ... but its own country, and never "no country recorded" or Türkiye's.
+    expect(disclosure.jurisdiction.label).toMatch(/Germany/);
+    expect(disclosure.jurisdiction.label).not.toMatch(/Not recorded/);
+    expect(disclosure.jurisdiction.defaultedBecause).toMatch(
+      /recorded as Germany/,
+    );
+    expect(disclosure.jurisdiction.defaultedBecause).toMatch(/strictest rule/);
+    expect(disclosure.jurisdiction.defaultedBecause).not.toMatch(
+      /no country recorded/,
+    );
+    expect(disclosure.jurisdiction.defaultedBecause).not.toMatch(
+      /rule is Türkiye's/,
+    );
+  });
+
+  it("keeps the no-country sentence for a house with no country", async () => {
+    const { db } = build({
+      restaurants: [{ id: HOUSE, country: null, state_province: null }],
+      procurement_credits: [],
+      house_mail_retention_windows: [],
+    });
+    const service = new RawMailRetentionService(db, undefined, noArchive());
+
+    const disclosure = await service.disclosureFor(HOUSE);
+    expect(disclosure.jurisdiction.label).toBe("Not recorded");
+    expect(disclosure.jurisdiction.defaultedBecause).toMatch(
+      /no country recorded/,
+    );
   });
 });
 

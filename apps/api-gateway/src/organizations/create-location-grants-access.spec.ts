@@ -237,6 +237,77 @@ describe("OrganizationsService#createLocation — timezone", () => {
 });
 
 /**
+ * F-1400 (re-hit of F-915): a second house in another country got the
+ * browser's clock. ADR 0304 puts the address before the device: a country
+ * that keeps one clock names the zone, recorded as from the address. A
+ * country with several clocks, or a device in one of the country's
+ * territories (Reading 1), keeps the device's zone as before.
+ */
+describe("OrganizationsService#createLocation — the zone comes from the country first", () => {
+  const stored = async (
+    country: string | undefined,
+    timezone: string | undefined,
+  ) => {
+    const { svc, calls } = makeService();
+    await svc.createLocation(USER_ID, { ...DTO, country, timezone });
+    const row = calls.restaurantInserts[0];
+    return {
+      zone: row.timezone,
+      source: row.timezone_source ?? null,
+      sourceZone: row.timezone_source_zone ?? null,
+    };
+  };
+
+  it("gives a German house Berlin's clock, not the Istanbul browser's", async () => {
+    expect(await stored("Germany", "Europe/Istanbul")).toEqual({
+      zone: "Europe/Berlin",
+      source: "address",
+      sourceZone: "Europe/Berlin",
+    });
+  });
+
+  it("names the country's one zone even when the browser sent none", async () => {
+    expect(await stored("United Kingdom", undefined)).toMatchObject({
+      zone: "Europe/London",
+      source: "address",
+    });
+  });
+
+  it("keeps the device's zone in a country with several clocks", async () => {
+    expect(await stored("Spain", "Atlantic/Canary")).toEqual({
+      zone: "Atlantic/Canary",
+      source: null,
+      sourceZone: null,
+    });
+  });
+
+  it("gives none, not the browser's, when the browser sits in another country", async () => {
+    expect(await stored("Spain", "Europe/Istanbul")).toEqual({
+      zone: null,
+      source: null,
+      sourceZone: null,
+    });
+    expect(await stored("United States", "Europe/Istanbul")).toMatchObject({
+      zone: null,
+    });
+  });
+
+  it("keeps a device in one of the country's territories (Réunion under France)", async () => {
+    expect(await stored("France", "Indian/Reunion")).toMatchObject({
+      zone: "Indian/Reunion",
+      source: null,
+    });
+  });
+
+  it("leaves a United States house to the device, until its state is read", async () => {
+    expect(await stored("United States", "America/Chicago")).toMatchObject({
+      zone: "America/Chicago",
+      source: null,
+    });
+  });
+});
+
+/**
  * F-241: a second house (Add a location) recorded neither a currency nor a
  * map point, while the first house records both. The dialog now sends the
  * currency it stated from the country and the picked place's point; the

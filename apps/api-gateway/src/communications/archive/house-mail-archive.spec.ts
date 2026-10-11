@@ -856,5 +856,9 @@ describe("the disclosure the consent screen reads", () => {
     const block = await service.disclosureFor(HOUSE, "UNKNOWN");
 
     expect(block.jurisdictionNote).toMatch(/TTK 6102/);
+    // F-1397: the strictest floor, never "this restaurant's rule is Türkiye's"
+    // to a house that is not in Türkiye or never said where it is.
+    expect(block.jurisdictionNote).not.toMatch(/rule is Türkiye's/);
+    expect(block.jurisdictionNote).toMatch(/strictest/);
   });
 });

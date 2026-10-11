@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { ORG_OWNER, ORG_ROW_INSERT_ONLY } from "./org-role";
 import { DatabaseService } from "../database/database.service";
-import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
+import { newHouseZone, resolveSignUpTimezone } from "../auth/sign-up-timezone";
 import {
   SettingsAuditService,
   type FieldChange,
@@ -1371,6 +1371,16 @@ export class OrganizationsService {
         ? { latitude, longitude }
         : { latitude: null, longitude: null };
 
+    // F-1400: a second house added from a browser in another country got
+    // that browser's clock. ADR 0304 puts the address first: when the chosen
+    // country keeps one clock, that is the house's zone, recorded as from the
+    // address. Otherwise the browser's zone stands only when it is one of
+    // that country's own clocks; a browser in another country gives none.
+    const newZone = newHouseZone(
+      resolveHouseCountry(dto.country)?.code,
+      resolveSignUpTimezone(dto.timezone),
+    );
+
     const { data: restaurant, error } = await this.databaseService.supabase
       .from("restaurants")
       .insert({
@@ -1400,7 +1410,10 @@ export class OrganizationsService {
         // bare-offset value. Until 2026-09-28 any string the client sent
         // became the new house's clock (TD-2026-09-27-CREATE-LOCATION-
         // TIMEZONE-UNVALIDATED, v3.0-TECH-DEBT.md).
-        timezone: resolveSignUpTimezone(dto.timezone),
+        timezone: newZone.zone,
+        ...(newZone.fromAddress
+          ? { timezone_source: "address", timezone_source_zone: newZone.zone }
+          : {}),
         // F-241: what the first house records, a second house records too —
         // the currency the dialog stated from the country, or nothing.
         currency: dto.currency ?? null,

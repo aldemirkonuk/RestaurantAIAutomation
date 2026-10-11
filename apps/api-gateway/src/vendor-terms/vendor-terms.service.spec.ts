@@ -373,6 +373,111 @@ describe("VendorTermsService — the house's own zone and currency", () => {
   });
 });
 
+describe("VendorTermsService — a minimum's currency with no orders to read it from (F-1394)", () => {
+  const stated = (minimum: number) => ({
+    provider_id: PID,
+    delivery_weekdays: null,
+    order_cutoff_time: null,
+    order_cutoff_offset_days: null,
+    minimum_order_amount: minimum,
+    lead_time_days: null,
+    payment_terms: null,
+    notes: null,
+    stated_by: "user-9",
+    stated_at: "2026-08-01T10:00:00Z",
+    updated_at: "2026-08-01T10:00:00Z",
+  });
+
+  it("prices a stated minimum in the vendor's usual currency when no order names one", async () => {
+    const { databaseService } = makeDb({
+      restaurants: HOUSE,
+      providers: [
+        {
+          id: PID,
+          name: "Maison Duval",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+          usual_currency: "EUR",
+        },
+      ],
+      restaurant_providers: [],
+      restaurant_vendor_terms: [stated(500)],
+      procurement_orders: [],
+      users: [{ user_id: "user-9", name: "Selin Kara" }],
+    });
+    const out = await new VendorTermsService(
+      databaseService,
+      makeAudit().service,
+    ).read(RID);
+    expect(out.vendors[0].minimumOrder).toMatchObject({
+      value: 500,
+      source: "stated",
+    });
+    // Not the house's TRY: the vendor's own money.
+    expect(out.vendors[0].minimumCurrency).toBe("EUR");
+  });
+
+  it("still lets the orders' one currency win over the usual currency", async () => {
+    const { databaseService } = makeDb({
+      restaurants: HOUSE,
+      providers: [
+        {
+          id: PID,
+          name: "Maison Duval",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+          usual_currency: "EUR",
+        },
+      ],
+      restaurant_providers: [],
+      restaurant_vendor_terms: [stated(500)],
+      procurement_orders: [
+        {
+          provider_id: PID,
+          requested_at: "2026-09-02T08:00:00Z",
+          delivered_at: "2026-09-02T14:00:00Z",
+          expected_delivery_date: "2026-09-02",
+          total_cost: 900,
+          status: "delivered",
+          currency: "GBP",
+        },
+      ],
+      users: [{ user_id: "user-9", name: "Selin Kara" }],
+    });
+    const out = await new VendorTermsService(
+      databaseService,
+      makeAudit().service,
+    ).read(RID);
+    expect(out.vendors[0].minimumCurrency).toBe("GBP");
+  });
+
+  it("stays unstated when neither the orders nor the vendor name a currency", async () => {
+    const { databaseService } = makeDb({
+      restaurants: HOUSE,
+      providers: [
+        {
+          id: PID,
+          name: "Maison Duval",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+        },
+      ],
+      restaurant_providers: [],
+      restaurant_vendor_terms: [stated(500)],
+      procurement_orders: [],
+      users: [{ user_id: "user-9", name: "Selin Kara" }],
+    });
+    const out = await new VendorTermsService(
+      databaseService,
+      makeAudit().service,
+    ).read(RID);
+    expect(out.vendors[0].minimumCurrency).toBeNull();
+  });
+});
+
 describe("VendorTermsService — writing states, and the write is filed", () => {
   it("scopes the write to the tenant and files only the fields that moved", async () => {
     const { databaseService, filters, upserts } = makeDb({

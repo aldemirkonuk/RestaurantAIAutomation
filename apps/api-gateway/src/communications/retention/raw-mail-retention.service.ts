@@ -21,6 +21,7 @@ import {
   type JurisdictionCode,
   type JurisdictionRule,
   resolveJurisdiction,
+  unknownJurisdictionWords,
   ruleFor,
 } from "./retention-rules";
 
@@ -94,6 +95,12 @@ export interface DerivedWindow {
   disputesConsidered: number;
   jurisdiction: JurisdictionCode;
   jurisdictionSource: "restaurants.country" | "unrecorded";
+  /**
+   * `restaurants.country` as written, or null when blank. An UNKNOWN house
+   * with a country is one this table has not researched, not one with no
+   * country, and the disclosure names it (F-1397).
+   */
+  country: string | null;
   factsFloorYears: number;
   /** The derivation in words, printed verbatim on the consent screen. */
   basis: string;
@@ -270,8 +277,11 @@ export class RawMailRetentionService {
       (house.state_province as string | null) ?? null,
     );
     const rule = ruleFor(jurisdiction);
+    // "unrecorded" only when no country is written: a recorded country this
+    // table has not researched was still read from the column (F-1397).
+    const recordedCountry = country?.trim() ? country.trim() : null;
     const jurisdictionSource: DerivedWindow["jurisdictionSource"] =
-      jurisdiction === "UNKNOWN" ? "unrecorded" : "restaurants.country";
+      recordedCountry === null ? "unrecorded" : "restaurants.country";
 
     const { data: credits, error: creditsError } = await this.db.supabase
       .from("procurement_credits")
@@ -357,6 +367,7 @@ export class RawMailRetentionService {
       disputesConsidered: claims.length,
       jurisdiction,
       jurisdictionSource,
+      country: recordedCountry,
       factsFloorYears: rule.factsFloorYears,
       basis,
     };
@@ -945,6 +956,10 @@ export class RawMailRetentionService {
     const storedFigure = (row?.figure_days as number | undefined) ?? null;
     const storedAt = (row?.derived_at as string | null) ?? null;
     const rule = JURISDICTION_RULES[live.jurisdiction];
+    const unknown =
+      live.jurisdiction === "UNKNOWN"
+        ? unknownJurisdictionWords(live.country)
+        : null;
 
     const figureDays = storedFigure ?? live.figureDays;
     const figureFrom: RetentionDisclosure["figureFrom"] =
@@ -968,11 +983,12 @@ export class RawMailRetentionService {
       basis,
       jurisdiction: {
         code: rule.code,
-        label: rule.label,
+        label: unknown?.label ?? rule.label,
         factsFloorYears: rule.factsFloorYears,
         bindsCorrespondence: rule.bindsCorrespondence,
         why: rule.why,
-        defaultedBecause: rule.defaultedBecause ?? null,
+        defaultedBecause:
+          unknown?.defaultedBecause ?? rule.defaultedBecause ?? null,
         citations: rule.citations,
       },
       storageLimitation: STORAGE_LIMITATION_SOURCES,
