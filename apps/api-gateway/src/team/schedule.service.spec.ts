@@ -1001,6 +1001,8 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
     } as any);
     expect(res.notified).toBe(1);
     expect(pushOf(svc).mock.calls[0][1].data.shiftId).toBe((open as any).id);
+    // F-1183: the offer names its house, so a two-house phone opens this one.
+    expect(pushOf(svc).mock.calls[0][1].house).toBe(RID);
   });
 
   it("F-1158: never asks someone on approved leave or Away that day", async () => {

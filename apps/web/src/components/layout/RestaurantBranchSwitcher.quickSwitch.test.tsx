@@ -92,3 +92,39 @@ describe('RestaurantBranchSwitcher: two quick switches (F-1036)', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
+
+describe('RestaurantBranchSwitcher at phone width (F-1184)', () => {
+  beforeEach(() => {
+    activeRestaurantId = 'h-harbour'
+    pending = {}
+    setActiveRestaurantId.mockClear()
+  })
+  const compact = () => (
+    <MemoryRouter>
+      <RestaurantBranchSwitcher compact className="relative" />
+    </MemoryRouter>
+  )
+
+  it('names the house, not its first letter, and says which house it is in', () => {
+    render(compact())
+    const trigger = screen.getByRole('button', { expanded: false })
+    expect(trigger.getAttribute('aria-label')).toBe('Switch location. Now in Harbour')
+    // The name is never hidden below 640px; it truncates instead.
+    const name = screen.getByText('Harbour')
+    expect(name.className).toMatch(/\btruncate\b/)
+    expect(name.closest('.hidden')).toBeNull()
+    // The letter tile is what goes at phone width.
+    expect(screen.getByText('H').parentElement?.className).toMatch(/(^|\s)hidden sm:flex(\s|$)/)
+  })
+
+  it('wraps a refusal note inside the screen instead of running off it', async () => {
+    render(compact())
+    pick('Moda')
+    await act(async () => pending['h-moda'](false))
+    const note = screen.getByRole('alert')
+    expect(note.className).not.toMatch(/whitespace-nowrap/)
+    expect(note.className).not.toMatch(/\bleft-0\b/)
+    expect(note.className).toMatch(/\bright-0\b/)
+    expect(note.className).toMatch(/max-w-\[min\(18rem,calc\(100vw-2rem\)\)\]/)
+  })
+})

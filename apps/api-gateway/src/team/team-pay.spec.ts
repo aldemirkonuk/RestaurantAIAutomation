@@ -33,6 +33,7 @@ import {
 } from "./testing/supabase-stub";
 import { MembersService } from "../restaurants/members.service";
 import { AuthService } from "../auth/auth.service";
+import { ExpoPushService } from "../push/expo-push.service";
 
 /**
  * /team pay defects — ADR 0215. The founder, 2026-09-21: "Fix /team first";
@@ -2688,6 +2689,56 @@ describe("K5 — every door out of a house releases the person's shifts (ADR 024
       expect.arrayContaining([OWNER, MANAGER]),
       expect.objectContaining({ title: "Sam left the team", priority: "high" }),
     );
+  });
+
+  // F-1183 (a rehit of F-523): the leave's push went out with no house in its
+  // data or title, so a tap on a two-house phone opened whichever house was
+  // current. Through the real push service: only Expo's HTTP call is caught.
+  function leaveThroughRealPush(restaurant: Record<string, unknown>) {
+    const db = world();
+    db.tables.restaurants = [
+      { id: RID, timezone: null, country: null, ...restaurant },
+    ];
+    db.tables.shifts.push(
+      shift({
+        id: "staff-today",
+        member_id: "m-staff",
+        shift_date: "2026-09-22",
+        start_time: "11:00",
+        end_time: "19:00",
+      }),
+    );
+    db.tables.mobile_devices = [
+      { user_id: OWNER, expo_push_token: "ExponentPushToken[owner]" },
+    ];
+    const push = new ExpoPushService(asDatabaseService(db));
+    const sent: any[] = [];
+    (push as any).sendToTokens = async (_tokens: string[], payload: any) => {
+      sent.push(payload);
+    };
+    const team = new TeamService(asDatabaseService(db), undefined, push);
+    const members = new MembersService(asDatabaseService(db), undefined, team);
+    return { leave: () => members.removeMember(STAFF, RID, STAFF), sent };
+  }
+
+  it("a leave's push names the house and carries its id, so a two-house phone opens this one (F-1183)", async () => {
+    const { leave, sent } = leaveThroughRealPush({ name: "Moda Meyhane" });
+    await leave();
+    expect(sent).toHaveLength(1);
+    expect(sent[0].title).toBe("Moda Meyhane: Sam left the team");
+    expect(sent[0].data).toEqual({
+      type: "team_member_left",
+      actionUrl: "/team",
+      restaurantId: RID,
+    });
+    expect(sent[0]).not.toHaveProperty("house");
+  });
+
+  it("a house with no name on record still stamps its id, and keeps the plain title (F-1183)", async () => {
+    const { leave, sent } = leaveThroughRealPush({ name: null });
+    await leave();
+    expect(sent[0].title).toBe("Sam left the team");
+    expect(sent[0].data.restaurantId).toBe(RID);
   });
 
   it("a lead whose membership has lapsed (valid_until past) is not told", async () => {

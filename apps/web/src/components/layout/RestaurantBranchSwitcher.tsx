@@ -7,7 +7,11 @@ import { Popover } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 
 interface RestaurantBranchSwitcherProps {
-  /** `compact` hides the label on small screens (matches Header). */
+  /**
+   * `compact` keeps a phone-width trigger short: the house's name, truncated,
+   * without its letter tile or its chain and city line (F-1184 — the letter
+   * alone did not say which house the page was in).
+   */
   compact?: boolean
   className?: string
 }
@@ -72,7 +76,9 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
   return (
     <div className={className ?? 'relative'}>
       {refusal && (
-        <p role="alert" className="absolute left-0 top-full mt-1 z-50 whitespace-nowrap rounded-lg bg-white px-2 py-1 text-[11px] text-red-700 shadow-sm">
+        // F-1184: anchored to the trigger's right edge, which sits at the
+        // header's right, and wrapped, so a long house name stays on screen.
+        <p role="alert" className="absolute right-0 top-full mt-1 z-50 w-max max-w-[min(18rem,calc(100vw-2rem))] whitespace-normal break-words rounded-lg bg-white px-2 py-1 text-[11px] text-red-700 shadow-sm">
           {refusal}
         </p>
       )}
@@ -83,20 +89,27 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
         className="group flex items-center gap-3 pl-3 pr-2.5 py-1.5 bg-white border border-gray-200 hover:border-wine-300 hover:shadow-sm rounded-xl transition-all"
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label={activeBranch ? `Switch location. Now in ${activeBranch.name}` : 'Switch location'}
       >
-        <div className="w-7 h-7 rounded-lg bg-wine-50 flex items-center justify-center flex-shrink-0">
+        <div
+          className={`w-7 h-7 rounded-lg bg-wine-50 items-center justify-center flex-shrink-0 ${
+            compact && !isSwitching ? 'hidden sm:flex' : 'flex'
+          }`}
+        >
           {isSwitching ? (
             <div className="w-3.5 h-3.5 border-2 border-wine-500 border-t-transparent rounded-full animate-spin" />
           ) : (
             <span className="text-xs font-bold text-wine-600">{initial}</span>
           )}
         </div>
-        <div className={`text-left ${compact ? 'hidden sm:block' : ''}`}>
-          <p className="text-sm font-semibold text-gray-900 leading-tight max-w-[120px] truncate">
+        <div className="text-left min-w-0">
+          <p className="text-sm font-semibold text-gray-900 leading-tight max-w-[96px] sm:max-w-[120px] truncate">
             {activeBranch?.name ?? 'Switch Branch'}
           </p>
           {subtitle && (
-            <p className="text-[11px] text-gray-400 leading-tight truncate max-w-[120px]">{subtitle}</p>
+            <p className={`text-[11px] text-gray-400 leading-tight truncate max-w-[120px] ${compact ? 'hidden sm:block' : ''}`}>
+              {subtitle}
+            </p>
           )}
         </div>
         <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-wine-500 ml-1 transition-colors" />

@@ -123,6 +123,8 @@ describe("AwayReleaseService — a held message arrives when they are back", () 
     expect(o).toEqual({ onlyUserIds: [SAM], skipMobilePush: true });
     expect(payload).toMatchObject({ title: "Saturday", message: "Saturday moves to seven." });
     expect(push.sendToUsers).toHaveBeenCalledWith([SAM], expect.objectContaining({ body: "Saturday moves to seven." }));
+    // F-1183: the push names its house, so a two-house phone opens this one.
+    expect(push.sendToUsers.mock.calls[0][1].house).toBe(HOUSE);
     // KVKK: the words lived in the hold table only while they waited.
     expect(db.tables.house_away_held).toEqual([]);
   });
@@ -276,6 +278,11 @@ describe("AwayReleaseService — a held note arrives, and its receipts say what 
       { onlyUserIds: [SAM] },
     );
     expect(push.sendToUsers).toHaveBeenCalledWith([SAM], expect.anything());
+    // F-1183: the note's own push (NotesService) names its house too.
+    expect(push.sendToUsers.mock.calls[0][1]).toMatchObject({
+      house: HOUSE,
+      data: { type: "team_note" },
+    });
     const byChannel = Object.fromEntries(
       db.tables.team_note_deliveries.map((d: any) => [d.channel, d.state]),
     );

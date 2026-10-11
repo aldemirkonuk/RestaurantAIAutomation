@@ -1481,6 +1481,7 @@ export class TeamService {
             title,
             body: message,
             priority: "high",
+            house: restaurantId,
             data: { type: "team_member_left", actionUrl: "/team" },
           });
         } catch (err: any) {

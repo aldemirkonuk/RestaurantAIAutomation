@@ -9,6 +9,13 @@ export interface ExpoPushPayload {
   priority?: "default" | "high";
   badge?: number;
   channelId?: string;
+  /**
+   * The house this push is about (F-1183, a rehit of F-523). When set, the
+   * title names the house and `data.restaurantId` is stamped last, so a tap on
+   * a phone signed in to two houses switches to this one before it opens
+   * `/team`. Never sent to Expo itself.
+   */
+  house?: string;
 }
 
 interface ExpoPushTicket {
@@ -154,7 +161,7 @@ export class ExpoPushService {
 
       await this.sendToTokens(
         data.map((row: any) => row.expo_push_token),
-        payload,
+        payload.house ? await this.forHouse(payload.house, payload) : payload,
       );
       return {
         outcome: "accepted_by_service",
@@ -169,6 +176,37 @@ export class ExpoPushService {
         detail: `The push attempt threw (${e?.message}), so what reached anybody is unknown.`,
       };
     }
+  }
+
+  /**
+   * Name the house in the title and stamp its id last in `data`, the way
+   * `persistForRestaurant` does for the funnel push (F-523): no caller's data
+   * can name another house. A failed name read still stamps the id — the tap
+   * lands in the right house, the title just goes without the name.
+   */
+  private async forHouse(
+    restaurantId: string,
+    payload: ExpoPushPayload,
+  ): Promise<ExpoPushPayload> {
+    const { house: _house, ...rest } = payload;
+    let name: string | null = null;
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("restaurants")
+        .select("name")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (error)
+        this.logger.warn(`push house name read failed: ${error.message}`);
+      name = (data as { name?: string | null } | null)?.name?.trim() || null;
+    } catch (e: any) {
+      this.logger.warn(`push house name read threw: ${e?.message}`);
+    }
+    return {
+      ...rest,
+      title: name ? `${name}: ${rest.title}` : rest.title,
+      data: { ...(rest.data ?? {}), restaurantId },
+    };
   }
 
   /**

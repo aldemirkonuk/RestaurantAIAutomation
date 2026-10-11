@@ -257,6 +257,7 @@ export class AwayReleaseService {
           title: row.title ?? "Message from your manager",
           body: row.body,
           priority: "high",
+          house: row.restaurant_id,
           data: { type: "team_broadcast", actionUrl: "/team" },
         });
       }
