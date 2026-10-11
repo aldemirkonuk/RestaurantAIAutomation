@@ -6,10 +6,10 @@ import { ScheduledTenantsService } from "../communications/scheduled-tenants.ser
 import type { ScheduledTenant } from "../communications/scheduled-tenants.service";
 import { ConfigService } from "@nestjs/config";
 import { resolveCalendarOccurrences } from "./calendar-occurrences";
+import { houseClock } from "../common/house-clock";
 import {
   CALENDAR_REMINDER_FLAG,
   calendarRemindersArmed,
-  isKnownTimeZone,
   isWithinQuietHours,
   nextTickAfter,
   reminderDueAt,
@@ -185,10 +185,10 @@ export class CalendarRemindersService {
     tenant: ScheduledTenant,
     now: Date = new Date(),
   ): Promise<RunTally> {
-    const timeZone = isKnownTimeZone(tenant.timezone)
-      ? tenant.timezone
-      : "UTC";
-    if (timeZone !== tenant.timezone) {
+    // F-1339: house → country → UTC, the order push holds read.
+    const clock = houseClock(tenant);
+    const timeZone = clock.zone;
+    if (clock.source === "utc") {
       this.logger.error(
         `CALENDAR_REMINDER_TIMEZONE_UNKNOWN restaurant=${tenant.id} ` +
           `timezone=${JSON.stringify(tenant.timezone)} — falling back to UTC. ` +

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { isKnownTimeZone } from "../calendar/reminder-window";
+import { houseClock } from "../common/house-clock";
 import { type AreaKind, type AreaLabel, isAreaKind } from "./area-label";
 import {
   type AreaMembership,
@@ -64,7 +65,11 @@ export class AreaRoutingService {
         .select("user_id, role")
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      this.sb.from("restaurants").select("timezone").eq("id", restaurantId).maybeSingle(),
+      this.sb
+        .from("restaurants")
+        .select("timezone, country")
+        .eq("id", restaurantId)
+        .maybeSingle(),
       this.sb
         .from("house_areas")
         .select("kind, name, enabled")
@@ -83,7 +88,7 @@ export class AreaRoutingService {
       if (res?.error) throw new Error(`${name} could not be read: ${res.error.message}`);
     }
 
-    const zone = this.zoneOf(restaurantId, house.data?.timezone);
+    const zone = this.zoneOf(restaurantId, house.data);
     const today = houseLocalDay(now, zone);
 
     const roles = new Map<string, HouseRole>();
@@ -185,11 +190,11 @@ export class AreaRoutingService {
   ): Promise<{ today: string; zone: string; until: Map<string, string> }> {
     const { data, error } = await this.sb
       .from("restaurants")
-      .select("timezone")
+      .select("timezone, country")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) throw new Error(`restaurants could not be read: ${error.message}`);
-    const zone = this.zoneOf(restaurantId, data?.timezone);
+    const zone = this.zoneOf(restaurantId, data);
     const today = houseLocalDay(now, zone);
     const until = new Map<string, string>();
     for (const w of await this.readAway(restaurantId, today)) {
@@ -222,13 +227,25 @@ export class AreaRoutingService {
     }));
   }
 
-  private zoneOf(restaurantId: string, tz: unknown): string {
-    if (typeof tz === "string" && isKnownTimeZone(tz)) return tz;
+  /**
+   * F-1339: house → country → UTC, the order push holds read (`houseClock`),
+   * so the Away release judges quiet hours on the same clock as a push.
+   */
+  private zoneOf(
+    restaurantId: string,
+    row: { timezone?: unknown; country?: unknown } | null,
+  ): string {
+    const tz = row?.timezone;
+    const clock = houseClock({
+      timezone: typeof tz === "string" ? tz : null,
+      country: typeof row?.country === "string" ? row.country : null,
+    });
+    if (clock.source !== "utc") return clock.zone;
     this.logger.error(
       `AREA_ROUTING_TIMEZONE_UNKNOWN restaurant=${restaurantId} timezone=${JSON.stringify(tz)} — ` +
         "Away dates are read against UTC for this house until the column is fixed.",
     );
-    return "UTC";
+    return clock.zone;
   }
 }
 

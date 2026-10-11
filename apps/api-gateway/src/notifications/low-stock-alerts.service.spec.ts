@@ -310,9 +310,49 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
         [makeRow({ currentStock: 0, severity: "critical" })],
         "R1",
       );
+      // F-1357: on a line of its own, since they do not want every crossing.
       expect(
-        notifications.persistForRestaurant.mock.calls[0][2].wantedBy,
+        notifications.persistForRestaurant.mock.calls.flatMap(
+          (c: any[]) => c[2].wantedBy,
+        ),
       ).toContain(STAFF);
+    });
+
+    it("F-1357: a person who wants criticals only gets just the critical wines of a mixed batch", async () => {
+      const prefs = [
+        { user_id: OWNER, low_stock_enabled: true, instant_first_alert: true },
+        {
+          user_id: STAFF,
+          low_stock_enabled: true,
+          instant_first_alert: false,
+          critical_immediate: true,
+        },
+      ];
+      await buildFor(prefs).evaluateRestaurant(
+        "r1",
+        [
+          makeRow({ inventoryId: "inv-low", wineName: "Chablis 2022" }),
+          makeRow({
+            inventoryId: "inv-crit",
+            wineName: "Opus One 2019",
+            currentStock: 0,
+            severity: "critical",
+          }),
+        ],
+        "R1",
+      );
+      const calls = notifications.persistForRestaurant.mock.calls;
+      const whole = calls.find((c: any[]) => c[2].wantedBy.includes(OWNER));
+      const crit = calls.find((c: any[]) => c[2].wantedBy.includes(STAFF));
+      expect(whole[1].metadata.count).toBe(2);
+      expect(whole[2].wantedBy).not.toContain(STAFF);
+      expect(crit[2].wantedBy).toEqual([STAFF]);
+      expect(crit[1].metadata.wines.map((w: any) => w.wineName)).toEqual([
+        "Opus One 2019",
+      ]);
+      expect(crit[1].title).toBe("Critical: Opus One 2019");
+      // One email for the burst, as before.
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
     });
 
     it("the digest skips an owner whose digest is Off, though a staff row says daily", async () => {

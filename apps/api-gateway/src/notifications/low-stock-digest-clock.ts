@@ -1,3 +1,5 @@
+import { houseClock } from "../common/house-clock";
+
 /**
  * LOW-STOCK DIGEST CLOCK
  * -----------------------
@@ -47,32 +49,13 @@ export interface DigestClock {
 }
 
 /**
- * `resolveZone` duplicated here rather than imported, because
- * `calendar/zoned-time.ts` has no barrel and this keeps the two pure modules
- * decoupled — the DST-resolution direction bug noted in that file
- * (candidate OD, not filed here) does not apply to this function: it only
- * validates the string, it never resolves a wall time to an instant.
- */
-function resolveZone(zone: string | null | undefined): string | null {
-  const name = typeof zone === "string" ? zone.trim() : "";
-  if (!name) return null;
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: name }).format(new Date(0));
-    return name;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * The clock a house's low-stock digest should run on.
  *
- * House zone first. #435's `common/house-frame.ts` (country → zone, only
- * when that country keeps exactly one) is NOT wired in here: as of this
- * lane, #435 is still open on `origin/main` (checked via `gh pr view 435`),
- * so this lane does not copy that file. A Turkish house with no zone set
- * falls back to UTC instead of Europe/Istanbul until a follow-up wires the
- * country step in once #435 merges (see the PR body).
+ * F-1339: the house's own zone, else its country's zone when the country
+ * keeps just one, else UTC — `houseClock`, the order every quiet-hours sender
+ * and the push hold read (`common/house-frame.ts`, ADR 0207). A Turkish house
+ * with no zone set runs on Europe/Istanbul; a United States house with none
+ * still falls back to UTC and is logged by the sweep.
  */
 export function digestClockFor(
   house:
@@ -82,8 +65,9 @@ export function digestClockFor(
 ): DigestClock {
   const raw =
     house && typeof house.timezone === "string" ? house.timezone : null;
-  const zone = resolveZone(house?.timezone);
-  if (zone) return { zone, source: "house", recorded: raw };
+  const clock = houseClock(house);
+  if (clock.source !== "utc")
+    return { zone: clock.zone, source: clock.source, recorded: raw };
   return {
     zone: LOW_STOCK_DIGEST_FALLBACK_ZONE,
     source: "fallback",

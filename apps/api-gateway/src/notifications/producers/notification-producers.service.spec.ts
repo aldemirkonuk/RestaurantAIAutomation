@@ -295,6 +295,15 @@ describe("the two cadences", () => {
     );
     expect(ledger.audienceFor.calls[0][1]).toBe("UTC");
   });
+
+  it("F-1339: a house with no zone but a one-zone country is read on that country's clock, as pushes are", async () => {
+    const { service, ledger } = build();
+    await service.runFastForTenant(
+      { ...TENANT, timezone: "", timezoneIsSet: false, country: "TR" },
+      new Date("2026-09-03T12:00:00Z"),
+    );
+    expect(ledger.audienceFor.calls[0][1]).toBe("Europe/Istanbul");
+  });
 });
 
 describe("statusFor — what the page is allowed to say", () => {
