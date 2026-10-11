@@ -65,3 +65,15 @@ it("does not invent the size of a case or a keg", () => {
     }).orderedBottles,
   ).toBeNull();
 });
+it("says plainly that a keg or litre order is received on the web door (F-1307)", () => {
+  for (const [unitType, words] of [
+    ["keg", "kegs"],
+    ["liter", "litres"],
+  ]) {
+    const basis = receivingCountBasis({ ...base, quantity: 2, unitType });
+    expect(basis.orderedBottles).toBeNull();
+    expect(basis.note).toContain(`counted in ${words}, not bottles`);
+    expect(basis.note).toContain("Receive it at the door on the web");
+    expect(basis.note).not.toContain("Resolve its unit");
+  }
+});

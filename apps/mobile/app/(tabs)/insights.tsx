@@ -8,8 +8,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { FreshnessLabel } from "@/components/ui/StateViews";
 import { color, space } from "@/design/tokens";
 import {
-  useGoalProgress,
   useGoals,
+  useGoalsProgress,
   useInsightFeed,
   useInventory,
   useInventorySummary,
@@ -30,6 +30,7 @@ import {
   stockValue,
 } from "@/lib/houseMoney";
 import { holdsHouseMoney } from "@/lib/receiptMoney";
+import { goalBars } from "@/lib/goalBars";
 import { useSession } from "@/state/session";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
@@ -67,7 +68,8 @@ export default function InsightsScreen() {
   const activeGoals = (goals.data ?? []).filter(
     (g: any) => g.status === "active",
   );
-  const topGoalProgress = useGoalProgress(activeGoals[0]?.id);
+  // F-1304: bars from the recomputed progress, never the stored value.
+  const goalsProgress = useGoalsProgress();
   // F-677: a failed read is said as failed, never as "nothing yet" or zero.
   const insightsRead = readState(insights);
   // Staff are not shown the house's goals (F-1181): withheld, not failed.
@@ -183,12 +185,8 @@ export default function InsightsScreen() {
               suggests levers here.
             </AppText>
           ) : (
-            activeGoals.slice(0, 3).map((g: any, idx: number) => {
-              const target = Number(g.target_value) || 0;
-              const current = Number(g.current_value) || 0;
-              const pct = target > 0 ? Math.min(1, current / target) : 0;
-              const detail =
-                idx === 0 && topGoalProgress.data ? topGoalProgress.data : null;
+            goalBars(activeGoals.slice(0, 3), goalsProgress).map((g, idx) => {
+              const detail = g.kind === "bar" ? g : null;
               return (
                 <View key={g.id} style={{ gap: space.xs }}>
                   {idx > 0 ? <Hairline /> : null}
@@ -196,31 +194,39 @@ export default function InsightsScreen() {
                     <AppText variant="bodyMedium" numberOfLines={1} style={{ flex: 1, paddingRight: space.md }}>
                       {g.name}
                     </AppText>
-                    <AppText variant="footnote" tone="secondary" style={{ fontVariant: ["tabular-nums"] }}>
-                      {Math.round(pct * 100)}%
+                    {detail ? (
+                      <AppText variant="footnote" tone="secondary" style={{ fontVariant: ["tabular-nums"] }}>
+                        {detail.label}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  {g.kind === "pending" ? (
+                    <Skeleton width="100%" height={6} />
+                  ) : g.kind === "unreadable" ? (
+                    <AppText variant="footnote" tone="secondary">
+                      {g.message}
                     </AppText>
-                  </View>
-                  <View style={{ height: 6, backgroundColor: color.fill, borderRadius: 3 }}>
-                    <View
-                      style={{
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor:
-                          detail?.onTrack === false ? color.danger : color.wine,
-                        width: `${Math.max(4, pct * 100)}%`,
-                      }}
-                    />
-                  </View>
-                  {detail ? (
+                  ) : (
+                    <View style={{ height: 6, backgroundColor: color.fill, borderRadius: 3 }}>
+                      <View
+                        style={{
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor:
+                            g.over || g.onTrack === false ? color.danger : color.wine,
+                          width: `${Math.max(4, g.fill * 100)}%`,
+                        }}
+                      />
+                    </View>
+                  )}
+                  {detail && idx === 0 ? (
                     <AppText variant="footnote" tone="secondary">
                       {detail.onTrack === false
                         ? `Behind pace${detail.daysLeft != null ? ` with ${detail.daysLeft} days left` : ""}.`
                         : detail.onTrack === true
                           ? `On pace${detail.daysLeft != null ? ` — ${detail.daysLeft} days left` : ""}.`
                           : ""}
-                      {detail.suggestedActions?.[0]?.sentence
-                        ? ` Lever: ${detail.suggestedActions[0].sentence}`
-                        : ""}
+                      {detail.lever ? ` Lever: ${detail.lever}` : ""}
                     </AppText>
                   ) : null}
                 </View>

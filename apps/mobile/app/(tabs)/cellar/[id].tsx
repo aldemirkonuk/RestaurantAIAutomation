@@ -16,6 +16,7 @@ import {
   useItemActivity,
 } from "@/api/queries";
 import { houseDecimal, houseMoney, type HouseMoneyFrame } from "@/lib/houseMoney";
+import { dailyDepletion } from "@/lib/wineActivity";
 
 function money(
   value: number | null | undefined,
@@ -46,10 +47,7 @@ export default function WineDetailScreen() {
   const name = item?.wineName ?? item?.wine_name ?? "";
   const qty = item?.quantity ?? item?.lotLiveQty ?? 0;
 
-  const dailyRaw: any[] = activity?.daily ?? activity?.series ?? [];
-  const dailyValues = dailyRaw.map((d) =>
-    Number(d.qty ?? d.total ?? d.depleted ?? d.count ?? d.value ?? 0),
-  );
+  const dailyValues = dailyDepletion(activity);
 
   const facts: Array<{ label: string; value: string }> = [];
   if (item?.vintage) facts.push({ label: "Vintage", value: String(item.vintage) });

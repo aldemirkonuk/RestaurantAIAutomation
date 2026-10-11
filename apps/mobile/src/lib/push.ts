@@ -166,6 +166,14 @@ export function attachPushListeners(onNavigate: (route: string) => void): () => 
       chooseHouse: (houseId) => useSession.getState().chooseHouse(houseId),
       navigate: onNavigate,
       refused: (message) => Alert.alert("Not opened", message),
+      // F-1309: a delivery notice opens the order it belongs to.
+      deliveryOrder: async (deliveryId) => {
+        const res = await api<{ event?: { order_id?: unknown; orderId?: unknown } }>(
+          `/procurement/deliveries/${encodeURIComponent(deliveryId)}`,
+        );
+        const order = res?.event?.order_id ?? res?.event?.orderId;
+        return typeof order === "string" && order ? order : null;
+      },
     });
   const received = Notifications.addNotificationReceivedListener(() => {
     queryClient.invalidateQueries({ queryKey: [...feedKey] });

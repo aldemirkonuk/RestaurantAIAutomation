@@ -2,6 +2,7 @@ import {
   routeForActionUrl,
   routeForNotificationData,
   openNotificationTap,
+  deliveryToResolve,
 } from "@/lib/notificationRoute";
 
 describe("routeForActionUrl", () => {
@@ -138,5 +139,66 @@ describe("openNotificationTap (F-523)", () => {
     const { d, calls } = deps("house-b");
     await openNotificationTap({ orderId: "o1" }, d);
     expect(calls).toEqual(["open:/supply/o1"]);
+  });
+});
+
+describe("name-the-item and delivery pushes open the place they name (F-1309)", () => {
+  it("opens the receive screen for 'Name the item', not the order page", () => {
+    expect(
+      routeForNotificationData({
+        type: "delivery_item_to_name",
+        orderId: "o1",
+        actionUrl: "/inventory?name-delivery=o1",
+      }),
+    ).toBe("/cellar/receive/o1");
+    expect(routeForActionUrl("/inventory?name-delivery=o1")).toBe("/cellar/receive/o1");
+  });
+
+  it("asks for a delivery's order only when the push carries none", () => {
+    expect(
+      deliveryToResolve({ deliveryId: "d1", actionUrl: "/deliveries/d1" }),
+    ).toBe("d1");
+    expect(
+      deliveryToResolve({ deliveryId: "d1", orderId: "o1", actionUrl: "/deliveries/d1" }),
+    ).toBeNull();
+    expect(deliveryToResolve({ orderId: "o1", actionUrl: "/orders?order=o1" })).toBeNull();
+  });
+
+  const tapDeps = (order: string | null | Error) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      d: {
+        currentHouse: "house-a",
+        chooseHouse: jest.fn(async () => true),
+        navigate: jest.fn((r: string) => void calls.push(`open:${r}`)),
+        refused: jest.fn(),
+        deliveryOrder: jest.fn(async (id: string) => {
+          calls.push(`read:${id}`);
+          if (order instanceof Error) throw order;
+          return order;
+        }),
+      },
+    };
+  };
+
+  it("opens the order a delivery clock push belongs to", async () => {
+    const { d, calls } = tapDeps("o9");
+    await openNotificationTap(
+      { type: "delivery_clock", deliveryId: "d1", actionUrl: "/deliveries/d1" },
+      d,
+    );
+    expect(calls).toEqual(["read:d1", "open:/supply/o9"]);
+  });
+
+  it("stays on the inbox when the delivery has no order or its read fails", async () => {
+    for (const answer of [null, new Error("offline")]) {
+      const { d, calls } = tapDeps(answer);
+      await openNotificationTap(
+        { type: "delivery_proposal", deliveryId: "d1", actionUrl: "/deliveries/d1" },
+        d,
+      );
+      expect(calls).toEqual(["read:d1", "open:/notifications"]);
+    }
   });
 });
