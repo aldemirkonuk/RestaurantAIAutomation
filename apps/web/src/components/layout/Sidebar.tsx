@@ -43,6 +43,7 @@ import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
 import { useUIStore } from '../../stores/uiStore'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { getStartedDone, setUpCount } from '../../lib/houseSetUp'
 import '../mudavym/sheet.css'
 
 interface NavItem {
@@ -538,16 +539,17 @@ export function Sidebar() {
   }
   const unknownHref = new Set(unreadCount === null ? ['/notifications'] : [])
 
-  const completedCount = progress
-    ? [true, progress.menu_uploaded, progress.vendor_added, progress.team_member_invited].filter(
-        Boolean,
-      ).length
-    : 1
+  const { done: completedCount, of: stepCount } = progress
+    ? setUpCount(progress)
+    : { done: 1, of: 5 }
   // The checklist is the house owner's own first-run list (F-1210). An invited
   // manager or staff member has no checklist row, so the read answers null:
   // that is "no checklist here", not a reason to show one forever. Only a
   // failed read still falls back to showing it, and only to the owner.
-  const activationComplete = !!(progress?.completed_at)
+  // Done by the steps the Finish setup nudge reads too, never the stored
+  // completed_at: the rail no longer calls a house done that the nudge says
+  // is not set up (F-1239).
+  const activationComplete = !!progress && getStartedDone(progress)
   const checklistDismissed = !!progress?.checklist_dismissed
   const showGetStarted =
     user?.role === 'owner' &&
@@ -762,7 +764,7 @@ export function Sidebar() {
                 </span>
               )}
               {!effectiveCollapsed && (
-                <span className="text-[11px] text-gray-400">{completedCount}/4</span>
+                <span className="text-[11px] text-gray-400">{completedCount}/{stepCount}</span>
               )}
             </button>
 

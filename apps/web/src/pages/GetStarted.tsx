@@ -361,6 +361,9 @@ function GetStartedSteps() {
         jobRole: role ? JOB_ROLE[role] : undefined,
       })
       const mobileKept = mobile.trim() ? await keepMobile(country) : true
+      // Kept: nothing left for the draft to carry. Not kept: it stays, and
+      // the menu step tries again when the owner goes on (F-1237).
+      if (mobileKept) setMobile('')
       const said = [
         opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER,
         mobileKept ? null : MOBILE_NOT_KEPT,
@@ -376,7 +379,22 @@ function GetStartedSteps() {
     }
   }
 
+  /**
+   * A mobile still waiting when the owner leaves the menu step: one restored
+   * from the draft after a reload, or one whose save failed when the house
+   * opened. It goes now, read in the house's country (F-1237); a failure is
+   * said, and the owner is never held on this step for it.
+   */
+  const keepWaitingMobile = async () => {
+    if (!mobile.trim()) return true
+    const kept = await keepMobile(country)
+    setMobile('')
+    if (!kept) setNotice(MOBILE_NOT_KEPT)
+    return kept
+  }
+
   const menuRead = (result: MenuImportResult, source?: { image?: string | null }) => {
+    void keepWaitingMobile()
     setPendingResult(result)
     setSourceImage(source?.image ?? null)
     setStep('reading')
@@ -658,8 +676,13 @@ function GetStartedSteps() {
           <button
             type="button"
             onClick={() => {
-              dropArrivalDraft()
-              navigate('/house', { replace: true })
+              const openHouse = () => {
+                dropArrivalDraft()
+                navigate('/house', { replace: true })
+              }
+              // Said here once, before the house opens, when it was not kept.
+              if (mobile.trim()) void keepWaitingMobile().then((kept) => kept && openHouse())
+              else openHouse()
             }}
             className="text-sm text-[#6d685f] underline underline-offset-4"
           >
@@ -680,6 +703,7 @@ function GetStartedSteps() {
         <p>Sections taking shape.</p>
       </div>
       <p role="status" className="mt-6 text-sm text-[#6d685f]">Opening the first proof…</p>
+      {notice === MOBILE_NOT_KEPT && <p className="mt-2 text-sm text-[#6d685f]">{notice}</p>}
     </ArrivalShell>
   )
 }

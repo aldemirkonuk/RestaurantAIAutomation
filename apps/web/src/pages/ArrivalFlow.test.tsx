@@ -338,6 +338,46 @@ describe('approved arrival flow', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Your mobile number was not saved')
   })
 
+  it('keeps a mobile restored after a reload when the owner goes on (F-1237)', async () => {
+    // The house opened, then the page reloaded before the mobile was kept:
+    // the draft still carries it, and the menu step comes back.
+    auth.user = { name: 'Selin Kaya', emailVerified: true, userId: 'user-1', restaurantId: 'house-1' }
+    localStorage.setItem(
+      'mudavym:arrival-draft',
+      JSON.stringify({
+        userId: 'user-1', role: 'owner', restaurantName: 'Meyhane', address: '1 House Street',
+        city: 'Istanbul', country: 'Türkiye', stateProvince: '', postalCode: '', restaurantPhone: '',
+        placePoint: null, currencyChoice: null, mobile: '0532 123 45 67',
+      }),
+    )
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(patch).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /Skip for now/ }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/house', { replace: true }))
+    expect(patch).toHaveBeenCalledWith('/auth/me', { phone: '+905321234567' })
+  })
+
+  it('tries a mobile not kept when the house opened again on going on, and says a second miss (F-1237)', async () => {
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '0532 123 45 67' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    patch.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'))
+    fillRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    fireEvent.click(screen.getByRole('button', { name: /Skip for now/ }))
+    await waitFor(() =>
+      expect(patch.mock.calls.filter(([, body]) => body?.phone === '+905321234567')).toHaveLength(2),
+    )
+    expect(navigate).not.toHaveBeenCalledWith('/house', { replace: true })
+    expect(screen.getByRole('status')).toHaveTextContent('Your mobile number was not saved')
+    // Said once; the next press opens the house without holding the owner.
+    fireEvent.click(screen.getByRole('button', { name: /Skip for now/ }))
+    expect(navigate).toHaveBeenCalledWith('/house', { replace: true })
+  })
+
   it('passes Use my location into Places as a search bias', async () => {
     const getCurrentPosition = vi.fn((ok: (pos: { coords: { latitude: number; longitude: number } }) => void) => {
       ok({ coords: { latitude: 41.01, longitude: 28.97 } })
