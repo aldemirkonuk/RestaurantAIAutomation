@@ -441,19 +441,71 @@ export async function queuedDoorOrderIds(): Promise<Set<string>> {
   return ids
 }
 
+/** The house's refusal in its own words and its code, else the error's own message. */
+function refusalOf(err: unknown): { message: string; code: string | null } {
+  const data = (err as { response?: { data?: { message?: unknown; reason?: unknown } } } | null)
+    ?.response?.data
+  const said = Array.isArray(data?.message) ? data.message.join(' ') : data?.message
+  const code = typeof data?.reason === 'string' && data.reason ? data.reason : null
+  if (typeof said === 'string' && said.trim()) return { message: said, code }
+  return { message: (err as Error)?.message ?? 'sync failed', code }
+}
+
+/**
+ * Refusals that turn on the receipt itself (F-1257): the same receipt sent
+ * again gets the same answer, so Send again is not offered for it as it
+ * stands. `pack_size_required` is the one the rail can change — it takes the
+ * bottles per box (F-1256); the rest can only be discarded and counted again.
+ */
+const REPEATS_UNCHANGED = new Set([
+  'pack_size_required',
+  'counted_uom_not_order_unit',
+  'unknown_counted_uom',
+  'rejected_exceeds_counted',
+  'receipt_key_reused',
+])
+
+/** What a parked receipt needs before Send again can change the answer. */
+export type DoorResendNeed = 'nothing' | 'bottles_per_box' | 'cannot'
+
+export function doorResendNeed(parked: { reason: string; code?: string | null } | null | undefined): DoorResendNeed {
+  if (!parked || parked.reason !== 'refused') return 'cannot'
+  if (parked.code === 'pack_size_required') return 'bottles_per_box'
+  return parked.code && REPEATS_UNCHANGED.has(parked.code) ? 'cannot' : 'nothing'
+}
+
 /**
  * "Send again" on one parked receipt: un-park it and flush.
  *
  * Only a `refused` receipt can be sent again. An `unowned` one names no person
  * or house, so there is nobody to send it as — it can only be discarded (the
- * same rule as `syncManager.retryNotSent`). Returns false when the entry was
- * not there or could not be sent again; the entry is left exactly as it was.
+ * same rule as `syncManager.retryNotSent`). A refusal that would only repeat
+ * is not sent again unchanged (F-1257); one refused for want of the bottles
+ * per box is sent again with them (F-1256), under the same key — nothing
+ * landed the first time, so the key is not spent. Returns false when the entry
+ * was not there or could not be sent again; the entry is left exactly as it was.
  */
-export async function resendDoorReceipt(id: string): Promise<boolean> {
+export async function resendDoorReceipt(
+  id: string,
+  change: { packSize?: number } = {},
+): Promise<boolean> {
   const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
   const m = all.find((x) => x.id === id)
   if (!m || m.parked?.reason !== 'refused') return false
-  await offlineStorage.updatePendingMutation(id, { parked: undefined })
+  const need = doorResendNeed(m.parked)
+  if (need === 'cannot') return false
+  if (need === 'bottles_per_box') {
+    const n = change.packSize
+    const entry = m.data as QueuedDoorReceipt | undefined
+    if (!entry || typeof n !== 'number' || !Number.isSafeInteger(n) || n < 1) return false
+    await offlineStorage.updatePendingMutation(id, {
+      data: { ...entry, body: { ...entry.body, packSize: n } },
+      parked: undefined,
+      lastError: undefined,
+    })
+  } else {
+    await offlineStorage.updatePendingMutation(id, { parked: undefined })
+  }
   await flushDoorOutbox()
   return true
 }
@@ -624,7 +676,9 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
         sent++
       } catch (err) {
         const status = statusOf(err)
-        const lastError = (err as Error)?.message ?? 'sync failed'
+        // F-1257: the house's own sentence, not the HTTP client's "Request
+        // failed with status code 400" — the rail shows it on the parked row.
+        const { message: lastError, code } = refusalOf(err)
 
         // A permanent refusal is PARKED as "not sent", never deleted (ADR 0241
         // amendment, 2026-09-29; the same shape spotCountOutbox parks a refused
@@ -635,7 +689,12 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
           try {
             await offlineStorage.updatePendingMutation(m.id, {
               lastError,
-              parked: { reason: 'refused', status, at: new Date().toISOString() },
+              parked: {
+                reason: 'refused',
+                status,
+                ...(code ? { code } : {}),
+                at: new Date().toISOString(),
+              },
             })
             parked++
           } catch {

@@ -1002,6 +1002,45 @@ describe('F-1154 — the door asks for bottles per box on an order in bottles on
     expect(submitDoorReceipt.mock.calls[0][0].body.outcome).toBe('short')
   })
 
+  it('[REVERT-FAILS] offline, with the order unread, asks the bottles per box and queues them (F-1256)', async () => {
+    const { receivingApi } = await import('@/services/api/receiving')
+    vi.mocked(getOrder).mockRejectedValueOnce(new Error('Network Error'))
+    vi.mocked(receivingApi.doorReceivedSoFar).mockRejectedValueOnce(new Error('Network Error'))
+    submitDoorReceipt.mockResolvedValue({ synced: false })
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+    await waitFor(() => expect(perBox()).not.toBeNull())
+    expect(screen.getByText(/If it was ordered by the bottle, say how many are in each box/)).toBeTruthy()
+
+    fireEvent.change(perBox() as Element, { target: { value: '12' } })
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    const body = submitDoorReceipt.mock.calls[0][0].body
+    expect(body.countedUom).toBe('case')
+    expect(body.packSize).toBe(12)
+  })
+
+  it('offline, an order bought by the box still seals with the question left empty', async () => {
+    const { receivingApi } = await import('@/services/api/receiving')
+    vi.mocked(getOrder).mockRejectedValueOnce(new Error('Network Error'))
+    vi.mocked(receivingApi.doorReceivedSoFar).mockRejectedValueOnce(new Error('Network Error'))
+    submitDoorReceipt.mockResolvedValue({ synced: false })
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+    await waitFor(() => expect(perBox()).not.toBeNull())
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].body.packSize).toBeUndefined()
+  })
+
   it('[REVERT-FAILS] a keg order is counted and sent in kegs (F-1206)', async () => {
     await open('keg', null)
     expect(await screen.findByText('Kegs delivered')).toBeTruthy()

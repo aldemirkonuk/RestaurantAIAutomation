@@ -559,7 +559,12 @@ export default function DoorNext() {
     );
   }, [fromOrdered, orderState, order, prior, reading]);
 
-  const askPerBox = orderState === 'ok' && asksBottlesPerBox(order);
+  // F-1256: offline the order cannot be read, so whether it is in bottles is
+  // unknown — and a box count on an order in bottles is refused later, from
+  // the queue, with nobody at the door. So the door asks then too, as a
+  // question rather than a hold: an order bought by the box needs nothing.
+  const orderUnread = orderState === 'unreachable';
+  const askPerBox = (orderState === 'ok' && asksBottlesPerBox(order)) || orderUnread;
   useEffect(() => {
     if (!askPerBox || perBoxTried.current || prior === null) return;
     perBoxTried.current = true;
@@ -578,7 +583,7 @@ export default function DoorNext() {
   const outcome: DoorOutcome = outcomeChoice ?? suggested;
   // A truck turned away whole books nothing, so it is not held up for the
   // bottles per box (F-1207); the boxes are recorded, the bottles left unknown.
-  const perBoxOk = !askPerBox || perBoxValue !== null || outcome === 'refused';
+  const perBoxOk = !askPerBox || orderUnread || perBoxValue !== null || outcome === 'refused';
   // THE CREDIT LETTER MAY ONLY CLAIM AN ATTACHMENT THAT EXISTS. This was
   // `photoTaken`, set the instant the camera returned a file — so on the offline
   // branch and on the upload-failure branch the draft told a vendor that
@@ -972,7 +977,9 @@ export default function DoorNext() {
               <span className="mt-2 block text-xs text-inkm-3">
                 {outcome === 'refused'
                   ? 'Not needed when the whole truck is refused — the boxes are recorded, and nothing is booked.'
-                  : 'This order is in bottles. Open one box and count, if you are not sure.'}
+                  : orderUnread
+                    ? 'The order could not be read here. If it was ordered by the bottle, say how many are in each box, or it cannot be booked. Ordered by the box? Leave it empty.'
+                    : 'This order is in bottles. Open one box and count, if you are not sure.'}
               </span>
             </label>
           )}

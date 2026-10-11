@@ -29,6 +29,7 @@ vi.mock('./offline-storage', () => ({ offlineStorage: store }))
 import {
   clearDroppedDoorReceipts,
   discardDoorReceipt,
+  doorResendNeed,
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
   notSentDoorCount,
@@ -547,6 +548,102 @@ describe('Send again and Discard — one parked receipt, by a person', () => {
 
     expect(await pendingDoorCount()).toBe(1)
     expect(await notSentDoorCount()).toBe(2)
+  })
+})
+
+/**
+ * F-1257: a parked receipt keeps the house's own sentence and code, not the
+ * HTTP client's "Request failed with status code 400". F-1256: one parked for
+ * want of the bottles per box is completed on the rail and sent again with
+ * them; a refusal that would only repeat is never sent again unchanged.
+ */
+describe('a parked door receipt says why, and can be completed (F-1256, F-1257)', () => {
+  const PACK_SAID =
+    'This order is in bottles, so a count in boxes needs the number of bottles in each box.'
+  const refusal = (status: number, reason: string, message: string | string[]) =>
+    Object.assign(new Error(`Request failed with status code ${status}`), {
+      response: { status, data: { reason, message } },
+    })
+  const parkedAs = (id: string, code: string) => ({
+    ...pending(id),
+    data: {
+      orderId: `o-${id}`,
+      orderLabel: id,
+      restaurantId: RID,
+      body: { countedQty: 2, countedUom: 'case', idempotencyKey: `door:o-${id}:k` },
+    },
+    parked: { reason: 'refused' as const, status: 400, code, at: '2026-10-10T00:00:00.000Z' },
+  })
+
+  it("[REVERT-FAILS] parks with the house's sentence and its code", async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
+    recordDoorReceipt.mockRejectedValue(refusal(400, 'pack_size_required', PACK_SAID))
+
+    await flushDoorOutbox()
+
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({
+        lastError: PACK_SAID,
+        parked: expect.objectContaining({ reason: 'refused', status: 400, code: 'pack_size_required' }),
+      }),
+    )
+  })
+
+  it('joins a list of sentences rather than keeping the client message', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
+    recordDoorReceipt.mockRejectedValue(refusal(400, 'Bad Request', ['countedQty must be a number']))
+
+    await flushDoorOutbox()
+
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ lastError: 'countedQty must be a number' }),
+    )
+  })
+
+  it('[REVERT-FAILS] sends a receipt refused for want of bottles per box again WITH them, same key', async () => {
+    store.getPendingMutationsByType
+      .mockResolvedValueOnce([parkedAs('p', 'pack_size_required')])
+      .mockResolvedValue([{ ...parkedAs('p', 'pack_size_required'), parked: undefined }])
+    recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
+
+    expect(await resendDoorReceipt('p', { packSize: 12 })).toBe(true)
+
+    const update = store.updatePendingMutation.mock.calls[0][1]
+    expect(update.parked).toBeUndefined()
+    expect(update.data.body).toEqual({
+      countedQty: 2,
+      countedUom: 'case',
+      idempotencyKey: 'door:o-p:k',
+      packSize: 12,
+    })
+    expect(recordDoorReceipt).toHaveBeenCalledTimes(1)
+  })
+
+  it('[REVERT-FAILS] never sends it again unchanged — without the bottles per box nothing moves', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([parkedAs('p', 'pack_size_required')])
+
+    expect(await resendDoorReceipt('p')).toBe(false)
+    expect(await resendDoorReceipt('p', { packSize: 0 })).toBe(false)
+
+    expect(store.updatePendingMutation).not.toHaveBeenCalled()
+    expect(recordDoorReceipt).not.toHaveBeenCalled()
+  })
+
+  it('[REVERT-FAILS] does not send again a refusal that turns on the count itself', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([parkedAs('k', 'counted_uom_not_order_unit')])
+
+    expect(await resendDoorReceipt('k')).toBe(false)
+    expect(recordDoorReceipt).not.toHaveBeenCalled()
+  })
+
+  it('says what each parked receipt needs before Send again', () => {
+    expect(doorResendNeed({ reason: 'refused', code: 'pack_size_required' })).toBe('bottles_per_box')
+    expect(doorResendNeed({ reason: 'refused', code: 'rejected_exceeds_counted' })).toBe('cannot')
+    expect(doorResendNeed({ reason: 'refused', code: 'order_not_receivable' })).toBe('nothing')
+    expect(doorResendNeed({ reason: 'refused' })).toBe('nothing')
+    expect(doorResendNeed({ reason: 'unowned' })).toBe('cannot')
   })
 })
 

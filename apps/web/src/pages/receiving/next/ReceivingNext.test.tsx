@@ -550,6 +550,75 @@ describe('F12 — the rail shows a parked door receipt as Not sent, with Send ag
     )
   })
 
+  const PACK_SAID =
+    'This order is in bottles, so a count in boxes needs the number of bottles in each box.'
+
+  it("[REVERT-FAILS] shows the house's own reason on the parked row (F-1257)", async () => {
+    signInPorter()
+    pendingByType.mockResolvedValue([
+      doorEntry('r1', 'PO-400', {
+        parked: { reason: 'refused', status: 422, code: 'order_not_receivable', at: 'x' },
+        lastError: 'This order was cancelled, so a delivery cannot be counted against it.',
+      }),
+    ])
+    harness(OutboxBody)
+
+    expect(
+      await screen.findByText(/This order was cancelled, so a delivery cannot be counted against it\./),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/· the server refused it$/)).not.toBeInTheDocument()
+  })
+
+  it('[REVERT-FAILS] takes the bottles in each box and sends the receipt again with them (F-1256)', async () => {
+    signInPorter()
+    const { offlineStorage } = await import('../../../lib/offline-storage')
+    vi.mocked(offlineStorage.updatePendingMutation).mockClear()
+    const body = { countedQty: 2, countedUom: 'case', idempotencyKey: 'door:o-r1:k' }
+    pendingByType.mockResolvedValue([
+      doorEntry('r1', 'PO-BOX', {
+        data: { orderId: 'o-r1', orderLabel: 'PO-BOX', restaurantId: 'rest-A', body },
+        parked: { reason: 'refused', status: 400, code: 'pack_size_required', at: 'x' },
+        lastError: PACK_SAID,
+      }),
+    ])
+    harness(OutboxBody)
+
+    const send = await screen.findByRole('button', { name: 'Send PO-BOX again' })
+    // Nothing to send it with yet: the same receipt would be refused the same way.
+    expect(send).toBeDisabled()
+    fireEvent.click(send)
+    expect(offlineStorage.updatePendingMutation).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles in each box for PO-BOX' }), {
+      target: { value: '12' },
+    })
+    fireEvent.click(send)
+    await waitFor(() =>
+      expect(offlineStorage.updatePendingMutation).toHaveBeenCalledWith(
+        'r1',
+        expect.objectContaining({
+          parked: undefined,
+          data: expect.objectContaining({ body: { ...body, packSize: 12 } }),
+        }),
+      ),
+    )
+  })
+
+  it('[REVERT-FAILS] offers no Send again for a refusal that would only repeat (F-1257)', async () => {
+    signInPorter()
+    pendingByType.mockResolvedValue([
+      doorEntry('r1', 'PO-KEG', {
+        parked: { reason: 'refused', status: 400, code: 'counted_uom_not_order_unit', at: 'x' },
+        lastError: 'This order is in kegs, so the delivery is counted in kegs.',
+      }),
+    ])
+    harness(OutboxBody)
+
+    expect(await screen.findByText(/This order is in kegs/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send PO-KEG again' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Discard PO-KEG' })).toBeInTheDocument()
+  })
+
   it('does not call a pass "offline" when it parked the only sendable receipt', async () => {
     signInPorter()
     pendingByType.mockResolvedValue([doorEntry('s1', 'PO-S')])
