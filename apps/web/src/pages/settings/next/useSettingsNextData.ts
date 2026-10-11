@@ -172,6 +172,11 @@ export interface PendingInviteRow {
    * handed (audit BLOCKER 4).
    */
   created_at?: string | null;
+  /**
+   * The address the invite was made for, or null when it was minted as a bare
+   * code (and on every invite from before 2026-09-25, ADR 0229 fork 7).
+   */
+  target_email?: string | null;
 }
 
 export interface TeamRegister {
@@ -991,8 +996,11 @@ export function useSettingsNextData() {
         else houseCurrency.reload();
         // A code that moved is a row in the trail; the trail must not lag it.
         ledger.reload();
+        // Vendor terms prints the same column (its minimums and its "no
+        // currency recorded" line); re-read it so the two agree (F-1136).
+        vendorTerms.reload();
       }),
-    [writer, houseCurrency, ledger],
+    [writer, houseCurrency, ledger, vendorTerms],
   );
 
   /**
@@ -1096,8 +1104,11 @@ export function useSettingsNextData() {
         // Every page's "today" reads the zone once per house (lib/houseZone);
         // drop that copy so they move to the zone just recorded (F-995).
         forgetHouseZones(rid ?? undefined);
+        // Vendor terms reads weekdays in this zone and says when it is only
+        // the column default; re-read it so that line moves too (F-1136).
+        vendorTerms.reload();
       }),
-    [writer, houseTimeZone, ledger, hours, rid],
+    [writer, houseTimeZone, ledger, hours, vendorTerms, rid],
   );
 
   /** Turn Jev's reading of vendor mail on or off — a person's press, never a default. */

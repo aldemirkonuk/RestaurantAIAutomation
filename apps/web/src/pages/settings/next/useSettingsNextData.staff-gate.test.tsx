@@ -321,3 +321,31 @@ describe('useSettingsNextData — the point-of-sale register reads each till\'s 
     expect(result.current.pos.data?.feedsError).toBeNull();
   });
 });
+
+describe('useSettingsNextData — Vendor terms follows a currency or zone recorded on the same page (F-1136)', () => {
+  function vendorTermsGets() {
+    return api.get.mock.calls.filter(([url]) => url === '/vendor-terms').length;
+  }
+
+  it('re-reads Vendor terms after the currency is recorded', async () => {
+    const { result } = renderHook(() => useSettingsNextData());
+    await waitFor(() => expect(result.current.vendorTerms.status).toBe('ok'));
+    const before = vendorTermsGets();
+    api.put.mockResolvedValueOnce({ data: null });
+    await act(async () => {
+      await result.current.saveCurrency('TRY');
+    });
+    await waitFor(() => expect(vendorTermsGets()).toBeGreaterThan(before));
+  });
+
+  it('re-reads Vendor terms after the time zone is recorded', async () => {
+    const { result } = renderHook(() => useSettingsNextData());
+    await waitFor(() => expect(result.current.vendorTerms.status).toBe('ok'));
+    const before = vendorTermsGets();
+    api.put.mockResolvedValueOnce({ data: null });
+    await act(async () => {
+      await result.current.saveTimeZone('Europe/Istanbul');
+    });
+    await waitFor(() => expect(vendorTermsGets()).toBeGreaterThan(before));
+  });
+});

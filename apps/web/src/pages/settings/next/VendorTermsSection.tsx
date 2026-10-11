@@ -475,8 +475,9 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
           {reg.currency.code === null ? (
             <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 12px' }}>
               This house has not recorded the money it reports in, so amounts
-              below are shown as bare numbers. Set it on the sign-up form or ask
-              us to record it — nothing here is in dollars by default any more.
+              below are shown as bare numbers. Record it under{' '}
+              <a href="#st-section-currency" className="st-ink st-focus">Currency</a> on
+              this page — nothing here is in dollars by default any more.
             </p>
           ) : reg.currency.isColumnDefault ? (
             <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 12px' }}>

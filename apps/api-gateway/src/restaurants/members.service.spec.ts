@@ -1101,3 +1101,102 @@ describe("MembersService.updateMemberRole — a demotion cancels the invites the
     expect(db.tables.team_members).toEqual([]);
   });
 });
+
+describe("MembersService invites — the book names who each is for, and an owner's invite is an owner's to withdraw (F-1140)", () => {
+  const MAYA = "user-maya";
+  const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  function seedBook(): StubDb {
+    const invite = (id: string, role: string, target_email: string | null) => ({
+      id,
+      code: id.toUpperCase(),
+      restaurant_id: RID,
+      role,
+      invited_by: OWNER,
+      target_email,
+      used_at: null,
+      expires_at: FUTURE,
+      created_at: new Date().toISOString(),
+    });
+    return makeStubDb({
+      user_restaurant_access: [
+        {
+          id: "a1",
+          user_id: OWNER,
+          restaurant_id: RID,
+          role: "owner",
+          is_active: true,
+        },
+        {
+          id: "a5",
+          user_id: MAYA,
+          restaurant_id: RID,
+          role: "manager",
+          is_active: true,
+        },
+      ],
+      users: [
+        {
+          user_id: OWNER,
+          restaurant_id: RID,
+          role: "owner",
+          email: "ada@example.test",
+        },
+        {
+          user_id: MAYA,
+          restaurant_id: RID,
+          role: "manager",
+          email: "maya@example.test",
+        },
+      ],
+      organization_invites: [
+        invite("inv-owner", "owner", "deniz@example.test"),
+        invite("inv-staff", "staff", null),
+      ],
+      team_members: [],
+      notifications: [],
+      system_audit_log: [],
+    });
+  }
+
+  it("the invite book carries the address an invite was minted for", async () => {
+    const db = seedBook();
+    const book = await service(db).getInvites(OWNER, RID);
+    const byId = Object.fromEntries(
+      book.map((i: any) => [i.id, i.target_email]),
+    );
+    expect(byId).toEqual({
+      "inv-owner": "deniz@example.test",
+      "inv-staff": null,
+    });
+    // The stub returns whole rows, so the column list is what proves it is read.
+    const read = db.opsOn("organization_invites", "select");
+    expect(read[read.length - 1].columns).toMatch(/\btarget_email\b/);
+  });
+
+  it("a manager cannot withdraw an owner's invite, and it stays good", async () => {
+    const db = seedBook();
+    await expect(
+      service(db).revokeInvite(MAYA, RID, "INV-OWNER"),
+    ).rejects.toThrow(ForbiddenException);
+    expect(db.tables.organization_invites.map((i: any) => i.id)).toContain(
+      "inv-owner",
+    );
+  });
+
+  it("a manager can withdraw a staff invite", async () => {
+    const db = seedBook();
+    await service(db).revokeInvite(MAYA, RID, "INV-STAFF");
+    expect(db.tables.organization_invites.map((i: any) => i.id)).toEqual([
+      "inv-owner",
+    ]);
+  });
+
+  it("an owner can withdraw an owner's invite", async () => {
+    const db = seedBook();
+    await service(db).revokeInvite(OWNER, RID, "INV-OWNER");
+    expect(db.tables.organization_invites.map((i: any) => i.id)).toEqual([
+      "inv-staff",
+    ]);
+  });
+});
