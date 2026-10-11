@@ -27,7 +27,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../../../services/api/client';
+import { apiClient, isUnconfirmedWrite } from '../../../services/api/client';
 import { useCreateInventoryItem } from '../../../hooks/queries/useInventoryQueries';
 import { useRecommendedProviders } from '../../../hooks/queries/useProviderQueries';
 import { queryKeys } from '../../../lib/query-keys';
@@ -233,6 +233,35 @@ export interface BottleLeafProps {
   onClose: () => void;
 }
 
+/** What `POST /procurement/orders` hands back, as far as this leaf reads it. */
+interface OrderReceipt {
+  id?: string;
+  status?: string;
+  quantity?: number;
+  mergedIntoOpenOrder?: boolean;
+}
+
+/** The statuses that mean the vendor has the order — anything earlier is still waiting here. */
+const REACHED_VENDOR = new Set(['CONFIRMED', 'IN_TRANSIT', 'DELIVERED', 'PARTIALLY_RECEIVED', 'COMPLETED']);
+
+/**
+ * F-1218: what the order line says once the gateway answered. A new order
+ * opens PENDING and goes to nobody until it is approved and sent, so it is
+ * never called sent unless its status says the vendor has it. An open order
+ * for the same wine and vendor is updated rather than doubled
+ * (`mergedIntoOpenOrder`), and the line says so with the new count.
+ */
+function orderPlacedLine(data: OrderReceipt | null | undefined, asked: number): string {
+  const bottles = typeof data?.quantity === 'number' ? data.quantity : asked;
+  const n = `${bottles} bottle${bottles === 1 ? '' : 's'}`;
+  const where = REACHED_VENDOR.has((data?.status ?? '').toUpperCase())
+    ? 'The vendor has it.'
+    : 'It is waiting on Orders to be approved and sent — nothing has gone to the vendor yet.';
+  return data?.mergedIntoOpenOrder === true
+    ? `There was already an open order for this wine to this vendor, so that order now says ${n} instead of a second one being placed. ${where}`
+    : `Order for ${n} placed. ${where}`;
+}
+
 export default function BottleLeaf({
   bottle,
   providers,
@@ -265,16 +294,20 @@ export default function BottleLeaf({
   const order = useMutation({
     mutationFn: async (body: { inventoryId: string; providerId: string; quantity: number }) => {
       const r = await apiClient.post('/procurement/orders', { ...body, unitType: 'bottle' });
-      return r.data as { id?: string };
+      return r.data as OrderReceipt;
     },
-    onSuccess: () => {
+    onSuccess: (data, body) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-      setSaid('Order sent to the vendor. It is on Orders now.');
+      setSaid(orderPlacedLine(data, body.quantity));
     },
+    // F-1218: a timeout or a 5xx may have placed the order, so it is not
+    // called a refusal; only a real refusal says nothing was sent.
     onError: (e: unknown) =>
       setSaid(
-        `Nothing was sent — the order was refused (${e instanceof Error ? e.message : 'no reason given'}).`,
+        isUnconfirmedWrite(e)
+          ? 'No answer came back, so this page cannot tell whether the order was placed. Check Orders before you try again.'
+          : `Nothing was sent — the order was refused (${e instanceof Error ? e.message : 'no reason given'}).`,
       ),
   });
 
@@ -616,10 +649,11 @@ export default function BottleLeaf({
                 label={`Hold to order ${qty} from ${
                   providers?.find((p) => p.id === vendorId)?.name ?? 'this vendor'
                 }`}
-                approvedLabel="Order sent"
+                approvedLabel="Order placed"
                 pending={order.isPending}
                 sent={order.isSuccess}
                 errorMessage={order.isError ? (order.error instanceof Error ? order.error.message : 'the gateway refused it') : null}
+                errorUnconfirmed={order.isError && isUnconfirmedWrite(order.error)}
                 // `mutateAsync`, not `mutate`: both of `OrderCeremony`'s
                 // ceremonies eventually hand this to `HoldToApprove` (`auto`
                 // straight away, `hold` only once "Yes, order" is pressed),

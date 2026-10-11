@@ -110,6 +110,13 @@ describe('OrderCeremony — auto (hold, sends the instant it completes, no quest
     expect(screen.getByRole('button', { name: /Hold to order/ })).toBeInTheDocument();
   });
 
+  it('an attempt that got no answer says to check, never that nothing was sent (F-1218)', () => {
+    renderCeremony({ ceremony: 'auto', label: 'Hold to order', errorMessage: 'timeout', errorUnconfirmed: true });
+    const note = screen.getByTestId('order-ceremony-error');
+    expect(note).toHaveTextContent('No answer came back — timeout. Check Orders before you try again.');
+    expect(note.textContent).not.toMatch(/Nothing was sent/);
+  });
+
   it('shows no error line when nothing has failed', () => {
     renderCeremony({ ceremony: 'auto', label: 'Hold to order' });
     expect(screen.queryByTestId('order-ceremony-error')).not.toBeInTheDocument();

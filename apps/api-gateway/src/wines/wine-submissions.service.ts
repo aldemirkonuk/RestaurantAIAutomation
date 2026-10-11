@@ -462,6 +462,12 @@ export class WineSubmissionsService {
           payload.priceReference,
         ),
         primary_type: identity.primaryType ?? "unknown",
+        // F-1221: the kind a label submission stated for a drink that is not
+        // a wine, read by trg_wine_beverage_kind like the menu paths' own
+        // (F-740). Null when none was stated.
+        data_enrichment: payload.menuCategory
+          ? { menu_category: payload.menuCategory }
+          : null,
         grape_variety: identity.grapeVariety ?? null,
         // Null, not "Unknown". The submission path accounts for the other 251
         // of production's 328 `country = 'Unknown'` rows, and 'Unknown' sorts,

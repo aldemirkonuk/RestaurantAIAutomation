@@ -83,6 +83,37 @@ type FieldKey = 'wine_name' | 'producer' | 'vintage' | 'country' | 'region' | 'g
  * field's confidence; sureness lives in the caption beside the label, never
  * as an italic or a differently-shaded value.
  */
+/**
+ * F-1221: the drink kinds a person may type into Style, each as the menu
+ * category word the library's classifier reads (MENU_CATEGORY_VOCABULARY,
+ * menus/wine-extract-item.interface.ts). Any Style the library keeps as a
+ * wine style files the bottle as a wine, so "beer" or "rakı" typed there must
+ * travel as the kind instead.
+ */
+const DRINK_KINDS: { category: string; said: string; words: RegExp }[] = [
+  { category: 'beer', said: 'a beer', words: /\b(beer|bira|lager|pilsner|pils|ipa|ale|stout|porter|weiss|weizen|bock)\b/ },
+  { category: 'cider', said: 'a cider', words: /\b(cider|cidre|sidra)\b/ },
+  { category: 'sake', said: 'a sake', words: /\bsake\b/ },
+  { category: 'whiskey', said: 'a whisky', words: /\b(whisky|whiskey|bourbon|scotch)\b/ },
+  {
+    category: 'spirit',
+    said: 'a spirit',
+    words: /\b(raki|arak|ouzo|anise|pastis|vodka|gin|rum|tequila|mezcal|brandy|cognac|armagnac|grappa|calvados|liqueur|spirits?)\b/,
+  },
+  { category: 'non-alcoholic', said: 'a non-alcoholic drink', words: /\b(non-?alcoholic|alcohol-free|alkolsuz)\b/ },
+];
+
+/** The drink kind a Style names, or null when it reads as a wine style. */
+function drinkKindOfStyle(style: string | null): (typeof DRINK_KINDS)[number] | null {
+  if (!style) return null;
+  const plain = style
+    .toLowerCase()
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return DRINK_KINDS.find((k) => k.words.test(plain)) ?? null;
+}
+
 function sureness(confidence?: number): string {
   if (confidence === undefined) return 'not scored';
   const pct = Math.round(confidence * 100);
@@ -227,6 +258,7 @@ export default function PhotographLabel({
   };
 
   const effectiveProducer = effective('producer');
+  const drinkKind = drinkKindOfStyle(effective('wine_type'));
 
   // A typed vintage goes through the same reading as the bottle panel's, so
   // "20190" or "1850" is refused in words rather than sent (F-1069).
@@ -254,7 +286,9 @@ export default function PhotographLabel({
         name: effective('wine_name') ?? w.name,
         producer,
         vintage: effectiveVintage ?? null,
-        primaryType: effective('wine_type') ?? undefined,
+        // A drink kind is sent as the kind, never as a wine style (F-1221).
+        primaryType: drinkKind ? undefined : (effective('wine_type') ?? undefined),
+        menuCategory: drinkKind?.category,
         grapeVariety: effective('grape_variety') ?? undefined,
         country: effective('country') ?? undefined,
         region: effective('region') ?? undefined,
@@ -442,6 +476,12 @@ export default function PhotographLabel({
               />
             ))}
           </div>
+          {drinkKind ? (
+            <p className="cl-note" style={{ marginTop: 10 }} data-testid="label-drink-kind">
+              Style says this is {drinkKind.said}, so it goes to the library as {drinkKind.said}, not
+              as a wine.
+            </p>
+          ) : null}
           {wine.inMasterLibrary ? (
             <p className="cl-note" style={{ marginTop: 10 }}>
               This bottle already reads as a match in the house library — confirming still submits
