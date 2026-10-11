@@ -2,6 +2,7 @@ import "reflect-metadata";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -265,20 +266,68 @@ describe("a password change keeps the session that made it and signs out the oth
     await refusedAsEnded(guard(db, laptop.accessToken));
   });
 
-  it("a wrong current password changes nothing and signs nobody out", async () => {
+  // F-1348: 400, never 401 -- a 401 makes the web client treat the session
+  // as ended, refresh, and send the change a second time.
+  it("a wrong current password is a 400 that says so, changes nothing and signs nobody out", async () => {
     const db = world();
     const laptop = await signIn(db);
     const phone = await signIn(db);
     const req = { user: await guard(db, laptop.accessToken) } as any;
 
-    await expect(
-      new AuthController(service(db)).changePassword(req, {
+    const err = await new AuthController(service(db))
+      .changePassword(req, {
         currentPassword: "wrong-password",
         newPassword: NEW,
-      } as any),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+      } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err).not.toBeInstanceOf(UnauthorizedException);
+    expect(err.message).toMatch(/current password is incorrect/);
 
     await expect(guard(db, phone.accessToken)).resolves.toBeTruthy();
+  });
+
+  // F-1347: a first password signs every other session out, so a device left
+  // signed in must not set one alone -- the passkey rule (founder 2026-09-25,
+  // item 29): a sign-in in the last ten minutes, or an emailed code.
+  it("a FIRST password on a sign-in older than ten minutes is refused 403 STEP_UP_REQUIRED, and nothing changes", async () => {
+    const db = world();
+    const laptop = await signIn(db);
+    const phone = await signIn(db);
+    const row = db.tables.users.find((r: Row) => r.user_id === U) as Row;
+    row.password_hash = null; // a Google-only account
+    const stale = Math.floor(Date.now() / 1000) - 11 * 60;
+    const req = {
+      user: { ...(await guard(db, laptop.accessToken)), authTime: stale },
+    } as any;
+
+    const err = await new AuthController(service(db))
+      .changePassword(req, { newPassword: NEW } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.getResponse()).toMatchObject({ code: "STEP_UP_REQUIRED" });
+    expect(row.password_hash).toBeNull();
+    await expect(guard(db, phone.accessToken)).resolves.toBeTruthy();
+  });
+
+  it("a FIRST password on a sign-in from the last ten minutes is set", async () => {
+    const db = world();
+    const laptop = await signIn(db);
+    const row = db.tables.users.find((r: Row) => r.user_id === U) as Row;
+    row.password_hash = null;
+    const req = {
+      user: {
+        ...(await guard(db, laptop.accessToken)),
+        authTime: Math.floor(Date.now() / 1000) - 60,
+      },
+    } as any;
+
+    await expect(
+      new AuthController(service(db)).changePassword(req, {
+        newPassword: NEW,
+      } as any),
+    ).resolves.toMatchObject({ success: true });
+    await expect(bcrypt.compare(NEW, row.password_hash)).resolves.toBe(true);
   });
 
   it("two changes back to back: the second ends the first's kept session", async () => {
