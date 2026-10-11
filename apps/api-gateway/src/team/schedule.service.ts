@@ -707,7 +707,14 @@ export class ScheduleService {
       current.published_at &&
       (await this.unchangedSincePublished(restaurantId, current))
     ) {
-      return { schedule: current, receiptsCleared: 0, republished: false };
+      // `unchanged` names this answer: `republished: false` alone is also
+      // what a first publish says, and the page read it as "nothing changed".
+      return {
+        schedule: current,
+        receiptsCleared: 0,
+        republished: false,
+        unchanged: true,
+      };
     }
 
     const { data: schedule, error } = await this.sb
@@ -741,20 +748,29 @@ export class ScheduleService {
     }
 
     // Notify the whole restaurant + deep-link back into /team.
-    await this.notifications.persistForRestaurant(restaurantId, {
-      type: "system",
-      title: "Schedule published",
-      message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
-      priority: "high",
-      actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
-      actionLabel: "View schedule",
-      groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
-      metadata: { scheduleId, weekStart: schedule.week_start },
-    });
+    // F-1148: the funnel answers 0 when its insert failed (it logs and
+    // swallows the error), so the count is read and handed back: a week that
+    // went live while nobody was told says so, instead of "published".
+    // `heldAway` are the people Away today, who get nothing by design (ADR 0218).
+    const announced = await this.notifications.persistForRestaurant(
+      restaurantId,
+      {
+        type: "system",
+        title: "Schedule published",
+        message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
+        priority: "high",
+        actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
+        actionLabel: "View schedule",
+        groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
+        metadata: { scheduleId, weekStart: schedule.week_start },
+      },
+    );
     return {
       schedule,
       receiptsCleared,
       republished: current.status === "published",
+      notified: announced?.inserted ?? 0,
+      heldAway: announced?.routing?.heldAway ?? 0,
     };
   }
 

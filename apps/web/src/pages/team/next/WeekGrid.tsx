@@ -100,6 +100,11 @@ interface GridProps {
   onChanged: () => void;
   /** The house's time zone (`useHouseZone`): "today" is the house's day, not the device's (F-1073). */
   zone?: string | null;
+  /**
+   * True when a person is on approved leave or Away that day (`useTeamNextData`).
+   * Cover is never offered to them: the gateway refuses the claim (F-1148).
+   */
+  offOn?: (m: TeamMember, date: string) => boolean;
 }
 
 export function WeekGrid({
@@ -119,6 +124,7 @@ export function WeekGrid({
   onEditShift,
   onChanged,
   zone,
+  offOn,
 }: GridProps) {
   const fmtTime = useShiftTime();
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
@@ -316,8 +322,8 @@ export function WeekGrid({
   /**
    * Cover is offered to at most three people, chosen the way the legacy desk
    * chose them: active, free that day, position or skill matching the station,
-   * an account to reach. The list is shown before it is sent — an offer is a
-   * message to real people.
+   * an account to reach, not on leave or Away that day (F-1148). The list is
+   * shown before it is sent — an offer is a message to real people.
    */
   const cover = useMutation({
     // F-1113: the push says "Tap to claim", so it names the open slot, never
@@ -367,7 +373,10 @@ export function WeekGrid({
     );
     const role = (s.role ?? '').trim().toLowerCase();
     return (members ?? [])
-      .filter((m) => m.status === 'active' && m.id !== s.member_id && !busy.has(m.id))
+      .filter(
+        (m) =>
+          m.status === 'active' && m.id !== s.member_id && !busy.has(m.id) && !offOn?.(m, s.shift_date),
+      )
       .map((m) => {
         let score = 0;
         if (role && (m.position ?? '').trim().toLowerCase() === role) score += 3;

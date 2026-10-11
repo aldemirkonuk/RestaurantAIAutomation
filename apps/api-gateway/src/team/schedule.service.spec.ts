@@ -552,6 +552,7 @@ describe("ScheduleService — F-1082: a repeated publish does not notify twice",
     liveWeek(db);
     const res: any = await service(db).publish(MANAGER, RID, "s1", {} as any);
     expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
+    expect(res.unchanged).toBe(true);
     expect(res.schedule.published_at).toBe(LIVE_AT);
     expect(db.tables.schedules[0].published_at).toBe(LIVE_AT);
   });
@@ -593,6 +594,57 @@ describe("ScheduleService — F-1082: a repeated publish does not notify twice",
     } as any);
     expect(lastNotifications.persistForRestaurant).toHaveBeenCalledTimes(1);
     expect(res.republished).toBe(true);
+  });
+});
+
+/**
+ * F-1148 — the inbox funnel answers 0 when its insert fails (it logs and
+ * swallows the error). Publish hands that count back, so the page can say a
+ * live week reached nobody instead of "published".
+ */
+describe("ScheduleService — F-1148: publish says how many were told", () => {
+  function draftWeek(db: StubDb) {
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "draft",
+      published_at: null,
+    });
+  }
+
+  it("reports nobody told when the announcement did not land", async () => {
+    const db = seed();
+    draftWeek(db);
+    const svc = service(db);
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 0,
+      ids: [],
+    });
+    const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
+    expect(db.tables.schedules[0].status).toBe("published");
+    expect(res.notified).toBe(0);
+  });
+
+  it("reports how many were told, and how many were Away and held back", async () => {
+    const db = seed();
+    draftWeek(db);
+    const svc = service(db);
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 4,
+      ids: ["n1", "n2", "n3", "n4"],
+      routing: {
+        label: null,
+        step: "house",
+        alerted: 4,
+        inboxOnly: 0,
+        heldAway: 2,
+        degraded: null,
+      },
+    });
+    const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
+    expect(res.notified).toBe(4);
+    expect(res.heldAway).toBe(2);
   });
 });
 
