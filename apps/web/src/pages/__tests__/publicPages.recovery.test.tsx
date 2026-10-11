@@ -31,6 +31,8 @@ import { InviteLanding } from '../InviteLanding'
 import { NoAccess } from '../NoAccess'
 import Privacy from '../Privacy'
 import { VendorPortal, unitPrice } from '../VendorPortal'
+import { provenanceOf } from '../vendor-prices/next/vp-register'
+import type { VendorObservationRow } from '../../services/api/vendorIntel'
 function mount(el: ReactElement, path: string, route = path.split('?')[0]) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -317,6 +319,23 @@ it('speaks to any drink: a per-litre column, product words, one day (F-1255)', a
   expect(screen.getByText('Lead time: 3 days')).toBeInTheDocument()
   expect(container.textContent).not.toMatch(/750\s?ml|\bwine\b|1 days/i)
 })
+it('shows Vintage only when some listing states one (F-1346)', async () => {
+  const beer = { ...listing, id: 'beer', productName: 'Pale ale' }
+  h.axiosGet.mockResolvedValueOnce({ data: { page: { ...page, listings: [beer] } } })
+  const { container, unmount } = mount(<VendorPortal />, '/v/vendor', '/v/:slug')
+  await screen.findByRole('heading', { name: 'The Vendor' })
+  expect(screen.queryByRole('columnheader', { name: 'Vintage' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('option', { name: /Vintage/ })).not.toBeInTheDocument()
+  expect(container.textContent).not.toMatch(/Vintage/)
+  unmount()
+
+  const red = { ...listing, id: 'red', productName: 'Yakut', vintage: 2019 }
+  h.axiosGet.mockResolvedValueOnce({ data: { page: { ...page, listings: [beer, red] } } })
+  mount(<VendorPortal />, '/v/vendor', '/v/:slug')
+  await screen.findByRole('heading', { name: 'The Vendor' })
+  expect(screen.getByRole('columnheader', { name: 'Vintage' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Vintage, newest first' })).toBeInTheDocument()
+})
 it('keeps the vendor board scroller a keyboard-reachable, labelled region', async () => {
   h.axiosGet.mockResolvedValueOnce({ data: { page } })
   const { container } = mount(<VendorPortal />, '/v/vendor', '/v/:slug')
@@ -430,6 +449,27 @@ it('refuses a javascript: vendor website and logo URL', async () => {
   await screen.findByRole('heading', { name: 'The Vendor' })
   expect(screen.queryByText('Vendor website')).not.toBeInTheDocument()
   expect(screen.queryByRole('img')).not.toBeInTheDocument()
+})
+
+// The same guard on a recorded price's "Open the source" link (F-1343): it is
+// typed by a person, so only http(s) may become an href, and a link saved
+// without a scheme opens the vendor's site, not a page inside the app.
+it.each([
+  ['javascript:1/alert(document.cookie)', null],
+  ['data:text/html,<script>alert(1)</script>', null],
+  ['www.kavaklidere.com/fiyat', 'https://www.kavaklidere.com/fiyat'],
+  ['https://vendor.example/list', 'https://vendor.example/list'],
+])('offers a recorded source %s as %s', (sourceUrl, opens) => {
+  const p = provenanceOf({
+    id: 'obs-1',
+    vendorName: 'A Vendor',
+    sourceType: 'quote',
+    sourceUrl,
+    sourceRef: null,
+    observedAt: '2026-10-01T09:00:00Z',
+  } as unknown as VendorObservationRow)
+  expect(p.sourceUrl).toBe(opens)
+  if (!opens) expect(p.unlinked).toMatch(/No paper attached/)
 })
 
 it('names which reason an invite is unavailable (0149 row 49), not one collapsed message', async () => {

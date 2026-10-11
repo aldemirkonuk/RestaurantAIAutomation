@@ -133,7 +133,9 @@ export function fmtInt(v: number | null | undefined): string {
  * (`getHouseLocale`) and read on the house's clock (`getHouseZone`; the page
  * calls `useHouseZone` so it re-renders when that lands), so an order placed at 23:30 in Istanbul is not filed under
  * the next day on a London laptop. With no zone known yet, the device's clock
- * stands in, as everywhere else.
+ * stands in, as everywhere else. Digits only, in the house's day and month
+ * order, so every word on the page stays English (ADR 0207 q7, F-1279 and
+ * F-1344): a Turkish house reads "11/10", never "11 Eki".
  */
 function zoned(zone: string | null | undefined): { timeZone?: string } {
   return zone ? { timeZone: zone } : {};
@@ -151,13 +153,22 @@ export function fmtDate(iso: string | null | undefined, zone: string | null = ge
   const thisYear = dayOf(d, zone).slice(0, 4) === dayOf(new Date(), zone).slice(0, 4);
   return new Intl.DateTimeFormat(getHouseLocale(), {
     day: 'numeric',
-    month: 'short',
+    month: 'numeric',
     ...(thisYear ? {} : { year: 'numeric' as const }),
     ...zoned(zone),
   }).format(d);
 }
 
-/** When a read landed: "17:58" today, "30 Sept, 17:58" on another day (ORD-W15). */
+/** A date with its time on the house's clock, "11/10, 09:00": three vendor
+ *  answers on one day must be told apart (F-1344). */
+export function fmtDateTime(iso: string | null | undefined, zone: string | null = getHouseZone()): string {
+  const day = fmtDate(iso, zone);
+  if (day === EM) return EM;
+  const clock = new Intl.DateTimeFormat(getHouseLocale(), { hour: '2-digit', minute: '2-digit', ...zoned(zone) });
+  return `${day}, ${clock.format(new Date(iso as string))}`;
+}
+
+/** When a read landed: "17:58" today, "30/09, 17:58" on another day (ORD-W15). */
 export function fmtReadTime(ms: number, zone: string | null = getHouseZone()): string {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return EM;
