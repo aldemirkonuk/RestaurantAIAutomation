@@ -3,6 +3,7 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
+  InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
 import { CalendarController } from "./calendar.controller";
@@ -44,6 +45,9 @@ describe("CalendarController", () => {
     deleteRecurringSeries: jest.fn(),
     endSeriesFrom: jest.fn(),
     listEvents: jest.fn(),
+    createEvent: jest.fn(),
+    updateEvent: jest.fn(),
+    deleteEvent: jest.fn(),
   };
 
   // The house's today (F-086): the controller's default day comes from here.
@@ -534,6 +538,55 @@ describe("CalendarController", () => {
         "2026-10-01",
       );
       expect(mockDayRecord.houseToday).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("entry writes pass a worded refusal through (F-1112)", () => {
+    const refusal = () =>
+      new BadRequestException("The end comes before the start.");
+    const dto = {} as never;
+
+    it("create answers a 400 as a 400, not a 500", async () => {
+      mockCalendarService.createEvent.mockRejectedValue(refusal());
+      const err = await controller
+        .createEvent(dto, mockUser)
+        .catch((e: HttpException) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as HttpException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it("create keeps the rollback's own words", async () => {
+      const rollback = new InternalServerErrorException(
+        "The repeat could not be saved, so nothing was saved. Try again.",
+      );
+      mockCalendarService.createEvent.mockRejectedValue(rollback);
+      await expect(controller.createEvent(dto, mockUser)).rejects.toBe(
+        rollback,
+      );
+    });
+
+    it("edit answers a 400 as a 400", async () => {
+      mockCalendarService.updateEvent.mockRejectedValue(refusal());
+      await expect(
+        controller.updateEvent("e1", dto, mockUser),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("delete answers a 400 as a 400", async () => {
+      mockCalendarService.deleteEvent.mockRejectedValue(refusal());
+      await expect(
+        controller.deleteEvent("e1", undefined, mockUser),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("an unexpected failure is still a 500", async () => {
+      mockCalendarService.updateEvent.mockRejectedValue(new Error("boom"));
+      const err = await controller
+        .updateEvent("e1", dto, mockUser)
+        .catch((e: HttpException) => e);
+      expect((err as HttpException).getStatus()).toBe(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     });
   });
 });

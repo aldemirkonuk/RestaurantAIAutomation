@@ -1,4 +1,10 @@
-import { expiredNoticeFeed, renderFeed } from "./ical-render";
+import { readFileSync } from "fs";
+import { join } from "path";
+import {
+  ENTRY_DEFAULT_MINUTES,
+  expiredNoticeFeed,
+  renderFeed,
+} from "./ical-render";
 import { resolveZone } from "./zoned-time";
 
 /**
@@ -558,5 +564,76 @@ describe("iCal feed structure", () => {
     expect(floating).toContain("UNTIL=20261126T235959");
     expect(floating).not.toContain("UNTIL=20261126T235959Z");
     expect(floating).not.toContain("BEGIN:VTIMEZONE");
+  });
+});
+
+describe("times as Postgres returns them (F-1105, F-1106)", () => {
+  // `calendar_events.start_time` / `end_time` are `time` columns, so PostgREST
+  // reads them back as "19:00:00", not "19:00".
+  const STORED = { ...EVENT, start_time: "19:00:00", end_time: "21:30:00" };
+
+  it("prints a valid zoned DTSTART from an HH:MM:SS time (F-1105)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "Europe/Istanbul" },
+      events: [STORED],
+    });
+
+    expect(out).toContain("DTSTART;TZID=Europe/Istanbul:20260803T190000");
+    expect(out).toContain("DTEND;TZID=Europe/Istanbul:20260803T213000");
+  });
+
+  it("serves a house with no zone a floating time, not a failure (F-1105)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: null },
+      events: [STORED],
+    });
+
+    expect(out).toContain("DTSTART:20260803T190000");
+    expect(out).toContain("DTEND:20260803T213000");
+  });
+
+  it("ends an entry with no end an hour after it starts, as the grid draws it (F-1106)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "Europe/Istanbul" },
+      events: [{ ...STORED, end_date: null, end_time: null }],
+    });
+
+    expect(out).toContain("DTSTART;TZID=Europe/Istanbul:20260803T190000");
+    expect(out).toContain("DTEND;TZID=Europe/Istanbul:20260803T200000");
+    expect(out).not.toContain("T235900");
+  });
+
+  it("rolls a late entry's default hour into the next morning (F-1106)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: null },
+      events: [
+        { ...EVENT, start_time: "23:30:00", end_date: null, end_time: null },
+      ],
+    });
+
+    expect(out).toContain("DTSTART:20260803T233000");
+    expect(out).toContain("DTEND:20260804T003000");
+  });
+
+  it("exports an entry with no start time as all-day, as the grid shows it (F-1106)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "Europe/Istanbul" },
+      events: [{ ...EVENT, all_day: false, start_time: null, end_time: null }],
+    });
+
+    expect(out).toContain("DTSTART;VALUE=DATE:20260803");
+    expect(out).toContain("DTEND;VALUE=DATE:20260804");
+  });
+
+  it("uses the same default length as the week and day grid (F-1106)", () => {
+    // The grid's constant lives in the web app; the two are read side by side
+    // here so neither can drift alone.
+    const grid = readFileSync(
+      join(__dirname, "../../../web/src/pages/calendar/next/TimeGrid.tsx"),
+      "utf8",
+    );
+    expect(grid).toMatch(
+      new RegExp(`const DEFAULT_MINUTES = ${ENTRY_DEFAULT_MINUTES};`),
+    );
   });
 });

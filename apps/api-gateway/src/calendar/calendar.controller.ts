@@ -117,6 +117,11 @@ export class CalendarController {
         dto,
       );
     } catch (error) {
+      // A refusal the service already worded (a 400 for an end before the
+      // start, the rollback's "nothing was saved") passes through as itself
+      // (F-1112). Re-wrapped as a bare 500, the sheet could not tell an
+      // unsaved entry from one that may have landed.
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Create calendar event failed",
         userId: user.userId,
@@ -210,9 +215,8 @@ export class CalendarController {
         dto,
       );
     } catch (error) {
-      if (error.status === 404) {
-        throw error;
-      }
+      // Every worded refusal, not only the 404, passes through (F-1112).
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Update calendar event failed",
         eventId,
@@ -248,9 +252,8 @@ export class CalendarController {
         scope,
       );
     } catch (error) {
-      if (error.status === 404) {
-        throw error;
-      }
+      // Every worded refusal, not only the 404, passes through (F-1112).
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Delete calendar event failed",
         eventId,

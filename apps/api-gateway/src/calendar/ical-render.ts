@@ -119,6 +119,30 @@ function hhmm(time: string): string {
 }
 
 /**
+ * How long an entry with a start time and no end lasts, in minutes. The week
+ * and day grid draw it the same (TimeGrid.tsx DEFAULT_MINUTES; ical-feed.spec
+ * holds the two equal), so a delivery is an hour in both places — not until
+ * 23:59 in the subscriber's calendar (F-1106).
+ */
+export const ENTRY_DEFAULT_MINUTES = 60;
+
+/** `HH:MM` plus `minutes` on `date`, rolled into the next day past midnight. */
+function addMinutes(
+  date: string,
+  time: string,
+  minutes: number,
+): { date: string; time: string } {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + minutes;
+  const day = Math.floor(total / 1440);
+  const rest = total - day * 1440;
+  return {
+    date: addDaysIso(date, day),
+    time: `${String(Math.floor(rest / 60)).padStart(2, "0")}:${String(rest % 60).padStart(2, "0")}`,
+  };
+}
+
+/**
  * A stored wall clock, ready for ical-generator.
  *
  * With a zone: the wall clock itself, printed `DTSTART;TZID=<zone>:…` with a
@@ -328,31 +352,48 @@ export function renderFeed(input: FeedInput): string {
 
     const startDateStr = event.start_date;
     const endDateStr = event.end_date || event.start_date;
+    // Postgres `time` reads back as "19:00:00"; the wall clock below wants
+    // "19:00" (F-1105). Read raw, a zoned DTSTART printed "1900:0000" and a
+    // zoneless house's feed failed outright on an Invalid Date.
+    const startTime = event.start_time ? hhmm(event.start_time) : null;
+    const endTime = event.end_time ? hhmm(event.end_time) : null;
+    // An entry with no start time sits in the grid's all-day strip
+    // (TimeGrid.tsx `placed` returns null), so it exports all-day (F-1106).
+    const allDay = !!event.all_day || !startTime;
 
     let start: Date | ICalDayJsStub;
     let end: Date | ICalDayJsStub;
-    if (event.all_day) {
+    if (allDay || !startTime) {
       // A calendar date has no zone. ical-generator renders VALUE=DATE from
       // the Date's UTC fields, so UTC midnight is the only carrier that
       // round-trips the stored date unchanged on any server.
       start = calendarDateToUtcMidnight(startDateStr);
       end = calendarDateToUtcMidnight(addDaysIso(endDateStr, 1));
     } else {
-      start = wallClock(startDateStr, event.start_time || "00:00", zone);
-      // An entry that ends before it starts, with no end date or one equal to
-      // its start date, runs past midnight to the next morning (F-790, F-820).
-      // Equal times are a zero-length moment that day, as the grid draws it.
-      // The sheet and the grid (EventSheet.tsx, TimeGrid.tsx) read the same.
-      const overnight =
-        (!event.end_date || event.end_date === startDateStr) &&
-        !!event.start_time &&
-        !!event.end_time &&
-        hhmm(event.end_time) < hhmm(event.start_time);
-      end = wallClock(
-        overnight ? addDaysIso(startDateStr, 1) : endDateStr,
-        event.end_time || "23:59",
-        zone,
-      );
+      start = wallClock(startDateStr, startTime, zone);
+      const sameDay = !event.end_date || event.end_date === startDateStr;
+      if (!endTime && sameDay) {
+        // No end: an hour, as the grid draws it (F-1106). A later end date
+        // with no end time still ends at 23:59 that day, as the grid reads it.
+        const until = addMinutes(
+          startDateStr,
+          startTime,
+          ENTRY_DEFAULT_MINUTES,
+        );
+        end = wallClock(until.date, until.time, zone);
+      } else {
+        // An entry that ends before it starts, with no end date or one equal
+        // to its start date, runs past midnight to the next morning (F-790,
+        // F-820). Equal times are a zero-length moment that day, as the grid
+        // draws it. The sheet and the grid (EventSheet.tsx, TimeGrid.tsx)
+        // read the same.
+        const overnight = sameDay && !!endTime && endTime < startTime;
+        end = wallClock(
+          overnight ? addDaysIso(startDateStr, 1) : endDateStr,
+          endTime || "23:59",
+          zone,
+        );
+      }
     }
 
     const calEvent = calendar.createEvent({
@@ -361,11 +402,11 @@ export function renderFeed(input: FeedInput): string {
       end,
       summary: event.title,
       description: event.description || undefined,
-      allDay: !!event.all_day,
+      allDay,
       // Floating only where the zone is genuinely unknown; an all-day event
       // is already zone-free and must not be marked floating as well.
-      floating: !event.all_day && !zone,
-      timezone: !event.all_day && zone ? zone : null,
+      floating: !allDay && !zone,
+      timezone: !allDay && zone ? zone : null,
       status: status as any,
     });
 
@@ -374,7 +415,7 @@ export function renderFeed(input: FeedInput): string {
       let rrule = `FREQ=${FREQ[rule.frequency]}`;
       if (rule.interval_value && rule.interval_value > 1)
         rrule += `;INTERVAL=${rule.interval_value}`;
-      rrule += rruleEnd(rule, !!event.all_day, zone);
+      rrule += rruleEnd(rule, allDay, zone);
       // A monthly entry on the 29th-31st falls on the last day of a shorter
       // month, as the app shows it (F-199, F-791). A plain FREQ=MONTHLY skips
       // those months instead, so name every day up to the chosen one and keep
