@@ -2469,6 +2469,10 @@ describe('the till can be disconnected and reconnected', () => {
     // F-1138: the first tap only arms it, and says what the gap costs.
     expect(setPosConnection).not.toHaveBeenCalled();
     expect(screen.getByText(/Checks it sends while disconnected are turned away and not kept/)).toBeInTheDocument();
+    // F-1196: no screen imports till checks, so the note never sends the
+    // owner to one; it says to ask us to import the till's file.
+    expect(screen.getByText(/or ask us to import the file your till exports of them\./)).toBeInTheDocument();
+    expect(screen.queryByText(/import them from a file/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Yes, disconnect Toast' }));
     await waitFor(() => expect(setPosConnection).toHaveBeenCalledWith('toast', false));
     expect(screen.queryByText(/cannot be disconnected from this page/)).not.toBeInTheDocument();

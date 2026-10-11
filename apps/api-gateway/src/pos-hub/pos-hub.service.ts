@@ -401,6 +401,13 @@ interface CheckLedger {
   voidBooked: boolean;
 }
 
+/**
+ * F-1195: the tills a file import can backfill: every feed with an adapter
+ * but the import itself. A check is stored only through an adapter, so these
+ * are every source a house's checks can carry.
+ */
+const IMPORT_TILLS = Object.keys(ADAPTERS).filter((k) => k !== "csv_import");
+
 /** Every stock key of a check begins with this (B15). */
 function checkLedgerPrefix(source: string, externalCheckId: string): string {
   return `pos:${source}:${externalCheckId}:`;
@@ -1256,6 +1263,11 @@ export class PosHubService {
     payload: unknown,
   ): Promise<{
     provider: string;
+    /**
+     * F-1195: the source the checks were stored under: the feed's own, but
+     * for a file import, the house's till it backfills (importTill).
+     */
+    storedUnder: string;
     received: number;
     upserted: number;
     /** Checks per channel this import named (ADR 0302). */
@@ -1303,6 +1315,7 @@ export class PosHubService {
     if (!checks.length)
       return {
         provider: providerKey,
+        storedUnder: providerKey,
         received: 0,
         upserted: 0,
         channels: tallyChannels([], providerKey).tally,
@@ -1314,8 +1327,16 @@ export class PosHubService {
         bellNote: null,
       };
 
+    // F-1195: the source every stored row and stock key carries. A file
+    // import is stored under the house's till, so a check the till already
+    // sent is one row and one booking of stock. The adapter and the channel
+    // tally read the feed that carried the checks.
+    const source =
+      providerKey === "csv_import"
+        ? ((await this.importTill(restaurantId, payload)) ?? providerKey)
+        : providerKey;
     const [mappingLookup, tableLookup] = await Promise.all([
-      this.loadItemMappings(restaurantId, providerKey),
+      this.loadItemMappings(restaurantId, source),
       this.loadTables(restaurantId),
     ]);
     const mappings = mappingLookup.rows;
@@ -1417,7 +1438,7 @@ export class PosHubService {
         if (check.sourceVersion != null || check.sourceModifiedAt) {
           const stored = await this.readStoredCheck(
             restaurantId,
-            providerKey,
+            source,
             check.externalCheckId,
           );
           if (!stored.ok) {
@@ -1479,9 +1500,9 @@ export class PosHubService {
 
         const row = {
           restaurant_id: restaurantId,
-          source: providerKey,
+          source,
           external_check_id: check.externalCheckId,
-          table_id: this.resolveTable(check.tableRef, providerKey, tables),
+          table_id: this.resolveTable(check.tableRef, source, tables),
           // ADR 0302: written only when the check names a channel the hub
           // knows, so a re-send that names none, or names one it does not
           // know, leaves a stored channel alone.
@@ -1526,7 +1547,7 @@ export class PosHubService {
           if (check.closedAt) {
             await this.applyStockEffects(
               restaurantId,
-              providerKey,
+              source,
               check,
               items,
               stock,
@@ -1569,6 +1590,7 @@ export class PosHubService {
         : null;
     return {
       provider: providerKey,
+      storedUnder: source,
       received: checks.length,
       upserted,
       channels: channels.tally,
@@ -1579,6 +1601,76 @@ export class PosHubService {
       stock: t,
       bellNote,
     };
+  }
+
+  /**
+   * F-1195: the till a file import of checks backfills. Its checks are stored
+   * under that till: the same check from the till's webhook and from the file
+   * is then one check row (the upsert on restaurant_id, source,
+   * external_check_id) and one booking of stock (the `pos:{source}:...`
+   * keys). Under its own `csv_import` source it was stored twice and took
+   * stock twice, and every takings and tips reader counted it twice.
+   *
+   * The till is the one the body names (`{"till": "square", "checks": [...]}`),
+   * else the one till this house has taken checks from; null (stored under
+   * `csv_import`) for a house with no till yet. Two tills and none named is
+   * refused, as is a till that could not be read: guessing writes a second
+   * copy of the same checks.
+   */
+  private async importTill(
+    restaurantId: string,
+    payload: unknown,
+  ): Promise<string | null> {
+    const named = (payload as { till?: unknown } | null | undefined)?.till;
+    if (named !== undefined && named !== null && named !== "") {
+      if (
+        typeof named !== "string" ||
+        named === "csv_import" ||
+        !ADAPTERS[named]
+      ) {
+        throw new Error(
+          `The file names a till this house cannot take checks from (${JSON.stringify(named).slice(0, 40)}). Name one of: ${IMPORT_TILLS.join(", ")}. Nothing was imported.`,
+        );
+      }
+      return named;
+    }
+    const tills = await this.tillsWithChecks(restaurantId);
+    if (tills.length > 1) {
+      throw new Error(
+        `This house takes checks from more than one till (${tills.map((t) => PROVIDER_BY_KEY[t]?.name ?? t).join(", ")}), so the file must say which one it came from, as "till": ${tills.map((t) => JSON.stringify(t)).join(" or ")}. Nothing was imported.`,
+      );
+    }
+    return tills[0] ?? null;
+  }
+
+  /**
+   * F-1195: the tills (every feed but the file import) this house holds a
+   * check from. A read that fails throws: an unread till is not "no till",
+   * and an import under `csv_import` beside it would store its checks twice.
+   */
+  private async tillsWithChecks(restaurantId: string): Promise<string[]> {
+    const client = this.dbService.getClient();
+    const found = await Promise.all(
+      IMPORT_TILLS.map(async (till) => {
+        const { data, error } = await client
+          .from("pos_checks")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("source", till)
+          .limit(1);
+        if (error) {
+          this.logger.error(
+            `pos_checks till read failed for r=${restaurantId} src=${till}: ${error.message}`,
+          );
+          throw new HttpException(
+            "Could not read which till this house takes checks from, so none were imported: a check the till already sent could have been stored twice. Try again shortly.",
+            HttpStatus.SERVICE_UNAVAILABLE,
+          );
+        }
+        return ((data as unknown[] | null) ?? []).length > 0 ? till : null;
+      }),
+    );
+    return found.filter((t): t is string => t !== null);
   }
 
   /**

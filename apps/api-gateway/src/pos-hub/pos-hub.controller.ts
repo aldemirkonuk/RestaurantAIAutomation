@@ -152,7 +152,7 @@ export class PosHubController {
   @ApiOperation({
     summary: "Batch-import historical checks",
     description:
-      "Body: array of CanonicalCheck (or {checks: [...]}) — the csv_import path for nightly exports and backfills.",
+      "Body: array of CanonicalCheck (or {checks: [...], till?: provider}) — the csv_import path for nightly exports and backfills. Stored under the house's till (the one named, else the only one it has), so a check the till already sent is kept once.",
   })
   async importChecks(
     @Param("restaurantId") restaurantId: string,
@@ -170,6 +170,8 @@ export class PosHubController {
       );
     }
     try {
+      // F-1195: ingest stores a file import under the house's till, so a
+      // check the till already sent is not stored or booked a second time.
       const result = await this.posHub.ingest(
         restaurantId,
         "csv_import",
@@ -179,6 +181,7 @@ export class PosHubController {
       // what the till is told.
       return { ...result, bellNote: bellNoteForTill(result.bellNote) };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Import failed",
         HttpStatus.BAD_REQUEST,

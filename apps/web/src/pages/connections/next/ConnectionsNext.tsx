@@ -1517,9 +1517,11 @@ function TillRow({
   };
 
   const armedTill = armed ? tills.find((t) => t.key === armed && t.enabled) ?? null : null;
+  // F-1196: no screen here imports till checks, so the second way back is to
+  // ask us to import the till's file, not "import them from a file".
   const GAP =
     'Checks it sends while disconnected are turned away and not kept: to get them back, have the till send them ' +
-    'again after you reconnect it, or import them from a file.';
+    'again after you reconnect it, or ask us to import the file your till exports of them.';
 
   let stopNote: string;
   if (armedTill) {
