@@ -41,6 +41,7 @@ import {
   UpdateShiftDto,
 } from "./dto/team.dto";
 import { readHouseZone } from "../common/house-day";
+import { houseFrame as frameOf } from "../common/house-frame";
 
 /** Minutes since midnight from an "HH:MM" string. */
 function toMinutes(t: string): number {
@@ -82,6 +83,28 @@ function dayWords(iso: string): string {
     month: "short",
     timeZone: "UTC",
   });
+}
+
+/**
+ * A week's Monday as the house writes a date (F-1150): "05.10.2026" in a
+ * Turkish house, "10/5/2026" in an American one — digits only, so every word
+ * stays English (ADR 0207). With no locale known, the refusal's "Mon 5 Oct".
+ */
+export function weekWords(iso: string, locale: string | null): string {
+  if (!locale) return dayWords(iso);
+  try {
+    return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString(
+      locale,
+      {
+        day: "numeric",
+        month: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      },
+    );
+  } catch {
+    return dayWords(iso);
+  }
 }
 
 /** A shift as the one conflict check reads it. */
@@ -771,17 +794,19 @@ export class ScheduleService {
       }
     }
 
-    // Notify the whole restaurant + deep-link back into /team.
+    // Notify the whole restaurant + deep-link back into /team. The sentence
+    // names the week in the house's hand; the link keeps the ISO date.
     // F-1148: the funnel answers 0 when its insert failed (it logs and
     // swallows the error), so the count is read and handed back: a week that
     // went live while nobody was told says so, instead of "published".
     // `heldAway` are the people Away today, who get nothing by design (ADR 0218).
+    const { locale } = frameOf(await this.houseFrame(restaurantId));
     const announced = await this.notifications.persistForRestaurant(
       restaurantId,
       {
         type: "system",
         title: "Schedule published",
-        message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
+        message: `The week of ${weekWords(schedule.week_start, locale)} is live. Open it to see your shifts.`,
         priority: "high",
         actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
         actionLabel: "View schedule",

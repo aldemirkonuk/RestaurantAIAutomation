@@ -31,7 +31,15 @@ vi.mock('./useHouseCommodity', () => ({
   useHouseCommodity: () => mockCommodity.current,
 }));
 
+/** The house's zone; null = not read yet. */
+const mockZone = vi.hoisted(() => ({ current: null as string | null }));
+vi.mock('@/lib/houseZone', async () => {
+  const real = await vi.importActual<typeof import('@/lib/houseZone')>('@/lib/houseZone');
+  return { ...real, knownHouseZone: () => mockZone.current };
+});
+
 import MarketIndexPanel from './MarketIndexPanel';
+import { setHouseLocale } from '@/lib/houseCurrency';
 
 const INDEX_READY = {
   state: 'ready',
@@ -173,6 +181,26 @@ describe('the context line carries its whole provenance', () => {
         /Public index · Office for National Statistics · issued Aug 18, 2026/,
       ),
     ).toBeTruthy();
+  });
+
+  /**
+   * F-1150: every date in this box printed as a US date ("Aug 18, 2026") in
+   * UTC, whatever house was reading. It is now the house's hand on the house's
+   * clock: ONS's 23:00Z stamp is already the 19th in Istanbul.
+   */
+  it('writes the period and the issue day in the house’s hand, on its clock', () => {
+    setHouseLocale('tr-TR');
+    mockZone.current = 'Europe/Istanbul';
+    try {
+      mockCommodity.current = { ...COMMODITY_READY, series: [ons()] };
+      render(<MarketIndexPanel />);
+      expect(screen.getByText(/base 2015=100 · Temmuz 2026/)).toBeTruthy();
+      expect(screen.getByText(/· issued 19 Ağu 2026/)).toBeTruthy();
+      expect(screen.queryByText(/Aug 18, 2026|July 2026/)).toBeNull();
+    } finally {
+      setHouseLocale(null);
+      mockZone.current = null;
+    }
   });
 
   it('NEVER renders an index number as money', () => {
