@@ -287,6 +287,30 @@ export function whenWords(row: VendorObservationRow): string {
   return `seen ${ageWords(row.observedAt)} (${dateWords(row.observedAt)})`
 }
 
+/**
+ * A recorded source link is typed by a person, so it is untrusted: only an
+ * http(s) URL may become a link (a `javascript:` or `data:` URL must never
+ * reach an href; React 18 only warns). A link saved without a scheme
+ * (`www.vendor.com/prices`) gets `https://`, as the gateway now adds on write;
+ * anything else is dropped (F-1343). Exported for tests.
+ */
+export function isHttpUrl(value: string | null | undefined): value is string {
+  if (!value) return false
+  try {
+    return /^https?:$/.test(new URL(value).protocol)
+  } catch {
+    return false
+  }
+}
+
+export function httpSourceUrl(value: string | null | undefined): string | null {
+  const v = value?.trim()
+  if (!v) return null
+  if (isHttpUrl(v)) return v
+  const withScheme = `https://${v}`
+  return !/^[a-z][a-z0-9+.-]*:/i.test(v) && isHttpUrl(withScheme) ? withScheme : null
+}
+
 export function provenanceOf(row: VendorObservationRow): Provenance {
   const meta = isSourceType(row.sourceType) ? SOURCE_META[row.sourceType] : null
   const tier = row.trustTier ?? meta?.tier ?? null
@@ -325,14 +349,15 @@ export function provenanceOf(row: VendorObservationRow): Provenance {
     : 'Unidentified — no confirmed bottle identity names this row yet (ADR 0124). It is ranked by name and vintage alone, so a 375 ml and a 750 ml of one wine could share a rung.'
 
   const lines = provenanceLines(row)
+  const sourceUrl = httpSourceUrl(row.sourceUrl)
   const hasLink =
-    orderId !== null || !!row.sourceUrl || !!row.provenance?.document || !!row.provenance?.message
+    orderId !== null || !!sourceUrl || !!row.provenance?.document || !!row.provenance?.message
   return {
     eyebrow,
     what,
     paper: badge,
     orderId,
-    sourceUrl: row.sourceUrl,
+    sourceUrl,
     // "Nothing to open" only when there is truly nothing — a public-page
     // sighting or a recorded quote can carry a `sourceUrl` with no own-paper
     // `sourceRef` at all, and that link is exactly what this row has to open.

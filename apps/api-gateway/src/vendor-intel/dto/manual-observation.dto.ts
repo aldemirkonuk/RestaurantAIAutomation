@@ -10,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from "class-validator";
+import { Transform } from "class-transformer";
 
 /**
  * A price someone was told, typed in by hand.
@@ -98,8 +99,25 @@ export class ManualObservationDto {
   @IsIn(["quote", "chat", "social", "manual"])
   sourceType?: "quote" | "chat" | "social" | "manual";
 
+  /**
+   * Where the price was seen. A pasted `www.example.com/prices` gains
+   * `https://` (without it the link opens a page inside the app), and any
+   * scheme other than http(s) is refused: this URL is rendered as a link the
+   * owner clicks, so `javascript:` or `data:` must never be stored (F-1343).
+   */
   @IsOptional()
-  @IsUrl({ require_tld: false })
+  @Transform(({ value }) =>
+    typeof value === "string" &&
+    value.trim() !== "" &&
+    !/^[a-z][a-z0-9+.-]*:/i.test(value.trim())
+      ? `https://${value.trim()}`
+      : value,
+  )
+  @IsUrl({
+    require_tld: false,
+    require_protocol: true,
+    protocols: ["http", "https"],
+  })
   @MaxLength(2000)
   sourceUrl?: string;
 

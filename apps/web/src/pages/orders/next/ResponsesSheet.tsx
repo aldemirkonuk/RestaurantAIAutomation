@@ -65,7 +65,7 @@ import { useDealProposal, useOrderConversations } from '@/hooks/queries/useDraft
 import * as ordersApi from '@/services/api/orders';
 import { approveConflict } from '@/services/api/approveConflict';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
-import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
+import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtDate, fmtDateTime, fmtMoney } from './format';
 import {
   ROW_PRICE_UNIT_NOT_READ,
   ROW_UNSTATED_PRICE_UNIT,
@@ -699,7 +699,7 @@ export function ResponsesSheet({
                   <Field name="Answered by">
                     {current.vendorName ?? row.providerName ?? EM}
                   </Field>
-                  <Field name="Arrived">{fmtDate(current.arrivedAt)}</Field>
+                  <Field name="Arrived">{fmtDateTime(current.arrivedAt)}</Field>
                   <Field name="Round">{current.round === null ? EM : current.round}</Field>
                 </div>
 

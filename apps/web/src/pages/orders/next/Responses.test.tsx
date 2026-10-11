@@ -31,7 +31,7 @@
  * 10. an order past the pending stage offers neither act, and says why.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const approveMock = vi.hoisted(() => ({
@@ -82,6 +82,8 @@ import {
   summaryProvenance,
 } from './responses';
 import { fmtDate } from './format';
+import { setHouseLocale } from '@/lib/houseCurrency';
+import { getHouseZone } from '@/lib/houseZone';
 import type { OrderRowVM } from './useOrdersNextData';
 
 // A variable, not a literal: scripts/check_money_states_its_currency.py.
@@ -708,5 +710,29 @@ describe('a letter whose words were withheld (F-982)', () => {
     mount();
     expect(screen.queryByTestId('response-words-withheld')).toBeNull();
     expect(screen.getByTestId('response-body')).toBeInTheDocument();
+  });
+});
+
+describe('dates in digits, with the hour an answer arrived (F-1344)', () => {
+  afterEach(() => setHouseLocale('en-US'));
+
+  it('writes a Turkish house’s dates in its own order, never its month words', () => {
+    setHouseLocale('tr-TR');
+    const d = fmtDate('2026-10-11T09:00:00Z', 'Europe/Istanbul');
+    expect(d).not.toMatch(/Eki/);
+    expect(d).toMatch(/^11[./]10$/);
+  });
+
+  it('shows when each answer arrived, to the minute', () => {
+    const at = '2026-09-03T09:05:00Z';
+    convosMock.current = { data: [convo({ sentAt: at })], isError: false, error: null };
+    mount();
+    const zone = getHouseZone();
+    const clock = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(zone ? { timeZone: zone } : {}),
+    }).format(new Date(at));
+    expect(screen.getByTestId('response-section')).toHaveTextContent(`${fmtDate(at)}, ${clock}`);
   });
 });

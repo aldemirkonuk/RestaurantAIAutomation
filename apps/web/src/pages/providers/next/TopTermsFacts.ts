@@ -22,8 +22,13 @@
  */
 
 import type { Provider } from '../../../services/api/providers';
-import type { TermCell } from '../../settings/next/useSettingsNextData';
+import type {
+  TermCell,
+  VendorTermsRegister,
+  VendorTermsRow,
+} from '../../settings/next/useSettingsNextData';
 import { fmtMoney } from '@/lib/mudavym/format';
+import { getHouseLocale } from '@/lib/houseCurrency';
 import { EM, fmtDays } from './pv-format';
 import type { ProviderTermsState } from './useProviderTerms';
 
@@ -36,14 +41,43 @@ export function fmtLeadTime(d: number): string {
   return d === 0 ? 'same day' : `${d} day${d === 1 ? '' : 's'}`;
 }
 
-/** The minimum in the HOUSE's reporting currency (`register.currency.code`),
- *  never the vendor's usual one; an inferred minimum is an upper bound, so it
- *  carries "≤" — the number looks like a minimum and is not one. */
+/**
+ * The currency a vendor's minimum is in (F-1342): the one this house's orders
+ * to them were placed in (`row.minimumCurrency`), or null — "currency not
+ * stated" — when they name none or several, or the register has no row for
+ * them (nothing says how they bill). It is no longer the house's
+ * reporting currency: a French importer billing in EUR was shown "≤ ₺380".
+ * Only a register read before the gateway sent the field falls back to the
+ * house's code, as it always read.
+ */
+export function minimumCurrencyOf(
+  row: Pick<VendorTermsRow, 'minimumCurrency'> | null,
+  reg: Pick<VendorTermsRegister, 'currency'> | null,
+): string | null {
+  if (!row) return null;
+  if (row.minimumCurrency !== undefined) return row.minimumCurrency;
+  return reg?.currency.code ?? null;
+}
+
+/** The editor's label for the minimum, in the vendor's currency. */
+export function minimumLabel(currency: string | null): string {
+  return currency ? `Minimum order (${currency})` : 'Minimum order (currency not stated)';
+}
+
+function minimumMoney(value: number, currency: string | null): string {
+  return currency
+    ? fmtMoney(value, currency)
+    : `${value.toLocaleString(getHouseLocale())} (currency not stated)`;
+}
+
+/** The minimum in `minimumCurrencyOf`'s currency; an inferred minimum is an
+ *  upper bound, so it carries "≤" — the number looks like a minimum and is
+ *  not one. */
 export function fmtMinimumCell(cell: TermCell<number>, currency: string | null): string {
   if (cell.value === null || cell.value === undefined) return EM;
   return cell.source === 'inferred'
-    ? `≤ ${fmtMoney(cell.value, currency)}`
-    : fmtMoney(cell.value, currency);
+    ? `≤ ${minimumMoney(cell.value, currency)}`
+    : minimumMoney(cell.value, currency);
 }
 
 export interface TopTerms {
@@ -84,8 +118,8 @@ export function topTerms(
   const reg = terms.register;
   if (!reg) return { leadTime: READING, paymentTerms: READING, minimumOrder: READING };
 
-  const currency = reg.currency.code ?? null;
   const row = terms.row;
+  const currency = minimumCurrencyOf(row, reg);
   if (!row) {
     // The register was read and holds no row for this vendor, so the house
     // has stated nothing about them: the record is all there is.

@@ -331,6 +331,10 @@ export interface VendorTermsRow {
   deliveryWeekdays: TermCell<number[]>;
   orderCutoff: TermCell<CutoffValue>;
   minimumOrder: TermCell<number>;
+  /** The currency `minimumOrder` is in: the one this house's orders to the
+   *  vendor were placed in, or null when they name none or several (F-1342).
+   *  Absent from a register read before the gateway sent it. */
+  minimumCurrency?: string | null;
   leadTimeDays: TermCell<number>;
   paymentTerms: TermCell<string>;
   notes: string | null;

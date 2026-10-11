@@ -9,6 +9,7 @@ import {
 import {
   hhmm,
   inferTerms,
+  ordersCurrency,
   PAYMENT_TERMS_NOT_INFERABLE,
   type Finding,
   type InferredTerms,
@@ -124,6 +125,14 @@ export interface VendorTermsRow {
   deliveryWeekdays: TermCell<Weekday[]>;
   orderCutoff: TermCell<CutoffValue>;
   minimumOrder: TermCell<number>;
+  /**
+   * The currency `minimumOrder` is in: the one currency this house's orders to
+   * the vendor were placed in (for an inferred minimum, the orders it was
+   * read from), or null when they name none or several, which the page
+   * prints as "currency not stated". Never the house's reporting currency: a
+   * French importer billing in EUR does not have a minimum in lira (F-1342).
+   */
+  minimumCurrency: string | null;
   leadTimeDays: TermCell<number>;
   paymentTerms: TermCell<string>;
   notes: string | null;
@@ -254,6 +263,7 @@ interface OrderRow {
   expected_delivery_date: string | null;
   total_cost: string | number | null;
   status: string | null;
+  currency?: string | null;
 }
 
 function num(v: string | number | null | undefined): number | null {
@@ -302,6 +312,7 @@ export class VendorTermsService {
         expectedDeliveryDate: o.expected_delivery_date,
         totalCost: num(o.total_cost),
         status: o.status,
+        currency: o.currency ?? null,
       });
       ordersByProvider.set(o.provider_id, list);
     }
@@ -436,6 +447,16 @@ export class VendorTermsService {
     const unreadable = ordersReadable
       ? null
       : "the order ledger could not be read, so nothing was inferred";
+    const vendorCurrency = ordersCurrency(orders);
+    const minimumOrder = this.minimumCell(
+      provider,
+      link,
+      stated,
+      inferred,
+      author,
+      unreadable,
+      vendorCurrency,
+    );
 
     return {
       providerId: provider.id,
@@ -444,7 +465,11 @@ export class VendorTermsService {
       lastOrderedAt: link?.last_order_date ?? null,
       deliveryWeekdays: this.weekdayCell(stated, inferred, author, unreadable),
       orderCutoff: this.cutoffCell(stated, inferred, author, unreadable),
-      minimumOrder: this.minimumCell(provider, link, stated, inferred, author, unreadable),
+      minimumOrder,
+      minimumCurrency:
+        minimumOrder.source === "inferred" && inferred.minimumOrder.known
+          ? inferred.minimumOrder.currency
+          : vendorCurrency,
       leadTimeDays: this.leadTimeCell(provider, link, stated, inferred, author, unreadable),
       paymentTerms: this.paymentCell(provider, stated, author),
       notes: stated?.notes ?? null,
@@ -532,6 +557,7 @@ export class VendorTermsService {
     inferred: InferredTerms,
     author: StatedBy | null,
     unreadable: string | null,
+    vendorCurrency: string | null,
   ): TermCell<number> {
     const statedValue = num(stated?.minimum_order_amount ?? null);
     if (statedValue !== null) {
@@ -540,8 +566,10 @@ export class VendorTermsService {
         source: "stated",
         statedBy: author,
         statedAt: stated?.stated_at ?? null,
+        // Only orders in the minimum's own currency can undercut it (F-1342).
         contradiction:
           inferred.minimumOrder.known &&
+          inferred.minimumOrder.currency === vendorCurrency &&
           inferred.minimumOrder.smallestAccepted < statedValue
             ? `they have accepted an order of ${inferred.minimumOrder.smallestAccepted}, below the stated minimum`
             : null,
@@ -869,7 +897,7 @@ export class VendorTermsService {
         this.databaseService.client
           .from("procurement_orders")
           .select(
-            "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status",
+            "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status, currency",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
