@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { getCarriedCount, setDefaultThreshold } from '../../services/api/menus'
+import { useEffect, useRef, useState } from 'react'
+import { getLowStockSetting, setDefaultThreshold } from '../../services/api/menus'
 
 interface ThresholdStepProps {
   onDone: () => void
@@ -16,17 +16,26 @@ interface ThresholdStepProps {
  */
 export function ThresholdStep({ onDone }: ThresholdStepProps) {
   const [value, setValue] = useState(6)
+  const touched = useRef(false)
   const [carried, setCarried] = useState<number | null>(null)
   const [applyToCarried, setApplyToCarried] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const change = (next: (v: number) => number) => {
+    touched.current = true
+    setValue(next)
+  }
 
   useEffect(() => {
     let live = true
     // Unread, the offer is not drawn: an uncounted "N items" would be a guess.
-    getCarriedCount()
-      .then((n) => {
-        if (live) setCarried(n)
+    // The field opens on the house's saved number (F-1414), unless the person
+    // has already changed it.
+    getLowStockSetting()
+      .then((s) => {
+        if (!live) return
+        setCarried(s.carried)
+        if (s.defaultThresholdMin != null && !touched.current) setValue(s.defaultThresholdMin)
       })
       .catch(() => {
         if (live) setCarried(null)
@@ -62,7 +71,7 @@ export function ThresholdStep({ onDone }: ThresholdStepProps) {
         <button
           type="button"
           aria-label="One less"
-          onClick={() => setValue((v) => Math.max(0, v - 1))}
+          onClick={() => change((v) => Math.max(0, v - 1))}
           className="h-10 w-10 border border-[#211f1b]/20 bg-white text-lg"
         >
           −
@@ -73,13 +82,13 @@ export function ThresholdStep({ onDone }: ThresholdStepProps) {
           min={0}
           max={999}
           value={value}
-          onChange={(e) => setValue(Math.min(999, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+          onChange={(e) => change(() => Math.min(999, Math.max(0, parseInt(e.target.value, 10) || 0)))}
           className="w-24 border-b border-[#211f1b]/25 bg-transparent py-1 text-center font-serif text-3xl outline-none"
         />
         <button
           type="button"
           aria-label="One more"
-          onClick={() => setValue((v) => Math.min(999, v + 1))}
+          onClick={() => change((v) => Math.min(999, v + 1))}
           className="h-10 w-10 border border-[#211f1b]/20 bg-white text-lg"
         >
           +

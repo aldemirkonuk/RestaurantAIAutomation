@@ -323,10 +323,20 @@ export async function getVendorEmail(): Promise<{ address: string | null }> {
   return response.data
 }
 
-/** How many items the house carries now — owner or manager only (F-1059). */
-export async function getCarriedCount(): Promise<number> {
-  const response = await apiClient.get<{ carried: number }>('/onboarding/threshold')
-  return Number(response.data?.carried ?? 0)
+/**
+ * How many items the house carries now (F-1059) and its low-stock number as
+ * saved, or the number new items get when none is saved (F-1414). Owner or
+ * manager only. A number the gateway did not send is null, not a guess.
+ */
+export async function getLowStockSetting(): Promise<{ carried: number; defaultThresholdMin: number | null }> {
+  const response = await apiClient.get<{ carried: number; default_threshold_min?: number | null }>(
+    '/onboarding/threshold',
+  )
+  const saved = response.data?.default_threshold_min
+  return {
+    carried: Number(response.data?.carried ?? 0),
+    defaultThresholdMin: typeof saved === 'number' && Number.isFinite(saved) ? saved : null,
+  }
 }
 
 /**

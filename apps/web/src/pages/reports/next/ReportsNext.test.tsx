@@ -33,6 +33,7 @@ import { decodeSheet, defaultSheet, encodeSheet, keepUnoffered, offeredFor } fro
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS, HOUSE_LAYOUT_TITLE } from './rp-sheet';
 import { targetToStore, targetToType } from './rp-registers-goals';
+import { localDayKey } from '@/lib/localDay';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -1465,6 +1466,16 @@ describe('ReportsNext — the goals desk', () => {
     expect(deskStub.create).toHaveBeenCalledWith(
       expect.objectContaining({ metricKey: 'wine_attach_rate', targetValue: 0.35 }),
     );
+  });
+
+  // F-1413: the 'By' field took any past day, and the hourly sweep closed
+  // the goal on figures from before it was set.
+  it('does not offer a deadline before the house’s today', () => {
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    fireEvent.click(within(goals).getByRole('button', { name: /Set a goal/ }));
+    const by = within(goals).getByLabelText('By') as HTMLInputElement;
+    expect(by.min).toBe(localDayKey(new Date()));
   });
 
   // F-1285: the form closed on submit, so a refused goal lost what was typed.

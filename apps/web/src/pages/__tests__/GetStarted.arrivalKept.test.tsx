@@ -22,7 +22,7 @@ const auth = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   setDefaultThreshold: vi.fn(),
   getOnboardingProgress: vi.fn(),
-  getCarriedCount: vi.fn(),
+  getLowStockSetting: vi.fn(),
   listMenuVersions: vi.fn(),
 }))
 
@@ -37,7 +37,7 @@ vi.mock('../../services/api/menus', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/api/menus')>()),
   setDefaultThreshold: api.setDefaultThreshold,
   getOnboardingProgress: api.getOnboardingProgress,
-  getCarriedCount: api.getCarriedCount,
+  getLowStockSetting: api.getLowStockSetting,
   listMenuVersions: api.listMenuVersions,
 }))
 vi.mock('../../lib/firstProof', () => ({ writeProof: vi.fn(), readProof: () => null }))
@@ -78,7 +78,7 @@ describe('GetStarted — what an arrival keeps', () => {
     auth.user = { userId: 'u-a', name: 'Selin Kaya', emailVerified: true }
     api.setDefaultThreshold.mockReset().mockResolvedValue({ default_threshold_min: 6, threshold_configured: true })
     api.getOnboardingProgress.mockReset()
-    api.getCarriedCount.mockReset().mockResolvedValue(0)
+    api.getLowStockSetting.mockReset().mockResolvedValue({ carried: 0, defaultThresholdMin: null })
     sessionStorage.clear()
     localStorage.clear()
   })
@@ -140,7 +140,7 @@ describe('the low-stock step', () => {
   beforeEach(() => {
     api.setDefaultThreshold.mockReset().mockResolvedValue({ default_threshold_min: 6, threshold_configured: true })
     api.getOnboardingProgress.mockReset().mockResolvedValue({ menu_uploaded: true })
-    api.getCarriedCount.mockReset().mockResolvedValue(133)
+    api.getLowStockSetting.mockReset().mockResolvedValue({ carried: 133, defaultThresholdMin: null })
     sessionStorage.clear()
     localStorage.clear()
   })
@@ -174,10 +174,21 @@ describe('the low-stock step', () => {
     await waitFor(() => expect(api.setDefaultThreshold).toHaveBeenCalledWith(6, true))
   })
 
-  it('offers no count it could not read', async () => {
-    api.getCarriedCount.mockRejectedValue(new Error('403'))
+  // F-1414: the step re-opened at 6 whatever number the house had saved.
+  it('opens on the number the house saved, not on 6', async () => {
+    api.getLowStockSetting.mockResolvedValue({ carried: 133, defaultThresholdMin: 9 })
     openThreshold('owner')
-    await waitFor(() => expect(api.getCarriedCount).toHaveBeenCalled())
+    await waitFor(() =>
+      expect((screen.getByLabelText('Low-stock number') as HTMLInputElement).value).toBe('9'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() => expect(api.setDefaultThreshold).toHaveBeenCalledWith(9, false))
+  })
+
+  it('offers no count it could not read', async () => {
+    api.getLowStockSetting.mockRejectedValue(new Error('403'))
+    openThreshold('owner')
+    await waitFor(() => expect(api.getLowStockSetting).toHaveBeenCalled())
     expect(screen.queryByRole('checkbox')).toBeNull()
   })
 
@@ -185,7 +196,7 @@ describe('the low-stock step', () => {
     openThreshold('staff')
     expect(screen.queryByText(/Every item you add from now on/)).toBeNull()
     expect(screen.getByRole('heading', { name: 'Your menu' })).toBeTruthy()
-    expect(api.getCarriedCount).not.toHaveBeenCalled()
+    expect(api.getLowStockSetting).not.toHaveBeenCalled()
   })
 })
 

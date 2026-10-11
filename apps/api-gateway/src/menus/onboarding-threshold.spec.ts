@@ -25,6 +25,7 @@ function fakeDb(
   opts: {
     carried?: number;
     activeMenu?: boolean;
+    saved?: number;
     progress?: Record<string, any>;
   } = {},
 ) {
@@ -61,7 +62,13 @@ function fakeDb(
         if (table === "restaurant_menus")
           return { data: opts.activeMenu ? { id: "m-1" } : null, error: null };
         if (table === "restaurants")
-          return { data: { threshold_configured: true }, error: null };
+          return {
+            data: {
+              threshold_configured: true,
+              default_threshold_min: opts.saved,
+            },
+            error: null,
+          };
         return { data: null, error: null };
       },
       then: (res: any, rej: any) => Promise.resolve(result()).then(res, rej),
@@ -115,6 +122,24 @@ describe("PATCH /onboarding/threshold — who may set the house's low-stock numb
   });
 });
 
+describe("GET /onboarding/threshold opens on the saved number (F-1414)", () => {
+  it("returns the house's saved low-stock number with the carried count", async () => {
+    const { db } = fakeDb({ carried: 12, saved: 9 });
+    await expect(
+      controllerFor("owner", db).getThreshold("house-1", "u-1"),
+    ).resolves.toEqual({ carried: 12, default_threshold_min: 9 });
+  });
+
+  it("returns the number new items get when none is saved", async () => {
+    const { db } = fakeDb({ carried: 0 });
+    const out = await controllerFor("manager", db).getThreshold(
+      "house-1",
+      "u-1",
+    );
+    expect(out.default_threshold_min).toBe(3);
+  });
+});
+
 describe("the house default and the items carried now (F-1059)", () => {
   it("saving the number touches no carried item unless asked", async () => {
     const { db, calls } = fakeDb({ carried: 133 });
@@ -154,7 +179,7 @@ describe("the house default and the items carried now (F-1059)", () => {
     const { db } = fakeDb({ carried: 133 });
     await expect(
       controllerFor("manager", db).getThreshold("house-1", "u-1"),
-    ).resolves.toEqual({ carried: 133 });
+    ).resolves.toMatchObject({ carried: 133 });
   });
 });
 

@@ -41,6 +41,8 @@ import { EM, countOf, figure, money, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { houseToday, useHouseZone } from '@/lib/houseZone';
+import { localDayKey } from '@/lib/localDay';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
 import type { ViewCtx } from './rp-spec';
@@ -491,6 +493,12 @@ function GoalForm({
   const editing = !!initial?.id;
 
   const group = useHouseGroupMark();
+  // F-1413: a deadline is not set before the house's today. A goal whose
+  // deadline has already passed keeps it on an edit, so a rename still saves.
+  const zone = useHouseZone();
+  const today = localDayKey(houseToday(zone ?? null));
+  const earliestBy =
+    initial?.deadline && initial.deadline < today ? initial.deadline : today;
   const unit = metrics.find((m) => m.key === metricKey)?.unit ?? '';
   // The field shows a share as 0–100 (F-383); a recorded target left as shown
   // is read back as recorded, not through the house's group mark (F-779).
@@ -596,6 +604,7 @@ function GoalForm({
         <input
           className="rp-input rp-focus"
           type="date"
+          min={earliestBy}
           value={deadline ?? ''}
           onChange={(e) => setDeadline(e.target.value)}
         />

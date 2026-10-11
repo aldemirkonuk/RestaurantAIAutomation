@@ -367,7 +367,7 @@ export class OnboardingController {
   @Get("threshold")
   @ApiOperation({
     summary:
-      "How many items the house carries now — owner or manager only (the low-stock step names it)",
+      "The house's low-stock number and how many items it carries now — owner or manager only (the low-stock step and Settings open on them)",
   })
   @ApiResponse({
     status: 403,
@@ -382,7 +382,12 @@ export class OnboardingController {
       restaurantId,
       "set the low-stock number",
     );
-    return { carried: await this.menusService.countCarriedItems(restaurantId) };
+    // F-1414: the saved number too, so the field opens on it, not on 6.
+    const [carried, defaultThresholdMin] = await Promise.all([
+      this.menusService.countCarriedItems(restaurantId),
+      this.menusService.readDefaultThreshold(restaurantId),
+    ]);
+    return { carried, default_threshold_min: defaultThresholdMin };
   }
 
   @Patch("threshold")

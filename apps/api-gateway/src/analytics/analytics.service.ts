@@ -294,22 +294,31 @@ export class AnalyticsService {
   /**
    * The house's stated money (`restaurants.currency`), upper-cased; null when
    * none is on record or the read failed — the same degrade `loadInventory`
-   * makes for it, logged (F-1052).
+   * makes for it, logged (F-1052). `openedOn` is the day the house was set
+   * up here (`restaurants.created_at`), null when unread: the start of the
+   * span turns and days of stock are taken over (F-1412).
    */
-  private async loadHouseCurrency(
+  private async loadHouse(
     restaurantId: string,
-  ): Promise<string | null> {
+  ): Promise<{ currency: string | null; openedOn: string | null }> {
     const [res] = await Promise.allSettled([
       this.dbService
         .getClient()
         .from("restaurants")
-        .select("currency")
+        .select("currency, created_at")
         .eq("id", restaurantId)
         .maybeSingle(),
     ]);
     this.reportSlice("restaurants", res);
-    const c = res.status === "fulfilled" ? res.value?.data?.currency : null;
-    return typeof c === "string" && c.trim() ? c.trim().toUpperCase() : null;
+    const row = res.status === "fulfilled" ? res.value?.data : null;
+    const c = row?.currency;
+    const opened =
+      typeof row?.created_at === "string" ? row.created_at.slice(0, 10) : "";
+    return {
+      currency:
+        typeof c === "string" && c.trim() ? c.trim().toUpperCase() : null,
+      openedOn: /^\d{4}-\d{2}-\d{2}$/.test(opened) ? opened : null,
+    };
   }
 
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
@@ -642,14 +651,18 @@ export class AnalyticsService {
   /** How many uncosted on-hand rows the financial summary names. */
   static readonly MAX_UNCOSTED_NAMED = 50;
 
+  /** Fewer days of records than this give no turns or days of stock. */
+  static readonly MIN_TURNS_SPAN_DAYS = 30;
+
   async getFinancialSummary(restaurantId: string, labor = 0) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
-    const [inventory, orders, consumption, houseCurrency] = await Promise.all([
+    const [inventory, orders, consumption, house] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
-      this.loadHouseCurrency(restaurantId),
+      this.loadHouse(restaurantId),
     ]);
+    const houseCurrency = house.currency;
 
     // A row holding no bottles contributes 0 to the valuation whatever it
     // cost, so it cannot block the total. Only ON-HAND rows need a cost.
@@ -758,14 +771,41 @@ export class AnalyticsService {
     // Every one of these takes inventory value as its cost input, and the two
     // ratios take revenue as their denominator. A null on either side makes
     // them unknown, not zero and not infinite.
-    const turnover =
-      inventoryValue == null || cogs == null || !cogsInHouseMoney
+    //
+    // F-1412: COGS is what the house bought over the days it has records
+    // for, not always a year. A house open six weeks has six weeks of
+    // purchases; set against today's cellar as if a year, its turns read a
+    // ninth of the truth and its days of stock nine times too many. The span
+    // runs from the house's set-up day, or its first delivered order when
+    // that is earlier, to today, at most a year. Turns are given per year
+    // (scaled up from the span); under a month of records they are not given.
+    const today = new Date().toISOString().slice(0, 10);
+    let spanStart = house.openedOn;
+    for (const o of orders)
+      if (o.date && (!spanStart || o.date < spanStart)) spanStart = o.date;
+    const spanDays = spanStart
+      ? Math.floor((Date.parse(today) - Date.parse(spanStart)) / 86400000) + 1
+      : 365;
+    const periodDays = Number.isFinite(spanDays)
+      ? Math.min(365, Math.max(1, spanDays))
+      : 365;
+    const spanTooShort = periodDays < AnalyticsService.MIN_TURNS_SPAN_DAYS;
+    const turnsUnknown =
+      inventoryValue == null || cogs == null || !cogsInHouseMoney;
+    const periodTurns =
+      turnsUnknown || spanTooShort
         ? null
         : E.inventory.inventoryTurnover(cogs, inventoryValue);
+    const turnover =
+      periodTurns == null ? null : (periodTurns * 365) / periodDays;
     const dio =
-      inventoryValue == null || cogs == null || !cogsInHouseMoney
+      turnsUnknown || spanTooShort
         ? null
-        : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
+        : E.inventory.daysInventoryOutstanding(
+            cogs,
+            inventoryValue,
+            periodDays,
+          );
     const gmroi =
       pricedValue == null || marginDollars == null
         ? null
@@ -819,6 +859,11 @@ export class AnalyticsService {
           .filter(
             (i) =>
               i.qty > 0 &&
+              // F-1415: a wine listed inside the window has not had 90 days
+              // to sell, so no sale yet is not idle capital — the days it
+              // has been on the list are counted as daysOnList counts them.
+              this.daysOnList(i.listedAt, [], DEAD_STOCK_WINDOW_DAYS) >=
+                DEAD_STOCK_WINDOW_DAYS &&
               !movedInventoryIds.has(i.id) &&
               !(i.masterWineId && movedMasterWineIds.has(i.masterWineId)),
           )
@@ -873,7 +918,13 @@ export class AnalyticsService {
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}${inactiveHeld > 0 ? `; includes ${inactiveHeld} wine${inactiveHeld === 1 ? "" : "s"} marked inactive that still hold bottles` : ""}`,
         pricedInventoryValue:
           "on-hand qty × unit cost over the on-hand rows that carry a recorded cost only; the rows it leaves out are costCoverage.unpriced; null when no on-hand row carries a cost",
-        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
+        turns:
+          periodDays >= 365
+            ? "delivered order cost over the last 365 days ÷ today's inventory value; days of stock = 365 ÷ turns"
+            : spanTooShort
+              ? `null: the house has ${periodDays} day${periodDays === 1 ? "" : "s"} of records, and turns and days of stock need at least ${AnalyticsService.MIN_TURNS_SPAN_DAYS}`
+              : `delivered order cost over the ${periodDays} days the house has records for ÷ today's inventory value, scaled to a year; days of stock = ${periodDays} ÷ turns over those days`,
+        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d, among wines on the list for at least ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
           "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null or in a currency other than the house's, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio; grossMarginDollars, grossMargin, cogsRatio, primeCostRatio and gmroi are taken over the on-hand wines that carry a bottle price only, so a wine with no price adds neither sales nor cost to them (priceCoverage counts it)",
       },
@@ -907,6 +958,8 @@ export class AnalyticsService {
       primeCostRatio: primeCost,
       inventoryTurnover: turnover,
       daysInventoryOutstanding: dio,
+      /** The days turns and days of stock are taken over (F-1412). */
+      turnsPeriodDays: periodDays,
       gmroi,
       deadStockCapital,
       deadStockTop: deadStock.slice(0, 10),
