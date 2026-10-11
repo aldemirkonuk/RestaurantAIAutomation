@@ -30,6 +30,15 @@ vi.mock('../../contexts/AuthContext', () => ({
   }),
 }))
 
+// F-1259: this person's changes queued in other houses on this device.
+const sync = vi.hoisted(() => ({
+  waitingElsewhere: [] as Array<{ restaurantId: string; count: number }>,
+  refresh: null as null | ReturnType<typeof import('vitest').vi.fn>,
+}))
+vi.mock('../../hooks/useSyncManager', () => ({
+  useSyncManager: () => ({ waitingElsewhere: sync.waitingElsewhere, refresh: sync.refresh ?? undefined }),
+}))
+
 vi.mock('../../lib/mudavym/shellGround', () => ({
   useMudavymShell: () => ({ on: false }),
 }))
@@ -126,5 +135,31 @@ describe('RestaurantBranchSwitcher at phone width (F-1184)', () => {
     expect(note.className).not.toMatch(/\bleft-0\b/)
     expect(note.className).toMatch(/\bright-0\b/)
     expect(note.className).toMatch(/max-w-\[min\(18rem,calc\(100vw-2rem\)\)\]/)
+  })
+})
+
+describe('RestaurantBranchSwitcher: changes waiting in another house (F-1259)', () => {
+  beforeEach(() => {
+    activeRestaurantId = 'h-harbour'
+    pending = {}
+    setActiveRestaurantId.mockClear()
+    sync.waitingElsewhere = []
+    sync.refresh = null
+  })
+
+  it('says how many wait in each house, and one tap on that house switches there', async () => {
+    sync.waitingElsewhere = [{ restaurantId: 'h-moda', count: 2 }]
+    sync.refresh = vi.fn().mockResolvedValue(undefined)
+    render(ui())
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+
+    const moda = screen.getByRole('button', { name: /Moda/ })
+    expect(moda.textContent).toContain('2 waiting')
+    expect(screen.getByRole('button', { name: /Uplands/ }).textContent).not.toMatch(/waiting/)
+
+    fireEvent.click(moda)
+    expect(setActiveRestaurantId).toHaveBeenCalledWith('h-moda')
+    await act(async () => pending['h-moda'](true))
+    expect(sync.refresh).toHaveBeenCalledTimes(1)
   })
 })

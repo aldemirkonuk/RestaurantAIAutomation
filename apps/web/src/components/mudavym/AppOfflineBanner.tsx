@@ -19,7 +19,8 @@
  * GATED like every shell chrome piece: off, `OfflineBanner` unchanged.
  */
 
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
+import { AuthContext } from '../../contexts/AuthContext'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { useSyncManager } from '../../hooks/useSyncManager'
 import {
@@ -55,7 +56,62 @@ export function AppOfflineBanner() {
   return (
     <div className="mdv-offlinebar-stack">
       <HouseOfflineBanner />
+      <WaitingElsewhereNote />
       <DeviceStorageNote />
+    </div>
+  )
+}
+
+/**
+ * This person's changes queued in another house on this device (F-1259, the
+ * web sibling of F-407). Every queue reader is scoped to the current house,
+ * so after a switch they wait unseen until the person goes back; this names
+ * the house and switches to it in one tap. Without a known house name there
+ * is no switch to offer, only the count.
+ */
+function WaitingElsewhereNote() {
+  const { waitingElsewhere = [], refresh } = useSyncManager()
+  // The banner sits inside AuthProvider (App.tsx); a bare render has none.
+  const auth = useContext(AuthContext)
+  const [refused, setRefused] = useState<string | null>(null)
+  if (waitingElsewhere.length === 0) return null
+
+  return (
+    <div
+      className="mdv-offlinebar mdv-offlinebar--note mudavym"
+      role="status"
+      data-ux-key="shell.offline.waiting-elsewhere"
+    >
+      {waitingElsewhere.map((w) => {
+        const name = auth?.availableRestaurants.find((b) => b.id === w.restaurantId)?.name
+        return (
+          <div key={w.restaurantId}>
+            <span className="mdv-offlinebar__word">
+              {w.count} waiting in {name ?? 'another house'}
+            </span>
+            <span>
+              {' '}
+              &middot; {w.count === 1 ? 'It sends' : 'They send'} only from that house.{' '}
+            </span>
+            {auth && name && (
+              <button
+                type="button"
+                style={ACT}
+                onClick={() => {
+                  setRefused(null)
+                  void auth.setActiveRestaurantId(w.restaurantId).then((ok) => {
+                    if (ok) void refresh?.()
+                    else setRefused(w.restaurantId)
+                  })
+                }}
+              >
+                Switch to {name}
+              </button>
+            )}
+            {refused === w.restaurantId && <span> Couldn&rsquo;t open {name}.</span>}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -159,6 +215,7 @@ function HouseOfflineBanner() {
     discardNotSent,
     parkedCounts = [],
     discardNotSentOne,
+    parkedChanges = [],
   } = useSyncManager()
 
   // NOT SENT comes first (ADR 0241, OD-203 (a)): a change the server refused
@@ -201,7 +258,7 @@ function HouseOfflineBanner() {
           </div>
         ))}
         {rest > 0 && (
-          <div>
+          <div data-ux-key="shell.offline.not-sent.head">
             <span className="mdv-offlinebar__word">Not sent</span>
             <span>
               {' '}
@@ -214,20 +271,55 @@ function HouseOfflineBanner() {
               onClick={() => void retryNotSent?.()}
             >
               Try again
-            </button>{' '}
+            </button>
+            {parkedChanges.length > 1 && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  style={ACT}
+                  onClick={() => {
+                    // Only the rows shown, so the number named is the number removed.
+                    const ids = parkedChanges.map((c) => c.id)
+                    const n = ids.length
+                    if (window.confirm(`Discard all ${n} changes listed here? None of them was sent — they are kept only on this device and the server has not accepted them. Keep the paperwork for any delivery among them. This cannot be undone.`))
+                      void discardNotSent?.(ids)
+                  }}
+                >
+                  Discard all {parkedChanges.length}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {/* Each one by name, with its own Discard (F-1258): the strip used to
+            give a count and one Discard for all of them, door receipts
+            included, while /receiving discards one named receipt at a time. */}
+        {parkedChanges.map((c) => (
+          <div key={c.id} data-ux-key="shell.offline.not-sent.change">
+            <span>{c.label} </span>
+            {c.href && (
+              // Outside the router (App.tsx), so a plain link.
+              <>
+                <a style={ACT} href={c.href}>
+                  Open receiving
+                </a>{' '}
+              </>
+            )}
             <button
               type="button"
               style={ACT}
+              aria-label={`Discard ${c.label}`}
               onClick={() => {
-                const n = rest
-                if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? ${n === 1 ? 'It is' : 'They are'} kept only on this device and the server has not accepted them — keep the paperwork for any delivery among them. This cannot be undone.`))
-                  void discardNotSent?.()
+                const paperwork = c.href ? ' Keep the paperwork.' : ''
+                if (window.confirm(`Discard ${c.label}? It was not sent — it is kept only on this device.${paperwork} This cannot be undone.`))
+                  void discardNotSentOne?.(c.id)
               }}
             >
               Discard
             </button>
           </div>
-        )}
+        ))}
       </div>
     )
   }
@@ -242,8 +334,16 @@ function HouseOfflineBanner() {
             &middot; {pluralChange(pendingCount)} queued on this device — not sent, not
             confirmed. They will try to send once this device is back online.
           </span>
-        ) : (
+        ) : notSentCount > 0 ? null : (
           <span> &middot; nothing is queued.</span>
+        )}
+        {/* Parked changes are kept while offline too; "nothing is queued"
+            above them was untrue (F-1260). */}
+        {notSentCount > 0 && (
+          <span data-ux-key="shell.offline.not-sent-offline">
+            {' '}
+            &middot; {notSentCount} not sent, kept on this device.
+          </span>
         )}
       </div>
     )

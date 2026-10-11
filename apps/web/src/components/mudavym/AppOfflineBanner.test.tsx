@@ -16,9 +16,12 @@ type SyncState = {
   notSentCount?: number;
   stillTryingCount?: number;
   retryNotSent?: () => Promise<unknown>;
-  discardNotSent?: () => Promise<number>;
+  discardNotSent?: (ids?: string[]) => Promise<number>;
   parkedCounts?: Array<{ id: string; itemId: string; itemLabel: string; overtaken: boolean; message: string }>;
   discardNotSentOne?: (id: string) => Promise<void>;
+  parkedChanges?: Array<{ id: string; label: string; href?: string }>;
+  waitingElsewhere?: Array<{ restaurantId: string; count: number }>;
+  refresh?: () => Promise<void>;
 };
 
 const syncState = vi.hoisted(() => ({
@@ -50,6 +53,7 @@ vi.mock('../../lib/deviceStorage', async (importActual) => {
 });
 
 import { AppOfflineBanner } from './AppOfflineBanner';
+import { AuthContext, type AuthContextType } from '../../contexts/AuthContext';
 import { clearMudavymDesignCache } from '../../lib/mudavym/useMudavymDesign';
 
 beforeEach(() => {
@@ -93,6 +97,24 @@ describe('shell on (the default: live in code since 2026-09-25, no override, no 
     expect(screen.getByText(/3 changes queued on this device — not sent, not/)).toBeTruthy();
   });
 
+  it('F-1260: offline with not-sent changes says they are kept, never "nothing is queued"', () => {
+    syncState.current = {
+      isOnline: false, isSyncing: false, pendingCount: 0, lastError: null, notSentCount: 2,
+    };
+    render(<AppOfflineBanner />);
+    expect(screen.getByText('Offline')).toBeTruthy();
+    expect(screen.getByText(/2 not sent, kept on this device\./)).toBeTruthy();
+    expect(screen.queryByText(/nothing is queued/)).toBeNull();
+  });
+
+  it('F-1260: offline with queued and not-sent changes names both', () => {
+    syncState.current = {
+      isOnline: false, isSyncing: false, pendingCount: 1, lastError: null, notSentCount: 1,
+    };
+    const { container } = render(<AppOfflineBanner />);
+    expect(container.textContent).toMatch(/1 change queued on this device.*1 not sent, kept on this device\./);
+  });
+
   it('back online and sending: queued, sent, still not confirmed', () => {
     syncState.current = { isOnline: true, isSyncing: true, pendingCount: 1, lastError: null };
     render(<AppOfflineBanner />);
@@ -121,7 +143,7 @@ describe('shell on (the default: live in code since 2026-09-25, no override, no 
 });
 
 describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, never dropped', () => {
-  it('names the parked changes, and Try again / Discard reach the queue', () => {
+  it('names the parked changes, and Try again / Discard all N reach the queue', () => {
     const retryNotSent = vi.fn().mockResolvedValue({});
     const discardNotSent = vi.fn().mockResolvedValue(2);
     syncState.current = {
@@ -132,6 +154,11 @@ describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, n
       notSentCount: 2,
       retryNotSent,
       discardNotSent,
+      parkedChanges: [
+        { id: 'd1', label: 'Delivery PO-104', href: '/receiving' },
+        { id: 'v1', label: 'New vendor Ege Şarap' },
+      ],
+      discardNotSentOne: vi.fn(),
     };
     render(<AppOfflineBanner />);
     expect(screen.getByRole('alert').textContent).toMatch(/Not sent.*2 changes could not be saved and are kept on this device/);
@@ -140,15 +167,70 @@ describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, n
     expect(retryNotSent).toHaveBeenCalledTimes(1);
 
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard all 2' }));
     expect(discardNotSent).not.toHaveBeenCalled();
     confirm.mockReturnValueOnce(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
-    expect(discardNotSent).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard all 2' }));
+    // Only the rows shown: a change parked after the strip was drawn stays.
+    expect(discardNotSent).toHaveBeenCalledWith(['d1', 'v1']);
     // Refused door receipts park here too (ADR 0241's 2026-09-29 amendment,
-    // PR #535): the confirm must say the server has not accepted them.
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/kept only on this device and the server has not accepted them — keep the paperwork/));
+    // PR #535): the confirm must name the count and say the server has not
+    // accepted them.
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/^Discard all 2 changes listed here\?.*the server has not accepted them\. Keep the paperwork/));
     confirm.mockRestore();
+  });
+
+  it('F-1258: lists each parked change by name with its own Discard; a door receipt links to /receiving', () => {
+    const discardNotSent = vi.fn();
+    const discardNotSentOne = vi.fn().mockResolvedValue(undefined);
+    syncState.current = {
+      isOnline: true,
+      isSyncing: false,
+      pendingCount: 0,
+      lastError: null,
+      notSentCount: 2,
+      retryNotSent: vi.fn(),
+      discardNotSent,
+      discardNotSentOne,
+      parkedChanges: [
+        { id: 'd1', label: 'Delivery PO-104', href: '/receiving' },
+        { id: 'v1', label: 'New vendor Ege Şarap' },
+      ],
+    };
+    render(<AppOfflineBanner />);
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('Delivery PO-104');
+    expect(alert.textContent).toContain('New vendor Ege Şarap');
+    expect(screen.getByRole('link', { name: 'Open receiving' }).getAttribute('href')).toBe('/receiving');
+    // Exactly one receiving link: the vendor row is not a door receipt.
+    expect(screen.getAllByRole('link', { name: 'Open receiving' })).toHaveLength(1);
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard Delivery PO-104' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/^Discard Delivery PO-104\? It was not sent.*Keep the paperwork/));
+    expect(discardNotSentOne).toHaveBeenCalledWith('d1');
+    expect(discardNotSent).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('F-1258: one parked change has no discard-all, only its own named Discard', () => {
+    syncState.current = {
+      isOnline: true,
+      isSyncing: false,
+      pendingCount: 0,
+      lastError: null,
+      notSentCount: 1,
+      retryNotSent: vi.fn(),
+      discardNotSent: vi.fn(),
+      discardNotSentOne: vi.fn(),
+      parkedChanges: [{ id: 'v1', label: 'New vendor Ege Şarap' }],
+    };
+    render(<AppOfflineBanner />);
+    expect(screen.queryByRole('button', { name: /^Discard all/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /Discard/ }).map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Discard New vendor Ege Şarap',
+    ]);
   });
 
   it('a change that keeps failing is "still trying", with a way to try now', () => {
@@ -321,5 +403,58 @@ describe('F-831: a refused count is named by its item, in the house\'s words', (
 
     expect(screen.getByRole('alert').textContent).toMatch(/Not sent.*2 changes could not be saved/);
     expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+  });
+});
+
+describe('F-1259: changes queued in another house are named, with a one-tap switch', () => {
+  const auth = (setActiveRestaurantId: (id: string) => Promise<boolean>) =>
+    ({
+      availableRestaurants: [
+        { id: 'h-harbour', name: 'Harbour' },
+        { id: 'h-moda', name: 'Moda' },
+      ],
+      activeRestaurantId: 'h-harbour',
+      setActiveRestaurantId,
+    }) as unknown as AuthContextType;
+
+  it('says how many wait in which house, and switches there in one tap', async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const setActiveRestaurantId = vi.fn().mockResolvedValue(true);
+    syncState.current = {
+      isOnline: true, isSyncing: false, pendingCount: 0, lastError: null,
+      waitingElsewhere: [{ restaurantId: 'h-moda', count: 3 }],
+      refresh,
+    };
+    render(
+      <AuthContext.Provider value={auth(setActiveRestaurantId)}>
+        <AppOfflineBanner />
+      </AuthContext.Provider>,
+    );
+    expect(screen.getByText('3 waiting in Moda')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to Moda' }));
+    expect(setActiveRestaurantId).toHaveBeenCalledWith('h-moda');
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  });
+
+  it('a refused switch says so and stays put', async () => {
+    const refresh = vi.fn();
+    syncState.current = {
+      isOnline: true, isSyncing: false, pendingCount: 0, lastError: null,
+      waitingElsewhere: [{ restaurantId: 'h-moda', count: 1 }],
+      refresh,
+    };
+    render(
+      <AuthContext.Provider value={auth(vi.fn().mockResolvedValue(false))}>
+        <AppOfflineBanner />
+      </AuthContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to Moda' }));
+    expect(await screen.findByText(/Couldn.t open Moda\./)).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('nothing elsewhere: no line', () => {
+    const { container } = render(<AppOfflineBanner />);
+    expect(container.querySelector('[data-ux-key="shell.offline.waiting-elsewhere"]')).toBeNull();
   });
 });
