@@ -1,4 +1,5 @@
 import {
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -10,6 +11,10 @@ import {
   Min,
 } from "class-validator";
 import { Transform } from "class-transformer";
+import {
+  MENU_CATEGORY_VOCABULARY,
+  type MenuCategory,
+} from "../../menus/wine-extract-item.interface";
 
 export class CreateWineSubmissionDto {
   @IsString()
@@ -49,6 +54,15 @@ export class CreateWineSubmissionDto {
   @IsOptional()
   @IsString()
   primaryType?: string;
+
+  /**
+   * F-1221: a drink that is not a wine (beer, spirit, cider, …), as one of
+   * MENU_CATEGORY_VOCABULARY. Written to `data_enrichment.menu_category`, the
+   * beverage_kind trigger's second input; never part of the identity.
+   */
+  @IsOptional()
+  @IsIn(MENU_CATEGORY_VOCABULARY)
+  menuCategory?: MenuCategory;
 
   @IsOptional()
   @IsString()

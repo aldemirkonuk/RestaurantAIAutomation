@@ -299,3 +299,41 @@ describe('PhotographLabel — a reading the person walked away from (F-211)', ()
     expect(screen.getByTestId('label-take-photo')).toBeInTheDocument();
   });
 });
+
+describe('PhotographLabel — a drink kind typed in Style is sent as the kind, not a wine (F-1221)', () => {
+  async function typeStyle(v: string) {
+    fireEvent.click(screen.getByTestId('label-field-wine_type'));
+    const input = screen.getByTestId('label-field-edit-wine_type');
+    fireEvent.change(input, { target: { value: v } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+  }
+
+  it.each([
+    ['beer', 'beer'],
+    ['Rakı', 'spirit'],
+    ['Single malt whisky', 'whiskey'],
+  ])('Style "%s" is sent as the %s kind, with no wine style', async (typed, category) => {
+    mockScan.mockResolvedValue(wine());
+    mockSubmit.mockResolvedValue({ id: 's1', status: 'pending' });
+    mount();
+    await capture();
+    await typeStyle(typed);
+    expect(screen.getByTestId('label-drink-kind')).toHaveTextContent(/not\s+as a wine/);
+    fireEvent.click(screen.getByTestId('label-confirm-yes'));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    const sent = mockSubmit.mock.calls[0][0];
+    expect(sent.menuCategory).toBe(category);
+    expect(sent.primaryType).toBeUndefined();
+  });
+
+  it('a wine style stays the wine style and names no other kind', async () => {
+    mockScan.mockResolvedValue(wine());
+    mockSubmit.mockResolvedValue({ id: 's1', status: 'pending' });
+    mount();
+    await capture();
+    expect(screen.queryByTestId('label-drink-kind')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('label-confirm-yes'));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    expect(mockSubmit.mock.calls[0][0]).toMatchObject({ primaryType: 'red', menuCategory: undefined });
+  });
+});

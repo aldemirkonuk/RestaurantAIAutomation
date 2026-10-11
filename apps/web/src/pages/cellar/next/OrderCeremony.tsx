@@ -76,6 +76,12 @@ export interface OrderCeremonyProps {
   sent: boolean;
   /** Non-null when the last attempt failed; lets the person try again. */
   errorMessage?: string | null;
+  /**
+   * True when the failed attempt got no answer (a timeout or a 5xx), so the
+   * order may have been placed: the note then says to check, never that
+   * nothing was sent (F-1218).
+   */
+  errorUnconfirmed?: boolean;
   disabled?: boolean;
 }
 
@@ -94,6 +100,7 @@ export default function OrderCeremony({
   pending,
   sent,
   errorMessage = null,
+  errorUnconfirmed = false,
   disabled = false,
 }: OrderCeremonyProps) {
   // `hold`'s own extra step: true from the moment the hold completes until
@@ -145,7 +152,9 @@ export default function OrderCeremony({
 
   const errorNote = errorMessage ? (
     <p role="alert" className="cl-note" style={{ margin: '6px 0 0' }} data-testid="order-ceremony-error">
-      Nothing was sent — {errorMessage}. Try again when ready.
+      {errorUnconfirmed
+        ? `No answer came back — ${errorMessage}. Check Orders before you try again.`
+        : `Nothing was sent — ${errorMessage}. Try again when ready.`}
     </p>
   ) : null;
 

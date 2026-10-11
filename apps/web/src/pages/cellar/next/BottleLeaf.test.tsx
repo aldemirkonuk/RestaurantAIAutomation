@@ -32,6 +32,23 @@ vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
 vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
 }));
+// F-1218: the order POST, answered per test; the rest of the client is real.
+const post = vi.hoisted(() => vi.fn());
+vi.mock('../../../services/api/client', async (orig) => {
+  const real = await orig<typeof import('../../../services/api/client')>();
+  return { ...real, apiClient: { ...real.apiClient, post } };
+});
+// The hold gesture is OrderCeremony.test.tsx's own; here one press places it.
+vi.mock('./OrderCeremony', () => ({
+  default: (p: { onApprove: () => Promise<unknown>; sent: boolean; approvedLabel: string; label: string }) =>
+    p.sent ? (
+      <span data-testid="order-ceremony-sent">{p.approvedLabel}</span>
+    ) : (
+      <button type="button" onClick={() => void Promise.resolve(p.onApprove()).catch(() => {})}>
+        {p.label}
+      </button>
+    ),
+}));
 // The lock list (ADR 0193 round 3, L8): read, and empty unless a test says otherwise.
 const listPriceLocks = vi.fn(async () => ({
   restaurantId: 'r1',
@@ -455,5 +472,39 @@ describe('BottleLeaf — the last-counted day reads the house way (F-1100)', () 
     } finally {
       setHouseLocale('en-US');
     }
+  });
+});
+
+describe('BottleLeaf — an order placed here says it is waiting, not sent (F-1218)', () => {
+  beforeEach(() => post.mockReset());
+
+  async function placeOrder() {
+    const { container } = mount(bottle({ cellar: cellarRow({ providerId: 'p1' }) }));
+    fireEvent.change(container.querySelector('#cl-order-qty')!, { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: /Hold to order 4/ }));
+  }
+
+  it('a new PENDING order is placed and waiting — never "sent to the vendor"', async () => {
+    post.mockResolvedValueOnce({ data: { id: 'o1', status: 'PENDING', quantity: 4 } });
+    await placeOrder();
+    const line = await screen.findByText(/Order for 4 bottles placed/);
+    expect(line.textContent).toMatch(/waiting on Orders to be approved and sent — nothing has gone to the vendor yet/);
+    expect(document.body.textContent).not.toMatch(/sent to the vendor/i);
+    expect(screen.getByTestId('order-ceremony-sent')).toHaveTextContent('Order placed');
+  });
+
+  it('an open order for the same wine and vendor is named, with its new count', async () => {
+    post.mockResolvedValueOnce({ data: { id: 'o0', status: 'PENDING', quantity: 4, mergedIntoOpenOrder: true } });
+    await placeOrder();
+    const line = await screen.findByText(/already an open order for this wine to this vendor/);
+    expect(line.textContent).toMatch(/now says 4 bottles instead of a second one/);
+  });
+
+  it('no answer back is not called a refusal', async () => {
+    post.mockRejectedValueOnce(Object.assign(new Error('Request failed with status code 504'), { response: { status: 504 } }));
+    await placeOrder();
+    const line = await screen.findByText(/No answer came back/);
+    expect(line.textContent).toMatch(/Check Orders before you try again/);
+    expect(document.body.textContent).not.toMatch(/the order was refused/);
   });
 });

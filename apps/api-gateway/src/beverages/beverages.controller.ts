@@ -20,6 +20,9 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { BeveragesService } from "./beverages.service";
 import { isRegisterId } from "../cellar/cellar-registers";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
+import type { RegisterResult } from "./house-record";
+import type { RowRecord } from "./row-record";
 import {
   CreateCocktailDto,
   ListBeveragesQueryDto,
@@ -64,6 +67,75 @@ import {
  * garnish, section, description) and its recipe stay open to anyone of the
  * house, so a bartender can still write down how a drink is made.
  */
+/**
+ * The books that say what the house PAID: invoices, orders and quotes. The
+ * menu (what the floor sells at) and the till stay open to everyone.
+ */
+const BUYING_BOOKS = new Set(["invoice", "order", "quote"]);
+
+/**
+ * A register as this role may read it (F-1220): the same rule as the wine
+ * inventory (`inventoryForRole`, ADR 0145, F-562) — staff see stock and the
+ * menu, never what the house paid. The buying figures are OMITTED, never
+ * nulled, because a null reads as "nothing recorded".
+ */
+export function registerForRole<T extends RegisterResult>(
+  result: T,
+  role: string | null | undefined,
+): T {
+  if (holdsHouseMoney(role ?? null)) return result;
+  return {
+    ...result,
+    rows: result.rows.map((row) => {
+      if (!row.house) return row;
+      const house: Record<string, any> = { ...row.house };
+      if (house.bought) {
+        const bought = { ...house.bought };
+        delete bought.paidTotal;
+        delete bought.lastUnitPrice;
+        house.bought = bought;
+      }
+      for (const k of ["ordered", "quoted"] as const) {
+        if (house[k]) {
+          const book = { ...house[k] };
+          delete book.lastPrice;
+          house[k] = book;
+        }
+      }
+      return { ...row, house: house as typeof row.house };
+    }),
+  };
+}
+
+/**
+ * The record behind one row, as this role may read it (F-1220): for a reader
+ * who does not hold the house's money, the buying books keep their dates,
+ * counts and lines but lose their price series and each line's price.
+ */
+export function rowRecordForRole(
+  record: RowRecord,
+  role: string | null | undefined,
+): RowRecord {
+  if (holdsHouseMoney(role ?? null)) return record;
+  return {
+    ...record,
+    books: record.books.map((b) =>
+      BUYING_BOOKS.has(b.book)
+        ? {
+            ...b,
+            price: [],
+            ledger: b.ledger.map((e) => {
+              const line: Record<string, any> = { ...e };
+              delete line.unitPrice;
+              delete line.total;
+              return line as typeof e;
+            }),
+          }
+        : b,
+    ),
+  };
+}
+
 @ApiTags("beverages")
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -134,6 +206,7 @@ export class BeveragesController {
     @Param("restaurantId") restaurantId: string,
     @Param("register") register: string,
     @Query() query: ReadRegisterQueryDto,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     // Validated against the vocabulary, never trusted: an unknown register is a
     // 400 rather than a read that silently drops its filter — the exact bug
@@ -151,11 +224,14 @@ export class BeveragesController {
       );
     }
     try {
-      return await this.beverages.readRegister(restaurantId, register, {
-        search: query.search,
-        catalogueLimit: query.catalogueLimit ?? 400,
-        ledgerLimit: query.ledgerLimit ?? 600,
-      });
+      return registerForRole(
+        await this.beverages.readRegister(restaurantId, register, {
+          search: query.search,
+          catalogueLimit: query.catalogueLimit ?? 400,
+          ledgerLimit: query.ledgerLimit ?? 600,
+        }),
+        user?.role,
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -178,9 +254,13 @@ export class BeveragesController {
   async readRowRecord(
     @Param("restaurantId") restaurantId: string,
     @Query() query: ReadRowRecordQueryDto,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.beverages.readRowRecord(restaurantId, query.label);
+      return rowRecordForRole(
+        await this.beverages.readRowRecord(restaurantId, query.label),
+        user?.role,
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

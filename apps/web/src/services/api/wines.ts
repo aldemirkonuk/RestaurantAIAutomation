@@ -157,6 +157,8 @@ export interface WineSubmissionInput {
   vintage?: number | null
   priceReference?: number | null
   primaryType?: string
+  /** A drink that is not a wine, as the library's menu category word (F-1221). */
+  menuCategory?: string
   grapeVariety?: string
   country?: string
   region?: string

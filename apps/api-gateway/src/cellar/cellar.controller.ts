@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -153,8 +154,19 @@ export class CellarController {
   async write(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: SetCellarRegistersDto,
-    @Req() req: { user?: { userId?: string } },
+    @Req() req: { user?: { userId?: string; role?: string } },
   ) {
+    // F-1219: switching a register on or off redraws the whole cellar (a
+    // register leaves the spine, and the cellar can be renamed Bar or Drinks),
+    // so it is house setup: the same owner/manager/admin gate as the
+    // order-hold ceremony beside it (cellar-settings.service.ts), checked
+    // before anything is read or written.
+    const role = req.user?.role?.toLowerCase() ?? null;
+    if (role !== "owner" && role !== "manager" && role !== "admin") {
+      throw new ForbiddenException(
+        "Only an owner or a manager of this house may change which registers the cellar carries. Nothing was changed.",
+      );
+    }
     try {
       // The actor is taken from the JWT, never from the body — the body cannot
       // name who decided this any more than it can name which restaurant.
