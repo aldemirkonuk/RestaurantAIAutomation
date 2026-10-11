@@ -2392,6 +2392,23 @@ export class PosHubService {
             affected.add(inventoryId);
             for (let i = 0; i < bottleLines.length; i++) booked();
             if (bottleDiff > 0 && bottleLines[0]) {
+              // F-1244: an earlier correction down may have returned bottles
+              // and failed its mark. This correction ends that cut's retry
+              // (it is no longer the latest), so retry it first, before the
+              // difference row exists for the mark to touch. Both idempotent.
+              const cutKey = ledger.lastCut.get(inventoryId);
+              if (
+                cutKey &&
+                (await reverseConsumption(inventoryId, name, cutKey, true)) &&
+                hadBottles > 0
+              ) {
+                await consume(
+                  bottleLines[0],
+                  { mode: "whole_bottle" },
+                  hadBottles,
+                  cutKey,
+                );
+              }
               await consume(
                 bottleLines[0],
                 { mode: "whole_bottle" },
