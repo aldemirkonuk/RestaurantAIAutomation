@@ -334,6 +334,8 @@ function makeService(opts: Opts = {}) {
         select: () => q,
         eq: () => q,
         in: async () => ({ data: [], error: null }),
+        // F-1195: a file import reads which till the house has; none here.
+        limit: async () => ({ data: [], error: null }),
         upsert: async (row: Row) => {
           if (table === "pos_checks") calls.checks.push(row);
           return { error: null };
