@@ -116,11 +116,21 @@ describe("the flag", () => {
 });
 
 describe("armed, and every legitimate no-op carries its reason", () => {
+  // The fixture was read on 2026-09-05 and its rows carry `max_age_days`, so
+  // the verdicts below hold on the day it was read, not on whatever day the
+  // suite runs. Pinned to that day: on 2026-10-11 (UTC) the newest observation
+  // passed 70 days and the series turned stale under a test that is about
+  // something else (F-1091). Only Date is faked; promises run as they do.
   const withFlag = async (fn: () => Promise<void>) => {
     process.env[COMMODITY_ALERT_DARK_FLAG] = "true";
+    jest.useFakeTimers({
+      now: new Date("2026-09-05T12:00:00.000Z"),
+      doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+    });
     try {
       await fn();
     } finally {
+      jest.useRealTimers();
       delete process.env[COMMODITY_ALERT_DARK_FLAG];
     }
   };
