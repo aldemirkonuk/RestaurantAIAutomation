@@ -71,7 +71,8 @@ export async function houseCountryChanged(house: string): Promise<void> {
   try {
     const h = await settingsApi.houseCurrency()
     if (house !== activeHouse()) return
-    reads.set(house, Promise.resolve(h?.readable ? groupMarkForCountry(countryByName(h.country)?.code) : null))
+    // The cache holds the country code (F-1178), and the mark is derived from it.
+    reads.set(house, Promise.resolve(h?.readable ? (countryByName(h.country)?.code ?? null) : null))
     setHouseLocale(h?.readable ? localeOfCountry(h.country) : null)
     setHouseCurrency(h?.readable ? h.code : undefined)
   } catch {
