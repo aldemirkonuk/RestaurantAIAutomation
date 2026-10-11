@@ -1,5 +1,6 @@
 import type { CalendarEvent } from "@/api/types";
-import { eventDayLabel, eventTimeLabel, eventTitle } from "@/components/team/teamEvents";
+import { eventDayLabel, eventTimeLabel, eventTitle, teamIsQuiet } from "@/components/team/teamEvents";
+import { readState } from "@/components/today/pulseStripView";
 
 /**
  * F-1071: `/calendar/today` and `/calendar/upcoming` send the gateway's
@@ -47,5 +48,39 @@ describe("Team tab calendar lines read the gateway's shape (F-1071)", () => {
   it("names the event by its title, then its kind", () => {
     expect(eventTitle(wire({}))).toBe("Wine delivery");
     expect(eventTitle(wire({ title: undefined }))).toBe("delivery");
+  });
+});
+
+describe("Team tab calendar reads are honest about failure (F-1375)", () => {
+  const failed = { isLoading: false, isError: true, data: undefined };
+  const empty = { isLoading: false, isError: false, data: [] };
+
+  it("reads a failed calendar read as failed, not as an empty day", () => {
+    expect(readState(failed)).toBe("failed");
+    expect(readState(empty)).toBe("ready");
+  });
+
+  it("is not quiet when the rota failed and the calendar reads failed", () => {
+    expect(
+      teamIsQuiet({ tonight: "error", today: "failed", todayCount: 0, upcoming: "failed", upcomingCount: 0 }),
+    ).toBe(false);
+  });
+
+  it("is not quiet when only one calendar read failed", () => {
+    expect(
+      teamIsQuiet({ tonight: "none", today: "ready", todayCount: 0, upcoming: "failed", upcomingCount: 0 }),
+    ).toBe(false);
+    expect(
+      teamIsQuiet({ tonight: "none", today: "failed", todayCount: 0, upcoming: "ready", upcomingCount: 0 }),
+    ).toBe(false);
+  });
+
+  it("is quiet only when every read answered with nothing", () => {
+    expect(
+      teamIsQuiet({ tonight: "none", today: "ready", todayCount: 0, upcoming: "ready", upcomingCount: 0 }),
+    ).toBe(true);
+    expect(
+      teamIsQuiet({ tonight: "none", today: "ready", todayCount: 1, upcoming: "ready", upcomingCount: 0 }),
+    ).toBe(false);
   });
 });

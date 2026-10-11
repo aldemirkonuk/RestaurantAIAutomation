@@ -62,6 +62,7 @@ import { ArrowRight, Check, Hand, Lock, PenLine, Undo2, UserRound } from 'lucide
 import { HoldToApprove } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '@/services/api/client';
 import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import { DELIVERY_WITHOUT_ORDER, dispositionOf } from './one-tap-acts';
 import {
   armToDraw,
@@ -128,6 +129,11 @@ export interface FailureVM {
   message: string;
   /** 403/401 — understood and refused. Retrying changes nothing. */
   forbidden: boolean;
+  /**
+   * A timeout, a dropped reply or a 5xx: the write may have landed (F-1377,
+   * the F-1083 split). Never said as "unchanged"; the rail is read again.
+   */
+  unconfirmed: boolean;
 }
 
 /**
@@ -147,6 +153,9 @@ export type Register =
  * the callers that already do so.
  */
 function notDone(what: string, failure: FailureVM, outcome: string): string {
+  if (failure.unconfirmed) {
+    return `${what} could not be confirmed — no answer came back, so it may have gone through. The rail has been read again; check it before trying again.`;
+  }
   if (failure.status === null) return `${what} didn’t go through — it couldn’t be reached just now. ${outcome}`;
   if (failure.status >= 500) return `${what} didn’t go through — something went wrong on our side. ${outcome}`;
   return `${what} wasn’t accepted. ${outcome}`;
@@ -155,7 +164,12 @@ function notDone(what: string, failure: FailureVM, outcome: string): string {
 function failureOf(error: unknown): FailureVM {
   const raw = (error as { response?: { status?: unknown } } | null)?.response?.status;
   const status = typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
-  return { status, message: getErrorMessage(error), forbidden: status === 403 || status === 401 };
+  return {
+    status,
+    message: getErrorMessage(error),
+    forbidden: status === 403 || status === 401,
+    unconfirmed: writeOutcomeUnknown(error),
+  };
 }
 
 function rowsOf(payload: unknown): OneTapAction[] {
@@ -196,6 +210,7 @@ export interface OneTapDesk {
 export function useOneTapActions(restaurantId: string | null): OneTapDesk {
   const [register, setRegister] = useState<Register>({ state: 'loading' });
   const [failureNote, setFailureNote] = useState<string | null>(null);
+  const { keyFor: createKeyFor, renew: renewCreateKey } = useDraftWriteKey('one-tap');
   const tenant = useRef<string | null>(restaurantId);
   const alive = useRef(true);
 
@@ -260,7 +275,9 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         setFailureNote(alreadyDeliveredWords(refused));
         return null;
       }
-      const failure = failureOf(err);
+      // Minting a seal changes nothing on the rail, so a lost answer is said
+      // as not done, never as a write that may have landed (F-1377).
+      const failure = { ...failureOf(err), unconfirmed: false };
       setFailureNote(
         failure.status === 400 || failure.status === 403
           ? failure.message
@@ -308,6 +325,7 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
             ? failure.message
             : notDone('Marking it done', failure, 'The action is unchanged.'),
         );
+        if (failure.unconfirmed) await read();
         throw err;
       }
     },
@@ -321,9 +339,9 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         await apiClient.post(`/one-tap-actions/${id}/cancel`, {});
         await read();
       } catch (err) {
-        setFailureNote(
-          notDone('Ruling it out', failureOf(err), 'The action is unchanged.'),
-        );
+        const failure = failureOf(err);
+        setFailureNote(notDone('Ruling it out', failure, 'The action is unchanged.'));
+        if (failure.unconfirmed) await read();
         throw err;
       }
     },
@@ -337,21 +355,29 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         // No restaurantId and no author in the body on purpose: the gateway
         // takes both from the token (`one-tap-actions.controller.ts:146`), and
         // an id sent from a browser is an id a browser could change.
-        await apiClient.post('/one-tap-actions', {
+        const body = {
           title: input.title,
           description: input.description || undefined,
           actionUrl: input.actionUrl || undefined,
           actionType: 'custom',
           priority: input.priority,
           icon: input.icon || undefined,
+        };
+        // One key per draft (F-1377): a retry after a lost answer is answered
+        // with the action already written, not a second one on the rail.
+        await apiClient.post('/one-tap-actions', body, {
+          headers: { 'Idempotency-Key': createKeyFor(body) },
         });
+        renewCreateKey();
         await read();
       } catch (err) {
-        setFailureNote(notDone('Saving the action', failureOf(err), 'Nothing was created.'));
+        const failure = failureOf(err);
+        setFailureNote(notDone('Saving the action', failure, 'Nothing was created.'));
+        if (failure.unconfirmed) await read();
         throw err;
       }
     },
-    [read],
+    [read, createKeyFor, renewCreateKey],
   );
 
   /**
@@ -380,6 +406,7 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
             ? 'This account may not change actions on this rail. The action is unchanged.'
             : notDone('The change', failure, 'The action is unchanged.'),
         );
+        if (failure.unconfirmed) await read();
         throw err;
       }
     },
@@ -399,6 +426,7 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
             ? 'This account may not take actions off this rail. It is still there.'
             : notDone('Taking it off the rail', failure, 'It is still there.'),
         );
+        if (failure.unconfirmed) await read();
         throw err;
       }
     },

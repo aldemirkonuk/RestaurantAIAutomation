@@ -23,6 +23,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { AxiosError } from 'axios';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 
@@ -485,6 +486,7 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
           actionType: 'custom',
           priority: 'medium',
         }),
+        { headers: { 'Idempotency-Key': expect.any(String) } },
       ),
     );
   });
@@ -661,7 +663,7 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     expect(within(panel).queryByText(/Network Error/)).not.toBeInTheDocument();
   });
 
-  it('says a breakage on our side as one, never the server’s own text', async () => {
+  it('never says a 5xx left the action unchanged; it may have landed, so the rail is read again (F-1377)', async () => {
     serve([houseRaised]);
     api.post.mockRejectedValue(
       Object.assign(new Error('relation "one_tap_actions" does not exist'), { response: { status: 500 } }),
@@ -669,13 +671,44 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     draw();
     const panel = screen.getByLabelText('One-tap actions');
     await waitFor(() => expect(within(panel).getByText('Reorder the Rioja')).toBeInTheDocument());
+    const readsBefore = api.get.mock.calls.filter((c: unknown[]) => c[0] === '/one-tap-actions').length;
     fireEvent.click(within(panel).getByRole('button', { name: 'Undo — rule it out' }));
     expect(
       await within(panel).findByText(
-        'Ruling it out didn’t go through — something went wrong on our side. The action is unchanged.',
+        'Ruling it out could not be confirmed — no answer came back, so it may have gone through. The rail has been read again; check it before trying again.',
       ),
     ).toBeInTheDocument();
+    expect(within(panel).queryByText(/unchanged/)).not.toBeInTheDocument();
     expect(within(panel).queryByText(/relation|one_tap_actions|500/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        api.get.mock.calls.filter((c: unknown[]) => c[0] === '/one-tap-actions').length,
+      ).toBeGreaterThan(readsBefore),
+    );
+  });
+
+  it('keys the create, and a timed-out create is not "nothing was created" (F-1377)', async () => {
+    serve([]);
+    api.post.mockRejectedValue(
+      new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED', undefined, {}),
+    );
+    draw();
+    await waitFor(() => expect(api.get).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('one-tap-open-sheet'));
+    fireEvent.change(screen.getByTestId('one-tap-title'), {
+      target: { value: 'Chase the Chablis invoice' },
+    });
+    fireEvent.click(screen.getByTestId('one-tap-save'));
+    expect(
+      (await screen.findAllByText(/Saving the action could not be confirmed/)).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/Nothing was created/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/timeout of 30000ms/)).not.toBeInTheDocument();
+    const creates = api.post.mock.calls.filter((c: unknown[]) => c[0] === '/one-tap-actions');
+    expect(creates).toHaveLength(1);
+    expect(creates[0][2]).toEqual({
+      headers: { 'Idempotency-Key': expect.stringMatching(/^one-tap:/) },
+    });
   });
 
   it('says a real empty desk in words', async () => {

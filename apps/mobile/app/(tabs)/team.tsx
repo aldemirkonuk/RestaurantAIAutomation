@@ -4,6 +4,7 @@ import { AppText } from "@/components/ui/AppText";
 import { Card, Hairline, Screen } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, FreshnessLabel } from "@/components/ui/StateViews";
+import { PressableScale } from "@/components/ui/PressableScale";
 import { color, space } from "@/design/tokens";
 import {
   useHouseMoneyFrame,
@@ -14,7 +15,15 @@ import {
   useUpcomingSchedule,
 } from "@/api/queries";
 import { readsFullRota, resolveTonight, seesFullRota } from "@/components/team/teamTonight";
-import { eventDayLabel, eventTimeLabel, eventTitle } from "@/components/team/teamEvents";
+import {
+  TODAY_CALENDAR_READ_FAILED,
+  UPCOMING_CALENDAR_READ_FAILED,
+  eventDayLabel,
+  eventTimeLabel,
+  eventTitle,
+  teamIsQuiet,
+} from "@/components/team/teamEvents";
+import { readState } from "@/components/today/pulseStripView";
 import { useSession } from "@/state/session";
 import { houseClock } from "@/lib/houseMoney";
 import { houseDateKey } from "@/lib/houseDate";
@@ -43,6 +52,9 @@ export default function TeamScreen() {
   }, [replyZone, houseZone]);
   const todayEvents = useTodaySchedule();
   const upcoming = useUpcomingSchedule();
+  // F-1375: a failed calendar read is said as failed, never as "no events".
+  const todayRead = readState(todayEvents);
+  const upcomingRead = readState(upcoming);
 
   const memberName = useMemo(() => {
     const map = new Map<string, string>();
@@ -134,8 +146,10 @@ export default function TeamScreen() {
           <AppText variant="caption" tone="tertiary">
             Today at the restaurant
           </AppText>
-          {todayEvents.isLoading && !todayEvents.data ? (
+          {todayRead === "loading" ? (
             <Skeleton width={210} height={15} />
+          ) : todayRead === "failed" ? (
+            <CalendarReadFailed message={TODAY_CALENDAR_READ_FAILED} onRetry={() => void todayEvents.refetch()} />
           ) : (todayEvents.data ?? []).length === 0 ? (
             <AppText variant="footnote" tone="tertiary">
               No events on today's calendar.
@@ -160,7 +174,14 @@ export default function TeamScreen() {
         </Card>
 
         {/* Coming up */}
-        {(upcoming.data ?? []).length > 0 ? (
+        {upcomingRead === "failed" ? (
+          <Card style={{ gap: space.sm }}>
+            <AppText variant="caption" tone="tertiary">
+              Coming up
+            </AppText>
+            <CalendarReadFailed message={UPCOMING_CALENDAR_READ_FAILED} onRetry={() => void upcoming.refetch()} />
+          </Card>
+        ) : (upcoming.data ?? []).length > 0 ? (
           <Card style={{ gap: space.sm }}>
             <AppText variant="caption" tone="tertiary">
               Coming up
@@ -190,7 +211,13 @@ export default function TeamScreen() {
           </Card>
         ) : null}
 
-        {tonight.kind === "error" && (todayEvents.data ?? []).length === 0 && (upcoming.data ?? []).length === 0 ? (
+        {teamIsQuiet({
+          tonight: tonight.kind,
+          today: todayRead,
+          todayCount: (todayEvents.data ?? []).length,
+          upcoming: upcomingRead,
+          upcomingCount: (upcoming.data ?? []).length,
+        }) ? (
           <EmptyState
             title="Quiet in here"
             message="Schedule shifts and events from the web dashboard; they show up here live."
@@ -198,5 +225,21 @@ export default function TeamScreen() {
         ) : null}
       </ScrollView>
     </Screen>
+  );
+}
+
+/** A calendar read that failed, with a way to ask again (F-1375). */
+function CalendarReadFailed({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View style={{ gap: space.xs }}>
+      <AppText variant="footnote" tone="secondary">
+        {message}
+      </AppText>
+      <PressableScale onPress={onRetry} accessibilityRole="button">
+        <AppText variant="caption" style={{ color: color.wine }}>
+          Try again
+        </AppText>
+      </PressableScale>
+    </View>
   );
 }

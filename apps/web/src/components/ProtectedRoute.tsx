@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { ShieldAlert, ArrowLeft } from 'lucide-react'
+import { ShieldAlert, ArrowLeft, WifiOff } from 'lucide-react'
 import { holdJoin, rememberJoin } from '../lib/joinResume'
 
 type HouseRole = 'owner' | 'manager' | 'staff'
@@ -31,7 +31,7 @@ export function ProtectedRoute({
   redirectTo = '/login',
   houseOptional = false,
 }: ProtectedRouteProps) {
-  const { user, loading, isAuthenticated } = useAuth()
+  const { user, loading, isAuthenticated, unreachable, retrySession } = useAuth()
   const location = useLocation()
 
   // Loading State
@@ -44,6 +44,33 @@ export function ProtectedRoute({
             <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin" />
           </div>
           <p className="text-slate-500 font-medium">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Signed in on this device, but Mudavym could not be reached to read the
+  // session (F-1378, rehit of F-172). The sign-in form would tell the person
+  // they were signed out, which they were not.
+  if (!isAuthenticated && unreachable) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div
+          role="alert"
+          className="bg-white rounded-2xl border border-slate-200 shadow-card p-8 max-w-md w-full text-center"
+        >
+          <div className="w-16 h-16 mx-auto mb-6 bg-slate-100 rounded-2xl flex items-center justify-center">
+            <WifiOff className="w-8 h-8 text-slate-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">
+            Mudavym can't be reached — you're still signed in
+          </h2>
+          <p className="text-slate-500 mb-8">
+            Nothing on this device was lost. Check the connection, then try again.
+          </p>
+          <button type="button" onClick={() => retrySession?.()} className="btn-primary w-full justify-center">
+            Try again
+          </button>
         </div>
       </div>
     )

@@ -1,5 +1,5 @@
 import { InternalServerErrorException } from "@nestjs/common";
-import { ScheduleService } from "./schedule.service";
+import { COVERAGE_RULES_UNREAD, ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
@@ -176,6 +176,25 @@ describe("F-1119: getWeek refuses a week it could not read", () => {
     const week = await service(seed()).getWeek(MANAGER, RID, TO);
     expect(week.schedule?.status).toBe("published");
     expect(week.receipts).toHaveLength(1);
+  });
+});
+
+describe("F-1376: unread coverage rules are not a covered week", () => {
+  // BEFORE: the rules read destructured only `data`, so every day came back
+  // gap-free with status "ok" and the grid printed "covered".
+  it("returns coverage null with a reason when the rules cannot be read", async () => {
+    const db = seed({
+      "coverage_templates:select": { message: "statement timeout" },
+    });
+    const week: any = await service(db).getWeek(MANAGER, RID, TO);
+    expect(week.coverage).toBeNull();
+    expect(week.coverageUnread).toBe(COVERAGE_RULES_UNREAD);
+  });
+
+  it("the control: readable rules give seven days and no reason", async () => {
+    const week: any = await service(seed()).getWeek(MANAGER, RID, TO);
+    expect(week.coverage.days).toHaveLength(7);
+    expect(week.coverageUnread).toBeUndefined();
   });
 });
 
