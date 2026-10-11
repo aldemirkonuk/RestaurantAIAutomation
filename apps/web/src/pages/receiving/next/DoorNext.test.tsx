@@ -897,3 +897,72 @@ describe('F-1126 — the door opened from /orders starts at the ordered boxes', 
     expect(document.querySelector('[data-ux-key="door:confirm-paper-count"]')).toBeNull()
   })
 })
+
+describe('F-1154 — the door asks for bottles per box on an order in bottles only', () => {
+  const perBox = () =>
+    document.querySelector('[data-ux-key="door:bottles-per-box"]') as HTMLInputElement | null
+  const open = async (unitType: string, packSize: number | null) => {
+    const { receivingApi } = await import('@/services/api/receiving')
+    vi.mocked(getOrder).mockResolvedValueOnce({
+      id: 'o1',
+      orderNumber: 'ORD-1',
+      wineName: 'Barolo',
+      quantity: unitType === 'case' ? 2 : 24,
+      unitType,
+      bottlesTotal: 24,
+    } as never)
+    vi.mocked(receivingApi.doorReceivedSoFar).mockResolvedValueOnce({
+      receivedQtyBottles: 0,
+      packSize,
+      receivedBoxes: packSize ? 0 : null,
+      receivedLooseBottles: packSize ? 0 : null,
+      doorEventCount: 0,
+      checked: false,
+    })
+    submitDoorReceipt.mockResolvedValue({ synced: true, stockBooked: true })
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+  }
+  const holdSeal = async () => {
+    const seal = screen.getByRole('button', { name: /Hold to seal/ })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+  }
+
+  it('[REVERT-FAILS] waits for the bottles per box, then sends them with the boxes', async () => {
+    await open('bottle', null)
+    await waitFor(() => expect(perBox()).not.toBeNull())
+    expect(perBox()?.value).toBe('')
+    await holdSeal()
+    expect(submitDoorReceipt).not.toHaveBeenCalled()
+    expect(screen.getByText(/how many bottles are in each box/)).toBeTruthy()
+
+    fireEvent.change(perBox() as Element, { target: { value: '12' } })
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    const body = submitDoorReceipt.mock.calls[0][0].body
+    expect(body.countedUom).toBe('case')
+    expect(body.packSize).toBe(12)
+  })
+
+  it('starts from the pack the order already knows', async () => {
+    await open('bottles', 6)
+    await waitFor(() => expect(perBox()?.value).toBe('6'))
+  })
+
+  it('does not ask on a case order, and sends no pack of its own', async () => {
+    await open('case', 12)
+    await screen.findByRole('button', { name: /Hold to seal/ })
+    expect(perBox()).toBeNull()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].body.packSize).toBeUndefined()
+  })
+})
