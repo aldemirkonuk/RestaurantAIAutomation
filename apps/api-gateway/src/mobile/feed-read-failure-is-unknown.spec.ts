@@ -211,6 +211,30 @@ describe("today pulse reads the house's register (F-674)", () => {
 });
 
 /**
+ * F-1363: "vs last week" ended last week's window at the same ELAPSED time
+ * since midnight. Last Sunday in Detroit had 25 hours (the clocks went back),
+ * so at 21:00 tonight last week's window stopped at 20:00 and missed an hour.
+ */
+describe("today pulse compares the same clock time last week across a clock change (F-1363)", () => {
+  it("ends last week's window at 21:00 on the fall-back Sunday, not 20:00", async () => {
+    const pulse = await buildWithDb({
+      restaurants: [{ id: "r-1", timezone: "America/Detroit", country: "US" }],
+      pos_checks: [
+        check("t", "2026-11-09T01:00:00.000Z", 100), // 20:00 tonight (EST)
+        check("w1", "2026-11-02T00:00:00.000Z", 60), // 19:00 last Sunday (EST)
+        check("w2", "2026-11-02T01:30:00.000Z", 40), // 20:30 last Sunday (EST)
+        check("w3", "2026-11-02T02:30:00.000Z", 999), // 21:30, after now's clock
+      ],
+      // 21:00 on Sunday 2026-11-08 in Detroit.
+    }).getTodayPulse("u-1", "r-1", new Date("2026-11-09T02:00:00Z"));
+
+    expect(pulse.revenueToday).toBe(100);
+    expect(pulse.revenueLastWeek).toBe(100);
+    expect(pulse.deltaPct).toBe(0);
+  });
+});
+
+/**
  * F-885: the phone printed "$" with en-US grouping on every money figure. The
  * pulse now carries the house's money and formats tag, which the phone's
  * strip, Insights, cellar and orders format through.

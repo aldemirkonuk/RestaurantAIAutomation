@@ -143,12 +143,18 @@ export function goalSchedule(
       : afterDeadline;
   const startAt = localMidnight(win.periodStart, zone).getTime();
   const endAt = localMidnight(lastEnd, zone).getTime();
-  const deadlineEnd = localMidnight(afterDeadline, zone).getTime();
   const totalDays = Math.max(1, (endAt - startAt) / 86400000);
   const elapsedDays = Math.min(
     totalDays,
     Math.max(0, (now - startAt) / 86400000),
   );
-  const daysLeft = Math.max(0, Math.ceil((deadlineEnd - now) / 86400000));
+  // House dates, not divided hours: a 25-hour fall-back day read the first
+  // hour of every later day as one more day left (F-1364).
+  const today = houseToday(zone, new Date(now));
+  const dayDiff =
+    (Date.parse(`${win.deadlineDay}T00:00:00Z`) -
+      Date.parse(`${today}T00:00:00Z`)) /
+    86400000;
+  const daysLeft = Math.max(0, dayDiff + 1);
   return { startAt, endAt, totalDays, elapsedDays, daysLeft };
 }

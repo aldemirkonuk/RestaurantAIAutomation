@@ -924,6 +924,33 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     });
   });
 
+  // F-1365: a page left open past the house's midnight kept the month's own
+  // today, so the grid stayed on October with the 31st marked as today.
+  it("moves to the house's new day and month when the page stays open past midnight", async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: new Date('2026-11-01T06:50:00Z') });
+    try {
+      // The gateway answers with the house's today at the moment it is asked.
+      const laToday = () => new Date(Date.now() - 7 * 3_600_000).toISOString().slice(0, 10);
+      routeMonth((year, month) => houseMonth({ year, month, today: laToday() }), {
+        '/dashboard/stats/': {
+          totalWines: 0, totalBottles: 0, lowStockItems: 0, pendingOrders: 0,
+          totalVolumeMl: 0, totalVolumeOz: 0, timezone: 'America/Los_Angeles',
+        },
+      });
+      mount();
+      // 23:50 on October 31 in Los Angeles.
+      await waitFor(() => expect(dayCell('2026-10-31')).toHaveAttribute('data-today', 'true'));
+
+      // 00:10 on November 1.
+      await act(async () => {
+        vi.advanceTimersByTime(20 * 60_000);
+      });
+      await waitFor(() => expect(dayCell('2026-11-01')).toHaveAttribute('data-today', 'true'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows a house with no time zone as dashes and one line to set it, never a zero', async () => {
     browserAt('2026-10-20T12:00:00Z');
     routeMonth(() =>
