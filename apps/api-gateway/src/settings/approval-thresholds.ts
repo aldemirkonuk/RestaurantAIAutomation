@@ -59,6 +59,7 @@ import {
   agreedPricePerBottleForDoor,
   type StatedPriceUnit,
 } from "../procurement/agreed-price";
+import { houseMoney, usableLocale } from "../common/house-money";
 
 export type ApprovalRule = "manager_ceiling" | "new_vendor" | "price_jump";
 
@@ -108,6 +109,12 @@ export interface OrderUnderTest {
    */
   currency?: string | null;
   ceilingCurrency?: string | null;
+  /**
+   * The house's number formats tag (`houseFrame().locale`), so the ceiling
+   * reads "₺50.000" in the house's own marks, never a raw "50000" (F-1129).
+   * Unknown keeps en-US grouping.
+   */
+  ceilingLocale?: string | null;
   /**
    * Why this order's price could not be set beside the last one, when it could
    * not (another currency, or a keg price against a bottle price). `price_jump`
@@ -288,6 +295,36 @@ export interface ApprovalDecision {
   untestable: ApprovalRule[];
 }
 
+/**
+ * The ceiling as the house writes money: its currency and its marks, "₺50.000"
+ * or "$2,500" (F-1129). The reasons are read by people, and the same page
+ * prints the ceiling formatted; "the 50000 ceiling" beside "₺50.000,00" is two
+ * numbers for one rule.
+ */
+function ceilingFigure(limit: number, order: OrderUnderTest): string {
+  if (Number.isInteger(limit)) {
+    return houseMoney(limit, order.ceilingCurrency, {
+      locale: order.ceilingLocale,
+    });
+  }
+  const locale = usableLocale(order.ceilingLocale);
+  const code = (order.ceilingCurrency ?? "").trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(code)) {
+    try {
+      return new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: code,
+      }).format(limit);
+    } catch {
+      // A code `Intl` cannot place falls through to the bare figure.
+    }
+  }
+  return limit.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 /** `owner` outranks `manager`; anything else is not an approver role. */
 function strongest(a: ApproverRole | null, b: ApproverRole | null): ApproverRole | null {
   if (a === "owner" || b === "owner") return "owner";
@@ -323,7 +360,18 @@ export function decideApproval(
     if (rule === "manager_ceiling") {
       if (row.amountLimit === null) continue;
       if (order.total === null) {
-        decision.untestable.push(rule);
+        // F-1134 (rehit of F-084): an order with no price cannot be shown to
+        // be under the ceiling, so it is HELD for the role the ceiling names,
+        // the same posture as the currency case below. Reporting it as
+        // untestable let anyone seal an unpriced order of any size.
+        decision.requiredRole = strongest(
+          decision.requiredRole,
+          row.requiredRole,
+        );
+        decision.firedBy.push(rule);
+        decision.reasons.push(
+          `not priced yet, so it cannot be checked against the ${ceilingFigure(row.amountLimit, order)} ceiling this house set for a manager`,
+        );
         continue;
       }
       if (
@@ -337,7 +385,7 @@ export function decideApproval(
         );
         decision.firedBy.push(rule);
         decision.reasons.push(
-          `in ${order.currency}, while the ${row.amountLimit} ceiling this house set for a manager is in ${order.ceilingCurrency}, and no exchange rate is kept here to compare the two`,
+          `in ${order.currency}, while the ${ceilingFigure(row.amountLimit, order)} ceiling this house set for a manager is in ${order.ceilingCurrency}, and no exchange rate is kept here to compare the two`,
         );
         continue;
       }
@@ -345,7 +393,7 @@ export function decideApproval(
         decision.requiredRole = strongest(decision.requiredRole, row.requiredRole);
         decision.firedBy.push(rule);
         decision.reasons.push(
-          `over the ${row.amountLimit} ceiling this house set for a manager`,
+          `over the ${ceilingFigure(row.amountLimit, order)} ceiling this house set for a manager`,
         );
       }
       continue;
@@ -424,6 +472,9 @@ export function retrospective(
       if (one.untestable.includes(rule)) continue;
       if (rule === "price_jump" && o.pricePremiumPct === null) continue;
       if (rule === "manager_ceiling" && row.amountLimit === null) continue;
+      // An unpriced order is held (F-1134), but it says nothing about where
+      // the ceiling sits, so it is not counted against the amount.
+      if (rule === "manager_ceiling" && o.total === null) continue;
       tested += 1;
       if (one.firedBy.includes(rule)) fired += 1;
     }

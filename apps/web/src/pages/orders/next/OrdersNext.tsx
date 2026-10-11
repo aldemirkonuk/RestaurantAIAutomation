@@ -428,6 +428,7 @@ export default function OrdersNext() {
             row={responsesRow}
             approval={data.approvalByOrder?.get(responsesRow.id)}
             approvalGateError={data.approvalGateError}
+            callerRole={data.approvalCallerRole}
           />
         )}
 

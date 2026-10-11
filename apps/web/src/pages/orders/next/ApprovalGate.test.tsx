@@ -178,6 +178,16 @@ describe('a row the caller may not seal', () => {
     expect(screen.getByText(/could not be tested on this order/i)).toBeInTheDocument();
     expect(screen.getByText(/An\s+unknown is not a finding/i)).toBeInTheDocument();
   });
+
+  it('[F-1129] names the rule in words, never its id', () => {
+    mount({
+      approval: verdict({ untestable: ['new_vendor', 'price_jump'] }),
+    });
+    expect(
+      screen.getByText(/\(the first order to a vendor; a price above what the house last paid\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/new_vendor|price_jump/)).toBeNull();
+  });
 });
 
 describe('a row the caller may seal', () => {

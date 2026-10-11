@@ -503,15 +503,13 @@ describe("an unreadable read is unknown, never 'not flagged'", () => {
     });
   });
 
-  it("an order with no total cannot be tested against the ceiling", async () => {
+  it("an order with no total needs a signature, and its amount is unknown, not large (F-1134)", async () => {
     const { out } = await list(
       { pending: [row("a", 1, { total_cost: null })] },
       [rule("manager_ceiling")],
     );
-    expect(byId(out, "a").unknown).toEqual([
-      "needs_signature",
-      "manager_ceiling",
-    ]);
+    expect(byId(out, "a").reasons).toEqual(["needs_signature"]);
+    expect(byId(out, "a").unknown).toEqual(["manager_ceiling"]);
   });
 
   it("a failed first-order read leaves the signature unknown", async () => {

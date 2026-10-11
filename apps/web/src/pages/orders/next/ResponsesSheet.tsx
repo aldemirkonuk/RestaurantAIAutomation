@@ -169,6 +169,11 @@ export interface ResponsesSheetProps {
   /** This house's verdict on sealing THIS order. `undefined` = not answered. */
   approval?: ApprovalGateRow;
   approvalGateError?: string | null;
+  /**
+   * The reader's role here, from the same gate read. `undefined` = not
+   * answered, which never shuts the reject die: the gateway still decides.
+   */
+  callerRole?: string | null;
 }
 
 export function ResponsesSheet({
@@ -177,6 +182,7 @@ export function ResponsesSheet({
   row,
   approval,
   approvalGateError,
+  callerRole,
 }: ResponsesSheetProps) {
   // Figures grouped the house's way (F-942).
   const group = useHouseGroupMark();
@@ -270,6 +276,10 @@ export function ResponsesSheet({
 
   const isPending = row.stage === 'pending' && !row.recurring;
   const heldForApproval = approval ? !approval.mayApprove : false;
+  // Only a manager or an owner may reject (`assertMayCancelOrder`), so the die
+  // is shut for anyone else, with the reason beside it, like approve (F-1130).
+  const rejectHeld =
+    callerRole !== undefined && callerRole !== 'owner' && callerRole !== 'manager';
 
   const onChallenge = () => ordersApi.mintOrderSeal(row.id);
 
@@ -508,11 +518,17 @@ export function ResponsesSheet({
                     key={`reject-${row.id}-${rejectAttempt}`}
                     label="Hold to reject"
                     approvedLabel="Rejected"
-                    disabled={approve.isPending || cancel.isPending}
+                    disabled={approve.isPending || cancel.isPending || rejectHeld}
                     onApprove={onReject}
                     onChallenge={onRejectChallenge}
                   />
                 </div>
+                {rejectHeld && (
+                  <p style={said} role="status" data-testid="reject-held">
+                    Only a manager or an owner can reject an order, so this one stays open
+                    for them. Tell one of them why it should not go ahead.
+                  </p>
+                )}
                 {reasonMissing && (
                   <p style={said} role="alert" data-testid="reject-needs-reason">
                     {REJECT_NEEDS_A_REASON}

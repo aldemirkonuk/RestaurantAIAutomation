@@ -37,7 +37,7 @@ import {
   describeStatedPrice,
   uomCountWord,
 } from './price-unit';
-import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
+import { STAGE_LABEL, approvalRuleWords, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
 export interface LedgerRowProps {
   row: OrderRowVM;
@@ -672,7 +672,7 @@ export function LedgerRow({
                   {approval && approval.untestable.length > 0 && (
                     <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-4, #665D50)' }}>
                       {approval.untestable.length === 1 ? 'One rule' : `${approval.untestable.length} rules`}{' '}
-                      could not be tested on this order ({approval.untestable.join(', ')}), so{' '}
+                      could not be tested on this order ({approvalRuleWords(approval.untestable)}), so{' '}
                       {approval.untestable.length === 1 ? 'it' : 'they'} did not fire. An
                       unknown is not a finding.
                     </p>

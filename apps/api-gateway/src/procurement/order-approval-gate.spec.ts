@@ -98,6 +98,8 @@ function makeDb(opts: {
   auditFails?: boolean;
   /** `restaurants.currency` — the currency the ceiling is in (F-648). */
   houseCurrency?: string | null;
+  /** `restaurants.country` — the house's number marks (F-1129). */
+  houseCountry?: string | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -119,7 +121,10 @@ function makeDb(opts: {
       const settle = (shape: "one" | "many") => {
         if (table === "restaurants") {
           return {
-            data: { currency: opts.houseCurrency ?? null },
+            data: {
+              currency: opts.houseCurrency ?? null,
+              country: opts.houseCountry ?? null,
+            },
             error: null,
           };
         }
@@ -462,12 +467,56 @@ describe("approveOrder — the ceiling", () => {
     expect(calls.auditInserts).toHaveLength(0);
   });
 
+  it("[F-1134] an unpriced order under a manager ceiling is held: staff are refused, told the price is missing", async () => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: null } });
+    const svc = service(
+      db,
+      thresholdsStub([ceiling(1000, "manager")]),
+      orgsStub("staff"),
+    );
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      /not priced yet, so it cannot be checked against the 1,000 ceiling/,
+    );
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+  });
+
+  it("[F-1134] a manager seals the same unpriced order", async () => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: null } });
+    const svc = service(
+      db,
+      thresholdsStub([ceiling(1000, "manager")]),
+      orgsStub("manager"),
+    );
+
+    await sealedApprove(svc);
+
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+  });
+
+  it("[F-1129] the refusal prints the ceiling in the house's money and marks", async () => {
+    const { db } = makeDb({
+      order: { ...ORDER_ROW, total_cost: 80000 },
+      houseCurrency: "TRY",
+      houseCountry: "TR",
+    });
+    const svc = service(
+      db,
+      thresholdsStub([ceiling(50000)]),
+      orgsStub("manager"),
+    );
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      /over the ₺50\.000 ceiling this house set for a manager/,
+    );
+  });
+
   it("the refusal message carries the whole sentence, not a code", async () => {
     const { db } = makeDb({ order: { ...ORDER_ROW, total_cost: 5000 } });
     const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
-      /over the 1000 ceiling this house set for a manager/,
+      /over the 1,000 ceiling this house set for a manager/,
     );
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
       /waits for an owner to seal it/,
@@ -500,7 +549,7 @@ describe("approveOrder — money is compared in one currency and one unit (F-648
     );
 
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
-      /in GBP, while the 2500 ceiling this house set for a manager is in USD/,
+      /in GBP, while the \$2,500 ceiling this house set for a manager is in USD/,
     );
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
   });
@@ -900,7 +949,7 @@ describe("approveOrder — the refusal is filed", () => {
     expect(row.changes.actorRole).toBe("manager");
     expect(row.changes.firedBy).toEqual(["manager_ceiling"]);
     expect(row.changes.total).toBe(7500);
-    expect(row.reason).toContain("1000 ceiling");
+    expect(row.reason).toContain("1,000 ceiling");
   });
 
   it("an audit row that FAILS to write does not turn the 403 into a 500", async () => {
@@ -939,7 +988,7 @@ describe("approvalGate — what the page is allowed to draw", () => {
     const big = gate.orders.find((o) => o.orderId === "o-big")!;
     expect(big.mayApprove).toBe(false);
     expect(big.requiredRole).toBe("owner");
-    expect(big.sentence).toContain("1000 ceiling");
+    expect(big.sentence).toContain("1,000 ceiling");
   });
 
   it("a CANCELLED cheaper order is not the price a pending order is measured against (F-479)", async () => {
