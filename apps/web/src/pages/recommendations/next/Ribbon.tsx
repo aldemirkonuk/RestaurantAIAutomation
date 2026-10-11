@@ -73,6 +73,8 @@ export interface RibbonProps {
   /** The POS window behind the record marks — undefined asked, null unreadable. */
   pos: PosVM;
   posProblem: string | null;
+  /** The till is kept for owners and managers, so it was not read for this person. */
+  posHeld?: boolean;
   /** undefined = the exclusion store has not been read yet. */
   exclusionsReadable: boolean | undefined;
   exclusionsProblem: string | null;
@@ -136,8 +138,9 @@ export default function Ribbon(props: RibbonProps) {
   }
 
   /** What the strip is allowed to claim about records at all. */
-  const recordsNote =
-    props.pos === undefined
+  const recordsNote = props.posHeld
+    ? 'The till is kept for owners and managers, so no day below is marked as having no records.'
+    : props.pos === undefined
       ? 'Reading which days carry records…'
       : props.pos === null
         ? `The till window could not be read (${props.posProblem ?? 'no reason given'}), so no day below is marked as having no records. An unreadable window is not an empty one.`

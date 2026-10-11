@@ -125,30 +125,28 @@ describe('fmtDate — the house\'s day, the house\'s way (F-1209)', () => {
   it('reads an instant on the house clock, not the device', () => {
     setHouseLocale('en-US');
     // 22:30 UTC on Oct 1 is 01:30 on Oct 2 in Istanbul and 15:30 on Oct 1 in Los Angeles.
-    expect(fmtDate('2026-10-01T22:30:00Z', 'Europe/Istanbul', now)).toBe('Oct 2');
-    expect(fmtDate('2026-10-01T22:30:00Z', 'America/Los_Angeles', now)).toBe('Oct 1');
+    expect(fmtDate('2026-10-01T22:30:00Z', 'Europe/Istanbul', now)).toBe('10/2');
+    expect(fmtDate('2026-10-01T22:30:00Z', 'America/Los_Angeles', now)).toBe('10/1');
   });
 
   it('says the year when it is not this year on the house calendar', () => {
     setHouseLocale('en-US');
-    expect(fmtDate('2025-03-04T12:00:00Z', 'Europe/Istanbul', now)).toBe('Mar 4, 2025');
-    expect(fmtDate('2025-03-04', 'Europe/Istanbul', now)).toBe('Mar 4, 2025');
-    expect(fmtDate('2026-03-04', 'Europe/Istanbul', now)).toBe('Mar 4');
+    expect(fmtDate('2025-03-04T12:00:00Z', 'Europe/Istanbul', now)).toBe('3/4/2025');
+    expect(fmtDate('2025-03-04', 'Europe/Istanbul', now)).toBe('3/4/2025');
+    expect(fmtDate('2026-03-04', 'Europe/Istanbul', now)).toBe('3/4');
   });
 
   it('keeps a paper date the day the paper says, in any zone', () => {
     setHouseLocale('en-US');
-    expect(fmtDate('2026-03-02', 'America/Los_Angeles', now)).toBe('Mar 2');
+    expect(fmtDate('2026-03-02', 'America/Los_Angeles', now)).toBe('3/2');
     expect(fmtDate('2026-02-30', 'America/Los_Angeles', now)).toBe('—');
   });
 
-  it('writes the date in the house\'s own formats', () => {
+  it('writes the date in the house\'s own order, in digits, never its month words (F-1279)', () => {
     setHouseLocale('tr-TR');
-    expect(fmtDate('2025-03-04', 'Europe/Istanbul', now)).toBe(
-      new Intl.DateTimeFormat('tr-TR', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(
-        new Date(Date.UTC(2025, 2, 4)),
-      ),
-    );
+    expect(fmtDate('2025-03-04', 'Europe/Istanbul', now)).toBe('04.03.2025');
+    expect(fmtDate('2026-10-11', 'Europe/Istanbul', now)).toBe('11/10');
+    expect(fmtDate('2026-10-11', 'Europe/Istanbul', now)).not.toMatch(/Eki/);
     setHouseLocale('en-US');
   });
 });

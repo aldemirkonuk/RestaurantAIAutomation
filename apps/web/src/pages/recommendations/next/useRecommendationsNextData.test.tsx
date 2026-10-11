@@ -491,6 +491,16 @@ describe('useRecommendationsNextData — goals', () => {
     expect(result.current.posProblem).toBe('Failed to load POS revenue');
   });
 
+  it('does not ask for the till for staff, and says it is kept for owners and managers (F-1277)', async () => {
+    role.current = 'staff';
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.posHeld).toBe(true);
+    expect(result.current.pos).toBeNull();
+    expect(result.current.posProblem).toBeNull();
+    expect(api.get.mock.calls.some(([url]) => String(url).includes('/pos-revenue/'))).toBe(false);
+  });
+
   it('an unreadable goal list is null, not an empty list', async () => {
     api.get.mockImplementation(async (url: string) => {
       if (url.includes('/analytics/goals/')) throw { response: { status: 500 }, message: 'boom' };

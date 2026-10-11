@@ -2996,8 +2996,27 @@ describe("F-1227 — a staff member's time-off request reaches the house's leads
       (n) => n.metadata?.action === "time_off_requested",
     );
     expect(told.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+    // F-1278: the days as a person reads them, never raw ISO.
     expect(told[0].message).toContain(
-      "Sam asked for 2026-09-07 to 2026-09-08 off",
+      "Sam asked for Mon 7 Sept to Tue 8 Sept off",
+    );
+  });
+
+  it("names the days the way the house writes a date (F-1278)", async () => {
+    const db = seed();
+    db.tables.restaurants = [
+      { id: RID, country: "Türkiye", timezone: "Europe/Istanbul" },
+    ];
+    await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: "2026-09-08",
+    } as any);
+    const told = db.tables.notifications.filter(
+      (n) => n.metadata?.action === "time_off_requested",
+    );
+    expect(told[0].message).toContain(
+      "Sam asked for 07.09.2026 to 08.09.2026 off",
     );
   });
 

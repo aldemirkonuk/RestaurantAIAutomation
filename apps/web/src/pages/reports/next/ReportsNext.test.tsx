@@ -1333,7 +1333,15 @@ describe('ReportsNext — what a staff member is offered (F-203)', () => {
       const ids = offeredFor(role);
       expect(ids).not.toContain('seats');
       expect(ids).not.toContain('service');
-      expect(ids).toContain('till');
+      expect(ids).toContain('quadrants');
+    }
+  });
+
+  it('does not offer the till to staff, whose till read the gateway refuses (F-1277)', () => {
+    expect(offeredFor('owner')).toContain('till');
+    expect(offeredFor('manager')).toContain('till');
+    for (const role of ['staff', 'chef', 'admin', null, undefined]) {
+      expect(offeredFor(role)).not.toContain('till');
     }
   });
 
@@ -1359,7 +1367,7 @@ describe('ReportsNext — what a staff member is offered (F-203)', () => {
     const values = Array.from(swap.options).map((o) => o.value);
     expect(values).not.toContain('seats');
     expect(values).not.toContain('service');
-    expect(values).toContain('till');
+    expect(values).not.toContain('till');
     // The service layout carries both; for staff it lays out the rest of it.
     fireEvent.click(screen.getByText(HOUSE_LAYOUT_TITLE.service));
     expect(screen.queryByRole('region', { name: 'The room' })).toBeNull();
