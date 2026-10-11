@@ -31,7 +31,6 @@ const READERS: Record<string, string[]> = {
  */
 const KNOWN_UNREAD = new Set([
   'team?schedule', // schedule.service.ts — the page reads `week`, which the same link carries
-  'calendar?event', // house-day.service.ts — CalendarNext opens no single event from the address
 ]);
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'tests', '__tests__', '__pycache__', '.venv', 'venv']);
