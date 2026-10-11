@@ -12,7 +12,7 @@
 
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
-import { EM, MONO, countOf, figure, money, num, ratioPct } from './rp-format';
+import { EM, MONO, codeOf, countOf, figure, money, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 /** What a staff reader is told in place of the house's money (F-203). */
@@ -224,6 +224,8 @@ export interface LedgerRegister {
   /** F-644: the priced wines' own total, beside how many it leaves out. */
   pricedInventoryValue: number | null;
   cogs: number | null;
+  /** The code `cogs` is in, when the gateway names one (F-1145). */
+  cogsCurrency?: string | null;
   /** Delivered orders with no price, left out of `cogs` (F-701). */
   cogsUnpricedCount?: number;
   /** Why `cogs` is blank when the orders were in two currencies (F-1054). */
@@ -257,6 +259,7 @@ const ledger = analysis<LedgerRegister>({
       inventoryValue: num(d.inventoryValue),
       pricedInventoryValue: num(d.pricedInventoryValue),
       cogs: num(d.cogs),
+      cogsCurrency: codeOf(d.cogsCurrency),
       cogsUnpricedCount: num(d.cogsUnpricedCount) ?? undefined,
       cogsNote: typeof d.cogsNote === 'string' ? d.cogsNote : null,
       revenue: num(d.revenue),
@@ -287,7 +290,7 @@ const ledger = analysis<LedgerRegister>({
           },
       {
         label: 'Cost of goods (365d)',
-        value: money(f.cogs),
+        value: money(f.cogs, 'full', f.cogsCurrency),
         note: f.cogsNote ?? 'No delivered order came back for the window',
       },
       {

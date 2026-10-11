@@ -142,6 +142,27 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(html).toContain("8 figures marked &quot;withheld&quot; are one the engine could not compute");
   });
 
+  // F-1145: the writer is told the header's money, so a euro cost of goods
+  // in a lira house is not written as a bare number under "TRY".
+  it("never writes a cost of goods in another currency under the house's money", async () => {
+    const { mem, service, analytics } = build();
+    analytics.getFinancialSummary.mockImplementationOnce(async () => ({
+      ...(PAYLOADS.ledger as Record<string, unknown>),
+      cogs: 48000,
+      cogsCurrency: "EUR",
+    }));
+    await (
+      await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "ledger" })
+    ).settled;
+    const { csv } = exportsOf(mem)[0] as { csv: string };
+    const cogs = csv
+      .split("\r\n")
+      .find((l) => l.startsWith("Cost of goods (365d),"));
+    expect(cogs).toMatch(
+      /^Cost of goods \(365d\),withheld,TRY,.*48000 EUR.*not the house's TRY/,
+    );
+  });
+
   it("a house with no stated currency gets no invented one", async () => {
     const { mem, service } = build();
     await (await service.requestExport(HOUSE_B, null, { cutting: "ledger" })).settled;

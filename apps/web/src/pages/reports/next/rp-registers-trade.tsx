@@ -18,6 +18,7 @@ import {
   MONO,
   WEEKDAY_SHORT,
   categoryLabel,
+  codeOf,
   countOf,
   figure,
   money,
@@ -335,6 +336,12 @@ export interface PacingRegister {
   paceDeltaPct: number | null;
   projectedNext4Weeks: number[] | null;
   committedOpenOrders: number | null;
+  /**
+   * The codes the paid-out and committed figures are in, when the gateway
+   * names one; a currency not the house's prints with its own sign (F-1145).
+   */
+  spendCurrency?: string | null;
+  committedCurrency?: string | null;
   openOrderCount: number | null;
   /**
    * Why the buying figures are blank: the deliveries were paid in two
@@ -353,6 +360,8 @@ export interface PacingRegister {
     other: number;
     /** Null when they were ordered in two currencies (F-1042). */
     orderValue: number | null;
+    /** The code `orderValue` is in (F-1145). */
+    orderValueCurrency?: string | null;
     /** Why `orderValue` is null (F-1042). */
     orderValueNote?: string | null;
     /** Of those, orders with no price, left out of `orderValue` (F-1010). */
@@ -388,7 +397,7 @@ export function notCountedNote(n: PacingRegister['notCounted']): string | null {
   const value =
     n.orderValue === null
       ? `.${n.orderValueNote ? ` ${n.orderValueNote}` : ''}`
-      : `, ${money(n.orderValue)} at order value.`;
+      : `, ${money(n.orderValue, 'full', n.orderValueCurrency)} at order value.`;
   return `Not in either figure: ${list}${value}${unpriced} They count once the vendor confirms them or they close.`;
 }
 
@@ -431,6 +440,8 @@ const pacing = analysis<PacingRegister>({
         ? (d.projectedNext4Weeks as number[])
         : null,
       committedOpenOrders: num(d.committedOpenOrders),
+      spendCurrency: codeOf(d.spendCurrency),
+      committedCurrency: codeOf(d.committedCurrency),
       openOrderCount: num(d.openOrderCount),
       notCounted: (() => {
         const n = obj(d.notCounted);
@@ -443,7 +454,15 @@ const pacing = analysis<PacingRegister>({
         // gateway did not say, as before.
         return a === null || p === null || o === null || (v === null && !vNote)
           ? null
-          : { approved: a, partlyReceived: p, other: o, orderValue: v, orderValueNote: vNote, unpriced: num(n.unpriced) ?? 0 };
+          : {
+              approved: a,
+              partlyReceived: p,
+              other: o,
+              orderValue: v,
+              orderValueCurrency: codeOf(n.orderValueCurrency),
+              orderValueNote: vNote,
+              unpriced: num(n.unpriced) ?? 0,
+            };
       })(),
       spendUnpricedCount: num(d.spendUnpricedCount) ?? undefined,
       committedUnpricedCount: num(d.committedUnpricedCount) ?? undefined,
@@ -454,7 +473,7 @@ const pacing = analysis<PacingRegister>({
   view: (c) => {
     const figures = [
       { label: 'Pace', value: pct(c.paceDeltaPct), note: 'Needs two comparable 30-day windows' },
-      { label: 'Committed, not yet delivered', value: money(c.committedOpenOrders) },
+      { label: 'Committed, not yet delivered', value: money(c.committedOpenOrders, 'full', c.committedCurrency) },
       { label: 'Open orders', value: figure(c.openOrderCount) },
     ];
     const projection = c.projectedNext4Weeks;
@@ -463,7 +482,7 @@ const pacing = analysis<PacingRegister>({
         <>
           Projected, next four weeks:{' '}
           <span style={{ fontFamily: MONO }}>
-            {projection.map((v) => money(v, 'compact')).join(' · ')}
+            {projection.map((v) => money(v, 'compact', c.spendCurrency)).join(' · ')}
           </span>{' '}
           — a Holt projection, not a measurement.
         </>
@@ -510,7 +529,7 @@ const pacing = analysis<PacingRegister>({
         xLabel: 'window',
         yLabel: 'paid out',
         unit: 'paid out',
-        format: (v) => money(v, 'compact'),
+        format: (v) => money(v, 'compact', c.spendCurrency),
       },
       table: {
         cols: [
@@ -518,8 +537,8 @@ const pacing = analysis<PacingRegister>({
           { key: 'v', label: 'Paid out', numeric: true },
         ],
         rows: [
-          { key: 'prev', cells: ['The 30 days before last', money(c.spendPrev30d, 'table')] },
-          { key: 'last', cells: ['The last 30 days', money(c.spendLast30d, 'table')] },
+          { key: 'prev', cells: ['The 30 days before last', money(c.spendPrev30d, 'table', c.spendCurrency)] },
+          { key: 'last', cells: ['The last 30 days', money(c.spendLast30d, 'table', c.spendCurrency)] },
         ],
       },
       figures,
