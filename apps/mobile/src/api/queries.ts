@@ -13,6 +13,7 @@ import { useSession } from "@/state/session";
 import { addDaysToKey, houseDateKey, mondayOfKey } from "@/lib/houseDate";
 import type { HouseSummary } from "@/auth/houseChoice";
 import { houseFrameOfPulse, type HouseMoneyFrame } from "@/lib/houseMoney";
+import { readsHouseGoals } from "@/components/today/pulseStripView";
 
 export const feedKey = ["mobile", "feed"] as const;
 export const pulseKey = ["mobile", "pulse"] as const;
@@ -377,10 +378,12 @@ export function useInsightFeed() {
 
 export function useGoals() {
   const { enabled, restaurantId } = useAuthed();
+  // Goals are kept for owners and managers (F-1181); other roles never ask.
+  const readsGoals = readsHouseGoals(useSession((s) => s.user?.role));
   return useQuery({
     queryKey: ["analytics", "goals", restaurantId],
     queryFn: () => api<any[]>(`/analytics/goals/${restaurantId}`),
-    enabled: enabled && !!restaurantId,
+    enabled: enabled && !!restaurantId && readsGoals,
     staleTime: 5 * 60_000,
     retry: false,
   });

@@ -6,7 +6,7 @@ import {
   alreadyDeliveredWords,
 } from "@/api/delivered-once";
 import { GRACE_MS } from "@/design/motion";
-import { withoutReceiptMoney } from "@/lib/receiptMoney";
+import { holdsHouseMoney, withoutReceiptMoney } from "@/lib/receiptMoney";
 import { outboxStorage } from "@/lib/mmkv";
 import { queryClient } from "@/lib/queryClient";
 import type { FeedItem } from "@/api/types";
@@ -202,9 +202,25 @@ export const useOutbox = create<OutboxState>((set, get) => ({
     ) {
       return RECEIPT_WAITING_WORDS;
     }
+    // A parked receipt goes again without its money (F-1180) when the person
+    // pressing Try again does not hold the house's money, or when it was
+    // already sent once without it: an entry parked before the phone took the
+    // billed quantity out with the price would otherwise meet the same
+    // refusal on every Try again.
+    const stripMoney = (e: OutboxEntry) =>
+      (e.moneyStripped && !e.priceRefused) ||
+      !holdsHouseMoney(useSession.getState().user?.role);
     const entries = get().entries.map((e) =>
       e.id === id && e.actorUserId && e.restaurantId
-        ? { ...e, status: "pending" as const, attempts: 0, serverAttempts: 0 }
+        ? {
+            ...e,
+            status: "pending" as const,
+            attempts: 0,
+            serverAttempts: 0,
+            ...(stripMoney(e)
+              ? { body: withoutReceiptMoney(e.path, e.body) ?? e.body }
+              : {}),
+          }
         : e,
     );
     set({ entries });
@@ -283,7 +299,8 @@ export function waitingFor(
     entries.find(
       (e) =>
         e.status !== "failed" &&
-        e.path === path &&
+        // The delivery mark carries its count in the query (F-1182).
+        e.path.split("?")[0] === path &&
         e.actorUserId === user.id &&
         e.restaurantId === user.restaurantId,
     ) ?? null
@@ -480,7 +497,8 @@ async function runDispatch() {
     // A RECEIPT REFUSED FOR ITS PRICE KEEPS ITS COUNT (F-806).
     //
     // Since F-802 the gateway answers 403 to a staff receipt that carries an
-    // invoice price, an override or charges, and nothing is written. An entry
+    // invoice price, an override, charges or the billed quantity (F-1180),
+    // and nothing is written. An entry
     // queued before the phone stopped offering staff those fields would park
     // here with the bottles counted at the door. Send it once more with the
     // money taken out; the count, the rejection and the note go through, and a
@@ -507,7 +525,9 @@ async function runDispatch() {
       err instanceof ApiError &&
       (err.status === 403 || priceRefusal) &&
       !next.moneyStripped
-        ? withoutReceiptMoney(next.path, next.body)
+        ? withoutReceiptMoney(next.path, next.body, {
+            billedIsMoney: !priceRefusal,
+          })
         : null;
     if (stillRunning) {
       const attempts = next.attempts + 1;

@@ -1,5 +1,10 @@
+import fs from "fs";
+import path from "path";
 import {
   DECISIONS_UNREAD_LABEL,
+  GOALS_WITHHELD_WORDS,
+  goalsReadState,
+  readsHouseGoals,
   REVENUE_UNAVAILABLE_MESSAGE,
   REVENUE_UNAVAILABLE_MESSAGES,
   readState,
@@ -250,5 +255,53 @@ describe("readState", () => {
 
   it("keeps saved data on screen when only a refresh failed", () => {
     expect(readState({ isLoading: false, isError: true, data: [1] })).toBe("ready");
+  });
+});
+
+/**
+ * F-1181: the gateway answers 403 to a goals read by anyone but an owner or a
+ * manager (`analytics.controller.ts` `mayReadGoals`). Staff Insights said
+ * "Couldn't load your goals" over that refusal; it is withheld, not failed.
+ */
+describe("goalsReadState (F-1181)", () => {
+  const idle = { isLoading: false, isError: false, data: undefined };
+  it("reads goals for owners and managers only, as the gateway does", () => {
+    expect(readsHouseGoals("owner")).toBe(true);
+    expect(readsHouseGoals(" Manager ")).toBe(true);
+    expect(readsHouseGoals("admin")).toBe(false);
+    expect(readsHouseGoals("staff")).toBe(false);
+    expect(readsHouseGoals(undefined)).toBe(false);
+  });
+
+  it("is withheld, never failed, for staff", () => {
+    expect(goalsReadState("staff", idle)).toBe("withheld");
+    expect(
+      goalsReadState("staff", { isLoading: false, isError: true, data: undefined }),
+    ).toBe("withheld");
+    expect(GOALS_WITHHELD_WORDS).toMatch(/owners and managers/);
+  });
+
+  it("calls a 403 withheld and any other error failed", () => {
+    const refused = { isLoading: false, isError: true, data: undefined, error: { status: 403 } };
+    const broken = { isLoading: false, isError: true, data: undefined, error: { status: 500 } };
+    expect(goalsReadState("manager", refused)).toBe("withheld");
+    expect(goalsReadState("manager", broken)).toBe("failed");
+    expect(goalsReadState("owner", { ...idle, data: [] })).toBe("ready");
+  });
+
+  it("the goals read is not asked for by a role that does not read goals", () => {
+    const queries = fs.readFileSync(
+      path.resolve(__dirname, "../../../api/queries.ts"),
+      "utf8",
+    );
+    expect(queries).toMatch(
+      /export function useGoals\(\) \{[\s\S]*?readsHouseGoals\(useSession\(\(s\) => s\.user\?\.role\)\)[\s\S]*?enabled: enabled && !!restaurantId && readsGoals,/,
+    );
+    const screen = fs.readFileSync(
+      path.resolve(__dirname, "../../../../app/(tabs)/insights.tsx"),
+      "utf8",
+    );
+    expect(screen).toContain("goalsReadState(role, goals)");
+    expect(screen).toContain("{GOALS_WITHHELD_WORDS}");
   });
 });

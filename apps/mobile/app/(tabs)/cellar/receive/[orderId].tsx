@@ -207,7 +207,11 @@ export default function ReceivingScreen() {
         countedUom: "bottle",
         invoiceUom: "bottle",
         invoiceCurrency: invoiceUnitPrice != null ? invoiceCurrency : undefined,
-        invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
+        // What the paper billed is money to the gateway (F-1180): staff never
+        // send it, or the whole count is refused.
+        invoiceQuantityInInvoiceUom: seesMoney
+          ? (invoiceQty ?? undefined)
+          : undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
         acceptedQuantityInCountedUom: acceptedQty,
         rejectedQuantityInCountedUom: rejectedQty,
@@ -253,6 +257,7 @@ export default function ReceivingScreen() {
     orderId,
     user,
     receiptPath,
+    seesMoney,
     invoiceQty,
     invoiceUnitPrice,
     invoiceCurrency,
@@ -603,50 +608,54 @@ export default function ReceivingScreen() {
                   style={{ gap: space.md }}
                 >
                   <Hairline />
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <AppText variant="body" tone="secondary">
-                      Bottles billed
-                    </AppText>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: space.lg,
-                      }}
-                    >
-                      <Stepper
-                        label="−"
-                        onPress={() =>
-                          setInvoiceQtyRaw(Math.max(0, (invoiceQty ?? 0) - 1))
-                        }
-                        disabled={sealed || (invoiceQty ?? 0) <= 0}
-                      />
-                      <AppText
-                        variant="title"
-                        style={{
-                          fontVariant: ["tabular-nums"],
-                          minWidth: 56,
-                          textAlign: "center",
-                        }}
-                      >
-                        {invoiceQty ?? "—"}
-                      </AppText>
-                      <Stepper
-                        label="+"
-                        onPress={() => setInvoiceQtyRaw((invoiceQty ?? 0) + 1)}
-                        disabled={sealed}
-                      />
-                    </View>
-                  </View>
-
                   {seesMoney ? (
                     <>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <AppText variant="body" tone="secondary">
+                          Bottles billed
+                        </AppText>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: space.lg,
+                          }}
+                        >
+                          <Stepper
+                            label="−"
+                            onPress={() =>
+                              setInvoiceQtyRaw(
+                                Math.max(0, (invoiceQty ?? 0) - 1),
+                              )
+                            }
+                            disabled={sealed || (invoiceQty ?? 0) <= 0}
+                          />
+                          <AppText
+                            variant="title"
+                            style={{
+                              fontVariant: ["tabular-nums"],
+                              minWidth: 56,
+                              textAlign: "center",
+                            }}
+                          >
+                            {invoiceQty ?? "—"}
+                          </AppText>
+                          <Stepper
+                            label="+"
+                            onPress={() =>
+                              setInvoiceQtyRaw((invoiceQty ?? 0) + 1)
+                            }
+                            disabled={sealed}
+                          />
+                        </View>
+                      </View>
+
                       <View
                         style={{
                           flexDirection: "row",
@@ -784,8 +793,8 @@ export default function ReceivingScreen() {
                     </>
                   ) : (
                     <AppText variant="caption" tone="tertiary">
-                      A manager checks the price. The count is recorded without
-                      it.
+                      A manager records what the invoice billed and its price.
+                      Your count is recorded without them.
                     </AppText>
                   )}
                 </Animated.View>

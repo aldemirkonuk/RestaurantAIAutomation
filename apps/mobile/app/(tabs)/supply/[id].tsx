@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,8 @@ import { orderAmount } from "@/components/supply/OrderRow";
 import {
   STATUS_LABEL,
   TIMELINE,
+  deliverWithCountPath,
+  orderUnitWords,
   receiveActionLabel,
   timelineIndex,
 } from "@/lib/orderStatus";
@@ -51,10 +53,17 @@ export default function OrderDetailScreen() {
     void refetch();
   }, [refetch]);
 
+  // What came off the truck, in the order's unit (F-1182). Null until "It
+  // arrived" is pressed; the ordered figure is only where the count starts,
+  // and nothing is marked until the person says it is their count.
+  const [arrivedCount, setArrivedCount] = useState<number | null>(null);
+
   const markDelivered = () => {
-    if (!order || deliverWaiting) return;
+    if (!order || deliverWaiting || arrivedCount == null) return;
+    const path = deliverWithCountPath(order.id, arrivedCount);
+    if (!path) return;
     const saved = useOutbox.getState().enqueue({
-      path: deliverPath,
+      path,
       label: "Marked delivered",
       graceMs: 0,
       invalidate: [
@@ -69,6 +78,7 @@ export default function OrderDetailScreen() {
       return;
     }
     haptic.confirm();
+    setArrivedCount(null);
     setTimeout(() => refetch(), 600);
   };
 
@@ -184,23 +194,82 @@ export default function OrderDetailScreen() {
                 <OrderApprovalSeal orderId={order.id} onApproved={approved} />
               ) : canDeliver ? (
                 <View style={{ gap: space.sm }}>
-                  <PressableScale
-                    onPress={markDelivered}
-                    disabled={deliverWaiting}
-                    style={{
-                      backgroundColor: color.fill,
-                      borderRadius: radius.control,
-                      paddingVertical: 13,
-                      alignItems: "center",
-                      opacity: deliverWaiting ? 0.6 : 1,
-                    }}
-                  >
-                    <AppText variant="bodyMedium">
-                      {deliverWaiting
-                        ? "Saved on this phone"
-                        : "It arrived — mark delivered"}
-                    </AppText>
-                  </PressableScale>
+                  {arrivedCount != null && !deliverWaiting ? (
+                    <>
+                      <AppText variant="footnote" tone="secondary">
+                        How many came off the truck? It starts at what was
+                        ordered; change it if the truck was short.
+                      </AppText>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: space.lg,
+                        }}
+                      >
+                        <CountStep
+                          label="−"
+                          onPress={() =>
+                            setArrivedCount((n) => Math.max(0, (n ?? 0) - 1))
+                          }
+                          disabled={arrivedCount <= 0}
+                        />
+                        <AppText
+                          variant="title"
+                          style={{
+                            fontVariant: ["tabular-nums"],
+                            minWidth: 120,
+                            textAlign: "center",
+                          }}
+                        >
+                          {orderUnitWords(order.unitType, arrivedCount)}
+                        </AppText>
+                        <CountStep
+                          label="+"
+                          onPress={() => setArrivedCount((n) => (n ?? 0) + 1)}
+                        />
+                      </View>
+                      <PressableScale
+                        onPress={markDelivered}
+                        style={{
+                          backgroundColor: color.wine,
+                          borderRadius: radius.control,
+                          paddingVertical: 13,
+                          alignItems: "center",
+                        }}
+                      >
+                        <AppText variant="bodyMedium" tone="onWine">
+                          That's my count — mark delivered
+                        </AppText>
+                      </PressableScale>
+                    </>
+                  ) : (
+                    <PressableScale
+                      onPress={() =>
+                        setArrivedCount(
+                          Number.isSafeInteger(order.quantity) &&
+                            (order.quantity as number) >= 0
+                            ? (order.quantity as number)
+                            : 0,
+                        )
+                      }
+                      disabled={deliverWaiting}
+                      style={{
+                        backgroundColor: color.fill,
+                        borderRadius: radius.control,
+                        paddingVertical: 13,
+                        alignItems: "center",
+                        opacity: deliverWaiting ? 0.6 : 1,
+                      }}
+                    >
+                      <AppText variant="bodyMedium">
+                        {deliverWaiting
+                          ? "Saved on this phone"
+                          : "It arrived — count it in"}
+                      </AppText>
+                    </PressableScale>
+                  )}
                   {deliverWaiting ? (
                     <AppText variant="caption" tone="tertiary" align="center">
                       {DELIVERED_WAITING_WORDS}
@@ -265,5 +334,34 @@ export default function OrderDetailScreen() {
         ) : null}
       </ScrollView>
     </Screen>
+  );
+}
+
+function CountStep({
+  label,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityLabel={label === "+" ? "One more" : "One fewer"}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 999,
+        backgroundColor: color.fill,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      <AppText variant="title">{label}</AppText>
+    </PressableScale>
   );
 }
