@@ -804,3 +804,113 @@ describe("every live notice and phone push names its house (F-522, F-523)", () =
     });
   });
 });
+
+/**
+ * F-1177 (a re-hit of F-1065): the RabbitMQ bridge put an order's target price
+ * on `order:created` and on the `event:new` copy, and the AI summary of a
+ * vendor thread on `conversation:summary_updated` and `event:new`, all to
+ * `restaurant:<id>`, which staff sockets join. F-1065 had cut money only from
+ * `events.service`.
+ */
+describe("the RabbitMQ bridge sends staff no money and no letter summary (F-1177)", () => {
+  function bridgeOver(w: ReturnType<typeof world>) {
+    return new RabbitMqBridgeService(
+      { get: () => undefined } as any,
+      w.gateway,
+      w.databaseService,
+      w.responder,
+      {} as any,
+      {} as any,
+    );
+  }
+  const everything = (s: FakeSocket) => JSON.stringify(s.received);
+
+  it("a new order reaches a staff socket without its target price", async () => {
+    const w = world();
+    const owner = await w.connect(OWNER);
+    const staff = await w.connect(STAFF);
+    (bridgeOver(w) as any).handleOrderCreated({
+      restaurant_id: HOUSE,
+      payload: {
+        order_id: "o1",
+        restaurant_id: HOUSE,
+        wine_name: "Brunello",
+        quantity: 6,
+        provider_name: "Gullit Wines",
+        target_price_per_bottle: 1090,
+        target_price: 1090,
+      },
+    });
+    await settle();
+    expect(staff.received.map((r) => r.event).sort()).toEqual([
+      "event:new",
+      "order:created",
+    ]);
+    expect(everything(staff)).not.toMatch(/target_price|1090/);
+    const generic = staff.received.find((r) => r.event === "event:new");
+    expect(generic?.payload).toMatchObject({
+      eventType: "order_change",
+      amountsWithheld: true,
+      payload: { order_id: "o1", wine_name: "Brunello", quantity: 6 },
+    });
+    // The owner hears the same room: the amounts are read from the order.
+    expect(everything(owner)).not.toMatch(/1090/);
+  });
+
+  it("a thread summary reaches the owner and the manager, and a staff socket only hears the thread moved", async () => {
+    const w = world();
+    const owner = await w.connect(OWNER);
+    const manager = await w.connect(MANAGER);
+    const staff = await w.connect(STAFF);
+    const SUMMARY = "Gullit came down from $1,200 to $1,090 a bottle.";
+    (bridgeOver(w) as any).handleConversationSummaryUpdated({
+      restaurant_id: HOUSE,
+      payload: {
+        restaurant_id: HOUSE,
+        thread_id: "o1",
+        order_id: "o1",
+        summary: SUMMARY,
+        message_count: 3,
+        negotiated_price: 1090,
+      },
+    });
+    await settle();
+    for (const s of [owner, manager]) {
+      const got = s.received.find(
+        (r) => r.event === "conversation:summary_updated",
+      );
+      expect(got?.payload.data).toMatchObject({
+        thread_id: "o1",
+        summary: SUMMARY,
+      });
+    }
+    expect(
+      staff.received.some((r) => r.event === "conversation:summary_updated"),
+    ).toBe(false);
+    expect(everything(staff)).not.toMatch(/summary"|came down|1090|1,090/);
+    expect(
+      staff.received.find((r) => r.event === "event:new")?.payload,
+    ).toMatchObject({
+      eventType: "conversation_update",
+      payload: { thread_id: "o1", order_id: "o1", message_count: 3 },
+    });
+  });
+
+  it("a vendor reply's event carries which thread moved, never its words or figures", async () => {
+    const w = world();
+    const staff = await w.connect(STAFF);
+    (bridgeOver(w) as any).handleConversationUpdated({
+      restaurant_id: HOUSE,
+      payload: {
+        conversation_id: "c1",
+        order_id: "o1",
+        direction: "inbound",
+        rolling_summary: "Vendor offers 1090.",
+        message_text: "We can do 1090 a bottle.",
+        quoted_price: 1090,
+      },
+    });
+    await settle();
+    expect(everything(staff)).not.toMatch(/1090|Vendor offers|We can do/);
+  });
+});

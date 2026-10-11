@@ -321,3 +321,12 @@ export function failedReadsSentence(reads: readonly FailedRead[]): string {
 export const LETTER_WORDS_WITHHELD =
   'This letter names prices, so its words are shown to owners, managers and ' +
   'the people an owner has allowed to write to vendors.';
+
+/**
+ * F-1176: said in place of the files a vendor sent with a letter when the
+ * gateway withheld them (`withheld`). A price list or an invoice names prices
+ * as the letter does, so the same people open it.
+ */
+export const LETTER_FILES_WITHHELD =
+  'Files came with this letter. They may name prices, so they are shown to ' +
+  'owners, managers and the people an owner has allowed to write to vendors.';

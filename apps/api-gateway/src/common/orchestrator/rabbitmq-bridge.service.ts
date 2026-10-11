@@ -25,6 +25,34 @@ import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
 import { OWNER_AND_MANAGER } from "../tenant/live-membership";
 import { maskEmail } from "../log-mask";
+import { payloadWithoutMoney } from "../../events/event-money-for-role";
+
+/**
+ * What a conversation event carries on `restaurant:<id>`, which every member's
+ * socket joins, staff included (F-1177): which thread moved, never its words.
+ * The AI summary of a vendor letter names prices, so it goes only to owners
+ * and managers (`emitToHouseRoles`), as the letters' words do on the order
+ * routes (F-982).
+ */
+const CONVERSATION_EVENT_KEYS = [
+  "event_id",
+  "conversation_id",
+  "id",
+  "thread_id",
+  "order_id",
+  "provider_id",
+  "direction",
+  "channel",
+  "message_count",
+] as const;
+
+function conversationEventFields(payload: any): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const key of CONVERSATION_EVENT_KEYS) {
+    if (payload?.[key] !== undefined) kept[key] = payload[key];
+  }
+  return kept;
+}
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -487,12 +515,13 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     if (!restaurantId) return;
 
     const payload = msg?.payload || msg;
+    // `order:created` goes to every member, staff included: no target price
+    // (F-1177). The pages that hear it only refetch.
     this.websocketGateway.emitOrderCreated(restaurantId, {
       order_id: payload.order_id,
       wine_name: payload.wine_name,
       quantity: payload.quantity,
       provider_name: payload.provider_name,
-      target_price: payload.target_price,
       status: "NEGOTIATING",
     });
 
@@ -1173,7 +1202,11 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       channel: payload.channel || "email",
     });
 
-    this.emitGenericEvent(restaurantId, "conversation_update", payload);
+    this.emitGenericEvent(
+      restaurantId,
+      "conversation_update",
+      conversationEventFields(payload),
+    );
   }
 
   private handleConversationSummaryUpdated(msg: any): void {
@@ -1181,13 +1214,28 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     if (!restaurantId) return;
 
     const payload = msg?.payload || msg;
-    this.websocketGateway.emitConversationSummaryUpdated(restaurantId, {
-      thread_id: payload.thread_id || payload.order_id,
-      summary: payload.summary,
-      message_count: payload.message_count,
-    });
+    // The summary is owners' and managers' only (F-1177); everyone else hears
+    // that the thread moved, without it.
+    void this.websocketGateway.emitToHouseRoles(
+      restaurantId,
+      OWNER_AND_MANAGER,
+      "conversation:summary_updated",
+      {
+        event: "ConversationSummaryUpdated",
+        data: {
+          thread_id: payload.thread_id || payload.order_id,
+          summary: payload.summary,
+          message_count: payload.message_count,
+        },
+        timestamp: new Date().toISOString(),
+      },
+    );
 
-    this.emitGenericEvent(restaurantId, "conversation_update", payload);
+    this.emitGenericEvent(
+      restaurantId,
+      "conversation_update",
+      conversationEventFields(payload),
+    );
   }
 
   private handleRecurringOrderReminder(msg: any): void {
@@ -1248,6 +1296,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   /**
    * Emit a generic event:new that the RealtimeContext in React will pick up.
    * This uses the same shape the frontend expects from POST /events.
+   *
+   * `restaurant:<id>` is every member's room, staff included, so the payload
+   * goes out without its money, as `events.service` sends its rows (F-1065,
+   * F-1177): an order's target price, a report's figures.
    */
   private emitGenericEvent(
     restaurantId: string,
@@ -1255,12 +1307,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     payload: any,
   ): void {
     const room = `restaurant:${restaurantId}`;
+    const { payload: shared, cut } = payloadWithoutMoney(payload);
     this.websocketGateway.server?.to(room).emit("event:new", {
       id: payload?.event_id || `bridge-${Date.now()}`,
       eventType,
       sourcePage: "agent",
       restaurantId,
-      payload,
+      payload: shared,
+      ...(cut ? { amountsWithheld: true } : {}),
       createdAt: new Date().toISOString(),
     });
   }

@@ -1222,6 +1222,24 @@ describe('the sim wave-9 tail (F-424, F-425, F-426)', () => {
     expect(screen.getByText(/cannot be opened right now/)).toBeInTheDocument();
   });
 
+  it('files withheld from this reader are said in one sentence, with no name and no link (F-1176)', () => {
+    mockOrder.files = {
+      isError: false,
+      data: [
+        { id: 'a1', conversationId: 'in1', createdAt: '', withheld: true },
+        { id: 'a2', conversationId: 'other', createdAt: '', withheld: true },
+      ],
+    };
+    mockData.current = { ...base, rows: [item({ id: 'in1', direction: 'INBOUND', emailType: null })] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByTestId('book-attachments-withheld')).toHaveTextContent(
+      'Files came with this letter. They may name prices, so they are shown to owners, managers and the people an owner has allowed to write to vendors.',
+    );
+    expect(screen.queryByTestId('book-attachments')).toBeNull();
+    expect(screen.queryByText(/cannot be opened right now/)).toBeNull();
+  });
+
   it('a failed attachments read is said, not shown as none (F-425)', () => {
     mockOrder.files = { isError: true, data: undefined };
     mockData.current = { ...base, rows: [item({ id: 'in1', direction: 'INBOUND', emailType: null })] };

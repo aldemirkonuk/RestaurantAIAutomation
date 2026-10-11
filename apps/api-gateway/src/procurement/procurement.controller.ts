@@ -1431,12 +1431,18 @@ export class ProcurementController {
   @ApiResponse({ status: 200 })
   async getOrderAttachments(
     @Param("id") orderId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ) {
     try {
+      // The vendor's files (price lists, invoices) sit under the letter they
+      // came with and name prices as its words do, so they follow the same
+      // cut (F-1176, F-982): anyone who may read the letter gets the links;
+      // anyone else learns only that files came, and none is signed.
       return await this.procurementService.getOrderAttachments(
         user.restaurantId,
         orderId,
+        { readsFiles: await this.readsLetters(user) },
       );
     } catch (error: any) {
       throw new HttpException(
@@ -1575,14 +1581,20 @@ export class ProcurementController {
     user: { userId: string; restaurantId: string; role?: string | null },
   ) {
     const role = user?.role ?? null;
-    const readsLetters = holdsHouseMoney(role)
-      ? true
-      : (
-          await this.procurementService.sendOrAskFor(
-            user.userId,
-            user.restaurantId,
-          )
-        ).maySend;
+    const readsLetters = await this.readsLetters(user);
     return conversationsForRole(rows, role, { readsLetters });
+  }
+
+  /** Whether this caller may read a letter's words: a holder of the house's
+   * money, or a non-holder who may send to vendors (ADR 0175 D10). */
+  private async readsLetters(user: {
+    userId: string;
+    restaurantId: string;
+    role?: string | null;
+  }): Promise<boolean> {
+    if (holdsHouseMoney(user?.role ?? null)) return true;
+    return (
+      await this.procurementService.sendOrAskFor(user.userId, user.restaurantId)
+    ).maySend;
   }
 }
