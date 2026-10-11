@@ -3,11 +3,13 @@ import * as path from "path";
 
 import {
   DRINK_SECTIONS,
+  DRINK_WORDS,
   isKitchenLine,
   lineForViewer,
   seesRawLine,
   KITCHEN_HINTS,
   MEMBER_LINE_KEYS,
+  SECTION_HINTS,
   WINE_WORDS,
 } from "./menu-line-view";
 import { MenusController, MenuVersionsController } from "./menus.controller";
@@ -47,6 +49,42 @@ describe("menu-line-view", () => {
     expect(KITCHEN_HINTS).toEqual(list("KITCHEN"));
     expect(DRINK_SECTIONS).toEqual(list("VOCABULARY"));
     expect(WINE_WORDS).toEqual(list("WINE_WORDS"));
+    expect(DRINK_WORDS).toEqual(list("DRINK_WORDS"));
+    expect(SECTION_HINTS).toEqual(list("SECTION_HINTS"));
+  });
+
+  // F-1272: a CSV's Tür/Kategori cell is kept in Turkish, and the raw line is
+  // the whole row, so 'Tatlı' (sweet) in it once made a wine a kitchen line.
+  it("knows Turkish drink sections, and 'tatlı' alone marks no food (F-1272)", () => {
+    for (const section of [
+      "Kırmızı",
+      "Beyaz",
+      "Roze",
+      "Pembe",
+      "Köpüklü",
+      "Tatlı şarap",
+      "Rakı",
+      "Bira",
+      "Viski",
+      "Şarap",
+      "KIRMIZI",
+    ]) {
+      expect(isKitchenLine(section, `X,${section},2020,450,meze ile`)).toBe(
+        false,
+      );
+    }
+    expect(isKitchenLine("Tatlı", "Moscato d'Asti,Tatlı,2022,380")).toBe(false);
+    expect(
+      isKitchenLine("Kırmızı", "Yakut,Kırmızı,Kavaklıdere,yarı tatlı,300"),
+    ).toBe(false);
+    expect(isKitchenLine(null, "Moscato,yarı tatlı,2022,380")).toBe(false);
+    // Only a section heading says dessert in the plural.
+    expect(isKitchenLine(null, "Late harvest,2019,pairs with desserts")).toBe(
+      false,
+    );
+    expect(isKitchenLine("Tatlılar", "Künefe,180")).toBe(true);
+    expect(isKitchenLine("TATLILAR", null)).toBe(true);
+    expect(isKitchenLine("Desserts", null)).toBe(true);
   });
 
   it("a known drink section wins: a dessert wine is a drink (F-1173)", () => {

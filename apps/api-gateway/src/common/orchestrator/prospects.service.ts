@@ -380,10 +380,16 @@ export class ProspectsService {
     };
   }
 
-  /** Short-lived signed URLs for a prospect's persisted attachments. Tenant-scoped. */
+  /**
+   * Short-lived signed URLs for a prospect's persisted attachments. Tenant-scoped.
+   * A caller who may not read vendor letters (`readsFiles: false`, F-1274, the
+   * sibling of F-1176) gets one `{ withheld: true }` per file: never its name
+   * or a link, and nothing is signed.
+   */
   async attachmentsFor(
     restaurantId: string,
     prospectId: string,
+    opts: { readsFiles?: boolean } = {},
   ): Promise<any[]> {
     try {
       const { data: prospect } = await this.databaseService.supabase
@@ -397,6 +403,8 @@ export class ProspectsService {
       )
         ? (prospect as any).attachments
         : [];
+      if (opts.readsFiles === false)
+        return refs.map(() => ({ withheld: true }));
       const out: any[] = [];
       for (const a of refs) {
         let url: string | null = null;

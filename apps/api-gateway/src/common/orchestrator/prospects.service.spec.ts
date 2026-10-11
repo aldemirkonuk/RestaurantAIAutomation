@@ -176,3 +176,56 @@ describe("ProspectsService.promote", () => {
     );
   });
 });
+
+// F-1274 (the sibling of F-1176): a caller who may not read vendor letters
+// learns only that files came; nothing is named and nothing is signed.
+describe("ProspectsService.attachmentsFor", () => {
+  const REFS = [
+    {
+      filename: "price-list-2026.pdf",
+      mime_type: "application/pdf",
+      size_bytes: 10,
+      storage_path: "h/p/a.pdf",
+    },
+    {
+      filename: "invoice.pdf",
+      mime_type: "application/pdf",
+      size_bytes: 20,
+      storage_path: "h/p/b.pdf",
+    },
+  ];
+  function withStorage() {
+    const f = fakeDb({
+      "email_prospects:select": [
+        { data: { id: PROSPECT, attachments: REFS }, error: null },
+      ],
+    });
+    const createSignedUrl = jest.fn(async (p: string) => ({
+      data: { signedUrl: `https://signed/${p}` },
+    }));
+    (f.db.supabase as any).storage = { from: () => ({ createSignedUrl }) };
+    return { db: f.db, createSignedUrl };
+  }
+
+  it("withholds every file's name and link when readsFiles is false, and signs nothing", async () => {
+    const { db, createSignedUrl } = withStorage();
+    const out = await service(db).attachmentsFor(HOUSE, PROSPECT, {
+      readsFiles: false,
+    });
+    expect(out).toEqual([{ withheld: true }, { withheld: true }]);
+    expect(JSON.stringify(out)).not.toContain("price-list");
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("signs a link per file for a caller who reads the letters", async () => {
+    const { db, createSignedUrl } = withStorage();
+    const out = await service(db).attachmentsFor(HOUSE, PROSPECT, {
+      readsFiles: true,
+    });
+    expect(out.map((a) => [a.filename, a.url])).toEqual([
+      ["price-list-2026.pdf", "https://signed/h/p/a.pdf"],
+      ["invoice.pdf", "https://signed/h/p/b.pdf"],
+    ]);
+    expect(createSignedUrl).toHaveBeenCalledTimes(2);
+  });
+});

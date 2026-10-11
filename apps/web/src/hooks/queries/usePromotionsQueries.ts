@@ -63,9 +63,8 @@ export interface ProspectAttachmentMetaDto {
   size_bytes: number | null
 }
 
-export interface ProspectAttachmentDto extends ProspectAttachmentMetaDto {
-  url: string | null
-}
+/** A file the caller may not open stands as `{ withheld: true }`, with no name or link (F-1274). */
+export type ProspectAttachmentDto = (ProspectAttachmentMetaDto & { url: string | null }) | { withheld: true }
 
 export interface ProspectDto {
   id: string
