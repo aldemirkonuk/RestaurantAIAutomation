@@ -48,7 +48,11 @@ import {
   DraftSendRequestDto,
   ManualReplyDto,
 } from "./dto/approve-draft.dto";
-import { ProcurementService, type SendOrAsk } from "./procurement.service";
+import {
+  ProcurementService,
+  type OrderBookSummary,
+  type SendOrAsk,
+} from "./procurement.service";
 import { assertHoldsHouseMoney } from "./documents/document-money-gate";
 
 /**
@@ -178,15 +182,34 @@ export class ProcurementController {
     @Query() query: OrderFilterDto,
     @CurrentUser()
     user: { userId: string; restaurantId: string; role?: string | null },
-  ): Promise<OrderListResponseDto & { amountsWithheld?: true }> {
+  ): Promise<
+    OrderListResponseDto & {
+      amountsWithheld?: true;
+      summary?: OrderBookSummary;
+    }
+  > {
     try {
       // The ledger behind /orders, /receiving and the calendar: the same cut
       // as the pending queue and history (F-433, F-441).
-      return orderListForRole(
+      const list = orderListForRole(
         await this.procurementService.listOrders(user.restaurantId, query),
         user?.role ?? null,
       );
+      if (query.summary !== "true") return list;
+      // /orders' spine and "<Month> so far" over the whole book, read with
+      // its newest page so the page never reads every order (F-1368). Staff
+      // get the counts and no money (F-441).
+      const summary = await this.procurementService.summarizeOrderBook(
+        user.restaurantId,
+        {
+          withAmounts: holdsHouseMoney(user?.role ?? null),
+          callerZone: query.zone ?? null,
+        },
+      );
+      return { ...list, summary };
     } catch (error) {
+      // The summary's 503 stays a 503, never counts of zero.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch procurement orders",
         HttpStatus.INTERNAL_SERVER_ERROR,

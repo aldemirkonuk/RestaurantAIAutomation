@@ -51,7 +51,6 @@ const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
 const VALID_STATIONS = new Set<string>([...STAGES, 'recurring']);
 
 export default function OrdersNext() {
-  const data = useOrdersNextData();
   // Figures grouped the house's way (F-942).
   const group = useHouseGroupMark();
   // The house's way of writing a date, and its clock (F-1135).
@@ -77,6 +76,8 @@ export default function OrdersNext() {
   // "approve this order" bell and the bells already stored in the house still
   // carry (F-217, F-1143).
   const targetOrderId = routeOrderId ?? searchParams.get('order') ?? searchParams.get('highlight');
+  // The newest orders; an asked-for order older than them is read on its own (F-1368).
+  const data = useOrdersNextData(targetOrderId);
   /** Which target id this page has already acted on, so a manual collapse by
    *  the person afterwards is not fought by re-expanding on every render. */
   const handledTargetRef = useRef<string | null>(null);
@@ -167,13 +168,14 @@ export default function OrdersNext() {
    * loading" and not "the fetch failed" (both are said elsewhere).
    *
    * This does NOT, on its own, prove the order does not exist or is foreign:
-   * `data.rows` is the whole book as of the last read (`getOrderBook`, F-1132),
-   * so an order placed since, or one this person may not see, looks identical
-   * from here to one that truly does not exist. The banner below says
-   * only what was actually checked — how many rows were loaded, not a claim
-   * about the order's existence or ownership.
+   * `data.rows` is the newest orders plus, when the link names an older one,
+   * that order read on its own (F-1368). An order this person may not see
+   * looks identical from here to one that truly does not exist, so the banner
+   * below says only what was checked, not a claim about the order's
+   * ownership. It waits for the order's own read before it speaks.
    */
-  const targetMissing = Boolean(targetOrderId) && data.hasData && !data.isError && !targetRow;
+  const targetMissing =
+    Boolean(targetOrderId) && data.hasData && !data.isError && !data.targetPending && !targetRow;
 
   useEffect(() => {
     if (!targetOrderId || !targetRow) return;
@@ -532,9 +534,8 @@ export default function OrdersNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            Order {targetOrderId} was not among the {data.rows.length} orders loaded for this
-            house — it may have been placed since, or belong to a different house. Showing every
-            loaded order below instead.
+            Order {targetOrderId} could not be opened for this house — it may belong to a
+            different house. Showing the newest orders below instead.
             {targetOrderId && <OrderHeldElsewhere orderId={targetOrderId} />}
           </div>
         )}
@@ -634,6 +635,33 @@ export default function OrdersNext() {
                     />
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* The newest orders first; older ones only when asked (F-1368). */}
+            {data.hasData && data.loadOlder && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  data-testid="load-older-orders"
+                  onClick={data.loadOlder}
+                  disabled={data.loadingOlder}
+                  className="rounded-lg px-3 py-1.5"
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    color: 'var(--seal-deep, #14515C)',
+                    border: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'transparent',
+                  }}
+                >
+                  {data.loadingOlder ? 'Loading older orders…' : 'Load older orders'}
+                </button>
+                {typeof data.totalInBook === 'number' && (
+                  <span style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+                    Showing the newest {data.rows.length} of {data.totalInBook} orders.
+                  </span>
+                )}
               </div>
             )}
 

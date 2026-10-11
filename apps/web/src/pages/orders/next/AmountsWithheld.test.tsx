@@ -25,9 +25,21 @@ vi.mock('@/services/api/client', () => ({
 }));
 
 const ordersData: { current: unknown[] } = { current: [] };
+// The month is the gateway's, over the whole book, sent with the first page (F-1368).
+const summaryData: { current: unknown } = { current: undefined };
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
-  useOrders: () => ({
-    data: ordersData.current,
+  useOrderWindow: () => ({
+    data: {
+      pages: [
+        {
+          orders: ordersData.current,
+          page: 1,
+          total: ordersData.current.length,
+          hasMore: false,
+          summary: summaryData.current,
+        },
+      ],
+    },
     isLoading: false,
     isError: false,
     error: null,
@@ -99,6 +111,15 @@ describe('F-441 — the month figure on a staff list is not $0', () => {
   it('stays null and says the amounts are withheld', () => {
     get.mockResolvedValue({ data: { readable: false, reason: 'n/a', orders: [] } });
     ordersData.current = [{ ...STAFF_ROW, amountsWithheld: true }];
+    // The gateway sends staff the counts and no month, with the marker.
+    summaryData.current = {
+      total: 1,
+      counts: { pending: 1, approved: 0, ordered: 0, delivered: 0 },
+      recurring: 0,
+      cancelled: 0,
+      zone: 'UTC',
+      amountsWithheld: true,
+    };
     const { result } = renderHook(() => useOrdersNextData(), { wrapper });
     expect(result.current.amountsWithheld).toBe(true);
     expect(result.current.month.thisMonth).toBeNull();
@@ -108,9 +129,17 @@ describe('F-441 — the month figure on a staff list is not $0', () => {
 
   it('still sums an owner’s month', () => {
     get.mockResolvedValue({ data: { readable: false, reason: 'n/a', orders: [] } });
-    // The month counts committed orders only (HEAD's monthFigureOf), so the
-    // owner's row is an approved one.
+    // The month counts committed orders only, summed by the gateway (F-1368).
     ordersData.current = [{ ...STAFF_ROW, status: 'APPROVED', totalCost: 2100 }];
+    summaryData.current = {
+      total: 1,
+      counts: { pending: 0, approved: 1, ordered: 0, delivered: 0 },
+      recurring: 0,
+      cancelled: 0,
+      zone: 'UTC',
+      thisMonth: { month: '2026-10', byCurrency: [{ currency: FIXTURE_CURRENCY, amount: 2100 }], unpriced: 0 },
+      lastMonth: { month: '2026-09', byCurrency: [], unpriced: 0 },
+    };
     const { result } = renderHook(() => useOrdersNextData(), { wrapper });
     expect(result.current.amountsWithheld).toBe(false);
     expect(result.current.month.thisMonth).toBe(2100);

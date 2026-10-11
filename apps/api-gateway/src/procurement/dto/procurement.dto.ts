@@ -11,6 +11,7 @@ import {
   IsUUID,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
   registerDecorator,
@@ -840,6 +841,31 @@ export class OrderFilterDto {
   @IsString()
   @IsOptional()
   search?: string;
+
+  /**
+   * Only these orders, comma-separated, at most 100 (F-1368): /calendar reads
+   * the orders its visible entries link to, not the whole book.
+   */
+  @ApiPropertyOptional({ description: "Up to 100 order ids, comma-separated." })
+  @Matches(/^[0-9a-f-]{36}(,[0-9a-f-]{36}){0,99}$/i)
+  @IsOptional()
+  ids?: string;
+
+  /**
+   * "true": the reply also carries `summary`, the whole book's stage counts
+   * and month (F-1368), so /orders reads them with its newest page.
+   */
+  @ApiPropertyOptional({ enum: ["true"] })
+  @IsIn(["true"])
+  @IsOptional()
+  summary?: "true";
+
+  /** The reader's clock, for `summary`'s month when the house states no zone. */
+  @ApiPropertyOptional({ description: "IANA time zone, e.g. Europe/Istanbul." })
+  @Matches(/^[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)*$/)
+  @MaxLength(64)
+  @IsOptional()
+  zone?: string;
 
   @ApiPropertyOptional()
   @IsString()

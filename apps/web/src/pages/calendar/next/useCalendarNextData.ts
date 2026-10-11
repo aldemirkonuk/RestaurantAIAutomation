@@ -28,7 +28,7 @@ import { useCalendarEventsSubscription } from '../../../contexts/RealtimeContext
 import { apiClient } from '../../../services/api/client';
 import { writeOutcomeUnknown } from '../../../lib/draftWriteKey';
 import { fetchProviders, type Provider } from '../../../services/api/providers';
-import { useOrders } from '../../../hooks/queries/useOrderQueries';
+import { useOrdersByIds } from '../../../hooks/queries/useOrderQueries';
 import { canonicalStatus } from '../../../lib/mudavym/status';
 import { expandSeries } from './expand-series';
 import type { Order } from '../../../services/api/types';
@@ -595,8 +595,6 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     },
   });
 
-  const ordersQ = useOrders();
-
   /** Anything else in the app moving a calendar row refreshes this window. */
   useCalendarEventsSubscription(
     useCallback(() => {
@@ -625,6 +623,17 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     if (!rows) return null;
     return new Map<string, Provider>(rows.map((p) => [p.id, p]));
   }, [providersQ.data]);
+
+  /**
+   * Only the orders this window's entries link to, read by id (F-1368). The
+   * calendar used to read the house's whole order book, every page, every
+   * minute, to look up a handful of them.
+   */
+  const linkedOrderIds = useMemo(
+    () => [...new Set(events.map((e) => e.orderId).filter((id): id is string => !!id))],
+    [events],
+  );
+  const ordersQ = useOrdersByIds(linkedOrderIds);
 
   const ordersById = useMemo(() => {
     const rows = ordersQ.data;
