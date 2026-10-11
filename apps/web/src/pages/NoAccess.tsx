@@ -5,6 +5,7 @@ import { LogOut } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { useAuth } from '../contexts/AuthContext'
 import { cachedHouseName, clearHouseEnded, readHouseEnded } from '../lib/houseMemory'
+import { NoHousePasskeys } from './profile/next/NoHousePasskeys'
 
 export function NoAccess() {
   const publicDesign = usePublicDesign()
@@ -80,6 +81,9 @@ export function NoAccess() {
           >
             Sign out
           </button>
+          {/* F-1321: /profile is out of reach without a house, and a
+              passkey is the person's, not the house's (ADR 0229, item 44). */}
+          <NoHousePasskeys />
         </div>
       </PublicShell>
     )
@@ -125,6 +129,7 @@ export function NoAccess() {
             Opening your own restaurant? Start here.
           </Link>
         </div>
+        <NoHousePasskeys />
       </AuthCard>
     </AuthShell>
   )
