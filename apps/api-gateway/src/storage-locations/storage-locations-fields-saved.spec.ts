@@ -43,6 +43,11 @@ function fakeDb() {
       eq: (k: string, v: unknown) => ((state.filters[k] = v), chain),
       is: () => chain,
       in: () => chain,
+      // F-1104: updateLocation now reads the zone's live lots for its count
+      // (fix/sim-w91-storage-counts, F-1331); this zone holds none.
+      gt: () => chain,
+      not: () => chain,
+      limit: async () => ({ data: [], error: null, count: 0 }),
       order: () => chain,
       single: async () => ({
         data: {
