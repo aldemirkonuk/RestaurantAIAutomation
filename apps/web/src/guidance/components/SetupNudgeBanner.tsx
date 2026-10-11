@@ -4,6 +4,7 @@ import { useGuidanceOptional } from '../GuidanceProvider'
 import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress'
 import { useAuth } from '../../contexts/AuthContext'
 import { GuidanceStrip } from './GuidanceStrip'
+import { houseIsSetUp } from '../../lib/houseSetUp'
 
 // Same hide-list as WineAgentFab — the nudge would be redundant on the flow
 // that IS the setup, or on unauthenticated screens.
@@ -24,7 +25,8 @@ export function SetupNudgeBanner() {
   const navigate = useNavigate()
 
   const canActivate = user?.role === 'owner' || user?.role === 'manager'
-  const activationIncomplete = !!progress && !progress.activated
+  // The rail's Get started list reads the same steps (F-1239).
+  const activationIncomplete = !!progress && !houseIsSetUp(progress)
   const hiddenRoute = HIDDEN_PATHS.some((p) => location.pathname.startsWith(p))
 
   const shouldShow =

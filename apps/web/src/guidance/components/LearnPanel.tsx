@@ -17,6 +17,7 @@ import { useGuidanceOptional } from '../GuidanceProvider'
 import { PAGE_TOUR_IDS, PAGE_TOUR_ROUTES, type PageTourId } from '../types'
 import { TOUR_LABELS } from '../tours/registry'
 import { trackGuidance } from '../analytics'
+import { setUpSteps } from '../../lib/houseSetUp'
 
 interface LearnPanelProps {
   progress: OnboardingProgress | null
@@ -60,6 +61,10 @@ export function LearnPanel({
     onClose()
   }
 
+  // The same steps the Finish setup nudge reads (F-1239): a menu read but not
+  // yet current is not ticked, and the low-stock number is on the list.
+  const steps = progress ? setUpSteps(progress) : null
+  const readNotCurrent = !!progress?.menu_uploaded && !steps?.menu
   const tasks = [
     {
       id: 'account',
@@ -69,12 +74,24 @@ export function LearnPanel({
     },
     {
       id: 'menu',
-      label: 'Upload your wine menu',
-      done: !!progress?.menu_uploaded,
+      label: readNotCurrent ? 'Make your menu current' : 'Upload your menu',
+      done: !!steps?.menu,
       cta: {
-        label: 'Upload Now',
+        label: readNotCurrent ? 'Open the menu' : 'Upload Now',
         onClick: () => {
-          navigate('/get-started')
+          navigate(readNotCurrent ? '/house/menu' : '/get-started')
+          onClose()
+        },
+      },
+    },
+    {
+      id: 'threshold',
+      label: 'Set a low-stock number',
+      done: !!steps?.threshold,
+      cta: {
+        label: 'Set it',
+        onClick: () => {
+          navigate('/get-started?step=threshold')
           onClose()
         },
       },
@@ -82,7 +99,7 @@ export function LearnPanel({
     {
       id: 'vendor',
       label: 'Add your first vendor',
-      done: !!progress?.vendor_added,
+      done: !!steps?.vendor,
       cta: {
         label: 'Browse Vendors',
         onClick: () => {
@@ -94,7 +111,7 @@ export function LearnPanel({
     {
       id: 'team',
       label: 'Invite a team member',
-      done: !!progress?.team_member_invited,
+      done: !!steps?.team,
       cta: {
         label: 'Send Invite',
         onClick: () => {
@@ -137,7 +154,7 @@ export function LearnPanel({
           </h3>
           <p className="text-xs text-gray-400">
             {mode === 'get-started'
-              ? `${completedCount}/4 complete`
+              ? `${completedCount}/${tasks.length} complete`
               : 'Replay tours & recover tips'}
           </p>
         </div>

@@ -46,6 +46,8 @@ vi.mock('../../hooks/queries/useInventoryQueries', () => ({
 
 const openList = {
   menu_uploaded: true,
+  menu_current: true,
+  threshold_configured: false,
   vendor_added: false,
   team_member_invited: false,
   checklist_dismissed: false,
@@ -72,7 +74,7 @@ describe('Sidebar — Get started is the owner’s own checklist (F-1210)', () =
   it('shows an owner their open checklist', () => {
     h.onboarding = { progress: openList, isLoading: false, isError: false }
     renderSidebar()
-    expect(getStarted()).toHaveTextContent('2/4')
+    expect(getStarted()).toHaveTextContent('2/5')
   })
 
   it('does not show it to an invited person with no checklist in this house', () => {
@@ -108,5 +110,45 @@ describe('Sidebar — Get started is the owner’s own checklist (F-1210)', () =
     )
     expect(screen.getByRole('alert')).toHaveTextContent('We could not hide this list just now.')
     expect(screen.getByRole('button', { name: /Don.t show again/ })).toBeInTheDocument()
+  })
+})
+
+/**
+ * The rail and the Finish setup nudge read one "set up" (F-1239). The rail
+ * used to close Get started on completed_at (a menu read, a supplier, an
+ * invite) while the nudge still said the house was not set up: no current
+ * menu, no low-stock number.
+ */
+describe('Sidebar — Get started reads the same "set up" as the nudge (F-1239)', () => {
+  const readNotCurrent = {
+    menu_uploaded: true,
+    menu_current: false,
+    threshold_configured: false,
+    vendor_added: true,
+    team_member_invited: true,
+    checklist_dismissed: false,
+    completed_at: '2026-10-01T09:00:00Z',
+    activated: false,
+  }
+
+  it('stays open, with what is left, while the house is not set up', () => {
+    h.onboarding = { progress: readNotCurrent, isLoading: false, isError: false }
+    renderSidebar()
+    expect(getStarted()).toHaveTextContent('3/5')
+    fireEvent.click(getStarted()!)
+    expect(screen.getByText('Make your menu current')).toBeInTheDocument()
+    expect(screen.getByText('Set a low-stock number')).toBeInTheDocument()
+    expect(screen.getByText('3/5 complete')).toBeInTheDocument()
+  })
+
+  it('closes once every step is done, whether or not the row was stamped', () => {
+    h.onboarding = {
+      progress: { ...readNotCurrent, menu_current: true, threshold_configured: true, activated: true, completed_at: null },
+      isLoading: false,
+      isError: false,
+    }
+    renderSidebar()
+    expect(getStarted()).toBeNull()
+    expect(screen.getByRole('button', { name: /Learn & Help/ })).toBeInTheDocument()
   })
 })
