@@ -14,7 +14,8 @@ export type PushHoldReason = "push_off" | "quiet_hours";
  * `persistForRestaurant`) and `sendToUser` both call this (F-835). Priority
  * is not read: whether quiet hours should let a
  * critical push through is an open founder question (F-540), and this keeps
- * whatever the funnel does.
+ * whatever the funnel does. A push the team sends one another reads
+ * `teamPushHolds` instead (the founder's F-540 ruling, 2026-10-11).
  *
  * A person with no preferences row is pushed (Push defaults on, quiet hours
  * off). When the preferences cannot be read, nobody is held, as before this
@@ -31,8 +32,64 @@ export async function pushHolds(
   warn: (line: string) => void,
   now: Date = new Date(),
 ): Promise<Map<string, PushHoldReason>> {
+  return (await readHolds(supabase, restaurantId, ids, warn, now, true)).held;
+}
+
+/** What a team push is and who sent it, for the quiet-hours log line. */
+export interface TeamPushSend {
+  /** The push's kind, e.g. `team_broadcast`, `shift_offer`. */
+  what: string;
+  /** The person who sent it; `null` when no one person did. */
+  by: string | null;
+}
+
+/**
+ * Who among `ids` must NOT get a TEAM push right now: only someone whose Push
+ * switch is off. A push the team sends one another (a broadcast, a shift
+ * offer, a call-out's cover) may reach a person inside their quiet hours:
+ * work overloads and people catch up out of hours (the founder's F-540
+ * ruling, 2026-10-11, F-1340). It is allowed because it is seen: every person
+ * pushed inside their window gets one `TEAM_PUSH_IN_QUIET_HOURS` line on
+ * `note`, naming the house, the person, the sender, the push and the time.
+ * Settings › Quiet hours says team messages can still arrive. A crew note
+ * and the "someone left" push do not read this yet: CLAIMS rows pin them to
+ * `pushHolds` and to the bare send (F-1340, reported, not built).
+ */
+export async function teamPushHolds(
+  supabase: any,
+  restaurantId: string,
+  ids: string[],
+  sent: TeamPushSend,
+  log: { warn: (line: string) => void; note: (line: string) => void },
+  now: Date = new Date(),
+): Promise<Map<string, PushHoldReason>> {
+  const { held, quiet } = await readHolds(
+    supabase,
+    restaurantId,
+    ids,
+    log.warn,
+    now,
+    false,
+  );
+  for (const id of quiet) {
+    log.note(
+      `TEAM_PUSH_IN_QUIET_HOURS restaurant=${restaurantId} to=${id} by=${sent.by ?? "nobody (the system)"} what=${sent.what} at=${now.toISOString()} — sent during quiet hours: a team push may arrive inside quiet hours (F-540).`,
+    );
+  }
+  return held;
+}
+
+async function readHolds(
+  supabase: any,
+  restaurantId: string,
+  ids: string[],
+  warn: (line: string) => void,
+  now: Date,
+  quietHolds: boolean,
+): Promise<{ held: Map<string, PushHoldReason>; quiet: string[] }> {
   const held = new Map<string, PushHoldReason>();
-  if (ids.length === 0) return held;
+  const quiet: string[] = [];
+  if (ids.length === 0) return { held, quiet };
   let prefs: any[];
   try {
     const { data, error } = await supabase
@@ -48,7 +105,7 @@ export async function pushHolds(
     warn(
       `PUSH_PREFERENCES_UNREAD restaurant=${restaurantId} — ${e?.message}. Everyone addressed is pushed, as before quiet hours were read.`,
     );
-    return held;
+    return { held, quiet };
   }
   let zone: string | null = null;
   try {
@@ -78,8 +135,9 @@ export async function pushHolds(
         end: row.quiet_hours_end || "08:00",
       })
     ) {
-      held.set(row.user_id, "quiet_hours");
+      if (quietHolds) held.set(row.user_id, "quiet_hours");
+      else quiet.push(row.user_id);
     }
   }
-  return held;
+  return { held, quiet };
 }

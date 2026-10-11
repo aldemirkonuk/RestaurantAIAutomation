@@ -1,4 +1,4 @@
-import { pushHolds } from "./push-hold";
+import { pushHolds, teamPushHolds } from "./push-hold";
 
 /**
  * F-868: Settings says a quiet-hours window is read in UTC until the house
@@ -82,5 +82,85 @@ describe("pushHolds reads quiet hours with no house time zone (F-868)", () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("PUSH_HOUSE_ZONE_UNREAD"),
     );
+  });
+});
+
+/**
+ * F-1340, the founder's F-540 ruling (2026-10-11): a push the team sends one
+ * another may arrive inside quiet hours, because work overloads; Push off is
+ * still honoured, and every push sent inside someone's window is logged.
+ */
+describe("teamPushHolds — team pushes may arrive in quiet hours, and say so (F-1340)", () => {
+  const prefs = [
+    {
+      user_id: "quiet",
+      push_enabled: true,
+      quiet_hours_enabled: true,
+      quiet_hours_start: "22:00",
+      quiet_hours_end: "08:00",
+    },
+    {
+      user_id: "off",
+      push_enabled: false,
+      quiet_hours_enabled: true,
+      quiet_hours_start: "22:00",
+      quiet_hours_end: "08:00",
+    },
+    { user_id: "awake", push_enabled: true, quiet_hours_enabled: false },
+  ];
+  const sb = {
+    from(table: string) {
+      const chain: any = {
+        select: () => chain,
+        eq: () => chain,
+        in: () => chain,
+        maybeSingle: () =>
+          Promise.resolve({
+            data: { timezone: "UTC", country: "GB" },
+            error: null,
+          }),
+        then: (ok: any, bad: any) =>
+          Promise.resolve(
+            table === "notification_preferences"
+              ? { data: prefs, error: null }
+              : { data: [], error: null },
+          ).then(ok, bad),
+      };
+      return chain;
+    },
+  };
+  const threeUtc = new Date("2026-10-10T03:00:00Z");
+
+  it("[REVERT-FAILS] holds only Push off, pushes the person in quiet hours, and logs who, what and when", async () => {
+    const notes: string[] = [];
+    const held = await teamPushHolds(
+      sb,
+      "h1",
+      ["quiet", "off", "awake"],
+      { what: "team_broadcast", by: "manager-1" },
+      { warn: () => undefined, note: (l) => notes.push(l) },
+      threeUtc,
+    );
+    expect([...held.entries()]).toEqual([["off", "push_off"]]);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("TEAM_PUSH_IN_QUIET_HOURS");
+    expect(notes[0]).toContain("to=quiet");
+    expect(notes[0]).toContain("by=manager-1");
+    expect(notes[0]).toContain("what=team_broadcast");
+    expect(notes[0]).toContain("at=2026-10-10T03:00:00.000Z");
+    expect(notes[0]).toContain("sent during quiet hours");
+  });
+
+  it("leaves the house rule as it was: pushHolds still holds the same person for quiet hours", async () => {
+    const held = await pushHolds(
+      sb,
+      "h1",
+      ["quiet", "off", "awake"],
+      () => undefined,
+      threeUtc,
+    );
+    expect(held.get("quiet")).toBe("quiet_hours");
+    expect(held.get("off")).toBe("push_off");
+    expect(held.has("awake")).toBe(false);
   });
 });

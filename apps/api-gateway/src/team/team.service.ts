@@ -13,6 +13,11 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { ExpoPushService } from "../push/expo-push.service";
+import {
+  teamPushHolds,
+  type PushHoldReason,
+  type TeamPushSend,
+} from "../notifications/push-hold";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
 import { leavesNoOwner, NO_OWNER_LEFT } from "../restaurants/last-owner";
@@ -448,6 +453,22 @@ export class TeamService {
     restaurantId: string,
   ): Promise<ChannelPreferences | null> {
     return loadChannelOptOuts(this.sb, userIds, restaurantId);
+  }
+
+  /**
+   * Who among `userIds` must not get a TEAM push now: only someone with Push
+   * off. A team push may arrive inside quiet hours, and each one that does is
+   * logged (`teamPushHolds`, the founder's F-540 ruling, F-1340).
+   */
+  async teamPushHolds(
+    userIds: string[],
+    restaurantId: string,
+    sent: TeamPushSend,
+  ): Promise<Map<string, PushHoldReason>> {
+    return teamPushHolds(this.sb, restaurantId, userIds, sent, {
+      warn: (line) => this.logger.warn(line),
+      note: (line) => this.logger.log(line),
+    });
   }
 
   // ── Members ────────────────────────────────────────────────────────────

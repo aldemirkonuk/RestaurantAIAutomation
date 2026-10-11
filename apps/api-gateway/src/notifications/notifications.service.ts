@@ -17,7 +17,12 @@ import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
 import { DatabaseService } from "../database/database.service";
 import { ExpoPushService } from "../push/expo-push.service";
-import { pushHolds, type PushHoldReason } from "./push-hold";
+import {
+  pushHolds,
+  teamPushHolds,
+  type PushHoldReason,
+  type TeamPushSend,
+} from "./push-hold";
 import { AreaRoutingService } from "../areas/area-routing.service";
 import { type AreaLabel, readAreaLabel } from "../areas/area-label";
 import type { RouteStep } from "../areas/area-routing";
@@ -757,6 +762,13 @@ export class NotificationsService {
        * note (ADR 0281, amended 2026-10-05) sends its note id and count only.
        */
       pushData?: Record<string, unknown>;
+      /**
+       * Set by a push the team sends one another (a shift offer, a call-out's
+       * cover): the push leg reads `teamPushHolds`, so Push off holds it and
+       * quiet hours do not, and each push sent inside someone's window is
+       * logged (the founder's F-540 ruling, 2026-10-11, F-1340).
+       */
+      teamPush?: TeamPushSend;
     } = {},
   ): Promise<{ inserted: number; ids: string[]; routing?: PersistRouting }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
@@ -915,13 +927,25 @@ export class NotificationsService {
         // clock. Someone inside their window, or with Push off, still has the
         // line on the bell; only the phone stays quiet. The rule is
         // `pushHolds`, the one sendToUser reads too (F-539, F-835).
+        // A team push (`opts.teamPush`) is held by Push off only (F-1340).
         const addressed = alertIds ?? userIds;
-        const held = await pushHolds(
-          this.databaseService.supabase,
-          restaurantId,
-          addressed,
-          (line) => this.logger.warn(line),
-        );
+        const held = opts.teamPush
+          ? await teamPushHolds(
+              this.databaseService.supabase,
+              restaurantId,
+              addressed,
+              opts.teamPush,
+              {
+                warn: (line) => this.logger.warn(line),
+                note: (line) => this.logger.log(line),
+              },
+            )
+          : await pushHolds(
+              this.databaseService.supabase,
+              restaurantId,
+              addressed,
+              (line) => this.logger.warn(line),
+            );
         const pushTo = addressed.filter((id) => !held.has(id));
         if (pushTo.length > 0) {
           await this.expoPushService.sendToUsers(pushTo, {

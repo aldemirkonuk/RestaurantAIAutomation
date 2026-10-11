@@ -1153,6 +1153,35 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
     expect(res).toMatchObject({ offered: 2, notified: 2, setAside: 2 });
   });
 
+  // F-1340, the founder's F-540 ruling (2026-10-11): a call-out's cover ask
+  // and a shift offer are team pushes: Push off holds them, quiet hours do
+  // not, and each one sent inside someone's window is logged by the funnel.
+  it("[REVERT-FAILS] a call-out and a shift offer are marked as team pushes, naming who sent them (F-1340)", async () => {
+    const db = seed();
+    heldShift(db);
+    db.tables.team_members.push({
+      id: "m-ali",
+      restaurant_id: RID,
+      user_id: "user-ali",
+      display_name: "Ali",
+      hourly_wage: 20,
+    });
+    const svc = service(db);
+    const { open } = await svc.reportCallout(OWNER, RID, "sh-held", {} as any);
+    expect(
+      lastNotifications.persistForRestaurant.mock.calls[0][2],
+    ).toMatchObject({
+      teamPush: { what: "shift_callout", by: OWNER },
+    });
+
+    await svc.offerCover(MANAGER, RID, (open as any).id, {
+      memberIds: ["m-ali"],
+    } as any);
+    expect(offersOf()[0][2]).toMatchObject({
+      teamPush: { what: "shift_offer", by: MANAGER },
+    });
+  });
+
   it("a second call-out of the same shift opens no second slot and alerts nobody again", async () => {
     const db = seed();
     heldShift(db);
@@ -1346,7 +1375,10 @@ describe("ScheduleService — cover only on a live week, and an offer says whom 
     } as any);
     const [, payload, opts] = lastNotifications.persistForRestaurant.mock
       .calls[0] as any[];
-    expect(opts).toEqual({ onlyUserIds: ["user-ali"] });
+    expect(opts).toEqual({
+      onlyUserIds: ["user-ali"],
+      teamPush: { what: "shift_offer", by: MANAGER },
+    });
     expect(payload.actionUrl).toBe(`/team?shift=sh-open&week=${WEEK}`);
     expect(res).toMatchObject({ offered: 2, notified: 0, noAccount: 1 });
   });

@@ -870,6 +870,9 @@ describe('SettingsNext — provenance and unknowns', () => {
     });
     // Phone pushes wait out the window (F-528); mail does not, and it says so.
     expect(screen.getByText(/Inside this window your phone is not pushed/i)).toBeInTheDocument();
+    // F-1340, the founder's F-540 ruling (2026-10-11): team pushes may arrive
+    // in quiet hours, and the row says so.
+    expect(screen.getByText(/A message to the team, a shift offer\s+or a call for cover still reaches your phone in this window/i)).toBeInTheDocument();
     expect(screen.getByText(/for this window and goes out on its own clock/i)).toBeInTheDocument();
   });
 

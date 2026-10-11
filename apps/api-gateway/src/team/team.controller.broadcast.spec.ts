@@ -238,6 +238,44 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
     expect(pushed).toContain(SAM);
   });
 
+  // F-1340 (the founder's F-540 ruling, 2026-10-11): a team message may reach
+  // someone in their quiet hours, and every one that does is logged.
+  it("[REVERT-FAILS] pushes a member inside their quiet hours and logs who, what and when (F-1340)", async () => {
+    const db = seed();
+    (db.tables as any).restaurants = [
+      { id: RID, timezone: "UTC", country: null },
+    ];
+    const hm = (d: Date) => d.toISOString().slice(11, 16);
+    db.tables.notification_preferences.push({
+      user_id: RAY,
+      restaurant_id: RID,
+      push_enabled: true,
+      quiet_hours_enabled: true,
+      quiet_hours_start: hm(new Date(Date.now() - 3_600_000)),
+      quiet_hours_end: hm(new Date(Date.now() + 3_600_000)),
+    });
+    const { controller, push } = harness(db);
+    const team = (controller as any).team;
+    const logged = jest
+      .spyOn(team.logger, "log")
+      .mockImplementation(() => undefined);
+
+    await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    const pushed: string[] = push.sendToUsers.mock.calls[0][0];
+    expect(pushed).toContain(RAY);
+    const lines = logged.mock.calls
+      .map((c: any[]) => String(c[0]))
+      .filter((l: string) => l.startsWith("TEAM_PUSH_IN_QUIET_HOURS"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(`to=${RAY}`);
+    expect(lines[0]).toContain(`by=${MANAGER}`);
+    expect(lines[0]).toContain("what=team_broadcast");
+  });
+
   it("reports what the opt-outs suppressed rather than silently shrinking the send", async () => {
     const db = seed();
     db.tables.notification_preferences.push({

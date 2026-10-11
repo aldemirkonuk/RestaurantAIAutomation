@@ -642,7 +642,19 @@ export class TeamController {
     const pushable = may("push")
       ? reachNow.filter((m: any) => m.user_id && wants(m, "push"))
       : [];
-    const pushIds = pushable.map((m: any) => m.user_id);
+    // F-1340 (the founder's F-540 ruling, 2026-10-11): a broadcast may reach
+    // someone inside their quiet hours. Push off (`wants`) still holds it, and
+    // a push sent inside someone's window is logged (`teamPushHolds`).
+    const teamHolds = pushable.length
+      ? await this.team.teamPushHolds(
+          pushable.map((m: any) => m.user_id),
+          rid,
+          { what: "team_broadcast", by: userId },
+        )
+      : new Map<string, unknown>();
+    const pushIds = pushable
+      .map((m: any) => m.user_id)
+      .filter((id: string) => !teamHolds.has(id));
     /**
      * WHAT THE PUSH ACTUALLY DID, 2026-09-05 (ADR 0121 P0).
      *
