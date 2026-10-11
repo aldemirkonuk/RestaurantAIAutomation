@@ -30,7 +30,20 @@ function feed(opts: {
   const client: any = {
     from: (table: string) => {
       const b: any = {};
-      for (const m of ["select", "order", "limit", "insert", "eq", "gte", "in", "is", "gt", "neq", "not"]) b[m] = () => b;
+      for (const m of [
+        "select",
+        "order",
+        "limit",
+        "insert",
+        "eq",
+        "gte",
+        "in",
+        "is",
+        "gt",
+        "neq",
+        "not",
+      ])
+        b[m] = () => b;
       b.maybeSingle = async () =>
         table === "restaurants" ? { data: opts.house, error: null } : { data: null, error: null };
       b.then = (resolve: any, reject: any) => {

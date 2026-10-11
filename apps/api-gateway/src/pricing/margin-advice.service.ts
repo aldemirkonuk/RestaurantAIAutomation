@@ -274,7 +274,8 @@ export class MarginAdviceService {
   /** Every active wine's advice. A failed read throws; it is never an empty list. */
   async adviseHouse(restaurantId: string): Promise<HouseAdvice> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup, lockRead, kitchenRead, money] = await Promise.all([
+    const [targets, inv, rollup, lockRead, kitchenRead, money] =
+      await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -283,8 +284,8 @@ export class MarginAdviceService {
         .eq("is_active", true),
       client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
       readOpenLocks(client, restaurantId),
-      readKitchenInventoryIds(client, restaurantId),
-      readHouseMoney(client, restaurantId),
+        readKitchenInventoryIds(client, restaurantId),
+        readHouseMoney(client, restaurantId),
     ]);
     if (targets.error !== null) {
       throw new InternalServerErrorException(
