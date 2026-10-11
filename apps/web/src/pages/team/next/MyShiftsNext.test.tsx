@@ -153,7 +153,32 @@ describe('a time-off request still waiting can be taken back (F-936)', () => {
     expect(buttons).toHaveLength(1);
     expect(screen.getByText(/· withdrawn/)).toBeTruthy();
     fireEvent.click(buttons[0]);
-    await vi.waitFor(() => expect(api.withdrawTimeOff).toHaveBeenCalledWith('t-wait'));
+    await vi.waitFor(() =>
+      expect(api.withdrawTimeOff).toHaveBeenCalledWith('t-wait', undefined, 'time-off-withdraw:t-wait'),
+    );
+    api.timeOff = [];
+  });
+
+  it('says a withdrawal whose answer was lost may already be done, not "still waiting" (F-1118)', async () => {
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      mine: [],
+      open: [],
+    };
+    api.timeOff = [
+      { id: 't-wait', member_id: 'm-1', start_date: '2026-09-09', end_date: '2026-09-09', status: 'pending' },
+    ];
+    api.withdrawTimeOff.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 502'), {
+        response: { status: 502, data: { message: 'Bad gateway' } },
+      }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Withdraw it' }));
+    expect(await screen.findByText(/may already be withdrawn/)).toBeTruthy();
+    expect(screen.queryByText(/still waiting for your manager/)).toBeNull();
+    expect(screen.queryByText('Bad gateway')).toBeNull();
     api.timeOff = [];
   });
 });

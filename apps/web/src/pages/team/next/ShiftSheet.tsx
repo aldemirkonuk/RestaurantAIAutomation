@@ -58,6 +58,30 @@ export interface ShiftSheetTarget {
   memberId?: string;
 }
 
+/**
+ * A delete whose answer was lost (F-1118). The shift may be gone, so a retry
+ * that finds no shift (404) is the first try's delete, answered as done.
+ * `tried` holds the ids whose last delete went unconfirmed.
+ */
+export async function deleteOrConfirm(
+  id: string,
+  remove: () => Promise<unknown>,
+  tried: Set<string>,
+): Promise<void> {
+  try {
+    await remove();
+  } catch (e) {
+    const status = (e as { response?: { status?: unknown } } | null)?.response?.status;
+    if (tried.has(id) && status === 404) {
+      tried.delete(id);
+      return;
+    }
+    if (writeOutcomeUnknown(e)) tried.add(id);
+    throw e;
+  }
+  tried.delete(id);
+}
+
 export function ShiftSheet({
   target,
   members,
@@ -200,11 +224,19 @@ export function ShiftSheet({
       if (writeOutcomeUnknown(e)) onChanged();
     },
   });
+  const triedDelete = useRef(new Set<string>());
   const remove = useMutation({
-    mutationFn: () => deleteShift(target.shift!.id),
+    mutationFn: () => {
+      const id = target.shift!.id;
+      return deleteOrConfirm(id, () => deleteShift(id, undefined, `shift-delete:${id}`), triedDelete.current);
+    },
     onSuccess: () => {
       onChanged();
       onClose();
+    },
+    // A lost answer may be a deleted shift (F-1118): read the week again.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
     },
   });
 
@@ -235,7 +267,9 @@ export function ShiftSheet({
               'The shift was not saved, so the schedule is unchanged. Your values are still here — try again.')}
         </MutationError>
         <MutationError when={remove.isError}>
-          The shift was not removed. It is still on the schedule.
+          {writeOutcomeUnknown(remove.error)
+            ? 'No answer came back, so the shift may already be gone. Check the schedule before removing it again.'
+            : 'The shift was not removed. It is still on the schedule.'}
         </MutationError>
 
         <label>

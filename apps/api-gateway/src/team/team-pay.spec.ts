@@ -1314,6 +1314,20 @@ describe("F-936 — the person who asked can withdraw a request still waiting", 
     ).toBe("approved");
   });
 
+  it("answers a retry of the person's own withdrawal as done (F-1118)", async () => {
+    // BEFORE: the retry after a lost answer said "already been answered … Ask
+    // your manager to change it", about the person's own withdrawal.
+    const db = seed();
+    const req = await waiting(db);
+    await teamOf(db).withdrawTimeOff(STAFF, RID, req.id);
+    const again = await teamOf(db).withdrawTimeOff(STAFF, RID, req.id);
+    expect(again.status).toBe("withdrawn");
+    // Someone else's withdrawn request is still not theirs to see.
+    await expect(
+      teamOf(db).withdrawTimeOff(MANAGER, RID, req.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it("withdraws nothing when the request cannot be read", async () => {
     const db = seed();
     const req = await waiting(db);
@@ -1577,6 +1591,26 @@ describe("K1 — a removed person's kept shifts and leave are kept, not part of 
     const asStaff = await teamOf(db).listTimeOff(STAFF, RID);
     expect(asStaff.map((t: any) => t.id)).toEqual(["t-live"]);
     expect(db.tables.time_off_requests).toHaveLength(2);
+  });
+
+  it("refuses the time-off list when it cannot be read, never an empty file (F-1119)", async () => {
+    const db = seed();
+    db.tables.time_off_requests.push({
+      id: "t-live",
+      restaurant_id: RID,
+      member_id: "m-staff",
+      start_date: WEEK,
+      end_date: WEEK,
+      status: "approved",
+      created_at: "2026-09-01",
+    });
+    db.errors["time_off_requests:select"] = { message: "boom" };
+    await expect(teamOf(db).listTimeOff(MANAGER, RID)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    await expect(teamOf(db).listTimeOff(STAFF, RID)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
   });
 
   it("never copies them into a new week, and replacing a week does not delete them", async () => {

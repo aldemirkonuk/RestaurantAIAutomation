@@ -44,6 +44,7 @@ import {
   type TextSendersReadout,
 } from '../../../services/api/team';
 import { isUnconfirmedWrite } from '../../../services/api/client';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport';
 import {
   EM,
@@ -229,12 +230,18 @@ export function PublishPanel({
 export function CopyWeekPanel({
   weekStart,
   shiftsOnTarget,
+  lostCopies,
   onClose,
   onDone,
 }: {
   weekStart: string;
   /** `null` when the week has not answered — then the sentence refuses a number. */
   shiftsOnTarget: number | null;
+  /**
+   * The weeks whose last copy went unanswered (F-1117). Held by the desk, not
+   * the panel: the seal approves once, so a retry is a panel opened again.
+   */
+  lostCopies?: Set<string>;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -247,6 +254,14 @@ export function CopyWeekPanel({
    * what holding the button agreed to.
    */
   const empty = shiftsOnTarget === 0;
+  /**
+   * A copy whose answer was lost (F-1117) may have landed, so the week is
+   * read again. A retry the week then refuses as changed is most likely
+   * refused over this person's own copy, so it is not answered as someone
+   * else's change.
+   */
+  const ownLost = useRef(new Set<string>());
+  const lost = lostCopies ?? ownLost.current;
   const copy = useMutation({
     mutationFn: () =>
       copyWeek(
@@ -257,10 +272,16 @@ export function CopyWeekPanel({
           : { replaceTarget: !empty, expectShifts: shiftsOnTarget },
       ),
     onSuccess: () => {
+      lost.delete(weekStart);
       onDone();
       onClose();
     },
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) lost.add(weekStart);
+      if (lost.has(weekStart)) onDone();
+    },
   });
+  const status = (copy.error as { response?: { status?: unknown } } | null)?.response?.status;
 
   return (
     <Panel
@@ -272,8 +293,12 @@ export function CopyWeekPanel({
     >
       <div className="tm-in" style={{ padding: '12px 16px 16px' }}>
         <MutationError when={copy.isError}>
-          {serverMessage(copy.error) ??
-            'Nothing was copied, and this week is exactly as it was.'}
+          {writeOutcomeUnknown(copy.error)
+            ? 'No answer came back, so last week may already be copied in. Check the week before you copy again.'
+            : lost.has(weekStart) && status === 409
+              ? 'This week has changed since you opened this, most likely by your own copy whose answer was lost. Check the week before you copy again.'
+              : (serverMessage(copy.error) ??
+                'Nothing was copied, and this week is exactly as it was.')}
         </MutationError>
         {empty ? (
           <p className="tm-note">
@@ -820,17 +845,26 @@ export function TimeOffSheet({
     if (active && active !== document.body && active.isConnected) return;
     saidRef.current?.focus();
   }, [said, requests]);
+  /** One key per request drawn, so a retry after a lost answer files it once (F-1118). */
+  const addKey = useDraftWriteKey('time-off');
   const add = useMutation({
-    mutationFn: () =>
-      createTimeOff({
+    mutationFn: () => {
+      const draft = {
         memberId: addFor,
         startDate: offFrom,
         endDate: offTo,
         reason: 'Entered by a manager from the team desk',
-      }),
+      };
+      return createTimeOff(draft, undefined, addKey.keyFor(draft));
+    },
     onSuccess: () => {
+      addKey.renew();
       setAddFor('');
       onChanged();
+    },
+    // A lost answer may be a filed request: read the file again.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
     },
   });
 
@@ -860,8 +894,10 @@ export function TimeOffSheet({
               'The decision was not recorded, so the request is still where it was. If the person withdrew it, it is no longer yours to decide.'}
           </MutationError>
           <MutationError when={add.isError}>
-            {serverMessage(add.error) ??
-              "The request was not filed. Nothing is on the manager's desk."}
+            {writeOutcomeUnknown(add.error)
+              ? 'No answer came back, so the request may already be on file. Check the list before filing it again.'
+              : (serverMessage(add.error) ??
+                "The request was not filed. Nothing is on the manager's desk.")}
           </MutationError>
           <p ref={saidRef} tabIndex={-1} role="status" className="tm-note">
             {said}

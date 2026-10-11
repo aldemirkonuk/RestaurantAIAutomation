@@ -44,11 +44,21 @@ import {
   fmtDayShort,
   fmtHours,
   fmtMoneyExact,
+  houseLocale,
   fmtWeekday,
   resolveName,
   workedHours,
 } from './tm-format';
-import { Card, Fact, KV, Mark, MutationError, Tag, useShiftTime } from './tm-bits';
+import {
+  Card,
+  Fact,
+  KV,
+  Mark,
+  MutationError,
+  Tag,
+  useHouseRegion,
+  useShiftTime,
+} from './tm-bits';
 import {
   useSetZoneSetupAccess,
   useZoneSetupAccess,
@@ -149,6 +159,8 @@ function MemberDetail({
   onCertificates: () => void;
 }) {
   const fmtTime = useShiftTime();
+  /** The house's decimal mark for hours (F-1120). */
+  const hoursIn = houseLocale(useHouseRegion());
   const name = resolveName(member);
   const { user } = useAuth();
   // An owner opening their own row sets their OWN dates: not logged, and the
@@ -178,7 +190,7 @@ function MemberDetail({
         <Fact k="Access" v={member.role ?? 'no membership row'} />
         <Fact
           k="This week"
-          v={shifts === null ? `${EM} not read` : `${mine.length} shifts · ${fmtHours(hours)}`}
+          v={shifts === null ? `${EM} not read` : `${mine.length} shifts · ${fmtHours(hours, hoursIn)}`}
         />
         {moneyVisible && (
           <Fact
@@ -339,6 +351,7 @@ export function RosterSheet({
   onCertificates: (m: TeamMember) => void;
   onAdd: () => void;
 }) {
+  const hoursIn = houseLocale(useHouseRegion());
   const [openId, setOpenId] = useState<string | null>(null);
   const hoursById = useMemo(() => {
     const m = new Map<string, number>();
@@ -441,7 +454,7 @@ export function RosterSheet({
                       m.position ?? m.employment_type,
                       m.role ?? 'no access row',
                       m.accountLinked ? 'account linked' : 'no account yet',
-                      shifts === null ? `${EM} h` : fmtHours(hoursById.get(m.id) ?? 0),
+                      shifts === null ? `${EM} h` : fmtHours(hoursById.get(m.id) ?? 0, hoursIn),
                       flag ? `${flag.cert_type} ${flag.status}` : null,
                       m.skills.length > 0 ? m.skills.slice(0, 3).join(', ') : null,
                     ]

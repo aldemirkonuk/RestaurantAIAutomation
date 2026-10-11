@@ -161,8 +161,11 @@ export class ScheduleService {
     );
     const weekEnd = addDays(weekStart, 6);
 
-    const [{ data: schedule }, { data: shifts, error: shiftsErr }, settings] =
-      await Promise.all([
+    const [
+      { data: schedule, error: scheduleErr },
+      { data: shifts, error: shiftsErr },
+      settings,
+    ] = await Promise.all([
         this.sb
           .from("schedules")
           .select("*")
@@ -178,6 +181,17 @@ export class ScheduleService {
           .order("shift_date", { ascending: true }),
         this.team.getSettings(userId, restaurantId),
       ]);
+    // A week whose schedule row could not be read is not an unpublished week
+    // (F-1119): it used to come back as a draft with nobody having seen it.
+    if (scheduleErr) {
+      this.logger.error(
+        `getWeek: could not read the schedule of ${weekStart} for ` +
+          `restaurant ${restaurantId}: ${scheduleErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read whether this week is published, so the week is not shown.",
+      );
+    }
     // A week whose shifts could not be read is not an empty week: it used to
     // come back as zero hours and, for the owner, a complete zero cost.
     if (shiftsErr) {
@@ -195,14 +209,24 @@ export class ScheduleService {
     // deleting them, so a removed person's next week is not "covered" by them.
     const roster = await this.team.rosterMemberIds(restaurantId);
     const shiftRows = onTheRoster(shifts ?? [], roster);
-    const receipts = schedule
-      ? ((
-          await this.sb
-            .from("schedule_receipts")
-            .select("member_id, seen_at")
-            .eq("schedule_id", schedule.id)
-        ).data ?? [])
-      : [];
+    let receipts: any[] = [];
+    if (schedule) {
+      const { data: seen, error: seenErr } = await this.sb
+        .from("schedule_receipts")
+        .select("member_id, seen_at")
+        .eq("schedule_id", schedule.id);
+      // Unread receipts are not "nobody has seen it" (F-1119).
+      if (seenErr) {
+        this.logger.error(
+          `getWeek: could not read who has seen ${weekStart} for ` +
+            `restaurant ${restaurantId}: ${seenErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not read who has seen this week, so the week is not shown.",
+        );
+      }
+      receipts = seen ?? [];
+    }
 
     const coverage = await this.computeCoverage(
       restaurantId,

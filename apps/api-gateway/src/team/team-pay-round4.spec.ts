@@ -285,6 +285,9 @@ function withFormer(db: StubDb, opts: { audited?: boolean } = {}) {
     status: "approved",
     leave_type: "paid",
     reason: "a private sentence",
+    // The table's own column: listTimeOff orders by it, and a read that
+    // fails is now refused rather than shown as an empty file (F-1119).
+    created_at: "2026-08-19T09:00:00.000Z",
   });
   db.tables.team_member_wage_changes.push({
     restaurant_id: RID,
