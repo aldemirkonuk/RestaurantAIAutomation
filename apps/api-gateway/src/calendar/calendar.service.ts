@@ -95,6 +95,13 @@ function endsOnOrAfterStart(
   }
 }
 
+/**
+ * The `reason` on a 5xx whose write was rolled back whole (F-1147). Any other
+ * 5xx may have landed after the row did; this one did not, and the web reads
+ * the field (lib/draftWriteKey.ts) rather than the sentence.
+ */
+export const NOTHING_SAVED_REASON = "nothing_saved";
+
 // ============================================================================
 // SERVICE
 // ============================================================================
@@ -242,9 +249,16 @@ export class CalendarService {
             "The repeat could not be saved, and the single entry it left behind could not be removed. Check the calendar before trying again.",
           );
         }
-        throw new InternalServerErrorException(
-          "The repeat could not be saved, so nothing was saved. Try again.",
-        );
+        // A 500 the caller can trust (F-1147): the rollback ran, so the
+        // typed reason tells the sheet this one did not land, where any
+        // other 5xx may have.
+        throw new InternalServerErrorException({
+          statusCode: 500,
+          error: "Internal Server Error",
+          reason: NOTHING_SAVED_REASON,
+          message:
+            "The repeat could not be saved, so nothing was saved. Try again.",
+        });
       }
     }
 

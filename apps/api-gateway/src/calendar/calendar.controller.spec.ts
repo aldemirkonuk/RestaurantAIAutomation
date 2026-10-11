@@ -48,6 +48,8 @@ describe("CalendarController", () => {
     createEvent: jest.fn(),
     updateEvent: jest.fn(),
     deleteEvent: jest.fn(),
+    getEvent: jest.fn(),
+    getRecurrenceRule: jest.fn(),
   };
 
   // The house's today (F-086): the controller's default day comes from here.
@@ -104,7 +106,9 @@ describe("CalendarController", () => {
           // The owner/manager gate on someone else's link. Who may pass it is
           // `calendar-links.gate.spec.ts`'s job.
           provide: OrganizationsService,
-          useValue: { assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined) },
+          useValue: {
+            assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     })
@@ -583,6 +587,58 @@ describe("CalendarController", () => {
       mockCalendarService.updateEvent.mockRejectedValue(new Error("boom"));
       const err = await controller
         .updateEvent("e1", dto, mockUser)
+        .catch((e: HttpException) => e);
+      expect((err as HttpException).getStatus()).toBe(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    });
+  });
+
+  describe("the other handlers pass a worded refusal through (F-1147)", () => {
+    const refusal = () => new BadRequestException("That is not a date.");
+
+    it("reading an entry answers a 400 as a 400", async () => {
+      mockCalendarService.getEvent.mockRejectedValue(refusal());
+      await expect(controller.getEvent("e1", mockUser)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it("reading a repeat answers a 400 as a 400", async () => {
+      mockCalendarService.getRecurrenceRule.mockRejectedValue(refusal());
+      await expect(
+        controller.getRecurrenceRule("r1", mockUser),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("editing a type answers a 409 as a 409", async () => {
+      const taken = new HttpException(
+        "That name is taken.",
+        HttpStatus.CONFLICT,
+      );
+      mockCalendarService.updateEventType.mockRejectedValue(taken);
+      await expect(
+        controller.updateEventType("t1", {} as never, mockUser),
+      ).rejects.toBe(taken);
+    });
+
+    it("a status change answers a 400 as a 400", async () => {
+      mockCalendarService.updateEventStatus.mockRejectedValue(refusal());
+      await expect(
+        controller.updateEventStatus(
+          "e1",
+          { status: "done" } as never,
+          mockUser,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("an unexpected failure is still a 500", async () => {
+      mockCalendarService.updateEventStatus.mockRejectedValue(
+        new Error("boom"),
+      );
+      const err = await controller
+        .updateEventStatus("e1", { status: "done" } as never, mockUser)
         .catch((e: HttpException) => e);
       expect((err as HttpException).getStatus()).toBe(
         HttpStatus.INTERNAL_SERVER_ERROR,

@@ -1906,6 +1906,34 @@ describe('CalendarNext — a write whose answer was lost (F-1083)', () => {
     expect(within(sheet).getByText(/Nothing was saved/)).toBeInTheDocument();
   });
 
+  // F-1147: the rollback's own 500 carries reason `nothing_saved`; that one is
+  // definite, so the sheet says nothing landed instead of "check first".
+  it('says "Nothing was saved" for the rollback\'s own 500', () => {
+    const create = mutation();
+    create.error = Object.assign(new Error('x'), {
+      response: {
+        status: 500,
+        data: {
+          reason: 'nothing_saved',
+          message: 'The repeat could not be saved, so nothing was saved. Try again.',
+        },
+      },
+    });
+    const sheet = writeIn(create);
+    expect(within(sheet).getByText(/The repeat could not be saved/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/Nothing was saved/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/may already be on the calendar/)).toBeNull();
+  });
+
+  it('still says "may already be on the calendar" for any other 500', () => {
+    const create = mutation();
+    create.error = Object.assign(new Error('x'), {
+      response: { status: 500, data: { message: 'boom' } },
+    });
+    const sheet = writeIn(create);
+    expect(within(sheet).getByText(/may already be on the calendar/)).toBeInTheDocument();
+  });
+
   it('sends the same key when the same entry is written in again', () => {
     const create = mutation();
     const sheet = writeIn(create);

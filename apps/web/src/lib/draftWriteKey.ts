@@ -8,15 +8,17 @@ import axios from 'axios';
  * saved" is a promise the sheet cannot back. A 409 with reason
  * `still_running` is the same case seen from the other side: the gateway is
  * still saving this key from the last try (lib/queue-owner.ts `statusOf`).
+ * A 5xx with reason `nothing_saved` is the one 5xx that is definite: the
+ * gateway rolled the write back whole (calendar.service.ts, F-1147).
  */
 export function writeOutcomeUnknown(err: unknown): boolean {
   const response = (err as { response?: { status?: unknown; data?: unknown } } | null)?.response;
   const status = response?.status;
   if (typeof status === 'number') {
+    const reason = (response?.data as { reason?: unknown } | null | undefined)?.reason;
     return (
-      status >= 500 ||
-      (status === 409 &&
-        (response?.data as { reason?: unknown } | null | undefined)?.reason === 'still_running')
+      (status >= 500 && reason !== 'nothing_saved') ||
+      (status === 409 && reason === 'still_running')
     );
   }
   // The same reading as `isUnconfirmedWrite` (services/api/client.ts), kept
