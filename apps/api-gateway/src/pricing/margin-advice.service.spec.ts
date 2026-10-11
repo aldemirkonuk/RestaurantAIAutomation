@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   InternalServerErrorException,
   NotFoundException,
@@ -349,6 +350,60 @@ describe("MarginAdviceService.adviseHouse -- a kitchen line's stock row is set a
     await expect(svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(
       InternalServerErrorException,
     );
+  });
+
+  // F-1234: the list leaves the row out, so a direct accept must not price it.
+  it("accept refuses advice on a row only kitchen lines link to (400), and writes nothing", async () => {
+    const { svc, inserts, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A, FOOD],
+      rollup: [{ ...ROLLUP[0], inventory_id: "inv-food" }],
+      menuLines: lines,
+      rpc: () => ({
+        data: { outcome: "changed", bottle_price: 57.14 },
+        error: null,
+      }),
+    });
+    const p = svc.accept("rest-1", "inv-food", "bottle", 57.14, "user-9");
+    await expect(p).rejects.toBeInstanceOf(BadRequestException);
+    await expect(p).rejects.toThrow(
+      "This is a kitchen item on the menu, and price advice is for drinks only. Nothing was changed.",
+    );
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
+  });
+
+  it("accept still applies advice on a row a drink line also links to", async () => {
+    const { svc, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      menuLines: lines,
+      rpc: () => ({
+        data: { outcome: "changed", bottle_price: 57.14 },
+        error: null,
+      }),
+    });
+    await expect(
+      svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9"),
+    ).resolves.toMatchObject({
+      outcome: "changed",
+    });
+    expect(rpcs).toHaveLength(1);
+  });
+
+  it("accept refuses when the menu lines cannot be read, never pricing blind", async () => {
+    const { svc, inserts, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      menuLinesError: { message: "down" },
+    });
+    await expect(
+      svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9"),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
   });
 });
 

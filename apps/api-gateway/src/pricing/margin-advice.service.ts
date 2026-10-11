@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -524,7 +525,7 @@ export class MarginAdviceService {
     pricingAnalysisId: string;
   }> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup, money] = await Promise.all([
+    const [targets, inv, rollup, money, kitchenRead] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -539,6 +540,7 @@ export class MarginAdviceService {
         .eq("inventory_id", inventoryId)
         .maybeSingle(),
       readHouseMoney(client, restaurantId),
+      readKitchenInventoryIds(client, restaurantId),
     ]);
     const house: HouseMoneyTerms = {
       currency: targets.row?.currency ?? null,
@@ -557,6 +559,17 @@ export class MarginAdviceService {
     if (rollup.error)
       throw new InternalServerErrorException(
         `The recorded cost could not be read; nothing was changed. ${rollup.error.message}`,
+      );
+    // The house's advice leaves out a row only kitchen lines link to
+    // (F-1170), so accept refuses it too: a direct call could otherwise
+    // price a dish by a wine's rule (F-1234). Unreadable is a refusal.
+    if (kitchenRead.error !== null)
+      throw new InternalServerErrorException(
+        `Whether this is a kitchen item could not be read; nothing was changed. ${kitchenRead.error}`,
+      );
+    if (kitchenRead.ids.has(inventoryId))
+      throw new BadRequestException(
+        "This is a kitchen item on the menu, and price advice is for drinks only. Nothing was changed.",
       );
 
     // L7: a locked kind cannot be accepted. Checked BEFORE anything is

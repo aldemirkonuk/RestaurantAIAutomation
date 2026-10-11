@@ -54,6 +54,10 @@ describe("setHouseMenuPrice -- what a lock held, said per kind (ADR 0193 round 3
     expect(r.kinds).toEqual({ bottle: "locked", glass: "changed" });
     expect(r.held).toEqual([{ kind: "bottle", lockId: "lock-1", lockedPrice: 95, lockedBy: "user-5", lockedAt: "2026-09-01T09:00:00Z" }]);
     expect(heldWords(r.held)).toBe("the bottle price (locked at 95.00)");
+    // F-1232: in the house's money, grouped its own way.
+    expect(heldWords(r.held, { currency: "TRY", locale: "tr-TR" })).toBe(
+      "the bottle price (locked at ₺95,00)",
+    );
   });
 
   it("L4: every named kind held is 'locked', and the lock is named", async () => {

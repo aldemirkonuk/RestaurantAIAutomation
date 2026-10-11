@@ -5,8 +5,10 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
+import { readHouseMoney } from "../common/house-money";
 import { DatabaseService } from "../database/database.service";
 import { MarginAdviceService, type InventoryPriceRow } from "./margin-advice.service";
+import { fmtMoney, type HouseMoneyTerms } from "./margin-to-target";
 import { confirmedPourFrom, readHouseTargetMargin, targetsFrom } from "./target-margin.service";
 import { type LockKind, lockFromRow, readOpenLocks, readPeople } from "./price-locks";
 
@@ -127,8 +129,14 @@ export interface OpenLockRecord {
 
 const PAGE_ROWS = 1000;
 
-function money(n: number | null | undefined): string {
-  return n === null || n === undefined || !Number.isFinite(Number(n)) ? "no price" : Number(n).toFixed(2);
+/** A lock's price in the house's money and formats (F-1232); unknown either way, the bare figure. */
+function money(
+  n: number | null | undefined,
+  house?: HouseMoneyTerms | null,
+): string {
+  return n === null || n === undefined || !Number.isFinite(Number(n))
+    ? "no price"
+    : fmtMoney(Number(n), house);
 }
 
 function num(v: unknown): number | null {
@@ -228,7 +236,7 @@ export class PriceLocksService {
     if (menus.error) missing.push(`the current menu could not be read (${menus.error})`);
 
     // Advice inputs for the locked wines.
-    const [targets, rollup] = await Promise.all([
+    const [targets, rollup, house] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       inventoryIds.length === 0
         ? Promise.resolve({ data: [], error: null } as { data: unknown[]; error: { message: string } | null })
@@ -239,6 +247,7 @@ export class PriceLocksService {
             )
             .eq("restaurant_id", restaurantId)
             .in("inventory_id", inventoryIds),
+      readHouseMoney(client, restaurantId),
     ]);
     const adviceReadable = targets.error === null && !rollup.error;
     if (targets.error !== null) missing.push(`the target margin could not be read (${targets.error})`);
@@ -249,6 +258,7 @@ export class PriceLocksService {
       ...targetsFrom(targets.row),
       pourMl: confirmedPourFrom(targets.row),
       currency: targets.row?.currency ?? null,
+      locale: house.locale,
     };
 
     // Who set each lock, and whether they still manage this house.
@@ -380,12 +390,16 @@ export class PriceLocksService {
       throw new InternalServerErrorException("The lock answered no outcome; whether the price is locked is unknown.");
     }
     const lock = recordFrom(r.lock);
+    const house = await readHouseMoney(
+      this.databaseService.client,
+      restaurantId,
+    );
     return {
       outcome: "locked",
       lock,
       previousLockId: null,
       housePrice: lock.lockedPrice,
-      sentence: `The ${kind} price is locked at ${money(lock.lockedPrice)} at this house. No menu, correction or advice changes it until an owner or a manager does.`,
+      sentence: `The ${kind} price is locked at ${money(lock.lockedPrice, house)} at this house. No menu, correction or advice changes it until an owner or a manager does.`,
     };
   }
 
@@ -438,6 +452,10 @@ export class PriceLocksService {
     });
     if (error) throw lockActError(error, "lock");
     const r = (data ?? {}) as Record<string, unknown>;
+    const house = await readHouseMoney(
+      this.databaseService.client,
+      restaurantId,
+    );
     if (r.outcome === "unchanged" && r.lock) {
       const lock = recordFrom(r.lock);
       return {
@@ -445,7 +463,7 @@ export class PriceLocksService {
         lock,
         previousLockId: null,
         housePrice: lock.lockedPrice,
-        sentence: `That is the price already held (${money(lock.lockedPrice)}). Nothing changed.`,
+        sentence: `That is the price already held (${money(lock.lockedPrice, house)}). Nothing changed.`,
       };
     }
     if (r.outcome !== "changed_and_locked" || !r.lock) {
@@ -457,7 +475,7 @@ export class PriceLocksService {
       lock,
       previousLockId: typeof r.previous_lock_id === "string" ? r.previous_lock_id : null,
       housePrice: lock.lockedPrice,
-      sentence: `The ${lock.kind} price is now ${money(lock.lockedPrice)} (it was ${money(num(r.previous_price))}) and stays locked.`,
+      sentence: `The ${lock.kind} price is now ${money(lock.lockedPrice, house)} (it was ${money(num(r.previous_price), house)}) and stays locked.`,
     };
   }
 
@@ -495,12 +513,16 @@ export class PriceLocksService {
       throw new InternalServerErrorException("The move answered no outcome; where the lock is now is unknown.");
     }
     const lock = recordFrom(r.lock);
+    const house = await readHouseMoney(
+      this.databaseService.client,
+      restaurantId,
+    );
     return {
       outcome: "moved",
       lock,
       previousLockId: typeof r.previous_lock_id === "string" ? r.previous_lock_id : null,
       housePrice: lock.lockedPrice,
-      sentence: `The lock moved: this wine's ${lock.kind} price is ${money(lock.lockedPrice)} and locked. The old lock is released and kept on the record.`,
+      sentence: `The lock moved: this wine's ${lock.kind} price is ${money(lock.lockedPrice, house)} and locked. The old lock is released and kept on the record.`,
     };
   }
 
@@ -514,7 +536,11 @@ export class PriceLocksService {
     lock: OpenLockRecord,
     housePrice: number | null,
   ): Promise<string> {
-    const stays = `The house ${lock.kind} price stays ${money(housePrice)}`;
+    const house = await readHouseMoney(
+      this.databaseService.client,
+      restaurantId,
+    );
+    const stays = `The house ${lock.kind} price stays ${money(housePrice, house)}`;
     const { data: wine, error: wineErr } = await this.databaseService.client
       .from("restaurant_inventory")
       .select("master_wine_id")
@@ -532,7 +558,7 @@ export class PriceLocksService {
       .filter((p): p is number => p !== null);
     const other = prices.find((p) => housePrice === null || Math.abs(p - housePrice) >= 0.005);
     if (other !== undefined) {
-      return `The lock is released. The current menu reads ${money(other)}; the house price stays ${money(housePrice)} until a menu is chosen or a manager changes it.`;
+      return `The lock is released. The current menu reads ${money(other, house)}; the house price stays ${money(housePrice, house)} until a menu is chosen or a manager changes it.`;
     }
     return `The lock is released. ${stays}; nothing else changed.`;
   }
