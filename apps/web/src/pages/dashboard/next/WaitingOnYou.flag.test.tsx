@@ -143,4 +143,14 @@ describe('WaitingFlag on a row', () => {
     ].join(' ');
     expect(words).not.toMatch(/\d/);
   });
+
+  // F-1242: the footer said "The full queue on /orders" — a page address, not
+  // words. /orders has no station holding only this queue (its pending stage
+  // also holds drafts and haggled orders, F-1204), so it lands on plain /orders.
+  it('names the way to every order in plain words, with no page address', () => {
+    mount([order('a', 'Amarone', { priority: plain })]);
+    const link = screen.getByRole('link', { name: 'See every order' });
+    expect(link.getAttribute('href')).toBe('/orders');
+    expect(link.textContent).not.toMatch(/\//);
+  });
 });
