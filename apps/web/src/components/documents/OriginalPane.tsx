@@ -23,6 +23,7 @@ import { PaperPane } from '../../pages/receipts/next/ReceiptsNext'
 import type { ProcurementDocument } from '../../services/api/documents'
 import type { FieldEnvelope } from '../../services/api/canonical'
 import { MONO } from './canonical-format'
+import { isPaperWithheld, PAPER_WITHHELD_NOTE } from './paperWithheld'
 
 /**
  * The stored file in words, not as a MIME type (walk-through W22,
@@ -120,15 +121,18 @@ export function OriginalPane({
   // button opened a pane that always said "No file was stored", even when a
   // file exists and only its link failed. So no button: the gateway's own
   // reason is the sentence, and a failure that may pass offers "Try again".
+  // A paper kept for owners and managers is a decision, not a failing link:
+  // no "Try again" (F-1315, as PaperPane since F-1312).
   if (!open && !imageUrl) {
     const why = reason ?? 'the original cannot be shown here'
+    const withheld = isPaperWithheld(why)
     return (
       <Frame>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} data-testid="original-unavailable">
           <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-            {why.charAt(0).toUpperCase() + why.slice(1)}.
+            {withheld ? PAPER_WITHHELD_NOTE : `${why.charAt(0).toUpperCase() + why.slice(1)}.`}
           </span>
-          {!NOTHING_STORED.test(why) && (
+          {!withheld && !NOTHING_STORED.test(why) && (
             <button
               type="button"
               onClick={onRefresh}

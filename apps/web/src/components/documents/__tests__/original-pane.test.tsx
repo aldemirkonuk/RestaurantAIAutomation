@@ -49,6 +49,22 @@ describe('OriginalPane — nothing to bring', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
+  it('offers no "Try again" when the paper is kept for owners and managers (F-1315)', () => {
+    // The gateway withheld the paper from this reader (F-1299): a decision,
+    // not a failing link, so there is nothing to ask again.
+    const onRefresh = vi.fn()
+    render(
+      <OriginalPane
+        {...props({ reason: 'the paper is kept for owners and managers', storagePath: 'synthetic.pdf', onRefresh })}
+      />,
+    )
+    expect(screen.getByTestId('original-unavailable')).toHaveTextContent(
+      'The paper for this document is kept for owners and managers. Ask one of them if you need to see it.',
+    )
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
   it('still fetches on demand when a signed link exists', () => {
     render(
       <OriginalPane
