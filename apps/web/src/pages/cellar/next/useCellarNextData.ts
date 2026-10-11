@@ -463,6 +463,8 @@ export interface CocktailVM {
   garnish: string | null;
   price: number | null;
   description: string | null;
+  /** When this house put it on the list — the "Kept" column (F-1328). */
+  created_at: string | null;
 }
 
 export interface CocktailListVM {

@@ -150,6 +150,35 @@ describe("BeveragesService.listCocktails", () => {
     expect(out.recipesAvailable).toBe(false);
   });
 
+  // F-1328: the list's "Kept" column read created_at, which was never selected.
+  it("selects created_at, so the list can say when each cocktail was kept", async () => {
+    const service = await serviceWith({
+      cocktails: [{ data: [] }, { count: 0 }],
+    });
+    const db = (
+      service as unknown as {
+        dbService: {
+          getClient: () => { from: (t: string) => Record<string, jest.Mock> };
+        };
+      }
+    ).dbService;
+    const from = db.getClient().from;
+    const selects: string[] = [];
+    jest.spyOn(db, "getClient").mockReturnValue({
+      from: (t: string) => {
+        const c = from(t);
+        const select = c.select;
+        c.select = jest.fn((cols: string, ...rest: unknown[]) => {
+          selects.push(cols);
+          return select(cols, ...rest);
+        });
+        return c;
+      },
+    });
+    await service.listCocktails(RID, { limit: 200 });
+    expect(selects[0].split(",").map((s) => s.trim())).toContain("created_at");
+  });
+
   it("leaves referenceRows NULL — never 0 — when that count could not be read", async () => {
     const service = await serviceWith({
       cocktails: [{ data: [] }, { error: { message: "boom" } }],

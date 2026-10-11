@@ -304,7 +304,9 @@ describe('the register notices — the backtest amendments', () => {
     expect(notice).not.toHaveTextContent(/Add your beers to \/inventory/);
   });
 
-  it('1b. cocktails say the recipes cannot be recorded at all yet', () => {
+  // F-1326: this said recipes could not be recorded at all, above a recipe
+  // editor that records them.
+  it('1b. cocktails point at the list, where each one can carry its recipe', () => {
     const r = readout({
       registers: [
         reg('cocktails', { carried: true, decidedBy: 'manual', confidence: 'certain', needsEvidence: true }),
@@ -312,9 +314,9 @@ describe('the register notices — the backtest amendments', () => {
       ],
     });
     render(<CellarRegistersControl readout={r} loading={false} error={null} onChange={vi.fn()} />);
-    expect(screen.getByTestId('needs-items-cocktails')).toHaveTextContent(
-      /cocktail_ingredients was created empty/,
-    );
+    const notice = screen.getByTestId('needs-items-cocktails');
+    expect(notice).toHaveTextContent(/Each one can carry its recipe/);
+    expect(notice).not.toHaveTextContent(/cannot be recorded|cocktail_ingredients|extraction/);
   });
 
   it('2. several registers at once collapse into ONE notice, never a stack', () => {
@@ -335,7 +337,7 @@ describe('the register notices — the backtest amendments', () => {
     );
     // and each still gets its OWN sentence inside the one notice
     expect(screen.getByTestId('needs-items-many')).toHaveTextContent(/Beer: Put your beers/);
-    expect(screen.getByTestId('needs-items-many')).toHaveTextContent(/Cocktails: Add the cocktail list/);
+    expect(screen.getByTestId('needs-items-many')).toHaveTextContent(/Cocktails: Add your cocktails to \/cocktails/);
   });
 
   it('3. a register switched OFF with items still in it gets its own notice', () => {
