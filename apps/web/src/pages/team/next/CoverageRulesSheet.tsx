@@ -25,6 +25,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getErrorMessage } from '@/services/api/client';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import { createCoverageTemplate, deleteCoverageTemplate } from '../../../services/api/team';
 import { MutationError } from './tm-bits';
 import { useActiveRestaurantId, type CoverageRule } from './useTeamNextData';
@@ -80,18 +81,28 @@ export function CoverageRuleForm({
   const rid = useActiveRestaurantId();
   const [form, setForm] = useState({ role: '', dayOfWeek: '', shiftPeriod: 'pm', minStaff: '1' });
   const refusal = coverageRuleRefusal(form, rules);
+  // One key per draft (F-1377): adding again after a lost answer gets the rule
+  // already written, not a second one raising its own gap.
+  const writeKey = useDraftWriteKey('coverage-rule');
 
   const add = useMutation({
-    mutationFn: () =>
-      createCoverageTemplate({
+    mutationFn: () => {
+      const body = {
         dayOfWeek: form.dayOfWeek === '' ? undefined : Number(form.dayOfWeek),
         shiftPeriod: form.shiftPeriod,
         role: form.role.trim(),
         minStaff: Number(form.minStaff),
-      }),
+      };
+      return createCoverageTemplate(body, undefined, writeKey.keyFor(body));
+    },
     onSuccess: () => {
+      writeKey.renew();
       setForm({ role: '', dayOfWeek: '', shiftPeriod: 'pm', minStaff: '1' });
       invalidateRules(qc, rid, weekStart);
+    },
+    // A lost answer may be a saved rule: read the rules again.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) invalidateRules(qc, rid, weekStart);
     },
   });
 
@@ -160,7 +171,9 @@ export function CoverageRuleForm({
         </p>
       )}
       <MutationError when={add.isError}>
-        The rule was not saved, so the rule file is unchanged. {ruleSaveRefusal(add.error)}
+        {writeOutcomeUnknown(add.error)
+          ? 'No answer came back, so this rule may already be on file. The rules have been read again; check them before adding it again.'
+          : `The rule was not saved, so the rule file is unchanged. ${ruleSaveRefusal(add.error)}`}
       </MutationError>
     </div>
   );

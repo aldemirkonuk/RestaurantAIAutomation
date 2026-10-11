@@ -104,6 +104,7 @@ const cellar = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
 }));
+const cellarSave = vi.hoisted(() => ({ mutate: vi.fn() }));
 vi.mock('@/pages/cellar/next/useCellarNextData', () => ({
   HOLD_CEREMONIES: ['hold', 'auto'] as const,
   GAZETTEER_MEASURE_IDS: [
@@ -129,7 +130,7 @@ vi.mock('@/pages/cellar/next/useCellarNextData', () => ({
     },
     loading: false,
     save: {
-      mutate: vi.fn(),
+      mutate: cellarSave.mutate,
       mutateAsync: vi.fn(),
       isPending: false,
       isError: false,
@@ -1090,6 +1091,15 @@ describe('SettingsNext — provenance and unknowns', () => {
     // Settings supplies the settings-shaped facts around it, and does not
     // invent a date the readout does not carry.
     expect(screen.getByText(/the readout carries no date for each answer/i)).toBeInTheDocument();
+  });
+
+  it('a tile switch sends only the tile that moved, so another screen\'s switch survives (F-1374)', () => {
+    cellarSave.mutate.mockClear();
+    mount('/settings?tab=cellar');
+    fireEvent.click(screen.getByRole('switch', { name: 'No par recorded' }));
+    expect(cellarSave.mutate).toHaveBeenLastCalledWith({ addMeasure: 'parUnset' });
+    fireEvent.click(screen.getByRole('switch', { name: 'Titles carried' }));
+    expect(cellarSave.mutate).toHaveBeenLastCalledWith({ removeMeasure: 'titles' });
   });
 
   it('says a failed cellar readout in words, never as seven registers switched off', () => {

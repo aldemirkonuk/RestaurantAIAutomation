@@ -238,6 +238,41 @@ describe('a coverage rule asks for someone, once (F-718)', () => {
     fireEvent.click(add);
     expect(api.createCoverageTemplate).not.toHaveBeenCalled();
   });
+
+  // F-1377: a lost answer may be a saved rule, so it is not said as "unchanged",
+  // and a second try carries the same key so it cannot add the rule twice.
+  it('says a lost answer could not be confirmed, and retries under the same key', async () => {
+    api.createCoverageTemplate.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 502'), {
+        response: { status: 502, data: { message: 'Bad gateway' } },
+      }),
+    );
+    render(<CoverageRuleForm weekStart="2026-10-05" rules={[]} />, { wrapper });
+    const [role] = screen.getAllByRole('textbox');
+    fireEvent.change(role, { target: { value: 'Floor' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add coverage rule' }));
+    expect(await screen.findByText(/may already be on file/)).toBeInTheDocument();
+    expect(screen.queryByText(/rule file is unchanged/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add coverage rule' }));
+    await waitFor(() => expect(api.createCoverageTemplate).toHaveBeenCalledTimes(2));
+    const [first, second] = api.createCoverageTemplate.mock.calls;
+    expect(first[2]).toMatch(/^coverage-rule:/);
+    expect(second[2]).toBe(first[2]);
+  });
+
+  it('still says a refusal left the rule file unchanged', async () => {
+    api.createCoverageTemplate.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 409'), {
+        response: { status: 409, data: { message: 'This rule is already on file.' } },
+      }),
+    );
+    render(<CoverageRuleForm weekStart="2026-10-05" rules={[]} />, { wrapper });
+    const [role] = screen.getAllByRole('textbox');
+    fireEvent.change(role, { target: { value: 'Floor' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add coverage rule' }));
+    expect(await screen.findByText(/rule file is unchanged\. This rule is already on file\./)).toBeInTheDocument();
+  });
 });
 
 // F-933: the gateway refuses a manager removing an owner, so a manager is not

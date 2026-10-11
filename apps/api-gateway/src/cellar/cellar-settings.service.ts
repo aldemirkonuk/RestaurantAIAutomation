@@ -226,6 +226,18 @@ export class CellarSettingsService {
       );
     }
 
+    if (
+      dto.gazetteerMeasures !== undefined &&
+      (dto.addMeasure !== undefined || dto.removeMeasure !== undefined)
+    ) {
+      throw Object.assign(
+        new Error(
+          "Send either the whole list of tiles or one tile to switch, not both. Nothing was changed.",
+        ),
+        { code: "CELLAR_MEASURES_AMBIGUOUS" },
+      );
+    }
+
     const before = await this.read(restaurantId);
 
     // A transient read failure must refuse the write, not proceed on
@@ -246,12 +258,29 @@ export class CellarSettingsService {
     const now = new Date().toISOString();
 
     const nextCeremony = dto.holdCeremony ?? before.holdCeremony;
+    // F-1374: one tile on or off is applied to the list read just now, not
+    // to the copy the caller's screen was holding. An unconfigured house
+    // starts from the default four the cellar page is already showing.
+    const toggle =
+      dto.addMeasure !== undefined || dto.removeMeasure !== undefined;
+    const current = before.gazetteerMeasures;
+    const toggledMeasures = toggle
+      ? sanitizeMeasures([
+          ...current.filter((m) => m !== dto.removeMeasure),
+          ...(dto.addMeasure !== undefined &&
+          !current.includes(dto.addMeasure as GazetteerMeasureId)
+            ? [dto.addMeasure]
+            : []),
+        ])
+      : null;
     const nextMeasures =
       dto.gazetteerMeasures !== undefined
         ? sanitizeMeasures(dto.gazetteerMeasures) ?? []
-        : before.gazetteerMeasuresConfigured
-          ? before.gazetteerMeasures
-          : null;
+        : toggledMeasures !== null
+          ? toggledMeasures
+          : before.gazetteerMeasuresConfigured
+            ? before.gazetteerMeasures
+            : null;
 
     const { error } = await this.dbService
       .getClient()
@@ -313,7 +342,7 @@ export class CellarSettingsService {
         ? before.gazetteerMeasures
         : null;
       if (
-        dto.gazetteerMeasures !== undefined &&
+        (dto.gazetteerMeasures !== undefined || toggle) &&
         JSON.stringify(priorMeasures) !== JSON.stringify(nextMeasures)
       ) {
         await this.audit.record({

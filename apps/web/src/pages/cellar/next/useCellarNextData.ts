@@ -1322,7 +1322,15 @@ export function useCellarSettings() {
 
   const save = useMutation({
     mutationFn: async (
-      input: Partial<{ holdCeremony: HoldCeremony; gazetteerMeasures: GazetteerMeasureId[] }>,
+      // F-1374: a tile switch sends `addMeasure`/`removeMeasure`, which the
+      // gateway applies to the list it holds, never a whole list built from
+      // this screen's copy.
+      input: Partial<{
+        holdCeremony: HoldCeremony;
+        gazetteerMeasures: GazetteerMeasureId[];
+        addMeasure: GazetteerMeasureId;
+        removeMeasure: GazetteerMeasureId;
+      }>,
     ): Promise<CellarSettingsVM> => {
       const r = await apiClient.put(`/cellar/${activeRestaurantId}/settings`, input);
       return r.data as CellarSettingsVM;

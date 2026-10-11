@@ -45,6 +45,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Panel } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient, getErrorMessage } from '@/services/api/client';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import { useInventory } from '@/hooks/queries/useInventoryQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { queryKeys } from '@/lib/query-keys';
@@ -173,6 +174,10 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // A timeout or a 5xx can land after the order was written (F-1377, the
+  // F-1083 split): said as "could not be confirmed", never "nothing written".
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const { keyFor, renew } = useDraftWriteKey('agreement');
 
   // A restaurant switch must never leave the previous house's shelf item in the
   // form. The queries are already tenant-keyed; the local state is not.
@@ -299,19 +304,21 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
     setFreight('');
     setCurrencyChoice(null);
     setFailure(null);
+    setUnconfirmed(false);
   };
 
   const save = async () => {
     if (blocked || saving) return;
     setSaving(true);
     setFailure(null);
+    setUnconfirmed(false);
     try {
       // The authenticated client, never raw fetch. The body is the gateway's
       // own DTO (`CreateOrderDto`) — `services/api/orders.ts::createOrder` takes
       // the older `{ wineId, unitPrice }` shape, which the gateway does not
       // accept, so this posts the DTO directly rather than widening a type two
       // other pages depend on.
-      const { data } = await apiClient.post<{ id?: string }>('/procurement/orders', {
+      const body = {
         inventoryId,
         providerId,
         quantity: qty,
@@ -330,7 +337,13 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
         // Never `|| 'USD'` — that fallback is what put dollars on a restaurant
         // in Fethiye for seven months (ADR 0117 Q25/Q31).
         currency: currencyToRecord ?? undefined,
+      };
+      // One key per draft (F-1377): "Write it down" again after a lost answer
+      // is answered with the order already written, not a second order.
+      const { data } = await apiClient.post<{ id?: string }>('/procurement/orders', body, {
+        headers: { 'Idempotency-Key': keyFor(body) },
       });
+      renew();
       await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
       reset();
       onSaved?.(data?.id ?? '');
@@ -341,6 +354,11 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
       // replacing one with "Failed to create order" is the shrug this page
       // exists not to give.
       setFailure(getErrorMessage(e));
+      if (writeOutcomeUnknown(e)) {
+        setUnconfirmed(true);
+        // Read the orders again so a row that did land shows up behind the sheet.
+        await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+      }
     } finally {
       setSaving(false);
     }
@@ -414,7 +432,9 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
               color: 'var(--ink-2, #4F473C)',
             }}
           >
-            Nothing was written down. {failure}
+            {unconfirmed
+              ? 'This agreement could not be confirmed — no answer came back, so it may have been written down. The orders have been read again; check them before writing it down again.'
+              : `Nothing was written down. ${failure}`}
           </p>
         )}
 

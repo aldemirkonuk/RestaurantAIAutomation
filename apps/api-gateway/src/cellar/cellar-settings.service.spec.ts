@@ -390,3 +390,81 @@ describe("CellarSettingsService — each field keeps its own setter (F-503)", ()
     expect(out.holdCeremonySetBy).toBeNull();
   });
 });
+
+describe("CellarSettingsService.write — one tile at a time (F-1374)", () => {
+  it("two people switching different tiles from two screens both keep their change", async () => {
+    const client = makeClient({
+      row: {
+        hold_ceremony: "hold",
+        gazetteer_measures: ["bottles", "titles"],
+        set_by: "user-1",
+        set_at: "2026-10-01T00:00:00Z",
+      },
+    });
+    const service = await serviceWith(client);
+
+    // Both screens loaded ["bottles", "titles"]. One turns "par" on, the
+    // other turns "titles" off; neither resends the list it was holding.
+    await service.write(RID, { addMeasure: "par" }, "user-a", "manager");
+    const out = await service.write(
+      RID,
+      { removeMeasure: "titles" },
+      "user-b",
+      "staff",
+    );
+
+    expect(out.gazetteerMeasures).toEqual(["bottles", "par"]);
+    expect(out.gazetteerMeasuresConfigured).toBe(true);
+  });
+
+  it("starts an unconfigured house from the default tiles it is already showing", async () => {
+    const service = await serviceWith(makeClient({ row: null }));
+
+    const out = await service.write(
+      RID,
+      { addMeasure: "registers" },
+      "user-1",
+      "staff",
+    );
+    expect(out.gazetteerMeasures).toEqual([
+      ...DEFAULT_GAZETTEER_MEASURES,
+      "registers",
+    ]);
+  });
+
+  it("adding a tile that is already on changes nothing and files no row", async () => {
+    const client = makeClient({
+      row: {
+        hold_ceremony: "hold",
+        gazetteer_measures: ["bottles"],
+        set_by: "user-1",
+        set_at: "2026-10-01T00:00:00Z",
+      },
+    });
+    const service = await serviceWith(client);
+
+    const out = await service.write(
+      RID,
+      { addMeasure: "bottles" },
+      "user-2",
+      "staff",
+    );
+    expect(out.gazetteerMeasures).toEqual(["bottles"]);
+    expect(client.audit).toHaveLength(0);
+  });
+
+  it("refuses a write that sends both a whole list and one tile", async () => {
+    const client = makeClient({ row: null });
+    const service = await serviceWith(client);
+
+    await expect(
+      service.write(
+        RID,
+        { gazetteerMeasures: ["bottles"], addMeasure: "par" },
+        "user-1",
+        "staff",
+      ),
+    ).rejects.toMatchObject({ code: "CELLAR_MEASURES_AMBIGUOUS" });
+    expect(client.upsertCallCount()).toBe(0);
+  });
+});

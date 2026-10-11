@@ -333,3 +333,63 @@ describe('words that hold for any item, not only wine (ORD-W20)', () => {
     expect(ROW_FEES_NOT_READ).not.toMatch(/wine/i);
   });
 });
+
+describe('a lost answer is not said as "nothing written" (F-1377)', () => {
+  function mountWithClient() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={qc}>
+        <AgreementSheet open onClose={() => {}} />
+      </QueryClientProvider>,
+    );
+    return invalidate;
+  }
+
+  it('carries one Idempotency-Key, and the same one on a retry of the same words', async () => {
+    postMock.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 502'), { response: { status: 502, data: {} } }),
+    );
+    mountWithClient();
+    fillCaseAgreement();
+    // The house currency is part of the body; let it arrive first.
+    await waitFor(() =>
+      expect(screen.getByTestId('agreement-working').textContent).toContain('$420.00'),
+    );
+    fireEvent.click(screen.getByTestId('agreement-save'));
+    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+    await screen.findByTestId('agreement-failure');
+    fireEvent.click(screen.getByTestId('agreement-save'));
+    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(2));
+
+    const keyOf = (i: number) =>
+      (postMock.mock.calls[i] as unknown as [string, unknown, { headers?: Record<string, string> }])[2]
+        ?.headers?.['Idempotency-Key'];
+    expect(keyOf(0)).toMatch(/^agreement:/);
+    expect(keyOf(1)).toBe(keyOf(0));
+  });
+
+  it('a 5xx says it could not be confirmed and reads the orders again', async () => {
+    postMock.mockRejectedValueOnce(
+      Object.assign(new Error('timeout of 30000ms exceeded'), { response: { status: 504, data: {} } }),
+    );
+    const invalidate = mountWithClient();
+    fillCaseAgreement();
+    fireEvent.click(screen.getByTestId('agreement-save'));
+    const alert = await screen.findByTestId('agreement-failure');
+    expect(alert.textContent).toMatch(/could not be confirmed/);
+    expect(alert.textContent).not.toMatch(/Nothing was written down/);
+    expect(invalidate).toHaveBeenCalled();
+  });
+
+  it('a refusal still says nothing was written down', async () => {
+    postMock.mockRejectedValueOnce(
+      Object.assign(new Error('an order in cases needs a pack size'), { response: { status: 400, data: {} } }),
+    );
+    mountWithClient();
+    fillCaseAgreement();
+    fireEvent.click(screen.getByTestId('agreement-save'));
+    const alert = await screen.findByTestId('agreement-failure');
+    expect(alert.textContent).toContain('Nothing was written down. an order in cases needs a pack size');
+  });
+});

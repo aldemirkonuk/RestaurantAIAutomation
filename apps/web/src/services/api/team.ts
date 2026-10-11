@@ -603,8 +603,16 @@ export async function getCoverageTemplates(rid?: string) {
   const { data } = await apiClient.get(`${base(rid)}/coverage-templates`)
   return data
 }
-export async function createCoverageTemplate(body: Record<string, any>, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/coverage-templates`, body)
+export async function createCoverageTemplate(
+  body: Record<string, any>,
+  rid?: string,
+  idempotencyKey?: string,
+) {
+  const { data } = await apiClient.post(
+    `${base(rid)}/coverage-templates`,
+    body,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+  )
   return data
 }
 /** A coverage rule as `coverage_templates` stores it (baseline `:2574-2582`). */
