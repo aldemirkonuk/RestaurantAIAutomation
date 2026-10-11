@@ -14,7 +14,7 @@
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 
 const state = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -72,7 +72,14 @@ vi.mock('@/services/api/restaurants', () => ({
   },
 }));
 
+/* Whether the signed-in person may act for the house (owner or manager). */
+const mayAct = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/useMayActForTheHouse', () => ({
+  useMayActForTheHouse: () => mayAct.value,
+}));
+
 import CalendarNext from './CalendarNext';
+import { apiClient } from '@/services/api/client';
 import { laneLayout, placed } from './TimeGrid';
 import { forgetHouseZones } from '@/lib/houseZone';
 import { SEAL_HEX } from './cal-format';
@@ -313,6 +320,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 8, 15, 12, 0, 0));
   state.current = mkData();
   notesRange.current = { data: [], isError: false, error: null };
+  mayAct.value = true;
 });
 
 afterEach(() => {
@@ -2060,5 +2068,98 @@ describe("CalendarNext — the agenda's Today is the house's (F-873)", () => {
       const keys = Array.from(container.querySelectorAll('.cn-agenda-key')).map((n) => n.firstChild?.textContent);
       expect(keys).toEqual(['Yesterday', 'Today']);
     });
+  });
+});
+
+/* ── links that open something (F-1107, F-1111) ───────────────────────────── */
+
+describe('CalendarNext — links that open something', () => {
+  /** A button that navigates inside the same router, as the palette does. */
+  function Go({ to }: { to: string }) {
+    const navigate = useNavigate();
+    return (
+      <button type="button" onClick={() => navigate(to)}>
+        go-palette
+      </button>
+    );
+  }
+
+  it("opens the new-entry sheet from the palette while already on /calendar (F-1107)", () => {
+    render(
+      <MemoryRouter initialEntries={['/calendar']}>
+        <CalendarNext />
+        <Go to="/calendar?openModal=true&date=2026-09-18" />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByText('go-palette'));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByLabelText('Date')).toHaveValue('2026-09-18');
+  });
+
+  it('opens the entry a day-line tick links to (F-1111)', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+    });
+    draw('/calendar?event=e1');
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByLabelText('Title')).toHaveValue('Vega Sicilia crate');
+    expect(within(sheet).getByLabelText('Date')).toHaveValue('2026-09-17');
+  });
+
+  it('says so when the linked entry is gone, instead of ignoring the click (F-1111)', async () => {
+    const get = vi
+      .spyOn(apiClient, 'get')
+      .mockRejectedValueOnce(Object.assign(new Error('Not Found'), { response: { status: 404 } }));
+    draw('/calendar?event=gone-1');
+    expect(await screen.findByText('That entry is no longer on the calendar.')).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith('/calendar/events/gone-1');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    get.mockRestore();
+  });
+});
+
+/* ── a custom type shows on its entries (F-1110) ──────────────────────────── */
+
+describe('CalendarNext — a custom type is drawn on its entries (F-1110)', () => {
+  const audit = () =>
+    event({ id: 'c1', title: 'Cellar count', date: '2026-09-17', type: 'custom', color: SEAL_HEX });
+
+  it('marks the entry with its type in the month, the week and the day', () => {
+    state.current = mkData({ events: [audit()] });
+    draw();
+    const ribbon = screen.getByText('Cellar count').closest('button') as HTMLElement;
+    expect(ribbon.querySelector('.cn-type-mark')).toHaveAttribute('title', 'Cellar audit');
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const block = screen.getByText('Cellar count').closest('.cn-block') as HTMLElement;
+    expect(within(block).getByText('Cellar audit')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Day' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+    // The day draws the grid and its ledger; the type is named on both.
+    const onDay = screen.getAllByText('Cellar count');
+    const dayBlock = onDay.map((el) => el.closest('.cn-block')).find(Boolean) as HTMLElement;
+    expect(within(dayBlock).getByText('Cellar audit')).toBeInTheDocument();
+    const line = onDay.map((el) => el.closest('.cn-line')).find(Boolean) as HTMLElement;
+    expect(within(line).getByText('Cellar audit')).toBeInTheDocument();
+  });
+
+  it('reopens on its own type, and says what deleting the type does', () => {
+    state.current = mkData({ events: [audit()] });
+    draw();
+    fireEvent.click(screen.getByText('Cellar count'));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByRole('button', { name: 'Cellar audit' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete the Cellar audit type' }));
+    expect(within(sheet).queryByText(/Entries keep the name/)).toBeNull();
+    expect(within(sheet).getByText(/keep its colour but\s+lose its name/)).toBeInTheDocument();
+  });
+
+  it('does not offer staff the delete they would be refused', () => {
+    mayAct.value = false;
+    draw('/calendar?openModal=true&date=today');
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByRole('button', { name: 'Cellar audit' })).toBeInTheDocument();
+    expect(within(sheet).queryByRole('button', { name: 'Delete the Cellar audit type' })).toBeNull();
   });
 });

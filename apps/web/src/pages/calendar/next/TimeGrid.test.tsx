@@ -121,6 +121,41 @@ describe('TimeGrid — a finger swipe never moves an entry (F-200)', () => {
   });
 });
 
+describe('TimeGrid — a drag is not a click (F-1108)', () => {
+  const crate = () => event({ id: 'e1', title: 'Wine crate', date: '2026-09-17' });
+
+  function drawWithOpen(e: CalEvent) {
+    const onOpen = vi.fn();
+    const data = mkData([e], new Map([[e.date, [e]]]));
+    render(<TimeGrid data={data} cursor={cursor} days={1} onOpenEvent={onOpen} onCreateAt={() => {}} />);
+    const button = screen.getByText(e.title).closest('button') as HTMLElement;
+    const block = button.closest('.cn-block') as HTMLElement;
+    return { data, block, button, onOpen };
+  }
+
+  it('the click that ends a mouse drag moves the entry and does not open it', () => {
+    const { data, block, button, onOpen } = drawWithOpen(crate());
+    fireEvent.pointerDown(block, { pointerType: 'mouse', pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerType: 'mouse', pointerId: 1, clientX: 100, clientY: 144 });
+    fireEvent.pointerUp(window, { pointerType: 'mouse', pointerId: 1, clientX: 100, clientY: 144 });
+    fireEvent.click(button);
+    expect(data.move.mutate).toHaveBeenCalledTimes(1);
+    expect(onOpen).not.toHaveBeenCalled();
+    // The next real click opens it.
+    fireEvent.click(button);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('a press that does not move still opens the entry', () => {
+    const { data, block, button, onOpen } = drawWithOpen(crate());
+    fireEvent.pointerDown(block, { pointerType: 'mouse', pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(window, { pointerType: 'mouse', pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.click(button);
+    expect(data.move.mutate).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('TimeGrid — an entry that runs past midnight (F-198)', () => {
   it('sits on the hour ruler on its first day and as a ribbon on the next', () => {
     const late = event({

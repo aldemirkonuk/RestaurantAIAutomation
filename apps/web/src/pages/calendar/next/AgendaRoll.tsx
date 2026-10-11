@@ -9,7 +9,7 @@
  */
 
 import { EM, daySpan, longDay, relDay } from './cal-format';
-import { LinkLine } from './MonthLedger';
+import { LinkLine, TypeMark } from './MonthLedger';
 import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
 
 export interface AgendaRollProps {
@@ -57,6 +57,7 @@ export default function AgendaRoll({ data, onOpenEvent, today }: AgendaRollProps
                   <span className="cn-when">{daySpan(e, key)}</span>
                   <span className="cn-entry">
                     <b>{e.title}</b>
+                    <TypeMark event={e} types={data.eventTypes} named />
                     <LinkLine event={e} data={data} />
                   </span>
                 </button>

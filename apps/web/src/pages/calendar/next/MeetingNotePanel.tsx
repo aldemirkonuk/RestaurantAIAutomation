@@ -44,6 +44,7 @@ import { getErrorMessage } from '@/services/api/client';
 import { createDayNote } from '@/services/api/calendar';
 import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import { useDayNotes } from '@/hooks/queries';
+import { houseWallClock } from '@/lib/houseCalendar';
 import type { CalEvent, CalendarData } from './useCalendarNextData';
 
 export type NoteKind = 'meeting_memo' | 'call_log' | 'tasting_notes' | 'general';
@@ -167,20 +168,35 @@ export const MEETING_KINDS = new Set([
  *    at the end of its day rather than at midnight that morning. A date of a
  *    series ends on its own day: the end date it carries is the series row's,
  *    and would call next month's meeting over.
+ *
+ * An end clock earlier than the start, on the entry's own day, is the next
+ * morning — a 20:00–00:30 tasting ends after midnight, as the grid draws it
+ * (F-1109). "Ended" is read on the house's clock, not the device's.
  */
-export function meetingsAwaitingNote(events: CalEvent[], now: Date): CalEvent[] {
+export function meetingsAwaitingNote(
+  events: CalEvent[],
+  now: Date,
+  zone: string | null | undefined = null,
+): CalEvent[] {
+  const houseNow = houseWallClock(zone, now.getTime());
   const out = events.filter((e) => {
     if (!MEETING_KINDS.has(e.type)) return false;
     if (e.status === 'cancelled' || e.status === 'dismissed') return false;
     const series = isSeriesDate(e);
     if (series ? hasNoteFor(e.description, e.date) : (e.description ?? '').trim() !== '') return false;
 
-    const day = series ? e.date : (e.endDate ?? e.date);
-    if (!day) return false;
+    let day = series ? e.date : (e.endDate ?? e.date);
+    if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
     const clock = e.endTime ?? e.startTime ?? null;
+    if (clock && !/^\d{2}:\d{2}/.test(clock)) return false;
+    if (e.endTime && e.startTime && day === e.date && e.endTime.slice(0, 5) < e.startTime.slice(0, 5)) {
+      const [y, m, d] = day.split('-').map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1));
+      day = next.toISOString().slice(0, 10);
+    }
     // No time on the entry means it ends when its day does, not at midnight.
-    const ended = clock ? new Date(`${day}T${clock}`) : new Date(`${day}T23:59:59`);
-    return Number.isFinite(ended.getTime()) && ended.getTime() < now.getTime();
+    const ended = clock ? `${day}T${clock.slice(0, 5)}:00` : `${day}T23:59:59`;
+    return ended < houseNow;
   });
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }

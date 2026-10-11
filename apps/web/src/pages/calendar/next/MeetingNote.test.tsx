@@ -164,6 +164,23 @@ describe('meetingsAwaitingNote — which meetings the house asks about', () => {
     const older = { ...base, id: 'e0', date: '2026-08-20' };
     expect(meetingsAwaitingNote([base, older], now).map((e) => e.id)).toEqual(['e0', 'e1']);
   });
+
+  it('does not ask about an overnight tasting before it has ended (F-1109)', () => {
+    const late = { ...base, date: '2026-10-12', startTime: '20:00', endTime: '00:30' };
+    // The morning of its own day: it has not even started.
+    expect(meetingsAwaitingNote([late], new Date('2026-10-12T09:00:00'))).toEqual([]);
+    // Still running past midnight.
+    expect(meetingsAwaitingNote([late], new Date('2026-10-13T00:15:00'))).toEqual([]);
+    expect(meetingsAwaitingNote([late], new Date('2026-10-13T00:45:00'))).toHaveLength(1);
+  });
+
+  it("reads 'ended' on the house's clock, not the device's (F-1109)", () => {
+    const meeting = { ...base, date: '2026-10-12', startTime: '14:00', endTime: '15:00' };
+    // 13:30 UTC is 16:30 in Istanbul — over there — and 09:30 in Detroit.
+    const at = new Date(Date.UTC(2026, 9, 12, 13, 30));
+    expect(meetingsAwaitingNote([meeting], at, 'Europe/Istanbul')).toHaveLength(1);
+    expect(meetingsAwaitingNote([meeting], at, 'America/Detroit')).toEqual([]);
+  });
 });
 
 /*
