@@ -4,7 +4,7 @@
  */
 import { classifyStock } from '../../../lib/inventoryStatus'
 import { cn } from '../../../lib/utils'
-import { formatHouseMoney } from '../../../lib/houseCurrency'
+import { formatHouseMoney, getHouseLocale } from '../../../lib/houseCurrency'
 import type { InventoryItem } from '../useInventoryPage'
 
 // `currency` omitted means the house's own (lib/houseCurrency.ts). These were a
@@ -33,11 +33,15 @@ export const ASSUMED_LEAD_DAYS = 6
 /** Days on the shelf a suggested order should leave after the wait. */
 export const COVER_AFTER_LEAD_DAYS = 14
 
+/** One decimal in the house's marks: "1,5" in a lira house, never "1.5" (F-1169, F-866). */
+export const fmtOneDecimal = (n: number) =>
+  n.toLocaleString(getHouseLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
 /** A sales rate a person can read: "1.5 btl/day", "new", or a dash (F-687, F-689). */
 export function velocityLabel(item: InventoryItem): string {
   if (item.velocityPerDay == null) return '—'
   if (item.velocityIsNew) return 'new'
-  return `${item.velocityPerDay.toFixed(1)} btl/day`
+  return `${fmtOneDecimal(item.velocityPerDay)} btl/day`
 }
 
 export interface ReorderAdvice {

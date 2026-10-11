@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RowExpansion } from './RowExpansion'
 import type { InventoryItem } from '../useInventoryPage'
+import { setHouseLocale } from '../../../lib/houseCurrency'
 
 const navigate = vi.hoisted(() => vi.fn())
 const getItemActivity = vi.hoisted(() => vi.fn())
@@ -14,13 +15,14 @@ const adjustStock = vi.hoisted(() => vi.fn())
 const reconcileItem = vi.hoisted(() => vi.fn())
 const recordSpotCount = vi.hoisted(() => vi.fn())
 const updateInventoryItem = vi.hoisted(() => vi.fn())
+const recordPour = vi.hoisted(() => vi.fn())
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../../../services/api/inventory', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/inventory')>(
     '../../../services/api/inventory',
   )
-  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, recordSpotCount, updateInventoryItem }
+  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, recordSpotCount, updateInventoryItem, recordPour }
 })
 vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
@@ -31,8 +33,19 @@ vi.mock('../../../services/api/orders', async () => {
 vi.mock('../../../stores', () => ({
   useNotificationStore: () => ({ success: vi.fn(), error: vi.fn() }),
 }))
-// The real select renders a portal/popover this test has no reason to drive.
-vi.mock('../../../components/ui/ThemedSelect', () => ({ ThemedSelect: () => null }))
+// The real select renders a portal/popover; a native one stands in so the
+// reason can be picked (F-1163).
+vi.mock('../../../components/ui/ThemedSelect', () => ({
+  ThemedSelect: (p: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void; 'aria-label'?: string }) => (
+    <select aria-label={p['aria-label']} value={p.value} onChange={(e) => p.onChange(e.target.value)}>
+      {p.options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  ),
+}))
 
 const item = {
   id: 'wine-1',
@@ -130,7 +143,8 @@ describe('RowExpansion — moving bottles between locations', () => {
 
     await userEvent.click(screen.getByTitle('Click to move bottles between locations'))
 
-    const [from, to] = screen.getAllByRole('combobox')
+    // The last two: the adjust bar's shelf and reason pickers come first.
+    const [from, to] = screen.getAllByRole('combobox').slice(-2)
     await userEvent.selectOptions(from, 'loc-a')
     await userEvent.selectOptions(to, 'loc-b')
     await userEvent.click(screen.getByRole('button', { name: /^move$/i }))
@@ -148,7 +162,8 @@ describe('RowExpansion — moving bottles between locations', () => {
 
     await userEvent.click(screen.getByTitle('Click to move bottles between locations'))
 
-    const [from, to] = screen.getAllByRole('combobox')
+    // The last two: the adjust bar's shelf and reason pickers come first.
+    const [from, to] = screen.getAllByRole('combobox').slice(-2)
     await userEvent.selectOptions(from, 'loc-b')
     await userEvent.selectOptions(to, 'loc-a')
     await userEvent.click(screen.getByRole('button', { name: /^move$/i }))
@@ -251,7 +266,7 @@ describe('RowExpansion — the count panel', () => {
     await userEvent.click(screen.getByRole('button', { name: /count every shelf/i }))
 
     const scope = screen.getByTestId('spot-count-scope')
-    expect(scope).toHaveTextContent(/every bottle of this wine in every room/i)
+    expect(scope).toHaveTextContent(/sealed bottles of this wine in every room/i)
     expect(scope).toHaveTextContent(/in 2 places/i)
   })
 
@@ -544,5 +559,97 @@ describe('RowExpansion — par editor', () => {
     renderWith(false)
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull()
     expect(screen.getByText('6 btl')).toBeInTheDocument()
+  })
+})
+
+/**
+ * F-1163: the manual adjust and Record pour named no shelf, so a bottle broken
+ * at the bar came off the oldest lot anywhere; and "+1 Breakage" put a bottle
+ * on the books.
+ */
+describe('RowExpansion — adjust and pour name their shelf', () => {
+  const shelves = [
+    { id: 'loc-cellar', name: 'Cellar', capacity: null, currentCount: 0, color: '' },
+    { id: 'loc-bar', name: 'Bar', capacity: null, currentCount: 0, color: '' },
+  ]
+  const split = {
+    liveStock: 11,
+    saleType: 'glass',
+    locations: [
+      { locationId: 'loc-cellar', qty: 8, wac: null },
+      { locationId: 'loc-bar', qty: 3, wac: null },
+    ],
+  } as Partial<InventoryItem>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+    adjustStock.mockResolvedValue({})
+    recordPour.mockResolvedValue({ pour: {}, item: null })
+  })
+
+  it('[REVERT-FAILS] a take-off waits for the shelf, then leaves from it', async () => {
+    renderRow(split, shelves)
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
+
+    await userEvent.selectOptions(screen.getByLabelText('Which shelf'), 'loc-bar')
+    await userEvent.selectOptions(screen.getByLabelText('Reason'), 'Breakage')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(adjustStock.mock.calls[0][1]).toMatchObject({ quantityChange: -1, reason: 'Breakage', fromLocationId: 'loc-bar' })
+  })
+
+  it('[REVERT-FAILS] a pour comes off the picked shelf', async () => {
+    renderRow(split, shelves)
+    expect(screen.getByRole('button', { name: 'Record pour' })).toBeDisabled()
+    await userEvent.selectOptions(screen.getByLabelText('Which shelf'), 'loc-bar')
+    await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
+    expect(recordPour).toHaveBeenCalledWith('inv-1', expect.objectContaining({ locationId: 'loc-bar' }))
+  })
+
+  it('[REVERT-FAILS] refuses +1 for breakage, a comp or a staff pour, in words', async () => {
+    renderRow({ liveStock: 4 })
+    await userEvent.click(screen.getByRole('button', { name: 'Increase manual adjustment' }))
+    for (const why of ['Breakage', 'Comp / gift', 'Staff pour']) {
+      await userEvent.selectOptions(screen.getByLabelText('Reason'), why)
+      expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
+      expect(screen.getByRole('alert')).toHaveTextContent(/only takes bottles off/i)
+    }
+    await userEvent.selectOptions(screen.getByLabelText('Reason'), 'Count correction')
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('with no shelves to pick, nothing is asked and no shelf is sent', async () => {
+    renderRow({ liveStock: 4 })
+    expect(screen.queryByLabelText('Which shelf')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(adjustStock.mock.calls[0][1]).not.toHaveProperty('fromLocationId')
+  })
+})
+
+/** F-1169 (re-hit of F-866): a lira house read "1.5 btl/day" and "2.5x". */
+describe('RowExpansion — figures in the house locale', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([{ id: 'o-1', inventoryId: 'inv-1', orderNumber: 'PO-1', createdAt: '2026-03-05T12:00:00Z', quantity: 6, status: 'DELIVERED' }])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('[REVERT-FAILS] velocity, markup and order dates use the house marks', async () => {
+    setHouseLocale('tr-TR')
+    try {
+      renderRow({ velocityPerDay: 1.5, wac: 40, menuPriceBottle: 100 } as Partial<InventoryItem>)
+      expect(screen.getAllByText('1,5 btl/day').length).toBeGreaterThan(0)
+      expect(screen.getByText(/\(2,5x\)/)).toBeInTheDocument()
+      expect(await screen.findByText('5 Mar')).toBeInTheDocument()
+    } finally {
+      setHouseLocale(null)
+    }
   })
 })

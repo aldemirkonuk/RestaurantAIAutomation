@@ -25,7 +25,13 @@ import {
   Barcode,
 } from "lucide-react";
 import { useInventoryPage, type InventoryItem } from "../index";
-import { loadEveryHouseInventory, stockValueCell } from "../useInventoryPage";
+import {
+  countSheetLines,
+  loadEveryHouseInventory,
+  stockValueCell,
+  zoneAndChildren,
+  type CountSheetLine,
+} from "../useInventoryPage";
 import { settingsApi } from "../../../services/api/settings";
 import { ContextualInsights } from "../../../components/insights/ContextualInsights";
 import { useStorageLocations } from "../../../hooks/useStorageLocations";
@@ -211,7 +217,17 @@ export function InventoryCommandPage() {
     filterType: searchParams.get("type") ?? undefined,
     location: searchParams.get("loc"),
   }));
-  const page = useInventoryPage({ initialFilters });
+  const {
+    locations,
+    setLocations,
+    mappings,
+    assignMany,
+    locationsLoading,
+    locationsUnavailable,
+    mappingsUnavailable,
+  } = useStorageLocations();
+  // The zones go in so a location chip keeps its child zones' wines (F-1161).
+  const page = useInventoryPage({ initialFilters, zones: locations });
   const {
     searchQuery,
     setSearchQuery,
@@ -261,15 +277,6 @@ export function InventoryCommandPage() {
   // See RowExpansion: the retired `/inventory-legacy` honoured the Settings
   // measurement unit and this page did not (ADR 0019 §B).
   const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit);
-  const {
-    locations,
-    setLocations,
-    mappings,
-    assignMany,
-    locationsLoading,
-    locationsUnavailable,
-    mappingsUnavailable,
-  } = useStorageLocations();
   const { availableRestaurants, refreshBranches, activeRole, user, activeRestaurantId } = useAuth();
   // ADR 0193: a wine's price is the manager's to change. The page offers the
   // controls to owners and managers only; the gateway refuses anyone else
@@ -826,53 +833,65 @@ export function InventoryCommandPage() {
     [valuationColumnsIn, unit, seesCost],
   );
 
-  const countSheetColumnsAll: TableExportColumn<InventoryItem>[] = useMemo(
+  // One line per wine and place, each with that place's bottles (F-1162).
+  // The whole wine's shadow and value ride its first line only, so a summed
+  // sheet does not count them once per shelf.
+  const countSheetColumnsAll: TableExportColumn<CountSheetLine>[] = useMemo(
     () => [
       {
         header: "Location",
-        value: (i) => {
-          const first = (i.locations ?? []).find((l) => l.locationId);
-          if (!first) return "Unassigned";
-          const loc = locations.find((l) => l.id === first.locationId);
-          return loc?.name ?? "Unassigned";
-        },
+        value: (l) =>
+          (l.locationId && locations.find((z) => z.id === l.locationId)?.name) ||
+          "Unassigned",
       },
-      { header: "Wine", value: (i) => i.name },
-      { header: "Producer", value: (i) => i.producer ?? "" },
-      { header: "Vintage", value: (i) => i.vintage ?? "" },
-      { header: "Type", value: (i) => i.type ?? "" },
+      { header: "Wine", value: (l) => l.item.name },
+      { header: "Producer", value: (l) => l.item.producer ?? "" },
+      { header: "Vintage", value: (l) => l.item.vintage ?? "" },
+      { header: "Type", value: (l) => l.item.type ?? "" },
       {
         header: "Bottle size",
-        value: (i) =>
-          i.bottleSizeMl ? formatVolume(i.bottleSizeMl, measurementUnit) : "",
+        value: (l) =>
+          l.item.bottleSizeMl
+            ? formatVolume(l.item.bottleSizeMl, measurementUnit)
+            : "",
       },
-      { header: "System qty (live)", value: (i) => i.liveStock ?? 0 },
-      { header: "System qty (shadow)", value: (i) => i.shadowStock ?? 0 },
-      { header: "Par", value: (i) => i.threshold ?? "" },
+      { header: "System qty (live, this place)", value: (l) => l.qty },
+      {
+        header: "System qty (shadow)",
+        value: (l) => (l.first ? (l.item.shadowStock ?? 0) : ""),
+      },
+      { header: "Par", value: (l) => l.item.threshold ?? "" },
       { header: "Counted qty", value: () => "" },
       { header: "Variance", value: () => "" },
       {
         header: "Days since counted",
-        value: (i) => {
-          const counted = daysSinceCounted(i);
+        value: (l) => {
+          const counted = daysSinceCounted(l.item);
           return counted == null ? "never" : counted;
         },
       },
       {
         header: "Velocity/day",
         // Blank when unknown, never "0.00" (F-689).
-        value: (i) => (i.velocityPerDay == null ? "" : round2(i.velocityPerDay)),
+        value: (l) =>
+          l.item.velocityPerDay == null ? "" : round2(l.item.velocityPerDay),
       },
       {
         header: "Runway d",
-        value: (i) => {
-          const r = runwayDays(i);
+        value: (l) => {
+          const r = runwayDays(l.item);
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: moneyHeader("WAC", unit), value: (i) => i.wac ?? i.price ?? "" },
-      { header: moneyHeader("Value", unit), value: stockValueCell },
-      { header: "Observation", value: (i) => countObservation(i) },
+      {
+        header: moneyHeader("WAC", unit),
+        value: (l) => l.item.wac ?? l.item.price ?? "",
+      },
+      {
+        header: moneyHeader("Value", unit),
+        value: (l) => (l.first ? stockValueCell(l.item) : ""),
+      },
+      { header: "Observation", value: (l) => countObservation(l.item) },
     ],
     // countObservation closes over helpers; recreate when inventory shape changes
     [locations, measurementUnit, unit],
@@ -886,10 +905,10 @@ export function InventoryCommandPage() {
   );
 
   const runInventoryExport = useCallback(
-    async (
+    async <T,>(
       format: TableExportFormat,
-      exportRows: InventoryItem[],
-      columns: TableExportColumn<InventoryItem>[],
+      exportRows: T[],
+      columns: TableExportColumn<T>[],
       filename: string,
       title: string,
     ) => {
@@ -987,10 +1006,14 @@ export function InventoryCommandPage() {
     [allLocationsValuationColumns],
   );
 
+  // A location chip narrows the sheet to that zone's places (F-1161).
   const exportCountSheet = (format: TableExportFormat) =>
     runInventoryExport(
       format,
-      rows,
+      countSheetLines(
+        rows,
+        selectedLocationFilter ? zoneAndChildren(selectedLocationFilter, locations) : null,
+      ),
       countSheetColumns,
       `inventory-count-${exportDay()}`,
       "Inventory count sheet",
