@@ -200,16 +200,26 @@ describe("F-715 — a vendor's minimum order is a whole amount, never below zero
 describe("F-717 — a custom type name already on the calendar", () => {
   const dto = {
     restaurantId: "r1",
-    name: "Tasting",
+    // Not a built-in type: F-1233 refuses those ("Tasting", ...) before the
+    // insert, and this spec is about the insert's UNIQUE violation.
+    name: "Wine dinner",
     color: "#1A5E6B",
     icon: "tag",
   };
 
   function calendarService(error: { code: string; message: string }) {
     const single = jest.fn().mockResolvedValue({ data: null, error });
+    // F-1233 reads the house's types before the insert; here that read
+    // finds no clash, so the insert's UNIQUE violation (a race the read
+    // cannot see) is what this spec exercises.
     const db = {
       supabase: {
-        from: () => ({ insert: () => ({ select: () => ({ single }) }) }),
+        from: () => ({
+          select: () => ({
+            eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+          }),
+          insert: () => ({ select: () => ({ single }) }),
+        }),
       },
     };
     return new CalendarService(db as never, {} as never);
@@ -222,7 +232,7 @@ describe("F-717 — a custom type name already on the calendar", () => {
     }).createEventType(dto);
     await expect(refused).rejects.toBeInstanceOf(ConflictException);
     await expect(refused).rejects.toThrow(
-      /A type called "Tasting" is already on this calendar/,
+      /A type called "Wine dinner" is already on this calendar/,
     );
   });
 
