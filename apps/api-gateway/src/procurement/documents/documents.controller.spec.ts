@@ -90,7 +90,10 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       error: null,
     });
 
-    const result = await controller.detail("doc-1", user);
+    const result = await controller.detail("doc-1", {
+      ...user,
+      role: "manager",
+    });
 
     expect(mockChain.storage.from).toHaveBeenCalledWith("vendor-attachments");
     expect(mockCreateSignedUrl).toHaveBeenCalledWith(
@@ -1056,5 +1059,107 @@ describe("M2 — staff read vendor paper without its money", () => {
     expect(isMoneyPath("lines[3].quantity")).toBe(false);
     expect(isMoneyPath("seller.name")).toBe(false);
     expect(isMoneyPath("somethingNew")).toBe(true);
+  });
+});
+
+/**
+ * F-1299: the vendor's original paper. `GET :id` and `GET :id/canonical`
+ * signed a one-hour link to the stored invoice or price list for every member,
+ * so staff opened through /receipts the same file `GET /procurement/orders/
+ * :id/attachments` withholds from them (F-1176). The link now goes to the
+ * house's money holders and to whoever may send to the vendor; a paper the
+ * reader brought in themselves (their door photo) stays theirs.
+ */
+describe("F-1299 — the vendor's paper opens for owners, managers and the sender only", () => {
+  const SIGNED = "https://signed.example/invoice.pdf";
+  const STAFF = asRole("staff");
+
+  function controllerFor(
+    row: Record<string, unknown>,
+    maySend: boolean | null,
+  ) {
+    const db = m2FakeDb({
+      procurement_documents: [row],
+      procurement_document_lines: [],
+      procurement_document_links: [],
+    }) as any;
+    const client = db.getClient();
+    client.storage.from = () => ({
+      createSignedUrl: async () => ({
+        data: { signedUrl: SIGNED },
+        error: null,
+      }),
+    });
+    db.getClient = () => client;
+    const none = {} as never;
+    const deps = canonicalDeps();
+    return new DocumentsController(
+      none,
+      db as never,
+      deps.canonical as never,
+      deps.spine as never,
+      deps.corrections as never,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      maySend === null
+        ? undefined
+        : ({ readout: async () => ({ maySend }) } as never),
+    );
+  }
+
+  const vendorPaper = () => ({
+    ...m2DocRow(),
+    storage_path: "house/vendor/invoice.pdf",
+    source_channel: "email",
+    source_ref: "conversation_attachment:a1",
+  });
+
+  it.each([
+    ["no send standing", false],
+    ["no send authority wired", null],
+  ])("staff with %s get no link, and are told why", async (_l, maySend) => {
+    const c = controllerFor(vendorPaper(), maySend as boolean | null);
+    const one = (await c.detail(M2_DOC, STAFF as never)) as any;
+    expect(one.document.imageUrl).toBeNull();
+    expect(one.document.imageUrlReason).toBe(
+      "the paper is kept for owners and managers",
+    );
+    const sheet = (await c.canonicalDocument(M2_DOC, STAFF as never)) as any;
+    expect(sheet.original.imageUrl).toBeNull();
+    expect(sheet.original.reason).toBe(
+      "the paper is kept for owners and managers",
+    );
+  });
+
+  it("staff who may send to the vendor open it", async () => {
+    const c = controllerFor(vendorPaper(), true);
+    const one = (await c.detail(M2_DOC, STAFF as never)) as any;
+    expect(one.document.imageUrl).toBe(SIGNED);
+  });
+
+  it("staff open the door photo they took themselves", async () => {
+    const c = controllerFor(
+      {
+        ...vendorPaper(),
+        source_channel: "photo",
+        source_ref: `user:${STAFF.userId}`,
+      },
+      false,
+    );
+    const one = (await c.detail(M2_DOC, STAFF as never)) as any;
+    expect(one.document.imageUrl).toBe(SIGNED);
+  });
+
+  it.each(["owner", "manager"])("the %s opens it", async (role) => {
+    const c = controllerFor(vendorPaper(), false);
+    const sheet = (await c.canonicalDocument(
+      M2_DOC,
+      asRole(role) as never,
+    )) as any;
+    expect(sheet.original.imageUrl).toBe(SIGNED);
   });
 });

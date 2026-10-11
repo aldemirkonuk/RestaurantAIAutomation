@@ -217,6 +217,9 @@ function SourceLines({ data }: { data: RegisterVM }) {
 
 /* ── the register ───────────────────────────────────────────────────────── */
 
+/** What the house paid and was quoted: kept for owners and managers (F-1300). */
+const WITHHELD_COLUMNS = new Set(['paid', 'quote']);
+
 export default function CatalogueRegister({
   id,
   data,
@@ -237,17 +240,25 @@ export default function CatalogueRegister({
   const [series, setSeries] = useState<OpenSeries | null>(null);
   const leafRef = useRef<HTMLDivElement | null>(null);
 
+  const register = useRegister(id);
+  const reg = register.data;
+  // F-1300: for someone who does not hold the house's money the gateway
+  // leaves out what was paid and quoted and says so. Those columns are not
+  // drawn as dashes, which would read as "nothing recorded".
+  const amountsWithheld =
+    (reg as (RegisterVM & { amountsWithheld?: true }) | null)?.amountsWithheld === true;
+
   // The column vocabulary for THIS register. Columns whose source has no
   // writer are off by default and offered from the header menu with the
   // measured reason beside them — never drawn as a file of em dashes.
-  const vocabulary = useMemo(() => columnsFor(id), [id]);
+  const vocabulary = useMemo(
+    () => columnsFor(id).filter((c) => !(amountsWithheld && WITHHELD_COLUMNS.has(c.id))),
+    [id, amountsWithheld],
+  );
   const columns = useMemo(
     () => vocabulary.filter((c) => (c.on && !hidden.has(c.id)) || (!c.on && hidden.has(`show:${c.id}`))),
     [vocabulary, hidden],
   );
-
-  const register = useRegister(id);
-  const reg = register.data;
   // F-592: once the plain read came back capped, the typed text is asked of
   // the whole catalogue, and the rows searched are what that answer holds.
   // Counts and source lines stay the plain read's.
@@ -574,6 +585,7 @@ export default function CatalogueRegister({
                               />
                               <HouseRecordLeaf
                                 row={r}
+                                amountsWithheld={amountsWithheld}
                                 stockingReason={reg.stocking.reason}
                                 onClose={() => setOpenKey(null)}
                               />

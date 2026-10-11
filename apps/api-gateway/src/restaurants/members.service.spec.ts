@@ -1200,3 +1200,89 @@ describe("MembersService invites — the book names who each is for, and an owne
     ]);
   });
 });
+
+/**
+ * F-1298: the invite code IS the invite. A manager read every live invite's
+ * code, an owner's included, and could hand it to anyone who would then join
+ * as an owner. A viewer now gets the code only of an invite they could have
+ * given themselves (`grantRefusal`, ADR 0162).
+ */
+describe("MembersService.getInvites — a code only for an invite the viewer could give (F-1298)", () => {
+  const MANAGER = "user-manager";
+  const FUTURE = "2099-01-01T00:00:00Z";
+
+  function seedBook(): StubDb {
+    return makeStubDb({
+      user_restaurant_access: [
+        {
+          id: "a1",
+          user_id: OWNER,
+          restaurant_id: RID,
+          role: "owner",
+          is_active: true,
+        },
+        {
+          id: "a2",
+          user_id: MANAGER,
+          restaurant_id: RID,
+          role: "manager",
+          is_active: true,
+        },
+      ],
+      users: [],
+      organization_invites: [
+        {
+          id: "inv-owner",
+          code: "OWNR2345",
+          role: "owner",
+          restaurant_id: RID,
+          used_at: null,
+          expires_at: FUTURE,
+          created_at: "2026-01-03T00:00:00Z",
+        },
+        {
+          id: "inv-manager",
+          code: "MGR23456",
+          role: "manager",
+          restaurant_id: RID,
+          used_at: null,
+          expires_at: FUTURE,
+          created_at: "2026-01-02T00:00:00Z",
+        },
+        {
+          id: "inv-staff",
+          code: "STAF2345",
+          role: "staff",
+          restaurant_id: RID,
+          used_at: null,
+          expires_at: FUTURE,
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+  }
+
+  const codes = (rows: any[]) =>
+    Object.fromEntries(rows.map((r: any) => [r.id, r.code]));
+
+  it("a manager sees the owner's invite listed, without its code", async () => {
+    const rows = await service(seedBook()).getInvites(MANAGER, RID);
+
+    expect(codes(rows)).toEqual({
+      "inv-owner": null,
+      "inv-manager": "MGR23456",
+      "inv-staff": "STAF2345",
+    });
+    expect(rows.find((r: any) => r.id === "inv-owner").role).toBe("owner");
+  });
+
+  it("an owner sees every code", async () => {
+    const rows = await service(seedBook()).getInvites(OWNER, RID);
+
+    expect(codes(rows)).toEqual({
+      "inv-owner": "OWNR2345",
+      "inv-manager": "MGR23456",
+      "inv-staff": "STAF2345",
+    });
+  });
+});

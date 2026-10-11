@@ -27,7 +27,11 @@
  * breaks rather than passing against a shape nothing produces.
  */
 
-import { BadRequestException, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ROUTE_ARGS_METADATA } from "@nestjs/common/constants";
 import { JwtStrategy } from "../../auth/strategies/jwt.strategy";
 import type { JwtPayload } from "../../auth/auth.service";
@@ -377,5 +381,72 @@ describe("the letters service will not write a row that names nobody", () => {
     }
     expect(rec.inserts).toEqual([]);
     expect(rec.updates).toEqual([]);
+  });
+});
+
+// ===========================================================================
+// F-1301: the house's letter templates are written by whoever may send them
+// ===========================================================================
+
+describe("upsertTemplate() is for an owner, a manager or the send-authority holder (F-1301)", () => {
+  function lettersWith(readout: Record<string, unknown>) {
+    const { rec, db } = build({});
+    const sender = new HouseSenderService(db, config);
+    const [, seal] = PASSING_GATES;
+    const authority = { ...PASSING_GATES[0], readout: async () => readout };
+    return {
+      rec,
+      letters: new HouseLettersService(db, sender, oauthOk, authority, seal),
+    };
+  }
+  const save = (letters: HouseLettersService) =>
+    letters.upsertTemplate({
+      restaurantId: HOUSE,
+      userId: PERSON,
+      dto: {
+        name: "Price check",
+        body: "Hello",
+        category: "price_query",
+      } as never,
+    });
+
+  it("refuses staff who may only ask, in plain words, before writing", async () => {
+    const { rec, letters } = lettersWith({
+      readable: true,
+      maySend: false,
+      mode: "ask",
+    });
+    const err = await save(letters).catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.message).toMatch(
+      /Only an owner, a manager or someone allowed to send to vendors/,
+    );
+    expect(err.message).toMatch(/Nothing was saved/);
+    expect(rec.inserts).toEqual([]);
+    expect(rec.updates).toEqual([]);
+  });
+
+  it("refuses when the standing cannot be read, and says so", async () => {
+    const { rec, letters } = lettersWith({
+      readable: false,
+      maySend: false,
+      mode: null,
+    });
+    const err = await save(letters).catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.message).toMatch(/could not be checked/);
+    expect(rec.inserts).toEqual([]);
+  });
+
+  it("saves for someone who may send (an owner, a manager or a grantee)", async () => {
+    const { rec, letters } = lettersWith({
+      readable: true,
+      maySend: true,
+      mode: "send",
+    });
+    await save(letters);
+    expect(
+      rec.inserts.find((i) => i.table === "communication_templates"),
+    ).toBeDefined();
   });
 });

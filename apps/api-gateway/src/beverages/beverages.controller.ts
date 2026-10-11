@@ -77,15 +77,19 @@ const BUYING_BOOKS = new Set(["invoice", "order", "quote"]);
  * A register as this role may read it (F-1220): the same rule as the wine
  * inventory (`inventoryForRole`, ADR 0145, F-562) — staff see stock and the
  * menu, never what the house paid. The buying figures are OMITTED, never
- * nulled, because a null reads as "nothing recorded".
+ * nulled, because a null reads as "nothing recorded"; and the reply says
+ * `amountsWithheld: true` at its root, as `orderForRole` does, so the page
+ * can say the figure is kept rather than draw the "nothing recorded" dash
+ * (F-1300).
  */
 export function registerForRole<T extends RegisterResult>(
   result: T,
   role: string | null | undefined,
-): T {
+): T & { amountsWithheld?: true } {
   if (holdsHouseMoney(role ?? null)) return result;
   return {
     ...result,
+    amountsWithheld: true,
     rows: result.rows.map((row) => {
       if (!row.house) return row;
       const house: Record<string, any> = { ...row.house };
@@ -110,15 +114,17 @@ export function registerForRole<T extends RegisterResult>(
 /**
  * The record behind one row, as this role may read it (F-1220): for a reader
  * who does not hold the house's money, the buying books keep their dates,
- * counts and lines but lose their price series and each line's price.
+ * counts and lines but lose their price series and each line's price, and the
+ * reply says `amountsWithheld: true` (F-1300).
  */
 export function rowRecordForRole(
   record: RowRecord,
   role: string | null | undefined,
-): RowRecord {
+): RowRecord & { amountsWithheld?: true } {
   if (holdsHouseMoney(role ?? null)) return record;
   return {
     ...record,
+    amountsWithheld: true,
     books: record.books.map((b) =>
       BUYING_BOOKS.has(b.book)
         ? {

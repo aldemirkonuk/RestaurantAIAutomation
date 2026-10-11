@@ -168,7 +168,11 @@ export class MembersService {
   }
 
   async getInvites(actorUserId: string, restaurantId: string): Promise<any[]> {
-    await this.assertMembership(actorUserId, restaurantId, "owner|manager");
+    const { role: viewerRole } = await this.assertMembership(
+      actorUserId,
+      restaurantId,
+      "owner|manager",
+    );
 
     const { data: invites, error } = await this.databaseService.supabase
       .from("organization_invites")
@@ -192,7 +196,15 @@ export class MembersService {
       );
     }
 
-    return invites ?? [];
+    // The code IS the invite: whoever holds it joins at its role. A viewer
+    // sees the code only of an invite they could have given themselves, so
+    // a manager sees an owner's invite listed but never its code (F-1298,
+    // the read half of F-1140; ADR 0162, "Managers grant manager or staff").
+    return (invites ?? []).map((inv: any) =>
+      grantRefusal(viewerRole, inv.role, "invite") === null
+        ? inv
+        : { ...inv, code: null },
+    );
   }
 
   /**

@@ -109,10 +109,16 @@ function boughtBook(b: NonNullable<NonNullable<RegisterRowVM['house']>['bought']
 
 export default function HouseRecordLeaf({
   row,
+  amountsWithheld = false,
   stockingReason,
   onClose,
 }: {
   row: RegisterRowVM;
+  /**
+   * The gateway kept what the house paid and was quoted from this reader
+   * (F-1300). Those facts then say so, never the "nothing recorded" dash.
+   */
+  amountsWithheld?: boolean;
   /** The gateway's own sentence. Rendered verbatim; never rewritten here. */
   stockingReason: string;
   onClose: () => void;
@@ -120,6 +126,8 @@ export default function HouseRecordLeaf({
   const h = row.house;
   const c = row.catalogue;
   const note = matchNote(c?.matchedBy ?? null);
+  const paidMoney = (v: number | null | undefined) =>
+    amountsWithheld ? <span className="cl-dim">for owners and managers</span> : money(v);
 
   return (
     <div className="cl-panel" data-testid="house-leaf" style={{ marginTop: 4 }}>
@@ -180,8 +188,8 @@ export default function HouseRecordLeaf({
                     <Fact label="First bought" value={<>{shortDate(h.bought.first)}{bb.first}</>} />
                     <Fact label="Last bought" value={<>{shortDate(h.bought.last)}{bb.last}</>} />
                     <Fact label="Bottles" value={<>{count(h.bought.bottles)}{bb.sums}</>} />
-                    <Fact label="Paid, in total" value={<>{money(h.bought.paidTotal)}{bb.sums}</>} />
-                    <Fact label="Last unit price" value={<>{money(h.bought.lastUnitPrice)}{bb.last}</>} />
+                    <Fact label="Paid, in total" value={<>{paidMoney(h.bought.paidTotal)}{bb.sums}</>} />
+                    <Fact label="Last unit price" value={<>{paidMoney(h.bought.lastUnitPrice)}{bb.last}</>} />
                     <Fact label="From" value={<>{h.bought.lastFrom ?? EM}{bb.last}</>} />
                   </Book>
                 );
@@ -192,7 +200,7 @@ export default function HouseRecordLeaf({
               <Book id="order">
                 <Fact label="Orders" value={count(h.ordered.lines)} />
                 <Fact label="Last ordered" value={shortDate(h.ordered.lastAt)} />
-                <Fact label="At" value={money(h.ordered.lastPrice)} />
+                <Fact label="At" value={paidMoney(h.ordered.lastPrice)} />
                 <Fact label="From" value={h.ordered.lastFrom ?? EM} />
               </Book>
             ) : null}
@@ -201,7 +209,7 @@ export default function HouseRecordLeaf({
               <Book id="quote">
                 <Fact label="Quotes" value={count(h.quoted.count)} />
                 <Fact label="Last quoted" value={shortDate(h.quoted.lastAt)} />
-                <Fact label="At" value={money(h.quoted.lastPrice)} />
+                <Fact label="At" value={paidMoney(h.quoted.lastPrice)} />
                 <Fact label="By" value={h.quoted.lastFrom ?? EM} />
                 <Fact label="Off" value={quoteSource(h.quoted.lastSource)} />
               </Book>

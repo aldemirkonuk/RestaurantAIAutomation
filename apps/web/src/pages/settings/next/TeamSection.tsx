@@ -202,8 +202,12 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
                 key={inv.id}
                 // F-1140: say who it is for when the invite was made for an
                 // address; a bare code says it is for whoever holds it.
-                label={inv.target_email ?? `Code ${inv.code}`}
-                consequence={inv.target_email
+                // F-1298: no code comes back for an invite the viewer could
+                // not have given (a manager looking at an owner's invite).
+                label={inv.target_email ?? (inv.code ? `Code ${inv.code}` : inv.role === 'owner' ? 'An owner’s invite' : `An invite for ${inv.role}`)}
+                consequence={!inv.code
+                  ? `Joins as ${inv.role}. Its code is shown only to someone who could give this invite. ${fmtExpiry(inv.expires_at, zone)}.`
+                  : inv.target_email
                   ? `Joins as ${inv.role} with code ${inv.code}. ${fmtExpiry(inv.expires_at, zone)}.`
                   : `Not made for anyone by name: whoever holds this code joins as ${inv.role}. ${fmtExpiry(inv.expires_at, zone)}.`}
                 provenance={{
@@ -215,7 +219,7 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
                 control={
                   // An owner's invite is an owner's to withdraw; the gateway
                   // refuses a manager too (members.service.ts revokeInvite).
-                  inv.role === 'owner' && role !== 'owner' ? (
+                  (inv.role === 'owner' && role !== 'owner') || !inv.code ? (
                     <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)', maxWidth: 260, textAlign: 'right' }}>
                       Only an owner can withdraw an invite for an owner.
                     </span>
@@ -225,7 +229,7 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
                       confirmLabel="Yes, revoke"
                       busy={writer.busy === `invite:${inv.code}`}
                       consequence="The link stops working for anyone holding it."
-                      onConfirm={() => void revokeInvite(inv.code)}
+                      onConfirm={() => { if (inv.code) void revokeInvite(inv.code); }}
                     />
                   )
                 }
