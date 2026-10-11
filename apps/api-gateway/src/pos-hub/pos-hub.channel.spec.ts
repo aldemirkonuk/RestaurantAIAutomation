@@ -37,6 +37,8 @@ function makeService(opts: { upsertError?: string } = {}) {
         select: () => q,
         eq: () => q,
         in: async () => ({ data: [], error: null }),
+        // F-1195: a file import reads which till the house has; none here.
+        limit: () => q,
         then: (resolve: any, reject: any) =>
           Promise.resolve({ data: [], error: null }).then(resolve, reject),
       };
