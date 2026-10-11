@@ -255,6 +255,25 @@ export function runningAgainstOrder(
   };
 }
 
+/**
+ * The whole boxes this order still expects, for a count that starts from what
+ * was ordered (F-1126: "Mark delivered" on /orders opens the door with this
+ * filled in, and nothing books until a person stands by it). Null when it
+ * cannot be said exactly: an order not in cases, an earlier-truck reading not
+ * in yet or unread, or an earlier truck with no pack to count by. A part box
+ * is not offered as a box.
+ */
+export function orderedBoxesStillOwed(order: DoorOrderVM, prior: PriorReading): number | null {
+  if (order.expectedBoxes === null || prior === null || prior === 'unread') return null;
+  const priorBottles = Math.max(0, prior.bottles);
+  const refusedBottles = Math.max(0, prior.refusedBottles ?? 0);
+  if (priorBottles === 0 && refusedBottles === 0) return order.expectedBoxes;
+  const pack = doorPack(order, prior);
+  if (pack === null) return null;
+  const owed = order.expectedBoxes * pack - priorBottles - refusedBottles;
+  return Math.max(0, Math.floor(owed / pack));
+}
+
 const SMALL_WORDS = [
   'zero',
   'one',

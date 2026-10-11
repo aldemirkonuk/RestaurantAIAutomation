@@ -190,6 +190,31 @@ export interface OrderRowVM {
    * or absent when it may not. See `closeShortOwed`.
    */
   closeShortOwedBottles?: number | null;
+  /**
+   * Bottles a truck is still bringing on a part-delivered order (F-1127); null
+   * or absent when none are owed or the ledger did not say. See `stillOwed`.
+   */
+  stillOwedBottles?: number | null;
+}
+
+/**
+ * Bottles still owed on a part-delivered order, or null (F-1127). The same
+ * reading as the door lane's `stillExpected` (useReceivingNextData.ts): the
+ * order less the shelf, less what was sent back at the door or the desk. Unlike
+ * `closeShortOwed` it does not wait for the invoice check — the row says the
+ * rest is coming whether or not anyone has checked the paper yet. An unread
+ * ledger is not "owed": the row would announce a remainder nobody measured.
+ */
+export function stillOwed(
+  status: OrderStatus,
+  received: Order['received'] | undefined,
+): number | null {
+  if (status !== 'partially_received' || !received || received.readable !== true) return null;
+  const backorder = received.backorderBottles;
+  if (typeof backorder !== 'number' || received.rejectedAtDoorBottles == null) return null;
+  const owed =
+    backorder - Math.max(0, received.rejectedAtDoorBottles) - Math.max(0, received.rejectedAtDeskBottles ?? 0);
+  return owed > 0 ? owed : null;
 }
 
 /**
@@ -550,6 +575,7 @@ export function toRow(
     notes: null,
     amountsWithheld: o.amountsWithheld === true,
     closeShortOwedBottles: closeShortOwed(status, o.received),
+    stillOwedBottles: stillOwed(status, o.received),
   };
 }
 

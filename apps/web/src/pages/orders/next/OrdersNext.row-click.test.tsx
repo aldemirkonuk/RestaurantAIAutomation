@@ -226,7 +226,8 @@ describe('a row still being worked expands', () => {
     const btn = mount(row({ stage: 'ordered', status: 'ordered', deliveredAt: null }));
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Mark delivered' })).toBeInTheDocument();
+    // A way to the door count since F-1126, not a one-tap booking.
+    expect(screen.getByRole('link', { name: 'Mark delivered' })).toBeInTheDocument();
     expect(screen.queryByTestId('receipt-sheet')).toBeNull();
   });
 });

@@ -103,10 +103,14 @@ export const SERVER_WINDOWS = {
 /* ───────────────────────────────────────────────── staff: in-flight orders ── */
 
 /**
- * "Placed with the vendor, not yet received" — the pair the legacy page
- * established the hard way (ReceivingHome.tsx:75-105): `SENT` is a
- * conversation status and asking for it 400s; `APPROVED` cannot be at the
- * door.
+ * "Placed with the vendor, not yet received". `SENT` is a conversation status
+ * and asking for it 400s (the legacy page, ReceivingHome.tsx:75-105).
+ *
+ * `APPROVED` is asked for too (F-1133, F-102). The legacy page left it out as
+ * "agreed but not yet placed", a reading no decision record holds — and sending
+ * the order's letter leaves it APPROVED, so the truck arrives on exactly that
+ * status. The gateway's door counts against it directly (order-transitions.ts,
+ * `decideDoorCount`); left out, an approved order had no way in from any list.
  *
  * `PARTIALLY_RECEIVED` is what the door and a short verification write, and
  * the second truck of a split order arrives on exactly that status (F-467).
@@ -115,7 +119,7 @@ export const SERVER_WINDOWS = {
  * (`stillExpected`): the door writes the same status after a truck that brought
  * everything.
  */
-const IN_FLIGHT_STATUSES = ['CONFIRMED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] as const;
+const IN_FLIGHT_STATUSES = ['APPROVED', 'CONFIRMED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] as const;
 const REST_OF_ORDER_STATUS = 'PARTIALLY_RECEIVED';
 
 /** One row of `GET /procurement/orders` (OrderListResponseDto → orders[]). */

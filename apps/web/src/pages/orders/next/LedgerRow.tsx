@@ -16,14 +16,14 @@
  *   pretends.
  *
  * Marking delivered is deliberately NOT a ceremony — the house spends its wax
- * on approval only; delivery confirmation is a plain button on `ink`.
+ * on approval only; delivery confirmation is a plain link on `ink` to the door
+ * count, where the bottles are counted before anything is booked (F-1126).
  */
 
 import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { ink, settle } from '@/lib/mudavym/motion';
-import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
-import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
+import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
 import { approveConflict } from '@/services/api/approveConflict';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
@@ -144,6 +144,27 @@ export function rowOpensReceipt(row: Pick<OrderRowVM, 'stage'>): boolean {
   return row.stage === 'delivered';
 }
 
+/**
+ * The chip's word. A short delivery with bottles still owed is not "Delivered"
+ * (F-1127): it says so, and how many the next truck brings.
+ */
+function stageChipLabel(row: Pick<OrderRowVM, 'stage' | 'stillOwedBottles'>): string {
+  if (row.stage === 'cancelled') return 'Cancelled';
+  const owed = row.stillOwedBottles;
+  if (row.stage === 'delivered' && owed != null && owed > 0) return `Part delivered · ${owed} owed`;
+  return STAGE_LABEL[row.stage];
+}
+
+/**
+ * Where "Mark delivered" goes (F-1126): the door count, filled in with what the
+ * order still expects. It used to book every ordered bottle in one tap, with no
+ * count, no broken boxes and no refusal — a short truck booked in full. Now the
+ * bottles go on the shelf only when a person stands by the count at the door.
+ */
+function doorCountHref(orderId: string): string {
+  return `/receiving/${encodeURIComponent(orderId)}/door?count=ordered`;
+}
+
 export function LedgerRow({
   row,
   expanded,
@@ -160,11 +181,9 @@ export function LedgerRow({
   // Figures grouped the house's way (F-942).
   const group = useHouseGroupMark();
   const approve = useApproveOrder();
-  const deliver = useMarkOrderDelivered();
   // Bumped after a refused approval so the die (HoldToApprove) remounts armed.
   const [attempt, setAttempt] = useState(0);
   const [approveError, setApproveError] = useState<string | null>(null);
-  const [deliverError, setDeliverError] = useState<string | null>(null);
 
   const isPendingStage = row.stage === 'pending' && !row.recurring;
   // The row click opens the receipt only when there is a sheet to open it in.
@@ -221,29 +240,6 @@ export function LedgerRow({
         setAttempt((a) => a + 1);
       },
     });
-  };
-
-  const onDeliver = () => {
-    setDeliverError(null);
-    deliver.mutate(
-      { orderId: row.id },
-      {
-        onError: (err) => {
-          // An order already delivered is not a refused request, and this desk
-          // stops calling it one (founder, 2026-09-05, batch 46): a 409 carries
-          // the earlier delivery, so the row shows who booked it in and when
-          // rather than "the gateway refused". Nothing retries — repeating a
-          // well-formed request cannot change the order's state.
-          const refused = alreadyDeliveredRefusal(err);
-          if (refused) {
-            setDeliverError(alreadyDeliveredWords(refused));
-            return;
-          }
-          const msg = (err as { message?: string })?.message ?? 'request failed';
-          setDeliverError(`Not recorded — the gateway refused (${msg}).`);
-        },
-      },
-    );
   };
 
   return (
@@ -328,7 +324,7 @@ export function LedgerRow({
               flex: 'none',
             }}
           >
-            {row.stage === 'cancelled' ? 'Cancelled' : STAGE_LABEL[row.stage]}
+            {stageChipLabel(row)}
           </span>
           <span
             style={{
@@ -701,17 +697,22 @@ export function LedgerRow({
                   {row.providerName ?? 'the vendor'}.
                 </p>
               )}
-              {row.stage === 'ordered' && (
+              {/*
+                * The door, from both stages (F-1133): sending the order's letter
+                * leaves it approved, so the truck can arrive on that status, and
+                * the gateway's door counts against it (`decideDoorCount`).
+                */}
+              {(row.stage === 'ordered' || row.stage === 'approved') && (
                 <>
                   {label('At the door?')}
-                  <button
-                    type="button"
-                    onClick={onDeliver}
-                    disabled={deliver.isPending}
+                  <a
+                    href={doorCountHref(row.id)}
+                    data-ux-key="orders:door-count"
                     style={{
                       display: 'block',
                       marginTop: 4,
                       width: '100%',
+                      boxSizing: 'border-box',
                       padding: '9px 14px',
                       borderRadius: 10,
                       border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
@@ -720,23 +721,24 @@ export function LedgerRow({
                       fontFamily: SANS,
                       fontSize: 13,
                       fontWeight: 600,
-                      cursor: deliver.isPending ? 'default' : 'pointer',
-                      opacity: deliver.isPending ? 0.6 : 1,
-                      transition: `opacity ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing}`,
+                      textAlign: 'center',
+                      textDecoration: 'none',
+                      transition: `border-color ${ink.ms}ms ${ink.easing}`,
                     }}
                   >
-                    {deliver.isPending ? 'Recording…' : 'Mark delivered'}
-                  </button>
-                  {deliverError && (
-                    <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-2, #4F473C)' }} role="alert">
-                      {deliverError}
-                    </p>
-                  )}
+                    Mark delivered
+                  </a>
+                  <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+                    Opens the count with what was ordered filled in. Nothing goes on the shelf until
+                    you confirm it.
+                  </p>
                 </>
               )}
               {row.stage === 'delivered' && (
                 <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}>
-                  Delivered {fmtDate(row.deliveredAt)}.
+                  {row.stillOwedBottles != null && row.stillOwedBottles > 0
+                    ? `Part delivered ${fmtDate(row.deliveredAt)} — ${row.stillOwedBottles} ${row.stillOwedBottles === 1 ? 'bottle' : 'bottles'} still owed.`
+                    : `Delivered ${fmtDate(row.deliveredAt)}.`}
                 </p>
               )}
               {row.stage === 'cancelled' && (

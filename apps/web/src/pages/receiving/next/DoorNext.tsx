@@ -38,7 +38,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Camera, CloudOff, Loader2, X } from 'lucide-react';
 import { Seal } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
@@ -72,6 +72,7 @@ import {
   doorFacts,
   matchLine,
   normalizeDoorOrder,
+  orderedBoxesStillOwed,
   readPaper,
   suggestOutcome,
   inWords,
@@ -216,6 +217,12 @@ export default function DoorNext() {
   // The count was put there by the paper and no person has stood by it yet.
   // A machine reading is not a count, so the seal waits for a touch (F-744).
   const [paperHeld, setPaperHeld] = useState(kept?.paperHeld ?? false);
+  // Opened from /orders' "Mark delivered" (F-1126): the count starts at what
+  // the order still expects, held like the paper's number until a person
+  // stands by it or changes it. Once per visit; a kept draft wins.
+  const [searchParams] = useSearchParams();
+  const fromOrdered = searchParams.get('count') === 'ordered';
+  const orderFillTried = useRef(kept !== null);
 
   /* ── outcome · reason · signature (points 3 and 6) ────────────────────── */
   const [outcomeChoice, setOutcomeChoice] = useState<DoorOutcome | null>(kept?.outcomeChoice ?? null);
@@ -516,6 +523,23 @@ export default function DoorNext() {
     }
   }
 
+  useEffect(() => {
+    // A person's number, or the paper's, already stands: the order's never replaces it.
+    if (!fromOrdered || orderFillTried.current || touchedRef.current || reading?.prefill) return;
+    if (orderState === 'loading' || (orderState === 'ok' && prior === null)) return;
+    orderFillTried.current = true;
+    const boxes = orderState === 'ok' && order ? orderedBoxesStillOwed(order, prior) : null;
+    if (boxes === null || boxes < 1) {
+      setPaperLine('The boxes are not filled in for you here — count them.');
+      return;
+    }
+    setCounted(boxes);
+    setPaperHeld(true);
+    setPaperLine(
+      `Filled in with what was ordered: ${boxes} ${boxes === 1 ? 'box' : 'boxes'}. Count them, then confirm or correct.`,
+    );
+  }, [fromOrdered, orderState, order, prior, reading]);
+
   const match = matchLine(counted, orderState === 'ok' ? order : null, prior);
   const suggested = suggestOutcome(match);
   const outcome: DoorOutcome = outcomeChoice ?? suggested;
@@ -544,7 +568,9 @@ export default function DoorNext() {
       ? 'This delivery is already counted on this phone and was not sent. Open Receiving to send it again or discard it.'
       : 'This delivery is already counted on this phone. It sends by itself when the signal is back.'
     : paperHeld
-      ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
+      ? reading?.prefill
+        ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
+        : "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The number filled in is what was ordered, not a count."
       : !initialsOk
         ? 'Add your initials first — when a case goes missing, who signed is the question.'
         : !reasonOk
