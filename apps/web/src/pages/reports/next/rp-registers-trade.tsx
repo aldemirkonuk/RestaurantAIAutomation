@@ -302,8 +302,9 @@ const trailingTill = analysis<TillWindow>({
 });
 
 /**
- * The till over one calendar month when the reader picked one (F-128),
- * otherwise the trailing window above, unchanged — the export desk pins that
+ * The till over one calendar month when the reader picked one (F-128), or
+ * over last week when the weekly bell opened the page (F-1236), otherwise
+ * the trailing window above, unchanged — the export desk pins that
  * one against its own catalogue, and it still writes only a trailing window.
  */
 const till: AnalysisSpec = {
@@ -311,9 +312,17 @@ const till: AnalysisSpec = {
   window: (ctx) =>
     ctx.month
       ? `${monthLabel(ctx.month)} of POS checks${ctx.month === thisMonth(houseToday(ctx.zone)) ? ', so far' : ''}, by the house’s days`
-      : trailingTill.window(ctx),
+      : ctx.week
+        ? 'last week of POS checks, Monday to Sunday, by the house’s days'
+        : trailingTill.window(ctx),
+  // F-1236: the weekly bell's week is the house's last full Monday to Sunday,
+  // which the gateway works out on the house's clock.
   path: (rid, ctx) =>
-    ctx.month ? `/analytics/pos-revenue/${rid}?month=${ctx.month}` : trailingTill.path!(rid, ctx),
+    ctx.month
+      ? `/analytics/pos-revenue/${rid}?month=${ctx.month}`
+      : ctx.week
+        ? `/analytics/pos-revenue/${rid}?week=${ctx.week}`
+        : trailingTill.path!(rid, ctx),
 };
 
 /**

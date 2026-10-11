@@ -113,12 +113,16 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   useHouseCurrency();
   /**
    * `?type=weekly` is where the "Weekly report ready" bell opens
-   * (scheduled-tasks.service.ts): the till starts on the last 7 days, and the
-   * word leaves the address once read, so a reload or a later pick of 30 days
-   * is not pulled back to a week (F-217, F-1143).
+   * (scheduled-tasks.service.ts): the till starts on last week, Monday to
+   * Sunday on the house's clock (F-1236), and the word leaves the address once
+   * read, so a reload or a later pick of 30 days is not pulled back to a week
+   * (F-217, F-1143).
    */
   const [searchParams, setSearchParams] = useSearchParams();
   const [tillDays, setDays] = useState(() => (searchParams.get('type') === 'weekly' ? 7 : 30));
+  const [tillWeek, setTillWeek] = useState<'last' | null>(() =>
+    searchParams.get('type') === 'weekly' ? 'last' : null,
+  );
   useEffect(() => {
     if (!searchParams.has('type')) return;
     setSearchParams(
@@ -131,11 +135,16 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     );
   }, [searchParams, setSearchParams]);
   /** One calendar month instead of the trailing window (F-128); null = trailing. */
-  const [tillMonth, setTillMonth] = useState<string | null>(null);
-  /** Choosing a trailing window leaves the month: the till reads one or the other. */
+  const [tillMonth, setMonth] = useState<string | null>(null);
+  /** Choosing a trailing window leaves the month and the week: the till reads one. */
   const setTillDays = useCallback((d: number) => {
     setDays(d);
-    setTillMonth(null);
+    setMonth(null);
+    setTillWeek(null);
+  }, []);
+  const setTillMonth = useCallback((m: string | null) => {
+    setMonth(m);
+    setTillWeek(null);
   }, []);
   const zone = useHouseZone();
   const [arranging, setArranging] = useState(false);
@@ -154,7 +163,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => placeRef.current(cut),
     [],
   );
-  const data = useReportsNextData(tillDays, setTillDays, showing, place, tillMonth);
+  const data = useReportsNextData(tillDays, setTillDays, showing, place, tillMonth, tillWeek);
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
@@ -344,11 +353,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     () => ({
       days: tillDays,
       month: tillMonth,
+      week: tillWeek,
       zone,
       goals: data.goalsDesk,
       goalsNow: goalsNowFrom(data.registers.goals?.data),
     }),
-    [data.goalsDesk, tillDays, tillMonth, zone, data.registers.goals?.data],
+    [data.goalsDesk, tillDays, tillMonth, tillWeek, zone, data.registers.goals?.data],
   );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
@@ -495,6 +505,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             onSheet={view.cuttings.map((c) => c.id)}
             tillDays={tillDays}
             tillMonth={tillMonth}
+            tillWeek={tillWeek !== null}
             zone={zone ?? null}
           />
         )}

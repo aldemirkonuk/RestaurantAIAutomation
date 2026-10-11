@@ -42,6 +42,12 @@ export interface ExportsShelfProps {
   /** A calendar month the till is set to instead (F-128), YYYY-MM. */
   tillMonth?: string | null;
   /**
+   * True while the till shows last week, from the weekly bell (F-1236). A file
+   * is still written over the last `tillDays` days, so the line says so
+   * rather than "as the till is set".
+   */
+  tillWeek?: boolean;
+  /**
    * The house's IANA zone (F-991): the file is named and dated on the
    * house's clock, so its row is too. Null or still being read: the reader's.
    */
@@ -161,7 +167,14 @@ function Row({ exp, desk, zone }: { exp: ReportExport; desk: ExportDesk; zone: s
   );
 }
 
-export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null, zone = null }: ExportsShelfProps) {
+export default function ExportsShelf({
+  desk,
+  onSheet,
+  tillDays,
+  tillMonth = null,
+  tillWeek = false,
+  zone = null,
+}: ExportsShelfProps) {
   const exportable = onSheet.filter((id) => !UNEXPORTABLE.has(id));
   const [picked, setChosen] = useState<AnalysisId | null>(null);
   // A cutting taken off the sheet is no longer on offer: the choice falls back
@@ -209,7 +222,11 @@ export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null
                 </select>
               </label>
               {takesWindow && monthHeld === null && (
-                <span className="rp-cap">over the last {tillDays} days, as the till is set</span>
+                <span className="rp-cap">
+                  {tillWeek
+                    ? `over the last ${tillDays} days, not last week as the till shows`
+                    : `over the last ${tillDays} days, as the till is set`}
+                </span>
               )}
               {monthHeld !== null && (
                 <span className="rp-cap">over {monthLabel(monthHeld)}, as the till is set</span>

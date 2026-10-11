@@ -44,7 +44,11 @@ const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw
 
 const hook = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 /** What the page last asked the data layer to READ — the draft included. */
-const asked = vi.hoisted(() => ({ showing: undefined as unknown, month: undefined as unknown }));
+const asked = vi.hoisted(() => ({
+  showing: undefined as unknown,
+  month: undefined as unknown,
+  week: undefined as unknown,
+}));
 
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
@@ -55,6 +59,7 @@ vi.mock('./useReportsNextData', async () => {
     useReportsNextData: (...args: unknown[]) => {
       asked.showing = args[2];
       asked.month = args[4];
+      asked.week = args[5];
       return hook.current;
     },
   };
@@ -556,6 +561,7 @@ describe('ReportsNext — the sheet', () => {
     expect(CATALOGUE.till.window(july)).toBe('July 2026 of POS checks, by the house’s days');
     // F-1215: a trailing window ends on the house's today, and says so.
     expect(CATALOGUE.till.window({ days: 30 })).toBe('the last 30 days of POS checks, today so far');
+    expect(CATALOGUE.till.path!('r1', { days: 7, week: 'last' })).toBe('/analytics/pos-revenue/r1?week=last');
   });
 
   it('cuts the till to one calendar month, and a number of days leaves the month (F-128)', () => {
@@ -1948,7 +1954,9 @@ describe('ReportsNext — the weekly report bell (F-1143)', () => {
     return <output data-testid="where">{useLocation().search}</output>;
   }
 
-  it('opens the till on the last 7 days and clears ?type= once read', async () => {
+  // F-1236: the bell's week is the house's last full Monday to Sunday, not
+  // the trailing seven days the bell happened to land in.
+  it('opens the till on last week, Monday to Sunday, and clears ?type= once read', async () => {
     render(
       <MemoryRouter initialEntries={['/reports?type=weekly']}>
         <ReportsNext />
@@ -1956,8 +1964,14 @@ describe('ReportsNext — the weekly report bell (F-1143)', () => {
       </MemoryRouter>,
     );
     const till = screen.getByRole('region', { name: 'Through the till' });
-    expect(within(till).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true');
+    expect(asked.week).toBe('last');
+    expect(within(till).getByText(/last week of POS checks, Monday to Sunday/)).toBeInTheDocument();
+    expect(within(till).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'false');
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(''));
+    expect(asked.week).toBe('last');
+    // Picking a trailing window leaves the week.
+    fireEvent.click(within(till).getByRole('button', { name: '7d' }));
+    expect(asked.week).toBeNull();
     expect(within(till).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true');
   });
 

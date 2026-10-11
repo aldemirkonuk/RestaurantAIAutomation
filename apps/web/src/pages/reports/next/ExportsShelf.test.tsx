@@ -244,6 +244,12 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     expect(d.request).toHaveBeenLastCalledWith('ledger', null);
   });
 
+  it('does not call a file of the last 7 days the till\'s setting while the till shows last week (F-1236)', () => {
+    render(<ExportsShelf desk={desk()} onSheet={['till'] as never[]} tillDays={7} tillWeek />);
+    expect(screen.queryByText(/as the till is set/)).toBeNull();
+    expect(screen.getByText('over the last 7 days, not last week as the till shows')).toBeInTheDocument();
+  });
+
   it('a role that cannot export is told so, and is offered no control and no list', () => {
     shelf(desk({ canExport: false, readOnlyReason: 'Exports are written for owners and managers. Every figure is still on the sheet above.', exports: undefined }));
     expect(screen.getByRole('note')).toHaveTextContent('Exports are written for owners and managers.');

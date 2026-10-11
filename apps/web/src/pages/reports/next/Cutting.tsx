@@ -89,12 +89,15 @@ function GraphIcon({ graph }: { graph: GraphType }) {
 export function TillWindowPicker({
   days,
   month = null,
+  week = null,
   onChange,
   onMonth,
   zone = null,
 }: {
   days: number;
   month?: string | null;
+  /** The weekly bell's last full week (F-1236): no trailing chip is pressed. */
+  week?: string | null;
   onChange: (d: number) => void;
   onMonth?: (m: string | null) => void;
   /** The house's zone: the months offered end at the HOUSE's month (F-909). */
@@ -114,7 +117,7 @@ export function TillWindowPicker({
           key={d}
           type="button"
           className="rp-chip rp-ink rp-focus rp-no-drag"
-          aria-pressed={!month && days === d}
+          aria-pressed={!month && !week && days === d}
           onClick={() => onChange(d)}
         >
           {d}d
@@ -301,6 +304,7 @@ export default function Cutting({
           <TillWindowPicker
             days={ctx.days}
             month={ctx.month}
+            week={ctx.week}
             zone={ctx.zone}
             onChange={onDays}
             onMonth={onMonth}
