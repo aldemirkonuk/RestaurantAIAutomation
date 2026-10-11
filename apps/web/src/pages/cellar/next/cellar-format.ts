@@ -17,6 +17,7 @@
  */
 
 import { formatHouseMoney, getHouseCurrency, getHouseLocale } from '../../../lib/houseCurrency';
+import { getHouseZone } from '../../../lib/houseZone';
 
 export const EM = '—';
 
@@ -657,20 +658,25 @@ export function strandedPrompt(id: RegisterId, n: number): string {
  *    formatted in UTC and stays the day the document says.
  *  - an INSTANT — a till line's time (`pos_checks.closed_at`, else
  *    `opened_at`, else a queued line's `created_at`) is a `timestamptz` and
- *    names a moment. That one IS rendered in the reader's own timezone,
- *    because "when did we last sell it" is a question about their evening.
+ *    names a moment. That one is rendered on the HOUSE's day
+ *    (`getHouseZone`; CellarNext calls `useHouseZone` so the page re-renders
+ *    when it lands), because "when did we last sell it" is a question about
+ *    the house's evening, not the reader's device (F-1104). With no zone
+ *    known yet, the device's clock stands in, as `countedDay` does.
+ *
+ * Either way it is written the house's way (`getHouseLocale`), not en-GB.
  */
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-export function shortDate(iso: string | null | undefined): string {
+export function shortDate(iso: string | null | undefined, zone: string | null = getHouseZone()): string {
   if (!iso) return EM;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return EM;
-  return d.toLocaleDateString('en-GB', {
+  return d.toLocaleDateString(getHouseLocale(), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-    ...(DATE_ONLY.test(iso) ? { timeZone: 'UTC' } : {}),
+    ...(DATE_ONLY.test(iso) ? { timeZone: 'UTC' } : zone ? { timeZone: zone } : {}),
   });
 }
 

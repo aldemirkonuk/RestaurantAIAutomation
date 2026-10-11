@@ -37,6 +37,10 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const mock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+const formats = vi.hoisted(() => ({ read: vi.fn() }));
+
+// The house's formats tag (F-1137): the page asks for it; the suite sets it.
+vi.mock('@/hooks/useHouseCurrency', () => ({ useHouseCurrency: formats.read }));
 
 vi.mock('./useSettingsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useSettingsNextData')>('./useSettingsNextData');
@@ -151,6 +155,7 @@ vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
 }));
 
 import SettingsNext from './SettingsNext';
+import { setHouseLocale } from '@/lib/houseCurrency';
 import { isSectionId } from './st-format';
 import { handOf } from '../../recommendations/next/rec-format';
 
@@ -1252,7 +1257,31 @@ describe('SettingsNext — owner words (F-027, F-052, F-055, F-057)', () => {
   it('writes the approval ceiling in the house currency once the house has stated one', () => {
     mock.current = base({ houseCurrency: remote(currencyRegister({ code: 'USD' })) });
     mount('/settings?tab=thresholds');
-    expect(screen.getByText(/over US\$15,000 — an owner must sign/)).toBeInTheDocument();
+    expect(screen.getByText(/over \$15,000 — an owner must sign/)).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] writes the ceiling with a lira house\'s own marks (F-1137)', () => {
+    mock.current = base({ houseCurrency: remote(currencyRegister({ code: 'TRY' })) });
+    setHouseLocale('tr-TR');
+    try {
+      mount('/settings?tab=thresholds');
+      expect(formats.read).toHaveBeenCalled();
+      expect(screen.getByText(/over ₺15\.000 — an owner must sign/)).toBeInTheDocument();
+      expect(screen.queryByText(/TRY 15,000/)).not.toBeInTheDocument();
+    } finally {
+      setHouseLocale('en-US');
+    }
+  });
+
+  it('[REVERT-FAILS] groups the bare ceiling the house\'s way while the currency is unread (F-1137)', () => {
+    mock.current = base({ houseCurrency: remote(null, 'loading') });
+    setHouseLocale('tr-TR');
+    try {
+      mount('/settings?tab=thresholds');
+      expect(screen.getByText(/over 15\.000 — an owner must sign/)).toBeInTheDocument();
+    } finally {
+      setHouseLocale('en-US');
+    }
   });
 
   it('says no currency is recorded rather than guessing a mark', () => {

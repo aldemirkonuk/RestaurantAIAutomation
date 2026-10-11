@@ -17,8 +17,11 @@ vi.mock('@/services/api/restaurants', () => ({
   },
 }));
 
-import { forgetHouseZones, houseToday, useHouseZone, useSettleOnHouseDay } from './houseZone';
+import { forgetHouseZones, getHouseZone, houseToday, useHouseZone, useSettleOnHouseDay } from './houseZone';
+import { setHouseLocale } from './houseCurrency';
 import { mondayOf } from '@/pages/team/next/tm-format';
+import { fmtDate, fmtReadTime } from '@/pages/orders/next/format';
+import { shortDate } from '@/pages/cellar/next/cellar-format';
 
 const key = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -121,5 +124,39 @@ describe('useSettleOnHouseDay', () => {
     }, { initialProps: { zone: undefined as string | null | undefined } });
     rerender({ zone: 'Asia/Tokyo' });
     expect(result.current).toBe('2026-08-31');
+  });
+});
+
+describe("the date formatters read the house's zone and style (F-1135, F-1104)", () => {
+  // 01:30 on 3 March in Istanbul is still the evening of 2 March in New York.
+  const late = '2026-03-02T22:30:00Z';
+
+  it('[REVERT-FAILS] /orders and the cellar print the house\'s day once its zone is read', async () => {
+    said.zone = 'Europe/Istanbul';
+    expect(getHouseZone()).toBeNull();
+    expect(fmtDate(late)).toMatch(/^Mar 2(, 2026)?$/);
+    const h = renderHook(() => useHouseZone());
+    await waitFor(() => expect(h.result.current).toBe('Europe/Istanbul'));
+    expect(getHouseZone()).toBe('Europe/Istanbul');
+    expect(fmtDate(late)).toMatch(/^Mar 3(, 2026)?$/);
+    expect(shortDate(late)).toBe('Mar 3, 2026');
+    setHouseLocale('tr-TR');
+    try {
+      expect(fmtDate(late)).toMatch(/^3 Mar( 2026)?$/);
+      expect(fmtReadTime(Date.parse(late))).toMatch(/01:30$/);
+    } finally {
+      setHouseLocale('en-US');
+    }
+    // Another house picked: its zone is not this one's.
+    localStorage.setItem('activeRestaurantId', 'r2');
+    expect(getHouseZone()).toBeNull();
+  });
+
+  it('forgets the zone with the read', async () => {
+    said.zone = 'Asia/Tokyo';
+    const h = renderHook(() => useHouseZone());
+    await waitFor(() => expect(h.result.current).toBe('Asia/Tokyo'));
+    forgetHouseZones('r1');
+    expect(getHouseZone()).toBeNull();
   });
 });

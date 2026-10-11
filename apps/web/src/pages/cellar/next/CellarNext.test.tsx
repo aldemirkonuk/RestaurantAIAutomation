@@ -838,7 +838,8 @@ describe('CellarNext — the registers that are not wines', () => {
 
     expect(screen.getByText('Efes Pilsen')).toBeInTheDocument();
     const row = screen.getByText('Efes Pilsen').closest('tr')!;
-    expect(within(row).getByText('2 Mar 2026')).toBeInTheDocument();
+    // The house's date style; no country read here, so en-US (F-1104).
+    expect(within(row).getByText('Mar 2, 2026')).toBeInTheDocument();
     expect(within(row).getByText('$618.40')).toBeInTheDocument();
     expect(within(row).getByText('58')).toBeInTheDocument();
     // A book that names it nowhere is the dash, never a zero.
@@ -958,7 +959,7 @@ describe('CellarNext — the registers that are not wines', () => {
     draw({ category: 'beer' });
 
     const row = screen.getByText('Efes Pilsen').closest('tr')!;
-    expect(within(row).getByText('3 Aug 2026')).toBeInTheDocument();
+    expect(within(row).getByText('Aug 3, 2026')).toBeInTheDocument();
     expect(within(row).getByText('$265.00')).toBeInTheDocument();
     // One mark on First bought, one on Paid.
     expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(2);
@@ -1112,7 +1113,7 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(marks).toHaveLength(1);
     expect(marks[0]).toHaveAttribute('aria-label', 'ordered');
     // The figures are the door row's own, as before the ruling.
-    expect(within(row).getByText('3 Aug 2026')).toBeInTheDocument();
+    expect(within(row).getByText('Aug 3, 2026')).toBeInTheDocument();
     expect(within(row).getByText('$265.00')).toBeInTheDocument();
     expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(2);
   });
@@ -1200,7 +1201,7 @@ describe('CellarNext — the registers that are not wines', () => {
       /same delivery as a door-checked order, that delivery is counted twice until the invoice is linked to the order or its line is paired/,
     );
     // Its First bought holds one date, the door's: still 'door-checked'.
-    const bothFirst = within(within(bothRow).getByText('2 Mar 2026')).getByTestId('door-checked-mark');
+    const bothFirst = within(within(bothRow).getByText('Mar 2, 2026')).getByTestId('door-checked-mark');
     expect(bothFirst.textContent?.trim()).toBe(DOOR_CHECKED_LABEL);
     expect(bothFirst).toHaveAttribute('title', DOOR_CHECKED_NOTE);
 

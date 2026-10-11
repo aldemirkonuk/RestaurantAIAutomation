@@ -43,6 +43,8 @@ import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
+import { useHouseZone } from '@/lib/houseZone';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
@@ -52,6 +54,9 @@ export default function OrdersNext() {
   const data = useOrdersNextData();
   // Figures grouped the house's way (F-942).
   const group = useHouseGroupMark();
+  // The house's way of writing a date, and its clock (F-1135).
+  useHouseCurrency();
+  useHouseZone();
   const { activeRestaurantId, user } = useAuth();
   /* Read here as well as inside the sheet so the guard can fire BEFORE the
      composer opens — the legacy desk's `openCreateOrderFlow` rule

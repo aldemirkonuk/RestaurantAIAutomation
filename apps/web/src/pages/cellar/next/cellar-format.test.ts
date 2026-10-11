@@ -9,7 +9,7 @@
  * fabricated one, in a smaller coat.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   EM,
   acidityTicks,
@@ -29,8 +29,14 @@ import {
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { setHouseLocale } from '../../../lib/houseCurrency';
+import { pastWords } from './SoldOutControl';
 
 describe('shortDate', () => {
+  // These pin the zone rule; the house here writes dates the British way.
+  // The house's own style is pinned below (F-1104).
+  beforeEach(() => setHouseLocale('en-GB'));
+  afterEach(() => setHouseLocale('en-US'));
+
   /**
    * THE PRECONDITION, ASSERTED — because without it every test below is a
    * no-op that passes with the fix deleted.
@@ -74,9 +80,9 @@ describe('shortDate', () => {
     expect(shortDate('2026-03-02')).toBe('2 Mar 2026');
   });
 
-  it('renders an instant in the reader’s own timezone', () => {
-    // `created_at` is a `timestamptz`: "when did we last sell it" is a question
-    // about the reader's evening, so this one is deliberately local.
+  it('renders an instant on the device’s clock while the house has no zone', () => {
+    // `created_at` is a `timestamptz`; with no house zone read, the device's
+    // clock stands in, as everywhere else.
     const at = '2026-09-01T22:11:00Z';
     expect(shortDate(at)).toBe(
       new Date(at).toLocaleDateString('en-GB', {
@@ -92,6 +98,38 @@ describe('shortDate', () => {
     expect(shortDate(undefined)).toBe(EM);
     expect(shortDate('')).toBe(EM);
     expect(shortDate('not a date')).toBe(EM);
+  });
+});
+
+describe('cellar dates are the house\'s day, in the house\'s words (F-1104)', () => {
+  // 01:30 on 3 March in Istanbul is still the evening of 2 March in New York.
+  const late = '2026-03-02T22:30:00Z';
+
+  it('[REVERT-FAILS] writes an instant on the house\'s day, in the house\'s date style', () => {
+    expect(shortDate(late, 'Europe/Istanbul')).toBe('Mar 3, 2026');
+    setHouseLocale('tr-TR');
+    try {
+      expect(shortDate(late, 'Europe/Istanbul')).toBe('3 Mar 2026');
+      // A calendar date still holds the day the document says.
+      expect(shortDate('2026-03-02', 'Pacific/Honolulu')).toBe('2 Mar 2026');
+    } finally {
+      setHouseLocale('en-US');
+    }
+  });
+
+  it('[REVERT-FAILS] says when a drink was sold out on the house\'s clock', () => {
+    const s = { id: 's', cause: 'broken' as const, note: null, startedAt: late, startedBy: null, endedAt: null, endedBy: null };
+    expect(pastWords(s, 'Europe/Istanbul')).toBe(
+      `${new Date(late).toLocaleDateString('en-US', { day: 'numeric', month: 'short', timeZone: 'Europe/Istanbul' })} ` +
+        `${new Date(late).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })} (broken)`,
+    );
+    expect(pastWords(s, 'Europe/Istanbul')).toMatch(/^Mar 3 01:30/);
+    setHouseLocale('tr-TR');
+    try {
+      expect(pastWords(s, 'Europe/Istanbul')).toMatch(/^3 Mar 01:30 \(broken\)$/);
+    } finally {
+      setHouseLocale('en-US');
+    }
   });
 });
 

@@ -34,6 +34,7 @@ import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { getHouseLocale } from '@/lib/houseCurrency';
 import { Action, Choice, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
 import { EM, MONO, SANS, SERIF, fmtMoney } from './st-format';
 import type {
@@ -252,12 +253,13 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
   // F-057: the ceiling is money, so it carries the house's currency mark. Only
   // a currency read that ANSWERED decides it (a code, or null = nobody chose
   // one, which fmtMoney says in words); while that read is pending or failed,
-  // the bare number stands rather than a mark nobody recorded.
+  // the bare number stands rather than a mark nobody recorded — grouped the
+  // house's way either way (F-1137).
   const cur = data.houseCurrency;
   const money = (n: number) =>
     cur.status === 'ok' && cur.data && cur.data.readable
       ? fmtMoney(n, cur.data.code)
-      : n.toLocaleString('en-GB');
+      : n.toLocaleString(getHouseLocale());
   return (
     <Register<ThresholdsRegister> remote={data.thresholds} name="the approval thresholds">
       {(reg) => (

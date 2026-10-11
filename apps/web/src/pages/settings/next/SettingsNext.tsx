@@ -69,6 +69,7 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
 import {
@@ -185,6 +186,8 @@ function StaffAskManager({ ground }: { ground?: 'charcoal' }) {
 
 export default function SettingsNext({ ground }: SettingsNextProps) {
   const { user, activeRole } = useAuth();
+  // The house's formats tag for every figure the sections print (F-1137).
+  useHouseCurrency();
   const role = (activeRole ?? user?.role ?? null) as 'owner' | 'manager' | 'staff' | null;
   if (role === 'staff') {
     return <StaffAskManager ground={ground} />;

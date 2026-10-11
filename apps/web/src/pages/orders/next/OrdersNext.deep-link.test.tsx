@@ -246,7 +246,8 @@ describe('a read that fails (ORD-W15)', () => {
     harness('/orders');
     const say = await screen.findByTestId('orders-read-error');
     expect(say).toHaveTextContent('The orders could not be re-read (Network Error)');
-    expect(say).toHaveTextContent('the last read, from 17:58');
+    // In the house's own clock style; no country read here, so en-US (F-1135).
+    expect(say).toHaveTextContent('the last read, from 05:58 PM');
     expect(say).not.toHaveTextContent('unknown');
     expect(screen.getByTestId('order-row-o-1')).toBeInTheDocument();
   });
