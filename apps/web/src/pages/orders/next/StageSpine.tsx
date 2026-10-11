@@ -28,7 +28,9 @@ const STATIONS: SpineStation[] = [...STAGES, 'recurring'];
 export function StageSpine({ counts, recurringCount, active, onSelect }: StageSpineProps) {
   return (
     <div
-      role="tablist"
+      // A row of toggle filters, not tabs: pressing the shown stage again clears
+      // it, and there is no panel the strip controls (F-1269).
+      role="group"
       aria-label="Order stages"
       // Under 640px the five stations sit 3 + 2: five equal cells cannot hold
       // "DELIVERED" and "RECURRING" in a 390px phone, and the strip pushed the
@@ -50,8 +52,7 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
           <button
             key={station}
             type="button"
-            role="tab"
-            aria-selected={isActive}
+            aria-pressed={isActive}
             data-tour={`orders-stage-${station}`}
             onClick={() => onSelect(isActive ? null : station)}
             // Dividers by class, not inline, so the 3 + 2 grid can drop the

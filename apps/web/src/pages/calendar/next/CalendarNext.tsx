@@ -381,7 +381,9 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   /* ── keyboard: parity with the shipping page (NEW-399) ────────────────── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || sheet) return;
+      // Any sheet open — the entry, the calendar link, a meeting note — owns
+      // the keyboard; a bare letter typed at it must not change the page.
+      if (e.defaultPrevented || sheet || linkOpen || notingId) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable))
         return;
@@ -419,7 +421,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sheet, view, cursor, selected, zone]);
+  }, [sheet, linkOpen, notingId, view, cursor, selected, zone]);
 
   function step(delta: number) {
     setSelected(null);

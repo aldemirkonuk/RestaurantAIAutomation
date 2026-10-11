@@ -25,7 +25,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -274,7 +274,7 @@ describe('?station=recurring — recurring-order.template.ts, which has no order
     });
     harness('/orders?station=recurring');
 
-    expect(await screen.findByRole('tab', { name: /recurring/i, selected: true })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /recurring/i, pressed: true })).toBeInTheDocument();
   });
 });
 
@@ -286,7 +286,7 @@ describe('?tab=recurring — scheduled-tasks.service.ts\'s in-app notification f
     });
     harness('/orders?tab=recurring');
 
-    expect(await screen.findByRole('tab', { name: /recurring/i, selected: true })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /recurring/i, pressed: true })).toBeInTheDocument();
   });
 });
 
@@ -322,10 +322,10 @@ describe('a station picked by hand is kept in the URL', () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(await screen.findByRole('tab', { name: /delivered/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /delivered/i }));
     expect(screen.getByTestId('search').textContent).toBe('?station=delivered');
 
-    fireEvent.click(screen.getByRole('tab', { name: /delivered/i }));
+    fireEvent.click(screen.getByRole('button', { name: /delivered/i }));
     expect(screen.getByTestId('search').textContent).toBe('');
   });
 });
@@ -349,15 +349,30 @@ describe('the stage strip at phone width (ORD-W18)', () => {
   it('sits 3 + 2 under sm and one row from sm up, ruling the second row', async () => {
     state.current = ordersData({ rows: [row({ id: 'o-1' })] });
     harness('/orders');
-    const strip = await screen.findByRole('tablist', { name: 'Order stages' });
+    const strip = await screen.findByRole('group', { name: 'Order stages' });
     expect(strip.className).toMatch(/\bgrid-cols-3\b/);
     expect(strip.className).toMatch(/\bsm:flex\b/);
-    const tabs = screen.getAllByRole('tab');
+    const tabs = within(strip).getAllByRole('button');
     expect(tabs).toHaveLength(5);
     expect(tabs[3].className).toMatch(/max-sm:border-l-0/);
     expect(tabs[3].className).toMatch(/max-sm:border-t/);
     expect(tabs[4].className).toMatch(/max-sm:border-t/);
     expect(tabs[0].className).not.toMatch(/\bborder-l\b/);
+  });
+});
+
+describe('the stage strip is a row of toggle filters, not tabs (F-1269)', () => {
+  it('[REVERT-FAILS] reads as a named group of pressed buttons, and a second press lets go', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })] });
+    harness('/orders');
+    const strip = await screen.findByRole('group', { name: 'Order stages' });
+    expect(within(strip).queryAllByRole('tab')).toHaveLength(0);
+    const delivered = within(strip).getByRole('button', { name: /delivered/i });
+    expect(delivered).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(delivered);
+    expect(delivered).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(delivered);
+    expect(delivered).toHaveAttribute('aria-pressed', 'false');
   });
 });
 
