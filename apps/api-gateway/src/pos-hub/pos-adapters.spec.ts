@@ -451,3 +451,106 @@ describe("money from a till is read in either locale, never guessed (sim F-396)"
     expect(c.moneyUnread).toEqual({ field: "tip", value: "1.350" });
   });
 });
+
+describe("a line quantity is read in either locale, never guessed (sim F-1193)", () => {
+  const CLOSED = "2026-10-08T21:00:00.000Z";
+  // One check per adapter, carrying the given quantity on its only line.
+  const byAdapter = (qty: unknown) => ({
+    generic: genericAdapter.normalize([
+      { externalCheckId: "g1", items: [{ name: "Rakı", qty }] },
+    ])[0],
+    square: squareAdapter.normalize({
+      id: "s1",
+      line_items: [{ name: "Rakı", quantity: qty }],
+    })[0],
+    clover: cloverAdapter.normalize({
+      id: "c1",
+      lineItems: { elements: [{ name: "Rakı", unitQty: qty }] },
+    })[0],
+    toast: toastAdapter.normalize({
+      guid: "t1",
+      closedDate: CLOSED,
+      selections: [{ displayName: "Rakı", quantity: qty }],
+    })[0],
+  });
+
+  it.each([
+    ["0,5", 0.5],
+    ["1.5", 1.5],
+    ["2", 2],
+    [3, 3],
+  ])("reads %p as %p on every adapter", (qty, want) => {
+    for (const c of Object.values(byAdapter(qty))) {
+      expect(c.items[0].qty).toBe(want);
+      expect(c.qtyUnread).toBeUndefined();
+    }
+  });
+
+  it.each([["2,000"], ["1.250"], ["iki"]])(
+    "names %p as unread on every adapter instead of reading one",
+    (qty) => {
+      for (const c of Object.values(byAdapter(qty))) {
+        expect(c.qtyUnread).toEqual({ field: "items[0].qty", value: qty });
+      }
+    },
+  );
+
+  it("an absent quantity is still one, and is not unread", () => {
+    for (const c of Object.values(byAdapter(undefined))) {
+      expect(c.items[0].qty).toBe(1);
+      expect(c.qtyUnread).toBeUndefined();
+    }
+  });
+});
+
+describe("a check with no opening time is dated by its close (sim F-1194)", () => {
+  const CLOSED = "2026-10-01T21:00:00.000Z";
+
+  it("every adapter opens a closed check at its close, not at arrival", () => {
+    expect(
+      genericAdapter.normalize([
+        { externalCheckId: "g1", closed_at: CLOSED },
+      ])[0].openedAt,
+    ).toBe(CLOSED);
+    expect(
+      squareAdapter.normalize({
+        id: "s1",
+        state: "COMPLETED",
+        closed_at: CLOSED,
+      })[0].openedAt,
+    ).toBe(CLOSED);
+    expect(
+      cloverAdapter.normalize({
+        id: "c1",
+        state: "paid",
+        modifiedTime: Date.parse(CLOSED),
+      })[0].openedAt,
+    ).toBe(CLOSED);
+    expect(
+      toastAdapter.normalize({ guid: "t1", closedDate: CLOSED })[0].openedAt,
+    ).toBe(CLOSED);
+  });
+
+  it("an open check with neither time keeps its arrival time", () => {
+    const before = Date.now();
+    const opened = [
+      genericAdapter.normalize([{ externalCheckId: "g1" }])[0],
+      squareAdapter.normalize({ id: "s1", state: "OPEN" })[0],
+      cloverAdapter.normalize({ id: "c1", state: "open" })[0],
+      toastAdapter.normalize({ guid: "t1" })[0],
+    ].map((c) => Date.parse(c.openedAt));
+    for (const t of opened) expect(t).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it("an opening time the till sent is kept", () => {
+    expect(
+      genericAdapter.normalize([
+        {
+          externalCheckId: "g1",
+          opened_at: "2026-10-01T19:00:00.000Z",
+          closed_at: CLOSED,
+        },
+      ])[0].openedAt,
+    ).toBe("2026-10-01T19:00:00.000Z");
+  });
+});

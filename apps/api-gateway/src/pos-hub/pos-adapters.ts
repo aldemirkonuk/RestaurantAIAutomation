@@ -139,6 +139,27 @@ const moneyOf = (r: any) => {
   return out;
 };
 
+/**
+ * F-1193: a line's quantity, read with readMoney's rules. `Number()` read a
+ * Turkish till's "0,5" and "2,000" as nothing, and the line became one of
+ * whatever it was, with no error. Absent is one, as before; present and not
+ * read is one here too, but the check carries `qtyUnread` and ingest()
+ * refuses it, as it refuses an unread amount.
+ */
+const qtyOf = (v: unknown): number => readMoney(v).value ?? 1;
+/** The first line whose quantity was present and not read, named for errors[]. */
+const qtyUnreadOf = (
+  lines: any[],
+  qtyField: (li: any) => unknown,
+): { qtyUnread?: { field: string; value: unknown } } => {
+  for (let i = 0; i < lines.length; i++) {
+    const m = readMoney(qtyField(lines[i]));
+    if ("unread" in m)
+      return { qtyUnread: { field: `items[${i}].qty`, value: m.unread } };
+  }
+  return {};
+};
+
 const voidedOf = (v: unknown): { voided: boolean; voidedUnread?: unknown } => {
   const r = readVoided(v);
   return "unread" in r
@@ -192,7 +213,16 @@ export const genericAdapter: PosAdapter = {
       .map((r) => ({
         ...voidedOf(r.voided ?? r.is_voided),
         externalCheckId: String(r.externalCheckId ?? r.external_check_id),
-        openedAt: String(r.openedAt ?? r.opened_at ?? new Date().toISOString()),
+        // F-1194: a check with no opening time is dated by its closing time,
+        // never by when it arrived; only an open check with neither keeps
+        // the arrival time.
+        openedAt: String(
+          r.openedAt ??
+            r.opened_at ??
+            r.closedAt ??
+            r.closed_at ??
+            new Date().toISOString(),
+        ),
         sourceVersion: versionOf(
           r.sourceVersion ?? r.source_version ?? r.version,
         ),
@@ -212,12 +242,16 @@ export const genericAdapter: PosAdapter = {
         serverName: r.serverName ?? r.server_name ?? r.server ?? null,
         covers: num(r.covers),
         ...moneyOf(r),
+        ...qtyUnreadOf(
+          Array.isArray(r.items) ? r.items : [],
+          (it) => it?.qty ?? it?.quantity,
+        ),
         items: (Array.isArray(r.items) ? r.items : []).map(
           (it: any): CanonicalItem => ({
             name: String(it.name ?? "unknown"),
             externalItemId: it.externalItemId ?? it.external_item_id ?? null,
             category: it.category ?? null,
-            qty: num(it.qty ?? it.quantity) ?? 1,
+            qty: qtyOf(it.qty ?? it.quantity),
             price: readMoney(it.price).value ?? 0,
             is_wine: typeof it.is_wine === "boolean" ? it.is_wine : undefined,
             master_wine_id: it.master_wine_id ?? null,
@@ -273,42 +307,47 @@ export const squareAdapter: PosAdapter = {
             : [];
     return orders
       .filter((o) => o?.id)
-      .map((o) => ({
-        externalCheckId: String(o.id),
-        openedAt: o.created_at ?? new Date().toISOString(),
-        sourceVersion: versionOf(o.version),
-        sourceModifiedAt: instantOf(o.updated_at),
-        closedAt:
+      .map((o) => {
+        const closedAt =
           o.state === "COMPLETED"
             ? (o.closed_at ?? o.updated_at ?? null)
-            : null,
-        // A cancelled order took no money. Without this it landed as
-        // `voided: false`, and every revenue reader (the till, the room, the
-        // servers, goals, the calendar), all of which filter only on
-        // `voided`, counted its total as a sale (F-572).
-        voided: o.state === "CANCELED",
-        tableRef: o.ticket_name ?? null,
-        serverExternalId: o.employee_id ?? null,
-        serverName: null,
-        covers: null,
-        subtotal: squareNetSales(o.net_amounts),
-        total: cents(o.total_money?.amount),
-        tip: cents(o.total_tip_money?.amount),
-        items: (o.line_items ?? []).map(
-          (li: any): CanonicalItem => ({
-            name: String(li.name ?? "unknown"),
-            externalItemId: li.catalog_object_id ?? null,
-            category: null,
-            qty: num(li.quantity) ?? 1,
-            price: cents(li.base_price_money?.amount) ?? 0,
-            modifierIds: modifierIdsOf(
-              li.modifiers,
-              (m) => m?.catalog_object_id,
-            ),
-          }),
-        ),
-        raw: o,
-      }));
+            : null;
+        return {
+          externalCheckId: String(o.id),
+          // F-1194: dated by its close when Square sent no created_at.
+          openedAt: o.created_at ?? closedAt ?? new Date().toISOString(),
+          sourceVersion: versionOf(o.version),
+          sourceModifiedAt: instantOf(o.updated_at),
+          closedAt,
+          // A cancelled order took no money. Without this it landed as
+          // `voided: false`, and every revenue reader (the till, the room, the
+          // servers, goals, the calendar), all of which filter only on
+          // `voided`, counted its total as a sale (F-572).
+          voided: o.state === "CANCELED",
+          tableRef: o.ticket_name ?? null,
+          serverExternalId: o.employee_id ?? null,
+          serverName: null,
+          covers: null,
+          subtotal: squareNetSales(o.net_amounts),
+          total: cents(o.total_money?.amount),
+          tip: cents(o.total_tip_money?.amount),
+          ...qtyUnreadOf(o.line_items ?? [], (li) => li?.quantity),
+          items: (o.line_items ?? []).map(
+            (li: any): CanonicalItem => ({
+              name: String(li.name ?? "unknown"),
+              externalItemId: li.catalog_object_id ?? null,
+              category: null,
+              qty: qtyOf(li.quantity),
+              price: cents(li.base_price_money?.amount) ?? 0,
+              modifierIds: modifierIdsOf(
+                li.modifiers,
+                (m) => m?.catalog_object_id,
+              ),
+            }),
+          ),
+          raw: o,
+        };
+      });
   },
 };
 
@@ -326,45 +365,52 @@ export const cloverAdapter: PosAdapter = {
         : [];
     return orders
       .filter((o) => o?.id)
-      .map((o) => ({
-        externalCheckId: String(o.id),
-        sourceModifiedAt: instantOf(o.modifiedTime),
-        openedAt: o.createdTime
-          ? new Date(o.createdTime).toISOString()
-          : new Date().toISOString(),
-        closedAt:
+      .map((o) => {
+        // F-1199: a paid order is dated by its last change, which a later
+        // tip adjust moves; ingest() keeps the first closed_at it stored.
+        const closedAt =
           o.state === "locked" || o.state === "paid"
             ? o.modifiedTime
               ? new Date(o.modifiedTime).toISOString()
               : null
-            : null,
-        // An order type ("Dine In", "To Go", a house's own "Street Fair") is
-        // not a table. Clover's order object has no table field (its field
-        // list at docs.clover.com/dev/reference/ordercreateorder, read
-        // 2026-10-04); `title` and `note` are free text, and reading either
-        // as a table would be a guess. Which order types are booth or event
-        // checks is the owner's to map once a Clover house connects (ADR
-        // 0302, fork AW24-b: "Wait, then owner maps"), so the channel stays
-        // null and the order type stays in `raw`.
-        tableRef: null,
-        channel: null,
-        serverExternalId: o.employee?.id ?? null,
-        serverName: o.employee?.name ?? null,
-        covers: num(o.customers?.elements?.length),
-        subtotal: null,
-        total: cents(o.total),
-        tip: cents(o.tipAmount),
-        items: (o.lineItems?.elements ?? []).map(
-          (li: any): CanonicalItem => ({
-            name: String(li.name ?? "unknown"),
-            externalItemId: li.item?.id ?? null,
-            category: null,
-            qty: num(li.unitQty) ?? 1,
-            price: cents(li.price) ?? 0,
-          }),
-        ),
-        raw: o,
-      }));
+            : null;
+        return {
+          externalCheckId: String(o.id),
+          sourceModifiedAt: instantOf(o.modifiedTime),
+          // F-1194: dated by its close when Clover sent no createdTime.
+          openedAt: o.createdTime
+            ? new Date(o.createdTime).toISOString()
+            : (closedAt ?? new Date().toISOString()),
+          closedAt,
+          // An order type ("Dine In", "To Go", a house's own "Street Fair") is
+          // not a table. Clover's order object has no table field (its field
+          // list at docs.clover.com/dev/reference/ordercreateorder, read
+          // 2026-10-04); `title` and `note` are free text, and reading either
+          // as a table would be a guess. Which order types are booth or event
+          // checks is the owner's to map once a Clover house connects (ADR
+          // 0302, fork AW24-b: "Wait, then owner maps"), so the channel stays
+          // null and the order type stays in `raw`.
+          tableRef: null,
+          channel: null,
+          serverExternalId: o.employee?.id ?? null,
+          serverName: o.employee?.name ?? null,
+          covers: num(o.customers?.elements?.length),
+          subtotal: null,
+          total: cents(o.total),
+          tip: cents(o.tipAmount),
+          ...qtyUnreadOf(o.lineItems?.elements ?? [], (li) => li?.unitQty),
+          items: (o.lineItems?.elements ?? []).map(
+            (li: any): CanonicalItem => ({
+              name: String(li.name ?? "unknown"),
+              externalItemId: li.item?.id ?? null,
+              category: null,
+              qty: qtyOf(li.unitQty),
+              price: cents(li.price) ?? 0,
+            }),
+          ),
+          raw: o,
+        };
+      });
   },
 };
 
@@ -388,7 +434,8 @@ export const toastAdapter: PosAdapter = {
         // F-572: a check Toast voided whole is read as voided, strictly.
         ...voidedOf(c.voided),
         externalCheckId: String(c.guid),
-        openedAt: c.openedDate ?? new Date().toISOString(),
+        // F-1194: dated by its close when Toast sent no openedDate.
+        openedAt: c.openedDate ?? c.closedDate ?? new Date().toISOString(),
         sourceModifiedAt: instantOf(c.modifiedDate),
         closedAt: c.closedDate ?? null,
         // Toast keeps a voided or deleted check on the order with a flag
@@ -406,6 +453,12 @@ export const toastAdapter: PosAdapter = {
         subtotal: num(c.amount),
         total: num(c.totalAmount ?? c.amount),
         tip: num(c.tipAmount),
+        ...qtyUnreadOf(
+          (c.selections ?? []).filter(
+            (s: any) => readVoided(s?.voided).voided !== true,
+          ),
+          (s) => s?.quantity,
+        ),
         // F-395: a selection Toast voided off the check stays in the list
         // with `voided: true`. Kept, it was sold; dropped, the hub sees the
         // re-sent check without it and gives its stock back. A value
@@ -417,7 +470,7 @@ export const toastAdapter: PosAdapter = {
               name: String(s.displayName ?? s.itemName ?? "unknown"),
               externalItemId: s.item?.guid ?? null,
               category: s.salesCategory?.name ?? null,
-              qty: num(s.quantity) ?? 1,
+              qty: qtyOf(s.quantity),
               price: num(s.price) ?? 0,
               // F-641: the menu option a modifier names (a size), not the
               // per-check selection guid, so a mapping can name it.
