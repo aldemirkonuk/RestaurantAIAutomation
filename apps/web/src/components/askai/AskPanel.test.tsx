@@ -294,7 +294,7 @@ describe('a proposal applies only through the seal', () => {
   it('a refused seal applies nothing and says why', async () => {
     api.list.mockResolvedValue([reorder])
     api.mint.mockRejectedValue(new Error('Only an owner or a manager may seal this.'))
-    renderPanel({ role: 'staff' })
+    renderPanel({ role: 'manager' })
     await screen.findByTestId('askai-proposal-card')
 
     completeHold(hold(/^hold to apply$/i))
@@ -357,6 +357,32 @@ describe('a proposal applies only through the seal', () => {
     await user.click(screen.getByRole('button', { name: /discard/i }))
     await waitFor(() => expect(api.discard).toHaveBeenCalledWith(reorder.actionId))
     expect(api.apply).not.toHaveBeenCalled()
+  })
+
+  // F-1248: staff were offered the hold and a Discard, and both came back
+  // "Forbidden resource". The card is read-only for them and says who applies
+  // it; their own proposal they may still withdraw.
+  it('staff see their proposal read-only, told who applies it, and may discard it', async () => {
+    const user = userEvent.setup()
+    api.list.mockResolvedValue([reorder])
+    api.discard.mockResolvedValue(undefined)
+    renderPanel({ role: 'staff' })
+    await screen.findByTestId('askai-proposal-card')
+    expect(screen.queryByRole('button', { name: /hold to apply/i })).not.toBeInTheDocument()
+    expect(screen.getByTestId('askai-proposal-waiting')).toHaveTextContent('Waiting for an owner or a manager.')
+    expect(screen.getByLabelText(/quantity/i)).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+    await waitFor(() => expect(api.discard).toHaveBeenCalledWith(reorder.actionId))
+    expect(api.mint).not.toHaveBeenCalled()
+    expect(await screen.findByText(/discarded\. nothing ran\./i)).toBeInTheDocument()
+  })
+
+  it('an owner or a manager is offered the hold', async () => {
+    api.list.mockResolvedValue([reorder])
+    renderPanel({ role: 'manager' })
+    await screen.findByTestId('askai-proposal-card')
+    expect(hold(/^hold to apply$/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('askai-proposal-waiting')).not.toBeInTheDocument()
   })
 
   // The next three are AskAiBar's, carried over from origin/main

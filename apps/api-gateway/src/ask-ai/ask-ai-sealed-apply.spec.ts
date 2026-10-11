@@ -532,7 +532,7 @@ describe("the unsealed confirm route is retired", () => {
 describe("the routes take standing", () => {
   // F-490 (wave 13 sim): discard carried no @Roles, so any staff member
   // could throw away an owner's proposal they could not have applied.
-  it.each(["sealChallenge", "sealedConfirm", "discard"])(
+  it.each(["sealChallenge", "sealedConfirm"])(
     "%s is owner or manager only",
     (handler) => {
       const roles = Reflect.getMetadata(
@@ -599,5 +599,90 @@ describe("who sees which open proposals", () => {
     const eqs = await serviceReading(null);
     expect(eqs.map(([k]) => k)).not.toContain("created_by");
     expect(eqs).toContainEqual(["restaurant_id", "r1"]);
+  });
+});
+
+// F-1248 (wave 42 sim): staff saw Discard on their own proposal and were
+// refused with "Forbidden resource", so they could not withdraw what they had
+// asked for. The asker may withdraw their own; F-490 still holds for anyone
+// else's.
+describe("who may discard a proposal", () => {
+  it("the route names no role: the service narrows by asker", () => {
+    expect(
+      Reflect.getMetadata(
+        ROLES_KEY,
+        (AskAiController.prototype as any).discard,
+      ),
+    ).toBeUndefined();
+  });
+
+  const discarded = async (role: string | null) => {
+    const svc = { discard: jest.fn(async () => ({})) };
+    const controller = new AskAiController(svc as unknown as AskAiService);
+    await controller.discard("act-1", {
+      userId: "u1",
+      restaurantId: "r1",
+      role,
+    });
+    return (svc.discard.mock.calls[0] as unknown[]).slice();
+  };
+
+  it.each(["owner", "manager"])(
+    "%s may discard any in the house",
+    async (role) => {
+      expect(await discarded(role)).toEqual(["r1", "u1", "act-1", null]);
+    },
+  );
+
+  it.each(["staff", null])("%s may discard only their own", async (role) => {
+    expect(await discarded(role)).toEqual(["r1", "u1", "act-1", "u1"]);
+  });
+
+  const serviceDiscard = async (askedBy: string | null, row: unknown) => {
+    const eqs: Array<[string, unknown]> = [];
+    const q: any = {
+      update: () => q,
+      select: () => q,
+      eq: (k: string, v: unknown) => {
+        eqs.push([k, v]);
+        return q;
+      },
+      maybeSingle: async () => ({ data: row, error: null }),
+    };
+    const db = { getClient: () => ({ from: () => q }) };
+    const svc = new AskAiService(
+      db as unknown as DatabaseService,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as unknown as ProcurementService,
+    );
+    let thrown: unknown;
+    const out = await svc.discard("r1", "u1", "act-1", askedBy).catch((e) => {
+      thrown = e;
+    });
+    return { eqs, out, thrown };
+  };
+
+  it("an asker's discard is conditioned on the row being theirs", async () => {
+    const { eqs, out } = await serviceDiscard("u1", {
+      id: "act-1",
+      nf_event_id: null,
+    });
+    expect(eqs).toContainEqual(["created_by", "u1"]);
+    expect(out).toEqual({ discarded: true, actionId: "act-1" });
+  });
+
+  it("someone else's proposal reads as no longer waiting", async () => {
+    const { thrown } = await serviceDiscard("u1", null);
+    expect(thrown).toBeInstanceOf(NotFoundException);
+  });
+
+  it("an owner's or manager's discard is not narrowed", async () => {
+    const { eqs } = await serviceDiscard(null, {
+      id: "act-1",
+      nf_event_id: null,
+    });
+    expect(eqs.map(([k]) => k)).not.toContain("created_by");
   });
 });

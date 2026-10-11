@@ -112,6 +112,13 @@ interface Props {
    * read-only fallback rather than an empty dropdown.
    */
   candidates?: AskAiCandidates | null
+  /**
+   * Whether this person may apply (owner or manager, the gateway's
+   * `@Roles` on the seal). Anyone else sees the card read-only, told who
+   * applies it, and may still discard it: staff only ever see their own
+   * proposals, and the gateway lets the asker withdraw one (F-1248).
+   */
+  canApply?: boolean
 }
 
 type Phase = 'editing' | 'working' | 'executed' | 'discarded' | 'gone' | 'failed'
@@ -264,7 +271,7 @@ function useCardGround(): 'paper' | 'charcoal' {
   return ground
 }
 
-export function ProposalCard({ proposal, candidates }: Props) {
+export function ProposalCard({ proposal, candidates, canApply = true }: Props) {
   const isReorder = proposal.action.actionType === 'reorder'
   const original = proposal.action.payload
 
@@ -368,6 +375,8 @@ export function ProposalCard({ proposal, candidates }: Props) {
   }, [edited, isReorder, inventoryId, providerId, orderId])
 
   const busy = phase === 'working'
+  /** The fields an apply would carry; nothing to edit for someone who cannot apply. */
+  const locked = busy || !canApply
   const settled =
     phase === 'executed' || phase === 'discarded' || phase === 'gone' || phase === 'failed'
 
@@ -499,7 +508,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
                 value={inventoryId}
                 options={candidates?.inventory ?? null}
                 capped={candidates?.capped.inventory}
-                disabled={busy}
+                disabled={locked}
                 onChange={setInventoryId}
               />
               <IdPicker
@@ -508,7 +517,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
                 value={providerId}
                 options={candidates?.providers ?? null}
                 capped={candidates?.capped.providers}
-                disabled={busy}
+                disabled={locked}
                 onChange={setProviderId}
               />
               <div className="flex items-center gap-3">
@@ -525,7 +534,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
                   max={MAX_REORDER_QUANTITY}
                   step={1}
                   value={quantity}
-                  disabled={busy}
+                  disabled={locked}
                   onChange={(e) => setQuantity(e.target.value)}
                   className="w-24 px-2 py-1.5 text-sm rounded-lg border border-gray-200 outline-none focus:border-wine-400"
                 />
@@ -539,7 +548,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
                   id={`unit-${proposal.actionId}`}
                   type="text"
                   value={unitType}
-                  disabled={busy}
+                  disabled={locked}
                   placeholder="optional"
                   onChange={(e) => setUnitType(e.target.value)}
                   className="flex-1 min-w-0 px-2 py-1.5 text-sm rounded-lg border border-gray-200 outline-none focus:border-wine-400"
@@ -554,7 +563,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
                 value={orderId}
                 options={candidates?.orders ?? null}
                 capped={candidates?.capped.orders}
-                disabled={busy}
+                disabled={locked}
                 onChange={setOrderId}
               />
               <label
@@ -567,7 +576,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
                 id={`instruction-${proposal.actionId}`}
                 rows={3}
                 value={instruction}
-                disabled={busy}
+                disabled={locked}
                 onChange={(e) => setInstruction(e.target.value)}
                 className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 outline-none focus:border-wine-400 resize-y"
               />
@@ -658,23 +667,31 @@ export function ProposalCard({ proposal, candidates }: Props) {
       {/* ── Actions: the hold is the only way to apply ───────────────── */}
       {(!settled || phase === 'executed') && (
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-2">
-          <div className="mudavym" data-ground={ground}>
-            <HoldToApprove
-              key={`proposal-${proposal.actionId}-${attempt}`}
-              label={dirty ? 'Hold to apply your edits' : 'Hold to apply'}
-              approvedLabel="Applied"
-              copy={APPLY_COPY}
-              boundSummary={
-                dirty ? `${proposal.summary} (with your edits)` : proposal.summary
-              }
-              // NOT disabled while the apply is in flight: HoldToApprove is
-              // inert while pending on its own, and a focused button that
-              // becomes disabled drops focus out of the panel's focus trap.
-              disabled={discarding || !!localProblem}
-              onChallenge={onChallenge}
-              onApprove={onApprove}
-            />
-          </div>
+          {canApply ? (
+            <div className="mudavym" data-ground={ground}>
+              <HoldToApprove
+                key={`proposal-${proposal.actionId}-${attempt}`}
+                label={dirty ? 'Hold to apply your edits' : 'Hold to apply'}
+                approvedLabel="Applied"
+                copy={APPLY_COPY}
+                boundSummary={
+                  dirty ? `${proposal.summary} (with your edits)` : proposal.summary
+                }
+                // NOT disabled while the apply is in flight: HoldToApprove is
+                // inert while pending on its own, and a focused button that
+                // becomes disabled drops focus out of the panel's focus trap.
+                disabled={discarding || !!localProblem}
+                onChallenge={onChallenge}
+                onApprove={onApprove}
+              />
+            </div>
+          ) : (
+            !settled && (
+              <p className="text-xs text-gray-600" data-testid="askai-proposal-waiting">
+                Waiting for an owner or a manager.
+              </p>
+            )
+          )}
           {!settled && (
             <div className="flex justify-end">
               <button

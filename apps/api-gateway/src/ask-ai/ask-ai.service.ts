@@ -987,8 +987,13 @@ export class AskAiService {
     return this.applyAfterSeal(restaurantId, userId, actionId, editedPayload);
   }
 
-  async discard(restaurantId: string, userId: string, actionId: string) {
-    const { data, error } = await this.databaseService
+  async discard(
+    restaurantId: string,
+    userId: string,
+    actionId: string,
+    askedBy: string | null = null,
+  ) {
+    let query = this.databaseService
       .getClient()
       .from("ai_proposed_actions")
       .update({
@@ -997,9 +1002,11 @@ export class AskAiService {
       })
       .eq("id", actionId)
       .eq("restaurant_id", restaurantId)
-      .eq("status", "proposed")
-      .select("id, nf_event_id")
-      .maybeSingle();
+      .eq("status", "proposed");
+    // Staff withdraw only their own proposal (F-1248), in the same update so
+    // there is no read-then-write gap.
+    if (askedBy) query = query.eq("created_by", askedBy);
+    const { data, error } = await query.select("id, nf_event_id").maybeSingle();
 
     if (error) {
       this.logger.error(`Ask AI discard failed: ${error.message}`);
