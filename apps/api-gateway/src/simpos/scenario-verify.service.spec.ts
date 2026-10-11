@@ -40,13 +40,24 @@ function makeDb(results: Record<string, any>) {
     ]) {
       q[m] = self;
     }
+    // F-1240: `is` filters, as PostgREST would; an absent column is null.
+    const isFilters: Array<(r: Row) => boolean> = [];
+    q.is = (k: string, v: any) => (
+      isFilters.push((r) => (r[k] ?? null) === v),
+      q
+    );
     q.maybeSingle = () =>
       Promise.resolve(results[table] ?? { data: null, error: null });
-    q.then = (resolve: any, reject: any) =>
-      Promise.resolve(results[table] ?? { data: [], error: null }).then(
-        resolve,
-        reject,
-      );
+    q.then = (resolve: any, reject: any) => {
+      const res = results[table] ?? { data: [], error: null };
+      const out = Array.isArray(res.data)
+        ? {
+            ...res,
+            data: res.data.filter((r: Row) => isFilters.every((f) => f(r))),
+          }
+        : res;
+      return Promise.resolve(out).then(resolve, reject);
+    };
     return q;
   };
   const client = { from: chain };
@@ -852,5 +863,78 @@ describe("ScenarioVerifyService — runs list and the levers", () => {
     expect(out.count).toBe(2);
     expect(out.candidateTypesAvailable).toBe(573);
     expect(out.sample).toEqual(["One", "Two"]);
+  });
+});
+
+// F-1240: a sale the till voided or corrected down keeps its consumption row,
+// marked reversed (F-1197). It is not a mirrored sale, and on a voided line
+// it is the reversal working, not a row that should not exist.
+describe("ScenarioVerifyService.verify — a reversed consumption row (F-1240)", () => {
+  const caymusRow = (over: Row = {}) => ({
+    id: "wcl-1",
+    inventory_id: "inv-1",
+    wine_name: "Caymus Cabernet",
+    consumption_type: "bottle",
+    quantity: 1,
+    volume_ml: 750,
+    unit_price: 96,
+    notes: BOTTLE_KEY,
+    source: "pos",
+    ...over,
+  });
+
+  it("a reversed row does not count as the sale's mirror", async () => {
+    const { service } = build(
+      happyResults({
+        wine_consumption_log: {
+          data: [caymusRow({ reversed_at: CLOSED })],
+          error: null,
+        },
+      }),
+    );
+    const r = await service.verify("r-sim", "run-1");
+    expect(byId(r, "consumption.mirror").status).toBe("fail");
+  });
+
+  it("a voided line's reversed row is not reported as a row that should not exist", async () => {
+    const VOID_KEY = "pos:generic_webhook:chk-1:item-2:2";
+    const exp = baseExpectation();
+    exp.checks![0].lines.push({
+      line_no: 2,
+      external_item_id: "item-2",
+      name: "Sancerre",
+      qty: 1,
+      price: 60,
+      is_wine: true,
+      inventory_id: "inv-2",
+      expect: "void_return",
+      idempotency_key: VOID_KEY,
+    });
+    const base = happyResults();
+    const { service } = build({
+      ...base,
+      sim_scenario_runs: {
+        ...base.sim_scenario_runs,
+        data: { ...base.sim_scenario_runs.data, expected: exp },
+      },
+      wine_consumption_log: {
+        data: [
+          caymusRow(),
+          caymusRow({
+            id: "wcl-2",
+            inventory_id: "inv-2",
+            wine_name: "Sancerre",
+            unit_price: 60,
+            notes: VOID_KEY,
+            reversed_at: CLOSED,
+          }),
+        ],
+        error: null,
+      },
+    });
+    const r = await service.verify("r-sim", "run-1");
+    const row = byId(r, "consumption.mirror");
+    expect(JSON.stringify(row.samples ?? [])).not.toContain("voided/dropped");
+    expect(row.status).toBe("pass");
   });
 });

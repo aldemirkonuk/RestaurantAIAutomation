@@ -406,6 +406,12 @@ interface CheckLedger {
    * no longer stands for its sale and a replay must not write it.
    */
   cutBack: Set<string>;
+  /**
+   * F-1241: per item, the key of its latest `:bottles:` correction, when that
+   * correction took bottles back. A replay retries its mark and its row of
+   * what stands, both idempotent, in case they failed after the stock moved.
+   */
+  lastCut: Map<string, string>;
 }
 
 /** Every stock key of a check begins with this (B15). */
@@ -2354,6 +2360,24 @@ export class PosHubService {
                 check.externalCheckId,
               );
           }
+          // F-1241: the last correction returned the bottles, but its mark
+          // (or its row of what stands) may have failed after the stock
+          // moved. Retry both: only unmarked rows are marked, and the row
+          // under the correction's key is written once.
+          const cutKey = isVoid ? undefined : ledger.lastCut.get(inventoryId);
+          if (
+            cutKey &&
+            (await reverseConsumption(inventoryId, name, cutKey, true)) &&
+            wantBottles > 0 &&
+            bottleLines[0]
+          ) {
+            await consume(
+              bottleLines[0],
+              { mode: "whole_bottle" },
+              wantBottles,
+              cutKey,
+            );
+          }
         } else {
           const kind = isVoid ? "void" : "bottles";
           const key = `${prefix}${inventoryId}:${kind}:${rows}`;
@@ -2549,7 +2573,10 @@ export class PosHubService {
           /:void(:\d+)?$/.test(String(r.idempotency_key)),
         ),
         cutBack: new Set(),
+        lastCut: new Map(),
       };
+      // F-1241: the latest correction of each item, by its row number.
+      const lastBottles = new Map<string, { n: number; key: string }>();
       const add = (m: Map<string, number>, id: string, n: number) =>
         m.set(id, (m.get(id) ?? 0) + n);
       for (const r of tx.data as any[]) {
@@ -2566,6 +2593,12 @@ export class PosHubService {
         add(ledger.byKey, key, -(Number(r.quantity_change) || 0));
         if (/:bottles:\d+$/.test(key) && Number(r.quantity_change) > 0) {
           ledger.cutBack.add(id);
+        }
+        const n = /:bottles:(\d+)$/.exec(key);
+        if (n && Number(n[1]) >= (lastBottles.get(id)?.n ?? -1)) {
+          lastBottles.set(id, { n: Number(n[1]), key });
+          if (Number(r.quantity_change) > 0) ledger.lastCut.set(id, key);
+          else ledger.lastCut.delete(id);
         }
       }
       for (const r of pours.data as any[]) {

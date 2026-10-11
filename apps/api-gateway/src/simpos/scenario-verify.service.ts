@@ -384,7 +384,11 @@ export class ScenarioVerifyService {
       ]),
     ];
     const pourKeys = [...new Set(volumeLines.map((p) => p.key))];
-    const consumptionKeys = [...new Set(depleting.map((p) => p.key))];
+    // F-1240: a voided line's sale key is read too, so a row the void left
+    // counted is seen; a row the void marked reversed is filtered out.
+    const consumptionKeys = [
+      ...new Set([...depleting, ...voidLines].map((p) => p.key)),
+    ];
 
     const txns = await this.readIn<any>(
       "inventory_transactions",
@@ -421,6 +425,9 @@ export class ScenarioVerifyService {
             "id, inventory_id, wine_name, consumption_type, quantity, volume_ml, unit_price, notes, source",
           )
           .eq("restaurant_id", restaurantId)
+          // F-1240: a sale the till voided or corrected down is marked
+          // reversed (F-1197); it is not consumption.
+          .is("reversed_at", null)
           .in("notes", chunk),
     );
     const unresolvedRows = await this.readIn<any>(
