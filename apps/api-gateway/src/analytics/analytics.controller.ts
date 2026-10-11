@@ -1353,7 +1353,12 @@ export class AnalyticsController {
   // POS-backed sales revenue (OD-85)
   // ==========================================================================
 
+  // The house's takings, day by day, and what each wine sold for: owner or
+  // manager only, as the table and server registers are (F-1200, re-hit of
+  // F-203; ADR 0145). Mobile already strips the same figure from staff (F-957).
   @Get("pos-revenue/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Sales revenue booked through the POS, over a day range",
     description:

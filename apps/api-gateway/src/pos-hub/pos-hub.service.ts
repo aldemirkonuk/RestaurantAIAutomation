@@ -356,7 +356,7 @@ interface PlannedStockLine {
     name: string;
     external_item_id: string | null;
     qty: number;
-    price: number;
+    price: number | null;
     inventory_id: string | null;
   };
   inventoryId: string;
@@ -1840,7 +1840,7 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
       is_wine: boolean;
       inventory_id: string | null;
       sale_unit: string | null;
@@ -2525,7 +2525,7 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
     },
     opts: {
       reason: "unmapped" | "no_sale_volume";
@@ -2591,7 +2591,7 @@ export class PosHubService {
     item: {
       name: string;
       qty: number;
-      price: number;
+      price: number | null;
       inventory_id: string | null;
     },
     resolved: ResolvedSaleVolume,
@@ -2617,7 +2617,17 @@ export class PosHubService {
           ? resolved.ml * qty
           : (inv?.bottleMl ?? RPC_DEFAULT_BOTTLE_ML) * qty;
       const unit = resolved.mode === "volume" ? "glass" : "bottle";
-      const unitPrice = Number(item.price) || inv?.menuPrice || null;
+      // F-1198: a till price of 0 is a comped line and stays 0. Only a line
+      // the till sent no price for falls back to the menu price; `||` used to
+      // book a comp at the full menu price.
+      const tillPrice =
+        item.price === null || item.price === undefined
+          ? null
+          : Number(item.price);
+      const unitPrice =
+        tillPrice !== null && Number.isFinite(tillPrice)
+          ? tillPrice
+          : (inv?.menuPrice ?? null);
 
       // Idempotent from 2026-08-24, matching the stock write it follows.
       //

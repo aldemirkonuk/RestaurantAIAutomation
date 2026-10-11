@@ -57,7 +57,14 @@ function makeDb(insertResult: (row: Row) => { error: any }) {
       }
       if (table === "restaurant_inventory") {
         q.in = async () => ({
-          data: [{ id: "inv-1", bottle_size_ml: 750, pour_size_ml: 150 }],
+          data: [
+            {
+              id: "inv-1",
+              bottle_size_ml: 750,
+              pour_size_ml: 150,
+              menu_price_current: 120,
+            },
+          ],
           error: null,
         });
       }
@@ -75,13 +82,11 @@ function makeDb(insertResult: (row: Row) => { error: any }) {
   };
 }
 
-const check = () => ({
+const check = (price: number | null = 90) => ({
   externalCheckId: "chk-mirror-1",
   openedAt: "2026-09-02T18:00:00Z",
   closedAt: "2026-09-02T19:00:00Z",
-  items: [
-    { name: "Caymus Cabernet", externalItemId: "item-1", qty: 2, price: 90 },
-  ],
+  items: [{ name: "Caymus Cabernet", externalItemId: "item-1", qty: 2, price }],
 });
 
 describe("PosHubService — the consumption mirror against the real index (ADR 0093)", () => {
@@ -136,5 +141,27 @@ describe("PosHubService — the consumption mirror against the real index (ADR 0
     await new PosHubService(db).ingest("r1", "generic_webhook", [check()]);
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(String(errorSpy.mock.calls[0][0])).toContain("[42P10]");
+  });
+
+  // F-1198: a comped bottle (the till's price 0) used to be booked at the
+  // menu price, because `0 || menuPrice` falls through.
+  it("a comped line (price 0) is written at 0, not at the menu price", async () => {
+    const { db, inserts } = makeDb(() => ({ error: null }));
+    await new PosHubService(db).ingest("r1", "generic_webhook", [check(0)]);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toMatchObject({ unit_price: 0, total_revenue: 0 });
+  });
+
+  it("a line the till sent no price for falls back to the menu price", async () => {
+    const { db, inserts } = makeDb(() => ({ error: null }));
+    await new PosHubService(db).ingest("r1", "generic_webhook", [check(null)]);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toMatchObject({ unit_price: 120, total_revenue: 240 });
+  });
+
+  it("a priced line keeps the till's price", async () => {
+    const { db, inserts } = makeDb(() => ({ error: null }));
+    await new PosHubService(db).ingest("r1", "generic_webhook", [check(90)]);
+    expect(inserts[0]).toMatchObject({ unit_price: 90, total_revenue: 180 });
   });
 });
