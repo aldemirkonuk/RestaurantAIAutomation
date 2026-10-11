@@ -180,12 +180,16 @@ function closed(
   };
 }
 
-/** A check still open, opened `minutesAgo` minutes ago. */
-function open(tableId: string | null, total: number, minutesAgo = 20) {
+/**
+ * A check still open, opened `minutesAgo` minutes ago, with two lines rung:
+ * a table is paced only after half an hour and two lines (F-1188).
+ */
+function open(tableId: string | null, total: number, minutesAgo = 45) {
   return {
     ...closed(tableId, total),
     opened_at: new Date(Date.now() - minutesAgo * 60000).toISOString(),
     closed_at: null,
+    items: [{ name: "Bottle" }, { name: "Bottle" }],
   };
 }
 
@@ -804,7 +808,7 @@ describe("A table list that could not be read leaves every table insight silent 
       pos_checks: [
         ...[150, 250, 350, 450, 550].flatMap((mean, i) => at(`h${i}`, mean)),
         ...at("tp", 900),
-        open("h4", 3000, 10),
+        open("h4", 3000),
       ],
     };
   };
@@ -1117,5 +1121,42 @@ describe("The stored insight cache", () => {
     } finally {
       quiet.mockRestore();
     }
+  });
+});
+
+describe("a table surges only once it has sat and rung (F-1188)", () => {
+  // The sim's worked case: visits that run 30-40 an hour of a two-hour stay,
+  // against a new table whose first bottle has just rung in.
+  const rows = (c: object) => ({
+    restaurant_tables: [table("t1", "1")],
+    pos_checks: [...[60, 70, 56, 80, 66].map((t) => closed("t1", t)), c],
+  });
+  const firstBottle = { items: [{ name: "Bottle" }] };
+
+  it("does not call a table surging minutes after its first bottle", async () => {
+    const c = { ...open("t1", 100, 3), ...firstBottle };
+    expect(of(await fire(rows(c)), HOT)).toEqual([]);
+  });
+
+  it("does not call it surging on two lines before half an hour", async () => {
+    expect(of(await fire(rows(open("t1", 100, 20))), HOT)).toEqual([]);
+  });
+
+  it("does not call it surging on one line, however long it has sat", async () => {
+    const c = { ...open("t1", 100, 45), ...firstBottle };
+    expect(of(await fire(rows(c)), HOT)).toEqual([]);
+  });
+
+  it("does not count a check whose lines are not known as two", async () => {
+    const c = { ...open("t1", 100, 45), items: null };
+    expect(of(await fire(rows(c)), HOT)).toEqual([]);
+  });
+
+  it("calls it surging after half an hour and two lines, when it is", async () => {
+    expect(
+      of(await fire(rows(open("t1", 100, 45))), HOT).map(
+        (i) => i.evidence.entity,
+      ),
+    ).toEqual(["Table 1"]);
   });
 });

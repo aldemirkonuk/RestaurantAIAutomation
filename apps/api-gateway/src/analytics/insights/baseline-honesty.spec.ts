@@ -556,3 +556,108 @@ describe("the trend sentence counts open days and keeps calendar time (F-708)", 
     );
   });
 });
+
+/**
+ * A house with a weekly shape: quiet Monday to Thursday, a busy Friday and
+ * Saturday, a middling Sunday. The sim's probe (F-1186, F-1187) ran on this
+ * shape; each test below runs it ending on every weekday of one week, since
+ * both faults moved with the day the generator ran.
+ */
+describe("a weekly shape is not news (F-1186, F-1187)", () => {
+  // Sunday .. Saturday.
+  const WEEK = [1500, 1000, 1000, 1000, 1000, 2500, 3000];
+  // ±12% noise with a five-day cycle, so each weekday sees every multiplier
+  // across the 90 days and no weekday's spread is 0.
+  const NOISE = [1.0, 0.88, 1.12, 0.94, 1.06];
+  const weekly = (growthPerDay = 0) => {
+    const revenue = new Map<number, number>();
+    for (let b = 90; b >= 1; b--)
+      revenue.set(
+        b,
+        Math.round(
+          WEEK[weekdayOf(dayBack(b))] *
+            NOISE[b % 5] *
+            (1 + growthPerDay * (90 - b)),
+        ),
+      );
+    return revenue;
+  };
+  // Seven runs, Monday 2026-10-05 to Sunday 2026-10-11, each at noon UTC.
+  const RUN_DAYS = Array.from(
+    { length: 7 },
+    (_, i) => new Date(Date.UTC(2026, 9, 5 + i, 12)),
+  );
+  const runOn = async (when: Date, revenue: () => Map<number, number>) => {
+    jest.useFakeTimers({
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "clearImmediate",
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+        "queueMicrotask",
+      ],
+    });
+    jest.setSystemTime(when);
+    try {
+      return (
+        await generatorFor({ revenue: revenue() }).generate("r1", {
+          persist: false,
+        })
+      ).insights;
+    } finally {
+      jest.useRealTimers();
+    }
+  };
+
+  it("scores an ordinary Friday against Fridays, not against the whole week", async () => {
+    for (const when of RUN_DAYS) {
+      const xs = await runOn(when, () => weekly());
+      expect({
+        when: when.toISOString(),
+        anomalies: xs
+          .filter((i) => i.candidateKey.endsWith(".anomaly_day"))
+          .map((i) => i.sentence),
+      }).toEqual({ when: when.toISOString(), anomalies: [] });
+    }
+  });
+
+  it("still flags a Tuesday that took a Saturday's money", async () => {
+    // Tuesday 2026-10-06 is 4 days back from a Saturday 2026-10-10 run.
+    const xs = await runOn(new Date(Date.UTC(2026, 9, 10, 12)), () => {
+      const revenue = weekly();
+      revenue.set(4, 3000);
+      return revenue;
+    });
+    const hit = xs.find(
+      (i) => i.candidateKey === "overall.revenue.anomaly_day",
+    );
+    expect(hit?.evidence.date).toBe("2026-10-06");
+    expect(hit!.evidence.z!).toBeGreaterThanOrEqual(3);
+  });
+
+  it("claims no trend on flat weeks, whatever weekday it runs", async () => {
+    for (const when of RUN_DAYS) {
+      const xs = await runOn(when, () => weekly());
+      expect({
+        when: when.toISOString(),
+        trend: xs
+          .filter((i) => i.candidateKey.endsWith(".trend_direction"))
+          .map((i) => i.sentence),
+      }).toEqual({ when: when.toISOString(), trend: [] });
+    }
+  });
+
+  it("reads real growth through the weekly shape, the same way every weekday", async () => {
+    // +3% of the starting level a day: about 6% a week of the last month's level.
+    for (const when of RUN_DAYS) {
+      const xs = await runOn(when, () => weekly(0.03));
+      const hit = xs.find(
+        (i) => i.candidateKey === "overall.revenue.trend_direction",
+      );
+      expect(hit?.evidence.trendPctPerWeek).toBeGreaterThan(0.05);
+    }
+  });
+});

@@ -185,6 +185,10 @@ export const MAX_PERIOD_OBSERVED_GAP = 1;
 /** A 28-day trend needs half its days to be real ones. */
 export const MIN_TREND_OBSERVED = 14;
 
+/** A live table is paced only after this long and this many lines (F-1188). */
+export const HOT_TABLE_MIN_MINUTES = 30;
+export const HOT_TABLE_MIN_RINGS = 2;
+
 /**
  * A ranking or a pairing is printed only when the data can tell it apart
  * (ADR 0272). On Tuzlu Rüzgar — servers and tables dealt uniformly, baskets
@@ -2099,11 +2103,16 @@ export class InsightGeneratorService {
         );
     for (const c of open) {
       const t: any = tableById.get(c.table_id);
-      const minutes = Math.max(
-        5,
-        (now - new Date(c.opened_at).getTime()) / 60000,
-      );
+      const minutes = (now - new Date(c.opened_at).getTime()) / 60000;
       if (minutes > 240) continue; // stale
+      // A table's first bottle rings in early and the rest of the visit
+      // slows, so the first minutes always read as a surge against a whole
+      // visit's pace (F-1188). Pace is compared only once the table has sat
+      // half an hour and rung at least two lines; a check whose lines are
+      // not known has not shown two.
+      const rings = Array.isArray(c.items) ? c.items.length : 0;
+      if (minutes < HOT_TABLE_MIN_MINUTES || rings < HOT_TABLE_MIN_RINGS)
+        continue;
       const pace = (c.total || 0) / minutes; // $/min so far
       // typical pace for this table across history
       const hist = checks
@@ -2381,14 +2390,21 @@ export class InsightGeneratorService {
     // 3. Trend (last 28 days, weekly slope as % of level) — over real days.
     //    Each open day keeps its calendar position (F-708), so the slope is
     //    per calendar day and `* 7` is per week, not per seven open days; the
-    //    level it is a share of is the mean of an open day.
+    //    level it is a share of is the mean of an open day. The slope is
+    //    fitted within each weekday (F-1187): a plain line through a week with
+    //    a busy weekend tilts by which weekday the window happens to end on,
+    //    and printed a trend on flat sales.
     const recent = values.slice(-28);
+    const recentDates = dates.slice(-28);
     const recentObs = observed.slice(-28);
     const trendSeries = recent.filter((_, i) => recentObs[i]);
     const trendAt = recent.flatMap((_, i) => (recentObs[i] ? [i] : []));
+    const trendWeekday = trendAt.map((i) =>
+      new Date(`${recentDates[i]}T00:00:00Z`).getUTCDay(),
+    );
     const trend =
       trendSeries.length >= MIN_TREND_OBSERVED
-        ? E.trendPerPeriodPct(trendSeries, trendAt)
+        ? E.seasonalTrendPerPeriodPct(trendSeries, trendAt, trendWeekday)
         : null;
     if (trend !== null && Math.abs(trend * 7) >= 0.05) {
       const ev: InsightEvidence = {
@@ -2418,10 +2434,17 @@ export class InsightGeneratorService {
     // 4. Anomaly scan over the last 14 days (robust z vs the 90-day window).
     //    A day with no records is neither a candidate nor part of the
     //    comparison set: "the 27th was 5σ below typical" about a closure is the
-    //    same lie as the 100% one, told with a Greek letter.
+    //    same lie as the 100% one, told with a Greek letter. A day is scored
+    //    against its own weekday only, as the baseline card above is (F-1186):
+    //    against every day, an ordinary Friday read as unusual.
+    const weekdayOf = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay();
     for (let i = Math.max(0, values.length - 14); i < values.length; i++) {
       if (!observed[i]) continue;
-      const rest = values.filter((_, j) => j !== i && observed[j]);
+      const wd = weekdayOf(dates[i]);
+      const rest = values.filter(
+        (_, j) => j !== i && observed[j] && weekdayOf(dates[j]) === wd,
+      );
+      if (rest.length < MIN_BASELINE_N) continue;
       const z = E.robustZScore(values[i], rest);
       if (z !== null && Math.abs(z) >= 3) {
         const ev: InsightEvidence = {

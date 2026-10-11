@@ -343,7 +343,8 @@ describe("an insight that takes a name from a read that could not be made does n
   /**
    * Three tables, 40 closed checks each, T1 well ahead; Ana adds $100 a check
    * on every table, so her lead survives the table adjustment; and one check
-   * open at T1 for 10 minutes at $2,000, far past T1's usual pace.
+   * open at T1 for 45 minutes at $2,000 over two lines, far past T1's usual
+   * pace.
    */
   function floor(): Record<string, Answer> {
     const checks: Row[] = [];
@@ -377,12 +378,12 @@ describe("an insight that takes a name from a read that could not be made does n
       table_id: "t1",
       server_name: "Ana",
       server_external_id: null,
-      opened_at: new Date(Date.now() - 10 * 60000).toISOString(),
+      opened_at: new Date(Date.now() - 45 * 60000).toISOString(),
       closed_at: null,
       covers: 4,
       total: 2000,
       tip: 0,
-      items: null,
+      items: [{ name: "Bottle" }, { name: "Bottle" }],
     });
     return {
       ...withRows(),
