@@ -97,6 +97,16 @@ function fakeDb(rows: Rows, failReads: string[] = []) {
         filters.push((r) => vals.includes(r[col])),
         q
       ),
+      // The zone bottle count reads live lots whole (F-1331, readZoneLots).
+      gt: (col: string, val: number) => (
+        filters.push((r) => Number(r[col]) > val),
+        q
+      ),
+      not: (col: string, _op: "is", val: unknown) => (
+        filters.push((r) => (r[col] ?? null) !== val),
+        q
+      ),
+      limit: () => q,
       order: () => q,
       single: async () => result("single"),
       maybeSingle: async () => result("maybe"),

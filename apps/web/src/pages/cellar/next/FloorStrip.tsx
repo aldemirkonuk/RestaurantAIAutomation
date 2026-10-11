@@ -47,7 +47,7 @@ function Zone({ z }: { z: ZoneVM }) {
       <span className="cl-dim" style={{ fontSize: 10.5 }}>
         {z.itemsAssigned === null
           ? 'contents could not be counted'
-          : `${z.itemsAssigned === 1 ? 'title' : 'titles'} assigned${
+          : `${z.itemsAssigned === 1 ? 'bottle' : 'bottles'} here${
               z.capacityBottles === null ? '' : ` · holds ${z.capacityBottles}`
             }`}
       </span>

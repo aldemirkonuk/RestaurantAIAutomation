@@ -210,6 +210,16 @@ function fakeDb(rows: Rows) {
         filters.push((r) => vals.includes(r[col])),
         q
       ),
+      // The zone bottle count reads live lots whole (F-1331, readZoneLots).
+      gt: (col: string, val: number) => (
+        filters.push((r) => Number(r[col]) > val),
+        q
+      ),
+      not: (col: string, _op: "is", val: unknown) => (
+        filters.push((r) => (r[col] ?? null) !== val),
+        q
+      ),
+      limit: () => q,
       order: () => q,
       single: async () => result("single"),
       maybeSingle: async () => result("maybe"),
@@ -343,6 +353,7 @@ describe("storage-locations — a zone with bottles in it is not deleted (F-691)
         {
           id: "l1",
           restaurant_id: HOUSE_A,
+          master_wine_id: WINE,
           location_id: ZONE_OF_A,
           stock_state: "live",
           qty: lots,
@@ -365,6 +376,7 @@ describe("storage-locations — a zone with bottles in it is not deleted (F-691)
           quantity: mapped,
         },
       ],
+      master_wine_library: [{ id: WINE, wine_name: "Barolo" }],
     });
   }
 
@@ -373,19 +385,32 @@ describe("storage-locations — a zone with bottles in it is not deleted (F-691)
     const svc = new StorageLocationsService(db);
     await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).rejects.toMatchObject({
       status: HttpStatus.CONFLICT,
-      message: expect.stringContaining("12 bottles are still in this zone"),
+      message: expect.stringContaining(
+        "12 bottles are still in this zone: Barolo (12).",
+      ),
     });
     expect(writes).toEqual([]);
   });
 
-  it("a mapping alone (no lot yet) still holds the zone", async () => {
-    const { db, writes } = withBottles(0, 1);
+  it("one bottle is said in the singular", async () => {
+    const { db, writes } = withBottles(1, 0);
     const svc = new StorageLocationsService(db);
     await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).rejects.toMatchObject({
       status: HttpStatus.CONFLICT,
       message: expect.stringContaining("1 bottle is still in this zone"),
     });
     expect(writes).toEqual([]);
+  });
+
+  // F-1331: lots are the one count. A mapping the dialog's old stepper wrote
+  // is not a bottle on the shelf; the dialog shows that zone as empty, so a
+  // refusal on it would name bottles nobody can find.
+  it("a mapping alone (no lot) does not hold the zone", async () => {
+    const { db } = withBottles(0, 1);
+    const svc = new StorageLocationsService(db);
+    await expect(svc.deleteLocation(HOUSE_A, ZONE_OF_A)).resolves.toEqual({
+      success: true,
+    });
   });
 
   it("an empty zone deletes", async () => {
