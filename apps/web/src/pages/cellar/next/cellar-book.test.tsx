@@ -21,7 +21,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 // Mutable so one test can give the house its own rows; every other test reads
 // an empty cellar, as before. The SAME array reference is returned on every
 // render, as TanStack Query does, so memos keyed on it stay stable.
-const inventory = vi.hoisted(() => ({ data: [] as Array<{ id: string; wineId?: string | null }> }));
+const inventory = vi.hoisted(() => ({ data: [] as Array<{ id: string; wineId?: string | null; [k: string]: unknown }> }));
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
   useInventory: () => ({
     data: inventory.data,
@@ -252,5 +252,46 @@ describe('useCellarNextData — searching the whole library', () => {
     act(() => result.current.searchBook('Yakut'));
     expect(result.current.bookSearch).toBeNull();
     expect(searchCalls()).toHaveLength(0);
+  });
+});
+
+/**
+ * F-1273: a count of one shelf no longer stamps last_counted_at (F-1165), so
+ * the bottle leaf said "never counted" for a wine counted shelf by shelf. It
+ * reads the /inventory rule (F-1235): the stalest stocked shelf.
+ */
+describe('useCellarNextData — last counted reads each shelf', () => {
+  const shelved = (shelfCounts: Array<{ locationId: string; countedAt: string }>) => [
+    {
+      id: 'i1',
+      wineId: 'w0',
+      stockLive: 5,
+      lastCountedAt: null,
+      locations: [
+        { locationId: 'bar', qty: 2, wac: null },
+        { locationId: 'cellar', qty: 3, wac: null },
+      ],
+      shelfCounts,
+    },
+  ];
+
+  it('[REVERT-FAILS] dates the wine by the shelf counted longest ago', async () => {
+    mockLibraryOf(1);
+    inventory.data = shelved([
+      { locationId: 'bar', countedAt: '2026-10-05T10:00:00.000Z' },
+      { locationId: 'cellar', countedAt: '2026-10-01T10:00:00.000Z' },
+    ]);
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    await waitFor(() => expect(result.current.bottles).toHaveLength(1));
+    expect(result.current.bottles![0].cellar?.lastCountedAt).toBe('2026-10-01T10:00:00.000Z');
+  });
+
+  it('[REVERT-FAILS] with a shelf still uncounted, gives no date but says some shelves were', async () => {
+    mockLibraryOf(1);
+    inventory.data = shelved([{ locationId: 'bar', countedAt: '2026-10-05T10:00:00.000Z' }]);
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    await waitFor(() => expect(result.current.bottles).toHaveLength(1));
+    expect(result.current.bottles![0].cellar?.lastCountedAt).toBeNull();
+    expect(result.current.bottles![0].cellar?.someShelvesCounted).toBe(true);
   });
 });

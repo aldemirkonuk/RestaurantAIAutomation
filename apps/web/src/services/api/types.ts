@@ -84,6 +84,11 @@ export interface InventoryItem {
   analyticsReadable?: boolean;
   locations?: WineLocationBreakdown[];
   /**
+   * Each shelf's newest count in the list's window (F-1235). null = not known
+   * (the read failed or was too large).
+   */
+  shelfCounts?: Array<{ locationId: string; countedAt: string }> | null;
+  /**
    * What the house item IS (`restaurant_inventory.kind`, ADR 0115): set by
    * the house for a declared item, else from the library's kind.
    */

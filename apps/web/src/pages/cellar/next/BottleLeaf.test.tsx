@@ -457,3 +457,16 @@ describe('BottleLeaf — the last-counted day reads the house way (F-1100)', () 
     }
   });
 });
+
+describe('BottleLeaf — a wine counted shelf by shelf is not "never counted" (F-1273)', () => {
+  it('[REVERT-FAILS] says not every shelf yet when only some shelves have a count', () => {
+    mount(bottle({ cellar: cellarRow({ lastCountedAt: null, someShelvesCounted: true }) }));
+    const dd = screen.getByText('Last counted').nextElementSibling!;
+    expect(dd).toHaveTextContent('not every shelf yet');
+  });
+
+  it('still says never counted when no shelf has a count', () => {
+    mount(bottle({ cellar: cellarRow({ lastCountedAt: null }) }));
+    expect(screen.getByText('Last counted').nextElementSibling!).toHaveTextContent('never counted');
+  });
+});

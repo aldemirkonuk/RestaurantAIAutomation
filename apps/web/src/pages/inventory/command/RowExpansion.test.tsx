@@ -675,6 +675,35 @@ describe('RowExpansion — adjust and pour name their shelf', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  // F-1271: every shelf in the house was offered, and a take-off past what the
+  // picked shelf held came off other shelves without a word.
+  it('[REVERT-FAILS] a take-off offers only the shelves holding the wine, with their counts', async () => {
+    const withRack = [...shelves, { id: 'loc-rack', name: 'Rack 3', capacity: null, currentCount: 0, color: '' }]
+    renderRow(split, withRack)
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    const offered = Array.from(screen.getByLabelText('Which shelf').querySelectorAll('option'))
+      .filter((o) => o.value !== '')
+      .map((o) => o.textContent)
+    expect(offered).toEqual(['Cellar (8)', 'Bar (3)'])
+    // Bottles found may still go onto the empty rack.
+    await userEvent.click(screen.getByRole('button', { name: 'Increase manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Increase manual adjustment' }))
+    expect(screen.getByRole('option', { name: 'Rack 3 (0)' })).toBeInTheDocument()
+  })
+
+  it('[REVERT-FAILS] refuses, in words, more off a shelf than it holds', async () => {
+    renderRow(split, shelves)
+    await userEvent.selectOptions(screen.getByLabelText('Which shelf'), 'loc-bar')
+    for (let i = 0; i < 4; i++) {
+      await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    }
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Bar holds 3 of this wine. Take off 3 or fewer here, or pick another shelf.')
+    await userEvent.click(screen.getByRole('button', { name: 'Increase manual adjustment' }))
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('with no shelves to pick, nothing is asked and no shelf is sent', async () => {
     renderRow({ liveStock: 4 })
     expect(screen.queryByLabelText('Which shelf')).toBeNull()

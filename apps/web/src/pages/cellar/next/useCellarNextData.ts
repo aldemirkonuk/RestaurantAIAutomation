@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
+import { everyShelfCountedAt } from '../../inventory/command/bits';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { animate, ink } from '../../../lib/mudavym/motion';
@@ -157,7 +158,13 @@ export interface CellarRow {
   thresholdMin: number | null;
   providerId: string | null;
   providerName: string | null;
+  /**
+   * When the stalest stocked shelf was counted, the /inventory rule (F-1273):
+   * a count of one shelf no longer stamps the wine's last_counted_at (F-1165).
+   */
   lastCountedAt: string | null;
+  /** No date above, but some shelf has a count of its own in the window. */
+  someShelvesCounted?: boolean;
   /** Pours per bottle — the gateway's own computed default, or this row's override. Null only if the gateway omitted it. */
   glassesPerBottle: number | null;
   /** This house's own by-the-glass price — a real column a manager sets, never the library's reference price. */
@@ -1443,13 +1450,19 @@ export function useCellarNextData() {
     const m = new Map<string, CellarRow>();
     for (const it of inventoryQ.data) {
       if (!it.wineId) continue;
+      const countedAt = everyShelfCountedAt({
+        lastCounted: it.lastCountedAt ?? null,
+        locations: it.locations,
+        shelfCounts: it.shelfCounts ?? null,
+      });
       m.set(it.wineId, {
         inventoryId: it.id,
         stockLive: num(it.stockLive) ?? 0,
         thresholdMin: num(it.thresholdMin),
         providerId: it.providerId ?? null,
         providerName: text(it.providerName),
-        lastCountedAt: it.lastCountedAt ?? null,
+        lastCountedAt: countedAt != null ? new Date(countedAt).toISOString() : null,
+        someShelvesCounted: countedAt == null && (it.shelfCounts?.length ?? 0) > 0,
         glassesPerBottle: num(it.glassesPerBottle),
         menuPriceGlass: num(it.menuPriceGlass),
         menuPriceBottle: num(it.menuPriceBottle),
