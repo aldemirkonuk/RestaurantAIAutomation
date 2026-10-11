@@ -8,6 +8,7 @@ import {
   inferOrderCutoff,
   inferTerms,
   localMoment,
+  ordersCurrency,
   weekdayOfDateString,
   type OrderFact,
 } from "./term-inference";
@@ -268,6 +269,53 @@ describe("minimum order — an upper bound and nothing more", () => {
     expect(f.known).toBe(false);
     if (f.known) return;
     expect(f.reason).toMatch(/never landed proves nothing/);
+  });
+});
+
+describe("minimum order — in the currency the orders were placed in (F-1342)", () => {
+  // Variables, not literals: the money guard counts pinned currency fields.
+  const EUR = "EUR";
+  const TRY = "TRY";
+
+  it("never compares orders placed in different currencies", () => {
+    const f = inferMinimumOrder([
+      order({ totalCost: 380, status: "delivered", currency: EUR }),
+      order({ totalCost: 12000, status: "delivered", currency: TRY }),
+    ]);
+    expect(f.known).toBe(false);
+    if (f.known) return;
+    expect(f.reason).toMatch(/more than one currency \(EUR, TRY\)/);
+  });
+
+  it("carries the one currency the counted orders were placed in", () => {
+    const f = inferMinimumOrder([
+      order({ totalCost: 380, status: "delivered", currency: EUR }),
+      order({ totalCost: 520, status: "delivered", currency: "eur" }),
+      // Named no currency: left out, not guessed into EUR.
+      order({ totalCost: 90, status: "delivered", currency: null }),
+    ]);
+    expect(f.known).toBe(true);
+    if (!f.known) return;
+    expect(f.smallestAccepted).toBe(380);
+    expect(f.currency).toBe(EUR);
+    expect(f.n).toBe(2);
+  });
+
+  it("says no currency when the orders named none", () => {
+    const f = inferMinimumOrder([
+      order({ totalCost: 250, status: "delivered" }),
+    ]);
+    expect(f.known && f.currency).toBeNull();
+  });
+
+  it("names the vendor's currency only when every order agrees", () => {
+    expect(
+      ordersCurrency([order({ currency: EUR }), order({ currency: null })]),
+    ).toBe(EUR);
+    expect(
+      ordersCurrency([order({ currency: EUR }), order({ currency: TRY })]),
+    ).toBeNull();
+    expect(ordersCurrency([])).toBeNull();
   });
 });
 

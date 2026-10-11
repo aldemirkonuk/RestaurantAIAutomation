@@ -50,7 +50,7 @@ import type {
 import { MONO, SANS } from './pv-format';
 import { useProviderTerms, type ProviderTermsState } from './useProviderTerms';
 
-import { fmtLeadTime, fmtMinimumCell } from './TopTermsFacts';
+import { fmtLeadTime, fmtMinimumCell, minimumCurrencyOf, minimumLabel } from './TopTermsFacts';
 
 const SOURCE_TONE: Record<TermSource, string> = {
   stated: 'var(--seal-deep, #14515C)',
@@ -278,7 +278,7 @@ function Editor({
   onClose,
 }: {
   row: VendorTermsRow;
-  /** `null` when the house has not been asked what money it reports in. */
+  /** The vendor's minimum currency (`minimumCurrencyOf`), `null` when not stated. */
   currency: string | null;
   busy: boolean;
   onSave: (body: SetVendorTermsBody) => void;
@@ -361,11 +361,7 @@ function Editor({
         </Field>
 
         <Field
-          label={
-            currency
-              ? `Minimum order (${currency})`
-              : 'Minimum order (currency not recorded)'
-          }
+          label={minimumLabel(currency)}
         >
           <input
             type="text"
@@ -459,14 +455,12 @@ export function TermsSection({
   const canChange = useCanChangeVendors();
   const reg = terms.register;
   const row = terms.row;
-  // The house's reporting currency, or `null` when nobody has been asked. It
-  // used to read `?? 'USD'`, which was the only honest reading while
-  // `restaurants.currency` carried `DEFAULT 'USD'` — and which meant this panel
-  // told a London house its vendor's minimum was in dollars. The default is
-  // dropped (`20260905120000_a_house_names_its_money.sql`, ADR 0117 Q25), so a
-  // missing answer is now visible and is rendered as one: `fmtMoney` prints the
-  // number unsymboled, and the field label says the money is not recorded.
-  const currency = reg?.currency.code ?? null;
+  // The minimum's currency is the vendor's (F-1342): the one this house's
+  // orders to them were placed in, or `null` and "currency not stated". It
+  // never falls back to USD (ADR 0117 Q25 dropped that default), and no
+  // longer to the house's reporting currency, which put a EUR vendor's
+  // minimum in lira.
+  const currency = minimumCurrencyOf(row, reg);
 
   return (
     <section style={{ fontFamily: SANS }}>

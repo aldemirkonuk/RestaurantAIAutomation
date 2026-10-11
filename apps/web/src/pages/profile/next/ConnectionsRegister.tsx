@@ -32,6 +32,8 @@ import { EM, SANS, fmtDay } from './pf-format';
 import { Btn, ConnectionRow, Note, Rail, Register, RetryLink, StatusLine } from './pf-ui';
 import { GoogleLink } from './GoogleLink';
 import type { ProfileNextData } from './useProfileNextData';
+import { StepUpField, useStepUpCode } from './StepUpCode';
+import { getErrorMessage } from '../../../services/api/client';
 // The catalogue's own id union, not a copy of it: a hard-coded pair here is how
 // `gmail_send` shipped with a Disconnect handler that would not compile for it.
 import type { IntegrationId } from '../../../services/api/integrations';
@@ -53,13 +55,24 @@ export function ConnectionsRegister({
   const linked = data.linked;
   const lastCredential = data.credentialCount !== null && data.credentialCount <= 1;
 
+  // F-1347: an unlink on an old sign-in asks for the emailed code first.
+  const stepUp = useStepUpCode();
+  const [pendingUnlink, setPendingUnlink] = useState<{ provider: 'google' | 'microsoft'; label: string } | null>(null);
+
   const unlink = async (provider: 'google' | 'microsoft', label: string) => {
     setSignInMsg(null);
     try {
-      await data.unlinkProvider(provider);
+      await data.unlinkProvider(provider, pendingUnlink?.provider === provider ? stepUp.emailCode : undefined);
+      setPendingUnlink(null);
+      stepUp.reset();
       setSignInMsg({ tone: 'done', text: `${label} unlinked.` });
     } catch (e) {
-      setSignInMsg({ tone: 'error', text: `${label} could not be unlinked — ${String((e as Error).message)}` });
+      if (stepUp.asked(e)) {
+        setPendingUnlink({ provider, label });
+        return;
+      }
+      // F-1348: the gateway's sentence, never axios's status line.
+      setSignInMsg({ tone: 'error', text: `${label} could not be unlinked — ${getErrorMessage(e)}` });
     }
   };
 
@@ -177,6 +190,30 @@ export function ConnectionsRegister({
             )
           }
         />
+        {pendingUnlink && (
+          <div style={{ margin: '8px 0' }}>
+            <StepUpField id="pf-unlink-code" stepUp={stepUp} />
+            {stepUp.sentTo !== null && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Btn
+                  emphasis="seal"
+                  disabled={!stepUp.ready || stepUp.sending}
+                  onClick={() => void unlink(pendingUnlink.provider, pendingUnlink.label)}
+                >
+                  Unlink {pendingUnlink.label}
+                </Btn>
+                <Btn
+                  onClick={() => {
+                    setPendingUnlink(null);
+                    stepUp.reset();
+                  }}
+                >
+                  Cancel
+                </Btn>
+              </div>
+            )}
+          </div>
+        )}
         {signInMsg && <StatusLine tone={signInMsg.tone}>{signInMsg.text}</StatusLine>}
         {data.meState === 'error' && (
           <StatusLine tone="error">

@@ -647,30 +647,45 @@ export function useProfileNextData() {
    * into "Not saved"; the header then catches up on the next reload.
    */
   const saveAccount = useCallback(async (name: string, phone: string) => {
-    await profileApi.updateMe({
-      name: name.trim(),
-      ...(readState(meQ, true) === 'ok' ? { phone: phone.trim() } : {}),
-    });
+    // F-1348: a refusal ("Display name must be at least 2 characters") reaches
+    // the page as the gateway's sentence, not axios's status line.
+    await profileApi
+      .updateMe({
+        name: name.trim(),
+        ...(readState(meQ, true) === 'ok' ? { phone: phone.trim() } : {}),
+      })
+      .catch((e: unknown) => {
+        throw spoken(e);
+      });
     await Promise.all([
       meQ.refetch(),
       refreshUser ? refreshUser().catch(() => undefined) : undefined,
     ]);
   }, [meQ, refreshUser]);
 
+  // F-1347: `emailCode` is the emailed code a sign-in older than ten minutes
+  // needs for a first password or an unlink. F-1348: refusals are spoken.
   const changePassword = useCallback(
-    async (currentPassword: string, newPassword: string) => {
-      await profileApi.changePassword({
-        currentPassword: currentPassword || undefined,
-        newPassword,
-      });
+    async (currentPassword: string, newPassword: string, emailCode?: string) => {
+      await profileApi
+        .changePassword({
+          currentPassword: currentPassword || undefined,
+          newPassword,
+          ...(emailCode ? { emailCode } : {}),
+        })
+        .catch((e: unknown) => {
+          throw spoken(e);
+        });
       await meQ.refetch();
     },
     [meQ],
   );
 
   const unlinkProvider = useCallback(
-    async (provider: 'google' | 'microsoft') => {
-      await profileApi.unlinkProvider(provider);
+    async (provider: 'google' | 'microsoft', emailCode?: string) => {
+      await profileApi.unlinkProvider(provider, emailCode).catch((e: unknown) => {
+        throw spoken(e);
+      });
       await meQ.refetch();
     },
     [meQ],
@@ -984,8 +999,8 @@ export function useProfileNextData() {
 
   // The same cleanup as signing out (F-703): a shared device must not keep the
   // deleted person's houses, cached reads or unsent changes.
-  const deleteAccount = useCallback(async () => {
-    await deleteAccountAndSignOut();
+  const deleteAccount = useCallback(async (emailCode?: string) => {
+    await deleteAccountAndSignOut(emailCode);
     window.location.href = '/login';
   }, [deleteAccountAndSignOut]);
 

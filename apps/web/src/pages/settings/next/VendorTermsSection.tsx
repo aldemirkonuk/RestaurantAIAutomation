@@ -51,7 +51,6 @@ import {
   SOURCE_LABEL,
   WEEKDAY_INITIALS,
   fmtCutoff,
-  fmtMoney,
   fmtWeekdays,
   fmtWhen,
   word,
@@ -64,6 +63,7 @@ import type {
   VendorTermsRegister,
   VendorTermsRow,
 } from './useSettingsNextData';
+import { fmtMinimumCell, minimumCurrencyOf, minimumLabel } from '../../providers/next/TopTermsFacts';
 
 /* ── One cell ────────────────────────────────────────────────────────────── */
 
@@ -253,7 +253,7 @@ function Editor({
   onClose,
 }: {
   row: VendorTermsRow;
-  /** `null` when the house has not been asked what money it reports in. */
+  /** The vendor's minimum currency (`minimumCurrencyOf`), `null` when not stated (F-1342). */
   currency: string | null;
   busy: boolean;
   onSave: (body: SetVendorTermsBody) => void;
@@ -351,11 +351,7 @@ function Editor({
         </Field>
 
         <Field
-          label={
-            currency
-              ? `Minimum order (${currency})`
-              : 'Minimum order (currency not recorded)'
-          }
+          label={minimumLabel(currency)}
         >
           <input
             type="text"
@@ -550,11 +546,8 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
                       <td style={cellStyle}>
                         <Cell
                           cell={v.minimumOrder}
-                          render={(m) =>
-                            v.minimumOrder.source === 'inferred'
-                              ? `≤ ${fmtMoney(m, reg.currency.code)}`
-                              : fmtMoney(m, reg.currency.code)
-                          }
+                          // In the vendor's currency, not the house's (F-1342).
+                          render={() => fmtMinimumCell(v.minimumOrder, minimumCurrencyOf(v, reg))}
                         />
                       </td>
                       <td style={cellStyle}>
@@ -585,7 +578,7 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
               <Editor
                 key={row.providerId}
                 row={row}
-                currency={reg.currency.code}
+                currency={minimumCurrencyOf(row, reg)}
                 busy={data.writer.busy === `terms:${row.providerId}`}
                 onClose={() => setOpen(null)}
                 onSave={(body) => {

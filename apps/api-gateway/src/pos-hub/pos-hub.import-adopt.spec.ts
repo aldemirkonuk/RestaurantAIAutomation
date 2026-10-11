@@ -18,7 +18,12 @@ import { DatabaseService } from "../database/database.service";
 type Row = Record<string, any>;
 
 function makeDb(
-  opts: { checkReadError?: string; saleUnit?: string; moveError?: string } = {},
+  opts: {
+    checkReadError?: string;
+    saleUnit?: string;
+    moveError?: string;
+    timezone?: string | null;
+  } = {},
 ) {
   const MAPPINGS = [
     {
@@ -44,6 +49,20 @@ function makeDb(
           return q;
         },
         in: () => q,
+        maybeSingle: async () => {
+          if (table === "restaurants") {
+            const timezone =
+              opts.timezone === undefined ? "Europe/Istanbul" : opts.timezone;
+            return { data: { timezone, country: null }, error: null };
+          }
+          const row = [...checks.values()].find(
+            (r) =>
+              r.restaurant_id === filters.restaurant_id &&
+              r.source === filters.source &&
+              r.external_check_id === filters.external_check_id,
+          );
+          return { data: row ?? null, error: null };
+        },
         limit: async () => {
           if (opts.checkReadError && filters.external_check_id) {
             return { data: null, error: { message: opts.checkReadError } };
@@ -314,5 +333,85 @@ describe("the till's webhook after an import it never saw (F-1238)", () => {
     );
     expect([...checks.keys()]).toEqual(["r1|csv_import|c-1"]);
     expect(stock["inv-caymus"]).toBe(10);
+  });
+});
+
+/**
+ * F-1324: a till reuses its check numbers. A file-imported check is the
+ * till's only when it falls on the same house day and its total is within a
+ * cent; otherwise both are kept, each with its own stock.
+ */
+describe("a till check that only shares a number with an imported one (F-1324)", () => {
+  it("keeps both when the till's check is on another house day, and takes its stock", async () => {
+    const { service, checks, stock } = makeDb();
+    await service.ingest("r1", "csv_import", [theCheck]);
+
+    const res = await service.ingest("r1", "generic_webhook", [
+      {
+        ...theCheck,
+        openedAt: "2026-10-05T18:00:00Z",
+        closedAt: "2026-10-05T19:00:00Z",
+      },
+    ]);
+
+    expect([...checks.keys()].sort()).toEqual([
+      "r1|csv_import|c-1",
+      "r1|generic_webhook|c-1",
+    ]);
+    expect(checks.get("r1|csv_import|c-1")).toMatchObject({
+      closed_at: "2026-09-02T19:00:00.000Z",
+    });
+    expect(stock["inv-caymus"]).toBe(8);
+    expect(res.stock).toMatchObject({ booked: 1, alreadyBooked: 0 });
+  });
+
+  it("keeps both when the totals differ by more than a cent", async () => {
+    const { service, checks } = makeDb();
+    await service.ingest("r1", "csv_import", [theCheck]);
+
+    await service.ingest("r1", "generic_webhook", [{ ...theCheck, total: 95 }]);
+
+    expect([...checks.keys()].sort()).toEqual([
+      "r1|csv_import|c-1",
+      "r1|generic_webhook|c-1",
+    ]);
+  });
+
+  it("still takes the row over when the totals differ by a cent", async () => {
+    const { service, checks, stock } = makeDb();
+    await service.ingest("r1", "csv_import", [theCheck]);
+
+    await service.ingest("r1", "generic_webhook", [
+      { ...theCheck, total: 180.01 },
+    ]);
+
+    expect([...checks.keys()]).toEqual(["r1|generic_webhook|c-1"]);
+    expect(stock["inv-caymus"]).toBe(10);
+  });
+
+  it("reads the day on the house's clock, not UTC", async () => {
+    // 23:30 and 00:30 UTC are two UTC days but one Los Angeles afternoon.
+    const { service, checks } = makeDb({ timezone: "America/Los_Angeles" });
+    await service.ingest("r1", "csv_import", [
+      { ...theCheck, closedAt: "2026-09-02T23:30:00Z" },
+    ]);
+
+    await service.ingest("r1", "generic_webhook", [
+      { ...theCheck, closedAt: "2026-09-03T00:30:00Z" },
+    ]);
+
+    expect([...checks.keys()]).toEqual(["r1|generic_webhook|c-1"]);
+  });
+
+  it("moves nothing in a house with no time zone", async () => {
+    const { service, checks } = makeDb({ timezone: null });
+    await service.ingest("r1", "csv_import", [theCheck]);
+
+    await service.ingest("r1", "generic_webhook", [theCheck]);
+
+    expect([...checks.keys()].sort()).toEqual([
+      "r1|csv_import|c-1",
+      "r1|generic_webhook|c-1",
+    ]);
   });
 });

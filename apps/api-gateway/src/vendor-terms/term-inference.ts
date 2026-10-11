@@ -77,6 +77,9 @@ export interface OrderFact {
   totalCost: number | null;
   /** `procurement_orders.status`. */
   status: string | null;
+  /** `procurement_orders.currency`: what the order was placed in, or null
+   *  when it named none (orders composed before the column existed). */
+  currency?: string | null;
 }
 
 /** How much the caller may lean on a finding, and why. */
@@ -536,6 +539,30 @@ export interface MinimumOrderFinding {
   smallestAccepted: number;
   /** The next one up, so a single odd order cannot look like a policy. */
   secondSmallest: number | null;
+  /** The one currency every counted order was placed in, or null when the
+   *  orders named none. Never a mix (F-1342). */
+  currency: string | null;
+}
+
+/** A named order currency, upper-cased; null when the order named none. */
+function orderCurrency(o: OrderFact): string | null {
+  const c =
+    typeof o.currency === "string" ? o.currency.trim().toUpperCase() : "";
+  return c === "" ? null : c;
+}
+
+/**
+ * The one currency this house's orders to a vendor were placed in, or null
+ * when they name none or more than one. It is how the vendor's minimum is
+ * priced: an order is a transaction, so its currency is a fact about this
+ * vendor's money, where the house's reporting currency is not (F-1342; the
+ * founder, 2026-09-06: "we will use the currency from where we order it").
+ */
+export function ordersCurrency(orders: OrderFact[]): string | null {
+  const codes = new Set(
+    orders.map(orderCurrency).filter((c): c is string => c !== null),
+  );
+  return codes.size === 1 ? [...codes][0] : null;
 }
 
 /**
@@ -552,10 +579,33 @@ export interface MinimumOrderFinding {
  * the bound wrong in the one direction that matters.
  */
 export function inferMinimumOrder(orders: OrderFact[]): Finding<MinimumOrderFinding> {
-  const totals = orders
+  const costed = orders
     .filter((o) => DELIVERED_STATUSES.has(String(o.status ?? "").toLowerCase()))
-    .map((o) => (typeof o.totalCost === "number" ? o.totalCost : Number(o.totalCost)))
-    .filter((v) => Number.isFinite(v) && v > 0)
+    .map((o) => ({
+      cost: typeof o.totalCost === "number" ? o.totalCost : Number(o.totalCost),
+      currency: orderCurrency(o),
+    }))
+    .filter((o) => Number.isFinite(o.cost) && o.cost > 0);
+
+  // €380 and ₺12.000 are not two sizes of one thing (F-1342). Orders in more
+  // than one currency give no smallest; with one named currency, an order
+  // that named none is left out rather than guessed into it.
+  const codes = [
+    ...new Set(
+      costed.map((o) => o.currency).filter((c): c is string => c !== null),
+    ),
+  ].sort();
+  if (codes.length > 1) {
+    return {
+      known: false,
+      n: costed.length,
+      reason: `this house's delivered orders to them were placed in more than one currency (${codes.join(", ")}), and an amount in one cannot be compared with an amount in another`,
+    };
+  }
+  const currency = codes[0] ?? null;
+  const totals = costed
+    .filter((o) => o.currency === currency)
+    .map((o) => o.cost)
     .sort((a, b) => a - b);
 
   if (totals.length === 0) {
@@ -571,6 +621,7 @@ export function inferMinimumOrder(orders: OrderFact[]): Finding<MinimumOrderFind
     known: true,
     smallestAccepted: totals[0],
     secondSmallest: totals.length > 1 ? totals[1] : null,
+    currency,
     n: totals.length,
     confidence: confidenceFromCount(totals.length),
     basis: `${totals.length} delivered order${totals.length === 1 ? "" : "s"} with a cost`,

@@ -52,6 +52,7 @@ import {
   giveTextConsent,
   withdrawTextConsent,
 } from '../../../services/api/textSenders';
+import { getErrorMessage } from '../../../services/api/client';
 import type { McpServerVM, ProfileNextData } from './useProfileNextData';
 
 /** How many people, in words a row can carry. */
@@ -109,8 +110,10 @@ function TextConsentRow() {
       setPhone('');
       done();
     },
+    // F-1348: the gateway's sentence, never axios's "Request failed with
+    // status code 400".
     onError: (e) =>
-      setMsg({ tone: 'error', text: `Nothing changed — ${String((e as Error).message)}` }),
+      setMsg({ tone: 'error', text: `Nothing changed — ${getErrorMessage(e)}` }),
   });
 
   const take = useMutation({
@@ -120,7 +123,7 @@ function TextConsentRow() {
       done();
     },
     onError: (e) =>
-      setMsg({ tone: 'error', text: `Nothing changed — ${String((e as Error).message)}` }),
+      setMsg({ tone: 'error', text: `Nothing changed — ${getErrorMessage(e)}` }),
   });
 
   if (q.isLoading) {
@@ -266,7 +269,7 @@ export function ConsentRegister({ data }: { data: ProfileNextData }) {
     } catch (e) {
       setMsg({
         tone: 'error',
-        text: `Nothing changed — ${String((e as Error).message)}`,
+        text: `Nothing changed — ${getErrorMessage(e)}`,
       });
     } finally {
       setBusy(null);

@@ -160,12 +160,18 @@ export function VendorPortal() {
   // ItemList after render would contradict the first, so this page injects
   // neither (ADR 0158 "Integration at cutover" item 2).
 
+  // Vintage is a wine word. A beer, spirit or keg catalogue states none, so
+  // the column and the sort only appear when at least one listing has a
+  // vintage; otherwise every row would read "Not stated" (F-1346).
+  const anyVintage = !!page?.listings.some((l) => l.vintage !== null)
+  const sortKey = sortBy === 'vintage' && !anyVintage ? 'name' : sortBy
+
   const visible = useMemo(() => {
     if (!page) return []
     const filtered = page.listings.filter((l) => matchesQuery(l, query))
 
     const sorted = [...filtered]
-    if (sortBy === 'price') {
+    if (sortKey === 'price') {
       // Listings with no price sort last rather than as zero — absent is not
       // cheapest, and putting them first would bury the real offers.
       sorted.sort((a, b) => {
@@ -177,13 +183,13 @@ export function VendorPortal() {
         const currencyOrder = a.currency.localeCompare(b.currency)
         return currencyOrder || pa - pb
       })
-    } else if (sortBy === 'vintage') {
+    } else if (sortKey === 'vintage') {
       sorted.sort((a, b) => (b.vintage ?? 0) - (a.vintage ?? 0))
     } else {
       sorted.sort((a, b) => a.productName.localeCompare(b.productName))
     }
     return sorted
-  }, [page, query, sortBy])
+  }, [page, query, sortKey])
 
   if (publicDesign) {
     return (
@@ -295,12 +301,12 @@ export function VendorPortal() {
                   <select
                     id="vendor-sort"
                     className="mdv-input"
-                    value={sortBy}
+                    value={sortKey}
                     onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                   >
                     <option value="name">Name</option>
                     <option value="price">Per litre, within currency</option>
-                    <option value="vintage">Vintage, newest first</option>
+                    {anyVintage && <option value="vintage">Vintage, newest first</option>}
                   </select>
                 </div>
               </div>
@@ -339,9 +345,11 @@ export function VendorPortal() {
                         <th scope="col" role="columnheader">
                           Product
                         </th>
-                        <th scope="col" role="columnheader">
-                          Vintage
-                        </th>
+                        {anyVintage && (
+                          <th scope="col" role="columnheader">
+                            Vintage
+                          </th>
+                        )}
                         <th scope="col" role="columnheader">
                           Origin
                         </th>
@@ -374,12 +382,14 @@ export function VendorPortal() {
                             </small>
                             {l.notes && <small>{l.notes}</small>}
                           </td>
-                          <td role="cell" className="mdv-pub__detail">
-                            <span className="mdv-pub__cellname" aria-hidden="true">
-                              Vintage:{' '}
-                            </span>
-                            {l.vintage ?? 'Not stated'}
-                          </td>
+                          {anyVintage && (
+                            <td role="cell" className="mdv-pub__detail">
+                              <span className="mdv-pub__cellname" aria-hidden="true">
+                                Vintage:{' '}
+                              </span>
+                              {l.vintage ?? 'Not stated'}
+                            </td>
+                          )}
                           <td role="cell" className="mdv-pub__detail">
                             <span className="mdv-pub__cellname" aria-hidden="true">
                               Origin:{' '}
@@ -548,13 +558,13 @@ export function VendorPortal() {
           <label className="text-sm text-gray-500 flex items-center gap-2">
             Sort
             <select
-              value={sortBy}
+              value={sortKey}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:border-wine-500"
             >
               <option value="name">Name</option>
               <option value="price">Price per litre</option>
-              <option value="vintage">Vintage</option>
+              {anyVintage && <option value="vintage">Vintage</option>}
             </select>
           </label>
         </div>
@@ -582,9 +592,11 @@ export function VendorPortal() {
                     <th scope="col" className="px-4 py-3 font-medium">
                       Product
                     </th>
-                    <th scope="col" className="px-4 py-3 font-medium">
-                      Vintage
-                    </th>
+                    {anyVintage && (
+                      <th scope="col" className="px-4 py-3 font-medium">
+                        Vintage
+                      </th>
+                    )}
                     <th scope="col" className="px-4 py-3 font-medium">
                       Origin
                     </th>
@@ -621,9 +633,11 @@ export function VendorPortal() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {l.vintage ?? 'NV'}
-                      </td>
+                      {anyVintage && (
+                        <td className="px-4 py-3 text-gray-600">
+                          {l.vintage ?? 'NV'}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-gray-600">
                         {[l.region, l.country].filter(Boolean).join(', ') ||
                           '—'}

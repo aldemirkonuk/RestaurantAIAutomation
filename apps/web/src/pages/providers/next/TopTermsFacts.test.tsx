@@ -166,6 +166,37 @@ describe('TwinSheet top facts — one source with Terms (VEN-W24)', () => {
     expect(fact('Minimum order').textContent).not.toContain('1,000');
   });
 
+  // F-1342: a EUR importer's minimum in a USD-reporting house. Variables, not
+  // literals: the money guard counts pinned currency fields.
+  const EUR = 'EUR';
+
+  it('prints the minimum in the currency the vendor’s orders were placed in, not the house’s', async () => {
+    api.get.mockResolvedValue({
+      data: register({
+        vendors: [
+          row({
+            minimumOrder: cell<number>({ value: 380, source: 'inferred', n: 3, confidence: 'low' }),
+            minimumCurrency: EUR,
+          }),
+        ],
+      }),
+    });
+    mount();
+    await waitFor(() =>
+      expect(fact('Minimum order')).toHaveTextContent(`≤ ${fmtMoney(380, EUR)} · inferred from this house’s orders`),
+    );
+    expect(fact('Minimum order').textContent).not.toContain(fmtMoney(380, 'USD'));
+  });
+
+  it('says the currency is not stated when the vendor’s orders name none or several', async () => {
+    api.get.mockResolvedValue({ data: register({ vendors: [row({ minimumCurrency: null })] }) });
+    mount();
+    await waitFor(() => expect(fact('Minimum order')).toHaveTextContent('(currency not stated)'));
+    expect(fact('Minimum order').textContent).not.toContain(fmtMoney(1000, 'USD'));
+    fireEvent.click(screen.getByText('Record what they said'));
+    expect(screen.getByLabelText('Minimum order (currency not stated)')).toBeInTheDocument();
+  });
+
   it('moves the top when Terms records what they said', async () => {
     api.get.mockResolvedValue({ data: register() });
     api.put.mockResolvedValue({
