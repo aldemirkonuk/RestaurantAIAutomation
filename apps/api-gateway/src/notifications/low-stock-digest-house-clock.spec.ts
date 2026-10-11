@@ -281,6 +281,7 @@ function makeLowStockRow(over: Partial<any> = {}) {
 function dailyPrefs(hour: string) {
   return [
     {
+      user_id: "user-1",
       low_stock_enabled: true,
       instant_first_alert: true,
       critical_immediate: true,
@@ -925,6 +926,7 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
         prefsByRestaurant: {
           ny: [
             {
+              user_id: "user-1",
               low_stock_enabled: true,
               digest_frequency: "off",
               digest_time: "12:00",
@@ -1140,6 +1142,7 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
         prefsByRestaurant: {
           ny: [
             {
+              user_id: "user-1",
               low_stock_enabled: true,
               digest_frequency: "off",
               digest_time: "12:00",
@@ -1161,6 +1164,7 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
         prefsByRestaurant: {
           ny: [
             {
+              user_id: "user-1",
               low_stock_enabled: false,
               digest_frequency: "daily",
               digest_time: "12:00",

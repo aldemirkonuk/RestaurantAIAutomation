@@ -275,7 +275,7 @@ describe("AwayReleaseService — a held note arrives, and its receipts say what 
     expect(notifications.persistForRestaurant).toHaveBeenCalledWith(
       HOUSE,
       expect.objectContaining({ message: "Kitchen meeting at four." }),
-      { onlyUserIds: [SAM] },
+      { onlyUserIds: [SAM], skipMobilePush: true },
     );
     expect(push.sendToUsers).toHaveBeenCalledWith([SAM], expect.anything());
     // F-1183: the note's own push (NotesService) names its house too.

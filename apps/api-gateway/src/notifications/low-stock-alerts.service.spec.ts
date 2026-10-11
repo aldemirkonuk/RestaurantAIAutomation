@@ -212,6 +212,7 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
       [],
       [
         {
+          user_id: "user-1",
           low_stock_enabled: true,
           instant_first_alert: false,
           critical_immediate: false,
@@ -236,6 +237,7 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
       [],
       [
         {
+          user_id: "user-1",
           low_stock_enabled: true,
           instant_first_alert: false,
           critical_immediate: true,
@@ -254,8 +256,92 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * F-1338 (option a, 2026-10-11): each person's own row decides whether a
+   * low-stock line reaches their bell and phone. Before, the rows were folded
+   * together and every member got every line, so turning yours off did nothing.
+   */
+  describe("F-1338: a low-stock line reaches only the people whose own row wants it", () => {
+    const OWNER = "user-owner";
+    const STAFF = "user-staff";
+    const NEW = "user-new"; // never saved a preference: the defaults, all on
+    function buildFor(prefsRows: any[], alertStateRows: any[] = []) {
+      const db = makeDbMock(alertStateRows, prefsRows);
+      db.getRestaurantMemberIdsOrThrow.mockResolvedValue([OWNER, STAFF, NEW]);
+      db.getRestaurantMemberIds.mockResolvedValue([OWNER, STAFF, NEW]);
+      return new LowStockAlertsService(
+        db,
+        notifications as any,
+        config as any,
+        gmail as any,
+        recipientResolver as any,
+      );
+    }
+
+    it("an instant line skips a person who switched low-stock alerts off", async () => {
+      const svc = buildFor([
+        { user_id: OWNER, low_stock_enabled: true, instant_first_alert: true },
+        { user_id: STAFF, low_stock_enabled: false },
+      ]);
+      await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+      expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+      expect(
+        notifications.persistForRestaurant.mock.calls[0][2].wantedBy.sort(),
+      ).toEqual([NEW, OWNER].sort());
+    });
+
+    it("a critical line reaches a person who only wants criticals; a low one does not", async () => {
+      const prefs = [
+        { user_id: OWNER, low_stock_enabled: true, instant_first_alert: true },
+        {
+          user_id: STAFF,
+          low_stock_enabled: true,
+          instant_first_alert: false,
+          critical_immediate: true,
+        },
+      ];
+      await buildFor(prefs).evaluateRestaurant("r1", [makeRow()], "R1");
+      expect(
+        notifications.persistForRestaurant.mock.calls[0][2].wantedBy,
+      ).not.toContain(STAFF);
+      notifications.persistForRestaurant.mockClear();
+      await buildFor(prefs).evaluateRestaurant(
+        "r1",
+        [makeRow({ currentStock: 0, severity: "critical" })],
+        "R1",
+      );
+      expect(
+        notifications.persistForRestaurant.mock.calls[0][2].wantedBy,
+      ).toContain(STAFF);
+    });
+
+    it("the digest skips an owner whose digest is Off, though a staff row says daily", async () => {
+      const svc = buildFor([
+        { user_id: OWNER, low_stock_enabled: true, digest_frequency: "off" },
+        // A staff member's first save writes the column defaults: daily, 12:00.
+        {
+          user_id: STAFF,
+          low_stock_enabled: true,
+          digest_frequency: "daily",
+          digest_time: "12:00",
+        },
+        { user_id: NEW, low_stock_enabled: false },
+      ]);
+      jest
+        .spyOn(svc as any, "getLowStockByRestaurant")
+        .mockResolvedValue(new Map([["r1", [makeRow()]]]));
+      jest.spyOn(svc as any, "getRestaurantNames").mockResolvedValue(new Map());
+      await svc.triggerDailyDigest();
+      expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+      const [, payload, opts] =
+        notifications.persistForRestaurant.mock.calls[0];
+      expect(payload.metadata.mode).toBe("digest");
+      expect(opts.wantedBy).toEqual([STAFF]);
+    });
+  });
+
   it("skips entirely when low-stock alerts are disabled", async () => {
-    const svc = build([], [{ low_stock_enabled: false }]);
+    const svc = build([], [{ user_id: "user-1", low_stock_enabled: false }]);
     const { newCrossings } = await svc.evaluateRestaurant(
       "r1",
       [makeRow()],

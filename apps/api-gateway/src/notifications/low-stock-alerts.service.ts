@@ -53,6 +53,13 @@ interface EffectiveLowStockPrefs {
   criticalImmediate: boolean;
   digestFrequency: string;
   digestTime: string;
+  /**
+   * F-1338: who each kind of line reaches, from each person's OWN row. A
+   * person with no row takes the defaults (everything on). Absent when every
+   * member does (no rows, or the defaults after a failed read): the line then
+   * goes to every member, as before.
+   */
+  audience?: { instant: string[]; critical: string[]; digest: string[] };
 }
 
 const LOW_STOCK_PREF_DEFAULTS: EffectiveLowStockPrefs = {
@@ -62,6 +69,23 @@ const LOW_STOCK_PREF_DEFAULTS: EffectiveLowStockPrefs = {
   digestFrequency: "daily",
   digestTime: "12:00",
 };
+
+/**
+ * F-1338: who an instant line reaches — each member whose own row asks for
+ * the first crossing, plus, when the batch holds a critical wine, each one
+ * whose own row says criticals never wait. `undefined` = every member.
+ */
+function instantAudience(
+  prefs: EffectiveLowStockPrefs,
+  wines: LowStockRow[],
+): string[] | undefined {
+  if (!prefs.audience) return undefined;
+  const ids = new Set(prefs.audience.instant);
+  if (wines.some((w) => w.severity === "critical")) {
+    for (const id of prefs.audience.critical) ids.add(id);
+  }
+  return [...ids];
+}
 
 /** `GET /notifications/low-stock/held/:restaurantId` — the held queue. */
 export interface HeldCrossingsView {
@@ -418,6 +442,7 @@ export class LowStockAlertsService {
           names.get(restaurantId),
           rowsSnapshotAt,
           { periodKey },
+          prefs.audience?.digest,
         );
       }
     } catch (e: any) {
@@ -441,6 +466,8 @@ export class LowStockAlertsService {
         rows,
         names.get(restaurantId),
         rowsSnapshotAt,
+        undefined,
+        prefs.audience?.digest,
       );
     }
   }
@@ -512,6 +539,7 @@ export class LowStockAlertsService {
         restaurantId,
         immediate,
         restaurantName,
+        instantAudience(prefs, immediate),
       );
       // Stamped only now, and only for the wines the notification names. If
       // `persistForRestaurant` produced no row, `delivered` is false and these
@@ -779,6 +807,8 @@ export class LowStockAlertsService {
     restaurantId: string,
     wines: LowStockRow[],
     restaurantName?: string,
+    /** F-1338: the members whose own switches want this line; absent = all. */
+    wantedBy?: string[],
     /** True only when an inbox row was actually written. The caller stamps the
      * ledger on this, so it must never report success it did not observe. */
   ): Promise<boolean> {
@@ -828,6 +858,7 @@ export class LowStockAlertsService {
           })),
         },
       },
+      wantedBy ? { wantedBy } : {},
     );
 
     // 2) Email — one grouped digest email for the burst.
@@ -891,6 +922,8 @@ export class LowStockAlertsService {
      * this digest tells were read (spec j2, spec q).
      */
     sweep?: { periodKey: string },
+    /** F-1338: the members whose own row wants the digest; absent = all. */
+    wantedBy?: string[],
   ): Promise<void> {
     if (rows.length === 0) return;
     const snapshotAt = rowsSnapshotAt ?? new Date().toISOString();
@@ -921,7 +954,10 @@ export class LowStockAlertsService {
           })),
         },
       },
-      { dedupeWithinMinutes: this.DIGEST_DEDUPE_MINUTES },
+      {
+        dedupeWithinMinutes: this.DIGEST_DEDUPE_MINUTES,
+        ...(wantedBy ? { wantedBy } : {}),
+      },
     );
 
     const outcome = await this.emailDigest(
@@ -1346,7 +1382,7 @@ export class LowStockAlertsService {
     const { data, error } = await this.db.supabase
       .from("notification_preferences")
       .select(
-        "low_stock_enabled, instant_first_alert, critical_immediate, digest_frequency, digest_time",
+        "user_id, low_stock_enabled, instant_first_alert, critical_immediate, digest_frequency, digest_time",
       )
       // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
       // ADR 0149 row 39 -- a member of two houses has a row per house, and
@@ -1357,16 +1393,36 @@ export class LowStockAlertsService {
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) return DEFAULTS;
 
-    const dailyTimes = data
-      .filter((p: any) => (p.digest_frequency ?? "daily") === "daily")
-      .map((p: any) => p.digest_time || "12:00")
+    // F-1338: a member with no row here takes the defaults, so they count
+    // as wanting every line, and the house still runs for them.
+    const rowOf = new Map<string, any>(data.map((p: any) => [p.user_id, p]));
+    const people = memberIds.map((id) => ({ id, p: rowOf.get(id) ?? {} }));
+    const on = (p: any) => p.low_stock_enabled !== false;
+    const daily = (p: any) =>
+      on(p) && (p.digest_frequency ?? "daily") === "daily";
+    const dailyTimes = people
+      .filter(({ p }) => daily(p))
+      .map(({ p }) => p.digest_time || "12:00")
       .sort();
     return {
-      enabled: data.some((p: any) => p.low_stock_enabled !== false),
-      instantFirstAlert: data.some((p: any) => p.instant_first_alert !== false),
-      criticalImmediate: data.some((p: any) => p.critical_immediate !== false),
+      enabled: people.some(({ p }) => on(p)),
+      instantFirstAlert: people.some(
+        ({ p }) => on(p) && p.instant_first_alert !== false,
+      ),
+      criticalImmediate: people.some(
+        ({ p }) => on(p) && p.critical_immediate !== false,
+      ),
       digestFrequency: dailyTimes.length > 0 ? "daily" : "off",
       digestTime: dailyTimes[0] || "12:00",
+      audience: {
+        instant: people
+          .filter(({ p }) => on(p) && p.instant_first_alert !== false)
+          .map(({ id }) => id),
+        critical: people
+          .filter(({ p }) => on(p) && p.critical_immediate !== false)
+          .map(({ id }) => id),
+        digest: people.filter(({ p }) => daily(p)).map(({ id }) => id),
+      },
     };
   }
 

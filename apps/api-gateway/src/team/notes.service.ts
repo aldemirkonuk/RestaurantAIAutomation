@@ -16,6 +16,7 @@ import { AwayHoldService } from "./away-hold.service";
 import { NO_SENDER_ON_RETURN, heldDetail, splitForAway } from "./away-hold";
 import { weekWords } from "./schedule.service";
 import { houseFrame as frameOf } from "../common/house-frame";
+import { pushHolds, type PushHoldReason } from "../notifications/push-hold";
 
 /**
  * One receipt: what happened to ONE person on ONE channel.
@@ -508,7 +509,9 @@ export class NotesService {
           actionUrl: `/team?week=${weekStart}`,
           actionLabel: "Open Team",
         },
-        { onlyUserIds: userIds },
+        // F-1337: the note sends its own push below, through `pushHolds`.
+        // Without `skipMobilePush` the funnel pushed too: two buzzes each.
+        { onlyUserIds: userIds, skipMobilePush: true },
       );
       inboxWritten = typeof out?.inserted === "number" ? out.inserted : 0;
       delivered = { ...delivered, inbox: true };
@@ -540,10 +543,23 @@ export class NotesService {
     // Per person, not per batch. `devicesByUser` returning null is a READ
     // FAILURE and every receipt says so; it is not eleven people without a
     // phone.
+    // F-1337: Push off for this house, or inside quiet hours, holds the
+    // push, the one rule the funnel and team broadcast keep (`pushHolds`).
+    const holds: Map<string, PushHoldReason> = await pushHolds(
+      this.sb,
+      restaurantId,
+      userIds,
+      (line) => this.logger.warn(line),
+    );
+    const pushIds = userIds.filter((id: string) => !holds.has(id));
     const devices = await this.push.devicesByUser(userIds);
     let pushDetail = "";
-    if (userIds.length && devices !== null && [...devices.values()].some((n) => n > 0)) {
-      const outcome = await this.push.sendToUsers(userIds, {
+    if (
+      pushIds.length &&
+      devices !== null &&
+      pushIds.some((id: string) => (devices.get(id) ?? 0) > 0)
+    ) {
+      const outcome = await this.push.sendToUsers(pushIds, {
         title: "A note from your manager",
         body,
         priority: "high",
@@ -560,6 +576,15 @@ export class NotesService {
           "push",
           "read_failed",
           "The device list could not be read, so whether this person could have been reached is unknown. Nothing was sent.",
+        );
+      } else if (m.user_id && holds.has(m.user_id)) {
+        push(
+          m,
+          "push",
+          "declined",
+          holds.get(m.user_id) === "push_off"
+            ? "This person has switched push off for this restaurant, so their phone was not pushed. The note is in their inbox."
+            : "This person was inside their quiet hours, so their phone was not pushed. The note is in their inbox.",
         );
       } else if (!m.user_id || (devices.get(m.user_id) ?? 0) === 0) {
         push(

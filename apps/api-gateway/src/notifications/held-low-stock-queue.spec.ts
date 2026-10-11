@@ -699,6 +699,7 @@ describe("listHeldCrossings", () => {
     const { service } = makeHarness({
       prefsRows: [
         {
+          user_id: "user-1",
           low_stock_enabled: true,
           digest_frequency: "daily",
           digest_time: "17:30",
@@ -722,6 +723,7 @@ describe("listHeldCrossings", () => {
     const { service } = makeHarness({
       prefsRows: [
         {
+          user_id: "user-1",
           low_stock_enabled: true,
           digest_frequency: "daily",
           digest_time: "09:00",
@@ -747,7 +749,9 @@ describe("listHeldCrossings", () => {
 
   it("says the digest is off when no member takes it", async () => {
     const { service } = makeHarness({
-      prefsRows: [{ low_stock_enabled: true, digest_frequency: "off" }],
+      prefsRows: [
+        { user_id: "user-1", low_stock_enabled: true, digest_frequency: "off" },
+      ],
     });
     const view = await service.listHeldCrossings("r1");
     expect(view.digest?.frequency).toBe("off");
