@@ -1037,6 +1037,8 @@ export class InsightGeneratorService {
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
+            // F-1197: a voided or corrected-down sale is marked reversed.
+            .is("reversed_at", null)
             .gte("created_at", since90),
         ).then(whole),
         client

@@ -223,6 +223,9 @@ export class AdvancedAnalyticsService {
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
+            // F-1197: a sale the till voided or corrected down is marked
+            // reversed (never a negative row); it is not demand.
+            .is("reversed_at", null)
             .gte("created_at", since),
       );
     } catch (err: any) {

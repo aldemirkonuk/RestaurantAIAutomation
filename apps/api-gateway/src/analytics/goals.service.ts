@@ -1197,6 +1197,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
                 { count: "exact" },
               )
               .eq("restaurant_id", restaurantId)
+              // F-1197: a sale the till voided or corrected down is marked
+              // reversed, never written negative; it was not sold.
+              .is("reversed_at", null)
               .gte("created_at", sinceIso);
             if (untilIso) q = q.lte("created_at", untilIso);
             return q;

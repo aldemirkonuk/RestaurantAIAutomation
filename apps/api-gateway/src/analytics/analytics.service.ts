@@ -371,6 +371,9 @@ export class AnalyticsService {
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
+          // F-1197: a sale the till voided or corrected down is marked
+          // reversed (never a negative row); it is not demand.
+          .is("reversed_at", null)
           .gte("created_at", since),
     );
     // `quantity` counts servings in the line's own mode (ADR 0011), so the
@@ -517,6 +520,8 @@ export class AnalyticsService {
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
+          // F-1197: a voided or corrected-down sale is marked reversed.
+          .is("reversed_at", null)
           .gte("created_at", startIso)
           .lt("created_at", endIso),
     );

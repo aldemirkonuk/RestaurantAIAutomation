@@ -43,6 +43,13 @@ const MAPPINGS = [
     inventory_id: "inv-house",
     sale_unit: "bottle",
   },
+  {
+    external_item_id: "sancerre-glass",
+    item_name: "Sancerre by the glass",
+    is_wine: true,
+    inventory_id: "inv-sancerre",
+    sale_unit: "glass",
+  },
 ];
 
 function makeDb(
@@ -50,6 +57,7 @@ function makeDb(
     ledgerError?: string;
     houseBottleMl?: number | null;
     consumptionFailures?: number;
+    reversalError?: string;
   } = {},
 ) {
   const stock: Record<string, { sealed: number; openMl: number; ml: number }> =
@@ -88,6 +96,35 @@ function makeDb(
           };
         },
         upsert: async () => ({ error: null }),
+        // F-1197: the reversal mark, filtered as PostgREST would, and
+        // failing like the insert when `reversalError` is set.
+        update: (patch: Row) => {
+          const keep: Array<(r: Row) => boolean> = [];
+          const u: any = {
+            eq: (c: string, v: any) => (keep.push((r) => r[c] === v), u),
+            neq: (c: string, v: any) => (keep.push((r) => r[c] !== v), u),
+            is: (c: string, v: any) => (
+              keep.push((r) => (r[c] ?? null) === v),
+              u
+            ),
+            like: async (c: string, pattern: string) => {
+              if (opts.reversalError) {
+                return { error: { message: opts.reversalError } };
+              }
+              const prefix = pattern.replace(/%$/, "").replace(/\\(.)/g, "$1");
+              for (const r of consumption.values()) {
+                if (
+                  String(r[c]).startsWith(prefix) &&
+                  keep.every((k) => k(r))
+                ) {
+                  Object.assign(r, patch);
+                }
+              }
+              return { error: null };
+            },
+          };
+          return u;
+        },
         insert: async (row: Row) => {
           if (table === "pos_unresolved_lines") queued.push(row);
           if (table === "wine_consumption_log") {
@@ -406,5 +443,135 @@ describe("a replayed check repairs a consumption row that failed (F-395 audit)",
       (r) => r.inventory_id === "inv-sancerre",
     );
     expect(sancerre).toHaveLength(1);
+  });
+});
+
+describe("a voided or corrected-down sale leaves the consumption log (F-1197)", () => {
+  // What the readers count: rows not marked reversed (they filter
+  // `reversed_at is null`). Never a negative row (ADR 0297).
+  const live = (consumption: Map<string, Row>, inv: string) =>
+    [...consumption.values()]
+      .filter((r) => r.inventory_id === inv && r.reversed_at == null)
+      .reduce((n, r) => n + r.quantity, 0);
+  const noNegative = (consumption: Map<string, Row>) =>
+    [...consumption.values()].every((r) => r.quantity >= 0);
+
+  it("a void marks the sale's row reversed, and a replayed void changes nothing", async () => {
+    const { service, consumption } = makeDb();
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 2)]),
+    ]);
+    expect(live(consumption, "inv-caymus")).toBe(2);
+
+    const voided = () =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", 2)], {
+          voided: true,
+          closedAt: "2026-09-02T21:00:00Z",
+        }),
+      ]);
+    const res = await voided();
+    expect(res.errors).toEqual([]);
+    expect(live(consumption, "inv-caymus")).toBe(0);
+    const [row] = [...consumption.values()];
+    expect(row).toMatchObject({
+      reversed_at: "2026-09-02T21:00:00.000Z",
+      reversed_by_key: "pos:generic_webhook:c-1:inv-caymus:void:1",
+    });
+    await voided();
+    expect(consumption.size).toBe(1);
+    expect(row.reversed_by_key).toBe(
+      "pos:generic_webhook:c-1:inv-caymus:void:1",
+    );
+    expect(noNegative(consumption)).toBe(true);
+  });
+
+  it("a void takes a glass sale back too", async () => {
+    const { service, consumption } = makeDb();
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("sancerre-glass", 3), line("sancerre", 1)]),
+    ]);
+    expect(consumption.size).toBe(2);
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("sancerre-glass", 3), line("sancerre", 1)], {
+        voided: true,
+      }),
+    ]);
+    expect(live(consumption, "inv-sancerre")).toBe(0);
+  });
+
+  it("a correction down keeps what the check still holds, as one row", async () => {
+    const { service, stock, consumption } = makeDb();
+    const send = (qty: number) =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", qty)]),
+      ]);
+
+    await send(3);
+    await send(1);
+    expect(stock["inv-caymus"].sealed).toBe(11);
+    expect(live(consumption, "inv-caymus")).toBe(1);
+    await send(1);
+    expect(live(consumption, "inv-caymus")).toBe(1);
+    await send(2);
+    expect(live(consumption, "inv-caymus")).toBe(2);
+    await send(1);
+    expect(live(consumption, "inv-caymus")).toBe(1);
+    expect(noNegative(consumption)).toBe(true);
+  });
+
+  it("a line taken off the check leaves the log; the line kept stays", async () => {
+    const { service, consumption } = makeDb();
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("sancerre", 1), line("caymus", 2)]),
+    ]);
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 2)]),
+    ]);
+    expect(live(consumption, "inv-sancerre")).toBe(0);
+    expect(live(consumption, "inv-caymus")).toBe(2);
+  });
+
+  it("a void after a correction leaves nothing counted", async () => {
+    const { service, consumption } = makeDb();
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 3)]),
+    ]);
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 1)]),
+    ]);
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 1)], { voided: true }),
+    ]);
+    expect(live(consumption, "inv-caymus")).toBe(0);
+  });
+
+  it("a replay after a correction down does not write the first sale's failed row", async () => {
+    // Two lines of one wine; the first line's row failed to land. The
+    // correction takes the second line off, so what stands is one row of 2.
+    const { service, consumption } = makeDb({ consumptionFailures: 1 });
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 2), line("caymus", 1)]),
+    ]);
+    const corrected = () =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", 2)]),
+      ]);
+    await corrected();
+    expect(live(consumption, "inv-caymus")).toBe(2);
+    await corrected();
+    expect(live(consumption, "inv-caymus")).toBe(2);
+  });
+
+  it("says so when the mark cannot be written, and the stock still moves", async () => {
+    const { service, stock } = makeDb({ reversalError: "statement timeout" });
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 2)]),
+    ]);
+    const res = await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 2)], { voided: true }),
+    ]);
+    expect(stock["inv-caymus"].sealed).toBe(12);
+    expect(res.stock.consumptionNotWritten).toBe(1);
   });
 });
