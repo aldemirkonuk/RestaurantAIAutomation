@@ -80,8 +80,6 @@ function makeDb(
     from(table: string) {
       const q: any = {
         select: () => q,
-        // F-1238: the till's copy takes over an imported row; none here.
-        update: () => q,
         eq: () => q,
         in: () => q,
         like: async (_col: string, pattern: string) => {
@@ -102,7 +100,10 @@ function makeDb(
         },
         upsert: async () => ({ error: null }),
         // F-1197: the reversal mark, filtered as PostgREST would, and
-        // failing like the insert when `reversalError` is set.
+        // failing like the insert when `reversalError` is set. F-1238's
+        // takeover of an imported pos_checks row also lands here: its
+        // .update().eq().eq().eq() chain ends without `like`, marks nothing
+        // and answers no error, so there is no imported row here to adopt.
         update: (patch: Row) => {
           const keep: Array<(r: Row) => boolean> = [];
           const u: any = {
