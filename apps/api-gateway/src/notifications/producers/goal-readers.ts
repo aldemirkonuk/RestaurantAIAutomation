@@ -43,3 +43,15 @@ export async function goalReaders(
     deferred: audience.deferred.filter((u) => readers.has(u)),
   };
 }
+
+/**
+ * The same narrowing for the other bells that carry the house's money (F-1121):
+ * the day's takings (`service_closed`) and a certified invoice's total. Staff
+ * hold no house money (ADR 0164, ADR 0145's `money` row), and these lines went
+ * to every member — on the bell, and for the invoice line on the phone too.
+ */
+export const moneyReaders = goalReaders;
+
+/** The run row's reason when the news carries money and nobody may hear it. */
+export const NO_MONEY_READER =
+  "There was news, but no owner or manager was in this sweep's audience — the house's money is not sent to anyone else.";

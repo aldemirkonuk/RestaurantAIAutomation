@@ -25,6 +25,27 @@ function build() {
     notifications as any,
   );
   const producer = new InvoiceConfirmedProducer(database as any, ledger);
+  // Owner and manager hold the house's money; user-3 is staff (F-1121).
+  db.tables.user_restaurant_access = [
+    {
+      restaurant_id: TENANT,
+      user_id: "user-1",
+      role: "owner",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-2",
+      role: "manager",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-3",
+      role: "staff",
+      is_active: true,
+    },
+  ];
   return { db, notifications, producer };
 }
 
@@ -215,5 +236,31 @@ describe("InvoiceConfirmedProducer", () => {
       /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]|\u{FE0F}|\u{20E3})/u;
     expect(emoji.test(call.title)).toBe(false);
     expect(emoji.test(call.message)).toBe(false);
+  });
+
+  it("[REVERT-FAILS] never puts an invoice total in a staff member's bell or push (F-1121)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.procurement_documents.push(doc());
+    await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      { ready: ["user-1", "user-2", "user-3"], deferred: [] },
+      NOW,
+    );
+    const opts = notifications.persistForRestaurant.calls[0][2];
+    expect(opts.onlyUserIds).toEqual(["user-1", "user-2"]);
+  });
+
+  it("[REVERT-FAILS] says so when only staff were there to hear it, rather than writing to them (F-1121)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.procurement_documents.push(doc());
+    const tally = await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      { ready: ["user-3"], deferred: [] },
+      NOW,
+    );
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(tally.withheldReason).toMatch(/no owner or manager/);
   });
 });

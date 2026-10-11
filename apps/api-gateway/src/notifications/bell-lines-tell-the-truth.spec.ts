@@ -199,6 +199,21 @@ describe("F-530 — a push never carries house money", () => {
     // The row itself keeps them, for the people the writer addressed.
     expect(db.tables.notifications[0].metadata.creditDue).toBe(120);
   });
+
+  it("a day's takings and an invoice's tie-out gap stay off the phone (F-1121)", async () => {
+    const db = seed();
+    const { svc, pushes } = funnel(db);
+
+    await svc.persistForRestaurant(HOUSE, {
+      ...LINE,
+      metadata: { documentId: "d1", revenue: 4210.5, tieOutDelta: 12.4 },
+    });
+
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].data).not.toHaveProperty("revenue");
+    expect(pushes[0].data).not.toHaveProperty("tieOutDelta");
+    expect(pushes[0].data.documentId).toBe("d1");
+  });
 });
 
 describe("F-526 — a line clears when its thing is dealt with", () => {
@@ -250,26 +265,18 @@ describe("F-526 — a line clears when its thing is dealt with", () => {
     low: Array<{ id: string; wine_id: string }>,
     readFails = false,
   ) {
-    const supabase = {
-      from: (table: string) =>
-        table === "v_low_stock_items"
-          ? {
-              select: async () =>
-                readFails
-                  ? { data: null, error: { message: "view offline" } }
-                  : {
-                      data: low.map((r) => ({
-                        ...r,
-                        restaurant_id: HOUSE,
-                        stock_live: 1,
-                        threshold_min: 6,
-                        wine_name: "Narince",
-                      })),
-                      error: null,
-                    },
-            }
-          : db.supabase.from(table),
-    };
+    // The low list is a stub table, so the read pages the way PostgREST
+    // answers it, `max_rows` included (F-1122).
+    db.tables.v_low_stock_items = low.map((r) => ({
+      ...r,
+      restaurant_id: HOUSE,
+      stock_live: 1,
+      threshold_min: 6,
+      wine_name: "Narince",
+    }));
+    if (readFails)
+      db.errors["v_low_stock_items:select"] = { message: "view offline" };
+    const supabase = db.supabase;
     const svc = new LowStockAlertsService(
       { supabase } as any,
       {
@@ -342,5 +349,34 @@ describe("F-526 — a line clears when its thing is dealt with", () => {
     await svc.runEdgeSweep();
 
     expect(db.tables.notifications[0].status).toBe("unread");
+    // Nor is any wine's alert level reset, or it would alert again (F-1122).
+    expect((svc as any).reconcileRecoveries).not.toHaveBeenCalled();
+  });
+
+  it("past PostgREST's 1000-row cap, a wine that is still low keeps its line (F-1122)", async () => {
+    const low = Array.from({ length: 1001 }, (_, i) => {
+      const n = String(i).padStart(4, "0");
+      return { id: `inv-${n}`, wine_id: `w-${n}` };
+    });
+    const db = seed({
+      notifications: [
+        lowLine("past-the-cap", [
+          { inventoryId: "inv-1000", wineId: "w-1000" },
+        ]),
+        lowLine("recovered", [{ inventoryId: "inv-gone", wineId: "w-gone" }]),
+      ],
+    });
+    db.rowCap = { v_low_stock_items: 1000 };
+    const svc = lowStock(db, low);
+
+    await svc.runEdgeSweep();
+
+    const status = Object.fromEntries(
+      db.tables.notifications.map((r) => [r.id, r.status]),
+    );
+    expect(status).toEqual({ "past-the-cap": "unread", recovered: "read" });
+    const seen: Map<string, unknown[]> = (svc as any).reconcileRecoveries.mock
+      .calls[0][0];
+    expect(seen.get(HOUSE)).toHaveLength(1001);
   });
 });

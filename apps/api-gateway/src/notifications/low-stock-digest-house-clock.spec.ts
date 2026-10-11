@@ -152,6 +152,11 @@ function makeDigestDbMock(opts: {
       not: () => chain,
       order: () => chain,
       limit: () => chain,
+      // The low list is read in pages by id (F-1122).
+      gt: (_col: string, val: any) => {
+        chain._gt = val;
+        return chain;
+      },
       neq: () => chain,
       update: (row: any) => {
         chain._update = row;
@@ -165,7 +170,12 @@ function makeDigestDbMock(opts: {
       maybeSingle: () => Promise.resolve({ data: null, error: null }),
       then: (resolve: any) => {
         if (table === "v_low_stock_items") {
-          return resolve({ data: opts.lowStockRows, error: null });
+          return resolve({
+            data: opts.lowStockRows.filter(
+              (r) => chain._gt === undefined || String(r.id) > chain._gt,
+            ),
+            error: null,
+          });
         }
         if (table === "restaurants") {
           if (opts.restaurantsReadError) {
