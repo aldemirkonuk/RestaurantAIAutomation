@@ -173,12 +173,39 @@ export const DRINK_WORD_KINDS: ReadonlyArray<[string, MenuCategory]> = [
 ];
 
 /**
- * Hints that mark food only as the section's own heading, never inside a raw
- * line (F-1272). 'tatlı' alone means sweet, so a semi-sweet wine is no
- * dessert; it is not a hint at all. The same list as the web's
- * `SECTION_HINTS`.
+ * Food nouns that keep a section a kitchen one whatever drink word it also
+ * says (F-1317): "Kırmızı Et" is red meat and "Beyaz Et" is chicken, not red
+ * and white wine. The same list as the web's `FOOD_NOUNS`.
  */
-export const SECTION_HINTS = ["desserts", "tatlılar"];
+export const FOOD_NOUNS = [
+  "et",
+  "etler",
+  "yemek",
+  "yemekler",
+  "yemekleri",
+  "tavuk",
+  "balık",
+  "balıklar",
+  "köfte",
+  "kebap",
+  "kebaplar",
+  "meze",
+  "mezeler",
+  "salata",
+  "salatalar",
+  "çorba",
+  "çorbalar",
+  "ızgara",
+  "ızgaralar",
+];
+
+/**
+ * Hints that mark food only as the section's own heading, never inside a raw
+ * line (F-1272): 'tatlı' in a row means sweet, so a semi-sweet wine is no
+ * dessert. As the heading, "Tatlı" is the dessert section (F-1317) unless it
+ * also says şarap ("Tatlı şarap"). The same list as the web's `SECTION_HINTS`.
+ */
+export const SECTION_HINTS = ["desserts", "tatlı", "tatlılar"];
 
 /** The raw line's column. Sent only when the caller's view allows it. */
 export const RAW_LINE_COLUMN = "raw_extracted_text";
@@ -232,25 +259,19 @@ function wordRuns(text: string): string[] {
 
 /**
  * Whether a menu line is a kitchen (food) line, from its section and its raw
- * line. A known drink section wins; otherwise a whole-word hint in either
- * decides. The same test as the web's `isKitchenLine`.
+ * line. A known drink section wins, then a food noun in the section, then
+ * a drink word in it; otherwise a whole-word hint in either decides. The same test as the web's `isKitchenLine`.
  */
 export function isKitchenLine(category: unknown, raw: unknown): boolean {
   const section = typeof category === "string" ? category : "";
   if (DRINK_SECTIONS.includes(section.toLowerCase().trim())) return false;
   const sectionRuns = wordRuns(section);
-  if (
-    sectionRuns.some((run) =>
-      [...WINE_WORDS, ...DRINK_WORDS].some((w) => run.includes(` ${w} `)),
-    )
-  )
-    return false;
-  if (
-    SECTION_HINTS.some((hint) =>
-      sectionRuns.some((run) => run.includes(` ${hint} `)),
-    )
-  )
-    return true;
+  const sectionSays = (words: string[]) =>
+    sectionRuns.some((run) => words.some((w) => run.includes(` ${w} `)));
+  // A food noun beats a drink word: "Kırmızı Et" is meat (F-1317).
+  if (sectionSays(FOOD_NOUNS)) return true;
+  if (sectionSays([...WINE_WORDS, ...DRINK_WORDS])) return false;
+  if (sectionSays(SECTION_HINTS)) return true;
   const runs = wordRuns(`${section} ${typeof raw === "string" ? raw : ""}`);
   return KITCHEN_HINTS.some((hint) =>
     runs.some((run) => run.includes(` ${hint} `)),
