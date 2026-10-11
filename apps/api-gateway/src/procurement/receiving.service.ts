@@ -372,6 +372,22 @@ export class ReceivingService {
           `Nothing was booked. Count it again in ${said} and send it again.`,
       });
     }
+    // F-1318: the other way round. A door that could not read the order lets
+    // the person say kegs or liters, and on an order in bottles or boxes those
+    // booked one for one as bottles. Refused the same way; bottles always fit.
+    if (
+      (uom === "keg" || uom === "liter") &&
+      orderUnit !== null &&
+      uom !== orderUnit
+    ) {
+      const said = uom === "keg" ? "kegs" : "liters";
+      throw new BadRequestException({
+        reason: "counted_uom_not_order_unit",
+        message:
+          `This order is not in ${said}, so a count in ${said} cannot be booked against it. ` +
+          `Nothing was booked. Count it again in bottles and send it again.`,
+      });
+    }
 
     // BOTH quantities go through the SAME conversion. This is the whole of the
     // corruption that was here: `rejectedQty` was taken raw, in boxes, and

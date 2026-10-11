@@ -19,7 +19,7 @@ type SyncState = {
   discardNotSent?: (ids?: string[]) => Promise<number>;
   parkedCounts?: Array<{ id: string; itemId: string; itemLabel: string; overtaken: boolean; message: string }>;
   discardNotSentOne?: (id: string) => Promise<void>;
-  parkedChanges?: Array<{ id: string; label: string; href?: string }>;
+  parkedChanges?: Array<{ id: string; label: string; href?: string; note?: string }>;
   waitingElsewhere?: Array<{ restaurantId: string; count: number }>;
   refresh?: () => Promise<void>;
 };
@@ -212,6 +212,31 @@ describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, n
     expect(discardNotSentOne).toHaveBeenCalledWith('d1');
     expect(discardNotSent).not.toHaveBeenCalled();
     confirm.mockRestore();
+  });
+
+  it('[REVERT-FAILS] F-1320: a door receipt Try again passes by says why, beside its Receiving link', () => {
+    syncState.current = {
+      isOnline: true,
+      isSyncing: false,
+      pendingCount: 0,
+      lastError: null,
+      notSentCount: 1,
+      retryNotSent: vi.fn(),
+      discardNotSent: vi.fn(),
+      discardNotSentOne: vi.fn(),
+      parkedChanges: [
+        {
+          id: 'd1',
+          label: 'Delivery PO-104',
+          href: '/receiving',
+          note: 'needs the bottles in each box before it can be sent again',
+        },
+      ],
+    };
+    render(<AppOfflineBanner />);
+    const row = document.querySelector('[data-ux-key="shell.offline.not-sent.change"]') as HTMLElement;
+    expect(row.textContent).toContain('needs the bottles in each box before it can be sent again');
+    expect(screen.getByRole('link', { name: 'Open receiving' }).getAttribute('href')).toBe('/receiving');
   });
 
   it('F-1258: one parked change has no discard-all, only its own named Discard', () => {

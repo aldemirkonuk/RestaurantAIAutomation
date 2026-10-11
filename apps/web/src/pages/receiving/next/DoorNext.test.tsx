@@ -126,9 +126,15 @@ beforeEach(() => {
   newIdempotencyKey.mockReturnValue('door:o1:test')
 })
 
-const renderPage = () =>
+/**
+ * Opened from the receiving list, which says the order is in boxes (F-1318):
+ * `getOrder` resolves null here, an order that cannot be read, and without the
+ * list's unit the door would first ask what was counted. `listed: null` opens
+ * it from nowhere.
+ */
+const renderPage = (listed: Record<string, unknown> | null = { unitType: 'case' }) =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[{ pathname: '/', state: listed ? { listed } : null }]}>
       <DoorNext />
     </MemoryRouter>,
   )
@@ -1007,12 +1013,13 @@ describe('F-1154 — the door asks for bottles per box on an order in bottles on
     vi.mocked(getOrder).mockRejectedValueOnce(new Error('Network Error'))
     vi.mocked(receivingApi.doorReceivedSoFar).mockRejectedValueOnce(new Error('Network Error'))
     submitDoorReceipt.mockResolvedValue({ synced: false })
-    renderPage()
+    renderPage(null)
     await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
     fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
     fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
       target: { value: 'AK' },
     })
+    fireEvent.click(await screen.findByRole('radio', { name: 'Boxes' }))
     await waitFor(() => expect(perBox()).not.toBeNull())
     expect(screen.getByText(/If it was ordered by the bottle, say how many are in each box/)).toBeTruthy()
 
@@ -1029,16 +1036,91 @@ describe('F-1154 — the door asks for bottles per box on an order in bottles on
     vi.mocked(getOrder).mockRejectedValueOnce(new Error('Network Error'))
     vi.mocked(receivingApi.doorReceivedSoFar).mockRejectedValueOnce(new Error('Network Error'))
     submitDoorReceipt.mockResolvedValue({ synced: false })
-    renderPage()
+    renderPage(null)
     await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
     fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
     fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
       target: { value: 'AK' },
     })
+    fireEvent.click(await screen.findByRole('radio', { name: 'Boxes' }))
     await waitFor(() => expect(perBox()).not.toBeNull())
     await holdSeal()
     await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
     expect(submitDoorReceipt.mock.calls[0][0].body.packSize).toBeUndefined()
+  })
+
+  /** Offline, opened from nowhere: the order is unread and the list said nothing. */
+  const openUnread = async (listed: Record<string, unknown> | null = null) => {
+    const { receivingApi } = await import('@/services/api/receiving')
+    vi.mocked(getOrder).mockRejectedValueOnce(new Error('Network Error'))
+    vi.mocked(receivingApi.doorReceivedSoFar).mockRejectedValueOnce(new Error('Network Error'))
+    submitDoorReceipt.mockResolvedValue({ synced: false })
+    renderPage(listed)
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+  }
+
+  it('[REVERT-FAILS] offline, the door asks what was counted and never assumes boxes (F-1318)', async () => {
+    await openUnread()
+    expect(await screen.findByRole('radiogroup', { name: 'Counted in' })).toBeTruthy()
+    expect(screen.queryByText('How many boxes')).toBeNull()
+    await holdSeal()
+    expect(submitDoorReceipt).not.toHaveBeenCalled()
+    expect(screen.getByText(/Say what you counted/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Kegs' }))
+    expect(screen.getByText('Kegs delivered')).toBeTruthy()
+    expect(perBox()).toBeNull()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    const { body } = submitDoorReceipt.mock.calls[0][0]
+    expect(body.countedUom).toBe('keg')
+    expect(body.packSize).toBeUndefined()
+  })
+
+  it('[REVERT-FAILS] offline, bottles can be the unit counted, with no box size asked (F-1318)', async () => {
+    await openUnread()
+    fireEvent.click(await screen.findByRole('radio', { name: 'Bottles' }))
+    expect(perBox()).toBeNull()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].body.countedUom).toBe('bottle')
+  })
+
+  it('[REVERT-FAILS] offline, a keg order opened from the list is counted in kegs (F-1318)', async () => {
+    await openUnread({ orderNumber: 'PO-7', unitType: 'keg' })
+    expect(await screen.findByText('Kegs delivered')).toBeTruthy()
+    expect(screen.queryByRole('radiogroup', { name: 'Counted in' })).toBeNull()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].body.countedUom).toBe('keg')
+  })
+
+  it('[REVERT-FAILS] offline, does not promise nothing is lost for an order it could not check (F-1318)', async () => {
+    await openUnread()
+    fireEvent.click(await screen.findByRole('radio', { name: 'Kegs' }))
+    await holdSeal()
+    await screen.findByText(/The order could not be checked here/)
+    expect(screen.queryByText(/Nothing is lost/)).toBeNull()
+  })
+
+  it('[REVERT-FAILS] names the receipt from the list, never by the order id (F-1319)', async () => {
+    await openUnread({ orderNumber: 'PO-7', wineName: 'Barolo', vendor: 'Ege Şarap', unitType: 'case' })
+    expect(await screen.findByText('Barolo')).toBeTruthy()
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].orderLabel).toBe('PO-7')
+  })
+
+  it('[REVERT-FAILS] opened from nowhere, offline, stores no id as the name (F-1319)', async () => {
+    await openUnread()
+    fireEvent.click(await screen.findByRole('radio', { name: 'Boxes' }))
+    await holdSeal()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].orderLabel).toBe('')
   })
 
   it('[REVERT-FAILS] a keg order is counted and sent in kegs (F-1206)', async () => {

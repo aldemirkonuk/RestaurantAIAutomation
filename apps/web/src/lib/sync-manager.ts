@@ -19,7 +19,13 @@ import {
 import { apiClient } from '../services/api/client'
 // No cycle: neither outbox imports this module (they flush the shared queue
 // themselves), so a static import is safe here.
-import { flushDoorOutbox } from './doorOutbox'
+import {
+  doorReceiptLabel,
+  doorResendNeed,
+  flushDoorOutbox,
+  savedAtName,
+  type QueuedDoorReceipt,
+} from './doorOutbox'
 import {
   flushSpotCountOutbox,
   isOvertakenCount,
@@ -73,6 +79,28 @@ export interface ParkedChange {
   label: string
   /** Where the change can be seen in full — a door receipt's rail. */
   href?: string
+  /**
+   * Why Try again will not send it, when it will not: a door receipt that
+   * needs the bottles in each box or a count in the order's unit, or that the
+   * house would refuse the same way again (F-1320). Said, and the link goes
+   * to Receiving, where it is completed or discarded.
+   */
+  note?: string
+}
+
+/** Door receipts Try again leaves alone, and why, in the strip's words (F-1320). */
+function doorRetryNote(m: PendingMutation): string | undefined {
+  if (m.parked?.reason !== 'refused') return undefined
+  switch (doorResendNeed(m.parked, (m.data as QueuedDoorReceipt | undefined)?.body)) {
+    case 'bottles_per_box':
+      return 'needs the bottles in each box before it can be sent again'
+    case 'order_unit':
+      return "needs counting again in the order's own unit before it can be sent again"
+    case 'cannot':
+      return 'cannot be sent again as it was counted — count it again, then discard this one'
+    default:
+      return undefined
+  }
 }
 
 /** How many of this person's changes wait in another house (F-1259). */
@@ -89,8 +117,15 @@ function parkedChangeOf(m: PendingMutation): ParkedChange {
   const title = text(d.title)
   switch (m.type) {
     case 'receiving.door': {
-      const order = text(d.orderLabel)
-      return { id: m.id, label: order ? `Delivery ${order}` : 'A delivery', href: '/receiving' }
+      // Named by order, wine or vendor; never by the order's raw id (F-1319).
+      const order = doorReceiptLabel(d as Partial<QueuedDoorReceipt>)
+      const note = doorRetryNote(m)
+      return {
+        id: m.id,
+        label: order ? `Delivery ${order}` : savedAtName(m.timestamp),
+        href: '/receiving',
+        ...(note ? { note } : {}),
+      }
     }
     case 'inventory.spotCount':
       return { id: m.id, label: `Count of ${text(d.itemLabel) ?? 'an item'}` }
@@ -644,12 +679,21 @@ class SyncManagerService {
    * session, reset its backoff and send now. An `unowned` change cannot be
    * retried — there is nobody to send it as — so it stays parked. Nor is a
    * count refused as overtaken: the house answers it the same way every time,
-   * so it waits for a fresh count of the item or a discard (F-831).
+   * so it waits for a fresh count of the item or a discard (F-831). Nor is a
+   * door receipt the house would refuse the same way (F-1320): one that needs
+   * the bottles in each box or a recount in the order's unit is completed on
+   * Receiving, and one that cannot change is discarded there — the same rule
+   * the rail's Send again keeps (`doorResendNeed`).
    */
   async retryNotSent(): Promise<SyncResult> {
     for (const m of await this.getNotSent()) {
       if (m.parked?.reason !== 'refused') continue
       if (isOvertakenCount(m)) continue
+      if (
+        m.type === 'receiving.door' &&
+        doorResendNeed(m.parked, (m.data as QueuedDoorReceipt | undefined)?.body) !== 'nothing'
+      )
+        continue
       await offlineStorage.updatePendingMutation(m.id, {
         parked: undefined,
         nextAttemptAt: undefined,

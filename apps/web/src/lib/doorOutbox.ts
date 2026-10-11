@@ -315,6 +315,28 @@ export interface QueuedDoorReceipt {
   body: DoorReceiptRequest
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * A queued receipt's own name — its order number, wine or vendor — or null
+ * when all it carries is the order's id (F-1319). A door opened offline read
+ * no order and used to store the raw id as the label, so the rail, the strip
+ * and their confirms named the delivery by a UUID nobody can match to a truck.
+ */
+export function doorReceiptLabel(entry: Partial<QueuedDoorReceipt> | null | undefined): string | null {
+  const label = typeof entry?.orderLabel === 'string' ? entry.orderLabel.trim() : ''
+  if (!label || label === entry?.orderId || UUID_RE.test(label)) return null
+  return label
+}
+
+/** "The delivery saved at 14:32", from the phone's own clock; the fallback name (F-1319). */
+export function savedAtName(savedAt: Date | string | null | undefined): string {
+  const t = savedAt ? new Date(savedAt) : null
+  if (!t || !Number.isFinite(t.getTime())) return 'A delivery'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `The delivery saved at ${pad(t.getHours())}:${pad(t.getMinutes())}`
+}
+
 /** A key that survives a reload, a retry and a browser restart. */
 export function newIdempotencyKey(orderId: string): string {
   const rand =
@@ -455,7 +477,9 @@ function refusalOf(err: unknown): { message: string; code: string | null } {
  * Refusals that turn on the receipt itself (F-1257): the same receipt sent
  * again gets the same answer, so Send again is not offered for it as it
  * stands. `pack_size_required` is the one the rail can change — it takes the
- * bottles per box (F-1256); the rest can only be discarded and counted again.
+ * bottles per box (F-1256) — and so is `counted_uom_not_order_unit`: it takes
+ * the count again in the unit the house's sentence names (F-1318). The rest
+ * can only be discarded and counted again.
  */
 const REPEATS_UNCHANGED = new Set([
   'pack_size_required',
@@ -466,11 +490,25 @@ const REPEATS_UNCHANGED = new Set([
 ])
 
 /** What a parked receipt needs before Send again can change the answer. */
-export type DoorResendNeed = 'nothing' | 'bottles_per_box' | 'cannot'
+export type DoorResendNeed = 'nothing' | 'bottles_per_box' | 'order_unit' | 'cannot'
 
-export function doorResendNeed(parked: { reason: string; code?: string | null } | null | undefined): DoorResendNeed {
+/** The units a receipt can be counted again in from Receiving (F-1318). */
+export type DoorRecountUom = 'keg' | 'liter' | 'bottle'
+
+export function doorResendNeed(
+  parked: { reason: string; code?: string | null } | null | undefined,
+  body?: Partial<DoorReceiptRequest> | null,
+): DoorResendNeed {
   if (!parked || parked.reason !== 'refused') return 'cannot'
   if (parked.code === 'pack_size_required') return 'bottles_per_box'
+  // A recount carries the refusal over only when it is none or all of the
+  // truck: some boxes broken out of a box count says nothing about kegs.
+  if (
+    parked.code === 'counted_uom_not_order_unit' &&
+    body &&
+    (body.outcome === 'refused' || !body.rejectedQtyInCountedUom)
+  )
+    return 'order_unit'
   return parked.code && REPEATS_UNCHANGED.has(parked.code) ? 'cannot' : 'nothing'
 }
 
@@ -487,14 +525,51 @@ export function doorResendNeed(parked: { reason: string; code?: string | null } 
  */
 export async function resendDoorReceipt(
   id: string,
-  change: { packSize?: number } = {},
+  change: { packSize?: number; recount?: { qty: number; uom: DoorRecountUom } } = {},
 ): Promise<boolean> {
   const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
   const m = all.find((x) => x.id === id)
   if (!m || m.parked?.reason !== 'refused') return false
-  const need = doorResendNeed(m.parked)
+  const need = doorResendNeed(m.parked, (m.data as QueuedDoorReceipt | undefined)?.body)
   if (need === 'cannot') return false
-  if (need === 'bottles_per_box') {
+  if (need === 'order_unit') {
+    // F-1318: counted again in the unit the house's sentence named — the
+    // order's kegs or liters, or bottles, which fit any other order without a
+    // box size. Nothing landed, so the key is not spent. The door's box
+    // numbers (the paper's reading, what was still owed) are not in this
+    // unit, so they are not sent with it.
+    const n = change.recount?.qty
+    const unit = change.recount?.uom
+    const entry = m.data as QueuedDoorReceipt | undefined
+    if (
+      !entry ||
+      (unit !== 'keg' && unit !== 'liter' && unit !== 'bottle') ||
+      typeof n !== 'number' ||
+      !Number.isSafeInteger(n) ||
+      n < 1
+    )
+      return false
+    const said = unit === 'keg' ? 'kegs' : unit === 'liter' ? 'liters' : 'bottles'
+    const notes = `${entry.body.notes ? `${entry.body.notes} ` : ''}Counted again in ${said} from Receiving: ${n}.`
+    await offlineStorage.updatePendingMutation(id, {
+      data: {
+        ...entry,
+        body: {
+          ...entry.body,
+          countedQty: n,
+          countedUom: unit,
+          rejectedQtyInCountedUom: entry.body.outcome === 'refused' ? n : 0,
+          expectedQtyInCountedUom: null,
+          packSize: undefined,
+          suggestedQtyInCountedUom: undefined,
+          suggestionAccepted: undefined,
+          notes,
+        },
+      },
+      parked: undefined,
+      lastError: undefined,
+    })
+  } else if (need === 'bottles_per_box') {
     const n = change.packSize
     const entry = m.data as QueuedDoorReceipt | undefined
     if (!entry || typeof n !== 'number' || !Number.isSafeInteger(n) || n < 1) return false

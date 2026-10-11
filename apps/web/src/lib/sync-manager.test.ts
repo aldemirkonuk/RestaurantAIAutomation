@@ -42,7 +42,12 @@ const flushDoorOutbox = vi.hoisted(() =>
 const flushSpotCountOutbox = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ sent: 0, failed: 0, parked: 0 }),
 )
-vi.mock('./doorOutbox', () => ({ flushDoorOutbox }))
+// The real door predicates (what a parked receipt needs, how it is named),
+// with only its flush replaced.
+vi.mock('./doorOutbox', async (importActual) => ({
+  ...(await importActual<typeof import('./doorOutbox')>()),
+  flushDoorOutbox,
+}))
 // The real queue's predicates (which counts are overtaken, how a refused one
 // is named), with only its flush replaced.
 vi.mock('./spotCountOutbox', async (importActual) => ({
@@ -489,6 +494,72 @@ describe('F-1258: every parked change is named for the strip, and Discard remove
 
     expect(removed).toBe(1)
     expect(removedIds()).toEqual(['door-1'])
+  })
+})
+
+describe('F-1320: Try again leaves the door receipts the house would refuse the same way', () => {
+  const at = '2026-10-11T00:00:00.000Z'
+  const door = (id: string, code: string, extra: Record<string, unknown> = {}): PendingMutation => ({
+    ...mutation(id, 'receiving.door', 0),
+    data: { orderId: 'o1', orderLabel: 'PO-104', restaurantId: H1, body: { countedQty: 3, countedUom: 'case' } },
+    parked: { reason: 'refused', status: 400, code, at, ...extra },
+  })
+
+  beforeEach(() => {
+    vi.mocked(offlineStorage.updatePendingMutation).mockClear()
+  })
+
+  it('[REVERT-FAILS] un-parks only the door receipt a resend can change', async () => {
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      door('d-pack', 'pack_size_required'),
+      door('d-unit', 'counted_uom_not_order_unit'),
+      door('d-key', 'receipt_key_reused'),
+      door('d-plain', 'some_other_refusal'),
+    ])
+
+    await syncManager.retryNotSent()
+
+    const unparked = vi
+      .mocked(offlineStorage.updatePendingMutation)
+      .mock.calls.filter(([, patch]) => 'parked' in (patch as object))
+      .map(([id]) => id)
+    expect(unparked).toEqual(['d-plain'])
+  })
+
+  it('[REVERT-FAILS] the strip says why, and points to Receiving', async () => {
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      door('d-pack', 'pack_size_required'),
+      door('d-unit', 'counted_uom_not_order_unit'),
+      door('d-key', 'receipt_key_reused'),
+    ])
+
+    await syncManager.refresh()
+
+    const [pack, unit, key] = syncManager.getStatus().parkedChanges
+    expect(pack).toMatchObject({ href: '/receiving', note: expect.stringMatching(/bottles in each box/) })
+    expect(unit).toMatchObject({ href: '/receiving', note: expect.stringMatching(/order's own unit/) })
+    expect(key).toMatchObject({ href: '/receiving', note: expect.stringMatching(/cannot be sent again/) })
+  })
+})
+
+describe('F-1319: a door receipt is never named by the order\'s raw id', () => {
+  it('[REVERT-FAILS] names one saved with only the id by the time it was saved', async () => {
+    const orderId = '3f2b9c1e-8a4d-4e7b-9c2a-1d5e6f7a8b9c'
+    const savedAt = new Date(2026, 9, 11, 14, 32)
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      {
+        ...mutation('d-raw', 'receiving.door', 0),
+        timestamp: savedAt,
+        data: { orderId, orderLabel: orderId, restaurantId: H1, body: {} },
+        parked: { reason: 'refused', status: 422, at: '2026-10-11T00:00:00.000Z' },
+      },
+    ])
+
+    await syncManager.refresh()
+
+    const [row] = syncManager.getStatus().parkedChanges
+    expect(row.label).toBe('The delivery saved at 14:32')
+    expect(row.label).not.toContain(orderId)
   })
 })
 

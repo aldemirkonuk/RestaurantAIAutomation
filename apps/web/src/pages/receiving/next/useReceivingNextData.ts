@@ -27,7 +27,10 @@ import {
   flushDoorOutbox,
   readDroppedDoorReceipts,
   resendDoorReceipt,
+  doorReceiptLabel,
   doorResendNeed,
+  savedAtName,
+  type DoorRecountUom,
   type DoorResendNeed,
   type DroppedDoorReceipt,
   type QueuedDoorReceipt,
@@ -201,6 +204,8 @@ export interface DeliveryVM {
   /** The single line this order carries (one wine per procurement order). */
   line: string | null;
   po: string | null;
+  /** The order's own number, never an id fragment — carried to the door (F-1319). */
+  orderNumber?: string | null;
   /**
    * OrderResponseDto is one wine per order, so a delivery is exactly one
    * line by construction — this is a fact of the DTO, not a guess.
@@ -306,6 +311,7 @@ export function useStaffDeliveries(): StaffLaneData {
           providerRef: o.providerId ? o.providerId.slice(0, 8) : null,
           line: o.wineName ?? null,
           po: o.orderNumber ?? (o.id ? o.id.slice(0, 8) : null),
+          orderNumber: o.orderNumber ?? null,
           lineCount: 1 as const,
           // NEVER `quantity`. See DeliveryVM.bottlesTotal.
           bottlesTotal: num(o.bottlesTotal),
@@ -882,8 +888,9 @@ export interface QueuedReceiptVM {
     reason: 'refused' | 'unowned';
     status: number | null;
     /**
-     * What Send again needs first (F-1256, F-1257): nothing, the bottles in
-     * each box, or it `cannot` change the answer and only Discard is left.
+     * What Send again needs first (F-1256, F-1257, F-1318): nothing, the
+     * bottles in each box, the count again in the order's unit, or it
+     * `cannot` change the answer and only Discard is left.
      */
     need: DoorResendNeed;
   } | null;
@@ -942,7 +949,7 @@ export interface OutboxData {
    * Send one parked `refused` receipt again (un-park, then flush) — with the
    * bottles in each box when that is what it was refused for (F-1256).
    */
-  resend: (id: string, change?: { packSize?: number }) => void;
+  resend: (id: string, change?: { packSize?: number; recount?: { qty: number; uom: DoorRecountUom } }) => void;
   /** Give one parked receipt up. The caller confirms first: the count is not on the server. */
   discard: (id: string) => void;
 }
@@ -951,7 +958,9 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
   const entry = m.data as QueuedDoorReceipt | undefined;
   return {
     id: m.id,
-    label: entry?.orderLabel || entry?.orderId?.slice(0, 8) || 'Door receipt',
+    // Never the order's raw id (F-1319): a door opened offline stored it as
+    // the label, so those are named by when they were saved instead.
+    label: doorReceiptLabel(entry) ?? savedAtName(m.timestamp),
     queuedAt: m.timestamp ? new Date(m.timestamp).toISOString() : null,
     retryCount: m.retryCount ?? 0,
     lastError: m.lastError ?? null,
@@ -959,7 +968,7 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
       ? {
           reason: m.parked.reason,
           status: typeof m.parked.status === 'number' ? m.parked.status : null,
-          need: doorResendNeed(m.parked),
+          need: doorResendNeed(m.parked, entry?.body),
         }
       : null,
   };
@@ -1135,7 +1144,7 @@ export function useDoorOutbox(): OutboxData {
   );
 
   const resend = useCallback(
-    (id: string, change?: { packSize?: number }) => {
+    (id: string, change?: { packSize?: number; recount?: { qty: number; uom: DoorRecountUom } }) => {
       void (async () => {
         try {
           await resendDoorReceipt(id, change);
