@@ -674,8 +674,8 @@ export function InventoryCommandPage() {
     const items = activeFlag
       ? filteredInventory.filter((i) => rowFlags(i).includes(activeFlag))
       : [...filteredInventory];
-    const val = (i: InventoryItem) =>
-      (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0));
+    // Live bottles only, like the Value on hand tile (F-1167).
+    const val = (i: InventoryItem) => (i.wac ?? i.price ?? 0) * (i.liveStock ?? 0);
     // Comparator in the key's natural ascending order; sortDir flips it.
     const cmp = (a: InventoryItem, b: InventoryItem) => {
       switch (sort) {
@@ -1745,9 +1745,9 @@ export function InventoryCommandPage() {
                   const isFocused = idx === focusedIndex;
                   const run = runwayDays(item);
                   const delta = marketDeltaPct(item);
+                  // Live bottles only, like the tile above (F-1167).
                   const value =
-                    (item.wac ?? item.price ?? 0) *
-                    ((item.liveStock ?? 0) + (item.shadowStock ?? 0));
+                    (item.wac ?? item.price ?? 0) * (item.liveStock ?? 0);
                   const loc = locName(item);
                   const status = classifyStock(item.liveStock, item.threshold);
                   return (
