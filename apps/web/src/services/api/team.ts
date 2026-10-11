@@ -512,8 +512,18 @@ export async function updateShift(shiftId: string, body: Record<string, any>, ri
 export async function deleteShift(shiftId: string, rid?: string) {
   await apiClient.delete(`${base(rid)}/shifts/${shiftId}`)
 }
-export async function reportCallout(shiftId: string, reason?: string, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/shifts/${shiftId}/callout`, { reason })
+/** With `idempotencyKey`, a retry after a lost answer is answered with the first call-out, not a second (F-1116). */
+export async function reportCallout(
+  shiftId: string,
+  reason?: string,
+  rid?: string,
+  idempotencyKey?: string,
+): Promise<{ callout: Shift; open: Shift }> {
+  const { data } = await apiClient.post(
+    `${base(rid)}/shifts/${shiftId}/callout`,
+    { reason },
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+  )
   return data
 }
 export async function offerCover(shiftId: string, memberIds: string[], rid?: string) {

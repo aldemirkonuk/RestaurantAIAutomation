@@ -34,7 +34,7 @@
  * desk got this right; the redesign did not (ADR 0089).
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -367,6 +367,8 @@ export interface TeamNextData {
   /** Time-off requests. `null` until they answer; `[]` means none are on file. */
   timeOff: TimeOffRow[] | null;
   timeOffFailed: boolean;
+  /** True when the person is on approved time off or Away that day (F-1017, F-1148). */
+  offOn: (m: TeamMember, date: string) => boolean;
   /** Labour, with the reason a cost is unknown. `null` until the week answers. */
   labor: LaborVM | null;
   /**
@@ -486,6 +488,21 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     return m;
   }, [shifts]);
 
+  // F-1017: approved time off and Away dates take a person out of the
+  // suggestion for that day. The gateway refuses leave with a 409, so a
+  // suggestion it will refuse is not a suggestion. The grid's cover list
+  // reads the same rule (F-1148).
+  const offOn = useCallback(
+    (m: TeamMember, date: string) =>
+      (timeOffQ.data ?? []).some(
+        (t) => t.member_id === m.id && t.status === 'approved' && t.start_date <= date && date <= t.end_date,
+      ) ||
+      (awayQ.data?.windows ?? []).some(
+        (w) => m.user_id !== null && w.userId === m.user_id && w.from <= date && date <= w.until,
+      ),
+    [timeOffQ.data, awayQ.data],
+  );
+
   const gaps: GapVM[] = useMemo(() => {
     if (!weekQ.data || membersQ.data === undefined) return [];
     const busyByDate = new Map<string, Set<string>>();
@@ -522,16 +539,6 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
       for (const c of counts.values()) if (!best || c.n > best.n) best = c;
       return best ? { start: best.start, end: best.end } : null;
     };
-    // F-1017: approved time off and Away dates take a person out of the
-    // suggestion for that day. The gateway refuses leave with a 409, so a
-    // suggestion it will refuse is not a suggestion.
-    const offOn = (m: TeamMember, date: string) =>
-      (timeOffQ.data ?? []).some(
-        (t) => t.member_id === m.id && t.status === 'approved' && t.start_date <= date && date <= t.end_date,
-      ) ||
-      (awayQ.data?.windows ?? []).some(
-        (w) => m.user_id !== null && w.userId === m.user_id && w.from <= date && date <= w.until,
-      );
     const out: GapVM[] = [];
     for (const day of weekQ.data.coverage.days) {
       for (const g of day.gaps) {
@@ -584,7 +591,7 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
       }
     }
     return out.sort((a, b) => a.date.localeCompare(b.date));
-  }, [weekQ.data, membersQ.data, members, shifts, hoursByMember, timeOffQ.data, awayQ.data]);
+  }, [weekQ.data, membersQ.data, members, shifts, hoursByMember, offOn]);
 
   const certExposures: CertExposureVM[] = useMemo(() => {
     if (certsQ.data === undefined || membersQ.data === undefined || !weekQ.data) return [];
@@ -706,6 +713,7 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     shifts: weekQ.data === undefined ? null : shifts,
     timeOff: timeOffQ.data === undefined ? null : timeOffQ.data,
     timeOffFailed: timeOffQ.isError,
+    offOn,
     labor,
     // The gateway's answer, not a guess here: it removes money for anyone who
     // is not the owner and says so in `labor.moneyVisible` (ADR 0215).

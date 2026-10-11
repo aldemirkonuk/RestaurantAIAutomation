@@ -108,6 +108,115 @@ describe('F-1082: a publish whose reply was lost', () => {
   });
 });
 
+/** The hold, on the keyboard: the first Enter arms it, the second approves. */
+function hold(die: HTMLElement) {
+  fireEvent.keyDown(die, { key: 'Enter' });
+  fireEvent.keyDown(die, { key: 'Enter' });
+}
+
+describe('F-1114: re-publishing a live week nothing on which changed', () => {
+  it('says nobody was notified again, never "Re-published", and offers to send it again', async () => {
+    api.publishSchedule.mockResolvedValue({ republished: false, receiptsCleared: 0 });
+    const onClose = vi.fn();
+    render(
+      <PublishPanel
+        weekStart="2026-09-07"
+        scheduleId="s1"
+        republish
+        receiptsSeen={0}
+        onClose={onClose}
+        onDone={() => {}}
+      />,
+      { wrapper },
+    );
+    hold(screen.getByRole('button', { name: /Hold to re-publish/ }));
+    expect(await screen.findByText(/nobody was notified again/)).toBeInTheDocument();
+    expect(api.publishSchedule).toHaveBeenLastCalledWith('s1', {});
+    expect(screen.queryByText('Re-published')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+
+    api.publishSchedule.mockResolvedValue({ republished: true, receiptsCleared: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Send the announcement again' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(api.publishSchedule).toHaveBeenLastCalledWith('s1', { resetReceipts: true });
+  });
+});
+
+describe('F-1148: a publish says when the announcement did not reach the crew', () => {
+  const panel = (onClose = vi.fn()) =>
+    render(
+      <PublishPanel
+        weekStart="2026-09-07"
+        scheduleId="s1"
+        republish={false}
+        receiptsSeen={0}
+        onClose={onClose}
+        onDone={() => {}}
+      />,
+      { wrapper },
+    );
+
+  it('a live week that reached nobody says so and offers to send it again', async () => {
+    api.publishSchedule.mockResolvedValue({ republished: false, receiptsCleared: 0, notified: 0, heldAway: 0 });
+    const onClose = vi.fn();
+    panel(onClose);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish the week' }));
+    expect(await screen.findByText(/did not reach anyone/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    api.publishSchedule.mockResolvedValue({ republished: true, receiptsCleared: 0, notified: 5, heldAway: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Send the announcement again' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(api.publishSchedule).toHaveBeenLastCalledWith('s1', { resetReceipts: true });
+  });
+
+  it('names how many people who are Away were not told', async () => {
+    api.publishSchedule.mockResolvedValue({ republished: true, receiptsCleared: 0, notified: 4, heldAway: 2 });
+    const onClose = vi.fn();
+    panel(onClose);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish the week' }));
+    expect(await screen.findByText(/except 2 people who are Away/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // A first publish answers `republished: false` too; it is not "nothing changed".
+  it('closes when a first publish told everyone', async () => {
+    api.publishSchedule.mockResolvedValue({ republished: false, receiptsCleared: 0, notified: 5, heldAway: 0 });
+    const onClose = vi.fn();
+    panel(onClose);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish the week' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('F-1115: the week moved after the publish panel opened', () => {
+  it('a refusal reads the week again and never shows the gateway\'s field names', async () => {
+    api.publishSchedule.mockRejectedValue(
+      someoneElse(
+        'Re-publishing clears the 1 read receipt(s) on this week, so nobody will be recorded as having seen it. Re-send with resetReceipts: true to publish the new version.',
+      ),
+    );
+    const onDone = vi.fn();
+    const props = { weekStart: '2026-09-07', scheduleId: 's1', onClose: () => {}, onDone };
+    const { rerender } = render(<PublishPanel {...props} republish={false} receiptsSeen={0} />, {
+      wrapper,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Publish the week' }));
+    expect(await screen.findByText(/changed after you opened this panel/)).toBeInTheDocument();
+    expect(screen.queryByText(/resetReceipts/)).toBeNull();
+    expect(onDone).toHaveBeenCalledTimes(1);
+
+    // The re-read week is live with one receipt: the panel redraws from it.
+    rerender(<PublishPanel {...props} republish receiptsSeen={1} />);
+    expect(screen.getByText(/\(1 so far\)/)).toBeInTheDocument();
+    api.publishSchedule.mockResolvedValue({ republished: true, receiptsCleared: 1 });
+    hold(screen.getByRole('button', { name: /Hold to re-publish and clear receipts/ }));
+    await waitFor(() =>
+      expect(api.publishSchedule).toHaveBeenLastCalledWith('s1', { resetReceipts: true }),
+    );
+  });
+});
+
 const SHIFT = {
   id: 'sh1',
   restaurant_id: 'r1',

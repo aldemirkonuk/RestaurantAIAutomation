@@ -71,6 +71,11 @@ export function serverMessage(e: unknown): string | null {
 
 /* ── publish / re-publish ────────────────────────────────────────────────── */
 
+/** The status of a refusal, when the gateway answered at all. */
+function statusOf(e: unknown): number | undefined {
+  return (e as { response?: { status?: number } })?.response?.status;
+}
+
 export function PublishPanel({
   weekStart,
   scheduleId,
@@ -81,32 +86,80 @@ export function PublishPanel({
 }: {
   weekStart: string;
   scheduleId: string | null;
+  /** The week as last read, not as it was when the panel opened (F-1115). */
   republish: boolean;
   /** `null` when the week has not answered — the sentence then says so. */
   receiptsSeen: number | null;
   onClose: () => void;
   onDone: () => void;
 }) {
+  /** F-1114: the gateway left a live, unchanged week as it was and told nobody. */
+  const [unchanged, setUnchanged] = useState(false);
+  /**
+   * F-1148: the week went live but the announcement reached nobody, or left
+   * out the people who are Away. `null` until a publish says so.
+   */
+  const [reach, setReach] = useState<{ notified: number; heldAway: number } | null>(null);
+  /** Bumped by a refusal, so the seal stands up again for the next try. */
+  const [tries, setTries] = useState(0);
   const publish = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ again = false }: { again?: boolean } = {}) => {
       let id = scheduleId;
       if (!id) id = (await createSchedule(weekStart)).id;
       // The flag is sent ONLY from a branch that has already shown what it
-      // destroys, so the gateway's 409 keeps guarding every other path.
-      return publishSchedule(id, republish ? { resetReceipts: true } : {});
+      // destroys (a re-publish over receipts, or an unknown count), or from
+      // the explicit "Send the announcement again", so the gateway's 409
+      // keeps guarding every other path. A re-publish over no receipts sends
+      // nothing, so an unchanged week is not announced twice (F-1082).
+      const reset = again || (republish && receiptsSeen !== 0);
+      return publishSchedule(id, reset ? { resetReceipts: true } : {});
     },
-    onSuccess: () => {
+    onSuccess: (
+      res:
+        | { republished?: boolean; unchanged?: boolean; notified?: number; heldAway?: number }
+        | undefined,
+    ) => {
       onDone();
+      // A first publish also answers `republished: false`, with a count; only
+      // the gateway's "left as it is" answer carries none (or says `unchanged`).
+      if (
+        res?.unchanged === true ||
+        (res?.republished === false && typeof res.notified !== 'number')
+      ) {
+        setReach(null);
+        setUnchanged(true);
+        return;
+      }
+      // An older gateway sends no count; only a count it sent is read.
+      const notified = typeof res?.notified === 'number' ? res.notified : null;
+      const heldAway = typeof res?.heldAway === 'number' ? res.heldAway : 0;
+      if (notified === 0 || (notified !== null && heldAway > 0)) {
+        setUnchanged(false);
+        setReach({ notified, heldAway });
+        return;
+      }
       onClose();
     },
     // F-1082: a reply lost after the gateway published leaves the week live
     // and the crew told. The week is read again so the page shows what is
     // true; pressing again is safe, since an unchanged live week is not
-    // announced twice.
+    // announced twice. F-1115: a 409 means the week moved under the panel
+    // (someone published it, or the crew started marking it seen), so it is
+    // read again too and the panel redraws from what is there now.
     onError: (e) => {
-      if (isUnconfirmedWrite(e)) onDone();
+      setTries((n) => n + 1);
+      if (isUnconfirmedWrite(e) || statusOf(e) === 409) onDone();
     },
   });
+
+  const failure = !publish.isError
+    ? null
+    : isUnconfirmedWrite(publish.error)
+      ? 'We could not confirm the publish. The week may already be live and the crew told. Check the week before you publish again.'
+      : statusOf(publish.error) === 409
+        ? 'This week changed after you opened this panel: it was published, or someone has already marked it seen. Nothing was published. The panel now shows the week as it stands; press again if you still want to publish it.'
+        : (serverMessage(publish.error) ??
+          'The week was not published. Nothing changed and nobody was notified.');
 
   return (
     <Panel
@@ -117,49 +170,103 @@ export function PublishPanel({
       title={republish ? 'Re-publish this week' : 'Publish this week'}
     >
       <div className="tm-in" style={{ padding: '12px 16px 16px' }}>
-        <MutationError when={publish.isError}>
-          {serverMessage(publish.error) ??
-            (publish.isError && isUnconfirmedWrite(publish.error)
-              ? 'We could not confirm the publish. The week may already be live and the crew told. Check the week before you publish again.'
-              : 'The week was not published. Nothing changed and nobody was notified.')}
-        </MutationError>
-        {republish ? (
-          <p className="tm-note">
-            Re-publishing clears every read receipt, so the record of who has already seen
-            this schedule{' '}
-            {receiptsSeen === null
-              ? `(${EM} — the week has not answered, so how many is unknown)`
-              : `(${receiptsSeen} so far)`}{' '}
-            is deleted, and everyone is notified again. This cannot be undone.
-          </p>
+        <MutationError when={publish.isError}>{failure}</MutationError>
+        {reach ? (
+          <>
+            <p className="tm-note" role="status">
+              {reach.notified === 0
+                ? 'The week is live, but the announcement did not reach anyone, so nobody on the team has been told yet.'
+                : `The week is live and the team was told, except ${
+                    reach.heldAway === 1 ? '1 person who is Away' : `${reach.heldAway} people who are Away`
+                  }: they were not told.`}
+            </p>
+            <div className="tm-actions" style={{ marginTop: 14 }}>
+              <button type="button" className="tm-ctl tm-ctl--quiet" onClick={onClose}>
+                Done
+              </button>
+              {reach.notified === 0 && (
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--seal"
+                  disabled={publish.isPending}
+                  onClick={() => publish.mutate({ again: true })}
+                >
+                  {publish.isPending ? 'Sending…' : 'Send the announcement again'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : unchanged ? (
+          <>
+            <p className="tm-note" role="status">
+              Nothing on this week has changed since it went live, so it was left as it is
+              and nobody was notified again.
+            </p>
+            <p className="tm-note">
+              If someone missed the announcement, you can send it again. Everyone on the
+              team is told once more.
+            </p>
+            <div className="tm-actions" style={{ marginTop: 14 }}>
+              <button type="button" className="tm-ctl tm-ctl--quiet" onClick={onClose}>
+                Done
+              </button>
+              <button
+                type="button"
+                className="tm-ctl tm-ctl--seal"
+                disabled={publish.isPending}
+                onClick={() => publish.mutate({ again: true })}
+              >
+                {publish.isPending ? 'Sending…' : 'Send the announcement again'}
+              </button>
+            </div>
+          </>
         ) : (
-          <p className="tm-note">
-            Publishing tells the whole crew the week is final and starts collecting read
-            receipts. Nothing is deleted.
-          </p>
+          <>
+            {republish ? (
+              <p className="tm-note">
+                {receiptsSeen === 0
+                  ? 'Nobody has marked this week seen yet, so no record is deleted. If a shift changed since it went live, everyone is told again; if nothing did, nobody is.'
+                  : `Re-publishing clears every read receipt, so the record of who has already seen this schedule ${
+                      receiptsSeen === null
+                        ? `(${EM} — the week has not answered, so how many is unknown)`
+                        : `(${receiptsSeen} so far)`
+                    } is deleted, and everyone is notified again. This cannot be undone.`}
+              </p>
+            ) : (
+              <p className="tm-note">
+                Publishing tells the whole crew the week is final and starts collecting read
+                receipts. Nothing is deleted.
+              </p>
+            )}
+            <div className="tm-actions" style={{ marginTop: 14 }}>
+              <button type="button" className="tm-ctl tm-ctl--quiet" onClick={onClose}>
+                Not yet
+              </button>
+              {republish ? (
+                <HoldToApprove
+                  key={`${receiptsSeen ?? 'unknown'}:${tries}`}
+                  onApprove={() => publish.mutate({})}
+                  label={
+                    receiptsSeen === 0
+                      ? 'Hold to re-publish'
+                      : 'Hold to re-publish and clear receipts'
+                  }
+                  approvedLabel="Publishing…"
+                  disabled={publish.isPending}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--seal"
+                  disabled={publish.isPending}
+                  onClick={() => publish.mutate({})}
+                >
+                  {publish.isPending ? 'Publishing…' : 'Publish the week'}
+                </button>
+              )}
+            </div>
+          </>
         )}
-        <div className="tm-actions" style={{ marginTop: 14 }}>
-          <button type="button" className="tm-ctl tm-ctl--quiet" onClick={onClose}>
-            Not yet
-          </button>
-          {republish ? (
-            <HoldToApprove
-              onApprove={() => publish.mutate()}
-              label="Hold to re-publish and clear receipts"
-              approvedLabel="Re-published"
-              disabled={publish.isPending}
-            />
-          ) : (
-            <button
-              type="button"
-              className="tm-ctl tm-ctl--seal"
-              disabled={publish.isPending}
-              onClick={() => publish.mutate()}
-            >
-              {publish.isPending ? 'Publishing…' : 'Publish the week'}
-            </button>
-          )}
-        </div>
       </div>
     </Panel>
   );

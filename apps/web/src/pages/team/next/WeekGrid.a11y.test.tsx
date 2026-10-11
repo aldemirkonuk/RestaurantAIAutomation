@@ -23,13 +23,14 @@ import { type ReactNode } from 'react';
 const api = vi.hoisted(() => ({
   createShift: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   offerCover: vi.fn((..._args: unknown[]) => Promise.resolve({ offered: 1, notified: 1 })),
+  reportCallout: vi.fn((..._args: unknown[]) => Promise.resolve({ callout: {}, open: { id: 'o-new' } })),
 }));
 
 vi.mock('../../../services/api/team', () => ({
   createShift: api.createShift,
   deleteShift: vi.fn(() => Promise.resolve(undefined)),
   offerCover: api.offerCover,
-  reportCallout: vi.fn(() => Promise.resolve({})),
+  reportCallout: api.reportCallout,
   getMemberPerformance: () => Promise.resolve({ hasData: false }),
 }));
 
@@ -94,18 +95,61 @@ function grid(shifts: unknown[], onEditShift = vi.fn()) {
 beforeEach(() => {
   api.createShift.mockClear();
   api.offerCover.mockClear();
+  api.reportCallout.mockClear();
 });
+
+/** A called-out shift and the open cover slot its call-out opened. */
+const calledOut = () => [
+  shift('s1', { state: 'callout' }),
+  shift('o1', { member_id: null, state: 'open', shift_type: 'open' }),
+];
 
 describe('F-398 — a cover offer is sent once', () => {
   it('spends the button once the offer went out', async () => {
-    render(grid([shift('s1')]), { wrapper });
-    fireEvent.click(screen.getByText('Bar'));
+    render(grid(calledOut()), { wrapper });
+    fireEvent.click(screen.getAllByText('Bar')[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Offer cover to 1' }));
     await vi.waitFor(() => expect(api.offerCover).toHaveBeenCalledTimes(1));
     const spent = await screen.findByRole('button', { name: 'Cover offered' });
     expect(spent).toBeDisabled();
     fireEvent.click(spent);
     expect(api.offerCover).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('F-1113 — "Tap to claim" names a shift someone can claim', () => {
+  it('offers nothing while the shift is still held, and says why', () => {
+    render(grid([shift('s1')]), { wrapper });
+    fireEvent.click(screen.getByText('Bar'));
+    expect(screen.getByRole('button', { name: 'Offer cover to 1' })).toBeDisabled();
+    expect(screen.getByText(/Sam still holds this shift/)).toBeInTheDocument();
+  });
+
+  it("after a call-out, offers the open slot, never the called-out row", async () => {
+    render(grid(calledOut()), { wrapper });
+    fireEvent.click(screen.getAllByText('Bar')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Offer cover to 1' }));
+    await vi.waitFor(() => expect(api.offerCover).toHaveBeenCalledTimes(1));
+    expect(api.offerCover.mock.calls[0][0]).toBe('o1');
+    // The person who called out is not the one asked to cover.
+    expect(api.offerCover.mock.calls[0][1]).toEqual(['m2']);
+  });
+});
+
+describe('F-1116 — a call-out is reported once', () => {
+  it('carries an idempotency key', async () => {
+    render(grid([shift('s1')]), { wrapper });
+    fireEvent.click(screen.getByText('Bar'));
+    fireEvent.click(screen.getByRole('button', { name: 'Report a call-out' }));
+    await vi.waitFor(() => expect(api.reportCallout).toHaveBeenCalledTimes(1));
+    expect(api.reportCallout.mock.calls[0][0]).toBe('s1');
+    expect(api.reportCallout.mock.calls[0][3]).toMatch(/^callout:/);
+  });
+
+  it('offers no second call-out on a shift already called out', () => {
+    render(grid(calledOut()), { wrapper });
+    fireEvent.click(screen.getAllByText('Bar')[0]);
+    expect(screen.queryByRole('button', { name: 'Report a call-out' })).toBeNull();
   });
 });
 

@@ -301,7 +301,7 @@ type Overlay =
   | { kind: 'member'; member: TeamMember | null }
   | { kind: 'certificates'; member: TeamMember }
   | { kind: 'shift'; target: ShiftSheetTarget }
-  | { kind: 'publish'; republish: boolean }
+  | { kind: 'publish' }
   | { kind: 'copy' }
   | { kind: 'note'; only: string | null }
   | { kind: 'timeoff' }
@@ -450,7 +450,12 @@ function TeamNextManager({
             <button
               type="button"
               className="tm-ctl tm-ctl--seal"
-              onClick={() => setOverlay({ kind: 'publish', republish: data.published })}
+              onClick={() => {
+                // F-1115: the panel reads the week as it stands now, not as
+                // this page last saw it.
+                refreshWeek();
+                setOverlay({ kind: 'publish' });
+              }}
             >
               <Send className="tm-icon" aria-hidden="true" />
               {data.published ? 'Re-publish' : 'Publish week'}
@@ -775,6 +780,7 @@ function TeamNextManager({
           onEditShift={(target) => setOverlay({ kind: 'shift', target })}
           onChanged={refreshWeek}
           zone={zone}
+          offOn={data.offOn}
         />
 
         <hr className="tm-rule" />
@@ -863,7 +869,7 @@ function TeamNextManager({
         <PublishPanel
           weekStart={weekStart}
           scheduleId={data.scheduleId}
-          republish={overlay.republish}
+          republish={data.published}
           receiptsSeen={data.receiptsSeen}
           onClose={() => setOverlay(null)}
           onDone={refreshWeek}

@@ -443,3 +443,67 @@ describe('TeamNext rendering', () => {
     expect(await screen.findByRole('option', { name: /Ayşe/ })).toBeInTheDocument();
   });
 });
+
+describe('F-1148: cover is never offered to someone on leave or Away that day', () => {
+  it('the grid asks only the person free to claim it', async () => {
+    api.members = [
+      member('m1', 'Caller', 'line'),
+      member('m2', 'OnLeave', 'line'),
+      member('m3', 'AwayOne', 'line', { user_id: 'u-away' }),
+      member('m4', 'Free', 'line'),
+    ];
+    api.week = weekPayload({
+      shifts: [
+        { ...shift('m1', '2026-09-01'), state: 'callout' },
+        { ...shift(null, '2026-09-01'), state: 'open' },
+      ],
+    });
+    api.timeOff = [
+      { id: 't1', member_id: 'm2', start_date: '2026-09-01', end_date: '2026-09-02', reason: null, status: 'approved', reviewed_by: 'u1', created_at: '2026-08-20' },
+    ];
+    api.away = {
+      today: '2026-08-31',
+      windows: [{ userId: 'u-away', from: '2026-08-31', until: '2026-09-03', activeNow: true }],
+    };
+    api.offerCover.mockClear();
+    window.history.pushState({}, '', '/team?week=2026-08-31');
+    try {
+      const { container } = render(<TeamNext />, { wrapper });
+      // Caller's row comes first, so the first chip is the called-out shift.
+      const chip = await vi.waitFor(() => {
+        const el = container.querySelector<HTMLElement>('.tm-chip');
+        if (!el) throw new Error('no chip yet');
+        return el;
+      });
+      fireEvent.click(chip);
+      const offer = await screen.findByRole('button', { name: /^Offer cover to \d/ });
+      expect(offer).toHaveAccessibleName('Offer cover to 1');
+      fireEvent.click(offer);
+      await vi.waitFor(() => expect(api.offerCover).toHaveBeenCalledTimes(1));
+      expect((api.offerCover.mock.calls[0] as unknown[])[1]).toEqual(['m4']);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+});
+
+describe('F-1115: the publish panel reads the week each time it opens', () => {
+  it('opens on the week as it stands, not as the page last saw it', async () => {
+    api.members = [member('m1', 'Ayşe', 'line')];
+    render(<TeamNext />, { wrapper });
+    const open = await screen.findByRole('button', { name: 'Publish week' });
+    // Another manager publishes, and a crew member marks it seen.
+    api.week = weekPayload({
+      schedule: {
+        id: 'sch1',
+        restaurant_id: 'r1',
+        week_start: '2026-08-31',
+        status: 'published',
+        published_at: '2026-08-30T10:00:00Z',
+      },
+      receipts: [{ id: 'rc1', schedule_id: 'sch1', member_id: 'm1', acknowledged_at: '2026-08-30T11:00:00Z' }],
+    });
+    fireEvent.click(open);
+    expect(await screen.findByText(/\(1 so far\)/)).toBeInTheDocument();
+  });
+});

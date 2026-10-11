@@ -697,13 +697,24 @@ export class ScheduleService {
     // second time. A week that is already live, with no receipts to clear and
     // no shift added, edited or deleted since it went live, is answered as it
     // stands: nothing is written and nobody is notified again.
+    // F-1114: `resetReceipts: true` is the manager's explicit "send the
+    // announcement again" once told nothing changed, so it is not short-
+    // circuited; without it a lost announcement could never be re-sent.
     if (
       current.status === "published" &&
+      !dto.resetReceipts &&
       receiptsAtRisk === 0 &&
       current.published_at &&
       (await this.unchangedSincePublished(restaurantId, current))
     ) {
-      return { schedule: current, receiptsCleared: 0, republished: false };
+      // `unchanged` names this answer: `republished: false` alone is also
+      // what a first publish says, and the page read it as "nothing changed".
+      return {
+        schedule: current,
+        receiptsCleared: 0,
+        republished: false,
+        unchanged: true,
+      };
     }
 
     const { data: schedule, error } = await this.sb
@@ -737,20 +748,29 @@ export class ScheduleService {
     }
 
     // Notify the whole restaurant + deep-link back into /team.
-    await this.notifications.persistForRestaurant(restaurantId, {
-      type: "system",
-      title: "Schedule published",
-      message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
-      priority: "high",
-      actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
-      actionLabel: "View schedule",
-      groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
-      metadata: { scheduleId, weekStart: schedule.week_start },
-    });
+    // F-1148: the funnel answers 0 when its insert failed (it logs and
+    // swallows the error), so the count is read and handed back: a week that
+    // went live while nobody was told says so, instead of "published".
+    // `heldAway` are the people Away today, who get nothing by design (ADR 0218).
+    const announced = await this.notifications.persistForRestaurant(
+      restaurantId,
+      {
+        type: "system",
+        title: "Schedule published",
+        message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
+        priority: "high",
+        actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
+        actionLabel: "View schedule",
+        groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
+        metadata: { scheduleId, weekStart: schedule.week_start },
+      },
+    );
     return {
       schedule,
       receiptsCleared,
       republished: current.status === "published",
+      notified: announced?.inserted ?? 0,
+      heldAway: announced?.routing?.heldAway ?? 0,
     };
   }
 
@@ -1280,8 +1300,23 @@ export class ScheduleService {
       "Shift not found",
     );
 
+    // F-1116: only a shift someone still holds can be called out. A second
+    // press, or a retry after a lost reply, finds it already in "callout"
+    // and must not open a second cover slot or alert the house again.
+    if (original.state === "callout") {
+      throw new ConflictException(
+        "This call-out is already reported. Its cover slot is under Open shifts.",
+      );
+    }
+    if (!original.member_id || original.state === "open") {
+      throw new ConflictException(
+        "Nobody holds this shift, so there is no call-out to report. It is already open.",
+      );
+    }
+
     // Keep the original on the caller's row as "callout" (strike-through),
-    // and open a fresh unassigned cover slot for the same window.
+    // and open a fresh unassigned cover slot for the same window. The state
+    // compare makes two presses that read the shift at once land only one.
     const { data: calloutShift, error: calloutErr } = await this.sb
       .from("shifts")
       .update({
@@ -1293,10 +1328,16 @@ export class ScheduleService {
       })
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
+      .eq("state", original.state)
       .select()
-      .single();
-    if (calloutErr || !calloutShift)
+      .maybeSingle();
+    if (calloutErr)
       throw new InternalServerErrorException("Failed to mark call-out");
+    if (!calloutShift) {
+      throw new ConflictException(
+        "This call-out is already reported. Its cover slot is under Open shifts.",
+      );
+    }
 
     const { data: openShift, error: openErr } = await this.sb
       .from("shifts")
@@ -1353,6 +1394,16 @@ export class ScheduleService {
       .maybeSingle();
     if (!shift) throw new NotFoundException("Shift not found");
     await this.team.assertOnTheRoster(restaurantId, shift, "Shift not found");
+    // F-1113: the push says "Tap to claim", and staff may claim only an open
+    // shift (assignCover). A shift someone still holds, or a called-out row,
+    // is never offered: nobody told to claim it could.
+    if (shift.state !== "open" && shift.member_id) {
+      throw new ConflictException(
+        shift.state === "callout"
+          ? "This is the called-out shift, which nobody can claim. Offer its cover slot under Open shifts."
+          : "Someone still holds this shift, so nobody could claim it. Report a call-out first, then offer the cover slot it opens.",
+      );
+    }
 
     const { data: members } = await this.sb
       .from("team_members")

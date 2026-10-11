@@ -552,6 +552,7 @@ describe("ScheduleService — F-1082: a repeated publish does not notify twice",
     liveWeek(db);
     const res: any = await service(db).publish(MANAGER, RID, "s1", {} as any);
     expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
+    expect(res.unchanged).toBe(true);
     expect(res.schedule.published_at).toBe(LIVE_AT);
     expect(db.tables.schedules[0].published_at).toBe(LIVE_AT);
   });
@@ -581,6 +582,69 @@ describe("ScheduleService — F-1082: a repeated publish does not notify twice",
       resetReceipts: true,
     } as any);
     expect(lastNotifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  // F-1114: told nothing changed, the manager may still send the
+  // announcement again on purpose; a lost notice is not lost for good.
+  it("an explicit send-again of an unchanged live week tells the crew once", async () => {
+    const db = seed();
+    liveWeek(db);
+    const res: any = await service(db).publish(MANAGER, RID, "s1", {
+      resetReceipts: true,
+    } as any);
+    expect(lastNotifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    expect(res.republished).toBe(true);
+  });
+});
+
+/**
+ * F-1148 — the inbox funnel answers 0 when its insert fails (it logs and
+ * swallows the error). Publish hands that count back, so the page can say a
+ * live week reached nobody instead of "published".
+ */
+describe("ScheduleService — F-1148: publish says how many were told", () => {
+  function draftWeek(db: StubDb) {
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "draft",
+      published_at: null,
+    });
+  }
+
+  it("reports nobody told when the announcement did not land", async () => {
+    const db = seed();
+    draftWeek(db);
+    const svc = service(db);
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 0,
+      ids: [],
+    });
+    const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
+    expect(db.tables.schedules[0].status).toBe("published");
+    expect(res.notified).toBe(0);
+  });
+
+  it("reports how many were told, and how many were Away and held back", async () => {
+    const db = seed();
+    draftWeek(db);
+    const svc = service(db);
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 4,
+      ids: ["n1", "n2", "n3", "n4"],
+      routing: {
+        label: null,
+        step: "house",
+        alerted: 4,
+        inboxOnly: 0,
+        heldAway: 2,
+        degraded: null,
+      },
+    });
+    const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
+    expect(res.notified).toBe(4);
+    expect(res.heldAway).toBe(2);
   });
 });
 
@@ -824,6 +888,116 @@ describe("ScheduleService — F-217: a shift's link names its week", () => {
     expect(payload.actionUrl).toBe(
       `/team?shift=${(res.open as any).id}&week=${WEEK}`,
     );
+  });
+});
+
+/**
+ * F-1113 — "Tap to claim" goes only to a shift staff can claim.
+ * F-1116 — a call-out is reported once: a second press or a retry opens no
+ * second cover slot and sends no second alert.
+ */
+describe("ScheduleService — cover is offered and called out once (F-1113, F-1116)", () => {
+  function heldShift(db: StubDb) {
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "published",
+    });
+    db.tables.shifts.push({
+      id: "sh-held",
+      restaurant_id: RID,
+      schedule_id: "s1",
+      member_id: "m-priced",
+      shift_date: WEEK,
+      start_time: "09:00",
+      end_time: "17:00",
+      role: "server",
+      state: "assigned",
+    });
+  }
+  function pushOf(svc: ScheduleService): jest.Mock {
+    return (svc as any).push.sendToUsers;
+  }
+
+  it("refuses to offer a shift its person still holds, and pushes nothing", async () => {
+    const db = seed();
+    heldShift(db);
+    const svc = service(db);
+    const err = await svc
+      .offerCover(MANAGER, RID, "sh-held", { memberIds: ["m-unpriced"] } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(pushOf(svc)).not.toHaveBeenCalled();
+  });
+
+  it("refuses to offer the called-out row, and offers the cover slot it opened", async () => {
+    const db = seed();
+    heldShift(db);
+    db.tables.team_members.push({
+      id: "m-ali",
+      restaurant_id: RID,
+      user_id: "user-ali",
+      display_name: "Ali",
+      hourly_wage: 20,
+    });
+    const svc = service(db);
+    const { open } = await svc.reportCallout(OWNER, RID, "sh-held", {} as any);
+
+    const err = await svc
+      .offerCover(MANAGER, RID, "sh-held", { memberIds: ["m-ali"] } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(pushOf(svc)).not.toHaveBeenCalled();
+
+    const res = await svc.offerCover(MANAGER, RID, (open as any).id, {
+      memberIds: ["m-ali"],
+    } as any);
+    expect(res.notified).toBe(1);
+    expect(pushOf(svc).mock.calls[0][1].data.shiftId).toBe((open as any).id);
+  });
+
+  it("a second call-out of the same shift opens no second slot and alerts nobody again", async () => {
+    const db = seed();
+    heldShift(db);
+    const svc = service(db);
+    await svc.reportCallout(OWNER, RID, "sh-held", {} as any);
+    const err = await svc
+      .reportCallout(OWNER, RID, "sh-held", {} as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(db.tables.shifts.filter((s) => s.state === "open")).toHaveLength(1);
+    expect(lastNotifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  it("two presses that both read the held shift land one call-out", async () => {
+    const db = seed();
+    heldShift(db);
+    const svc = service(db);
+    // The other press lands between this one's read and its write.
+    const realFrom = db.supabase.from.bind(db.supabase);
+    let raced = false;
+    (db.supabase as any).from = (t: string) => {
+      const q = realFrom(t);
+      if (t === "shifts" && !raced) {
+        const update = q.update.bind(q);
+        q.update = (payload: any) => {
+          raced = true;
+          // A fresh row, as the database would hold: the read this press
+          // made keeps what it saw.
+          const i = db.tables.shifts.findIndex((s) => s.id === "sh-held");
+          db.tables.shifts[i] = { ...db.tables.shifts[i], state: "callout" };
+          return update(payload);
+        };
+      }
+      return q;
+    };
+    const err = await svc
+      .reportCallout(OWNER, RID, "sh-held", {} as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(db.tables.shifts.filter((s) => s.state === "open")).toHaveLength(0);
+    expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
   });
 });
 
