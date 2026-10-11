@@ -176,6 +176,21 @@ describe('the act — the cart the rebuilt page could not build', () => {
     expect(screen.getByTestId('new-order-tally')).toHaveTextContent(/All 2 lines were placed/);
   });
 
+  it('says when a line updated an order already waiting for approval instead of adding one (F-1131)', async () => {
+    api.post
+      .mockResolvedValueOnce({ data: { orderNumber: 'PO-118', mergedIntoOpenOrder: true } })
+      .mockResolvedValueOnce({ data: { orderNumber: 'PO-119' } });
+    draw();
+    await addLine(ITEM, '5');
+    await addLine(ITEM2, '2');
+    fireEvent.click(screen.getByTestId('new-order-place'));
+
+    await waitFor(() => expect(screen.getByTestId('new-order-tally')).toHaveTextContent(/All 2 lines were placed/));
+    expect(screen.getByTestId('new-order-tally')).toHaveTextContent(
+      /1 of them updated the order already waiting for approval for the same wine and vendor/,
+    );
+  });
+
   it('reports a partial placement as a partial one, keeping the refused line', async () => {
     api.post
       .mockResolvedValueOnce({ data: { orderNumber: 'PO-118' } })

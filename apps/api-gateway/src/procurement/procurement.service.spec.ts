@@ -30,6 +30,8 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
     eq: jest.fn().mockReturnThis(),
     neq: jest.fn().mockReturnThis(),
     not: jest.fn().mockReturnThis(),
+    // The dedup lookup filters on its allow-list of mergeable statuses (F-1131).
+    in: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),

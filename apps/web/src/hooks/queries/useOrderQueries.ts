@@ -33,7 +33,9 @@ export function useOrders(filters?: { status?: OrderStatus }) {
 
   return useQuery({
     queryKey: queryKeys.orders.list(activeRestaurantId ?? '', filters),
-    queryFn: () => ordersApi.getOrders(filters, activeRestaurantId!),
+    // The whole book, not the gateway's newest 50 (F-1132): /orders counts its
+    // stages and sums its month from this list, and so does the calendar.
+    queryFn: () => ordersApi.getOrderBook(filters, activeRestaurantId!),
     enabled: !!activeRestaurantId && isAuthenticated,
     staleTime: 30_000, // 30s stale window (agent bridge pushes updates)
     refetchInterval: 60_000, // 60s polling fallback

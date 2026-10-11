@@ -1285,17 +1285,15 @@ export class ProcurementService {
 
     // Dedup guard: a price/quantity change for the same wine+vendor should
     // update the existing open order, not spawn a second one. Match on
-    // restaurant + inventory + provider, excluding orders already past
-    // negotiation (confirmed/delivered/cancelled/rejected/failed).
-    const TERMINAL_STATUSES = [
-      ProcurementOrderStatus.CONFIRMED,
-      ProcurementOrderStatus.IN_TRANSIT,
-      ProcurementOrderStatus.DELIVERED,
-      ProcurementOrderStatus.COMPLETED,
-      ProcurementOrderStatus.CANCELLED,
-      ProcurementOrderStatus.REJECTED,
-      ProcurementOrderStatus.FAILED,
-    ];
+    // restaurant + inventory + provider, and ONLY an order still PENDING.
+    //
+    // An allow-list, not a list of exclusions (F-1131, rehit of F-109). The old
+    // list named seven "terminal" statuses and so let the merge rewrite an
+    // APPROVED, APPROVAL_NEEDED, NEGOTIATING or PARTIALLY_RECEIVED order: the
+    // quantity and price of a sealed order changed with no new seal (ADR
+    // 0125), and the cart then told the desk it had placed "a pending order
+    // waiting for approval". Anything past PENDING is a new order instead.
+    const MERGEABLE_STATUSES = [ProcurementOrderStatus.PENDING];
 
     // Skipped entirely for an order that RECORDS a completed purchase. The
     // merge folds a re-quote into an open REQUEST; an off-app invoice is a
@@ -1305,7 +1303,7 @@ export class ProcurementService {
     //
     // Skipped for the same reason, one turn stronger, for an occurrence of a
     // recurrence: its parent is BY CONSTRUCTION the same restaurant + inventory
-    // + provider, and an APPROVED parent is not in TERMINAL_STATUSES, so the
+    // + provider, and before F-1131 an APPROVED parent was mergeable, so the
     // merge would fire on every single occurrence — overwriting the standing
     // order with a copy of itself and never creating the child at all. See
     // `provenance.recurrence`.
@@ -1318,7 +1316,7 @@ export class ProcurementService {
           .eq("restaurant_id", restaurantId)
           .eq("inventory_id", dto.inventoryId)
           .eq("provider_id", dto.providerId ?? "")
-          .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
+          .in("status", MERGEABLE_STATUSES)
           .order("requested_at", { ascending: false })
           .limit(1);
 
@@ -1359,8 +1357,11 @@ export class ProcurementService {
               dto.expectedDeliveryDate ?? existing.expected_delivery_date,
           })
           .eq("id", existing.id)
+          // The same allow-list on the write: an order approved between the
+          // lookup and this line is left alone, and a new order is placed.
+          .in("status", MERGEABLE_STATUSES)
           .select("*, inventory:inventory_id(wine_name)")
-          .single();
+          .maybeSingle();
 
       if (updateError) {
         this.logger.error("Failed to update existing procurement order", {
@@ -1371,43 +1372,51 @@ export class ProcurementService {
         throw updateError;
       }
 
-      this.logger.log("Merged order request into existing open order", {
-        restaurantId,
-        orderId: existing.id,
-        inventoryId: dto.inventoryId,
-        providerId: dto.providerId,
-      });
+      // No row back: the order moved past PENDING after the lookup. It is not
+      // rewritten; this request falls through and becomes its own order.
+      if (updated) {
+        this.logger.log("Merged order request into existing open order", {
+          restaurantId,
+          orderId: existing.id,
+          inventoryId: dto.inventoryId,
+          providerId: dto.providerId,
+        });
 
-      // The line has to move with the header. A merge that left the old line
-      // behind would produce an order whose header says 5 cases and whose only
-      // line says 2 — and the invoice matcher reads the LINE, so the discrepancy
-      // would surface as a vendor overage rather than as our own stale row.
-      await this.upsertOrderLine({
-        restaurantId,
-        orderId: existing.id,
-        dto,
-        units,
-        finalPrice,
-        statedPriceUnit,
-        fees,
-      });
+        // The line has to move with the header. A merge that left the old line
+        // behind would produce an order whose header says 5 cases and whose only
+        // line says 2 — and the invoice matcher reads the LINE, so the discrepancy
+        // would surface as a vendor overage rather than as our own stale row.
+        await this.upsertOrderLine({
+          restaurantId,
+          orderId: existing.id,
+          dto,
+          units,
+          finalPrice,
+          statedPriceUnit,
+          fees,
+        });
 
-      const updatedRow = updated as any;
-      const mergedRow: ProcurementOrderRow = {
-        ...updatedRow,
-        wine_name:
-          updatedRow.inventory?.wine_name ||
-          (updatedRow.inventory as any)?.wine?.name ||
-          null,
-      };
-      const mergedOrder = this.mapOrderRow(mergedRow);
-      await this.emitOrderChangeEvent(
-        restaurantId,
-        userId,
-        mergedOrder,
-        "updated",
+        const updatedRow = updated as any;
+        const mergedRow: ProcurementOrderRow = {
+          ...updatedRow,
+          wine_name:
+            updatedRow.inventory?.wine_name ||
+            (updatedRow.inventory as any)?.wine?.name ||
+            null,
+        };
+        const mergedOrder = this.mapOrderRow(mergedRow);
+        await this.emitOrderChangeEvent(
+          restaurantId,
+          userId,
+          mergedOrder,
+          "updated",
+        );
+        return { ...mergedOrder, mergedIntoOpenOrder: true };
+      }
+      this.logger.log(
+        "Open order left PENDING before the merge; placing a new order",
+        { restaurantId, orderId: existing.id },
       );
-      return mergedOrder;
     }
 
     const orderNumber = this.generateOrderNumber();

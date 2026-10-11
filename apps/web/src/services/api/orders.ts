@@ -68,6 +68,61 @@ export async function getOrders(
     : orders;
 }
 
+/** The gateway's own ceiling on one page of orders (`OrderFilterDto.limit`, `@Max(100)`). */
+const BOOK_PAGE_SIZE = 100;
+
+/**
+ * The house's WHOLE order book, read page by page (F-1132, rehit of F-117).
+ *
+ * `getOrders` returns the gateway's first page — the newest 50 — and /orders
+ * took its stage counts and "<Month> so far" figure from that page, so an
+ * older house's figures quietly stopped at fifty orders. This keeps asking
+ * until the gateway says there is no more. The number of pages is bounded by
+ * the total the first answer states, so a gateway that kept saying `hasMore`
+ * cannot keep it reading forever. Any failed page fails the whole read: a
+ * book with a hole in it is not the book.
+ */
+export async function getOrderBook(
+  params?: { status?: OrderStatus },
+  restaurantId?: string
+): Promise<Order[]> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const status = toBackendStatus(params?.status);
+  const byId = new Map<string, Order>();
+  const unkeyed: Order[] = [];
+  let withheld = false;
+  let lastPage = 1;
+  for (let page = 1; page <= lastPage; page += 1) {
+    const response = await apiClient.get<{
+      orders: Order[];
+      total: number;
+      hasMore?: boolean;
+      amountsWithheld?: true;
+    }>(`${ORDERS_PATH}`, {
+      params: { ...(status ? { status } : {}), page, limit: BOOK_PAGE_SIZE },
+    });
+    const body = response.data;
+    // An older gateway answered a bare array: that is the whole answer it has.
+    if (Array.isArray(body)) return body as unknown as Order[];
+    const rows = body?.orders ?? [];
+    if (body?.amountsWithheld === true) withheld = true;
+    // A row that moved onto the next page while we read is the same order.
+    for (const o of rows) {
+      if (o?.id) byId.set(o.id, o);
+      else unkeyed.push(o);
+    }
+    if (page === 1) {
+      const total = Number(body?.total);
+      lastPage = Number.isFinite(total) && total > 0 ? Math.ceil(total / BOOK_PAGE_SIZE) : 1;
+    }
+    if (body?.hasMore !== true || rows.length === 0) break;
+  }
+  const orders = [...byId.values(), ...unkeyed];
+  return withheld ? orders.map((o) => ({ ...o, amountsWithheld: true as const })) : orders;
+}
+
 /**
  * How many open orders the house has with each vendor, counted by the gateway
  * over the whole book (F-905). `{ [providerId]: n }`; a vendor with none open
@@ -707,6 +762,7 @@ export async function getOrderHistory(
 
 export const ordersApi = {
   getOrders,
+  getOrderBook,
   getOpenOrderCountsByProvider,
   getOrder,
   createOrder,
