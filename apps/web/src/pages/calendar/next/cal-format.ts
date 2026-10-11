@@ -246,7 +246,8 @@ export function stamp(iso: string | null | undefined): string {
  * The İznik seal, as a concrete hex.
  *
  * Every colour this page RENDERS comes from a token — `var(--seal)` and its
- * neighbours in `apps/web/src/styles/mudavym.css`. This one cannot: it is the
+ * neighbours in `apps/web/src/styles/mudavym.css` — except a custom type's own
+ * swatch, which is the colour the house picked for it. This one cannot: it is the
  * default swatch for a new event type, and that value is POSTed to
  * `/calendar/event-types` and stored on the row, so it has to be a literal the
  * gateway can keep. A stored record must not depend on which ground the person

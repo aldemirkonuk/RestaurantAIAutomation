@@ -43,7 +43,8 @@ import { cancelRemindersForEvent } from '../../../lib/reminder-scheduler';
 import { useDraftWriteKey, writeOutcomeUnknown } from '../../../lib/draftWriteKey';
 import { EM, SEAL_HEX, clock, longDay } from './cal-format';
 import ReminderRegister from './ReminderRegister';
-import type { CalEvent, CalendarData, CalendarPayload, EventStatus } from './useCalendarNextData';
+import { customTypeOf, type CalEvent, type CalendarData, type CalendarPayload, type EventStatus } from './useCalendarNextData';
+import { useMayActForTheHouse } from '../../../hooks/useMayActForTheHouse';
 
 /** The gateway's CalendarEventType enum (calendar.dto.ts:44-59). */
 const ENUM_TYPES = new Set([
@@ -131,7 +132,10 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
   const [title, setTitle] = useState(editing?.title ?? seed?.title ?? '');
   const [typeName, setTypeName] = useState(
-    editing?.type ?? (seed?.type && ENUM_TYPES.has(seed.type) ? seed.type : 'delivery'),
+    // A custom entry reopens on its own type's chip, found by its colour (F-1110).
+    (editing && customTypeOf(editing, data.eventTypes)?.name) ??
+      editing?.type ??
+      (seed?.type && ENUM_TYPES.has(seed.type) ? seed.type : 'delivery'),
   );
   // The stored row can carry values the gateway's own enums do not contain —
   // production has `event_type: 'audit'` and `status: 'active'`, neither of
@@ -143,6 +147,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   // A custom type is the whole house's: deleting it is asked first (F-694),
   // and the gateway lets only an owner or a manager do it.
   const [confirmTypeId, setConfirmTypeId] = useState<string | null>(null);
+  const mayDeleteType = useMayActForTheHouse();
   const [statusTouched, setStatusTouched] = useState(false);
   const [color, setColor] = useState(editing?.color ?? '');
   const [date, setDate] = useState(editing?.date ?? (target.mode === 'create' ? target.date : ''));
@@ -368,7 +373,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                     <span className="cn-swatch" style={{ background: t.color }} aria-hidden />
                     {t.name}
                   </button>
-                  {!t.isDefault && confirmTypeId !== t.id && (
+                  {!t.isDefault && mayDeleteType && confirmTypeId !== t.id && (
                     <button
                       type="button"
                       className="cn-chip cn-ink"
@@ -378,10 +383,11 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                       ×
                     </button>
                   )}
-                  {!t.isDefault && confirmTypeId === t.id && (
+                  {!t.isDefault && mayDeleteType && confirmTypeId === t.id && (
                     <span className="cn-row" role="group" aria-label={`Confirm deleting ${t.name}`} style={{ gap: 2 }}>
                       <span className="cn-quiet cn-tight">
-                        Delete “{t.name}” for the whole house? Entries keep the name; the colour goes.
+                        Delete “{t.name}” for the whole house? Entries marked with it keep its colour but
+                        lose its name.
                       </span>
                       <button
                         type="button"
