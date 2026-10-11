@@ -1111,6 +1111,48 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
     expect(db.tables.shifts.filter((s) => s.state === "open")).toHaveLength(0);
     expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
   });
+
+  /**
+   * F-1229 (residual of F-1150): the call-out notice and the cover push named
+   * the day as raw ISO ("server on 2026-09-07 09:00-17:00"). They now write it
+   * the way the house writes a date; the links keep the ISO date.
+   */
+  it.each([
+    [{ country: "TR", timezone: "Europe/Istanbul" }, "07.09.2026"],
+    [{ country: "US", timezone: "America/New_York" }, "9/7/2026"],
+    [{ country: null, timezone: null }, "Mon 7 Sept"],
+  ])(
+    "names the called-out day in the house's hand (%o)",
+    async (house, words) => {
+      const db = seed();
+      db.tables.restaurants = [{ id: RID, ...house }];
+      heldShift(db);
+      db.tables.team_members.push({
+        id: "m-ali",
+        restaurant_id: RID,
+        user_id: "user-ali",
+        display_name: "Ali",
+        hourly_wage: 20,
+      });
+      const svc = service(db);
+      const { open } = await svc.reportCallout(
+        OWNER,
+        RID,
+        "sh-held",
+        {} as any,
+      );
+      const notice = lastNotifications.persistForRestaurant.mock.calls[0][1];
+      expect(notice.message).toBe(`server on ${words} 09:00-17:00 is open.`);
+      expect(notice.actionUrl).toContain(WEEK);
+
+      await svc.offerCover(MANAGER, RID, (open as any).id, {
+        memberIds: ["m-ali"],
+      } as any);
+      const offer = pushOf(svc).mock.calls[0][1];
+      expect(offer.body).toBe(`server ${words} 09:00-17:00. Tap to claim.`);
+      expect(offer.data.actionUrl).toContain(WEEK);
+    },
+  );
 });
 
 describe("ScheduleService — a shift sheet saves what the editor saw (F-1032, F-1033)", () => {

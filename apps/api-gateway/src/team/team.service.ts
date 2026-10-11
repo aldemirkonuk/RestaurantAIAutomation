@@ -47,6 +47,7 @@ import {
   RemovalClock,
 } from "./pay-rules";
 import { houseFrame } from "../common/house-frame";
+import { weekWords } from "./house-date-words";
 import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import { stopGrantsOnLeaving } from "../integrations/stop-grants-on-leaving";
@@ -2562,10 +2563,12 @@ export class TeamService {
       if (error) throw new Error(error.message);
       const to = member?.user_id as string | null | undefined;
       if (!to || to === reviewerId) return false;
+      // The days as the house writes a date (F-1229), not the raw ISO.
+      const { locale } = await this.houseMoneyFor(restaurantId);
+      const first = row.start_date ? weekWords(row.start_date, locale) : "";
+      const last = row.end_date ? weekWords(row.end_date, locale) : "";
       const days =
-        row.start_date === row.end_date
-          ? `${row.start_date}`
-          : `${row.start_date} to ${row.end_date}`;
+        row.start_date === row.end_date ? first : `${first} to ${last}`;
       const word = row.status === "approved" ? "approved" : "turned down";
       const { error: insErr } = await this.sb.from("notifications").insert({
         user_id: to,

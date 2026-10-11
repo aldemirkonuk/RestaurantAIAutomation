@@ -5,6 +5,8 @@
 
 import { currencyLabel, formatMoney, inHouseMarks } from '@/lib/currency';
 import { displayGroupMark, parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { getHouseLocale } from '@/lib/houseCurrency';
+import { getHouseZone } from '@/lib/houseZone';
 
 export const EM = '—';
 
@@ -77,27 +79,59 @@ export function moneyName(code: string): string {
 }
 
 /**
- * `doc_date` is a Postgres `date` value (no time, no zone). Parsed bare, JS
- * reads it as UTC midnight and renders the PRIOR day west of UTC — construct
- * it as a local calendar day instead. Rolled-over impossibilities
- * ('2026-02-30') are refused, not silently normalized. (Backported from
- * documents-reports/next/so-format.ts's parseDay.)
+ * A date, the house's way (F-1209, same family as F-903 and F-1135).
+ *
+ * Two kinds of value arrive here:
+ *  - a CALENDAR DATE — `doc_date` is a Postgres `date` (`2026-03-02`, no time,
+ *    no zone). Parsed bare, JS reads it as UTC midnight and renders the PRIOR
+ *    day west of UTC, so it is written in UTC and stays the day the paper
+ *    says. Rolled-over impossibilities ('2026-02-30') are refused, not
+ *    silently normalized.
+ *  - an INSTANT — a claim's `opened_at`, `requested_at`, a letter's `sentAt`
+ *    — names a moment, and its day is the HOUSE's (`getHouseZone`; the page
+ *    calls `useHouseZone` so it re-renders when that lands). With no zone
+ *    known yet, the device's clock stands in, as everywhere else.
+ *
+ * Written in the house's formats (`getHouseLocale`), with the year when it is
+ * not this year on the house's calendar — a claim opened last March must not
+ * read like one opened this March.
  */
-function parseDay(iso: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return null;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const date = new Date(y, mo - 1, d);
-  return date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d
-    ? date
-    : new Date(NaN);
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function zoned(zone: string | null): { timeZone?: string } {
+  return zone ? { timeZone: zone } : {};
 }
 
-export function fmtDate(iso: string | null | undefined): string {
+function yearOf(d: Date, zone: string | null): string {
+  return new Intl.DateTimeFormat('en-CA', { year: 'numeric', ...zoned(zone) }).format(d);
+}
+
+export function fmtDate(
+  iso: string | null | undefined,
+  zone: string | null = getHouseZone(),
+  now: Date = new Date(),
+): string {
   if (!iso) return EM;
-  const d = parseDay(iso) ?? new Date(iso);
+  const m = DATE_ONLY.exec(iso);
+  let d: Date;
+  let at: string | null;
+  if (m) {
+    const [y, mo, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    d = new Date(Date.UTC(y, mo - 1, day));
+    if (d.getUTCFullYear() !== y || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== day) return EM;
+    at = 'UTC';
+  } else {
+    d = new Date(iso);
+    at = zone;
+  }
   if (!Number.isFinite(d.getTime())) return EM;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const thisYear = yearOf(d, at) === yearOf(now, zone);
+  return new Intl.DateTimeFormat(getHouseLocale(), {
+    month: 'short',
+    day: 'numeric',
+    ...(thisYear ? {} : { year: 'numeric' as const }),
+    ...zoned(at),
+  }).format(d);
 }
 
 /**

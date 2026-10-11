@@ -22,7 +22,7 @@
  * rang nothing — and only those are filled.
  */
 
-import { localDayKey } from '@/lib/localDay';
+import { getHouseZone } from '@/lib/houseZone';
 
 export interface TillLine {
   at: string | null;
@@ -47,49 +47,97 @@ export interface VelocitySeries {
   clipped: boolean;
 }
 
-/**
- * Midnight of the device-local day an instant falls on, `shift` days on.
- *
- * Local, not UTC, because the hour grid below places the same lines with
- * `getDay`/`getHours`: a Friday 20:00 PDT sale must sit on Friday's bar as well
- * as Friday's 8pm cell, not on a UTC Saturday. Stepped by calendar day, not by
- * 24 h, so a daylight-saving night neither skips nor repeats a bar.
+/*
+ * THE HOUSE'S CLOCK (F-1222, rehit of F-327). Both series place a line on the
+ * day, weekday and hour it fell on in the HOUSE's zone (`getHouseZone`;
+ * CellarNext calls `useHouseZone` so the page re-renders when it lands), the
+ * same day `countedDay` and `shortDate` name. F-327 made the bars and the grid
+ * agree, but on the reader's device: an Istanbul bar opened from London put a
+ * 01:30 sale on the night before. With no zone known yet, the device's clock
+ * stands in, as everywhere else on these pages.
  */
-function dayStart(ms: number, shift = 0): number {
-  const d = new Date(ms);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + shift).getTime();
+const clocks = new Map<string, Intl.DateTimeFormat>();
+
+/** One formatter per named zone; the device's is built afresh, as its zone can move. */
+function clock(zone: string | null): Intl.DateTimeFormat {
+  let f = zone ? clocks.get(zone) : undefined;
+  if (!f) {
+    const opts: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    };
+    try {
+      f = new Intl.DateTimeFormat('en-US', zone ? { ...opts, timeZone: zone } : opts);
+    } catch {
+      // A zone this engine does not know: the device's clock stands in.
+      return new Intl.DateTimeFormat('en-US', opts);
+    }
+    if (zone) clocks.set(zone, f);
+  }
+  return f;
+}
+
+const WEEKDAY: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+
+/** The `YYYY-MM-DD` day, Monday-first weekday and 0-23 hour of an instant on `zone`'s clock. */
+function placed(ms: number, zone: string | null): { day: string; dow: number; hour: number } {
+  const p = clock(zone).formatToParts(new Date(ms));
+  const get = (type: string) => p.find((x) => x.type === type)?.value ?? '';
+  return {
+    day: `${get('year')}-${get('month')}-${get('day')}`,
+    dow: WEEKDAY[get('weekday')] ?? 0,
+    hour: Number(get('hour')) % 24,
+  };
+}
+
+/**
+ * The calendar day `shift` days on from a `YYYY-MM-DD` day. Pure calendar
+ * arithmetic, not 24 h steps, so a daylight-saving night neither skips nor
+ * repeats a bar.
+ */
+function shiftDay(day: string, shift: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + shift)).toISOString().slice(0, 10);
 }
 
 /**
  * Quantity sold per day, over at most `window` days, clipped to the days the
  * till actually covers.
  */
-export function velocity(lines: TillLine[], window = 14): VelocitySeries {
+export function velocity(
+  lines: TillLine[],
+  window = 14,
+  zone: string | null = getHouseZone(),
+): VelocitySeries {
   const dated = lines
     .map((l) => ({ ms: l.at === null ? NaN : Date.parse(l.at), qty: l.qty ?? 0 }))
-    .filter((l) => Number.isFinite(l.ms));
+    .filter((l) => Number.isFinite(l.ms))
+    .map((l) => ({ day: placed(l.ms, zone).day, qty: l.qty }));
 
   if (dated.length === 0) {
     return { days: [], from: null, to: null, perDay: null, clipped: false };
   }
 
-  const first = Math.min(...dated.map((l) => l.ms));
-  const last = Math.max(...dated.map((l) => l.ms));
-  const lastDay = dayStart(last);
-  const firstDay = dayStart(first);
-  const capped = Math.max(firstDay, dayStart(last, -(window - 1)));
+  // `YYYY-MM-DD` sorts as the calendar does.
+  const keys = dated.map((l) => l.day).sort();
+  const firstDay = keys[0];
+  const lastDay = keys[keys.length - 1];
+  const earliest = shiftDay(lastDay, -(window - 1));
+  const capped = earliest > firstDay ? earliest : firstDay;
   const clipped = capped > firstDay;
 
   const byDay = new Map<string, number>();
   for (const l of dated) {
-    if (l.ms < capped) continue;
-    const k = localDayKey(l.ms);
-    byDay.set(k, (byDay.get(k) ?? 0) + l.qty);
+    if (l.day < capped) continue;
+    byDay.set(l.day, (byDay.get(l.day) ?? 0) + l.qty);
   }
 
   const days: DayPoint[] = [];
-  for (let t = capped; t <= lastDay; t = dayStart(t, 1)) {
-    const k = localDayKey(t);
+  for (let k = capped; k <= lastDay; k = shiftDay(k, 1)) {
     days.push({ date: k, qty: byDay.get(k) ?? 0 });
   }
 
@@ -106,7 +154,7 @@ export function velocity(lines: TillLine[], window = 14): VelocitySeries {
 export interface HourBucket {
   /** 0 = Monday. */
   dow: number;
-  /** Local hour, 0-23. */
+  /** The house's hour, 0-23. */
   hour: number;
   qty: number;
 }
@@ -120,7 +168,10 @@ export interface HourBucket {
  * about. The buckets here are whatever hours the house actually sold in, and
  * the caller renders the span it is given.
  */
-export function whenItSells(lines: TillLine[]): {
+export function whenItSells(
+  lines: TillLine[],
+  zone: string | null = getHouseZone(),
+): {
   buckets: HourBucket[];
   hours: number[];
   peak: HourBucket | null;
@@ -130,9 +181,7 @@ export function whenItSells(lines: TillLine[]): {
     if (l.at === null) continue;
     const ms = Date.parse(l.at);
     if (!Number.isFinite(ms)) continue;
-    const d = new Date(ms);
-    const dow = (d.getDay() + 6) % 7;
-    const hour = d.getHours();
+    const { dow, hour } = placed(ms, zone);
     const k = `${dow}:${hour}`;
     const b = map.get(k) ?? { dow, hour, qty: 0 };
     b.qty += l.qty ?? 0;
