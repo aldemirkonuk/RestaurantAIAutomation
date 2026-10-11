@@ -39,7 +39,9 @@
 import { useRef, useState } from 'react'
 import { HoldToApprove } from '../mudavym/HoldToApprove'
 import { Panel } from '../mudavym/Sheet'
-import { MONO } from './canonical-format'
+import { MONO, fmtMoney, fmtQty } from './canonical-format'
+import { displayGroupMark, parseDecimal, twoReadingsProblem } from '../../lib/parseDecimal'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 
 /**
  * Paths whose field is a number when the document stated nothing there.
@@ -61,6 +63,9 @@ const NUMERIC_SUFFIXES = [
   'taxInclusiveAmount',
 ]
 
+/** The numeric paths that are money, so the figure is said in the document's currency. */
+const MONEY_SUFFIXES = ['netPrice', 'netAmount', 'linesNetTotal', 'taxAmount', 'taxInclusiveAmount']
+
 export interface CorrectionDialogProps {
   path: string
   label: string
@@ -71,6 +76,8 @@ export interface CorrectionDialogProps {
    * by accident.
    */
   envelope: { value?: unknown; as_printed?: string | null } | null
+  /** The document's own currency, for saying a money figure back. Absent = unsymboled. */
+  currency?: string | null
   /** The gateway's own words when it refused. Shown verbatim. */
   error?: string | null
   busy?: boolean
@@ -92,6 +99,7 @@ export function CorrectionDialog({
   path,
   label,
   envelope,
+  currency,
   error,
   busy,
   onCancel,
@@ -117,6 +125,8 @@ export function CorrectionDialog({
    * input at the write would mean sealing one figure and writing another.
    */
   const held = useRef<unknown>(null)
+  const group = useHouseGroupMark()
+  const money = MONEY_SUFFIXES.some((s) => path.endsWith(s))
 
   /**
    * What would be sent, or why it cannot be read.
@@ -126,15 +136,23 @@ export function CorrectionDialog({
    * is. It used to be a submit handler that returned and did nothing, which is a
    * button that looks alive and is not; behind a hold it disables the control
    * and says why instead.
+   *
+   * F-1379: read the way the house writes numbers (`parseDecimal`, F-358), so
+   * "1,250" in a US house is 1250 and not 1.25; and when the house's mark and
+   * the screen's would read it two ways, ask rather than guess (F-799).
    */
   const reading = (): { ok: true; value: unknown } | { ok: false; why: string } => {
     if (clearIt) return { ok: true, value: null }
     if (numeric) {
-      const n = Number(text.replace(',', '.'))
       if (text.trim() === '')
         return { ok: false, why: 'Type the figure the paper prints, or tick "states nothing here".' }
-      if (!Number.isFinite(n))
+      // The figure as it was, untouched, is the figure — not re-read by a mark.
+      if (typeof current === 'number' && text === String(current)) return { ok: true, value: current }
+      const n = parseDecimal(text, group)
+      if (n === null)
         return { ok: false, why: `“${text}” is not a number this field can take.` }
+      const asked = twoReadingsProblem(text, group, displayGroupMark())
+      if (asked) return { ok: false, why: asked }
       return { ok: true, value: n }
     }
     return { ok: true, value: text }
@@ -164,6 +182,17 @@ export function CorrectionDialog({
       className="cd-no-print"
       footer={
         <div data-testid="correction-submit">
+          {read.ok && numeric && read.value != null && (
+            <p
+              data-testid="correction-will-record"
+              style={{ margin: '0 0 6px', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+            >
+              Will record:{' '}
+              <span style={{ fontFamily: MONO }}>
+                {money ? fmtMoney(read.value as number, currency) : fmtQty(read.value as number, currency)}
+              </span>
+            </p>
+          )}
           {!read.ok && (
             <p
               data-testid="correction-unreadable"
@@ -269,7 +298,7 @@ export function CorrectionDialog({
             value={reason}
             rows={2}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. the paper says 132,00 — the reader misread the 3"
+            placeholder="e.g. the paper says 132 — the reader misread the 3"
             style={{
               display: 'block',
               width: '100%',

@@ -10,6 +10,8 @@ const approveProposals = vi.hoisted(() => vi.fn());
 const rejectProposal = vi.hoisted(() => vi.fn());
 const runCatalogMatch = vi.hoisted(() => vi.fn());
 const setSaleUnits = vi.hoisted(() => vi.fn());
+const getTargetMargin = vi.hoisted(() => vi.fn());
+const house = vi.hoisted(() => ({ country: null as string | null }));
 
 vi.mock("../../services/api/posHub", () => ({
   getMatchProposals,
@@ -19,6 +21,10 @@ vi.mock("../../services/api/posHub", () => ({
   rejectProposal,
   runCatalogMatch,
   setSaleUnits,
+}));
+vi.mock("../../services/api/pricing", () => ({ getTargetMargin }));
+vi.mock("../../hooks/useHouseGroupMark", () => ({
+  useHouseCountryCode: () => house.country,
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -62,8 +68,14 @@ const queue = (o: Record<string, unknown> = {}) => ({
   ...o,
 });
 
+const pour = (confirmed: boolean, ml: number | null) => ({
+  pour: { confirmed, ml, confirmedAt: null, confirmedBy: null },
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
+  house.country = null;
+  getTargetMargin.mockResolvedValue(pour(true, 125));
   getMatchProposals.mockResolvedValue([proposal()]);
   getUnresolvedLines.mockResolvedValue(queue());
   getItemMappings.mockResolvedValue([]);
@@ -94,16 +106,64 @@ describe("PosMappingPanel", () => {
 
     await screen.findByText("ext-1");
     await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
-    // The glass size comes from the inventory row's own pour size (60ml), not
-    // a 150ml assumption.
-    await user.click(screen.getByRole("button", { name: /Glass 60ml/ }));
+    // The glass size is the house's CONFIRMED pour (125ml), not the row's
+    // pour_size_ml, whose database default cannot be told from a typed value
+    // (F-1384, ADR 0193 F7).
+    await user.click(await screen.findByRole("button", { name: /Glass 125ml/ }));
     await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
 
     await waitFor(() => expect(approveProposals).toHaveBeenCalled());
     expect(approveProposals).toHaveBeenCalledWith(
-      [{ proposal_id: "prop-1", sale_unit: "glass", sale_volume_ml: 60 }],
+      [{ proposal_id: "prop-1", sale_unit: "glass", sale_volume_ml: 125 }],
       undefined,
     );
+  });
+
+  it("asks for the glass when the house has not confirmed its pour, and never sends 150 (F-1384)", async () => {
+    getTargetMargin.mockResolvedValue(pour(false, 150));
+    const user = userEvent.setup();
+    render(
+      <PosMappingPanel
+        isOpen
+        onClose={() => {}}
+        inventory={[{ ...inventory[0], pourSizeMl: 150 }]}
+      />,
+    );
+
+    await screen.findByText("ext-1");
+    await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
+    await user.click(screen.getByRole("button", { name: "Glass…" }));
+    expect(
+      (screen.getByLabelText("Serve for Alvear Solera 1927") as HTMLSelectElement).value,
+    ).toBe("glass");
+    expect(screen.getByRole("button", { name: "Use this size" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Millilitres for Alvear Solera 1927"), "175");
+    await user.click(screen.getByRole("button", { name: "Use this size" }));
+    await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
+
+    await waitFor(() => expect(approveProposals).toHaveBeenCalled());
+    expect(approveProposals.mock.calls[0][0]).toEqual([
+      { proposal_id: "prop-1", sale_unit: "glass", sale_volume_ml: 175 },
+    ]);
+  });
+
+  it("reads a serve typed in ounces and says it in both units in a US house (F-1381)", async () => {
+    house.country = "US";
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    await screen.findByText("ext-1");
+    await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
+    await user.click(screen.getByRole("button", { name: "Other size" }));
+    await user.type(screen.getByLabelText("Millilitres for Alvear Solera 1927"), "1.5 oz");
+    expect(screen.getByTestId("serve-read-as").textContent).toBe("= 44 ml (1.5 oz)");
+    await user.click(screen.getByRole("button", { name: "Use this size" }));
+    await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
+
+    await waitFor(() => expect(approveProposals).toHaveBeenCalled());
+    expect(approveProposals.mock.calls[0][0]).toEqual([
+      { proposal_id: "prop-1", sale_unit: "shot", sale_volume_ml: 44 },
+    ]);
   });
 
   it("approves with an explicit null unit rather than defaulting to bottle", async () => {

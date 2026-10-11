@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { HousePriceCell, addedPriceNote, parsePriceInput, type AdviceLoad } from './HousePriceCell'
 import type { PriceAdvice } from '../../../services/api/pricing'
+import { readPourInput } from '../../settings/next/TargetMarginSection'
+import { readServeMl } from '../../../utils/volumeUtils'
 
 /**
  * ADR 0193 -- "Your price" on /inventory: the house's own bottle and glass
@@ -20,8 +22,15 @@ vi.mock('../../../services/api/pricing', () => ({
   confirmWinePour: (...a: unknown[]) => confirmWinePour(...a),
 }))
 // The house's thousands mark and the screen's, held per test (F-832).
-const marks = vi.hoisted(() => ({ house: null as '.' | ',' | null, screen: null as '.' | ',' | null }))
-vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => marks.house }))
+const marks = vi.hoisted(() => ({
+  house: null as '.' | ',' | null,
+  screen: null as '.' | ',' | null,
+  country: null as string | null,
+}))
+vi.mock('../../../hooks/useHouseGroupMark', () => ({
+  useHouseGroupMark: () => marks.house,
+  useHouseCountryCode: () => marks.country,
+}))
 vi.mock('../../../lib/parseDecimal', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../lib/parseDecimal')>()),
   displayGroupMark: () => marks.screen,
@@ -70,6 +79,7 @@ function mount(over: Partial<Parameters<typeof HousePriceCell>[0]> = {}) {
 beforeEach(() => {
   marks.house = null
   marks.screen = null
+  marks.country = null
   updateInventoryItem.mockReset()
   acceptPriceAdvice.mockReset()
   confirmWinePour.mockReset()
@@ -304,6 +314,33 @@ describe('HousePriceCell -- locks and a wine\'s own pour (round 3)', () => {
     expect(await screen.findByText(/A pour is between 10 and 500 ml/)).toBeInTheDocument()
     expect(confirmWinePour).not.toHaveBeenCalled()
     expect(updateInventoryItem).not.toHaveBeenCalled()
+  })
+})
+
+describe('a pour typed in ounces (F-1381)', () => {
+  it('a US house types "5 oz" for a wine\'s own pour, and 148 ml is confirmed', async () => {
+    marks.country = 'US'
+    confirmWinePour.mockResolvedValue({ inventoryId: 'inv-1', pour: { confirmed: true, ml: 148 } })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    expect(screen.getByText('pour ml/oz')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/pour in ml or oz for barolo/i), { target: { value: '5 oz' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(confirmWinePour).toHaveBeenCalledWith('inv-1', 148))
+  })
+
+  it('the house pour in Settings reads "5 oz" and says both units in a US house', () => {
+    const r = readPourInput('5 oz', null, true)
+    expect(r).toMatchObject({ canConfirm: true, ml: 148 })
+    expect(r.sentence).toMatch(/Confirm will record a 148 ml \(5 oz\) pour/)
+    expect(readPourInput('', null, true).sentence).toMatch(/in ml or oz/)
+  })
+
+  it('a bare number is still millilitres, and text is still refused', () => {
+    expect(readServeMl('150')).toBe(150)
+    expect(readServeMl('150 ml')).toBe(150)
+    expect(readServeMl('5 fl oz')).toBe(148)
+    expect(readServeMl('abc')).toBeNull()
   })
 })
 

@@ -21,7 +21,7 @@
 import { useState } from 'react'
 import type { Proposal, ReasonClass } from '../../services/api/deliveries'
 import { REASON_CLASSES } from '../../services/api/deliveries'
-import { EM, MONO, fmtStamp } from './canonical-format'
+import { EM, MONO, fmtMoney, fmtStamp } from './canonical-format'
 import { parseDecimal } from '../../lib/parseDecimal'
 import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 
@@ -191,7 +191,7 @@ export function ProposalThread({
               {p.note ?? REASON_SENTENCES[p.reason] ?? EM}
               {p.qty_proposed != null ? ` · ${p.qty_proposed}` : ''}
               {p.money_at_risk != null
-                ? ` · ${currency === 'TRY' ? '₺' : ''}${p.money_at_risk}`
+                ? ` · ${fmtMoney(p.money_at_risk, currency)}`
                 : ''}
             </span>
             <span style={{ display: 'block', fontFamily: MONO, fontSize: 9, color: 'var(--ink-4, #665D50)' }}>

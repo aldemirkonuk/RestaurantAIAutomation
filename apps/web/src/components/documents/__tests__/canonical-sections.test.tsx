@@ -13,9 +13,9 @@
  *   · a failed spine read is not an empty spine
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CanonicalSheet } from '../CanonicalSheet'
@@ -25,6 +25,7 @@ import { DegradedNotice, degradedReasons } from '../DegradedNotice'
 import { DoorFrame } from '../DoorFrame'
 import { ProposalThread } from '../ProposalThread'
 import { DeliveryGates } from '../DeliveryGates'
+import { CorrectionDialog } from '../CorrectionDialog'
 import type { DeliveryEvent, Proposal } from '../../../services/api/deliveries'
 import type {
   AdjudicatedLine,
@@ -33,6 +34,19 @@ import type {
   ExtractedLine,
   FieldEnvelope,
 } from '../../../services/api/canonical'
+
+// The house's thousands mark and the screen's, held per test (F-1379); null
+// = unknown, which is what every other test here reads.
+const marks = vi.hoisted(() => ({ house: null as '.' | ',' | null, screen: null as '.' | ',' | null }))
+vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => marks.house }))
+vi.mock('../../../lib/parseDecimal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/parseDecimal')>()),
+  displayGroupMark: () => marks.screen,
+}))
+afterEach(() => {
+  marks.house = null
+  marks.screen = null
+})
 
 const env = <T,>(value: T | null, extra: Partial<FieldEnvelope<T>> = {}): FieldEnvelope<T> => ({
   value,
@@ -1436,5 +1450,47 @@ describe('a staff reader sees the document without its money (M2)', () => {
     )
     expect(container.textContent).not.toContain('no money on this document')
     expect(container.textContent).toContain('amount kept for owners and managers')
+  })
+})
+
+describe('ProposalThread — money in the document’s own currency (F-1382)', () => {
+  it('prints a dollar figure with its sign and its grouping', () => {
+    render(<ProposalThread proposals={[proposal({ money_at_risk: 1250 })]} currency="USD" />)
+    expect(screen.getByTestId('proposal-row').textContent).toContain('$1,250.00')
+  })
+})
+
+describe('CorrectionDialog — a figure is read the way the house writes it (F-1379)', () => {
+  const dialog = (onSubmit = vi.fn()) => (
+    <CorrectionDialog
+      path="lines[0].netPrice"
+      label="Unit price, line 1"
+      envelope={{ value: 1200, as_printed: '1,200.00' }}
+      currency="USD"
+      onCancel={() => {}}
+      onSubmit={onSubmit}
+    />
+  )
+
+  it('reads "1,250" in a US house as 1250 and says so before the hold', () => {
+    marks.house = ','
+    marks.screen = ','
+    const onSubmit = vi.fn()
+    render(dialog(onSubmit))
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '1,250' } })
+    expect(screen.getByTestId('correction-will-record').textContent).toBe('Will record: $1,250.00')
+    const hold = screen.getByRole('button', { name: /Hold to seal/ })
+    fireEvent.keyDown(hold, { key: 'Enter' })
+    fireEvent.keyDown(hold, { key: 'Enter' })
+    expect(onSubmit.mock.calls[0][0]).toBe(1250)
+  })
+
+  it('asks rather than guessing when the house and the screen read it two ways', () => {
+    marks.house = '.'
+    marks.screen = ','
+    render(dialog())
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '1,250' } })
+    expect(screen.getByTestId('correction-unreadable').textContent).toMatch(/could be/)
+    expect(screen.queryByTestId('correction-will-record')).toBeNull()
   })
 })

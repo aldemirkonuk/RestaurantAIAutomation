@@ -1568,5 +1568,41 @@ describe("InventoryService", () => {
       );
       expect(errors.map((e) => e.property)).toContain("stockLive");
     });
+
+    it("takes a US half-barrel keg as a size, on a row and on a hand-recorded price (F-1383)", async () => {
+      const { plainToInstance } = await import("class-transformer");
+      const { validate } = await import("class-validator");
+      const {
+        CreateInventoryItemDto,
+        UpdateInventoryItemDto,
+        BulkInventoryLineDto,
+      } = await import("./dto/inventory.dto");
+      const { ManualObservationDto } =
+        await import("../vendor-intel/dto/manual-observation.dto");
+      const sized = (errors: { property: string }[]) =>
+        errors
+          .map((e) => e.property)
+          .filter((p) => /bottleSizeMl|unitVolumeMl/.test(p));
+      const dtos: Array<new () => object> = [
+        CreateInventoryItemDto,
+        UpdateInventoryItemDto,
+        BulkInventoryLineDto,
+      ];
+      for (const Dto of dtos) {
+        expect(
+          sized(await validate(plainToInstance(Dto, { bottleSizeMl: 58674 }))),
+        ).toEqual([]);
+        expect(
+          sized(await validate(plainToInstance(Dto, { bottleSizeMl: 60001 }))),
+        ).toEqual(["bottleSizeMl"]);
+      }
+      expect(
+        sized(
+          await validate(
+            plainToInstance(ManualObservationDto, { unitVolumeMl: 58674 }),
+          ),
+        ),
+      ).toEqual([]);
+    });
   });
 });

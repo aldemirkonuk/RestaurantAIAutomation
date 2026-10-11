@@ -28,7 +28,8 @@ import { useState } from 'react'
 import { cn } from '../../../lib/utils'
 import { fmtMoneyExact } from './bits'
 import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '../../../lib/parseDecimal'
-import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
+import { useHouseCountryCode, useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
+import { poursInOunces, readServeMl } from '../../../utils/volumeUtils'
 import { updateInventoryItem } from '../../../services/api/inventory'
 import {
   acceptPriceAdvice,
@@ -141,6 +142,7 @@ export function HousePriceCell({
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ tone: 'error' | 'info'; text: string } | null>(null)
   const group = useHouseGroupMark()
+  const ounces = poursInOunces(useHouseCountryCode())
 
   const wine = advice.status === 'ready' ? advice.byId.get(inventoryId) : undefined
   const winePour = wine?.pour?.source === 'wine' ? wine.pour.ml : null
@@ -169,10 +171,12 @@ export function HousePriceCell({
       return
     }
     // This wine's own pour (round 6c answer 3): empty = the house's pour.
+    // "5 oz" is read as ounces (F-1381); a bare number is ml, as before.
     const pourRaw = pourText.trim()
-    const pour = pourRaw === '' ? null : Number(pourRaw)
-    if (pour !== null && (!Number.isFinite(pour) || pour < 10 || pour > 500)) {
-      setNote({ tone: 'error', text: "A pour is between 10 and 500 ml. Leave it empty to use the house's pour." })
+    const pour = pourRaw === '' ? null : readServeMl(pourRaw)
+    if (pourRaw !== '' && (pour === null || pour < 10 || pour > 500)) {
+      const range = ounces ? '10 and 500 ml (0.3 and 16.9 oz)' : '10 and 500 ml'
+      setNote({ tone: 'error', text: `A pour is between ${range}. Leave it empty to use the house's pour.` })
       return
     }
     const pourChanged = pour !== winePour
@@ -273,10 +277,10 @@ export function HousePriceCell({
               field would otherwise read as "the house's pour" when it may not be. */}
           {advice.status === 'ready' && (
             <label className="flex items-center gap-1 text-[10px] text-gray-500" title="This wine's own pour, for glass advice. Empty = the house's pour.">
-              pour ml
+              {ounces ? 'pour ml/oz' : 'pour ml'}
               <input
-                aria-label={`Pour in ml for ${wineName} (empty = the house's pour)`}
-                inputMode="numeric"
+                aria-label={`Pour in ml${ounces ? ' or oz' : ''} for ${wineName} (empty = the house's pour)`}
+                inputMode={ounces ? 'text' : 'numeric'}
                 placeholder="house"
                 value={pourText}
                 onChange={(e) => setPourText(e.target.value)}
