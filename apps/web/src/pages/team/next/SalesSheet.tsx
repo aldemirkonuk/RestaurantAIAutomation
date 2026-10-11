@@ -34,6 +34,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getErrorMessage } from '@/services/api/client';
 import { houseToday } from '@/lib/houseZone';
+import { decodeCsvBytes } from '@/lib/menuCsvText';
 import {
   ingestSales,
   ingestSalesBatch,
@@ -110,7 +111,7 @@ export function SalesSheet({
   // ── several ──────────────────────────────────────────────────────────────
   const [floorDay, setFloorDay] = useState(today);
   const [typed, setTyped] = useState<SalesDraft[]>(() => floorRows(roster, today));
-  const [file, setFile] = useState<{ name: string; text: string } | null>(null);
+  const [file, setFile] = useState<{ name: string; text: string; why?: string } | null>(null);
   const [fallback, setFallback] = useState('');
   const fileInput = useRef<HTMLInputElement | null>(null);
 
@@ -123,7 +124,7 @@ export function SalesSheet({
   }, [members]);
 
   const csv = useMemo(
-    () => (file ? readSalesCsv(file.text, roster, fallback) : null),
+    () => (file ? (file.why ? { ok: false as const, why: file.why } : readSalesCsv(file.text, roster, fallback)) : null),
     [file, roster, fallback],
   );
   const severalRows: SalesDraft[] = file ? (csv?.ok ? csv.rows : []) : typed.filter((r) => !isBlank(r));
@@ -189,7 +190,13 @@ export function SalesSheet({
 
   const readFile = async (f: File) => {
     setResult(null);
-    setFile({ name: f.name, text: await f.text() });
+    // Read the bytes, not `f.text()`: Turkish Excel saves Windows-1254, and
+    // UTF-8 turned "Ayşe" into a name nobody on the roster has (F-1361).
+    try {
+      setFile({ name: f.name, text: decodeCsvBytes(await f.arrayBuffer()) });
+    } catch (e) {
+      setFile({ name: f.name, text: '', why: (e as Error).message });
+    }
   };
 
   const rosterUnknown = members === null;

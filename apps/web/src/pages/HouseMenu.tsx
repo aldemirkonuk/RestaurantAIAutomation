@@ -95,8 +95,9 @@ export default function HouseMenu() {
   // Choosing the current menu is an owner's or a manager's (ADR 0193).
   const role = (activeRole ?? user?.role ?? null) as string | null
   const canManage = role === 'owner' || role === 'manager'
-  // Read so the prices re-render in the house's money when the answer lands.
-  useHouseCurrency()
+  // Read so the prices re-render in the house's money when the answer lands,
+  // and handed to the menu choice so its prices are the house's too (F-1362).
+  const currency = useHouseCurrency()
   // Only the proof read for THIS house (F-273): after a house switch in the
   // same tab, the other house's proof is not shown.
   const proof = useMemo(() => readProof(activeRestaurantId), [activeRestaurantId])
@@ -298,10 +299,11 @@ export default function HouseMenu() {
                   <MenuPlan
                     menuId={proof.menuId}
                     canManage={canManage}
+                    currency={currency}
                     onCancel={() => setPlanning(false)}
                     onDone={(r) => {
                       setPlanning(false)
-                      setChosen(makeCurrentSentence(r))
+                      setChosen(makeCurrentSentence(r, currency))
                       setCurrentId(proof.menuId)
                     }}
                   />

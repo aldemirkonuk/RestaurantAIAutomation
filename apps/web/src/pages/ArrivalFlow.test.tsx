@@ -6,6 +6,7 @@ import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 import { setHouseCurrency } from '../lib/houseCurrency'
+import { formatMoney } from '../lib/currency'
 
 const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, getMenuPlan, makeMenuCurrent, getOnboardingProgress, auth } = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -1075,6 +1076,36 @@ describe('the first proof says whether its menu is current (F-1295)', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('This is now the current menu: 1 line')
     expect(screen.getByRole('heading', { name: 'Your menu, set by Mudavym.' })).toBeInTheDocument()
     expect(screen.queryByTestId('proof-not-current')).not.toBeInTheDocument()
+  })
+
+  // F-1362: the choice printed its prices bare ("1,250.00"), while /menu
+  // printed the same prices in the house's money.
+  it('the choice made here prints its prices in the house currency', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, role: 'owner' }
+    setHouseCurrency('TRY')
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [{ menuId: 'menu' }] })
+    const kind = (over: object) => ({ menuPrice: null, housePrice: null, result: 'not_linked', lastSet: null, setAfterRead: false, lock: null, ...over })
+    getMenuPlan.mockResolvedValue({
+      menuId: 'menu', current: false, readAt: null, generatedAt: '2026-10-11T12:00:00Z', fingerprint: 'fp-menu',
+      lines: [{
+        menuItemId: 'pencil', name: 'Smoky No. 4', producer: null, vintage: null, wineLibraryId: 'w1', inventoryId: 'i1', house: null,
+        bottle: kind({ kind: 'bottle', menuPrice: 1250, housePrice: 1000, result: 'change' }),
+        glass: kind({ kind: 'glass' }),
+        flag: null, returned: false, vintageMismatch: false,
+      }],
+      counts: { change: 1, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 1, new_wine: 0 },
+      dormantLocks: [], retiring: [], namesReadable: true, namesReason: null,
+    })
+    makeMenuCurrent.mockResolvedValue({
+      outcome: 'made_current', menuId: 'menu', previousMenuIds: [], lines: 1, priceSync: { locked: 1 }, flagged: 0, failed: [],
+      held: [{ menuItemId: 'pencil', name: 'Smoky No. 4', kind: 'bottle', lockId: 'l1', lockedPrice: 1250, lockedBy: null, lockedAt: null }],
+    })
+    mountWithQuery()
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }))
+    await waitFor(() => expect(document.body.textContent).toContain(`becomes ${formatMoney(1250, 'TRY')} (now ${formatMoney(1000, 'TRY')})`))
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain(`Smoky No. 4 (bottle, locked at ${formatMoney(1250, 'TRY')})`))
   })
 
   it('staff are told who chooses, and offered no choice', async () => {
