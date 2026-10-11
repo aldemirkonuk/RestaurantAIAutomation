@@ -727,6 +727,15 @@ export class NotificationsService {
        */
       area?: AreaLabel;
       /**
+       * A broadcast that only some people asked for (F-1338: the low-stock
+       * lines, from each person's own switches). Unlike `onlyUserIds` it is
+       * still ROUTED (ADR 0218): the ladder runs on the whole house first and
+       * this list then narrows who it alerted and who it put in the inbox, so
+       * a person who is Away still gets nothing and the owners-inbox-only
+       * step still never pushes.
+       */
+      wantedBy?: string[];
+      /**
        * Set by a caller that already sends its OWN push, with its own
        * opt-out and audience filtering: team broadcast
        * (`team.controller.ts` `broadcast()`, "One push path") and the Away
@@ -766,16 +775,26 @@ export class NotificationsService {
         userIds = userIds.filter((id) => allow.has(id));
       } else if (this.areaRouting && userIds.length) {
         const decision = await this.areaRouting.route(restaurantId, userIds, label);
-        userIds = [...new Set([...decision.alert, ...decision.inboxOnly])];
-        alertIds = decision.alert;
+        const want = opts.wantedBy ? new Set(opts.wantedBy) : null;
+        const alert = want
+          ? decision.alert.filter((id) => want.has(id))
+          : decision.alert;
+        const inboxOnly = want
+          ? decision.inboxOnly.filter((id) => want.has(id))
+          : decision.inboxOnly;
+        userIds = [...new Set([...alert, ...inboxOnly])];
+        alertIds = alert;
         routing = {
           label: decision.label,
           step: decision.step,
-          alerted: decision.alert.length,
-          inboxOnly: decision.inboxOnly.length,
+          alerted: alert.length,
+          inboxOnly: inboxOnly.length,
           heldAway: decision.heldAway,
           degraded: decision.degraded,
         };
+      } else if (opts.wantedBy) {
+        const want = new Set(opts.wantedBy);
+        userIds = userIds.filter((id) => want.has(id));
       }
       if (!userIds.length) return { inserted: 0, ids: [], routing };
 
@@ -857,7 +876,8 @@ export class NotificationsService {
           routing !== undefined && (routing.step !== "everyone" || routing.heldAway > 0);
         const liveIds =
           routing?.step === "owners_inbox_only" ? [] : userIds;
-        const emitTo = opts.onlyUserIds || narrowed
+        const emitTo =
+          opts.onlyUserIds || opts.wantedBy || narrowed
           ? liveIds.length
             ? this.websocketGateway.server.to(liveIds.map((id) => `user:${id}`))
             : null

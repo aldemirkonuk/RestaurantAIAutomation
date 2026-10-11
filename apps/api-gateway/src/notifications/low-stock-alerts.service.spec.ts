@@ -286,7 +286,7 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
       await svc.evaluateRestaurant("r1", [makeRow()], "R1");
       expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
       expect(
-        notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds.sort(),
+        notifications.persistForRestaurant.mock.calls[0][2].wantedBy.sort(),
       ).toEqual([NEW, OWNER].sort());
     });
 
@@ -302,7 +302,7 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
       ];
       await buildFor(prefs).evaluateRestaurant("r1", [makeRow()], "R1");
       expect(
-        notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds,
+        notifications.persistForRestaurant.mock.calls[0][2].wantedBy,
       ).not.toContain(STAFF);
       notifications.persistForRestaurant.mockClear();
       await buildFor(prefs).evaluateRestaurant(
@@ -311,7 +311,7 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
         "R1",
       );
       expect(
-        notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds,
+        notifications.persistForRestaurant.mock.calls[0][2].wantedBy,
       ).toContain(STAFF);
     });
 
@@ -336,7 +336,7 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
       const [, payload, opts] =
         notifications.persistForRestaurant.mock.calls[0];
       expect(payload.metadata.mode).toBe("digest");
-      expect(opts.onlyUserIds).toEqual([STAFF]);
+      expect(opts.wantedBy).toEqual([STAFF]);
     });
   });
 

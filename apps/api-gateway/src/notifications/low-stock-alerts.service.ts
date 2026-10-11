@@ -808,7 +808,7 @@ export class LowStockAlertsService {
     wines: LowStockRow[],
     restaurantName?: string,
     /** F-1338: the members whose own switches want this line; absent = all. */
-    onlyUserIds?: string[],
+    wantedBy?: string[],
     /** True only when an inbox row was actually written. The caller stamps the
      * ledger on this, so it must never report success it did not observe. */
   ): Promise<boolean> {
@@ -858,7 +858,7 @@ export class LowStockAlertsService {
           })),
         },
       },
-      onlyUserIds ? { onlyUserIds } : {},
+      wantedBy ? { wantedBy } : {},
     );
 
     // 2) Email — one grouped digest email for the burst.
@@ -923,7 +923,7 @@ export class LowStockAlertsService {
      */
     sweep?: { periodKey: string },
     /** F-1338: the members whose own row wants the digest; absent = all. */
-    onlyUserIds?: string[],
+    wantedBy?: string[],
   ): Promise<void> {
     if (rows.length === 0) return;
     const snapshotAt = rowsSnapshotAt ?? new Date().toISOString();
@@ -956,7 +956,7 @@ export class LowStockAlertsService {
       },
       {
         dedupeWithinMinutes: this.DIGEST_DEDUPE_MINUTES,
-        ...(onlyUserIds ? { onlyUserIds } : {}),
+        ...(wantedBy ? { wantedBy } : {}),
       },
     );
 
