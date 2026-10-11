@@ -76,6 +76,41 @@ describe("concentration sentences", () => {
     );
     expect(ev(1, 0.3)).toMatch(/highly concentrated, worth watching\.$/);
   });
+
+  // F-1190: the index cannot fall below 1/n, so equal shares across 2–4
+  // names read "highly concentrated" and across 5–6 "moderately".
+  it("reads a few equal names as evenly spread, on the excess over an even split", () => {
+    const even = (n: number, entity: string) =>
+      verbalize("concentration", {
+        entity,
+        measureLabel: "purchasing spend",
+        unit: "currency",
+        topShare: 1 / n,
+        topCount: 1,
+        hhi: 1 / n,
+        entityCount: n,
+      });
+    for (const n of [2, 3, 4])
+      expect(even(n, "vendors")).toMatch(
+        new RegExp(
+          `evenly spread across your ${n} vendors, not concentrated\\.$`,
+        ),
+      );
+    for (const n of [5, 6])
+      expect(even(n, "wines")).toMatch(/evenly spread across your \d wines/);
+    // 80/20 across two vendors is still a lopsided book.
+    expect(
+      verbalize("concentration", {
+        entity: "vendors",
+        measureLabel: "purchasing spend",
+        unit: "currency",
+        topShare: 0.8,
+        topCount: 1,
+        hhi: 0.68,
+        entityCount: 2,
+      }),
+    ).toMatch(/highly concentrated, worth watching\.$/);
+  });
 });
 
 describe("a lira house reads its non-money figures with its own decimal mark (F-1058)", () => {

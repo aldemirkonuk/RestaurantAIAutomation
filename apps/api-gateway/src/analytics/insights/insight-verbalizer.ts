@@ -46,6 +46,8 @@ export interface InsightEvidence {
   topShare?: number;
   topCount?: number;
   hhi?: number;
+  /** How many the share is split across; the concentration reading needs it (F-1190). */
+  entityCount?: number;
   r?: number;
   attribute?: string;
   attributeReading?: string;
@@ -203,14 +205,27 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       // "Worth watching" only where the index says so: below 1,500 the usual
       // reading is unconcentrated, and the sentence says that instead (F-132).
       const hhi10k = e.hhi != null ? e.hhi * 10000 : null;
+      // The index cannot fall below 1/n, so with a handful of names an even
+      // split read "highly concentrated" (3 equal vendors: 3,333). The lines
+      // are read on the excess over an even split, (HHI − 1/n)/(1 − 1/n),
+      // when the count is known (F-1190).
+      const n = e.entityCount ?? 0;
+      const level =
+        e.hhi == null
+          ? null
+          : n > 1
+            ? (Math.max(0, e.hhi - 1 / n) / (1 - 1 / n)) * 10000
+            : hhi10k;
       const reading =
-        hhi10k === null
+        level === null
           ? ""
-          : hhi10k >= 2500
+          : level >= 2500
             ? " — highly concentrated, worth watching"
-            : hhi10k >= 1500
+            : level >= 1500
               ? " — moderately concentrated, worth watching"
-              : " — well spread, not concentrated";
+              : n > 1 && level < 200
+                ? ` — evenly spread across your ${n} ${plural}, not concentrated`
+                : " — well spread, not concentrated";
       return `${who} ${fmtPct(e.topShare)} of ${e.measureLabel}${hhi10k !== null ? ` (HHI ${hhi10k.toFixed(0)})` : ""}${reading}.`;
     }
     case "correlation": {

@@ -224,6 +224,10 @@ export function stockoutProbability(params: {
 }): number | null {
   const mu = params.avgDemandPerPeriod * params.leadTime;
   const sigma = params.demandStdev * Math.sqrt(params.leadTime);
+  // Nothing on the shelf and nothing coming, against a demand: it is out now.
+  // The normal tail gives Φ(μ/σ) < 1 here, so an intermittent wine that had
+  // sold out ranked below wines still in stock (F-1191).
+  if (params.onHand <= 0 && mu > 0) return 1;
   if (sigma <= 0) return params.onHand >= mu ? 0 : 1;
   const z = (params.onHand - mu) / sigma;
   return 1 - normalCdf(z);

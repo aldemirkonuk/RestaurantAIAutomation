@@ -16,7 +16,10 @@ import {
   tableAttributeReading,
   InsightEvidence,
 } from "./insight-verbalizer";
-import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
+import {
+  ORDER_NOT_YET_ARRIVED_STATUSES,
+  ORDER_SPEND_STATUSES,
+} from "../../procurement/order-status";
 import {
   namedCurrencies,
   orderCurrency,
@@ -342,8 +345,18 @@ export const BASKET_MIN_LIFT = 1.3;
  *       may hold any of these sentences, so it is recomputed, not served. [integ rehearsal 2026-10-10:
  *       drafted as 13 on fix/sim-analytics-goals; 13 (F-341) and 14 (F-295)
  *       were taken first, so this is 15. Renumber again at landing if needed.]
+ *  16 — 2026-10-10 (F-1189..F-1192): the forecast gap leaves out the days
+ *       the manager ruled out, on both sides; a concentration line is read on
+ *       the excess over an even split, so three equal vendors no longer read
+ *       "highly concentrated"; and the stockout card counts bottles already
+ *       ordered, averages demand over the days a drink was on the list, keys
+ *       it by the house's item (drinks with no wine record included), and
+ *       calls a sold-out drink with a demand out of stock (risk 1), where it
+ *       said "Only 0 bottles". A row below 16 may say any of these, so it is
+ *       recomputed. [integ rehearsal 2026-10-10: one past 15; renumber at
+ *       landing if a sibling lane takes 16 first.]
  */
-export const INSIGHT_GENERATOR_VERSION = 15;
+export const INSIGHT_GENERATOR_VERSION = 16;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -1030,7 +1043,7 @@ export class InsightGeneratorService {
     // the loop below logs and names in `unread`: the family states no figure,
     // and the feed says which read it could not make (ADR 0292, 2026-10-07).
     const whole = (rows: unknown[]) => ({ data: rows, error: null });
-    const [cons, ords, inv, checks, tables, venue, goals] =
+    const [cons, ords, inv, checks, tables, venue, goals, open] =
       await Promise.allSettled([
         readWholeWindow("The insight bundle's consumption lines", () =>
           client
@@ -1059,7 +1072,7 @@ export class InsightGeneratorService {
         client
           .from("restaurant_inventory")
           .select(
-            "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+            "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, created_at, master_wine_library(primary_type)",
           )
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
@@ -1092,6 +1105,14 @@ export class InsightGeneratorService {
           .select("*")
           .eq("restaurant_id", restaurantId)
           .eq("status", "active"),
+        // Bottles already ordered and not yet here, as getInventoryScience
+        // reads them (F-630, F-1192): the stockout card counts them before it
+        // says "reorder".
+        client
+          .from("procurement_orders")
+          .select("inventory_id, bottles_total")
+          .eq("restaurant_id", restaurantId)
+          .in("status", ORDER_NOT_YET_ARRIVED_STATUSES),
       ]);
 
     // A failed slice still degrades to `[]` — one dead lens must not take the
@@ -1108,6 +1129,7 @@ export class InsightGeneratorService {
       ["restaurant_tables", tables],
       ["restaurant_venue_profiles", venue],
       ["analytics_goals", goals],
+      ["procurement_orders", open],
     ];
     const unread: string[] = zone ? [] : [HOUSE_ZONE_WORDS];
     for (const [table, r] of slices) {
@@ -1122,6 +1144,27 @@ export class InsightGeneratorService {
             `figure and is named as unread: ${r.value.error.code ?? "?"} ${r.value.error.message ?? r.value.error}`,
         );
         unread.push(BUNDLE_READ_WORDS[table]);
+      }
+    }
+    // The two order reads share one name in `unread`.
+    unread.splice(0, unread.length, ...new Set(unread));
+
+    // Per inventory row: bottles on order, null when an open order states no
+    // bottle count. The whole map is null when the read failed — never
+    // "nothing on order" (ADR 0067), the rule analytics.service.ts keeps.
+    let onOrder: Map<string, number | null> | null = null;
+    if (open.status === "fulfilled" && !open.value.error) {
+      onOrder = new Map();
+      for (const o of open.value.data || []) {
+        if (!o.inventory_id) continue;
+        const was = onOrder.has(o.inventory_id)
+          ? onOrder.get(o.inventory_id)!
+          : 0;
+        const bottles = Number(o.bottles_total);
+        onOrder.set(
+          o.inventory_id,
+          was === null || !(bottles > 0) ? null : was + bottles,
+        );
       }
     }
 
@@ -1154,6 +1197,7 @@ export class InsightGeneratorService {
         date: dayOf(o.delivered_at || o.created_at || ""),
       })),
       inventory: ok<any>(inv),
+      onOrder,
       // Each check carries its house day, by close else open (`houseDayOf`).
       checks: ok<any>(checks).map((c: any) => ({ ...c, houseDay: dayOf(c) })),
       tables: ok<any>(tables),
@@ -1235,6 +1279,28 @@ export class InsightGeneratorService {
       observed.push(byDay.has(day) && !excluded?.has(day));
     }
     return { dates, values, observed };
+  }
+
+  /**
+   * The days a drink's demand is averaged over (F-687, F-1192): the window,
+   * or fewer when it was listed inside it, counting the listing day — the
+   * rule analytics.service.ts `daysOnList` keeps, on this file's series,
+   * which ends yesterday. A sale dated before the listing (an import) moves
+   * the start back to it; an unknown listing date keeps the whole window.
+   */
+  private daysOnList(
+    listedAt: string | null | undefined,
+    rows: Array<{ date: string }>,
+    days: number,
+    zone: string | null,
+  ): number {
+    if (!listedAt || !zone) return days;
+    let first = String(listedAt).slice(0, 10);
+    for (const r of rows) if (r.date && r.date < first) first = r.date;
+    const span = Math.floor(
+      (Date.parse(houseToday(zone)) - Date.parse(first)) / 86400000,
+    );
+    return Number.isFinite(span) ? Math.min(days, Math.max(1, span)) : days;
   }
 
   // ==========================================================================
@@ -1411,6 +1477,7 @@ export class InsightGeneratorService {
           topShare,
           topCount: 3,
           hhi,
+          entityCount: totalsByWine.length,
         };
         push(
           withUnits(
@@ -1433,8 +1500,16 @@ export class InsightGeneratorService {
     // Forecast gap: train Holt-Winters on everything but the last 7 days, then
     // compare its out-of-sample forecast against what actually happened. This
     // is a genuine holdout — it scores `forecast`, never `fitted` (ADR 0064).
+    // A day the manager ruled out keeps its real figure in `values` (toDaily
+    // only marks it unobserved), so a 150-bottle event day read "127% ahead
+    // of forecast" (F-1189). It is left out of both sides of the gap, and in
+    // the training series it takes the figure from a week before.
+    const ruledOut = (i: number) => bundle.excludedDates.has(dates[i]);
+    const train = values.slice(0, -7);
+    for (let i = 0; i < train.length; i++)
+      if (ruledOut(i)) train[i] = i >= 7 ? train[i - 7] : 0;
     const hw = E.holtWintersAdditive(
-      values.slice(0, -7),
+      train,
       7,
       {
         alpha: 0.3,
@@ -1444,8 +1519,14 @@ export class InsightGeneratorService {
       7,
     );
     if (hw && uncountedDays.size === 0) {
-      const actual = values.slice(-7).reduce((a, b) => a + b, 0);
-      const predicted = hw.forecast.reduce((a, b) => a + Math.max(0, b), 0);
+      const from = values.length - 7;
+      let actual = 0;
+      let predicted = 0;
+      for (let k = 0; k < 7; k++) {
+        if (ruledOut(from + k)) continue;
+        actual += values[from + k];
+        predicted += Math.max(0, hw.forecast[k]);
+      }
       if (predicted > 0) {
         const gap = (actual - predicted) / predicted;
         const ev: InsightEvidence = {
@@ -1543,6 +1624,7 @@ export class InsightGeneratorService {
         topShare: sorted[0].total / total,
         topCount: 1,
         hhi,
+        entityCount: byVendor.size,
       };
       // Filed where the catalogue files it (ADR 0291): `categorize()` sorts
       // every vendor dimension into purchasing, and a type recorded under any
@@ -1574,17 +1656,20 @@ export class InsightGeneratorService {
     )
       return;
 
-    // Counted lines only, and no wine holding a line with no bottle figure:
-    // its risk would rest on demand it understates (ADR 0297).
-    const byWine = new Map<string, number[]>();
+    // Counted lines only, and no item holding a line with no bottle figure:
+    // its risk would rest on demand it understates (ADR 0297). Keyed by the
+    // house's item, as getInventoryScience keys it: keyed by master wine,
+    // every drink with no wine record had no demand and never ranked (F-1014,
+    // F-1192).
+    const byItem = new Map<string, Array<{ date: string; value: number }>>();
     const uncounted = new Set<string>();
     for (const c of bundle.consumption)
-      if (c.qty == null && c.wineId) uncounted.add(c.wineId);
+      if (c.qty == null && c.itemId) uncounted.add(c.itemId);
     for (const c of bundle.consumption) {
-      if (!c.wineId || c.qty == null || uncounted.has(c.wineId)) continue;
-      const arr = byWine.get(c.wineId) || [];
-      arr.push(c.qty);
-      byWine.set(c.wineId, arr);
+      if (!c.itemId || c.qty == null || uncounted.has(c.itemId)) continue;
+      const arr = byItem.get(c.itemId) || [];
+      arr.push({ date: c.date, value: c.qty });
+      byItem.set(c.itemId, arr);
     }
 
     // Every wine the risk could be computed for, not just a running maximum:
@@ -1598,39 +1683,45 @@ export class InsightGeneratorService {
       stockoutProbability: number;
       daysOfCover: number | null;
       onHand: number;
+      onOrder: number | null;
       rows: number;
-      wineId: string;
+      itemId: string;
     }> = [];
     for (const item of bundle.inventory) {
-      const qtys = byWine.get(item.master_wine_id) || [];
-      if (qtys.length < 5) continue;
-      const dailyMean = qtys.reduce((a: number, b: number) => a + b, 0) / 90;
-      const profile = E.demandProfile(
-        this.toDaily(
-          bundle.consumption
-            .filter((c) => c.wineId === item.master_wine_id && c.qty != null)
-            .map((c) => ({ date: c.date, value: c.qty as number })),
-          90,
-          bundle.zone,
-        ).values,
-      );
+      const rows = byItem.get(item.id) || [];
+      if (rows.length < 5) continue;
+      // Demand over the days the drink was on the list, not over 90 days it
+      // could not have sold (F-687, F-1192).
+      const days = this.daysOnList(item.created_at, rows, 90, bundle.zone);
+      const values = this.toDaily(rows, days, bundle.zone).values;
+      const dailyMean = values.reduce((a, b) => a + b, 0) / (days || 1);
+      const profile = E.demandProfile(values);
       if (!profile || profile.mean <= 0) continue;
+      const onHand = item.stock_live || 0;
+      // What the shelf will hold once what is already ordered arrives
+      // (F-630): an order with no bottle count adds nothing, and says so.
+      const onOrder =
+        bundle.onOrder === null
+          ? null
+          : bundle.onOrder.has(item.id)
+            ? bundle.onOrder.get(item.id)!
+            : 0;
       const prob = E.stockoutProbability({
-        onHand: item.stock_live || 0,
+        onHand: onHand + (onOrder ?? 0),
         avgDemandPerPeriod: profile.mean,
         demandStdev: profile.stdev,
         leadTime: 7,
       });
       if (prob !== null && dailyMean > 0.05) {
-        const onHand = item.stock_live || 0;
         ranked.push({
-          id: String(item.id ?? item.master_wine_id),
-          name: item.wine_name || item.master_wine_id,
+          id: String(item.id),
+          name: item.wine_name || item.master_wine_id || String(item.id),
           stockoutProbability: prob,
           daysOfCover: E.daysOfCover(onHand, profile.mean),
           onHand,
-          rows: qtys.length,
-          wineId: item.master_wine_id,
+          onOrder,
+          rows: rows.length,
+          itemId: String(item.id),
         });
       }
     }
@@ -1639,7 +1730,12 @@ export class InsightGeneratorService {
     const tiedAtTop =
       ranked.length > 1 &&
       E.sameValue(ranked[1].stockoutProbability, worst.stockoutProbability);
+    // An order the bottles of which cannot be counted leaves the risk unknown;
+    // "reorder" over it is the F-630 sentence again, so it is withheld.
+    if (worst?.onOrder === null) return;
     if (worst && worst.stockoutProbability > 0.25 && !tiedAtTop) {
+      const coming = worst.onOrder ? `, ${worst.onOrder} on order` : "";
+      const bottles = (n: number) => `${n} bottle${n === 1 ? "" : "s"}`;
       const ev: InsightEvidence = {
         entity: worst.name,
         measureLabel: "stockout risk",
@@ -1649,7 +1745,11 @@ export class InsightGeneratorService {
         // The wines actually ranked — not every active inventory row, most of
         // which had too little demand to be given a risk at all.
         peerCount: ranked.length,
-        attributeReading: `Only ${worst.onHand} bottles on hand vs its demand pattern — reorder before the next delivery window.`,
+        // An empty shelf is out of stock, never "Only 0 bottles" (F-1191).
+        attributeReading:
+          worst.onHand <= 0
+            ? `Out of stock${coming} — ${worst.onOrder ? "not enough for its demand before the next delivery window" : "reorder now"}.`
+            : `Only ${bottles(worst.onHand)} on hand${coming} vs its demand pattern — reorder before the next delivery window.`,
       };
       push(
         withUnits(
@@ -1663,7 +1763,7 @@ export class InsightGeneratorService {
           }),
           // Its demand's bottle basis (ADR 0297).
           this.unitsOf(
-            bundle.consumption.filter((c) => c.wineId === worst.wineId),
+            bundle.consumption.filter((c) => c.itemId === worst.itemId),
           ),
         ),
       );
@@ -2754,6 +2854,12 @@ interface Bundle {
     date: string;
   }>;
   inventory: any[];
+  /**
+   * Bottles ordered and not yet here, by inventory row; a row's null is an
+   * order with no bottle count, and the whole map is null when the read
+   * failed (F-1192).
+   */
+  onOrder: Map<string, number | null> | null;
   checks: any[];
   tables: any[];
   venueFeatures: Record<string, unknown> | null;
