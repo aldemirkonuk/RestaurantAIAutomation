@@ -20,6 +20,27 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "../communications/guards/non-production.guard";
 import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { holdsHouseMoney } from "./documents/document-money-gate";
+
+/**
+ * A standing order as this role may read it (F-1388). `target_price` is the
+ * price the house means to pay, one of the cost figures staff never read
+ * (`HOUSE_COST_KEYS`, inventory.controller.ts; ADR 0145), so a reader who does
+ * not hold the house's money gets it OMITTED, never nulled, and the reply
+ * says `amountsWithheld: true`. The wine, quantity and schedule stay.
+ */
+export function recurringOrderForRole<T extends object>(
+  row: T,
+  role: string | null | undefined,
+): T | (Omit<T, "target_price"> & { amountsWithheld: true }) {
+  if (holdsHouseMoney(role ?? null)) return row;
+  const out: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+  delete out.target_price;
+  return {
+    ...(out as Omit<T, "target_price">),
+    amountsWithheld: true as const,
+  };
+}
 
 @ApiTags("recurring-orders")
 /**
@@ -47,11 +68,14 @@ export class RecurringOrdersController {
   @ApiOperation({ summary: "List all recurring orders for a restaurant" })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
   @ApiResponse({ status: 200, description: "List of recurring orders" })
-  async list(@Param("restaurantId") restaurantId: string) {
+  async list(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
     try {
-      return await this.recurringOrdersService.listRecurringOrders(
-        restaurantId,
-      );
+      const rows =
+        await this.recurringOrdersService.listRecurringOrders(restaurantId);
+      return rows.map((row) => recurringOrderForRole(row, user?.role));
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to list recurring orders",
@@ -65,11 +89,12 @@ export class RecurringOrdersController {
   async getOne(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.recurringOrdersService.getRecurringOrder(
-        restaurantId,
-        id,
+      return recurringOrderForRole(
+        await this.recurringOrdersService.getRecurringOrder(restaurantId, id),
+        user?.role,
       );
     } catch (error) {
       throw new HttpException(

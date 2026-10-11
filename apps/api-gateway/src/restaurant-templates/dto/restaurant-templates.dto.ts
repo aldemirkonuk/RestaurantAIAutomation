@@ -58,6 +58,11 @@ export class TemplateResponseDto {
   @ApiProperty()
   body: string;
 
+  /** true on a vendor letter row whose words are kept for those who may send
+   *  it (F-1358): `body` is then empty because it was left out, not blank. */
+  @ApiPropertyOptional()
+  bodyWithheld?: boolean;
+
   @ApiProperty()
   type: string;
 

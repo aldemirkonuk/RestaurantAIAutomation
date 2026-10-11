@@ -22,7 +22,11 @@ import { ApiHeader, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubService } from "./pos-hub.service";
-import { PosMappingReviewService } from "./pos-mapping-review.service";
+import {
+  PosMappingReviewService,
+  type UnresolvedLineGroup,
+  type UnresolvedLinesResponse,
+} from "./pos-mapping-review.service";
 import { bellNoteForTill } from "./refused-checks-note";
 import {
   ListSaleUnitReviewQueryDto,
@@ -33,6 +37,45 @@ import {
   ApproveProposalDto,
   ApproveProposalsBatchDto,
 } from "./dto/pos-catalog-approve.dto";
+
+/**
+ * The unresolved queue as this role may read it (F-1387). `revenue_total` is
+ * what the till charged for each button, the house's takings, so a reader who
+ * does not hold the house's money (`holdsHouseMoney`, ADR 0145) gets it
+ * OMITTED per button and in the summary, never nulled, and the reply says
+ * `amountsWithheld: true`, as `registerForRole` does. The buttons, counts and
+ * units stay: they are the stock that did not move.
+ */
+export function unresolvedForRole(
+  result: UnresolvedLinesResponse,
+  role: string | null | undefined,
+):
+  | UnresolvedLinesResponse
+  | (Omit<UnresolvedLinesResponse, "summary" | "items"> & {
+      summary: Omit<UnresolvedLinesResponse["summary"], "revenue_total">;
+      items: Omit<UnresolvedLineGroup, "revenue_total">[];
+      amountsWithheld: true;
+    }) {
+  if (holdsHouseMoney(role ?? null)) return result;
+  const summary: Partial<UnresolvedLinesResponse["summary"]> = {
+    ...result.summary,
+  };
+  delete summary.revenue_total;
+  const items = result.items.map((group) => {
+    const item: Partial<UnresolvedLineGroup> = { ...group };
+    delete item.revenue_total;
+    return item as Omit<UnresolvedLineGroup, "revenue_total">;
+  });
+  return {
+    ...result,
+    summary: summary as Omit<
+      UnresolvedLinesResponse["summary"],
+      "revenue_total"
+    >,
+    items,
+    amountsWithheld: true,
+  };
+}
 
 /**
  * POS Hub — multi-POS ingestion surface.
@@ -498,12 +541,18 @@ export class PosHubController {
   @ApiOperation({
     summary: "POS lines that arrived and moved no stock, folded per button",
     description:
-      "The open `pos_unresolved_lines` queue (decision B20), grouped by (source, external_item_id, item_name, reason) with occurrences, units and revenue per button. `reason` is 'unmapped' (we do not know what the button is) or 'no_sale_volume' (we do, but not how much one sale removes). This table has had a writer since B20 and no reader in the product until now — a queue nobody can see is the dropped line B20 exists to prevent.",
+      "The open `pos_unresolved_lines` queue (decision B20), grouped by (source, external_item_id, item_name, reason) with occurrences, units and revenue per button. `reason` is 'unmapped' (we do not know what the button is) or 'no_sale_volume' (we do, but not how much one sale removes). This table has had a writer since B20 and no reader in the product until now — a queue nobody can see is the dropped line B20 exists to prevent. The revenue (per button and in the summary) is left out, with amountsWithheld, for a role that does not hold the house's money (F-1387).",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
-  async listUnresolved(@Param("restaurantId") restaurantId: string) {
+  async listUnresolved(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
     try {
-      return await this.mappingReview.listUnresolvedLines(restaurantId);
+      return unresolvedForRole(
+        await this.mappingReview.listUnresolvedLines(restaurantId),
+        user?.role ?? null,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Unresolved-line read failed",

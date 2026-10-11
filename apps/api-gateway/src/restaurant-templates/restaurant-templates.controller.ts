@@ -12,6 +12,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RestaurantTemplatesService } from "./restaurant-templates.service";
 import {
   CreateTemplateDto,
@@ -30,10 +31,15 @@ export class RestaurantTemplatesController {
   @ApiResponse({ status: 200, type: [TemplateResponseDto] })
   async listTemplates(
     @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user: { userId?: string },
   ): Promise<TemplateResponseDto[]> {
     try {
-      return await this.templatesService.listTemplates(restaurantId);
+      return await this.templatesService.listTemplates(
+        restaurantId,
+        user?.userId,
+      );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to list templates",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -47,10 +53,17 @@ export class RestaurantTemplatesController {
   async createTemplate(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: CreateTemplateDto,
+    @CurrentUser() user: { userId?: string },
   ): Promise<TemplateResponseDto> {
     try {
-      return await this.templatesService.createTemplate(restaurantId, dto);
+      return await this.templatesService.createTemplate(
+        restaurantId,
+        dto,
+        user?.userId,
+      );
     } catch (error) {
+      // A refusal (a letter template, F-1358) reaches the caller as itself.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to create template",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -65,14 +78,17 @@ export class RestaurantTemplatesController {
     @Param("restaurantId") restaurantId: string,
     @Param("templateId") templateId: string,
     @Body() dto: UpdateTemplateDto,
+    @CurrentUser() user: { userId?: string },
   ): Promise<TemplateResponseDto> {
     try {
       return await this.templatesService.updateTemplate(
         restaurantId,
         templateId,
         dto,
+        user?.userId,
       );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to update template",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -86,11 +102,17 @@ export class RestaurantTemplatesController {
   async deleteTemplate(
     @Param("restaurantId") restaurantId: string,
     @Param("templateId") templateId: string,
+    @CurrentUser() user: { userId?: string },
   ): Promise<{ success: boolean }> {
     try {
-      await this.templatesService.deleteTemplate(restaurantId, templateId);
+      await this.templatesService.deleteTemplate(
+        restaurantId,
+        templateId,
+        user?.userId,
+      );
       return { success: true };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to delete template",
         HttpStatus.INTERNAL_SERVER_ERROR,
