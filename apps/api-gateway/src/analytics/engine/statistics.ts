@@ -285,6 +285,42 @@ export function trendPerPeriodPct(ys: number[], at?: number[]): number | null {
   return reg.slope / Math.abs(m);
 }
 
+/**
+ * `trendPerPeriodPct` for a series with a weekly shape (F-1187): the slope is
+ * fitted within each weekday (both position and value are taken from that
+ * weekday's own mean), so a busy Friday late in the window is not read as
+ * growth and a quiet Monday as decline. Flat weeks give a slope of 0 whatever
+ * weekday the window ends on; a real trend is recovered as it is. `groups`
+ * names each value's weekday. Still a share of the mean level.
+ */
+export function seasonalTrendPerPeriodPct(
+  ys: number[],
+  at: number[],
+  groups: number[],
+): number | null {
+  const n = ys.length;
+  if (n < 2 || at.length !== n || groups.length !== n) return null;
+  const sums = new Map<number, { x: number; y: number; k: number }>();
+  for (let i = 0; i < n; i++) {
+    const s = sums.get(groups[i]) ?? { x: 0, y: 0, k: 0 };
+    s.x += at[i];
+    s.y += ys[i];
+    s.k += 1;
+    sums.set(groups[i], s);
+  }
+  let sxx = 0;
+  let sxy = 0;
+  for (let i = 0; i < n; i++) {
+    const s = sums.get(groups[i])!;
+    const dx = at[i] - s.x / s.k;
+    sxx += dx * dx;
+    sxy += dx * (ys[i] - s.y / s.k);
+  }
+  const m = mean(ys);
+  if (sxx === 0 || m === null || Math.abs(m) < 1e-12) return null;
+  return sxy / sxx / Math.abs(m);
+}
+
 /** Simple (trailing) moving average series. Window w. */
 export function movingAverage(xs: number[], w: number): number[] {
   if (w <= 1) return [...xs];
