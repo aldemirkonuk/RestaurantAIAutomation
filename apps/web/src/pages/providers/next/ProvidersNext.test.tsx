@@ -139,8 +139,11 @@ vi.mock('./useVendorBranches', async () => {
 // the gateway. This file is about the GRID and the sheet; the ladder's rungs,
 // counts, banner and empty states are asserted in VendorScopes.test.tsx against
 // a mocked apiClient. The double shows every card on "All my vendors", chosen,
-// so no banner draws here.
-vi.mock('./useVendorScopes', () => ({
+// so no banner draws here. Like the real hook it reads `?q=` once, at mount
+// (useState), so the route's remount is what a palette search relies on.
+vi.mock('./useVendorScopes', async () => {
+  const { useState } = await import('react');
+  return {
   useVendorScopes: (cards: unknown[]) => ({
     scope: 'all',
     choose: vi.fn(),
@@ -162,10 +165,16 @@ vi.mock('./useVendorScopes', () => ({
       result: null,
       wine: { status: 'idle' },
     },
-    book: { q: '', setQ: vi.fn(), wine: { status: 'idle' }, sellerOf: () => null },
+    book: {
+      q: useState(() => new URLSearchParams(window.location.search).get('q') ?? '')[0],
+      setQ: vi.fn(),
+      wine: { status: 'idle' },
+      sellerOf: () => null,
+    },
     refetchSupply: vi.fn(),
   }),
-}));
+  };
+});
 
 // The scorecard (ADR 0207): the grid reads each card's one fact from the Roll
 // Call answer, the second view is the Roll Call, and the sheet carries the
@@ -197,7 +206,8 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRole: auth.role, user: { role: auth.role }, activeRestaurantId: 'r1' }),
 }));
 
-import ProvidersNext from './ProvidersNext';
+import ProvidersNext, { ProvidersNextRoute } from './ProvidersNext';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 
 function provider(over: Partial<Provider>): Provider {
   return {
@@ -404,6 +414,60 @@ describe('ProvidersNext', () => {
     window.history.replaceState({}, '', '/vendors?add=1');
     render(<ProvidersNext />);
     expect(screen.queryByTestId('new-vendor-sheet')).not.toBeInTheDocument();
+  });
+
+  // F-1354: the palette navigates with the router while this page is open;
+  // the page reads its address once, so the route mounts it afresh. In the
+  // browser the router's push is also window.location, which `go` mirrors.
+  describe('a palette search made from /vendors', () => {
+    function Go({ to }: { to: string }) {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          data-testid={`go ${to}`}
+          onClick={() => {
+            window.history.pushState({}, '', to);
+            navigate(to);
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    const atVendors = (path: string, goes: string[]) => {
+      window.history.replaceState({}, '', path);
+      return render(
+        <MemoryRouter initialEntries={[path]}>
+          <ProvidersNextRoute />
+          {goes.map((to) => (
+            <Go key={to} to={to} />
+          ))}
+        </MemoryRouter>,
+      );
+    };
+
+    it('puts the new name in the search box', () => {
+      // The box shows over a book with someone in it.
+      mockData.current = {
+        ...base,
+        cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+      };
+      atVendors('/vendors?scope=all&q=efes', ['/vendors?scope=all&q=kavakl%C4%B1dere']);
+      expect(screen.getByTestId('book-q')).toHaveValue('efes');
+
+      fireEvent.click(screen.getByTestId('go /vendors?scope=all&q=kavakl%C4%B1dere'));
+      expect(screen.getByTestId('book-q')).toHaveValue('kavaklıdere');
+    });
+
+    it('opens the add-a-vendor sheet for "Add vendor"', () => {
+      auth.role = 'manager';
+      atVendors('/vendors', ['/vendors?add=1']);
+      expect(screen.queryByTestId('new-vendor-sheet')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('go /vendors?add=1'));
+      expect(screen.getByTestId('new-vendor-sheet')).toBeInTheDocument();
+    });
   });
 
   it('keeps the add-a-vendor sheet shut without ?add=1', () => {

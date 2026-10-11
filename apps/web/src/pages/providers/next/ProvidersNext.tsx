@@ -21,6 +21,7 @@ import { useCanChangeVendors } from './useCanChangeVendors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Stub, Wordmark } from "@/components/mudavym";
 import type { Provider } from "../../../services/api/providers";
 import { ink } from "../../../lib/mudavym/motion";
@@ -254,6 +255,19 @@ function BucketCard({
       </dl>
     </button>
   );
+}
+
+/**
+ * The route's element (App.tsx). The page reads its address (`?q=`, `?add=`,
+ * `?vendor=`, `?scope=`) once, at mount, and keeps it with replaceState, which
+ * the router never sees. So a router navigation that carries a query — the
+ * palette's "Search vendors for x" or "Add vendor" while already here — mounts
+ * the page afresh to read it (F-1354); a bare /vendors link keeps what is on
+ * screen.
+ */
+export function ProvidersNextRoute() {
+  const { search, key } = useLocation();
+  return <ProvidersNext key={search ? key : "bare"} />;
 }
 
 export default function ProvidersNext() {
