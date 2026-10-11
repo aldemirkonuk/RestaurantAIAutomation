@@ -449,6 +449,26 @@ describe('ReceiptsNext', () => {
     expect(await screen.findByText(/a viewing link could not be created/)).toBeInTheDocument();
   });
 
+  it('says the paper is kept for owners and managers when the gateway withholds it (F-1312)', async () => {
+    render(
+      <PaperPane
+        doc={doc({
+          storage_path: 'r/1/inv.jpg',
+          imageUrl: null,
+          imageUrlReason: 'the paper is kept for owners and managers',
+        })}
+        detailKnown
+        fetchedAt={Date.now()}
+        onRefresh={() => {}}
+        refreshing={false}
+      />,
+      { wrapper },
+    );
+    expect(await screen.findByText(/kept for owners and managers/)).toBeInTheDocument();
+    expect(screen.queryByText(/a viewing link could not be created/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+  });
+
   it('picks the renderer by the stored content type, not the filename (sim F-285)', async () => {
     const pane = (d: ReturnType<typeof doc>) => (
       <PaperPane doc={d} detailKnown fetchedAt={Date.now()} onRefresh={() => {}} refreshing={false} />

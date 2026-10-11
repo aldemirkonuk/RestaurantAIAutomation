@@ -71,6 +71,12 @@ export interface ProcurementDocument {
   storage_path?: string | null
   /** Short-lived signed URL for the stored photo/PDF (detail endpoint only). */
   imageUrl?: string | null
+  /**
+   * Why `imageUrl` is null, in the gateway's words (`signOriginal`): nothing
+   * stored, the link failed, or the paper is kept for owners and managers
+   * (F-1299). Detail endpoint only.
+   */
+  imageUrlReason?: string | null
   provider_id?: string | null
   order_id?: string | null
   filename?: string | null

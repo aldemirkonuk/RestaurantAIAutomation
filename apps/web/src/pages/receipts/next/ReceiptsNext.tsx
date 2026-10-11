@@ -617,6 +617,9 @@ export function previewKind(
   return 'image';
 }
 
+/** The gateway's reason when the reader may not open the paper (`signOriginal`, F-1299). */
+const PAPER_WITHHELD = /^the paper is kept for/i;
+
 export function PaperPane({
   doc,
   detailKnown,
@@ -689,6 +692,15 @@ export function PaperPane({
   let body: ReactNode;
   if (!detailKnown) {
     body = <p style={PAPER_NOTE}>Reading the stored document…</p>;
+  } else if (!doc.imageUrl && PAPER_WITHHELD.test(doc.imageUrlReason ?? '')) {
+    // The gateway kept the vendor's paper back for this reader (F-1299): that
+    // is a decision, not a failing link, so no "Try again" (F-1312).
+    body = (
+      <p style={PAPER_NOTE}>
+        The paper for this document is kept for owners and managers. Ask one of them if you need
+        to see it.
+      </p>
+    );
   } else if (!doc.storage_path) {
     body = (
       <p style={PAPER_NOTE}>

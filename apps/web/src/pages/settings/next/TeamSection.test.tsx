@@ -16,7 +16,12 @@ vi.mock('@/lib/houseZone', () => ({ useHouseZone: () => 'Europe/Istanbul' }));
 
 const FUTURE = '2099-01-01T00:00:00Z';
 
-function mount(role: 'owner' | 'manager') {
+const INVITES = [
+  { id: 'i1', code: 'OWNR2345', role: 'owner', expires_at: FUTURE, created_at: null, target_email: 'deniz@example.test' },
+  { id: 'i2', code: 'STAF2345', role: 'staff', expires_at: FUTURE, created_at: null, target_email: null },
+];
+
+function mount(role: 'owner' | 'manager', invites: unknown[] = INVITES) {
   const data = {
     role,
     canManage: true,
@@ -34,10 +39,7 @@ function mount(role: 'owner' | 'manager') {
       data: {
         members: [],
         invitesDenied: false,
-        invites: [
-          { id: 'i1', code: 'OWNR2345', role: 'owner', expires_at: FUTURE, created_at: null, target_email: 'deniz@example.test' },
-          { id: 'i2', code: 'STAF2345', role: 'staff', expires_at: FUTURE, created_at: null, target_email: null },
-        ],
+        invites,
       },
     },
   } as unknown as SettingsNextData;
@@ -62,5 +64,28 @@ describe('the invite book (F-1140)', () => {
   it('an owner is offered Revoke on both', () => {
     mount('owner');
     expect(screen.getAllByRole('button', { name: 'Revoke' })).toHaveLength(2);
+  });
+});
+
+// F-1298 left this owed (F-1313): the gateway sends no code for an invite the
+// viewer could not have given, so a manager's book lists an owner's bare-code
+// invite as "An owner’s invite", never "Code null", and offers no Revoke.
+describe('an owner’s invite a manager sees without its code (F-1298, F-1313)', () => {
+  const codeless = [
+    { id: 'i3', code: null, role: 'owner', expires_at: FUTURE, created_at: null, target_email: null },
+  ];
+
+  it('is named as an owner’s invite, with no code anywhere on the row', () => {
+    mount('manager', codeless);
+    expect(screen.getByText('An owner’s invite')).toBeInTheDocument();
+    expect(screen.getByText(/Its code is shown only to someone who could give this invite/)).toBeInTheDocument();
+    expect(screen.queryByText(/Code /)).toBeNull();
+    expect(screen.queryByText(/null/)).toBeNull();
+  });
+
+  it('offers no Revoke, and says who can withdraw it', () => {
+    mount('manager', codeless);
+    expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
+    expect(screen.getByText('Only an owner can withdraw an invite for an owner.')).toBeInTheDocument();
   });
 });

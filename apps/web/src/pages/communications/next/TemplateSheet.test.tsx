@@ -271,3 +271,49 @@ describe('leaving an unsaved template keeps it (COMMS-W34)', () => {
     expect(screen.getByTestId('tpl-unsaved')).toBeInTheDocument();
   });
 });
+
+// F-1301 left this owed (F-1313): the gateway refuses a template save from
+// anyone who is not an owner, a manager or allowed to send to vendors, so the
+// sheet reads as a library for them, says why once, and offers no write.
+describe('a reader without send standing reads the library (F-1301, F-1313)', () => {
+  const kept = {
+    id: 't1',
+    name: 'Standing order query',
+    subject: 'This week’s order',
+    body: 'Merhaba,',
+    category: 'price_query',
+    mergeFields: null,
+    lastEditedBy: null,
+    lastEditedAt: null,
+    lastUsedAt: null,
+  };
+  const standing = (maySend: boolean) => ({
+    sendOrAsk: { readable: true, maySend, mode: maySend ? 'send' : null, basis: maySend ? 'manager' : null, grant: null, sentence: null },
+  });
+
+  it('says it can be read, offers no new template, and opens one with nothing to save', () => {
+    mockData.current = { ...base, sender: standing(false), templates: [kept] };
+    render(<TemplateSheet onClose={() => {}} />);
+    expect(screen.getByTestId('tpl-read-only')).toHaveTextContent(
+      'Saving a template is for owners, managers and anyone allowed to send to vendors.',
+    );
+    expect(screen.queryByText('Write a new template')).toBeNull();
+
+    fireEvent.click(screen.getByText('Standing order query'));
+    expect(screen.getByLabelText('The letter')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Name')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Purpose')).toBeDisabled();
+    expect(screen.queryByText('Save the template')).toBeNull();
+    expect(screen.queryByText('Discard')).toBeNull();
+    // The sheet's own Close, and the editor's Close where Discard stood.
+    expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it('someone allowed to send keeps the writing desk', () => {
+    mockData.current = { ...base, sender: standing(true), templates: [kept] };
+    render(<TemplateSheet onClose={() => {}} />);
+    expect(screen.queryByTestId('tpl-read-only')).toBeNull();
+    expect(screen.getByText('Write a new template')).toBeInTheDocument();
+  });
+});
