@@ -102,6 +102,12 @@ function cappedDb(
         filters.push((r) => vs.includes(pathGet(r, c))),
         q
       ),
+      // Only `not(col, "is", null)` is modelled (F-1165's shelf-count read).
+      not: (c: string, op: string, v: any) => {
+        if (op === "is" && v === null)
+          filters.push((r) => (pathGet(r, c) ?? null) !== null);
+        return q;
+      },
       gte: (c: string, v: any) => (filters.push((r) => pathGet(r, c) >= v), q),
       lte: (c: string, v: any) => (filters.push((r) => pathGet(r, c) <= v), q),
       gt: (c: string, v: any) => (filters.push((r) => pathGet(r, c) > v), q),
