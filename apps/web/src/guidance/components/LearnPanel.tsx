@@ -24,6 +24,8 @@ interface LearnPanelProps {
   anchorRef: RefObject<HTMLButtonElement | null>
   onClose: () => void
   onDismissChecklist?: () => void
+  /** "Don't show again" was not kept (F-1210). */
+  dismissFailed?: boolean
 }
 
 export function LearnPanel({
@@ -32,6 +34,7 @@ export function LearnPanel({
   anchorRef,
   onClose,
   onDismissChecklist,
+  dismissFailed = false,
 }: LearnPanelProps) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -272,6 +275,11 @@ export function LearnPanel({
           >
             Don&apos;t show again
           </button>
+          {dismissFailed && (
+            <p role="alert" className="text-xs text-red-700 text-center">
+              We could not hide this list just now. Try again.
+            </p>
+          )}
         </div>
       )}
     </motion.div>,

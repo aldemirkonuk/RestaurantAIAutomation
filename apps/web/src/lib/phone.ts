@@ -138,8 +138,17 @@ const ISO_ALIASES: Record<string, CountryCode> = {
 
 /** Map free-text country (form field) to default phone country. */
 export function countryToPhoneDefault(country?: string): CountryCode {
+  return countryToPhoneCountry(country) ?? 'US'
+}
+
+/**
+ * The phone country a free-text country names, or undefined when it names
+ * none: never a guessed 'US', so a number is never read as +1 by default
+ * (F-1212).
+ */
+export function countryToPhoneCountry(country?: string): CountryCode | undefined {
   const raw = country?.trim()
-  if (!raw) return 'US'
+  if (!raw) return undefined
 
   const lower = raw.toLowerCase()
   if (ISO_ALIASES[lower]) return ISO_ALIASES[lower]
@@ -156,7 +165,7 @@ export function countryToPhoneDefault(country?: string): CountryCode {
   if (lower.includes('united kingdom')) return 'GB'
   if (lower.includes('türkiye') || lower.includes('turkey')) return 'TR'
 
-  return 'US'
+  return undefined
 }
 
 export function isValidPhone(value: string | undefined): boolean {
@@ -176,6 +185,15 @@ export function toE164(value: string | undefined, defaultCountry?: CountryCode):
     /* keep raw */
   }
   return v
+}
+
+/**
+ * A person's own number, kept in E.164 read in the house's country (F-1212).
+ * A number written with its + needs no country; one that cannot be read in
+ * the house's country is kept as typed, never guessed into another.
+ */
+export function toE164ForCountry(value: string | undefined, country?: string): string {
+  return toE164(value, countryToPhoneCountry(country))
 }
 
 export function formatPhoneDisplay(value: string | undefined, defaultCountry?: CountryCode): string {

@@ -6,7 +6,7 @@ import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 import { setHouseCurrency } from '../lib/houseCurrency'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, auth } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, getOnboardingProgress, auth } = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
@@ -14,6 +14,7 @@ const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, revie
   addCustomProvider: vi.fn(),
   reviewMenuItem: vi.fn(),
   listMenuVersions: vi.fn(),
+  getOnboardingProgress: vi.fn(),
   auth: {
     activeRestaurantId: undefined as string | undefined,
     user: { name: 'Selin Kaya', emailVerified: true } as {
@@ -94,7 +95,7 @@ vi.mock('../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../services/api/menus')>(
     '../services/api/menus',
   )
-  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions }
+  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions, getOnboardingProgress }
 })
 vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
@@ -144,6 +145,7 @@ beforeEach(() => {
   })
   addCustomProvider.mockResolvedValue({ id: 'vendor-1', name: 'Suvla' })
   listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] })
+  getOnboardingProgress.mockResolvedValue(null)
   auth.user = { name: 'Selin Kaya', emailVerified: true }
   sessionStorage.clear()
   localStorage.clear()
@@ -179,10 +181,7 @@ describe('approved arrival flow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
-    expect(patch).toHaveBeenCalledWith('/auth/me', {
-      name: 'Selin Kaya',
-      phone: undefined,
-    })
+    expect(patch).toHaveBeenCalledWith('/auth/me', { name: 'Selin Kaya' })
     expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
 
     fillRestaurantStep()
@@ -304,12 +303,39 @@ describe('approved arrival flow', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('shows SMS consent only after a mobile number is entered', async () => {
+  it('promises no texts for a mobile number: SMS is off until turned on (F-1212)', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
     expect(screen.queryByText(/the account does not depend on it/i)).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '+90 532 000 00 00' } })
     expect(screen.getByText(/the account does not depend on it/i)).toBeInTheDocument()
-    expect(screen.getByText('STOP')).toBeInTheDocument()
+    expect(screen.getByText(/We send no texts unless you turn them on in Settings/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/STOP|stock alert/i)
+    expect(screen.getByLabelText('Mobile')).not.toHaveAttribute('placeholder', expect.stringMatching(/alert/i))
+  })
+
+  it('keeps the mobile read in the house\'s country, not as typed or as +1 (F-1212)', async () => {
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '0532 123 45 67' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    expect(patch).toHaveBeenCalledWith('/auth/me', { name: 'Selin Kaya' })
+    fillRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(patch).toHaveBeenCalledWith('/auth/me', { phone: '+905321234567' })
+    expect(patch).not.toHaveBeenCalledWith('/auth/me', expect.objectContaining({ phone: '0532 123 45 67' }))
+  })
+
+  it('says so when the mobile was not kept, with the house open (F-1212)', async () => {
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '0532 123 45 67' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    patch.mockRejectedValueOnce(new Error('offline'))
+    fillRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(screen.getByRole('status')).toHaveTextContent('Your mobile number was not saved')
   })
 
   it('passes Use my location into Places as a search bias', async () => {
@@ -753,6 +779,37 @@ describe('approved arrival flow', () => {
       }),
     )
   }
+
+  it('says a menu already held in the books is with us, not "no menu read yet" (F-1211)', async () => {
+    listMenuVersions.mockResolvedValue({ current: { menuId: 'm1' }, lastUsed: null, versions: [{ menuId: 'm1' }] })
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText('Your menu is already with us.')).toBeInTheDocument()
+    expect(screen.queryByText('No menu read yet.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Read your menu' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open your menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
+  })
+
+  it('never invites a second read when the books cannot be checked (F-1211)', async () => {
+    listMenuVersions.mockRejectedValue(new Error('offline'))
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText('We could not check for your menu just now.')).toBeInTheDocument()
+    expect(screen.queryByText('No menu read yet.')).toBeNull()
+  })
+
+  it('still offers a read when the house holds no menu (F-1063)', async () => {
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText('No menu read yet.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Read your menu' }))
+    expect(navigate).toHaveBeenCalledWith('/get-started')
+  })
+
+  it('does not ask for a supplier again once one is on the book (F-1211)', async () => {
+    getOnboardingProgress.mockResolvedValue({ vendor_added: true })
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText('A supplier is already on the book.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Supplier')).toBeNull()
+  })
 
   it('leads on from the house contents page, never a dead end (F-025)', () => {
     storeProof('menu', [{ id: 'a', name: 'Yakut', category: 'red' }])

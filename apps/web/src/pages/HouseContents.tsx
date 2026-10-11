@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
-import { listMenuVersions, updateOnboardingProgress } from '../services/api/menus'
+import { getOnboardingProgress, listMenuVersions, updateOnboardingProgress } from '../services/api/menus'
 import { pencilledCount, readProof } from '../lib/firstProof'
 import { readLastInvoiceLater, writeLastInvoiceLater } from '../lib/houseLater'
 import { useAuth } from '../contexts/AuthContext'
@@ -37,6 +37,34 @@ export default function HouseContents() {
       live = false
     }
   }, [proofMenuId])
+  // With no proof in this tab, ask the house's books whether a menu is
+  // already held, as /house/menu does (F-273, F-1211): a menu read in another
+  // tab or on /menu is not "no menu", and reading it again adds a second copy.
+  const hasProof = proof !== null
+  const [held, setHeld] = useState<'checking' | 'held' | 'none' | 'unknown'>('checking')
+  useEffect(() => {
+    if (hasProof) return
+    let live = true
+    setHeld('checking')
+    listMenuVersions()
+      .then((v) => live && setHeld(v.current || v.versions.length > 0 ? 'held' : 'none'))
+      .catch(() => live && setHeld('unknown'))
+    return () => {
+      live = false
+    }
+  }, [hasProof])
+  // A supplier already on the book is not asked for again (F-1211). A failed
+  // read leaves the ask up: it is optional, and the gateway keeps one name once.
+  const [supplierHeld, setSupplierHeld] = useState(false)
+  useEffect(() => {
+    let live = true
+    getOnboardingProgress()
+      .then((progress) => live && setSupplierHeld(progress?.vendor_added === true))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
 
   const saveSupplier = async () => {
     if (!supplier.trim()) return
@@ -89,6 +117,33 @@ export default function HouseContents() {
               >
                 {pencilled === 0 ? 'The first proof is set.' : `${pencilled} pencilled`}
               </button>
+            ) : held === 'checking' ? (
+              <p className="mt-2 font-serif text-2xl text-[#6d685f]">Looking for your menu…</p>
+            ) : held === 'held' ? (
+              <>
+                <p className="mt-2 font-serif text-2xl">Your menu is already with us.</p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/menu')}
+                  className="mt-2 text-sm text-[#1a5e6b] underline underline-offset-4"
+                >
+                  Open your menu
+                </button>
+              </>
+            ) : held === 'unknown' ? (
+              <>
+                <p className="mt-2 font-serif text-2xl text-[#6d685f]">We could not check for your menu just now.</p>
+                <p className="mt-2 text-sm text-[#6d685f]">
+                  If you have already read one, it is on your menu page. Reading it again would add a second copy.{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/menu')}
+                    className="text-[#1a5e6b] underline underline-offset-4"
+                  >
+                    Open your menu
+                  </button>
+                </p>
+              </>
             ) : (
               // A way to read one, not a dead end: /get-started opens on its
               // menu step for a person whose house is already open (F-1063).
@@ -135,6 +190,17 @@ export default function HouseContents() {
 
           {saved ? (
             <p className="py-6 font-serif text-2xl">{supplier.trim()} is on the book.</p>
+          ) : supplierHeld ? (
+            <div className="py-6">
+              <p className="font-serif text-2xl">A supplier is already on the book.</p>
+              <button
+                type="button"
+                onClick={() => navigate('/vendors')}
+                className="mt-2 text-sm text-[#1a5e6b] underline underline-offset-4"
+              >
+                Open Vendors
+              </button>
+            </div>
           ) : (
             <form
               className="py-6"

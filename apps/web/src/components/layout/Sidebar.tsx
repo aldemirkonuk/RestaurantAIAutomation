@@ -443,7 +443,8 @@ export function Sidebar() {
   // One flag read for the one gated entry (ADR 0114). The hook caches per
   // restaurant+flag for the session, so this costs at most one request.
   const connectionsOn = useMudavymDesign('connections')
-  const { progress, update } = useOnboardingProgress()
+  const { progress, update, isLoading: progressLoading, isError: progressFailed } = useOnboardingProgress()
+  const [dismissFailed, setDismissFailed] = useState(false)
 
   // Force expanded labels in the mobile drawer
   const [isMobile, setIsMobile] = useState(false)
@@ -542,11 +543,16 @@ export function Sidebar() {
         Boolean,
       ).length
     : 1
-  // Always show Get started while activation incomplete (fallback if progress fetch fails)
+  // The checklist is the house owner's own first-run list (F-1210). An invited
+  // manager or staff member has no checklist row, so the read answers null:
+  // that is "no checklist here", not a reason to show one forever. Only a
+  // failed read still falls back to showing it, and only to the owner.
   const activationComplete = !!(progress?.completed_at)
   const checklistDismissed = !!progress?.checklist_dismissed
-  const showGetStarted = !activationComplete && !checklistDismissed
-  const showLearn = activationComplete || checklistDismissed
+  const showGetStarted =
+    user?.role === 'owner' &&
+    (progress ? !activationComplete && !checklistDismissed : progressFailed === true)
+  const showLearn = !progressLoading && !showGetStarted
 
   const renderNavItem = (item: NavItem) => {
     const badgeCount = item.badge ?? badgeByHref[item.href] ?? 0
@@ -766,10 +772,22 @@ export function Sidebar() {
                   progress={progress}
                   mode="get-started"
                   anchorRef={checklistButtonRef}
-                  onClose={() => setShowChecklist(false)}
-                  onDismissChecklist={() => {
-                    update({ checklist_dismissed: true })
+                  onClose={() => {
+                    setDismissFailed(false)
                     setShowChecklist(false)
+                  }}
+                  dismissFailed={dismissFailed}
+                  onDismissChecklist={() => {
+                    // Closed only once it is kept; a refusal is said in the
+                    // panel instead of the list coming back unexplained.
+                    setDismissFailed(false)
+                    update(
+                      { checklist_dismissed: true },
+                      {
+                        onSuccess: () => setShowChecklist(false),
+                        onError: () => setDismissFailed(true),
+                      },
+                    )
                   }}
                 />
               )}
