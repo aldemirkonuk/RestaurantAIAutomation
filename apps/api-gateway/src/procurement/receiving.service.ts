@@ -355,6 +355,24 @@ export class ReceivingService {
     // 1 and every case count silently became a bottle count. The two fixes are
     // one fix — see `order-units.ts`.
     const packSize = this.resolvePackSize(input.packSize, order);
+    // F-1154: a bottle order holds no pack, so its ratio is always 1 and the
+    // door's box count used to book as that many bottles — 2 boxes of 12 went
+    // in as 2. A box count on an order in bottles is refused unless the door
+    // says how many bottles are in each box. Case orders are unchanged.
+    const orderUnit = normalizeUom(order.unit_type ?? null);
+    if (
+      (uom === "case" || uom === "pack" || uom === "split_case") &&
+      !(input.packSize && input.packSize >= 1) &&
+      (orderUnit === "bottle" || orderUnit === "each") &&
+      packSize === 1
+    ) {
+      throw new BadRequestException({
+        reason: "pack_size_required",
+        message:
+          "This order is in bottles, so a count in boxes needs the number of bottles in each box. " +
+          "Nothing was booked. Say how many bottles are in each box and send it again.",
+      });
+    }
     const countedBottles = toBottles(
       Math.max(0, input.countedQty ?? 0),
       uom,

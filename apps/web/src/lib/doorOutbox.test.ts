@@ -35,6 +35,7 @@ import {
   pendingDoorCount,
   readDroppedDoorReceipts,
   resendDoorReceipt,
+  submitDoorReceipt,
   watchDoorOutbox,
   type DoorFlushResult,
 } from './doorOutbox'
@@ -546,5 +547,30 @@ describe('Send again and Discard — one parked receipt, by a person', () => {
 
     expect(await pendingDoorCount()).toBe(1)
     expect(await notSentDoorCount()).toBe(2)
+  })
+})
+
+/**
+ * F-1154: on an order in bottles the door's boxes carry their bottles per box.
+ * A receipt taken offline must keep that number, or the queued send is refused
+ * (or, before the gateway's refusal, booked 2 boxes of 12 as 2 bottles).
+ */
+describe('submitDoorReceipt — a queued receipt keeps its bottles per box', () => {
+  it('queues the pack size with the boxes and sends it when back online', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    store.addPendingMutation.mockResolvedValue(undefined)
+    const body = { countedQty: 2, countedUom: 'case', packSize: 12, idempotencyKey: 'door:o-a:k' }
+    const res = await submitDoorReceipt({ orderId: 'o-a', orderLabel: 'a', restaurantId: RID, body })
+    expect(res.synced).toBe(false)
+    const queued = store.addPendingMutation.mock.calls[0][0].data
+    expect(queued.body.packSize).toBe(12)
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    store.getPendingMutationsByType.mockResolvedValue([
+      { id: 'a', type: 'receiving.door', data: queued, timestamp: new Date(), retryCount: 0 },
+    ])
+    recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
+    await flushDoorOutbox()
+    expect(recordDoorReceipt).toHaveBeenCalledWith('o-a', expect.objectContaining({ packSize: 12, countedUom: 'case' }))
   })
 })

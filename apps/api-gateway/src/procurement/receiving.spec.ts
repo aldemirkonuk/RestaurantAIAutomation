@@ -390,6 +390,64 @@ describe("recordDoorReceipt", () => {
     expect(calls.rpc[0].args.p_delta).toBe(2);
   });
 
+  // F-1154: a bottle order's ratio is always 1, so the door's boxes went in as
+  // bottles — 2 boxes of 12 booked 2.
+  const bottleOrder = {
+    id: "o1",
+    order_number: "PO-1",
+    inventory_id: "inv1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    quantity_received: 0,
+  };
+
+  it("books 2 boxes of 12 on a bottle order as 24 bottles (F-1154)", async () => {
+    const { db, calls } = makeDb({ order: { ...bottleOrder } });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      packSize: 12,
+    });
+    expect(r.countedQtyBottles).toBe(24);
+    expect(calls.rpc[0].args.p_delta).toBe(24);
+  });
+
+  it("refuses boxes on a bottle order that say no bottles per box (F-1154)", async () => {
+    const { db, calls } = makeDb({
+      order: { ...bottleOrder, unit_type: "bottles" },
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "case",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: expect.objectContaining({
+        reason: "pack_size_required",
+        message: expect.stringMatching(/bottles in each box/),
+      }),
+    });
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.eventInserts).toHaveLength(0);
+  });
+
+  it("still counts a case order by its own pack with no packSize sent (F-1154)", async () => {
+    const { db, calls } = makeDb({
+      order: { ...bottleOrder, quantity: 2, unit_type: "case" },
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+    });
+    expect(r.countedQtyBottles).toBe(24);
+    expect(calls.rpc[0].args.p_delta).toBe(24);
+  });
+
   it("writes no unit cost, because nobody has seen an invoice yet", async () => {
     // Guessing a cost here puts an unverified price into the books wearing the
     // authority of a real one. The lot stays 'estimated' until verifyReceipt.
