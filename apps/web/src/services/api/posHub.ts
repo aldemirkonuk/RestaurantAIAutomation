@@ -94,7 +94,8 @@ export interface UnresolvedLineGroup {
   mapped_inventory_id: string | null;
   occurrences: number;
   qty_total: number;
-  revenue_total: number;
+  /** Left out for a role that does not hold the house's money (F-1387). */
+  revenue_total?: number;
   first_seen: string | null;
   last_seen: string | null;
   line_ids: string[];
@@ -108,11 +109,13 @@ export interface UnresolvedLinesResponse {
     unmapped: number;
     no_sale_volume: number;
     qty_total: number;
-    revenue_total: number;
+    revenue_total?: number;
     /** The read hit its cap: the counts are a floor, not a total. */
     truncated: boolean;
   };
   items: UnresolvedLineGroup[];
+  /** true when the till's takings were left out for this role (F-1387). */
+  amountsWithheld?: true;
 }
 
 export interface PosMatchProposal {
