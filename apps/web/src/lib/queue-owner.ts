@@ -49,6 +49,8 @@ export interface ParkedState {
    */
   reason: 'refused' | 'unowned'
   status?: number
+  /** The server's own refusal code (`pack_size_required`, …), when it gave one. */
+  code?: string
   at: string
 }
 

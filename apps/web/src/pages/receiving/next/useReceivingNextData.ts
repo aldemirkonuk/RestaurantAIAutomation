@@ -27,6 +27,8 @@ import {
   flushDoorOutbox,
   readDroppedDoorReceipts,
   resendDoorReceipt,
+  doorResendNeed,
+  type DoorResendNeed,
   type DroppedDoorReceipt,
   type QueuedDoorReceipt,
 } from '@/lib/doorOutbox';
@@ -876,7 +878,15 @@ export interface QueuedReceiptVM {
    * not retried on its own. A refused one can be sent again; either can be
    * discarded. Null for a receipt that is simply waiting.
    */
-  parked: { reason: 'refused' | 'unowned'; status: number | null } | null;
+  parked: {
+    reason: 'refused' | 'unowned';
+    status: number | null;
+    /**
+     * What Send again needs first (F-1256, F-1257): nothing, the bottles in
+     * each box, or it `cannot` change the answer and only Discard is left.
+     */
+    need: DoorResendNeed;
+  } | null;
 }
 
 export interface DroppedReceiptVM {
@@ -928,8 +938,11 @@ export interface OutboxData {
   online: boolean;
   dismissDrop: (id: string) => void;
   flushNow: () => void;
-  /** Send one parked `refused` receipt again (un-park, then flush). */
-  resend: (id: string) => void;
+  /**
+   * Send one parked `refused` receipt again (un-park, then flush) — with the
+   * bottles in each box when that is what it was refused for (F-1256).
+   */
+  resend: (id: string, change?: { packSize?: number }) => void;
   /** Give one parked receipt up. The caller confirms first: the count is not on the server. */
   discard: (id: string) => void;
 }
@@ -943,7 +956,11 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
     retryCount: m.retryCount ?? 0,
     lastError: m.lastError ?? null,
     parked: m.parked
-      ? { reason: m.parked.reason, status: typeof m.parked.status === 'number' ? m.parked.status : null }
+      ? {
+          reason: m.parked.reason,
+          status: typeof m.parked.status === 'number' ? m.parked.status : null,
+          need: doorResendNeed(m.parked),
+        }
       : null,
   };
 }
@@ -1118,10 +1135,10 @@ export function useDoorOutbox(): OutboxData {
   );
 
   const resend = useCallback(
-    (id: string) => {
+    (id: string, change?: { packSize?: number }) => {
       void (async () => {
         try {
-          await resendDoorReceipt(id);
+          await resendDoorReceipt(id, change);
         } catch {
           /* the entry is left as it was; the re-read below shows its state */
         }

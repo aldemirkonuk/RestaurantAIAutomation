@@ -32,7 +32,7 @@
  * empty queue — and the empty state says what emptiness means.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { animate, ink, stamp, turn, useReducedMotion } from '@/lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, capStyle, fmtDate } from './rc-format';
 import type { OutboxData, QueuedReceiptVM } from './useReceivingNextData';
@@ -44,9 +44,16 @@ const timeShort = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2
  * status is kept on the entry; only the ones with a clear meaning are named,
  * and everything else says what is certain — the server refused it.
  */
-function notSentReason(p: NonNullable<QueuedReceiptVM['parked']>): string {
+function notSentReason(
+  p: NonNullable<QueuedReceiptVM['parked']>,
+  lastError: string | null,
+): string {
   if (p.reason === 'unowned')
     return 'saved before the app recorded who took it, so it cannot be sent as anyone';
+  // F-1257: the house's own sentence when it gave one. A receipt parked before
+  // that was kept holds the HTTP client's line instead, which says nothing.
+  if (lastError && !/^Request failed with status code/.test(lastError) && !/^HTTP \d/.test(lastError))
+    return lastError;
   switch (p.status) {
     case 403:
       return 'the server turned this account away for this house — check the house, and that the email is verified';
@@ -184,6 +191,48 @@ function PinnedDrop({
   );
 }
 
+/**
+ * F-1256: a receipt refused for want of the bottles in each box is completed
+ * here and sent again with them. Send again waits for a whole number.
+ */
+function BottlesPerBoxResend({ label, onSend }: { label: string; onSend: (n: number) => void }) {
+  const [raw, setRaw] = useState('');
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  const ok = Number.isSafeInteger(n) && n >= 1;
+  return (
+    <>
+      <label style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>
+        Bottles in each box{' '}
+        <input
+          type="text"
+          inputMode="numeric"
+          value={raw}
+          onChange={(e) => setRaw(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+          placeholder="e.g. 12"
+          autoComplete="off"
+          data-ux-key="receiving-next:outbox-bottles-per-box"
+          aria-label={`Bottles in each box for ${label}`}
+          style={{ width: 56, fontSize: 12, fontFamily: MONO, padding: '2px 6px' }}
+        />
+      </label>
+      <button
+        type="button"
+        disabled={!ok}
+        onClick={() => ok && onSend(n)}
+        data-ux-key="receiving-next:outbox-send-again"
+        aria-label={`Send ${label} again`}
+        style={{
+          ...linkButton,
+          color: ok ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
+          cursor: ok ? 'pointer' : 'default',
+        }}
+      >
+        Send again
+      </button>
+    </>
+  );
+}
+
 export function RcOutboxRail({ data }: { data: OutboxData }) {
   const { queued, drops, lastFlush, online, dismissDrop, flushNow, resend, discard } = data;
   const prevDropIds = useRef<Set<string>>(new Set(drops.map((d) => d.id)));
@@ -289,7 +338,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                 >
                   saved {r.queuedAt ? timeShort.format(new Date(r.queuedAt)) : EM}
                   {r.parked
-                    ? ` · ${notSentReason(r.parked)}`
+                    ? ` · ${notSentReason(r.parked, r.lastError)}`
                     : r.lastError
                       ? ` · last error: ${r.lastError}`
                       : ''}
@@ -331,8 +380,13 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
               )}
             </div>
             {r.parked && (
-              <div style={{ display: 'flex', gap: 14, marginTop: 6 }}>
-                {r.parked.reason === 'refused' && (
+              <div style={{ display: 'flex', gap: 14, marginTop: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                {r.parked.need === 'bottles_per_box' && (
+                  <BottlesPerBoxResend label={r.label} onSend={(n) => resend(r.id, { packSize: n })} />
+                )}
+                {/* F-1257: a refusal that turns on the count itself would only
+                    come back the same, so Send again is not offered for it. */}
+                {r.parked.need === 'nothing' && (
                   <button
                     type="button"
                     onClick={() => resend(r.id)}
