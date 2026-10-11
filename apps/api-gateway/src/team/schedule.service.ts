@@ -736,13 +736,15 @@ export class ScheduleService {
       }
     }
 
-    // Notify the whole restaurant + deep-link back into /team.
+    // Notify the whole restaurant + deep-link back into /team. The page opens
+    // a week from `week` alone; a schedule is one week, so no id rides along
+    // (F-1151: `schedule=` had no reader).
     await this.notifications.persistForRestaurant(restaurantId, {
       type: "system",
       title: "Schedule published",
       message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
       priority: "high",
-      actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
+      actionUrl: `/team?week=${schedule.week_start}`,
       actionLabel: "View schedule",
       groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
       metadata: { scheduleId, weekStart: schedule.week_start },
