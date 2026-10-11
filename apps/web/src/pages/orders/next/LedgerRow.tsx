@@ -21,6 +21,7 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { HoldToApprove } from '@/components/mudavym';
 import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
@@ -705,8 +706,9 @@ export function LedgerRow({
               {(row.stage === 'ordered' || row.stage === 'approved') && (
                 <>
                   {label('At the door?')}
-                  <a
-                    href={doorCountHref(row.id)}
+                  {/* A router link (F-1152): the door opens inside the app, not by reloading it. */}
+                  <Link
+                    to={doorCountHref(row.id)}
                     data-ux-key="orders:door-count"
                     style={{
                       display: 'block',
@@ -727,7 +729,7 @@ export function LedgerRow({
                     }}
                   >
                     Mark delivered
-                  </a>
+                  </Link>
                   <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
                     Opens the count with what was ordered filled in. Nothing goes on the shelf until
                     you confirm it.
