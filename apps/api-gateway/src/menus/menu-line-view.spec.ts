@@ -1,4 +1,15 @@
-import { isKitchenLine, lineForViewer, seesRawLine, KITCHEN_HINTS, MEMBER_LINE_KEYS } from "./menu-line-view";
+import * as fs from "fs";
+import * as path from "path";
+
+import {
+  DRINK_SECTIONS,
+  isKitchenLine,
+  lineForViewer,
+  seesRawLine,
+  KITCHEN_HINTS,
+  MEMBER_LINE_KEYS,
+  WINE_WORDS,
+} from "./menu-line-view";
 import { MenusController, MenuVersionsController } from "./menus.controller";
 import { ROLE_POLICY } from "../ask-readings/reading-data-classes";
 
@@ -17,8 +28,64 @@ describe("menu-line-view", () => {
     expect(isKitchenLine(42, { pasta: true })).toBe(false);
   });
 
-  it("the gateway's kitchen hints are the web's nine", () => {
-    expect(KITCHEN_HINTS).toEqual(["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"]);
+  // F-1173: one vocabulary, the web's, read out of its file rather than restated.
+  it("the gateway's kitchen hints, drink sections and wine words are the web's", () => {
+    const web = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/lib/firstProof.ts"),
+      "utf8",
+    );
+    const list = (name: string) => {
+      const m = web.match(
+        new RegExp(`const ${name} = (?:new Set\\()?\\[([^\\]]*)\\]`),
+      );
+      if (!m)
+        throw new Error(
+          `firstProof.ts has no ${name} list; this guard is blind`,
+        );
+      return [...m[1].matchAll(/'([^']*)'/g)].map((q) => q[1]);
+    };
+    expect(KITCHEN_HINTS).toEqual(list("KITCHEN"));
+    expect(DRINK_SECTIONS).toEqual(list("VOCABULARY"));
+    expect(WINE_WORDS).toEqual(list("WINE_WORDS"));
+  });
+
+  it("a known drink section wins: a dessert wine is a drink (F-1173)", () => {
+    expect(
+      isKitchenLine(
+        "dessert",
+        "Muscat de Beaumes-de-Venise,Durban,2020,dessert,14",
+      ),
+    ).toBe(false);
+    expect(isKitchenLine("Dessert wines", "Tokaji Aszú 5 puttonyos")).toBe(
+      false,
+    );
+    expect(
+      isKitchenLine("white", "Assyrtiko,Sigalas,,white,12,,great with food"),
+    ).toBe(false);
+    expect(isKitchenLine("Desserts", null)).toBe(true);
+  });
+
+  it("matches whole words, never a substring (F-1173)", () => {
+    expect(isKitchenLine(null, "Radish Imports Rosé 2022")).toBe(false);
+    expect(isKitchenLine(null, "Saladin Reserve 2018")).toBe(false);
+    expect(isKitchenLine("Small plates", null)).toBe(true);
+    expect(isKitchenLine("Mains", null)).toBe(true);
+    expect(isKitchenLine("Appetizers", null)).toBe(true);
+  });
+
+  it("knows Turkish kitchen sections, in either lower-casing (F-1173)", () => {
+    for (const section of [
+      "Mezeler",
+      "Ara Sıcaklar",
+      "Ana Yemekler",
+      "TATLILAR",
+      "Salatalar",
+      "IZGARA",
+      "Çorbalar",
+    ]) {
+      expect(isKitchenLine(section, null)).toBe(true);
+    }
+    expect(isKitchenLine("Kırmızı şaraplar", "Yakut 2019")).toBe(false);
   });
 
   it("seesRawLine follows ROLE_POLICY: a role that sees money AND suppliers", () => {

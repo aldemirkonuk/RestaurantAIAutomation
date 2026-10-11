@@ -23,7 +23,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
-import { lineForViewer, type LineView } from "./menu-line-view";
+import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import {
   setHouseMenuPrice,
   type HeldKind,
@@ -84,6 +84,20 @@ interface InsertedMenuItem {
   created_at?: string | null;
   producer?: string | null;
   vintage?: string | null;
+  // Set by lineForViewer on a line read, and by the import on a line it
+  // inserts. A kitchen line is set aside: no stock row, no price (F-1170).
+  kitchen_line?: boolean;
+}
+
+/**
+ * The library wine a line carries to the house, or null. A kitchen (food)
+ * line carries none, whatever it was linked to before (F-1170, the
+ * coordinator's call: kitchen lines are set aside until a food model exists,
+ * OD-113), so a menu made current gives it no stock row and no price, and
+ * the plan says so before.
+ */
+function carriedWine(line: InsertedMenuItem): string | null {
+  return line.kitchen_line === true ? null : (line.wine_library_id ?? null);
 }
 
 /**
@@ -1700,7 +1714,7 @@ export class MenusService {
     const counts = emptyPlanCounts();
     const onThisMenu = new Set<string>();
     const planLines: PlanLine[] = lines.map((line) => {
-      const wineId = line.wine_library_id ?? null;
+      const wineId = carriedWine(line);
       const row = wineId ? (house.get(wineId) ?? null) : null;
       if (row) onThisMenu.add(String(row.id));
       const menuB = linePrice(line.bottle_price);
@@ -2081,10 +2095,19 @@ export class MenusService {
     // import could report success while linking nothing; if the single call
     // covering every wine fails, the import genuinely cannot proceed and should
     // say so rather than write a menu of unlinked items.
+    //
+    // A kitchen (food) line is set aside (F-1170): it is kept as a menu line
+    // and nothing else. It is not sent to the resolver, so it creates no
+    // library row and files no submission, and with no library wine it seeds
+    // no stock row. /house/menu tells the owner these lines were set aside.
+    const kitchen = items.map((item) =>
+      isKitchenLine(item.category, item.raw_text),
+    );
+    const drinks = items.filter((_, idx) => !kitchen[idx]);
     let resolved: ResolvedItem[];
     try {
       const results = await this.wineSubmissions.resolveLibraryWinesBatch(
-        items.map((item) => ({
+        drinks.map((item) => ({
           name: item.name,
           producer: item.producer,
           vintage: item.vintage,
@@ -2104,13 +2127,25 @@ export class MenusService {
         // whose menu this is.
         restaurantId,
       );
-      resolved = items.map((item, idx) => ({
-        item,
-        masterWineId: results[idx]?.masterWineId ?? null,
-        matched: results[idx]?.matched ?? false,
-        libraryTier: results[idx]?.libraryTier ?? null,
-        confidence: results[idx]?.confidence ?? null,
-      }));
+      let next = 0;
+      resolved = items.map((item, idx) => {
+        if (kitchen[idx])
+          return {
+            item,
+            masterWineId: null,
+            matched: false,
+            libraryTier: null,
+            confidence: null,
+          };
+        const r = results[next++];
+        return {
+          item,
+          masterWineId: r?.masterWineId ?? null,
+          matched: r?.matched ?? false,
+          libraryTier: r?.libraryTier ?? null,
+          confidence: r?.confidence ?? null,
+        };
+      });
     } catch (err) {
       this.logger.error(`Library resolution failed for menu: ${err.message}`);
       throw new Error(
@@ -2120,7 +2155,9 @@ export class MenusService {
 
     // Unlinked items are the ones a manager has to fix by hand, so say how
     // many there are rather than leaving it to be discovered in the UI.
-    const unlinked = resolved.filter((r) => !r.masterWineId).length;
+    const unlinked = resolved.filter(
+      (r, idx) => !kitchen[idx] && !r.masterWineId,
+    ).length;
     if (unlinked > 0) {
       this.logger.error(
         `Menu import: ${unlinked}/${resolved.length} item(s) could not be ` +
@@ -2165,7 +2202,12 @@ export class MenusService {
     // A single bulk INSERT ... RETURNING preserves VALUES-clause order in
     // practice (no ON CONFLICT / trigger reordering here), so index-aligned
     // zipping with `resolved` is safe and avoids an N+1 re-fetch.
-    const insertedMenuItems: InsertedMenuItem[] = data ?? [];
+    const insertedMenuItems: InsertedMenuItem[] = (data ?? []).map(
+      (row: InsertedMenuItem, idx: number) => ({
+        ...row,
+        kitchen_line: kitchen[idx] ?? false,
+      }),
+    );
 
     // Seed restaurant_inventory (awaited — previously fire-and-forget into a
     // table named "inventory" that does not exist in this schema) -- only for
@@ -2333,7 +2375,7 @@ export class MenusService {
       created: new Set<string>(),
     });
     const priceSync = new Map<string, PriceSyncEntry>();
-    const validItems = menuItems.filter((i) => i.wine_library_id);
+    const validItems = menuItems.filter((i) => carriedWine(i));
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
 
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);

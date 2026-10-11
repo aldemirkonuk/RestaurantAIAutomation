@@ -8,9 +8,11 @@ So this branch's line read withholds the raw line, but the kept file still reach
 
 **The rule for that lane, decided now by the coordinator under the founder's 2026-10-07T20:04:10Z delegation (not the founder's pick).** Refuse every kept source to a viewer whose ROLE_POLICY row does not see both `money` and `suppliers` (`seesRawLine` in `apps/api-gateway/src/menus/menu-line-view.ts`), whatever the file is: the gateway cannot tell a printed menu PDF from a costed list. Hide "Open file" when `!canManage`. It is its own lane, next, because it needs the web change too, and it is the same class as the money-policy synthesis M1 items (`p4-scratch/sim-run/fixes/audits/money-policy-2026-10-07.md`, "Build order").
 
-## A dessert wine counts as a kitchen line — OPEN — 2026-10-08
+## A dessert wine counts as a kitchen line — RESOLVED 2026-10-10 (F-1173) — 2026-10-08
 
-Entry (ii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:5` (status open).
+Entry (ii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:5` (status ~~open~~ resolved).
+
+[2026-10-10, `fix/sim-w83-menu-kitchen`, F-1173: resolved as proposed below. Both `isKitchenLine`s (gateway `menu-line-view.ts`, web `firstProof.ts`) now let a known drink section win (`DRINK_SECTIONS` = the web's `VOCABULARY`), treat a section naming wine ("Dessert wines", "şaraplar") as a drink, and match hints as whole words, with Turkish and common US section words added; claim row 2 keeps all three lists equal. The raw line still decides when the section is unknown, so a CSV row with no section and a note naming a hint word ("pairs with pasta") is still set aside. Since F-1170 a kitchen line is set aside for real: not resolved against the library, no submission, no stock row, no price, no margin advice.]
 
 'dessert' is both a drink section (the web's `VOCABULARY`, `apps/web/src/lib/firstProof.ts:13`; the gateway's `wine-extract-item.interface.ts:26`) and a kitchen hint (`firstProof.ts:25`; `KITCHEN_HINTS` in `menu-line-view.ts`). So every line in a 'dessert' section is set aside as kitchen. The whole-row test also sets aside a wine whose supplier or note names a hint ("Dish Imports", "great with pasta"). This branch keeps both lists identical on purpose (claim row 2 pins it), so one fix moves both.
 

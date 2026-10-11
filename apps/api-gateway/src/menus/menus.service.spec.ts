@@ -1489,6 +1489,92 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
     });
 
+    // F-1170: a kitchen line on a menu made current is set aside -- kept as a
+    // menu line, and nothing else: no library row or submission, no stock
+    // row, no price.
+    it("sets a kitchen line aside: not resolved, not submitted, no stock row, no price", async () => {
+      const resolved: unknown[][] = [];
+      const calls: RpcCall[] = [];
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, {
+        wineSubmissions: {
+          ...wineSubmissions,
+          resolveLibraryWinesBatch: async (items: unknown[]) => {
+            resolved.push(items);
+            return wineSubmissions.resolveLibraryWinesBatch(items);
+          },
+        },
+        rpcCalls: calls,
+        rpc: makeCurrentRpc(tables),
+        scanParser: {
+          parse: async () => [
+            { name: "Grilled octopus", category: "Starters", bottle_price: 24 },
+            { name: "Opus One", bottle_price: 64 },
+          ],
+        },
+      });
+      const read = await service.importMenu(
+        {
+          method: "scan",
+          data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+          restaurantId: "rest-1",
+        } as any,
+        "user-1",
+      );
+      expect(resolved).toEqual([
+        [expect.objectContaining({ name: "Opus One" })],
+      ]);
+      const r = await choose(service, read.menuId);
+
+      expect(r).toMatchObject({
+        outcome: "made_current",
+        lines: 2,
+        failed: [],
+      });
+      const octopus = tables.menu_items.find(
+        (m) => m.name === "Grilled octopus",
+      )!;
+      expect(octopus).toMatchObject({ wine_library_id: null });
+      expect(octopus.inventory_item_id ?? null).toBeNull();
+      expect(tables.master_wine_library_submissions).toHaveLength(1);
+      expect(tables.restaurant_inventory).toHaveLength(1);
+      const price = calls.filter(([fn]) => fn === "set_house_menu_price");
+      expect(price).toHaveLength(1);
+      expect(price[0][1]).toMatchObject({
+        p_inventory_id: "inv-1",
+        p_bottle_price: 64,
+      });
+    });
+
+    it("a kitchen line linked before the fix still seeds no stock row when its menu is made current", async () => {
+      const { calls, tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64 },
+      ]);
+      // A stored line from before F-1170, still carrying a library wine.
+      tables.menu_items.push({
+        id: "mi-food",
+        menu_id: read.menuId,
+        restaurant_id: "rest-1",
+        name: "Tiramisu",
+        category: "Desserts",
+        bottle_price: 9,
+        wine_library_id: "mw-food",
+        status: "approved",
+      });
+      const r = await choose(service, read.menuId);
+      expect(r).toMatchObject({
+        outcome: "made_current",
+        lines: 2,
+        failed: [],
+      });
+      expect(tables.restaurant_inventory.map((i) => i.master_wine_id)).toEqual([
+        "mw-1",
+      ]);
+      expect(
+        calls.filter(([fn]) => fn === "set_house_menu_price"),
+      ).toHaveLength(1);
+    });
+
     // F-946: the house removed the wine; a menu made current lists it again.
     it("brings back a wine the house removed when the chosen menu lists it", async () => {
       const { tables, service, read } = await readThenChoose([
