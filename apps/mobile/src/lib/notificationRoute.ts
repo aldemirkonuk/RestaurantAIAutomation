@@ -45,7 +45,9 @@ export function routeForActionUrl(actionUrl: string | null | undefined): MobileR
   const head = segments[0];
 
   if (head === "inventory" || head === "wines") {
-    const verify = idFromQuery(rawQuery, ["verify"]);
+    // F-1309: "Name the item" (`?name-delivery=<orderId>`) opens that order's
+    // receive screen, not the cellar list.
+    const verify = idFromQuery(rawQuery, ["verify", "name-delivery"]);
     if (verify) return `/cellar/receive/${verify}`;
     const id = segments[1] ?? idFromQuery(rawQuery, ["highlight", "wineId", "item"]);
     return id ? `/cellar/${id}` : "/cellar";
@@ -56,6 +58,10 @@ export function routeForActionUrl(actionUrl: string | null | undefined): MobileR
       segments[1] ?? idFromQuery(rawQuery, ["order", "orderId", "highlight"]);
     return id ? `/supply/${id}` : "/supply";
   }
+
+  // A delivery id is not an order id (F-1309): the tap resolves it to its
+  // order (`openNotificationTap`); the inbox row stays put.
+  if (head === "deliveries") return null;
 
   if (head === "team") return "/team";
   if (head === "reports" || head === "recommendations") return "/insights";
@@ -81,12 +87,29 @@ export function routeForNotificationData(
   const orderId = d.orderId ?? d.order_id;
 
   if (type === "invoice_received" && orderId) return `/cellar/receive/${orderId}`;
+  // F-1309: "Name the item" carries its orderId too; it opens the receive
+  // screen for that order, not the order page, which has no such control.
+  if (type === "delivery_item_to_name" && orderId) return `/cellar/receive/${orderId}`;
   if (orderId) return `/supply/${orderId}`;
 
   const inventoryId = d.inventoryId ?? d.inventory_id;
   if (inventoryId) return `/cellar/${inventoryId}`;
 
   return routeForActionUrl(d.actionUrl ?? d.action_url) ?? "/notifications";
+}
+
+/**
+ * The delivery a push names when it carries no order id (F-1309): the
+ * delivery clock, a lapse and a vendor's proposal send `/deliveries/<id>` with
+ * `deliveryId` only. The tap reads that delivery's order before opening it.
+ */
+export function deliveryToResolve(data: Record<string, any> | null | undefined): string | null {
+  const d = data ?? {};
+  if (d.orderId ?? d.order_id) return null;
+  const url = String(d.actionUrl ?? d.action_url ?? "");
+  const fromUrl = /^\/deliveries\/([^/?#]+)/.exec(url)?.[1] ?? null;
+  const id = d.deliveryId ?? d.delivery_id ?? fromUrl;
+  return url.startsWith("/deliveries/") && typeof id === "string" && id ? id : null;
 }
 
 /**
@@ -106,12 +129,14 @@ export async function openNotificationTap(
     chooseHouse: (houseId: string) => Promise<boolean>;
     navigate: (route: string) => void;
     refused: (message: string) => void;
+    /** The order a delivery belongs to, or null when it has none or the read failed. */
+    deliveryOrder?: (deliveryId: string) => Promise<string | null>;
   },
 ): Promise<void> {
   const d = data ?? {};
   const raw = d.restaurantId ?? d.restaurant_id;
   const house = typeof raw === "string" && raw.length > 0 ? raw : null;
-  const route = routeForNotificationData(d);
+  let route = routeForNotificationData(d);
   if (house && deps.currentHouse && house !== deps.currentHouse) {
     const moved = await deps.chooseHouse(house).catch(() => false);
     if (!moved) {
@@ -120,6 +145,13 @@ export async function openNotificationTap(
       );
       return;
     }
+  }
+  // Read in the delivery's own house, after the move above. A delivery with
+  // no order, or a read that failed, leaves the tap on the inbox.
+  const deliveryId = deliveryToResolve(d);
+  if (deliveryId && deps.deliveryOrder) {
+    const order = await deps.deliveryOrder(deliveryId).catch(() => null);
+    if (order) route = `/supply/${order}`;
   }
   deps.navigate(route);
 }

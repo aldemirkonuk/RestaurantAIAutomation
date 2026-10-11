@@ -177,3 +177,35 @@ describe("an overnight shift stays on after the house's midnight (F-1075)", () =
     expect(view.kind === "shifts" && view.shifts.map((s) => s.id)).toEqual(["tue-late"]);
   });
 });
+
+describe("a called-out shift is not on tonight (F-1303)", () => {
+  const shifts = [
+    { id: "ana", shift_date: "2026-10-08", start_time: "17:00", state: "callout" },
+    { id: "cover", shift_date: "2026-10-08", start_time: "17:00", state: "open" },
+  ];
+
+  it("leaves the call-out off the manager's 'On tonight'", () => {
+    const view = resolveTonight({
+      role: "manager",
+      week: { isLoading: false, error: null, data: { timezone: LA, shifts } },
+      mine: idle,
+      now: THU_EVENING_LA,
+    });
+    expect(view.kind === "shifts" && view.shifts.map((s) => s.id)).toEqual(["cover"]);
+  });
+
+  it("does not tell a staff member who called out that they are on tonight", () => {
+    const view = resolveTonight({
+      role: "staff",
+      week: idle,
+      mine: {
+        isLoading: false,
+        error: null,
+        data: { timezone: LA, schedule: { status: "published" }, mine: [shifts[0]] },
+      },
+      now: THU_EVENING_LA,
+    });
+    expect(view.kind).toBe("none");
+    expect(view.kind === "none" && view.message).toBe(NOT_ON_TONIGHT);
+  });
+});

@@ -389,14 +389,19 @@ export function useGoals() {
   });
 }
 
-/** Full pace/projection/suggestions detail for one goal. */
-export function useGoalProgress(goalId: string | undefined) {
+/**
+ * Progress for every active goal, recomputed (F-1304). The list's stored
+ * `current_value` is refreshed only by the hourly sweep, so a bar is never
+ * drawn off it; each entry carries progressPct, pace and levers, or says the
+ * goal could not be read.
+ */
+export function useGoalsProgress() {
   const { enabled, restaurantId } = useAuthed();
+  const readsGoals = readsHouseGoals(useSession((s) => s.user?.role));
   return useQuery({
-    queryKey: ["analytics", "goal-progress", restaurantId, goalId],
-    queryFn: () =>
-      api<any>(`/analytics/goals/${restaurantId}/${goalId}/progress`),
-    enabled: enabled && !!restaurantId && !!goalId,
+    queryKey: ["analytics", "goals-progress", restaurantId],
+    queryFn: () => api<any>(`/analytics/goals/${restaurantId}/progress`),
+    enabled: enabled && !!restaurantId && readsGoals,
     staleTime: 5 * 60_000,
     retry: false,
   });

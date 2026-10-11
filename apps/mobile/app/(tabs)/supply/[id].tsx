@@ -154,7 +154,7 @@ export default function OrderDetailScreen() {
                     <AppText variant="headline">{order.orderNumber}</AppText>
                   )}
                   <AppText variant="footnote" tone="secondary">
-                    {order.quantity ? `${order.quantity} bottles` : ""}
+                    {order.quantity ? orderUnitWords(order.unitType, order.quantity) : ""}
                     {amount ? `  ·  ${amount}` : ""}
                   </AppText>
                 </View>

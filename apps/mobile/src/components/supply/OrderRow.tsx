@@ -4,7 +4,7 @@ import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { color, space } from "@/design/tokens";
 import type { ProcurementOrder } from "@/api/types";
-import { STATUS_LABEL } from "@/lib/orderStatus";
+import { STATUS_LABEL, orderUnitWords } from "@/lib/orderStatus";
 import { houseMoney, type HouseMoneyFrame } from "@/lib/houseMoney";
 import { useHouseMoneyFrame } from "@/api/queries";
 
@@ -77,7 +77,7 @@ export function OrderRow({
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tone }} />
           <AppText variant="caption" tone="tertiary">
             {STATUS_LABEL[order.status] ?? order.status}
-            {order.quantity ? `  ·  ${order.quantity} btl` : ""}
+            {order.quantity ? `  ·  ${orderUnitWords(order.unitType, order.quantity)}` : ""}
           </AppText>
         </View>
       </View>

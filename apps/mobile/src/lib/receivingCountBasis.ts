@@ -42,9 +42,15 @@ export function receivingCountBasis(order?: ProcurementOrder) {
     shelf?.readable === true &&
     (shelf.stockUom === "bottle" || shelf.stockUom === "each") &&
     shelf.quantityInStockUom !== null;
+  // F-1307: a keg or litre order is counted in its own unit, which only the
+  // web door does (the gateway refuses a bottle count for it). The phone says
+  // where to receive it instead of asking for a unit it already has.
+  const ownUnit = unit === "keg" ? "kegs" : unit === "liter" || unit === "litre" ? "litres" : null;
   const fallback =
     orderedBottles == null
-      ? "This order does not state a convertible bottle quantity. Resolve its unit before receiving it."
+      ? ownUnit
+        ? `This order is counted in ${ownUnit}, not bottles. Receive it at the door on the web, which counts ${ownUnit}; this phone counts bottles only.`
+        : "This order does not state a convertible bottle quantity. Resolve its unit before receiving it."
       : "Pre-filled from the ordered bottle quantity. Confirm what actually arrived; this is not proof of receipt.";
   return {
     orderedBottles,

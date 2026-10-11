@@ -37,9 +37,14 @@ export function isRefusal(error: unknown): boolean {
   return (error as { status?: unknown } | null)?.status === 403;
 }
 
+/**
+ * F-1303: a call-out keeps the original shift on the person's row with state
+ * "callout" and opens a separate cover slot, so that person is not on tonight.
+ */
 export function shiftsOn(shifts: any[] | undefined, dateKey: string): any[] {
   return (shifts ?? [])
     .filter((s) => String(s?.shift_date ?? "").slice(0, 10) === dateKey)
+    .filter((s) => s?.state !== "callout")
     .sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
 }
 
