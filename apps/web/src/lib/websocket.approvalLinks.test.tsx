@@ -2,7 +2,8 @@
  * F-179: an AI draft waiting for approval sends the owner somewhere. Both
  * places it sent them were 404s: the browser notification opened
  * `/conversations/<id>` and the toast's Review button opened `/dashboard`.
- * Each target must be a route App.tsx declares.
+ * Each target must be a route App.tsx declares. The toast is gone since: a
+ * draft is a broadcast, not the viewer's own act (ADR 0262).
  */
 
 import { readFileSync } from 'node:fs'
@@ -102,11 +103,8 @@ describe('an AI draft waiting for approval', () => {
     expect(routed('/communications')).toBe(true)
   })
 
-  it('the toast’s Review opens the dashboard at /, a page that exists', () => {
+  it('raises no toast: the draft is not this person\'s own act (ADR 0262, F-124)', () => {
     approvalArrives()
-    const [, opts] = h.toastInfo.mock.calls.find(([title]) => title === '🤖 AI Needs Your Approval')!
-    opts.action.onClick()
-    expect(window.location.href).toBe('/')
-    expect(routed('/')).toBe(true)
+    expect(h.toastInfo).not.toHaveBeenCalled()
   })
 })

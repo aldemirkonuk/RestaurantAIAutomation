@@ -60,7 +60,14 @@ beforeEach(() => {
 });
 
 describe('useBellBook', () => {
-  it('rules off every row a folded line stands for', async () => {
+  it('rules off every row a folded line stands for, past the page too (F-1125)', async () => {
+    // A burst of 60: the bell's page holds 25 of it; the fold is ruled off on
+    // the server by its key, never by the 25 ids this page happened to hold.
+    api.get.mockImplementation((url: string) =>
+      url === '/notifications/unread/count'
+        ? Promise.resolve({ data: { count: 60 } })
+        : Promise.resolve({ data: { data: flood(60).slice(35).reverse(), total: 60, hasMore: true } }),
+    );
     const { result } = renderHook(() => useBellBook(true));
     await waitFor(() => expect(result.current.items).toHaveLength(1));
     const line = result.current.items[0];
@@ -70,9 +77,10 @@ describe('useBellBook', () => {
     });
 
     await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    expect(api.patch).toHaveBeenCalledTimes(1);
     const [url, body] = api.patch.mock.calls[0];
-    expect(url).toBe('/notifications/read/bulk');
-    expect([...(body as { ids: string[] }).ids].sort()).toEqual(['f-0', 'f-1', 'f-2']);
+    expect(url).toBe(`/notifications/${line.id}/read/fold`);
+    expect(body).toBeUndefined();
   });
 
   it('prints the count another surface read last, and never another house count', async () => {

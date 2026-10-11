@@ -18,6 +18,8 @@ import { restaurantsApi } from '@/services/api/restaurants';
 import { houseToday } from './houseCalendar';
 
 const reads = new Map<string, Promise<string | null>>();
+/** The zones already read, for a formatter that cannot wait on a promise. */
+const known = new Map<string, string | null>();
 
 /** The picked house — the key `services/api/client`'s `getActiveRestaurantId` reads. */
 function activeHouseId(): string {
@@ -32,7 +34,11 @@ export function readHouseZone(restaurantId: string): Promise<string | null> {
   let read = reads.get(restaurantId);
   if (!read) {
     read = restaurantsApi.getOperatingHours(restaurantId).then(
-      (res) => (typeof res?.timezone === 'string' && res.timezone ? res.timezone : null),
+      (res) => {
+        const zone = typeof res?.timezone === 'string' && res.timezone ? res.timezone : null;
+        known.set(restaurantId, zone);
+        return zone;
+      },
       () => {
         reads.delete(restaurantId);
         return null;
@@ -41,6 +47,15 @@ export function readHouseZone(restaurantId: string): Promise<string | null> {
     reads.set(restaurantId, read);
   }
   return read;
+}
+
+/**
+ * The active house's zone if it has already been read, else `null` (the
+ * device's clock stands in). For formatters that print a stamp in the house's
+ * hand (F-1123); a page that holds `useHouseZone()` re-renders when it lands.
+ */
+export function knownHouseZone(): string | null {
+  return known.get(activeHouseId()) ?? null;
 }
 
 /** Mounted `useHouseZone` callers, told when a remembered zone is dropped. */
@@ -52,8 +67,13 @@ const listeners = new Set<() => void>();
  * a house switch; without it a page kept the old zone until a full reload.
  */
 export function forgetHouseZones(restaurantId?: string): void {
-  if (restaurantId) reads.delete(restaurantId);
-  else reads.clear();
+  if (restaurantId) {
+    reads.delete(restaurantId);
+    known.delete(restaurantId);
+  } else {
+    reads.clear();
+    known.clear();
+  }
   for (const told of [...listeners]) told();
 }
 
