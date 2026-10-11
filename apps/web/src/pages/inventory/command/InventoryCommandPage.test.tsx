@@ -875,4 +875,69 @@ describe('InventoryCommandPage — value comes from what the house paid, and a c
     expect(cells[0].Live).toBe(7);
     expect(cells[0].Value).toBe(70);
   });
+  // F-1360: the tile counted the zone but each row's Value, the value sort, the
+  // stock gauge and the export's Shadow still counted the whole house, so the
+  // rows under "Value on hand in Cellar" added up to more than the tile.
+  it('[REVERT-FAILS] with a chip on, each row, the value sort and the gauge count that zone', async () => {
+    routeGets({
+      'inventory-list': [
+        {
+          ...costed,
+          stockLive: 11,
+          shadowStock: 3,
+          wac: 10,
+          locations: [
+            { locationId: 'cellar', qty: 2, wac: null },
+            { locationId: 'bar', qty: 9, wac: null },
+          ],
+        },
+        {
+          ...uncosted,
+          stockLive: 3,
+          wac: 10,
+          locations: [{ locationId: 'cellar', qty: 3, wac: null }],
+        },
+      ],
+    });
+    const base = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string) =>
+      url === '/storage-locations/rest-A'
+        ? Promise.resolve({
+            data: [
+              { id: 'cellar', name: 'Cellar' },
+              { id: 'bar', name: 'Bar' },
+            ],
+          })
+        : base(url),
+    );
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    // The location chip comes first; Sancerre's own row names its shelf too.
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Cellar' }))[0]);
+    await screen.findByText('Value on hand in Cellar');
+
+    const row = screen.getByText('Produttori Barbaresco').closest('[data-inv-row]')!;
+    // 2 bottles in the cellar at $10, not the house's 11.
+    expect(row.textContent).toMatch(/\$20(?![\d,.])/);
+    expect(row.textContent).not.toMatch(/\$110(?![\d,.])/);
+    expect(row.textContent).toContain('2 live');
+    expect(row.textContent).toContain('in Cellar');
+    expect(row.textContent).not.toContain('3 shadow');
+
+    // Highest value first: Sancerre's $30 in the cellar outranks Barbaresco's $20.
+    fireEvent.click(screen.getByRole('button', { name: 'Value' }));
+    await waitFor(() => {
+      const names = Array.from(document.querySelectorAll('[data-inv-row]')).map((r) =>
+        r.textContent?.includes('Sancerre') ? 'Sancerre' : 'Barbaresco',
+      );
+      expect(names).toEqual(['Sancerre', 'Barbaresco']);
+    });
+
+    await exportValuation();
+    const { cells } = lastExport();
+    const barbaresco = cells.find((c) => c.Wine === 'Produttori Barbaresco')!;
+    expect(barbaresco.Live).toBe(2);
+    // Shadow is kept for the whole house, so the zone's sheet leaves it blank.
+    expect(barbaresco.Shadow).toBe('');
+  });
 });

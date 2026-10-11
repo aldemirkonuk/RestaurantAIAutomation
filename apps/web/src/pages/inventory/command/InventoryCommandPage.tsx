@@ -693,16 +693,36 @@ export function InventoryCommandPage() {
     return counts;
   }, [filteredInventory]);
 
+  // With a location chip on, the value and the valuation count that zone's
+  // bottles (the zone and the zones inside it), not the wine's whole house,
+  // and say which zone (F-1282). The rows, their value sort and the stock
+  // gauge read the same count, so they add up to the tile (F-1360).
+  const chipZoneIds = useMemo(
+    () =>
+      selectedLocationFilter
+        ? zoneAndChildren(selectedLocationFilter, locations)
+        : null,
+    [selectedLocationFilter, locations],
+  );
+  const chipZoneName = selectedLocationFilter
+    ? (locations.find((z) => z.id === selectedLocationFilter)?.name ?? null)
+    : null;
+  const onHandOf = useCallback(
+    (i: InventoryItem) =>
+      chipZoneIds ? qtyIn(i, chipZoneIds) : (i.liveStock ?? 0),
+    [chipZoneIds],
+  );
+
   const rows = useMemo(() => {
     const items = activeFlag
       ? filteredInventory.filter((i) => rowFlags(i).includes(activeFlag))
       : [...filteredInventory];
-    // Live bottles only, like the Value on hand tile (F-1167). A wine with no
-    // recorded cost sorts below every priced one, never at a borrowed price
-    // (F-1281).
+    // Live bottles only, like the Value on hand tile (F-1167), and only the
+    // chip's zone when one is on (F-1360). A wine with no recorded cost sorts
+    // below every priced one, never at a borrowed price (F-1281).
     const val = (i: InventoryItem) => {
       const cost = recordedCost(i);
-      return cost == null ? -1 : cost * (i.liveStock ?? 0);
+      return cost == null ? -1 : cost * onHandOf(i);
     };
     // Comparator in the key's natural ascending order; sortDir flips it.
     const cmp = (a: InventoryItem, b: InventoryItem) => {
@@ -723,7 +743,7 @@ export function InventoryCommandPage() {
     };
     items.sort((a, b) => (sortDir === "asc" ? cmp(a, b) : -cmp(a, b)));
     return items;
-  }, [filteredInventory, activeFlag, sort, sortDir]);
+  }, [filteredInventory, activeFlag, sort, sortDir, onHandOf]);
 
   // Column-header + dropdown sort control (NEW-087). Clicking the active column
   // toggles direction; a new column adopts its natural default direction.
@@ -811,35 +831,19 @@ export function InventoryCommandPage() {
   });
   const unit = moneyUnit(houseCurrency);
 
-  // With a location chip on, the value and the valuation count that zone's
-  // bottles (the zone and the zones inside it), not the wine's whole house,
-  // and say which zone (F-1282).
-  const chipZoneIds = useMemo(
-    () =>
-      selectedLocationFilter
-        ? zoneAndChildren(selectedLocationFilter, locations)
-        : null,
-    [selectedLocationFilter, locations],
-  );
-  const chipZoneName = selectedLocationFilter
-    ? (locations.find((z) => z.id === selectedLocationFilter)?.name ?? null)
-    : null;
-  const onHandOf = useCallback(
-    (i: InventoryItem) =>
-      chipZoneIds ? qtyIn(i, chipZoneIds) : (i.liveStock ?? 0),
-    [chipZoneIds],
-  );
-
   const valuationColumnsIn = useCallback(
     (
       unit: string,
       unitsOf: (i: InventoryItem) => number = (i) => i.liveStock ?? 0,
+      inZone = false,
     ): TableExportColumn<InventoryItem>[] => [
       { header: "Wine", value: (i) => i.name },
       { header: "Producer", value: (i) => i.producer ?? "" },
       { header: "Type", value: (i) => i.type ?? "" },
       { header: "Live", value: unitsOf },
-      { header: "Shadow", value: (i) => i.shadowStock ?? 0 },
+      // Shadow bottles are kept for the whole house, not per shelf, so a
+      // zone's sheet leaves the column blank rather than mixing scopes (F-1360).
+      { header: "Shadow", value: (i) => (inZone ? "" : (i.shadowStock ?? 0)) },
       { header: "Par", value: (i) => i.threshold ?? "" },
       {
         header: "Velocity/day",
@@ -874,10 +878,10 @@ export function InventoryCommandPage() {
   );
   const valuationColumns = useMemo(
     () =>
-      valuationColumnsIn(unit, onHandOf).filter(
+      valuationColumnsIn(unit, onHandOf, chipZoneIds !== null).filter(
         (c) => seesCost || !isCostHeader(c.header),
       ),
-    [valuationColumnsIn, unit, onHandOf, seesCost],
+    [valuationColumnsIn, unit, onHandOf, chipZoneIds, seesCost],
   );
 
   // One line per wine and place, each with that place's bottles (F-1162).
@@ -1816,11 +1820,11 @@ export function InventoryCommandPage() {
                   const isFocused = idx === focusedIndex;
                   const run = runwayDays(item);
                   const delta = marketDeltaPct(item);
-                  // Live bottles only, like the tile above (F-1167); no
-                  // recorded cost shows a dash, never a price (F-1281).
+                  // Live bottles only, like the tile above (F-1167), in the
+                  // chip's zone when one is on (F-1360); no recorded cost
+                  // shows a dash, never a price (F-1281).
                   const cost = recordedCost(item);
-                  const value =
-                    cost == null ? null : cost * (item.liveStock ?? 0);
+                  const value = cost == null ? null : cost * onHandOf(item);
                   const loc = locName(item);
                   const status = classifyStock(item.liveStock, item.threshold);
                   return (
@@ -1920,7 +1924,14 @@ export function InventoryCommandPage() {
                           )}
                         </div>
                         <div>
-                          <StockGauge item={item} />
+                          <StockGauge
+                            item={item}
+                            zone={
+                              chipZoneIds
+                                ? { qty: onHandOf(item), name: chipZoneName }
+                                : undefined
+                            }
+                          />
                         </div>
                         <div className="font-mono text-xs text-gray-700">
                           {item.velocityPerDay == null ||

@@ -227,7 +227,15 @@ export interface RowExpanderProps {
   stockingReason: string;
   /** Open the deeper series for one book — the double-click route, from a card. */
   onOpenSeries: (book: 'invoice' | 'pos' | 'quote' | 'menu' | 'order') => void;
+  /**
+   * F-1359: the reader does not hold the house's money, so the gateway left
+   * what was paid and quoted out of the record. Those figures say who they are
+   * for instead of the "nothing recorded" dash.
+   */
+  amountsWithheld?: boolean;
 }
+
+const FOR_OWNERS = <span className="cl-dim">for owners and managers</span>;
 
 export default function RowExpander({
   row,
@@ -237,7 +245,9 @@ export default function RowExpander({
   error,
   stockingReason,
   onOpenSeries,
+  amountsWithheld = false,
 }: RowExpanderProps) {
+  const withheld = amountsWithheld || record?.amountsWithheld === true;
   const pos = book(record, 'pos');
   const invoice = book(record, 'invoice');
   const order = book(record, 'order');
@@ -302,12 +312,14 @@ export default function RowExpander({
           </span>
         }
       >
-        <KV k="Last paid, each" v={money(paidUnit)} />
+        <KV k="Last paid, each" v={withheld ? FOR_OWNERS : money(paidUnit)} />
         <KV k="On our list" v={money(listPrice)} />
         <KV k="Catalogue reference" v={catalogueMoney(reference)} />
-        <KV k="Markup" v={markup === null ? EM : `${decimal(markup, 1)}x`} />
+        <KV k="Markup" v={withheld ? FOR_OWNERS : markup === null ? EM : `${decimal(markup, 1)}x`} />
         <p className="cl-note" style={{ marginTop: 6 }}>
-          {paidUnit === null
+          {withheld
+            ? 'What the house pays, and so the markup, is shown to owners and managers.'
+            : paidUnit === null
             ? 'No invoice line carries a unit price for this, so the markup is unknown rather than 0.'
             : listPrice === null
               ? 'It is bought but not listed: no menu line names it, so there is nothing to divide by.'
@@ -442,7 +454,7 @@ export default function RowExpander({
               <div className="cl-ledgerline" key={`i${i}`}>
                 <span className="cl-num">{shortDate(l.at)}</span>
                 <span>{l.who ?? EM}</span>
-                <span className="cl-num">{money(l.total)}</span>
+                <span className="cl-num">{withheld ? FOR_OWNERS : money(l.total)}</span>
                 <span className="cl-tag" data-paid="true">
                   invoiced
                 </span>
@@ -511,7 +523,7 @@ export default function RowExpander({
           </p>
         ) : (
           <>
-            <KV k="Last quote" v={money(quote?.ledger[0]?.unitPrice ?? null)} />
+            <KV k="Last quote" v={withheld ? FOR_OWNERS : money(quote?.ledger[0]?.unitPrice ?? null)} />
             <KV k="From" v={quote?.ledger[0]?.who ?? EM} />
             <KV k="When" v={shortDate(quote?.ledger[0]?.at)} />
           </>

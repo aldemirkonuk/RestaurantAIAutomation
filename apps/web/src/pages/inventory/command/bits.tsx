@@ -164,11 +164,24 @@ export function rowFlags(item: InventoryItem): RowFlag[] {
 
 // ── Stock gauge (3a signature) ────────────────────────────────────────────────
 
-export function StockGauge({ item, compact }: { item: InventoryItem; compact?: boolean }) {
-  const live = item.liveStock ?? 0
-  const shadow = item.shadowStock ?? 0
+/**
+ * `zone`: a location chip is on, so the gauge shows that zone's bottles. Shadow
+ * and par are kept for the whole house, so neither is drawn against a shelf's
+ * count (F-1360).
+ */
+export function StockGauge({
+  item,
+  compact,
+  zone,
+}: {
+  item: InventoryItem
+  compact?: boolean
+  zone?: { qty: number; name: string | null }
+}) {
+  const live = zone ? zone.qty : (item.liveStock ?? 0)
+  const shadow = zone ? 0 : (item.shadowStock ?? 0)
   const par = item.threshold != null && item.threshold > 0 ? item.threshold : 1
-  const scale = Math.max(live + shadow, par * 1.5, 1)
+  const scale = zone ? Math.max(live, 1) : Math.max(live + shadow, par * 1.5, 1)
   const status = classifyStock(item.liveStock, item.threshold)
   const numColor =
     status.key === 'critical' ? 'text-rose-600' : status.key === 'low' ? 'text-amber-600' : 'text-gray-900'
@@ -177,7 +190,9 @@ export function StockGauge({ item, compact }: { item: InventoryItem; compact?: b
     <div>
       <div className="flex items-baseline gap-1.5 font-mono">
         <span className={cn('text-sm font-bold', numColor)}>{live + shadow}</span>
-        <span className="text-[10px] text-gray-400">{item.threshold != null ? `/ ${item.threshold} par` : 'no par set'}</span>
+        <span className="text-[10px] text-gray-400">
+          {zone ? `in ${zone.name ?? 'this place'}` : item.threshold != null ? `/ ${item.threshold} par` : 'no par set'}
+        </span>
         {shadow > 0 && (
           <span className="ml-auto text-[9px] font-bold tracking-wide text-violet-600 bg-violet-50 rounded-full px-2 py-px">
             RECONCILE
@@ -187,7 +202,7 @@ export function StockGauge({ item, compact }: { item: InventoryItem; compact?: b
       <div className="relative flex h-1.5 my-1 bg-gray-100 rounded-full">
         <div className="h-full bg-blue-600 rounded-l-full" style={{ width: `${(live / scale) * 100}%` }} />
         {shadow > 0 && <div className="h-full bg-violet-600" style={{ width: `${(shadow / scale) * 100}%` }} />}
-        {item.threshold != null && (
+        {item.threshold != null && !zone && (
           <div
             className="absolute -top-1 w-0.5 h-3.5 bg-gray-900/60 rounded"
             style={{ left: `${Math.min((par / scale) * 100, 100)}%` }}
@@ -197,7 +212,7 @@ export function StockGauge({ item, compact }: { item: InventoryItem; compact?: b
       {!compact && (
         <div className="flex gap-2.5 font-mono text-[9px]">
           <span className="text-blue-600">{live} live</span>
-          <span className={shadow > 0 ? 'text-violet-600' : 'text-gray-300'}>{shadow} shadow</span>
+          {!zone && <span className={shadow > 0 ? 'text-violet-600' : 'text-gray-300'}>{shadow} shadow</span>}
         </div>
       )}
     </div>

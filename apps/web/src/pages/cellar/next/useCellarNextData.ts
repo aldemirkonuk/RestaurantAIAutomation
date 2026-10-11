@@ -1002,6 +1002,8 @@ export interface RowRecordVM {
   books: BookRecordVM[];
   named: BookRecordVM['book'][];
   nothingNamesIt: boolean;
+  /** F-1359: set for a reader who does not hold the house's money. */
+  amountsWithheld?: true;
 }
 
 /**

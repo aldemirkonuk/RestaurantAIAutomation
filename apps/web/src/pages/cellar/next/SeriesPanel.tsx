@@ -164,14 +164,22 @@ function Spark({
   );
 }
 
+/** The books that say what the house paid; the gateway strips their prices for staff. */
+const BUYING_BOOKS = new Set(['invoice', 'order', 'quote']);
+
 function BookBlock({
   book,
   column,
+  amountsWithheld,
 }: {
   book: BookRecordVM;
   column: string;
+  amountsWithheld: boolean;
 }) {
   const axis = axisFor(book.book, column);
+  // F-1359: a staff reader gets these lines without their prices; the cells
+  // say who the figure is for rather than drawing "nothing recorded".
+  const withheld = amountsWithheld && BUYING_BOOKS.has(book.book);
   const points = axis === 'price' ? book.price : book.quantity;
 
   return (
@@ -231,10 +239,10 @@ function BookBlock({
                       {e.qty ?? EM}
                     </td>
                     <td className="cl-num" style={{ textAlign: 'right' }}>
-                      {money(e.unitPrice)}
+                      {withheld ? <span className="cl-dim">for owners and managers</span> : money(e.unitPrice)}
                     </td>
                     <td className="cl-num" style={{ textAlign: 'right' }}>
-                      {money(e.total)}
+                      {withheld ? <span className="cl-dim">for owners and managers</span> : money(e.total)}
                     </td>
                   </tr>
                 ))}
@@ -258,6 +266,8 @@ export interface SeriesPanelProps {
   loading: boolean;
   error: string | null;
   onClose: () => void;
+  /** F-1359: the paid and quoted prices were left out for this reader. */
+  amountsWithheld?: boolean;
 }
 
 export default function SeriesPanel({
@@ -269,7 +279,9 @@ export default function SeriesPanel({
   loading,
   error,
   onClose,
+  amountsWithheld = false,
 }: SeriesPanelProps) {
+  const withheld = amountsWithheld || record?.amountsWithheld === true;
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -337,7 +349,7 @@ export default function SeriesPanel({
             </p>
           ) : null}
           {ordered.map((b) => (
-            <BookBlock key={b.book} book={b} column={columnId} />
+            <BookBlock key={b.book} book={b} column={columnId} amountsWithheld={withheld} />
           ))}
           <p className="cl-note" style={{ marginTop: 16 }}>
             {record.matchRule}

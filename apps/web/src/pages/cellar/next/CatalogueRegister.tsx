@@ -577,6 +577,7 @@ export default function CatalogueRegister({
                                 loading={record.loading}
                                 error={record.error}
                                 stockingReason={reg.stocking.reason}
+                                amountsWithheld={amountsWithheld}
                                 onOpenSeries={(b) => {
                                   const col =
                                     vocabulary.find((c) => c.series === b) ?? null;
@@ -611,6 +612,7 @@ export default function CatalogueRegister({
                 record={record.data}
                 loading={record.loading}
                 error={record.error}
+                amountsWithheld={amountsWithheld}
                 onClose={() => setSeries(null)}
               />
             </div>
