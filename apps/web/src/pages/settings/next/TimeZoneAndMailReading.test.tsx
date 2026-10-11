@@ -105,6 +105,26 @@ describe('the Time zone register', () => {
     expect(screen.getByText(/stated by · Aldemir/)).toBeInTheDocument();
   });
 
+  it('says what the zone decides beyond deliveries (F-1139)', () => {
+    mountZone({ houseTimeZone: remote(zoneReg({ zone: 'Europe/Istanbul' })) });
+    expect(screen.getByText(/the days on the dashboard and in reports/)).toBeInTheDocument();
+    expect(screen.getByText(/when standing orders fall due/)).toBeInTheDocument();
+  });
+
+  it('says that replacing a recorded zone moves the days of past records, and only then (F-1139)', () => {
+    mountZone({ houseTimeZone: remote(zoneReg({ zone: 'Europe/Istanbul' })) });
+    const MOVES = /can move to the day before or after in reports/;
+    expect(screen.queryByText(MOVES)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'America/Detroit' } });
+    expect(screen.getByText(MOVES)).toBeInTheDocument();
+  });
+
+  it('says nothing about moved days when the first zone is recorded (F-1139)', () => {
+    mountZone();
+    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'Europe/Istanbul' } });
+    expect(screen.queryByText(/can move to the day before or after/)).toBeNull();
+  });
+
   /**
    * ADR 0304: the provenance line names where the zone came from, and a
    * person only as the witness of the zone the house keeps now. Each case

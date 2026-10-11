@@ -2466,8 +2466,27 @@ describe('the till can be disconnected and reconnected', () => {
     const btn = screen.getByRole('button', { name: 'Disconnect Toast' });
     expect(btn).toBeEnabled();
     fireEvent.click(btn);
+    // F-1138: the first tap only arms it, and says what the gap costs.
+    expect(setPosConnection).not.toHaveBeenCalled();
+    expect(screen.getByText(/Checks it sends while disconnected are turned away and not kept/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, disconnect Toast' }));
     await waitFor(() => expect(setPosConnection).toHaveBeenCalledWith('toast', false));
     expect(screen.queryByText(/cannot be disconnected from this page/)).not.toBeInTheDocument();
+  });
+
+  it('takes nothing when the armed Disconnect is called off (F-1138)', () => {
+    const setPosConnection = vi.fn(async () => undefined);
+    const d = base();
+    d.pos = reg({ unavailable: false, totalChecks: 12, sources, windowDays: 30 });
+    d.posConnections = reg([]);
+    d.setPosConnection = setPosConnection;
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect Toast' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep Toast connected' }));
+    expect(setPosConnection).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Disconnect Toast' })).toBeInTheDocument();
   });
 
   it('shows a refused till as disconnected and offers Reconnect', async () => {
@@ -2496,6 +2515,7 @@ describe('the till can be disconnected and reconnected', () => {
     render(<ConnectionsNext />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect Toast' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, disconnect Toast' }));
     expect(
       await screen.findByText(/Nothing changed for Toast: Only an owner or a manager can do that/),
     ).toBeInTheDocument();

@@ -1483,6 +1483,10 @@ function TillRow({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<{ name: string; words: string } | null>(null);
+  // F-1138: Disconnect arms on the first tap and is sent only on "Yes,
+  // disconnect", as Team's Remove is: one stray tap at phone width would
+  // otherwise turn away the night's checks. Reconnect needs no second tap.
+  const [armed, setArmed] = useState<string | null>(null);
 
   const tills = useMemo(() => {
     const byKey = new Map<string, { key: string; name: string; enabled: boolean }>();
@@ -1504,6 +1508,7 @@ function TillRow({
 
   const flip = (t: { key: string; name: string; enabled: boolean }) => {
     if (!onSwitch || busy) return;
+    setArmed(null);
     setBusy(t.key);
     setFailed(null);
     onSwitch(t.key, !t.enabled)
@@ -1511,8 +1516,15 @@ function TillRow({
       .finally(() => setBusy(null));
   };
 
+  const armedTill = armed ? tills.find((t) => t.key === armed && t.enabled) ?? null : null;
+  const GAP =
+    'Checks it sends while disconnected are turned away and not kept: to get them back, have the till send them ' +
+    'again after you reconnect it, or import them from a file.';
+
   let stopNote: string;
-  if (failed) {
+  if (armedTill) {
+    stopNote = `Disconnect ${armedTill.name}? Its checks stop being taken until you reconnect it. ${GAP}`;
+  } else if (failed) {
     stopNote = `Nothing changed for ${failed.name}: ${failed.words}`;
   } else if (connections.loading) {
     stopNote = 'Checking which tills this house takes checks from.';
@@ -1521,8 +1533,7 @@ function TillRow({
   } else if (!tills.length) {
     stopNote = 'No till has sent a check here yet, so there is nothing to disconnect.';
   } else {
-    stopNote =
-      'Disconnecting a till stops its checks being taken until you reconnect it. Checks it already sent stay.';
+    stopNote = `Disconnecting a till stops its checks being taken until you reconnect it. Checks it already sent stay. ${GAP}`;
   }
 
   return (
@@ -1560,14 +1571,23 @@ function TillRow({
         )
       }
       controls={
-        canSwitch
-          ? tills.map((t) => ({
-              label: `${t.enabled ? 'Disconnect' : 'Reconnect'} ${t.name}`,
-              onClick: () => flip(t),
-              busy: busy === t.key,
-              disabled: Boolean(busy) && busy !== t.key,
-            }))
-          : []
+        !canSwitch
+          ? []
+          : armedTill
+            ? [
+                { label: `Yes, disconnect ${armedTill.name}`, onClick: () => flip(armedTill) },
+                { label: `Keep ${armedTill.name} connected`, onClick: () => setArmed(null) },
+              ]
+            : tills.map((t) => ({
+                label: `${t.enabled ? 'Disconnect' : 'Reconnect'} ${t.name}`,
+                onClick: () => {
+                  if (!t.enabled) return flip(t);
+                  setFailed(null);
+                  setArmed(t.key);
+                },
+                busy: busy === t.key,
+                disabled: Boolean(busy) && busy !== t.key,
+              }))
       }
       stopNote={stopNote}
     />

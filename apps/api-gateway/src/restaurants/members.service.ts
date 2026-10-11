@@ -172,7 +172,11 @@ export class MembersService {
 
     const { data: invites, error } = await this.databaseService.supabase
       .from("organization_invites")
-      .select("id, code, role, expires_at, created_at, invited_by")
+      // `target_email` is who the invite is for, when it was minted for an
+      // address; the invite book names them rather than only the code (F-1140).
+      .select(
+        "id, code, role, expires_at, created_at, invited_by, target_email",
+      )
       .eq("restaurant_id", restaurantId)
       .is("used_at", null)
       .gt("expires_at", new Date().toISOString())
@@ -809,13 +813,17 @@ export class MembersService {
     restaurantId: string,
     code: string,
   ): Promise<void> {
-    await this.assertMembership(actorUserId, restaurantId, "owner|manager");
+    const { role: actorRole } = await this.assertMembership(
+      actorUserId,
+      restaurantId,
+      "owner|manager",
+    );
 
     // Read first: the invite's id and date are what find the roster row it
     // made, and both are gone once the invite is deleted.
     const { data: invite, error: readErr } = await this.databaseService.supabase
       .from("organization_invites")
-      .select("id, created_at")
+      .select("id, created_at, role")
       .eq("code", code.toUpperCase())
       .eq("restaurant_id", restaurantId)
       .is("used_at", null)
@@ -825,6 +833,15 @@ export class MembersService {
         `revokeInvite could not read the invite: ${readErr.message}`,
       );
       throw new InternalServerErrorException("Failed to revoke invite");
+    }
+
+    // Withdrawing an invite follows the rule for giving one (ADR 0162): a
+    // manager may withdraw a manager's or staff invite, never an owner's, as
+    // they may not remove an owner either (F-1140, re-hit of F-176).
+    if (invite?.role === "owner" && actorRole !== "owner") {
+      throw new ForbiddenException(
+        "Only an owner of this house can withdraw an invite for an owner.",
+      );
     }
 
     const { error } = await this.databaseService.supabase

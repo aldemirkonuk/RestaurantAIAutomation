@@ -154,6 +154,13 @@ function Body({
       ? `${reg.zone} is already recorded. Choose another to change it.`
       : 'Nothing is recorded yet. Choose the zone this house keeps, then Record it.'
     : `Record will write ${choice}${reg.zone ? `, replacing ${reg.zone}` : ''}.`;
+  // What a replaced zone does to what is already on the books (F-1139):
+  // times are kept as instants, so every day is re-read on the new clock.
+  const moves = dirty && reg.zone
+    ? 'Nothing already recorded is rewritten, but it is all read on the new clock: a sale, delivery or count near ' +
+      'midnight can move to the day before or after in reports and on the dashboard, and standing orders fall due ' +
+      'by the new clock.'
+    : null;
 
   const rest = zones.filter((z) => !theirs.includes(z));
 
@@ -170,7 +177,9 @@ function Body({
         consequence={
           reg.zone ? (
             <>
-              Midnight falls on <strong>{reg.zone}</strong> for every on-time verdict of this house.
+              The day starts and ends on <strong>{reg.zone}</strong> for everything this house keeps by the day:
+              on-time deliveries, the days on the dashboard and in reports, the calendar, opening hours and shifts,
+              and when standing orders fall due.
             </>
           ) : (
             <>
@@ -221,6 +230,11 @@ function Body({
         <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
           {statement}
         </p>
+        {moves && (
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-2)', margin: '5px 0 0' }}>
+            {moves}
+          </p>
+        )}
         {origin.by && (
           <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '3px 0 0' }}>
             stated by · {origin.by}

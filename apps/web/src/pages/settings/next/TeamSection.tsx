@@ -200,8 +200,12 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
             {reg.invites?.map((inv) => (
               <Row
                 key={inv.id}
-                label={inv.code}
-                consequence={`Joins as ${inv.role}. ${fmtExpiry(inv.expires_at, zone)}.`}
+                // F-1140: say who it is for when the invite was made for an
+                // address; a bare code says it is for whoever holds it.
+                label={inv.target_email ?? `Code ${inv.code}`}
+                consequence={inv.target_email
+                  ? `Joins as ${inv.role} with code ${inv.code}. ${fmtExpiry(inv.expires_at, zone)}.`
+                  : `Not made for anyone by name: whoever holds this code joins as ${inv.role}. ${fmtExpiry(inv.expires_at, zone)}.`}
                 provenance={{
                   kept: 'restaurant',
                   verb: 'issued',
@@ -209,13 +213,21 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
                   whenUnknown: 'this invite carries no issued date',
                 }}
                 control={
-                  <ConfirmAction
-                    label="Revoke"
-                    confirmLabel="Yes, revoke"
-                    busy={writer.busy === `invite:${inv.code}`}
-                    consequence="The link stops working for anyone holding it."
-                    onConfirm={() => void revokeInvite(inv.code)}
-                  />
+                  // An owner's invite is an owner's to withdraw; the gateway
+                  // refuses a manager too (members.service.ts revokeInvite).
+                  inv.role === 'owner' && role !== 'owner' ? (
+                    <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)', maxWidth: 260, textAlign: 'right' }}>
+                      Only an owner can withdraw an invite for an owner.
+                    </span>
+                  ) : (
+                    <ConfirmAction
+                      label="Revoke"
+                      confirmLabel="Yes, revoke"
+                      busy={writer.busy === `invite:${inv.code}`}
+                      consequence="The link stops working for anyone holding it."
+                      onConfirm={() => void revokeInvite(inv.code)}
+                    />
+                  )
                 }
               />
             ))}
