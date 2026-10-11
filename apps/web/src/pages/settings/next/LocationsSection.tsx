@@ -177,6 +177,13 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
           chains={(chains.data ?? []).map((c) => ({ ...c, locationCount: c.location_count ?? undefined }))}
           onClose={() => setEditing(null)}
           onSaved={async () => { await refreshBranches(); setEditing(null); }}
+          // F-1264: the Currency and Time zone registers on this page were
+          // read under the old country; read them again for the open house.
+          onPlaceChanged={() => {
+            if (editing.id !== restaurantId) return;
+            data.houseCurrency.reload();
+            data.houseTimeZone.reload();
+          }}
         />
       )}
     </>

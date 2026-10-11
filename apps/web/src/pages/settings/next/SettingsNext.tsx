@@ -293,7 +293,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
           </p>
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-4)', margin: '8px 0 0', maxWidth: 660 }}>
             {capitalise(word(split.recorded.length))} of these record <em>who</em> changed a setting and what it was
-            before — {listed(split.recorded.map((s) => s.label))} — and so do the opening hours and the target margin (F-503, F-499); you can read every change under{' '}
+            before — {listed(split.recorded.map((s) => s.label))} — and so do the opening hours and the target margin; you can read every change under{' '}
             <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here

@@ -173,6 +173,10 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   // 'failed' is a browser that refused the write: the button says so instead
   // of claiming 'Copied' (F-600).
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
+  // F-1263: a new link and stopping the link both end the current address at
+  // once, so each arms on the first tap and is sent only on its "Yes, …", as
+  // the calendar page and the till row ask first.
+  const [feedArmed, setFeedArmed] = useState<'renew' | 'stop' | null>(null);
 
   /**
    * Bring the fragment's register into view once its register has answered.
@@ -721,18 +725,44 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                             },
                           ]
                         : []),
-                      {
-                        // No seal ring on this (audit, 2026-09-04): its weight
-                        // is carried by `stopNote` below, in words.
-                        label: 'Get a new link',
-                        busy: d.regenerateFeed.isPending,
-                        onClick: () => d.regenerateFeed.mutate(),
-                      },
-                      {
-                        label: 'Stop my link',
-                        busy: d.revokeFeed.isPending,
-                        onClick: () => d.revokeFeed.mutate(),
-                      },
+                      // No seal ring on these (audit, 2026-09-04): their weight
+                      // is carried by `stopNote` below, in words.
+                      ...(feedArmed === 'renew'
+                        ? [
+                            {
+                              label: 'Yes, get a new link',
+                              busy: d.regenerateFeed.isPending,
+                              onClick: () => {
+                                setFeedArmed(null);
+                                d.regenerateFeed.mutate();
+                              },
+                            },
+                            { label: 'Keep it', onClick: () => setFeedArmed(null) },
+                          ]
+                        : feedArmed === 'stop'
+                          ? [
+                              {
+                                label: 'Yes, stop my link',
+                                busy: d.revokeFeed.isPending,
+                                onClick: () => {
+                                  setFeedArmed(null);
+                                  d.revokeFeed.mutate();
+                                },
+                              },
+                              { label: 'Keep it', onClick: () => setFeedArmed(null) },
+                            ]
+                          : [
+                              {
+                                label: 'Get a new link',
+                                busy: d.regenerateFeed.isPending,
+                                onClick: () => setFeedArmed('renew'),
+                              },
+                              {
+                                label: 'Stop my link',
+                                busy: d.revokeFeed.isPending,
+                                onClick: () => setFeedArmed('stop'),
+                              },
+                            ]),
                     ]
                   : [
                       {
@@ -743,9 +773,13 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                     ]
               }
               stopNote={
-                myLink?.connected
-                  ? 'A new link or stopping this one ends your current address at once. Your calendar app then shows “Calendar link expired - connect again”. Nobody else’s link changes.'
-                  : `Nothing is made until you connect. ${SHOWN_ONCE}`
+                myLink?.connected && feedArmed === 'renew'
+                  ? 'Get a new link? Your current link stops at once. Any calendar using it shows “Calendar link expired - connect again” until you add the new one.'
+                  : myLink?.connected && feedArmed === 'stop'
+                    ? 'Stop your link? Your calendar app will show “Calendar link expired - connect again”. You can connect again any time.'
+                    : myLink?.connected
+                      ? 'A new link or stopping this one ends your current address at once. Your calendar app then shows “Calendar link expired - connect again”. Nobody else’s link changes.'
+                      : `Nothing is made until you connect. ${SHOWN_ONCE}`
               }
               alert={feedAlert()}
             />

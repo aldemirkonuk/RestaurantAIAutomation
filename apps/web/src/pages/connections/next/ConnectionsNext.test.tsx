@@ -772,12 +772,41 @@ describe('the one row, four columns and no fifth', () => {
   });
 
   it('offers the reader their OWN link: a real "Get a new link" and a real "Stop my link"', () => {
+    regenerateFeed.mutate.mockClear();
+    revokeFeed.mutate.mockClear();
     render(<ConnectionsNext />);
     expect(screen.getByText('My calendar link')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Get a new link' }));
-    expect(regenerateFeed.mutate).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, get a new link' }));
+    expect(regenerateFeed.mutate).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Stop my link' }));
-    expect(revokeFeed.mutate).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, stop my link' }));
+    expect(revokeFeed.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('F-1263: "Get a new link" and "Stop my link" only arm on the first tap; "Keep it" sends nothing', () => {
+    regenerateFeed.mutate.mockClear();
+    revokeFeed.mutate.mockClear();
+    render(<ConnectionsNext />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get a new link' }));
+    expect(regenerateFeed.mutate).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/get a new link\? .*calendar link expired - connect again/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+    expect(screen.queryByRole('button', { name: 'Yes, get a new link' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop my link' }));
+    expect(revokeFeed.mutate).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/stop your link\? .*calendar link expired - connect again/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+
+    expect(regenerateFeed.mutate).not.toHaveBeenCalled();
+    expect(revokeFeed.mutate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Stop my link' })).toBeInTheDocument();
   });
 
   it('never shows an address the read did not issue — only the answer to the act that made it carries one', () => {

@@ -118,6 +118,24 @@ describe('an owner sets the state the market index asks for', () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
+  it('F-1264: tells the page the place changed, and only when the pair was sent', async () => {
+    patch.mockResolvedValueOnce({ data: { stateAndCountry: 'changed', audited: true, auditReason: null } });
+    const onPlaceChanged = vi.fn();
+    render(
+      <EditLocationChainDialog
+        open
+        branch={BRANCH}
+        chains={[]}
+        onClose={() => {}}
+        onSaved={() => {}}
+        onPlaceChanged={onPlaceChanged}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText('State or province'), { target: { value: 'CA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onPlaceChanged).toHaveBeenCalledTimes(1));
+  });
+
   it('says so when the change stands but the log did not take it', async () => {
     patch.mockResolvedValueOnce({
       data: { stateAndCountry: 'changed', audited: false, auditReason: 'system_audit_log is read-only right now' },
