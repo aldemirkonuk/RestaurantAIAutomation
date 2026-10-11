@@ -47,6 +47,9 @@ import {
   type UnresolvedLineGroup,
   type UnresolvedLinesResponse,
 } from "../../services/api/posHub";
+import { getTargetMargin } from "../../services/api/pricing";
+import { useHouseCountryCode } from "../../hooks/useHouseGroupMark";
+import { poursInOunces, readServeMl, serveLabel } from "../../utils/volumeUtils";
 import { cn } from "../../lib/utils";
 
 interface Props {
@@ -138,17 +141,24 @@ export function PosMappingPanel({
   const [otherDraft, setOtherDraft] = useState<{ label: string; ml: string }>(
     { label: OTHER_SERVES[0], ml: "" },
   );
+  /**
+   * The house's CONFIRMED pour, the only size a "Glass" answer is offered at
+   * (F-083, F-1384). A row's `pourSizeMl` is not one: the column carries a
+   * database DEFAULT of 150 that cannot be told from a typed value (ADR 0193
+   * F7). Null = not confirmed, or not read, and then a glass is asked for.
+   */
+  const [housePour, setHousePour] = useState<number | null>(null);
+  const ounces = poursInOunces(useHouseCountryCode());
 
   const invById = useMemo(() => {
     const m = new Map<
       string,
-      { name: string; bottleMl: number | null; pourMl: number | null }
+      { name: string; bottleMl: number | null }
     >();
     for (const i of inventory || []) {
       m.set(i.id, {
         name: i.wineName || i.wine_name || "Unnamed row",
         bottleMl: i.bottleSizeMl ?? null,
-        pourMl: i.pourSizeMl ?? null,
       });
     }
     return m;
@@ -161,11 +171,17 @@ export function PosMappingPanel({
 
     // Each read reports its own outcome. One failing must not blank the others,
     // and none of them may report a failure as "nothing here".
-    const [p, u, m] = await Promise.allSettled([
+    const [p, u, m, t] = await Promise.allSettled([
       getMatchProposals(restaurantId, "pending"),
       getUnresolvedLines(restaurantId),
       getItemMappings(restaurantId),
+      getTargetMargin(),
     ]);
+    setHousePour(
+      t.status === "fulfilled" && t.value?.pour?.confirmed
+        ? t.value.pour.ml
+        : null,
+    );
     setProposals(
       p.status === "fulfilled"
         ? { data: p.value, error: null, loading: false }
@@ -446,7 +462,6 @@ export function PosMappingPanel({
                   : null;
                 const a = answers[p.id];
                 const bottleMl = cand?.bottleMl ?? 750;
-                const pourMl = cand?.pourMl ?? null;
                 return (
                   <div
                     key={p.id}
@@ -505,7 +520,15 @@ export function PosMappingPanel({
                         Bottle {bottleMl}ml
                       </button>
                       <button
-                        onClick={() => setAnswer(p.id, "glass", pourMl ?? 150)}
+                        onClick={() => {
+                          if (housePour != null) {
+                            setAnswer(p.id, "glass", housePour);
+                            return;
+                          }
+                          // No confirmed pour: ask, never send a guess.
+                          setOtherDraft({ label: "glass", ml: "" });
+                          setOtherFor(p.id);
+                        }}
                         className={cn(
                           "h-7 px-2.5 rounded-md text-[11px] font-bold border",
                           a?.label === "glass"
@@ -513,7 +536,11 @@ export function PosMappingPanel({
                             : "border-gray-200 bg-white text-gray-600 hover:border-gray-300",
                         )}
                       >
-                        Glass {pourMl ?? 150}ml
+                        {a?.label === "glass" && a.ml != null
+                          ? `Glass ${a.ml}ml`
+                          : housePour != null
+                            ? `Glass ${housePour}ml`
+                            : "Glass…"}
                       </button>
                       {a && a.label !== "bottle" && a.label !== "glass" ? (
                         <button
@@ -544,6 +571,7 @@ export function PosMappingPanel({
                     {otherFor === p.id && (
                       <OtherServeForm
                         itemName={p.item_name}
+                        ounces={ounces}
                         draft={otherDraft}
                         onDraft={setOtherDraft}
                         onSet={(label, ml) => {
@@ -600,11 +628,20 @@ export function PosMappingPanel({
                             One bottle
                           </button>
                           <button
-                            onClick={() => answerQueuedUnit(m.id, "glass")}
+                            onClick={() => {
+                              if (housePour != null) {
+                                void answerQueuedUnit(m.id, "glass", housePour);
+                                return;
+                              }
+                              setOtherDraft({ label: "glass", ml: "" });
+                              setOtherFor(`q:${m.id}`);
+                            }}
                             disabled={busy}
                             className="h-7 px-2.5 rounded-md text-[11px] font-bold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 disabled:opacity-50"
                           >
-                            One glass
+                            {housePour != null
+                              ? `One glass (${housePour}ml)`
+                              : "One glass…"}
                           </button>
                           <button
                             onClick={() => {
@@ -629,6 +666,7 @@ export function PosMappingPanel({
                       {m && otherFor === `q:${m.id}` && (
                         <OtherServeForm
                           itemName={g.item_name}
+                          ounces={ounces}
                           draft={otherDraft}
                           onDraft={setOtherDraft}
                           onSet={(label, ml) =>
@@ -682,23 +720,31 @@ export function PosMappingPanel({
  */
 function OtherServeForm({
   itemName,
+  ounces,
   draft,
   onDraft,
   onSet,
   onCancel,
 }: {
   itemName: string;
+  /** The house pours in US fluid ounces: "5 oz" is offered and said back in both units (F-1381). */
+  ounces: boolean;
   draft: { label: string; ml: string };
   onDraft: (d: { label: string; ml: string }) => void;
   onSet: (label: string, ml: number) => void;
   onCancel: () => void;
 }) {
-  const ml = Number(draft.ml);
+  // "5 oz" and "15 cl" are read in their own unit (F-1381); a bare number is ml.
+  const read = readServeMl(draft.ml);
+  const ml = read === null ? NaN : Math.round(read);
   const valid =
     draft.ml.trim() !== "" &&
     Number.isFinite(ml) &&
     ml >= MIN_SALE_ML &&
     ml <= MAX_SALE_ML;
+  // A glass is asked for here when the house has not confirmed its pour (F-1384).
+  const serves: readonly string[] =
+    draft.label === "glass" ? ["glass", ...OTHER_SERVES] : OTHER_SERVES;
   return (
     <div className="basis-full flex items-center gap-2 flex-wrap pl-7 text-[11px]">
       <label className="flex items-center gap-1 text-gray-600">
@@ -709,7 +755,7 @@ function OtherServeForm({
           onChange={(e) => onDraft({ ...draft, label: e.target.value })}
           className="h-7 rounded-md border border-gray-200 bg-white px-1.5"
         >
-          {OTHER_SERVES.map((s) => (
+          {serves.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
@@ -719,17 +765,21 @@ function OtherServeForm({
       <label className="flex items-center gap-1 text-gray-600">
         of
         <input
-          type="number"
-          inputMode="numeric"
-          min={MIN_SALE_ML}
-          max={MAX_SALE_ML}
+          type="text"
+          inputMode={ounces ? "text" : "decimal"}
           aria-label={`Millilitres for ${itemName}`}
+          placeholder={ounces ? "ml or 5 oz" : undefined}
           value={draft.ml}
           onChange={(e) => onDraft({ ...draft, ml: e.target.value })}
           className="h-7 w-20 rounded-md border border-gray-200 px-1.5"
         />
-        ml
+        {ounces ? "ml or oz" : "ml"}
       </label>
+      {ounces && valid && (
+        <span className="text-gray-500" data-testid="serve-read-as">
+          = {serveLabel(ml, true)}
+        </span>
+      )}
       <button
         onClick={() => valid && onSet(draft.label, ml)}
         disabled={!valid}

@@ -930,6 +930,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           path={correcting.path}
           label={correcting.label}
           envelope={envelopeAt(doc.layer1, correcting.path)}
+          currency={doc.layer1.currency.value}
           error={writeError}
           busy={writing}
           onCancel={() => {

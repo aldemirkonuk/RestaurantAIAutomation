@@ -128,6 +128,27 @@ export function parseVolumeInput(input: string): { ml: number; oz: number } | nu
 
 // ==================== Presets ====================
 
+/**
+ * A pour or a serve as a person typed it (F-1381). A bare number is millilitres,
+ * as these fields have always read it; "5 oz", "5 fl oz", "15 cl" and "150 ml"
+ * are read in their own unit. Null when it is not a volume.
+ */
+export function readServeMl(raw: string): number | null {
+  const t = raw.trim()
+  if (t === '') return null
+  return /[a-z]/i.test(t) ? (parseVolumeInput(t)?.ml ?? null) : parseDecimal(t)
+}
+
+/** A house that pours in US fluid ounces, so a pour is shown in oz beside ml. */
+export function poursInOunces(countryCode: string | null | undefined): boolean {
+  return countryCode === 'US'
+}
+
+/** "148 ml", or "148 ml (5 oz)" in a house that pours in ounces. */
+export function serveLabel(ml: number, ounces: boolean): string {
+  return ounces ? `${ml} ml (${mlToOz(ml)} oz)` : `${ml} ml`
+}
+
 export type SaleType = 'bottle' | 'glass' | 'both'
 
 export interface BottleSizePreset {

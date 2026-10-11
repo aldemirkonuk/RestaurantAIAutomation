@@ -28,6 +28,13 @@ describe("normalizeDescription", () => {
     expect(normalizeDescription("Chianti 1.5L magnum").formatMl).toBe(1500);
   });
 
+  it("reads two digits after the litre mark, not just the last one (F-1380)", () => {
+    expect(normalizeDescription("Titos vodka 1.75L").formatMl).toBe(1750);
+    expect(normalizeDescription("titos vodka 1.75 ltr").formatMl).toBe(1750);
+    expect(normalizeDescription("Smirnoff 0.75L").formatMl).toBe(750);
+    expect(normalizeDescription("Rioja 0,75 l").formatMl).toBe(750);
+  });
+
   it("does not mistake a SKU digit run for a vintage", () => {
     expect(normalizeDescription("SGW-11872 Barolo").vintage).toBeNull();
   });

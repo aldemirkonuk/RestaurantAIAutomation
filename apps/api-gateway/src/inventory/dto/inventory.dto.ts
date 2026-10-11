@@ -32,6 +32,13 @@ export const COST_PROVENANCES = [
 export type CostProvenance = (typeof COST_PROVENANCES)[number];
 
 /**
+ * The largest container a row may state (F-082, F-1383): a US half-barrel keg
+ * is 58,674 ml, and an 18 L cap refused it. No database CHECK bounds
+ * `bottle_size_ml`; this is the only gate.
+ */
+export const KEG_MAX_ML = 60000;
+
+/**
  * DTO for creating a new inventory item
  */
 export class CreateInventoryItemDto {
@@ -128,7 +135,7 @@ export class CreateInventoryItemDto {
   @IsOptional()
   @IsInt()
   @Min(50)
-  @Max(18000)
+  @Max(KEG_MAX_ML)
   bottleSizeMl?: number;
 
   @ApiPropertyOptional({ description: "Glasses per bottle override" })
@@ -243,7 +250,7 @@ export class UpdateInventoryItemDto {
   @IsOptional()
   @IsInt()
   @Min(50)
-  @Max(18000)
+  @Max(KEG_MAX_ML)
   bottleSizeMl?: number;
 
   @ApiPropertyOptional({ description: "Glasses per bottle override" })
@@ -386,7 +393,7 @@ export class BulkInventoryLineDto {
   @IsOptional()
   @IsInt()
   @Min(50)
-  @Max(18000)
+  @Max(KEG_MAX_ML)
   bottleSizeMl?: number;
 
   @ApiPropertyOptional({ description: "Sale type: bottle, glass, or both" })

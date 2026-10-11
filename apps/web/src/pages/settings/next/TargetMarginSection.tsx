@@ -29,6 +29,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Action, Note, Row, fieldStyle } from './SectionKit';
 import { MONO, SANS } from './st-format';
 import { parseDecimal } from '@/lib/parseDecimal';
+import { useHouseCountryCode } from '@/hooks/useHouseGroupMark';
+import { poursInOunces, readServeMl, serveLabel } from '@/utils/volumeUtils';
 import {
   confirmPourSize,
   getTargetMargin,
@@ -42,19 +44,29 @@ export const MAX_BAND = 20;
 export const MIN_POUR_ML = 10;
 export const MAX_POUR_ML = 500;
 
-/** What the pour field means before it is confirmed; one pass, so the button and the sentence agree. */
-export function readPourInput(raw: string, confirmedMl: number | null): { canConfirm: boolean; sentence: string; ml: number | null } {
-  const t = raw.trim().replace(/\s*ml$/i, '');
-  if (t === '') return { canConfirm: false, sentence: 'Type the pour this house serves, in ml (for example 125 or 150).', ml: null };
-  const n = parseDecimal(t);
-  if (n === null) return { canConfirm: false, sentence: `“${raw.trim()}” is not a number of ml.`, ml: null };
+/**
+ * What the pour field means before it is confirmed; one pass, so the button and
+ * the sentence agree. "5 oz" is read as ounces (F-1381), and a house that pours
+ * in ounces (`ounces`) is shown both.
+ */
+export function readPourInput(
+  raw: string,
+  confirmedMl: number | null,
+  ounces = false,
+): { canConfirm: boolean; sentence: string; ml: number | null } {
+  if (raw.trim() === '') {
+    const eg = ounces ? 'in ml or oz (for example 150 or 5 oz)' : 'in ml (for example 125 or 150)';
+    return { canConfirm: false, sentence: `Type the pour this house serves, ${eg}.`, ml: null };
+  }
+  const n = readServeMl(raw);
+  if (n === null) return { canConfirm: false, sentence: `“${raw.trim()}” is not a number of ml${ounces ? ' or oz' : ''}.`, ml: null };
   if (n < MIN_POUR_ML || n > MAX_POUR_ML) {
     return { canConfirm: false, sentence: `A pour is between ${MIN_POUR_ML} and ${MAX_POUR_ML} ml.`, ml: null };
   }
   if (confirmedMl !== null && n === confirmedMl) return { canConfirm: false, sentence: 'That is the pour already confirmed.', ml: null };
   return {
     canConfirm: true,
-    sentence: `Confirm will record a ${n} ml pour. Every glass is then costed as its share of the bottle (${n} ml of the bottle's size) and advised toward your glass target.`,
+    sentence: `Confirm will record a ${serveLabel(n, ounces)} pour. Every glass is then costed as its share of the bottle (${n} ml of the bottle's size) and advised toward your glass target.`,
     ml: n,
   };
 }
@@ -186,7 +198,8 @@ function TargetMarginBody({
   const [pour, setPour] = useState(reg.pour.ml === null ? '' : String(reg.pour.ml));
   const [pourBusy, setPourBusy] = useState(false);
   const [pourFailed, setPourFailed] = useState<string | null>(null);
-  const pourRead = readPourInput(pour, reg.pour.ml);
+  const ounces = poursInOunces(useHouseCountryCode());
+  const pourRead = readPourInput(pour, reg.pour.ml, ounces);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
@@ -320,7 +333,7 @@ function TargetMarginBody({
         consequence={
           reg.pour.confirmed ? (
             <>
-              Glasses are costed on a <strong>{reg.pour.ml} ml</strong> pour and advised toward your glass target.
+              Glasses are costed on a <strong>{reg.pour.ml === null ? reg.pour.ml : serveLabel(reg.pour.ml, ounces)}</strong> pour and advised toward your glass target.
             </>
           ) : (
             <>
@@ -355,7 +368,7 @@ function TargetMarginBody({
                 className="st-ink st-focus"
                 style={{ ...fieldStyle, opacity: canManage ? 1 : 0.45, width: 76, textAlign: 'right' }}
               />
-              <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4)' }}>ml</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4)' }}>{ounces ? 'ml or oz' : 'ml'}</span>
             </span>
             <Action disabled={!canManage || pourBusy || !pourRead.canConfirm} onClick={() => void confirmPour()}>
               {pourBusy ? 'Confirming…' : 'Confirm'}

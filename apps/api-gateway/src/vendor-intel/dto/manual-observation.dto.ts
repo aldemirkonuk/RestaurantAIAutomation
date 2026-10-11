@@ -85,7 +85,7 @@ export class ManualObservationDto {
   @IsOptional()
   @IsInt()
   @Min(50)
-  @Max(30000)
+  @Max(60000) // a US half-barrel keg is 58,674 ml (F-1383)
   unitVolumeMl?: number;
 
   /**

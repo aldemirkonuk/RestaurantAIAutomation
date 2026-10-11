@@ -119,7 +119,9 @@ export function normalizeDescription(raw?: string | null): {
 
   let formatMl: number | null = null;
   const ml = text.match(/(\d{3,4})\s*ml\b/);
-  const litres = text.match(/(\d(?:[.,]\d)?)\s*(?:l|ltr|liter|litre)\b/);
+  // Any digits either side of the mark (F-1380): "1.75L" and "0.75 l" were
+  // read from their last digit alone, as 5 L, and flagged as substitutions.
+  const litres = text.match(/(\d+(?:[.,]\d+)?)\s*(?:l|ltr|liter|litre)\b/);
   if (ml) formatMl = Number(ml[1]);
   else if (litres)
     formatMl = Math.round(Number(litres[1].replace(",", ".")) * 1000);
