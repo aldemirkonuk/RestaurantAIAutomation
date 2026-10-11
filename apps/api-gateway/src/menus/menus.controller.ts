@@ -315,6 +315,16 @@ export class MenuVersionsController {
       house,
       "choose the current menu",
     );
+    // F-1292: a menu read only in part is made current only when the person
+    // said so; the service refuses it otherwise.
+    if (dto?.partReadAccepted === true)
+      return this.menusService.makeCurrent(
+        house,
+        menuId,
+        userId,
+        dto.fingerprint ?? null,
+        true,
+      );
     return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null);
   }
 }

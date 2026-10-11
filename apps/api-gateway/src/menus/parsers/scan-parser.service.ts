@@ -29,6 +29,29 @@ import {
  */
 export class MenuReadWaitingException extends ServiceUnavailableException {}
 
+/** Why a read kept only part of the menu: the reading stopped before the end (F-1292). */
+const CUT_SHORT = "the reading stopped before the end of the menu";
+
+/**
+ * A price as the model wrote it, as a number, or undefined when it is not one
+ * (F-1296). The prompt asks for numbers, but a line can come back "120 TL" or
+ * "12,50"; written as is, one such line failed the whole insert and left an
+ * empty menu behind. A plain number, with a dot or a comma before at most two
+ * decimals, is read; anything else ("1.250,00", "market price") is dropped, so
+ * the line keeps no price rather than a guessed one.
+ */
+export function scanPrice(v: unknown): number | undefined {
+  if (typeof v === "number")
+    return Number.isFinite(v) && v >= 0 ? v : undefined;
+  if (typeof v !== "string") return undefined;
+  // Currency marks and words go; two numbers ("12 / 45") are not one price.
+  const t = v.replace(/[^\d.,\s]/g, "").trim();
+  if (/\s/.test(t)) return undefined;
+  if (/^\d+$/.test(t) || /^\d+\.\d{1,2}$/.test(t)) return Number(t);
+  if (/^\d+,\d{1,2}$/.test(t)) return Number(t.replace(",", "."));
+  return undefined;
+}
+
 /**
  * Two things in this prompt are load-bearing and were both set by measurement.
  *
@@ -142,11 +165,16 @@ export class ScanParserService {
    * practical non-streaming ceiling. Note the per-wine cost is a range, not a
    * constant, which is why the split trigger below is the reported
    * stop_reason rather than an estimate derived from it.
+   *
+   * A read that keeps only part of the menu (cut short, pages past the cap,
+   * page ranges that failed) says why in `gaps`, in plain words (F-1292). The
+   * arrival path refuses those reads instead, so it never fills `gaps`.
    */
   async parse(
     imageBase64: string,
     restaurantId?: string,
     arrival = false,
+    gaps: string[] = [],
   ): Promise<WineExtractItem[]> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
@@ -168,9 +196,12 @@ export class ScanParserService {
     // dense short menu and zero on everything else, without guessing a
     // density threshold the corpus would immediately violate.
     if (isPdf) {
-      const preSplit = await this.splitPdfIfLarge(imageBase64, { arrival });
+      const preSplit = await this.splitPdfIfLarge(imageBase64, {
+        arrival,
+        gaps,
+      });
       if (preSplit.length > 1)
-        return this.parseChunks(preSplit, restaurantId, 0, arrival);
+        return this.parseChunks(preSplit, restaurantId, 0, arrival, gaps);
     }
 
     const first = await this.parseOne(
@@ -184,11 +215,13 @@ export class ScanParserService {
       throw new ServiceUnavailableException(
         "The menu reading was cut short. Use a clearer or smaller image; no items were imported.",
       );
+    if (first.truncated && !isPdf) gaps.push(CUT_SHORT);
     if (!first.truncated || !isPdf) return first.items;
 
     const chunks = await this.splitPdfIfLarge(imageBase64, {
       force: true,
       arrival,
+      gaps,
     });
     if (chunks.length <= 1) {
       if (arrival)
@@ -200,18 +233,29 @@ export class ScanParserService {
         `Menu truncated and could not be split — importing ` +
           `${first.items.length} partial item(s)`,
       );
+      gaps.push(CUT_SHORT);
       return first.items;
     }
 
     this.logger.log(
       `Menu truncated on a single request — retrying as ${chunks.length} page-range chunk(s)`,
     );
-    const retried = await this.parseChunks(chunks, restaurantId, 0, arrival);
+    const retriedGaps: string[] = [];
+    const retried = await this.parseChunks(
+      chunks,
+      restaurantId,
+      0,
+      arrival,
+      retriedGaps,
+    );
     // Keep whichever run recovered more; a split should always win, but never
     // return less than the first attempt already proved was extractable.
-    return arrival || retried.length >= first.items.length
-      ? retried
-      : first.items;
+    if (arrival || retried.length >= first.items.length) {
+      gaps.push(...retriedGaps);
+      return retried;
+    }
+    gaps.push(CUT_SHORT);
+    return first.items;
   }
 
   /**
@@ -229,6 +273,7 @@ export class ScanParserService {
     restaurantId?: string,
     depth = 0,
     arrival = false,
+    gaps: string[] = [],
   ): Promise<WineExtractItem[]> {
     // Splitting once is not always enough. RL Restaurant packs ~27 wines per
     // page, so even a 6-page chunk overflows the output cap. Rather than guess
@@ -260,16 +305,18 @@ export class ScanParserService {
               `Menu chunk ${i + 1}/${chunks.length} still truncated — ` +
                 `re-splitting into ${finer.length} (depth ${depth + 1})`,
             );
+            const deeperGaps: string[] = [];
             const deeper = await this.parseChunks(
               finer,
               restaurantId,
               depth + 1,
               arrival,
+              deeperGaps,
             );
             // Never regress: keep whichever pass recovered more.
-            all.push(
-              ...(arrival || deeper.length >= items.length ? deeper : items),
-            );
+            const keepDeeper = arrival || deeper.length >= items.length;
+            all.push(...(keepDeeper ? deeper : items));
+            gaps.push(...(keepDeeper ? deeperGaps : [CUT_SHORT]));
             continue;
           }
         }
@@ -278,6 +325,7 @@ export class ScanParserService {
           throw new ServiceUnavailableException(
             "A menu page range was incomplete.",
           );
+        if (truncated) gaps.push(CUT_SHORT);
         all.push(...items);
         this.logger.log(
           `Menu chunk ${i + 1}/${chunks.length}: ${items.length} item(s)` +
@@ -304,6 +352,9 @@ export class ScanParserService {
         throw new ServiceUnavailableException(
           "Some menu pages could not be read. No items were imported. Retry with a smaller file.",
         );
+      gaps.push(
+        `${failed.length} of the ${chunks.length} parts of the file could not be read`,
+      );
       this.logger.error(
         `Menu extracted with gaps — chunk(s) ${failed.join(", ")} of ` +
           `${chunks.length} failed; ${all.length} item(s) recovered`,
@@ -473,7 +524,12 @@ export class ScanParserService {
    */
   private async splitPdfIfLarge(
     base64: string,
-    opts: { force?: boolean; pagesPerChunk?: number; arrival?: boolean } = {},
+    opts: {
+      force?: boolean;
+      pagesPerChunk?: number;
+      arrival?: boolean;
+      gaps?: string[];
+    } = {},
   ): Promise<string[]> {
     // `force` is used on the truncation retry, where page count already
     // proved to be the wrong signal — split whatever we have.
@@ -515,6 +571,9 @@ export class ScanParserService {
             "This menu exceeds 120 pages. Divide it into smaller files; nothing was imported.",
             HttpStatus.PAYLOAD_TOO_LARGE,
           );
+        opts.gaps?.push(
+          `only the first ${MAX_PAGES} of its ${pageCount} pages were read`,
+        );
         this.logger.error(
           `Menu PDF reports ${pageCount} pages — refusing to parse beyond ${MAX_PAGES}. ` +
             `Importing the first ${MAX_PAGES} page(s) only; the rest are skipped.`,
@@ -614,11 +673,22 @@ export class ScanParserService {
   }
 
   private keepNamedItems(parsed: unknown[]): WineExtractItem[] {
-    return parsed.filter(
-      (item: unknown): item is WineExtractItem =>
-        typeof (item as any)?.name === "string" &&
-        (item as any).name.length > 0,
-    );
+    return parsed
+      .filter(
+        (item: unknown): item is WineExtractItem =>
+          typeof (item as any)?.name === "string" &&
+          (item as any).name.length > 0,
+      )
+      .map((item) => {
+        const out = { ...item };
+        for (const key of ["by_glass_price", "bottle_price"] as const) {
+          if (out[key] === undefined || out[key] === null) continue;
+          const price = scanPrice(out[key]);
+          if (price === undefined) delete out[key];
+          else out[key] = price;
+        }
+        return out;
+      });
   }
 
   /**

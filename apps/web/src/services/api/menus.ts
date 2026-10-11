@@ -81,6 +81,8 @@ export interface MenuImportResult {
   unreadColumns?: string[]
   /** A spreadsheet read: the columns not read (as in unreadColumns), the rows skipped and why, the cells unread. */
   read?: MenuReadNotes | null
+  /** Why a photo or PDF was read only in part; null or absent when it was read whole (F-1292). */
+  partRead?: string | null
   /**
    * Client-only: when several files were sent at once, what each one gave (its
    * lines, or why it was not read). The lines of every read file are in `items`.
@@ -95,7 +97,7 @@ export interface MenuReadNotes {
 }
 
 export type MenuFileResult =
-  | { name: string; itemsExtracted: number; read?: MenuReadNotes | null }
+  | { name: string; itemsExtracted: number; read?: MenuReadNotes | null; partRead?: string | null }
   | { name: string; failure: string }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const
@@ -355,6 +357,8 @@ export interface MenuPerson {
 export interface MenuVersion {
   menuId: string
   name: string | null
+  /** Why only part of this menu was read; null when it was read whole (F-1292). Optional only for an older gateway. */
+  partRead?: string | null
   status: 'active' | 'draft' | 'archived' | string
   current: boolean
   cadence: MenuCadence | null
@@ -482,6 +486,11 @@ export interface MenuPlan {
    * for an older gateway.
    */
   retiring?: Array<{ menuId: string; name: string | null; lines: number }>
+  /**
+   * Why only part of this menu was read; null when it was read whole. The
+   * gateway refuses to make it current unless the person confirms (F-1292).
+   */
+  partRead?: string | null
   namesReadable: boolean
   namesReason: string | null
   /** The house's IANA zone, for printing dates as the house's day (F-699). */
@@ -513,7 +522,14 @@ export async function getMenuSourceUrl(
  * Owner or manager; the gateway refuses anyone else (403), a missing
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
-export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
-  const response = await apiClient.post<MakeCurrentResult>(`/menu-versions/${menuId}/make-current`, { fingerprint })
+export async function makeMenuCurrent(
+  menuId: string,
+  fingerprint: string,
+  partReadAccepted = false,
+): Promise<MakeCurrentResult> {
+  const response = await apiClient.post<MakeCurrentResult>(
+    `/menu-versions/${menuId}/make-current`,
+    partReadAccepted ? { fingerprint, partReadAccepted } : { fingerprint },
+  )
   return response.data
 }

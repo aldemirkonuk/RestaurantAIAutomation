@@ -240,11 +240,14 @@ export function MenuPlan({
    * (F-448). The plan is read again and says which, never "nothing changed".
    */
   const [unsure, setUnsure] = useState(false);
+  /** The person said a menu read only in part may still be made current (F-1292). */
+  const [partOk, setPartOk] = useState(false);
   const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan', menuId] });
 
   const choose = useMutation({
-    mutationFn: (fingerprint: string) => makeMenuCurrent(menuId, fingerprint),
+    mutationFn: (fingerprint: string) =>
+      partOk ? makeMenuCurrent(menuId, fingerprint, true) : makeMenuCurrent(menuId, fingerprint),
     onMutate: () => setUnsure(false),
     onSuccess: (r) => {
       void queryClient.invalidateQueries({ queryKey: ['menu'] });
@@ -441,6 +444,23 @@ export function MenuPlan({
         </p>
       ) : null}
 
+      {!plan.current && plan.partRead ? (
+        // F-1292: a menu read only in part takes every drink that was not read
+        // off the house's menu. Said first, and chosen only once confirmed.
+        <div role="alert" className="cl-said" style={{ marginTop: 12 }} data-testid="menu-plan-part-read">
+          <p style={{ margin: 0 }}>
+            Only part of this menu was read: {plan.partRead}. Making it current takes every drink that was not read
+            off the house's menu. Reading the menu again, as a clearer photo or a smaller file, is safer.
+          </p>
+          {canManage && plan.lines.length > 0 ? (
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+              <input type="checkbox" checked={partOk} onChange={(e) => setPartOk(e.target.checked)} />
+              Make it current anyway, with those drinks missing
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
         {canManage && !plan.current && plan.lines.length === 0 ? (
           // F-681: an empty menu made current archived the house's real one.
@@ -452,7 +472,7 @@ export function MenuPlan({
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
-            disabled={choose.isPending}
+            disabled={choose.isPending || (!!plan.partRead && !partOk)}
             onClick={() => choose.mutate(plan.fingerprint)}
           >
             {choose.isPending ? 'Making it current…' : 'Make it current'}

@@ -38,7 +38,13 @@ describe('MenuCsvUpload: several files at once (F-682)', () => {
     mockImport
       .mockResolvedValueOnce({ menuId: 'm1', itemsExtracted: 2, submissionsCreated: 0, items: [line('a', 'Yakut'), line('b', 'Syrah')] })
       .mockRejectedValueOnce({ response: { data: { message: 'Nothing was read from this file, so nothing was kept.' } } })
-      .mockResolvedValueOnce({ menuId: 'm3', itemsExtracted: 1, submissionsCreated: 0, items: [line('c', 'Raki')] })
+      .mockResolvedValueOnce({
+        menuId: 'm3',
+        itemsExtracted: 1,
+        submissionsCreated: 0,
+        items: [line('c', 'Raki')],
+        partRead: 'the reading stopped before the end of the menu',
+      })
     const onSuccess = vi.fn()
     const { container } = render(<MenuCsvUpload onSuccess={onSuccess} />)
     pick(container, [
@@ -55,7 +61,8 @@ describe('MenuCsvUpload: several files at once (F-682)', () => {
     expect(result.files).toEqual([
       { name: 'reds.csv', itemsExtracted: 2, read: null },
       { name: 'cover.csv', failure: 'Nothing was read from this file, so nothing was kept.' },
-      { name: 'spirits.csv', itemsExtracted: 1, read: null },
+      // F-1292: the file read only in part carries why to the proof.
+      { name: 'spirits.csv', itemsExtracted: 1, read: null, partRead: 'the reading stopped before the end of the menu' },
     ])
   })
 
@@ -145,6 +152,35 @@ describe('the first proof (HouseMenu): what the read kept back', () => {
     expect(notes).toHaveTextContent('Columns we did not read: Cost.')
     expect(notes).toHaveTextContent('cover.csv: not read. Nothing was read from this file, so nothing was kept.')
     expect(notes).toHaveTextContent('spirits.csv: 1 line read.')
+  })
+
+  it('says a photo or PDF was read only in part, and why (F-1292)', () => {
+    mountProof({
+      menuId: 'm1',
+      itemsExtracted: 1,
+      submissionsCreated: 0,
+      items: [proofLine('a', 'Yakut')],
+      partRead: 'the reading stopped before the end of the menu',
+    })
+    expect(screen.getByTestId('proof-read-notes')).toHaveTextContent(
+      'Only part of this menu was read: the reading stopped before the end of the menu, so drinks may be missing.',
+    )
+  })
+
+  it('says which file sent at once was read only in part (F-1292)', () => {
+    mountProof({
+      menuId: 'm1',
+      itemsExtracted: 2,
+      submissionsCreated: 0,
+      items: [proofLine('a', 'Yakut'), proofLine('c', 'Raki')],
+      files: [
+        { name: 'reds.pdf', itemsExtracted: 1, read: null, partRead: '1 of the 2 parts of the file could not be read' },
+        { name: 'spirits.csv', itemsExtracted: 1, read: null },
+      ],
+    })
+    expect(screen.getByTestId('proof-read-notes')).toHaveTextContent(
+      'reds.pdf: 1 line read. Only part of this menu was read: 1 of the 2 parts of the file could not be read',
+    )
   })
 
   it('says nothing extra when nothing was kept back', () => {
