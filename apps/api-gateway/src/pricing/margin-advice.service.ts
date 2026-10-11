@@ -13,11 +13,14 @@ import {
 } from "../analytics/inventory-cost";
 import {
   type AdviceState,
+  type HouseMoneyTerms,
   type PriceAdvice,
   type PriceKind,
   adviseToTarget,
+  fmtMoney,
   glassCostFrom,
 } from "./margin-to-target";
+import { readHouseMoney } from "../common/house-money";
 import {
   confirmedPourFrom,
   confirmedWinePourFrom,
@@ -50,7 +53,14 @@ import { readKitchenInventoryIds } from "../menus/menu-line-view";
  * `restaurant_inventory.pour_size_ml` carries a database DEFAULT of its own
  * and cannot be told from a typed value (ADR 0193 F7), so an unconfirmed one
  * is never read as a pour. With neither confirmed, the glass is
- * `pour_unconfirmed`. Never the market average: neither of the wine library's
+ * `pour_unconfirmed`.
+ *
+ * A GLASS IS A WINE'S POUR (F-1171, coordinator's call, 2026-10-10). The
+ * house's pour is a wine pour: a rakı, a whisky or a draft beer poured at
+ * 150 ml was costed as a fifth of the bottle and offered a one-tap Raise.
+ * Until a pour per kind exists, a row whose `kind` says it is not a wine
+ * gets no glass advice (`pour_unconfirmed`, said in its own sentence) and so
+ * nothing to accept. Its bottle advice is unchanged. Never the market average: neither of the wine library's
  * market columns is selected here (CLAIMS row, ADR 0193).
  *
  * LOCKS (round 3, L22). A locked kind still gets its advice -- a true margin is
@@ -78,8 +88,12 @@ export type KindAdvice = PriceAdvice & { locked: LockMark | null };
 export interface WineAdvice {
   inventoryId: string;
   wineName: string | null;
-  /** Where the bottle cost came from, in words. "no recorded cost" when unknown. */
-  costBasis: CostBasis;
+  /**
+   * Where the bottle cost came from, in words. "no recorded cost" when unknown.
+   * `last_paid_lot` (F-1172): no bottle on hand carries a cost, so the cost is
+   * the last price paid, from the most recent costed lot of this wine.
+   */
+  costBasis: CostBasis | "last_paid_lot";
   costBasisLabel: string;
   bottleCost: number | null;
   /** Null when this wine is not sold by the bottle and has no bottle price. */
@@ -126,6 +140,8 @@ export interface InventoryPriceRow {
   menu_price_glass: number | string | null;
   last_purchase_price: number | string | null;
   bottle_size_ml: number | null;
+  /** restaurant_inventory.kind; a stated kind other than wine gets no glass advice (F-1171). */
+  kind?: string | null;
   pour_size_ml?: number | string | null;
   pour_size_confirmed_by?: string | null;
   pour_size_confirmed_at?: string | null;
@@ -145,10 +161,20 @@ interface HouseTerms {
    * (F-343). Optional so a caller that never read it keeps the old reading.
    */
   currency?: string | null;
+  /** The house's formats tag (`readHouseMoney`), for the money in a sentence (F-1174). */
+  locale?: string | null;
+}
+
+/** The last price paid for a wine, from its most recent costed lot (F-1172). */
+export interface LastPaid {
+  unitCost: number;
+  /** The lot's stated currency; null when it states none. */
+  currency: string | null;
+  receivedAt: string | null;
 }
 
 const INVENTORY_SELECT =
-  "id, wine_name, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, bottle_size_ml)";
+  "id, wine_name, kind, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, bottle_size_ml)";
 
 // cost_currency / cost_currency_count (F-343): which money the WAC is in.
 const ROLLUP_SELECT =
@@ -157,6 +183,69 @@ const ROLLUP_SELECT =
 /** The no-cost sentence, when the cost exists but in another money (F-343). */
 const OTHER_MONEY_SENTENCE =
   "Cannot advise: this wine was bought in a different currency from your menu prices, and nothing here converts one into the other.";
+
+/** The glass sentence for a drink that is not a wine (F-1171). */
+const NOT_A_WINE_GLASS_SENTENCE =
+  "No glass advice for this drink yet: the house's pour is a wine pour, and a rakı, a spirit or a beer is poured in its own measure. Bottle advice is not affected.";
+
+/** Label for the F-1172 fallback, beside `COST_BASIS_LABEL`. */
+const LAST_PAID_LABEL = "last price paid (none on hand)";
+
+/**
+ * Each wine's last price paid, from its most recent costed lot -- one that
+ * may hold no bottle now (F-1172). The lot rollup averages only bottles on
+ * hand, so a sold-out wine whose invoices are on file read "no recorded
+ * cost". Sample lots are free bottles, not evidence of a price, and are
+ * skipped as the rollup skips them. A failed read is returned, never taken
+ * for "nothing paid".
+ */
+async function readLastPaid(
+  client: DatabaseService["client"],
+  restaurantId: string,
+  inventoryIds: string[],
+): Promise<{ byId: Map<string, LastPaid>; error: string | null }> {
+  const byId = new Map<string, LastPaid>();
+  if (inventoryIds.length === 0) return { byId, error: null };
+  const { data, error } = await client
+    .from("inventory_lots")
+    .select(
+      "inventory_id, unit_cost, unit_cost_currency, cost_provenance, received_at",
+    )
+    .eq("restaurant_id", restaurantId)
+    .eq("stock_state", "live")
+    .in("inventory_id", inventoryIds)
+    .not("unit_cost", "is", null)
+    .order("received_at", { ascending: false });
+  if (error) return { byId, error: error.message ?? String(error) };
+  const rows = ((data ?? []) as Array<Record<string, unknown>>)
+    .slice()
+    .sort((a, b) =>
+      String(b.received_at ?? "").localeCompare(String(a.received_at ?? "")),
+    );
+  for (const r of rows) {
+    const id = String(r.inventory_id);
+    if (byId.has(id) || r.cost_provenance === "sample") continue;
+    const cost = n(r.unit_cost);
+    if (cost === null || cost <= 0) continue;
+    byId.set(id, {
+      unitCost: cost,
+      currency:
+        typeof r.unit_cost_currency === "string" ? r.unit_cost_currency : null,
+      receivedAt: typeof r.received_at === "string" ? r.received_at : null,
+    });
+  }
+  return { byId, error: null };
+}
+
+/** True unless both moneys are stated and differ (as `resolveUnitCost` reads a lot). */
+function sameMoney(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const x = (a ?? "").trim().toUpperCase();
+  const y = (b ?? "").trim().toUpperCase();
+  return !x || !y || x === y;
+}
 
 function n(v: unknown): number | null {
   if (v === null || v === undefined) return null;
@@ -185,7 +274,7 @@ export class MarginAdviceService {
   /** Every active wine's advice. A failed read throws; it is never an empty list. */
   async adviseHouse(restaurantId: string): Promise<HouseAdvice> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup, lockRead, kitchenRead] = await Promise.all([
+    const [targets, inv, rollup, lockRead, kitchenRead, money] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -195,6 +284,7 @@ export class MarginAdviceService {
       client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
       readOpenLocks(client, restaurantId),
       readKitchenInventoryIds(client, restaurantId),
+      readHouseMoney(client, restaurantId),
     ]);
     if (targets.error !== null) {
       throw new InternalServerErrorException(
@@ -224,10 +314,36 @@ export class MarginAdviceService {
       ...targetsFrom(targets.row),
       pourMl: confirmedPourFrom(targets.row),
       currency: targets.row?.currency ?? null,
+      locale: money.locale,
     };
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) {
       lots.set(String(r.inventory_id), r);
+    }
+    // A row only kitchen lines link to is set aside, as the menu sets the
+    // line aside: no margin advice for food until a food model exists
+    // (F-1170, OD-113).
+    const rows = ((inv.data ?? []) as unknown as InventoryPriceRow[]).filter(
+      (row) => !kitchenRead.ids.has(row.id),
+    );
+    // Only the wines with no cost on hand need their last price paid (F-1172).
+    const uncosted = rows
+      .filter(
+        (row) =>
+          resolveUnitCost(
+            { last_purchase_price: row.last_purchase_price },
+            lots.get(row.id) ?? null,
+            t.currency,
+          ).costBasis === "unknown",
+      )
+      .map((row) => row.id);
+    const lastPaid = await readLastPaid(client, restaurantId, uncosted);
+    if (lastPaid.error !== null) {
+      // As with the rollup: "no recorded cost" would be untrue when the truth
+      // is that the last price paid could not be read.
+      throw new InternalServerErrorException(
+        `The last prices paid could not be read, so no advice was computed: ${lastPaid.error}`,
+      );
     }
 
     // A failed lock read is said (locks.readable false), never taken for "no
@@ -235,14 +351,14 @@ export class MarginAdviceService {
     const byKind = lockIndex(lockRead.locks);
     const counts = emptyCounts();
     let held = 0;
-    // A row only kitchen lines link to is set aside, as the menu sets the
-    // line aside: no margin advice for food until a food model exists
-    // (F-1170, OD-113).
-    const rows = ((inv.data ?? []) as unknown as InventoryPriceRow[]).filter(
-      (row) => !kitchenRead.ids.has(row.id),
-    );
     const wines = rows.map((row) => {
-      const w = this.adviseWine(row, lots.get(row.id) ?? null, t, byKind);
+      const w = this.adviseWine(
+        row,
+        lots.get(row.id) ?? null,
+        t,
+        byKind,
+        lastPaid.byId.get(row.id) ?? null,
+      );
       if (w.bottle) counts[w.bottle.state] += 1;
       if (w.glass) counts[w.glass.state] += 1;
       if (w.bottle?.locked) held += 1;
@@ -279,17 +395,39 @@ export class MarginAdviceService {
     lot: Record<string, unknown> | null,
     t: HouseTerms,
     locks: Map<string, OpenLock> = new Map(),
+    lastPaid: LastPaid | null = null,
   ): WineAdvice {
-    const { unitCost, costBasis } = resolveUnitCost(
+    const resolved = resolveUnitCost(
       { last_purchase_price: row.last_purchase_price },
       lot,
       t.currency,
     );
+    // F-1172: no cost on hand, but a price was paid -- the last one is the
+    // cost, and the sentence says so. Never a lot in other money.
+    const fromLastPaid =
+      resolved.costBasis === "unknown" &&
+      lastPaid !== null &&
+      sameMoney(lastPaid.currency, t.currency);
+    const unitCost = fromLastPaid
+      ? (lastPaid as LastPaid).unitCost
+      : resolved.unitCost;
+    const costBasis: WineAdvice["costBasis"] = fromLastPaid
+      ? "last_paid_lot"
+      : resolved.costBasis;
+    const money: HouseMoneyTerms = {
+      currency: t.currency ?? null,
+      locale: t.locale ?? null,
+    };
+    const lastPaidNote = fromLastPaid
+      ? ` The cost is the last price paid, ${fmtMoney(unitCost as number, money)}${lastPaid?.receivedAt ? ` on ${lastPaid.receivedAt.slice(0, 10)}` : ""}; none is on hand now.`
+      : "";
     // "No recorded cost" would be untrue when the cost is there in other money.
     const said = (a: PriceAdvice): PriceAdvice =>
       costBasis === "other_currency" && a.state === "no_cost"
         ? { ...a, sentence: OTHER_MONEY_SENTENCE }
-        : a;
+        : lastPaidNote && a.gapPct !== null
+          ? { ...a, sentence: `${a.sentence}${lastPaidNote}` }
+          : a;
     const bottlePrice = n(row.menu_price_current);
     const glassPrice = n(row.menu_price_glass);
     const saleType = row.sale_type ?? "bottle";
@@ -300,8 +438,16 @@ export class MarginAdviceService {
     // The wine's own pour once an owner or manager confirmed it, else the
     // house's confirmed pour (round 6c answer 3). An unconfirmed per-wine
     // pour is never read as one.
+    // F-1171: the house's pour is a wine's; a stated other kind has none yet.
+    const isWine = row.kind == null || row.kind === "wine";
     const winePour = confirmedWinePourFrom(row);
-    const pourMl = winePour ?? t.pourMl;
+    const pourMl = isWine ? (winePour ?? t.pourMl) : null;
+    // Said in its own words, not "waits for the house's pour" -- confirming
+    // the house's pour would not bring it.
+    const notAWine = (a: PriceAdvice): PriceAdvice =>
+      !isWine && a.state === "pour_unconfirmed"
+        ? { ...a, sentence: NOT_A_WINE_GLASS_SENTENCE }
+        : a;
     const mark = (kind: PriceKind): LockMark | null => {
       const l = locks.get(`${row.id}:${kind}`);
       return l ? { lockId: l.lockId, lockedPrice: l.lockedPrice, lockedBy: l.lockedBy, lockedAt: l.lockedAt } : null;
@@ -311,7 +457,10 @@ export class MarginAdviceService {
       inventoryId: row.id,
       wineName: row.wine_name || row.master_wine_library?.name || null,
       costBasis,
-      costBasisLabel: COST_BASIS_LABEL[costBasis],
+      costBasisLabel:
+        costBasis === "last_paid_lot"
+          ? LAST_PAID_LABEL
+          : COST_BASIS_LABEL[costBasis],
       bottleCost: unitCost,
       bottle: sellsBottle
         ? {
@@ -322,6 +471,7 @@ export class MarginAdviceService {
                 unitCost,
                 targetPct: t.bottlePct,
                 bandPct: t.bandPct,
+                money,
               }),
             ),
             locked: mark("bottle"),
@@ -329,20 +479,26 @@ export class MarginAdviceService {
         : null,
       glass: sellsGlass
         ? {
-            ...said(
-              adviseToTarget({
-                kind: "glass",
-                price: glassPrice,
-                unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
-                targetPct: t.glassPct,
-                bandPct: t.bandPct,
-                pourConfirmed: pourMl !== null,
-              }),
+            ...notAWine(
+              said(
+                adviseToTarget({
+                  kind: "glass",
+                  price: glassPrice,
+                  unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
+                  targetPct: t.glassPct,
+                  bandPct: t.bandPct,
+                  pourConfirmed: pourMl !== null,
+                  money,
+                }),
+              ),
             ),
             locked: mark("glass"),
           }
         : null,
-      pour: { ml: pourMl, source: winePour !== null ? "wine" : t.pourMl !== null ? "house" : null },
+      pour: {
+        ml: pourMl,
+        source: pourMl === null ? null : winePour !== null ? "wine" : "house",
+      },
     };
   }
 
@@ -367,7 +523,7 @@ export class MarginAdviceService {
     pricingAnalysisId: string;
   }> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup] = await Promise.all([
+    const [targets, inv, rollup, money] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -381,7 +537,13 @@ export class MarginAdviceService {
         .eq("restaurant_id", restaurantId)
         .eq("inventory_id", inventoryId)
         .maybeSingle(),
+      readHouseMoney(client, restaurantId),
     ]);
+    const house: HouseMoneyTerms = {
+      currency: targets.row?.currency ?? null,
+      locale: money.locale,
+    };
+    const say = (v: number) => fmtMoney(v, house);
     if (targets.error !== null)
       throw new InternalServerErrorException(
         `The target margin could not be read; nothing was changed. ${targets.error}`,
@@ -406,18 +568,30 @@ export class MarginAdviceService {
       );
     }
     if (held.locks.length > 0) {
-      throw new ConflictException(await this.lockedSentence(held.locks[0], kind));
+      throw new ConflictException(
+        await this.lockedSentence(held.locks[0], kind, house),
+      );
     }
 
     const t: HouseTerms = {
       ...targetsFrom(targets.row),
       pourMl: confirmedPourFrom(targets.row),
       currency: targets.row?.currency ?? null,
+      locale: money.locale,
     };
+    // The same last price paid the advice read (F-1172), or accept would
+    // refuse the very advice it showed.
+    const lastPaid = await readLastPaid(client, restaurantId, [inventoryId]);
+    if (lastPaid.error !== null)
+      throw new InternalServerErrorException(
+        `The last price paid could not be read; nothing was changed. ${lastPaid.error}`,
+      );
     const wine = this.adviseWine(
       inv.data as unknown as InventoryPriceRow,
       (rollup.data as Record<string, unknown> | null) ?? null,
       t,
+      new Map(),
+      lastPaid.byId.get(inventoryId) ?? null,
     );
     const advice = kind === "bottle" ? wine.bottle : wine.glass;
     if (!advice || (advice.state !== "raise" && advice.state !== "lower") || advice.advisedPrice === null) {
@@ -427,7 +601,7 @@ export class MarginAdviceService {
     }
     if (Math.abs(advice.advisedPrice - seenPrice) >= 0.005) {
       throw new ConflictException(
-        `The advice changed since it was shown: it is now ${advice.advisedPrice.toFixed(2)}, not ${seenPrice.toFixed(2)}. Nothing was changed.`,
+        `The advice changed since it was shown: it is now ${say(advice.advisedPrice)}, not ${say(seenPrice)}. Nothing was changed.`,
       );
     }
 
@@ -482,7 +656,7 @@ export class MarginAdviceService {
       ...(kind === "bottle" ? { bottle: advice.advisedPrice } : { glass: advice.advisedPrice }),
       source: "agent_accepted",
       changedBy: userId,
-      reason: `Accepted advice: ${advice.state} the ${kind} to ${advice.advisedPrice.toFixed(2)} for a ${advice.targetPct}% target margin`,
+      reason: `Accepted advice: ${advice.state} the ${kind} to ${say(advice.advisedPrice)} for a ${advice.targetPct}% target margin`,
       unitCost: wine.bottleCost,
       pricingAnalysisId,
     });
@@ -495,7 +669,7 @@ export class MarginAdviceService {
       // analysis row stays unapplied: no version row points at it.
       const lock = result.held[0];
       throw new ConflictException(
-        `The ${kind} price was locked a moment ago${lock?.lockedPrice == null ? "" : ` at ${lock.lockedPrice.toFixed(2)}`}, so it was not changed. The advice is recorded (${pricingAnalysisId}) and not applied.`,
+        `The ${kind} price was locked a moment ago${lock?.lockedPrice == null ? "" : ` at ${say(lock.lockedPrice)}`}, so it was not changed. The advice is recorded (${pricingAnalysisId}) and not applied.`,
       );
     }
 
@@ -508,13 +682,17 @@ export class MarginAdviceService {
     };
   }
 
-  /** "The glass price is locked at 14.00 by Ayse since 2026-09-21. ..." -- who, never a blank. */
-  private async lockedSentence(lock: OpenLock, kind: PriceKind): Promise<string> {
+  /** "The glass price is locked at ₺14,00 by Ayse since 2026-09-21. ..." -- who, never a blank. */
+  private async lockedSentence(
+    lock: OpenLock,
+    kind: PriceKind,
+    money: HouseMoneyTerms,
+  ): Promise<string> {
     const people = await readPeople(this.databaseService.client, [lock.lockedBy]);
     const who =
       people.error !== null
         ? `by a person whose name could not be read (${people.error})`
         : `by ${people.people.get(lock.lockedBy)?.name ?? "a person with no name on record"}`;
-    return `The ${kind} price is locked at ${lock.lockedPrice.toFixed(2)} ${who} since ${dayOf(lock.lockedAt)}. Nothing was changed. An owner or a manager can change it and keep it locked, or release the lock, on Menu, under Locked prices.`;
+    return `The ${kind} price is locked at ${fmtMoney(lock.lockedPrice, money)} ${who} since ${dayOf(lock.lockedAt)}. Nothing was changed. An owner or a manager can change it and keep it locked, or release the lock, on Menu, under Locked prices.`;
   }
 }

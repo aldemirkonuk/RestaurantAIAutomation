@@ -21,6 +21,9 @@ interface FakeOpts {
   inventoryError?: { message: string } | null;
   rollup?: Row[];
   rollupError?: { message: string } | null;
+  /** inventory_lots rows: the last price paid (F-1172). */
+  lots?: Row[];
+  lotsError?: { message: string } | null;
   /** house_price_locks rows (ADR 0193 round 3). */
   locks?: Row[];
   locksError?: { message: string } | null;
@@ -64,6 +67,16 @@ function fakeClient(o: FakeOpts) {
         if (o.inventoryError) return { data: null, error: o.inventoryError };
         return {
           data: (o.inventory ?? []).filter((r) => filters.every(([c, v]) => c === "is_active" || r[c] === v)),
+          error: null,
+        };
+      }
+      if (table === "inventory_lots") {
+        if (o.lotsError) return { data: null, error: o.lotsError };
+        return {
+          data: (o.lots ?? []).filter(
+            (r) =>
+              filters.every(([c, v]) => r[c] === v) && extra.every((f) => f(r)),
+          ),
           error: null,
         };
       }
@@ -622,5 +635,221 @@ describe("MarginAdviceService -- a locked price keeps its advice and cannot be a
     );
     expect(inserts).toHaveLength(1);
     expect(rpcs).toHaveLength(1);
+  });
+});
+
+describe("MarginAdviceService -- a glass is a wine's pour (F-1171)", () => {
+  // Coordinator's call 2026-10-10: the house's pour is a wine pour; until a
+  // pour per kind exists, a rakı, a spirit or a beer gets no glass advice and
+  // nothing to accept. Before, a 70 cl rakı at 150 ml read a fifth of the
+  // bottle and was offered a one-tap Raise.
+  const RAKI = {
+    ...WINE_A,
+    id: "inv-r",
+    wine_name: "Yeni Rakı",
+    kind: "spirit",
+    bottle_size_ml: 700,
+    pour_size_confirmed_by: "user-1",
+    pour_size_confirmed_at: "2026-09-21T09:00:00Z",
+  };
+  const RAKI_LOT = [
+    {
+      inventory_id: "inv-r",
+      restaurant_id: "rest-1",
+      live_qty: 6,
+      wac: "20",
+      has_invoice_cost: true,
+      wac_qty: 6,
+    },
+  ];
+
+  it("a spirit gets no glass advice and its own sentence; its bottle is advised as before", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [RAKI],
+      rollup: RAKI_LOT,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    const r = out.wines[0];
+    expect(r.glass).toMatchObject({
+      state: "pour_unconfirmed",
+      advisedPrice: null,
+      currentMarginPct: null,
+      unitCost: null,
+    });
+    expect(r.glass!.sentence).toMatch(/No glass advice for this drink yet/);
+    expect(r.pour).toEqual({ ml: null, source: null });
+    expect(r.bottle).toMatchObject({ state: "raise", advisedPrice: 57.14 });
+  });
+
+  it("a spirit's glass cannot be accepted (409), nothing is written", async () => {
+    const { svc, inserts, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [RAKI],
+      rollup: RAKI_LOT,
+    });
+    await expect(
+      svc.accept("rest-1", "inv-r", "glass", 16, "user-9"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
+  });
+
+  it("a wine row keeps its glass advice", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [{ ...WINE_A, kind: "wine" }],
+      rollup: ROLLUP,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.wines[0].glass).toMatchObject({
+      state: "raise",
+      advisedPrice: 16,
+    });
+  });
+});
+
+describe("MarginAdviceService -- a sold-out wine is costed at the last price paid (F-1172)", () => {
+  // Nothing on hand: the rollup's WAC is null (it averages live bottles), so
+  // the advice said "no recorded cost" with the invoices on file.
+  const SOLD_OUT = [
+    {
+      inventory_id: "inv-a",
+      restaurant_id: "rest-1",
+      live_qty: 0,
+      wac: null,
+      has_invoice_cost: true,
+      wac_qty: 0,
+    },
+  ];
+  const LOTS = [
+    {
+      inventory_id: "inv-a",
+      restaurant_id: "rest-1",
+      stock_state: "live",
+      qty: 0,
+      unit_cost: "18.00",
+      unit_cost_currency: null,
+      cost_provenance: "invoice",
+      received_at: "2026-08-01T00:00:00Z",
+    },
+    {
+      inventory_id: "inv-a",
+      restaurant_id: "rest-1",
+      stock_state: "live",
+      qty: 0,
+      unit_cost: "20.00",
+      unit_cost_currency: null,
+      cost_provenance: "invoice",
+      received_at: "2026-09-01T00:00:00Z",
+    },
+    {
+      inventory_id: "inv-a",
+      restaurant_id: "rest-1",
+      stock_state: "live",
+      qty: 0,
+      unit_cost: "0",
+      unit_cost_currency: null,
+      cost_provenance: "sample",
+      received_at: "2026-09-15T00:00:00Z",
+    },
+  ];
+
+  it("advises on the most recent costed lot and says it is the last price paid", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: SOLD_OUT,
+      lots: LOTS,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    const a = out.wines[0];
+    expect(a.costBasis).toBe("last_paid_lot");
+    expect(a.costBasisLabel).toBe("last price paid (none on hand)");
+    expect(a.bottleCost).toBe(20);
+    expect(a.bottle).toMatchObject({ state: "raise", advisedPrice: 57.14 });
+    expect(a.bottle!.sentence).not.toMatch(/no recorded cost/);
+    expect(a.bottle!.sentence).toMatch(
+      /The cost is the last price paid, 20\.00 on 2026-09-01; none is on hand now\./,
+    );
+  });
+
+  it("accepts the advice it showed", async () => {
+    const { svc, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: SOLD_OUT,
+      lots: LOTS,
+    });
+    const res = await svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9");
+    expect(res.price).toBe(57.14);
+    expect(rpcs).toHaveLength(1);
+  });
+
+  it("a lot bought in other money is not the cost", async () => {
+    const eur = LOTS.map((l) => ({ ...l, unit_cost_currency: "EUR" }));
+    const { svc } = service({
+      house: { ...HOUSE_SET, currency: "TRY" },
+      inventory: [WINE_A],
+      rollup: SOLD_OUT,
+      lots: eur,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.wines[0].costBasis).toBe("unknown");
+    expect(out.wines[0].bottle!.state).toBe("no_cost");
+  });
+
+  it("a failed read of the last prices paid is an error, never 'no recorded cost'", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: SOLD_OUT,
+      lotsError: { message: "lots down" },
+    });
+    await expect(svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+  });
+});
+
+describe("MarginAdviceService -- money in the house's own (F-1174)", () => {
+  const TR_HOUSE = { ...HOUSE_SET, currency: "TRY", country: "TR" };
+
+  it("the advice sentence prints the house's money and marks, not a bare 57.14", async () => {
+    const { svc } = service({
+      house: TR_HOUSE,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+    });
+    const out = await svc.adviseHouse("rest-1");
+    const s = out.wines[0].bottle!.sentence;
+    expect(s).not.toMatch(/57\.14/);
+    expect(s).toMatch(/₺57,14/);
+  });
+
+  it("a lock refusal names the held price in the house's money", async () => {
+    const { svc } = service({
+      house: TR_HOUSE,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      locks: [
+        {
+          id: "lock-1",
+          restaurant_id: "rest-1",
+          inventory_id: "inv-a",
+          kind: "bottle",
+          locked_price: 1250,
+          locked_by: "user-2",
+          locked_at: "2026-09-21T10:00:00Z",
+          released_at: null,
+        },
+      ],
+      users: [{ user_id: "user-2", name: "Ayse" }],
+    });
+    const err = await svc
+      .accept("rest-1", "inv-a", "bottle", 57.14, "user-9")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toMatch(/locked at ₺1\.250,00/);
   });
 });

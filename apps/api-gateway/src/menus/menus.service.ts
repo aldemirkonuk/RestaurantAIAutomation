@@ -30,6 +30,8 @@ import {
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
+import { fmtMoney, type HouseMoneyTerms } from "../pricing/margin-to-target";
+import { readHouseMoney } from "../common/house-money";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
@@ -2421,6 +2423,13 @@ export class MenusService {
       }
     }
 
+    // The kept price in a flag note is in the house's money (F-1174). Never
+    // throws: unread, the note prints the bare figure, as before.
+    const houseMoney = await readHouseMoney(
+      this.dbService.supabase,
+      restaurantId,
+    );
+
     const carryLine = async (item: InsertedMenuItem, read: HouseRead) => {
       const { data: existing, error: existingErr } = read;
 
@@ -2500,6 +2509,7 @@ export class MenusService {
           glass: existing?.menu_price_glass ?? null,
         },
         dating,
+        houseMoney,
       );
       priceSync.set(item.id, entry);
       await this.writeLineFlag(item.id, entry);
@@ -2577,6 +2587,7 @@ export class MenusService {
     userId: string,
     house: { bottle: number | string | null; glass: number | string | null },
     dating: CarryDating,
+    money: HouseMoneyTerms = {},
   ): Promise<PriceSyncEntry> {
     const price = (v: unknown): number | null => {
       if (v === null || v === undefined || v === "") return null;
@@ -2588,8 +2599,10 @@ export class MenusService {
     const knownBottle = price(house.bottle);
     const knownGlass = price(house.glass);
     const kept: string[] = [];
-    if (bottle === null && knownBottle !== null) kept.push(`bottle price ${knownBottle.toFixed(2)}`);
-    if (glass === null && knownGlass !== null) kept.push(`glass price ${knownGlass.toFixed(2)}`);
+    if (bottle === null && knownBottle !== null)
+      kept.push(`bottle price ${fmtMoney(knownBottle, money)}`);
+    if (glass === null && knownGlass !== null)
+      kept.push(`glass price ${fmtMoney(knownGlass, money)}`);
     const noPriceAnywhere =
       bottle === null && glass === null && knownBottle === null && knownGlass === null;
     const flag: PriceFlag | null =

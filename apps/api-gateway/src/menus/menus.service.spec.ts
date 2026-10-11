@@ -1607,6 +1607,18 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tables.menu_items[0].price_flag_note).toMatch(/no bottle price, so the house kept the bottle price 60\.00 it already had/);
     });
 
+    it("the kept price in the flag note is in the house's money and marks (F-1174)", async () => {
+      const { tables, service, read } = await readThenChoose([
+        { name: "Opus One", by_glass_price: 15 },
+      ]);
+      Object.assign(tables.restaurants[0], { currency: "TRY", country: "TR" });
+      tables.restaurant_inventory[0].menu_price_current = 1250;
+      await choose(service, read.menuId);
+      expect(tables.menu_items[0].price_flag_note).toMatch(
+        /kept the bottle price ₺1\.250,00 it already had/,
+      );
+    });
+
     it("a blank kind the house never priced is not flagged: nothing is kept, nothing is unclear", async () => {
       const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
       const r = await choose(service, read.menuId);

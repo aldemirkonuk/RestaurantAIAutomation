@@ -13,6 +13,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
@@ -270,11 +272,25 @@ export class PricingController {
     return this.locks.move(house, lockId, dto?.targetInventoryId, dto?.price, userId, dto?.note ?? null);
   }
 
+  /**
+   * Owner or manager only (F-1175, a rehit of MENU-02; coordinator's call
+   * 2026-10-10, matching `locksForRole`). Every wine's cost, margin and the
+   * house's target are here, and a menu price times one minus the margin is
+   * what the house paid -- the figures ADR 0145 keeps from staff. Staff read
+   * the held prices on `GET /pricing/locks`.
+   */
   @Get("advice")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager: the advice carries the house's costs.",
+  })
   @ApiOperation({
     summary: "Per-wine advice toward the house's target margin: raise to X, lower to Y, on target, or why not",
     description:
-      "For every active wine and for each of bottle and glass: the house's price, the recorded cost (invoiced lot WAC, then last purchase price, else unknown), the margin, and the advised price = cost / (1 - target). Never uses the market average. Nothing is changed by this read. A failed read is a 500, never an empty list.",
+      "For every active wine and for each of bottle and glass: the house's price, the recorded cost (invoiced lot WAC, then last purchase price, then the last price paid on a lot with none left, else unknown), the margin, and the advised price = cost / (1 - target). Never uses the market average. Nothing is changed by this read. A failed read is a 500, never an empty list.",
   })
   async getAdvice(@CurrentUser("restaurantId") restaurantId: string): Promise<HouseAdvice> {
     return this.advice.adviseHouse(this.requireHouse(restaurantId, "there is no advice to read"));
