@@ -355,32 +355,23 @@ export class ReceivingService {
     // 1 and every case count silently became a bottle count. The two fixes are
     // one fix — see `order-units.ts`.
     const packSize = this.resolvePackSize(input.packSize, order);
-    // F-1154: a bottle order holds no pack, so its ratio is always 1 and the
-    // door's box count used to book as that many bottles — 2 boxes of 12 went
-    // in as 2. A box count on an order in bottles is refused unless the door
-    // says how many bottles are in each box. Case orders are unchanged.
     // F-1159: an order with no unit stated is one in bottles — the column's
-    // own default is 'bottles' — so it is held to the same rule.
+    // own default is 'bottles' — so it is held to the F-1154 rule below.
     const statedUnit = order.unit_type?.trim() || null;
     const orderUnit = statedUnit === null ? "bottle" : normalizeUom(statedUnit);
-    if (
-      (uom === "case" || uom === "pack" || uom === "split_case") &&
-      !(input.packSize && input.packSize >= 1) &&
-      (orderUnit === "bottle" || orderUnit === "each") &&
-      packSize === 1
-    ) {
+    // F-1206: a keg or litre order is counted in its own unit. A box count on
+    // one used to book 1:1, so 3 boxes of kegs went in as 3 "bottles" of an
+    // order whose total is in kegs. Nothing converts boxes to kegs, so any
+    // other unit is refused.
+    if ((orderUnit === "keg" || orderUnit === "liter") && uom !== orderUnit) {
+      const said = orderUnit === "keg" ? "kegs" : "liters";
       throw new BadRequestException({
-        reason: "pack_size_required",
+        reason: "counted_uom_not_order_unit",
         message:
-          "This order is in bottles, so a count in boxes needs the number of bottles in each box. " +
-          "Nothing was booked. Say how many bottles are in each box and send it again.",
+          `This order is in ${said}, so the delivery is counted in ${said}. ` +
+          `Nothing was booked. Count it again in ${said} and send it again.`,
       });
     }
-    const countedBottles = toBottles(
-      Math.max(0, input.countedQty ?? 0),
-      uom,
-      packSize,
-    );
 
     // BOTH quantities go through the SAME conversion. This is the whole of the
     // corruption that was here: `rejectedQty` was taken raw, in boxes, and
@@ -402,13 +393,44 @@ export class ReceivingService {
           `Lower the broken count to ${countedInCountedUom} or fewer and seal again.`,
       });
     }
-    const rejectedBottles = toBottles(rejectedInCountedUom, uom, packSize);
+
+    // F-1154: a bottle order holds no pack, so its ratio is always 1 and the
+    // door's box count used to book as that many bottles — 2 boxes of 12 went
+    // in as 2. A box count on an order in bottles is refused unless the door
+    // says how many bottles are in each box. Case orders are unchanged.
+    const packUnknown =
+      (uom === "case" || uom === "pack" || uom === "split_case") &&
+      !(input.packSize && input.packSize >= 1) &&
+      (orderUnit === "bottle" || orderUnit === "each") &&
+      packSize === 1;
+    // F-1207: except a truck turned away whole. Nothing is booked, so the
+    // bottles per box are not asked; the boxes are recorded as counted and the
+    // bottles are left unknown — null, never a guess — so no refusal figure is
+    // taken off what the order still expects.
+    const turnedAwayUncounted =
+      packUnknown &&
+      input.outcome === "refused" &&
+      rejectedInCountedUom === countedInCountedUom;
+    if (packUnknown && !turnedAwayUncounted) {
+      throw new BadRequestException({
+        reason: "pack_size_required",
+        message:
+          "This order is in bottles, so a count in boxes needs the number of bottles in each box. " +
+          "Nothing was booked. Say how many bottles are in each box and send it again.",
+      });
+    }
+    const countedBottles = turnedAwayUncounted
+      ? 0
+      : toBottles(countedInCountedUom, uom, packSize);
+    const rejectedBottles = turnedAwayUncounted
+      ? 0
+      : toBottles(rejectedInCountedUom, uom, packSize);
     const expectedInCountedUom =
       input.expectedQtyInCountedUom == null
         ? null
         : Math.max(0, input.expectedQtyInCountedUom);
     const expectedBottles =
-      expectedInCountedUom === null
+      expectedInCountedUom === null || turnedAwayUncounted
         ? null
         : toBottles(expectedInCountedUom, uom, packSize);
 
@@ -496,7 +518,7 @@ export class ReceivingService {
       stage: "case_count",
       counted_qty: input.countedQty,
       counted_uom: uom,
-      counted_qty_bottles: countedBottles,
+      counted_qty_bottles: turnedAwayUncounted ? null : countedBottles,
       // The pair now says the same thing on both sides: `*_qty` in counted_uom,
       // `*_qty_bottles` in bottles. The row no longer mixes units.
       rejected_qty: rejectedInCountedUom,

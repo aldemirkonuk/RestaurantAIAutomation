@@ -68,6 +68,7 @@ import {
 import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
 import {
   asksBottlesPerBox,
+  doorCountUnit,
   composeDoorNotes,
   creditDraft,
   doorFacts,
@@ -203,6 +204,11 @@ export default function DoorNext() {
      `'unread'` when the read failed, which the match line and the credit letter
      SAY rather than treating "unknown" as "none". */
   const [prior, setPrior] = useState<PriorReading>(null);
+  // Boxes, or the order's own kegs or liters (F-1206) — and said in that unit.
+  const unit = doorCountUnit(orderState === 'ok' ? order : null);
+  const countsBoxes = unit.uom === 'case';
+  const unitsWord = (n: number) => `${n} ${n === 1 ? unit.one : unit.many}`;
+  const UnitsTitle = unit.many.charAt(0).toUpperCase() + unit.many.slice(1);
 
   /* ── the photograph (point 2) ─────────────────────────────────────────── */
   const [uploading, setUploading] = useState(false);
@@ -467,13 +473,13 @@ export default function DoorNext() {
     // this house has confirmed that order exists (F-711, F-309).
     if (orderState === 'unreachable') {
       setPaperLine(
-        'The order could not be checked, so this photo is not sent. Keep the paper for the desk, and count the boxes yourself.',
+        `The order could not be checked, so this photo is not sent. Keep the paper for the desk, and count the ${unit.many} yourself.`,
       );
       return;
     }
     if (!navigator.onLine) {
       setPaperLine(
-        'No signal — this photo cannot be sent and is not saved. Keep the paper for the desk, and count the boxes yourself.',
+        `No signal — this photo cannot be sent and is not saved. Keep the paper for the desk, and count the ${unit.many} yourself.`,
       );
       return;
     }
@@ -493,7 +499,7 @@ export default function DoorNext() {
         setDocumentId(null);
         setReading(null);
         setPaperLine(
-          `${res.orderLink.conflict ?? 'This paper was not filed to this order.'} Count the boxes yourself.`,
+          `${res.orderLink.conflict ?? 'This paper was not filed to this order.'} Count the ${unit.many} yourself.`,
         );
         return;
       }
@@ -505,7 +511,9 @@ export default function DoorNext() {
         ? `This paper is already on file, now filed to ${order?.orderNumber ?? 'this order'}. `
         : '';
       const boxesWord = (n: number) => `${n} ${n === 1 ? 'box' : 'boxes'}`;
-      if (r?.boxes != null && r.prefill) {
+      // The paper reads boxes; on an order counted in kegs or liters it is a
+      // hint, never the count (F-1206).
+      if (r?.boxes != null && r.prefill && countsBoxes) {
         if (!touchedRef.current) {
           setCounted(r.boxes);
           setPaperHeld(true);
@@ -517,7 +525,8 @@ export default function DoorNext() {
       } else if (r?.boxes != null) {
         // A hint, never a count: a credit note, lines not in boxes, or a
         // reading with doubts (F-744).
-        setPaperLine(`${onFile}The paper may read ${boxesWord(r.boxes)}, but ${r.doubt} — count them yourself.`);
+        const doubt = r.doubt ?? `this order is counted in ${unit.many}`;
+        setPaperLine(`${onFile}The paper may read ${boxesWord(r.boxes)}, but ${doubt} — count them yourself.`);
       } else {
         setPaperLine(
           onFile
@@ -557,11 +566,19 @@ export default function DoorNext() {
     setPerBox((v) => (v === '' ? knownBottlesPerBox(prior) : v));
   }, [askPerBox, prior]);
   const perBoxValue = readBottlesPerBox(perBox);
-  const perBoxOk = !askPerBox || perBoxValue !== null;
 
-  const match = matchLine(counted, orderState === 'ok' ? order : null, prior);
+  // With the bottles per box said, the boxes compare as bottles (F-1208).
+  const match = matchLine(
+    counted,
+    orderState === 'ok' ? order : null,
+    prior,
+    askPerBox ? perBoxValue : null,
+  );
   const suggested = suggestOutcome(match);
   const outcome: DoorOutcome = outcomeChoice ?? suggested;
+  // A truck turned away whole books nothing, so it is not held up for the
+  // bottles per box (F-1207); the boxes are recorded, the bottles left unknown.
+  const perBoxOk = !askPerBox || perBoxValue !== null || outcome === 'refused';
   // THE CREDIT LETTER MAY ONLY CLAIM AN ATTACHMENT THAT EXISTS. This was
   // `photoTaken`, set the instant the camera returned a file — so on the offline
   // branch and on the upload-failure branch the draft told a vendor that
@@ -589,8 +606,8 @@ export default function DoorNext() {
       : 'This delivery is already counted on this phone. It sends by itself when the signal is back.'
     : paperHeld
       ? reading?.prefill
-        ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
-        : "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The number filled in is what was ordered, not a count."
+        ? `Count the ${unit.many} yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count.`
+        : `Count the ${unit.many} yourself, then tap \u201cThat's my count\u201d or change the number. The number filled in is what was ordered, not a count.`
       : !perBoxOk
         ? 'Say how many bottles are in each box — this order is counted in bottles.'
         : !initialsOk
@@ -621,7 +638,7 @@ export default function DoorNext() {
         restaurantId: rid,
         body: {
           countedQty: counted,
-          countedUom: 'case',
+          countedUom: unit.uom,
           // F-1154: the boxes' size, said at the door, on an order in bottles.
           ...(askPerBox && perBoxValue !== null ? { packSize: perBoxValue } : {}),
           // Everything the door knows, each quantity carrying its unit in its
@@ -634,9 +651,10 @@ export default function DoorNext() {
           // by it. Both undefined when the paper offered nothing — there was no
           // proposal, so there is nothing to grade, and sending `false` would
           // claim the receiver overrode a number that never existed.
-          suggestedQtyInCountedUom: reading?.boxes ?? undefined,
+          // A paper read in boxes proposed nothing for a count in kegs or liters.
+          suggestedQtyInCountedUom: countsBoxes ? (reading?.boxes ?? undefined) : undefined,
           suggestionAccepted:
-            reading?.boxes == null ? undefined : counted === reading.boxes,
+            !countsBoxes || reading?.boxes == null ? undefined : counted === reading.boxes,
           documentId: documentId ?? undefined,
           idempotencyKey: idem.current,
           clientCapturedAt: new Date().toISOString(),
@@ -902,7 +920,14 @@ export default function DoorNext() {
       )}
 
       {orderState !== 'missing' && step === 'count' && (
-        <Panel title="How many boxes" hint="Count the boxes, not the bottles. Someone opens them later, at a desk.">
+        <Panel
+          title={`How many ${unit.many}`}
+          hint={
+            countsBoxes
+              ? 'Count the boxes, not the bottles. Someone opens them later, at a desk.'
+              : `This order is in ${unit.many}. Count the ${unit.many} as they come off the truck.`
+          }
+        >
           {/* what the photograph is doing / did — honest at every stage */}
           {(uploading || paperLine) && (
             <p
@@ -923,7 +948,7 @@ export default function DoorNext() {
               setPaperHeld(false);
               setCounted(v);
             }}
-            label="Boxes delivered"
+            label={`${UnitsTitle} delivered`}
             uxKey="door:cases"
           />
           {askPerBox && (
@@ -945,7 +970,9 @@ export default function DoorNext() {
                 data-ux-key="door:bottles-per-box"
               />
               <span className="mt-2 block text-xs text-inkm-3">
-                This order is in bottles. Open one box and count, if you are not sure.
+                {outcome === 'refused'
+                  ? 'Not needed when the whole truck is refused — the boxes are recorded, and nothing is booked.'
+                  : 'This order is in bottles. Open one box and count, if you are not sure.'}
               </span>
             </label>
           )}
@@ -959,7 +986,7 @@ export default function DoorNext() {
               data-ux-key="door:confirm-paper-count"
               className={`${TAP} mt-4 w-full rounded-2xl border border-white/15 text-sm font-semibold text-inkm-1`}
             >
-              That's my count — {counted} {counted === 1 ? 'box' : 'boxes'}
+              That's my count — {unitsWord(counted)}
             </button>
           )}
 
@@ -978,7 +1005,7 @@ export default function DoorNext() {
                   value={broken}
                   onChange={setBroken}
                   max={counted}
-                  label="Boxes visibly broken"
+                  label={`${UnitsTitle} visibly broken`}
                   tone="warn"
                   uxKey="door:damaged"
                   compact
@@ -1095,7 +1122,7 @@ export default function DoorNext() {
               outcome === 'accepted'
                 ? broken > 0
                   ? `Hold to seal — ${counted - broken} in, ${broken} broken`
-                  : `Hold to seal — ${counted} ${counted === 1 ? 'box' : 'boxes'} in`
+                  : `Hold to seal — ${unitsWord(counted)} in`
                 : outcome === 'short'
                   ? 'Hold to seal — short-shipped'
                   : 'Hold to seal — refused'
