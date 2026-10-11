@@ -502,6 +502,8 @@ export class InboundResponderService {
         }).bucket;
         // Owners and managers only, live and in the bell (F-538): the line
         // carries the vendor's price, which staff are not shown.
+        // The link opens the order; `deal`/`urgent` flags rode on it once and
+        // no page read them (F-1143). Urgency rides on the bell itself.
         void this.websocketGateway.emitRoleNotification(
           ctx.restaurantId,
           OWNER_AND_MANAGER,
@@ -513,7 +515,7 @@ export class InboundResponderService {
                 : `${providerName} sent an offer to review`,
             message: `${dealProposal.summary}`,
             type: dealBucket === "interrupt" ? "warning" : "info",
-            action_url: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
+            action_url: `/orders?order=${ctx.orderId}`,
           },
         );
         void this.persistManagerNotification(
@@ -529,7 +531,7 @@ export class InboundResponderService {
                 : `${providerName} sent an offer to review`,
             message: dealProposal.summary,
             priority: dealProposal.urgency === "urgent" ? "high" : "medium",
-            actionUrl: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
+            actionUrl: `/orders?order=${ctx.orderId}`,
             metadata: {
               order_id: ctx.orderId,
               conversation_id: ctx.inboundConversationId,

@@ -1558,13 +1558,16 @@ class ProviderCommunicationAgent(BaseAgent):
                 title = f"Unrecorded invoice from {provider_name}"
                 priority = "low"
 
+            # The bell opens the order the invoice looks like; /orders reads
+            # `?order=` and nothing ever read `?invoice_match=` (F-1143).
+            matched_id = best.get("id") if best and match_class != "no_match" else None
             await self._notify(
                 restaurant_id=restaurant_id,
                 notification_type="off_app_invoice",
                 title=title,
                 message=message,
                 priority=priority,
-                action_url=f"/orders?invoice_match={provider_id}",
+                action_url=f"/orders?order={matched_id}" if matched_id else "/orders",
                 metadata={
                     "provider_id": provider_id,
                     "invoice": extracted_invoice,

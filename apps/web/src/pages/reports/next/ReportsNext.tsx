@@ -51,6 +51,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
@@ -110,7 +111,25 @@ function Action({
 export default function ReportsNext({ ground }: ReportsNextProps) {
   // Money on this page prints in the house's own currency (sim F-341).
   useHouseCurrency();
-  const [tillDays, setDays] = useState(30);
+  /**
+   * `?type=weekly` is where the "Weekly report ready" bell opens
+   * (scheduled-tasks.service.ts): the till starts on the last 7 days, and the
+   * word leaves the address once read, so a reload or a later pick of 30 days
+   * is not pulled back to a week (F-217, F-1143).
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tillDays, setDays] = useState(() => (searchParams.get('type') === 'weekly' ? 7 : 30));
+  useEffect(() => {
+    if (!searchParams.has('type')) return;
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('type');
+        return p;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
   /** One calendar month instead of the trailing window (F-128); null = trailing. */
   const [tillMonth, setTillMonth] = useState<string | null>(null);
   /** Choosing a trailing window leaves the month: the till reads one or the other. */

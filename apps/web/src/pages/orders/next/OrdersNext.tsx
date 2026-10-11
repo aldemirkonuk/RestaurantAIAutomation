@@ -68,7 +68,10 @@ export default function OrdersNext() {
    */
   const { id: routeOrderId } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const targetOrderId = routeOrderId ?? searchParams.get('order');
+  // `highlight` is the same ask in the spelling procurement_agent.py's
+  // "approve this order" bell and the bells already stored in the house still
+  // carry (F-217, F-1143).
+  const targetOrderId = routeOrderId ?? searchParams.get('order') ?? searchParams.get('highlight');
   /** Which target id this page has already acted on, so a manual collapse by
    *  the person afterwards is not fought by re-expanding on every render. */
   const handledTargetRef = useRef<string | null>(null);
@@ -186,6 +189,19 @@ export default function OrdersNext() {
       if (el && typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
+      // The link has been followed: its words leave the address, so a reload
+      // or Back does not re-open a row the person has since closed. `deal` and
+      // `urgent` rode on older offer bells and were never read (F-1143). A
+      // cancelled order keeps them: its banner below is what the link opened.
+      if (targetRow.stage === 'cancelled') return;
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          for (const k of ['order', 'highlight', 'deal', 'urgent']) p.delete(k);
+          return p;
+        },
+        { replace: true },
+      );
     }, 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
