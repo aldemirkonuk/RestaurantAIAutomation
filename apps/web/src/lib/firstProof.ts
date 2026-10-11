@@ -94,7 +94,7 @@ const WINE_WORDS = ['wine', 'wines', 'şarap', 'şaraplar']
  * CSV's Tür/Kategori cell is kept as written. The same list as the gateway's
  * DRINK_WORDS.
  */
-const DRINK_WORDS = ['kırmızı', 'beyaz', 'roze', 'pembe', 'köpüklü', 'tatlı şarap', 'rakı', 'bira', 'biralar', 'viski', 'şarap']
+const DRINK_WORDS = ['kırmızı', 'beyaz', 'roze', 'pembe', 'köpüklü', 'tatlı şarap', 'rakı', 'bira', 'biralar', 'viski', 'kokteyl', 'kokteyller', 'alkolsüz', 'şarap']
 
 /**
  * Hints that mark food only as the section's own heading, never inside a raw

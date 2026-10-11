@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { policyFor } from "../ask-readings/reading-data-classes";
+import {
+  MENU_CATEGORY_VOCABULARY,
+  type MenuCategory,
+} from "./wine-extract-item.interface";
 
 /**
  * What one menu line read says to the person reading it (ADR 0309 option 1c,
@@ -139,7 +143,33 @@ export const DRINK_WORDS = [
   "bira",
   "biralar",
   "viski",
+  "kokteyl",
+  "kokteyller",
+  "alkolsüz",
   "şarap",
+];
+
+/**
+ * The kind each Turkish drink section names, in MENU_CATEGORY_VOCABULARY
+ * (F-1293). The library's classifier reads English words only, so "Rakı" or
+ * "Bira" sent as written came back 'unknown', and an unknown house item is
+ * filed as wine. 'tatlı şarap' comes before any shorter word it holds;
+ * 'şarap' alone names no one kind, so it is not here.
+ */
+export const DRINK_WORD_KINDS: ReadonlyArray<[string, MenuCategory]> = [
+  ["tatlı şarap", "dessert"],
+  ["kırmızı", "red"],
+  ["beyaz", "white"],
+  ["roze", "rose"],
+  ["pembe", "rose"],
+  ["köpüklü", "sparkling"],
+  ["rakı", "spirit"],
+  ["bira", "beer"],
+  ["biralar", "beer"],
+  ["viski", "whiskey"],
+  ["kokteyl", "cocktail"],
+  ["kokteyller", "cocktail"],
+  ["alkolsüz", "non-alcoholic"],
 ];
 
 /**
@@ -225,6 +255,25 @@ export function isKitchenLine(category: unknown, raw: unknown): boolean {
   return KITCHEN_HINTS.some((hint) =>
     runs.some((run) => run.includes(` ${hint} `)),
   );
+}
+
+/**
+ * The section a menu line hands the library resolver (F-1293): a vocabulary
+ * member as it is, a Turkish drink section as the kind it names, anything
+ * else as written.
+ */
+export function menuCategoryOf(
+  category: string | undefined,
+): string | undefined {
+  if (typeof category !== "string") return category;
+  const lower = category.toLowerCase().trim();
+  if ((MENU_CATEGORY_VOCABULARY as readonly string[]).includes(lower))
+    return lower;
+  const runs = wordRuns(category);
+  const hit = DRINK_WORD_KINDS.find(([word]) =>
+    runs.some((run) => run.includes(` ${word} `)),
+  );
+  return hit ? hit[1] : category;
 }
 
 /**

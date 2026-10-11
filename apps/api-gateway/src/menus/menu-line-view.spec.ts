@@ -6,6 +6,7 @@ import {
   DRINK_WORDS,
   isKitchenLine,
   lineForViewer,
+  menuCategoryOf,
   seesRawLine,
   KITCHEN_HINTS,
   MEMBER_LINE_KEYS,
@@ -85,6 +86,28 @@ describe("menu-line-view", () => {
     expect(isKitchenLine("Tatlılar", "Künefe,180")).toBe(true);
     expect(isKitchenLine("TATLILAR", null)).toBe(true);
     expect(isKitchenLine("Desserts", null)).toBe(true);
+  });
+
+  // F-1293: the library's classifier reads English words only.
+  it("menuCategoryOf: a Turkish drink section as the kind it names", () => {
+    expect(menuCategoryOf("Rakı")).toBe("spirit");
+    expect(menuCategoryOf("RAKI")).toBe("spirit");
+    expect(menuCategoryOf("Biralar")).toBe("beer");
+    expect(menuCategoryOf("Viski")).toBe("whiskey");
+    expect(menuCategoryOf("Kokteyl")).toBe("cocktail");
+    expect(menuCategoryOf("Alkolsüz içecekler")).toBe("non-alcoholic");
+    expect(menuCategoryOf("Kırmızı şaraplar")).toBe("red");
+    expect(menuCategoryOf("Beyaz")).toBe("white");
+    expect(menuCategoryOf("Köpüklü")).toBe("sparkling");
+    expect(menuCategoryOf("Roze")).toBe("rose");
+    expect(menuCategoryOf("Pembe")).toBe("rose");
+    expect(menuCategoryOf("Tatlı şarap")).toBe("dessert");
+    // A vocabulary member as it is; anything else as written.
+    expect(menuCategoryOf("WHITE")).toBe("white");
+    expect(menuCategoryOf("non-alcoholic")).toBe("non-alcoholic");
+    expect(menuCategoryOf("Şarap")).toBe("Şarap");
+    expect(menuCategoryOf("Reds by the glass")).toBe("Reds by the glass");
+    expect(menuCategoryOf(undefined)).toBeUndefined();
   });
 
   it("a known drink section wins: a dessert wine is a drink (F-1173)", () => {
