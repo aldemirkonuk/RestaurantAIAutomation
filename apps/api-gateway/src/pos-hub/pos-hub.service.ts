@@ -10,6 +10,7 @@ import {
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { houseDayOf, readHouseZone } from "../common/house-day";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
@@ -1372,6 +1373,10 @@ export class PosHubService {
     let refusedUnreadableDate = 0;
     const refusedChecks: RefusedCheck[] = [];
     const client = this.dbService.getClient();
+    // F-1324: read once, and only when a file-imported check needs comparing.
+    let zoneRead: Promise<string | null> | null = null;
+    const houseZone = () =>
+      (zoneRead ??= readHouseZone(client, restaurantId).then((z) => z.zone));
 
     for (const check of checks) {
       try {
@@ -1444,11 +1449,19 @@ export class PosHubService {
         // anything is under csv_import; the till's own copy of it takes that
         // row over, so it is one check, not two. Its stock stays booked under
         // the import's keys, which readCheckLedger reads for the till's copy.
+        // F-1324: only when the two are the same check by its day and total.
         if (source !== "csv_import") {
           const adopted = await this.adoptImportedCheck(
             restaurantId,
             source,
-            check.externalCheckId,
+            {
+              externalCheckId: check.externalCheckId,
+              openedAt: check.openedAt ?? null,
+              closedAt:
+                typeof when.closedAt === "string" ? when.closedAt : null,
+              total: check.total ?? null,
+            },
+            houseZone,
           );
           if (!adopted.ok) {
             errors.push(
@@ -1713,13 +1726,64 @@ export class PosHubService {
    * kept before F-1195), the import's row is left for a repair and the till's
    * copy is updated as before. Any other failure is returned: storing the
    * check anyway could store it twice.
+   *
+   * F-1324: a till reuses its check numbers, so the same number is not the
+   * same check. The row is moved only when it falls on the same house day
+   * (closed, else opened, on the house's clock, ADR 0296) and its total is
+   * within a cent of the till's. Otherwise both rows are kept, each with its
+   * own stock, and the pair is logged for someone to look at. A house with no
+   * time zone has no house day to compare, so nothing is moved there either.
    */
   private async adoptImportedCheck(
     restaurantId: string,
     source: string,
-    externalCheckId: string,
+    till: {
+      externalCheckId: string;
+      openedAt: string | null;
+      closedAt: string | null;
+      total: number | null;
+    },
+    houseZone: () => Promise<string | null>,
   ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const externalCheckId = till.externalCheckId;
     try {
+      const imported = await this.dbService
+        .getClient()
+        .from("pos_checks")
+        .select("opened_at, closed_at, total")
+        .eq("restaurant_id", restaurantId)
+        .eq("source", "csv_import")
+        .eq("external_check_id", externalCheckId)
+        .maybeSingle();
+      if (imported.error) {
+        return { ok: false, message: imported.error.message ?? "no message" };
+      }
+      if (!imported.data) return { ok: true };
+      const zone = await houseZone();
+      const row = imported.data as {
+        opened_at: string | null;
+        closed_at: string | null;
+        total: number | string | null;
+      };
+      const importDay = zone ? houseDayOf(row, zone) : null;
+      const tillDay = zone
+        ? houseDayOf(
+            { opened_at: till.openedAt, closed_at: till.closedAt },
+            zone,
+          )
+        : null;
+      const a = row.total === null ? null : Number(row.total);
+      const b = till.total === null ? null : Number(till.total);
+      const sameTotal =
+        a === null || b === null
+          ? a === b
+          : Math.abs(Math.round(a * 100) - Math.round(b * 100)) <= 1;
+      if (importDay === null || importDay !== tillDay || !sameTotal) {
+        this.logger.warn(
+          `pos_checks ${externalCheckId} r=${restaurantId}: the ${source} check and the file-imported one share a number but not a day and total (import ${importDay ?? "no house day"}, ${a ?? "no total"}; till ${tillDay ?? "no house day"}, ${b ?? "no total"}); both are kept, for review`,
+        );
+        return { ok: true };
+      }
       const { error } = await this.dbService
         .getClient()
         .from("pos_checks")

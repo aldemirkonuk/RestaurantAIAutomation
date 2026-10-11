@@ -128,13 +128,17 @@ const isMoneyUnit = (unit: string | null): unit is string =>
 /** A recorded instant ("2026-09-12T12:00:00Z"), not a calendar date. */
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 
-/** An instant on the house's clock, in the house's formats; UTC, said so, when the house has no zone. */
+/**
+ * An instant on the house's clock, in the house's formats; UTC, said so, when
+ * the house has no zone. The date is digits in the house's order, so no month
+ * word comes out in the house's language (ADR 0207 q7, F-1322).
+ */
 export function fmtInstant(iso: string, zone: string | null = getHouseZone()): string {
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return iso;
   const text = t.toLocaleString(getHouseLocale(), {
     day: 'numeric',
-    month: 'short',
+    month: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
@@ -274,11 +278,15 @@ export function dayLine(finding: Pick<AskFinding, 'day'> | null | undefined): st
     : `“Today” here is ${day.date} in UTC, because the house has no time zone set. An owner can set one in Settings.`;
 }
 
-/** A house date ("2026-09-12") as the house writes it: "12 Sept 2026" in a Turkish or British house. */
+/**
+ * A house date ("2026-09-12") as the house writes it, in digits: "12.09.2026"
+ * in a Turkish house, "9/12/2026" in an American one, so the words around it
+ * stay English (ADR 0207 q7, F-1322).
+ */
 function fmtHouseDate(day: string): string {
   const t = new Date(`${day}T00:00:00Z`);
   if (!ISO_DAY.test(day) || Number.isNaN(t.getTime())) return day;
-  return t.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return t.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 /**

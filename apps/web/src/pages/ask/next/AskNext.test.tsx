@@ -348,10 +348,10 @@ describe('the book and old folios', () => {
     api.folios.mockResolvedValue([f]);
     renderAt(`/ask/f/${id}`);
     const doc = await screen.findByRole('article', { name: 'The open folio' });
-    expect(within(doc).getByTestId('ak-period').textContent).toBe('For Sep 1, 2026 – Sep 7, 2026');
+    expect(within(doc).getByTestId('ak-period').textContent).toBe('For 9/1/2026 – 9/7/2026');
     expect(within(doc).getByTestId('ak-period-clock').textContent).toMatch(/house's clock \(Europe\/Istanbul\)/);
     const book = screen.getByRole('complementary');
-    await waitFor(() => expect(within(book).getByText(/For Sep 1, 2026 – Sep 7, 2026 ·/)).toBeTruthy());
+    await waitFor(() => expect(within(book).getByText(/For 9\/1\/2026 – 9\/7\/2026 ·/)).toBeTruthy());
   });
 
   it('the general-knowledge card does not promise an answer with no figure (F-296)', async () => {

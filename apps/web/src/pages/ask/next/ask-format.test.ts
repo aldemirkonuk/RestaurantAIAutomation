@@ -270,19 +270,39 @@ describe('a figure in the house\'s formats (F-1246)', () => {
 
   it('prints a recorded instant on the house\'s clock, and says UTC when there is no zone', () => {
     const at = '2026-09-12T21:30:00Z';
-    expect(fmtValue({ value: at, unit: null }, 'Europe/Istanbul')).toBe('Sep 13, 2026, 12:30 AM');
-    expect(fmtValue({ value: at, unit: null }, null)).toMatch(/Sep 12, 2026.*9:30.*UTC$/);
+    expect(fmtValue({ value: at, unit: null }, 'Europe/Istanbul')).toBe('9/13/2026, 12:30 AM');
+    expect(fmtValue({ value: at, unit: null }, null)).toMatch(/9\/12\/2026.*9:30.*UTC$/);
     expect(fmtValue({ value: '2026-09-12', unit: null })).toBe('2026-09-12');
+  });
+
+  // F-1322: a Turkish house reads the date in its order, in digits, never "Eyl".
+  it('prints a Turkish house\'s instant in digits, day first, keeping the zone', () => {
+    setHouseLocale('tr-TR');
+    const text = fmtValue({ value: '2026-09-12T21:30:00Z', unit: null }, 'Europe/Istanbul');
+    expect(text).toMatch(/^13\.09\.2026/);
+    expect(text).toMatch(/ 0?0:30$/);
+    expect(text).not.toMatch(/[A-Za-zçğıöşüÇĞİÖŞÜ]/);
   });
 });
 
 // F-1247, F-1245: a period reading says which period, and on whose days.
 describe('the period a question read', () => {
   it('names the dates from the saved args, one day or a range', () => {
-    expect(fmtPeriod({ from: '2026-09-01', to: '2026-09-07' })).toBe('Sep 1, 2026 – Sep 7, 2026');
-    expect(fmtPeriod({ from: '2026-09-12', to: '2026-09-12' })).toBe('Sep 12, 2026');
+    expect(fmtPeriod({ from: '2026-09-01', to: '2026-09-07' })).toBe('9/1/2026 – 9/7/2026');
+    expect(fmtPeriod({ from: '2026-09-12', to: '2026-09-12' })).toBe('9/12/2026');
     expect(fmtPeriod({ subjectText: 'Barolo' })).toBeNull();
     expect(fmtPeriod(undefined)).toBeNull();
+  });
+
+  // F-1322: no Turkish month word on an English page (ADR 0207 q7).
+  it('names a Turkish house\'s period in digits, day first', () => {
+    setHouseLocale('tr-TR');
+    try {
+      expect(fmtPeriod({ from: '2026-09-01', to: '2026-09-07' })).toBe('01.09.2026 – 07.09.2026');
+      expect(fmtPeriod({ from: '2026-09-12', to: '2026-09-12' })).toBe('12.09.2026');
+    } finally {
+      setHouseLocale(null);
+    }
   });
 
   it('says the house\'s clock, or UTC when the house has no zone', () => {

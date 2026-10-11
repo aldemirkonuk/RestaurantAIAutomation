@@ -2271,4 +2271,19 @@ describe('CalendarNext — the keyboard stays where it is pointed (F-1268)', () 
     expect(day(/Tuesday, September 22/)).toHaveFocus();
     expect(heading()).toHaveTextContent('September 2026');
   });
+
+  it('leaves Enter on a ribbon to the ribbon, not the day (F-1323)', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+    });
+    draw();
+    const cell = screen.getByRole('gridcell', { name: /Thursday, September 17/ });
+    const ribbon = screen.getByText('Vega Sicilia crate').closest('button') as HTMLElement;
+    // A default-prevented Enter would cancel the button's own click.
+    expect(fireEvent.keyDown(ribbon, { key: 'Enter' })).toBe(true);
+    expect(cell).toHaveAttribute('data-selected', 'false');
+    // Enter on the day itself still selects it.
+    expect(fireEvent.keyDown(cell, { key: 'Enter' })).toBe(false);
+    expect(cell).toHaveAttribute('data-selected', 'true');
+  });
 });

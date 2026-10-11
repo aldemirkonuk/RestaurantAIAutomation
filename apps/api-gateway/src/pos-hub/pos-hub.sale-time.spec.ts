@@ -71,6 +71,8 @@ function makeDb(opts: DbOpts = {}) {
         select: () => q,
         // F-1238: the till's copy takes over an imported row; none here.
         update: () => q,
+        // F-1324: the imported row is read before it is taken over; none here.
+        maybeSingle: async () => ({ data: null, error: null }),
         eq: () => q,
         in: async () => ({ data: [], error: null }),
         // What earlier imports of the check moved, read back from the RPCs
