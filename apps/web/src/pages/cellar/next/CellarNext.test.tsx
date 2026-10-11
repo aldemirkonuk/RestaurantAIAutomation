@@ -2533,3 +2533,44 @@ describe('the floor — confirmed zones only', () => {
     );
   });
 });
+
+// F-1300: the gateway leaves what the house paid and was quoted out of a
+// staff reply and says `amountsWithheld`. The page drew both as the same dash
+// as "nothing recorded"; it now leaves the Paid and Quote columns out and the
+// leaf says who the figures are for.
+describe('a register read by staff (F-1300)', () => {
+  function staffReply() {
+    const row = houseRow();
+    const { paidTotal: _p, lastUnitPrice: _u, ...bought } = row.house.bought;
+    return registerVM({
+      amountsWithheld: true,
+      rows: [houseRow({ house: { ...row.house, bought } })],
+    });
+  }
+
+  beforeEach(() => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: staffReply(), loading: false, error: null, refetch: () => {} };
+  });
+
+  it('draws no Paid or Quote column, and offers neither among the columns not drawn', () => {
+    draw({ category: 'beer' });
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '').join('|');
+    expect(heads).not.toMatch(/Paid|Quote/);
+    expect(heads).toMatch(/Taken/);
+    const more = screen.getByTestId('register-more-columns');
+    expect(within(more).queryByRole('button', { name: 'Paid' })).toBeNull();
+    expect(within(more).queryByRole('button', { name: 'Quote' })).toBeNull();
+  });
+
+  it('says the paid figures are for owners and managers in the leaf, never a dash', () => {
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
+    const paid = within(book).getByText('Paid, in total').parentElement!;
+    expect(paid).toHaveTextContent('for owners and managers');
+    expect(paid).not.toHaveTextContent('—');
+    const unit = within(book).getByText('Last unit price').parentElement!;
+    expect(unit).toHaveTextContent('for owners and managers');
+  });
+});

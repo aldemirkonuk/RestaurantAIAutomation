@@ -116,8 +116,21 @@ describe("beverage registers hide what the house paid from staff (F-1220)", () =
     },
   );
 
+  // F-1300: an omitted figure and a figure never recorded drew the same dash
+  // on the page; the reply now says which it is.
+  it.each(["staff", null])(
+    "a %s reply says its amounts are withheld",
+    (role) => {
+      expect(registerForRole(register, role).amountsWithheld).toBe(true);
+      expect(rowRecordForRole(record, role).amountsWithheld).toBe(true);
+    },
+  );
+
   it.each(["owner", "manager"])("a %s reads every figure", (role) => {
     expect(registerForRole(register, role)).toBe(register);
     expect(rowRecordForRole(record, role)).toBe(record);
+    expect(registerForRole(register, role)).not.toHaveProperty(
+      "amountsWithheld",
+    );
   });
 });

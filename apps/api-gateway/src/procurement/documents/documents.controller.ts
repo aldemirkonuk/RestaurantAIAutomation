@@ -12,6 +12,7 @@ import {
   Query,
   UseGuards,
   Logger,
+  Optional,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -50,6 +51,7 @@ import { DoorCountDto } from "../dto/deliveries.dto";
 import { assertOrderBelongsToRestaurant } from "../../common/tenant/assert-order-belongs-to-restaurant";
 import { assertProviderBelongsToRestaurant } from "../../common/tenant/assert-provider-belongs-to-restaurant";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
+import { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -208,6 +210,13 @@ export class DocumentsController {
     // `ProcurementModule` import for the order seal, so this adds no edge to
     // the module graph. See `document-seal.ts` for what each act binds.
     private readonly seals: SealChallengeService,
+    // WHO MAY OPEN THE VENDOR'S PAPER (F-1299). Whoever may send to a vendor
+    // reads the vendor's files, as `GET /procurement/orders/:id/attachments`
+    // decides (F-1176). Last, for the positional specs; `ProcurementModule`
+    // imports `VendorSendAuthorityModule`. Missing means no one without the
+    // house's money is given the link.
+    @Optional()
+    private readonly sendAuthority?: VendorSendAuthorityService,
   ) {}
 
   /**
@@ -541,7 +550,13 @@ export class DocumentsController {
    */
   private async signOriginal(
     storagePath: string | null,
+    reader?: { mayOpen: boolean },
   ): Promise<{ imageUrl: string | null; reason: string | null }> {
+    if (storagePath && reader && !reader.mayOpen)
+      return {
+        imageUrl: null,
+        reason: "the paper is kept for owners and managers",
+      };
     if (!storagePath)
       return {
         imageUrl: null,
@@ -564,6 +579,30 @@ export class DocumentsController {
         reason: `the stored original could not be signed: ${err?.message ?? "unknown error"}`,
       };
     }
+  }
+
+  /**
+   * Whether this reader may open the stored original (F-1299). The vendor's
+   * invoice or price list names prices as the vendor printed them, and the
+   * same file is withheld from staff under its order (F-1176), so it follows
+   * that cut here: the house's money holders, and whoever may send to the
+   * vendor, open it. A paper the reader brought in themselves (the door
+   * photo they took, `source_ref` `user:<id>`) stays theirs to open.
+   */
+  private async mayOpenOriginal(
+    user: AuthedUser,
+    sourceRef: string | null,
+  ): Promise<{ mayOpen: boolean }> {
+    if (holdsHouseMoney(user.role ?? null)) return { mayOpen: true };
+    if (sourceRef && sourceRef === `user:${user.userId}`)
+      return { mayOpen: true };
+    if (!this.sendAuthority) return { mayOpen: false };
+    const standing = await this.sendAuthority.readout(
+      user.userId,
+      user.restaurantId,
+      { canAsk: true },
+    );
+    return { mayOpen: standing.maySend };
   }
 
   @Get(":id/canonical")
@@ -607,7 +646,7 @@ export class DocumentsController {
          * put it.
          */
         .select(
-          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, extraction_model, sha256, created_at",
+          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, source_ref, extraction_model, sha256, created_at",
         )
         .eq("id", id)
         .eq("restaurant_id", user.restaurantId)
@@ -633,7 +672,10 @@ export class DocumentsController {
           reason:
             "the document's stored-file metadata could not be read, so this screen cannot say whether an original exists",
         }
-      : await this.signOriginal((row?.storage_path as string) ?? null);
+      : await this.signOriginal(
+          (row?.storage_path as string) ?? null,
+          await this.mayOpenOriginal(user, (row?.source_ref as string) ?? null),
+        );
     const storagePath = (row?.storage_path as string) ?? null;
 
     const deliveries = spine.ok ? spine.value : null;
@@ -1579,6 +1621,7 @@ export class DocumentsController {
     // since slice 2 and this one had not (ADR 0067).
     const { imageUrl, reason: imageUrlReason } = await this.signOriginal(
       doc.storage_path ?? null,
+      await this.mayOpenOriginal(user, doc.source_ref ?? null),
     );
 
     const document = { ...doc, imageUrl, imageUrlReason };

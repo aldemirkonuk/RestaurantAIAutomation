@@ -150,7 +150,11 @@ describe("DocumentsController.canonicalDocument", () => {
       ],
     });
 
-    const res: any = await controller.canonicalDocument(DOC_1, user);
+    // A manager: the vendor's paper is theirs to open (F-1299).
+    const res: any = await controller.canonicalDocument(DOC_1, {
+      ...user,
+      role: "manager",
+    });
     expect(res.canonical.documentId).toBe(DOC_1);
     expect(res.deliveries).toHaveLength(1);
     // Siblings exclude the document being shown.
@@ -194,7 +198,10 @@ describe("DocumentsController.canonicalDocument", () => {
       data: null,
       error: { message: "object not found" },
     });
-    const res: any = await controller.canonicalDocument(DOC_1, user);
+    const res: any = await controller.canonicalDocument(DOC_1, {
+      ...user,
+      role: "manager",
+    });
     expect(res.original.imageUrl).toBeNull();
     expect(res.original.reason).toContain("could not be signed");
   });

@@ -162,7 +162,11 @@ export interface TeamMemberRow {
 
 export interface PendingInviteRow {
   id: string;
-  code: string;
+  /**
+   * Null when the viewer could not have given this invite themselves: a
+   * manager sees an owner's invite listed, never its code (F-1298).
+   */
+  code: string | null;
   role: string;
   expires_at: string;
   /**

@@ -110,6 +110,11 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
     setOpened(d);
   };
   const lockedLook = unsaved ? { opacity: 0.5, cursor: 'not-allowed' } : null;
+  // F-1301: templates are saved by an owner, a manager or someone allowed to
+  // send to vendors; the gateway refuses anyone else. Everyone else reads the
+  // library. An unread standing is not taken as a no: the gateway decides.
+  const standing = data.sender?.sendOrAsk;
+  const readOnly = standing?.readable === true && !standing.maySend;
   const noLetter = draft !== null && draft.body.trim().length === 0;
 
   const categories = data.sender?.categories ?? [
@@ -178,6 +183,11 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
           A template is a letter the house writes again and again, kept for one vendor purpose.
           Letters to the team are sent from the Team page.
         </p>
+        {readOnly && (
+          <p data-testid="tpl-read-only" style={{ margin: 0, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
+            You can read these. Saving a template is for owners, managers and anyone allowed to send to vendors.
+          </p>
+        )}
 
         {save.kind === 'stored' && (
           <p role="status" style={{ margin: 0, fontSize: 12, color: 'var(--seal-deep, #14515C)' }}>
@@ -279,6 +289,8 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
           </div>
         )}
 
+        {!readOnly && (
+        <>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -373,6 +385,8 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
             </ul>
           )}
         </div>
+        </>
+        )}
 
         {/* ── the editor ─────────────────────────────────────────────────── */}
         {draft && (
@@ -391,6 +405,7 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
             <input
               id="tpl-name"
               value={draft.name}
+              readOnly={readOnly}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               style={fieldStyle}
             />
@@ -403,6 +418,7 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
             <select
               id="tpl-category"
               value={draft.category}
+              disabled={readOnly}
               onChange={(e) => setDraft({ ...draft, category: e.target.value })}
               style={fieldStyle}
             >
@@ -421,6 +437,7 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
             <input
               id="tpl-subject"
               value={draft.subject}
+              readOnly={readOnly}
               onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
               style={fieldStyle}
             />
@@ -433,6 +450,7 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
             <textarea
               id="tpl-body"
               value={draft.body}
+              readOnly={readOnly}
               onChange={(e) => setDraft({ ...draft, body: e.target.value })}
               rows={8}
               style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.55 }}
@@ -441,6 +459,7 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
               Write a field as {'{{name}}'}. A letter is never sent with a field left empty.
             </p>
             <div className="mt-3 flex items-center gap-2">
+              {!readOnly && (
               <button
                 type="button"
                 onClick={store}
@@ -460,6 +479,7 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
               >
                 {save.kind === 'saving' ? 'Saving…' : 'Save the template'}
               </button>
+              )}
               <button
                 type="button"
                 onClick={() => openDraft(null)}
@@ -473,7 +493,7 @@ export function TemplateSheet({ onClose, held = null, onHold }: Props) {
                   cursor: 'pointer',
                 }}
               >
-                Discard
+                {readOnly ? 'Close' : 'Discard'}
               </button>
               {noLetter && (
                 <span id="tpl-no-letter" data-testid="tpl-no-letter" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>

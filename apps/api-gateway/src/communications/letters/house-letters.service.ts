@@ -1562,6 +1562,18 @@ export class HouseLettersService {
     // An absent key is not written at all, so an edit naming no editor would
     // leave the PREVIOUS editor's name on the template, not a blank.
     const userId = assertNamedActor(params.userId, "saved");
+    // A template is the house's own words to its vendors, so it is written by
+    // those who may send them: an owner, a manager, or someone an owner lets
+    // send (ADR 0175 D10, the composer's own readout). The coordinator's call
+    // on F-1301, after F-1249. Staff still ask a manager to send a letter.
+    const standing = await this.sendOrAsk(userId, restaurantId);
+    if (!standing.maySend) {
+      throw new ForbiddenException(
+        standing.readable
+          ? "Only an owner, a manager or someone allowed to send to vendors can save the house's letter templates. Nothing was saved."
+          : "Whether you may save the house's letter templates could not be checked just now, so nothing was saved.",
+      );
+    }
     if (!(LETTER_CATEGORIES as readonly string[]).includes(dto.category)) {
       throw new UnprocessableEntityException(
         `"${dto.category}" is not one of the house's letter purposes (${LETTER_CATEGORIES.join(", ")}). A staff broadcast is deliberately not one of them: the composer writes to the vendor book, and crew messages stay on /team.`,
