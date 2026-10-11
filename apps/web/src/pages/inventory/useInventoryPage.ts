@@ -243,7 +243,8 @@ export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryI
  * the cost.
  */
 export function stockValueCell(i: InventoryItem): number | string {
-  const units = (i.liveStock ?? 0) + (i.shadowStock ?? 0);
+  // Live bottles only (F-1167): shadow is on order, not on the shelf.
+  const units = i.liveStock ?? 0;
   const cost = i.wac ?? i.price;
   if (cost == null || !Number.isFinite(cost)) return units === 0 ? 0 : WITHHELD;
   return Math.round(cost * units * 100) / 100;

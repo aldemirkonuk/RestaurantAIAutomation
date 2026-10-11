@@ -718,4 +718,37 @@ describe('InventoryCommandPage — staff are shown stock, not what the house pai
     wine.click();
     expect(await screen.findByText('You paid (WAC)')).toBeInTheDocument();
   });
+
+  it('values live bottles only, not shadow ones still on order (F-1167)', async () => {
+    routeGets({ 'inventory-list': [{ ...staffRow, stockLive: 6, shadowStock: 4, wac: 40 }] });
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    const tile = screen.getByText('Value on hand').parentElement!;
+    // 6 x $40, not 10 x $40.
+    expect(tile.textContent).toMatch(/\$240(?![\d,.])/);
+    expect(tile.textContent).not.toMatch(/\$400(?![\d,.])/);
+  });
+
+  it('prices each row and sorts by value on live bottles only (F-1167)', async () => {
+    routeGets({
+      'inventory-list': [
+        { ...staffRow, stockLive: 6, shadowStock: 4, wac: 40 },
+        { ...staffRow, id: 'row-2', wineId: 'wine-2', wineName: 'Sancerre Les Monts', stockLive: 7, wac: 40 },
+      ],
+    });
+    mount();
+    const row = (await screen.findByText('Produttori Barbaresco')).closest('[data-inv-row]')!;
+    // The row's own Value cell agrees with the tile: 6 x $40, not 10 x $40.
+    expect(row.textContent).toMatch(/\$240(?![\d,.])/);
+    expect(row.textContent).not.toMatch(/\$400(?![\d,.])/);
+
+    // Highest value first: Sancerre's $280 outranks Barbaresco's $240.
+    fireEvent.click(screen.getByRole('button', { name: 'Value' }));
+    await waitFor(() => {
+      const names = Array.from(document.querySelectorAll('[data-inv-row]')).map((r) =>
+        r.textContent?.includes('Sancerre') ? 'Sancerre' : 'Barbaresco',
+      );
+      expect(names).toEqual(['Sancerre', 'Barbaresco']);
+    });
+  });
 });

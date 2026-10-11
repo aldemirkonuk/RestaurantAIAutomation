@@ -681,8 +681,8 @@ export function InventoryCommandPage() {
     const items = activeFlag
       ? filteredInventory.filter((i) => rowFlags(i).includes(activeFlag))
       : [...filteredInventory];
-    const val = (i: InventoryItem) =>
-      (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0));
+    // Live bottles only, like the Value on hand tile (F-1167).
+    const val = (i: InventoryItem) => (i.wac ?? i.price ?? 0) * (i.liveStock ?? 0);
     // Comparator in the key's natural ascending order; sortDir flips it.
     const cmp = (a: InventoryItem, b: InventoryItem) => {
       switch (sort) {
@@ -1123,17 +1123,17 @@ export function InventoryCommandPage() {
   }, [menu]);
 
   const kpis = useMemo(() => {
+    // Live bottles only (F-1167): shadow bottles are on order, not yet on the
+    // shelf, and the house has not paid for them on hand.
     const valueOnHand = filteredInventory.reduce(
-      (s, i) =>
-        s +
-        (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
+      (s, i) => s + (i.wac ?? i.price ?? 0) * (i.liveStock ?? 0),
       0,
     );
     const menuPotential = filteredInventory.reduce(
       (s, i) =>
         // The house's bottle price (ADR 0193), not the library's `menuPrice`,
         // which no house row carries — the sub-label never showed (F-390).
-        s + (i.menuPriceBottle ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
+        s + (i.menuPriceBottle ?? 0) * (i.liveStock ?? 0),
       0,
     );
     const runwayAlerts = filteredInventory.filter((i) => {
@@ -1768,9 +1768,9 @@ export function InventoryCommandPage() {
                   const isFocused = idx === focusedIndex;
                   const run = runwayDays(item);
                   const delta = marketDeltaPct(item);
+                  // Live bottles only, like the tile above (F-1167).
                   const value =
-                    (item.wac ?? item.price ?? 0) *
-                    ((item.liveStock ?? 0) + (item.shadowStock ?? 0));
+                    (item.wac ?? item.price ?? 0) * (item.liveStock ?? 0);
                   const loc = locName(item);
                   const status = classifyStock(item.liveStock, item.threshold);
                   return (

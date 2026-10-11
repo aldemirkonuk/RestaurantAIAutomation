@@ -91,8 +91,12 @@ describe('stockValueCell (F-078)', () => {
     expect(stockValueCell(item({}))).toBe('withheld')
   })
   it('a costed wine is cost times bottles, to the cent', () => {
-    expect(stockValueCell(item({ wac: 12.345 }))).toBe(49.38)
-    expect(stockValueCell(item({ price: 10 }))).toBe(40)
+    expect(stockValueCell(item({ wac: 12.345 }))).toBe(37.04)
+    expect(stockValueCell(item({ price: 10 }))).toBe(30)
+  })
+  it('counts live bottles only, never shadow ones on order (F-1167)', () => {
+    expect(stockValueCell(item({ wac: 10, liveStock: 3, shadowStock: 10 }))).toBe(30)
+    expect(stockValueCell(item({ wac: 10, liveStock: 0, shadowStock: 10 }))).toBe(0)
   })
   it('no bottles is 0 whatever the cost', () => {
     expect(stockValueCell(item({ liveStock: 0, shadowStock: 0 }))).toBe(0)

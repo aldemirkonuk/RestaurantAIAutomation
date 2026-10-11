@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adjustStock, getItemActivity, recordPour, reconcileItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
+import { adjustStock, getItemActivity, recordPour, reconcileShadowItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
 import { getOrders } from '../../../services/api/orders'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
@@ -168,15 +168,17 @@ export function RowExpansion({
     queryClient.invalidateQueries({ queryKey: ['inventory'] })
   }
 
+  // F-1166: the server reads the shadow and moves exactly that many (live +N,
+  // shadow -N). Sending a count of live + shadow raised live and left shadow,
+  // so on hand grew by N on every press.
   const reconcile = useMutation({
-    mutationFn: (p: { actualCount: number; notes: string }) =>
-      reconcileItem(inventoryId, { wineId: item.id, actualCount: p.actualCount, notes: p.notes }),
-    onSuccess: () => {
+    mutationFn: () => reconcileShadowItem(inventoryId),
+    onSuccess: (r) => {
       invalidate()
-      toast.success('Ledger updated')
+      toast.success(r.moved > 0 ? `${r.moved} bottle${r.moved === 1 ? '' : 's'} moved onto the shelf` : 'Nothing left to move')
       setDelta(0)
     },
-    onError: (e: any) => toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
+    onError: (e: any) => toast.error('Not moved', e?.response?.data?.message || e?.message),
   })
 
   const setPar = useMutation({
@@ -310,7 +312,7 @@ export function RowExpansion({
           </div>
           {shadow > 0 ? (
             <button
-              onClick={() => reconcile.mutate({ actualCount: live + shadow, notes: 'Shadow reconciled into live' })}
+              onClick={() => reconcile.mutate()}
               disabled={reconcile.isPending}
               className="w-full mt-3 h-9 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg disabled:opacity-60"
             >

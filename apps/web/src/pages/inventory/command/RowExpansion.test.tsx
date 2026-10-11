@@ -13,6 +13,7 @@ const transferStock = vi.hoisted(() => vi.fn())
 const fetchAuctionLotRecords = vi.hoisted(() => vi.fn())
 const adjustStock = vi.hoisted(() => vi.fn())
 const reconcileItem = vi.hoisted(() => vi.fn())
+const reconcileShadowItem = vi.hoisted(() => vi.fn())
 const recordSpotCount = vi.hoisted(() => vi.fn())
 const updateInventoryItem = vi.hoisted(() => vi.fn())
 const recordPour = vi.hoisted(() => vi.fn())
@@ -22,7 +23,7 @@ vi.mock('../../../services/api/inventory', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/inventory')>(
     '../../../services/api/inventory',
   )
-  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, recordSpotCount, updateInventoryItem, recordPour }
+  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, reconcileShadowItem, recordSpotCount, updateInventoryItem, recordPour }
 })
 vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
@@ -702,5 +703,26 @@ describe('RowExpansion — figures in the house locale', () => {
     } finally {
       setHouseLocale(null)
     }
+  })
+})
+
+describe('RowExpansion — Reconcile N into live (F-1166)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+    reconcileShadowItem.mockResolvedValue({ moved: 10 })
+  })
+
+  it('asks the server to move the shadow, never sends a count of live + shadow', async () => {
+    renderRow({ liveStock: 3, shadowStock: 10 })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reconcile 10 bottles into live' }))
+
+    // A count of 13 set live to 13 and left shadow at 10: on hand grew by 10.
+    expect(reconcileItem).not.toHaveBeenCalled()
+    expect(reconcileShadowItem).toHaveBeenCalledTimes(1)
+    expect(reconcileShadowItem).toHaveBeenCalledWith('inv-1')
   })
 })
