@@ -218,4 +218,45 @@ describe("the menu read routes pass the viewer's view", () => {
     await c.one("rest-1", role as string | null, "11111111-1111-4111-8111-111111111111");
     expect(getVersion).toHaveBeenCalledWith("rest-1", "11111111-1111-4111-8111-111111111111", { rawLine });
   });
+
+  // F-1386: the kept file is the whole sheet, so it goes where the raw line goes.
+  it.each([
+    ["owner", true],
+    ["manager", true],
+    ["admin", true],
+    ["staff", false],
+    [null, false],
+    ["bartender", false],
+  ])(
+    "GET /menu-versions/:menuId/source for %p is sent the link: %p",
+    async (role, sent) => {
+      const sourceUrl = jest.fn(async () => ({
+        url: "https://signed",
+        expiresIn: 300,
+      }));
+      const c = new MenuVersionsController({ sourceUrl } as any, {} as any);
+      const call = c.source(
+        "rest-1",
+        role as string | null,
+        "11111111-1111-4111-8111-111111111111",
+      );
+      if (sent) {
+        await expect(call).resolves.toEqual({
+          url: "https://signed",
+          expiresIn: 300,
+        });
+        expect(sourceUrl).toHaveBeenCalledWith(
+          "rest-1",
+          "11111111-1111-4111-8111-111111111111",
+        );
+      } else {
+        await expect(call).rejects.toMatchObject({
+          status: 403,
+          message:
+            "The menu's kept file is for an owner or a manager, because a file can carry costs and suppliers.",
+        });
+        expect(sourceUrl).not.toHaveBeenCalled();
+      }
+    },
+  );
 });

@@ -1,6 +1,8 @@
-## The kept source file of a menu reaches every member, every CSV column included — OPEN — 2026-10-08
+## The kept source file of a menu reaches every member, every CSV column included — RESOLVED 2026-10-11 (F-1386) — 2026-10-08
 
-Entry (i) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:4` (status open).
+Entry (i) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:4` (status ~~open~~ resolved).
+
+[2026-10-11, `fix/sim-w94-menu-source`, F-1386: resolved by the rule below, as written. `GET /menu-versions/:menuId/source` answers 403 ("The menu's kept file is for an owner or a manager, because a file can carry costs and suppliers.") unless `seesRawLine(role)`, for every kept file whatever its type, before the service signs a link. On the web, `MenuVersions` draws no "Open" button when `!canManage` and says "<photo|PDF|file> kept, for an owner or a manager to open" in its place.]
 
 **What is true at this branch's head.** `GET /menu-versions/:menuId/source` (`apps/api-gateway/src/menus/menus.controller.ts:202`, the route's `@Get` just above it) has no role check: `JwtAuthGuard` and `TenantGuard` only. It calls `MenusService.sourceUrl` (`menus.service.ts:1157`), which hands back a five-minute signed link to the kept file. An import keeps a CSV as `text/csv` and a workbook as its own bytes (`menus.service.ts:450-459`, `keepSource` at `:561`), for every upload since 92ea9cecc (2026-09-22). On the web, the "Open file" link is drawn for every member (`apps/web/src/pages/menu/next/MenuVersions.tsx:297-302`); only make-current is gated (`:311`).
 

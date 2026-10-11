@@ -260,6 +260,31 @@ describe('MenuVersions', () => {
     expect(screen.queryByRole('button', { name: /current$/ })).not.toBeInTheDocument();
   });
 
+  it('staff are not offered the kept file, and are told who can open it (F-1386)', async () => {
+    mockList.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      versions: [
+        version(),
+        version({ menuId: 'm2', source: { kept: true, mime: 'text/csv', bytes: 10, failure: null } }),
+      ],
+    });
+    mount(false);
+    expect(await screen.findAllByTestId('menu-version-row')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /^Open / })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('menu-version-source-held').map((n) => n.textContent)).toEqual([
+      'PDF kept, for an owner or a manager to open',
+      'file kept, for an owner or a manager to open',
+    ]);
+  });
+
+  it('an owner or manager is offered the kept file', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version()] });
+    mount(true);
+    expect(await screen.findByRole('button', { name: 'Open PDF' })).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-version-source-held')).not.toBeInTheDocument();
+  });
+
   it('reading a menu sends only the labels given, keeps it, and then offers the choice', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
     mockImport.mockResolvedValue({
