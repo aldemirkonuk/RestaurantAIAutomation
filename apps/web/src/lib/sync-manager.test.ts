@@ -19,6 +19,7 @@ vi.mock('./offline-storage', () => ({
     updatePendingMutation: vi.fn().mockResolvedValue(undefined),
     clearPendingMutations: vi.fn().mockResolvedValue(undefined),
     countPendingMutationsOf: vi.fn().mockResolvedValue(0),
+    getAllPendingMutationsOnDevice: vi.fn().mockResolvedValue([]),
   },
 }))
 vi.mock('../services/api/client', () => ({
@@ -452,5 +453,73 @@ describe('F-831: a count refused as overtaken is counted again, never tried agai
 
     window.dispatchEvent(new Event('mdv:spot-counts-changed'))
     await vi.waitFor(() => expect(syncManager.getStatus().parkedCounts).toHaveLength(1))
+  })
+})
+
+describe('F-1258: every parked change is named for the strip, and Discard removes only what it showed', () => {
+  const parked = { reason: 'refused' as const, status: 422, at: '2026-10-10T00:00:00.000Z' }
+  const door: PendingMutation = {
+    ...mutation('door-1', 'receiving.door', 0),
+    data: { orderId: 'o1', orderLabel: 'PO-104', restaurantId: H1, body: {} },
+    parked,
+  }
+  const vendor: PendingMutation = {
+    ...mutation('vendor-1', 'provider.create', 0),
+    data: { name: 'Ege Şarap' },
+    parked,
+  }
+  const waiting = mutation('cal-1', 'calendar.create', 0)
+
+  beforeEach(() => {
+    vi.mocked(offlineStorage.removePendingMutation).mockClear()
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([door, vendor, waiting])
+  })
+
+  it('names each parked change in plain words; a door receipt points at /receiving', async () => {
+    await syncManager.refresh()
+
+    expect(syncManager.getStatus().parkedChanges).toEqual([
+      { id: 'door-1', label: 'Delivery PO-104', href: '/receiving' },
+      { id: 'vendor-1', label: 'New vendor Ege Şarap' },
+    ])
+  })
+
+  it('Discard all removes only the ids the strip listed, never one parked since', async () => {
+    const removed = await syncManager.discardNotSent(['door-1'])
+
+    expect(removed).toBe(1)
+    expect(removedIds()).toEqual(['door-1'])
+  })
+})
+
+describe('F-1259: this person\'s changes in another house are counted, by house', () => {
+  const H2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const U2 = '22222222-2222-4222-8222-222222222222'
+  const inHouse = (id: string, userId: string, house: string): PendingMutation => ({
+    ...mutation(id, 'calendar.create', 0),
+    owner: { userId, restaurantId: house },
+  })
+
+  it('counts this person\'s entries from other houses only', async () => {
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([])
+    vi.mocked(offlineStorage.getAllPendingMutationsOnDevice).mockResolvedValue([
+      inHouse('a', U1, H2),
+      { ...inHouse('b', U1, H2), parked: { reason: 'refused', status: 422, at: 'x' } },
+      inHouse('c', U1, H1), // this house: already on the strip
+      inHouse('d', U2, H2), // another person's
+      { ...mutation('e', 'receiving.door', 0), owner: undefined, data: { restaurantId: H2 } }, // names no person
+    ])
+    await syncManager.refresh()
+
+    expect(syncManager.getStatus().waitingElsewhere).toEqual([{ restaurantId: H2, count: 2 }])
+  })
+
+  it('a failed device read keeps the last answer instead of saying nothing waits', async () => {
+    vi.mocked(offlineStorage.getAllPendingMutationsOnDevice).mockResolvedValueOnce([inHouse('a', U1, H2)])
+    await syncManager.refresh()
+    vi.mocked(offlineStorage.getAllPendingMutationsOnDevice).mockRejectedValueOnce(new Error('blocked'))
+    await syncManager.refresh()
+
+    expect(syncManager.getStatus().waitingElsewhere).toEqual([{ restaurantId: H2, count: 1 }])
   })
 })

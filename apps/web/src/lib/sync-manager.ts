@@ -52,8 +52,65 @@ export interface SyncStatus {
    * words — the strip lists them one by one (F-831).
    */
   parkedCounts: ParkedSpotCount[]
+  /**
+   * The rest of `notSentCount`, one row each, named in the house's words, so
+   * the strip discards them one at a time instead of all at once (F-1258).
+   */
+  parkedChanges: ParkedChange[]
+  /**
+   * This person's changes queued on this device while in ANOTHER house. Every
+   * other reader is scoped to the current house, so after a switch they wait
+   * unseen; the strip and the house switcher name them (F-1259).
+   */
+  waitingElsewhere: WaitingElsewhere[]
   lastSyncTime: Date | null
   lastError: string | null
+}
+
+/** One parked change the strip lists by name (F-1258). */
+export interface ParkedChange {
+  id: string
+  label: string
+  /** Where the change can be seen in full — a door receipt's rail. */
+  href?: string
+}
+
+/** How many of this person's changes wait in another house (F-1259). */
+export interface WaitingElsewhere {
+  restaurantId: string
+  count: number
+}
+
+/** A parked change's name, from what it carries; never an internal type. */
+function parkedChangeOf(m: PendingMutation): ParkedChange {
+  const d = (m.data ?? {}) as Record<string, unknown>
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const name = text(d.name)
+  const title = text(d.title)
+  switch (m.type) {
+    case 'receiving.door': {
+      const order = text(d.orderLabel)
+      return { id: m.id, label: order ? `Delivery ${order}` : 'A delivery', href: '/receiving' }
+    }
+    case 'inventory.spotCount':
+      return { id: m.id, label: `Count of ${text(d.itemLabel) ?? 'an item'}` }
+    case 'provider.create':
+      return { id: m.id, label: name ? `New vendor ${name}` : 'A new vendor' }
+    case 'provider.update':
+      return { id: m.id, label: name ? `Change to ${name}` : 'A change to a vendor' }
+    case 'provider.delete':
+      return { id: m.id, label: 'Removing a vendor' }
+    case 'calendar.create':
+    case 'calendar.update':
+    case 'calendar.delete':
+      return { id: m.id, label: title ? `Calendar: ${title}` : 'A calendar change' }
+    case 'notification.markRead':
+      return { id: m.id, label: 'Marking a notice read' }
+    case 'notification.archive':
+      return { id: m.id, label: 'Archiving a notice' }
+    default:
+      return { id: m.id, label: 'A change' }
+  }
 }
 
 export interface SyncResult {
@@ -147,6 +204,8 @@ class SyncManagerService {
   private _notSentCount: number = 0
   private _stillTryingCount: number = 0
   private _parkedCounts: ParkedSpotCount[] = []
+  private _parkedChanges: ParkedChange[] = []
+  private _waitingElsewhere: WaitingElsewhere[] = []
   
   private listeners: Set<SyncStatusListener> = new Set()
   private syncIntervalId: ReturnType<typeof setInterval> | null = null
@@ -227,6 +286,8 @@ class SyncManagerService {
       notSentCount: this._notSentCount,
       stillTryingCount: this._stillTryingCount,
       parkedCounts: this._parkedCounts,
+      parkedChanges: this._parkedChanges,
+      waitingElsewhere: this._waitingElsewhere,
       lastSyncTime: this._lastSyncTime,
       lastError: this._lastError,
     }
@@ -539,6 +600,38 @@ class SyncManagerService {
       (m) => m.retryCount >= STILL_TRYING_AFTER,
     ).length
     this._parkedCounts = parkedSpotCountsOf(mutations)
+    const listed = new Set(this._parkedCounts.map((c) => c.id))
+    this._parkedChanges = mutations
+      .filter((m) => m.parked && !listed.has(m.id))
+      .map(parkedChangeOf)
+    await this.updateWaitingElsewhere()
+  }
+
+  /**
+   * This person's changes stamped with another house (F-1259). Only entries
+   * that name their owner count: a legacy one names no person. A failed read
+   * keeps the last answer rather than saying nothing waits.
+   */
+  private async updateWaitingElsewhere(): Promise<void> {
+    const session = currentQueueOwner()
+    if (!session) {
+      this._waitingElsewhere = []
+      return
+    }
+    let all: PendingMutation[]
+    try {
+      all = await offlineStorage.getAllPendingMutationsOnDevice()
+    } catch {
+      return
+    }
+    const byHouse = new Map<string, number>()
+    for (const m of all) {
+      const house = m.owner?.restaurantId
+      if (m.owner?.userId !== session.userId || !house) continue
+      if (house === session.restaurantId) continue
+      byHouse.set(house, (byHouse.get(house) ?? 0) + 1)
+    }
+    this._waitingElsewhere = [...byHouse].map(([restaurantId, count]) => ({ restaurantId, count }))
   }
 
   /** This session's changes that are parked as "not sent". */
@@ -580,12 +673,15 @@ class SyncManagerService {
   /**
    * "Discard" on the not-sent strip: the person gives these changes up. The
    * refused spot counts are listed and discarded one by one (F-831), so they
-   * are not among them.
+   * are not among them. `ids` limits it to the rows the strip showed, so the
+   * number its confirm named is the number removed — a change parked after
+   * the strip was drawn is not swept up with them (F-1258).
    */
-  async discardNotSent(): Promise<number> {
+  async discardNotSent(ids?: string[]): Promise<number> {
     const notSent = await this.getNotSent()
     const listed = new Set(parkedSpotCountsOf(notSent).map((c) => c.id))
-    const parked = notSent.filter((m) => !listed.has(m.id))
+    const shown = ids ? new Set(ids) : null
+    const parked = notSent.filter((m) => !listed.has(m.id) && (!shown || shown.has(m.id)))
     for (const m of parked) await offlineStorage.removePendingMutation(m.id)
     await this.updatePendingCount()
     this.notifyListeners()

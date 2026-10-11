@@ -5,6 +5,7 @@ import { ChevronDown, MapPin } from 'lucide-react'
 import { useAuth, type RestaurantBranch } from '../../contexts/AuthContext'
 import { Popover } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { useSyncManager } from '../../hooks/useSyncManager'
 
 interface RestaurantBranchSwitcherProps {
   /**
@@ -31,6 +32,10 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
   const switchSeq = useRef(0)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const shell = useMudavymShell()
+  // F-1259: this person's changes queued in another house wait there unseen;
+  // each house row says how many, and tapping it is the switch.
+  const { waitingElsewhere = [], refresh } = useSyncManager()
+  const waitingIn = (id: string) => waitingElsewhere.find((w) => w.restaurantId === id)?.count ?? 0
 
   const branchGroups = useMemo(() => {
     const chains: Record<string, { chainName: string; branches: RestaurantBranch[] }> = {}
@@ -60,6 +65,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
     setOpen(false)
     setRefused(null)
     const ok = await setActiveRestaurantId(branchId)
+    if (ok) void refresh?.()
     if (seq !== switchSeq.current) return
     setIsSwitching(false)
     // A refused switch stays in this house and says so (ADR 0164, R6); the
@@ -165,6 +171,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
                   key={branch.id}
                   branch={branch}
                   isActive={branch.id === activeRestaurantId}
+                  waiting={waitingIn(branch.id)}
                   onSelect={() => void handleSwitch(branch.id)}
                 />
               ))}
@@ -178,6 +185,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
                   key={branch.id}
                   branch={branch}
                   isActive={branch.id === activeRestaurantId}
+                  waiting={waitingIn(branch.id)}
                   onSelect={() => void handleSwitch(branch.id)}
                 />
               ))}
@@ -227,6 +235,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
                         key={branch.id}
                         branch={branch}
                         isActive={branch.id === activeRestaurantId}
+                        waiting={waitingIn(branch.id)}
                         onSelect={() => void handleSwitch(branch.id)}
                       />
                     ))}
@@ -249,6 +258,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
                         key={branch.id}
                         branch={branch}
                         isActive={branch.id === activeRestaurantId}
+                        waiting={waitingIn(branch.id)}
                         onSelect={() => void handleSwitch(branch.id)}
                       />
                     ))}
@@ -293,10 +303,13 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
 function HouseBranchRow({
   branch,
   isActive,
+  waiting = 0,
   onSelect,
 }: {
   branch: RestaurantBranch
   isActive: boolean
+  /** This person's changes queued there on this device (F-1259). */
+  waiting?: number
   onSelect: () => void
 }) {
   return (
@@ -305,6 +318,7 @@ function HouseBranchRow({
         <span className="mdv-item__label">{branch.name}</span>
         {branch.city && <span className="mdv-item__sub">{branch.city}</span>}
       </span>
+      {waiting > 0 && <span className="mdv-kbd">{waiting} waiting</span>}
       {isActive && <span className="mdv-kbd">here</span>}
     </button>
   )
@@ -313,10 +327,12 @@ function HouseBranchRow({
 function BranchRow({
   branch,
   isActive,
+  waiting = 0,
   onSelect,
 }: {
   branch: RestaurantBranch
   isActive: boolean
+  waiting?: number
   onSelect: () => void
 }) {
   const init = (branch.name ?? 'L')[0].toUpperCase()
@@ -339,6 +355,11 @@ function BranchRow({
           <p className={`text-xs truncate ${isActive ? 'text-wine-500' : 'text-gray-400'}`}>{branch.city}</p>
         )}
       </div>
+      {waiting > 0 && (
+        <span className="text-[10px] font-semibold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">
+          {waiting} waiting
+        </span>
+      )}
       {isActive && (
         <span className="text-[10px] font-semibold text-wine-600 bg-wine-100 px-2 py-0.5 rounded-full flex-shrink-0">
           Active

@@ -6,7 +6,14 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { syncManager, SyncStatus, SyncResult, MutationDescriptor } from '../lib/sync-manager'
+import {
+  syncManager,
+  SyncStatus,
+  SyncResult,
+  MutationDescriptor,
+  type ParkedChange,
+  type WaitingElsewhere,
+} from '../lib/sync-manager'
 import type { ParkedSpotCount } from '../lib/spotCountOutbox'
 
 export interface UseSyncManagerReturn {
@@ -31,14 +38,23 @@ export interface UseSyncManagerReturn {
   /** Un-park refused changes and send everything waiting now. */
   retryNotSent: () => Promise<SyncResult>
 
-  /** Remove the parked changes: the person gives them up. */
-  discardNotSent: () => Promise<number>
+  /** Remove the parked changes (only `ids`, when given): the person gives them up. */
+  discardNotSent: (ids?: string[]) => Promise<number>
 
   /** Refused spot counts, by item and in the house's words (F-831). */
   parkedCounts: ParkedSpotCount[]
 
-  /** Remove one refused count the strip names. */
+  /** Remove one parked change the strip names. */
   discardNotSentOne: (id: string) => Promise<void>
+
+  /** The other parked changes, one row each, by name (F-1258). */
+  parkedChanges: ParkedChange[]
+
+  /** This person's changes waiting in other houses on this device (F-1259). */
+  waitingElsewhere: WaitingElsewhere[]
+
+  /** Re-read the counts, e.g. after a house switch. */
+  refresh: () => Promise<void>
   
   /** Last successful sync time */
   lastSyncTime: Date | null
@@ -84,7 +100,8 @@ export function useSyncManager(): UseSyncManagerReturn {
   }, [])
 
   const retryNotSent = useCallback(() => syncManager.retryNotSent(), [])
-  const discardNotSent = useCallback(() => syncManager.discardNotSent(), [])
+  const discardNotSent = useCallback((ids?: string[]) => syncManager.discardNotSent(ids), [])
+  const refresh = useCallback(() => syncManager.refresh(), [])
   const discardNotSentOne = useCallback((id: string) => syncManager.discardNotSentOne(id), [])
 
   return {
@@ -98,6 +115,9 @@ export function useSyncManager(): UseSyncManagerReturn {
     discardNotSent,
     parkedCounts: status.parkedCounts ?? [],
     discardNotSentOne,
+    parkedChanges: status.parkedChanges ?? [],
+    waitingElsewhere: status.waitingElsewhere ?? [],
+    refresh,
     lastSyncTime: status.lastSyncTime,
     lastError: status.lastError,
     queueMutation,
