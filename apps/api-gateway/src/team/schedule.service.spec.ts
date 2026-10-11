@@ -679,6 +679,36 @@ describe("ScheduleService — T8: no emoji reaches the inbox", () => {
     expect(payload.message).not.toMatch(EMOJI);
   });
 
+  /**
+   * F-1150: the live-week notice printed the raw ISO date ("The week of
+   * 2026-09-07 is live") to every phone in the house. It now names the week in
+   * the house's hand; the deep link and metadata keep the ISO date.
+   */
+  it.each([
+    [{ country: "TR", timezone: "Europe/Istanbul" }, "07.09.2026"],
+    [{ country: "US", timezone: "America/New_York" }, "9/7/2026"],
+    [{ country: null, timezone: null }, "Mon 7 Sept"],
+  ])("names the live week in the house's hand (%o)", async (house, words) => {
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, ...house }];
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "draft",
+      published_at: null,
+    });
+
+    await service(db).publish(MANAGER, RID, "s1", {} as any);
+
+    const payload = lastNotifications.persistForRestaurant.mock.calls[0][1];
+    expect(payload.message).toBe(
+      `The week of ${words} is live. Open it to see your shifts.`,
+    );
+    expect(payload.message).not.toContain(WEEK);
+    expect(payload.actionUrl).toContain(`week=${WEEK}`);
+  });
+
   it("keeps the call-out's urgency in `priority`, not in a picture", async () => {
     const src = fs.readFileSync(
       path.join(__dirname, "schedule.service.ts"),

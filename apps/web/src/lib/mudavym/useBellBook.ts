@@ -405,7 +405,7 @@ export function useBellBook(open: boolean): BellBook {
     };
   }, [read]);
 
-  const { items, foldedById, foldedCount, folds, membersById, asleep } = useMemo(() => {
+  const { items, foldedById, foldedCount, folds, asleep } = useMemo(() => {
     const rows = register.state === 'ready' ? register.rows : [];
     const stacked = collapseStackedNotifications(rows);
     const byId = new Map(snoozes.map((r) => [r.id, r]));
@@ -430,7 +430,6 @@ export function useBellBook(open: boolean): BellBook {
       foldedById: stacked.foldedById,
       foldedCount: awakeFolded,
       folds: foldFreshness(rows, awake, stacked.foldedById),
-      membersById: stacked.membersById,
       asleep: asleepRows,
     };
   }, [register, snoozes]);
@@ -439,7 +438,10 @@ export function useBellBook(open: boolean): BellBook {
     (id: string) => {
       setActionNote(null);
       // A folded line is every row it folds; ruling it off rules them all off.
-      ruleOffRows(membersById[id] ?? [id])
+      // The server finds the fold by its key, so the rows past this page of
+      // BELL_PAGE go too: a burst of 60 no longer comes back with 35 (F-1125).
+      apiClient
+        .patch(`/notifications/${encodeURIComponent(id)}/read/fold`)
         .then(() => read())
         .catch((err) => {
           const f = bellFailureOf(err);
@@ -450,7 +452,7 @@ export function useBellBook(open: boolean): BellBook {
           );
         });
     },
-    [read, membersById],
+    [read],
   );
 
   const markAllRead = useCallback(() => {

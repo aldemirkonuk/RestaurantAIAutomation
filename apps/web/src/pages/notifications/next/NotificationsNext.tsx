@@ -73,12 +73,15 @@ import { useHeldLowStock } from './useHeldLowStock';
 import { matchesQuery } from './nt-book';
 import { DURATIONS, snoozeUntil } from './nt-snooze';
 import { useHouseZone } from '@/lib/houseZone';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 import {
   EM,
   KIND_ORDER,
   MONO,
   SANS,
   SERIF,
+  houseDateLine,
+  houseStamp,
   iconForKind,
   isHouseActed,
   kindOf,
@@ -176,6 +179,9 @@ export interface NotificationsNextProps {
 export default function NotificationsNext({ ground }: NotificationsNextProps) {
   const data = useNotificationsNextData();
   const zone = useHouseZone();
+  // Reads the house's country, so every stamp below is written the house's
+  // way, and re-renders the page when it lands (F-1123).
+  useHouseCurrency();
   /** The held low-stock queue — its own read, its own three states. */
   const held = useHeldLowStock();
   const location = useLocation();
@@ -450,11 +456,8 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     standing = `${needCount} ${needCount === 1 ? 'line needs' : 'lines need'} a hand.`;
   }
 
-  const dateLine = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
+  // The house's day, not the device's (F-1123).
+  const dateLine = houseDateLine(zone ?? null);
 
   return (
     <div
@@ -866,11 +869,11 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                 Last read{' '}
                 <span style={{ fontFamily: MONO }}>
                   {data.lastReadAt
-                    ? data.lastReadAt.toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })
+                    ? houseStamp(
+                        data.lastReadAt,
+                        { hour: 'numeric', minute: '2-digit', second: '2-digit' },
+                        zone ?? null,
+                      )
                     : EM}
                 </span>
                 {data.refreshing ? ' · reading now' : ''}

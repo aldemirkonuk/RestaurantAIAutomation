@@ -330,7 +330,7 @@ Rows are `Auth | Method | Path`, sorted by path then method.
 | ✅ | `GET` | `/mobile/feed` |
 | ✅ | `GET` | `/mobile/today-pulse` |
 
-### `notifications/notifications` (24 listed, 5 struck 2026-09-17; the controller declares 21 routes at that date, and `GET /notifications/low-stock/held/:restaurantId` and `GET /notifications/producers/status` were never added to this list)
+### `notifications/notifications` (25 listed, 5 struck 2026-09-17; the controller declares 21 routes at that date, and `GET /notifications/low-stock/held/:restaurantId` and `GET /notifications/producers/status` were never added to this list; `PATCH /notifications/:id/read/fold` added 2026-10-10, F-1153)
 
 | Auth | Method | Path |
 |---|---|---|
@@ -339,6 +339,7 @@ Rows are `Auth | Method | Path`, sorted by path then method.
 | ✅ | `DELETE` | `/notifications/:id` |
 | ✅ | `PATCH` | `/notifications/:id/archive` |
 | ✅ | `PATCH` | `/notifications/:id/read` |
+| ✅ | `PATCH` | `/notifications/:id/read/fold` |
 | ✅ | `PATCH` | `/notifications/:id/unread` |
 | ✅ | `DELETE` | `/notifications/bulk` |
 | — | ~~`POST`~~ | ~~`/notifications/delivery`~~ — removed 2026-09-17 (ADR 0149 answer 15, ADR 0147 amendment: no web, mobile or orchestrator caller; the service method stays for internal producers) |

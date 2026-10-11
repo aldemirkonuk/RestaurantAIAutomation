@@ -39,6 +39,9 @@ import {
 } from '../notifications/ApproveFromBellPanel';
 import { stackedNotificationLabel } from '../../lib/notificationStack';
 import type { Notification } from '../../services/api/notifications';
+import { getHouseLocale } from '../../lib/houseCurrency';
+import { useHouseZone } from '../../lib/houseZone';
+import { useHouseCurrency } from '../../hooks/useHouseCurrency';
 
 const EM = '—';
 
@@ -47,7 +50,7 @@ const EM = '—';
  * (`pages/notifications/next/nt-format.ts:61-74`; copied, not imported —
  * a shared component may not reach into a page directory).
  */
-function timeAgo(iso: string | null | undefined): string {
+function timeAgo(iso: string | null | undefined, zone: string | null = null): string {
   if (!iso) return EM;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return EM;
@@ -59,17 +62,34 @@ function timeAgo(iso: string | null | undefined): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // The house's way of writing a date, on the house's day (F-1123).
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  if (zone) {
+    try {
+      return new Date(iso).toLocaleDateString(getHouseLocale(), { ...opts, timeZone: zone });
+    } catch {
+      /* a zone this browser cannot read: the device's clock stands in */
+    }
+  }
+  return new Date(iso).toLocaleDateString(getHouseLocale(), opts);
 }
 
-function Stamps({ row, fold }: { row: Notification; fold?: FoldFreshness }) {
-  const own = timeAgo(row.timestamp ?? row.createdAt);
+function Stamps({
+  row,
+  fold,
+  zone,
+}: {
+  row: Notification;
+  fold?: FoldFreshness;
+  zone: string | null;
+}) {
+  const own = timeAgo(row.timestamp ?? row.createdAt, zone);
   if (!fold?.winnerIsStale || fold.newestAt === null) {
     return <span className="mdv-hdr__stamp">{own}</span>;
   }
   return (
     <span className="mdv-hdr__stamp">
-      <span className="mdv-hdr__stamp-lead">{timeAgo(new Date(fold.newestAt).toISOString())}</span>
+      <span className="mdv-hdr__stamp-lead">{timeAgo(new Date(fold.newestAt).toISOString(), zone)}</span>
       <span className="mdv-hdr__stamp-own">this line {own}</span>
     </span>
   );
@@ -90,6 +110,10 @@ export function HouseBell() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const book = useBellBook(open);
+  // The house's country and clock, so a stamp is written the house's way on
+  // the house's day (F-1123).
+  useHouseCurrency();
+  const zone = useHouseZone() ?? null;
 
   const { register, unread, asleep, unreadNote, foldedCount, foldedById, folds, items, hasMore } = book;
 
@@ -232,7 +256,7 @@ export function HouseBell() {
                   <span className="mdv-item__label mdv-hdr__wrap">{n.title}</span>
                   {sub && <span className="mdv-item__sub">{sub}</span>}
                 </span>
-                <Stamps row={n} fold={folds[n.id]} />
+                <Stamps row={n} fold={folds[n.id]} zone={zone} />
               </button>
               {orderId ? (
                 <button

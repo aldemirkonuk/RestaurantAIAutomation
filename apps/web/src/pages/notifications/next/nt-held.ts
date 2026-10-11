@@ -5,6 +5,7 @@
  */
 
 import type { HeldLowStockCrossing, HeldLowStockResponse } from '@/services/api/notifications';
+import { getHouseLocale } from '@/lib/houseCurrency';
 
 export function reasonWords(reason: HeldLowStockCrossing['reason']): string {
   if (reason === 'instant_cooldown') return 'Held because another alert went out in the last 15 minutes.';
@@ -12,10 +13,14 @@ export function reasonWords(reason: HeldLowStockCrossing['reason']): string {
   return 'Held. The reason was not recorded.';
 }
 
-/** "12 PM" — the hour the digest cron actually keeps. */
+/**
+ * "12 PM" — the hour the digest cron actually keeps, written the house's way
+ * (F-1123). Built as a local time on purpose: the hour is already the
+ * house's, so no zone shift applies.
+ */
 function hourWords(hour: number): string {
   const d = new Date(2000, 0, 1, hour);
-  return d.toLocaleTimeString('en-US', { hour: 'numeric' });
+  return d.toLocaleTimeString(getHouseLocale(), { hour: 'numeric' });
 }
 
 /** When — or whether — the held wines will be told. */

@@ -489,6 +489,27 @@ export class NotificationsController {
     }
   }
 
+  /**
+   * Rule off a folded bell line by its fold, not by the ids the bell's page
+   * happened to hold (F-253, F-1125). Scoped to the caller and their house.
+   */
+  @Patch(":id/read/fold")
+  async markFoldAsRead(@Param("id") id: string, @Req() req: ScopedRequest) {
+    const userId = scopeOwnUserId(req);
+    const restaurantId = scopeRestaurantId(req);
+    try {
+      const count = await this.notificationsService.markFoldAsRead({
+        id,
+        userId,
+        restaurantId,
+      });
+      return { success: true, count };
+    } catch (error) {
+      this.logger.error(`Failed to rule off a fold: ${error.message}`);
+      rethrow(error);
+    }
+  }
+
   @Patch(":id/unread")
   async markAsUnread(@Param("id") id: string, @Req() req: ScopedRequest) {
     const userId = scopeOwnUserId(req);
