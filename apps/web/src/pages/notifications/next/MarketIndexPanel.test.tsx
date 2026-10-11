@@ -54,6 +54,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 import MarketIndexPanel from './MarketIndexPanel';
+import { setHouseLocale } from '@/lib/houseCurrency';
 
 const READY = {
   state: 'ready',
@@ -212,6 +213,22 @@ describe('MarketIndexPanel — the index line is its own labelled register', () 
     render(<MarketIndexPanel />);
     expect(screen.getByText(/issued Sep 1, 2026/)).toBeTruthy();
     expect(screen.queryByText(/issued Aug 31, 2026/)).toBeNull();
+  });
+
+  it('writes the issue day in the house’s hand, not a US date (F-1150)', () => {
+    setHouseLocale('tr-TR');
+    try {
+      mockIndex.current = {
+        ...READY,
+        jurisdiction: 'US-IA',
+        lines: [line({ issuedAt: '2026-09-01' })],
+      };
+      render(<MarketIndexPanel />);
+      expect(screen.getByText(/issued 1 Eyl 2026/)).toBeTruthy();
+      expect(screen.queryByText(/Sep 1, 2026/)).toBeNull();
+    } finally {
+      setHouseLocale(null);
+    }
   });
 
   it('an unmapped class prints its own key rather than being relabelled', () => {

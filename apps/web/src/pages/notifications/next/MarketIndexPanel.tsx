@@ -57,7 +57,9 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { EM, MONO, SANS, SERIF } from './nt-format';
+import { getHouseLocale } from '@/lib/houseCurrency';
+import { knownHouseZone } from '@/lib/houseZone';
+import { EM, MONO, SANS, SERIF, houseStamp } from './nt-format';
 import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
 import { CommoditySeriesVM, HouseCommodityVM, useHouseCommodity } from './useHouseCommodity';
 
@@ -125,19 +127,26 @@ function money(value: number | null, currency: string): string {
 /**
  * A posted list is issued on a DAY, not at a minute — `stampOf` would print an
  * hour the issuer never stated, so this register keeps its own day formatter.
+ * Written in the house's hand (F-1150), not a US date on every screen.
  */
+const DAY: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
+
 function dayOf(iso: string | null): string {
   if (!iso) return EM;
   // `issued_at` is a DATE column, so it arrives as 'YYYY-MM-DD'. Passing that
   // to `new Date` parses it as UTC midnight and a browser west of Greenwich
   // then renders the previous day — the issuer's own date, silently altered.
-  // Read the parts and build the day locally instead.
+  // Read the parts and print that calendar day as it is, in no one's zone.
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  const t = dateOnly
-    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
-    : new Date(iso);
+  if (dateOnly) {
+    const t = new Date(Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])));
+    if (!Number.isFinite(t.getTime())) return EM;
+    return t.toLocaleDateString(getHouseLocale(), { ...DAY, timeZone: 'UTC' });
+  }
+  // A moment (the day we read a page) falls on the house's day, not the device's.
+  const t = new Date(iso);
   if (!Number.isFinite(t.getTime())) return EM;
-  return t.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return houseStamp(t, DAY, knownHouseZone());
 }
 
 function Line({ item, labelled = false }: { item: HouseIndexLine; labelled?: boolean }) {
@@ -475,35 +484,41 @@ function CommodityLine({ s }: { s: CommoditySeriesVM }) {
 function monthOf(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return iso || EM;
-  const t = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const t = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   if (!Number.isFinite(t.getTime())) return iso;
-  return t.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+  return t.toLocaleDateString(getHouseLocale(), { year: 'numeric', month: 'long', timeZone: 'UTC' });
 }
 
 /**
- * An INSTANT, rendered in UTC and never in the reader's own zone.
+ * An INSTANT, rendered on the house's clock (else UTC) and never in the
+ * reader's own zone, in the house's hand (F-1150).
  *
  * `issued_at` on an observation is a `timestamptz` — a moment, not a day — and
- * `dayOf` renders a moment in the browser's zone. That is right for something
- * that happened to this house and wrong for a PUBLICATION: ONS stamps
+ * `dayOf` renders a moment on the house's day (the browser's, until it is
+ * read). That is right for something that happened to this house and wrong
+ * for a PUBLICATION without a zone read yet: ONS stamps
  * `2026-08-18T23:00:00.000Z`, which a reader in California sees as the 18th and
  * a reader in Sydney sees as the 19th, so the same issuer's same act would be
  * dated two different days on two screens.
  *
- * UTC is not the issuer's own zone either — the register does not record one,
- * and this is stated rather than papered over — but it is the SAME frame for
- * every reader, which is the property that matters when the number beside it is
- * being cited as evidence.
+ * Neither the house's zone nor UTC is the issuer's own — the register does not
+ * record one, and this is stated rather than papered over — but the house's
+ * zone is the SAME frame for every reader of this house, which is the property
+ * that matters when the number beside it is being cited as evidence. Until the
+ * zone is known (or when this browser cannot use it), UTC holds that frame.
  */
 function dayOfUtc(iso: string): string {
   const t = new Date(iso);
   if (!Number.isFinite(t.getTime())) return EM;
-  return t.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+  const zone = knownHouseZone();
+  if (zone) {
+    try {
+      return t.toLocaleDateString(getHouseLocale(), { ...DAY, timeZone: zone });
+    } catch {
+      /* fall through to UTC */
+    }
+  }
+  return t.toLocaleDateString(getHouseLocale(), { ...DAY, timeZone: 'UTC' });
 }
 
 /**
