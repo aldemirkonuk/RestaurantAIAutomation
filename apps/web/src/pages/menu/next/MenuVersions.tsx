@@ -362,7 +362,14 @@ function VersionRow({ v, zone, canManage, lastUsedId, planning, onPlan }: {
         ) : null}
       </td>
       <td className="cl-dim">
-        {v.source.kept ? (
+        {/* F-1386: the gateway sends the kept file only to an owner or a
+            manager (a spreadsheet is every cost and supplier cell), so no
+            one else is offered a button that can only be refused. */}
+        {v.source.kept && !canManage ? (
+          <span data-testid="menu-version-source-held">
+            {sourceWords(v)}, for an owner or a manager to open
+          </span>
+        ) : v.source.kept ? (
           <button type="button" className="cl-btn cl-focus" onClick={() => void openSource()}>
             Open {v.source.mime === 'application/pdf' ? 'PDF' : v.source.mime?.startsWith('image/') ? 'photo' : 'file'}
           </button>

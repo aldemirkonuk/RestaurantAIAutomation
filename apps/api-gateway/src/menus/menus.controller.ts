@@ -224,8 +224,9 @@ export class MenusController {
  * TENANT SCOPE comes from the signed token (`@CurrentUser("restaurantId")`),
  * never from the path or the body. Reads are for any member of the house;
  * a line's raw line goes only to a role that sees money and suppliers
- * (ROLE_POLICY, menu-line-view.ts), because a CSV line is the whole row.
- * Making a menu current is an owner's or a manager's.
+ * (ROLE_POLICY, menu-line-view.ts), because a CSV line is the whole row,
+ * and so does the kept source file (F-1386). Making a menu current is an
+ * owner's or a manager's.
  */
 @ApiTags("menus")
 @Controller("menu-versions")
@@ -272,12 +273,24 @@ export class MenuVersionsController {
   @Get(":menuId/source")
   @ApiOperation({
     summary: "A five-minute link to the kept source file (photo, PDF or CSV)",
-    description: "404 with the stored reason when the source was not kept.",
+    description:
+      "Only for a role whose ROLE_POLICY row sees money and suppliers (owner, manager, admin by alias); anyone else gets a 403 that says why, whatever the file is. 404 with the stored reason when the source was not kept.",
   })
   async source(
     @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("role") role: string | null,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
+    // F-1386 (tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md
+    // entry (i), the coordinator's rule): a kept CSV or workbook is every
+    // row, cost and supplier cells included, and the gateway cannot tell a
+    // printed menu PDF from a costed list, so every kept file goes only to
+    // the viewer who would be sent the raw line.
+    if (!seesRawLine(role)) {
+      throw new ForbiddenException(
+        "The menu's kept file is for an owner or a manager, because a file can carry costs and suppliers.",
+      );
+    }
     return this.menusService.sourceUrl(this.house(restaurantId), menuId);
   }
 
