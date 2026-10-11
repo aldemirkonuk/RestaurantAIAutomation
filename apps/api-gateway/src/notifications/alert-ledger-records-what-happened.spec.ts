@@ -126,6 +126,7 @@ describe("inventory_alert_state records alerts that actually happened", () => {
     const { service, upserts, notifications } = makeHarness({
       prefsRows: [
         {
+          user_id: "user-1",
           restaurant_id: "r1",
           low_stock_enabled: true,
           instant_first_alert: false,
@@ -149,6 +150,7 @@ describe("inventory_alert_state records alerts that actually happened", () => {
     const { service, upserts } = makeHarness({
       prefsRows: [
         {
+          user_id: "user-1",
           restaurant_id: "r1",
           low_stock_enabled: true,
           instant_first_alert: false,

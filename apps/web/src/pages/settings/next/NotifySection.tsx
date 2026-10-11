@@ -53,10 +53,10 @@
  * audit caught: a control must NOT be taken away on a claim that has not been
  * grepped everywhere the product runs.
  *
- * The second piece of substance is the OR semantics. These preferences are
- * yours, but the senders take them across every member of the restaurant: the
- * alert goes out if ANY member wants it, and the earliest digest time wins.
- * Turning yours off does not silence the restaurant, and the page says so.
+ * The second piece of substance is who a low-stock line reaches. Since F-1338
+ * (2026-10-11) each person's own row decides their bell and phone; the house
+ * still runs the engine when ANY member wants it, and the earliest digest time
+ * wins. Turning yours off quiets you, not the restaurant, and the page says so.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -136,8 +136,9 @@ export default function NotifySection({
         return (
           <>
             <Note>
-              These are yours, but the senders read every member’s together: an alert goes out if <em>anyone</em> here
-              wants it, and the earliest digest time wins. Turning yours off quiets your inbox, not the restaurant.
+              These are yours. A low-stock alert reaches your bell and phone only when your own switches want it,
+              so turning yours off quiets you, not the restaurant. The digest goes out once a day, at the earliest
+              time anyone here picked.
               {p.updatedAt && <> Last written {fmtWhen(p.updatedAt)}.</>}
             </Note>
 
@@ -185,7 +186,7 @@ export default function NotifySection({
               cert="manual"
               // read by: notifications/low-stock-alerts.service.ts › getEffectiveLowStockPrefs (F-504)
               provenance={{ ...kept, readBy: 'the low-stock alerts' }}
-              consequence="The alerting engine runs for this restaurant when any member has this on."
+              consequence="Off means no low-stock alert reaches your bell or phone. Others here still get theirs."
               control={
                 <Toggle label="Low-stock alerts" checked={low.enabled} busy={writer.busy === 'low.enabled'}
                   onChange={(v) => void saveNotif('low.enabled', { lowStock: { enabled: v } })} />

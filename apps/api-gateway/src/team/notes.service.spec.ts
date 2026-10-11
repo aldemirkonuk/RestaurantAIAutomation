@@ -140,6 +140,75 @@ describe("NotesService — F-1226: a note's notice opens the week it is about", 
   });
 });
 
+describe("NotesService — F-1337: one push per person, and Push off and quiet hours hold it", () => {
+  // A window around this minute, on UTC: a house with no zone or country.
+  const hhmm = (d: Date) => d.toISOString().slice(11, 16);
+  const quietNow = () => ({
+    quiet_hours_enabled: true,
+    quiet_hours_start: hhmm(new Date(Date.now() - 60 * 60 * 1000)),
+    quiet_hours_end: hhmm(new Date(Date.now() + 60 * 60 * 1000)),
+  });
+
+  it("the funnel does not push; the note pushes once, only to who wants it now", async () => {
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: null, country: null }];
+    db.tables.notification_preferences = [
+      { restaurant_id: RID, user_id: SAM, push_enabled: false },
+      { restaurant_id: RID, user_id: RAY, push_enabled: true, ...quietNow() },
+      {
+        restaurant_id: RID,
+        user_id: MANAGER,
+        push_enabled: true,
+        quiet_hours_enabled: false,
+      },
+    ];
+    const { notes, notifications, push } = svc(db);
+    push.devicesByUser.mockResolvedValueOnce(
+      new Map([
+        [SAM, 1],
+        [RAY, 1],
+        [MANAGER, 1],
+      ]),
+    );
+    const res: any = await notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "Saturday moves to seven.",
+      memberIds: ["m-sam", "m-ray", "m-moe"],
+    } as any);
+
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toMatchObject({
+      skipMobilePush: true,
+    });
+    expect(push.sendToUsers).toHaveBeenCalledTimes(1);
+    expect(push.sendToUsers.mock.calls[0][0]).toEqual([MANAGER]);
+    const pushOf = (member: string) =>
+      db.tables.team_note_deliveries.find(
+        (d: any) => d.member_id === member && d.channel === "push",
+      );
+    expect(pushOf("m-sam")).toMatchObject({ state: "declined" });
+    expect(pushOf("m-sam")!.detail).toMatch(/switched push off/);
+    expect(pushOf("m-ray")).toMatchObject({ state: "declined" });
+    expect(pushOf("m-ray")!.detail).toMatch(/quiet hours/);
+    expect(pushOf("m-moe")).toMatchObject({ state: "accepted_by_service" });
+    expect(res.addressed).toBe(3);
+  });
+
+  it("nobody is pushed when everyone addressed is held", async () => {
+    const db = seed();
+    db.tables.notification_preferences = [
+      { restaurant_id: RID, user_id: SAM, push_enabled: false },
+    ];
+    const { notes, push } = svc(db);
+    push.devicesByUser.mockResolvedValueOnce(new Map([[SAM, 1]]));
+    await notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "x",
+      memberIds: ["m-sam"],
+    } as any);
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+  });
+});
+
 describe("NotesService — a note survives the page that wrote it", () => {
   it("records the note, its author and the audience it named", async () => {
     const db = seed();
@@ -434,7 +503,10 @@ describe("NotesService — a note to someone Away waits until they are back", ()
     expect(db.tables.team_note_recipients.map((r: any) => r.member_id).sort()).toEqual(["m-ray", "m-sam"]);
     // Only Ray's inbox was written now.
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
-    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [RAY] });
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({
+      onlyUserIds: [RAY],
+      skipMobilePush: true,
+    });
     // One hold for Sam, pointing at the note; the words stay on team_notes.
     expect(db.tables.house_away_held).toHaveLength(1);
     expect(db.tables.house_away_held[0]).toMatchObject({
@@ -481,7 +553,10 @@ describe("NotesService — a note to someone Away waits until they are back", ()
       memberIds: ["m-sam"],
     } as any);
     expect(res.away).toEqual({ readable: true, holdFailed: true, held: [] });
-    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({
+      onlyUserIds: [SAM],
+      skipMobilePush: true,
+    });
     expect(db.tables.team_note_deliveries.some((d: any) => d.state === "held_away")).toBe(false);
   });
 
@@ -492,7 +567,10 @@ describe("NotesService — a note to someone Away waits until they are back", ()
     ];
     const { notes, notifications } = withHold(db);
     await notes.create(MANAGER, RID, { weekStart: WEEK, body: "x", memberIds: ["m-sam"] } as any);
-    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({
+      onlyUserIds: [SAM],
+      skipMobilePush: true,
+    });
     expect(db.tables.house_away_held).toEqual([]);
   });
 });
