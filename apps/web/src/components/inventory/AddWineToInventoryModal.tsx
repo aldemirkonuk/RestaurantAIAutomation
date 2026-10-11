@@ -43,6 +43,7 @@ import {
 } from "../../hooks/useUnsavedWorkGuard";
 import { useModalDialog } from "../../hooks/useModalDialog";
 import { formatStatedMoney } from "../../lib/currency";
+import { foldText } from "../../lib/textFold";
 import {
   getErrorMessage,
   getErrorStatus,
@@ -239,16 +240,18 @@ export function AddWineToInventoryModal({
   const filteredWines = useMemo(() => {
     const uiWines = mapApiWinesToUiWines(apiWines);
     if (!searchQuery) return uiWines;
-    const query = searchQuery.toLowerCase();
+    // Folded like the gateway's search (F-1351): the library answers
+    // "kavaklidere" with "Kavaklıdere", so this second pass must keep it.
+    const query = foldText(searchQuery);
     return uiWines.filter(
       (wine) =>
-        wine.name.toLowerCase().includes(query) ||
-        (wine.displayName || "").toLowerCase().includes(query) ||
-        wine.producer.toLowerCase().includes(query) ||
-        wine.grape.toLowerCase().includes(query) ||
-        wine.region.toLowerCase().includes(query) ||
-        wine.country.toLowerCase().includes(query) ||
-        wine.type.toLowerCase().includes(query),
+        foldText(wine.name).includes(query) ||
+        foldText(wine.displayName).includes(query) ||
+        foldText(wine.producer).includes(query) ||
+        foldText(wine.grape).includes(query) ||
+        foldText(wine.region).includes(query) ||
+        foldText(wine.country).includes(query) ||
+        foldText(wine.type).includes(query),
     );
   }, [apiWines, searchQuery]);
 

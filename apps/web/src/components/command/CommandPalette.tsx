@@ -20,7 +20,7 @@ import {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles, Inbox, RotateCw } from "lucide-react";
+import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles, Inbox, RotateCw, Boxes, Truck } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { landingKeyFor } from "./CommandProvider";
@@ -36,6 +36,8 @@ import { ASK_AI_OPEN_EVENT } from "../askai/events";
 import { Panel } from "../mudavym/Sheet";
 import { useMudavymShell } from "../../lib/mudavym/shellGround";
 import { useShellPalette } from "../mudavym/shellPalette";
+import { useCanChangeVendors } from "../../pages/providers/next/useCanChangeVendors";
+import { platformKeys } from "../../lib/platformKeys";
 
 const RECENTS_KEY = "wineops.command.recents";
 const MAX_RECENTS = 5;
@@ -50,6 +52,7 @@ const SECTION_ORDER: CommandSection[] = [
   "Insights",
   "Create",
   "Navigation",
+  "Search",
 ];
 
 function loadRecents(): string[] {
@@ -81,10 +84,15 @@ export function CommandPalette({
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, activeRestaurantId } = useAuth();
   const shell = useMudavymShell();
   const shellPalette = useShellPalette();
-  const restaurantId = user?.restaurantId;
+  // The house on screen, the way the recommendations page reads it — so a
+  // house switch fetches that house's top card, never the last one's (F-1353).
+  const restaurantId = activeRestaurantId ?? user?.restaurantId;
+  // Staff may read the vendor book but not add to it (VEN-W30); the palette
+  // offers "Add vendor" only to someone the save would not refuse (F-1352).
+  const canChangeVendors = useCanChangeVendors();
   const userId = user?.userId ?? null;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -95,6 +103,9 @@ export function CommandPalette({
 
   // Fetch the top recommendation once per open (insight-aware suggestion).
   useEffect(() => {
+    // Whatever the last open showed is gone until this house answers: an empty
+    // feed, a failed read or another house never keeps a stale card (F-1353).
+    setTopRec(null);
     if (!open || !restaurantId) return;
     let cancelled = false;
     apiClient
@@ -106,7 +117,8 @@ export function CommandPalette({
       .then(({ data: body }) => {
         if (cancelled) return;
         const rec = body?.recommendations?.[0];
-        if (rec)
+        if (!rec) setTopRec(null);
+        else
           setTopRec({
             id: `rec-${rec.ruleKey}`,
             title: rec.recommendation,
@@ -116,7 +128,9 @@ export function CommandPalette({
             href: `/recommendations?insight=${encodeURIComponent(rec.ruleKey)}`,
           });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setTopRec(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -136,13 +150,15 @@ export function CommandPalette({
   }, [open]);
 
   const recentIds = useMemo(() => (open ? loadRecents() : []), [open]);
+  // The Ask row's chord, as the header prints it: ⌘ on a Mac, Ctrl elsewhere (F-1355).
+  const [keys] = useState(platformKeys);
 
   const allCommands = useMemo(() => {
     // Under the app shell the rooms come from the ONE rooms table the rail
     // reads (so the palette can never offer a room the rail hides, or an
     // internal tool), and the counter's acts come first. Outside the shell
     // `shellPalette` is null and this is the original list.
-    const statics = staticCommands();
+    const statics = staticCommands().filter((c) => c.id !== "new-provider" || canChangeVendors);
     const base: Command[] = shellPalette
       ? [
           ...shellPalette.counter.map<Command>((row) => ({
@@ -216,13 +232,13 @@ export function CommandPalette({
       section: "Create",
       icon: Sparkles,
       keywords: "ask ai mudavym question books action propose reorder draft vendor natural language command",
-      shortcut: "⌘ ⇧ K",
+      shortcut: `${keys.mod} ${keys.shift} K`,
       action: () => window.dispatchEvent(new CustomEvent(ASK_AI_OPEN_EVENT)),
     };
 
     const merged = [...base, askAi, ...landing];
     return topRec ? [topRec, ...merged] : merged;
-  }, [topRec, location.pathname, toast, shellPalette, userId]);
+  }, [topRec, location.pathname, toast, shellPalette, userId, canChangeVendors, keys]);
 
   // Ranked + grouped result set.
   const groups = useMemo(() => {
@@ -242,6 +258,28 @@ export function CommandPalette({
       }
     } else {
       for (const { cmd } of ranked) (g[cmd.section] ||= []).push(cmd);
+      // The palette holds pages and acts, not wines or vendors: the words go
+      // on to the two pages that can search for them, so a name is never a
+      // dead end (F-1354). Always offered, last — a subsequence match on some
+      // command's keywords is not the wine the person typed. Both pages read
+      // the address: /inventory `?wine=`, /vendors `?q=` on "All my vendors".
+      const term = query.trim();
+      g.Search = [
+        {
+          id: "search-cellar",
+          title: `Search the cellar for “${term}”`,
+          section: "Search",
+          icon: Boxes,
+          href: `/inventory?wine=${encodeURIComponent(term)}`,
+        },
+        {
+          id: "search-vendors",
+          title: `Search vendors for “${term}”`,
+          section: "Search",
+          icon: Truck,
+          href: `/vendors?scope=all&q=${encodeURIComponent(term)}`,
+        },
+      ];
     }
     return g;
   }, [allCommands, query, recentIds]);
@@ -264,7 +302,8 @@ export function CommandPalette({
       if (!cmd) return;
       // An act on the counter is not a place to return to: its id names one
       // record that is gone once it is sealed, so it is never a "recent".
-      if (cmd.section !== "On the counter") pushRecent(cmd.id);
+      // A search hand-off carries the words typed, so it is not one either.
+      if (cmd.section !== "On the counter" && cmd.section !== "Search") pushRecent(cmd.id);
       onClose();
       if (cmd.action) cmd.action();
       else if (cmd.href) navigate(cmd.href);

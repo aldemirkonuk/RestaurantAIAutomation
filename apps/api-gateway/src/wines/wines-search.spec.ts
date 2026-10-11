@@ -99,10 +99,12 @@ function orConditions(orParam: string | null): string[] | "parse-error" {
 const orOf = (calls: Recorded[]) => calls[0].url.searchParams.get("or");
 
 describe("GET /wines search — the input is data, not PostgREST grammar", () => {
-  it("keeps a plain search term byte-identical to what it always sent", async () => {
+  it("keeps a plain search term as it always went, plus the folded arms", async () => {
     const { service, calls } = recordingClient();
     await service.searchWines({ search: "Margaux" } as GetWinesQueryDto);
-    expect(orOf(calls)).toBe("(name.ilike.%Margaux%,producer.ilike.%Margaux%)");
+    expect(orOf(calls)).toBe(
+      "(name.ilike.%Margaux%,producer.ilike.%Margaux%,normalized_name.ilike.%margaux%,normalized_producer.ilike.%margaux%)",
+    );
   });
 
   it("quotes a wine name with a comma, so it stays one condition", async () => {
@@ -111,11 +113,13 @@ describe("GET /wines search — the input is data, not PostgREST grammar", () =>
       search: "Château Margaux, Pavillon Rouge",
     } as GetWinesQueryDto);
     expect(orOf(calls)).toBe(
-      '(name.ilike."%Château Margaux, Pavillon Rouge%",producer.ilike."%Château Margaux, Pavillon Rouge%")',
+      '(name.ilike."%Château Margaux, Pavillon Rouge%",producer.ilike."%Château Margaux, Pavillon Rouge%",normalized_name.ilike.%chateau margaux pavillon rouge%,normalized_producer.ilike.%chateau margaux pavillon rouge%)',
     );
     expect(orConditions(orOf(calls))).toEqual([
       "name ilike %Château Margaux, Pavillon Rouge%",
       "producer ilike %Château Margaux, Pavillon Rouge%",
+      "normalized_name ilike %chateau margaux pavillon rouge%",
+      "normalized_producer ilike %chateau margaux pavillon rouge%",
     ]);
   });
 
@@ -124,11 +128,13 @@ describe("GET /wines search — the input is data, not PostgREST grammar", () =>
     const hostile = "zzz%,id.not.is.null,name.ilike.%zzz";
     await service.searchWines({ search: hostile } as GetWinesQueryDto);
     expect(orOf(calls)).toBe(
-      String.raw`(name.ilike."%zzz\\%,id.not.is.null,name.ilike.\\%zzz%",producer.ilike."%zzz\\%,id.not.is.null,name.ilike.\\%zzz%")`,
+      String.raw`(name.ilike."%zzz\\%,id.not.is.null,name.ilike.\\%zzz%",producer.ilike."%zzz\\%,id.not.is.null,name.ilike.\\%zzz%",normalized_name.ilike.%zzz id not is null name ilike zzz%,normalized_producer.ilike.%zzz id not is null name ilike zzz%)`,
     );
     expect(orConditions(orOf(calls))).toEqual([
       String.raw`name ilike %zzz\%,id.not.is.null,name.ilike.\%zzz%`,
       String.raw`producer ilike %zzz\%,id.not.is.null,name.ilike.\%zzz%`,
+      "normalized_name ilike %zzz id not is null name ilike zzz%",
+      "normalized_producer ilike %zzz id not is null name ilike zzz%",
     ]);
   });
 
@@ -138,11 +144,40 @@ describe("GET /wines search — the input is data, not PostgREST grammar", () =>
       search: String.raw`Dr. Loosen "Blue Slate" (Mosel) 100%_\ `.trimEnd(),
     } as GetWinesQueryDto);
     const value = String.raw`"%Dr. Loosen \"Blue Slate\" (Mosel) 100\\%\\_\\\\%"`;
-    expect(orOf(calls)).toBe(`(name.ilike.${value},producer.ilike.${value})`);
+    const folded = "%dr loosen blue slate mosel 100%";
+    expect(orOf(calls)).toBe(
+      `(name.ilike.${value},producer.ilike.${value},normalized_name.ilike.${folded},normalized_producer.ilike.${folded})`,
+    );
     expect(orConditions(orOf(calls))).toEqual([
       String.raw`name ilike %Dr. Loosen "Blue Slate" (Mosel) 100\%\_\\%`,
       String.raw`producer ilike %Dr. Loosen "Blue Slate" (Mosel) 100\%\_\\%`,
+      `normalized_name ilike ${folded}`,
+      `normalized_producer ilike ${folded}`,
     ]);
+  });
+});
+
+describe("GET /wines search — Turkish letters and accents fold (F-1351)", () => {
+  // The library row is "Kavaklıdere" / "Çankaya Şarapları"; its stored
+  // normalized_* keys are "kavaklidere" / "cankaya saraplari". A plain-letter
+  // search used to reach only name/producer, where ILIKE never meets ı or Ç.
+  it.each([
+    ["kavaklidere", "kavaklidere"],
+    ["Kavaklıdere", "kavaklidere"],
+    ["cankaya", "cankaya"],
+    ["ÖKÜZGÖZÜ", "okuzgozu"],
+  ])("%s is also matched folded, as %s", async (search, folded) => {
+    const { service, calls } = recordingClient();
+    await service.searchWines({ search } as GetWinesQueryDto);
+    const conditions = orConditions(orOf(calls));
+    expect(conditions).toContain(`normalized_name ilike %${folded}%`);
+    expect(conditions).toContain(`normalized_producer ilike %${folded}%`);
+  });
+
+  it("a term with nothing left after folding adds no empty arm", async () => {
+    const { service, calls } = recordingClient();
+    await service.searchWines({ search: "--" } as GetWinesQueryDto);
+    expect(orOf(calls)).toBe("(name.ilike.%--%,producer.ilike.%--%)");
   });
 });
 

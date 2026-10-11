@@ -76,6 +76,7 @@ import type { MudavymGround } from '../../lib/mudavym/shellGround';
 import type { MudavymPage } from '../../lib/mudavym/useMudavymDesign';
 import { NO_CHROME, pageNameFor } from '../../lib/mudavym/pageNames';
 import { useDocumentTitle } from '../../lib/seo/RouteHead';
+import { platformKeys } from '../../lib/platformKeys';
 import { HouseBell } from './HouseBell';
 import { HouseUserMenu } from './HouseUserMenu';
 // `.mdv-kbd`, `.mdv-item`, `.mdv-link`, `.mdv-quiet` and `.mdv-note` are the
@@ -102,9 +103,8 @@ function openPalette(): void {
 
 /** ⌘ on a Mac, Ctrl everywhere else. Read once — the platform does not change. */
 function chord(): string {
-  if (typeof navigator === 'undefined') return 'Ctrl K';
-  const p = `${navigator.platform ?? ''} ${navigator.userAgent ?? ''}`;
-  return /mac|iphone|ipad|ipod/i.test(p) ? '⌘K' : 'Ctrl K';
+  const { mod } = platformKeys();
+  return mod === '⌘' ? '⌘K' : `${mod} K`;
 }
 
 /**

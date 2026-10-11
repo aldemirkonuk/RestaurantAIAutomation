@@ -398,6 +398,14 @@ describe('ProvidersNext', () => {
     expect(window.location.search).toBe('');
   });
 
+  // F-1352: staff may read the book, not add to it; the gateway refuses the save.
+  it('keeps the add-a-vendor sheet shut for staff reached by ?add=1', () => {
+    auth.role = 'staff';
+    window.history.replaceState({}, '', '/vendors?add=1');
+    render(<ProvidersNext />);
+    expect(screen.queryByTestId('new-vendor-sheet')).not.toBeInTheDocument();
+  });
+
   it('keeps the add-a-vendor sheet shut without ?add=1', () => {
     render(<ProvidersNext />);
     expect(screen.queryByTestId('new-vendor-sheet')).not.toBeInTheDocument();

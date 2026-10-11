@@ -624,7 +624,9 @@ export default function ProvidersNext() {
         )}
       </div>
 
-      {adding && (
+      {/* `?add=1` (the palette's "Add vendor") opens the sheet only for someone
+          the save would not refuse; staff land on the book (F-1352, VEN-W30). */}
+      {adding && canChange && (
         <NewVendorSheet
           open
           initialDraft={resumeWith}
