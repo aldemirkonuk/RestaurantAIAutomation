@@ -41,7 +41,8 @@ import {
   startOfWeek,
   toMinutes,
 } from './cal-format';
-import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
+import { isDelivery, typeTitle, type CalEvent, type CalendarData } from './useCalendarNextData';
+import { TypeMark } from './MonthLedger';
 
 const HOUR_PX = 44;
 const START_HOUR = 0;
@@ -160,6 +161,9 @@ export default function TimeGrid({ data, cursor, today: houseToday, days, onOpen
   dragRef.current = drag;
   const holdRef = useRef<{ timer: ReturnType<typeof setTimeout>; stop: () => void } | null>(null);
   useEffect(() => () => holdRef.current?.stop(), []);
+  /** Set when a drag that moved ends: the click that follows the release is
+   *  the drop, not a request to open the entry (F-1108). */
+  const draggedRef = useRef(false);
 
   const columns =
     days === 7
@@ -247,6 +251,14 @@ export default function TimeGrid({ data, cursor, today: houseToday, days, onOpen
       const cur = dragRef.current;
       originRef.current = null;
       setDrag(null);
+      if (cur && (cur.dMin !== 0 || cur.dDay !== 0)) {
+        // The browser fires the click right after this pointerup, in the
+        // same task; the flag lives only until then.
+        draggedRef.current = true;
+        setTimeout(() => {
+          draggedRef.current = false;
+        }, 0);
+      }
       if (cur) commitRef.current(cur);
     };
     // A cancelled gesture (the browser took it for a scroll) saves nothing.
@@ -358,12 +370,13 @@ export default function TimeGrid({ data, cursor, today: houseToday, days, onOpen
                     onClick={() => onOpenEvent(e)}
                     title={
                       carried
-                        ? `${e.title} — carries on from ${parseDayKey(e.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+                        ? `${typeTitle(e, data.eventTypes)} — carries on from ${parseDayKey(e.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
                         : e.allDay
-                          ? e.title
-                          : `${e.title} — no time recorded`
+                          ? typeTitle(e, data.eventTypes)
+                          : `${typeTitle(e, data.eventTypes)} — no time recorded`
                     }
                   >
+                    <TypeMark event={e} types={data.eventTypes} />
                     {!e.allDay && !carried && <span className="cn-ribbon-time">{EM}</span>}
                     {e.title}
                   </button>
@@ -445,10 +458,17 @@ export default function TimeGrid({ data, cursor, today: houseToday, days, onOpen
                   <button
                     type="button"
                     className="cn-block-open"
-                    onClick={() => onOpenEvent(e)}
+                    onClick={() => {
+                      if (draggedRef.current) {
+                        draggedRef.current = false;
+                        return;
+                      }
+                      onOpenEvent(e);
+                    }}
                   >
                     <span className="cn-ribbon-time">{d ? fromMinutes(start) : clock(e.startTime)}</span>
                     <span style={{ fontWeight: 600 }}>{e.title}</span>
+                    <TypeMark event={e} types={data.eventTypes} named />
                     {continues && <span className="cn-block-continues">{continues}</span>}
                   </button>
                   {/* The handle sits at midnight, not at a later day's end, so an

@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import { Seal } from '../../../components/mudavym';
 import { EM, clock, longDay, daySpan, sinceOrUntil } from './cal-format';
-import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
+import { customTypeOf, isDelivery, typeTitle, type CalEvent, type CalendarData, type EventTypeRow } from './useCalendarNextData';
 import { DayRecordMark, SkyMark, TakingsMark } from './SkyMark';
 import { addDays, dayKey, parseDayKey, startOfWeek } from './cal-format';
 
@@ -37,8 +37,33 @@ export interface MonthLedgerProps {
   onCreateAt: (day: string) => void;
 }
 
+/**
+ * A custom type on an entry: its colour, and its name where there is room
+ * (F-1110). Nothing for a built-in type — those are told apart by the rule.
+ */
+export function TypeMark({
+  event,
+  types,
+  named = false,
+}: {
+  event: CalEvent;
+  types: readonly EventTypeRow[] | undefined;
+  named?: boolean;
+}) {
+  const mark = customTypeOf(event, types);
+  if (!mark) return null;
+  const words = mark.name ?? 'custom type';
+  return (
+    <span className="cn-type-mark" title={words}>
+      <span className="cn-swatch" style={{ background: mark.color }} aria-hidden />
+      {named && <span>{words}</span>}
+    </span>
+  );
+}
+
 export function Ribbon({
   event,
+  types,
   ruled,
   onOpen,
   onDragStart,
@@ -46,6 +71,7 @@ export function Ribbon({
   dragging,
 }: {
   event: CalEvent;
+  types?: readonly EventTypeRow[];
   ruled: boolean;
   onOpen: () => void;
   onDragStart?: () => void;
@@ -69,10 +95,11 @@ export function Ribbon({
       }}
       title={
         event.isOccurrence
-          ? `${event.title} — an occurrence of a repeating event; open it to edit the series`
-          : event.title
+          ? `${typeTitle(event, types)} — an occurrence of a repeating event; open it to edit the series`
+          : typeTitle(event, types)
       }
     >
+      <TypeMark event={event} types={types} />
       {!event.allDay && event.startTime && <span className="cn-ribbon-time">{clock(event.startTime)}</span>}
       {event.title}
     </button>
@@ -136,6 +163,7 @@ export function DayLedger({
       <span className="cn-when">{daySpan(e, day)}</span>
       <span className="cn-entry">
         <b>{e.title}</b>
+        <TypeMark event={e} types={data.eventTypes} named />
         <LinkLine event={e} data={data} />
       </span>
     </button>
@@ -342,6 +370,7 @@ export default function MonthLedger({
                 <Ribbon
                   key={ev.id}
                   event={ev}
+                  types={data.eventTypes}
                   ruled={data.isRuledOff(ev)}
                   dragging={dragged?.event.id === ev.id}
                   onOpen={() => onOpenEvent(ev)}

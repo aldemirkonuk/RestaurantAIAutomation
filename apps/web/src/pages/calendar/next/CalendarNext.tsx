@@ -49,14 +49,14 @@ import {
   startOfWeek,
   type CalView,
 } from './cal-format';
-import { isDelivery, useCalendarNextData, type CalEvent } from './useCalendarNextData';
+import { isDelivery, toCalEvent, useCalendarNextData, type CalEvent } from './useCalendarNextData';
 import MonthLedger, { DayLedger } from './MonthLedger';
 import TimeGrid from './TimeGrid';
 import AgendaRoll from './AgendaRoll';
 import EventSheet, { type SheetTarget } from './EventSheet';
 import MeetingNotePanel, { meetingsAwaitingNote, withoutNotedMeetings } from './MeetingNotePanel';
 import { useDayNotesInRange } from '@/hooks/queries';
-import { getErrorMessage } from '@/services/api/client';
+import { apiClient, getErrorMessage } from '@/services/api/client';
 import { houseToday, useHouseZone } from '@/lib/houseZone';
 import CalendarLinkSheet from './CalendarLinkSheet';
 import { useMyCalendarLink } from '@/components/calendar-link/useMyCalendarLink';
@@ -123,6 +123,9 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   const [cursor, setCursor] = useState(() => houseToday(zone));
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
+  /** An entry a `?event=<id>` link asked for, until it is found (F-1111). */
+  const [linkedId, setLinkedId] = useState<string | null>(null);
+  const [linkedMiss, setLinkedMiss] = useState<string | null>(null);
   /**
    * THE NOTE PROMPT (ADR 0111; built 2026-09-06, packet 2).
    *
@@ -269,6 +272,30 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     if (zone === undefined) return;
     const today = houseToday(zone);
     setCursor((c) => (dayKey(c) === dayKey(new Date()) ? today : c));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zone === undefined]);
+  // The links that open something. Read on arrival AND on a later visit to
+  // /calendar while already here — the palette's "Add calendar event" does
+  // not remount the page (F-1107). Each param is removed once read, so a
+  // re-run finds nothing to do.
+  useEffect(() => {
+    if (zone === undefined) return;
+    const today = houseToday(zone);
+    // `?event=<id>` — a day-line tick on the dashboard or the door (F-1111):
+    // that entry, opened on its own day.
+    const linked = params.get('event');
+    if (linked) {
+      setLinkedId(linked);
+      setLinkedMiss(null);
+      setParams(
+        (prev) => {
+          prev.delete('event');
+          return prev;
+        },
+        { replace: true },
+      );
+      return;
+    }
     // `?new=` first: a link carrying both is the richer one, and the drafted
     // entry is what the person clicked.
     const drafted = readNewParam(params.get('new'));
@@ -307,10 +334,49 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
       },
       { replace: true },
     );
-    // once, on arrival (when the zone is known) — a later param change is the
-    // user's own navigation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zone === undefined]);
+  }, [zone, params, setParams]);
+
+  /* `?event=<id>`: the entry is looked for in the window on screen first; one
+     outside it is read on its own, and the page turns to its day. A link to
+     an entry that is gone says so — it never lands on a page that just
+     ignores the click. */
+  useEffect(() => {
+    if (!linkedId || (!data.hasEvents && !data.isError)) return;
+    const hit =
+      data.events.find((e) => e.id === linkedId) ?? data.events.find((e) => e.seriesId === linkedId);
+    const show = (e: CalEvent) => {
+      setCursor(parseDayKey(e.date));
+      setSelected(e.date);
+      setSheet({ mode: 'edit', event: e });
+    };
+    if (hit) {
+      setLinkedId(null);
+      show(hit);
+      return;
+    }
+    let live = true;
+    apiClient
+      .get<Parameters<typeof toCalEvent>[0]>(`/calendar/events/${encodeURIComponent(linkedId)}`)
+      .then((res) => {
+        if (!live) return;
+        setLinkedId(null);
+        if (res.data?.id) show(toCalEvent(res.data));
+        else setLinkedMiss('That entry is no longer on the calendar.');
+      })
+      .catch((err: unknown) => {
+        if (!live) return;
+        setLinkedId(null);
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        setLinkedMiss(
+          status === 404
+            ? 'That entry is no longer on the calendar.'
+            : `That entry could not be opened (${getErrorMessage(err)}).`,
+        );
+      });
+    return () => {
+      live = false;
+    };
+  }, [linkedId, data.hasEvents, data.isError, data.events]);
 
   /* ── keyboard: parity with the shipping page (NEW-399) ────────────────── */
   useEffect(() => {
@@ -374,8 +440,8 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
      answers, nothing is listed; if it FAILS, the meetings are listed with a
      line saying their notes could not be read — never as if there were none. */
   const noteCandidates = useMemo(
-    () => meetingsAwaitingNote(data.events, new Date()).filter((e) => !answered.has(e.id)),
-    [data.events, answered],
+    () => meetingsAwaitingNote(data.events, new Date(), zone).filter((e) => !answered.has(e.id)),
+    [data.events, answered, zone],
   );
   // `meetingsAwaitingNote` sorts oldest first, so the ends are the range.
   const noteRange = useMemo(
@@ -518,6 +584,15 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
               Connect my calendar
             </button>
           </p>
+        )}
+
+        {linkedMiss && (
+          <div role="alert" className="cn-notice">
+            <span>{linkedMiss}</span>
+            <button type="button" className="cn-btn cn-ink" onClick={() => setLinkedMiss(null)}>
+              Dismiss
+            </button>
+          </div>
         )}
 
         {data.noRestaurant && (

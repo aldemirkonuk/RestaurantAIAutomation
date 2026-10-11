@@ -91,3 +91,18 @@ export function houseClockTime(zone: string | null | undefined, at: number): str
   }
   return new Date(at).toLocaleTimeString('en-US', opts);
 }
+
+/**
+ * The house's wall clock at `at`, as `YYYY-MM-DDTHH:MM:SS` — comparable as a
+ * string with an entry's own `${date}T${time}` (F-1109). No zone (or one this
+ * browser cannot read) gives the device's clock.
+ */
+export function houseWallClock(zone: string | null | undefined, at: number): string {
+  const p = zone ? partsIn(zone, at) : null;
+  const d = new Date(at);
+  const [y, mo, da, h, mi, s] = p
+    ? [p.year, p.month, p.day, p.hour, p.minute, p.second]
+    : [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()];
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${y}-${two(mo)}-${two(da)}T${two(h)}:${two(mi)}:${two(s)}`;
+}

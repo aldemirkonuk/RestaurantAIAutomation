@@ -344,11 +344,36 @@ export function isDelivery(e: CalEvent): boolean {
   return DELIVERY_TYPES.has(e.type);
 }
 
+/**
+ * A custom type's mark on an entry (F-1110). The gateway's enum has no slot
+ * for a custom name, so the row keeps `event_type: 'custom'` and the type's
+ * colour; the name is found again on the house's type list by that colour,
+ * and only when exactly one custom type wears it — two types sharing a colour
+ * never lend each other a name. A type deleted since leaves its colour and no
+ * name.
+ */
+export function customTypeOf(
+  e: CalEvent,
+  types: readonly EventTypeRow[] | undefined,
+): { color: string; name: string | null } | null {
+  if (e.type !== 'custom' || !e.color) return null;
+  const wearing = (types ?? []).filter(
+    (t) => !t.isDefault && typeof t.color === 'string' && t.color.toLowerCase() === e.color!.toLowerCase(),
+  );
+  return { color: e.color, name: wearing.length === 1 ? wearing[0].name : null };
+}
+
+/** A ribbon's hover words: its title, and its custom type's name when known. */
+export function typeTitle(event: CalEvent, types: readonly EventTypeRow[] | undefined): string {
+  const mark = customTypeOf(event, types);
+  return mark?.name ? `${event.title} · ${mark.name}` : event.title;
+}
+
 function str(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v : null;
 }
 
-function toCalEvent(raw: ApiEvent): CalEvent {
+export function toCalEvent(raw: ApiEvent): CalEvent {
   return {
     id: raw.id,
     seriesId: raw.id,
