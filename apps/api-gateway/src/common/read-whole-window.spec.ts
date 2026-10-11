@@ -537,7 +537,9 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       restaurants,
     });
     const out = await goalsOver(db).refreshStoredCurrentValues("r1");
-    expect(out).toEqual({ refreshed: 1, failed: 0 });
+    // F-1291 (w89-goals) added `closed`: this goal has no past deadline, so
+    // the sweep stores its value and closes nothing (F-1102).
+    expect(out).toEqual({ refreshed: 1, failed: 0, closed: 0 });
     const stored = writes.filter((w) => w.table === "analytics_goals");
     expect(stored).toHaveLength(1);
     expect((stored[0].payload as any).current_value).toBe(3313);
@@ -549,7 +551,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       { pos_checks: { failOn: [2] } },
     );
     const out = await goalsOver(db).refreshStoredCurrentValues("r1");
-    expect(out).toEqual({ refreshed: 0, failed: 1 });
+    expect(out).toEqual({ refreshed: 0, failed: 1, closed: 0 });
     expect(writes.filter((w) => w.table === "analytics_goals")).toEqual([]);
   });
 
