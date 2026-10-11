@@ -22,11 +22,12 @@ export function signInCodeEmailTemplate(data: SignInCodeEmailData): string {
   const what =
     data.purpose === "sign_in"
       ? "Use this code to sign in to Mudavym."
-      : "Use this code to confirm it is you before a passkey is added to your account.";
+      : // F-1356: the same code guards every change F-1347 put behind it, not only a passkey.
+        "Use this code to confirm it is you before an important change to your account: adding a passkey, setting a password, unlinking a sign-in or deleting the account.";
   const ignore =
     data.purpose === "sign_in"
       ? "Didn't ask for it? Someone typed your address on the sign-in page. Nobody can sign in without this code, so you can ignore this email."
-      : "Didn't ask for it? Someone signed in to your account is trying to add a passkey. Change your password and remove any passkey you do not recognise on your profile.";
+      : "Didn't ask for it? Someone signed in to your account is trying to change how it is protected. Change your password and remove any passkey or sign-in you do not recognise on your profile.";
 
   const content = `
     <p style="margin: 0 0 20px; color: #374151; font-size: 15px; line-height: 1.6;">
