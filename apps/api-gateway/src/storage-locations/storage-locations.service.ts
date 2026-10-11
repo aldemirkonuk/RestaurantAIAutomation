@@ -18,7 +18,7 @@ import {
   UpdateStorageLocationDto,
   AssignWineToLocationDto,
 } from "./dto/storage-locations.dto";
-import { bottlesByWine, bottlesByZone, readZoneLots } from "./zone-lots";
+import { bottlesByItem, bottlesByZone, readZoneLots } from "./zone-lots";
 
 /* ── who may set up a zone (ADR 0238) ─────────────────────────────────────
  *
@@ -151,7 +151,10 @@ interface WineLocationMappingRow {
 }
 
 export interface EnrichedWineAtLocation {
-  /** master_wine_id, the id the web's inventory rows carry as `id`. */
+  /**
+   * master_wine_id, the id the web's inventory rows carry as `id`; for a
+   * beer, spirit or other house item with no wine, its restaurant_inventory id.
+   */
   wineId: string;
   wineName: string;
   producer: string;
@@ -751,45 +754,91 @@ export class StorageLocationsService {
     locationId: string,
   ): Promise<EnrichedWineAtLocation[]> {
     const client = this.dbService.supabase;
-    const byWine = bottlesByWine(
+    const items = bottlesByItem(
       await readZoneLots(client, restaurantId, locationId),
     );
-    if (byWine.size === 0) return [];
+    if (items.length === 0) return [];
 
-    const wineIds = [...byWine.keys()];
-    const { data: wines, error: winesError } = await client
-      .from("master_wine_library")
-      .select("id, wine_name, name, producer, vintage")
-      .in("id", wineIds);
-    if (winesError) {
-      throw new Error(
-        `the wine names could not be read: ${winesError.message}`,
-      );
+    // The house's own name for each item, so a beer or a house-declared item
+    // (no wine behind it) is named too. Only real ids go into either `.in()`:
+    // a null in a uuid list fails the whole read.
+    const inventoryIds = [
+      ...new Set(items.flatMap((i) => (i.inventoryId ? [i.inventoryId] : []))),
+    ];
+    const houseNames = new Map<string, string>();
+    if (inventoryIds.length > 0) {
+      const { data: rows, error } = await client
+        .from("restaurant_inventory")
+        .select("id, display_name, wine_name, master_wine_id")
+        .eq("restaurant_id", restaurantId)
+        .in("id", inventoryIds);
+      if (error) {
+        throw new Error(`the item names could not be read: ${error.message}`);
+      }
+      (rows || []).forEach((r: Record<string, unknown>) => {
+        const name =
+          (r.display_name as string)?.trim() || (r.wine_name as string)?.trim();
+        if (name) houseNames.set(r.id as string, name);
+        const item = items.find((i) => i.inventoryId === r.id);
+        if (item && !item.masterWineId && r.master_wine_id) {
+          item.masterWineId = r.master_wine_id as string;
+        }
+      });
     }
 
+    const wineIds = [
+      ...new Set(
+        items.flatMap((i) => (i.masterWineId ? [i.masterWineId] : [])),
+      ),
+    ];
     const wineMap = new Map<
       string,
       { wineName: string; producer: string; vintage: string | null }
     >();
-    (wines || []).forEach((w: Record<string, unknown>) => {
-      wineMap.set(w.id as string, {
-        wineName:
-          (w.wine_name as string) || (w.name as string) || (w.id as string),
-        producer: (w.producer as string) || "",
-        vintage: (w.vintage as string) ?? null,
+    if (wineIds.length > 0) {
+      const { data: wines, error: winesError } = await client
+        .from("master_wine_library")
+        .select("id, wine_name, name, producer, vintage")
+        .in("id", wineIds);
+      if (winesError) {
+        throw new Error(
+          `the wine names could not be read: ${winesError.message}`,
+        );
+      }
+      (wines || []).forEach((w: Record<string, unknown>) => {
+        wineMap.set(w.id as string, {
+          wineName: (w.wine_name as string) || (w.name as string) || "",
+          producer: (w.producer as string) || "",
+          vintage: (w.vintage as string) ?? null,
+        });
       });
-    });
+    }
 
-    return wineIds.map((wineId) => {
-      const wineInfo = wineMap.get(wineId);
-      return {
+    // A house holds one item per wine (UNIQUE restaurant_id, master_wine_id),
+    // so an old lot with only a wine id and its item's lots are one row.
+    const out = new Map<string, EnrichedWineAtLocation>();
+    for (const item of items) {
+      const wineId = item.masterWineId ?? item.inventoryId ?? item.key;
+      const seen = out.get(wineId);
+      if (seen) {
+        seen.quantity += item.qty;
+        continue;
+      }
+      const wineInfo = item.masterWineId
+        ? wineMap.get(item.masterWineId)
+        : undefined;
+      out.set(wineId, {
         wineId,
-        wineName: wineInfo?.wineName ?? wineId,
+        wineName:
+          (item.inventoryId && houseNames.get(item.inventoryId)) ||
+          wineInfo?.wineName ||
+          "An item with no name",
         producer: wineInfo?.producer ?? "",
         vintage: wineInfo?.vintage ?? null,
-        quantity: byWine.get(wineId) ?? 0,
-      };
-    });
+        quantity: item.qty,
+      });
+    }
+    return [...out.values()];
   }
 
   async removeWineFromLocation(restaurantId: string, wineId: string) {

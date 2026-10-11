@@ -26,10 +26,15 @@ type Row = Record<string, unknown>;
 function fakeDb(rows: Record<string, Row[]>) {
   const from = (table: string) => {
     const filters: Array<(r: Row) => boolean> = [];
-    const result = () => ({
-      data: (rows[table] ?? []).filter((r) => filters.every((f) => f(r))),
-      error: null,
-    });
+    // Postgres refuses `id IN (null)` on a uuid column; so does this fake.
+    let refused: { message: string } | null = null;
+    const result = () =>
+      refused
+        ? { data: null, error: refused }
+        : {
+            data: (rows[table] ?? []).filter((r) => filters.every((f) => f(r))),
+            error: null,
+          };
     const q: Record<string, unknown> = {
       select: () => q,
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
@@ -37,10 +42,13 @@ function fakeDb(rows: Record<string, Row[]>) {
         filters.push((r) => (r[c] ?? null) === v),
         q
       ),
-      in: (c: string, vs: unknown[]) => (
-        filters.push((r) => vs.includes(r[c])),
-        q
-      ),
+      in: (c: string, vs: unknown[]) => {
+        if (vs.some((v) => v == null)) {
+          refused = { message: 'invalid input syntax for type uuid: "null"' };
+        }
+        filters.push((r) => vs.includes(r[c]));
+        return q;
+      },
       gt: (c: string, v: number) => (filters.push((r) => Number(r[c]) > v), q),
       not: (c: string, _op: "is", v: unknown) => (
         filters.push((r) => (r[c] ?? null) !== v),
@@ -49,7 +57,7 @@ function fakeDb(rows: Record<string, Row[]>) {
       order: () => q,
       limit: () => q,
       maybeSingle: async () => ({
-        data: result().data[0] ?? null,
+        data: result().data?.[0] ?? null,
         error: null,
       }),
       then: (resolve: (v: unknown) => unknown) => resolve(result()),
@@ -90,6 +98,7 @@ function house() {
     restaurant_inventory: [
       {
         id: "inv-1",
+        master_wine_id: BAROLO,
         restaurant_id: HOUSE,
         storage_location_id: RACK_B,
         deleted_at: null,
@@ -209,5 +218,66 @@ describe("F-1331 — one shelf, one count, from its lots", () => {
         "12 bottles are still in this zone: Barolo (12).",
       ),
     });
+  });
+
+  it("a beer on the shelf (no wine behind its lot) is counted, named and blocks delete", async () => {
+    // inventory_lots.master_wine_id is NULL on a non-wine item's lot
+    // (20260903171000_the_house_item_is_the_ledgers_key.sql). Grouping the
+    // zone's lots by wine put that null into the wine-name read, which failed:
+    // the list answered 500 and delete answered 500 instead of naming it.
+    const rows = house();
+    receive(rows, RACK_A, 4);
+    rows.restaurant_inventory.push({
+      id: "inv-beer",
+      restaurant_id: HOUSE,
+      display_name: "House Lager",
+      master_wine_id: null,
+      deleted_at: null,
+    } as never);
+    rows.inventory_lots.push({
+      id: "lot-beer",
+      restaurant_id: HOUSE,
+      inventory_id: "inv-beer",
+      master_wine_id: null,
+      location_id: RACK_A,
+      stock_state: "live",
+      qty: 6,
+    });
+    const { a, wines } = await threeCounts(rows);
+    expect(a).toEqual({ dialog: 10, winesStoredHere: 10, floor: 10 });
+    expect(wines[RACK_A]).toEqual([
+      expect.objectContaining({
+        wineId: BAROLO,
+        wineName: "Barolo",
+        quantity: 4,
+      }),
+      expect.objectContaining({
+        wineId: "inv-beer",
+        wineName: "House Lager",
+        quantity: 6,
+      }),
+    ]);
+    const svc = new StorageLocationsService(fakeDb(rows));
+    await expect(svc.deleteLocation(HOUSE, RACK_A)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining(
+        "10 bottles are still in this zone: Barolo (4), House Lager (6).",
+      ),
+    });
+  });
+
+  it("a lot written before its item had an id joins that wine's row", async () => {
+    const rows = house();
+    receive(rows, RACK_A, 4);
+    rows.inventory_lots.push({
+      ...rows.inventory_lots[0],
+      id: "legacy",
+      inventory_id: null,
+      qty: 2,
+    });
+    const { wines } = await threeCounts(rows);
+    expect(wines[RACK_A]).toEqual([
+      expect.objectContaining({ wineId: BAROLO, quantity: 6 }),
+    ]);
   });
 });
