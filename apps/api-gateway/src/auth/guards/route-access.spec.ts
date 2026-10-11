@@ -48,6 +48,16 @@ import { DeliveriesController } from "../../procurement/deliveries.controller";
  * `POST /ask-ai/actions/:id/discard` took `@Roles("owner", "manager")`, the
  * standing that applies a proposal, so a staff member can no longer throw away
  * a proposal they could not have applied.
+ *
+ * The same row changed back as decided by wave 87's F-1248 (2026-10-10): the
+ * person who asked for a proposal may withdraw it. The route admits every role
+ * again, and the service discards a non-manager's call only where
+ * `created_by` is the caller (`ask-ai-sealed-apply.spec.ts` pins it), so
+ * F-490's case, staff throwing away someone else's proposal, stays refused.
+ * `POST /procurement/orders/:id/generate-ai-reply` stays "open" here after
+ * F-1249: a regenerate takes the send standing, a row and not a token role,
+ * checked in the controller like the conversation routes above
+ * (`regenerate-takes-send-standing.spec.ts`).
  */
 
 const ctx = (handler: object, cls: object, role: string | null) =>

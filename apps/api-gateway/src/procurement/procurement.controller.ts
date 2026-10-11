@@ -995,7 +995,8 @@ export class ProcurementController {
     @Param("id") orderId: string,
     @Body()
     body: { instruction?: string; regenerate?: boolean; force?: boolean },
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<{
     triggered: boolean;
     draftId?: string;
@@ -1003,6 +1004,15 @@ export class ProcurementController {
     autoSendScheduled?: boolean;
     reason?: string;
   }> {
+    // A regenerate throws away the draft waiting for approval or already
+    // scheduled to send (F-107, F-1249). That is a decision about a letter to
+    // the vendor, so it takes the standing that may send one: a holder of the
+    // house's money, or a staff member the house lets send (ADR 0175 D10).
+    if (body?.regenerate && !(await this.readsLetters(user))) {
+      throw new ForbiddenException(
+        "Only an owner, a manager or someone the house lets write to vendors can replace this draft.",
+      );
+    }
     try {
       return await this.procurementService.generateAiReply(
         user.restaurantId,

@@ -141,7 +141,10 @@
   ],
   "POST /ask-ai/actions/:id/discard (AskAiController.discard)": [
     "owner",
-    "manager"
+    "manager",
+    "staff",
+    "admin",
+    "null"
   ],
   "POST /auth/login (AuthController.login)": "open",
   "POST /auth/dev-bypass-login (AuthController.devBypassLogin)": "open",

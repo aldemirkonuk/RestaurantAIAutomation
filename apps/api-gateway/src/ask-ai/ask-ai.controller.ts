@@ -284,12 +284,18 @@ export class AskAiController {
   /**
    * Owner or manager, the same standing that applies a proposal (F-490):
    * saying no to an owner's proposal is a decision about it, so it takes the
-   * person who could have said yes.
+   * person who could have said yes. Anyone else may withdraw only a proposal
+   * they asked for themself (F-1248); someone else's reads as not waiting,
+   * the same 404 `list` implies by never showing it to them.
    */
   @Post("actions/:id/discard")
   @ApiOperation({ summary: "Discard a proposal without executing it" })
-  @Roles("owner", "manager")
   async discard(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
-    return this.askAi.discard(user.restaurantId, user.userId, id);
+    return this.askAi.discard(
+      user.restaurantId,
+      user.userId,
+      id,
+      roleSatisfies(user.role, "manager") ? null : user.userId,
+    );
   }
 }

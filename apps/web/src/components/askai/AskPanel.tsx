@@ -563,7 +563,12 @@ function AskPanelBody({
           <section aria-label="Proposals waiting for a seal" className="mdv-askp__proposals">
             <p className="mdv-askp__eyebrow">Mudavym proposes · waiting for a seal</p>
             {proposals.map((p) => (
-              <ProposalCard key={p.actionId} proposal={p} candidates={candidates} />
+              <ProposalCard
+                key={p.actionId}
+                proposal={p}
+                candidates={candidates}
+                canApply={role === 'owner' || role === 'manager'}
+              />
             ))}
           </section>
         )}
