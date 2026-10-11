@@ -11,6 +11,7 @@ function makeClient(house: Record<string, unknown>, lines: any[]) {
   const passthrough = [
     "select",
     "eq",
+    "is",
     "gte",
     "lt",
     "lte",

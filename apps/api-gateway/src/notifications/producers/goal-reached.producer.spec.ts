@@ -414,6 +414,27 @@ describe("GoalReachedProducer", () => {
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
   });
 
+  it("[REVERT-FAILS] a voided last sale is not when a Bottles sold goal crossed (F-1197)", async () => {
+    const { db, producer } = build(REACHED);
+    db.tables.wine_consumption_log = [
+      {
+        restaurant_id: TENANT,
+        created_at: "2026-09-20T19:00:00.000Z",
+        reversed_at: null,
+      },
+      {
+        restaurant_id: TENANT,
+        created_at: "2026-09-21T20:00:00.000Z",
+        reversed_at: "2026-09-21T20:30:00.000Z",
+      },
+    ];
+    const at: Date | null = await (producer as any).crossingInstant(
+      TENANT,
+      "bottles_sold",
+    );
+    expect(at?.toISOString()).toBe("2026-09-20T19:00:00.000Z");
+  });
+
   it("[REVERT-FAILS] writes no emoji into the title or the message", async () => {
     const { db, notifications, producer } = build(REACHED);
     db.tables.analytics_goals.push(goalRow());

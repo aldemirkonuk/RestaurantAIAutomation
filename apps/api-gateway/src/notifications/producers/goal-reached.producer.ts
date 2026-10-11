@@ -344,6 +344,9 @@ export class GoalReachedProducer {
           .from("wine_consumption_log")
           .select("created_at")
           .eq("restaurant_id", restaurantId)
+          // F-1197: as GoalsService, a voided or corrected-down sale is
+          // marked reversed and is not the bottle that crossed the target.
+          .is("reversed_at", null)
           .order("created_at", { ascending: false })
           .limit(1);
         if (error) throw new Error(error.message);
