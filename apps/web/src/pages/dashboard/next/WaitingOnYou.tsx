@@ -252,12 +252,15 @@ export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = t
         })}
       </div>
 
+      {/* F-1242: plain words, not a page address. Plain /orders on purpose:
+          its pending station also holds drafts and orders still being
+          haggled (F-1204), so `?station=pending` would not be this queue. */}
       {pending && pending.length > 0 && (
         <Link
           to="/orders"
           className="mt-3 inline-block text-[11px] uppercase tracking-[0.1em] text-inkm-4 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
         >
-          The full queue on /orders
+          See every order
         </Link>
       )}
     </section>
