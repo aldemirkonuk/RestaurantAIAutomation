@@ -569,7 +569,9 @@ export default function BottleLeaf({
                 <Fact label="Last counted">
                   {cellar.lastCountedAt
                     ? countedDay(cellar.lastCountedAt, houseZone)
-                    : 'never counted'}
+                    : cellar.someShelvesCounted
+                      ? 'not every shelf yet'
+                      : 'never counted'}
                 </Fact>
               </dl>
             </>

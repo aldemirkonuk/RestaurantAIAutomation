@@ -440,8 +440,10 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     );
   }, [visibleApiInventory, inventoryLoading, winesById]);
 
-  // Computed values
-  const filteredInventory = useMemo(() => {
+  // Computed values. Every filter but the location chip: the map, the zone
+  // manager's assign list and the receiving picker read this one, since a
+  // chip must not empty the other zones or hide unplaced wines (F-1270).
+  const filteredInventoryAnyPlace = useMemo(() => {
     let items = [...inventory];
 
     // Search filter
@@ -487,13 +489,6 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       items = items.filter(
         (item) => (item.bottleSizeMl || 750) === filterBottleSize,
       );
-    }
-
-    // Location chip (F-1161): the wines with a bottle on that zone or on a
-    // zone inside it. The chip set the state and the URL, and nothing read it.
-    if (selectedLocationFilter) {
-      const zoneIds = zoneAndChildren(selectedLocationFilter, options.zones);
-      items = items.filter((item) => holdsStockIn(item, zoneIds));
     }
 
     // View mode filter
@@ -576,9 +571,18 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     sortOrder,
     filterActiveStatus,
     filterBottleSize,
-    selectedLocationFilter,
-    options.zones,
   ]);
+
+  // Location chip (F-1161): the wines with a bottle on that zone or on a
+  // zone inside it. The chip set the state and the URL, and nothing read it.
+  // Only the table and the count sheet take it (F-1270).
+  const filteredInventory = useMemo(() => {
+    if (!selectedLocationFilter) return filteredInventoryAnyPlace;
+    const zoneIds = zoneAndChildren(selectedLocationFilter, options.zones);
+    return filteredInventoryAnyPlace.filter((item) =>
+      holdsStockIn(item, zoneIds),
+    );
+  }, [filteredInventoryAnyPlace, selectedLocationFilter, options.zones]);
 
   const stats = useMemo(() => {
     const total = inventory.length;
@@ -705,6 +709,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
 
     // Computed values
     filteredInventory,
+    filteredInventoryAnyPlace,
     stats,
     uniqueBottleSizes,
   };

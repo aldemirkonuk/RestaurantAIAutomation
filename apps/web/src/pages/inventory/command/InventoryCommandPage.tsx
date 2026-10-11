@@ -237,6 +237,7 @@ export function InventoryCommandPage() {
     setSelectedLocationFilter,
     inventory,
     filteredInventory,
+    filteredInventoryAnyPlace,
     stats,
     refetchInventory,
     updateInventoryItem,
@@ -2004,7 +2005,7 @@ export function InventoryCommandPage() {
       {/* ── MAP VIEW ── */}
       {view === "map" && (
         <CellarMapView
-          items={filteredInventory}
+          items={filteredInventoryAnyPlace}
           locations={locations}
           locationsLoading={locationsLoading}
           locationsUnavailable={locationsUnavailable}
@@ -2159,7 +2160,7 @@ export function InventoryCommandPage() {
       <StorageLocationManager
         isOpen={showStorageManager}
         onClose={() => setShowStorageManager(false)}
-        inventoryItems={filteredInventory as any}
+        inventoryItems={filteredInventoryAnyPlace as any}
         onSelectLocation={(location: any) => {
           setSelectedLocationFilter(location.id);
           setShowStorageManager(false);
@@ -2193,7 +2194,7 @@ export function InventoryCommandPage() {
       {verifyOrder && (
         <ReceivingWorkspace
           order={verifyOrder}
-          items={filteredInventory}
+          items={filteredInventoryAnyPlace}
           onClose={closeVerify}
         />
       )}

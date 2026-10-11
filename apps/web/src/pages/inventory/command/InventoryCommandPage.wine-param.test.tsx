@@ -37,6 +37,7 @@ vi.mock('../index', async (importOriginal) => {
       setSelectedLocationFilter: vi.fn(),
       inventory: page.items,
       filteredInventory: page.items,
+      filteredInventoryAnyPlace: page.items,
       stats: {
         total: 0,
         liveTotal: 0,

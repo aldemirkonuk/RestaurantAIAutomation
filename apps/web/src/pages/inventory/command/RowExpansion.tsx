@@ -119,8 +119,16 @@ export function RowExpansion({
   // anywhere -- a bottle broken at the bar was taken out of the cellar.
   const { shelves, picksShelf } = shelvesFor(item, locations)
   const [shelfId, setShelfId] = useState('')
-  const shelfMissing = picksShelf && shelfId === ''
-  const shelfPicked = picksShelf && shelfId !== '' ? shelfId : null
+  // F-1271: a take-off or a pour is offered only the shelves that hold this
+  // wine, each with its count; bottles found may go onto any shelf.
+  const shelfQty = (id: string) =>
+    (item.locations ?? []).filter((l) => l.locationId === id).reduce((n, l) => n + l.qty, 0)
+  const offeredShelves = delta > 0 ? shelves : shelves.filter((l) => shelfQty(l.id) > 0)
+  const asksShelf = picksShelf && offeredShelves.length > 0
+  const shelfMissing = asksShelf && !offeredShelves.some((l) => l.id === shelfId)
+  const shelfPicked = asksShelf && !shelfMissing ? shelfId : null
+  // More off one shelf than it holds would come off other shelves unsaid.
+  const overShelf = shelfPicked != null && delta < 0 && -delta > shelfQty(shelfPicked)
   // The per-wine par, through the same PATCH the add path's thresholdMin uses (F-1064, F-075).
   const [parDraft, setParDraft] = useState<string | null>(null)
 
@@ -560,7 +568,7 @@ export function RowExpansion({
         <span className="w-px h-6 bg-gray-200" />
 
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Manual adjust</span>
-        {picksShelf && (
+        {asksShelf && (
           <select
             value={shelfId}
             onChange={(e) => setShelfId(e.target.value)}
@@ -570,9 +578,9 @@ export function RowExpansion({
             <option value="" disabled>
               Which shelf?
             </option>
-            {shelves.map((l) => (
+            {offeredShelves.map((l) => (
               <option key={l.id} value={l.id}>
-                {l.name}
+                {l.name} ({shelfQty(l.id)})
               </option>
             ))}
           </select>
@@ -587,7 +595,7 @@ export function RowExpansion({
         <ThemedSelect value={reason} options={ADJUST_REASONS} onChange={setReason} align="left" aria-label="Reason" />
         <button
           onClick={() => adjust.mutate({ quantityChange: delta, reason })}
-          disabled={delta === 0 || adjust.isPending || shelfMissing || addsOnTakeOff}
+          disabled={delta === 0 || adjust.isPending || shelfMissing || addsOnTakeOff || overShelf}
           title={shelfMissing ? 'Pick the shelf first' : undefined}
           className="h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg disabled:opacity-40"
         >
@@ -596,6 +604,11 @@ export function RowExpansion({
         {addsOnTakeOff && (
           <span role="alert" className="text-[11px] text-rose-600">
             {TAKE_OFF_ONLY[reason]} only takes bottles off. Press − instead, or pick Count correction to add bottles.
+          </span>
+        )}
+        {overShelf && shelfPicked && (
+          <span role="alert" className="text-[11px] text-rose-600">
+            {shelves.find((l) => l.id === shelfPicked)?.name} holds {shelfQty(shelfPicked)} of this wine. Take off {shelfQty(shelfPicked)} or fewer here, or pick another shelf.
           </span>
         )}
 
