@@ -353,7 +353,7 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
     expect(screen.getByText(/counted with a 30-minute break: the legal minimum/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Break, in minutes'), { target: { value: '20' } });
     expect(
-      screen.getByText(/under the legal minimum of 60 minutes for the 7\.7h of work it leaves \(Art\. 68\)/),
+      screen.getByText(/under the legal minimum of 60 minutes for the 7,7h of work it leaves \(Art\. 68\)/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/minutes for this shift/)).not.toBeInTheDocument();
   });

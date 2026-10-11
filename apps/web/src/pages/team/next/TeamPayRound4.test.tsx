@@ -343,7 +343,11 @@ describe('the former-staff history', () => {
     const row = await screen.findByTestId('former-m-gone');
     expect(row).toHaveTextContent('Gus');
     expect(row).toHaveTextContent(/kept until 10 Sept 2031|kept until 10 Sep 2031/);
-    expect(row).toHaveTextContent(/1 worked shift, 7.5h worked/);
+    // F-1149: a Turkish house reads its hours with a comma, in the total and
+    // on each kept shift.
+    expect(row).toHaveTextContent(/1 worked shift, 7,5h worked/);
+    expect(row).toHaveTextContent(/· 7,5h ·/);
+    expect(row).not.toHaveTextContent(/7\.5h/);
     expect(row).toHaveTextContent(/paid/);
     expect(row).toHaveTextContent(/food handler/);
     expect(screen.getByTestId('former-staff')).not.toHaveTextContent(/could not be read/);
