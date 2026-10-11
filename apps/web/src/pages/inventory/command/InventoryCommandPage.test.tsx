@@ -719,3 +719,28 @@ describe('InventoryCommandPage — staff are shown stock, not what the house pai
     expect(await screen.findByText('You paid (WAC)')).toBeInTheDocument();
   });
 });
+
+describe('InventoryCommandPage — the price advice is asked for only by an owner or a manager (F-1175)', () => {
+  // GET /pricing/advice carries every wine's cost and margin; the gateway
+  // answers staff 403. Asked anyway, every staff row read "advice unavailable".
+  const row = { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2 };
+  const adviceGets = () => api.get.mock.calls.filter((call) => classify(String(call[0])) === 'pricing-advice');
+
+  it('staff never ask for it, and their rows say nothing of advice', async () => {
+    who.role = 'staff';
+    routeGets({ 'inventory-list': [row], 'pricing-advice': 'reject' });
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    expect(adviceGets()).toHaveLength(0);
+    expect(screen.queryByText('advice unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText('advice…')).not.toBeInTheDocument();
+  });
+
+  it.each(['owner', 'manager'])('a %s does', async (role) => {
+    who.role = role;
+    routeGets({ 'inventory-list': [row] });
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    await waitFor(() => expect(adviceGets().length).toBeGreaterThan(0));
+  });
+});

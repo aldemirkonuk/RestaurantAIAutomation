@@ -717,5 +717,19 @@
   "POST /providers/:id/outreach (ProviderIntelligenceController.triggerOutreach)": "open",
   "POST /providers/:id/onboard (ProviderIntelligenceController.triggerOnboarding)": "open",
   "GET /providers/intelligence/compare (ProviderIntelligenceController.compareProviders)": "open",
-  "GET /providers/intelligence/leverage (ProviderIntelligenceController.getLeverageSignals)": "open"
+  "GET /providers/intelligence/leverage (ProviderIntelligenceController.getLeverageSignals)": "open",
+  "GET /pricing/target-margin (PricingController.getTargetMargin)": "open",
+  "PUT /pricing/target-margin (PricingController.setTargetMargin)": "open",
+  "PUT /pricing/pour-size (PricingController.confirmPourSize)": "open",
+  "PUT /pricing/wines/:inventoryId/pour (PricingController.confirmWinePour)": "open",
+  "GET /pricing/locks (PricingController.getLocks)": "open",
+  "POST /pricing/locks (PricingController.lockPrice)": "open",
+  "POST /pricing/locks/:lockId/release (PricingController.releaseLock)": "open",
+  "POST /pricing/locks/:lockId/change (PricingController.changeLockedPrice)": "open",
+  "POST /pricing/locks/:lockId/move (PricingController.moveLock)": "open",
+  "GET /pricing/advice (PricingController.getAdvice)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pricing/advice/:inventoryId/accept (PricingController.acceptAdvice)": "open"
 }

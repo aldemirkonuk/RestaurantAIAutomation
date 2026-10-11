@@ -285,14 +285,20 @@ export function InventoryCommandPage() {
 
   // Per-wine advice toward the house's target margin (ADR 0193). A failed
   // read is shown as "advice unavailable" on each row, never as no advice.
+  // It carries every wine's cost and margin, so the gateway answers only an
+  // owner or a manager (F-1175); staff are not asked for it, and their rows
+  // show the price with no advice line.
   const adviceQuery = useQuery({
     queryKey: ["pricing-advice", getActiveRestaurantId()],
     queryFn: getPriceAdvice,
     staleTime: 30_000,
     retry: 1,
+    enabled: seesCost,
   });
   const refetchAdvice = adviceQuery.refetch;
   const adviceLoad: AdviceLoad = useMemo(() => {
+    if (!seesCost)
+      return { status: "ready", byId: new Map(), targetSet: true, locksReadable: true };
     if (adviceQuery.isError)
       return {
         status: "error",
@@ -317,7 +323,7 @@ export function InventoryCommandPage() {
       locksReadable: adviceQuery.data.locks?.readable !== false,
       locksReason: adviceQuery.data.locks?.reason ?? null,
     };
-  }, [adviceQuery.isError, adviceQuery.error, adviceQuery.data]);
+  }, [seesCost, adviceQuery.isError, adviceQuery.error, adviceQuery.data]);
   const multiLocation = availableRestaurants.length > 1;
   const createInventoryItem = useCreateInventoryItem();
   const navigate = useNavigate();
