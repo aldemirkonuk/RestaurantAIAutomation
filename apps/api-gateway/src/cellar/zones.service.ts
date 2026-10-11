@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { assertMaySetUpZones } from "../storage-locations/storage-locations.service";
+import { bottlesByZone, readZoneLots } from "../storage-locations/zone-lots";
 
 /**
  * THE HOUSE'S ZONES, AND WHETHER ANYBODY HAS EVER LOOKED AT THEM.
@@ -55,8 +56,9 @@ export interface ZoneVM {
   section: string | null;
   capacityBottles: number | null;
   /**
-   * Inventory rows ASSIGNED to this zone — counted, not read off
-   * `current_occupancy`, which disagrees with them where both exist.
+   * BOTTLES on this zone's live lots (F-1331; the name predates it, when this
+   * counted inventory titles). Counted, never read off `current_occupancy`,
+   * which disagrees with them where both exist. null = could not be counted.
    */
   itemsAssigned: number | null;
   confirmedAt: string | null;
@@ -79,7 +81,7 @@ export interface ZonesResult {
 }
 
 export const ZONES_SCOPE_NOTE =
-  "A zone is drawn on the floor only once somebody in this house has confirmed its name. Every row here was written by a seeder or an import until a manager says otherwise, so an unconfirmed zone is counted in words and never drawn as a room. Capacity is the row's own figure; what is in it is counted from the inventory rows assigned to it, not from current_occupancy, which disagrees with them.";
+  "A zone is drawn on the floor only once somebody in this house has confirmed its name. Every row here was written by a seeder or an import until a manager says otherwise, so an unconfirmed zone is counted in words and never drawn as a room. Capacity is the row's own figure; what is in it is the bottles on its live lots, the same count transfers and deliveries move, not current_occupancy, which disagrees with them.";
 
 interface ZoneRow {
   id: string;
@@ -180,30 +182,26 @@ export class ZonesService {
 
     const rows = (data ?? []) as unknown as ZoneRow[];
 
-    // What is actually in each zone, counted from the rows assigned to it. One
-    // read for every zone rather than one per zone.
-    const assigned = new Map<string, number>();
-    const { data: items, error: itemsError } = await client
-      .from("restaurant_inventory")
-      .select("id, storage_location_id")
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null)
-      .not("storage_location_id", "is", null);
-    if (itemsError) {
+    // What is actually in each zone: the bottles on its live lots (F-1331),
+    // the rows receiving and transfers write and the Storage Locations dialog
+    // and the cellar map count. Counting `restaurant_inventory.storage_location_id`
+    // titles here gave a third number for the same shelf, one a transfer never
+    // moved. One read for every zone rather than one per zone.
+    let assigned = new Map<string, number>();
+    let lotsUnread = false;
+    try {
+      assigned = bottlesByZone(await readZoneLots(client, restaurantId));
+    } catch (err) {
+      lotsUnread = true;
       this.logger.warn(
-        `zone occupancy count failed, reporting unknown: ${itemsError.message}`,
+        `zone bottle count failed, reporting unknown: ${(err as Error)?.message}`,
       );
-    } else {
-      for (const it of (items ?? []) as { storage_location_id: string }[]) {
-        const k = it.storage_location_id;
-        assigned.set(k, (assigned.get(k) ?? 0) + 1);
-      }
     }
 
     const zones = rows.map((r) =>
       // Null, not zero, when the count could not be read at all: a zone whose
       // contents are unknown must not render as an empty room.
-      toZone(r, itemsError ? null : (assigned.get(r.id) ?? 0)),
+      toZone(r, lotsUnread ? null : (assigned.get(r.id) ?? 0)),
     );
     const { confirmed, unconfirmed } = splitZones(zones);
 

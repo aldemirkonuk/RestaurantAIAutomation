@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adjustStock, getItemActivity, recordPour, reconcileShadowItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
 import { getOrders } from '../../../services/api/orders'
-import type { StorageLocation } from '../../../hooks/useStorageLocations'
+import { invalidateZoneCounts, type StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { MultiLocationCell } from '../../../components/inventory/MultiLocationCell'
@@ -172,8 +172,11 @@ export function RowExpansion({
     staleTime: 60_000,
   })
 
+  // Every change here moves bottles on a shelf, and every zone count reads the
+  // shelves' lots (F-1331), so the zone list and the cellar floor refetch too.
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['inventory'] })
+    invalidateZoneCounts(queryClient)
   }
 
   // F-1166: the server reads the shadow and moves exactly that many (live +N,

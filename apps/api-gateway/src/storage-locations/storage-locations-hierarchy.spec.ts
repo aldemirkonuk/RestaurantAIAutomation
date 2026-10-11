@@ -70,6 +70,10 @@ function fakeDb(opts: { writeError?: { code: string; message: string } } = {}) {
         return chain;
       },
       order: () => chain,
+      // The zone bottle count reads live lots (F-1331); none are seeded here.
+      gt: () => chain,
+      not: () => chain,
+      limit: () => chain,
       single: async () => {
         if (opts.writeError) return { data: null, error: opts.writeError };
         const p = state.write?.payload ?? {};

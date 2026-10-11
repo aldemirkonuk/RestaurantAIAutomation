@@ -18,6 +18,7 @@ import {
   UpdateStorageLocationDto,
   AssignWineToLocationDto,
 } from "./dto/storage-locations.dto";
+import { bottlesByItem, bottlesByZone, readZoneLots } from "./zone-lots";
 
 /* ── who may set up a zone (ADR 0238) ─────────────────────────────────────
  *
@@ -150,12 +151,16 @@ interface WineLocationMappingRow {
 }
 
 export interface EnrichedWineAtLocation {
+  /**
+   * master_wine_id, the id the web's inventory rows carry as `id`; for a
+   * beer, spirit or other house item with no wine, its restaurant_inventory id.
+   */
   wineId: string;
   wineName: string;
   producer: string;
   vintage: string | null;
+  /** Bottles on this zone's live lots (F-1331). */
   quantity: number;
-  assignedAt: string;
 }
 
 @Injectable()
@@ -164,7 +169,12 @@ export class StorageLocationsService {
 
   constructor(private readonly dbService: DatabaseService) {}
 
-  private mapLocation(row: StorageLocationRow) {
+  /**
+   * `bottles` is what the zone's live lots hold (F-1331), never the row's
+   * `current_occupancy`: nothing that moves a bottle writes that column, so it
+   * read 0 on a shelf the cellar map showed 12 on.
+   */
+  private mapLocation(row: StorageLocationRow, bottles: number) {
     // Build a human-friendly name from zone + section
     const name = row.section
       ? `${row.zone} – ${row.section}`
@@ -185,7 +195,7 @@ export class StorageLocationsService {
       // ADR 0051: a capacity nobody recorded is unknown. `?? 100` handed the
       // web a fabricated denominator for the cellar map's fill bar.
       capacity: row.capacity_bottles ?? null,
-      current_count: row.current_occupancy ?? 0,
+      current_count: bottles,
       temperature,
       humidity:
         row.humidity_controlled != null
@@ -406,7 +416,13 @@ export class StorageLocationsService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-    return (data || []).map((r) => this.mapLocation(r as StorageLocationRow));
+    const bottles = bottlesByZone(await readZoneLots(client, restaurantId));
+    return (data || []).map((r) =>
+      this.mapLocation(
+        r as StorageLocationRow,
+        bottles.get((r as StorageLocationRow).id) ?? 0,
+      ),
+    );
   }
 
   async listMappings(restaurantId: string) {
@@ -574,7 +590,8 @@ export class StorageLocationsService {
       this.logger.error(`Failed to create location: ${error.message}`);
       throw this.dbRefusal(error, "Failed to create location");
     }
-    return this.mapLocation(data as StorageLocationRow);
+    // A zone made a moment ago holds no lot yet.
+    return this.mapLocation(data as StorageLocationRow, 0);
   }
 
   async updateLocation(
@@ -617,7 +634,11 @@ export class StorageLocationsService {
     if (!data) {
       throw new HttpException("Location not found", HttpStatus.NOT_FOUND);
     }
-    return this.mapLocation(data as StorageLocationRow);
+    const lots = await readZoneLots(client, restaurantId, locationId);
+    return this.mapLocation(
+      data as StorageLocationRow,
+      bottlesByZone(lots).get(locationId) ?? 0,
+    );
   }
 
   /**
@@ -625,49 +646,41 @@ export class StorageLocationsService {
    * storage_locations_orphans_go_top_level (migration 20261203110000) clears
    * their parent_id in the same statement, so they become top-level zones.
    *
-   * A zone that still holds bottles is not deleted (F-691): its lots and
-   * mappings would keep pointing at a zone nobody can see or bring back. The
-   * count is said, and the bottles are moved first.
+   * A zone that still holds bottles is not deleted (F-691): its lots would
+   * keep pointing at a zone nobody can see or bring back. The bottles are its
+   * live lots, the same count the dialog and the cellar map show (F-1331); a
+   * wine_location_mappings row is no longer a count, so it no longer holds a
+   * zone the dialog would show as empty. The refusal names the wines, so the
+   * person knows what to move.
    */
   async deleteLocation(restaurantId: string, locationId: string) {
     const client = this.dbService.supabase;
-    const [lotsQ, mapsQ] = await Promise.all([
-      client
-        .from("inventory_lots")
-        .select("qty")
-        .eq("restaurant_id", restaurantId)
-        .eq("location_id", locationId)
-        .eq("stock_state", "live"),
-      client
-        .from("wine_location_mappings")
-        .select("quantity")
-        .eq("restaurant_id", restaurantId)
-        .eq("location_id", locationId),
-    ]);
-    if (lotsQ.error || mapsQ.error) {
+    let wines: EnrichedWineAtLocation[];
+    try {
+      wines = await this.winesOnZone(restaurantId, locationId);
+    } catch (err) {
       this.logger.error(
         `Failed to count the bottles in location ${locationId}: ` +
-          `${(lotsQ.error ?? mapsQ.error)?.message}`,
+          `${(err as Error)?.message}`,
       );
       throw new HttpException(
         "Could not check whether bottles are still in this zone, so it was not deleted.",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-    const sum = (rows: unknown, col: string) =>
-      ((rows as Array<Record<string, unknown>> | null) ?? []).reduce(
-        (n, r) => n + Math.max(0, Number(r[col]) || 0),
-        0,
-      );
-    const bottles = Math.max(
-      sum(lotsQ.data, "qty"),
-      sum(mapsQ.data, "quantity"),
-    );
+    const bottles = wines.reduce((n, w) => n + w.quantity, 0);
     if (bottles > 0) {
+      const named = wines
+        .slice(0, 3)
+        .map((w) => `${w.wineName} (${w.quantity})`)
+        .join(", ");
+      const more = wines.length > 3 ? ` and ${wines.length - 3} more` : "";
       throw new HttpException(
         `${bottles} ${bottles === 1 ? "bottle is" : "bottles are"} still in ` +
-          `this zone. Move ${bottles === 1 ? "it" : "them"} to another zone ` +
-          `first. Nothing was deleted.`,
+          `this zone: ${named}${more}. Move ${bottles === 1 ? "it" : "them"} ` +
+          `to another zone first: open the wine in Inventory and use its ` +
+          `Locations to move bottles. ` +
+          `Nothing was deleted.`,
         HttpStatus.CONFLICT,
       );
     }
@@ -738,59 +751,116 @@ export class StorageLocationsService {
   ): Promise<EnrichedWineAtLocation[]> {
     // Another house's zone is a 404, not an empty one.
     await this.assertLocationIsTheHouses(restaurantId, locationId);
-    const client = this.dbService.supabase;
-
-    const { data: mappings, error: mappingsError } = await client
-      .from("wine_location_mappings")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .eq("location_id", locationId);
-
-    if (mappingsError) {
+    try {
+      return await this.winesOnZone(restaurantId, locationId);
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
       this.logger.error(
-        `Failed to get wines at location: ${mappingsError.message}`,
+        `Failed to get wines at location: ${(err as Error)?.message}`,
       );
       throw new HttpException(
-        mappingsError.message || "Failed to fetch wines at location",
+        "The wines in this zone could not be read.",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
 
-    if (!mappings || mappings.length === 0) return [];
-
-    const wineIds = (mappings as WineLocationMappingRow[]).map(
-      (m) => m.wine_id,
+  /**
+   * The wines on a zone and how many bottles of each, from its live lots
+   * (F-1331): the same rows receiving and transfers write, so a move shows
+   * here as soon as it is made. `wine_location_mappings` was read here before;
+   * only this dialog's own stepper wrote it, so a received case never showed.
+   */
+  private async winesOnZone(
+    restaurantId: string,
+    locationId: string,
+  ): Promise<EnrichedWineAtLocation[]> {
+    const client = this.dbService.supabase;
+    const items = bottlesByItem(
+      await readZoneLots(client, restaurantId, locationId),
     );
+    if (items.length === 0) return [];
 
-    const { data: wines } = await client
-      .from("master_wine_library")
-      .select("id, wine_name, name, producer, vintage")
-      .in("id", wineIds);
+    // The house's own name for each item, so a beer or a house-declared item
+    // (no wine behind it) is named too. Only real ids go into either `.in()`:
+    // a null in a uuid list fails the whole read.
+    const inventoryIds = [
+      ...new Set(items.flatMap((i) => (i.inventoryId ? [i.inventoryId] : []))),
+    ];
+    const houseNames = new Map<string, string>();
+    if (inventoryIds.length > 0) {
+      const { data: rows, error } = await client
+        .from("restaurant_inventory")
+        .select("id, display_name, wine_name, master_wine_id")
+        .eq("restaurant_id", restaurantId)
+        .in("id", inventoryIds);
+      if (error) {
+        throw new Error(`the item names could not be read: ${error.message}`);
+      }
+      (rows || []).forEach((r: Record<string, unknown>) => {
+        const name =
+          (r.display_name as string)?.trim() || (r.wine_name as string)?.trim();
+        if (name) houseNames.set(r.id as string, name);
+        const item = items.find((i) => i.inventoryId === r.id);
+        if (item && !item.masterWineId && r.master_wine_id) {
+          item.masterWineId = r.master_wine_id as string;
+        }
+      });
+    }
 
+    const wineIds = [
+      ...new Set(
+        items.flatMap((i) => (i.masterWineId ? [i.masterWineId] : [])),
+      ),
+    ];
     const wineMap = new Map<
       string,
       { wineName: string; producer: string; vintage: string | null }
     >();
-    (wines || []).forEach((w: Record<string, unknown>) => {
-      wineMap.set(w.id as string, {
-        wineName:
-          (w.wine_name as string) || (w.name as string) || (w.id as string),
-        producer: (w.producer as string) || "",
-        vintage: (w.vintage as string) ?? null,
+    if (wineIds.length > 0) {
+      const { data: wines, error: winesError } = await client
+        .from("master_wine_library")
+        .select("id, wine_name, name, producer, vintage")
+        .in("id", wineIds);
+      if (winesError) {
+        throw new Error(
+          `the wine names could not be read: ${winesError.message}`,
+        );
+      }
+      (wines || []).forEach((w: Record<string, unknown>) => {
+        wineMap.set(w.id as string, {
+          wineName: (w.wine_name as string) || (w.name as string) || "",
+          producer: (w.producer as string) || "",
+          vintage: (w.vintage as string) ?? null,
+        });
       });
-    });
+    }
 
-    return (mappings as WineLocationMappingRow[]).map((m) => {
-      const wineInfo = wineMap.get(m.wine_id);
-      return {
-        wineId: m.wine_id,
-        wineName: wineInfo?.wineName ?? m.wine_id,
+    // A house holds one item per wine (UNIQUE restaurant_id, master_wine_id),
+    // so an old lot with only a wine id and its item's lots are one row.
+    const out = new Map<string, EnrichedWineAtLocation>();
+    for (const item of items) {
+      const wineId = item.masterWineId ?? item.inventoryId ?? item.key;
+      const seen = out.get(wineId);
+      if (seen) {
+        seen.quantity += item.qty;
+        continue;
+      }
+      const wineInfo = item.masterWineId
+        ? wineMap.get(item.masterWineId)
+        : undefined;
+      out.set(wineId, {
+        wineId,
+        wineName:
+          (item.inventoryId && houseNames.get(item.inventoryId)) ||
+          wineInfo?.wineName ||
+          "An item with no name",
         producer: wineInfo?.producer ?? "",
         vintage: wineInfo?.vintage ?? null,
-        quantity: m.quantity ?? 1,
-        assignedAt: m.assigned_at ?? new Date().toISOString(),
-      };
-    });
+        quantity: item.qty,
+      });
+    }
+    return [...out.values()];
   }
 
   async removeWineFromLocation(restaurantId: string, wineId: string) {

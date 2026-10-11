@@ -20,7 +20,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { apiClient } from '../services/api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -36,6 +36,12 @@ export interface StorageLocation {
    * fabricated percentage. Render `—` and draw no bar.
    */
   capacity: number | null
+  /**
+   * Bottles on this zone's live lots, as the gateway counts them (F-1331):
+   * the rows receiving and transfers write, the same count the cellar map
+   * and the cellar floor show. Nothing on the web moves it; a stock change
+   * refetches it (`invalidateZoneCounts`).
+   */
   currentCount: number
   temperature?: string
   humidity?: string
@@ -238,21 +244,6 @@ export function useStorageLocations() {
     [restaurantId],
   )
 
-  /** Adds `delta` bottles to a zone's count in the cache (negative removes). */
-  const shiftCount = useCallback(
-    (locationId: string, delta: number) => {
-      if (!delta) return
-      setLocations((locs) =>
-        locs.map((loc) =>
-          loc.id === locationId
-            ? { ...loc, currentCount: Math.max(0, loc.currentCount + delta) }
-            : loc,
-        ),
-      )
-    },
-    [setLocations],
-  )
-
   // Stepper debounce state, per wine: the pending timer, the arguments it
   // will save with (so an unmount can flush it), and the quantity the server
   // held before the burst began (what a refusal rolls back to).
@@ -300,21 +291,9 @@ export function useStorageLocations() {
           // screen now: the two caches are keyed apart.
           if (baseline === undefined) return
           const mappingsKey = [MAPPINGS_KEY, house]
-          const now = queryClient
-            .getQueryData<WineLocationMapping[]>(mappingsKey)
-            ?.find((m) => m.wineId === wineId)
           queryClient.setQueryData<WineLocationMapping[]>(mappingsKey, (prev) =>
             (prev ?? []).map((m) => (m.wineId === wineId ? { ...m, quantity: baseline } : m)),
           )
-          if (now && baseline !== now.quantity) {
-            queryClient.setQueryData<StorageLocation[]>([LOCATIONS_KEY, house], (locs) =>
-              (locs ?? EMPTY_LOCATIONS).map((loc) =>
-                loc.id === now.locationId
-                  ? { ...loc, currentCount: Math.max(0, loc.currentCount + baseline - now.quantity) }
-                  : loc,
-              ),
-            )
-          }
         },
         house,
       )
@@ -357,12 +336,9 @@ export function useStorageLocations() {
 
   const assignWineToLocation = useCallback(
     async (wineId: string, locationId: string, quantity: number = 1): Promise<boolean> => {
-      // Read the current mapping from cache BEFORE mutating, so the location-count
-      // adjustment is a separate top-level update instead of a side effect nested
-      // inside the setMappings updater — that nesting made counts lag by one
-      // interaction (the "click twice to see it update" bug).
+      // A mapping is where a wine is filed, not bottles on a shelf: it no
+      // longer moves a zone's count, which is the zone's lots (F-1331).
       const existing = mappings.find((m) => m.wineId === wineId)
-      const oldLocationId = existing?.locationId
 
       setMappings((prev) => {
         const found = prev.find((m) => m.wineId === wineId)
@@ -379,32 +355,12 @@ export function useStorageLocations() {
         ]
       })
 
-      setLocations((locs) =>
-        locs.map((loc) => {
-          if (loc.id === locationId) {
-            return { ...loc, currentCount: loc.currentCount + quantity }
-          }
-          if (oldLocationId && loc.id === oldLocationId && existing) {
-            return {
-              ...loc,
-              currentCount: Math.max(0, loc.currentCount - existing.quantity),
-            }
-          }
-          return loc
-        }),
-      )
-
       cancelPendingQuantity(wineId)
       const rollback = () => {
         setMappings((prev) => {
           const rest = prev.filter((m) => m.wineId !== wineId)
           return existing ? [...rest, existing] : rest
         })
-        // Mirrors the optimistic count update above, branch for branch.
-        shiftCount(locationId, -quantity)
-        if (existing && existing.locationId !== locationId) {
-          shiftCount(existing.locationId, existing.quantity)
-        }
       }
 
       // A zone still carrying its temp id has not been created on the server
@@ -426,7 +382,7 @@ export function useStorageLocations() {
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
       return ok
     },
-    [mappings, setMappings, setLocations, shiftCount, cancelPendingQuantity, persistToServer, restaurantId, queryClient],
+    [mappings, setMappings, cancelPendingQuantity, persistToServer, restaurantId, queryClient],
   )
 
   /**
@@ -452,13 +408,6 @@ export function useStorageLocations() {
       cancelPendingQuantity(wineId)
 
       setMappings((prev) => prev.filter((m) => m.wineId !== wineId))
-      setLocations((locs) =>
-        locs.map((loc) =>
-          loc.id === mapping.locationId
-            ? { ...loc, currentCount: Math.max(0, loc.currentCount - mapping.quantity) }
-            : loc,
-        ),
-      )
 
       const ok = await persistToServer(
         'DELETE',
@@ -467,32 +416,22 @@ export function useStorageLocations() {
         'remove the wine from its zone',
         () => {
           setMappings((prev) => [...prev.filter((m) => m.wineId !== wineId), mapping])
-          shiftCount(mapping.locationId, mapping.quantity)
         },
       )
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
       return ok
     },
-    [mappings, setMappings, setLocations, shiftCount, cancelPendingQuantity, persistToServer, restaurantId, queryClient],
+    [mappings, setMappings, cancelPendingQuantity, persistToServer, restaurantId, queryClient],
   )
 
   const updateWineQuantityAtLocation = useCallback(
     (wineId: string, newQuantity: number) => {
-      // Same fix as assignWineToLocation: hoist the location-count update out of
-      // the setMappings updater so it commits in the same pass, not one behind.
+      // The mapping's quantity only; a zone's count is its lots (F-1331).
       const existing = mappings.find((m) => m.wineId === wineId)
       if (!existing) return
-      const diff = newQuantity - existing.quantity
 
       setMappings((prev) =>
         prev.map((m) => (m.wineId === wineId ? { ...m, quantity: newQuantity } : m)),
-      )
-      setLocations((locs) =>
-        locs.map((loc) =>
-          loc.id === existing.locationId
-            ? { ...loc, currentCount: Math.max(0, loc.currentCount + diff) }
-            : loc,
-        ),
       )
 
       // Until 2026-09-28 the stepper stopped here: the cache moved and the
@@ -514,7 +453,7 @@ export function useStorageLocations() {
         }, QUANTITY_SAVE_DEBOUNCE_MS),
       )
     },
-    [mappings, setMappings, setLocations, saveQuantity, restaurantId],
+    [mappings, setMappings, saveQuantity, restaurantId],
   )
 
   /**
@@ -663,31 +602,18 @@ export function useStorageLocations() {
     }
   }, [locations])
 
+  // A zone's count is what the gateway counted on its lots (F-1331). These
+  // two used to overwrite it with the sum of wine_location_mappings, a record
+  // only this dialog's stepper wrote, so a received case or a transfer never
+  // showed. "Sync" now asks the gateway again.
   const recalculateLocationCounts = useCallback(() => {
-    setLocations((locs) =>
-      locs.map((loc) => {
-        const winesInLocation = mappings.filter(
-          (m) => m.locationId === loc.id,
-        )
-        const actualCount = winesInLocation.reduce(
-          (sum, m) => sum + m.quantity,
-          0,
-        )
-        return { ...loc, currentCount: actualCount }
-      }),
-    )
-  }, [mappings, setLocations])
+    invalidateZoneCounts(queryClient)
+  }, [queryClient])
 
-  const getLocationsWithActualCounts = useCallback((): StorageLocation[] => {
-    return locations.map((loc) => {
-      const winesInLocation = mappings.filter((m) => m.locationId === loc.id)
-      const actualCount = winesInLocation.reduce(
-        (sum, m) => sum + m.quantity,
-        0,
-      )
-      return { ...loc, currentCount: actualCount }
-    })
-  }, [locations, mappings])
+  const getLocationsWithActualCounts = useCallback(
+    (): StorageLocation[] => locations,
+    [locations],
+  )
 
   return {
     locations,
@@ -715,13 +641,15 @@ export function useStorageLocations() {
 
 export type { WineLocationMapping }
 
+/** A wine on a zone, from the zone's live lots (F-1331). */
 export interface EnrichedWineAtLocation {
+  /** The master wine id, which the inventory rows carry as `id`. */
   wineId: string
   wineName: string
   producer: string
   vintage: string | null
+  /** Bottles of it on this zone's live lots. */
   quantity: number
-  assignedAt: string
 }
 
 export function useWinesAtLocation(locationId: string | null) {
@@ -744,7 +672,21 @@ export function useWinesAtLocation(locationId: string | null) {
   return {
     wines: query.data ?? [],
     isLoading: query.isLoading,
+    /** The read failed. "No wines here" would be a claim it cannot make. */
+    unavailable: query.isError && query.data === undefined,
   }
+}
+
+/**
+ * Every zone count reads the zone's live lots (F-1331), so anything that
+ * moves stock (a transfer, a delivery, an adjustment, a pour) refetches all
+ * three surfaces that show one: the zone list and its "Wines stored here",
+ * and the cellar floor.
+ */
+export function invalidateZoneCounts(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY] })
+  void queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY] })
+  void queryClient.invalidateQueries({ queryKey: ['cellar', 'zones'] })
 }
 
 /* ── who may set up zones (ADR 0238) ───────────────────────────────────────

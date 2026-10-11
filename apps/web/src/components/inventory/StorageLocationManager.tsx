@@ -3,13 +3,12 @@
  * Allows managers to define and manage custom storage locations for wines
  */
 
-import { useState, useEffect, useId, useRef, useMemo } from 'react'
+import { useState, useEffect, useId, useRef, useMemo, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
   MapPin,
   Plus,
-  Minus,
   Trash2,
   Check,
   FolderTree,
@@ -26,7 +25,7 @@ import {
   Zap,
   RefreshCw,
 } from 'lucide-react'
-import { useStorageLocations, useZoneSetupAccess } from '../../hooks/useStorageLocations'
+import { useStorageLocations, useWinesAtLocation, useZoneSetupAccess } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
 import { nestZones, parentChoices, zonesInside, rolledUpTotals, rollupLabel } from './zoneNesting'
 import { useModalDialog } from '../../hooks/useModalDialog'
@@ -37,6 +36,7 @@ interface StorageLocationManagerProps {
   onClose: () => void
   onSelectLocation?: (location: StorageLocation) => void
   onLocationsChange?: (locations: StorageLocation[]) => void
+  /** Unused since F-1331 retired the in-zone wine picker; kept for callers. */
   selectedWineId?: string
   defaultEditLocationId?: string
   inventoryItems?: Array<{
@@ -67,12 +67,36 @@ const DEFAULT_COLORS = [
   '#14b8a6',
 ]
 
+/** The house's own name for each wine when the page has its row (ADR 0124). */
+function inHouseNames<W extends { wineId: string; wineName: string }>(
+  wines: W[],
+  items: Array<{ id: string; name: string }>,
+): W[] {
+  return wines.map((w) => ({ ...w, wineName: items.find((i) => i.id === w.wineId)?.name ?? w.wineName }))
+}
+
+type ZoneWines = ReturnType<typeof useWinesAtLocation>
+
+/** Reads one open zone's wines and hands them, house-named, to its children. */
+function ZoneWinesRead({
+  locationId,
+  items,
+  children,
+}: {
+  locationId: string
+  items: Array<{ id: string; name: string }>
+  children: (read: ZoneWines) => ReactNode
+}) {
+  const read = useWinesAtLocation(locationId)
+  const wines = useMemo(() => inHouseNames(read.wines, items), [read.wines, items])
+  return <>{children({ ...read, wines })}</>
+}
+
 export function StorageLocationManager({
   isOpen,
   onClose,
   onSelectLocation,
   onLocationsChange,
-  selectedWineId,
   defaultEditLocationId,
   inventoryItems = [],
   onAutoLocate,
@@ -85,13 +109,9 @@ export function StorageLocationManager({
     locationsLoading,
     locationsUnavailable,
     getLocationsWithActualCounts,
-    mappings,
-    assignWineToLocation,
-    removeWineFromLocation,
     addLocation,
     updateLocation,
     deleteLocation,
-    updateWineQuantityAtLocation,
     getLocationStats,
     recalculateLocationCounts,
   } = useStorageLocations()
@@ -125,14 +145,12 @@ export function StorageLocationManager({
   const [isCreating, setIsCreating] = useState(false)
   // Inline confirmation states — replaces window.confirm() for locations, adds it for wine removal
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [confirmRemoveWineId, setConfirmRemoveWineId] = useState<string | null>(null)
   const [capacityWarning, setCapacityWarning] = useState<{
     show: boolean
     newCapacity: number
     currentCount: number
     overflow: number
   } | null>(null)
-  const [wineSearchQuery, setWineSearchQuery] = useState('')
   // F-1335: zones are not drag-reordered here. The grip only moved the cached
   // list (no write touches display_order) and was offered to every member.
   // capacity starts EMPTY, not 100. A pre-filled denominator that the user
@@ -147,43 +165,12 @@ export function StorageLocationManager({
     color: DEFAULT_COLORS[0],
   })
 
-  // Compute wines from the client-side mappings cache — instant, no server round-trip, works for
-  // both real UUID locations and default locations (loc-1…loc-4).
-  const expandedWines = useMemo(() => {
-    if (!expandedLocationId) return []
-    return mappings
-      .filter(m => m.locationId === expandedLocationId)
-      .map(m => {
-        const item = inventoryItems.find(i => i.id === m.wineId)
-        return {
-          wineId: m.wineId,
-          wineName: item?.name ?? m.wineId,
-          producer: item?.producer ?? '',
-          vintage: null as null,
-          quantity: m.quantity,
-          assignedAt: m.assignedAt,
-        }
-      })
-  }, [mappings, expandedLocationId, inventoryItems])
-  const winesLoading = false
-
-  const editingLocationWines = useMemo(() => {
-    if (!editingLocation) return []
-    return mappings
-      .filter(m => m.locationId === editingLocation.id)
-      .map(m => {
-        const item = inventoryItems.find(i => i.id === m.wineId)
-        return {
-          wineId: m.wineId,
-          wineName: item?.name ?? m.wineId,
-          producer: item?.producer ?? '',
-          vintage: null as null,
-          quantity: m.quantity,
-          assignedAt: m.assignedAt,
-        }
-      })
-  }, [mappings, editingLocation, inventoryItems])
-  const editingWinesLoading = false
+  // F-1331: the wines on a zone are its live lots, read from the gateway,
+  // the same rows a delivery or a Move writes and the cellar map counts. They
+  // were read from wine_location_mappings, which only this sheet's own stepper
+  // wrote, so a received case never showed here. The house's own name for a
+  // wine wins over the library's (ADR 0124) when the page has the row.
+  // Read only while a zone is open (ZoneWinesRead below), one zone at a time.
 
   useEffect(() => {
     onLocationsChangeRef.current?.(locations)
@@ -200,7 +187,6 @@ export function StorageLocationManager({
       // Cycle through colors deterministically rather than randomly
       color: DEFAULT_COLORS[locations.length % DEFAULT_COLORS.length],
     })
-    setConfirmRemoveWineId(null)
   }
 
   // P0: use addLocation hook so creates are persisted to the server.
@@ -297,7 +283,6 @@ export function StorageLocationManager({
       color: location.color,
     })
     setIsCreating(false)
-    setConfirmRemoveWineId(null)
     setConfirmDeleteId(null)
   }
 
@@ -314,27 +299,6 @@ export function StorageLocationManager({
     setConfirmDeleteId(null)
     resetForm()
   }
-
-  // Wines available to assign: uses mappings cache for the exclusion check (updates immediately after assign)
-  const winesAvailableToAssign = inventoryItems.filter(item => {
-    if (!editingLocation) return false
-    return !mappings.find(m => m.wineId === item.id && m.locationId === editingLocation.id)
-  })
-
-  const winesFilteredBySearch = wineSearchQuery.trim()
-    ? winesAvailableToAssign.filter(
-        item =>
-          item.name.toLowerCase().includes(wineSearchQuery.toLowerCase()) ||
-          item.producer.toLowerCase().includes(wineSearchQuery.toLowerCase()),
-      )
-    : winesAvailableToAssign
-
-  // P3: sort selectedWineId to top so the target wine is always immediately visible
-  const winesForDisplay = selectedWineId
-    ? [...winesFilteredBySearch].sort((a, b) =>
-        a.id === selectedWineId ? -1 : b.id === selectedWineId ? 1 : 0,
-      )
-    : winesFilteredBySearch
 
   const stats = getLocationStats()
 
@@ -571,14 +535,20 @@ export function StorageLocationManager({
 
                         {/* Expanded wine list — server-sourced via useWinesAtLocation */}
                         {expandedLocationId === location.id && (
+                          <ZoneWinesRead locationId={location.id} items={inventoryItems}>
+                          {({ wines: expandedWines, isLoading: winesLoading, unavailable }) => (
                           <div className="mt-2 border-t border-gray-100 pt-2">
                             {winesLoading ? (
                               <div className="flex items-center gap-1.5 text-xs text-gray-400 py-1">
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 <span>Loading wines…</span>
                               </div>
+                            ) : unavailable ? (
+                              <p className="text-xs text-amber-700 py-1">
+                                The wines here could not be loaded. This is not a claim that the zone is empty.
+                              </p>
                             ) : expandedWines.length === 0 ? (
-                              <p className="text-xs text-gray-400 italic py-1">No wines assigned</p>
+                              <p className="text-xs text-gray-400 italic py-1">No bottles here</p>
                             ) : (
                               <div className="space-y-1 max-h-32 overflow-y-auto">
                                 {expandedWines.map((wine) => (
@@ -608,6 +578,8 @@ export function StorageLocationManager({
                               </div>
                             )}
                           </div>
+                          )}
+                          </ZoneWinesRead>
                         )}
                       </div>
                     </div>
@@ -743,12 +715,12 @@ export function StorageLocationManager({
                           readOnly
                           disabled
                           className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
-                          title="Count is managed automatically through wine movements"
+                          title="Bottles on this zone, counted from deliveries and moves"
                         />
                       </div>
                       <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                         <Info className="w-3 h-3" />
-                        Updated via wine movements
+                        Counted from deliveries and moves into and out of this zone
                       </p>
                     </div>
                   </div>
@@ -856,6 +828,8 @@ export function StorageLocationManager({
                   </fieldset>
 
                   {editingLocation && (
+                    <ZoneWinesRead locationId={editingLocation.id} items={inventoryItems}>
+                    {({ wines: editingLocationWines, isLoading: editingWinesLoading, unavailable }) => (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                       {/* Header with live capacity bar */}
                       <div className="mb-3">
@@ -864,7 +838,7 @@ export function StorageLocationManager({
                             <h4 className="text-sm font-semibold text-gray-900">Stored Wines</h4>
                             <p className="text-xs text-gray-500">
                               {editingLocationWines.length} wine
-                              {editingLocationWines.length !== 1 ? 's' : ''} assigned here
+                              {editingLocationWines.length !== 1 ? 's' : ''} here
                             </p>
                           </div>
                           <div className="text-right">
@@ -909,167 +883,34 @@ export function StorageLocationManager({
                                 </p>
                                 <p className="text-xs text-gray-500 truncate">{wine.producer}</p>
                               </div>
-                              {(() => {
-                                const invItem = inventoryItems?.find(i => i.id === wine.wineId)
-                                const maxQty = (invItem?.liveStock || 0) + (invItem?.shadowStock || 0) || Infinity
-                                const atMax = wine.quantity >= maxQty
-                                return (
-                              <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                                <button
-                                  onClick={() =>
-                                    updateWineQuantityAtLocation(
-                                      wine.wineId,
-                                      Math.max(1, wine.quantity - 1),
-                                    )
-                                  }
-                                  className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors"
-                                  title="Decrease quantity"
-                                >
-                                  <Minus className="w-3 h-3" />
-                                </button>
-                                <div className="flex flex-col items-center">
-                                  <input
-                                    type="number"
-                                    value={wine.quantity}
-                                    min={1}
-                                    max={maxQty === Infinity ? undefined : maxQty}
-                                    onChange={(e) => {
-                                      const val = parseInt(e.target.value)
-                                      if (!isNaN(val) && val >= 1) {
-                                        updateWineQuantityAtLocation(wine.wineId, Math.min(val, maxQty === Infinity ? val : maxQty))
-                                      }
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className={`w-10 text-center text-sm font-semibold border rounded focus:outline-none focus:ring-1 bg-transparent py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                                      atMax && maxQty !== Infinity
-                                        ? 'border-amber-300 text-amber-700 focus:border-amber-400 focus:ring-amber-400/20'
-                                        : 'border-transparent hover:border-gray-300 text-gray-700 focus:border-emerald-400 focus:ring-emerald-500/20'
-                                    }`}
-                                    title={maxQty !== Infinity ? `Max ${maxQty} (live + shadow stock)` : 'Click to edit quantity'}
-                                  />
-                                  {maxQty !== Infinity && (
-                                    <span className="text-[9px] text-gray-400 leading-none">/{maxQty}</span>
-                                  )}
-                                </div>
-                                <button
-                                  disabled={atMax && maxQty !== Infinity}
-                                  onClick={() =>
-                                    updateWineQuantityAtLocation(wine.wineId, wine.quantity + 1)
-                                  }
-                                  className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                                  title={atMax && maxQty !== Infinity ? `Already at maximum stock (${maxQty})` : 'Increase quantity'}
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </button>
-                                {atMax && maxQty !== Infinity && (
-                                  <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 ml-0.5" title="Cannot exceed total stock (live + shadow)">
-                                    max
-                                  </span>
-                                )}
-                                {/* P1: inline confirm for wine removal instead of instant delete */}
-                                {confirmRemoveWineId === wine.wineId ? (
-                                  <div className="flex items-center gap-1 ml-1">
-                                    <button
-                                      onClick={() => {
-                                        removeWineFromLocation(wine.wineId)
-                                        setConfirmRemoveWineId(null)
-                                      }}
-                                      className="px-1.5 py-0.5 text-xs bg-rose-600 text-white rounded font-medium hover:bg-rose-700 transition-colors"
-                                    >
-                                      Remove
-                                    </button>
-                                    <button
-                                      onClick={() => setConfirmRemoveWineId(null)}
-                                      className="px-1.5 py-0.5 text-xs border border-gray-200 text-gray-600 rounded font-medium hover:bg-gray-50 transition-colors"
-                                    >
-                                      Keep
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => setConfirmRemoveWineId(wine.wineId)}
-                                    className="p-1 hover:bg-rose-100 rounded text-gray-400 hover:text-rose-600 transition-colors ml-1"
-                                    title="Remove from location"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                                )
-                              })()}
+                              <span
+                                className="ml-2 flex-shrink-0 text-sm font-semibold text-gray-700"
+                                data-testid={`zone-wine-qty-${wine.wineId}`}
+                              >
+                                {wine.quantity}
+                              </span>
                             </div>
                           ))}
                         </div>
                       ) : null}
 
-                      {/* Wine picker / assign new wines */}
-                      <div>
-                        <div className="relative mb-2">
-                          <input
-                            type="text"
-                            value={wineSearchQuery}
-                            onChange={(e) => setWineSearchQuery(e.target.value)}
-                            placeholder={
-                              inventoryItems.length === 0
-                                ? 'No inventory wines loaded'
-                                : 'Search wines to assign…'
-                            }
-                            disabled={inventoryItems.length === 0}
-                            className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
-                            style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
-                          />
-                          <Wine className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                        </div>
+                      {unavailable ? (
+                        <p className="text-xs text-amber-700 mb-3">
+                          The wines here could not be loaded. This is not a claim that the zone is empty.
+                        </p>
+                      ) : null}
 
-                        {inventoryItems.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic text-center py-2">
-                            Open Inventory to load wines, then re-open this modal.
-                          </p>
-                        ) : winesForDisplay.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic text-center py-2">
-                            {wineSearchQuery
-                              ? 'No wines match your search.'
-                              : 'All inventory wines are already assigned here.'}
-                          </p>
-                        ) : (
-                          <div className="space-y-1 max-h-36 overflow-y-auto">
-                            {/* P3: limit raised from 20 to 50; selectedWineId highlighted and sorted first */}
-                            {winesForDisplay.slice(0, 50).map((item) => (
-                              <div
-                                key={item.id}
-                                className={`flex items-center justify-between rounded-lg px-3 py-1.5 border transition-colors ${
-                                  item.id === selectedWineId
-                                    ? 'bg-emerald-50 border-emerald-300'
-                                    : 'bg-white border-gray-200 hover:border-emerald-300'
-                                }`}
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-medium text-gray-900 truncate">
-                                    {item.name}
-                                  </p>
-                                  <p className="text-xs text-gray-400 truncate">{item.producer}</p>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    // P0: assign 1 bottle, not the entire liveStock
-                                    assignWineToLocation(item.id, editingLocation.id, 1)
-                                    setWineSearchQuery('')
-                                  }}
-                                  className="ml-2 flex-shrink-0 px-2 py-1 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition-colors"
-                                >
-                                  Assign
-                                </button>
-                              </div>
-                            ))}
-                            {winesForDisplay.length > 50 && (
-                              <p className="text-xs text-gray-400 text-center py-1">
-                                {winesForDisplay.length - 50} more — refine your search
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      {/* F-1331: the in-zone stepper and "Assign" picker wrote a
+                          second count that no delivery or move ever touched, so
+                          one shelf showed three numbers. Bottles reach a zone
+                          the way they really move. */}
+                      <p className="text-xs text-gray-500" data-testid="zone-wines-how">
+                        Bottles land here when a delivery is received into this zone or moved here. To move bottles,
+                        open the wine in Inventory and use its Locations.
+                      </p>
                     </div>
+                    )}
+                    </ZoneWinesRead>
                   )}
 
                 </div>
@@ -1132,7 +973,7 @@ export function StorageLocationManager({
               <button
                 onClick={recalculateLocationCounts}
                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-                title="Sync bottle counts with actual wine mappings"
+                title="Count the bottles in each zone again"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Sync

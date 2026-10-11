@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **125 as of 2026-10-11, on `fix/sim-w91-storage-counts`** (`check_read_errors_not_swallowed.py`: 1804 files scanned, 125 sites, 125 baselined, 0 allowlisted, PASS). F-1331 moved the Storage Locations dialog's wine list onto the zone's lots, and its wine-name read (`storage-locations.service.ts::master_wine_library::wines`) now refuses on an error instead of naming wines by id.
+>
 > **126 as of 2026-10-10, on the integration rehearsal (round 8)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 126 sites, 126 baselined, 0 allowlisted, PASS). F-898 (`fix/sim-w65-onboarding-auth`) and F-916 (`fix/sim-w65-settings-locations`) each retired one `auth.service.ts::user_restaurant_access` row from the same base (`existingAccess`, `ownerRows`); together with F-922 below, both rows are gone. The notes it supersedes:
 >
 > **128 as of 2026-10-10, on `fix/sim-w65-staff-day` (F-922)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 128 sites, 128 baselined, 0 allowlisted, PASS). `getMyWeek` in `schedule.service.ts` now binds the error on its roster-row, schedule, shifts and read-receipt reads and refuses, so four rows are retired (1 -> 0 each). The note it supersedes:

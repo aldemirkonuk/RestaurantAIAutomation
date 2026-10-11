@@ -93,7 +93,6 @@
     "apps/api-gateway/src/simpos/simpos.service.ts::simpos_check_lines::lines": 2,
     "apps/api-gateway/src/simpos/simpos.service.ts::simpos_checks::existing": 1,
     "apps/api-gateway/src/simpos/simpos.service.ts::simpos_tables::data": 1,
-    "apps/api-gateway/src/storage-locations/storage-locations.service.ts::master_wine_library::wines": 1,
     "apps/api-gateway/src/team/performance.service.ts::team_members::me": 1,
     "apps/api-gateway/src/team/schedule.service.ts::coverage_templates::templates": 1,
     "apps/api-gateway/src/team/schedule.service.ts::schedules::data": 1,
