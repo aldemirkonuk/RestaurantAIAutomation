@@ -71,11 +71,38 @@ describe("decideApproval", () => {
     expect(d.untestable).toEqual(["new_vendor"]);
   });
 
-  it("treats a total it cannot read as untestable rather than as under the ceiling", () => {
-    const policy = [row({ rule: "manager_ceiling", amountLimit: 100 })];
+  it("[F-1134] holds an unpriced order for the ceiling's role and says the price is missing", () => {
+    const policy = [
+      row({
+        rule: "manager_ceiling",
+        amountLimit: 100,
+        requiredRole: "manager",
+      }),
+    ];
     const d = decideApproval(policy, order({ total: null }));
-    expect(d.untestable).toEqual(["manager_ceiling"]);
-    expect(d.firedBy).toEqual([]);
+    // Untestable used to let anyone seal it: an unknown amount is not under.
+    expect(d.requiredRole).toBe("manager");
+    expect(d.firedBy).toEqual(["manager_ceiling"]);
+    expect(d.untestable).toEqual([]);
+    expect(d.reasons[0]).toMatch(
+      /^not priced yet, so it cannot be checked against the 100 ceiling/,
+    );
+  });
+
+  it("[F-1129] prints the ceiling in the house's currency and marks", () => {
+    const policy = [row({ rule: "manager_ceiling", amountLimit: 50000 })];
+    const tr = decideApproval(
+      policy,
+      order({ total: 80000, ceilingCurrency: "TRY", ceilingLocale: "tr-TR" }),
+    );
+    expect(tr.reasons[0]).toBe(
+      "over the ₺50.000 ceiling this house set for a manager",
+    );
+    const us = decideApproval(
+      [row({ rule: "manager_ceiling", amountLimit: 2500.5 })],
+      order({ total: 3000, ceilingCurrency: "USD", ceilingLocale: "en-US" }),
+    );
+    expect(us.reasons[0]).toContain("the $2,500.50 ceiling");
   });
 
   it("ignores a disabled rule but keeps the house's policy non-empty", () => {
@@ -117,7 +144,7 @@ describe("decideApproval — across currencies and price units (F-648)", () => {
       order({ total: 2400, currency: "GBP", ceilingCurrency: "USD" }),
     );
     expect(d.requiredRole).toBe("owner");
-    expect(d.reasons[0]).toMatch(/in GBP, while the 2500 ceiling/);
+    expect(d.reasons[0]).toMatch(/in GBP, while the \$2,500 ceiling/);
   });
 
   it("keeps the old reading when either currency is unknown", () => {

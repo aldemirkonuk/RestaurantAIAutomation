@@ -20,6 +20,7 @@ import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
 import { num, sumByCurrency, type MoneyInCurrency } from './format';
 import { settingsApi } from '@/services/api/settings';
+import { queryKeys } from '@/lib/query-keys';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import type { GroupMark } from '@/lib/parseDecimal';
 import {
@@ -332,6 +333,20 @@ export interface ApprovalGateRow {
   sentence: string | null;
 }
 
+/**
+ * A house rule in words (F-1129): the gateway sends rule ids, and a person
+ * reading "manager_ceiling" learns nothing. Same names /settings gives them.
+ */
+const APPROVAL_RULE_WORDS: Record<string, string> = {
+  manager_ceiling: 'the spending ceiling',
+  new_vendor: 'the first order to a vendor',
+  price_jump: 'a price above what the house last paid',
+};
+
+export function approvalRuleWords(rules: string[]): string {
+  return rules.map((r) => APPROVAL_RULE_WORDS[r] ?? 'a house rule').join('; ');
+}
+
 export interface ApprovalGate {
   restaurantId: string;
   callerRole: string | null;
@@ -390,6 +405,11 @@ export interface OrdersNextData {
   approvalGateError: string | null;
   /** The house's policy in one sentence, once the gate has answered. */
   approvalPolicyNote: string | null;
+  /**
+   * The reader's role here, once the gate has answered (`null` = no role could
+   * be shown). `undefined` while it has not answered — never read as staff.
+   */
+  approvalCallerRole?: string | null;
 }
 
 /** The order's own quantity unit, when it is one of the seven the schema allows. */
@@ -563,8 +583,13 @@ export function useOrdersNextData(): OrdersNextData {
   // verdicts. `retry: false` because a 403/500 here is a real state the page
   // renders in words — silently retrying would make the page look like it is
   // still loading while it has an answer.
+  //
+  // Keyed under the orders key (F-1128): the gate is a verdict on the pending
+  // orders, so whatever re-reads them (the socket, a placement, an edit, an
+  // approval) must re-read it too. Under its own key it was read once, and a
+  // new order showed an armed Approve die to someone who may not seal it.
   const gateQuery = useQuery<ApprovalGate>({
-    queryKey: ['procurement', 'order-approval-gate', restaurantId],
+    queryKey: [...queryKeys.orders.all, 'approval-gate', restaurantId],
     enabled: !!restaurantId,
     retry: false,
     queryFn: async () => {
@@ -674,6 +699,7 @@ export function useOrdersNextData(): OrdersNextData {
       approvalByOrder,
       approvalGateError,
       approvalPolicyNote: gate?.readable ? gate.policyNote : null,
+      approvalCallerRole: gate?.readable ? gate.callerRole : undefined,
       rows,
       counts,
       recurringCount,
@@ -687,7 +713,11 @@ export function useOrdersNextData(): OrdersNextData {
       isError: ordersQuery.isError,
       // Plain words, never axios's "Request failed with status code 429" (F-403).
       errorMessage: ordersQuery.isError ? readFailureWords(ordersQuery.error) : null,
-      refetch: () => void ordersQuery.refetch(),
+      // The verdicts are re-read with the orders they judge (F-1128).
+      refetch: () => {
+        void ordersQuery.refetch();
+        void gateQuery.refetch();
+      },
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, houseCurrency, group, houseZone, gateQuery.data, gateQuery.isError, gateQuery.error]);
+  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, houseCurrency, group, houseZone, gateQuery.data, gateQuery.isError, gateQuery.error, gateQuery.refetch]);
 }

@@ -337,6 +337,12 @@ interface OrderUnderTestRow {
  * nothing is tested, so nothing is read. Every field is "unknown", and with no
  * enabled rule `decideApproval` neither fires nor reports anything untestable.
  */
+/** The house's ceiling currency and number formats (F-648, F-1129). */
+interface HouseCeiling {
+  currency: string | null;
+  locale: string | null;
+}
+
 const NO_RULE_FACTS: OrderUnderTest = {
   total: null,
   isFirstOrderToVendor: null,
@@ -5793,7 +5799,7 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
     row: OrderUnderTestRow,
-    ceilingCurrency: string | null,
+    ceilingCurrency: HouseCeiling,
   ): Promise<{ test: OrderUnderTest; priceUnread: boolean }> {
     const facts = await this.ordersUnderTest(
       restaurantId,
@@ -5839,7 +5845,7 @@ export class ProcurementService {
   private async ordersUnderTest(
     restaurantId: string,
     rows: Array<OrderUnderTestRow & { id: string }>,
-    ceilingCurrency: string | null,
+    ceilingCurrency: HouseCeiling | null,
   ): Promise<Map<string, { test: OrderUnderTest; priceUnread: boolean }>> {
     const db = this.databaseService.supabase;
     const vendorIds = [
@@ -5972,7 +5978,8 @@ export class ProcurementService {
           isFirstOrderToVendor,
           pricePremiumPct: premium.pct,
           currency: row.currency ?? null,
-          ceilingCurrency,
+          ceilingCurrency: ceilingCurrency?.currency ?? null,
+          ceilingLocale: ceilingCurrency?.locale ?? null,
           priceUncomparable: premium.uncomparable,
         },
         priceUnread: unread,
@@ -5983,16 +5990,19 @@ export class ProcurementService {
 
   /**
    * The currency the house's ceiling is in: `restaurants.currency`, since
-   * `amount_limit` carries none of its own (F-648). `null` when unset or
-   * unreadable — the ceiling is then tested as before, and the failure logged.
+   * `amount_limit` carries none of its own (F-648), and the house's number
+   * formats, so the reasons print the ceiling the way the house writes money
+   * (F-1129). Each `null` when unset or unreadable — the ceiling is then
+   * tested as before, and the failure logged.
    */
   private async readCeilingCurrency(
     restaurantId: string,
-  ): Promise<string | null> {
+  ): Promise<HouseCeiling> {
+    const none: HouseCeiling = { currency: null, locale: null };
     try {
       const { data, error } = await this.databaseService.supabase
         .from("restaurants")
-        .select("currency")
+        .select("currency, country, timezone")
         .eq("id", restaurantId)
         .maybeSingle();
       if (error) {
@@ -6000,11 +6010,19 @@ export class ProcurementService {
           `The house's currency could not be read for the approval gate: ${error.message}. ` +
             `The ceiling is tested without a currency.`,
         );
-        return null;
+        return none;
       }
-      return (data as { currency?: string | null } | null)?.currency ?? null;
+      const house = data as {
+        currency?: string | null;
+        country?: string | null;
+        timezone?: string | null;
+      } | null;
+      return {
+        currency: house?.currency ?? null,
+        locale: house ? houseFrame(house).locale : null,
+      };
     } catch {
-      return null;
+      return none;
     }
   }
 

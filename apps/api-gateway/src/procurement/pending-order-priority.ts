@@ -151,9 +151,17 @@ export function pendingOrderPriority(
       unknown.add("price_jump");
     }
 
-    if (decision.firedBy.includes("manager_ceiling")) {
+    // An unpriced order is held by the ceiling (F-1134), but nothing says it
+    // is large: the amount is unknown, not over.
+    if (
+      decision.firedBy.includes("manager_ceiling") &&
+      facts.test.total !== null
+    ) {
       reasons.add("manager_ceiling");
-    } else if (decision.untestable.includes("manager_ceiling")) {
+    } else if (
+      decision.firedBy.includes("manager_ceiling") ||
+      decision.untestable.includes("manager_ceiling")
+    ) {
       unknown.add("manager_ceiling");
     }
 

@@ -391,6 +391,27 @@ describe('stepping between answers', () => {
 /* ── the two acts ────────────────────────────────────────────────────────── */
 
 describe('reject', () => {
+  it('[F-1130] is shut for staff, with the reason in words, and sends nothing', async () => {
+    mount({}, { callerRole: 'staff' });
+    fireEvent.change(screen.getByTestId('reject-reason'), {
+      target: { value: 'Price is 18% over what we last paid.' },
+    });
+    // Disabled, never hidden.
+    expect(rejectDie()).toBeInTheDocument();
+    hold(rejectDie());
+    expect(screen.getByTestId('reject-held')).toHaveTextContent(
+      /Only a manager or an owner can reject an order/,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cancelMintMock).not.toHaveBeenCalled();
+    expect(cancelMock.mutate).not.toHaveBeenCalled();
+  });
+
+  it('[F-1130] stays armed for a manager, and while the gate has not answered', () => {
+    mount({}, { callerRole: 'manager' });
+    expect(screen.queryByTestId('reject-held')).toBeNull();
+  });
+
   it('will not send without a reason, and says why', async () => {
     mount();
     hold(rejectDie());
