@@ -150,6 +150,12 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // route, GET orders/open/by-provider (the /vendors open-order counts),
     // names all three house roles under RolesGuard; every route it already
     // had is JwtAuthGuard-only and is recorded "open", unchanged.
+    // PricingController joined with sim F-1175 (wave 83, a rehit of
+    // MENU-02): GET /pricing/advice carries every wine's cost and margin, so
+    // it names owner AND manager under RolesGuard, as locksForRole already
+    // withholds the advice from staff. Its writes check the house's role in
+    // the handler (assertCanManageRestaurant) and are recorded "open",
+    // unchanged.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -165,6 +171,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "house/house-day.controller.ts",
       "pos-hub/pos-hub.controller.ts",
       "price-index/price-index.controller.ts",
+      "pricing/pricing.controller.ts",
       "procurement/documents/credits.controller.ts",
       "procurement/procurement.controller.ts",
       "procurement/receiving.controller.ts",

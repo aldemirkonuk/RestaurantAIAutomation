@@ -42,6 +42,7 @@
  * margin and never a default (ADR 0020, ADR 0051).
  */
 import { priceForMargin } from "../analytics/engine/pricing-agility";
+import { moneyIn } from "../procurement/agreed-price";
 
 export type PriceKind = "bottle" | "glass";
 
@@ -69,6 +70,18 @@ export interface AdviceInput {
    * the glass `pour_unconfirmed`. Ignored for a bottle; omitted = not asked.
    */
   pourConfirmed?: boolean;
+  /**
+   * The house's money and number formats (`restaurants.currency`, the formats
+   * tag of `readHouseMoney`), so a sentence reads "₺1.250,00", not "1250.00"
+   * (F-1174). Omitted or null prints the bare figure, as before.
+   */
+  money?: HouseMoneyTerms;
+}
+
+/** The house's currency code and formats tag; either may be unknown (null). */
+export interface HouseMoneyTerms {
+  currency?: string | null;
+  locale?: string | null;
 }
 
 export interface PriceAdvice {
@@ -88,7 +101,7 @@ export interface PriceAdvice {
    * computed (raise, lower, on_target); null otherwise.
    */
   gapPct: number | null;
-  /** One plain sentence a manager can read. No currency symbol: the page adds the house's. */
+  /** One plain sentence a manager can read, its money in the house's own (F-1174). */
   sentence: string;
 }
 
@@ -97,8 +110,16 @@ export function toCents(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function fmt(n: number): string {
-  return n.toFixed(2);
+/**
+ * A menu price in the house's money and formats (F-1174). With neither known
+ * it is the bare figure to the cent, exactly what these sentences printed.
+ */
+export function fmtMoney(n: number, money?: HouseMoneyTerms | null): string {
+  return moneyIn(n, money?.currency, {
+    digits: 2,
+    unrecorded: "bare",
+    locale: money?.locale ?? null,
+  });
 }
 
 function pct(n: number): string {
@@ -122,6 +143,7 @@ export function glassCostFrom(
 
 export function adviseToTarget(input: AdviceInput): PriceAdvice {
   const { kind, price, unitCost, targetPct, bandPct } = input;
+  const fmt = (n: number) => fmtMoney(n, input.money);
   const base: PriceAdvice = {
     kind,
     state: "no_target",
