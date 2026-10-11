@@ -503,7 +503,9 @@ export class NotesService {
           title: `A note about the week of ${weekWords(weekStart, locale)}`,
           message: body,
           priority: "high",
-          actionUrl: "/team",
+          // F-1226: the week the note is about; bare /team opens this week,
+          // where a note about another week is not shown.
+          actionUrl: `/team?week=${weekStart}`,
           actionLabel: "Open Team",
         },
         { onlyUserIds: userIds },
@@ -545,7 +547,7 @@ export class NotesService {
         title: "A note from your manager",
         body,
         priority: "high",
-        data: { type: "team_note", actionUrl: "/team" },
+        data: { type: "team_note", actionUrl: `/team?week=${weekStart}` },
       });
       pushDetail = outcome.detail;
       delivered = { ...delivered, push: outcome.tokens };

@@ -41,6 +41,7 @@ import {
   UpdateShiftDto,
 } from "./dto/team.dto";
 import { readHouseZone } from "../common/house-day";
+import { houseMembersInRoles } from "../common/tenant/live-membership";
 import { houseFrame as frameOf } from "../common/house-frame";
 
 /** Minutes since midnight from an "HH:MM" string. */
@@ -816,12 +817,81 @@ export class ScheduleService {
         metadata: { scheduleId, weekStart: schedule.week_start },
       },
     );
+    const reach = await this.crewReach(
+      restaurantId,
+      userId,
+      announced?.ids ?? [],
+    );
     return {
       schedule,
       receiptsCleared,
       republished: current.status === "published",
-      notified: announced?.inserted ?? 0,
+      // F-1228: the crew told, never the person who pressed Publish or the
+      // other owners and managers; `null` when who got it could not be read.
+      notified: reach.crew,
+      // False only when the notice was written to nobody at all (F-1148).
+      announced: (announced?.inserted ?? 0) > 0,
+      noAccount: reach.noAccount,
       heldAway: announced?.routing?.heldAway ?? 0,
+    };
+  }
+
+  /**
+   * F-1228: how many of the crew a house notice reached, and how many on the
+   * roster have no account to reach at all. The notice goes to every member,
+   * so its own count included the publisher and every owner and manager, and
+   * a week no crew member heard about read as told. A count that cannot be
+   * read is `null`, never 0.
+   */
+  private async crewReach(
+    restaurantId: string,
+    actorId: string,
+    notificationIds: string[],
+  ): Promise<{ crew: number | null; noAccount: number | null }> {
+    // The house's owners and managers: the one shared role reader (it
+    // throws on a failed read, which leaves the reach unknown).
+    const leaders = houseMembersInRoles(this.sb, restaurantId, [
+      "owner",
+      "manager",
+    ]).then(
+      (ids) => ({ ids, error: null as { message: string } | null }),
+      (e: Error) => ({ ids: [] as string[], error: { message: e.message } }),
+    );
+    const [rows, lead, unlinked] = await Promise.all([
+      notificationIds.length
+        ? this.sb
+            .from("notifications")
+            .select("user_id")
+            .in("id", notificationIds)
+        : Promise.resolve({ data: [] as any[], error: null }),
+      leaders,
+      this.sb
+        .from("team_members")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "active")
+        .is("user_id", null),
+    ]);
+    const failed = rows.error ?? lead.error;
+    if (failed) {
+      this.logger.warn(
+        `crewReach: who a notice reached in ${restaurantId} could not be read: ${failed.message}`,
+      );
+    }
+    if (unlinked.error) {
+      this.logger.warn(
+        `crewReach: the roster of ${restaurantId} could not be read: ${unlinked.error.message}`,
+      );
+    }
+    const leads = new Set(lead.ids);
+    const crew = new Set(
+      ((rows.data ?? []) as any[])
+        .map((r) => r.user_id as string)
+        .filter((id) => id && id !== actorId && !leads.has(id)),
+    );
+    return {
+      crew: failed ? null : crew.size,
+      noAccount: unlinked.error ? null : (unlinked.data ?? []).length,
     };
   }
 
@@ -1364,6 +1434,7 @@ export class ScheduleService {
         "Nobody holds this shift, so there is no call-out to report. It is already open.",
       );
     }
+    await this.assertCoverable(restaurantId, original, "callout");
 
     // Keep the original on the caller's row as "callout" (strike-through),
     // and open a fresh unassigned cover slot for the same window. The state
@@ -1455,6 +1526,13 @@ export class ScheduleService {
           : "Someone still holds this shift, so nobody could claim it. Report a call-out first, then offer the cover slot it opens.",
       );
     }
+    await this.assertCoverable(restaurantId, shift, "offer");
+    // F-1225: an offer to nobody is not an offer; it was answered as sent.
+    if (!dto.memberIds?.length) {
+      throw new BadRequestException(
+        "Nobody is free to cover this shift, so nobody was asked.",
+      );
+    }
 
     const { data: members } = await this.sb
       .from("team_members")
@@ -1495,23 +1573,85 @@ export class ScheduleService {
     );
     const targetUserIds = free.map((m: any) => m.user_id).filter(Boolean);
 
+    // F-1225: the offer lands on each person's bell, so someone who uses only
+    // the web sees it too, and the funnel pushes it to their phone unless
+    // they turned push off. `notified` is the people it was written to, not
+    // the people it was addressed to: a push that found no phone, or an
+    // inbox write that failed, used to read as asked.
+    let notified = 0;
     if (targetUserIds.length) {
-      await this.push.sendToUsers(targetUserIds, {
-        title: "Shift available — can you cover?",
-        body: `${shift.role ?? "Shift"} ${shift.shift_date} ${shift.start_time}-${shift.end_time}. Tap to claim.`,
-        priority: "high",
-        data: {
-          type: "shift_offer",
-          shiftId,
+      const out = await this.notifications.persistForRestaurant(
+        restaurantId,
+        {
+          type: "system",
+          title: "Shift available — can you cover?",
+          message: `${shift.role ?? "Shift"} ${shift.shift_date} ${shift.start_time}-${shift.end_time}. Open it to claim.`,
+          priority: "high",
           actionUrl: shiftLink(shiftId, shift.shift_date),
+          actionLabel: "Claim it",
+          metadata: { shiftId, action: "shift_offer" },
         },
-      });
+        { onlyUserIds: targetUserIds },
+      );
+      notified = out?.inserted ?? 0;
     }
     return {
       offered: free.length,
-      notified: targetUserIds.length,
+      notified,
+      // On the roster but with no account: nothing could reach them.
+      noAccount: free.length - targetUserIds.length,
       setAside: (members ?? []).length - free.length,
     };
+  }
+
+  /**
+   * F-1224: cover is asked for only on a week the crew can see and a shift
+   * still ahead. A week still being drawn is not out to staff, so nobody could
+   * claim its cover (assignCover, F-506), and a shift that is over can no
+   * longer be worked (F-507): a call-out on either told the whole house
+   * "cover needed" for a slot every claim was refused. Checked before
+   * anything is written or sent.
+   */
+  private async assertCoverable(
+    restaurantId: string,
+    shift: {
+      schedule_id?: string | null;
+      shift_date?: string | null;
+      start_time?: string | null;
+      end_time?: string | null;
+    },
+    act: "callout" | "offer",
+  ): Promise<void> {
+    const { data: week, error } = shift.schedule_id
+      ? await this.sb
+          .from("schedules")
+          .select("status")
+          .eq("id", shift.schedule_id)
+          .eq("restaurant_id", restaurantId)
+          .maybeSingle()
+      : { data: null, error: null };
+    if (error) {
+      this.logger.error(
+        `assertCoverable: the week of a shift in ${restaurantId} could not be read: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not check whether this week is published, so nothing was changed and nobody was told. Try again.",
+      );
+    }
+    if (week?.status !== "published") {
+      throw new ConflictException(
+        act === "callout"
+          ? "This week is not published yet, so the crew has not seen it. Change the shift on the draft instead; nobody was told."
+          : "This week is not published yet, so nobody could take its shifts. Publish the week first; nobody was asked.",
+      );
+    }
+    if (shiftHasEnded(shift, await this.houseClockNow(restaurantId))) {
+      throw new ConflictException(
+        act === "callout"
+          ? "This shift has already ended, so there is no cover left to find. Nothing was changed and nobody was told."
+          : "This shift has already ended, so nobody can take it now. Nobody was asked.",
+      );
+    }
   }
 
   /**

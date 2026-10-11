@@ -15,7 +15,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
@@ -70,7 +70,7 @@ const shift = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function grid(shifts: unknown[], onEditShift = vi.fn()) {
+function grid(shifts: unknown[], onEditShift = vi.fn(), published = true) {
   return (
     <WeekGrid
       weekStart="2026-08-31"
@@ -88,6 +88,7 @@ function grid(shifts: unknown[], onEditShift = vi.fn()) {
       scheduleId="sch1"
       onEditShift={onEditShift}
       onChanged={() => {}}
+      published={published}
     />
   );
 }
@@ -96,6 +97,13 @@ beforeEach(() => {
   api.createShift.mockClear();
   api.offerCover.mockClear();
   api.reportCallout.mockClear();
+  // The week's shifts are still ahead (F-1224): the device clock stands in
+  // for the house's, as it does with no zone.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-08-30T12:00:00'));
+});
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 /** A called-out shift and the open cover slot its call-out opened. */
@@ -247,5 +255,83 @@ describe('F-1073 — the grid marks the house’s today, not the device’s', ()
     const lit = container.querySelectorAll('.tm-dayhead[data-today="true"]');
     expect(lit).toHaveLength(1);
     expect(lit[0].querySelector('.tm-dayhead__n')?.textContent).toBe(fmtDayShort(house));
+  });
+});
+
+describe('F-1224 — no call-out or offer where nobody could take the shift', () => {
+  it('offers neither on a week not yet published, and says why', () => {
+    render(grid(calledOut().concat(shift('s2', { shift_date: '2026-09-01' })), vi.fn(), false), {
+      wrapper,
+    });
+    fireEvent.click(screen.getAllByText('Bar')[0]);
+    expect(screen.queryByRole('button', { name: /^Offer cover/ })).toBeNull();
+    expect(screen.getByText(/not published yet/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText('Bar')[1]);
+    expect(screen.queryByRole('button', { name: 'Report a call-out' })).toBeNull();
+  });
+
+  it('offers neither on a shift that is over, in the panel or the menu', () => {
+    vi.setSystemTime(new Date('2026-08-31T18:00:00'));
+    render(grid([shift('s1')]), { wrapper });
+    const chip = screen.getByText('Bar');
+    fireEvent.click(chip);
+    expect(screen.queryByRole('button', { name: 'Report a call-out' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Offer cover/ })).toBeNull();
+    expect(screen.getByText(/This shift is over/)).toBeInTheDocument();
+    fireEvent.contextMenu(chip);
+    expect(screen.queryByText('Report a call-out')).toBeNull();
+    expect(screen.queryByText('Offer cover')).toBeNull();
+  });
+});
+
+describe('F-1225 — an offer says whom it reached, and is never sent to nobody', () => {
+  it('names how many were asked and who has no account', async () => {
+    api.offerCover.mockResolvedValueOnce({ offered: 2, notified: 1, noAccount: 1 } as never);
+    render(grid(calledOut()), { wrapper });
+    fireEvent.click(screen.getAllByText('Bar')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Offer cover to 1' }));
+    expect(await screen.findByText(/Asked 1 person just now/)).toBeInTheDocument();
+    expect(screen.getByText(/1 person picked has no account/)).toBeInTheDocument();
+  });
+
+  it('says nobody was reached when the offer landed on no bell', async () => {
+    api.offerCover.mockResolvedValueOnce({ offered: 1, notified: 0, noAccount: 0 } as never);
+    render(grid(calledOut()), { wrapper });
+    fireEvent.click(screen.getAllByText('Bar')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Offer cover to 1' }));
+    expect(await screen.findByText(/Nobody could be reached/)).toBeInTheDocument();
+  });
+
+  it('greys the menu’s Offer cover when nobody is free', () => {
+    // Ada is busy that day, and Sam called out: nobody is left to ask.
+    render(
+      grid([...calledOut(), shift('a1', { member_id: 'm2', start_time: '18:00', end_time: '22:00' })]),
+      { wrapper },
+    );
+    fireEvent.contextMenu(screen.getAllByText('Bar')[0]);
+    // The menu's item and the opened detail's button both say it, both greyed.
+    const items = screen.getAllByText('Nobody is free to cover').map((t) => t.closest('button'));
+    expect(items).toHaveLength(2);
+    for (const item of items) expect(item).toBeDisabled();
+    expect(api.offerCover).not.toHaveBeenCalled();
+  });
+});
+
+describe('F-1231 — the shift detail opens where a phone can see it', () => {
+  it('holds the detail to the visible left edge of the scrolling grid', () => {
+    const css = readFileSync(join(__dirname, 'team-next.css'), 'utf8');
+    const style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+    try {
+      render(grid([shift('s1')]), { wrapper });
+      fireEvent.click(screen.getByText('Bar'));
+      const cs = getComputedStyle(document.querySelector('.tm-expand') as HTMLElement);
+      expect(cs.position).toBe('sticky');
+      expect(cs.left).toBe('0px');
+      expect(css).toMatch(/\.tm-expand \{[^}]*width: 100cqw/);
+    } finally {
+      style.remove();
+    }
   });
 });

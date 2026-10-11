@@ -66,6 +66,23 @@ const MANAGER = "user-manager";
 const STAFF = "user-staff";
 const WEEK = "2026-09-07"; // a Monday
 
+/**
+ * F-1224: a call-out is taken only on a published week and a shift still
+ * ahead. The writers below are about who is told the money, so their week is
+ * made live and the clock set before it, around `run` alone.
+ */
+async function onALiveWeek<T>(db: StubDb, run: () => Promise<T>): Promise<T> {
+  for (const s of db.tables.schedules) s.status = "published";
+  jest
+    .useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
+    .setSystemTime(new Date("2026-09-01T12:00:00Z"));
+  try {
+    return await run();
+  } finally {
+    jest.useRealTimers();
+  }
+}
+
 function seed(): StubDb {
   return withReleaseRpc(makeStubDb({
     user_restaurant_access: [
@@ -354,7 +371,9 @@ describe("W1 — a manager's week carries hours, never money", () => {
     const assigned = await svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-staff" } as any);
     expect("labor_cost" in assigned).toBe(false);
 
-    const callout = await svc.reportCallout(MANAGER, RID, created.id, {} as any);
+    const callout = await onALiveWeek(db, () =>
+      svc.reportCallout(MANAGER, RID, created.id, {} as any),
+    );
     expect("labor_cost" in callout.callout).toBe(false);
     expect("labor_cost" in callout.open).toBe(false);
   });
@@ -1055,7 +1074,9 @@ describe("B1 — the Art. 68 minimum, keyed on worked time", () => {
   it("opens a call-out's cover slot with the break on record for the slot", async () => {
     const db = seed();
     db.tables.shifts.push(shift({ id: "co", member_id: "m-staff", end_time: "19:00", recorded_break_min: 20, labor_cost: 193.33 }));
-    const r = await scheduleOf(db).reportCallout(MANAGER, RID, "co", {} as any);
+    const r = await onALiveWeek(db, () =>
+      scheduleOf(db).reportCallout(MANAGER, RID, "co", {} as any),
+    );
     expect(db.tables.shifts.find((s) => s.id === r.open.id)?.recorded_break_min).toBe(20);
   });
 
@@ -1294,7 +1315,12 @@ describe("F-936 — the person who asked can withdraw a request still waiting", 
         status: "approved",
       } as any),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(db.tables.notifications).toHaveLength(0);
+    // The request's own notice to the leads (F-1227) stays; no decision is told.
+    expect(
+      db.tables.notifications.filter(
+        (n) => n.metadata?.action !== "time_off_requested",
+      ),
+    ).toHaveLength(0);
   });
 
   it("refuses someone else's request, and one already answered", async () => {
@@ -2874,5 +2900,54 @@ describe("F-1034 — a decided time-off request is not decided again from a stal
       expectStatus: "approved",
     } as any);
     expect(marked.leave_type).toBe("paid");
+  });
+});
+
+describe("F-1227 — a staff member's time-off request reaches the house's leads", () => {
+  it("puts it on every owner's and manager's bell, and says how many were told", async () => {
+    const db = seed();
+    const req: any = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: "2026-09-08",
+    } as any);
+    expect(req.managersTold).toBe(2);
+    const told = db.tables.notifications.filter(
+      (n) => n.metadata?.action === "time_off_requested",
+    );
+    expect(told.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+    expect(told[0].message).toContain(
+      "Sam asked for 2026-09-07 to 2026-09-08 off",
+    );
+  });
+
+  it("says nobody was told when the leads cannot be read, and still files the request", async () => {
+    const db = seed();
+    db.errors["user_restaurant_access:select"] = { message: "down" };
+    // The caller's own access read goes through first.
+    const team = teamOf(db);
+    (team as any).assertAccess = async () => ({
+      role: "staff",
+      payAccess: false,
+    });
+    const req: any = await team.createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    expect(req.managersTold).toBe(0);
+    expect(db.tables.time_off_requests).toHaveLength(1);
+    expect(db.tables.notifications).toHaveLength(0);
+  });
+
+  it("tells nobody when a manager files for someone; they already know", async () => {
+    const db = seed();
+    const req: any = await teamOf(db).createTimeOff(MANAGER, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    expect(req.managersTold).toBeUndefined();
+    expect(db.tables.notifications).toHaveLength(0);
   });
 });

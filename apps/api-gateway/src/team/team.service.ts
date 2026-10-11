@@ -2402,7 +2402,49 @@ export class TeamService {
       .single();
     if (error)
       throw new InternalServerErrorException("Failed to create request");
+    // F-1227: a staff member's own request lands on the bell of the house's
+    // owners and managers; it used to wait unseen until someone opened /team.
+    // A manager filing for someone already knows. `managersTold` is what the
+    // staff page says, so "went to your manager" is said only when it did.
+    if (role === "staff") {
+      const managersTold = await this.tellLeaders(userId, restaurantId, data);
+      return { ...data, managersTold };
+    }
     return data;
+  }
+
+  /**
+   * F-1227: the bell row for a new staff time-off request, on the house leads'
+   * shared notice path (ADR 0242). The number of people told; 0 when nobody was.
+   */
+  private async tellLeaders(
+    requesterId: string,
+    restaurantId: string,
+    row: { member_id?: string; start_date?: string; end_date?: string },
+  ): Promise<number> {
+    const { data: member, error: memberErr } = await this.sb
+      .from("team_members")
+      .select("display_name")
+      .eq("id", row.member_id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (memberErr) {
+      this.logger.warn(
+        `createTimeOff: the requester's name could not be read — ${memberErr.message}`,
+      );
+    }
+    const from = String(row.start_date ?? "").slice(0, 10);
+    const until = String(row.end_date ?? "").slice(0, 10);
+    const days = from === until ? from : `${from} to ${until}`;
+    const who = (member as any)?.display_name || "Someone on the team";
+    const told = await noticeToHouseLeads(this.sb, this.logger, {
+      restaurantId,
+      exceptUserId: requesterId,
+      title: `${who} asked for time off`,
+      message: `${who} asked for ${days} off. It waits for your decision under Time off on Team.`,
+      metadata: { action: "time_off_requested" },
+    });
+    return told.length;
   }
 
   async reviewTimeOff(

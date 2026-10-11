@@ -1,6 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from "@nestjs/common";
 import { ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
@@ -109,6 +113,13 @@ function service(db: StubDb): ScheduleService {
 }
 
 const WEEK = "2026-09-07"; // a Monday
+
+/** The house's clock before WEEK's shifts end, so a call-out on them is live (F-1224). */
+function beforeTheWeek(): void {
+  jest
+    .useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
+    .setSystemTime(new Date("2026-09-01T12:00:00Z"));
+}
 
 describe("ScheduleService — T1: a partial labour sum never presents itself as a total", () => {
   it("withholds the week total while any assigned shift is unpriced", async () => {
@@ -624,6 +635,7 @@ describe("ScheduleService — F-1148: publish says how many were told", () => {
     const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
     expect(db.tables.schedules[0].status).toBe("published");
     expect(res.notified).toBe(0);
+    expect(res.announced).toBe(false);
   });
 
   it("reports how many were told, and how many were Away and held back", async () => {
@@ -642,9 +654,62 @@ describe("ScheduleService — F-1148: publish says how many were told", () => {
         degraded: null,
       },
     });
+    for (const [i, user] of ["user-sam", "user-ray"].entries()) {
+      db.tables.user_restaurant_access.push({
+        id: `a-crew-${i}`,
+        user_id: user,
+        restaurant_id: RID,
+        role: "staff",
+        is_active: true,
+      });
+    }
+    db.tables.notifications.push(
+      ...[MANAGER, OWNER, "user-sam", "user-ray"].map((user_id, i) => ({
+        id: `n${i + 1}`,
+        user_id,
+        restaurant_id: RID,
+      })),
+    );
     const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
-    expect(res.notified).toBe(4);
+    // F-1228: the crew told; the publisher and the owner are not the crew.
+    expect(res.notified).toBe(2);
+    expect(res.announced).toBe(true);
     expect(res.heldAway).toBe(2);
+  });
+
+  it("F-1228: a week only the owners and managers heard about reads as no crew told", async () => {
+    const db = seed();
+    draftWeek(db);
+    for (const m of db.tables.team_members) m.status = "active";
+    db.tables.notifications.push(
+      { id: "n1", user_id: MANAGER, restaurant_id: RID },
+      { id: "n2", user_id: OWNER, restaurant_id: RID },
+    );
+    const svc = service(db);
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 2,
+      ids: ["n1", "n2"],
+    });
+    const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
+    expect(res.notified).toBe(0);
+    expect(res.announced).toBe(true);
+    // Both roster people have no account, so nothing could reach them.
+    expect(res.noAccount).toBe(2);
+  });
+
+  it("F-1228: says the reach is unknown, not none, when who got it cannot be read", async () => {
+    const db = seed();
+    draftWeek(db);
+    db.errors["notifications:select"] = { message: "down" };
+    const svc = service(db);
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 3,
+      ids: ["n1", "n2", "n3"],
+    });
+    const res: any = await svc.publish(MANAGER, RID, "s1", {} as any);
+    expect(db.tables.schedules[0].status).toBe("published");
+    expect(res.notified).toBeNull();
+    expect(res.announced).toBe(true);
   });
 });
 
@@ -903,6 +968,8 @@ describe("ScheduleService — F-348: two staff claiming one open shift", () => {
  * /team reads `week`; `?shift=` alone opened on this week, whatever the date.
  */
 describe("ScheduleService — F-217: a shift's link names its week", () => {
+  beforeEach(() => beforeTheWeek());
+  afterEach(() => jest.useRealTimers());
   it("a call-out's cover notice links the week of the shift", async () => {
     const db = seed();
     db.tables.schedules.push({
@@ -943,6 +1010,8 @@ describe("ScheduleService — F-217: a shift's link names its week", () => {
  * second cover slot and sends no second alert.
  */
 describe("ScheduleService — cover is offered and called out once (F-1113, F-1116)", () => {
+  beforeEach(() => beforeTheWeek());
+  afterEach(() => jest.useRealTimers());
   function heldShift(db: StubDb) {
     db.tables.schedules.push({
       id: "s1",
@@ -965,6 +1034,12 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
   function pushOf(svc: ScheduleService): jest.Mock {
     return (svc as any).push.sendToUsers;
   }
+  /** The offers the funnel was asked to write (the call-out notice is not one). */
+  function offersOf(): any[][] {
+    return lastNotifications.persistForRestaurant.mock.calls.filter(
+      (c: any[]) => c[1]?.metadata?.action === "shift_offer",
+    );
+  }
 
   it("refuses to offer a shift its person still holds, and pushes nothing", async () => {
     const db = seed();
@@ -975,6 +1050,7 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
       .catch((e) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect(pushOf(svc)).not.toHaveBeenCalled();
+    expect(offersOf()).toHaveLength(0);
   });
 
   it("refuses to offer the called-out row, and offers the cover slot it opened", async () => {
@@ -994,13 +1070,17 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
       .offerCover(MANAGER, RID, "sh-held", { memberIds: ["m-ali"] } as any)
       .catch((e) => e);
     expect(err).toBeInstanceOf(ConflictException);
-    expect(pushOf(svc)).not.toHaveBeenCalled();
+    expect(offersOf()).toHaveLength(0);
 
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 1,
+      ids: ["n1"],
+    });
     const res = await svc.offerCover(MANAGER, RID, (open as any).id, {
       memberIds: ["m-ali"],
     } as any);
     expect(res.notified).toBe(1);
-    expect(pushOf(svc).mock.calls[0][1].data.shiftId).toBe((open as any).id);
+    expect(offersOf()[0][1].metadata.shiftId).toBe((open as any).id);
   });
 
   it("F-1158: never asks someone on approved leave or Away that day", async () => {
@@ -1057,10 +1137,14 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
     const svc = service(db);
     const { open } = await svc.reportCallout(OWNER, RID, "sh-held", {} as any);
 
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 2,
+      ids: ["n1", "n2"],
+    });
     const res = await svc.offerCover(MANAGER, RID, (open as any).id, {
       memberIds: ["m-leave", "m-away", "m-free", "m-pending"],
     } as any);
-    expect(pushOf(svc).mock.calls[0][0].sort()).toEqual([
+    expect(offersOf()[0][2].onlyUserIds.sort()).toEqual([
       "user-free",
       "user-pending",
     ]);
@@ -1107,6 +1191,129 @@ describe("ScheduleService — cover is offered and called out once (F-1113, F-11
       .catch((e) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect(db.tables.shifts.filter((s) => s.state === "open")).toHaveLength(0);
+    expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-1224 — cover is asked for only on a week the crew can see and a shift
+ * still ahead: a draft-week or past call-out told the whole house "cover
+ * needed" for a slot every claim was refused.
+ * F-1225 — an offer says whom it reached, and is never sent to nobody.
+ */
+describe("ScheduleService — cover only on a live week, and an offer says whom it reached (F-1224, F-1225)", () => {
+  afterEach(() => jest.useRealTimers());
+  function week(db: StubDb, status: string) {
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status,
+    });
+    db.tables.shifts.push(
+      {
+        id: "sh-held",
+        restaurant_id: RID,
+        schedule_id: "s1",
+        member_id: "m-priced",
+        shift_date: WEEK,
+        start_time: "09:00",
+        end_time: "17:00",
+        role: "server",
+        state: "assigned",
+      },
+      {
+        id: "sh-open",
+        restaurant_id: RID,
+        schedule_id: "s1",
+        member_id: null,
+        shift_date: WEEK,
+        start_time: "09:00",
+        end_time: "17:00",
+        role: "server",
+        state: "open",
+      },
+    );
+    db.tables.team_members.push(
+      {
+        id: "m-ali",
+        restaurant_id: RID,
+        user_id: "user-ali",
+        display_name: "Ali",
+      },
+      { id: "m-bo", restaurant_id: RID, user_id: null, display_name: "Bo" },
+    );
+  }
+
+  it("refuses a call-out and an offer on a week not yet published, and tells nobody", async () => {
+    const db = seed();
+    week(db, "draft");
+    beforeTheWeek();
+    const svc = service(db);
+    const callout = await svc
+      .reportCallout(OWNER, RID, "sh-held", {} as any)
+      .catch((e) => e);
+    expect(callout).toBeInstanceOf(ConflictException);
+    expect(callout.message).toMatch(/not published yet/);
+    const offer = await svc
+      .offerCover(MANAGER, RID, "sh-open", { memberIds: ["m-ali"] } as any)
+      .catch((e) => e);
+    expect(offer).toBeInstanceOf(ConflictException);
+    expect(db.tables.shifts.find((s) => s.id === "sh-held")?.state).toBe(
+      "assigned",
+    );
+    expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("refuses a call-out and an offer on a shift that has ended, and tells nobody", async () => {
+    const db = seed();
+    week(db, "published");
+    jest
+      .useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
+      .setSystemTime(new Date("2026-09-08T12:00:00Z"));
+    const svc = service(db);
+    const callout = await svc
+      .reportCallout(OWNER, RID, "sh-held", {} as any)
+      .catch((e) => e);
+    expect(callout).toBeInstanceOf(ConflictException);
+    expect(callout.message).toMatch(/already ended/);
+    const offer = await svc
+      .offerCover(MANAGER, RID, "sh-open", { memberIds: ["m-ali"] } as any)
+      .catch((e) => e);
+    expect(offer).toBeInstanceOf(ConflictException);
+    expect(db.tables.shifts.filter((s) => s.state === "open")).toHaveLength(1);
+    expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("puts the offer on the bell and counts the people it was written to, not addressed to", async () => {
+    const db = seed();
+    week(db, "published");
+    beforeTheWeek();
+    const svc = service(db);
+    // The funnel wrote nothing: the person is asked on paper only.
+    lastNotifications.persistForRestaurant.mockResolvedValueOnce({
+      inserted: 0,
+      ids: [],
+    });
+    const res: any = await svc.offerCover(MANAGER, RID, "sh-open", {
+      memberIds: ["m-ali", "m-bo"],
+    } as any);
+    const [, payload, opts] = lastNotifications.persistForRestaurant.mock
+      .calls[0] as any[];
+    expect(opts).toEqual({ onlyUserIds: ["user-ali"] });
+    expect(payload.actionUrl).toBe(`/team?shift=sh-open&week=${WEEK}`);
+    expect(res).toMatchObject({ offered: 2, notified: 0, noAccount: 1 });
+  });
+
+  it("refuses an offer to nobody", async () => {
+    const db = seed();
+    week(db, "published");
+    beforeTheWeek();
+    const err = await service(db)
+      .offerCover(MANAGER, RID, "sh-open", { memberIds: [] } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toMatch(/Nobody is free/);
     expect(lastNotifications.persistForRestaurant).not.toHaveBeenCalled();
   });
 });

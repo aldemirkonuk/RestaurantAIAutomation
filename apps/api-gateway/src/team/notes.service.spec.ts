@@ -121,6 +121,25 @@ describe("NotesService — F-1155: the inbox title names the week in the house's
   });
 });
 
+describe("NotesService — F-1226: a note's notice opens the week it is about", () => {
+  it("links the inbox row and the push to /team?week=<that week>", async () => {
+    const db = seed();
+    const { notes, notifications, push } = svc(db);
+    push.devicesByUser.mockResolvedValueOnce(new Map([[SAM, 1]]));
+    await notes.create(MANAGER, RID, {
+      weekStart: "2026-10-12",
+      body: "Saturday moves to seven.",
+      memberIds: ["m-sam"],
+    } as any);
+    expect(notifications.persistForRestaurant.mock.calls[0][1].actionUrl).toBe(
+      "/team?week=2026-10-12",
+    );
+    expect(push.sendToUsers.mock.calls[0][1].data.actionUrl).toBe(
+      "/team?week=2026-10-12",
+    );
+  });
+});
+
 describe("NotesService — a note survives the page that wrote it", () => {
   it("records the note, its author and the audience it named", async () => {
     const db = seed();

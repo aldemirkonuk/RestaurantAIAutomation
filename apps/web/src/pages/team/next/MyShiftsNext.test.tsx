@@ -320,3 +320,45 @@ describe('the time-off form opens on the house’s day (F-1008)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/comes before the first/);
   });
 });
+
+describe('F-1230 — a called-out shift says so in words', () => {
+  it('labels the person’s own called-out shift, not only a strike-through', async () => {
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      acknowledged: true,
+      mine: [shift('sh-1', { member_id: 'm-1', state: 'callout', shift_date: todayIso(new Date()) })],
+      open: [],
+    };
+    mount();
+    expect(await screen.findByText('called out — cover asked')).toBeTruthy();
+    expect(screen.queryByText('Bar')).toBeNull();
+  });
+});
+
+describe('F-1227 — the staff copy says whether a manager was told', () => {
+  const published = {
+    member: { id: 'm-1', display_name: 'Sam' },
+    schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+    acknowledged: true,
+    mine: [],
+    open: [],
+  };
+
+  it('says it went to the manager when the gateway told one', async () => {
+    api.myWeek = published;
+    api.createTimeOff.mockResolvedValueOnce({ id: 't1', managersTold: 2 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Ask for/ }));
+    expect(await screen.findByText(/went to your manager just now/)).toBeTruthy();
+  });
+
+  it('does not claim a manager was told when none was', async () => {
+    api.myWeek = published;
+    api.createTimeOff.mockResolvedValueOnce({ id: 't1', managersTold: 0 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Ask for/ }));
+    expect(await screen.findByText(/no manager could be told just now/)).toBeTruthy();
+    expect(screen.queryByText(/went to your manager/)).toBeNull();
+  });
+});

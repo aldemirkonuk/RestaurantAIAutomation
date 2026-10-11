@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Popover } from '@/components/mudavym';
 import { houseToday } from '@/lib/houseZone';
+import { houseWallClock } from '@/lib/houseCalendar';
 import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import { serverMessage } from './TeamOverlays';
 import {
@@ -106,6 +107,33 @@ interface GridProps {
    * Cover is never offered to them: the gateway refuses the claim (F-1148).
    */
   offOn?: (m: TeamMember, date: string) => boolean;
+  /**
+   * True once the week is published (F-1224). Until it is known to be, a
+   * call-out and a cover offer are not offered: the crew has not seen the
+   * week, so nobody could take its shifts.
+   */
+  published?: boolean;
+}
+
+/** A cover offer's answer: the people it was written to, and those with no account (F-1225). */
+interface CoverReach {
+  notified: number | null;
+  noAccount: number;
+}
+
+/**
+ * Whether a shift is over on the house's clock (`houseWallClock`), the
+ * gateway's `shiftHasEnded`: an end before the start runs into the next day.
+ */
+function shiftEnded(s: Shift, nowWall: string): boolean {
+  const end = s.end_time.slice(0, 5);
+  let day = s.shift_date;
+  if (end < s.start_time.slice(0, 5)) {
+    const d = new Date(`${day}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    day = d.toISOString().slice(0, 10);
+  }
+  return `${day}T${end}` <= nowWall.slice(0, 16);
 }
 
 export function WeekGrid({
@@ -126,6 +154,7 @@ export function WeekGrid({
   onChanged,
   zone,
   offOn,
+  published = false,
 }: GridProps) {
   const fmtTime = useShiftTime();
   /** The house's decimal mark for hours (F-1120). */
@@ -144,8 +173,11 @@ export function WeekGrid({
    * back to that cell instead: its first shift, or its `+`.
    */
   const focusCell = useRef<string | null>(null);
-  /** Shifts already offered for cover in this sitting (F-398): one push each. */
-  const [offered, setOffered] = useState<ReadonlySet<string>>(() => new Set());
+  /**
+   * Shifts already offered for cover in this sitting (F-398): one offer each,
+   * with whom it reached (F-1225).
+   */
+  const [offered, setOffered] = useState<ReadonlyMap<string, CoverReach>>(() => new Map());
   /** The cover slot each call-out reported in this sitting opened (F-1113). */
   const [slotOf, setSlotOf] = useState<ReadonlyMap<string, string>>(() => new Map());
   // `shifts ?? []` inline would be a new array on every render, so every memo
@@ -357,13 +389,37 @@ export function WeekGrid({
     mutationFn: (s: Shift) => {
       const slot = coverSlotFor(s);
       if (!slot) throw new Error('no open slot to offer');
-      return offerCover(slot.id, candidatesFor(s).map((m) => m.id));
+      const ids = candidatesFor(s).map((m) => m.id);
+      // F-1225: an offer to nobody is never sent.
+      if (!ids.length) throw new Error('nobody is free to ask');
+      return offerCover(slot.id, ids);
     },
     // Nothing records the offer against the shift, so a second press would
     // push "Shift available" to the same people again. Once sent, it stays sent
-    // for as long as the page is open.
-    onSuccess: (_r, s) => setOffered((prev) => new Set(prev).add(s.id)),
+    // for as long as the page is open, with whom it reached (F-1225).
+    onSuccess: (r: { notified?: unknown; noAccount?: unknown } | undefined, s) =>
+      setOffered((prev) =>
+        new Map(prev).set(s.id, {
+          notified: typeof r?.notified === 'number' ? r.notified : null,
+          noAccount: typeof r?.noAccount === 'number' ? r.noAccount : 0,
+        }),
+      ),
   });
+
+  /**
+   * F-1224: why cover cannot be asked for on this shift, or `null` when it
+   * can. A week the crew has not seen, or a shift that is over, has nobody
+   * who could take it; the gateway refuses both.
+   */
+  function coverClosed(s: Shift): string | null {
+    if (!published) {
+      return 'This week is not published yet, so the crew has not seen it. A call-out or a cover offer can be made once it is.';
+    }
+    if (shiftEnded(s, houseWallClock(zone, Date.now()))) {
+      return 'This shift is over, so there is no cover left to ask for.';
+    }
+    return null;
+  }
 
   /**
    * The shift a cover offer may name: an open one. A called-out row's slot is
@@ -561,6 +617,7 @@ export function WeekGrid({
                     member={m}
                     candidates={candidatesFor(selectedShift)}
                     coverSlot={coverSlotFor(selectedShift)}
+                    closed={coverClosed(selectedShift)}
                     onEdit={() => editShift({ shift: selectedShift })}
                     onDuplicate={() => duplicate.mutate(selectedShift)}
                     duplicatePending={duplicate.isPending}
@@ -571,7 +628,7 @@ export function WeekGrid({
                     calloutNote={calloutNote}
                     coverPending={cover.isPending}
                     coverFailed={cover.isError}
-                    coverSent={offered.has(selectedShift.id)}
+                    coverReach={offered.get(selectedShift.id) ?? null}
                     moneyVisible={moneyVisible}
                     money={money}
                   />
@@ -636,7 +693,7 @@ export function WeekGrid({
             <Copy size={14} aria-hidden className="mdv-item__icon" />
             <span className="mdv-item__text">Duplicate onto the same day</span>
           </button>
-          {menuFor.state !== 'callout' && (
+          {menuFor.state !== 'callout' && !coverClosed(menuFor) && (
             <button
               type="button"
               className="mdv-item"
@@ -649,20 +706,30 @@ export function WeekGrid({
               <span className="mdv-item__text">Report a call-out</span>
             </button>
           )}
-          <button
-            type="button"
-            className="mdv-item"
-            disabled={offered.has(menuFor.id) || !coverSlotFor(menuFor)}
-            onClick={() => {
-              cover.mutate(menuFor);
-              setMenuFor(null);
-            }}
-          >
-            <UsersRound size={14} aria-hidden className="mdv-item__icon" />
-            <span className="mdv-item__text">
-              {offered.has(menuFor.id) ? 'Cover offered' : 'Offer cover'}
-            </span>
-          </button>
+          {!coverClosed(menuFor) && (
+            <button
+              type="button"
+              className="mdv-item"
+              disabled={
+                offered.has(menuFor.id) ||
+                !coverSlotFor(menuFor) ||
+                candidatesFor(menuFor).length === 0
+              }
+              onClick={() => {
+                cover.mutate(menuFor);
+                setMenuFor(null);
+              }}
+            >
+              <UsersRound size={14} aria-hidden className="mdv-item__icon" />
+              <span className="mdv-item__text">
+                {offered.has(menuFor.id)
+                  ? 'Cover offered'
+                  : candidatesFor(menuFor).length === 0
+                    ? 'Nobody is free to cover'
+                    : 'Offer cover'}
+              </span>
+            </button>
+          )}
           <button
             type="button"
             className="mdv-item"
@@ -703,6 +770,7 @@ function ShiftDetail({
   member,
   candidates,
   coverSlot,
+  closed,
   onEdit,
   onDuplicate,
   duplicatePending,
@@ -713,7 +781,7 @@ function ShiftDetail({
   calloutNote,
   coverPending,
   coverFailed,
-  coverSent,
+  coverReach,
   moneyVisible,
   money,
 }: {
@@ -722,6 +790,8 @@ function ShiftDetail({
   candidates: TeamMember[];
   /** The open shift an offer would name; `null` while someone still holds this one. */
   coverSlot: Shift | null;
+  /** Why no call-out or offer can be made here (F-1224); `null` when one can. */
+  closed: string | null;
   onEdit: () => void;
   onDuplicate: () => void;
   duplicatePending: boolean;
@@ -733,7 +803,8 @@ function ShiftDetail({
   calloutNote: string | null;
   coverPending: boolean;
   coverFailed: boolean;
-  coverSent: boolean;
+  /** Whom this sitting's offer reached; `null` until one is sent (F-1225). */
+  coverReach: CoverReach | null;
   moneyVisible: boolean;
   money: HouseMoney | null;
 }) {
@@ -741,8 +812,15 @@ function ShiftDetail({
   /** The house's decimal mark for hours (F-1120). */
   const hoursIn = houseLocale(useHouseRegion());
   const name = resolveName(member);
+  const coverSent = coverReach !== null;
+  // F-1231: on a phone the grid scrolls sideways, and the detail spans all of
+  // it; it is pinned to the visible edge (team-next.css) and brought into view.
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [shift.id]);
   return (
-    <div className="tm-expand">
+    <div className="tm-expand" ref={ref}>
       <div className="tm-facts">
         <Fact k="Who" v={name.text} />
         <Fact k="When" v={`${fmtDayShort(shift.shift_date)} · ${fmtTime(shift.start_time)}–${fmtTime(shift.end_time)}`} />
@@ -786,17 +864,19 @@ function ShiftDetail({
               );
             })
           )}
-          {!coverSlot && (
+          {closed ? (
+            <p className="tm-hint">{closed}</p>
+          ) : !coverSlot && (
             <p className="tm-hint">
               {shift.state === 'callout'
                 ? 'The cover slot for this call-out is no longer open, so there is nothing to offer.'
                 : `${name.text} still holds this shift, so nobody else could take it. Report a call-out first; the open shift it creates is what gets offered.`}
             </p>
           )}
-          {coverSent && (
-            <p className="tm-hint">
-              Offered just now. Nothing records the offer against the shift, so this will
-              not show after a reload.
+          {coverReach && (
+            <p className="tm-hint" role="status">
+              {reachWords(coverReach)} Nothing records the offer against the shift, so this
+              will not show after a reload.
             </p>
           )}
         </Card>
@@ -822,7 +902,7 @@ function ShiftDetail({
           {duplicatePending ? 'Duplicating…' : 'Duplicate onto the same day'}
         </button>
         {/* A called-out shift is reported once (F-1116). */}
-        {shift.state !== 'callout' && (
+        {shift.state !== 'callout' && !closed && (
           <button
             type="button"
             className="tm-ctl tm-ctl--quiet"
@@ -832,18 +912,22 @@ function ShiftDetail({
             {calloutPending ? 'Reporting…' : 'Report a call-out'}
           </button>
         )}
-        <button
-          type="button"
-          className="tm-ctl tm-ctl--quiet"
-          disabled={coverPending || coverSent || candidates.length === 0 || !coverSlot}
-          onClick={onCover}
-        >
-          {coverPending
-            ? 'Offering…'
-            : coverSent
-              ? 'Cover offered'
-              : `Offer cover to ${candidates.length}`}
-        </button>
+        {!closed && (
+          <button
+            type="button"
+            className="tm-ctl tm-ctl--quiet"
+            disabled={coverPending || coverSent || candidates.length === 0 || !coverSlot}
+            onClick={onCover}
+          >
+            {coverPending
+              ? 'Offering…'
+              : coverSent
+                ? 'Cover offered'
+                : candidates.length === 0
+                  ? 'Nobody is free to cover'
+                  : `Offer cover to ${candidates.length}`}
+          </button>
+        )}
       </div>
       {calloutFailed && (
         <p className="tm-alert" role="alert">
@@ -858,4 +942,20 @@ function ShiftDetail({
       )}
     </div>
   );
+}
+
+/** What an offer reached, in words (F-1225). */
+function reachWords(r: CoverReach): string {
+  const people = (n: number) => (n === 1 ? '1 person' : `${n} people`);
+  const unlinked =
+    r.noAccount > 0
+      ? ` ${people(r.noAccount)} picked ${r.noAccount === 1 ? 'has' : 'have'} no account, so ask them in person.`
+      : '';
+  if (r.notified === null) return `Offered just now.${unlinked}`;
+  if (r.notified === 0) {
+    return r.noAccount > 0
+      ? `Nobody could be reached in the app.${unlinked}`
+      : 'Nobody could be reached: the offer did not land on anyone’s bell. Ask them in person.';
+  }
+  return `Asked ${people(r.notified)} just now, on their bell and their phone if push is on.${unlinked}`;
 }

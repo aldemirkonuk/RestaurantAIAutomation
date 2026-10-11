@@ -37,6 +37,23 @@ const MANAGER = "user-manager";
 const MANAGER2 = "user-manager-2";
 const STAFF = "user-staff";
 const WEEK = "2026-09-07"; // a Monday
+
+/**
+ * F-1224: a call-out is taken only on a published week and a shift still
+ * ahead. The writers below are about who is told the money, so their week is
+ * made live and the clock set before it, around `run` alone.
+ */
+async function onALiveWeek<T>(db: StubDb, run: () => Promise<T>): Promise<T> {
+  for (const s of db.tables.schedules) s.status = "published";
+  jest
+    .useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] })
+    .setSystemTime(new Date("2026-09-01T12:00:00Z"));
+  try {
+    return await run();
+  } finally {
+    jest.useRealTimers();
+  }
+}
 const GONE = "m-gone";
 
 function seed(opts: { managerPay?: boolean } = {}): StubDb {
@@ -672,7 +689,9 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
     const assigned = await svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-owner" } as any);
     expect("labor_cost" in assigned).toBe(false);
 
-    const callout = await svc.reportCallout(MANAGER, RID, created.id, {} as any);
+    const callout = await onALiveWeek(db, () =>
+      svc.reportCallout(MANAGER, RID, created.id, {} as any),
+    );
     expect("labor_cost" in callout.callout).toBe(false);
 
     // A colleague's shift still carries its cost to the same manager.
