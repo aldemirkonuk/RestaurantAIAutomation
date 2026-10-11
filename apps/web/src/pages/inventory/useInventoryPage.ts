@@ -89,6 +89,40 @@ export interface UseInventoryPageOptions {
     filterType?: string;
     location?: string | null;
   };
+  /**
+   * The house's zones, so a location chip keeps the wines on that zone and on
+   * the zones inside it (F-1161). Omitted, a chip matches its own zone only.
+   */
+  zones?: { id: string; parentId?: string }[];
+}
+
+/**
+ * The zone and every zone inside it, however deep (F-1161). A zone that is
+ * not in `zones` is still its own set, so a `?loc=` read before the zones
+ * load filters by that zone alone.
+ */
+export function zoneAndChildren(
+  zoneId: string,
+  zones: { id: string; parentId?: string }[] = [],
+): Set<string> {
+  const ids = new Set([zoneId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const z of zones)
+      if (z.parentId && ids.has(z.parentId) && !ids.has(z.id)) {
+        ids.add(z.id);
+        grew = true;
+      }
+  }
+  return ids;
+}
+
+/** Whether any bottle of the wine is on one of `zoneIds` (F-1161). */
+export function holdsStockIn(item: InventoryItem, zoneIds: Set<string>): boolean {
+  return (item.locations ?? []).some(
+    (l) => l.qty > 0 && l.locationId != null && zoneIds.has(l.locationId),
+  );
 }
 
 /**
@@ -213,6 +247,52 @@ export function stockValueCell(i: InventoryItem): number | string {
   const cost = i.wac ?? i.price;
   if (cost == null || !Number.isFinite(cost)) return units === 0 ? 0 : WITHHELD;
   return Math.round(cost * units * 100) / 100;
+}
+
+/**
+ * One line of the count sheet: a wine on one place, with that place's bottles
+ * (F-1162). `first` marks a wine's first line, which alone carries the
+ * figures that are the whole wine's and would double when a sheet is summed.
+ */
+export interface CountSheetLine {
+  item: InventoryItem;
+  locationId: string | null;
+  qty: number;
+  first: boolean;
+}
+
+/**
+ * The count sheet's lines: one per (wine, place holding it), each with that
+ * place's quantity. A sheet that put a split wine on its first shelf beside
+ * the wine's total sent a counter to the bar to find the cellar's bottles
+ * (F-1162). With `zoneIds` (a location chip, F-1161) only those places are
+ * listed. A wine no place holds is one line, at its total, unplaced.
+ */
+export function countSheetLines(
+  items: InventoryItem[],
+  zoneIds: Set<string> | null = null,
+): CountSheetLine[] {
+  const lines: CountSheetLine[] = [];
+  for (const item of items) {
+    const byPlace = new Map<string | null, number>();
+    for (const l of item.locations ?? []) {
+      if (!(l.qty > 0)) continue;
+      if (zoneIds && !(l.locationId != null && zoneIds.has(l.locationId))) continue;
+      const at = l.locationId ?? null;
+      byPlace.set(at, (byPlace.get(at) ?? 0) + l.qty);
+    }
+    if (byPlace.size === 0) {
+      if (!zoneIds)
+        lines.push({ item, locationId: null, qty: item.liveStock ?? 0, first: true });
+      continue;
+    }
+    let first = true;
+    for (const [locationId, qty] of byPlace) {
+      lines.push({ item, locationId, qty, first });
+      first = false;
+    }
+  }
+  return lines;
 }
 
 /** One house's rows for the all-locations export, shaped as on screen. */
@@ -402,6 +482,13 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       );
     }
 
+    // Location chip (F-1161): the wines with a bottle on that zone or on a
+    // zone inside it. The chip set the state and the URL, and nothing read it.
+    if (selectedLocationFilter) {
+      const zoneIds = zoneAndChildren(selectedLocationFilter, options.zones);
+      items = items.filter((item) => holdsStockIn(item, zoneIds));
+    }
+
     // View mode filter
     if (viewMode === "live") {
       items = items.filter((item) => (item.liveStock || 0) > 0);
@@ -482,6 +569,8 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     sortOrder,
     filterActiveStatus,
     filterBottleSize,
+    selectedLocationFilter,
+    options.zones,
   ]);
 
   const stats = useMemo(() => {

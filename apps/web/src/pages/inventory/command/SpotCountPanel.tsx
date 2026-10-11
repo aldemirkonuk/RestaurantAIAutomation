@@ -41,6 +41,8 @@ import { useModalDialog } from '../../../hooks/useModalDialog'
 import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
 import { getHouseLocale } from '../../../lib/houseCurrency'
 import { parseDecimal, type GroupMark } from '../../../lib/parseDecimal'
+import { formatVolume } from '../../../utils/volumeUtils'
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 
 interface SpotCountPanelProps {
   item: InventoryItem
@@ -164,6 +166,21 @@ function toBase64(file: File): Promise<string> {
   })
 }
 
+/**
+ * The shelves a person may name for this wine (F-945): the places that hold
+ * no other place, offered only while every bottle of it is on one of them.
+ * Shared by the spot count and the row's adjust bar and pour (F-1163).
+ */
+export function shelvesFor(item: InventoryItem, houseLocations: StorageLocation[]) {
+  const parentIds = new Set(houseLocations.map((l) => l.parentId).filter(Boolean))
+  const shelves = houseLocations.filter((l) => !parentIds.has(l.id))
+  const shelfIds = new Set(shelves.map((l) => l.id))
+  const unshelved = (item.locations ?? [])
+    .filter((l) => l.qty > 0 && !(l.locationId && shelfIds.has(l.locationId)))
+    .reduce((n, l) => n + l.qty, 0)
+  return { shelves, unshelved, picksShelf: shelves.length > 0 && unshelved === 0 }
+}
+
 export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted }: SpotCountPanelProps) {
   const toast = useNotificationStore()
   const dialogRef = useModalDialog(true, onClose)
@@ -174,6 +191,7 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
 
   const [qty, setQty] = useState<string>('')
   const group = useHouseGroupMark()
+  const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const [listening, setListening] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoNote, setPhotoNote] = useState<string | null>(null)
@@ -189,17 +207,18 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
   // while any bottle of this wine is on the books with no shelf -- the door
   // books stock with no place -- or on such a zone, only a count of every
   // shelf is offered: a shelf count would book those bottles a second time.
-  const parentIds = new Set(houseLocations.map((l) => l.parentId).filter(Boolean))
-  const shelves = houseLocations.filter((l) => !parentIds.has(l.id))
-  const shelfIds = new Set(shelves.map((l) => l.id))
-  const unshelved = (item.locations ?? [])
-    .filter((l) => l.qty > 0 && !(l.locationId && shelfIds.has(l.locationId)))
-    .reduce((n, l) => n + l.qty, 0)
+  const { shelves, unshelved, picksShelf } = shelvesFor(item, houseLocations)
   // With shelves, the counter says where they counted before submitting:
   // '' = not chosen yet, EVERY_SHELF = the whole total, else a location id.
-  const picksShelf = shelves.length > 0 && unshelved === 0
   const [where, setWhere] = useState<string>(picksShelf ? '' : EVERY_SHELF)
   const shelf = picksShelf ? (shelves.find((l) => l.id === where) ?? null) : null
+  // F-1164: the books compare sealed bottles only -- opening one moves it out
+  // of the count into its ml -- so the counter is told to leave it out.
+  const openMl = item.openMl ?? 0
+  const openNote =
+    openMl > 0
+      ? ` Sealed bottles only: leave out the open one (${formatVolume(openMl, measurementUnit)} left), which is kept separately.`
+      : ''
   const shelfBook = shelf
     ? (item.locations ?? []).filter((l) => l.locationId === shelf.id).reduce((n, l) => n + l.qty, 0)
     : null
@@ -275,9 +294,18 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
   }
 
   const handleSubmit = async () => {
-    const countedQty = parseInt(qty, 10)
-    if (!Number.isFinite(countedQty) || countedQty < 0) {
+    // F-1168 (F-077): parseInt read "12.5" as 12 and saved it. A count is
+    // whole sealed bottles, so a part bottle is refused in words instead.
+    const countedQty = Number(qty.trim())
+    if (qty.trim() === '' || !Number.isFinite(countedQty) || countedQty < 0) {
       toast.error('Enter a valid count', 'Quantity must be zero or a positive whole number.')
+      return
+    }
+    if (!Number.isInteger(countedQty)) {
+      toast.error(
+        'A count is whole bottles',
+        `${qty.trim()} is not a whole number. Count the sealed bottles only; an open bottle is kept separately.`,
+      )
       return
     }
     setSubmitting(true)
@@ -389,15 +417,16 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
           )}
           <p className="text-xs text-gray-600 leading-relaxed" data-testid="spot-count-scope">
             {shelf ? (
-              `Count every bottle of this wine on ${shelf.name}, then enter that number. Only ${shelf.name} changes; the other places stay as they are.`
+              `Count the sealed bottles of this wine on ${shelf.name}, then enter that number. Only ${shelf.name} changes; the other places stay as they are.${openNote}`
             ) : where === EVERY_SHELF ? (
               <>
-                Count every bottle of this wine in every room, then enter the total. It replaces the total for all of
+                Count the sealed bottles of this wine in every room, then enter the total. It replaces the total for all of
                 them, so a count of one shelf would take the others off the books.
                 {shelvesHolding > 1 && ` The books have it in ${shelvesHolding} places.`}
                 {shelves.length > 0 &&
                   unshelved > 0 &&
                   ` ${bottles(unshelved)} ${unshelved === 1 ? 'is' : 'are'} not on any one shelf yet, so count every shelf together until they are put on one.`}
+                {openNote}
               </>
             ) : (
               'Pick the place you counted. Only that place changes.'

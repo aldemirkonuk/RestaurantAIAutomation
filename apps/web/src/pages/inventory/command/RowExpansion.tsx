@@ -18,9 +18,10 @@ import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsSt
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
-import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, shelfCountLine, HoursHeatmap, runwayDays, reorderAdvice, velocityLabel, ASSUMED_LEAD_DAYS } from './bits'
+import { fmtMoneyExact, fmtOneDecimal, marketDeltaPct, daysSinceCounted, shelfCountLine, HoursHeatmap, runwayDays, reorderAdvice, velocityLabel, ASSUMED_LEAD_DAYS } from './bits'
+import { getHouseLocale } from '../../../lib/houseCurrency'
 import { ReceiptDepth } from './ReceiptDepth'
-import { SpotCountPanel } from './SpotCountPanel'
+import { SpotCountPanel, shelvesFor } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
 import { newClientCountId } from '../../../lib/spotCountOutbox'
 
@@ -69,6 +70,16 @@ const ADJUST_REASONS = [
   { value: 'Return to vendor', label: 'Return to vendor' },
 ]
 
+/**
+ * Reasons that only ever take bottles off (F-1163): a "+1 Breakage" put a
+ * bottle on the books. The gateway refuses the same, in the same words.
+ */
+const TAKE_OFF_ONLY: Record<string, string> = {
+  Breakage: 'Breakage',
+  'Comp / gift': 'A comp',
+  'Staff pour': 'A staff pour',
+}
+
 export function RowExpansion({
   item,
   locations,
@@ -103,6 +114,13 @@ export function RowExpansion({
   const [reason, setReason] = useState('Count correction')
   const [showSpotCount, setShowSpotCount] = useState(startCounting)
   const [pouring, setPouring] = useState(false)
+  // F-1163: the place a manual adjust or a pour comes off, picked the way the
+  // spot count picks its shelf. Unpicked, the bottle came off the oldest lot
+  // anywhere -- a bottle broken at the bar was taken out of the cellar.
+  const { shelves, picksShelf } = shelvesFor(item, locations)
+  const [shelfId, setShelfId] = useState('')
+  const shelfMissing = picksShelf && shelfId === ''
+  const shelfPicked = picksShelf && shelfId !== '' ? shelfId : null
   // The per-wine par, through the same PATCH the add path's thresholdMin uses (F-1064, F-075).
   const [parDraft, setParDraft] = useState<string | null>(null)
 
@@ -182,6 +200,8 @@ export function RowExpansion({
         wineId: item.id || undefined,
         quantityChange: p.quantityChange,
         reason: p.reason,
+        // A take-off leaves FROM the shelf; bottles found go TO it.
+        ...(shelfPicked ? { [p.quantityChange < 0 ? 'fromLocationId' : 'toLocationId']: shelfPicked } : {}),
         idempotencyKey: `adjust:${inventoryId}:${newClientCountId()}`,
       }),
     onSuccess: () => {
@@ -212,7 +232,12 @@ export function RowExpansion({
   const pour = async () => {
     setPouring(true)
     try {
-      await recordPour(inventoryId, { pours: 1, source: 'manual', reason: 'manual pour' })
+      await recordPour(inventoryId, {
+        pours: 1,
+        source: 'manual',
+        reason: 'manual pour',
+        ...(shelfPicked ? { locationId: shelfPicked } : {}),
+      })
       invalidate()
       toast.success('Pour recorded')
     } catch (e: any) {
@@ -222,6 +247,7 @@ export function RowExpansion({
     }
   }
 
+  const addsOnTakeOff = delta > 0 && reason in TAKE_OFF_ONLY
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
   const paid = item.wac ?? item.price
@@ -229,7 +255,7 @@ export function RowExpansion({
   const delta$ = marketDeltaPct(item)
   const counted = daysSinceCounted(item)
   // F-1165: a count of one shelf is that shelf's, not the whole wine's.
-  const shelves = shelfCountLine(item, activity?.shelfCounts, locations)
+  const shelfCounted = shelfCountLine(item, activity?.shelfCounts, locations)
   const run = runwayDays(item)
   const velocity = item.velocityPerDay
   const { suggested, reorderPoint } = reorderAdvice(item, onOrder)
@@ -259,7 +285,7 @@ export function RowExpansion({
           <b className={cn('block text-xs font-semibold mt-px', counted != null && counted <= 21 ? 'text-gray-700' : 'text-amber-600')}>
             {counted == null ? 'never' : `${counted} days ago`}
           </b>
-          {shelves && <span className="block text-[11px] text-gray-500 mt-px">{shelves}</span>}
+          {shelfCounted && <span className="block text-[11px] text-gray-500 mt-px">{shelfCounted}</span>}
         </div>
         {(item.openMl ?? 0) > 0 && (
           <span className="ml-auto inline-flex items-center gap-2 text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-3 py-1">
@@ -353,7 +379,7 @@ export function RowExpansion({
               velocity == null
                 ? item.analyticsReadable === false ? 'could not be read' : '—'
                 : item.velocityIsNew
-                  ? `new, ${velocity.toFixed(1)} btl/day over ${item.velocityDays} day${item.velocityDays === 1 ? '' : 's'}`
+                  ? `new, ${fmtOneDecimal(velocity)} btl/day over ${item.velocityDays} day${item.velocityDays === 1 ? '' : 's'}`
                   : velocityLabel(item)
             }
           />
@@ -401,7 +427,7 @@ export function RowExpansion({
           {/* The house's own bottle price (ADR 0193), the figure the row's
               price cell shows. `menuPrice` is the library wine's and is never
               set for a house row, so this said "not set" on every row (F-390). */}
-          <KV k="Menu price" v={menuBottle ? `${fmtMoneyExact(menuBottle)}${paid ? ` (${(menuBottle / paid).toFixed(1)}x)` : ''}` : 'not set'} tone="blue" />
+          <KV k="Menu price" v={menuBottle ? `${fmtMoneyExact(menuBottle)}${paid ? ` (${fmtOneDecimal(menuBottle / paid)}x)` : ''}` : 'not set'} tone="blue" />
           <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
             Alerts fire when a vendor quote exceeds market or margin slips under 1.8x.
           </p>
@@ -463,7 +489,7 @@ export function RowExpansion({
                 <div key={o.id} className="flex items-center gap-2.5 py-1.5 border-t border-gray-50 first:border-t-0 text-xs">
                   <span className="font-mono text-[11px] font-bold text-gray-700 w-16 truncate">{o.orderNumber || o.id.slice(0, 8)}</span>
                   <span className="flex-1 text-gray-500 truncate">
-                    {o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                    {o.createdAt ? new Date(o.createdAt).toLocaleDateString(getHouseLocale(), { month: 'short', day: 'numeric' }) : ''}
                   </span>
                   <span className="font-mono font-semibold text-gray-700">{o.quantity} btl</span>
                   <span
@@ -532,6 +558,23 @@ export function RowExpansion({
         <span className="w-px h-6 bg-gray-200" />
 
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Manual adjust</span>
+        {picksShelf && (
+          <select
+            value={shelfId}
+            onChange={(e) => setShelfId(e.target.value)}
+            aria-label="Which shelf"
+            className="h-9 px-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-700"
+          >
+            <option value="" disabled>
+              Which shelf?
+            </option>
+            {shelves.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
           <button type="button" aria-label="Decrease manual adjustment" onClick={() => setDelta((d) => d - 1)} className="w-11 h-11 text-gray-500 hover:bg-gray-50">-</button>
           <span aria-live="polite" aria-label={`Manual adjustment ${delta > 0 ? `+${delta}` : delta}`} className={cn('w-11 text-center font-mono text-sm font-bold border-x border-gray-100 leading-[44px]', delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-gray-700')}>
@@ -539,14 +582,20 @@ export function RowExpansion({
           </span>
           <button type="button" aria-label="Increase manual adjustment" onClick={() => setDelta((d) => d + 1)} className="w-11 h-11 text-gray-500 hover:bg-gray-50">+</button>
         </div>
-        <ThemedSelect value={reason} options={ADJUST_REASONS} onChange={setReason} align="left" />
+        <ThemedSelect value={reason} options={ADJUST_REASONS} onChange={setReason} align="left" aria-label="Reason" />
         <button
           onClick={() => adjust.mutate({ quantityChange: delta, reason })}
-          disabled={delta === 0 || adjust.isPending}
+          disabled={delta === 0 || adjust.isPending || shelfMissing || addsOnTakeOff}
+          title={shelfMissing ? 'Pick the shelf first' : undefined}
           className="h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg disabled:opacity-40"
         >
           Apply
         </button>
+        {addsOnTakeOff && (
+          <span role="alert" className="text-[11px] text-rose-600">
+            {TAKE_OFF_ONLY[reason]} only takes bottles off. Press − instead, or pick Count correction to add bottles.
+          </span>
+        )}
 
         <span className="w-px h-6 bg-gray-200" />
 
@@ -563,8 +612,8 @@ export function RowExpansion({
             <span className="w-px h-6 bg-gray-200" />
             <button
               onClick={() => void pour()}
-              disabled={pouring}
-              title="Record one by-the-glass pour — depletes the open bottle"
+              disabled={pouring || shelfMissing}
+              title={shelfMissing ? 'Pick the shelf first' : 'Record one by-the-glass pour — depletes the open bottle'}
               className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-lg disabled:opacity-40"
             >
               Record pour

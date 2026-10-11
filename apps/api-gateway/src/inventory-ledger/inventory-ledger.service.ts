@@ -64,6 +64,19 @@ interface TransactionRow {
 // SERVICE
 // ============================================================================
 
+/**
+ * The take-off-only reason a manual adjustment names, in the words the
+ * refusal uses, or null (F-1163). Matched on the reason's start, as the
+ * /inventory page sends it ("Breakage", "Comp / gift", "Staff pour").
+ */
+export function takeOffOnlyReason(reason: string | undefined): string | null {
+  const r = (reason ?? "").trim().toLowerCase();
+  if (r.startsWith("breakage")) return "Breakage";
+  if (r.startsWith("staff pour")) return "A staff pour";
+  if (/^comp\b/.test(r)) return "A comp";
+  return null;
+}
+
 @Injectable()
 export class InventoryLedgerService {
   private readonly logger = new Logger(InventoryLedgerService.name);
@@ -96,6 +109,14 @@ export class InventoryLedgerService {
     // Validate quantity change is not zero
     if (dto.quantityChange === 0) {
       throw new BadRequestException("Quantity change cannot be zero");
+    }
+    // F-1163: breakage, a comp and a staff pour only ever take bottles off.
+    // A "+1 Breakage" put a bottle on the books; the page refuses it too.
+    const takeOffOnly = takeOffOnlyReason(dto.reason);
+    if (takeOffOnly && dto.quantityChange > 0) {
+      throw new BadRequestException(
+        `${takeOffOnly} only takes bottles off. Send it as a negative number, or use Count correction to add bottles.`,
+      );
     }
 
     // TENANCY, BEFORE THE WRITE (ADR 0141).

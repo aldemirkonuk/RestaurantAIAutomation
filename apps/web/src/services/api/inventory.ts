@@ -166,11 +166,21 @@ export async function reconcileItem(
  */
 export async function adjustStock(
   inventoryId: string,
-  body: { wineId?: string; quantityChange: number; reason: string; idempotencyKey: string }
+  body: {
+    wineId?: string;
+    quantityChange: number;
+    reason: string;
+    idempotencyKey: string;
+    /** The shelf a take-off leaves from, or bottles found go to (F-1163). */
+    fromLocationId?: string;
+    toLocationId?: string;
+  }
 ): Promise<unknown> {
   const response = await apiClient.post('/inventory-ledger/transactions', {
     inventoryId,
     ...(body.wineId ? { wineId: body.wineId } : {}),
+    ...(body.fromLocationId ? { fromLocationId: body.fromLocationId } : {}),
+    ...(body.toLocationId ? { toLocationId: body.toLocationId } : {}),
     transactionType: 'adjustment',
     source: 'manual',
     quantityChange: body.quantityChange,

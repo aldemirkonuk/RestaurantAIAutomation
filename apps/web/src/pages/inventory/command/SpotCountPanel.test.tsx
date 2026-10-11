@@ -159,3 +159,41 @@ describe('SpotCountPanel — voice hears one number, in the house language', () 
     }
   })
 })
+
+/*
+ * F-1168 (re-hit of F-077): parseInt read "12.5" as 12 and saved a count of
+ * 12. A part bottle is refused in words and nothing is sent.
+ */
+describe('SpotCountPanel — a count is whole bottles', () => {
+  it('[REVERT-FAILS] refuses 12.5 instead of saving 12', async () => {
+    render(<SpotCountPanel item={item} onClose={vi.fn()} onCommitted={vi.fn()} />)
+    fireEvent.change(screen.getByPlaceholderText('Total'), { target: { value: '12.5' } })
+    fireEvent.click(screen.getByText('Submit count'))
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'A count is whole bottles',
+        expect.stringContaining('12.5 is not a whole number'),
+      ),
+    )
+    expect(submitSpotCount).not.toHaveBeenCalled()
+  })
+})
+
+/*
+ * F-1164: the books compare sealed bottles only (opening one moves it into
+ * its ml), and the panel said "count every bottle".
+ */
+describe('SpotCountPanel — sealed bottles only', () => {
+  it('[REVERT-FAILS] says sealed bottles and names the open bottle and its ml', () => {
+    render(<SpotCountPanel item={{ ...item, openMl: 420 }} onClose={vi.fn()} onCommitted={vi.fn()} />)
+    const scope = screen.getByTestId('spot-count-scope')
+    expect(scope).toHaveTextContent(/count the sealed bottles of this wine/i)
+    expect(scope).toHaveTextContent(/leave out the open one \(420ml left\)/i)
+    expect(scope).not.toHaveTextContent(/count every bottle/i)
+  })
+
+  it('says nothing of an open bottle when none is open', () => {
+    render(<SpotCountPanel item={item} onClose={vi.fn()} onCommitted={vi.fn()} />)
+    expect(screen.getByTestId('spot-count-scope')).not.toHaveTextContent(/open one/i)
+  })
+})

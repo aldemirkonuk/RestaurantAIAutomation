@@ -166,3 +166,48 @@ describe("POST /inventory-ledger/transactions — F-646", () => {
     });
   });
 });
+
+/**
+ * F-1163: breakage, a comp and a staff pour only take bottles off. "+1
+ * Breakage" was booked as a bottle coming in.
+ */
+describe("POST /inventory-ledger/transactions — F-1163", () => {
+  it.each(["Breakage", "Comp / gift", "Staff pour"])(
+    "[REVERT-FAILS] refuses +1 %s in words, before the stock moves",
+    async (reason) => {
+      const t = build(5);
+      const err = await t
+        .post({
+          transactionType: TransactionType.ADJUSTMENT,
+          quantityChange: 1,
+          reason,
+        })
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+      expect(err.message).toMatch(/only takes bottles off/);
+      expect(t.calls).toHaveLength(0);
+    },
+  );
+
+  it("takes -1 Breakage off the shelf it names", async () => {
+    const t = build(5);
+    await t.post({
+      transactionType: TransactionType.ADJUSTMENT,
+      quantityChange: -1,
+      reason: "Breakage",
+      fromLocationId: BAR,
+    });
+    expect(t.calls[0]).toMatchObject({ p_delta: -1, p_location_id: BAR });
+  });
+
+  it("still lets a count correction add bottles", async () => {
+    const t = build(5);
+    await t.post({
+      transactionType: TransactionType.ADJUSTMENT,
+      quantityChange: 1,
+      reason: "Count correction",
+    });
+    expect(t.calls).toHaveLength(1);
+  });
+});
