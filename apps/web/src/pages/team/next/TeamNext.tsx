@@ -784,6 +784,7 @@ function TeamNextManager({
           onEditShift={(target) => setOverlay({ kind: 'shift', target })}
           onChanged={refreshWeek}
           zone={zone}
+          offOn={data.offOn}
         />
 
         <hr className="tm-rule" />

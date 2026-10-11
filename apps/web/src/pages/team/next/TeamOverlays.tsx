@@ -96,6 +96,11 @@ export function PublishPanel({
 }) {
   /** F-1114: the gateway left a live, unchanged week as it was and told nobody. */
   const [unchanged, setUnchanged] = useState(false);
+  /**
+   * F-1148: the week went live but the announcement reached nobody, or left
+   * out the people who are Away. `null` until a publish says so.
+   */
+  const [reach, setReach] = useState<{ notified: number; heldAway: number } | null>(null);
   /** Bumped by a refusal, so the seal stands up again for the next try. */
   const [tries, setTries] = useState(0);
   const publish = useMutation({
@@ -110,10 +115,28 @@ export function PublishPanel({
       const reset = again || (republish && receiptsSeen !== 0);
       return publishSchedule(id, reset ? { resetReceipts: true } : {});
     },
-    onSuccess: (res: { republished?: boolean } | undefined) => {
+    onSuccess: (
+      res:
+        | { republished?: boolean; unchanged?: boolean; notified?: number; heldAway?: number }
+        | undefined,
+    ) => {
       onDone();
-      if (res?.republished === false) {
+      // A first publish also answers `republished: false`, with a count; only
+      // the gateway's "left as it is" answer carries none (or says `unchanged`).
+      if (
+        res?.unchanged === true ||
+        (res?.republished === false && typeof res.notified !== 'number')
+      ) {
+        setReach(null);
         setUnchanged(true);
+        return;
+      }
+      // An older gateway sends no count; only a count it sent is read.
+      const notified = typeof res?.notified === 'number' ? res.notified : null;
+      const heldAway = typeof res?.heldAway === 'number' ? res.heldAway : 0;
+      if (notified === 0 || (notified !== null && heldAway > 0)) {
+        setUnchanged(false);
+        setReach({ notified, heldAway });
         return;
       }
       onClose();
@@ -149,7 +172,32 @@ export function PublishPanel({
     >
       <div className="tm-in" style={{ padding: '12px 16px 16px' }}>
         <MutationError when={publish.isError}>{failure}</MutationError>
-        {unchanged ? (
+        {reach ? (
+          <>
+            <p className="tm-note" role="status">
+              {reach.notified === 0
+                ? 'The week is live, but the announcement did not reach anyone, so nobody on the team has been told yet.'
+                : `The week is live and the team was told, except ${
+                    reach.heldAway === 1 ? '1 person who is Away' : `${reach.heldAway} people who are Away`
+                  }: they were not told.`}
+            </p>
+            <div className="tm-actions" style={{ marginTop: 14 }}>
+              <button type="button" className="tm-ctl tm-ctl--quiet" onClick={onClose}>
+                Done
+              </button>
+              {reach.notified === 0 && (
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--seal"
+                  disabled={publish.isPending}
+                  onClick={() => publish.mutate({ again: true })}
+                >
+                  {publish.isPending ? 'Sending…' : 'Send the announcement again'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : unchanged ? (
           <>
             <p className="tm-note" role="status">
               Nothing on this week has changed since it went live, so it was left as it is
