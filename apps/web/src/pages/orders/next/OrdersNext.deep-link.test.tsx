@@ -25,7 +25,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -358,5 +358,62 @@ describe('the stage strip at phone width (ORD-W18)', () => {
     expect(tabs[3].className).toMatch(/max-sm:border-t/);
     expect(tabs[4].className).toMatch(/max-sm:border-t/);
     expect(tabs[0].className).not.toMatch(/\bborder-l\b/);
+  });
+});
+
+/*
+ * F-1143 (rehit of F-217): procurement_agent.py's "approve this order" bell
+ * sends `?highlight=<id>`, which this page did not read, so the bell landed on
+ * the whole ledger. And a followed link stayed in the address, so a reload
+ * re-opened a row the person had closed.
+ */
+function harnessWithProbe(initialPath: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route
+            path="/orders"
+            element={
+              <>
+                <OrdersNext />
+                <Probe />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe('a followed link (F-1143)', () => {
+  it('?highlight= opens the order, the same as ?order=', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-9' }), row({ id: 'o-2' })] });
+    harness('/orders?highlight=o-9');
+
+    const wrapper = await screen.findByTestId('order-row-o-9');
+    expect(wrapper.querySelector('[aria-expanded="true"]')).not.toBeNull();
+    expect(screen.queryByTestId('target-order-missing')).not.toBeInTheDocument();
+  });
+
+  it('leaves the address once the order is open, older offer flags included', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-9' })] });
+    harnessWithProbe('/orders?order=o-9&deal=1&urgent=1');
+
+    const wrapper = await screen.findByTestId('order-row-o-9');
+    await waitFor(() => expect(screen.getByTestId('search').textContent).toBe(''));
+    expect(wrapper.querySelector('[aria-expanded="true"]')).not.toBeNull();
+  });
+
+  it('keeps a cancelled order in the address, so its banner stays', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1', stage: 'cancelled' })], cancelledCount: 1 });
+    harnessWithProbe('/orders?highlight=o-1');
+
+    expect(await screen.findByTestId('target-order-cancelled')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(screen.getByTestId('search').textContent).toBe('?highlight=o-1');
+    expect(screen.getByTestId('target-order-cancelled')).toBeInTheDocument();
   });
 });

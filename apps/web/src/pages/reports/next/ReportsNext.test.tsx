@@ -27,8 +27,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet, keepUnoffered, offeredFor } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS, HOUSE_LAYOUT_TITLE } from './rp-sheet';
@@ -1934,5 +1934,35 @@ describe('ReportsNext — an empty POS window is not an absent field (A-040)', (
     const old = seats({}).say as string;
     expect(old).toContain('does not say whether the window held any check');
     expect(old).not.toMatch(/absent/);
+  });
+});
+
+/*
+ * F-1143 (rehit of F-217): the "Weekly report ready" bell opens
+ * `/reports?type=weekly` (scheduled-tasks.service.ts), which this page did not
+ * read — the till opened on 30 days. Read once, then the word leaves the address.
+ */
+describe('ReportsNext — the weekly report bell (F-1143)', () => {
+  function Where() {
+    return <output data-testid="where">{useLocation().search}</output>;
+  }
+
+  it('opens the till on the last 7 days and clears ?type= once read', async () => {
+    render(
+      <MemoryRouter initialEntries={['/reports?type=weekly']}>
+        <ReportsNext />
+        <Where />
+      </MemoryRouter>,
+    );
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(''));
+    expect(within(till).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('opens on 30 days with no word in the address', () => {
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).getByRole('button', { name: '30d' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

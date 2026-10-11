@@ -332,6 +332,45 @@ async def test_handle_invoice_match_sends_off_app_invoice_notification(agent):
 
 
 @pytest.mark.asyncio
+async def test_handle_invoice_match_links_the_matched_order(agent):
+    """F-1143: the bell opens the order the invoice looks like (`?order=`,
+    which /orders reads), never `?invoice_match=`, which no page read."""
+    extracted = {
+        "vendor_name": "Burgundy Imports",
+        "invoice_date": "2026-05-10",
+        "line_items": [{"wine_name": "Pommard 2019", "quantity": 6}],
+    }
+
+    with patch.object(agent, "_notify", new_callable=AsyncMock) as mock_notify:
+        await agent._handle_invoice_match(
+            restaurant_id="rest-1",
+            provider_id="prov-1",
+            provider_name="Burgundy Imports",
+            extracted_invoice=extracted,
+        )
+        kwargs = mock_notify.call_args[1]
+        assert kwargs["metadata"]["match_class"] != "no_match"
+        assert kwargs["action_url"] == "/orders?order=order-uuid-1"
+
+
+@pytest.mark.asyncio
+async def test_handle_invoice_match_with_no_likely_order_opens_the_orders_page(agent):
+    """F-1143: with no likely order there is nothing to open; the plain page."""
+    extracted = {"line_items": [{"wine_name": "Chablis", "quantity": 1}]}
+
+    with patch.object(agent, "_notify", new_callable=AsyncMock) as mock_notify:
+        await agent._handle_invoice_match(
+            restaurant_id="rest-1",
+            provider_id="prov-1",
+            provider_name="Someone Else Entirely",
+            extracted_invoice=extracted,
+        )
+        kwargs = mock_notify.call_args[1]
+        assert kwargs["metadata"]["match_class"] == "no_match"
+        assert kwargs["action_url"] == "/orders"
+
+
+@pytest.mark.asyncio
 async def test_handle_invoice_match_no_orders_sends_orphan_notification(agent):
     """No open orders → orphan notification with match_class no_match."""
     agent.database.supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.in_.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
