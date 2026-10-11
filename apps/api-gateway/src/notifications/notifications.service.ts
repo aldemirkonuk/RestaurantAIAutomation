@@ -72,6 +72,9 @@ export const PUSH_MONEY_KEYS: ReadonlySet<string> = new Set([
   "total",
   "amount",
   "cost",
+  // A day's takings and an invoice's tie-out gap (F-1121).
+  "revenue",
+  "tieOutDelta",
 ]);
 
 function withoutMoney(data: Record<string, unknown>): Record<string, unknown> {

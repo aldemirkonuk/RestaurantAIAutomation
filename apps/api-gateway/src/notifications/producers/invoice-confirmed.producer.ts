@@ -9,6 +9,7 @@ import {
 import { currencyCode } from "../../common/iso-4217";
 import { readHouseMoney } from "../../common/house-money";
 import { clockIn, dayIn, money } from "./producer-copy";
+import { NO_MONEY_READER, moneyReaders, noGoalReader } from "./goal-readers";
 
 /**
  * "A document was certified against the paper."
@@ -115,6 +116,10 @@ export class InvoiceConfirmedProducer {
     // The house's number formats (F-888): the money is the document's own,
     // but a lira house groups it its own way. Never throws; unknown is en-US.
     const { locale } = await readHouseMoney(client, restaurantId);
+    // The sentence and the push carry the document's total: owners and
+    // managers only, never staff (F-1121). A failed role read throws, which
+    // fails the run and sends nothing.
+    const readers = await moneyReaders(client, restaurantId, audience);
 
     for (const doc of docs) {
       const verifiedAt = new Date(doc.verified_at);
@@ -140,7 +145,7 @@ export class InvoiceConfirmedProducer {
       const currency = currencyCode(doc.currency);
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally, now },
+        { restaurantId, producer: PRODUCER, audience: readers, tally, now },
         {
           // `verified_at` is in the key even though there is no un-verify today:
           // if one is ever added, a re-certification is a new event and this key
@@ -202,6 +207,13 @@ export class InvoiceConfirmedProducer {
       );
     }
 
+    if (
+      tally.emitted === 0 &&
+      tally.withheldReason === null &&
+      noGoalReader(readers)
+    ) {
+      tally.withheldReason = NO_MONEY_READER;
+    }
     if (tally.emitted === 0 && tally.withheldReason === null) {
       tally.withheldReason =
         "Every certification in the window had already been reported.";

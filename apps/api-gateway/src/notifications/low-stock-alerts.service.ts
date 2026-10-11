@@ -231,10 +231,14 @@ export class LowStockAlertsService {
           names.get(restaurantId),
         );
       }
-      // Reconcile restocks even for restaurants that dropped off the low list.
-      await this.reconcileRecoveries(byRestaurant, lowReadStartedAt);
-      // A failed read is not "nothing is low": the bell keeps its lines.
-      if (!lowReadFailed) await this.resolveRecoveredBellLines(byRestaurant);
+      // A failed or incomplete read is not "nothing is low" (F-1122): the
+      // ledger keeps its levels and the bell keeps its lines, so a wine that is
+      // still low is neither cleared nor alerted on again next tick.
+      if (!lowReadFailed) {
+        // Reconcile restocks even for restaurants that dropped off the low list.
+        await this.reconcileRecoveries(byRestaurant, lowReadStartedAt);
+        await this.resolveRecoveredBellLines(byRestaurant);
+      }
     } catch (e: any) {
       this.logger.error(`low-stock edge sweep failed: ${e?.message}`);
     }
@@ -1238,21 +1242,61 @@ export class LowStockAlertsService {
   // DATA HELPERS
   // ==========================================================================
 
-  /** All currently-low wines across every restaurant, grouped by restaurant. */
+  /** Rows per page of the low list; at or under PostgREST's `max_rows`. */
+  static readonly LOW_READ_PAGE = 1000;
+
+  /**
+   * All currently-low wines across every restaurant, grouped by restaurant.
+   *
+   * Read in pages by id (F-1122). One unpaged read stopped at PostgREST's
+   * `max_rows` (1000, `supabase/config.toml`) with no error, and the sweep
+   * then took every wine past the cut for recovered: it reset its alert level
+   * and cleared its bell line, and the next tick alerted on it again. The
+   * first page's exact count says how many rows there are; a read that comes
+   * back with fewer is treated as failed, never as "these recovered".
+   */
   private async getLowStockByRestaurant(
     /** Told when the read failed, so an empty map is not taken for "nothing is low". */
     onReadFailed?: () => void,
   ): Promise<Map<string, LowStockRow[]>> {
     const map = new Map<string, LowStockRow[]>();
-    const { data, error } = await this.db.supabase
-      .from("v_low_stock_items")
-      .select("*");
-    if (error) {
-      this.logger.warn(`v_low_stock_items query failed: ${error.message}`);
+    const data: any[] = [];
+    let expected: number | null = null;
+    let after: string | null = null;
+    for (;;) {
+      let query = this.db.supabase
+        .from("v_low_stock_items")
+        .select("*", { count: "exact" })
+        .order("id", { ascending: true });
+      if (after !== null) query = query.gt("id", after);
+      const {
+        data: page,
+        error,
+        count,
+      } = await query.limit(LowStockAlertsService.LOW_READ_PAGE);
+      if (error) {
+        this.logger.warn(`v_low_stock_items query failed: ${error.message}`);
+        onReadFailed?.();
+        return map;
+      }
+      if (expected === null && typeof count === "number") expected = count;
+      const rows = (page ?? []) as any[];
+      if (rows.length === 0) break;
+      data.push(...rows);
+      if (expected !== null && data.length >= expected) break;
+      const last = String(rows[rows.length - 1].id);
+      // No progress past the last page means the next one would repeat it.
+      if (after !== null && last <= after) break;
+      after = last;
+    }
+    if (expected !== null && data.length < expected) {
+      this.logger.warn(
+        `v_low_stock_items read ${data.length} of ${expected} rows — treated as a failed read, so no wine is taken for recovered this tick.`,
+      );
       onReadFailed?.();
       return map;
     }
-    for (const raw of data || []) {
+    for (const raw of data) {
       const restaurantId = raw.restaurant_id;
       if (!restaurantId) continue;
       const row = this.mapRow(raw);

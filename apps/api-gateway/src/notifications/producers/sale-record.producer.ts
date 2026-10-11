@@ -8,6 +8,7 @@ import {
 } from "./producer-ledger.service";
 import { readHouseMoney } from "../../common/house-money";
 import { money } from "./producer-copy";
+import { NO_MONEY_READER, moneyReaders, noGoalReader } from "./goal-readers";
 import {
   localDateIn,
   localMidnight,
@@ -128,6 +129,9 @@ export class SaleRecordProducer {
     );
 
     const skipped: string[] = [];
+    // The takings are the house's money: owners and managers only (F-1121).
+    // Read once, at the first day there is something to say.
+    let readers: ProducerAudience | null = null;
 
     for (let back = 1; back <= SaleRecordProducer.RECOVERY_DAYS; back++) {
       const localDate = shiftLocalDate(today, -back);
@@ -164,8 +168,13 @@ export class SaleRecordProducer {
         totals.lastActivityAt ??
         localMidnight(shiftLocalDate(localDate, 1), timeZone);
 
+      readers ??= await moneyReaders(
+        this.databaseService.getClient(),
+        restaurantId,
+        audience,
+      );
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally, now },
+        { restaurantId, producer: PRODUCER, audience: readers, tally, now },
         {
           dedupeKey: `service:${localDate}`,
           occurredAt,
@@ -207,6 +216,13 @@ export class SaleRecordProducer {
       );
     }
 
+    if (
+      tally.emitted === 0 &&
+      tally.withheldReason === null &&
+      noGoalReader(readers)
+    ) {
+      tally.withheldReason = NO_MONEY_READER;
+    }
     if (tally.emitted === 0 && tally.withheldReason === null) {
       tally.withheldReason = skipped.length
         ? `Nothing recorded — ${skipped.join("; ")}.`

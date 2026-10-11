@@ -31,6 +31,27 @@ function build() {
     notifications as any,
   );
   const producer = new SaleRecordProducer(database as any, ledger);
+  // Owner and manager hold the house's money; user-3 is staff (F-1121).
+  db.tables.user_restaurant_access = [
+    {
+      restaurant_id: TENANT,
+      user_id: "user-1",
+      role: "owner",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-2",
+      role: "manager",
+      is_active: true,
+    },
+    {
+      restaurant_id: TENANT,
+      user_id: "user-3",
+      role: "staff",
+      is_active: true,
+    },
+  ];
   // A USD house, said outright: the takings line prints the house's own
   // money since F-341, and these cases were written against dollars.
   db.tables.restaurants.push({
@@ -223,6 +244,44 @@ describe("SaleRecordProducer", () => {
       /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]|\u{FE0F}|\u{20E3})/u;
     expect(emoji.test(call.title)).toBe(false);
     expect(emoji.test(call.message)).toBe(false);
+  });
+
+  it("[REVERT-FAILS] never puts the takings in a staff member's bell (F-1121)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.pos_checks.push(check());
+    await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      { ready: ["user-1", "user-2", "user-3"], deferred: [] },
+      NOW,
+      true,
+    );
+    const opts = notifications.persistForRestaurant.calls[0][2];
+    expect(opts.onlyUserIds).toEqual(["user-1", "user-2"]);
+  });
+
+  it("[REVERT-FAILS] says so when only staff were there to hear the takings, rather than writing to them (F-1121)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.pos_checks.push(check());
+    const tally = await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      { ready: ["user-3"], deferred: [] },
+      NOW,
+      true,
+    );
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(tally.withheldReason).toMatch(/no owner or manager/);
+  });
+
+  it("throws when it cannot read who may hear the takings — never the whole house (F-1121)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.pos_checks.push(check());
+    db.failures.user_restaurant_access = "permission denied";
+    await expect(
+      producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true),
+    ).rejects.toThrow(/user_restaurant_access/);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
   });
 });
 
