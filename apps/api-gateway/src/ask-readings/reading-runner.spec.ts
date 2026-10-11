@@ -18,7 +18,11 @@ class Books {
     const q: any = {
       select: () => q,
       eq: (k: string, v: any) => { filters.push(r => r[k] === v); filterNames.push(`${k}=${v}`); return q; },
-      is: (k: string, v: any) => { filters.push(r => r[k] === v); return q; },
+      // An absent column reads as null, as PostgREST answers `is.null` (F-1240).
+      is: (k: string, v: any) => {
+        filters.push((r) => (r[k] ?? null) === v);
+        return q;
+      },
       in: (k: string, v: any[]) => { filters.push(r => v.includes(r[k])); return q; },
       gte: (k: string, v: any) => { filters.push(r => r[k] != null && r[k] >= v); return q; },
       lt: (k: string, v: any) => { filters.push(r => r[k] != null && r[k] < v); return q; },
@@ -420,5 +424,26 @@ describe("proof, scope, absence and provenance regressions", () => {
     expect(cells(result).filter(c => c.label === "Date").every(c => c.provenance === "derived")).toBe(true);
     books.fail.add("calendar_recurrence_exceptions");
     expect((await run(books, "calendar.upcoming", { from: "2026-09-11", to: "2026-09-13" })).outcome).toBe("could_not_read");
+  });
+});
+
+// F-1240: a sale the till voided or corrected down keeps its consumption row,
+// marked reversed (F-1197, never a negative row). It was not consumed.
+describe("sales.consumption leaves a reversed sale out (F-1240)", () => {
+  test("a voided bottle's marked row adds nothing", async () => {
+    const books = fixture();
+    books.tables.wine_consumption_log.push(
+      house("bottle-voided", {
+        inventory_id: "item-a",
+        consumption_type: "bottle",
+        quantity: 1,
+        volume_ml: 750,
+        recorded_at: "2026-09-12T12:00:00.000Z",
+        reversed_at: "2026-09-12T13:00:00.000Z",
+      }),
+    );
+    expect(
+      value(await run(books, "sales.consumption"), "consumption:volume"),
+    ).toBe(1050);
   });
 });

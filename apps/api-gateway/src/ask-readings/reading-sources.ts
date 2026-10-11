@@ -90,11 +90,22 @@ export class ReadingSources {
       .gte("closed_at", from).lt("closed_at", to), this.houseScope);
   }
   consumption(itemId: string, from: string, to: string): Promise<Evidence> {
-    return this.session.read(c => c.from("wine_consumption_log")
-      .select("id,restaurant_id,inventory_id,consumption_type,quantity,volume_ml,recorded_at", selected)
-      .eq("restaurant_id", this.restaurantId).eq("inventory_id", itemId)
-      .gte("recorded_at", from).lt("recorded_at", to),
-    r => this.houseScope(r) && r.inventory_id === itemId);
+    return this.session.read(
+      (c) =>
+        c
+          .from("wine_consumption_log")
+          .select(
+            "id,restaurant_id,inventory_id,consumption_type,quantity,volume_ml,recorded_at",
+            selected,
+          )
+          .eq("restaurant_id", this.restaurantId)
+          .eq("inventory_id", itemId)
+          // F-1240: a sale the till voided or corrected down is marked reversed.
+          .is("reversed_at", null)
+          .gte("recorded_at", from)
+          .lt("recorded_at", to),
+      (r) => this.houseScope(r) && r.inventory_id === itemId,
+    );
   }
   events(): Promise<Evidence> {
     return this.session.read(c => c.from("calendar_events")
