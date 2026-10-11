@@ -157,6 +157,7 @@ describe('the act, against the real routes', () => {
       expect(api.post).toHaveBeenCalledWith(
         '/one-tap-actions',
         expect.objectContaining({ icon: 'Truck' }),
+        { headers: { 'Idempotency-Key': expect.any(String) } },
       ),
     );
   });

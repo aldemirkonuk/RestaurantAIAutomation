@@ -45,6 +45,10 @@ import { houseMembersInRoles } from "../common/tenant/live-membership";
 import { houseFrame as frameOf } from "../common/house-frame";
 import { dayWords, weekWords } from "./house-date-words";
 
+/** Why a week's coverage is `null` (F-1376): its rules could not be read. */
+export const COVERAGE_RULES_UNREAD =
+  "Could not read the coverage rules, so no day is called covered.";
+
 /** Minutes since midnight from an "HH:MM" string. */
 function toMinutes(t: string): number {
   const [h, m] = t.split(":").map((n) => parseInt(n, 10));
@@ -243,6 +247,8 @@ export class ScheduleService {
       schedule,
       shifts: shiftRows.map((s: any) => shiftForViewer(s, viewer)),
       coverage,
+      // Unread rules are not "every day covered" (F-1376): say why it is null.
+      ...(coverage === null ? { coverageUnread: COVERAGE_RULES_UNREAD } : {}),
       labor,
       receipts,
       settings,
@@ -1986,16 +1992,25 @@ export class ScheduleService {
   /**
    * Deterministic coverage per day/period/role against coverage_templates.
    * Returns per-day gap summaries so manager + staff see identical truth.
+   * `null` when the rules could not be read (F-1376): with no rules every day
+   * came back gap-free and the week read "covered".
    */
   private async computeCoverage(
     restaurantId: string,
     weekStart: string,
     shifts: any[],
   ): Promise<any> {
-    const { data: templates } = await this.sb
+    const { data: templates, error: templatesErr } = await this.sb
       .from("coverage_templates")
       .select("*")
       .eq("restaurant_id", restaurantId);
+    if (templatesErr) {
+      this.logger.error(
+        `computeCoverage: could not read the coverage rules of ` +
+          `restaurant ${restaurantId}: ${templatesErr.message}`,
+      );
+      return null;
+    }
     const rules = templates ?? [];
 
     const days: any[] = [];

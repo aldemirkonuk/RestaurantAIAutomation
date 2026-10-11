@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { ProtectedRoute } from "../components/ProtectedRoute";
 
 /**
  * AuthContext and the session's house (ADR 0164).
@@ -243,6 +245,84 @@ describe("a rate limit on /auth/me never shows sign-in to a valid session (F-172
     await mount();
     expect(h.instance.get.mock.calls.filter(([u]) => u === "/api/v1/auth/me")).toHaveLength(1);
     expect(localStorage.getItem("accessToken")).toBe("valid-access-token");
+  });
+});
+
+describe("Mudavym unreachable at load keeps the person signed in (F-1378, rehit of F-172)", () => {
+  // `Retry-After: 0.01` keeps every wait at 10 ms, so the whole budget runs out quickly.
+  const down = { response: { status: 503, headers: { "retry-after": "0.01" } } };
+
+  it("says unreachable, not signed out, when every ask fails; a retry reads the session again", async () => {
+    localStorage.setItem("accessToken", jwt({ sub: U, restaurantId: A }));
+    localStorage.setItem("refreshToken", "r");
+    let up = false;
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url !== "/api/v1/auth/me") return { data: [] };
+      if (!up) throw down;
+      return {
+        data: {
+          user: { userId: U, email: "o@house.test", restaurantId: A, role: "owner", emailVerified: true },
+        },
+      };
+    });
+    const ctx = await mount();
+    expect(ctx().isAuthenticated).toBe(false);
+    expect(ctx().unreachable).toBe(true);
+    expect(localStorage.getItem("refreshToken")).toBe("r");
+
+    up = true;
+    act(() => ctx().retrySession?.());
+    await waitFor(() => expect(ctx().user?.userId).toBe(U));
+    expect(ctx().unreachable).toBe(false);
+  });
+
+  it("a protected page says so with a way to try again, never the sign-in page", async () => {
+    localStorage.setItem("accessToken", jwt({ sub: U, restaurantId: A }));
+    localStorage.setItem("refreshToken", "r");
+    let up = false;
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url !== "/api/v1/auth/me") return { data: [] };
+      if (!up) throw down;
+      return {
+        data: {
+          user: { userId: U, email: "o@house.test", restaurantId: A, role: "owner", emailVerified: true },
+        },
+      };
+    });
+    render(
+      <AuthProvider>
+        <MemoryRouter initialEntries={["/inventory"]}>
+          <Routes>
+            <Route
+              path="/inventory"
+              element={
+                <ProtectedRoute>
+                  <div>the page</div>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/login" element={<div>the sign-in page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+    expect(
+      await screen.findByText("Mudavym can't be reached — you're still signed in"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("the sign-in page")).toBeNull();
+
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("the page")).toBeInTheDocument();
+  });
+
+  it("a 401 that ends the session is not unreachable", async () => {
+    localStorage.setItem("accessToken", "stale-access-token");
+    h.instance.get.mockImplementation(async (url: string) =>
+      url === "/api/v1/auth/me" ? Promise.reject({ response: { status: 401 } }) : { data: [] },
+    );
+    const ctx = await mount();
+    expect(ctx().unreachable).toBe(false);
   });
 });
 
