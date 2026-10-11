@@ -1341,6 +1341,25 @@ export class PosHubService {
 
     for (const check of checks) {
       try {
+        // F-1199: Clover dates a paid order by its last change, so a tip
+        // adjusted the next morning would move the sale to that day. Once a
+        // closed_at is stored for the check, that first one is kept, and the
+        // check is dated by it below.
+        if (providerKey === "clover" && check.closedAt) {
+          const stored = await this.readStoredCheck(
+            restaurantId,
+            providerKey,
+            check.externalCheckId,
+          );
+          if (!stored.ok) {
+            errors.push(
+              `${check.externalCheckId}: not imported, the copy already kept could not be read to keep its day: ${stored.message}`,
+            );
+            continue;
+          }
+          if (stored.row?.closed_at != null)
+            check.closedAt = stored.row.closed_at;
+        }
         // ADR 0281: the one reading of this check's closed_at, taken before
         // the check is stored. The check row and every stock and consumption
         // row below are dated from it (see SaleInstant).
@@ -1377,6 +1396,13 @@ export class PosHubService {
         if (check.moneyUnread !== undefined) {
           errors.push(
             `${check.externalCheckId}: not imported, ${check.moneyUnread.field} not readable as an amount — write it as 1250.00 (it was ${quoteClosedAt(check.moneyUnread.value)})`,
+          );
+          continue;
+        }
+        // F-1193: "0,5" or "2,000" bottles is not read as one bottle.
+        if (check.qtyUnread !== undefined) {
+          errors.push(
+            `${check.externalCheckId}: not imported, ${check.qtyUnread.field} not readable as a quantity — write it as 2 or 0.5 (it was ${quoteClosedAt(check.qtyUnread.value)})`,
           );
           continue;
         }

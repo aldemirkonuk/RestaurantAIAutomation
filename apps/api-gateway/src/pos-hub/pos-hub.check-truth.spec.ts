@@ -494,3 +494,70 @@ describe("F-643: a house can unplug its till", () => {
     await expect(down.listConnections("r-1")).rejects.toThrow(/down/);
   });
 });
+
+describe("F-1193: a line quantity that cannot be read refuses the check", () => {
+  it("writes nothing, moves no stock, and says which line in errors[]", async () => {
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
+    const [line] = check("c-1").items;
+    const res = await ingest(service, [
+      check("c-1", {}, [{ ...line, qty: "2,000" }]),
+    ]);
+    expect(calls.checks).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(res.errors.join(" ")).toMatch(
+      /c-1: not imported, items\[0\]\.qty not readable as a quantity.*"2,000"/,
+    );
+  });
+
+  it("a Turkish half ('0,5') is read as half, not as one", async () => {
+    const { service, calls } = makeDb({ inventory: INVENTORY });
+    const [line] = check("c-1").items;
+    await ingest(service, [check("c-1", {}, [{ ...line, qty: "0,5" }])]);
+    expect(calls.checks[0].items[0].qty).toBe(0.5);
+  });
+});
+
+describe("F-1199: a Clover tip adjust does not move the sale's day", () => {
+  const FIRST = "2026-07-14T21:00:00.000Z";
+  const NEXT_MORNING = "2026-07-15T09:30:00.000Z";
+  const stored = {
+    voided: false,
+    closed_at: "2026-07-14T21:00:00+00:00",
+    source_version: null,
+    source_modified_at: "2026-07-14T21:00:00+00:00",
+  };
+  // Clover's copy of the paid order after the tip was changed next morning.
+  const adjusted = {
+    id: "c-1",
+    state: "paid",
+    createdTime: Date.parse("2026-07-14T18:00:00Z"),
+    modifiedTime: Date.parse(NEXT_MORNING),
+    total: 5200,
+    tipAmount: 1200,
+  };
+
+  it("keeps the first closed_at stored for a Clover check", async () => {
+    const { service, calls } = makeDb({ stored });
+    await service.ingest("r-1", "clover", adjusted);
+    expect(calls.checks).toHaveLength(1);
+    expect(calls.checks[0].closed_at).toBe(FIRST);
+    expect(calls.checks[0].tip).toBe(12);
+  });
+
+  it("a Clover check with no stored close takes its own", async () => {
+    const { service, calls } = makeDb({ stored: null });
+    await service.ingest("r-1", "clover", adjusted);
+    expect(calls.checks[0].closed_at).toBe(NEXT_MORNING);
+  });
+
+  it("another till's later close is still taken", async () => {
+    const { service, calls } = makeDb({ stored });
+    await ingest(service, [
+      check("c-1", { closedAt: NEXT_MORNING, sourceModifiedAt: NEXT_MORNING }),
+    ]);
+    expect(calls.checks[0].closed_at).toBe(NEXT_MORNING);
+  });
+});

@@ -73,6 +73,9 @@ export interface CanonicalCheck {
   /** Set only when a money field (subtotal, total, tip, a line price) was
    *  present but not read as an amount: ingest() refuses the check. */
   moneyUnread?: { field: string; value: unknown };
+  /** F-1193: set only when a line's quantity was present but not read as a
+   *  number ("2,000" is two thousand or two): ingest() refuses the check. */
+  qtyUnread?: { field: string; value: unknown };
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */
   tableRef?: string | null;
