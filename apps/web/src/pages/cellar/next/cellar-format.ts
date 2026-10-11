@@ -610,7 +610,7 @@ export function addRowsPrompt(id: RegisterId): string {
     case 'spirits':
       return 'Put your spirits on the menu. /inventory cannot hold them yet — it is keyed on the wine library.';
     case 'cocktails':
-      return 'Add the cocktail list to the menu. Recipes cannot be recorded at all yet: cocktail_ingredients was created empty and the extraction pass has not run.';
+      return 'Add your cocktails to /cocktails, or put the cocktail list on the menu. Each one can carry its recipe.';
     case 'non_alcoholic':
       return 'Put what you pour to a non-drinker on the menu. /inventory cannot hold it yet — it is keyed on the wine library.';
     default:

@@ -1450,9 +1450,9 @@ describe('CellarNext — the registers that are not wines', () => {
 
     fireEvent.click(screen.getByText('Negroni'));
     // The recipe half is no longer "never" — it is unwritten, and writable.
-    expect(screen.getByTestId('recipe-empty')).toHaveTextContent(
-      /empty because the extraction pass over the scanned menus never ran/,
-    );
+    expect(screen.getByTestId('recipe-empty')).toHaveTextContent(/No recipe recorded yet/);
+    // F-1326: plain words, not how the table came to be empty.
+    expect(screen.getByTestId('recipe-empty')).not.toHaveTextContent(/extraction pass|this pass/);
     expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
   });
 

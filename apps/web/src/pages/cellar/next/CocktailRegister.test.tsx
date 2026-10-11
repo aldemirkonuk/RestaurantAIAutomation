@@ -206,6 +206,84 @@ describe('recording a recipe', () => {
   });
 });
 
+// F-1327: measures were read with a bare Number() on "1.5"/"1,5" only, so
+// "1.000 ml" was 1 ml in a house that groups with "." and "1 1/2 oz" was 1.
+describe('reading a recipe measure', () => {
+  async function recordLines(value: string) {
+    mock.setRecipe.mockResolvedValue({ lines: value.split('\n').length });
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /Write the recipe/ }));
+    fireEvent.change(screen.getByLabelText('Recipe lines'), { target: { value } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the recipe/ }));
+    });
+    return mock.setRecipe.mock.calls[0][0].lines;
+  }
+
+  it('reads the house thousands mark, a b/c, and ½ ¾ as one measure', async () => {
+    marks.house = '.';
+    const lines = await recordLines('1.000 ml su\n1 1/2 oz bourbon\n½ oz lime\n1¾ oz rye\n30 ml gin\norange peel');
+    expect(lines).toEqual([
+      expect.objectContaining({ quantity: 1000, unit: 'ml', freeText: 'su' }),
+      expect.objectContaining({ quantity: 1.5, unit: 'oz', freeText: 'bourbon' }),
+      expect.objectContaining({ quantity: 0.5, unit: 'oz', freeText: 'lime' }),
+      expect.objectContaining({ quantity: 1.75, unit: 'oz', freeText: 'rye' }),
+      expect.objectContaining({ quantity: 30, unit: 'ml', freeText: 'gin' }),
+      { quantity: undefined, unit: undefined, freeText: 'orange peel', sortOrder: 5 },
+    ]);
+  });
+
+  it('keeps a measure it cannot read as written, with no quantity, and says so', async () => {
+    const lines = await recordLines('1.2.3 ml gin');
+    expect(lines).toEqual([{ quantity: undefined, unit: undefined, freeText: '1.2.3 ml gin', sortOrder: 0 }]);
+    expect(screen.getByText(/“1\.2\.3 ml gin” could not be read as a number.*kept as written/)).toBeInTheDocument();
+  });
+});
+
+// F-1325: the recipe editor was not keyed on the cocktail, so a draft typed
+// for one followed the owner to the next row and was recorded as its recipe.
+describe('an unrecorded recipe draft when another cocktail is opened', () => {
+  function typeForNegroni() {
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /Write the recipe/ }));
+    fireEvent.change(screen.getByLabelText('Recipe lines'), { target: { value: '30 ml gin' } });
+  }
+
+  it('asks first, and staying keeps the lines on Negroni', () => {
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    typeForNegroni();
+    fireEvent.click(screen.getByText('Rakı Sour'));
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: 'Negroni' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Recipe lines')).toHaveValue('30 ml gin');
+    ask.mockRestore();
+  });
+
+  it('leaving drops the draft — the next cocktail never inherits it', async () => {
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    typeForNegroni();
+    fireEvent.click(screen.getByText('Rakı Sour'));
+    expect(screen.getByRole('heading', { name: 'Rakı Sour' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Recipe lines')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeInTheDocument();
+    expect(mock.setRecipe).not.toHaveBeenCalled();
+    ask.mockRestore();
+  });
+
+  it('does not ask when nothing was typed', () => {
+    const ask = vi.spyOn(window, 'confirm');
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /Write the recipe/ }));
+    fireEvent.click(screen.getByText('Rakı Sour'));
+    expect(ask).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Rakı Sour' })).toBeInTheDocument();
+    ask.mockRestore();
+  });
+});
+
 describe('taking one off the list', () => {
   it('after a server fault, never says it was not retired', async () => {
     mock.retire.mockRejectedValue(serverFault());

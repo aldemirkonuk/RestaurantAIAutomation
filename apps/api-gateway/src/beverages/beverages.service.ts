@@ -359,7 +359,8 @@ export class BeveragesService {
       .getClient()
       .from("cocktails")
       .select(
-        "id, name, display_name, menu_section, method, glass, garnish, price, description, source",
+        // created_at feeds the list's "Kept" column (F-1328).
+        "id, name, display_name, menu_section, method, glass, garnish, price, description, source, created_at",
       )
       .eq("restaurant_id", restaurantId)
       .is("deleted_at", null)

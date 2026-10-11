@@ -27,10 +27,16 @@
  * a two-step confirm, no wax (MOTIONS.md, "Deliberate non-motions").
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { isUnconfirmedWrite } from '@/services/api/client';
-import { displayGroupMark, readOptionalAmount, twoReadingsProblem } from '@/lib/parseDecimal';
+import {
+  displayGroupMark,
+  parseDecimal,
+  readOptionalAmount,
+  twoReadingsProblem,
+  type GroupMark,
+} from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import {
   BOOK_LABEL,
@@ -112,23 +118,65 @@ function Field({
 
 /* ── the recipe: the first writer cocktail_ingredients has ever had ──────── */
 
-function Recipe({ cocktailId }: { cocktailId: string }) {
+const FRACTION: Record<string, number> = { '¼': 0.25, '½': 0.5, '¾': 0.75, '⅓': 1 / 3, '⅔': 2 / 3, '⅛': 0.125 };
+
+/**
+ * One recipe line: a leading measure and unit when the bartender wrote one,
+ * read the way this house writes numbers (F-1327) — "1.000 ml" is a litre in a
+ * house that groups with ".", "1 1/2 oz" and "1½ oz" are one and a half. A
+ * leading number that cannot be read is not guessed at: the line is kept as
+ * written, with no measure, and `unread` says so.
+ */
+function readRecipeLine(
+  line: string,
+  group: GroupMark | null,
+): { quantity?: number; unit?: string; freeText: string; unread?: true } {
+  const m =
+    /^(?:(\d+)\s+(\d+)\/(\d+)|(\d+)\/(\d+)|(\d*)\s*([¼½¾⅓⅔⅛])|(\d[\d.,]*))(?=[\sa-zA-Z])\s*([a-zA-Z]{1,10})?\s+(.*)$/.exec(
+      line,
+    );
+  if (!m) return { freeText: line };
+  let quantity: number | null;
+  if (m[1] !== undefined) quantity = Number(m[3]) === 0 ? null : Number(m[1]) + Number(m[2]) / Number(m[3]);
+  else if (m[4] !== undefined) quantity = Number(m[5]) === 0 ? null : Number(m[4]) / Number(m[5]);
+  else if (m[7] !== undefined) quantity = Number(m[6] || 0) + FRACTION[m[7]];
+  else quantity = parseDecimal(m[8], group);
+  if (quantity === null || !Number.isFinite(quantity)) return { freeText: line, unread: true };
+  return { quantity: Math.round(quantity * 1000) / 1000, unit: m[9] || undefined, freeText: m[10] };
+}
+
+function Recipe({
+  cocktailId,
+  onDraft,
+}: {
+  cocktailId: string;
+  /** Told whether lines are typed here and not yet recorded (F-1325). */
+  onDraft?: (unsaved: boolean) => void;
+}) {
   const recipe = useCocktailRecipe(cocktailId);
   const { setRecipe } = useCocktailWrites();
+  const group = useHouseGroupMark();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
+  const [startText, setStartText] = useState('');
   const [said, setSaid] = useState<string | null>(null);
 
+  const unsaved = editing && text !== startText;
+  useEffect(() => {
+    onDraft?.(unsaved);
+  }, [unsaved, onDraft]);
+  useEffect(() => () => onDraft?.(false), [onDraft]);
+
   const start = () => {
-    setText(
-      (recipe.data?.rows ?? [])
-        .map((l) =>
-          [l.quantity ?? '', l.unit ?? '', l.free_text ?? '']
-            .filter((v) => String(v).trim() !== '')
-            .join(' '),
-        )
-        .join('\n'),
-    );
+    const lines = (recipe.data?.rows ?? [])
+      .map((l) =>
+        [l.quantity ?? '', l.unit ?? '', l.free_text ?? '']
+          .filter((v) => String(v).trim() !== '')
+          .join(' '),
+      )
+      .join('\n');
+    setText(lines);
+    setStartText(lines);
     setEditing(true);
     setSaid(null);
   };
@@ -138,30 +186,25 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
     // bartender wrote one. Nothing is parsed beyond that: a recipe line is a
     // sentence a human wrote, and guessing structure out of it would put words
     // in their mouth.
-    const lines = text
+    const read = text
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
-      .map((l, i) => {
-        const m = /^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]{1,10})?\s+(.*)$/.exec(l);
-        return m
-          ? {
-              quantity: Number(m[1].replace(',', '.')),
-              unit: m[2] || undefined,
-              freeText: m[3],
-              sortOrder: i,
-            }
-          : { freeText: l, sortOrder: i };
-      });
+      .map((l) => readRecipeLine(l, group));
+    const unread = read.filter((l) => l.unread).map((l) => `“${l.freeText}”`);
+    const lines = read.map((l, i) => ({ quantity: l.quantity, unit: l.unit, freeText: l.freeText, sortOrder: i }));
     try {
       const out = await setRecipe.mutateAsync({ id: cocktailId, lines });
       setEditing(false);
       // Said from what was saved, never a history claim the page cannot see:
       // an amend or a clearing save is not "the first recipe" (F-917).
       setSaid(
-        out.lines === 0
+        (out.lines === 0
           ? 'Recipe cleared. This cocktail has no recipe now.'
-          : `Recipe recorded: ${out.lines} ${out.lines === 1 ? 'line' : 'lines'}.`,
+          : `Recipe recorded: ${out.lines} ${out.lines === 1 ? 'line' : 'lines'}.`) +
+          (unread.length
+            ? ` The measure in ${unread.join(', ')} could not be read as a number, so ${unread.length === 1 ? 'that line was' : 'those lines were'} kept as written, with no measure.`
+            : ''),
       );
     } catch (e) {
       // Only a definite answer may say what happened (F-338): a timeout or a
@@ -207,8 +250,9 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
             style={{ width: '100%', height: 'auto', padding: 8, lineHeight: 1.5 }}
           />
           <p className="cl-note" style={{ marginTop: 4 }}>
-            One ingredient per line. A leading number and unit are read as the
-            measure; everything else is kept as the bartender wrote it.
+            One ingredient per line. A leading measure and unit — 30 ml, 1,5 oz,
+            1 1/2 oz, ½ oz — are read as the measure; everything else is kept as
+            the bartender wrote it.
           </p>
           <span style={{ display: 'inline-flex', gap: 6, marginTop: 8 }}>
             <button type="button" className="cl-btn cl-focus" onClick={save} disabled={setRecipe.isPending}>
@@ -224,9 +268,7 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
       ) : (recipe.data?.rows.length ?? 0) === 0 ? (
         <>
           <p className="cl-said" data-testid="recipe-empty">
-            No recipe has been recorded for this cocktail. The table has been
-            writable since this pass — it was empty because the extraction pass
-            over the scanned menus never ran, not because a recipe cannot be kept.
+            No recipe recorded yet. Write one below and it is kept with this cocktail.
           </p>
           <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
             <Plus size={13} aria-hidden />
@@ -277,6 +319,21 @@ export default function CocktailRegister({
   const group = useHouseGroupMark();
   const [editId, setEditId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Recipe lines typed and not yet recorded in the open leaf (F-1325). Opening
+  // another row drops them, so that is asked first, never done silently.
+  const draftRef = useRef(false);
+  const onRecipeDraft = useCallback((unsaved: boolean) => {
+    draftRef.current = unsaved;
+  }, []);
+  const openRow = (id: string) => {
+    if (
+      draftRef.current &&
+      !window.confirm('The recipe you are writing has not been recorded. Leave it and lose those lines?')
+    ) {
+      return;
+    }
+    setOpenId((k) => (k === id ? null : id));
+  };
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -479,11 +536,11 @@ export default function CocktailRegister({
                       key={c.id}
                       data-selected={c.id === openId}
                       tabIndex={0}
-                      onClick={() => setOpenId((k) => (k === c.id ? null : c.id))}
+                      onClick={() => openRow(c.id)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
-                          setOpenId((k) => (k === c.id ? null : c.id));
+                          openRow(c.id);
                         }
                       }}
                     >
@@ -498,7 +555,7 @@ export default function CocktailRegister({
                       <td>{c.garnish ?? <span className="cl-dim">{EM}</span>}</td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>{money(c.price)}</td>
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
-                        {shortDate((c as { created_at?: string }).created_at)}
+                        {shortDate(c.created_at)}
                       </td>
                     </tr>
                   ))}
@@ -566,7 +623,9 @@ export default function CocktailRegister({
                             ) : null}
                           </span>
                         </div>
-                        <Recipe cocktailId={c.id} />
+                        {/* Keyed on the cocktail: a draft typed for one must
+                            never be recorded as another's recipe (F-1325). */}
+                        <Recipe key={c.id} cocktailId={c.id} onDraft={onRecipeDraft} />
                       </>
                     );
                   })()}
