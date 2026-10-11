@@ -2512,6 +2512,14 @@ export class PosHubService {
    * by the B15 key prefix, so rows written under a line's position before
    * this change count exactly as rows written after it. A read that fails, or
    * answers without a list, is not an empty ledger: the caller moves nothing.
+   *
+   * F-1238: for a till's check, the `csv_import` keys of the same check are
+   * read too. A file import made before the house's till sent anything stored
+   * the check under `csv_import` and booked its stock under those keys; once
+   * that row is the till's (no `csv_import` row of it stands), the till's copy
+   * is a replay of what the import took, not a second sale. While a
+   * `csv_import` row of it still stands beside the till's, it is a check of
+   * its own (stored twice before F-1195), and its keys are left to it.
    */
   private async readCheckLedger(
     restaurantId: string,
@@ -2520,28 +2528,60 @@ export class PosHubService {
   ): Promise<({ ok: true } & CheckLedger) | { ok: false; message: string }> {
     // LIKE treats `_` and `%` as wildcards and a till's check id may carry
     // either, so both (and the escape itself) are escaped.
-    const pattern = `${checkLedgerPrefix(source, externalCheckId).replace(
-      /[\\%_]/g,
-      (c) => `\\${c}`,
-    )}%`;
+    const pattern = (s: string) =>
+      `${checkLedgerPrefix(s, externalCheckId).replace(
+        /[\\%_]/g,
+        (c) => `\\${c}`,
+      )}%`;
+    const tillPrefix = checkLedgerPrefix(source, externalCheckId);
+    const importPrefix = checkLedgerPrefix("csv_import", externalCheckId);
+    // F-1238: an import's pour key, named as the till's line would be, so a
+    // void of the till's copy finds the pour the import booked.
+    const asTill = (key: string) =>
+      key.startsWith(importPrefix)
+        ? `${tillPrefix}${key.slice(importPrefix.length)}`
+        : key;
     try {
       const db = this.dbService.getClient();
-      const [tx, pours] = await Promise.all([
-        db
-          .from("inventory_transactions")
-          .select("idempotency_key, inventory_id, quantity_change")
-          .eq("restaurant_id", restaurantId)
-          .like("idempotency_key", pattern),
-        db
-          .from("pour_events")
-          .select("idempotency_key, inventory_id, pours, pour_ml")
-          .eq("restaurant_id", restaurantId)
-          .like("idempotency_key", pattern),
-      ]);
-      const error = tx?.error ?? pours?.error;
+      const read = (s: string) =>
+        Promise.all([
+          db
+            .from("inventory_transactions")
+            .select("idempotency_key, inventory_id, quantity_change")
+            .eq("restaurant_id", restaurantId)
+            .like("idempotency_key", pattern(s)),
+          db
+            .from("pour_events")
+            .select("idempotency_key, inventory_id, pours, pour_ml")
+            .eq("restaurant_id", restaurantId)
+            .like("idempotency_key", pattern(s)),
+        ]);
+      const reads = await Promise.all(
+        (source === "csv_import" ? [source] : [source, "csv_import"]).map(read),
+      );
+      const error = reads.flat().find((r) => r?.error)?.error;
       if (error) return { ok: false, message: error.message ?? "no message" };
-      if (!Array.isArray(tx?.data) || !Array.isArray(pours?.data)) {
+      if (reads.flat().some((r) => !Array.isArray(r?.data))) {
         return { ok: false, message: "the stock read returned no list" };
+      }
+      const tx = { data: reads[0][0].data as any[] };
+      const pours = { data: reads[0][1].data as any[] };
+      const byImport = (r: any) =>
+        String(r.idempotency_key).startsWith(importPrefix);
+      const importTx = ((reads[1]?.[0].data ?? []) as any[]).filter(byImport);
+      const importPours = ((reads[1]?.[1].data ?? []) as any[]).filter(
+        byImport,
+      );
+      if (importTx.length + importPours.length > 0) {
+        const stands = await this.importRowStands(
+          restaurantId,
+          externalCheckId,
+        );
+        if (!stands.ok) return stands;
+        if (!stands.stands) {
+          tx.data.push(...importTx);
+          pours.data.push(...importPours);
+        }
       }
       const ledger: CheckLedger = {
         empty: tx.data.length === 0 && pours.data.length === 0,
@@ -2549,7 +2589,7 @@ export class PosHubService {
         ml: new Map(),
         rows: new Map(),
         pourKeys: new Set(
-          pours.data.map((r: any) => String(r.idempotency_key)),
+          pours.data.map((r: any) => asTill(String(r.idempotency_key))),
         ),
         glassVoided: new Set(),
         byKey: new Map(),
@@ -2565,8 +2605,9 @@ export class PosHubService {
         add(ledger.rows, id, 1);
         // A B19 glass void returns whole bottles under `${pourKey}:void`; it
         // reverses that pour, not a bottle sale.
-        if (key.endsWith(":void") && ledger.pourKeys.has(key.slice(0, -5))) {
-          ledger.glassVoided.add(key.slice(0, -5));
+        const voided = asTill(key).slice(0, -5);
+        if (key.endsWith(":void") && ledger.pourKeys.has(voided)) {
+          ledger.glassVoided.add(voided);
           continue;
         }
         add(ledger.bottles, id, -(Number(r.quantity_change) || 0));
@@ -2575,7 +2616,7 @@ export class PosHubService {
       for (const r of pours.data as any[]) {
         const id = String(r.inventory_id);
         add(ledger.rows, id, 1);
-        if (ledger.glassVoided.has(String(r.idempotency_key))) continue;
+        if (ledger.glassVoided.has(asTill(String(r.idempotency_key)))) continue;
         add(ledger.ml, id, (Number(r.pours) || 0) * (Number(r.pour_ml) || 0));
         add(
           ledger.byKey,
@@ -2587,6 +2628,30 @@ export class PosHubService {
     } catch (err: any) {
       return { ok: false, message: err?.message ?? String(err) };
     }
+  }
+
+  /**
+   * F-1238: whether a `csv_import` row of this check stands. A read that
+   * fails is not "none": the caller moves nothing rather than read the
+   * import's stock as the till's.
+   */
+  private async importRowStands(
+    restaurantId: string,
+    externalCheckId: string,
+  ): Promise<{ ok: true; stands: boolean } | { ok: false; message: string }> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_checks")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("source", "csv_import")
+      .eq("external_check_id", externalCheckId)
+      .limit(1);
+    if (error) return { ok: false, message: error.message ?? "no message" };
+    if (!Array.isArray(data)) {
+      return { ok: false, message: "the check read returned no list" };
+    }
+    return { ok: true, stands: data.length > 0 };
   }
 
   /**
