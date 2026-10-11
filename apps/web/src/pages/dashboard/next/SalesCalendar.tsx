@@ -293,6 +293,19 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
   useEffect(() => {
     if (ledger && ledger.today !== undefined) setSaidToday(ledger.today);
   }, [ledger]);
+  // F-1365: a page left open past the house's midnight kept the month's own
+  // today. The page re-renders on its 30 s clock; once the house's clock has
+  // passed the month's today, forget it and read the month again — once per
+  // month per day, so a gateway that still says the old day is not re-asked.
+  const reloadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!zone || !ledger || typeof ledger.today !== 'string' || clockToday <= ledger.today) return;
+    const key = `${ledger.year}-${ledger.month}:${clockToday}`;
+    if (reloadedFor.current === key) return;
+    reloadedFor.current = key;
+    setSaidToday(undefined);
+    refetchMonth();
+  }, [zone, ledger, clockToday, refetchMonth]);
   const houseToday = ledger && ledger.today !== undefined ? ledger.today : saidToday;
   const todayStr = houseToday ?? clockToday;
   // A future day has no deliveries to list; don't ask the ledger for them

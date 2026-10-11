@@ -38,6 +38,25 @@ describe("a goal's pace runs through its deadline day (F-865)", () => {
     expect(s.elapsedDays).toBe(s.totalDays);
   });
 
+  it("counts house dates left across the fall-back night (F-1364)", () => {
+    const win = {
+      periodStart: "2026-10-01",
+      periodEnd: null,
+      deadlineDay: "2026-11-01",
+    };
+    // 00:30 in Detroit on the day before, and on the deadline day itself.
+    expect(
+      goalSchedule(win, "America/Detroit", at("2026-10-31T04:30:00Z")).daysLeft,
+    ).toBe(2);
+    expect(
+      goalSchedule(win, "America/Detroit", at("2026-11-01T04:30:00Z")).daysLeft,
+    ).toBe(1);
+    // 00:30 the day after: over.
+    expect(
+      goalSchedule(win, "America/Detroit", at("2026-11-02T05:30:00Z")).daysLeft,
+    ).toBe(0);
+  });
+
   it("paces a week over its seven days", () => {
     const week = {
       periodStart: "2026-10-04",

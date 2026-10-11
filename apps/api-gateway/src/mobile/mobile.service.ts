@@ -15,6 +15,8 @@ import {
   localMidnight,
   shiftLocalDate,
 } from "../notifications/producers/service-day";
+import { zonedWallClockToUtc } from "../calendar/zoned-time";
+import { houseWallAt } from "../notifications/low-stock-digest-clock";
 import { readAll } from "../providers/vendor-menu-supply";
 import {
   CHECK_LOOKBACK_MS,
@@ -367,8 +369,15 @@ export class MobileService {
     const start = localMidnight(today, zone);
     const lastWeekDay = shiftLocalDate(today, -7);
     const lastWeekStart = localMidnight(lastWeekDay, zone);
+    // The same wall-clock time on last week's day, not the same elapsed
+    // hours: in a clock-change week those differ by an hour (F-1363).
+    const { minutes } = houseWallAt(now, zone);
+    const hhmm = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(
+      minutes % 60,
+    ).padStart(2, "0")}`;
     const lastWeekEnd = new Date(
-      lastWeekStart.getTime() + (now.getTime() - start.getTime()),
+      zonedWallClockToUtc(lastWeekDay, hhmm, zone).getTime() +
+        (now.getTime() % 60_000),
     );
 
     const checksBetween = (what: string, from: Date, to: Date) =>
