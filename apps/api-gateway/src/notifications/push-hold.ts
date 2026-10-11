@@ -1,5 +1,5 @@
 import { isWithinQuietHours } from "../calendar/reminder-window";
-import { houseFrame } from "../common/house-frame";
+import { houseClock } from "../common/house-clock";
 
 /** Why a person's phone or browser stays quiet for a push right now. */
 export type PushHoldReason = "push_off" | "quiet_hours";
@@ -20,8 +20,8 @@ export type PushHoldReason = "push_off" | "quiet_hours";
  * off). When the preferences cannot be read, nobody is held, as before this
  * was read, and `warn` says so. A house with no time zone of its own is read
  * on its country's clock when the country keeps just one, otherwise in UTC
- * (F-868): the same rule Settings states and the calendar reminders keep, so
- * a window someone set still holds. Only when the house row cannot be read
+ * (F-868): `houseClock`, the rule Settings states and every quiet-hours sender
+ * keeps (F-1339), so a window someone set still holds. Only when the house row cannot be read
  * are quiet hours not judged; the Push switch still is.
  */
 export async function pushHolds(
@@ -58,7 +58,7 @@ export async function pushHolds(
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    zone = houseFrame(data ?? null).zone ?? "UTC";
+    zone = houseClock(data ?? null).zone;
   } catch (e: any) {
     warn(
       `PUSH_HOUSE_ZONE_UNREAD restaurant=${restaurantId} — ${e?.message}. Quiet hours are not judged on this push.`,

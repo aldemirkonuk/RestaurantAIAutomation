@@ -549,6 +549,23 @@ describe("CalendarRemindersService — quiet hours", () => {
     expect(db.tables.calendar_events[0].reminder_sent).toBe(false);
   });
 
+  it("F-1339: a house with no zone but a one-zone country keeps quiet hours on that country's clock, as pushes do", async () => {
+    const { db, service, notifications } = build(["user-1", "user-2"]);
+    db.tables.calendar_events.push(event({ reminder_days_before: 2 }));
+    db.tables.notification_preferences.push(quietRow("user-1"));
+
+    // 20:00Z on the 13th = 23:00 Istanbul (inside 22:00-08:00); 20:00 in UTC is not.
+    const tally = await service.sweepTenant(
+      { ...TENANT, timezone: "", timezoneIsSet: false, country: "TR" },
+      new Date("2026-01-13T20:00:00Z"),
+    );
+
+    expect(tally.deferredQuietHours).toBe(1);
+    expect(
+      notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds,
+    ).toEqual(["user-2"]);
+  });
+
   it("serves the deferred member on the next sweep after the window closes, and only them", async () => {
     const { db, service, notifications } = build(["user-1", "user-2"]);
     db.tables.calendar_events.push(event({ reminder_days_before: 2 }));

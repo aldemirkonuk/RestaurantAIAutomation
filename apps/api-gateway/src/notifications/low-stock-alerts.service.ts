@@ -71,20 +71,22 @@ const LOW_STOCK_PREF_DEFAULTS: EffectiveLowStockPrefs = {
 };
 
 /**
- * F-1338: who an instant line reaches — each member whose own row asks for
- * the first crossing, plus, when the batch holds a critical wine, each one
- * whose own row says criticals never wait. `undefined` = every member.
+ * F-1338: who an instant line reaches — `whole`, each member whose own row
+ * asks for the first crossing, gets the whole batch. F-1357: when the batch
+ * holds a critical wine, each one whose own row wants criticals only gets a
+ * line of just the critical wines (`criticalsOnly`), not the merely-low ones
+ * too. `undefined` = every member, the whole batch.
  */
 function instantAudience(
   prefs: EffectiveLowStockPrefs,
   wines: LowStockRow[],
-): string[] | undefined {
+): { whole: string[]; criticalsOnly: string[] } | undefined {
   if (!prefs.audience) return undefined;
-  const ids = new Set(prefs.audience.instant);
-  if (wines.some((w) => w.severity === "critical")) {
-    for (const id of prefs.audience.critical) ids.add(id);
-  }
-  return [...ids];
+  const whole = new Set(prefs.audience.instant);
+  const criticalsOnly = wines.some((w) => w.severity === "critical")
+    ? prefs.audience.critical.filter((id) => !whole.has(id))
+    : [];
+  return { whole: [...whole], criticalsOnly };
 }
 
 /** `GET /notifications/low-stock/held/:restaurantId` — the held queue. */
@@ -807,11 +809,72 @@ export class LowStockAlertsService {
     restaurantId: string,
     wines: LowStockRow[],
     restaurantName?: string,
-    /** F-1338: the members whose own switches want this line; absent = all. */
-    wantedBy?: string[],
+    /** F-1338/F-1357: who gets the whole batch and who its criticals only; absent = all. */
+    audience?: { whole: string[]; criticalsOnly: string[] },
     /** True only when an inbox row was actually written. The caller stamps the
      * ledger on this, so it must never report success it did not observe. */
   ): Promise<boolean> {
+    // F-1357: the whole batch goes to those who want every first crossing;
+    // a person who wants criticals only gets a line naming just those. When
+    // nobody wants the whole batch it holds only critical wines (the caller
+    // keeps a low one only when someone wants first crossings).
+    const critical = wines.filter((w) => w.severity === "critical");
+    const lines: Array<{
+      wines: LowStockRow[];
+      opts: { wantedBy?: string[] };
+    }> = [];
+    if (!audience) lines.push({ wines, opts: {} });
+    else {
+      if (audience.whole.length > 0 || audience.criticalsOnly.length === 0)
+        lines.push({ wines, opts: { wantedBy: audience.whole } });
+      if (audience.criticalsOnly.length > 0)
+        lines.push({
+          wines: critical,
+          opts: { wantedBy: audience.criticalsOnly },
+        });
+    }
+    const written: Array<{ inserted?: number; ids?: string[] } | undefined> =
+      [];
+    for (const line of lines)
+      written.push(
+        await this.writeInstantLine(restaurantId, line.wines, line.opts),
+      );
+
+    // 2) Email — one grouped digest email for the burst.
+    const outcome = await this.emailDigest(
+      restaurantId,
+      wines,
+      "instant",
+      restaurantName,
+    );
+    await this.recordEmailOutcome(
+      written.flatMap((w) => w?.ids ?? []),
+      outcome,
+    );
+
+    // The INBOX row is what "we told them" means here — email delivery is
+    // recorded separately and is allowed to fail (the lens run's two alerts
+    // both carried `email = {ok:false, error:"no_recipients"}` and that was
+    // correct). No inbox row means nothing was told.
+    //
+    // (2026-09-26, held-queue lane) This read `Boolean(persisted)`, which is
+    // true for EVERY answer `persistForRestaurant` gives: it never resolves
+    // falsy — a failed insert, a house with no members and a dedupe hit all
+    // come back as `{ inserted: 0, ids: [] }`, an object. So a crossing whose
+    // inbox write failed was stamped alerted and dropped out of the held
+    // queue — the fault the `last_held_at` column exists to prevent, one layer
+    // down. The count is the fact. F-1357: the first line is the one naming
+    // every wine in `wines`, so it is the one counted.
+    const persisted = written[0];
+    return (persisted?.inserted ?? 0) > 0;
+  }
+
+  /** One instant inbox line (bell, live ping, push) for `wines`. */
+  private async writeInstantLine(
+    restaurantId: string,
+    wines: LowStockRow[],
+    opts: { wantedBy?: string[] },
+  ) {
     const criticalCount = wines.filter((w) => w.severity === "critical").length;
     const priority: "critical" | "high" =
       criticalCount > 0 ? "critical" : "high";
@@ -831,7 +894,7 @@ export class LowStockAlertsService {
           : `${wines.length} wines dropped below par`;
 
     // 1) In-app inbox — the reliable channel (works even with no email set up).
-    const persisted = await this.notifications.persistForRestaurant(
+    return this.notifications.persistForRestaurant(
       restaurantId,
       {
         type: "inventory_low_stock",
@@ -858,31 +921,8 @@ export class LowStockAlertsService {
           })),
         },
       },
-      wantedBy ? { wantedBy } : {},
+      opts,
     );
-
-    // 2) Email — one grouped digest email for the burst.
-    const outcome = await this.emailDigest(
-      restaurantId,
-      wines,
-      "instant",
-      restaurantName,
-    );
-    await this.recordEmailOutcome(persisted?.ids, outcome);
-
-    // The INBOX row is what "we told them" means here — email delivery is
-    // recorded separately and is allowed to fail (the lens run's two alerts
-    // both carried `email = {ok:false, error:"no_recipients"}` and that was
-    // correct). No inbox row means nothing was told.
-    //
-    // (2026-09-26, held-queue lane) This read `Boolean(persisted)`, which is
-    // true for EVERY answer `persistForRestaurant` gives: it never resolves
-    // falsy — a failed insert, a house with no members and a dedupe hit all
-    // come back as `{ inserted: 0, ids: [] }`, an object. So a crossing whose
-    // inbox write failed was stamped alerted and dropped out of the held
-    // queue — the fault the `last_held_at` column exists to prevent, one layer
-    // down. The count is the fact.
-    return (persisted?.inserted ?? 0) > 0;
   }
 
   /**
