@@ -43,7 +43,7 @@
  * a duplicate, not a comparison.
  */
 
-import { EM, countOf, figure, money, num, pct, ratioPct, shortDay } from './rp-format';
+import { EM, codeOf, countOf, figure, money, num, pct, ratioPct, shortDay } from './rp-format';
 import { AMOUNTS_WITHHELD } from './rp-registers-house';
 import { unpricedNotes } from './rp-registers-trade';
 import { analysis, arr, obj, str, type ViewCtx } from './rp-spec';
@@ -69,6 +69,9 @@ export interface BenchRegister {
   spendPrev30d: number | null;
   paceDeltaPct: number | null;
   committed: number | null;
+  /** The codes the buying and committed figures are in (F-1145). */
+  spendCurrency?: string | null;
+  committedCurrency?: string | null;
   openOrderCount: number | null;
   /** Orders the buying and committed figures leave out for want of a price (F-701). */
   spendUnpricedCount?: number;
@@ -115,6 +118,8 @@ export const bench = analysis<BenchRegister>({
       spendPrev30d: num(cf.spendPrev30d),
       paceDeltaPct: num(cf.paceDeltaPct),
       committed: num(cf.committedOpenOrders),
+      spendCurrency: codeOf(cf.spendCurrency),
+      committedCurrency: codeOf(cf.committedCurrency),
       openOrderCount: num(cf.openOrderCount),
       spendUnpricedCount: num(cf.spendUnpricedCount) ?? undefined,
       committedUnpricedCount: num(cf.committedUnpricedCount) ?? undefined,
@@ -161,10 +166,10 @@ export const bench = analysis<BenchRegister>({
     const allFigures = [
       {
         label: 'Bought, last 30 days',
-        value: money(b.spendLast30d),
+        value: money(b.spendLast30d, 'full', b.spendCurrency),
         note: b.cashflowMissing ? 'the buying lens did not answer' : undefined,
       },
-      { label: 'Bought, the 30 before', value: money(b.spendPrev30d) },
+      { label: 'Bought, the 30 before', value: money(b.spendPrev30d, 'full', b.spendCurrency) },
       {
         label: 'Pace against last month',
         value: b.paceDeltaPct === null ? EM : pct(b.paceDeltaPct),
@@ -173,7 +178,7 @@ export const bench = analysis<BenchRegister>({
             ? 'the server withholds a pace when the two windows are not comparable'
             : undefined,
       },
-      { label: 'Committed, not yet delivered', value: money(b.committed) },
+      { label: 'Committed, not yet delivered', value: money(b.committed, 'full', b.committedCurrency) },
       {
         label: 'Trend per day, last 28 days',
         value: b.trendPerDayPct === null ? EM : pct(b.trendPerDayPct),
@@ -225,8 +230,8 @@ export const bench = analysis<BenchRegister>({
         key: 'buying',
         cells: [
           'Buying, 30 days against the 30 before',
-          money(b.spendLast30d, 'table'),
-          money(b.spendPrev30d, 'table'),
+          money(b.spendLast30d, 'table', b.spendCurrency),
+          money(b.spendPrev30d, 'table', b.spendCurrency),
           b.paceDeltaPct === null ? EM : pct(b.paceDeltaPct),
         ],
       });
@@ -288,7 +293,7 @@ export const bench = analysis<BenchRegister>({
             xLabel: 'window',
             yLabel: 'paid to vendors',
             unit: 'paid to vendors',
-            format: (v: number) => money(v, 'compact'),
+            format: (v: number) => money(v, 'compact', b.spendCurrency),
           }
         : undefined,
       table: {

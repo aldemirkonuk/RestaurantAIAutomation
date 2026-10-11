@@ -44,6 +44,7 @@ import {
   type ExportFigure,
   type ExportTable,
   type Unit,
+  type Withheld,
 } from "./report-export-doc";
 import { HOUSE_ZONE_UNSET } from "../../common/house-day";
 
@@ -82,7 +83,16 @@ export interface CuttingSpec {
   window: (days: number | null) => string;
   /** True for the one cutting whose endpoint takes a day window. */
   takesWindow: boolean;
-  write: (payload: unknown, ctx: { days: number | null }) => ExportDoc;
+  write: (payload: unknown, ctx: WriteCtx) => ExportDoc;
+}
+
+/**
+ * What a writer knows besides the payload: the till's day window, and the
+ * house's money — the code the file's header names (F-1145).
+ */
+export interface WriteCtx {
+  days: number | null;
+  currency?: string | null;
 }
 
 const doc = (d: Partial<ExportDoc>): ExportDoc => ({
@@ -98,6 +108,39 @@ const f = (label: string, value: Cell, unit: Unit): ExportFigure => ({
   value,
   unit,
 });
+
+/**
+ * A money figure the gateway gives with its own code (F-1145). The file heads
+ * every money figure with the house's code, so a euro COGS written as a bare
+ * number under a lira header is read as lira. One in another currency is
+ * withheld, and the reason says the amount with its own code.
+ */
+function houseMoney(
+  v: unknown,
+  code: unknown,
+  ctx: WriteCtx,
+  why: string,
+): number | Withheld {
+  const n = num(v);
+  if (n === null) return withheld(why);
+  const own = str(code).trim().toUpperCase();
+  const house = (ctx.currency ?? "").trim().toUpperCase();
+  if (!own || own === house) return n;
+  return withheld(
+    `${n} ${own}: given in ${own}, ${house ? `not the house's ${house}` : "and the house has no currency on record"}, and with no exchange rate on record it is not written as the house's money`,
+  );
+}
+
+/** The same, for a cell in a table whose rows mix units. */
+function houseMoneyCell(
+  v: unknown,
+  code: unknown,
+  ctx: WriteCtx,
+  why: string,
+): Cell {
+  const m = houseMoney(v, code, ctx, why);
+  return typeof m === "number" ? { n: m, unit: "money" } : m;
+}
 
 const nounCount = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
@@ -205,7 +248,7 @@ function writeReading(payload: unknown): ExportDoc {
 
 /* ────────────────────────────────────────────────────── 2. the till ────── */
 
-function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
+function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
   const d = obj(payload);
   const from = str(d.from);
   const to = str(d.to);
@@ -364,7 +407,7 @@ function unpricedLines(spendRaw: unknown, committedRaw: unknown): string[] {
   return out;
 }
 
-function writePacing(payload: unknown): ExportDoc {
+function writePacing(payload: unknown, ctx: WriteCtx): ExportDoc {
   const c = obj(payload);
   const last = num(c.spendLast30d);
   const prev = num(c.spendPrev30d);
@@ -391,12 +434,12 @@ function writePacing(payload: unknown): ExportDoc {
     figures: [
       f(
         "Paid out, the last 30 days",
-        figure(last, spendNote ?? noFigure),
+        houseMoney(last, c.spendCurrency, ctx, spendNote ?? noFigure),
         "money",
       ),
       f(
         "Paid out, the 30 days before",
-        figure(prev, spendNote ?? noFigure),
+        houseMoney(prev, c.spendCurrency, ctx, spendNote ?? noFigure),
         "money",
       ),
       f(
@@ -409,7 +452,12 @@ function writePacing(payload: unknown): ExportDoc {
       ),
       f(
         "Committed, not yet delivered",
-        figure(c.committedOpenOrders, committedNote ?? noFigure),
+        houseMoney(
+          c.committedOpenOrders,
+          c.committedCurrency,
+          ctx,
+          committedNote ?? noFigure,
+        ),
         "money",
       ),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
@@ -417,7 +465,12 @@ function writePacing(payload: unknown): ExportDoc {
         ? [
             f(
               "Not in either figure, at order value",
-              figure(obj(c.notCounted).orderValue, orderValueNote ?? noFigure),
+              houseMoney(
+                obj(c.notCounted).orderValue,
+                obj(c.notCounted).orderValueCurrency,
+                ctx,
+                orderValueNote ?? noFigure,
+              ),
               "money",
             ),
           ]
@@ -434,7 +487,12 @@ function writePacing(payload: unknown): ExportDoc {
               ],
               rows: projection.map((v, i) => [
                 i + 1,
-                figure(v, "the projection returned no figure for this week"),
+                houseMoney(
+                  v,
+                  c.spendCurrency,
+                  ctx,
+                  "the projection returned no figure for this week",
+                ),
               ]),
               note: "A Holt projection, not a measurement.",
             },
@@ -698,7 +756,7 @@ function writeQuadrants(payload: unknown): ExportDoc {
 
 /* ──────────────────────────────────────────────── 7. figures of record ── */
 
-function writeLedger(payload: unknown): ExportDoc {
+function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
   const d = obj(payload);
   const b = obj(d.basis);
   const cc = d.costCoverage == null ? null : obj(d.costCoverage);
@@ -735,8 +793,10 @@ function writeLedger(payload: unknown): ExportDoc {
       // F-1054: two currencies blank COGS for their own reason, said here.
       f(
         "Cost of goods (365d)",
-        figure(
+        houseMoney(
           d.cogs,
+          d.cogsCurrency,
+          ctx,
           str(d.cogsNote) ||
             "No delivered order came back for the window — which is either no buying or a read that failed",
         ),
@@ -1015,7 +1075,7 @@ function writeRestock(payload: unknown): ExportDoc {
 
 /* ─────────────────────────────────────────────── 11. against ourselves ── */
 
-function writeBench(payload: unknown): ExportDoc {
+function writeBench(payload: unknown, ctx: WriteCtx): ExportDoc {
   const d = obj(payload);
   const cashflowMissing = d.cashflow == null;
   const seasonalityMissing = d.seasonality == null;
@@ -1054,8 +1114,8 @@ function writeBench(payload: unknown): ExportDoc {
   const rows: Cell[][] = [
     [
       "Buying, the last 30 days against the 30 before",
-      typed(last, "money", spendWhy),
-      typed(prev, "money", spendWhy),
+      houseMoneyCell(last, cf.spendCurrency, ctx, spendWhy),
+      houseMoneyCell(prev, cf.spendCurrency, ctx, spendWhy),
       typed(pctOf(cf.paceDeltaPct), "percent", paceWhy),
     ],
     [
@@ -1086,8 +1146,16 @@ function writeBench(payload: unknown): ExportDoc {
           ? "Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running."
           : null,
     figures: [
-      f("Bought, the last 30 days", figure(last, spendWhy), "money"),
-      f("Bought, the 30 before", figure(prev, spendWhy), "money"),
+      f(
+        "Bought, the last 30 days",
+        houseMoney(last, cf.spendCurrency, ctx, spendWhy),
+        "money",
+      ),
+      f(
+        "Bought, the 30 before",
+        houseMoney(prev, cf.spendCurrency, ctx, spendWhy),
+        "money",
+      ),
       f(
         "Pace against last month",
         figure(pctOf(cf.paceDeltaPct), paceWhy),
@@ -1095,7 +1163,12 @@ function writeBench(payload: unknown): ExportDoc {
       ),
       f(
         "Committed, not yet delivered",
-        figure(cf.committedOpenOrders, committedNote ?? cfWhy),
+        houseMoney(
+          cf.committedOpenOrders,
+          cf.committedCurrency,
+          ctx,
+          committedNote ?? cfWhy,
+        ),
         "money",
       ),
       f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),

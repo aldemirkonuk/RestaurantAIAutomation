@@ -667,8 +667,6 @@ export class ReportExportsService {
         .catch((err) => {
           throw new Error(`the ${spec.title} register could not be read: ${messageOf(err)}`);
         });
-      const doc = spec.write(payload, { days: row.window_days });
-
       const { data: house, error: houseError } = await this.db
         .from("restaurants")
         .select("name, currency, timezone, country")
@@ -677,6 +675,16 @@ export class ReportExportsService {
       if (houseError)
         throw new Error(`the house's name and currency could not be read: ${houseError.message}`);
       if (!house) throw new Error("the house this export belongs to could not be found");
+
+      // The writer knows the header's money, so a figure given in another
+      // currency is not written under it as the house's (F-1145).
+      const doc = spec.write(payload, {
+        days: row.window_days,
+        currency:
+          typeof house.currency === "string" && house.currency
+            ? house.currency
+            : null,
+      });
 
       withheldCount = countWithheld(doc);
       const header = {

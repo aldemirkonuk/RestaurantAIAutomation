@@ -23,6 +23,7 @@ import {
   ORDER_OUTSTANDING_STATUSES,
   ORDER_SPEND_STATUSES,
   hasStatus,
+  toPostgrestInList,
 } from "../procurement/order-status";
 import { deadlineOf, landedVerdict } from "../procurement/delivery-deadline";
 import { overdueStanding } from "../procurement/overdue-order";
@@ -335,6 +336,48 @@ export class AdvancedAnalyticsService {
           .eq("restaurant_id", restaurantId)
           .gte("created_at", since),
       );
+    } catch (err: any) {
+      this.logger.error(
+        `analytics query on procurement_orders refused — this lens says it ` +
+          `could not be read rather than drawing part of the window: ${err?.message ?? err}`,
+      );
+      throw err;
+    }
+  }
+
+  /**
+   * Spend pacing's two reads (F-1146). The paid-out days are filed by
+   * `delivered_at`, so the delivered orders are windowed on `delivered_at`,
+   * as COGS-365 and the purchase-spend goal are: a March en-primeur
+   * delivered in October is October's spend. Orders still open are read by
+   * status with no date window, so a backorder or a futures order placed
+   * more than 180 days ago stays in Committed and Open orders. Both are read
+   * whole or refused, as `loadOrders` is.
+   */
+  private async loadCashflowOrders(restaurantId: string, sinceDays: number) {
+    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    const client = this.dbService.getClient();
+    const columns =
+      "id, provider_id, providers(name), total_cost, currency, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status";
+    try {
+      const [delivered, unclosed] = await Promise.all([
+        readWholeWindow<any>("The delivered orders in this window", () =>
+          client
+            .from("procurement_orders")
+            .select(columns, { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .in("status", ORDER_SPEND_STATUSES)
+            .gte("delivered_at", since),
+        ),
+        readWholeWindow<any>("The orders still open", () =>
+          client
+            .from("procurement_orders")
+            .select(columns, { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .not("status", "in", toPostgrestInList(ORDER_CLOSED_STATUSES)),
+        ),
+      ]);
+      return { delivered, unclosed };
     } catch (err: any) {
       this.logger.error(
         `analytics query on procurement_orders refused — this lens says it ` +
@@ -941,13 +984,13 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getCashflow(restaurantId: string) {
-    const [orders, frame] = await Promise.all([
-      this.loadOrders(restaurantId, 180),
+    const [{ delivered: deliveredRead, unclosed }, frame] = await Promise.all([
+      this.loadCashflowOrders(restaurantId, 180),
       this.loadHouseFrame(restaurantId),
     ]);
     // Money question: PARTIALLY_RECEIVED carries PO-value columns, not
     // received-value ones, so it is excluded here. See order-status.ts.
-    const delivered = orders.filter((o: any) =>
+    const delivered = deliveredRead.filter((o: any) =>
       hasStatus(o.status, ORDER_SPEND_STATUSES),
     );
     const spendUnpricedCount = sumOrderSpend(delivered).unpricedCount;
@@ -1013,7 +1056,7 @@ export class AdvancedAnalyticsService {
     // survived because it is an array `.includes()` rather than a comparison,
     // and `check_order_status_literals.py` only read comparisons. The guard
     // reads this form now too.
-    const open = orders.filter((o: any) =>
+    const open = unclosed.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
     const committedPaid = spendByCurrency(open, frame.currency);
@@ -1023,7 +1066,7 @@ export class AdvancedAnalyticsService {
     // above is changed here — a partly received order's columns are its
     // order value, not what arrived — but the panel names them, with their
     // order value, instead of letting both figures read as the whole book.
-    const neither = orders.filter(
+    const neither = unclosed.filter(
       (o: any) =>
         !hasStatus(o.status, ORDER_SPEND_STATUSES) &&
         !hasStatus(o.status, ORDER_OUTSTANDING_STATUSES) &&

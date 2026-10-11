@@ -28,10 +28,25 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-/** Money of record, or the dash. */
-export function money(v: unknown, mode: 'compact' | 'full' | 'table' = 'full'): string {
+/**
+ * Money of record, or the dash. `currency` is the code the gateway gave the
+ * figure in (F-1145): a euro COGS in a lira house prints "€48.000", never
+ * "₺48.000". Omitted or empty, it is the house's money.
+ */
+export function money(
+  v: unknown,
+  mode: 'compact' | 'full' | 'table' = 'full',
+  currency?: string | null,
+): string {
   const n = num(v);
-  return n === null ? EM : formatMoney(n, mode);
+  if (n === null) return EM;
+  const code = typeof currency === 'string' && currency.trim() ? currency.trim().toUpperCase() : undefined;
+  return formatMoney(n, mode, code);
+}
+
+/** The currency code a payload names, or null (F-1145). */
+export function codeOf(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim().toUpperCase() : null;
 }
 
 /**
