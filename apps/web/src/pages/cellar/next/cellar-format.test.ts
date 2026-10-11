@@ -66,9 +66,9 @@ describe('shortDate', () => {
 
   it('holds a calendar date on the day the document says, in any timezone', () => {
     // `doc_date` is a `date` column: no instant, no zone, no shifting.
-    expect(shortDate('2026-03-02')).toBe('2 Mar 2026');
-    expect(shortDate('2026-01-01')).toBe('1 Jan 2026');
-    expect(shortDate('2026-12-31')).toBe('31 Dec 2026');
+    expect(shortDate('2026-03-02')).toBe('02/03/2026');
+    expect(shortDate('2026-01-01')).toBe('01/01/2026');
+    expect(shortDate('2026-12-31')).toBe('31/12/2026');
   });
 
   it('does not simply render every date in UTC — an instant still moves', () => {
@@ -76,8 +76,8 @@ describe('shortDate', () => {
     // late-evening UTC instant belongs to the PREVIOUS day in New York, and
     // must render as that day, because "when did we last sell it" is a
     // question about the reader's evening.
-    expect(shortDate('2026-03-02T02:00:00Z')).toBe('1 Mar 2026');
-    expect(shortDate('2026-03-02')).toBe('2 Mar 2026');
+    expect(shortDate('2026-03-02T02:00:00Z')).toBe('01/03/2026');
+    expect(shortDate('2026-03-02')).toBe('02/03/2026');
   });
 
   it('renders an instant on the device’s clock while the house has no zone', () => {
@@ -87,7 +87,7 @@ describe('shortDate', () => {
     expect(shortDate(at)).toBe(
       new Date(at).toLocaleDateString('en-GB', {
         day: 'numeric',
-        month: 'short',
+        month: 'numeric',
         year: 'numeric',
       }),
     );
@@ -101,17 +101,18 @@ describe('shortDate', () => {
   });
 });
 
-describe('cellar dates are the house\'s day, in the house\'s words (F-1104)', () => {
-  // 01:30 on 3 March in Istanbul is still the evening of 2 March in New York.
-  const late = '2026-03-02T22:30:00Z';
+describe('cellar dates are the house\'s day, in the house\'s order, in digits (F-1104, F-1344)', () => {
+  // 01:30 on 3 October in Istanbul is still the evening of 2 October in New
+  // York. October, because a Turkish house wrote it "3 Eki" on an English page.
+  const late = '2026-10-02T22:30:00Z';
 
-  it('[REVERT-FAILS] writes an instant on the house\'s day, in the house\'s date style', () => {
-    expect(shortDate(late, 'Europe/Istanbul')).toBe('Mar 3, 2026');
+  it('[REVERT-FAILS] writes an instant on the house\'s day, in the house\'s date order', () => {
+    expect(shortDate(late, 'Europe/Istanbul')).toBe('10/3/2026');
     setHouseLocale('tr-TR');
     try {
-      expect(shortDate(late, 'Europe/Istanbul')).toBe('3 Mar 2026');
+      expect(shortDate(late, 'Europe/Istanbul')).toBe('03.10.2026');
       // A calendar date still holds the day the document says.
-      expect(shortDate('2026-03-02', 'Pacific/Honolulu')).toBe('2 Mar 2026');
+      expect(shortDate('2026-10-02', 'Pacific/Honolulu')).toBe('02.10.2026');
     } finally {
       setHouseLocale('en-US');
     }
@@ -120,13 +121,14 @@ describe('cellar dates are the house\'s day, in the house\'s words (F-1104)', ()
   it('[REVERT-FAILS] says when a drink was sold out on the house\'s clock', () => {
     const s = { id: 's', cause: 'broken' as const, note: null, startedAt: late, startedBy: null, endedAt: null, endedBy: null };
     expect(pastWords(s, 'Europe/Istanbul')).toBe(
-      `${new Date(late).toLocaleDateString('en-US', { day: 'numeric', month: 'short', timeZone: 'Europe/Istanbul' })} ` +
+      `${new Date(late).toLocaleDateString('en-US', { day: 'numeric', month: 'numeric', timeZone: 'Europe/Istanbul' })} ` +
         `${new Date(late).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })} (broken)`,
     );
-    expect(pastWords(s, 'Europe/Istanbul')).toMatch(/^Mar 3 01:30/);
+    expect(pastWords(s, 'Europe/Istanbul')).toMatch(/^10\/3 01:30/);
     setHouseLocale('tr-TR');
     try {
-      expect(pastWords(s, 'Europe/Istanbul')).toMatch(/^3 Mar 01:30 \(broken\)$/);
+      // Never "3 Eki": the words on the page stay English (F-1344).
+      expect(pastWords(s, 'Europe/Istanbul')).toMatch(/^3\/10 01:30 \(broken\)$/);
     } finally {
       setHouseLocale('en-US');
     }
@@ -272,19 +274,19 @@ describe('counts group thousands with the house mark (F-1085, F-908 family)', ()
   });
 });
 
-describe('the last-counted day is the house\'s day, in the house\'s words (F-1100)', () => {
-  // 01:30 on 3 March in Istanbul is still the afternoon of 2 March in Los Angeles.
-  const late = '2026-03-02T22:30:00Z';
+describe('the last-counted day is the house\'s day, in the house\'s order (F-1100, F-1344)', () => {
+  // 01:30 on 3 October in Istanbul is still the afternoon of 2 October in Los Angeles.
+  const late = '2026-10-02T22:30:00Z';
 
-  it('writes the day the house counted, in the house\'s own date style', () => {
+  it('[REVERT-FAILS] writes the day the house counted, in digits in the house\'s order', () => {
     setHouseLocale('tr-TR');
     try {
-      expect(countedDay(late, 'Europe/Istanbul')).toBe('3 Mar 2026');
+      expect(countedDay(late, 'Europe/Istanbul')).toBe('03.10.2026');
     } finally {
       setHouseLocale('en-US');
     }
-    expect(countedDay(late, 'Europe/Istanbul')).toBe('Mar 3, 2026');
-    expect(countedDay(late, 'America/Los_Angeles')).toBe('Mar 2, 2026');
+    expect(countedDay(late, 'Europe/Istanbul')).toBe('10/3/2026');
+    expect(countedDay(late, 'America/Los_Angeles')).toBe('10/2/2026');
   });
 
   it('an unreadable time shows a dash, not "Invalid Date"', () => {

@@ -127,22 +127,23 @@ describe('useSettleOnHouseDay', () => {
   });
 });
 
-describe("the date formatters read the house's zone and style (F-1135, F-1104)", () => {
+describe("the date formatters read the house's zone and date order (F-1135, F-1104, F-1344)", () => {
   // 01:30 on 3 March in Istanbul is still the evening of 2 March in New York.
   const late = '2026-03-02T22:30:00Z';
 
   it('[REVERT-FAILS] /orders and the cellar print the house\'s day once its zone is read', async () => {
     said.zone = 'Europe/Istanbul';
     expect(getHouseZone()).toBeNull();
-    expect(fmtDate(late)).toMatch(/^Mar 2(, 2026)?$/);
+    expect(fmtDate(late)).toMatch(/^3\/2(\/2026)?$/);
     const h = renderHook(() => useHouseZone());
     await waitFor(() => expect(h.result.current).toBe('Europe/Istanbul'));
     expect(getHouseZone()).toBe('Europe/Istanbul');
-    expect(fmtDate(late)).toMatch(/^Mar 3(, 2026)?$/);
-    expect(shortDate(late)).toBe('Mar 3, 2026');
+    expect(fmtDate(late)).toMatch(/^3\/3(\/2026)?$/);
+    expect(shortDate(late)).toBe('3/3/2026');
     setHouseLocale('tr-TR');
     try {
-      expect(fmtDate(late)).toMatch(/^3 Mar( 2026)?$/);
+      // Digits, so a Turkish house's words stay English (F-1344).
+      expect(fmtDate(late)).toMatch(/^3\/3$|^03\.03\.2026$/);
       expect(fmtReadTime(Date.parse(late))).toMatch(/01:30$/);
     } finally {
       setHouseLocale('en-US');

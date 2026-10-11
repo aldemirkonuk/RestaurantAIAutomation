@@ -62,8 +62,9 @@ function timeAgo(iso: string | null | undefined, zone: string | null = null): st
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  // The house's way of writing a date, on the house's day (F-1123).
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  // The house's way of writing a date, on the house's day (F-1123), in digits
+  // so the words stay English: "11/10", never "11 Eki" (ADR 0207 q7, F-1344).
+  const opts: Intl.DateTimeFormatOptions = { month: 'numeric', day: 'numeric' };
   if (zone) {
     try {
       return new Date(iso).toLocaleDateString(getHouseLocale(), { ...opts, timeZone: zone });

@@ -503,7 +503,7 @@ export function RowExpansion({
                 <div key={o.id} className="flex items-center gap-2.5 py-1.5 border-t border-gray-50 first:border-t-0 text-xs">
                   <span className="font-mono text-[11px] font-bold text-gray-700 w-16 truncate">{o.orderNumber || o.id.slice(0, 8)}</span>
                   <span className="flex-1 text-gray-500 truncate">
-                    {o.createdAt ? new Date(o.createdAt).toLocaleDateString(getHouseLocale(), { month: 'short', day: 'numeric' }) : ''}
+                    {o.createdAt ? new Date(o.createdAt).toLocaleDateString(getHouseLocale(), { month: 'numeric', day: 'numeric' }) : ''}
                   </span>
                   <span className="font-mono font-semibold text-gray-700">{o.quantity} btl</span>
                   <span

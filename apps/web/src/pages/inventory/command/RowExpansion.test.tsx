@@ -742,7 +742,7 @@ describe('RowExpansion — figures in the house locale', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([{ id: 'o-1', inventoryId: 'inv-1', orderNumber: 'PO-1', createdAt: '2026-03-05T12:00:00Z', quantity: 6, status: 'DELIVERED' }])
+    getOrders.mockResolvedValue([{ id: 'o-1', inventoryId: 'inv-1', orderNumber: 'PO-1', createdAt: '2026-10-05T12:00:00Z', quantity: 6, status: 'DELIVERED' }])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -752,7 +752,9 @@ describe('RowExpansion — figures in the house locale', () => {
       renderRow({ velocityPerDay: 1.5, wac: 40, menuPriceBottle: 100 } as Partial<InventoryItem>)
       expect(screen.getAllByText('1,5 btl/day').length).toBeGreaterThan(0)
       expect(screen.getByText(/\(2,5x\)/)).toBeInTheDocument()
-      expect(await screen.findByText('5 Mar')).toBeInTheDocument()
+      // Digits in the house's order, never "5 Eki" on an English page (F-1344).
+      expect(await screen.findByText('5/10')).toBeInTheDocument()
+      expect(screen.queryByText(/Eki/)).toBeNull()
     } finally {
       setHouseLocale(null)
     }

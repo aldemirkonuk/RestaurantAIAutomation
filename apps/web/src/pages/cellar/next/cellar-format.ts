@@ -664,7 +664,8 @@ export function strandedPrompt(id: RegisterId, n: number): string {
  *    the house's evening, not the reader's device (F-1104). With no zone
  *    known yet, the device's clock stands in, as `countedDay` does.
  *
- * Either way it is written the house's way (`getHouseLocale`), not en-GB.
+ * Either way it is written the house's way (`getHouseLocale`), not en-GB, and
+ * in digits so the words around it stay English (ADR 0207 q7, F-1344).
  */
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -674,7 +675,7 @@ export function shortDate(iso: string | null | undefined, zone: string | null = 
   if (Number.isNaN(d.getTime())) return EM;
   return d.toLocaleDateString(getHouseLocale(), {
     day: 'numeric',
-    month: 'short',
+    month: 'numeric',
     year: 'numeric',
     ...(DATE_ONLY.test(iso) ? { timeZone: 'UTC' } : zone ? { timeZone: zone } : {}),
   });
@@ -685,12 +686,13 @@ export function shortDate(iso: string | null | undefined, zone: string | null = 
  * so the day it names is the HOUSE's day, in the house's own way of writing a
  * date — not a US date read on a device somewhere else. With no zone known
  * yet, the device's clock stands in, as everywhere else on these pages.
+ * Digits, so a Turkish house reads "11.10.2026", not "11 Eki 2026" (F-1344).
  */
 export function countedDay(iso: string, zone?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return EM;
   return d.toLocaleDateString(getHouseLocale(), {
-    month: 'short',
+    month: 'numeric',
     day: 'numeric',
     year: 'numeric',
     ...(zone ? { timeZone: zone } : {}),

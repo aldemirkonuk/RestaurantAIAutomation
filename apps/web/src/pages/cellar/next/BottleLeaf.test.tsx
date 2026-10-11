@@ -467,8 +467,9 @@ describe('BottleLeaf — the last-counted day reads the house way (F-1100)', () 
     try {
       mount(bottle({ cellar: cellarRow({ lastCountedAt: '2026-03-02T12:00:00Z' }) }));
       const dd = screen.getByText('Last counted').nextElementSibling!;
-      expect(dd).toHaveTextContent('2 Mar 2026');
-      expect(dd).not.toHaveTextContent('Mar 2, 2026');
+      // Day first, in digits: never a US date, never a Turkish month word (F-1344).
+      expect(dd).toHaveTextContent('02.03.2026');
+      expect(dd).not.toHaveTextContent('3/2/2026');
     } finally {
       setHouseLocale('en-US');
     }
