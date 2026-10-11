@@ -77,6 +77,34 @@ function statusOf(e: unknown): number | undefined {
   return (e as { response?: { status?: number } })?.response?.status;
 }
 
+/** Whom a publish reached (F-1148, F-1228). `notified` is the crew alone. */
+interface PublishReach {
+  notified: number | null;
+  heldAway: number;
+  /** On the roster with no account: nothing could reach them. */
+  noAccount: number;
+  /** False when the notice was written to nobody at all. */
+  announced: boolean;
+}
+
+function reachSentence(r: PublishReach): string {
+  if (!r.announced) {
+    return 'The week is live, but the announcement did not reach anyone, so nobody on the team has been told yet.';
+  }
+  const people = (n: number) => (n === 1 ? '1 person' : `${n} people`);
+  const left: string[] = [];
+  if (r.heldAway > 0) left.push(`${people(r.heldAway)} who ${r.heldAway === 1 ? 'is' : 'are'} Away`);
+  if (r.noAccount > 0) {
+    left.push(`${people(r.noAccount)} on the roster with no account`);
+  }
+  if (r.notified === 0) {
+    return `The week is live, but nobody on the crew was told: only owners and managers got the notice.${
+      left.length ? ` Not told: ${left.join(' and ')}. Tell them yourself.` : ''
+    }`;
+  }
+  return `The week is live and the team was told, except ${left.join(' and ')}: they were not told.`;
+}
+
 export function PublishPanel({
   weekStart,
   scheduleId,
@@ -100,7 +128,7 @@ export function PublishPanel({
    * F-1148: the week went live but the announcement reached nobody, or left
    * out the people who are Away. `null` until a publish says so.
    */
-  const [reach, setReach] = useState<{ notified: number; heldAway: number } | null>(null);
+  const [reach, setReach] = useState<PublishReach | null>(null);
   /** Bumped by a refusal, so the seal stands up again for the next try. */
   const [tries, setTries] = useState(0);
   const publish = useMutation({
@@ -117,7 +145,14 @@ export function PublishPanel({
     },
     onSuccess: (
       res:
-        | { republished?: boolean; unchanged?: boolean; notified?: number; heldAway?: number }
+        | {
+            republished?: boolean;
+            unchanged?: boolean;
+            notified?: number | null;
+            announced?: boolean;
+            noAccount?: number | null;
+            heldAway?: number;
+          }
         | undefined,
     ) => {
       onDone();
@@ -134,9 +169,19 @@ export function PublishPanel({
       // An older gateway sends no count; only a count it sent is read.
       const notified = typeof res?.notified === 'number' ? res.notified : null;
       const heldAway = typeof res?.heldAway === 'number' ? res.heldAway : 0;
-      if (notified === 0 || (notified !== null && heldAway > 0)) {
+      const noAccount = typeof res?.noAccount === 'number' ? res.noAccount : 0;
+      // F-1228: `notified` counts the crew only, so 0 with the notice written
+      // (`announced`) is a week only owners and managers heard about. Without
+      // `announced`, 0 is the funnel's failed write, as before.
+      const announced =
+        typeof res?.announced === 'boolean' ? res.announced : notified !== 0;
+      if (
+        !announced ||
+        notified === 0 ||
+        (notified !== null && (heldAway > 0 || noAccount > 0))
+      ) {
         setUnchanged(false);
-        setReach({ notified, heldAway });
+        setReach({ notified, heldAway, noAccount, announced });
         return;
       }
       onClose();
@@ -175,17 +220,13 @@ export function PublishPanel({
         {reach ? (
           <>
             <p className="tm-note" role="status">
-              {reach.notified === 0
-                ? 'The week is live, but the announcement did not reach anyone, so nobody on the team has been told yet.'
-                : `The week is live and the team was told, except ${
-                    reach.heldAway === 1 ? '1 person who is Away' : `${reach.heldAway} people who are Away`
-                  }: they were not told.`}
+              {reachSentence(reach)}
             </p>
             <div className="tm-actions" style={{ marginTop: 14 }}>
               <button type="button" className="tm-ctl tm-ctl--quiet" onClick={onClose}>
                 Done
               </button>
-              {reach.notified === 0 && (
+              {!reach.announced && (
                 <button
                   type="button"
                   className="tm-ctl tm-ctl--seal"

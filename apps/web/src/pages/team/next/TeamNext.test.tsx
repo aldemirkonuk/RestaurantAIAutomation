@@ -123,6 +123,7 @@ vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 import TeamNext from './TeamNext';
 import { useTeamNextData } from './useTeamNextData';
 import { fmtWeekRange, mondayOf, weekFromLink } from './tm-format';
+import { PublishPanel } from './TeamOverlays';
 
 const member = (id: string, name: string, position: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -452,12 +453,16 @@ describe('F-1148: cover is never offered to someone on leave or Away that day', 
       member('m3', 'AwayOne', 'line', { user_id: 'u-away' }),
       member('m4', 'Free', 'line'),
     ];
+    // A published week, before its shifts end: cover can be asked for (F-1224).
     api.week = weekPayload({
+      schedule: { id: 'sch1', restaurant_id: 'r1', week_start: '2026-08-31', status: 'published', published_at: '2026-08-29T10:00:00Z' },
       shifts: [
         { ...shift('m1', '2026-09-01'), state: 'callout' },
         { ...shift(null, '2026-09-01'), state: 'open' },
       ],
     });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-30T12:00:00'));
     api.timeOff = [
       { id: 't1', member_id: 'm2', start_date: '2026-09-01', end_date: '2026-09-02', reason: null, status: 'approved', reviewed_by: 'u1', created_at: '2026-08-20' },
     ];
@@ -482,6 +487,7 @@ describe('F-1148: cover is never offered to someone on leave or Away that day', 
       await vi.waitFor(() => expect(api.offerCover).toHaveBeenCalledTimes(1));
       expect((api.offerCover.mock.calls[0] as unknown[])[1]).toEqual(['m4']);
     } finally {
+      vi.useRealTimers();
       window.history.pushState({}, '', '/');
     }
   });
@@ -505,5 +511,52 @@ describe('F-1115: the publish panel reads the week each time it opens', () => {
     });
     fireEvent.click(open);
     expect(await screen.findByText(/\(1 so far\)/)).toBeInTheDocument();
+  });
+});
+
+describe('F-1228: publish reach counts the crew, and says when none were told', () => {
+  const publish = async (reply: Record<string, unknown>) => {
+    api.publishSchedule.mockResolvedValueOnce(reply as never);
+    const onClose = vi.fn();
+    render(
+      <PublishPanel
+        weekStart="2026-09-07"
+        scheduleId="s1"
+        republish={false}
+        receiptsSeen={0}
+        onClose={onClose}
+        onDone={() => {}}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish the week' }));
+    return onClose;
+  };
+
+  it('a week only owners and managers heard about does not close as told', async () => {
+    const onClose = await publish({
+      republished: false,
+      notified: 0,
+      announced: true,
+      noAccount: 3,
+      heldAway: 0,
+    });
+    expect(await screen.findByText(/nobody on the crew was told/)).toBeInTheDocument();
+    expect(screen.getByText(/3 people on the roster with no account/)).toBeInTheDocument();
+    // Sending again would reach the same owners and managers: not offered.
+    expect(screen.queryByRole('button', { name: 'Send the announcement again' })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('names roster people with no account even when the rest of the crew was told', async () => {
+    const onClose = await publish({
+      republished: false,
+      notified: 4,
+      announced: true,
+      noAccount: 1,
+      heldAway: 0,
+    });
+    expect(await screen.findByText(/except 1 person on the roster with no account/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

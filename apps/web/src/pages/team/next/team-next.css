@@ -171,6 +171,8 @@
   border-radius: 12px;
   background: var(--paper-0);
   overflow-x: auto;
+  /* The visible width, for the shift detail below (F-1231). */
+  container-type: inline-size;
 }
 .tm-grid {
   min-width: 900px;
@@ -347,8 +349,12 @@
   background: transparent;
 }
 .tm-chip[data-state='callout'] {
-  text-decoration: line-through;
   color: var(--ink-4);
+}
+/* Only the time is struck: the line under it says "called out" in words
+   (F-1230), and a struck word is hard to read. */
+.tm-chip[data-state='callout'] .tm-chip__t {
+  text-decoration: line-through;
 }
 .tm-chip__t {
   display: block;
@@ -392,6 +398,13 @@
   border-bottom: 1px solid var(--paper-2);
   background: var(--paper-1);
   padding: 12px 14px;
+  /* F-1231: the grid is wider than a phone and scrolls sideways; the detail
+     is as wide as what is visible and holds to its left edge, so a Friday
+     chip's facts and buttons do not open off-screen. */
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+  box-sizing: border-box;
 }
 .tm-facts {
   display: flex;

@@ -785,6 +785,7 @@ function TeamNextManager({
           onChanged={refreshWeek}
           zone={zone}
           offOn={data.offOn}
+          published={data.published}
         />
 
         <hr className="tm-rule" />

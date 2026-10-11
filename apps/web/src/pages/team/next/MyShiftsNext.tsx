@@ -163,6 +163,11 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rangeOk = offFrom !== '' && offTo !== '' && offFrom <= offTo;
   /** The range last sent, so the same days are not filed twice by a second press. */
   const [sentKey, setSentKey] = useState<string | null>(null);
+  /**
+   * F-1227: how many of the house's owners and managers the request was put
+   * in front of; `null` when the gateway did not say.
+   */
+  const [leadsTold, setLeadsTold] = useState<number | null>(null);
   const rangeKey = `${offFrom}|${offTo}`;
   /** The gateway lists a staff member's own requests only (ADR 0088). */
   const mineQ = useQuery({
@@ -180,8 +185,9 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
         reason: 'Requested from My Shifts',
         ...(leaveType !== 'unknown' ? { leaveType } : {}),
       }),
-    onSuccess: () => {
+    onSuccess: (r: { managersTold?: unknown } | undefined) => {
       setSentKey(rangeKey);
+      setLeadsTold(typeof r?.managersTold === 'number' ? r.managersTold : null);
       void qc.invalidateQueries({ queryKey: ['team-next-my-time-off', rid] });
     },
     // A lost answer may be a sent request (F-1083): read your requests again.
@@ -321,9 +327,11 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
 
         {askOff.isSuccess && sentKey === rangeKey && (
           <p className="tm-quiet" style={{ marginBottom: 14 }}>
-            Your request went to your manager just now. It is listed below until they
-            decide, and you will get a notice when they do. Whoever approves it decides
-            whether the days are paid.
+            {leadsTold === 0
+              ? 'Your request is filed, but no manager could be told just now; tell them yourself if it is urgent.'
+              : 'Your request went to your manager just now.'}{' '}
+            It is listed below until they decide, and you will get a notice when they do.
+            Whoever approves it decides whether the days are paid.
           </p>
         )}
 
@@ -393,7 +401,13 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                       <span className="tm-chip__t">
                         {fmtTime(s.start_time, clock)}–{fmtTime(s.end_time, clock)}
                       </span>
-                      <span className="tm-chip__m">{s.role ?? s.shift_type}</span>
+                      {/* F-1230: a called-out shift says so in words, not by
+                          a strike-through a screen reader never announces. */}
+                      <span className="tm-chip__m">
+                        {s.state === 'callout'
+                          ? 'called out — cover asked'
+                          : (s.role ?? s.shift_type)}
+                      </span>
                     </span>
                   ))}
                 </div>
