@@ -13,7 +13,7 @@
  * the file that was grepped, so the claim is checkable.
  */
 
-import { CSSProperties, ReactNode, useId, useState } from 'react';
+import { CSSProperties, ReactNode, Ref, useEffect, useId, useRef, useState } from 'react';
 import { EM, KEPT_LABEL, KEPT_NOTE, MONO, SANS, SERIF, fmtExact, fmtWhen, type Kept } from './st-format';
 import type { Remote } from './useSettingsNextData';
 
@@ -157,13 +157,19 @@ export function Choice<T extends string>({
 }
 
 export function Action({
-  children, onClick, tone, disabled, type = 'button',
-}: { children: ReactNode; onClick?: () => void; tone?: 'quiet' | 'grave'; disabled?: boolean; type?: 'button' | 'submit' }) {
+  children, onClick, tone, disabled, type = 'button', ariaLabel, describedBy, buttonRef,
+}: {
+  children: ReactNode; onClick?: () => void; tone?: 'quiet' | 'grave'; disabled?: boolean; type?: 'button' | 'submit';
+  ariaLabel?: string; describedBy?: string; buttonRef?: Ref<HTMLButtonElement>;
+}) {
   return (
     <button
+      ref={buttonRef}
       type={type}
       onClick={onClick}
       disabled={disabled}
+      aria-label={ariaLabel}
+      aria-describedby={describedBy}
       className="st-ink st-focus"
       style={{
         fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: '6px 13px', borderRadius: 8,
@@ -421,25 +427,62 @@ export { SANS, SERIF, MONO, EM, KEPT_NOTE };
  * clicks. The seal is NOT used here: the wax is rationed to granting autonomy.
  */
 export function ConfirmAction({
-  label, confirmLabel, consequence, onConfirm, busy,
+  label, confirmLabel, consequence, onConfirm, busy, subject,
 }: {
   label: string;
   confirmLabel: string;
   consequence: string;
   onConfirm: () => void;
   busy?: boolean;
+  /** Who or what the action is on ("Ayşe", "invite ABC123"), so a list of
+   *  rows does not read as a column of identical "Remove" buttons. */
+  subject?: string;
 }) {
   const [armed, setArmed] = useState(false);
+  const armRef = useRef<HTMLButtonElement | null>(null);
+  const yesRef = useRef<HTMLButtonElement | null>(null);
+  const consequenceId = useId();
+  // F-1425: each step unmounts the button that was pressed, so focus is moved
+  // on by hand: to "Yes, …" once armed, and back to the first button after.
+  // A pending move waits out `busy` (a disabled button cannot take focus) and
+  // is dropped if the row itself goes, as it does after a removal.
+  const refocus = useRef<'yes' | 'arm' | null>(null);
+  useEffect(() => {
+    const target = refocus.current === 'yes' ? yesRef.current : refocus.current === 'arm' ? armRef.current : null;
+    if (!target || target.disabled) return;
+    refocus.current = null;
+    target.focus();
+  }, [armed, busy]);
+  const named = (words: string) => (subject ? `${words} ${subject}` : undefined);
   if (!armed) {
-    return <Action tone="grave" disabled={busy} onClick={() => setArmed(true)}>{busy ? 'Working…' : label}</Action>;
+    return (
+      <Action
+        tone="grave"
+        disabled={busy}
+        buttonRef={armRef}
+        ariaLabel={busy ? undefined : named(label)}
+        onClick={() => { refocus.current = 'yes'; setArmed(true); }}
+      >
+        {busy ? 'Working…' : label}
+      </Action>
+    );
   }
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-      <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2)', maxWidth: 260, textAlign: 'right' }}>
+      <span id={consequenceId} role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2)', maxWidth: 260, textAlign: 'right' }}>
         {consequence}
       </span>
-      <Action tone="grave" disabled={busy} onClick={() => { setArmed(false); onConfirm(); }}>{confirmLabel}</Action>
-      <Action tone="quiet" onClick={() => setArmed(false)}>Keep as is</Action>
+      <Action
+        tone="grave"
+        disabled={busy}
+        buttonRef={yesRef}
+        ariaLabel={named(confirmLabel)}
+        describedBy={consequenceId}
+        onClick={() => { refocus.current = 'arm'; setArmed(false); onConfirm(); }}
+      >
+        {confirmLabel}
+      </Action>
+      <Action tone="quiet" onClick={() => { refocus.current = 'arm'; setArmed(false); }}>Keep as is</Action>
     </span>
   );
 }

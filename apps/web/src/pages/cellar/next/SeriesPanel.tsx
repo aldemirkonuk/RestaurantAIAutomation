@@ -271,11 +271,30 @@ export default function SeriesPanel({
   onClose,
 }: SeriesPanelProps) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+
+  // F-1424: the panel opens below the whole table, so on its own it arrives
+  // unseen and unsaid. Remember the control that opened it, and hand focus
+  // back to it when the panel closes rather than dropping it to the page.
+  const openerRef = useRef<HTMLElement | null>(null);
+  useEffect(
+    () => () => {
+      if (openerRef.current?.isConnected) openerRef.current.focus();
+    },
+    [],
+  );
 
   useEffect(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && !ref.current?.contains(active)) {
+      openerRef.current = active;
+    }
     if (ref.current) {
       animate(ref.current, [{ opacity: 0 }, { opacity: 1 }], settle);
     }
+    // Take the reader to the record: focusing its heading scrolls it into view
+    // and reads its name.
+    headingRef.current?.focus();
   }, [label, columnId]);
 
   // The book the column named leads; the other four follow, so the operator
@@ -293,14 +312,19 @@ export default function SeriesPanel({
     <div
       ref={ref}
       className="cl-series"
-      role="dialog"
+      role="region"
       aria-label={`${columnLabel} for ${label}`}
       data-testid="series-panel"
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
         <div style={{ minWidth: 0 }}>
           <p className="cl-crumb">{columnLabel} · the whole record</p>
-          <h3 className="cl-serif" style={{ margin: '2px 0 0', fontSize: 19, fontWeight: 600 }}>
+          <h3
+            ref={headingRef}
+            tabIndex={-1}
+            className="cl-serif"
+            style={{ margin: '2px 0 0', fontSize: 19, fontWeight: 600 }}
+          >
             {label}
           </h3>
         </div>

@@ -170,6 +170,8 @@ function LiveRow({
       key={bottle.id}
       id={rowElId(bottle.id)}
       data-selected={selected}
+      // F-1428: chosen is said, not only drawn.
+      aria-selected={selected}
       data-live={stamp === undefined ? undefined : 'true'}
       tabIndex={0}
       onClick={onChoose}

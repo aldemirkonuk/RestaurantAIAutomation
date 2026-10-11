@@ -79,6 +79,33 @@ describe('WholeCellar from the keyboard (F-614)', () => {
   });
 });
 
+describe('the whole record and a chosen row, said aloud (F-1424, F-1428)', () => {
+  it('a chosen row says it is selected, not only that it is drawn so', () => {
+    const rows = mount();
+    const efes = rows.find((r) => r.textContent?.includes('Efes Pilsen'))!;
+    expect(efes).toHaveAttribute('aria-selected', 'false');
+    fireEvent.keyDown(efes, { key: 'Enter' });
+    expect(efes).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the record takes focus to its heading on open, and hands it back to its button on close', () => {
+    const rows = mount();
+    fireEvent.keyDown(rows.find((r) => r.textContent?.includes('Efes Pilsen'))!, { key: 'Enter' });
+    const bar = screen.getByRole('group', { name: 'The record behind Efes Pilsen' });
+    const opener = within(bar).getAllByRole('button')[0];
+    opener.focus();
+    fireEvent.click(opener);
+    // A region on the page, not a dialog that does not behave like one.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const panel = screen.getByTestId('series-panel');
+    expect(panel).toHaveAttribute('role', 'region');
+    expect(document.activeElement).toBe(within(panel).getByRole('heading', { name: 'Efes Pilsen' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Close the record' }));
+    expect(screen.queryByTestId('series-panel')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(opener);
+  });
+});
+
 describe('cellar touch targets (F-615)', () => {
   const css = readFileSync(resolve(process.cwd(), 'src/pages/cellar/next/cellar-next.css'), 'utf8');
 

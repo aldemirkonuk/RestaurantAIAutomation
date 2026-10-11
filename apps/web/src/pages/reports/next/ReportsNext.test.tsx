@@ -735,6 +735,31 @@ describe('ReportsNext — the subject is the reader’s too', () => {
     expect(within(restock).getByText('Below their reorder point')).toBeInTheDocument();
   });
 
+  /* F-1423: the grid places cuttings by transform, so DOM order (what a screen
+     reader reads and Tab walks) must follow the reader's arrangement, row by
+     row, not the order the analyses were saved in. */
+  it('reads and tabs the cuttings top to bottom, left to right, as they lie on the paper', () => {
+    const graphOf = (id: string) => defaultSheet().cuttings.find((c) => c.id === id)!.graph;
+    hook.current = {
+      ...base(),
+      sheet: {
+        cuttings: [
+          { id: 'reading', slot: { x: 0, y: 20, w: 12, h: 9 }, graph: graphOf('reading') },
+          { id: 'pacing', slot: { x: 6, y: 0, w: 6, h: 7 }, graph: graphOf('pacing') },
+          { id: 'till', slot: { x: 0, y: 0, w: 6, h: 9 }, graph: graphOf('till') },
+        ],
+      },
+    };
+    paint();
+    const names = ['Through the till', 'Spend pacing', 'The reading'];
+    const regions = names.map((name) => screen.getByRole('region', { name }));
+    for (let i = 1; i < regions.length; i += 1) {
+      expect(
+        regions[i - 1].compareDocumentPosition(regions[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
   it('says so when the reader has taken every cutting off, instead of showing blank paper', () => {
     hook.current = { ...base(), sheet: { cuttings: [] } };
     paint();

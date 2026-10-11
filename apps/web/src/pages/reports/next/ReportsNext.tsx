@@ -361,26 +361,31 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     [data.goalsDesk, tillDays, tillMonth, tillWeek, zone, data.registers.goals?.data],
   );
 
-  const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
-    id: c.id,
-    slot: c.slot,
-    body: (
-      <Cutting
-        id={c.id}
-        graph={c.graph}
-        register={data.registers[c.id]}
-        ctx={ctx}
-        arranging={arranging}
-        swapOptions={swapOptions}
-        arrange={arrange}
-        onGraph={(g) => onGraph(c.id, g)}
-        onSwap={(to) => onSwap(c.id, to)}
-        onRemove={() => onRemove(c.id)}
-        onDays={setTillDays}
-        onMonth={setTillMonth}
-      />
-    ),
-  }));
+  // F-1423: the grid places each cutting by transform, so the DOM order is
+  // what a screen reader reads and Tab walks. Lay them in the reader's order,
+  // row by row, not the order the analyses were saved in.
+  const cuttings: SheetCutting[] = [...view.cuttings]
+    .sort((a, b) => a.slot.y - b.slot.y || a.slot.x - b.slot.x)
+    .map((c) => ({
+      id: c.id,
+      slot: c.slot,
+      body: (
+        <Cutting
+          id={c.id}
+          graph={c.graph}
+          register={data.registers[c.id]}
+          ctx={ctx}
+          arranging={arranging}
+          swapOptions={swapOptions}
+          arrange={arrange}
+          onGraph={(g) => onGraph(c.id, g)}
+          onSwap={(to) => onSwap(c.id, to)}
+          onRemove={() => onRemove(c.id)}
+          onDays={setTillDays}
+          onMonth={setTillMonth}
+        />
+      ),
+    }));
 
   const offSheet = offered.filter((id) => !onSheet.has(id));
 
