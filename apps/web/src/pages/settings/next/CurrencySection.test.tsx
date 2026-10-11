@@ -116,6 +116,8 @@ describe('the Currency register — what it says', () => {
   it('carries graft C\'s "read by" line naming who actually consults this field', () => {
     mount();
     expect(screen.getByText(/every money figure the product prints/i)).toBeInTheDocument();
+    // F-1266: the line speaks to the owner, not in the code's function names.
+    expect(screen.queryByText(/fmtMoney|formatCurrency/)).toBeNull();
   });
 });
 

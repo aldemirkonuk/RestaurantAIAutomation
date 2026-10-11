@@ -109,6 +109,10 @@ interface EditLocationChainDialogProps {
   open: boolean
   onClose: () => void
   onSaved: () => void
+  /** F-1264: told when the country or state landed, so a page that drew
+      registers from the old country (Settings' currency and time zone) can
+      read them again. */
+  onPlaceChanged?: () => void
   /** F-912: moving a branch between chains is the organisation owner's act;
       anyone else sees the chain and cannot change it. */
   canMoveChain?: boolean
@@ -121,6 +125,7 @@ export function EditLocationChainDialog({
   open,
   onClose,
   onSaved,
+  onPlaceChanged,
   canMoveChain = true,
 }: EditLocationChainDialogProps) {
   const [selectedChainId, setSelectedChainId] = useState<string>(branch.chain_id ?? '')
@@ -232,6 +237,7 @@ export function EditLocationChainDialog({
         // F-1185: the old country's thousands mark and money formats are not
         // this house's any more; they are read again now, not at a reload.
         void houseCountryChanged(branch.id)
+        onPlaceChanged?.()
         // The receipt stays on the sheet until it is read; a toast that has
         // faded is not a record of whether the log took the change.
         setReceipt(placeReceipt(res?.data))

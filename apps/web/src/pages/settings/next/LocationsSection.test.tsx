@@ -7,7 +7,7 @@
  * beside it was already owner-only; the two now share that gate.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { LocationsSection } from './LocationsSection';
@@ -18,15 +18,28 @@ vi.mock('@/components/locations/AddLocationDialog', () => ({
 }));
 vi.mock('@/components/locations/CreateChainDialog', () => ({ CreateChainDialog: () => null }));
 vi.mock('@/components/locations/AssignToChainDialog', () => ({ AssignToChainDialog: () => null }));
-vi.mock('@/components/locations/EditLocationChainDialog', () => ({ EditLocationChainDialog: () => null }));
+vi.mock('@/components/locations/EditLocationChainDialog', () => ({
+  EditLocationChainDialog: ({ onPlaceChanged }: { onPlaceChanged?: () => void }) => (
+    <div role="dialog" aria-label="Edit location">
+      <button type="button" onClick={() => onPlaceChanged?.()}>
+        Country saved
+      </button>
+    </div>
+  ),
+}));
 
-function data(isOwner: boolean): SettingsNextData {
+const houseCurrencyReload = vi.fn();
+const houseTimeZoneReload = vi.fn();
+
+function data(isOwner: boolean, restaurantId = 'r1'): SettingsNextData {
   return {
     chains: { status: 'ok', data: [], error: null, reload: () => {} },
     locations: [{ id: 'r1', name: 'Uptown', city: 'Chicago', chain_id: null, chain_name: null }],
-    restaurantId: 'r1',
+    restaurantId,
     isOwner,
     refreshBranches: async () => {},
+    houseCurrency: { reload: houseCurrencyReload },
+    houseTimeZone: { reload: houseTimeZoneReload },
   } as unknown as SettingsNextData;
 }
 
@@ -73,5 +86,29 @@ describe('Locations — the switcher\'s "Add location" link', () => {
     draw(<LocationsSection data={data(false)} />, '/settings?tab=locations&action=add');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByTestId('where').textContent).toBe('?tab=locations');
+  });
+});
+
+// F-1264: a country correction for the open house re-reads the Currency and
+// Time zone registers on this page; they were drawn from the old country.
+describe('Locations — a country correction', () => {
+  it('reads Currency and Time zone again when the open house changed country', () => {
+    houseCurrencyReload.mockClear();
+    houseTimeZoneReload.mockClear();
+    draw(<LocationsSection data={data(true)} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Country saved' }));
+    expect(houseCurrencyReload).toHaveBeenCalledTimes(1);
+    expect(houseTimeZoneReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves them alone when another house changed country', () => {
+    houseCurrencyReload.mockClear();
+    houseTimeZoneReload.mockClear();
+    draw(<LocationsSection data={data(true, 'r2')} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Country saved' }));
+    expect(houseCurrencyReload).not.toHaveBeenCalled();
+    expect(houseTimeZoneReload).not.toHaveBeenCalled();
   });
 });

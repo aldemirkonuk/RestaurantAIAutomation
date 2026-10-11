@@ -549,6 +549,11 @@ describe('SettingsNext — the editorial spine', () => {
    * one integration point proving the real page actually renders it, wired
    * to real `SettingsNextData`, not a mock of `certaintyTally.ts` itself.
    */
+  it('F-1265: never prints a finding id to the owner', () => {
+    const { container } = mount();
+    expect(container.textContent).not.toMatch(/\bF-\d+/);
+  });
+
   it('shows the certainty tally, computed from the mounted data', () => {
     mount();
     // base(): carrying cost unstated, currency unstated, hours open unstated
