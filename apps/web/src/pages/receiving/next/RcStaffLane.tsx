@@ -253,7 +253,20 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
             <button
               type="button"
               data-ux-key="receiving-next:staff-door"
-              onClick={() => navigate(`/receiving/${d.id}/door`)}
+              // What this card knows rides along (F-1319): offline the door
+              // reads no order, and the receipt is named and counted from it.
+              onClick={() =>
+                navigate(`/receiving/${d.id}/door`, {
+                  state: {
+                    listed: {
+                      orderNumber: d.orderNumber ?? null,
+                      wineName: d.line,
+                      vendor: d.vendor,
+                      unitType: d.unitType,
+                    },
+                  },
+                })
+              }
               aria-label={`Receive ${d.restOfOrderBottles !== null ? 'the rest of ' : ''}${
                 d.vendor ?? d.line ?? 'delivery'
               } at the door`}

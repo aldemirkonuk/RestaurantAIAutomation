@@ -554,6 +554,25 @@ describe("recordDoorReceipt", () => {
     expect(calls.eventInserts).toHaveLength(0);
   });
 
+  it("[REVERT-FAILS] refuses a keg count on an order in bottles and books nothing (F-1318)", async () => {
+    const { db, calls } = makeDb({ order: { ...bottleOrder } });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "keg",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: expect.objectContaining({
+        reason: "counted_uom_not_order_unit",
+        message: expect.stringMatching(/in bottles/),
+      }),
+    });
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.eventInserts).toHaveLength(0);
+  });
+
   it("books a keg order counted in kegs, one for one (F-1206)", async () => {
     const { db, calls } = makeDb({
       order: {

@@ -29,6 +29,7 @@ vi.mock('./offline-storage', () => ({ offlineStorage: store }))
 import {
   clearDroppedDoorReceipts,
   discardDoorReceipt,
+  doorReceiptLabel,
   doorResendNeed,
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
@@ -36,6 +37,7 @@ import {
   pendingDoorCount,
   readDroppedDoorReceipts,
   resendDoorReceipt,
+  savedAtName,
   submitDoorReceipt,
   watchDoorOutbox,
   type DoorFlushResult,
@@ -632,7 +634,8 @@ describe('a parked door receipt says why, and can be completed (F-1256, F-1257)'
   })
 
   it('[REVERT-FAILS] does not send again a refusal that turns on the count itself', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([parkedAs('k', 'counted_uom_not_order_unit')])
+    // [F-1318: a count in the wrong unit is now counted again on the rail.]
+    store.getPendingMutationsByType.mockResolvedValue([parkedAs('k', 'receipt_key_reused')])
 
     expect(await resendDoorReceipt('k')).toBe(false)
     expect(recordDoorReceipt).not.toHaveBeenCalled()
@@ -644,6 +647,103 @@ describe('a parked door receipt says why, and can be completed (F-1256, F-1257)'
     expect(doorResendNeed({ reason: 'refused', code: 'order_not_receivable' })).toBe('nothing')
     expect(doorResendNeed({ reason: 'refused' })).toBe('nothing')
     expect(doorResendNeed({ reason: 'unowned' })).toBe('cannot')
+  })
+})
+
+/**
+ * F-1318: a box count on a keg or liter order (or kegs on one that is not) is
+ * refused with the unit named in the house's sentence. The rail takes the
+ * count again in that unit and sends it again under the same key — nothing
+ * landed the first time.
+ */
+describe('a receipt counted in the wrong unit is counted again in the order\'s (F-1318)', () => {
+  const parkedUnit = (id: string, body: Record<string, unknown>) => ({
+    ...pending(id),
+    data: { orderId: `o-${id}`, orderLabel: id, restaurantId: RID, body },
+    parked: {
+      reason: 'refused' as const,
+      status: 400,
+      code: 'counted_uom_not_order_unit',
+      at: '2026-10-11T00:00:00.000Z',
+    },
+  })
+  const boxes = {
+    countedQty: 3,
+    countedUom: 'case',
+    rejectedQtyInCountedUom: 0,
+    suggestedQtyInCountedUom: 3,
+    suggestionAccepted: true,
+    idempotencyKey: 'door:o-k:k',
+    notes: 'AK signed.',
+  }
+
+  it('[REVERT-FAILS] needs the count again, unless some boxes were broken out of it', () => {
+    const p = parkedUnit('k', boxes)
+    expect(doorResendNeed(p.parked, boxes)).toBe('order_unit')
+    // Some boxes broken out of a box count say nothing about kegs.
+    expect(doorResendNeed(p.parked, { ...boxes, rejectedQtyInCountedUom: 1 })).toBe('cannot')
+    expect(doorResendNeed(p.parked, { ...boxes, outcome: 'refused', rejectedQtyInCountedUom: 3 })).toBe(
+      'order_unit',
+    )
+    expect(doorResendNeed(p.parked)).toBe('cannot')
+  })
+
+  it("[REVERT-FAILS] sends it again counted in the order's unit, same key, no box numbers", async () => {
+    store.getPendingMutationsByType
+      .mockResolvedValueOnce([parkedUnit('k', boxes)])
+      .mockResolvedValue([])
+    recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
+
+    expect(await resendDoorReceipt('k', { recount: { qty: 2, uom: 'keg' } })).toBe(true)
+
+    const update = store.updatePendingMutation.mock.calls[0][1]
+    expect(update.parked).toBeUndefined()
+    expect(update.data.body).toEqual({
+      countedQty: 2,
+      countedUom: 'keg',
+      rejectedQtyInCountedUom: 0,
+      expectedQtyInCountedUom: null,
+      idempotencyKey: 'door:o-k:k',
+      notes: 'AK signed. Counted again in kegs from Receiving: 2.',
+    })
+  })
+
+  it('a truck refused whole stays refused whole in the new unit', async () => {
+    store.getPendingMutationsByType
+      .mockResolvedValueOnce([
+        parkedUnit('r', { ...boxes, outcome: 'refused', rejectedQtyInCountedUom: 3 }),
+      ])
+      .mockResolvedValue([])
+    recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
+
+    expect(await resendDoorReceipt('r', { recount: { qty: 24, uom: 'bottle' } })).toBe(true)
+    const { body } = store.updatePendingMutation.mock.calls[0][1].data
+    expect(body).toMatchObject({ countedQty: 24, countedUom: 'bottle', rejectedQtyInCountedUom: 24 })
+  })
+
+  it('without a count and a unit, nothing moves', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([parkedUnit('k', boxes)])
+
+    expect(await resendDoorReceipt('k')).toBe(false)
+    expect(await resendDoorReceipt('k', { recount: { qty: 0, uom: 'keg' } })).toBe(false)
+    expect(await resendDoorReceipt('k', { recount: { qty: 2, uom: 'case' as never } })).toBe(false)
+    expect(store.updatePendingMutation).not.toHaveBeenCalled()
+    expect(recordDoorReceipt).not.toHaveBeenCalled()
+  })
+})
+
+describe('a door receipt is never named by its order id (F-1319)', () => {
+  const id = '3f2b9c1e-8a4d-4e7b-9c2a-1d5e6f7a8b9c'
+
+  it('[REVERT-FAILS] keeps a real name and drops a raw id', () => {
+    expect(doorReceiptLabel({ orderId: id, orderLabel: 'PO-104' })).toBe('PO-104')
+    expect(doorReceiptLabel({ orderId: id, orderLabel: id })).toBeNull()
+    expect(doorReceiptLabel({ orderId: 'o1', orderLabel: '' })).toBeNull()
+  })
+
+  it('names it by when it was saved instead', () => {
+    expect(savedAtName(new Date(2026, 9, 11, 9, 5))).toBe('The delivery saved at 09:05')
+    expect(savedAtName(null)).toBe('A delivery')
   })
 })
 

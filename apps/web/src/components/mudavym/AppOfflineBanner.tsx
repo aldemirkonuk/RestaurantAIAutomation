@@ -298,6 +298,8 @@ function HouseOfflineBanner() {
         {parkedChanges.map((c) => (
           <div key={c.id} data-ux-key="shell.offline.not-sent.change">
             <span>{c.label} </span>
+            {/* Why Try again passes it by, when it does (F-1320). */}
+            {c.note && <span>&middot; {c.note} </span>}
             {c.href && (
               // Outside the router (App.tsx), so a plain link.
               <>

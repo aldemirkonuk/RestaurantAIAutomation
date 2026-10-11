@@ -38,7 +38,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Camera, CloudOff, Loader2, X } from 'lucide-react';
 import { Seal } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
@@ -69,6 +69,9 @@ import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
 import {
   asksBottlesPerBox,
   doorCountUnit,
+  doorListedOf,
+  DOOR_UNITS,
+  type DoorCountUom,
   composeDoorNotes,
   creditDraft,
   doorFacts,
@@ -119,6 +122,8 @@ interface DoorDraft {
   paperLine: string | null;
   /** Bottles in each box, as typed, on an order in bottles (F-1154). */
   perBox?: string;
+  /** What the person said they counted, when the order could not be read (F-1318). */
+  pickedUom?: DoorCountUom | null;
   idem: string;
   /** `idem` was taken from a receipt already on this phone, not made here (F-1076). */
   idemBorrowed?: boolean;
@@ -209,8 +214,22 @@ export default function DoorNext() {
      `'unread'` when the read failed, which the match line and the credit letter
      SAY rather than treating "unknown" as "none". */
   const [prior, setPrior] = useState<PriorReading>(null);
+  // What the receiving list knew when it opened this door (F-1319): offline it
+  // names the receipt and, when the list had it, gives the unit.
+  const location = useLocation();
+  const [listed] = useState(() => doorListedOf(location.state));
+  // Offline the order is unread (F-1256), so its unit comes from the list, or
+  // the person says what they counted — never an assumed box (F-1318).
+  const orderUnread = orderState === 'unreachable';
+  const listedUnit = orderUnread && listed?.unitType ? { unitType: listed.unitType } : null;
+  const unitPickNeeded = orderUnread && listedUnit === null;
+  const [pickedUom, setPickedUom] = useState<DoorCountUom | null>(kept?.pickedUom ?? null);
+  const unitPicked = !unitPickNeeded || pickedUom !== null;
   // Boxes, or the order's own kegs or liters (F-1206) — and said in that unit.
-  const unit = doorCountUnit(orderState === 'ok' ? order : null);
+  const unit =
+    unitPickNeeded && pickedUom
+      ? DOOR_UNITS[pickedUom]
+      : doorCountUnit(orderState === 'ok' ? order : listedUnit);
   const countsBoxes = unit.uom === 'case';
   const unitsWord = (n: number) => `${n} ${n === 1 ? unit.one : unit.many}`;
   const UnitsTitle = unit.many.charAt(0).toUpperCase() + unit.many.slice(1);
@@ -478,13 +497,13 @@ export default function DoorNext() {
     // this house has confirmed that order exists (F-711, F-309).
     if (orderState === 'unreachable') {
       setPaperLine(
-        `The order could not be checked, so this photo is not sent. Keep the paper for the desk, and count the ${unit.many} yourself.`,
+        `The order could not be checked, so this photo is not sent. Keep the paper for the desk, and count the ${unitPicked ? unit.many : 'delivery'} yourself.`,
       );
       return;
     }
     if (!navigator.onLine) {
       setPaperLine(
-        `No signal — this photo cannot be sent and is not saved. Keep the paper for the desk, and count the ${unit.many} yourself.`,
+        `No signal — this photo cannot be sent and is not saved. Keep the paper for the desk, and count the ${unitPicked ? unit.many : 'delivery'} yourself.`,
       );
       return;
     }
@@ -568,8 +587,12 @@ export default function DoorNext() {
   // unknown — and a box count on an order in bottles is refused later, from
   // the queue, with nobody at the door. So the door asks then too, as a
   // question rather than a hold: an order bought by the box needs nothing.
-  const orderUnread = orderState === 'unreachable';
-  const askPerBox = (orderState === 'ok' && asksBottlesPerBox(order)) || orderUnread;
+  // Only when boxes are what was counted (F-1318); the list's unit, when it
+  // came with one, is held to like the order's own.
+  const askPerBox =
+    (orderState === 'ok' && asksBottlesPerBox(order)) ||
+    (listedUnit !== null && asksBottlesPerBox(listedUnit)) ||
+    (unitPickNeeded && pickedUom === 'case');
   useEffect(() => {
     if (!askPerBox || perBoxTried.current || prior === null) return;
     perBoxTried.current = true;
@@ -588,7 +611,7 @@ export default function DoorNext() {
   const outcome: DoorOutcome = outcomeChoice ?? suggested;
   // A truck turned away whole books nothing, so it is not held up for the
   // bottles per box (F-1207); the boxes are recorded, the bottles left unknown.
-  const perBoxOk = !askPerBox || orderUnread || perBoxValue !== null || outcome === 'refused';
+  const perBoxOk = !askPerBox || unitPickNeeded || perBoxValue !== null || outcome === 'refused';
   // THE CREDIT LETTER MAY ONLY CLAIM AN ATTACHMENT THAT EXISTS. This was
   // `photoTaken`, set the instant the camera returned a file — so on the offline
   // branch and on the upload-failure branch the draft told a vendor that
@@ -609,7 +632,7 @@ export default function DoorNext() {
   const initialsOk = initials.trim().length >= 2;
   const reasonOk = outcome !== 'refused' || reason !== null;
   const sealDisabled =
-    submitting || !initialsOk || !reasonOk || !perBoxOk || paperHeld || onPhone !== null;
+    submitting || !unitPicked || !initialsOk || !reasonOk || !perBoxOk || paperHeld || onPhone !== null;
   const sealHint = onPhone
     ? onPhone.parked
       ? 'This delivery is already counted on this phone and was not sent. Open Receiving to send it again or discard it.'
@@ -618,7 +641,9 @@ export default function DoorNext() {
       ? reading?.prefill
         ? `Count the ${unit.many} yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count.`
         : `Count the ${unit.many} yourself, then tap \u201cThat's my count\u201d or change the number. The number filled in is what was ordered, not a count.`
-      : !perBoxOk
+      : !unitPicked
+        ? 'Say what you counted — boxes, bottles, kegs or liters. The order could not be read here.'
+        : !perBoxOk
         ? 'Say how many bottles are in each box — this order is counted in bottles.'
         : !initialsOk
           ? 'Add your initials first — when a case goes missing, who signed is the question.'
@@ -644,7 +669,16 @@ export default function DoorNext() {
       };
       const res = await submitDoorReceipt({
         orderId,
-        orderLabel: order?.orderNumber ?? orderId,
+        // Its order number, wine or vendor — from the list when the order
+        // was not read. Never the raw id (F-1319): the rail and the strip
+        // name a receipt with none by when it was saved.
+        orderLabel:
+          order?.orderNumber ??
+          listed?.orderNumber ??
+          order?.wineName ??
+          listed?.wineName ??
+          listed?.vendor ??
+          '',
         restaurantId: rid,
         body: {
           countedQty: counted,
@@ -721,17 +755,19 @@ export default function DoorNext() {
       reading,
       paperLine,
       perBox,
+      pickedUom,
       idem: idem.current,
       idemBorrowed: borrowed.current !== null && borrowed.current === idem.current,
     } satisfies DoorDraft);
-  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine, perBox, onPhone, keyTurn]);
+  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine, perBox, pickedUom, onPhone, keyTurn]);
 
   useUnsavedWorkGuard(
     orderState !== 'missing' && (step === 'count' || submitting),
     'This delivery is not recorded yet. Leave anyway? The count stays on this phone until you come back to it.',
   );
 
-  const orderLabel = order?.wineName ?? order?.orderNumber ?? 'Delivery';
+  const orderLabel =
+    order?.wineName ?? order?.orderNumber ?? listed?.wineName ?? listed?.orderNumber ?? 'Delivery';
 
   return (
     <div
@@ -931,13 +967,44 @@ export default function DoorNext() {
 
       {orderState !== 'missing' && step === 'count' && (
         <Panel
-          title={`How many ${unit.many}`}
+          title={unitPicked ? `How many ${unit.many}` : 'What came off the truck'}
           hint={
-            countsBoxes
-              ? 'Count the boxes, not the bottles. Someone opens them later, at a desk.'
-              : `This order is in ${unit.many}. Count the ${unit.many} as they come off the truck.`
+            !unitPicked
+              ? 'The order could not be read here, so say what you are counting first.'
+              : unitPickNeeded
+                ? `Count the ${unit.many} as they come off the truck.`
+                : countsBoxes
+                  ? 'Count the boxes, not the bottles. Someone opens them later, at a desk.'
+                  : `This order is in ${unit.many}. Count the ${unit.many} as they come off the truck.`
           }
         >
+          {/* F-1318: offline the order's unit is unknown, and a count in the
+              wrong one is refused later with nobody at the door. */}
+          {unitPickNeeded && (
+            <div className="mb-6">
+              <p className="mb-3 text-sm font-semibold text-inkm-2">Counted in</p>
+              <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Counted in">
+                {(['case', 'bottle', 'keg', 'liter'] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    role="radio"
+                    aria-checked={pickedUom === u}
+                    onClick={() => setPickedUom(u)}
+                    data-ux-key={`door:unit-${u}`}
+                    className={`${TAP} rounded-2xl border px-1 text-sm font-bold ${
+                      pickedUom === u
+                        ? 'border-seal bg-seal-tint text-inkm-1'
+                        : 'border-white/10 bg-white/5 text-inkm-3'
+                    }`}
+                  >
+                    {DOOR_UNITS[u].many.charAt(0).toUpperCase() + DOOR_UNITS[u].many.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* what the photograph is doing / did — honest at every stage */}
           {(uploading || paperLine) && (
             <p
@@ -958,7 +1025,7 @@ export default function DoorNext() {
               setPaperHeld(false);
               setCounted(v);
             }}
-            label={`${UnitsTitle} delivered`}
+            label={unitPicked ? `${UnitsTitle} delivered` : 'Delivered'}
             uxKey="door:cases"
           />
           {askPerBox && (
@@ -982,7 +1049,7 @@ export default function DoorNext() {
               <span className="mt-2 block text-xs text-inkm-3">
                 {outcome === 'refused'
                   ? 'Not needed when the whole truck is refused — the boxes are recorded, and nothing is booked.'
-                  : orderUnread
+                  : unitPickNeeded
                     ? 'The order could not be read here. If it was ordered by the bottle, say how many are in each box, or it cannot be booked. Ordered by the box? Leave it empty.'
                     : 'This order is in bottles. Open one box and count, if you are not sure.'}
               </span>
@@ -1176,8 +1243,12 @@ export default function DoorNext() {
             </p>
             <p className="max-w-xs text-center text-inkm-2" aria-live="polite">
               {queued
-                ? // True, and all they need: their next action is walking away.
-                  'It will send itself when you are back inside. Nothing is lost.'
+                ? orderState === 'ok'
+                  ? // True, and all they need: their next action is walking away.
+                    'It will send itself when you are back inside. Nothing is lost.'
+                  : // F-1318: counted without the order, so the office may not
+                    // take it as it stands. Said, rather than promised away.
+                    'It will send itself when you are back inside. The order could not be checked here, so if the office cannot take it as counted, Receiving shows it as not sent and says what it needs.'
                 : 'Someone will count the bottles and check it against the invoice at a desk.'}
             </p>
             {/* Recorded is not the same as booked. The server says which, in

@@ -36,6 +36,7 @@ import { useEffect, useRef, useState } from 'react';
 import { animate, ink, stamp, turn, useReducedMotion } from '@/lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, capStyle, fmtDate } from './rc-format';
 import type { OutboxData, QueuedReceiptVM } from './useReceivingNextData';
+import type { DoorRecountUom } from '@/lib/doorOutbox';
 
 const timeShort = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
 
@@ -233,6 +234,67 @@ function BottlesPerBoxResend({ label, onSend }: { label: string; onSend: (n: num
   );
 }
 
+/**
+ * F-1318: a receipt the house refused because it was counted in boxes on an
+ * order in kegs or liters (or in kegs on one that is not) is counted again
+ * here in the unit the house's sentence names, and sent again with it.
+ */
+function RecountResend({
+  label,
+  onSend,
+}: {
+  label: string;
+  onSend: (recount: { qty: number; uom: DoorRecountUom }) => void;
+}) {
+  const [uom, setUom] = useState<DoorRecountUom | ''>('');
+  const [raw, setRaw] = useState('');
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  const ok = uom !== '' && Number.isSafeInteger(n) && n >= 1;
+  return (
+    <>
+      <label style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>
+        Count again in{' '}
+        <select
+          value={uom}
+          onChange={(e) => setUom(e.target.value as DoorRecountUom | '')}
+          data-ux-key="receiving-next:outbox-recount-unit"
+          aria-label={`Unit to count ${label} again in`}
+          style={{ fontSize: 12, padding: '2px 4px' }}
+        >
+          <option value="">choose</option>
+          <option value="keg">kegs</option>
+          <option value="liter">liters</option>
+          <option value="bottle">bottles</option>
+        </select>{' '}
+        <input
+          type="text"
+          inputMode="numeric"
+          value={raw}
+          onChange={(e) => setRaw(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+          autoComplete="off"
+          data-ux-key="receiving-next:outbox-recount"
+          aria-label={`How many came, for ${label}`}
+          style={{ width: 56, fontSize: 12, fontFamily: MONO, padding: '2px 6px' }}
+        />
+      </label>
+      <button
+        type="button"
+        disabled={!ok}
+        onClick={() => ok && onSend({ qty: n, uom: uom as DoorRecountUom })}
+        data-ux-key="receiving-next:outbox-send-again"
+        aria-label={`Send ${label} again`}
+        style={{
+          ...linkButton,
+          color: ok ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
+          cursor: ok ? 'pointer' : 'default',
+        }}
+      >
+        Send again
+      </button>
+    </>
+  );
+}
+
 export function RcOutboxRail({ data }: { data: OutboxData }) {
   const { queued, drops, lastFlush, online, dismissDrop, flushNow, resend, discard } = data;
   const prevDropIds = useRef<Set<string>>(new Set(drops.map((d) => d.id)));
@@ -383,6 +445,9 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
               <div style={{ display: 'flex', gap: 14, marginTop: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
                 {r.parked.need === 'bottles_per_box' && (
                   <BottlesPerBoxResend label={r.label} onSend={(n) => resend(r.id, { packSize: n })} />
+                )}
+                {r.parked.need === 'order_unit' && (
+                  <RecountResend label={r.label} onSend={(recount) => resend(r.id, { recount })} />
                 )}
                 {/* F-1257: a refusal that turns on the count itself would only
                     come back the same, so Send again is not offered for it. */}

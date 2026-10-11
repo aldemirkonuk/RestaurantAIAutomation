@@ -175,7 +175,7 @@ export function priorFromReceived(r: {
  * refuses such a count. An order that states no unit is asked too (F-1159):
  * the order's unit defaults to bottles, and the gateway refuses it the same way.
  */
-export function asksBottlesPerBox(order: DoorOrderVM | null): boolean {
+export function asksBottlesPerBox(order: Pick<DoorOrderVM, 'unitType'> | null): boolean {
   if (!order) return false;
   const u = order.unitType;
   return u === null || u.startsWith('bottle') || u === 'each';
@@ -184,7 +184,7 @@ export function asksBottlesPerBox(order: DoorOrderVM | null): boolean {
 /** The unit the door counts in, and how it is said. */
 export interface DoorCountUnit {
   /** The `countedUom` sent to the gateway. */
-  uom: 'case' | 'keg' | 'liter';
+  uom: DoorCountUom;
   one: string;
   many: string;
 }
@@ -194,11 +194,53 @@ export interface DoorCountUnit {
  * into kegs, and a box count on a keg order booked one for one as bottles; so
  * those orders are counted in their own unit and said in its words.
  */
-export function doorCountUnit(order: DoorOrderVM | null): DoorCountUnit {
+export function doorCountUnit(order: Pick<DoorOrderVM, 'unitType'> | null): DoorCountUnit {
   const u = order?.unitType ?? '';
-  if (u.startsWith('keg')) return { uom: 'keg', one: 'keg', many: 'kegs' };
-  if (u.startsWith('lit')) return { uom: 'liter', one: 'liter', many: 'liters' };
-  return { uom: 'case', one: 'box', many: 'boxes' };
+  if (u.startsWith('keg')) return DOOR_UNITS.keg;
+  if (u.startsWith('lit')) return DOOR_UNITS.liter;
+  return DOOR_UNITS.case;
+}
+
+export type DoorCountUom = 'case' | 'bottle' | 'keg' | 'liter';
+
+/**
+ * The units a person can say they counted when the order could not be read
+ * (F-1318). Offline the door does not know whether the order is in boxes or
+ * kegs, and a box count on a keg order is refused later with nobody at the
+ * door, so the door asks rather than assuming boxes.
+ */
+export const DOOR_UNITS: Record<DoorCountUom, DoorCountUnit> = {
+  case: { uom: 'case', one: 'box', many: 'boxes' },
+  bottle: { uom: 'bottle', one: 'bottle', many: 'bottles' },
+  keg: { uom: 'keg', one: 'keg', many: 'kegs' },
+  liter: { uom: 'liter', one: 'liter', many: 'liters' },
+};
+
+/**
+ * What the receiving list already knew about the delivery when it opened the
+ * door (F-1319), carried in the route's state. Offline the door reads no
+ * order, so this is what names the receipt and, when the list knew it, the
+ * unit it is counted in. Anything malformed is dropped, never guessed at.
+ */
+export interface DoorListed {
+  orderNumber: string | null;
+  wineName: string | null;
+  vendor: string | null;
+  unitType: string | null;
+}
+
+export function doorListedOf(state: unknown): DoorListed | null {
+  const d = (state as { listed?: unknown } | null)?.listed;
+  if (!d || typeof d !== 'object') return null;
+  const o = d as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const listed = {
+    orderNumber: text(o.orderNumber),
+    wineName: text(o.wineName),
+    vendor: text(o.vendor),
+    unitType: text(o.unitType),
+  };
+  return Object.values(listed).some((v) => v !== null) ? listed : null;
 }
 
 /** The bottles per box to start from, when this order already knows one; else empty. */

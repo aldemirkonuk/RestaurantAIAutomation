@@ -607,16 +607,72 @@ describe('F12 — the rail shows a parked door receipt as Not sent, with Send ag
   it('[REVERT-FAILS] offers no Send again for a refusal that would only repeat (F-1257)', async () => {
     signInPorter()
     pendingByType.mockResolvedValue([
+      // [F-1318 made a count in the wrong unit countable again from here, so
+      // the refusal that only repeats is now the spent key.]
+      doorEntry('r1', 'PO-KEY', {
+        parked: { reason: 'refused', status: 409, code: 'receipt_key_reused', at: 'x' },
+        lastError: 'This receipt was already used for a different count.',
+      }),
+    ])
+    harness(OutboxBody)
+
+    expect(await screen.findByText(/already used for a different count/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send PO-KEY again' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Discard PO-KEY' })).toBeInTheDocument()
+  })
+
+  it("[REVERT-FAILS] takes the count again in the order's own unit and sends it with it (F-1318)", async () => {
+    signInPorter()
+    const { offlineStorage } = await import('../../../lib/offline-storage')
+    vi.mocked(offlineStorage.updatePendingMutation).mockClear()
+    const body = { countedQty: 3, countedUom: 'case', idempotencyKey: 'door:o-r1:k' }
+    pendingByType.mockResolvedValue([
       doorEntry('r1', 'PO-KEG', {
+        data: { orderId: 'o-r1', orderLabel: 'PO-KEG', restaurantId: 'rest-A', body },
         parked: { reason: 'refused', status: 400, code: 'counted_uom_not_order_unit', at: 'x' },
         lastError: 'This order is in kegs, so the delivery is counted in kegs.',
       }),
     ])
     harness(OutboxBody)
 
-    expect(await screen.findByText(/This order is in kegs/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Send PO-KEG again' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Discard PO-KEG' })).toBeInTheDocument()
+    const send = await screen.findByRole('button', { name: 'Send PO-KEG again' })
+    expect(send).toBeDisabled()
+    fireEvent.change(screen.getByRole('textbox', { name: 'How many came, for PO-KEG' }), {
+      target: { value: '2' },
+    })
+    // A count with no unit is not sent: the unit is the whole question.
+    expect(send).toBeDisabled()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Unit to count PO-KEG again in' }), {
+      target: { value: 'keg' },
+    })
+    fireEvent.click(send)
+    await waitFor(() =>
+      expect(offlineStorage.updatePendingMutation).toHaveBeenCalledWith(
+        'r1',
+        expect.objectContaining({
+          parked: undefined,
+          data: expect.objectContaining({
+            body: expect.objectContaining({ countedQty: 2, countedUom: 'keg', idempotencyKey: 'door:o-r1:k' }),
+          }),
+        }),
+      ),
+    )
+  })
+
+  it('[REVERT-FAILS] names a receipt saved with only its order id by the time it was saved (F-1319)', async () => {
+    signInPorter()
+    const id = '3f2b9c1e-8a4d-4e7b-9c2a-1d5e6f7a8b9c'
+    pendingByType.mockResolvedValue([
+      doorEntry('r1', id, {
+        timestamp: new Date(2026, 9, 11, 14, 32),
+        data: { orderId: id, orderLabel: id, restaurantId: 'rest-A', body: {} },
+        parked: { reason: 'refused', status: 404, at: 'x' },
+      }),
+    ])
+    harness(OutboxBody)
+
+    expect(await screen.findByText('The delivery saved at 14:32')).toBeInTheDocument()
+    expect(screen.queryByText(id)).not.toBeInTheDocument()
   })
 
   it('does not call a pass "offline" when it parked the only sendable receipt', async () => {
