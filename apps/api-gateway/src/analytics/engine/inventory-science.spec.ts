@@ -87,6 +87,28 @@ describe("inventory-science engine", () => {
     expect(high as number).toBeLessThan(low as number);
   });
 
+  // F-1191: 6 sales in 90 days at an empty shelf read 0.759 under the normal
+  // tail — less risk than a wine still in stock. Out with a demand is out.
+  it("stockoutProbability is 1 for an empty shelf with a demand, 0 with none", () => {
+    const daily = [...Array(84).fill(0), ...Array(6).fill(1)];
+    const p = I.demandProfile(daily)!;
+    const params = {
+      avgDemandPerPeriod: p.mean,
+      demandStdev: p.stdev,
+      leadTime: 7,
+    };
+    expect(I.stockoutProbability({ ...params, onHand: 0 })).toBe(1);
+    expect(I.stockoutProbability({ ...params, onHand: -2 })).toBe(1);
+    expect(
+      I.stockoutProbability({
+        onHand: 0,
+        avgDemandPerPeriod: 0,
+        demandStdev: 0,
+        leadTime: 7,
+      }),
+    ).toBe(0);
+  });
+
   it("daysOfCover", () => {
     approx(I.daysOfCover(100, 5), 20);
     expect(I.daysOfCover(100, 0)).toBeNull();
