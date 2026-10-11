@@ -32,7 +32,7 @@ import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
-import { houseFrame } from "../common/house-frame";
+import { countryCodeOf, houseFrame } from "../common/house-frame";
 import {
   decideUsualCurrency,
   readInvoiceCurrencyEvidence,
@@ -67,12 +67,42 @@ function normalizeBusinessType(
   return value;
 }
 
-function normalizeToE164(phone: string | null | undefined): string | null {
+/**
+ * A vendor's phone, written in international form only when the country it
+ * belongs to says how (F-1178).
+ *
+ * This used to turn ANY 10-digit number into `+1<digits>`, whatever the
+ * house's country, so a Turkish supplier typed as "532 123 45 67" (the way it
+ * is said aloud, without the trunk 0) was saved as a United States number.
+ * The country now decides:
+ *  - TR: a 10-digit number starting 5 becomes +90…; a leading 0 is dropped
+ *    first, so "0532 123 45 67" reads the same.
+ *  - US / CA (one numbering plan): 10 digits, or 11 starting 1, become +1….
+ *  - Anything else — an unknown country, or a number the rule cannot place —
+ *    is kept exactly as typed. No prefix is ever invented.
+ * A number already starting "+" is the caller's own international form.
+ *
+ * `country` is free text or an ISO code (the restaurants / vendor_catalogue
+ * column); it is read through the same `countryCodeOf` the house frame uses.
+ */
+export function normalizeVendorPhone(
+  phone: string | null | undefined,
+  country: string | null | undefined,
+): string | null {
   if (!phone) return null;
   if (phone.startsWith("+")) return phone;
   const digits = phone.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  const region = countryCodeOf(country ?? null);
+  if (region === "TR") {
+    const national = digits.startsWith("0") ? digits.slice(1) : digits;
+    if (national.length === 10 && national.startsWith("5"))
+      return `+90${national}`;
+    return phone;
+  }
+  if (region === "US" || region === "CA") {
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  }
   return phone;
 }
 
@@ -164,6 +194,33 @@ export class ProvidersService {
     private readonly procurementService: ProcurementService,
   ) {}
 
+  /**
+   * The house's country, for reading a vendor phone typed without its "+"
+   * (F-1178). Asked only when there is such a number, and never load-bearing:
+   * a failed read returns null, and the number is then kept as typed rather
+   * than given a guessed country code.
+   */
+  private async phoneCountryOf(
+    restaurantId: string,
+    phone: string | null | undefined,
+  ): Promise<string | null> {
+    if (!phone || phone.startsWith("+")) return null;
+    const { data: house, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `This house's country could not be read (${error.message}); the vendor's phone is kept as typed.`,
+      );
+      return null;
+    }
+    // The recorded country only — the same field the web sheet reads to show
+    // the number before it is saved, so the two cannot disagree.
+    return (house as { country?: string | null } | null)?.country ?? null;
+  }
+
   async createProvider(
     dto: CreateProviderDto,
     restaurantId: string,
@@ -239,7 +296,8 @@ export class ProvidersService {
 
       payload = {
         name: vendor.name,
-        contact_phone: normalizeToE164(vendor.phone),
+        // The catalogue row states the vendor's own country (default 'US').
+        contact_phone: normalizeVendorPhone(vendor.phone, vendor.country),
         contact_email: vendor.email ?? null,
         address: vendor.address ?? null,
         personality_notes: catalogueNotes,
@@ -283,7 +341,10 @@ export class ProvidersService {
         // dropped on purpose (migration 20260903170000); nothing is assumed.
         payment_terms: dto.paymentTerms || null,
         personality_notes: dto.notes ?? null,
-        contact_phone: normalizeToE164(dto.phone),
+        contact_phone: normalizeVendorPhone(
+          dto.phone,
+          await this.phoneCountryOf(restaurantId, dto.phone),
+        ),
         contact_email: dto.email ?? null,
         contact_first_name: dto.contactFirstName ?? null,
         contact_last_name: dto.contactLastName ?? null,
@@ -639,7 +700,13 @@ export class ProvidersService {
     const updatePayload: Record<string, any> = {
       name: dto.name ?? undefined,
       company_name: dto.companyName ?? undefined,
-      contact_phone: dto.phone != null ? normalizeToE164(dto.phone) : undefined,
+      contact_phone:
+        dto.phone != null
+          ? normalizeVendorPhone(
+              dto.phone,
+              await this.phoneCountryOf(restaurantId, dto.phone),
+            )
+          : undefined,
       contact_email: dto.email ?? undefined,
       contact_first_name: dto.contactFirstName ?? undefined,
       contact_last_name: dto.contactLastName ?? undefined,

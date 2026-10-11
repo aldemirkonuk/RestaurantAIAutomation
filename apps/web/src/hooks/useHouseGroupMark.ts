@@ -18,7 +18,7 @@ import { countryByName } from '@/lib/countries'
 import { groupMarkForCountry, type GroupMark } from '@/lib/parseDecimal'
 import { settingsApi } from '@/services/api/settings'
 
-const reads = new Map<string, Promise<GroupMark | null>>()
+const reads = new Map<string, Promise<string | null>>()
 
 function activeHouse(): string {
   try {
@@ -28,12 +28,13 @@ function activeHouse(): string {
   }
 }
 
-function readGroupMark(house: string): Promise<GroupMark | null> {
+/** The house's ISO 3166 alpha-2 country, or null when unknown or unread. */
+function readCountryCode(house: string): Promise<string | null> {
   let read = reads.get(house)
   if (!read) {
     read = settingsApi
       .houseCurrency()
-      .then((h) => (h?.readable ? groupMarkForCountry(countryByName(h.country)?.code) : null))
+      .then((h) => (h?.readable ? (countryByName(h.country)?.code ?? null) : null))
       .catch(() => {
         reads.delete(house) // a failed read is retried by the next field, not remembered
         return null
@@ -41,6 +42,10 @@ function readGroupMark(house: string): Promise<GroupMark | null> {
     reads.set(house, read)
   }
   return read
+}
+
+function readGroupMark(house: string): Promise<GroupMark | null> {
+  return readCountryCode(house).then((code) => groupMarkForCountry(code))
 }
 
 /**
@@ -64,4 +69,23 @@ export function useHouseGroupMark(): GroupMark | null {
     }
   }, [])
   return mark
+}
+
+/**
+ * The active house's country code from the same one read (F-1178: the new
+ * vendor sheet shows a phone the way it will be saved). Null until the read
+ * lands, and when it fails or the country is unknown — never a guess.
+ */
+export function useHouseCountryCode(): string | null {
+  const [code, setCode] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    void readCountryCode(activeHouse()).then((c) => {
+      if (live && c !== null) setCode(c)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+  return code
 }
