@@ -79,7 +79,10 @@ describe("F-1533 — the forecast is fitted on the days the house traded", () =>
     const out: any = await forecastFor(
       { ...TR, created_at: "2026-09-02T09:00:00Z" },
       // Its till began 2026-09-05; one pour today, before service is over.
-      [...nights("2026-09-05", "2026-10-11"), line(999, "2026-10-12T10:00:00Z", 1)],
+      [
+        ...nights("2026-09-05", "2026-10-11"),
+        line(999, "2026-10-12T10:00:00Z", 1),
+      ],
     );
     const { dates, values } = out.history;
     expect(dates[0]).toBe("2026-09-05");
@@ -91,7 +94,10 @@ describe("F-1533 — the forecast is fitted on the days the house traded", () =>
   it("ends the history yesterday and projects from today", async () => {
     const out: any = await forecastFor(
       { ...TR, created_at: "2025-01-01T09:00:00Z" },
-      [...nights("2026-06-01", "2026-10-11"), line(999, "2026-10-12T10:00:00Z", 1)],
+      [
+        ...nights("2026-06-01", "2026-10-11"),
+        line(999, "2026-10-12T10:00:00Z", 1),
+      ],
     );
     const { dates, values } = out.history;
     // A house older than the window keeps the whole window.

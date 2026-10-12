@@ -1,5 +1,9 @@
 import { ForbiddenException } from "@nestjs/common";
-import { managerLeaveOwnerKey, TeamService, timeOffBellKey } from "./team.service";
+import {
+  managerLeaveOwnerKey,
+  TeamService,
+  timeOffBellKey,
+} from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 import { LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF } from "../logs/logs-timeline.service";
 
@@ -24,19 +28,81 @@ function seed(opts: { owner?: boolean } = {}): StubDb {
   return makeStubDb({
     user_restaurant_access: [
       ...(owner
-        ? [{ id: "a0", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true }]
+        ? [
+            {
+              id: "a0",
+              user_id: OWNER,
+              restaurant_id: RID,
+              role: "owner",
+              is_active: true,
+            },
+          ]
         : []),
-      { id: "a1", user_id: MGR_A, restaurant_id: RID, role: "manager", is_active: true },
-      { id: "a2", user_id: MGR_B, restaurant_id: RID, role: "manager", is_active: true },
-      { id: "a3", user_id: MGR_C, restaurant_id: RID, role: "manager", is_active: true },
-      { id: "a4", user_id: STAFF, restaurant_id: RID, role: "staff", is_active: true },
+      {
+        id: "a1",
+        user_id: MGR_A,
+        restaurant_id: RID,
+        role: "manager",
+        is_active: true,
+      },
+      {
+        id: "a2",
+        user_id: MGR_B,
+        restaurant_id: RID,
+        role: "manager",
+        is_active: true,
+      },
+      {
+        id: "a3",
+        user_id: MGR_C,
+        restaurant_id: RID,
+        role: "manager",
+        is_active: true,
+      },
+      {
+        id: "a4",
+        user_id: STAFF,
+        restaurant_id: RID,
+        role: "staff",
+        is_active: true,
+      },
     ],
     team_members: [
-      { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", hourly_wage: 40 },
-      { id: "m-a", restaurant_id: RID, user_id: MGR_A, display_name: "Moe", hourly_wage: 31 },
-      { id: "m-b", restaurant_id: RID, user_id: MGR_B, display_name: "Bea", hourly_wage: 32 },
-      { id: "m-c", restaurant_id: RID, user_id: MGR_C, display_name: "Cem", hourly_wage: 33 },
-      { id: "m-staff", restaurant_id: RID, user_id: STAFF, display_name: "Sam", hourly_wage: 20 },
+      {
+        id: "m-owner",
+        restaurant_id: RID,
+        user_id: OWNER,
+        display_name: "Ada",
+        hourly_wage: 40,
+      },
+      {
+        id: "m-a",
+        restaurant_id: RID,
+        user_id: MGR_A,
+        display_name: "Moe",
+        hourly_wage: 31,
+      },
+      {
+        id: "m-b",
+        restaurant_id: RID,
+        user_id: MGR_B,
+        display_name: "Bea",
+        hourly_wage: 32,
+      },
+      {
+        id: "m-c",
+        restaurant_id: RID,
+        user_id: MGR_C,
+        display_name: "Cem",
+        hourly_wage: 33,
+      },
+      {
+        id: "m-staff",
+        restaurant_id: RID,
+        user_id: STAFF,
+        display_name: "Sam",
+        hourly_wage: 20,
+      },
     ],
     time_off_requests: [],
     notifications: [],
@@ -54,7 +120,9 @@ const file = (db: StubDb, by: string, memberId: string, leaveType?: string) =>
     ...(leaveType ? { leaveType } : {}),
   } as any) as Promise<any>;
 const asks = (db: StubDb) =>
-  db.tables.notifications.filter((n) => n.metadata?.action === "time_off_requested");
+  db.tables.notifications.filter(
+    (n) => n.metadata?.action === "time_off_requested",
+  );
 const outcomes = (db: StubDb) =>
   db.tables.notifications.filter((n) =>
     String(n.metadata?.action ?? "").endsWith("_for_manager"),
@@ -64,7 +132,11 @@ describe("F-1547 — a manager's leave: filed", () => {
   it("[REVERT-FAILS] a manager's own ask reaches every owner and every other manager", async () => {
     const db = seed();
     const req = await file(db, MGR_A, "m-a");
-    expect(asks(db).map((n) => n.user_id).sort()).toEqual([MGR_B, MGR_C, OWNER].sort());
+    expect(
+      asks(db)
+        .map((n) => n.user_id)
+        .sort(),
+    ).toEqual([MGR_B, MGR_C, OWNER].sort());
     expect(req.leadsTold).toBe(3);
     expect(asks(db)[0].group_key).toBe(timeOffBellKey(req.id));
   });
@@ -141,7 +213,9 @@ describe("F-1547 — a manager's leave: decided and re-marked", () => {
   it("[REVERT-FAILS] tells the owners when it is turned down", async () => {
     const db = seed();
     const req = await file(db, MGR_A, "m-a");
-    await team(db).reviewTimeOff(MGR_B, RID, req.id, { status: "denied" } as any);
+    await team(db).reviewTimeOff(MGR_B, RID, req.id, {
+      status: "denied",
+    } as any);
     expect(outcomes(db).map((n) => n.message)).toEqual([
       expect.stringContaining("Bea turned down Moe's time off"),
     ]);
@@ -172,7 +246,9 @@ describe("F-1547 — a manager's leave: decided and re-marked", () => {
   it("[REVERT-FAILS] a house with no owner row tells its other managers of the decision", async () => {
     const db = seed({ owner: false });
     const req = await file(db, MGR_A, "m-a");
-    await team(db).reviewTimeOff(MGR_B, RID, req.id, { status: "approved" } as any);
+    await team(db).reviewTimeOff(MGR_B, RID, req.id, {
+      status: "approved",
+    } as any);
     expect(outcomes(db).map((n) => n.user_id)).toEqual([MGR_C]);
   });
 
@@ -192,7 +268,10 @@ describe("F-1547 — a manager's leave: decided and re-marked", () => {
     const req = await file(db, STAFF, "m-staff");
     db.errors["user_restaurant_access:select"] = { message: "down" };
     const t = team(db);
-    (t as any).assertAccess = async () => ({ role: "manager", payAccess: false });
+    (t as any).assertAccess = async () => ({
+      role: "manager",
+      payAccess: false,
+    });
     await expect(
       t.reviewTimeOff(MGR_A, RID, req.id, { status: "approved" } as any),
     ).rejects.toThrow("Could not check whose time off this is");
@@ -201,7 +280,10 @@ describe("F-1547 — a manager's leave: decided and re-marked", () => {
 
   it("[REVERT-FAILS] keeps the outcome rows out of a staff reader's /logs", () => {
     expect(LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF).toEqual(
-      expect.arrayContaining(["time_off_decided_for_manager", "time_off_remarked_for_manager"]),
+      expect.arrayContaining([
+        "time_off_decided_for_manager",
+        "time_off_remarked_for_manager",
+      ]),
     );
   });
 });

@@ -24,7 +24,10 @@ export interface WeekSales {
   unknownWhy: string | null;
 }
 
-const unknown = (why: string): WeekSales => ({ netSales: null, unknownWhy: why });
+const unknown = (why: string): WeekSales => ({
+  netSales: null,
+  unknownWhy: why,
+});
 
 /** `iso` + `n` days, calendar-safe. */
 function plusDays(iso: string, n: number): string {
