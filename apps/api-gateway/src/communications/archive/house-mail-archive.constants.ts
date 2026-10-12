@@ -146,6 +146,16 @@ export const ARCHIVE_DISCLOSURE_COPY = {
     "This restaurant's rule is Türkiye's, and TTK 6102 Art. 82 requires a trader to keep the commercial letters it received for ten years. Mudavym holds a mirror, not the original, and deletes that mirror when the window ends - so with no archive configured, the copy that satisfies that duty is the one still in the mailbox this mail was read from. Keeping it is this restaurant's own responsibility, and nothing here does it for you.",
   turkiyeWithArchive:
     "This restaurant's rule is Türkiye's, and TTK 6102 Art. 82 requires a trader to keep the commercial letters it received for ten years. With the archive armed, every mirrored reply is written into storage this restaurant controls before Mudavym deletes its copy, and that exported file is the one this restaurant keeps for those ten years.",
+  /**
+   * The UNKNOWN row inherits Türkiye's correspondence duty as the strictest
+   * rule (ADR 0118 D14), but its house is not in Türkiye, or nobody has said
+   * where it is. So the duty is stated as the strictest floor, never as "this
+   * restaurant's rule is Türkiye's" (F-1397).
+   */
+  strictestWithoutArchive:
+    "This restaurant's country has no record-keeping rule in this table yet, so the strictest one is applied: keep the commercial letters it received for ten years (the longest duty listed, from Türkiye's Commercial Code, TTK 6102 Art. 82). Mudavym holds a mirror, not the original, and deletes that mirror when the window ends - so with no archive configured, the copy that would satisfy such a duty is the one still in the mailbox this mail was read from. Keeping it is this restaurant's own responsibility, and nothing here does it for you.",
+  strictestWithArchive:
+    "This restaurant's country has no record-keeping rule in this table yet, so the strictest one is applied: keep the commercial letters it received for ten years (the longest duty listed, from Türkiye's Commercial Code, TTK 6102 Art. 82). With the archive armed, every mirrored reply is written into storage this restaurant controls before Mudavym deletes its copy, and that exported file is the one this restaurant keeps for those ten years.",
   neverAsked:
     "Nobody has chosen for this restaurant yet, so the third answer applies: the mail is deleted when the window runs out and nothing is exported. That is a default, not a decision, and it is stated here rather than left silent.",
 } as const;

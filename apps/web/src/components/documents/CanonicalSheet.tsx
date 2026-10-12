@@ -38,6 +38,7 @@ import {
   EM,
   MONO,
   SERIF,
+  documentCountry,
   fmtDate,
   fmtMoney,
   fmtQty,
@@ -257,6 +258,8 @@ export function CanonicalSheet({
 }: CanonicalSheetProps) {
   const l1 = doc.layer1
   const currency = l1.currency.value
+  /** The seller's country, so a euro or pound figure reads its own way (F-1398). */
+  const docCountry = documentCountry(l1.seller)
   /** lineIndex -> layer 2, so the shelf row can find its own line. */
   const resolvedByIndex = useMemo(
     () => new Map(doc.layer2.lines.map((l) => [l.lineIndex, l])),
@@ -491,21 +494,21 @@ export function CanonicalSheet({
         <Field
           label="Issued"
           envelope={l1.issueDate}
-          render={(v) => fmtDate(String(v), juris, currency)}
+          render={(v) => fmtDate(String(v), juris, currency, docCountry)}
           path="issueDate"
           correct={wiring}
         />
         <Field
           label="Delivered"
           envelope={l1.actualDeliveryDate}
-          render={(v) => fmtDate(String(v), juris, currency)}
+          render={(v) => fmtDate(String(v), juris, currency, docCountry)}
           path="actualDeliveryDate"
           correct={wiring}
         />
         <Field
           label="Due"
           envelope={l1.paymentDueDate}
-          render={(v) => fmtDate(String(v), juris, currency)}
+          render={(v) => fmtDate(String(v), juris, currency, docCountry)}
           path="paymentDueDate"
           correct={wiring}
         />
@@ -660,10 +663,10 @@ export function CanonicalSheet({
                   )}
                 </td>
                 <td role="cell" data-cell="ordered" data-label="Ordered" style={TD}>
-                  {fmtQty(adj?.ordered ?? null, currency)}
+                  {fmtQty(adj?.ordered ?? null, currency, docCountry)}
                 </td>
                 <td role="cell" data-cell="shipped" data-label="Shipped" style={TD}>
-                  {fmtQty(adj?.shipped ?? null, currency)}
+                  {fmtQty(adj?.shipped ?? null, currency, docCountry)}
                 </td>
                 <td
                   role="cell"
@@ -681,7 +684,7 @@ export function CanonicalSheet({
                   }}
                   data-testid="received-cell"
                 >
-                  {fmtReceived(adj?.received ?? null, currency)}
+                  {fmtReceived(adj?.received ?? null, currency, docCountry)}
                 </td>
                 {/* BILLED is the bottle-equivalent of BT-129, so the field a
                     person corrects here is the INVOICED QUANTITY the paper
@@ -694,7 +697,7 @@ export function CanonicalSheet({
                     path={`lines[${i}].quantity`}
                     {...wiring(`lines[${i}].quantity`)}
                   >
-                    {fmtQty(adj?.billed ?? null, currency)}
+                    {fmtQty(adj?.billed ?? null, currency, docCountry)}
                   </ProvenanceHover>
                   {/* THE UNIT BESIDE THE COUNT (walk-through RECEIPTS-W41,
                       2026-10-01): "12" alone was twelve of nothing. The word is
@@ -715,7 +718,7 @@ export function CanonicalSheet({
                         path={`lines[${i}].netPrice`}
                         {...wiring(`lines[${i}].netPrice`)}
                       >
-                        {fmtMoney(line.netPrice.value, currency)}
+                        {fmtMoney(line.netPrice.value, currency, docCountry)}
                       </ProvenanceHover>
                       {basePrinted && (
                         <span
@@ -726,7 +729,7 @@ export function CanonicalSheet({
                             color: 'var(--ink-4, #665D50)',
                           }}
                         >
-                          per {fmtQty(base.value, currency)}{' '}
+                          per {fmtQty(base.value, currency, docCountry)}{' '}
                           {unitWord(line.priceBaseUnit.value ?? line.unit.value ?? '', base.value)}
                         </span>
                       )}
@@ -743,7 +746,7 @@ export function CanonicalSheet({
                       path={`lines[${i}].netAmount`}
                       {...wiring(`lines[${i}].netAmount`)}
                     >
-                      {fmtMoney(line.netAmount.value, currency)}
+                      {fmtMoney(line.netAmount.value, currency, docCountry)}
                     </ProvenanceHover>
                   </td>
                 )}
@@ -793,7 +796,7 @@ export function CanonicalSheet({
                     </span>
                     <span style={{ fontFamily: MONO }}>
                       {ac.isCharge.value === false ? '− ' : '+ '}
-                      {fmtMoney(ac.amount.value, currency)}
+                      {fmtMoney(ac.amount.value, currency, docCountry)}
                     </span>
                   </li>
                 ))}
@@ -810,7 +813,7 @@ export function CanonicalSheet({
                     An empty breakdown is a fact about our reading, so the
                     sentence says so and names the tax it did keep. */}
                 {typeof l1.totals.taxAmount.value === 'number' && l1.totals.taxAmount.value !== 0
-                  ? `Tax of ${fmtMoney(l1.totals.taxAmount.value, currency)} was read, but not its rate or what it was charged on.`
+                  ? `Tax of ${fmtMoney(l1.totals.taxAmount.value, currency, docCountry)} was read, but not its rate or what it was charged on.`
                   : 'No VAT breakdown was read from this document.'}
               </p>
             ) : (
@@ -830,10 +833,10 @@ export function CanonicalSheet({
                       {v.rate.value != null ? ` ${v.rate.value}%` : ''}
                       <span style={{ color: 'var(--ink-4, #665D50)' }}>
                         {' '}
-                        · on {fmtMoney(v.taxableAmount.value, currency)}
+                        · on {fmtMoney(v.taxableAmount.value, currency, docCountry)}
                       </span>
                     </span>
-                    <span style={{ fontFamily: MONO }}>{fmtMoney(v.taxAmount.value, currency)}</span>
+                    <span style={{ fontFamily: MONO }}>{fmtMoney(v.taxAmount.value, currency, docCountry)}</span>
                   </li>
                 ))}
               </ul>
@@ -867,7 +870,7 @@ export function CanonicalSheet({
                 </span>
                 <span style={{ fontFamily: MONO }}>
                   {summed ? (
-                    fmtMoney(envelope.value, currency)
+                    fmtMoney(envelope.value, currency, docCountry)
                   ) : (
                     <ProvenanceHover
                       label={label}
@@ -875,7 +878,7 @@ export function CanonicalSheet({
                       path={path}
                       {...(path ? wiring(path) : { log: [] })}
                     >
-                      {fmtMoney(envelope.value, currency)}
+                      {fmtMoney(envelope.value, currency, docCountry)}
                     </ProvenanceHover>
                   )}
                 </span>
@@ -897,7 +900,7 @@ export function CanonicalSheet({
                   path="totals.taxInclusiveAmount"
                   {...wiring('totals.taxInclusiveAmount')}
                 >
-                  {fmtMoney(l1.totals.taxInclusiveAmount.value, currency)}
+                  {fmtMoney(l1.totals.taxInclusiveAmount.value, currency, docCountry)}
                 </ProvenanceHover>
               </span>
             </div>

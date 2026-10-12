@@ -13,6 +13,9 @@
  *    document's own currency and renders the em dash when there is none.
  */
 
+import { countryByName } from '../../lib/countries'
+import { getHouseLocale, localeOfCountry } from '../../lib/houseCurrency'
+
 export const EM = '—'
 
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif'
@@ -21,9 +24,56 @@ export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif'
 
 const SYMBOLS: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
 
-/** Turkish documents group with `.` and decimal with `,`. */
-function localeFor(currency: string | null | undefined): string {
-  return currency === 'TRY' ? 'tr-TR' : 'en-US'
+/**
+ * The document's own formats tag (F-1398).
+ *
+ * Turkish documents group with `.` and decimal with `,`, and a dollar
+ * document prints the American way, as before. Anything else (a euro
+ * invoice from Germany, a pound one from London) used to print the American
+ * way too. It now follows the document's own country (`documentCountry`),
+ * and when the paper names none, the house's formats.
+ */
+function localeFor(
+  currency: string | null | undefined,
+  country?: string | null,
+): string {
+  if (currency === 'TRY') return 'tr-TR'
+  if (currency === 'USD') return 'en-US'
+  return country ? localeOfCountry(country) : getHouseLocale()
+}
+
+/** VAT prefixes that are not the ISO code (EU VIES uses EL for Greece). */
+const VAT_PREFIX_COUNTRY: Record<string, string> = { EL: 'GR', XI: 'GB' }
+
+/**
+ * The country a document was issued in, as an ISO alpha-2 code, or null.
+ *
+ * Read from the seller, because the seller writes the paper: first the
+ * prefix of its VAT number (`DE123456789` is German, the way VIES reads it),
+ * else the last part of its printed address when that names a country.
+ * Nothing else is guessed.
+ */
+export function documentCountry(
+  seller:
+    | {
+        vatIdentifier?: { value?: string | null } | null
+        address?: { value?: string | null } | null
+      }
+    | null
+    | undefined,
+): string | null {
+  const vat = (seller?.vatIdentifier?.value ?? '').replace(/[\s.-]/g, '').toUpperCase()
+  const prefix = /^([A-Z]{2})[0-9A-Z]{2,}$/.exec(vat)?.[1]
+  if (prefix) {
+    const code = countryByName(VAT_PREFIX_COUNTRY[prefix] ?? prefix)?.code
+    if (code) return code
+  }
+  const parts = (seller?.address?.value ?? '')
+    .split(/[,\n]/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const last = parts[parts.length - 1]
+  return last ? (countryByName(last)?.code ?? null) : null
 }
 
 export function currencySymbol(currency: string | null | undefined): string {
@@ -41,9 +91,10 @@ export function currencySymbol(currency: string | null | undefined): string {
 export function fmtMoney(
   n: number | null | undefined,
   currency: string | null | undefined,
+  country?: string | null,
 ): string {
   if (n == null || !Number.isFinite(Number(n))) return EM
-  const body = Number(n).toLocaleString(localeFor(currency), {
+  const body = Number(n).toLocaleString(localeFor(currency, country), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
@@ -54,9 +105,10 @@ export function fmtMoney(
 export function fmtQty(
   n: number | null | undefined,
   currency?: string | null,
+  country?: string | null,
 ): string {
   if (n == null || !Number.isFinite(Number(n))) return EM
-  return Number(n).toLocaleString(localeFor(currency), {
+  return Number(n).toLocaleString(localeFor(currency, country), {
     maximumFractionDigits: 3,
   })
 }
@@ -71,10 +123,11 @@ export function fmtQty(
 export function fmtReceived(
   received: number | 'not_counted' | null | undefined,
   currency?: string | null,
+  country?: string | null,
 ): string {
   if (received === 'not_counted') return 'not counted'
   if (received == null) return EM
-  return fmtQty(received, currency)
+  return fmtQty(received, currency, country)
 }
 
 /**
@@ -96,6 +149,7 @@ export function fmtDate(
   iso: string | null | undefined,
   jurisdiction?: string | null,
   currency?: string | null,
+  country?: string | null,
 ): string {
   if (!iso) return EM
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
@@ -107,7 +161,28 @@ export function fmtDate(
     const p = (n: number) => String(n).padStart(2, '0')
     return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`
   }
+  // Any other document prints its own country's numeric day and month order
+  // (14.08.2026 in Germany, 14/08/2026 in London), else the house's (F-1398).
+  const locale = otherLocale(jurisdiction, currency, country)
+  if (locale) {
+    return d.toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit' })
+  }
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+/**
+ * The formats tag for a date on a document that is neither Turkish nor
+ * American, or null when it is American (or nothing better is known), which
+ * keeps the `Aug 14, 2026` form.
+ */
+function otherLocale(
+  jurisdiction: string | null | undefined,
+  currency: string | null | undefined,
+  country: string | null | undefined,
+): string | null {
+  if (jurisdiction === 'US-CA' || currency === 'USD') return null
+  const locale = localeFor(currency, country)
+  return locale === 'en-US' ? null : locale
 }
 
 /**
@@ -232,6 +307,7 @@ export function fmtStamp(
   iso: string | null | undefined,
   jurisdiction?: string | null,
   currency?: string | null,
+  country?: string | null,
 ): string {
   if (!iso) return EM
   const d = new Date(iso)
@@ -240,6 +316,8 @@ export function fmtStamp(
   const clock = `${p(d.getHours())}:${p(d.getMinutes())}`
   const turkish = jurisdiction === 'TR' || (jurisdiction !== 'US-CA' && currency === 'TRY')
   if (turkish) return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${clock}`
+  const locale = otherLocale(jurisdiction, currency, country)
+  if (locale) return `${d.toLocaleDateString(locale, { month: '2-digit', day: '2-digit' })} ${clock}`
   return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${clock}`
 }
 

@@ -297,6 +297,12 @@ export function resolveJurisdiction(
     UK: "GB",
     "UNITED KINGDOM": "GB",
     "GREAT BRITAIN": "GB",
+    // The constituent countries, as a house in one may write it. The
+    // Companies Act and HMRC's six years bind the whole United Kingdom.
+    ENGLAND: "GB",
+    SCOTLAND: "GB",
+    WALES: "GB",
+    "NORTHERN IRELAND": "GB",
     US: "US",
     USA: "US",
     "UNITED STATES": "US",
@@ -314,6 +320,33 @@ export function resolveJurisdiction(
 
 export function ruleFor(code: JurisdictionCode): JurisdictionRule {
   return JURISDICTION_RULES[code];
+}
+
+/**
+ * The words for an UNKNOWN house, which is two different houses (F-1397).
+ *
+ * A blank `restaurants.country` is NO COUNTRY RECORDED, and the UNKNOWN row's
+ * own label and sentence say exactly that. A country that is recorded but has
+ * no row here ("Germany", "DE") is A COUNTRY THIS TABLE HAS NOT RESEARCHED:
+ * telling that house it has no country is false, and so is calling its rule
+ * Türkiye's. It gets the same floor (D14: the strictest rule, never the
+ * nearest guess) with its own country named. The same split as
+ * `price-index/house-jurisdiction.ts` (`country_not_recorded` against
+ * `country_unrecognised`).
+ */
+export function unknownJurisdictionWords(country: string | null | undefined): {
+  label: string;
+  defaultedBecause: string;
+} {
+  const named = (country ?? "").trim();
+  const rule = JURISDICTION_RULES.UNKNOWN;
+  if (!named) {
+    return { label: rule.label, defaultedBecause: rule.defaultedBecause ?? "" };
+  }
+  return {
+    label: `${named} (not yet researched)`,
+    defaultedBecause: `This restaurant's country is recorded as ${named}, and ${named}'s record-keeping law has not been researched for this table yet. Until it is, the strictest rule in the table is applied rather than a guess: ${rule.factsFloorYears} years, the longest floor listed here (the statute below is where that figure comes from, not a claim that its country's law applies to this restaurant). A floor that is too long costs storage, and a floor that is too short costs a record the restaurant may be required by law to produce.`,
+  };
 }
 
 /**

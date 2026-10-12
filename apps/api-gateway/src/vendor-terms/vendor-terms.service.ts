@@ -128,8 +128,9 @@ export interface VendorTermsRow {
   /**
    * The currency `minimumOrder` is in: the one currency this house's orders to
    * the vendor were placed in (for an inferred minimum, the orders it was
-   * read from), or null when they name none or several, which the page
-   * prints as "currency not stated". Never the house's reporting currency: a
+   * read from); when they name none or several, the vendor's usual currency
+   * (`providers.usual_currency`, F-1394); else null, which the page prints as
+   * "currency not stated". Never the house's reporting currency: a
    * French importer billing in EUR does not have a minimum in lira (F-1342).
    */
   minimumCurrency: string | null;
@@ -232,6 +233,8 @@ interface ProviderRow {
   minimum_order: number | null;
   lead_time_days: number | null;
   payment_terms: string | null;
+  /** The vendor's usual currency, stated or written from its invoices. */
+  usual_currency?: string | null;
 }
 
 interface RestaurantProviderRow {
@@ -447,7 +450,12 @@ export class VendorTermsService {
     const unreadable = ordersReadable
       ? null
       : "the order ledger could not be read, so nothing was inferred";
-    const vendorCurrency = ordersCurrency(orders);
+    // The orders' one currency first; when they name none (no orders in the
+    // window, or only ones from before orders carried a currency) or more than
+    // one, the vendor's usual currency, so a stated minimum is not printed as
+    // "currency not stated" for a vendor whose money is on file (F-1394).
+    const vendorCurrency =
+      ordersCurrency(orders) ?? provider.usual_currency ?? null;
     const minimumOrder = this.minimumCell(
       provider,
       link,
@@ -772,7 +780,9 @@ export class VendorTermsService {
     try {
       const { data, error } = await this.databaseService.client
         .from("providers")
-        .select("id, name, minimum_order, lead_time_days, payment_terms")
+        .select(
+          "id, name, minimum_order, lead_time_days, payment_terms, usual_currency",
+        )
         .eq("restaurant_id", restaurantId)
         .is("deleted_at", null)
         .order("name", { ascending: true });
@@ -863,7 +873,9 @@ export class VendorTermsService {
   ): Promise<ProviderRow> {
     const { data, error } = await this.databaseService.client
       .from("providers")
-      .select("id, name, minimum_order, lead_time_days, payment_terms")
+      .select(
+        "id, name, minimum_order, lead_time_days, payment_terms, usual_currency",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", providerId)
       .is("deleted_at", null)

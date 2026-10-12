@@ -76,6 +76,7 @@ import {
   SERIF,
   VerdictBlock,
   degradedReasons,
+  documentCountry,
   envelopeAt,
   printedVintageOf,
   sourceSentence,
@@ -630,6 +631,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           {eventQ.data ? (
             <DeliveryGates
               delivery={eventQ.data}
+              currency={doc.layer1.currency.value}
+              country={documentCountry(doc.layer1.seller)}
               busy={writing}
               error={deliveryError}
               onAgree={
@@ -669,6 +672,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             failedRead={proposalsQ.isError ? messageFrom(proposalsQ.error) : null}
             jurisdiction={doc.jurisdiction}
             currency={doc.layer1.currency.value}
+            country={documentCountry(doc.layer1.seller)}
             selectedLine={selectedLine}
             busy={writing}
             error={deliveryError}

@@ -1016,11 +1016,16 @@ export class HouseMailArchiveService implements HouseMailArchivePort {
       // UNKNOWN row that inherits it (ADR 0118 D14). A GB or US house is not
       // told a Turkish sentence, and a TR house is never told that Mudavym
       // satisfies a duty it does not satisfy.
-      jurisdictionNote: bindsCorrespondence
-        ? settings.armed
-          ? ARCHIVE_DISCLOSURE_COPY.turkiyeWithArchive
-          : ARCHIVE_DISCLOSURE_COPY.turkiyeWithoutArchive
-        : null,
+      // UNKNOWN is told the strictest floor, not "Türkiye's" (F-1397).
+      jurisdictionNote: !bindsCorrespondence
+        ? null
+        : jurisdiction === "UNKNOWN"
+          ? settings.armed
+            ? ARCHIVE_DISCLOSURE_COPY.strictestWithArchive
+            : ARCHIVE_DISCLOSURE_COPY.strictestWithoutArchive
+          : settings.armed
+            ? ARCHIVE_DISCLOSURE_COPY.turkiyeWithArchive
+            : ARCHIVE_DISCLOSURE_COPY.turkiyeWithoutArchive,
       layout: ARCHIVE_LAYOUT_DESCRIPTION,
     };
   }

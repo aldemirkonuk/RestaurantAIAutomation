@@ -52,3 +52,93 @@ export function resolveSignUpTimezone(
   if (!resolved || /^[+-]/.test(resolved)) return null;
   return resolved;
 }
+
+/**
+ * ADR 0304 F1: the one-clock countries whose `Intl` list names more than one
+ * zone (Germany lists Europe/Busingen too). The founder's answer, "Name the
+ * capital's zone (Recommended)", 2026-10-05.
+ */
+const ONE_CLOCK_CAPITALS: Readonly<Record<string, string>> = {
+  DE: "Europe/Berlin",
+  AR: "America/Argentina/Buenos_Aires",
+  CY: "Asia/Nicosia",
+  KZ: "Asia/Almaty",
+  MY: "Asia/Kuala_Lumpur",
+  MH: "Pacific/Majuro",
+  UZ: "Asia/Tashkent",
+};
+
+/**
+ * The zone a house's COUNTRY names on its own, or null (ADR 0304 step 1, the
+ * address, which comes before the device). A country with exactly one zone
+ * in Node's `Intl` names it; a one-clock country of F1 names its capital. A
+ * country with several clocks names none here, and the United States names a
+ * zone only through its state, which is ADR 0304 PR-2's to build, so it
+ * names none here either.
+ */
+export function zoneOfCountry(code: string | null | undefined): string | null {
+  if (!code || code === "US") return null;
+  const capital = ONE_CLOCK_CAPITALS[code];
+  if (capital) return capital;
+  const zones = zonesOf(code);
+  return zones.length === 1 ? resolveSignUpTimezone(zones[0]) : null;
+}
+
+/** `Intl`'s zones for a country code; empty when the engine will not say. */
+function zonesOf(code: string): string[] {
+  try {
+    const locale = new Intl.Locale(`und-${code}`) as Intl.Locale & {
+      timeZones?: string[];
+      getTimeZones?: () => string[];
+    };
+    return locale.timeZones ?? locale.getTimeZones?.() ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ADR 0304 Reading 1: places addressed under a country's name that keep
+ * another clock. A device inside one of them is the more specific answer,
+ * so the address does not override it (and "the address always wins" is
+ * that ADR's rejected alternative 16).
+ */
+const TERRITORIES: Readonly<Record<string, readonly string[]>> = {
+  FR: ["RE", "MQ", "GP", "GF", "YT", "PM", "BL", "MF", "NC", "PF", "WF", "TF"],
+  NL: ["BQ", "CW", "AW", "SX"],
+  DK: ["FO", "GL"],
+  GB: ["GI", "FK", "BM", "KY", "VG", "MS", "TC", "AI", "SH", "IO", "PN", "GS"],
+  TR: ["CY"],
+};
+
+/**
+ * A new house's zone and where it came from (ADR 0304's order, for the
+ * countries this file can read): the country's own zone, unless the device
+ * sits in one of that country's territories; else the device's zone when it
+ * is one of the country's own clocks; else none. A device in another country
+ * is not this house's clock (F-1400): a Madrid house added from an Istanbul
+ * laptop reads "time zone not set" rather than Istanbul's.
+ */
+export function newHouseZone(
+  countryCode: string | null | undefined,
+  deviceZone: string | null | undefined,
+): { zone: string | null; fromAddress: boolean } {
+  const device = resolveSignUpTimezone(deviceZone);
+  const inPlace = (code: string) =>
+    device !== null && zonesOf(code).includes(device);
+  const address = zoneOfCountry(countryCode);
+  const territories = TERRITORIES[countryCode ?? ""] ?? [];
+  if (address) {
+    return territories.some(inPlace)
+      ? { zone: device, fromAddress: false }
+      : { zone: address, fromAddress: true };
+  }
+  // No country, or one the engine lists no zones for: the device, as before.
+  if (!countryCode || zonesOf(countryCode).length === 0) {
+    return { zone: device, fromAddress: false };
+  }
+  return {
+    zone: inPlace(countryCode) || territories.some(inPlace) ? device : null,
+    fromAddress: false,
+  };
+}

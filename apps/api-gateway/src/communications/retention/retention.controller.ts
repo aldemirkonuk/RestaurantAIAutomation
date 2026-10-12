@@ -39,7 +39,7 @@ export class RetentionController {
   @ApiResponse({
     status: 200,
     description:
-      "`figureDays` is the window in force and `figureFrom` says whether it is the stored quarterly derivation or a figure measured on this request because none has been stored yet. `basis` is the derivation in words. `jurisdiction.defaultedBecause` is non-null only when no country is recorded and the strictest rule was applied. `appliesTo` names the grants this disclosure covers, so the page never hard-codes an integration id.",
+      "`figureDays` is the window in force and `figureFrom` says whether it is the stored quarterly derivation or a figure measured on this request because none has been stored yet. `basis` is the derivation in words. `jurisdiction.defaultedBecause` is non-null only when the strictest rule was applied: no country is recorded, or the recorded country (named in it and in `label`) has no researched rule yet. `appliesTo` names the grants this disclosure covers, so the page never hard-codes an integration id.",
   })
   async disclosure(@CurrentUser() user: Actor) {
     return {

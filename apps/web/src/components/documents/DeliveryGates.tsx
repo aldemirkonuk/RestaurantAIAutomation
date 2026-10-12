@@ -28,6 +28,9 @@ import { MONO, SERIF, fmtStamp } from './canonical-format'
 
 export interface DeliveryGatesProps {
   delivery: DeliveryEvent
+  /** The open document's currency and country, so a stamp reads as the sheet does (F-1398). */
+  currency?: string | null
+  country?: string | null
   onAgree?: () => Promise<unknown>
   onVerify?: () => Promise<unknown>
   /**
@@ -54,6 +57,8 @@ const AGREE_RULES: Record<string, string> = {
 
 export function DeliveryGates({
   delivery,
+  currency,
+  country,
   onAgree,
   onVerify,
   differences,
@@ -125,7 +130,7 @@ export function DeliveryGates({
           <p style={{ margin: '1px 0 0', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
             {agreed ? (
               <>
-                Agreed {fmtStamp(delivery.agreedAt, delivery.jurisdiction)} because{' '}
+                Agreed {fmtStamp(delivery.agreedAt, delivery.jurisdiction, currency, country)} because{' '}
                 <strong data-testid="agreed-rule">
                   {AGREE_RULES[delivery.agreedRule ?? ''] ??
                     `the rule recorded is “${delivery.agreedRule ?? 'not recorded'}”`}
@@ -221,7 +226,7 @@ export function DeliveryGates({
           <p style={{ margin: '1px 0 0', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
             {verified ? (
               <>
-                Verified {fmtStamp(delivery.verifiedAt, delivery.jurisdiction)} by a
+                Verified {fmtStamp(delivery.verifiedAt, delivery.jurisdiction, currency, country)} by a
                 named person. Nothing was posted to inventory or cost by this step
                 on this build.
               </>
