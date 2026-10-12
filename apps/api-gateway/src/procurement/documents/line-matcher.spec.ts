@@ -41,6 +41,15 @@ describe("normalizeDescription", () => {
     expect(normalizeDescription("2018 L'Evangile 750ml").formatMl).toBe(750);
   });
 
+  it("does not read a vintage before an accented or Turkish word as a size (F-1495)", () => {
+    expect(normalizeDescription("2018 Léoville Barton").formatMl).toBeNull();
+    expect(normalizeDescription("2016 Clément VSOP").formatMl).toBeNull();
+    expect(normalizeDescription("2022 Lâl Kalecik Karası").formatMl).toBeNull();
+    expect(normalizeDescription("2019 Lüks Rakı").formatMl).toBeNull();
+    expect(normalizeDescription("2017 Çankaya 1L").formatMl).toBe(1000);
+    expect(normalizeDescription("2018 Léoville 75 cl").formatMl).toBe(750);
+  });
+
   it("reads LT and CL marks, centilitres as ten millilitres (F-1430)", () => {
     expect(normalizeDescription("Jameson 1 LT").formatMl).toBe(1000);
     expect(normalizeDescription("Rioja Reserva 75cl").formatMl).toBe(750);

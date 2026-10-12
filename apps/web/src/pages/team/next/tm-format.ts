@@ -309,6 +309,12 @@ export interface LabourRules {
    * review lines, not pay.
    */
   overtimePayHours: number | null;
+  /**
+   * The day past which the law owes overtime pay (F-1497): California's 8
+   * (Labor Code §510, ADR 0330). Never priced either, for the same reason;
+   * the cost note only says so. `null` where no daily pay line is claimed.
+   */
+  dailyOvertimePayHours: number | null;
 }
 
 export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRules>> = {
@@ -320,6 +326,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakForWork: (w) => art68BreakForWork(w),
     breakLaw: 'Labour Law 4857 Art. 68',
     overtimePayHours: null,
+    dailyOvertimePayHours: null,
   },
   US: {
     country: 'US',
@@ -329,6 +336,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakForWork: () => 0,
     breakLaw: null,
     overtimePayHours: 40,
+    dailyOvertimePayHours: null,
   },
   GB: {
     country: 'GB',
@@ -338,6 +346,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakForWork: (w) => (w > 360 ? 20 : 0),
     breakLaw: 'the Working Time Regulations',
     overtimePayHours: null,
+    dailyOvertimePayHours: null,
   },
   DE: {
     country: 'DE',
@@ -347,6 +356,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakForWork: (w) => (w > 540 ? 45 : w > 360 ? 30 : 0),
     breakLaw: 'the Arbeitszeitgesetz §4',
     overtimePayHours: null,
+    dailyOvertimePayHours: null,
   },
 };
 
@@ -358,6 +368,7 @@ export const SUBDIVISION_LABOUR_RULES: Readonly<Record<'US-CA', LabourRules>> = 
     breakSteps: [30],
     breakForWork: (w) => (w > 300 ? 30 : 0),
     breakLaw: 'California Labor Code §512',
+    dailyOvertimePayHours: 8,
   },
 };
 
@@ -369,6 +380,7 @@ export const NO_LABOUR_RULES: LabourRules = {
   breakForWork: () => 0,
   breakLaw: null,
   overtimePayHours: null,
+  dailyOvertimePayHours: null,
 };
 
 /**

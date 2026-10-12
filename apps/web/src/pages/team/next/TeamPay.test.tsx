@@ -375,6 +375,27 @@ describe("the review line and the cost note follow the house's country", () => {
     ).toBeInTheDocument();
   });
 
+  // F-1497: California also owes overtime past 8 hours a day (Labor Code
+  // §510, ADR 0330); the cost does not price that either, so the note says so.
+  it('a California house is told the cost leaves out daily overtime past 8 hours too', async () => {
+    api.week = { ...ownerWeek('United States'), labourRegion: 'US-CA' };
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(
+      await within(labour).findByText(
+        /overtime pay for hours over 40 a week or 8 a day is not included/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('a US house outside California is not told of a daily overtime line', async () => {
+    api.week = ownerWeek('United States');
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    await within(labour).findByText(/overtime pay for hours over 40 a week is not included/);
+    expect(within(labour).queryByText(/a day is not included/)).not.toBeInTheDocument();
+  });
+
   it('a Turkish, GB or German house is not told of an overtime pay line it has no rule for', async () => {
     for (const country of ['Türkiye', 'United Kingdom', 'Germany']) {
       api.week = ownerWeek(country);

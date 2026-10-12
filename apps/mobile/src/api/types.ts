@@ -40,6 +40,9 @@ export interface FeedResponse {
     draftApprovals: number;
     receiptVerifications: number;
     alerts: number;
+    /** Orders, replies and deliveries waiting; notices are not decisions
+     *  (F-1450). Absent from an older gateway. */
+    decisions?: number;
   };
   generatedAt: string;
 }
