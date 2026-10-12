@@ -13,12 +13,20 @@ import { CapsuleSweep } from "@/components/cellar/CapsuleSweep";
 import { BinBreath } from "@/components/cellar/BinBreath";
 import { color, font, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
-import { feedKey, pulseKey, useHouseMoneyFrame, useOrder } from "@/api/queries";
+import {
+  feedKey,
+  NEVER_LOADED_WORDS,
+  noAnswer,
+  pulseKey,
+  useHouseMoneyFrame,
+  useOrder,
+} from "@/api/queries";
 import {
   NOT_SAVED_WORDS,
   RECEIPT_WAITING_WORDS,
   useOutbox,
   waitingFor,
+  withdrawWords,
 } from "@/state/outbox";
 import { WaitingStrip } from "@/components/today/WaitingStrip";
 import {
@@ -57,7 +65,7 @@ export default function ReceivingScreen() {
     orderId: string;
     feedItemId?: string;
   }>();
-  const { data: order, isLoading, isError, refetch } = useOrder(orderId);
+  const { data: order, isLoading, isError, error, refetch } = useOrder(orderId);
 
   const countBasis = receivingCountBasis(order);
   const orderedQty = countBasis.orderedBottles ?? 0;
@@ -123,9 +131,10 @@ export default function ReceivingScreen() {
   // would book the same bottles twice, so it is refused while the first waits.
   const user = useSession((s) => s.user);
   const receiptPath = `/procurement/orders/${orderId}/verify-receipt`;
-  const receiptWaiting = useOutbox(
-    (s) => waitingFor(s.entries, user, receiptPath) != null,
+  const waitingReceipt = useOutbox((s) =>
+    waitingFor(s.entries, user, receiptPath),
   );
+  const receiptWaiting = waitingReceipt != null;
   const alreadyCounted = receiptWaiting && !sealed;
 
   const match = useMemo(
@@ -226,6 +235,12 @@ export default function ReceivingScreen() {
       },
       label: "Receipt verification",
       graceMs: 0,
+      // Names the delivery on the waiting and parked rows (F-1408).
+      about: {
+        orderId,
+        orderNumber: order.orderNumber,
+        subject: order.wineName ?? order.providerName,
+      },
       invalidate: [
         [...feedKey],
         [...pulseKey],
@@ -277,6 +292,9 @@ export default function ReceivingScreen() {
       <Screen>
         <ErrorState
           title="Couldn't load this delivery"
+          // No signal and never opened here (F-1409): Try again cannot help
+          // until the phone has signal, and the person is told so.
+          message={noAnswer(error) ? NEVER_LOADED_WORDS : undefined}
           onAction={() => refetch()}
         />
       </Screen>
@@ -905,6 +923,37 @@ export default function ReceivingScreen() {
               <AppText variant="caption" tone="tertiary" align="center">
                 {RECEIPT_WAITING_WORDS}
               </AppText>
+            ) : null}
+            {/* Replaced, not stacked (F-1407): the saved count is taken off
+                the phone first, then this screen takes the new one. */}
+            {alreadyCounted && waitingReceipt.status !== "inflight" ? (
+              <PressableScale
+                onPress={() =>
+                  Alert.alert(
+                    "Withdraw the saved count?",
+                    withdrawWords(waitingReceipt),
+                    [
+                      { text: "Keep it", style: "cancel" },
+                      {
+                        text: "Withdraw",
+                        style: "destructive",
+                        onPress: () => {
+                          const refused = useOutbox
+                            .getState()
+                            .withdraw(waitingReceipt.id);
+                          if (refused) Alert.alert("Not withdrawn", refused);
+                        },
+                      },
+                    ],
+                  )
+                }
+                accessibilityLabel="Withdraw the saved count and count again"
+                style={{ alignItems: "center", paddingVertical: space.sm }}
+              >
+                <AppText variant="footnote" tone="danger">
+                  Withdraw the saved count and count again
+                </AppText>
+              </PressableScale>
             ) : null}
             {/* Earlier receipts still on this phone show here before this
                 one is added, and on Today after the screen closes (F-407). */}

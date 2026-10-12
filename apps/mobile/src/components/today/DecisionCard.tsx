@@ -154,6 +154,15 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
         graceMs: 0,
         invalidate: [[...feedKey], [...pulseKey]],
         feedItemId: item.id,
+        // Names the delivery on the waiting and parked rows (F-1408).
+        about: {
+          orderId: item.orderId,
+          orderNumber:
+            typeof item.meta?.orderNumber === "string"
+              ? item.meta.orderNumber
+              : null,
+          subject: item.wineName ?? item.providerName,
+        },
       });
       if (!entryId) {
         Alert.alert(NOT_SAVED_WORDS);

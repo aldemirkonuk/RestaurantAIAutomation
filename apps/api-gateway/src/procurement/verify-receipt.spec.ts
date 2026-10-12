@@ -1,7 +1,12 @@
-import { ForbiddenException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
 import {
+  ProcurementController,
   parseDeliveredQuantity,
+  readCountedAgoMs,
   readDeliveredQuantity,
 } from "./procurement.controller";
 import { DatabaseService } from "../database/database.service";
@@ -2064,5 +2069,154 @@ describe("verifyReceipt — purchases and the lot are booked at one price (F-700
 
     expect(calls.orderUpdates[0]).not.toHaveProperty("total_cost");
     expect(calls.orderUpdates[0]).not.toHaveProperty("total_estimated_cost");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-1406: a count or a delivery mark queued with no signal is dated when it
+// was taken, under ADR 0286's 72 hours, not when it reached the house.
+// ---------------------------------------------------------------------------
+describe("a queued mark or count is dated by how long ago the phone took it (F-1406)", () => {
+  const HOUR = 3_600_000;
+  const approvedOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00003",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 12,
+    bottles_total: 12,
+    unit_type: "bottle",
+    final_price: 40,
+    status: "APPROVED",
+  };
+  const near = (iso: unknown, ms: number) =>
+    Math.abs(Date.parse(String(iso)) - ms) < 5_000;
+
+  it("[REVERT-FAILS] stamps delivered_at at the tap, two hours back", async () => {
+    const { db, calls } = makeDb({ orderRow: approvedOrder });
+    await service(db).markDelivered(REST, ORDER, USER, 12, {
+      countedAgoMs: 2 * HOUR,
+      role: "staff",
+    });
+    expect(
+      near(calls.orderUpdates[0].delivered_at, Date.now() - 2 * HOUR),
+    ).toBe(true);
+  });
+
+  it("keeps the server's time for staff past 72 hours, and the tap's on a manager's word", async () => {
+    const staff = makeDb({ orderRow: approvedOrder });
+    await service(staff.db).markDelivered(REST, ORDER, USER, 12, {
+      countedAgoMs: 100 * HOUR,
+      role: "staff",
+    });
+    expect(near(staff.calls.orderUpdates[0].delivered_at, Date.now())).toBe(
+      true,
+    );
+    const manager = makeDb({ orderRow: approvedOrder });
+    await service(manager.db).markDelivered(REST, ORDER, USER, 12, {
+      countedAgoMs: 100 * HOUR,
+      role: "manager",
+    });
+    expect(
+      near(manager.calls.orderUpdates[0].delivered_at, Date.now() - 100 * HOUR),
+    ).toBe(true);
+  });
+
+  it("[REVERT-FAILS] dates a queued Counts match line at the tap and says which clock", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, quantity: 24, bottles_total: 24 },
+      bookedBottles: 24,
+    });
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      { adjustments: [] } as any,
+      {
+        role: "staff",
+        countedAgoMs: HOUR,
+      },
+    );
+    expect(calls.receiptEvents).toHaveLength(1);
+    const line = calls.receiptEvents[0];
+    expect(line.occurred_at_basis).toBe("sent");
+    expect(near(line.occurred_at, Date.now() - HOUR)).toBe(true);
+    expect(line.client_captured_at).toBe(line.occurred_at);
+  });
+
+  it("writes no time fields when the phone sent no age", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, quantity: 24, bottles_total: 24 },
+      bookedBottles: 24,
+    });
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      { adjustments: [] } as any,
+      {
+        role: "staff",
+      },
+    );
+    expect("occurred_at_basis" in calls.receiptEvents[0]).toBe(false);
+  });
+
+  it("reads the age leniently: anything unreadable is not sent", () => {
+    expect(readCountedAgoMs("7200000")).toBe(7_200_000);
+    expect(readCountedAgoMs(undefined)).toBeUndefined();
+    expect(readCountedAgoMs("-5")).toBeUndefined();
+    expect(readCountedAgoMs("abc")).toBeUndefined();
+    expect(readCountedAgoMs("1.5")).toBeUndefined();
+  });
+
+  it("the routes pass the age on", async () => {
+    const markDelivered = jest.fn().mockResolvedValue({});
+    const verifyReceipt = jest.fn().mockResolvedValue({});
+    const controller = new ProcurementController({
+      markDelivered,
+      verifyReceipt,
+    } as unknown as ProcurementService);
+    const user = { userId: USER, restaurantId: REST, role: "staff" };
+    await controller.markDelivered(ORDER, "3", undefined, user, "60000");
+    expect(markDelivered).toHaveBeenCalledWith(REST, ORDER, USER, 3, {
+      countedAgoMs: 60_000,
+      role: "staff",
+    });
+    await controller.verifyReceipt(ORDER, {} as any, user, "60000");
+    expect(verifyReceipt).toHaveBeenCalledWith(
+      REST,
+      ORDER,
+      USER,
+      {},
+      {
+        role: "staff",
+        countedAgoMs: 60_000,
+      },
+    );
+  });
+});
+
+describe("verify-receipt keeps the refusal's reason on the wire (F-1405)", () => {
+  it("[REVERT-FAILS] a closed order's refusal reaches the phone with its reason", async () => {
+    const refusal = new UnprocessableEntityException({
+      reason: "order_not_checkable",
+      status: "COMPLETED",
+      message:
+        "This order is already completed, so its delivery cannot be checked again. Nothing was changed.",
+    });
+    const controller = new ProcurementController({
+      verifyReceipt: jest.fn().mockRejectedValue(refusal),
+    } as unknown as ProcurementService);
+    await expect(
+      controller.verifyReceipt(ORDER, {} as any, {
+        userId: USER,
+        restaurantId: REST,
+        role: "staff",
+      }),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: { reason: "order_not_checkable", status: "COMPLETED" },
+    });
   });
 });

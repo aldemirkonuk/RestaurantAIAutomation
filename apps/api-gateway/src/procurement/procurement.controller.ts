@@ -130,6 +130,20 @@ export function readDeliveredQuantity(
   return fromCanonical ?? fromAlias;
 }
 
+/**
+ * `?countedAgoMs=` -> how long ago the phone took the count or the mark
+ * (F-1406), or undefined. Lenient on purpose: a value that is not a whole
+ * number of zero or more is treated as not sent, and the server's own time
+ * dates the fact, as it did before the phone sent one. ADR 0286 then keeps it
+ * within 72 hours.
+ */
+export function readCountedAgoMs(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === null || String(raw).trim() === "")
+    return undefined;
+  const value = Number(String(raw).trim());
+  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 @ApiTags("procurement")
 @Controller("procurement")
 @UseGuards(JwtAuthGuard)
@@ -721,7 +735,10 @@ export class ProcurementController {
     // deployed client still holding the old name keeps working. Removable once
     // no such client can reach this endpoint.
     @Query("quantityReceived") quantityReceived: string | undefined,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
+    // How long ago the phone marked it (F-1406): a queued mark is dated then.
+    @Query("countedAgoMs") countedAgoMs?: string,
   ): Promise<OrderResponseDto> {
     // A raw @Query string is not a number, and `Number("abc")` is NaN. NaN is
     // not null or undefined, so `quantityReceived ?? order.quantity` does NOT
@@ -744,6 +761,10 @@ export class ProcurementController {
         orderId,
         user.userId,
         parsedQuantity,
+        {
+          countedAgoMs: readCountedAgoMs(countedAgoMs),
+          role: user.role ?? null,
+        },
       );
     } catch (error) {
       // An HttpException already carries its own status AND its own body; the
@@ -815,6 +836,8 @@ export class ProcurementController {
     @Body() body: VerifyReceiptDto,
     @CurrentUser()
     user: { userId: string; restaurantId: string; role?: string | null },
+    // How long ago the phone took the count (F-1406).
+    @Query("countedAgoMs") countedAgoMs?: string,
   ): Promise<OrderResponseDto> {
     // F-802 (rehit of F-466): the invoice price becomes the lots' landed cost
     // and the price series, and the override reason accepts a price that
@@ -837,9 +860,18 @@ export class ProcurementController {
         orderId,
         user.userId,
         body ?? {},
-        { role: user.role ?? null },
+        {
+          role: user.role ?? null,
+          ...(readCountedAgoMs(countedAgoMs) != null
+            ? { countedAgoMs: readCountedAgoMs(countedAgoMs) }
+            : {}),
+        },
       );
     } catch (error) {
+      // An HttpException carries its own body (F-1405): the phone reads
+      // `reason` to tell "the house already checked this delivery" from a
+      // refusal, and the re-wrap below kept only the sentence.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to verify receipt",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,

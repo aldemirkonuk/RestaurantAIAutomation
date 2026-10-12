@@ -1,5 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./client";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { api, ApiError } from "./client";
 import type {
   AppNotification,
   CalendarEvent,
@@ -140,12 +145,53 @@ export function useOrderHistory() {
   });
 }
 
+/**
+ * An order this phone already holds from its order lists (F-1409), or
+ * undefined. "Count it" on a delivery the phone never opened fetched the order
+ * alone and, with no signal, showed nothing to count; the pending list is
+ * saved on the phone and carries the same order.
+ */
+export function orderFromLists(
+  qc: QueryClient,
+  id: string,
+): ProcurementOrder | undefined {
+  for (const key of [
+    ["orders", "pending"],
+    ["orders", "history"],
+  ]) {
+    const list = qc.getQueryData<ProcurementOrder[]>(key);
+    const hit = Array.isArray(list)
+      ? list.find((o) => o?.id === id)
+      : undefined;
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/** True when the house gave no answer at all: no signal, not a refusal. */
+export function noAnswer(error: unknown): boolean {
+  return (
+    !(error instanceof ApiError) ||
+    (error.body as { reason?: unknown } | undefined)?.reason ===
+      "refresh_not_reached"
+  );
+}
+
+/** An order the phone never loaded, asked for with no signal (F-1409). */
+export const NEVER_LOADED_WORDS =
+  "This delivery was never opened on this phone, so it cannot be shown without signal. Count it once the phone has signal again.";
+
 export function useOrder(id: string) {
   const { enabled } = useAuthed();
+  const qc = useQueryClient();
   return useQuery({
     queryKey: ["orders", "item", id],
     queryFn: () => api<ProcurementOrder>(`/procurement/orders/${id}`),
     enabled: enabled && !!id,
+    // Seeded from the lists and marked stale, so it is fetched again at once
+    // and the list's copy only stands in while there is no answer.
+    initialData: () => orderFromLists(qc, id),
+    initialDataUpdatedAt: 0,
   });
 }
 
@@ -295,7 +341,8 @@ export function useUnreadCount() {
  * Inbox mutations. Deliberately *not* routed through the outbox: unlike an
  * order approval, marking something read has no business consequence worth
  * replaying days later, and a queued archive that lands after the row is gone
- * is noise. They fail loudly and the list refetches.
+ * is noise. The inbox screen says when one did not go through (F-1410), and
+ * the list refetches.
  */
 export function useNotificationActions() {
   const qc = useQueryClient();
