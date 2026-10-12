@@ -217,6 +217,68 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
     expect(out.costsUnread).toBeNull();
   });
 
+  // F-1474: an 86'd spirit reaches the cocktails whose recipe takes it.
+  it("says a cocktail is not available while a spirit its recipe takes is 86'd, and names it", async () => {
+    const { service } = await serviceWith({
+      cocktails: [
+        { data: [{ id: COCKTAIL_ID, name: "Negroni", price: 400 }] },
+        { data: null },
+      ],
+      cocktail_ingredients: [
+        {
+          data: [
+            {
+              cocktail_id: COCKTAIL_ID,
+              inventory_id: GIN,
+              free_text: "gin",
+              quantity: 30,
+              unit: "ml",
+            },
+            {
+              cocktail_id: COCKTAIL_ID,
+              inventory_id: CAMPARI,
+              free_text: "Campari",
+              quantity: 30,
+              unit: "ml",
+            },
+          ],
+        },
+      ],
+      stock_outs: [{ data: [{ inventory_id: GIN }] }],
+    });
+    const out = await service.listCocktails(RID, { limit: 200 });
+    expect((out.rows[0] as { soldOut: unknown }).soldOut).toEqual(["gin"]);
+    expect(out.soldOutUnread).toBeNull();
+  });
+
+  it("an unread stock-out list says so, never that every cocktail is available", async () => {
+    const { service } = await serviceWith({
+      cocktails: [
+        { data: [{ id: COCKTAIL_ID, name: "Negroni", price: 400 }] },
+        { data: null },
+      ],
+      cocktail_ingredients: [
+        {
+          data: [
+            {
+              cocktail_id: COCKTAIL_ID,
+              inventory_id: GIN,
+              free_text: "gin",
+              quantity: 30,
+              unit: "ml",
+            },
+          ],
+        },
+      ],
+      stock_outs: [{ error: { message: "statement timeout" } }],
+    });
+    const out = await service.listCocktails(RID, { limit: 200 });
+    expect((out.rows[0] as { soldOut: unknown }).soldOut).toBeNull();
+    expect(out.soldOutUnread).toMatch(
+      /sold out could not be read.*statement timeout/,
+    );
+  });
+
   it("a failed cost read leaves the list standing and says the costs are unread", async () => {
     const { service } = await serviceWith({
       cocktails: [

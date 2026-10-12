@@ -20,6 +20,9 @@ const mock = vi.hoisted(() => ({
   // F-1329: the first cocktail's cost per serve, the list's withholding, and
   // the recipe the leaf reads.
   serve: undefined as Record<string, unknown> | null | undefined,
+  // F-1474: the first cocktail's 86'd ingredients, and the list's unread note.
+  soldOut: null as string[] | null,
+  soldOutUnread: null as string | null,
   withheld: false,
   recipe: { cocktailId: 'c1', rows: [], count: 0, writable: true } as Record<string, unknown>,
 }));
@@ -44,6 +47,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
         id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
         method: null, glass: null, garnish: null, price: mock.price, description: null,
         serve: mock.serve,
+        soldOut: mock.soldOut,
       }, {
         id: 'c2', name: 'Rakı Sour', display_name: null, menu_section: 'İmza',
         method: null, glass: null, garnish: null, price: null, description: null,
@@ -51,6 +55,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
       count: 2, truncated: false, referenceRows: null, recipesAvailable: false,
       scopeNote: 'Only cocktails this restaurant owns.',
       ...(mock.withheld ? { amountsWithheld: true } : {}),
+      soldOutUnread: mock.soldOutUnread,
     },
   }),
   useCocktailRecipe: () => ({
@@ -97,6 +102,8 @@ beforeEach(() => {
   mock.price = null;
   mock.recipeRows = [];
   mock.serve = undefined;
+  mock.soldOut = null;
+  mock.soldOutUnread = null;
   mock.withheld = false;
   mock.recipe = { cocktailId: 'c1', rows: [], count: 0, writable: true };
   marks.house = null;
@@ -249,6 +256,16 @@ describe('reading a recipe measure', () => {
     ]);
   });
 
+  // F-1473: the gateway reads "şişe" as a unit; the editor dropped it into the
+  // line's words because the unit was read with ASCII letters only.
+  it('reads a Turkish unit word as the unit', async () => {
+    const lines = await recordLines('1 şişe soda\n2 adet yumurta akı');
+    expect(lines).toEqual([
+      expect.objectContaining({ quantity: 1, unit: 'şişe', freeText: 'soda' }),
+      expect.objectContaining({ quantity: 2, unit: 'adet', freeText: 'yumurta akı' }),
+    ]);
+  });
+
   it('keeps a measure it cannot read as written, with no quantity, and says so', async () => {
     const lines = await recordLines('1.2.3 ml gin');
     expect(lines).toEqual([{ quantity: undefined, unit: undefined, freeText: '1.2.3 ml gin', sortOrder: 0 }]);
@@ -389,6 +406,42 @@ describe('a recipe linked to stock', () => {
     draw();
     expect(screen.getAllByTestId('cocktail-cost')[0]).toHaveTextContent('30');
     expect(screen.getAllByTestId('cocktail-margin')[0]).toHaveTextContent(/370.*92\.5%/);
+  });
+
+  // F-1464 = F-1472: a recipe linked in part showed its cost and margin as
+  // whole figures; the lines left out were named only in a hover title.
+  it('says on the row, in words, when a cost and margin come from part of the recipe', () => {
+    mock.price = 400;
+    mock.serve = { costPerServe: 30, margin: 370, marginPct: 92.5, linked: 2, notLinked: 2, withheldReason: null };
+    draw();
+    const cost = screen.getAllByTestId('cocktail-cost')[0];
+    expect(cost).toHaveTextContent(/at least .*30/);
+    expect(cost).toHaveTextContent('from 2 of 4 lines; 2 are not linked to stock');
+    expect(cost).not.toHaveAttribute('title');
+    expect(screen.getAllByTestId('cocktail-margin')[0]).toHaveTextContent(/at most .*370.*92\.5%/);
+  });
+
+  it('a recipe linked in full shows its figures plainly', () => {
+    mock.price = 400;
+    mock.serve = { costPerServe: 30, margin: 370, marginPct: 92.5, linked: 2, notLinked: 0, withheldReason: null };
+    draw();
+    const cost = screen.getAllByTestId('cocktail-cost')[0];
+    expect(cost).not.toHaveTextContent(/at least|lines/);
+    expect(screen.getAllByTestId('cocktail-margin')[0]).not.toHaveTextContent('at most');
+  });
+
+  // F-1474: an 86'd spirit did not reach the cocktails whose recipe takes it.
+  it('says a cocktail is not available while an ingredient is 86’d, and names it', () => {
+    mock.soldOut = ['gin'];
+    draw();
+    expect(screen.getByTestId('cocktail-sold-out')).toHaveTextContent('Not available: gin sold out (86)');
+    expect(screen.getAllByTestId('cocktail-sold-out')).toHaveLength(1);
+  });
+
+  it('says when which cocktails an 86 stops could not be read', () => {
+    mock.soldOutUnread = 'which ingredients are sold out could not be read (timeout)';
+    draw();
+    expect(screen.getByText(/86'd ingredient stops could not be read.*not the same as all available/)).toBeInTheDocument();
   });
 
   it('says a cost is withheld when one is unknown, and not linked when nothing is', () => {

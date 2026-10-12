@@ -135,7 +135,7 @@ function readRecipeLine(
   group: GroupMark | null,
 ): { quantity?: number; unit?: string; freeText: string; unread?: true } {
   const m =
-    /^(?:(\d+)\s+(\d+)\/(\d+)|(\d+)\/(\d+)|(\d*)\s*([¼½¾⅓⅔⅛])|(\d[\d.,]*))(?=[\sa-zA-Z])\s*([a-zA-Z]{1,10})?\s+(.*)$/.exec(
+    /^(?:(\d+)\s+(\d+)\/(\d+)|(\d+)\/(\d+)|(\d*)\s*([¼½¾⅓⅔⅛])|(\d[\d.,]*))(?=[\s\p{L}])\s*(\p{L}{1,10})?\s+(.*)$/u.exec(
       line,
     );
   if (!m) return { freeText: line };
@@ -187,9 +187,11 @@ function lineCostWords(l: RecipeLineVM): string | null {
 
 /**
  * A cocktail's cost per serve and margin, as a table cell (F-1329). An unknown
- * cost is said, never drawn as nothing.
+ * cost is said, never drawn as nothing. A recipe linked only in part (F-1464)
+ * says so in the cell: its cost is at least the figure and its margin at most,
+ * since the lines not linked cost something the sum does not hold.
  */
-function serveWords(c: CocktailVM): { cost: string; margin: string; title?: string } {
+function serveWords(c: CocktailVM): { cost: string; margin: string; title?: string; partial?: string } {
   const s = c.serve;
   if (!s) return { cost: EM, margin: EM, title: 'No recipe recorded' };
   if (s.linked === 0) {
@@ -198,17 +200,18 @@ function serveWords(c: CocktailVM): { cost: string; margin: string; title?: stri
   if (s.costPerServe === null || s.costPerServe === undefined) {
     return { cost: 'withheld', margin: EM, title: s.withheldReason ?? undefined };
   }
-  return {
-    cost: money(s.costPerServe),
-    margin:
-      s.margin === null || s.margin === undefined
-        ? EM
-        : `${money(s.margin)}${s.marginPct === null || s.marginPct === undefined ? '' : ` · ${s.marginPct}%`}`,
-    title:
-      s.notLinked > 0
-        ? `${s.notLinked} ${s.notLinked === 1 ? 'line is' : 'lines are'} not linked to stock and cost nothing here`
-        : undefined,
-  };
+  const margin =
+    s.margin === null || s.margin === undefined
+      ? EM
+      : `${money(s.margin)}${s.marginPct === null || s.marginPct === undefined ? '' : ` · ${s.marginPct}%`}`;
+  if (s.notLinked > 0) {
+    return {
+      cost: `at least ${money(s.costPerServe)}`,
+      margin: margin === EM ? EM : `at most ${margin}`,
+      partial: `from ${s.linked} of ${s.linked + s.notLinked} lines; ${s.notLinked === 1 ? 'one is' : `${s.notLinked} are`} not linked to stock`,
+    };
+  }
+  return { cost: money(s.costPerServe), margin };
 }
 
 function Recipe({
@@ -654,6 +657,9 @@ export default function CocktailRegister({
               : data.costsUnread
                 ? ` What a serve costs could not be read (${data.costsUnread}). It is unread, not nothing.`
                 : ' Cost a serve adds up what the house recorded paying for each recipe line linked to stock; it is withheld when any of those costs is not known.'}
+            {data.soldOutUnread
+              ? ` Which cocktails an 86'd ingredient stops could not be read (${data.soldOutUnread}); none is marked, and that is not the same as all available.`
+              : ''}
           </p>
 
           {rows.length === 0 ? (
@@ -700,6 +706,12 @@ export default function CocktailRegister({
                         <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>
                           {c.display_name ?? c.name}
                         </span>
+                        {/* F-1474: an 86'd ingredient stops the drink. */}
+                        {c.soldOut && c.soldOut.length > 0 ? (
+                          <span className="cl-chip" style={{ marginTop: 3 }} data-testid="cocktail-sold-out">
+                            Not available: {c.soldOut.join(', ')} sold out (86)
+                          </span>
+                        ) : null}
                       </td>
                       <td>{c.menu_section ?? <span className="cl-dim">{EM}</span>}</td>
                       <td>{c.method ?? <span className="cl-dim">{EM}</span>}</td>
@@ -707,10 +719,15 @@ export default function CocktailRegister({
                       <td>{c.garnish ?? <span className="cl-dim">{EM}</span>}</td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>{money(c.price)}</td>
                       {data.amountsWithheld ? null : (() => {
-                        const w = data.costsUnread ? { cost: 'unread', margin: EM, title: data.costsUnread } : serveWords(c);
+                        const w: ReturnType<typeof serveWords> = data.costsUnread ? { cost: 'unread', margin: EM, title: data.costsUnread } : serveWords(c);
                         return (
                           <>
-                            <td className="cl-num" style={{ textAlign: 'right' }} title={w.title} data-testid="cocktail-cost">{w.cost}</td>
+                            <td className="cl-num" style={{ textAlign: 'right' }} title={w.title} data-testid="cocktail-cost">
+                              {w.cost}
+                              {w.partial ? (
+                                <span className="cl-dim" style={{ display: 'block', fontSize: 11 }}>{w.partial}</span>
+                              ) : null}
+                            </td>
                             <td className="cl-num" style={{ textAlign: 'right' }} data-testid="cocktail-margin">{w.margin}</td>
                           </>
                         );

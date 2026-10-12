@@ -39,6 +39,10 @@ import {
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
 import { fmtMoney, type HouseMoneyTerms } from "../pricing/margin-to-target";
 import { readHouseMoney } from "../common/house-money";
+import {
+  cocktailNameKey,
+  cocktailsSoldOut,
+} from "../beverages/cocktail-recipe";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
@@ -1458,6 +1462,12 @@ export class MenusService {
    * unavailable. Read in this house only. A failed read marks nothing and
    * says `soldOutReadable: false` with the reason -- never a menu that looks
    * as if nothing is sold out.
+   *
+   * F-1474: a cocktail is a line with no stock row of its own. It is matched
+   * to the house's cocktail by its exact name (the till's rule, F-1329), and
+   * is sold out while any recipe line linked to stock takes from an 86'd
+   * row; `sold_out_because` names those lines in the bar's words. A failed
+   * cocktail read marks no cocktail and says so; the wines stand.
    */
   private async readSoldOut(
     restaurantId: string,
@@ -1467,14 +1477,21 @@ export class MenusService {
     readable: boolean;
     reason: string | null;
   }> {
+    const recipes = await this.readMenuCocktails(restaurantId, items);
     const ids = [
-      ...new Set(
-        items
+      ...new Set([
+        ...items
           .map((i) => i.inventory_item_id)
           .filter((v): v is string => typeof v === "string" && v !== ""),
-      ),
+        ...recipes.lines.map((l) => l.inventory_id),
+      ]),
     ];
-    if (ids.length === 0) return { items, readable: true, reason: null };
+    const cocktailReason = recipes.error
+      ? `Which cocktails an 86'd ingredient stops could not be read, so none is marked (${recipes.error}).`
+      : null;
+    if (ids.length === 0) {
+      return { items, readable: !cocktailReason, reason: cocktailReason };
+    }
     const out = new Set<string>();
     for (let k = 0; k < ids.length; k += 200) {
       const { data, error } = await this.dbService.supabase
@@ -1493,14 +1510,90 @@ export class MenusService {
       for (const r of (data ?? []) as Array<Record<string, unknown>>)
         out.add(String(r.inventory_id));
     }
+    const stopped = cocktailsSoldOut(recipes.lines, out);
     return {
-      items: items.map((i) =>
-        typeof i.inventory_item_id === "string" && out.has(i.inventory_item_id)
-          ? { ...i, sold_out: true }
-          : i,
-      ),
-      readable: true,
-      reason: null,
+      items: items.map((i) => {
+        if (
+          typeof i.inventory_item_id === "string" &&
+          out.has(i.inventory_item_id)
+        ) {
+          return { ...i, sold_out: true };
+        }
+        const cocktailId = recipes.byLine.get(i);
+        const because = cocktailId ? stopped.get(cocktailId) : undefined;
+        return because
+          ? { ...i, sold_out: true, sold_out_because: because }
+          : i;
+      }),
+      readable: !cocktailReason,
+      reason: cocktailReason,
+    };
+  }
+
+  /**
+   * F-1474: the house's cocktail each line with no stock row of its own
+   * names, by its exact name, and those cocktails' recipe lines linked to
+   * stock. A name two cocktails share names neither; a retired cocktail
+   * names none.
+   */
+  private async readMenuCocktails(
+    restaurantId: string,
+    items: Array<Record<string, unknown>>,
+  ): Promise<{
+    byLine: Map<Record<string, unknown>, string>;
+    lines: Array<{
+      cocktail_id: string;
+      inventory_id: string;
+      free_text: string | null;
+    }>;
+    error: string | null;
+  }> {
+    const byLine = new Map<Record<string, unknown>, string>();
+    const none = { byLine, lines: [], error: null };
+    const bare = items.filter(
+      (i) => !i.inventory_item_id && cocktailNameKey(i.name as string) !== "",
+    );
+    if (bare.length === 0) return none;
+    const { data: cocktails, error } = await this.dbService.supabase
+      .from("cocktails")
+      .select("id, name, display_name")
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null);
+    if (error) return { ...none, error: error.message };
+    const byName = new Map<string, string>();
+    const shared = new Set<string>();
+    for (const c of (cocktails ?? []) as Array<Record<string, unknown>>) {
+      for (const key of new Set(
+        [c.name, c.display_name]
+          .filter((v): v is string => typeof v === "string" && v !== "")
+          .map(cocktailNameKey),
+      )) {
+        if (byName.has(key) && byName.get(key) !== c.id) shared.add(key);
+        else byName.set(key, String(c.id));
+      }
+    }
+    for (const key of shared) byName.delete(key);
+    for (const i of bare) {
+      const id = byName.get(cocktailNameKey(i.name as string));
+      if (id) byLine.set(i, id);
+    }
+    const cocktailIds = [...new Set(byLine.values())];
+    if (cocktailIds.length === 0) return none;
+    const { data: lines, error: linesError } = await this.dbService.supabase
+      .from("cocktail_ingredients")
+      .select("cocktail_id, inventory_id, free_text")
+      .in("cocktail_id", cocktailIds);
+    if (linesError) return { ...none, error: linesError.message };
+    return {
+      byLine,
+      lines: ((lines ?? []) as Array<Record<string, unknown>>)
+        .filter((l) => typeof l.inventory_id === "string")
+        .map((l) => ({
+          cocktail_id: String(l.cocktail_id),
+          inventory_id: String(l.inventory_id),
+          free_text: typeof l.free_text === "string" ? l.free_text : null,
+        })),
+      error: null,
     };
   }
 

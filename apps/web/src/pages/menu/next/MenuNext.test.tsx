@@ -359,6 +359,22 @@ describe("MenuNext — a drink 86'd shows sold out on the house's menu (F-145)",
     expect(rows[1].querySelector('[data-testid="menu-sold-out"]')).toBeNull();
   });
 
+  // F-1474: a cocktail is out while a spirit its recipe takes is 86'd.
+  it('says which ingredient keeps a cocktail off', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({ id: 'a', name: 'Negroni', inventory_item_id: null, sold_out: true, sold_out_because: ['gin'] }),
+          line({ id: 'b', name: 'Yakut', inventory_item_id: 'inv-2' }),
+        ],
+      }),
+    );
+    mount();
+    const said = await screen.findByTestId('menu-sold-out-because');
+    expect(said).toHaveTextContent('gin is sold out (86)');
+    expect(screen.getAllByTestId('menu-sold-out')).toHaveLength(1);
+  });
+
   it('says when which drinks are sold out could not be read', async () => {
     mockGetMenu.mockResolvedValue(menu({ soldOutReadable: false, soldOutReason: 'Which drinks are sold out could not be read (timeout).' }));
     mount();

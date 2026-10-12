@@ -374,6 +374,74 @@ describe("MenusService.getMenu", () => {
     expect(result.soldOutReason).toContain("timeout");
     expect(result.housePricesReadable).toBe(true);
   });
+
+  // F-1474: an 86'd spirit reaches the cocktails whose recipe takes it.
+  const cocktailMenu = () => {
+    const tables: any = pricedMenu();
+    tables.menu_items.push({
+      id: "mi-4",
+      menu_id: "menu-1",
+      restaurant_id: "rest-1",
+      name: "  NEGRONI ",
+      by_glass_price: 400,
+      inventory_item_id: null,
+    });
+    tables.cocktails = [
+      { id: "c-1", restaurant_id: "rest-1", name: "Negroni", deleted_at: null },
+      // Another house's cocktail of the same name names nothing here.
+      { id: "c-9", restaurant_id: "rest-2", name: "Negroni", deleted_at: null },
+    ];
+    tables.cocktail_ingredients = [
+      { cocktail_id: "c-1", inventory_id: "inv-gin", free_text: "gin" },
+      { cocktail_id: "c-1", inventory_id: null, free_text: "orange peel" },
+      { cocktail_id: "c-9", inventory_id: "inv-gin", free_text: "gin" },
+    ];
+    tables.stock_outs = [
+      {
+        id: "so-3",
+        restaurant_id: "rest-1",
+        inventory_id: "inv-gin",
+        ended_at: null,
+      },
+    ];
+    return tables;
+  };
+
+  it("marks a cocktail sold out while a spirit its recipe takes is 86'd, and says which", async () => {
+    const tables = cocktailMenu();
+    const result: any = await makeService(tables).getMenu("rest-1");
+    const byId = Object.fromEntries(result.items.map((i: any) => [i.id, i]));
+    expect(byId["mi-4"]).toMatchObject({
+      sold_out: true,
+      sold_out_because: ["gin"],
+    });
+    expect(byId["mi-2"]).not.toHaveProperty("sold_out");
+    expect(result.soldOutReadable).toBe(true);
+
+    // The gin brought back: the cocktail is available again.
+    tables.stock_outs[0].ended_at = "2026-10-11T22:00:00Z";
+    const back: any = await makeService(tables).getMenu("rest-1");
+    expect(back.items.some((i: any) => "sold_out" in i)).toBe(false);
+  });
+
+  it("says when which cocktails an 86 stops could not be read, and still marks the wines", async () => {
+    const tables = cocktailMenu();
+    tables.stock_outs.push({
+      id: "so-1",
+      restaurant_id: "rest-1",
+      inventory_id: "inv-1",
+      ended_at: null,
+    });
+    tables.__readFails = [{ cocktail_ingredients: "timeout" }];
+    const result: any = await makeService(tables).getMenu("rest-1");
+    const byId = Object.fromEntries(result.items.map((i: any) => [i.id, i]));
+    expect(byId["mi-1"].sold_out).toBe(true);
+    expect(byId["mi-4"]).not.toHaveProperty("sold_out");
+    expect(result.soldOutReadable).toBe(false);
+    expect(result.soldOutReason).toMatch(
+      /cocktails .* could not be read.*timeout/,
+    );
+  });
 });
 
 /**

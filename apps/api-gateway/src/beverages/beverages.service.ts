@@ -38,6 +38,7 @@ import type {
 import { ilikeValue } from "../wines/wines.service";
 import { resolveUnitCost } from "../analytics/inventory-cost";
 import {
+  cocktailsSoldOut,
   lineCost,
   serveCost,
   type ServeCost,
@@ -264,6 +265,20 @@ export interface CocktailListResult extends CatalogueScope {
    * failed. Null when the costs were read (a row may still withhold its own).
    */
   costsUnread: string | null;
+  /**
+   * F-1474: why no row says whether an 86 stops it, when the recipes or the
+   * open stock-outs could not be read. Null when they were read.
+   */
+  soldOutUnread: string | null;
+}
+
+/** One recipe line as the cocktail list reads it for costs and 86s. */
+interface RecipeLineRow {
+  cocktail_id: string;
+  inventory_id: string | null;
+  free_text: string | null;
+  quantity: unknown;
+  unit: unknown;
 }
 
 /** One stock row a recipe line may take from, for the register's picker. */
@@ -446,9 +461,19 @@ export class BeveragesService {
       restaurantId,
       listed.map((c) => ({ id: c.id, price: c.price })),
     );
+    // F-1474: a cocktail whose recipe takes from an 86'd row is not
+    // available; each row says which of its lines stops it.
+    const out = costs.lines
+      ? await this.readOpenStockOuts(
+          restaurantId,
+          costs.lines.map((l) => l.inventory_id).filter(Boolean) as string[],
+        )
+      : { out: new Set<string>(), error: costs.linesError };
+    const soldOut = cocktailsSoldOut(costs.lines ?? [], out.out);
     const rows = listed.map((c) => ({
       ...c,
       serve: costs.serves.get(c.id) ?? null,
+      soldOut: out.error ? null : (soldOut.get(c.id) ?? null),
     }));
     return {
       restaurantId,
@@ -459,6 +484,7 @@ export class BeveragesService {
       referenceRows,
       recipesAvailable: false,
       costsUnread: costs.error,
+      soldOutUnread: out.error,
       scope: "tenant",
       scopeNote:
         "Only cocktails this restaurant owns. Rows with no restaurant are unattributed reference data and are counted separately, never listed here.",
@@ -1139,41 +1165,77 @@ export class BeveragesService {
   private async readServeCosts(
     restaurantId: string,
     cocktails: Array<{ id: string; price: unknown }>,
-  ): Promise<{ serves: Map<string, ServeCost>; error: string | null }> {
+  ): Promise<{
+    serves: Map<string, ServeCost>;
+    error: string | null;
+    /** The recipe lines read, or null when they could not be (F-1474). */
+    lines: RecipeLineRow[] | null;
+    linesError: string | null;
+  }> {
     const serves = new Map<string, ServeCost>();
-    if (cocktails.length === 0) return { serves, error: null };
+    if (cocktails.length === 0) {
+      return { serves, error: null, lines: [], linesError: null };
+    }
     // The cocktails were read for this house, so their lines are its own.
     const { data, error } = await this.dbService
       .getClient()
       .from("cocktail_ingredients")
-      .select("cocktail_id, inventory_id, quantity, unit")
+      .select("cocktail_id, inventory_id, free_text, quantity, unit")
       .in(
         "cocktail_id",
         cocktails.map((c) => c.id),
       );
     if (error) {
       this.logger.error(`Recipe read for costs failed: ${error.message}`);
-      return {
-        serves,
-        error: `the recipes could not be read (${error.message})`,
-      };
+      const said = `the recipes could not be read (${error.message})`;
+      return { serves, error: said, lines: null, linesError: said };
     }
-    const lines = (data ?? []) as Array<{
-      cocktail_id: string;
-      inventory_id: string | null;
-      quantity: unknown;
-      unit: unknown;
-    }>;
+    const lines = (data ?? []) as RecipeLineRow[];
     const stock = await this.readStockCosts(
       restaurantId,
       lines.map((l) => l.inventory_id).filter(Boolean) as string[],
     );
-    if (stock.error) return { serves, error: stock.error };
+    if (stock.error) {
+      return { serves, error: stock.error, lines, linesError: null };
+    }
     for (const c of cocktails) {
       const own = lines.filter((l) => l.cocktail_id === c.id);
       if (own.length > 0) serves.set(c.id, serveCost(own, stock.rows, c.price));
     }
-    return { serves, error: null };
+    return { serves, error: null, lines, linesError: null };
+  }
+
+  /**
+   * F-1474: which of these stock rows are 86'd now (an open `stock_outs` row,
+   * this house only). A failed read is said; it never reads as "none is".
+   */
+  private async readOpenStockOuts(
+    restaurantId: string,
+    inventoryIds: string[],
+  ): Promise<{ out: Set<string>; error: string | null }> {
+    const out = new Set<string>();
+    const ids = [...new Set(inventoryIds)];
+    for (let k = 0; k < ids.length; k += 200) {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("stock_outs")
+        .select("inventory_id")
+        .eq("restaurant_id", restaurantId)
+        .is("ended_at", null)
+        .in("inventory_id", ids.slice(k, k + 200));
+      if (error) {
+        this.logger.error(
+          `Stock-out read for cocktails failed: ${error.message}`,
+        );
+        return {
+          out,
+          error: `which ingredients are sold out could not be read (${error.message})`,
+        };
+      }
+      for (const r of (data ?? []) as Array<{ inventory_id: unknown }>)
+        out.add(String(r.inventory_id));
+    }
+    return { out, error: null };
   }
 
   /* ── the record behind ONE row: the lines the aggregates were made of ──── */
