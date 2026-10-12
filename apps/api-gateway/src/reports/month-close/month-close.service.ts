@@ -59,7 +59,9 @@ export const CHANGED_AFTER_CLOSE_CAP = 200;
 /** Mirrors `month_closes_till_csv_size`. */
 const MAX_TILL_CSV_BYTES = 5 * 1024 * 1024;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
-const TABLE = "month_closes";
+// Not `TABLE`: the parity guard maps const names repo-wide, and the web's
+// useSommelierQueries already has a `TABLE` (F-1112).
+const MONTH_CLOSES_TABLE = "month_closes";
 const ROW_COLUMNS =
   "id, restaurant_id, month, version, closed_by, closed_at, zone, figures";
 
@@ -285,7 +287,7 @@ export class MonthCloseService {
     const tillCsv = this.tillFile(tillWindow, month, zone, house);
 
     const { data: last, error: lastError } = await this.db
-      .from(TABLE)
+      .from(MONTH_CLOSES_TABLE)
       .select("version")
       .eq("restaurant_id", restaurantId)
       .eq("month", month)
@@ -303,7 +305,7 @@ export class MonthCloseService {
       (((last ?? [])[0] as { version?: number } | undefined)?.version ?? 0) + 1;
 
     const { data, error } = await this.db
-      .from(TABLE)
+      .from(MONTH_CLOSES_TABLE)
       .insert({
         restaurant_id: restaurantId,
         month,
@@ -359,7 +361,7 @@ export class MonthCloseService {
   /** The house's closes, newest month first, every version. */
   async listCloses(restaurantId: string): Promise<{ closes: MonthCloseDto[] }> {
     const { data, error } = await this.db
-      .from(TABLE)
+      .from(MONTH_CLOSES_TABLE)
       .select(`${ROW_COLUMNS}, till_csv`)
       .eq("restaurant_id", restaurantId)
       .order("closed_at", { ascending: false })
@@ -449,7 +451,7 @@ export class MonthCloseService {
     withFile: boolean,
   ): Promise<CloseRow> {
     const { data, error } = await this.db
-      .from(TABLE)
+      .from(MONTH_CLOSES_TABLE)
       .select(withFile ? `${ROW_COLUMNS}, till_csv` : ROW_COLUMNS)
       .eq("id", closeId)
       .eq("restaurant_id", restaurantId)
