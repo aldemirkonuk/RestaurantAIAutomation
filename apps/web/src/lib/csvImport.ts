@@ -2,7 +2,7 @@
  * The vendor-list and opening-stock CSV imports (F-685, S195 coordinator call:
  * every inventory tool takes a spreadsheet on day one).
  *
- * A file is read the house's way: its bytes through `decodeMenuCsv` (UTF-8,
+ * A file is read the house's way: its bytes through `decodeCsvBytes` (UTF-8,
  * else the house's Excel code page; F-1294), its separator the one the header
  * uses most (",", ";" or a tab: Turkish Excel writes ";"), and its numbers
  * through `parseDecimal` with the house's own group mark. Nothing is sent from
@@ -10,7 +10,7 @@
  * the reason in plain words, and the person sees that before anything is sent.
  */
 
-import { decodeMenuCsv } from './menuCsvText';
+import { decodeCsvBytes } from './menuCsvText';
 import { displayGroupMark, parseDecimal } from './parseDecimal';
 import { getHouseLocale } from './houseCurrency';
 
@@ -52,7 +52,7 @@ export function parseCsvRows(text: string): string[][] {
 
 /** A CSV file's text, decoded the house's way (refuses unreadable letters). */
 export async function readCsvFile(file: Blob, locale: string = getHouseLocale()): Promise<string> {
-  return decodeMenuCsv(await file.arrayBuffer(), locale);
+  return decodeCsvBytes(await file.arrayBuffer(), locale);
 }
 
 const fold = (s: string) =>
