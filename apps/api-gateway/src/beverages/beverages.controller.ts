@@ -149,15 +149,16 @@ export function rowRecordForRole(
  * and `amountsWithheld: true` at the root: the same rule as the registers
  * above (ADR 0145). How many lines are linked stays; it is not money.
  */
-export function cocktailsForRole<
-  T extends { rows: Array<Record<string, any>> },
->(result: T, role: string | null | undefined): T & { amountsWithheld?: true } {
+export function cocktailsForRole<T extends { rows: unknown[] }>(
+  result: T,
+  role: string | null | undefined,
+): T & { amountsWithheld?: true } {
   if (holdsHouseMoney(role ?? null)) return result;
   return {
     ...result,
     amountsWithheld: true,
     rows: result.rows.map((row) => {
-      const out: Record<string, any> = { ...row };
+      const out: Record<string, any> = { ...(row as Record<string, any>) };
       if (out.serve) {
         out.serve = {
           linked: out.serve.linked,
