@@ -21,6 +21,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   TILL_REFUNDS_NOT_TAKEN_OFF,
+  TILL_TOTALS_NOT_NET,
   pacing,
   till,
   tillUntotaledSaid,
@@ -28,7 +29,19 @@ import {
   type TillWindow,
   type WeekRegister,
 } from './rp-registers-trade';
-import { AMOUNTS_WITHHELD, ledger, quadrants, type LedgerRegister } from './rp-registers-house';
+import {
+  AMOUNTS_WITHHELD,
+  REGISTER_TIP_ON_NET,
+  REGISTER_TOTALS_NOT_NET,
+  ledger,
+  quadrants,
+  seats,
+  service,
+  zeroChecksSaid,
+  type LedgerRegister,
+  type SeatsRegister,
+  type ServiceRegister,
+} from './rp-registers-house';
 import { bench } from './rp-registers-bench';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
@@ -129,7 +142,7 @@ describe('the till — a sale belongs to the house day (ADR 0296)', () => {
 describe('the till says refunds are not taken off Taken (F-446)', () => {
   it('prints the refund note beside a Taken figure, in the export file’s words', () => {
     const view = till.view(read({ ...OLD_PAYLOAD, timezone: 'America/Los_Angeles', zoneUnset: false }), ctx);
-    expect(view.notes).toEqual([TILL_REFUNDS_NOT_TAKEN_OFF]);
+    expect(view.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]);
     expect(TILL_REFUNDS_NOT_TAKEN_OFF).toBe(
       "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.",
     );
@@ -137,7 +150,7 @@ describe('the till says refunds are not taken off Taken (F-446)', () => {
 
   it('says it on a window with a total and no daily rows, too', () => {
     const view = till.view(read({ ...OLD_PAYLOAD, revenue: 0, dailySeries: [] }), ctx);
-    expect(view.notes).toEqual([TILL_REFUNDS_NOT_TAKEN_OFF]);
+    expect(view.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]);
   });
 
   it('says nothing about refunds when there is no Taken figure to qualify', () => {
@@ -481,7 +494,7 @@ describe('figures a missing price or total would make short (F-1443, F-1444)', (
 
   it('an older payload with no count reads as before', () => {
     const v = till.view(read(OLD_PAYLOAD), ctx as never);
-    expect(v.notes).toEqual([TILL_REFUNDS_NOT_TAKEN_OFF]);
+    expect(v.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]);
   });
 
   it('draws no turns or days of inventory from a short Cost of goods, and says why', () => {
@@ -501,5 +514,74 @@ describe('figures a missing price or total would make short (F-1443, F-1444)', (
         note: '1 delivered order has no price, so Cost of goods is short',
       });
     expect(v.notes?.join(' ')).toContain('Inventory turns and Days of inventory are not taken from it.');
+  });
+});
+
+// F-1536: the till's Taken is the checks' totals (tax and tips inside on most
+// tills) while the dashboard draws net sales, so the page says which it is.
+// F-1534: a check rung at 0 (a comp, a staff meal) is counted and left out of
+// the Average check. F-1532: the room and server registers say the same about
+// their totals, and the server's Tip is over net sales.
+describe('the registers say what Taken holds and leave a check rung at 0 out of the average (F-1532, F-1534, F-1536)', () => {
+  const figureOf = (figs: Array<{ label: string; value: string }> | undefined, label: string) =>
+    figs?.find((x) => x.label === label)?.value;
+
+  it('the till says Taken holds tax and tips, unlike the dashboard’s net sales', () => {
+    const v = till.view(read(OLD_PAYLOAD), ctx as never);
+    expect(v.notes).toContain(TILL_TOTALS_NOT_NET);
+    expect(TILL_TOTALS_NOT_NET).toBe(
+      "Taken is the check totals as your till sends them. On most tills that includes tax and tips, so it reads higher than the dashboard's net sales, which are before tax and tips.",
+    );
+  });
+
+  it('the till’s Average check leaves out a check rung at 0 and says how many', () => {
+    // $300 over 4 checks, one of them a comp at 0: the average is $100, not $75.
+    const v = till.view(read({ ...OLD_PAYLOAD, revenue: 300, checkCount: 4, checksTakingNoMoney: 1 }), ctx as never);
+    const hundred = figureOf(till.view(read({ ...OLD_PAYLOAD, revenue: 100, checkCount: 1 }), ctx as never).figures, 'Average check');
+    expect(figureOf(v.figures, 'Average check')).toBe(hundred);
+    expect(v.notes).toContain(zeroChecksSaid(1));
+    expect(zeroChecksSaid(2)).toBe(
+      '2 checks were rung at 0, such as a comp or a staff meal: counted in Checks, left out of the average check.',
+    );
+  });
+
+  it('the server register names its basis, the tip rate over net sales, and the checks rung at 0', () => {
+    const reg = service.select({
+      sinceDays: 90,
+      dataStatus: 'live',
+      tipBasis: 'net',
+      checksTakingNoMoney: 2,
+      checksInWindow: 9,
+      waiters: [{ name: 'Maya', checks: 9, revenue: 882, avgCheck: 126, tipPct: 0.2 }],
+    }) as ServiceRegister;
+    const v = service.view(reg, { days: 90 } as never);
+    expect(v.basis).toContain(REGISTER_TOTALS_NOT_NET);
+    expect(v.basis).toContain(REGISTER_TIP_ON_NET);
+    expect(v.notes).toContain(zeroChecksSaid(2));
+  });
+
+  it('an older server payload (tip over the total) is not called net', () => {
+    const reg = service.select({
+      sinceDays: 90,
+      dataStatus: 'live',
+      waiters: [{ name: 'Maya', checks: 3, revenue: 378, avgCheck: 126, tipPct: 0.159 }],
+    }) as ServiceRegister;
+    const v = service.view(reg, { days: 90 } as never);
+    expect(v.basis).toContain(REGISTER_TOTALS_NOT_NET);
+    expect(v.basis).not.toContain(REGISTER_TIP_ON_NET);
+    expect(v.notes?.some((n) => String(n).includes('rung at 0'))).toBe(false);
+  });
+
+  it('the room register names its basis and the checks rung at 0', () => {
+    const reg = seats.select({
+      sinceDays: 90,
+      dataStatus: 'live',
+      checksInWindow: 4,
+      checksTakingNoMoney: 1,
+      tables: [{ tableId: 't1', label: 'T1', seats: 4, checks: 4, revenue: 300, covers: 8, avgCheck: 100 }],
+    }) as SeatsRegister;
+    const v = seats.view(reg, { days: 90 } as never);
+    expect(v.basis).toContain(REGISTER_TOTALS_NOT_NET);
+    expect(v.notes).toContain(zeroChecksSaid(1));
   });
 });

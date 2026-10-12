@@ -1227,6 +1227,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     units?: UnitsLabel;
     /** pos_revenue only: checks with no total, left out of the sum (F-1444). */
     untotaled?: number;
+    /** pos_revenue only: checks rung at 0, a comp or a staff meal (F-1534). */
+    zeroTotaled?: number;
   }> {
     /**
      * Days of stock, before everything else, and deliberately OUTSIDE the
@@ -1322,6 +1324,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     let rowCount = 0;
     let units: UnitsLabel | undefined;
     let untotaled = 0;
+    let zeroTotaled = 0;
     const add = (date: string, v: number) => {
       daily.set(date, (daily.get(date) || 0) + v);
     };
@@ -1461,22 +1464,32 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             const t = checkTotal(c);
             if (t == null) untotaled += 1;
             else add(day, t);
+            // F-1534: a check rung at 0 took no money; it is in the sum as
+            // nothing and counted, so the page's average can leave it out.
+            if (t === 0) zeroTotaled += 1;
           }
         } else if (metricKey === "checks") {
           for (const { day } of checks) add(day, 1);
         } else if (metricKey === "avg_check") {
           // F-1444: a check with no total is not a $0 check; it is left out
           // of the sum and of the count the average divides by.
-          const totals = checks
+          const stated = checks
             .map(({ row: c }) => checkTotal(c))
             .filter((t): t is number => t != null);
+          // F-1534: nor is a check rung at 0 (a comp, a staff meal) a sale;
+          // it would pull the average down by a check nobody paid.
+          const totals = stated.filter((t) => t !== 0);
           if (!checks.length)
             throw new UnmeasuredGoalError(
               "No check has been filed since this goal was set, so there is no average check to measure yet.",
             );
-          if (!totals.length)
+          if (!stated.length)
             throw new UnmeasuredGoalError(
               `None of the ${checks.length} checks filed since this goal was set carries a total, so there is no average check to measure yet.`,
+            );
+          if (!totals.length)
+            throw new UnmeasuredGoalError(
+              "Every check filed since this goal was set was rung at 0, such as a comp or a staff meal, so there is no average check to measure yet.",
             );
           return {
             current: totals.reduce((a, b) => a + b, 0) / totals.length,
@@ -1541,7 +1554,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       dailyDates: dates,
       rowCount,
       units,
-      ...(metricKey === "pos_revenue" ? { untotaled } : {}),
+      ...(metricKey === "pos_revenue" ? { untotaled, zeroTotaled } : {}),
     };
   }
 
@@ -1699,14 +1712,21 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       revenue: null,
       checkCount: null,
       checksWithoutTotal: null,
+      checksTakingNoMoney: null,
       dailySeries: [],
     };
 
     if (!connected) return { ...unread, posConnected: false };
     if (!zone || !from || !to) return { ...unread, posConnected: true };
 
-    const { current, dailySeries, dailyDates, rowCount, untotaled } =
-      await this.computeMetricWithSeries(
+    const {
+      current,
+      dailySeries,
+      dailyDates,
+      rowCount,
+      untotaled,
+      zeroTotaled,
+    } = await this.computeMetricWithSeries(
         restaurantId,
         "pos_revenue",
         from,
@@ -1727,6 +1747,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       revenue: rowCount > 0 && (untotaled ?? 0) >= rowCount ? null : current,
       checkCount: rowCount,
       checksWithoutTotal: untotaled ?? 0,
+      checksTakingNoMoney: zeroTotaled ?? 0,
       dailySeries: dailyDates.map((date, i) => ({
         date,
         revenue: dailySeries[i] ?? 0,
@@ -1818,6 +1839,12 @@ export interface PosRevenueWindow {
    * `checkCount` is.
    */
   checksWithoutTotal?: number | null;
+  /**
+   * Of `checkCount`, the checks rung at 0, such as a comp or a staff meal
+   * (F-1534). They add nothing to `revenue`, and an average check leaves them
+   * out of its count. `null` when `checkCount` is.
+   */
+  checksTakingNoMoney?: number | null;
   /** Sparse — only days that actually had revenue appear. */
   dailySeries: Array<{ date: string; revenue: number }>;
 }
