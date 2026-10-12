@@ -215,6 +215,14 @@ export class CocktailIngredientDto {
   @IsUUID()
   wineId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "The house's own stock row this line takes from (restaurant_inventory). A till sale of the cocktail takes quantity x unit off it (F-1329).",
+  })
+  @IsOptional()
+  @IsUUID()
+  inventoryId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)

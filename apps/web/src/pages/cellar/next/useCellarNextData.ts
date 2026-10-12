@@ -465,6 +465,22 @@ export interface CocktailVM {
   description: string | null;
   /** When this house put it on the list — the "Kept" column (F-1328). */
   created_at: string | null;
+  /**
+   * F-1329: the cost of one serve and the margin on its price, from the
+   * recipe lines linked to stock. Null when it has no recipe. The money keys
+   * are absent for a reader the gateway withholds them from.
+   */
+  serve?: ServeVM | null;
+}
+
+/** Mirrored from `apps/api-gateway/src/beverages/cocktail-recipe.ts`. */
+export interface ServeVM {
+  costPerServe?: number | null;
+  margin?: number | null;
+  marginPct?: number | null;
+  linked: number;
+  notLinked: number;
+  withheldReason?: string | null;
 }
 
 export interface CocktailListVM {
@@ -474,6 +490,10 @@ export interface CocktailListVM {
   referenceRows: number | null;
   recipesAvailable: false;
   scopeNote: string;
+  /** F-1329: why no row carries a cost, when the costs could not be read. */
+  costsUnread?: string | null;
+  /** The costs are kept for the owner and managers (ADR 0145). */
+  amountsWithheld?: true;
 }
 
 /* ── the house's own record on a row ───────────────────────────────────────
@@ -1064,6 +1084,32 @@ export interface RecipeLineVM {
   quantity?: number | null;
   unit?: string | null;
   sort_order?: number | null;
+  /** F-1329: the house stock row this line takes from; null is not linked. */
+  inventory_id?: string | null;
+  stockName?: string | null;
+  cost?:
+    | { state: 'not_linked' }
+    | { state: 'costed'; cost: number }
+    | { state: 'withheld'; reason: string }
+    | null;
+}
+
+/** F-1329: one stock row a recipe line may take from. */
+export interface StockChoiceVM {
+  id: string;
+  name: string;
+  kind: string | null;
+  bottleMl: number | null;
+}
+
+/** One line of a recipe as it is recorded. */
+export interface RecipeLineInput {
+  freeText?: string;
+  quantity?: number;
+  unit?: string;
+  sortOrder?: number;
+  /** F-1329: the house stock row this line takes from. */
+  inventoryId?: string;
 }
 
 /**
@@ -1119,7 +1165,7 @@ export function useCocktailWrites() {
   const setRecipe = useMutation({
     mutationFn: async (v: {
       id: string;
-      lines: { freeText?: string; quantity?: number; unit?: string; sortOrder?: number }[];
+      lines: RecipeLineInput[];
     }) => {
       const r = await apiClient.put(
         `/cocktails/${activeRestaurantId}/${v.id}/ingredients`,
@@ -1156,6 +1202,11 @@ export function useCocktailRecipe(cocktailId: string | null) {
         rows: RecipeLineVM[];
         count: number;
         writable: true;
+        /** F-1329: why the line costs are unread, when they are. */
+        costsUnread?: string | null;
+        stockRows?: StockChoiceVM[];
+        stockRowsUnread?: string | null;
+        amountsWithheld?: true;
       };
     },
   });

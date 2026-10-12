@@ -142,6 +142,41 @@ export function rowRecordForRole(
   };
 }
 
+/**
+ * F-1329: a cocktail's cost per serve and margin are what the house paid for
+ * its ingredients, so a reader who does not hold the house's money gets the
+ * cocktail list, and each recipe line's stock row, with every cost OMITTED
+ * and `amountsWithheld: true` at the root: the same rule as the registers
+ * above (ADR 0145). How many lines are linked stays; it is not money.
+ */
+export function cocktailsForRole<T extends { rows: unknown[] }>(
+  result: T,
+  role: string | null | undefined,
+): T & { amountsWithheld?: true } {
+  if (holdsHouseMoney(role ?? null)) return result;
+  return {
+    ...result,
+    amountsWithheld: true,
+    rows: result.rows.map((row) => {
+      const out: Record<string, any> = { ...(row as Record<string, any>) };
+      if (out.serve) {
+        out.serve = {
+          linked: out.serve.linked,
+          notLinked: out.serve.notLinked,
+        };
+      }
+      // A recipe line's cost: omitted, but whether it is linked is kept.
+      if (out.cost) {
+        out.cost =
+          out.cost.state === "not_linked"
+            ? out.cost
+            : { state: "withheld", reason: "kept for the owner and managers" };
+      }
+      return out;
+    }) as T["rows"],
+  };
+}
+
 @ApiTags("beverages")
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -183,12 +218,16 @@ export class BeveragesController {
   async listCocktails(
     @Param("restaurantId") restaurantId: string,
     @Query() query: ListCocktailsQueryDto,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.beverages.listCocktails(restaurantId, {
-        search: query.search,
-        limit: query.limit ?? 200,
-      });
+      return cocktailsForRole(
+        await this.beverages.listCocktails(restaurantId, {
+          search: query.search,
+          limit: query.limit ?? 200,
+        }),
+        user?.role,
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -345,9 +384,13 @@ export class BeveragesController {
   async readIngredients(
     @Param("restaurantId") restaurantId: string,
     @Param("cocktailId", new ParseUUIDPipe()) cocktailId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.guard(() =>
-      this.beverages.readCocktailIngredients(restaurantId, cocktailId),
+    return this.guard(async () =>
+      cocktailsForRole(
+        await this.beverages.readCocktailIngredients(restaurantId, cocktailId),
+        user?.role,
+      ),
     );
   }
 

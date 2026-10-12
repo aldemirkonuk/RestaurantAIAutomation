@@ -53,6 +53,9 @@ import {
   useCocktailWrites,
   useMayPriceCocktails,
   type CocktailInput,
+  type CocktailVM,
+  type RecipeLineInput,
+  type RecipeLineVM,
   type RegisterVM,
 } from './useCellarNextData';
 import { foldText } from '@/lib/textFold';
@@ -155,6 +158,59 @@ function houseMeasure(quantity: number, group: GroupMark | null): string {
   return group === '.' ? text.replace('.', ',') : text;
 }
 
+/** A recorded line as it is written back, its stock link kept (F-1329). */
+function recordedLine(l: RecipeLineVM, i: number): RecipeLineInput {
+  return {
+    freeText: l.free_text ?? undefined,
+    quantity: l.quantity === null || l.quantity === undefined ? undefined : Number(l.quantity),
+    unit: l.unit ?? undefined,
+    sortOrder: i,
+    inventoryId: l.inventory_id ?? undefined,
+  };
+}
+
+/** The words a line is known by when the recipe is retyped. */
+const lineWords = (t: string | null | undefined) => foldText((t ?? '').trim());
+
+/**
+ * What one recipe line costs a serve, in the owner's words (F-1329). A line
+ * that names no stock takes nothing off the shelf when the cocktail sells.
+ */
+function lineCostWords(l: RecipeLineVM): string | null {
+  const c = l.cost;
+  if (!c || c.state === 'not_linked') {
+    return l.inventory_id ? null : 'Not linked — the till takes nothing off stock for this line.';
+  }
+  if (c.state === 'costed') return `${money(c.cost)} a serve`;
+  return `No cost a serve: ${c.reason}.`;
+}
+
+/**
+ * A cocktail's cost per serve and margin, as a table cell (F-1329). An unknown
+ * cost is said, never drawn as nothing.
+ */
+function serveWords(c: CocktailVM): { cost: string; margin: string; title?: string } {
+  const s = c.serve;
+  if (!s) return { cost: EM, margin: EM, title: 'No recipe recorded' };
+  if (s.linked === 0) {
+    return { cost: 'not linked', margin: EM, title: 'No recipe line is linked to stock' };
+  }
+  if (s.costPerServe === null || s.costPerServe === undefined) {
+    return { cost: 'withheld', margin: EM, title: s.withheldReason ?? undefined };
+  }
+  return {
+    cost: money(s.costPerServe),
+    margin:
+      s.margin === null || s.margin === undefined
+        ? EM
+        : `${money(s.margin)}${s.marginPct === null || s.marginPct === undefined ? '' : ` · ${s.marginPct}%`}`,
+    title:
+      s.notLinked > 0
+        ? `${s.notLinked} ${s.notLinked === 1 ? 'line is' : 'lines are'} not linked to stock and cost nothing here`
+        : undefined,
+  };
+}
+
 function Recipe({
   cocktailId,
   onDraft,
@@ -202,7 +258,19 @@ function Recipe({
       .filter(Boolean)
       .map((l) => readRecipeLine(l, group));
     const unread = read.filter((l) => l.unread).map((l) => `“${l.freeText}”`);
-    const lines = read.map((l, i) => ({ quantity: l.quantity, unit: l.unit, freeText: l.freeText, sortOrder: i }));
+    // F-1329: a line keeps the stock row it takes from while its words stay
+    // the same; a retyped ingredient is a new line, not linked until picked.
+    const links = new Map<string, string>();
+    for (const l of recipe.data?.rows ?? []) {
+      if (l.inventory_id && !links.has(lineWords(l.free_text))) links.set(lineWords(l.free_text), l.inventory_id);
+    }
+    const lines: RecipeLineInput[] = read.map((l, i) => ({
+      quantity: l.quantity,
+      unit: l.unit,
+      freeText: l.freeText,
+      sortOrder: i,
+      inventoryId: links.get(lineWords(l.freeText)),
+    }));
     try {
       const out = await setRecipe.mutateAsync({ id: cocktailId, lines });
       setEditing(false);
@@ -228,6 +296,32 @@ function Recipe({
           : isUnconfirmedWrite(e)
             ? `The recipe was NOT recorded — ${serverSaid(e)}.`
             : `The recipe was NOT recorded — ${serverSaid(e)}. Nothing was changed.`,
+      );
+    }
+  };
+
+  const stock = recipe.data?.stockRows ?? [];
+  // F-1329: link one recorded line to a stock row (or unlink it). The whole
+  // recipe is written back, every other line as it stands.
+  const link = async (index: number, inventoryId: string) => {
+    const rows = recipe.data?.rows ?? [];
+    const lines = rows.map((l, i) => ({
+      ...recordedLine(l, i),
+      ...(i === index ? { inventoryId: inventoryId || undefined } : {}),
+    }));
+    const name = rows[index]?.free_text ?? 'this line';
+    try {
+      await setRecipe.mutateAsync({ id: cocktailId, lines });
+      setSaid(
+        inventoryId
+          ? `“${name}” now takes from ${stock.find((r) => r.id === inventoryId)?.name ?? 'that stock row'} each time the cocktail sells.`
+          : `“${name}” is not linked now. It takes nothing off stock when the cocktail sells.`,
+      );
+    } catch (e) {
+      setSaid(
+        isUnconfirmedWrite(e) && !gatewaySentence(e)
+          ? 'No answer came back, so the link may have been recorded. Close and reopen this cocktail to check.'
+          : `The link was NOT recorded — ${serverSaid(e)}. The recipe is as it was.`,
       );
     }
   };
@@ -262,7 +356,8 @@ function Recipe({
           <p className="cl-note" style={{ marginTop: 4 }}>
             One ingredient per line. A leading measure and unit — 30 ml, 1,5 oz,
             1 1/2 oz, ½ oz — are read as the measure; everything else is kept as
-            the bartender wrote it.
+            the bartender wrote it. A line keeps the stock it takes from while its
+            words stay the same.
           </p>
           <span style={{ display: 'inline-flex', gap: 6, marginTop: 8 }}>
             <button type="button" className="cl-btn cl-focus" onClick={save} disabled={setRecipe.isPending}>
@@ -289,14 +384,50 @@ function Recipe({
         <>
           <ol style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12.5, lineHeight: 1.7 }}>
             {recipe.data!.rows.map((l, i) => (
-              <li key={l.id ?? i}>
+              <li key={l.id ?? i} data-testid="recipe-line">
                 {l.quantity !== null && l.quantity !== undefined ? (
                   <span className="cl-num">{houseMeasure(l.quantity, group)}{l.unit ? ` ${l.unit}` : ''} </span>
                 ) : null}
-                {l.free_text ?? EM}
+                {l.free_text ?? (l.stockName ? '' : EM)}
+                <span style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', margin: '2px 0 4px' }}>
+                  <label htmlFor={`cl-stock-${cocktailId}-${i}`} className="cl-dim" style={{ fontSize: 11 }}>
+                    Takes from
+                  </label>
+                  <select
+                    id={`cl-stock-${cocktailId}-${i}`}
+                    className="cl-field cl-focus"
+                    value={l.inventory_id ?? ''}
+                    disabled={setRecipe.isPending || (stock.length === 0 && !l.inventory_id)}
+                    onChange={(e) => void link(i, e.target.value)}
+                    style={{ maxWidth: 260 }}
+                  >
+                    <option value="">Not linked</option>
+                    {l.inventory_id && !stock.some((r) => r.id === l.inventory_id) ? (
+                      <option value={l.inventory_id}>{l.stockName ?? 'A stock row no longer listed'}</option>
+                    ) : null}
+                    {stock.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}{r.bottleMl ? ` · ${r.bottleMl} ml` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {lineCostWords(l) ? (
+                    <span className="cl-dim" style={{ fontSize: 11 }} data-testid="recipe-line-cost">{lineCostWords(l)}</span>
+                  ) : null}
+                </span>
               </li>
             ))}
           </ol>
+          <p className="cl-note">
+            A linked line is taken off its stock row, by its measure, each time the
+            till sells this cocktail. Write the measure in ml, cl, oz or units.
+            {recipe.data!.stockRowsUnread
+              ? ` The stock rows could not be read (${recipe.data!.stockRowsUnread}), so no line can be linked now.`
+              : stock.length === 0
+                ? ' This house has no stock rows to link to yet.'
+                : ''}
+            {recipe.data!.costsUnread ? ` The costs could not be read (${recipe.data!.costsUnread}).` : ''}
+          </p>
           <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
             <Pencil size={13} aria-hidden />
             Amend the recipe
@@ -518,6 +649,11 @@ export default function CocktailRegister({
             {data.referenceRows === null
               ? 'The count of unattributed reference cocktails could not be read.'
               : `${count(data.referenceRows)} unattributed reference cocktails from the demo corpus exist and are deliberately not listed as this house’s.`}
+            {data.amountsWithheld
+              ? ' What a serve costs the house is kept for the owner and managers.'
+              : data.costsUnread
+                ? ` What a serve costs could not be read (${data.costsUnread}). It is unread, not nothing.`
+                : ' Cost a serve adds up what the house recorded paying for each recipe line linked to stock; it is withheld when any of those costs is not known.'}
           </p>
 
           {rows.length === 0 ? (
@@ -537,6 +673,12 @@ export default function CocktailRegister({
                     <th scope="col">Glass</th>
                     <th scope="col">Garnish</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                    {data.amountsWithheld ? null : (
+                      <>
+                        <th scope="col" style={{ textAlign: 'right' }}>Cost a serve</th>
+                        <th scope="col" style={{ textAlign: 'right' }}>Margin</th>
+                      </>
+                    )}
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
@@ -564,6 +706,15 @@ export default function CocktailRegister({
                       <td>{c.glass ?? <span className="cl-dim">{EM}</span>}</td>
                       <td>{c.garnish ?? <span className="cl-dim">{EM}</span>}</td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>{money(c.price)}</td>
+                      {data.amountsWithheld ? null : (() => {
+                        const w = data.costsUnread ? { cost: 'unread', margin: EM, title: data.costsUnread } : serveWords(c);
+                        return (
+                          <>
+                            <td className="cl-num" style={{ textAlign: 'right' }} title={w.title} data-testid="cocktail-cost">{w.cost}</td>
+                            <td className="cl-num" style={{ textAlign: 'right' }} data-testid="cocktail-margin">{w.margin}</td>
+                          </>
+                        );
+                      })()}
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {shortDate(c.created_at)}
                       </td>
