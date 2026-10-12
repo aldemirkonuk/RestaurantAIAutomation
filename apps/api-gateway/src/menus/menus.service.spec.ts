@@ -141,6 +141,19 @@ function makeFakeSupabase(
     return api;
   }
   const rpc = async (fn: string, args: Row) => {
+    // ADR 0340 rule 12: every upload makes its sections in one database
+    // function. Answered here for every test, kept apart from rpcCalls so a
+    // test's list of price writes stays what it was; `__materialised` shows
+    // the calls, `__materialiseFails` makes it fail.
+    if (fn === "materialise_menu_sections") {
+      (tables.__materialised = tables.__materialised || []).push(args);
+      if (tables.__materialiseFails)
+        return {
+          data: null,
+          error: { message: String(tables.__materialiseFails[0]) },
+        };
+      return { data: { sections: 0, inherited: 0, lines: 0 }, error: null };
+    }
     rpcCalls.push([fn, args]);
     return rpcImpl ? rpcImpl(fn, args) : { data: null, error: { message: `no rpc ${fn} in this fake` } };
   };
@@ -1441,6 +1454,196 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.items[0].priceSync).toBe("not_current");
     // Lines are stored against the new version, not appended to the old menu.
     expect(tables.menu_items.every((l) => l.menu_id === r.menuId)).toBe(true);
+  });
+
+  it("ADR 0340 rule 12: an upload makes its draft's sections in the same step, under the reader, and its drafts share one read id", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
+    const r = await service.importMenu(
+      {
+        method: "csv",
+        data: { csvContent: csv },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
+    expect(tables.__materialised).toEqual([
+      { p_restaurant_id: "rest-1", p_menu_id: r.menuId, p_actor: "user-1" },
+    ]);
+    const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+    expect(version.read_together_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("ADR 0340 rule 12: sections that could not be made take the version back out, as lines that could not be saved do (F-1296)", async () => {
+    const tables: Record<string, Row[]> = base();
+    tables.__materialiseFails = ["sections down"] as any;
+    const service = makeService(tables, {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
+    await expect(
+      service.importMenu(
+        {
+          method: "csv",
+          data: { csvContent: csv },
+          restaurantId: "rest-1",
+        } as any,
+        "user-1",
+      ),
+    ).rejects.toThrow(/nothing was kept/);
+    expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
+    expect(tables.menu_items).toEqual([]);
+  });
+
+  describe("resolveOnTap (ADR 0340 rule 9)", () => {
+    const draft = () => ({
+      restaurant_menus: [
+        {
+          id: "draft-1",
+          restaurant_id: "rest-1",
+          status: "draft",
+          menu_type: "beverage",
+        },
+        {
+          id: "draft-x",
+          restaurant_id: "rest-2",
+          status: "draft",
+          menu_type: "beverage",
+        },
+      ] as Row[],
+      menu_sections: [
+        {
+          id: "sec-1",
+          restaurant_id: "rest-1",
+          menu_id: "draft-1",
+          parent_id: null,
+          drink_category: "red",
+          confirmed_at: "2026-10-12T10:00:00Z",
+        },
+      ] as Row[],
+      menu_items: [
+        // Unsure: a drink a tap just confirmed, in a red section, unlinked.
+        {
+          id: "l-unsure",
+          restaurant_id: "rest-1",
+          menu_id: "draft-1",
+          name: "Barolo",
+          producer: "Vietti",
+          section_id: "sec-1",
+          line_kind: "drink",
+          category: "Mains",
+          wine_library_id: null,
+          status: "approved",
+        },
+        // A dish, and a line already linked: left alone.
+        {
+          id: "l-dish",
+          restaurant_id: "rest-1",
+          menu_id: "draft-1",
+          name: "Steak",
+          line_kind: "dish",
+          wine_library_id: null,
+          status: "approved",
+        },
+        {
+          id: "l-linked",
+          restaurant_id: "rest-1",
+          menu_id: "draft-1",
+          name: "Opus",
+          line_kind: "drink",
+          wine_library_id: "mw-9",
+          status: "approved",
+        },
+        // Another house's line, named by id: never read.
+        {
+          id: "l-foreign",
+          restaurant_id: "rest-2",
+          menu_id: "draft-x",
+          name: "Foreign",
+          line_kind: "drink",
+          wine_library_id: null,
+          status: "approved",
+        },
+      ] as Row[],
+      master_wine_library_submissions: [] as Row[],
+    });
+
+    it("links an Unsure line through the upload's resolver, with the section's category, and files its submission", async () => {
+      const tables: Record<string, Row[]> = draft();
+      const seen: Row[] = [];
+      const service = makeService(tables, {
+        wineSubmissions: {
+          ...wineSubmissions,
+          resolveLibraryWinesBatch: async (items: Row[]) => {
+            seen.push(...items);
+            return items.map(() => ({
+              masterWineId: "mw-7",
+              matched: true,
+              libraryTier: 1,
+              confidence: 97,
+            }));
+          },
+        },
+      });
+      const r = await service.resolveOnTap(
+        "rest-1",
+        "draft-1",
+        ["l-unsure", "l-dish", "l-linked", "l-foreign"],
+        "user-1",
+      );
+      expect(r).toEqual({ linked: ["l-unsure"], unlinked: [], error: null });
+      expect(seen).toEqual([
+        expect.objectContaining({ name: "Barolo", menuCategory: "red" }),
+      ]);
+      const line = (id: string) => tables.menu_items.find((l) => l.id === id)!;
+      expect(line("l-unsure").wine_library_id).toBe("mw-7");
+      expect(line("l-dish").wine_library_id).toBeNull();
+      expect(line("l-linked").wine_library_id).toBe("mw-9");
+      expect(line("l-foreign").wine_library_id).toBeNull();
+      expect(tables.master_wine_library_submissions).toHaveLength(1);
+    });
+
+    it("a resolver failure leaves the line Unsure and says why: the tap already committed", async () => {
+      const tables: Record<string, Row[]> = draft();
+      const service = makeService(tables, {
+        wineSubmissions: {
+          ...wineSubmissions,
+          resolveLibraryWinesBatch: async () => {
+            throw new Error("library down");
+          },
+        },
+      });
+      const r = await service.resolveOnTap(
+        "rest-1",
+        "draft-1",
+        ["l-unsure"],
+        "user-1",
+      );
+      expect(r.linked).toEqual([]);
+      expect(r.unlinked).toEqual(["l-unsure"]);
+      expect(r.error).toMatch(/library down/);
+      expect(
+        tables.menu_items.find((l) => l.id === "l-unsure")!.wine_library_id,
+      ).toBeNull();
+    });
+
+    it("another house's menu links nothing", async () => {
+      const tables: Record<string, Row[]> = draft();
+      const service = makeService(tables, { wineSubmissions });
+      const r = await service.resolveOnTap(
+        "rest-1",
+        "draft-x",
+        ["l-foreign"],
+        "user-1",
+      );
+      expect(r.linked).toEqual([]);
+      expect(
+        tables.menu_items.find((l) => l.id === "l-foreign")!.wine_library_id,
+      ).toBeNull();
+    });
   });
 
   it("names the CSV columns it did not read, as the file spells them (F-070)", async () => {

@@ -36,6 +36,7 @@ import {
   isCocktailLine,
   lineForViewer,
   lineIsDrink,
+  RAW_LINE_COLUMN,
   readMenuSectionCategories,
   type LineView,
 } from "./menu-line-view";
@@ -84,6 +85,8 @@ const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
  */
 const CARRY_READ_CHUNK = 100;
 const CARRY_CONCURRENCY = 12;
+/** Line ids per read in resolve-on-tap, so a large section stays under the URL limit. */
+const RESOLVE_ON_TAP_CHUNK = 100;
 
 /** Run `work` over `items`, at most `size` at once. Never throws past `work`. */
 async function inPool<T>(
@@ -667,7 +670,10 @@ export class MenusService {
     // governance submission trail. NOT current, so no inventory or price.
     // A failure here takes the version back out (F-1296): it used to stay
     // listed with N lines and hold none, under a bare "Internal server error".
-    const persisting = this.resolveAndPersistItems(
+    // ADR 0340 rule 12: the draft's sections are made from its lines'
+    // categories, the house's layout carried over, in the same step, so a
+    // failure to make them takes the version back out too.
+    const resolving = this.resolveAndPersistItems(
       items,
       restaurantId,
       menu.id,
@@ -676,6 +682,10 @@ export class MenusService {
       false,
       menu.menu_type ?? null,
     );
+    const persisting = resolving.then(async (lines) => {
+      await this.materialiseSections(restaurantId, menu.id, userId);
+      return lines;
+    });
     const reviewItems = await this.linesOrNothingKept(
       restaurantId,
       menu.id,
@@ -799,6 +809,7 @@ export class MenusService {
       false,
       menu.menu_type ?? null,
     );
+    await this.materialiseSections(restaurantId, menu.id, userId);
     return {
       menuId: menu.id,
       current: false,
@@ -871,6 +882,10 @@ export class MenusService {
         lines_extracted: items.length,
         extracted_by: userId,
         extracted_at: new Date().toISOString(),
+        // ADR 0340 rule 10: the drafts of one upload share an id, so a
+        // section can move to a Food or Desserts draft made in the review
+        // (move_menu_section_to_kind) even when the read produced one draft.
+        read_together_id: crypto.randomUUID(),
       })
       .select("id, menu_type")
       .single();
@@ -2516,6 +2531,244 @@ export class MenusService {
 
   // ── Shared pipeline: resolve against the library, insert, seed inventory ──
 
+  /**
+   * The library step of an upload, on its own so the review's tap can run it
+   * again for lines that became drinks (`resolveOnTap`, ADR 0340 rule 9):
+   * every line not set aside as kitchen goes to the resolver in ONE batched
+   * call; a kitchen line comes back unlinked. A whole-batch failure throws.
+   */
+  private async resolveDrinkLines(
+    items: WineExtractItem[],
+    kitchen: boolean[],
+    restaurantId: string,
+  ): Promise<ResolvedItem[]> {
+    const drinks = items.filter((_, idx) => !kitchen[idx]);
+    try {
+      const results = await this.wineSubmissions.resolveLibraryWinesBatch(
+        drinks.map((item) => ({
+          name: item.name,
+          producer: item.producer,
+          vintage: item.vintage,
+          region: item.region,
+          grapeVariety: item.grape_variety,
+          // Not a matching field — the resolver keeps it out of every
+          // signature hash. It is carried so the library row this creates
+          // arrives with something for wine_classify_beverage_kind() to read,
+          // which is what makes a beer line on an uploaded menu come back as
+          // beverage_kind='beer' instead of 'unknown' and light the Beer
+          // register (cellar/cellar-registers.ts, registerForKind).
+          // F-1293: a Turkish section ("Rakı", "Kırmızı") goes as the kind
+          // it names, since the classifier reads English words only.
+          // ADR 0340 rule 8 / ADR 0333: only the effective vocabulary token
+          // is sent, never the heading as written; a line with none sends
+          // no category.
+          menuCategory:
+            effectiveDrinkCategory({ category: item.category }) ?? undefined,
+        })),
+        // A menu prints "House White" and "Red — by the glass" as often as it
+        // prints a producer. Those lines are this venue's own wines and never
+        // join the shared library (ADR 0130), so the resolver has to know
+        // whose menu this is.
+        restaurantId,
+      );
+      let next = 0;
+      return items.map((item, idx) => {
+        if (kitchen[idx])
+          return {
+            item,
+            masterWineId: null,
+            matched: false,
+            libraryTier: null,
+            confidence: null,
+          };
+        const r = results[next++];
+        return {
+          item,
+          masterWineId: r?.masterWineId ?? null,
+          matched: r?.matched ?? false,
+          libraryTier: r?.libraryTier ?? null,
+          confidence: r?.confidence ?? null,
+        };
+      });
+    } catch (err) {
+      this.logger.error(`Library resolution failed for menu: ${err.message}`);
+      throw new Error(
+        `Menu import failed during library resolution: ${err.message}`,
+      );
+    }
+  }
+
+  /**
+   * A just-written draft's sections (ADR 0340 rule 12): one per distinct
+   * category its lines carry, the house's layout carried over by key from its
+   * live (else latest archived) menu of the same kind, never its
+   * confirmation; one `menu_section_changes` row per section. One database
+   * function, so the sections and their log commit together.
+   */
+  private async materialiseSections(
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+  ): Promise<void> {
+    const { error } = await this.dbService.supabase.rpc(
+      "materialise_menu_sections",
+      { p_restaurant_id: restaurantId, p_menu_id: menuId, p_actor: userId },
+    );
+    if (error) {
+      throw new Error(
+        `the menu's sections could not be made: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Resolve-on-tap (ADR 0340 rule 9): lines of a draft that a tap made drinks
+   * (a section or line confirmed, a category set, a section moved to the
+   * Drinks draft) and that hold no library wine go to the same resolver an
+   * upload uses, are linked, and file their submission. Only lines of this
+   * house's menu `menuId` are read. A dish, a discarded line and a line
+   * already linked are left. A failed resolve is returned as the lines left
+   * unlinked with the reason: the tap itself already committed, and the line
+   * shows "Unsure" until it is linked by hand or tapped again.
+   */
+  async resolveOnTap(
+    restaurantId: string,
+    menuId: string,
+    lineIds: string[],
+    userId: string,
+  ): Promise<{ linked: string[]; unlinked: string[]; error: string | null }> {
+    const ids = [...new Set(lineIds.filter((id) => typeof id === "string"))];
+    if (ids.length === 0) return { linked: [], unlinked: [], error: null };
+
+    const { data: menu, error: menuErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("menu_type")
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (menuErr || !menu) {
+      return {
+        linked: [],
+        unlinked: ids,
+        error: menuErr?.message ?? "the menu was not found",
+      };
+    }
+
+    const rows: Array<Record<string, any>> = [];
+    for (let i = 0; i < ids.length; i += RESOLVE_ON_TAP_CHUNK) {
+      const { data, error } = await this.dbService.supabase
+        .from("menu_items")
+        .select(
+          "id, name, producer, vintage, region, grape_variety, category, line_kind, drink_category, section_id, raw_extracted_text, wine_library_id, status, by_glass_price, bottle_price",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("menu_id", menuId)
+        .in("id", ids.slice(i, i + RESOLVE_ON_TAP_CHUNK));
+      if (error) return { linked: [], unlinked: ids, error: error.message };
+      rows.push(...((data ?? []) as Array<Record<string, any>>));
+    }
+    const { sections, error: sectionsErr } = await readMenuSectionCategories(
+      this.dbService.supabase,
+      restaurantId,
+      menuId,
+    );
+    if (sectionsErr) return { linked: [], unlinked: ids, error: sectionsErr };
+
+    const lines = rows.filter(
+      (r) =>
+        !r.wine_library_id &&
+        r.status !== "discarded" &&
+        lineIsDrink(
+          // The raw line is read for the kitchen test only, never returned.
+          {
+            line_kind: r.line_kind,
+            category: r.category,
+            raw: r[RAW_LINE_COLUMN],
+          },
+          menu.menu_type,
+        ),
+    );
+    if (lines.length === 0) return { linked: [], unlinked: [], error: null };
+
+    const items: WineExtractItem[] = lines.map((r) => ({
+      name: r.name,
+      producer: r.producer ?? undefined,
+      vintage: r.vintage ?? undefined,
+      region: r.region ?? undefined,
+      grape_variety: r.grape_variety ?? undefined,
+      // The effective vocabulary token, never the heading (ADR 0333).
+      category: effectiveDrinkCategory(r, sections) ?? undefined,
+      by_glass_price: r.by_glass_price ?? undefined,
+      bottle_price: r.bottle_price ?? undefined,
+    }));
+    let resolved: ResolvedItem[];
+    try {
+      resolved = await this.resolveDrinkLines(
+        items,
+        items.map(() => false),
+        restaurantId,
+      );
+    } catch (err: any) {
+      return {
+        linked: [],
+        unlinked: lines.map((r) => String(r.id)),
+        error: err?.message ?? "the library could not be read",
+      };
+    }
+
+    const linked: string[] = [];
+    const unlinked: string[] = [];
+    let writeError: string | null = null;
+    await inPool(
+      resolved.map((r, idx) => [r, lines[idx]] as const),
+      CARRY_CONCURRENCY,
+      async ([r, line]) => {
+        if (!r.masterWineId) {
+          unlinked.push(String(line.id));
+          return;
+        }
+        const { error } = await this.dbService.supabase
+          .from("menu_items")
+          .update({ wine_library_id: r.masterWineId })
+          .eq("id", line.id)
+          .eq("restaurant_id", restaurantId)
+          .eq("menu_id", menuId)
+          .is("wine_library_id", null);
+        if (error) {
+          writeError = error.message;
+          unlinked.push(String(line.id));
+        } else {
+          linked.push(String(line.id));
+        }
+      },
+    );
+
+    // Provenance trail, as on upload: non-fatal.
+    try {
+      const linkedSet = new Set(linked);
+      const keep = resolved
+        .map((r, idx) => ({ r, line: lines[idx] }))
+        .filter(({ line }) => linkedSet.has(String(line.id)));
+      const submissionMap = await this.submitToWineLibrary(
+        keep.map(({ r }) => r),
+        keep.map(({ r, line }) => ({
+          id: String(line.id),
+          wine_library_id: r.masterWineId,
+          name: line.name,
+        })),
+        restaurantId,
+        userId,
+      );
+      await this.backfillMenuItemColumn(submissionMap, "submission_id");
+    } catch (err: any) {
+      this.logger.warn(
+        `wine library submission failed (non-fatal): ${err?.message}`,
+      );
+    }
+
+    return { linked, unlinked, error: writeError };
+  }
+
   private async resolveAndPersistItems(
     items: WineExtractItem[],
     restaurantId: string,
@@ -2559,61 +2812,7 @@ export class MenusService {
       (item) =>
         !lineIsDrink({ category: item.category, raw: item.raw_text }, menuKind),
     );
-    const drinks = items.filter((_, idx) => !kitchen[idx]);
-    let resolved: ResolvedItem[];
-    try {
-      const results = await this.wineSubmissions.resolveLibraryWinesBatch(
-        drinks.map((item) => ({
-          name: item.name,
-          producer: item.producer,
-          vintage: item.vintage,
-          region: item.region,
-          grapeVariety: item.grape_variety,
-          // Not a matching field — the resolver keeps it out of every
-          // signature hash. It is carried so the library row this creates
-          // arrives with something for wine_classify_beverage_kind() to read,
-          // which is what makes a beer line on an uploaded menu come back as
-          // beverage_kind='beer' instead of 'unknown' and light the Beer
-          // register (cellar/cellar-registers.ts, registerForKind).
-          // F-1293: a Turkish section ("Rakı", "Kırmızı") goes as the kind
-          // it names, since the classifier reads English words only.
-          // ADR 0340 rule 8 / ADR 0333: only the effective vocabulary token
-          // is sent, never the heading as written; a line with none sends
-          // no category.
-          menuCategory:
-            effectiveDrinkCategory({ category: item.category }) ?? undefined,
-        })),
-        // A menu prints "House White" and "Red — by the glass" as often as it
-        // prints a producer. Those lines are this venue's own wines and never
-        // join the shared library (ADR 0130), so the resolver has to know
-        // whose menu this is.
-        restaurantId,
-      );
-      let next = 0;
-      resolved = items.map((item, idx) => {
-        if (kitchen[idx])
-          return {
-            item,
-            masterWineId: null,
-            matched: false,
-            libraryTier: null,
-            confidence: null,
-          };
-        const r = results[next++];
-        return {
-          item,
-          masterWineId: r?.masterWineId ?? null,
-          matched: r?.matched ?? false,
-          libraryTier: r?.libraryTier ?? null,
-          confidence: r?.confidence ?? null,
-        };
-      });
-    } catch (err) {
-      this.logger.error(`Library resolution failed for menu: ${err.message}`);
-      throw new Error(
-        `Menu import failed during library resolution: ${err.message}`,
-      );
-    }
+    const resolved = await this.resolveDrinkLines(items, kitchen, restaurantId);
 
     // Unlinked items are the ones a manager has to fix by hand, so say how
     // many there are rather than leaving it to be discovered in the UI.

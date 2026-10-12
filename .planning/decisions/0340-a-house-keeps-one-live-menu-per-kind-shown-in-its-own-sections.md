@@ -637,6 +637,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 2 (`fix/menus-readers-per-kind`, gateway readers only) | Every gateway reader of "the" active menu that this lane names reads the live menus as a list through one function (`readCurrentMenuRows`); 14 new jest cases fail on the base and pass after; 11 code mutations all killed; one lane-0 row flipped, three new rows, two existing rows edited in place; eight corrections (Review log, "Lane 2 corrections"). Not run: G0, L8, web tsc/vitest |
 | 2026-10-12 | Lane 3a (`fix/menus-line-kind`, a line is a drink only when stored or proven) | One `lineIsDrink(line, menuKind)` in `menu-line-view.ts` (the web's twin in `firstProof.ts`) now gates the import resolver call, `addMenuItem`, the carry, `kitchen_line` and `readKitchenInventoryIds`; the resolver gets only the effective token; a confirmed category is written on the house item as declared. 20 new jest cases (18 fail on the base; the 2 that pass pin unchanged legacy behaviour) and 3 vitest cases; 9 code mutations all killed; three new claim rows, five existing rows edited in place; seven corrections (Review log, "Lane 3a corrections"). Not run: G0, L8 |
 
+| 2026-10-12 | Lane 3b (`feat/menus-sections-api`, the sections API and sections on every upload) | Migration `20270107500000` adds ten section functions (materialise, rename, reparent, delete, move to a kind, set category, confirm a section, confirm a line, assign lines, keep a Gone line), each writing its `menu_section_changes` row in the same step and looking every id up inside the house; `MenuSectionsController` serves 12 owner/manager routes under `/menu-versions/:menuId`; every upload now materialises its sections and gets a `read_together_id`; resolve-on-tap links lines a tap made drinks. SQL test T1-T7 PASS on the PGlite corpus and FAIL without the migration; 5 new `menus.service` cases fail on the base; 59 cases in `menu-sections.service.spec.ts`, role-gating cases in the price-corrections spec; SQL, code and claim mutations all killed; one new claims fragment (two rows), one row edited in place; corrections in the Review log, "Lane 3b corrections". Not run: G0, L8 |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -836,6 +837,57 @@ right fix, with the alternative it rejects):
   the plan counting a new NULL-kind line Unsure (lanes 3b/3c). The README row for 0340 is
   owed in a later PR. Founder-gated and not done: the G0 production read, the L8 eval and
   every flag flip.
+
+Lane 3b corrections (2026-10-12, against base `79e62714f`; each is the smallest right fix,
+with the alternative it rejects):
+- **Sections are made after the lines are stored, not inside `createVersion`'s insert.**
+  `importMenu` and `importParsedItems` call `materialise_menu_sections` once the lines are
+  written; a failure there drops the version like any other failed import step. Basis: the
+  function reuses the SQL key function `menu_section_key_part` and lane 1's back-fill rule,
+  so a key is cut in exactly one place. Rejected: cutting keys in TypeScript at insert time,
+  which would be a second normaliser that could drift from the SQL one.
+- **Every upload gets a `read_together_id`.** `createVersion` now sets
+  `read_together_id: crypto.randomUUID()`. Basis: `move_menu_section_to_kind` finds or makes
+  the target draft by that id and refuses a draft without one; before this lane nothing set
+  it. Rejected: deriving "the same upload" from `created_at` or the source file, which two
+  uploads can share.
+- **Inheritance matches the exact key only.** A draft section inherits the title, position
+  and `drink_category` of the section with the same key on the house's live menu of the same
+  kind (else its latest archived one), plus `inherited_from_section_id`; `confirmed_by` and
+  `confirmed_at` are never copied. A renamed or re-spelled heading whose key differs starts
+  fresh. Rejected for now: fuzzy key matching, which can carry a category to the wrong
+  section; owed if the review shows it is needed.
+- **Inherited sections keep the source position only on a menu with no sections yet;**
+  any other new section goes after the existing ones. Rejected: renumbering the house's
+  existing order on every materialise.
+- **Two actions added to the log.** The `menu_section_changes.action` CHECK gains `assign`
+  (lines moved between sections) and `keep` (a Gone line kept). Rejected: logging them as
+  `move`/`create`, which would make the log say something that did not happen.
+- **The functions this lane adds refuse an archived menu (55000 → 409).** On the live
+  menu, a rename and the delete of an empty section are allowed (a section that still holds
+  lines is refused, as the plan says); a category edit, a move to another kind,
+  confirmation and line assignment are drafts only, and a reparent is refused when it would
+  change the inherited category of a section that holds lines and has no category of its
+  own. Rejected: letting a live edit change what a line is filed under without a new
+  version. **Gap, owed:** lane 1's `add_menu_section` and `reorder_menu_sections`
+  (`20270107300000`) read no menu state, so create and reorder are not refused on an
+  archived menu; changing them belongs with a lane that may edit that migration's functions.
+- **The URL's menu is checked, not assumed.** The service reads the section or line by id,
+  menu and house before calling a function, so a section of another menu of the same house
+  is a 404 too. Rejected: trusting the function alone, which looks up by id and house but
+  does not take the URL's menu.
+- **Resolve-on-tap is not fatal.** `MenusService.resolveOnTap` links lines a tap made
+  drinks (unlinked, not discarded, passing `lineIsDrink`) with `.is("wine_library_id",
+  null)`; a failure is returned as `error` on the answer and the tap stays made. The
+  resolver step was extracted to `resolveDrinkLines` so the import and the tap call the same
+  code; the A-LINE-IS-A-DRINK claim row was edited in place to follow it.
+- **ENDPOINTS not regenerated.** The generated catalogue is stale against this tree, so a
+  regenerate here would carry unrelated drift; the 12 routes are owed in the next
+  regenerate.
+- **Not built here:** the web review UI for sections and their restore (lanes 3c/5b), the
+  extractor's own section tree, fuzzy inheritance. The README row for 0340 is owed in a
+  later PR. Founder-gated and not done: the G0 production read, the L8 eval and every flag
+  flip.
 
 ## Founder forks
 
