@@ -89,6 +89,7 @@ vi.mock('@/hooks/queries/useProviderQueries', () => ({
 
 import ReceiptsNext, { canSeeCreditLedger } from './ReceiptsNext';
 import { CREDIT_MOVES } from './useReceiptsNextData';
+import { reasonWords } from './ReceiptsCredits';
 
 function claim(over: Partial<ProcurementCredit> = {}): ProcurementCredit {
   return {
@@ -220,6 +221,31 @@ describe('who is offered the ledger (ADR 0167)', () => {
     renderAt('/receipts?tab=credits');
     expect(await screen.findByText(/Mudavym refused it to this session/i)).toBeTruthy();
     expect(screen.queryByText(/No claim is being chased/i)).toBeNull();
+  });
+});
+
+// F-1480: the claim names what happened at the door, not its storage code.
+describe('a claim says why it was opened', () => {
+  it('names a wrong-restaurant refusal, a kept damaged case and a truck that never came', () => {
+    expect(reasonWords('other', { reason: 'WRONG_VENUE', deliveryId: 'd1' })).toBe(
+      'Refused at the door — sent to the wrong restaurant',
+    );
+    expect(reasonWords('damaged', { reason: 'DAMAGED', deliveryId: 'd1' })).toBe('Arrived damaged');
+    // A refusal the matcher filed (no delivery reason) still reads as one.
+    expect(reasonWords('damaged', null)).toBe('Refused at the door');
+    expect(reasonWords('never_arrived')).toBe('Never arrived');
+    expect(reasonWords('other', {})).toBe('Another reason');
+  });
+
+  it('prints the wrong-restaurant words on the ledger row', async () => {
+    api.claims = [
+      claim({ reason: 'other', evidence: { reason: 'WRONG_VENUE', deliveryId: 'd1' } }),
+    ];
+    renderAt('/receipts?tab=credits');
+    expect(
+      await screen.findByText(/Refused at the door — sent to the wrong restaurant/),
+    ).toBeTruthy();
+    expect(screen.queryByText('Another reason')).toBeNull();
   });
 });
 

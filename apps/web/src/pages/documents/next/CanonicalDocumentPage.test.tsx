@@ -106,6 +106,20 @@ vi.mock('../../../services/api/deliveries', async (importOriginal) => {
   }
 })
 
+// The orders this paper is filed against (F-1477). By default it is filed
+// against none, so the door count makes an unordered delivery.
+const documentDetailMock = vi.fn()
+vi.mock('../../../services/api/documents', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../services/api/documents')>()
+  return {
+    ...real,
+    documentsApi: {
+      ...real.documentsApi,
+      detail: (id: string) => documentDetailMock(id),
+    },
+  }
+})
+
 import { AuthContext } from '@/contexts/AuthContext'
 import { CanonicalDocumentPage } from './CanonicalDocumentPage'
 
@@ -256,6 +270,9 @@ describe('CanonicalDocumentPage', () => {
     calls.length = 0
     mintCorrectMock.mockResolvedValue('seal-correct')
     mintVerifyMock.mockResolvedValue('seal-tick')
+    documentDetailMock.mockReset()
+    documentDetailMock.mockResolvedValue({ document: {}, lines: [], links: [] })
+    recordDoorCountMock.mockReset()
   })
 
   it('draws the given document inside a sheet, without the page’s own chrome (the /orders receipt)', async () => {
@@ -709,6 +726,61 @@ describe('CanonicalDocumentPage', () => {
     expect(screen.getByTestId('door-booking').textContent).toMatch(
       /Line 1 \(SYNTHETIC Öküzgözü\) did not go onto the shelf: it is not linked to an item yet/,
     )
+    // Filed against no order: the delivery it makes names none.
+    expect(recordDoorCountMock.mock.calls[0][0]).toMatchObject({ createDelivery: true })
+    expect(recordDoorCountMock.mock.calls[0][0]).not.toHaveProperty('orderId')
+  })
+
+  // F-1477 — a truck refused on a paper filed against an order must reach
+  // that order, so the delivery the count makes carries the order's id.
+  async function countAtTheDoor() {
+    documentMock.mockResolvedValue(response())
+    recordDoorCountMock.mockResolvedValue({
+      documentId: 'door-1',
+      delivery: null,
+      differsOnLines: null,
+      booking: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/documents/doc-syn?view=door']}>
+          <Routes>
+            <Route path="/documents/:id" element={<CanonicalDocumentPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('door-plus')).toBeTruthy())
+    await waitFor(() => expect(documentDetailMock).toHaveBeenCalledWith('doc-syn'))
+    fireEvent.click(screen.getByTestId('door-plus'))
+    fireEvent.click(screen.getByTestId('door-submit'))
+    await waitFor(() => expect(recordDoorCountMock).toHaveBeenCalledTimes(1))
+    return recordDoorCountMock.mock.calls[0][0] as Record<string, unknown>
+  }
+
+  it('ties the door count to the one order the paper is filed against (F-1477)', async () => {
+    documentDetailMock.mockResolvedValue({
+      document: {},
+      lines: [],
+      links: [{ document_id: 'doc-syn', order_id: 'order-7' }],
+    })
+    const body = await countAtTheDoor()
+    expect(body).toMatchObject({ createDelivery: true, orderId: 'order-7' })
+  })
+
+  it('guesses no order when the paper is filed against two (F-1477)', async () => {
+    documentDetailMock.mockResolvedValue({
+      document: {},
+      lines: [],
+      links: [
+        { document_id: 'doc-syn', order_id: 'order-7' },
+        { document_id: 'doc-syn', order_id: 'order-8' },
+      ],
+    })
+    const body = await countAtTheDoor()
+    expect(body).toMatchObject({ createDelivery: true })
+    expect(body).not.toHaveProperty('orderId')
   })
 })
 

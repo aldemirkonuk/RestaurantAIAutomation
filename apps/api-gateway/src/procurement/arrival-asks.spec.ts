@@ -315,6 +315,62 @@ describe("GET /procurement/arrival-asks", () => {
   });
 });
 
+describe("a truck refused whole at the door (F-1476)", () => {
+  function refuseAtDoor(db: FakeDb, orderId: string, house = A) {
+    (db.tables.procurement_receipt_events ??= []).push({
+      id: `ev-${orderId}`,
+      restaurant_id: house,
+      order_id: orderId,
+      stage: "case_count",
+      outcome: "refused",
+      refusal_reason: "broken_case",
+      counted_qty_bottles: 12,
+      rejected_qty_bottles: 12,
+      occurred_at: "2026-09-18T10:00:00Z",
+    });
+  }
+
+  it("is not asked 'Did it arrive?' — it came, and was turned away", async () => {
+    const { controller, db } = make();
+    refuseAtDoor(db, "late-silent");
+    const r = await controller.list(owner);
+    expect(r.asks.map((a) => a.orderId)).toEqual(["late-said"]);
+  });
+
+  it("is not listed as an incomplete order to cancel as 'never arrived'", async () => {
+    const { controller, db } = make();
+    refuseAtDoor(db, "old");
+    const r = await controller.incomplete(owner);
+    expect(r.orders).toEqual([]);
+  });
+
+  it("refuses a 'Not yet' with the reason, and records nothing", async () => {
+    const { controller, db } = make();
+    refuseAtDoor(db, "late-silent");
+    await expect(
+      controller.notYet(owner, "late-silent", { answer: "not_yet" }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(
+      db.writes.filter((w) => w.table === "procurement_order_arrival_answers"),
+    ).toEqual([]);
+  });
+
+  it("another house's refusal does not hide this house's ask", async () => {
+    const { controller, db } = make();
+    refuseAtDoor(db, "late-silent", B);
+    const r = await controller.list(owner);
+    expect(r.asks.map((a) => a.orderId)).toContain("late-silent");
+  });
+
+  it("a door that cannot be read is a refusal with the reason — never 'not refused'", async () => {
+    const { controller, db } = make();
+    db.failures.procurement_receipt_events = "statement timeout";
+    await expect(controller.list(owner)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+});
+
 describe("POST /procurement/orders/:id/arrival-answers", () => {
   it("records Not yet for the order's expected date, by the token's person, and the order is then confirmed late", async () => {
     const { controller, db } = make();

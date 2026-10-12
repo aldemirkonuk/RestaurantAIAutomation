@@ -150,6 +150,52 @@ describe("readDoorRefusals", () => {
     expect(doorRefusalFor(reading, "o5")).toBeNull();
   });
 
+  it("says 'Refused' for a part-delivered order whose next truck was turned away whole (F-1479)", async () => {
+    const db = fakeDb({
+      procurement_receipt_events: {
+        data: [
+          {
+            id: "e1",
+            order_id: "o8",
+            outcome: "accepted",
+            refusal_reason: null,
+            counted_qty_bottles: 12,
+            rejected_qty_bottles: 0,
+            occurred_at: "2026-10-08T09:00:00Z",
+          },
+          {
+            id: "e2",
+            order_id: "o8",
+            outcome: "refused",
+            refusal_reason: "wrong_wine",
+            counted_qty_bottles: 12,
+            rejected_qty_bottles: 12,
+            occurred_at: "2026-10-10T09:00:00Z",
+          },
+          {
+            id: "e3",
+            order_id: "o9",
+            outcome: "accepted",
+            refusal_reason: null,
+            counted_qty_bottles: 12,
+            rejected_qty_bottles: 0,
+            occurred_at: "2026-10-08T09:00:00Z",
+          },
+        ],
+        error: null,
+      },
+    });
+    const reading = await readDoorRefusals(db, HOUSE, [
+      { id: "o8", status: "PARTIALLY_RECEIVED" },
+      { id: "o9", status: "PARTIALLY_RECEIVED" },
+    ]);
+    expect(doorRefusalFor(reading, "o8")?.label).toBe(
+      "Refused at door — wrong wine · no credit asked",
+    );
+    // The first truck, kept in part, is not a refusal.
+    expect(doorRefusalFor(reading, "o9")).toBeNull();
+  });
+
   it("never reads a failed door as 'not refused'", async () => {
     const db = fakeDb({
       procurement_receipt_events: { data: null, error: { message: "down" } },

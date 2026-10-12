@@ -15,6 +15,9 @@ import { ProcurementOrderStatus } from "./dto/procurement.dto";
  *     whose only truck was refused as meant for another restaurant. A truck
  *     refused BEFORE it was booked in leaves its order open (F-748; ADR 0125
  *     Q3), and that order must say "Refused" too.
+ *   * A part-delivered order whose latest door count turned the next truck
+ *     away whole (F-1479): the refusal leaves it PARTIALLY_RECEIVED, and its
+ *     row must still say "Refused", not only "Part delivered".
  *
  * The credit claim's standing travels beside the reason: requested, received,
  * denied — or not asked yet. A claim that could not be read is `null`, never
@@ -103,6 +106,15 @@ const OPEN_WITH_VENDOR = new Set<string>([
   ProcurementOrderStatus.IN_TRANSIT,
 ]);
 
+/**
+ * Orders whose door is read: open with the vendor, or part-delivered with
+ * bottles still owed — the door takes a count on both (F-1479).
+ */
+const READ_AT_DOOR = new Set<string>([
+  ...OPEN_WITH_VENDOR,
+  ProcurementOrderStatus.PARTIALLY_RECEIVED,
+]);
+
 interface DoorEventRow {
   id: string;
   order_id: string;
@@ -166,7 +178,7 @@ export async function readDoorRefusals(
       o &&
       typeof o.id === "string" &&
       (String(o.status ?? "").toUpperCase() === ProcurementOrderStatus.FAILED ||
-        OPEN_WITH_VENDOR.has(String(o.status ?? "").toUpperCase())),
+        READ_AT_DOOR.has(String(o.status ?? "").toUpperCase())),
   );
   if (!wanted.length) return result;
   const ids = wanted.map((o) => o.id);

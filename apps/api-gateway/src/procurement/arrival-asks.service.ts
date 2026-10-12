@@ -28,6 +28,7 @@ import {
   incompleteFor,
   mayAnswerArrival,
 } from "./arrival-asks";
+import { doorRefusalFor, readDoorRefusals } from "./door-refusal";
 
 /**
  * The reads and the one write behind "Did it arrive?" and the Incomplete orders
@@ -62,6 +63,9 @@ export const ASK_COPY = {
     "This order is not past its expected date and not received, so there is nothing to answer. Nothing was recorded.",
   incomplete: `This order is more than ${INCOMPLETE_AFTER_DAYS} days past its expected date and is in Incomplete orders under Documents & Reports: receive it, cancel it, or close it with a credit. Nothing was recorded.`,
   writeFailed: "The answer could not be recorded. Nothing was changed.",
+  refusedAtDoor:
+    "This order's truck was turned away at the door, so there is no arrival to ask about. Nothing was recorded.",
+  doorFailed: "The door's record of refused trucks did not answer.",
   tooMany: `More than ${PAGE * MAX_PAGES} orders are out with vendors; the list cannot be read whole.`,
 } as const;
 
@@ -174,6 +178,21 @@ export class ArrivalAsksService {
     );
     if (!context.ok) throw new ServiceUnavailableException(context.reason);
 
+    // A truck turned away whole at the door leaves its order open (F-748),
+    // but it did arrive: asking "Did it arrive?" would file a vendor miss
+    // ("never arrived") for a truck that came (F-1476). Such an order is
+    // shown as "Refused at door" on /orders and is never asked here. A door
+    // that could not be read is a failed read, never "not refused".
+    const refused = new Set<string>();
+    for (let i = 0; i < orders.length; i += 150) {
+      const slice = orders.slice(i, i + 150);
+      const door = await readDoorRefusals(this.client(), house, slice);
+      if (door.unknown.size)
+        throw new ServiceUnavailableException(ASK_COPY.doorFailed);
+      for (const o of slice)
+        if (doorRefusalFor(door, o.id) != null) refused.add(o.id);
+    }
+
     const names = new Map<string, string>();
     const providerIds = [
       ...new Set(orders.map((o) => o.provider_id).filter(Boolean)),
@@ -193,17 +212,21 @@ export class ArrivalAsksService {
     }
 
     return orders.map((o) => {
+      const refusedAtDoor = refused.has(o.id);
       const deadline = deadlineOf(o.expected_delivery_date, zone);
-      const standing = overdueStanding({
-        status: (o as { status?: string }).status ?? null,
-        expectedDate: o.expected_delivery_date,
-        deadline,
-        nowMs: now,
-        answers: context.answers.get(o.id) ?? [],
-        closedWithCredit: context.closedWithCredit.has(o.id),
-      });
+      const standing = refusedAtDoor
+        ? null
+        : overdueStanding({
+            status: (o as { status?: string }).status ?? null,
+            expectedDate: o.expected_delivery_date,
+            deadline,
+            nowMs: now,
+            answers: context.answers.get(o.id) ?? [],
+            closedWithCredit: context.closedWithCredit.has(o.id),
+          });
       return {
         order: o,
+        refusedAtDoor,
         providerName: o.provider_id ? (names.get(o.provider_id) ?? null) : null,
         standing,
       };
@@ -276,6 +299,8 @@ export class ArrivalAsksService {
       if (!data) throw new NotFoundException(ASK_COPY.noSuchOrder(orderId));
       throw new ConflictException(ASK_COPY.notOverdue);
     }
+    if (found.refusedAtDoor)
+      throw new ConflictException(ASK_COPY.refusedAtDoor);
     const kind = found.standing?.kind;
     if (kind === "incomplete") throw new ConflictException(ASK_COPY.incomplete);
     if (kind !== "unconfirmed" && kind !== "confirmed_late")

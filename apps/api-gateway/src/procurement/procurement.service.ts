@@ -10747,9 +10747,14 @@ export class ProcurementService {
         // cascade is best-effort and a silent failure there must not put mail
         // on the wire. DISCARDED, not reverted: reverting would leave a manager
         // a one-tap approval for a letter about a dead order.
+        // FAILED is not dead (ADR 0125 amendment 2026-10-11, F-669): a truck
+        // refused at the door is exactly when the vendor is written to for a
+        // credit or a replacement, so its scheduled reply goes like any other
+        // (F-1478). The seal and the send let the same letter through.
         const orderState = readOrderStatus((order as any)?.status);
         if (
           orderState !== null &&
+          orderState !== ProcurementOrderStatus.FAILED &&
           ORDER_TERMINAL_STATUSES.includes(orderState)
         ) {
           await this.databaseService.supabase
