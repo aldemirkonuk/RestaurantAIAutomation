@@ -420,6 +420,8 @@ export interface SpotCountRecord {
   countedQty: number | null;
   varianceQty: number | null;
   replayed?: boolean;
+  /** F-1524: an opening count's cost per bottle was used (true) or the wine kept its own (false). */
+  costApplied?: boolean;
 }
 
 /**
@@ -442,6 +444,8 @@ export async function recordSpotCount(
     locationId?: string;
     /** F-1514: an opening count (ADR 0335 §2), left out of count variance; owners and managers only. */
     opening?: boolean;
+    /** F-1524: an opening count's cost per bottle, used only when the wine has no cost yet. */
+    costPerBottle?: number;
   },
   restaurantId?: string
 ): Promise<{ item: InventoryItem | null; count?: SpotCountRecord | null }> {

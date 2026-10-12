@@ -948,6 +948,13 @@ export class InventoryService {
        * variance. The caller checks the person may load opening stock.
        */
       opening?: boolean;
+      /**
+       * F-1524: an opening count's cost per bottle (the file's). Applied by
+       * record_stock_count only when the wine has no live costed lot, so a
+       * real cost is never overwritten; `count.costApplied` says which.
+       */
+      costPerBottle?: number | null;
+      costProvenance?: "invoice" | "estimated" | "manual";
     },
   ) {
     // An age past the epoch is not a time anyone counted at, and one past
@@ -981,6 +988,23 @@ export class InventoryService {
         "clientCountId is required (client-generated, for retry-safe idempotency)",
         HttpStatus.BAD_REQUEST,
       );
+    }
+    // F-1524: a cost goes only with an opening count. A count of a wine on
+    // the shelf is not a price.
+    const openingCost = dto.costPerBottle ?? null;
+    if (openingCost !== null) {
+      if (!dto.opening) {
+        throw new HttpException(
+          "A cost per bottle can only be given with the opening stock, so this count was not applied.",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (!(Number.isFinite(Number(openingCost)) && Number(openingCost) >= 0)) {
+        throw new HttpException(
+          "The cost per bottle could not be read, so this count was not applied.",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
     }
 
     const client = this.dbService.getClient();
@@ -1043,6 +1067,14 @@ export class InventoryService {
         // shelf only. Sent only when set, so a count of every shelf calls the
         // function exactly as before.
         ...(dto.locationId ? { p_location_id: dto.locationId } : {}),
+        // F-1524: sent only with a cost, so every other count calls the
+        // function exactly as before. 'manual': a person typed it in a file.
+        ...(openingCost !== null
+          ? {
+              p_unit_cost: Number(openingCost),
+              p_cost_provenance: dto.costProvenance ?? "manual",
+            }
+          : {}),
       },
     );
     if (rpcErr) {
@@ -2072,6 +2104,14 @@ export class InventoryService {
           reason: reason || "Opening stock",
           locationId: line.storageLocationId ?? null,
           opening: true,
+          // F-1524: the line's cost per bottle, applied only to a wine with
+          // no live costed lot. A sample is a free bottle, not a cost.
+          ...(line.costPerBottle != null && line.costProvenance !== "sample"
+            ? {
+                costPerBottle: line.costPerBottle,
+                costProvenance: line.costProvenance ?? "manual",
+              }
+            : {}),
         });
         return {
           status: existing.is_active ? "counted" : "reactivated",

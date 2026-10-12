@@ -1347,6 +1347,8 @@ export function InventoryCommandPage() {
             name: w.name,
             vintage: w.vintage,
             producer: w.producer,
+            // F-1524: a wine with no recorded cost takes the file's.
+            hasCost: recordedCost(w) !== null,
           }))}
           shelves={locations.map((l) => ({ id: l.id, name: l.name }))}
           onDone={() => void refetchInventory()}

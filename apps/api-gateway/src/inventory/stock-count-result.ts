@@ -33,6 +33,12 @@ export interface StockCountRecord {
   countedAt: string | null;
   /** True when this request replayed an already-recorded count (same key). */
   replayed: boolean;
+  /**
+   * F-1524: present only when an opening count named a cost per bottle. True
+   * when the wine had no live costed lot and took it; false when it already
+   * had a cost, which is kept.
+   */
+  costApplied?: boolean;
 }
 
 /**
@@ -58,5 +64,8 @@ export function mapStockCountResult(raw: unknown): StockCountRecord | null {
     transactionId: str(r.transaction_id),
     countedAt: str(r.counted_at),
     replayed: r.replayed === true,
+    ...(typeof r.cost_applied === "boolean"
+      ? { costApplied: r.cost_applied }
+      : {}),
   };
 }
