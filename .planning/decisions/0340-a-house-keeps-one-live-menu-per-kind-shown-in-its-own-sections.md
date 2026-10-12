@@ -238,6 +238,9 @@ different axis (§F19).
    - `line_kind IS NULL` (legacy rows, restored old versions): **today's rule exactly** — a
      drink unless `isKitchenLine(category, raw)` says kitchen. So no existing line on an
      existing Drinks menu changes status, leaves `/cellar` or the ledger, or turns Unsure.
+     [2026-10-12, lane 3a: narrowed to menus that are not Food or Desserts. A NULL
+     `line_kind` on a Food or Desserts menu is **not** a drink; see the Review log, "Lane 3a
+     corrections".]
    - A NULL `line_kind` on a **new** line cannot reach make-live: the plan counts it Unsure.
 
    **The effective drink category** of a drink line is `line.drink_category ?? nearest
@@ -253,7 +256,9 @@ different axis (§F19).
    - `kitchen_line` in the line view (`menu-line-view.ts:369`) and
      `readKitchenInventoryIds` (`:388`);
    - `menuCategory` sent to the resolver is the **effective token**, never `category` text
-     passed through `menuCategoryOf` (0333).
+     passed through `menuCategoryOf` (0333). [2026-10-12, lane 3a: the token step keeps
+     `menuCategoryOf`'s Turkish heading → token mapping (F-1293); its output is still always
+     a vocabulary token, never heading text. See "Lane 3a corrections".]
    - **0333 item 3:** at carry, when the owner confirmed a category (line or section), the
      house item's kind is written as **declared** from it, so a later library reclassify
      never overwrites it. The shared library row's `menu_category` is never edited by a
@@ -630,6 +635,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 0 (`docs/menus-kinds-adr`, records only) | Filed as 0340 after a sweep of refs, open PRs and worktrees; brackets written into 0193, 0293 and 0186; the two founder forks filed as OD-228 and OD-229; five open CLAIMS rows, each mutation-tested; 16 code citations corrected against `24ee6705f` (Review log, "Lane 0 corrections") |
 | 2026-10-12 | Lane 1 (`feat/menus-kinds-schema`, schema only) | Four migrations `20270107100000`-`20270107400000` and their SQL tests (PASS on the PGlite corpus, FAIL on a build without each); 38 SQL mutations and 7 claim mutations all killed; three lane-0 rows flipped to resolved, four new rows; nine corrections (Review log, "Lane 1 corrections"). Not run: G0 (production read), any Postgres other than PGlite |
 | 2026-10-12 | Lane 2 (`fix/menus-readers-per-kind`, gateway readers only) | Every gateway reader of "the" active menu that this lane names reads the live menus as a list through one function (`readCurrentMenuRows`); 14 new jest cases fail on the base and pass after; 11 code mutations all killed; one lane-0 row flipped, three new rows, two existing rows edited in place; eight corrections (Review log, "Lane 2 corrections"). Not run: G0, L8, web tsc/vitest |
+| 2026-10-12 | Lane 3a (`fix/menus-line-kind`, a line is a drink only when stored or proven) | One `lineIsDrink(line, menuKind)` in `menu-line-view.ts` (the web's twin in `firstProof.ts`) now gates the import resolver call, `addMenuItem`, the carry, `kitchen_line` and `readKitchenInventoryIds`; the resolver gets only the effective token; a confirmed category is written on the house item as declared. 20 new jest cases (18 fail on the base; the 2 that pass pin unchanged legacy behaviour) and 3 vitest cases; 9 code mutations all killed; three new claim rows, five existing rows edited in place; seven corrections (Review log, "Lane 3a corrections"). Not run: G0, L8 |
 
 ## Review log
 
@@ -792,6 +798,44 @@ right fix, with the alternative it rejects):
 - **Left on their own active reads** for lanes 3c and 4: the plan reads in `menus.service.ts`
   (`:2002`, `:2110` at base), vendor-menu-supply and price-locks. They do not use
   `.maybeSingle()` on the menus row, so they do not fail with two kinds live.
+
+Lane 3a corrections (2026-10-12, against the lane 2 tip `75aaed332`; each is the smallest
+right fix, with the alternative it rejects):
+- **Branch name.** Built on `fix/menus-line-kind` (the task's name), not the plan's
+  `fix/menus-line-kind-gates`; the claims fragment is `claims.d/fix-menus-line-kind.jsonl`.
+- **An undecided line on a Food or Desserts menu is not a drink.** Rule 7 said a NULL
+  `line_kind` follows today's rule everywhere. `lineIsDrink(line, menuKind)` applies today's
+  rule only when the menu is not Food or Desserts (Drinks, a legacy kind, or a kind the
+  caller does not know). Basis: every line stored before lane 1 sits on a beverage menu
+  (`createVersion` wrote `beverage` only), so no stored line changes status; on a Food menu
+  the legacy rule would send "Baklava" to the library and seed a stock row. Rejected: the
+  legacy rule everywhere. `NON_DRINK_MENU_KINDS` is the same list on the gateway and the web
+  (claim A-MENU-LINE-SAYS-IF-IT-IS-A-KITCHEN-LINE).
+- **The effective token keeps F-1293.** `effectiveDrinkCategory` ends with the token
+  `menuCategoryOf(category)` names, so a Turkish drink section ("Rakı", "Kırmızı") still
+  sends its kind. Its output is always a vocabulary token or null. Rejected: exact tokens
+  only, which would undo F-1293. **Cost:** an English heading that is not a token
+  ("House pour", "Bourbon") no longer reaches `wine_classify_beverage_kind()`, so the new
+  library row stays `unknown` until its section is mapped and resolved on tap (lane 3b).
+- **Declared means `identity_provenance = 'house_declared'` with an explicit `kind`.**
+  `addToInventory` writes both on a new house item and updates an existing one whose kind or
+  provenance differs; a failed update is said on the line (`failed`) and no price is
+  carried. Rejected: writing `kind` alone, which a refile that follows `wine_library`
+  provenance would overwrite; a new `kind_provenance` column, which needs a migration and is
+  outside this lane.
+- **What counts as confirmed.** The line's own `drink_category` (rule 7: a per-line
+  override, set by a person) or the nearest categorised section's only when that section has
+  `confirmed_at`. A back-filled or inherited section category, and a token read out of
+  `category`, are not confirmations. `makeCurrent` reads the sections before the switch and
+  changes nothing when that read fails.
+- **Files differ from the plan.** The plan's separate spec files were merged into
+  `menus.service.spec.ts` and `menu-line-view.spec.ts`; `wine-submissions.service.ts` needed
+  no change (the declared kind is written by the carry, not the resolver).
+- **Not built here:** onboarding's "with a drink line" (rule 26, owed to lane 6b); the
+  plan's per-kind active reads (lane 3c); the confirm tap, a section move into Drinks, and
+  the plan counting a new NULL-kind line Unsure (lanes 3b/3c). The README row for 0340 is
+  owed in a later PR. Founder-gated and not done: the G0 production read, the L8 eval and
+  every flag flip.
 
 ## Founder forks
 

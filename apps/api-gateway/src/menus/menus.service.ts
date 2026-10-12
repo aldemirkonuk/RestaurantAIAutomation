@@ -30,10 +30,13 @@ import {
   type CurrentMenuRow,
 } from "./current-menu-lines";
 import {
+  confirmedDrinkCategory,
+  effectiveDrinkCategory,
+  houseKindOf,
   isCocktailLine,
-  isKitchenLine,
   lineForViewer,
-  menuCategoryOf,
+  lineIsDrink,
+  readMenuSectionCategories,
   type LineView,
 } from "./menu-line-view";
 import {
@@ -119,8 +122,18 @@ interface InsertedMenuItem {
   producer?: string | null;
   vintage?: string | null;
   // Set by lineForViewer on a line read, and by the import on a line it
-  // inserts. A kitchen line is set aside: no stock row, no price (F-1170).
+  // inserts: NOT lineIsDrink (ADR 0340 rule 8). A kitchen line is set aside:
+  // no stock row, no price (F-1170).
   kitchen_line?: boolean;
+  // ADR 0340 rule 7: the line's stored kind, own category and section, as
+  // the line read (LINE_SELECT) returns them.
+  line_kind?: string | null;
+  drink_category?: string | null;
+  section_id?: string | null;
+  // ADR 0340 rule 8 / ADR 0333 item 3: the house item kind a person confirmed
+  // for this line (its own category, or its confirmed section's). Set by
+  // makeCurrent; the carry writes it as declared. Unset: the library decides.
+  declared_kind?: string | null;
 }
 
 /**
@@ -131,6 +144,8 @@ interface InsertedMenuItem {
  * the plan says so before.
  */
 function carriedWine(line: InsertedMenuItem): string | null {
+  // ADR 0340 rule 8: `kitchen_line` is `!lineIsDrink` on every path that
+  // builds an InsertedMenuItem (lineForViewer, resolveAndPersistItems).
   // F-1470: nor does a cocktail. It is made from its recipe's ingredients,
   // so a stock row of its own sat at 0 below its threshold and read as
   // critical low stock every morning. Its recipe's linked lines are its stock.
@@ -659,6 +674,7 @@ export class MenusService {
       userId,
       dto.method,
       false,
+      menu.menu_type ?? null,
     );
     const reviewItems = await this.linesOrNothingKept(
       restaurantId,
@@ -781,6 +797,7 @@ export class MenusService {
       userId,
       method,
       false,
+      menu.menu_type ?? null,
     );
     return {
       menuId: menu.id,
@@ -831,7 +848,7 @@ export class MenusService {
     kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
     partRead: string | null = null,
-  ): Promise<{ id: string }> {
+  ): Promise<{ id: string; menu_type?: string | null }> {
     const { data, error } = await this.dbService.supabase
       .from("restaurant_menus")
       .insert({
@@ -855,14 +872,14 @@ export class MenusService {
         extracted_by: userId,
         extracted_at: new Date().toISOString(),
       })
-      .select("id")
+      .select("id, menu_type")
       .single();
     if (error || !data) {
       throw new InternalServerErrorException(
         `The menu was read but could not be kept, so nothing was saved: ${error?.message ?? "no row returned"}`,
       );
     }
-    return data as { id: string };
+    return data as { id: string; menu_type?: string | null };
   }
 
   /**
@@ -903,7 +920,7 @@ export class MenusService {
     }
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
-      .select("id, restaurant_id, status")
+      .select("id, restaurant_id, status, menu_type")
       .eq("id", dto.menuId)
       .eq("restaurant_id", callerRestaurantId)
       .maybeSingle();
@@ -933,6 +950,9 @@ export class MenusService {
       bottle_price: dto.bottle_price,
     };
 
+    // ADR 0340 rule 8: the line is judged by lineIsDrink on this menu's kind,
+    // so a line added to a Food or Desserts menu (drafts and live alike) is
+    // not sent to the library and, live, makes no stock row or price.
     const [reviewItem] = await this.resolveAndPersistItems(
       [item],
       menu.restaurant_id,
@@ -940,6 +960,7 @@ export class MenusService {
       userId,
       "manual",
       isCurrent,
+      menu.menu_type ?? null,
     );
 
     // Manager-added rows are always flagged for review, regardless of match.
@@ -1757,7 +1778,12 @@ export class MenusService {
   ): Promise<Array<Record<string, unknown>>> {
     const lines: Array<Record<string, unknown>> = [];
     for (const m of menus) {
-      for (const line of await this.readLines(m.id, restaurantId, view))
+      for (const line of await this.readLines(
+        m.id,
+        restaurantId,
+        view,
+        m.menu_type,
+      ))
         lines.push({ ...line, menu_id: m.id, menu_type: m.menu_type });
     }
     return lines;
@@ -1770,11 +1796,15 @@ export class MenusService {
    * keys and `kitchen_line` for everyone, the raw line only when the caller
    * says the viewer may see it (default: not). The plan, make-current and
    * readCurrentMenus readers pass no view, so they get no raw line.
+   * `menuKind` is the menu's `menu_type`, which `kitchen_line` is judged on
+   * (ADR 0340 rule 8); null (a reader that only counts lines or reads their
+   * wine ids) judges by the legacy rule.
    */
   private async readLines(
     menuId: string,
     restaurantId: string,
     view: LineView = { rawLine: false },
+    menuKind: string | null = null,
   ): Promise<Array<Record<string, unknown>>> {
     const out: Array<Record<string, unknown>> = [];
     let after: string | null = null;
@@ -1798,7 +1828,7 @@ export class MenusService {
       (a, b) =>
         key(a.category).localeCompare(key(b.category)) || key(a.name).localeCompare(key(b.name)),
     );
-    return out.map((row) => lineForViewer(row, view));
+    return out.map((row) => lineForViewer(row, view, menuKind));
   }
 
   // ── Menu versions (ADR 0193; founder 2026-09-21, answer 7) ────────────────
@@ -1904,7 +1934,12 @@ export class MenusService {
     const { names, error } = await this.namesOf([row.extracted_by, row.made_current_by, row.retired_by]);
     return {
       version: this.toVersion(row, names),
-      items: await this.readLines(menuId, restaurantId, view),
+      items: await this.readLines(
+        menuId,
+        restaurantId,
+        view,
+        row.menu_type ?? null,
+      ),
       namesReadable: error === null,
       namesReason: error === null ? null : `who read or chose this menu could not be named: ${error}`,
       ...(view.rawLine ? {} : { rawLineWithheld: true as const }),
@@ -1953,7 +1988,12 @@ export class MenusService {
    */
   async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
     const row = await this.readVersionRow(restaurantId, menuId);
-    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
+    const lines = (await this.readLines(
+      menuId,
+      restaurantId,
+      { rawLine: false },
+      row.menu_type ?? null,
+    )) as unknown as InsertedMenuItem[];
     const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
     // Names are for reading the plan; they never decide it (the fingerprint
     // leaves them out). A failed read is said.
@@ -2271,8 +2311,33 @@ export class MenusService {
     // choosing it again answered "already_current" with zero lines: a switch
     // that could never be finished, reported as one that had been. Now a failed
     // read throws here and nothing is changed.
-    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
+    const lines = (await this.readLines(
+      menuId,
+      restaurantId,
+      { rawLine: false },
+      version.menu_type ?? null,
+    )) as unknown as InsertedMenuItem[];
+    // ADR 0340 rule 8 / ADR 0333 item 3: a category a person confirmed (the
+    // line's own, or its confirmed section's) is written on the house item as
+    // its declared kind, so a later library reclassify never overwrites it.
+    // Read before the switch, like the lines: unread, the carry could not
+    // tell a confirmed kind from a guessed one, so nothing is changed.
+    const { sections, error: sectionsErr } = await readMenuSectionCategories(
+      this.dbService.supabase,
+      restaurantId,
+      menuId,
+    );
+    if (sectionsErr) {
+      throw new InternalServerErrorException(
+        `This menu's sections could not be read, so the kind each drink is filed under is not known. Nothing was changed: ${sectionsErr}`,
+      );
+    }
+    for (const line of lines) {
+      if (line.kitchen_line === true) continue;
+      const confirmed = confirmedDrinkCategory(line, sections);
+      if (confirmed) line.declared_kind = houseKindOf(confirmed);
+    }
     // A menu with no lines would empty the house's menu (F-681); the database
     // refuses it too (make_menu_current), this says why before the plan.
     if (lines.length === 0 && version.status !== "active") {
@@ -2461,6 +2526,9 @@ export class MenusService {
     // lines seed the house's inventory and set its prices (ADR 0193, menu
     // versions); a kept menu's lines wait for `makeCurrent`.
     current: boolean,
+    // The menu's `menu_type` (ADR 0340 rule 8): each line is judged by
+    // lineIsDrink on it. Null judges by the legacy rule.
+    menuKind: string | null,
   ): Promise<MenuImportReviewItem[]> {
     if (items.length === 0) return [];
 
@@ -2485,8 +2553,11 @@ export class MenusService {
     // and nothing else. It is not sent to the resolver, so it creates no
     // library row and files no submission, and with no library wine it seeds
     // no stock row. /house/menu tells the owner these lines were set aside.
-    const kitchen = items.map((item) =>
-      isKitchenLine(item.category, item.raw_text),
+    // ADR 0340 rule 8: "kitchen" is NOT lineIsDrink on this menu's kind, so a
+    // line on a Food or Desserts menu with no stored kind is set aside too.
+    const kitchen = items.map(
+      (item) =>
+        !lineIsDrink({ category: item.category, raw: item.raw_text }, menuKind),
     );
     const drinks = items.filter((_, idx) => !kitchen[idx]);
     let resolved: ResolvedItem[];
@@ -2506,7 +2577,11 @@ export class MenusService {
           // register (cellar/cellar-registers.ts, registerForKind).
           // F-1293: a Turkish section ("Rakı", "Kırmızı") goes as the kind
           // it names, since the classifier reads English words only.
-          menuCategory: menuCategoryOf(item.category),
+          // ADR 0340 rule 8 / ADR 0333: only the effective vocabulary token
+          // is sent, never the heading as written; a line with none sends
+          // no category.
+          menuCategory:
+            effectiveDrinkCategory({ category: item.category }) ?? undefined,
         })),
         // A menu prints "House White" and "Red — by the glass" as often as it
         // prints a producer. Those lines are this venue's own wines and never
@@ -2779,6 +2854,8 @@ export class MenusService {
       is_active?: boolean | null;
       menu_price_current?: number | string | null;
       menu_price_glass?: number | string | null;
+      kind?: string | null;
+      identity_provenance?: string | null;
     };
     type HouseRead = {
       data: HouseRow | null;
@@ -2796,7 +2873,7 @@ export class MenusService {
       const { data, error } = await this.dbService.supabase
         .from("restaurant_inventory")
         .select(
-          "id, master_wine_id, is_active, menu_price_current, menu_price_glass",
+          "id, master_wine_id, is_active, menu_price_current, menu_price_glass, kind, identity_provenance",
         )
         .eq("restaurant_id", restaurantId)
         .in("master_wine_id", chunk);
@@ -2850,6 +2927,16 @@ export class MenusService {
             wine_name: item.name,
             threshold_min: thresholdMin,
             is_active: true,
+            // ADR 0340 rule 8 / ADR 0333 item 3: a kind a person confirmed is
+            // stored as declared ('house_declared' is the provenance a
+            // library reclassify never follows); otherwise the library's
+            // kind is taken, as before (set_house_item_identity).
+            ...(item.declared_kind
+              ? {
+                  kind: item.declared_kind,
+                  identity_provenance: "house_declared",
+                }
+              : {}),
           })
           .select("id")
           .single();
@@ -2877,6 +2964,38 @@ export class MenusService {
           .eq("id", inventoryId);
         if (backErr) {
           const message = `this wine was removed from the house's inventory and could not be brought back, so no price was set: ${backErr.message}`;
+          this.logger.error(
+            `menu line ${item.id} ("${item.name}"): ${message}`,
+          );
+          priceSync.set(item.id, {
+            outcome: "failed",
+            error: message,
+            flag: null,
+            flagNote: null,
+            held: [],
+          });
+          return;
+        }
+      }
+      // ADR 0340 rule 8 / ADR 0333 item 3: an existing house item takes the
+      // kind a person confirmed, as declared. A failed write is said on the
+      // line and no price is carried, as when a removed wine cannot come back.
+      if (
+        existing &&
+        item.declared_kind &&
+        (existing.kind !== item.declared_kind ||
+          existing.identity_provenance !== "house_declared")
+      ) {
+        const { error: kindErr } = await this.dbService.supabase
+          .from("restaurant_inventory")
+          .update({
+            kind: item.declared_kind,
+            identity_provenance: "house_declared",
+          })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", inventoryId);
+        if (kindErr) {
+          const message = `the kind confirmed for this drink could not be written on the house's item, so no price was set: ${kindErr.message}`;
           this.logger.error(
             `menu line ${item.id} ("${item.name}"): ${message}`,
           );
@@ -2926,7 +3045,9 @@ export class MenusService {
               ? prefetched.get(wine)!
               : await this.dbService.supabase
                   .from("restaurant_inventory")
-                  .select("id, is_active, menu_price_current, menu_price_glass")
+                  .select(
+                    "id, is_active, menu_price_current, menu_price_glass, kind, identity_provenance",
+                  )
                   .eq("restaurant_id", restaurantId)
                   .eq("master_wine_id", wine)
                   .maybeSingle();

@@ -351,6 +351,188 @@ export function menuCategoryOf(
 }
 
 /**
+ * The menu kinds on which a line with no stored kind is never a drink (ADR
+ * 0340 rule 7, lane 3a). Every line stored before lane 1 sits on a Drinks
+ * menu (`createVersion` wrote `beverage` only), so the legacy rule below
+ * keeps each of them where it was; a line on a Food or Desserts menu has to
+ * be told it is a drink (its `line_kind`) before it reaches the library, the
+ * stock or a house price. The same list as the web's `NON_DRINK_MENU_KINDS`.
+ */
+export const NON_DRINK_MENU_KINDS = ["food", "desserts"];
+
+/** What `lineIsDrink` reads of a line: its stored kind, section and raw line. */
+export interface LineKindInput {
+  line_kind?: unknown;
+  category?: unknown;
+  raw?: unknown;
+}
+
+/**
+ * Whether a menu line is a drink (ADR 0340 rules 7 and 8): the ONE test every
+ * gate uses (the import's resolver call, a line added by hand, the carry,
+ * `kitchen_line`, the margin advice's kitchen rows).
+ * - a stored `line_kind` decides: 'drink' yes, 'dish' no;
+ * - with none, on a Food or Desserts menu: no (undecided is not a drink);
+ * - with none, on any other menu (Drinks, a legacy kind, or a kind the caller
+ *   does not know, `null`): today's rule exactly, a drink unless
+ *   `isKitchenLine` says kitchen, so no stored line changes status.
+ */
+export function lineIsDrink(line: LineKindInput, menuKind: unknown): boolean {
+  if (line.line_kind === "drink") return true;
+  if (line.line_kind === "dish") return false;
+  if (typeof menuKind === "string" && NON_DRINK_MENU_KINDS.includes(menuKind))
+    return false;
+  return !isKitchenLine(line.category, line.raw);
+}
+
+/** Whether a value is a token of the 0186 vocabulary. */
+export function isMenuCategory(value: unknown): value is MenuCategory {
+  return (
+    typeof value === "string" &&
+    (MENU_CATEGORY_VOCABULARY as readonly string[]).includes(value)
+  );
+}
+
+/** A section as the drink category reads it (`menu_sections`, ADR 0340 rule 6). */
+export interface SectionCategory {
+  parent_id: string | null;
+  drink_category: string | null;
+  confirmed_at: string | null;
+}
+
+/** What the drink category reads of a line. */
+export interface CategoryInput {
+  drink_category?: unknown;
+  section_id?: unknown;
+  category?: unknown;
+}
+
+/** A section's parents, nearest first. Stops at a missing id or a cycle. */
+function ancestors(
+  sectionId: unknown,
+  sections: ReadonlyMap<string, SectionCategory>,
+): SectionCategory[] {
+  const out: SectionCategory[] = [];
+  const seen = new Set<string>();
+  let id = typeof sectionId === "string" ? sectionId : null;
+  while (id && !seen.has(id)) {
+    seen.add(id);
+    const s = sections.get(id);
+    if (!s) break;
+    out.push(s);
+    id = s.parent_id;
+  }
+  return out;
+}
+
+/**
+ * A drink line's effective category (ADR 0340 rule 7): the line's own
+ * `drink_category`, else its nearest section's (walking up), else the token
+ * its `category` names (a vocabulary token as it is, a Turkish drink section
+ * as the kind it names, `menuCategoryOf`, F-1293). Always a vocabulary token,
+ * or null when none is known: heading text never comes out of here, so it
+ * never reaches the library's `menu_category` (ADR 0333).
+ */
+export function effectiveDrinkCategory(
+  line: CategoryInput,
+  sections: ReadonlyMap<string, SectionCategory> = new Map(),
+): MenuCategory | null {
+  if (isMenuCategory(line.drink_category)) return line.drink_category;
+  for (const s of ancestors(line.section_id, sections)) {
+    if (isMenuCategory(s.drink_category)) return s.drink_category;
+  }
+  const named = menuCategoryOf(
+    typeof line.category === "string" ? line.category : undefined,
+  );
+  return isMenuCategory(named) ? named : null;
+}
+
+/**
+ * The category a person confirmed for this line (ADR 0340 rule 8, ADR 0333
+ * item 3): the line's own `drink_category` (a per-line override, set only by
+ * a person), else the nearest section's `drink_category` when that section
+ * was confirmed (`confirmed_at`). A section's category that was back-filled
+ * or inherited and never confirmed, and a token read out of `category`, are
+ * not confirmations: null.
+ */
+export function confirmedDrinkCategory(
+  line: CategoryInput,
+  sections: ReadonlyMap<string, SectionCategory> = new Map(),
+): MenuCategory | null {
+  if (isMenuCategory(line.drink_category)) return line.drink_category;
+  for (const s of ancestors(line.section_id, sections)) {
+    if (isMenuCategory(s.drink_category))
+      return s.confirmed_at ? s.drink_category : null;
+  }
+  return null;
+}
+
+/**
+ * The house item's `kind` (restaurant_inventory_kind_check) a vocabulary
+ * token files under: every wine style is 'wine'.
+ */
+export function houseKindOf(token: MenuCategory): string {
+  switch (token) {
+    case "beer":
+    case "cider":
+    case "sake":
+    case "cocktail":
+    case "spirit":
+    case "whiskey":
+      return token;
+    case "soft drink":
+      return "soft_drink";
+    case "non-alcoholic":
+      return "non_alcoholic";
+    default:
+      return "wine";
+  }
+}
+
+const SECTION_READ_ROWS = 1000;
+
+/**
+ * One menu's sections as the drink category reads them, keyset-paged. A
+ * failed page is said, never an empty map (ADR 0067).
+ */
+export async function readMenuSectionCategories(
+  client: SupabaseClient,
+  restaurantId: string,
+  menuId: string,
+): Promise<{
+  sections: Map<string, SectionCategory>;
+  error: string | null;
+}> {
+  const sections = new Map<string, SectionCategory>();
+  let after: string | null = null;
+  for (;;) {
+    let q = client
+      .from("menu_sections")
+      .select("id, parent_id, drink_category, confirmed_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("menu_id", menuId);
+    if (after) q = q.gt("id", after);
+    const { data, error } = await q
+      .order("id", { ascending: true })
+      .limit(SECTION_READ_ROWS);
+    if (error) return { sections: new Map(), error: error.message };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    for (const r of rows) {
+      sections.set(String(r.id), {
+        parent_id: typeof r.parent_id === "string" ? r.parent_id : null,
+        drink_category:
+          typeof r.drink_category === "string" ? r.drink_category : null,
+        confirmed_at:
+          typeof r.confirmed_at === "string" ? r.confirmed_at : null,
+      });
+    }
+    if (rows.length < SECTION_READ_ROWS) break;
+    after = String(rows[rows.length - 1].id);
+  }
+  return { sections, error: null };
+}
+
+/**
  * Whether this token's role may read a line's raw line: its ROLE_POLICY row
  * must see both `money` and `suppliers`, because an unmapped CSV cell can be
  * either. An unknown or missing role reads the staff row (false); `admin`
@@ -363,19 +545,28 @@ export function seesRawLine(role: string | null | undefined): boolean {
 
 /**
  * One stored line as this viewer is sent it: the allowlisted keys the row
- * has, `kitchen_line` for everyone, and the raw line only when `view.rawLine`.
+ * has, `kitchen_line` for everyone (not a drink by `lineIsDrink`, on the
+ * kind of the menu the line is on; `null` when the reader does not know it),
+ * and the raw line only when `view.rawLine`.
  * When a stored raw line (a non-empty string) is held back, the line says
  * `raw_line_withheld: true`; a line with no stored raw line says nothing,
  * because there is nothing to withhold. A withheld raw line is a missing key,
  * never a null: null already means "no raw line kept".
  */
-export function lineForViewer(row: Record<string, unknown>, view: LineView): Record<string, unknown> {
+export function lineForViewer(
+  row: Record<string, unknown>,
+  view: LineView,
+  menuKind: string | null = null,
+): Record<string, unknown> {
   const raw = row[RAW_LINE_COLUMN];
   const out: Record<string, unknown> = {};
   for (const key of MEMBER_LINE_KEYS) {
     if (Object.prototype.hasOwnProperty.call(row, key)) out[key] = row[key];
   }
-  out.kitchen_line = isKitchenLine(row.category, raw);
+  out.kitchen_line = !lineIsDrink(
+    { line_kind: row.line_kind, category: row.category, raw },
+    menuKind,
+  );
   if (view.rawLine) {
     out[RAW_LINE_COLUMN] = raw ?? null;
   } else if (typeof raw === "string" && raw.length > 0) {
@@ -390,7 +581,8 @@ const KITCHEN_READ_ROWS = 1000;
  * The house's stock rows that only kitchen lines link to (F-1170): rows a food
  * line seeded before kitchen lines were set aside. The margin advice leaves
  * them out. A row any drink line links to stays. Every menu of the house is
- * read, keyset-paged; the raw line is read only to decide `isKitchenLine` and
+ * read, keyset-paged, and each line is judged by `lineIsDrink` on its own
+ * menu's kind (ADR 0340 rule 8); the raw line is read only for that test and
  * leaves this function as nothing but the row ids. A failed page is said,
  * never an empty set.
  */
@@ -398,13 +590,36 @@ export async function readKitchenInventoryIds(
   client: SupabaseClient,
   restaurantId: string,
 ): Promise<{ ids: Set<string>; error: string | null }> {
+  const kinds = new Map<string, string | null>();
+  let menuAfter: string | null = null;
+  for (;;) {
+    let mq = client
+      .from("restaurant_menus")
+      .select("id, menu_type")
+      .eq("restaurant_id", restaurantId);
+    if (menuAfter) mq = mq.gt("id", menuAfter);
+    const { data, error } = await mq
+      .order("id", { ascending: true })
+      .limit(KITCHEN_READ_ROWS);
+    if (error) return { ids: new Set(), error: error.message };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    for (const r of rows)
+      kinds.set(
+        String(r.id),
+        typeof r.menu_type === "string" ? r.menu_type : null,
+      );
+    if (rows.length < KITCHEN_READ_ROWS) break;
+    menuAfter = String(rows[rows.length - 1].id);
+  }
   const kitchen = new Set<string>();
   const drink = new Set<string>();
   let after: string | null = null;
   for (;;) {
     let q = client
       .from("menu_items")
-      .select("id, inventory_item_id, category, raw_extracted_text")
+      .select(
+        "id, menu_id, inventory_item_id, category, line_kind, raw_extracted_text",
+      )
       .eq("restaurant_id", restaurantId)
       .not("inventory_item_id", "is", null)
       .neq("status", "discarded");
@@ -416,9 +631,15 @@ export async function readKitchenInventoryIds(
     const rows = (data ?? []) as Array<Record<string, unknown>>;
     for (const r of rows) {
       const inv = String(r.inventory_item_id);
-      (isKitchenLine(r.category, r[RAW_LINE_COLUMN]) ? kitchen : drink).add(
-        inv,
+      const isDrink = lineIsDrink(
+        {
+          line_kind: r.line_kind,
+          category: r.category,
+          raw: r[RAW_LINE_COLUMN],
+        },
+        kinds.get(String(r.menu_id)) ?? null,
       );
+      (isDrink ? drink : kitchen).add(inv);
     }
     if (rows.length < KITCHEN_READ_ROWS) break;
     after = String(rows[rows.length - 1].id);

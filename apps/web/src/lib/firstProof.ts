@@ -226,8 +226,31 @@ export function isKitchenLine(item: Pick<MenuImportReviewItem, 'category' | 'raw
   return KITCHEN.some((hint) => runs.some((run) => run.includes(` ${hint} `)))
 }
 
+/**
+ * The menu kinds on which a line with no stored kind is never a drink (ADR
+ * 0340 rule 7). The same list as the gateway's NON_DRINK_MENU_KINDS
+ * (apps/api-gateway/src/menus/menu-line-view.ts).
+ */
+const NON_DRINK_MENU_KINDS = ['food', 'desserts']
+
+/**
+ * Whether a menu line is a drink: the gateway's `lineIsDrink` (ADR 0340 rules
+ * 7 and 8). A stored kind decides ('drink' yes, 'dish' no); with none, a line
+ * on a Food or Desserts menu is not a drink, and on any other menu (or one
+ * not named) the legacy rule decides: a drink unless `isKitchenLine`.
+ */
+export function lineIsDrink(
+  item: Pick<MenuImportReviewItem, 'category' | 'rawText'> & { lineKind?: string | null },
+  menuKind?: string | null,
+) {
+  if (item.lineKind === 'drink') return true
+  if (item.lineKind === 'dish') return false
+  if (menuKind && NON_DRINK_MENU_KINDS.includes(menuKind)) return false
+  return !isKitchenLine(item)
+}
+
 export function pencilledCount(items: MenuImportReviewItem[]) {
-  return items.filter((item) => !isKitchenLine(item) && lineNeedsPencil(item)).length
+  return items.filter((item) => lineIsDrink(item) && lineNeedsPencil(item)).length
 }
 
 type StoredProof = MenuImportResult & { sourceImage?: string | null; restaurantId?: string | null }

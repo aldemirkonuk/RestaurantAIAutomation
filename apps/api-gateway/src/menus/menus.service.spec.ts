@@ -1929,8 +1929,10 @@ describe("MenusService — every menu read is kept as its own version", () => {
         Mojito: "cocktail",
         Ayran: "non-alcoholic",
         "Opus One": "red",
-        // 'şarap' alone names no one kind; it goes as written.
-        "House pour": "Şarap",
+        // 'şarap' alone names no one kind. It used to go as written; ADR
+        // 0340 rule 8 (ADR 0333): heading text never reaches the library,
+        // so a line with no vocabulary token sends no category.
+        "House pour": undefined,
       });
     });
 
@@ -2674,5 +2676,439 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     const list = await service.listVersions("rest-1");
     expect(list.namesReadable).toBe(false);
     expect(list.namesReason).toMatch(/timeout/);
+  });
+});
+
+/**
+ * ADR 0340 lane 3a (rules 7 and 8): every gate (a line added by hand, the
+ * import's resolver call, the carry) asks lineIsDrink on the line's own menu
+ * kind, the resolver is sent only a vocabulary token, and a category a person
+ * confirmed is written on the house item as its declared kind.
+ */
+describe("MenusService — a line is a drink only when stored or proven (ADR 0340 lane 3a)", () => {
+  const resolverCalls: unknown[][] = [];
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: Array<{ name: string }>) => {
+      resolverCalls.push(items);
+      return items.map((i) => ({
+        masterWineId: `mw-${i.name}`,
+        matched: true,
+        libraryTier: 1,
+        confidence: 99,
+      }));
+    },
+    normalizeText: (t: string | null | undefined) =>
+      t ? t.toLowerCase() : null,
+  };
+  beforeEach(() => {
+    resolverCalls.length = 0;
+  });
+  const sentToResolver = () =>
+    resolverCalls.flat() as Array<{ name: string; menuCategory?: string }>;
+
+  const liveMenu = (menuType: string): Record<string, Row[]> => ({
+    restaurant_menus: [
+      {
+        id: "menu-1",
+        restaurant_id: "rest-1",
+        status: "active",
+        menu_type: menuType,
+      },
+    ],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: [],
+    menu_items: [],
+    master_wine_library_submissions: [],
+  });
+
+  it.each(["food", "desserts"])(
+    "a dish added to a live %s menu creates no library row, stock row or price",
+    async (menuType) => {
+      const calls: RpcCall[] = [];
+      const tables = liveMenu(menuType);
+      const service = makeService(tables, {
+        wineSubmissions,
+        rpcCalls: calls,
+        rpc: () => ({ data: { outcome: "changed", held: [] }, error: null }),
+      });
+      // No heading and no kitchen word: the legacy rule alone would call it a drink.
+      const item = await service.addMenuItem(
+        { menuId: "menu-1", name: "Baklava", bottle_price: 9 } as any,
+        "user-1",
+        "rest-1",
+        true,
+      );
+      expect(sentToResolver()).toEqual([]);
+      expect(tables.restaurant_inventory).toEqual([]);
+      expect(tables.master_wine_library_submissions).toEqual([]);
+      expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toEqual([]);
+      expect(tables.menu_items).toHaveLength(1);
+      expect(tables.menu_items[0]).toMatchObject({
+        name: "Baklava",
+        wine_library_id: null,
+      });
+      expect(item.inventoryItemId).toBeNull();
+    },
+  );
+
+  it("the same line on a live Drinks menu keeps today's rule: a wine is resolved and carried, a starter is not", async () => {
+    const calls: RpcCall[] = [];
+    const tables = liveMenu("beverage");
+    const service = makeService(tables, {
+      wineSubmissions,
+      rpcCalls: calls,
+      rpc: () => ({ data: { outcome: "changed", held: [] }, error: null }),
+    });
+    await service.addMenuItem(
+      { menuId: "menu-1", name: "Baklava", bottle_price: 9 } as any,
+      "user-1",
+      "rest-1",
+      true,
+    );
+    await service.addMenuItem(
+      { menuId: "menu-1", name: "Meze tabağı", category: "Starters" } as any,
+      "user-1",
+      "rest-1",
+      true,
+    );
+    expect(sentToResolver().map((i) => i.name)).toEqual(["Baklava"]);
+    expect(tables.restaurant_inventory.map((r) => r.master_wine_id)).toEqual([
+      "mw-Baklava",
+    ]);
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(
+      1,
+    );
+  });
+
+  it("a heading text never reaches menuCategory: only a vocabulary token, or nothing", async () => {
+    const tables: Record<string, Row[]> = {
+      ...liveMenu("beverage"),
+      user_onboarding_progress: [],
+    };
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parse: async () => [
+          {
+            name: "Old Fitzgerald",
+            category: "Bourbon & Rye",
+            bottle_price: 90,
+          },
+          {
+            name: "House pour",
+            category: "Wines by the glass",
+            bottle_price: 30,
+          },
+          { name: "Opus One", category: "red", bottle_price: 400 },
+          { name: "Yeni Rakı", category: "Rakı", bottle_price: 1400 },
+          { name: "No section", bottle_price: 20 },
+        ],
+      },
+    });
+    await service.importMenu(
+      {
+        method: "scan",
+        data: { imageBase64: Buffer.from("%PDF").toString("base64") },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
+    const sent = Object.fromEntries(
+      sentToResolver().map((i) => [i.name, i.menuCategory]),
+    );
+    expect(sent).toEqual({
+      "Old Fitzgerald": undefined,
+      "House pour": undefined,
+      "Opus One": "red",
+      "Yeni Rakı": "spirit",
+      "No section": undefined,
+    });
+  });
+
+  /** A Drinks draft with these lines and sections, its plan shown, then chosen. */
+  async function chooseDraft(
+    lines: Row[],
+    sections: Row[] = [],
+    extra: Partial<Record<string, Row[]>> = {},
+    fails: Row = {},
+  ) {
+    const calls: RpcCall[] = [];
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [
+        {
+          id: "menu-old",
+          restaurant_id: "rest-1",
+          status: "active",
+          menu_type: "beverage",
+        },
+        {
+          id: "menu-new",
+          restaurant_id: "rest-1",
+          status: "draft",
+          menu_type: "beverage",
+          name: "Drinks list",
+        },
+      ],
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [],
+      menu_sections: sections.map((s) => ({
+        restaurant_id: "rest-1",
+        menu_id: "menu-new",
+        parent_id: null,
+        drink_category: null,
+        confirmed_at: null,
+        ...s,
+      })),
+      menu_items: lines.map((l, i) => ({
+        id: `line-${i + 1}`,
+        restaurant_id: "rest-1",
+        menu_id: "menu-new",
+        status: "approved",
+        source: "scan",
+        created_at: "2026-10-12T09:00:00Z",
+        ...l,
+      })),
+      ...extra,
+    } as Record<string, Row[]>;
+    const service = makeService(tables, {
+      rpcCalls: calls,
+      rpc: (fn: string, args: Row) => {
+        if (fn === "make_menu_current") {
+          const menu = tables.restaurant_menus.find(
+            (m) => m.id === args.p_menu_id,
+          )!;
+          for (const m of tables.restaurant_menus)
+            if (m.status === "active" && m.menu_type === menu.menu_type)
+              m.status = "archived";
+          Object.assign(menu, {
+            status: "active",
+            made_current_at: "2026-10-12T12:00:00Z",
+          });
+          return {
+            data: {
+              outcome: "made_current",
+              previous_menu_ids: ["menu-old"],
+              made_current_at: "2026-10-12T12:00:00Z",
+            },
+            error: null,
+          };
+        }
+        if (fn === "set_house_menu_price")
+          return { data: { outcome: "changed", held: [] }, error: null };
+        return { data: null, error: { message: `no rpc ${fn}` } };
+      },
+    });
+    const plan = await service.planFor("rest-1", "menu-new");
+    Object.assign(tables, fails);
+    const run = service.makeCurrent(
+      "rest-1",
+      "menu-new",
+      "user-2",
+      plan.fingerprint,
+    );
+    return { calls, tables, plan, run };
+  }
+
+  it("a line stored as a dish is never carried, and one stored as a drink is, whatever its heading says", async () => {
+    const { tables, plan, run, calls } = await chooseDraft([
+      {
+        name: "Mixed grill",
+        category: "red",
+        line_kind: "dish",
+        wine_library_id: "mw-grill",
+      },
+      {
+        name: "House red",
+        category: "Starters",
+        line_kind: "drink",
+        wine_library_id: "mw-house",
+        bottle_price: 40,
+      },
+    ]);
+    const byName = Object.fromEntries(
+      plan.lines.map((l) => [l.name, l.bottle.result]),
+    );
+    expect(byName).toEqual({
+      "Mixed grill": "kitchen",
+      "House red": "new_wine",
+    });
+    const r = await run;
+    expect(r.priceSync).toEqual({ kitchen: 1, changed: 1 });
+    expect(tables.restaurant_inventory.map((i) => i.master_wine_id)).toEqual([
+      "mw-house",
+    ]);
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(
+      1,
+    );
+  });
+
+  it("legacy lines on a Drinks menu carry exactly as before (no kind is written)", async () => {
+    const { tables, plan, run } = await chooseDraft([
+      {
+        name: "Opus One",
+        category: "red",
+        wine_library_id: "mw-opus",
+        bottle_price: 400,
+      },
+      { name: "Meze", category: "Starters", wine_library_id: "mw-meze" },
+    ]);
+    expect(
+      Object.fromEntries(plan.lines.map((l) => [l.name, l.bottle.result])),
+    ).toEqual({
+      "Opus One": "new_wine",
+      Meze: "kitchen",
+    });
+    await run;
+    expect(tables.restaurant_inventory).toHaveLength(1);
+    expect(tables.restaurant_inventory[0]).toMatchObject({
+      master_wine_id: "mw-opus",
+    });
+    expect(tables.restaurant_inventory[0]).not.toHaveProperty("kind");
+    expect(tables.restaurant_inventory[0]).not.toHaveProperty(
+      "identity_provenance",
+    );
+  });
+
+  it("a confirmed category is written on the house item as declared; a back-filled one is not", async () => {
+    const { tables, run } = await chooseDraft(
+      [
+        // Its section was confirmed as spirits by a person.
+        {
+          name: "Yeni Rakı",
+          section_id: "sec-bar",
+          wine_library_id: "mw-raki",
+          bottle_price: 1400,
+        },
+        // A child of the confirmed section, with no category of its own.
+        {
+          name: "Tekirdağ",
+          section_id: "sec-bar-tr",
+          wine_library_id: "mw-tekirdag",
+          bottle_price: 1200,
+        },
+        // A back-filled section category, never tapped.
+        {
+          name: "Yakut",
+          category: "red",
+          section_id: "sec-red",
+          wine_library_id: "mw-yakut",
+          bottle_price: 900,
+        },
+        // A per-line category, on an existing house item the library filed as wine.
+        {
+          name: "Bomonti",
+          line_kind: "drink",
+          drink_category: "beer",
+          section_id: "sec-red",
+          wine_library_id: "mw-bomonti",
+          bottle_price: 150,
+        },
+      ],
+      [
+        {
+          id: "sec-bar",
+          drink_category: "spirit",
+          confirmed_at: "2026-10-12T10:00:00Z",
+          confirmed_by: "user-2",
+        },
+        { id: "sec-bar-tr", parent_id: "sec-bar" },
+        { id: "sec-red", drink_category: "red" },
+      ],
+      {
+        restaurant_inventory: [
+          {
+            id: "inv-bomonti",
+            restaurant_id: "rest-1",
+            master_wine_id: "mw-bomonti",
+            is_active: true,
+            kind: "wine",
+            identity_provenance: "wine_library",
+          },
+        ],
+      },
+    );
+    const r = await run;
+    expect(r.failed).toEqual([]);
+    const byWine = Object.fromEntries(
+      tables.restaurant_inventory.map((i) => [i.master_wine_id, i]),
+    );
+    expect(byWine["mw-raki"]).toMatchObject({
+      kind: "spirit",
+      identity_provenance: "house_declared",
+    });
+    expect(byWine["mw-tekirdag"]).toMatchObject({
+      kind: "spirit",
+      identity_provenance: "house_declared",
+    });
+    expect(byWine["mw-yakut"]).not.toHaveProperty("kind");
+    expect(byWine["mw-yakut"]).not.toHaveProperty("identity_provenance");
+    expect(byWine["mw-bomonti"]).toMatchObject({
+      id: "inv-bomonti",
+      kind: "beer",
+      identity_provenance: "house_declared",
+    });
+  });
+
+  it("a failed sections read changes nothing", async () => {
+    const { tables, run, calls } = await chooseDraft(
+      [
+        {
+          name: "Opus One",
+          category: "red",
+          wine_library_id: "mw-opus",
+          bottle_price: 400,
+        },
+      ],
+      [],
+      {},
+      { __readFails: [{ menu_sections: "timeout" }] as any },
+    );
+    await expect(run).rejects.toThrow(
+      /sections could not be read.*Nothing was changed: timeout/,
+    );
+    expect(calls.filter(([fn]) => fn === "make_menu_current")).toEqual([]);
+    expect(
+      tables.restaurant_menus.find((m) => m.id === "menu-new")!.status,
+    ).toBe("draft");
+  });
+
+  it("a declared kind that cannot be written is said on the line, and its price is not carried", async () => {
+    const { run, calls } = await chooseDraft(
+      [
+        {
+          name: "Bomonti",
+          line_kind: "drink",
+          drink_category: "beer",
+          wine_library_id: "mw-bomonti",
+          bottle_price: 150,
+        },
+      ],
+      [],
+      {
+        restaurant_inventory: [
+          {
+            id: "inv-bomonti",
+            restaurant_id: "rest-1",
+            master_wine_id: "mw-bomonti",
+            is_active: true,
+            kind: "wine",
+            identity_provenance: "wine_library",
+          },
+        ],
+      },
+      { __updateFails: [{ restaurant_inventory: "denied" }] as any },
+    );
+    const r = await run;
+    expect(r.priceSync).toEqual({ failed: 1 });
+    expect(r.failed).toEqual([
+      {
+        menuItemId: "line-1",
+        name: "Bomonti",
+        error: expect.stringMatching(
+          /kind confirmed for this drink could not be written.*denied/,
+        ),
+      },
+    ]);
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toEqual([]);
   });
 });
