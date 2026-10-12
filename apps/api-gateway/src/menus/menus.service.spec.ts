@@ -1832,6 +1832,37 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.pdf$/);
   });
 
+  it("ADR 0340 rule 12: an Arrival-sealed version (importParsedItems) makes its sections in the same step, under the reader", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, { wineSubmissions });
+    const r = await service.importParsedItems(
+      [{ name: "Opus One", bottle_price: 62 } as any],
+      "rest-1",
+      "user-1",
+      "manual",
+    );
+    expect(tables.__materialised).toEqual([
+      { p_restaurant_id: "rest-1", p_menu_id: r.menuId, p_actor: "user-1" },
+    ]);
+    expect(tables.restaurant_menus.map((m) => m.id)).toContain(r.menuId);
+  });
+
+  it("ADR 0340 rule 12: an Arrival-sealed version whose sections could not be made is taken back out, lines and all (F-1296)", async () => {
+    const tables: Record<string, Row[]> = base();
+    tables.__materialiseFails = ["sections down"] as any;
+    const service = makeService(tables, { wineSubmissions });
+    const read = service.importParsedItems(
+      [{ name: "Opus One", bottle_price: 62 } as any],
+      "rest-1",
+      "user-1",
+      "manual",
+    );
+    await expect(read).rejects.toMatchObject({ status: 503 });
+    await expect(read).rejects.toThrow(/nothing was kept/);
+    expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
+    expect(tables.menu_items).toEqual([]);
+  });
+
   it("a failed library match keeps nothing: no draft listing lines it does not hold, and a refusal that says so (F-1296)", async () => {
     const tables = base();
     const service = makeService(tables, {

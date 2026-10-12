@@ -800,7 +800,9 @@ export class MenusService {
       null,
       null,
     );
-    const reviewItems = await this.resolveAndPersistItems(
+    // The same step an upload takes (ADR 0340 rule 12, F-1296): lines, then
+    // sections; a failure in either takes the version back out.
+    const persisting = this.resolveAndPersistItems(
       items,
       restaurantId,
       menu.id,
@@ -808,8 +810,15 @@ export class MenusService {
       method,
       false,
       menu.menu_type ?? null,
+    ).then(async (lines) => {
+      await this.materialiseSections(restaurantId, menu.id, userId);
+      return lines;
+    });
+    const reviewItems = await this.linesOrNothingKept(
+      restaurantId,
+      menu.id,
+      persisting,
     );
-    await this.materialiseSections(restaurantId, menu.id, userId);
     return {
       menuId: menu.id,
       current: false,

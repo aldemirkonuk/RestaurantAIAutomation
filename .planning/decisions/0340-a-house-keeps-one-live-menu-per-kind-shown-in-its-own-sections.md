@@ -841,8 +841,13 @@ right fix, with the alternative it rejects):
 Lane 3b corrections (2026-10-12, against base `79e62714f`; each is the smallest right fix,
 with the alternative it rejects):
 - **Sections are made after the lines are stored, not inside `createVersion`'s insert.**
-  `importMenu` and `importParsedItems` call `materialise_menu_sections` once the lines are
-  written; a failure there drops the version like any other failed import step. Basis: the
+  `importMenu` and Arrival's `importParsedItems` each call `materialise_menu_sections` once
+  the lines are written, inside the step `linesOrNothingKept` guards, so in both a failure
+  to store the lines or to make the sections takes the version and its lines back out and
+  refuses with "nothing was kept" (F-1296). `importParsedItems` did not take that path
+  before this lane: a failed library match there left the version standing; it now drops it
+  as an upload does. Rejected: leaving Arrival's path unguarded, which kept a version with
+  lines and no sections after a failed sections step. Basis: the
   function reuses the SQL key function `menu_section_key_part` and lane 1's back-fill rule,
   so a key is cut in exactly one place. Rejected: cutting keys in TypeScript at insert time,
   which would be a second normaliser that could drift from the SQL one.
