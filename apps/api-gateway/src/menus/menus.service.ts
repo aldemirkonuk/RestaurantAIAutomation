@@ -2939,6 +2939,23 @@ export class MenusService {
   }
 
   /**
+   * The house's low-stock number as saved, or the number a new item gets when
+   * none is saved — what the threshold step and Settings open on (F-1414).
+   * A failed read throws: the field does not open on a guess.
+   */
+  async readDefaultThreshold(restaurantId: string): Promise<number> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("default_threshold_min")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`Failed to read the low-stock number: ${error.message}`);
+    }
+    return data?.default_threshold_min ?? DEFAULT_THRESHOLD_MIN_FALLBACK;
+  }
+
+  /**
    * Saves the house default. It is copied onto a row only when the row is
    * created, so items carried now keep their own par unless the person asked,
    * in so many words, for the number on them too (`applyToCarried`, F-1059).

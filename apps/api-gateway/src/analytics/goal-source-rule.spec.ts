@@ -20,6 +20,10 @@
 import { GoalsService } from "./goals.service";
 import { DatabaseService } from "../database/database.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { houseToday, shiftHouseDay } from "../common/house-day";
+
+const ZONE = "America/Los_Angeles";
+const today = houseToday(ZONE);
 
 /**
  * `AnalyticsService`, stubbed. Only `days_of_inventory` reaches it — it reads
@@ -121,7 +125,8 @@ const body = {
   targetValue: 2500,
   period: "week",
   direction: "at_least" as const,
-  deadline: "2026-09-10",
+  // A day ahead of the house's today: a past one is refused (F-1413).
+  deadline: shiftHouseDay(today, 30),
 };
 
 const insertPayload = (client: ReturnType<typeof makeClient>) =>
@@ -227,5 +232,74 @@ describe("GoalsService.createGoal — sourceRuleKey", () => {
     expect(fired.length).toBeGreaterThan(0);
     for (const key of fired)
       expect(GoalsService.isRecommendationRuleKey(key)).toBe(true);
+  });
+});
+
+/**
+ * F-1413 — a goal is not set or moved to a deadline that has already passed.
+ *
+ * A month goal set on 11 Oct with deadline 30 Sep was stored, its window was
+ * anchored to September (goal-window.ts), and the hourly sweep closed it on
+ * figures from before it existed. The deadline is now refused in words when
+ * it is behind the house's today; an edit that sends back the goal's own
+ * deadline unchanged still saves.
+ */
+describe("a goal's deadline is not in the past (F-1413)", () => {
+  const RID = "44444444-4444-4444-4444-444444444444";
+  const yesterday = shiftHouseDay(today, -1);
+  const lastWeek = shiftHouseDay(today, -7);
+  const writes = (client: ReturnType<typeof makeClient>) =>
+    client.calls.filter(
+      (c) =>
+        c.table === "analytics_goals" &&
+        (c.method === "insert" || c.method === "update"),
+    );
+  const goal = {
+    name: "Wine revenue back to baseline",
+    metricKey: "wine_revenue",
+    targetValue: 2500,
+    period: "week",
+    direction: "at_least" as const,
+  };
+
+  it("refuses to set a goal due before the house's today, before writing it", async () => {
+    const { service, client } = makeGoals({
+      pos_checks: [],
+      analytics_goals: [],
+    });
+    await expect(
+      service.createGoal(RID, { ...goal, deadline: yesterday }),
+    ).rejects.toThrow(/already passed/);
+    expect(writes(client)).toEqual([]);
+  });
+
+  it("sets a goal due today", async () => {
+    const { service, client } = makeGoals({
+      pos_checks: [],
+      analytics_goals: [],
+    });
+    await service.createGoal(RID, { ...goal, deadline: today });
+    expect(writes(client)[0].args[0].deadline).toBe(today);
+  });
+
+  it("refuses to move a goal's deadline into the past", async () => {
+    const { service, client } = makeGoals({
+      analytics_goals: [{ id: "g1", deadline: null }],
+    });
+    await expect(
+      service.updateGoal(RID, "g1", { deadline: lastWeek }),
+    ).rejects.toThrow(/already passed/);
+    expect(writes(client)).toEqual([]);
+  });
+
+  it("keeps a passed deadline sent back unchanged, so a rename still saves", async () => {
+    const { service, client } = makeGoals({
+      analytics_goals: [{ id: "g1", deadline: lastWeek }],
+    });
+    await service.updateGoal(RID, "g1", {
+      name: "Wine revenue (renamed)",
+      deadline: lastWeek,
+    });
+    expect(writes(client)[0].args[0].deadline).toBe(lastWeek);
   });
 });

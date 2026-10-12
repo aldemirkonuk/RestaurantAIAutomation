@@ -154,6 +154,40 @@ describe("deadStockCapital measures movement, not depth", () => {
     expect(out.deadStockCapital).toBe(0);
   });
 
+  it("does not count a wine listed inside the window as dead (F-1415)", async () => {
+    // Listed 20 days ago: it has not had 90 days to sell. The Barolo, listed
+    // a year ago, has.
+    const daysAgo = (n: number) =>
+      new Date(Date.now() - n * 86400000).toISOString();
+    const svc = build({
+      restaurant_inventory: [
+        { ...FAST_MOVER, created_at: daysAgo(400) },
+        { ...IDLE, created_at: daysAgo(365) },
+        {
+          ...IDLE,
+          id: "inv-new",
+          wine_name: "New Arrival Rioja",
+          master_wine_id: "mw-new",
+          created_at: daysAgo(20),
+        },
+      ],
+      wine_consumption_log: [
+        {
+          inventory_id: FAST_MOVER.id,
+          quantity: 6,
+          created_at: recently,
+          restaurant_inventory: { master_wine_id: FAST_MOVER.master_wine_id },
+        },
+      ],
+    });
+
+    const out = await svc.getFinancialSummary(RESTAURANT);
+    expect(out.deadStockTop.map((d: any) => d.name)).toEqual([
+      "Forgotten Barolo",
+    ]);
+    expect(out.deadStockCapital).toBe(900);
+  });
+
   it("reports null — never the whole cellar — when nothing records movement", async () => {
     const svc = build({
       restaurant_inventory: [FAST_MOVER, IDLE],
@@ -174,5 +208,121 @@ describe("deadStockCapital measures movement, not depth", () => {
     });
     const out = await svc.getFinancialSummary(RESTAURANT);
     expect((out.deadStockCapital ?? 0) > 0).toBe(false);
+  });
+});
+
+/**
+ * F-1412 — turns and days of stock are taken over the days the house has
+ * records for, not always a year. A house open sixty days set its sixty days
+ * of purchases against today's cellar as if they were a year's, so turns
+ * read about a sixth of the truth and days of stock six times too many.
+ */
+
+function makeHouseClient(rowsByTable: Rows, house: any) {
+  const passthrough = [
+    "select",
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "is",
+    "or",
+    "not",
+    "order",
+    "limit",
+    "in",
+    "range",
+  ];
+  return {
+    from: jest.fn((table: string) => {
+      const builder: any = {};
+      for (const m of passthrough) builder[m] = jest.fn(() => builder);
+      builder.maybeSingle = jest.fn(() =>
+        Promise.resolve({
+          data: table === "restaurants" ? house : null,
+          error: null,
+        }),
+      );
+      builder.then = (resolve: any, reject: any) =>
+        Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
+          resolve,
+          reject,
+        );
+      return builder;
+    }),
+  };
+}
+
+const YOUNG_HOUSE = "33333333-3333-3333-3333-333333333333";
+const ago = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+
+// One wine worth $1,000 at cost; $2,000 bought and delivered.
+const WINE = {
+  id: "inv-1",
+  wine_name: "House Red",
+  stock_live: 50,
+  menu_price_current: 40,
+  last_purchase_price: 20,
+  threshold_min: 4,
+  master_wine_id: "mw-1",
+};
+const order = (deliveredDaysAgo: number) => ({
+  id: `o-${deliveredDaysAgo}`,
+  provider_id: "p-1",
+  total_cost: 2000,
+  status: "delivered",
+  delivered_at: ago(deliveredDaysAgo),
+  created_at: ago(deliveredDaysAgo + 2),
+});
+
+const summary = (house: any, orders: any[]) =>
+  new AnalyticsService({
+    getClient: () =>
+      makeHouseClient(
+        { restaurant_inventory: [WINE], procurement_orders: orders },
+        house,
+      ),
+  } as any).getFinancialSummary(YOUNG_HOUSE);
+
+describe("turns and days of stock over the house's own span (F-1412)", () => {
+  it("takes a sixty-day-old house's purchases over sixty days, not a year", async () => {
+    const out = await summary({ currency: "USD", created_at: ago(59) }, [
+      order(50),
+    ]);
+    // $2,000 over 60 days against $1,000 held: 2 turns in 60 days, so
+    // about 12.2 a year and 30 days of stock — not 2 turns and 182.5 days.
+    expect(out.turnsPeriodDays).toBe(60);
+    expect(out.inventoryTurnover).toBeCloseTo((2 * 365) / 60, 5);
+    expect(out.daysInventoryOutstanding).toBeCloseTo(30, 5);
+    expect(out.basis.turns).toContain("60 days");
+  });
+
+  it("starts the span at an order delivered before the house was set up", async () => {
+    const out = await summary({ currency: "USD", created_at: ago(10) }, [
+      order(89),
+    ]);
+    expect(out.turnsPeriodDays).toBe(90);
+    expect(out.daysInventoryOutstanding).toBeCloseTo(45, 5);
+  });
+
+  it("keeps a year for a house older than a year", async () => {
+    const out = await summary({ currency: "USD", created_at: ago(900) }, [
+      order(50),
+    ]);
+    expect(out.turnsPeriodDays).toBe(365);
+    expect(out.inventoryTurnover).toBeCloseTo(2, 5);
+    expect(out.daysInventoryOutstanding).toBeCloseTo(182.5, 5);
+  });
+
+  it("gives no turns under a month of records, and says why", async () => {
+    const out = await summary({ currency: "USD", created_at: ago(9) }, [
+      order(5),
+    ]);
+    expect(out.cogs).toBe(2000);
+    expect(out.inventoryTurnover).toBeNull();
+    expect(out.daysInventoryOutstanding).toBeNull();
+    expect(out.basis.turns).toContain("10 days of records");
   });
 });

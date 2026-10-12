@@ -108,6 +108,24 @@ export function percentTargetRefusal(
   return `${GoalsService.SUPPORTED_METRICS[metricKey].label} is a share of checks, so its target cannot be above 100%. Send 35% as 0.35.`;
 }
 
+/**
+ * Why a goal's deadline is refused, or null (F-1413): it must be a day, and
+ * not one before the house's today. The period a goal counts opens on or
+ * before today, so a deadline that is not behind today is not behind it. No
+ * zone on record reads today as UTC's.
+ */
+export function deadlineRefusal(
+  deadline: string,
+  zone: string | null,
+): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline))
+    return "deadline must be YYYY-MM-DD";
+  const today = zone ? houseToday(zone) : new Date().toISOString().slice(0, 10);
+  return deadline < today
+    ? `A goal cannot be due on ${deadline}: that day has already passed here. Pick ${today} or a later day.`
+    : null;
+}
+
 @Injectable()
 export class GoalsService {
   private readonly logger = new Logger(GoalsService.name);
@@ -322,6 +340,13 @@ export class GoalsService {
     const opens = house.zone
       ? this.periodStart(input.period, house.zone)
       : null;
+    // F-1413: a deadline already behind the house's today (and so behind the
+    // period's start) was kept, and the hourly sweep closed the goal on
+    // figures from before it was set.
+    if (input.deadline != null) {
+      const refusal = deadlineRefusal(String(input.deadline), house.zone);
+      if (refusal) throw new Error(refusal);
+    }
     // A measure with nothing to read yet (no check filed) has no baseline:
     // the goal is set and stays "not measured" until a check lands (F-183).
     let baseline: number | null;
@@ -490,6 +515,28 @@ export class GoalsService {
       } else if (!/^\d{4}-\d{2}-\d{2}$/.test(String(input.deadline))) {
         throw new Error("deadline must be YYYY-MM-DD");
       } else {
+        // F-1413: a new deadline is not set in the past. The goal's own
+        // deadline sent back unchanged (the edit form sends every field) is
+        // kept, so renaming a goal whose deadline passed still saves.
+        const { zone } = await readHouseZone(
+          this.dbService.getClient(),
+          restaurantId,
+        );
+        if (deadlineRefusal(String(input.deadline), zone)) {
+          const { data: held, error: heldError } = await this.dbService
+            .getClient()
+            .from("analytics_goals")
+            .select("deadline")
+            .eq("restaurant_id", restaurantId)
+            .eq("id", goalId)
+            .maybeSingle();
+          if (heldError) throw new Error(heldError.message);
+          const was = held?.deadline ? String(held.deadline).slice(0, 10) : "";
+          if (was !== input.deadline)
+            throw new Error(
+              deadlineRefusal(String(input.deadline), zone) as string,
+            );
+        }
         patch.deadline = input.deadline;
       }
     }
