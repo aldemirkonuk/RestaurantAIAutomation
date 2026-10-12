@@ -24,6 +24,8 @@ import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel, shelvesFor } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
 import { newClientCountId } from '../../../lib/spotCountOutbox'
+import { getActiveRestaurantId } from '../../../services/api/client'
+import SoldOutControl from '../../cellar/next/SoldOutControl'
 
 /** Ordered and not yet in the cellar, from awaiting approval to on the truck (F-630). */
 const NOT_YET_ARRIVED = ['PENDING', 'APPROVAL_NEEDED', 'NEGOTIATING', 'APPROVED', 'CONFIRMED', 'IN_TRANSIT']
@@ -281,6 +283,8 @@ export function RowExpansion({
     <div className="bg-gray-50/70 border-b border-gray-100 px-6 py-4">
       {/* A wine whose name cannot say which wine it is (founder, 2026-09-21). */}
       <NameThisWine inventoryId={item.inventoryId} currentName={item.name} />
+      {/* F-145 (S195): a drink is 86'd here as on the cellar's bottle leaf. */}
+      {inventoryId && <SoldOutControl restaurantId={getActiveRestaurantId() || null} inventoryId={inventoryId} />}
       {/* info strip */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3.5 mb-3.5 border-b border-gray-100">
         {[

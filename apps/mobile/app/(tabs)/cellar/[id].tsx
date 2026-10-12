@@ -17,6 +17,15 @@ import {
 } from "@/api/queries";
 import { houseDecimal, houseMoney, type HouseMoneyFrame } from "@/lib/houseMoney";
 import { dailyDepletion } from "@/lib/wineActivity";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/api/client";
+import { useSession } from "@/state/session";
+import {
+  STOCK_OUT_CHOICES,
+  soldOutLine,
+  type StockOutCause,
+  type StockOutState,
+} from "@/lib/soldOut";
 
 function money(
   value: number | null | undefined,
@@ -149,6 +158,8 @@ export default function WineDetailScreen() {
               ) : null}
             </Card>
 
+            <SoldOutCard itemId={id} house={house} />
+
             {item?.locations && item.locations.length > 0 ? (
               <Card style={{ gap: space.sm }}>
                 <AppText variant="caption" tone="tertiary">
@@ -179,6 +190,79 @@ export default function WineDetailScreen() {
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+/**
+ * F-145 (S195): 86 a drink from the phone, or bring it back. Anyone of the
+ * house may; the gateway records who and when, and a delivery booked in
+ * brings it back on its own.
+ */
+function SoldOutCard({ itemId, house }: { itemId: string; house: HouseMoneyFrame }) {
+  const qc = useQueryClient();
+  const restaurantId = useSession((s) => s.user?.restaurantId);
+  const signedIn = useSession((s) => s.status) === "signedIn";
+  const base = `/inventory/${restaurantId}/item/${itemId}/stock-out`;
+  const key = ["inventory", "stock-out", restaurantId, itemId];
+  const q = useQuery({
+    queryKey: key,
+    queryFn: () => api<StockOutState>(base),
+    enabled: signedIn && !!restaurantId && !!itemId,
+  });
+  const mark = useMutation({
+    mutationFn: (cause: StockOutCause) =>
+      api<StockOutState>(base, { method: "POST", body: { cause } }),
+    onSuccess: (data) => qc.setQueryData(key, data),
+  });
+  const back = useMutation({
+    mutationFn: () => api<StockOutState>(`${base}/end`, { method: "POST" }),
+    onSuccess: (data) => qc.setQueryData(key, data),
+  });
+  if (!restaurantId || q.isLoading) return null;
+  const failed = mark.error ?? back.error;
+  const busy = mark.isPending || back.isPending;
+  return (
+    <Card style={{ gap: space.sm }}>
+      <AppText variant="caption" tone="tertiary">
+        Sold out (86)
+      </AppText>
+      <AppText variant="footnote" tone={q.data?.open ? "wine" : "secondary"}>
+        {soldOutLine(q.data, q.isError, house.locale ?? undefined, house.timeZone)}
+      </AppText>
+      {q.isError ? null : q.data?.open ? (
+        <PressableScale
+          onPress={() => back.mutate()}
+          disabled={busy}
+          accessibilityLabel="Back on"
+          style={{ paddingVertical: space.sm }}
+        >
+          <AppText variant="bodyMedium" tone="wine">
+            Back on
+          </AppText>
+        </PressableScale>
+      ) : (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.md }}>
+          {STOCK_OUT_CHOICES.map((c) => (
+            <PressableScale
+              key={c.cause}
+              onPress={() => mark.mutate(c.cause)}
+              disabled={busy}
+              accessibilityLabel={`Sold out: ${c.label}`}
+              style={{ paddingVertical: space.sm }}
+            >
+              <AppText variant="bodyMedium" tone="wine">
+                {c.label}
+              </AppText>
+            </PressableScale>
+          ))}
+        </View>
+      )}
+      {failed ? (
+        <AppText variant="footnote" tone="danger">
+          That did not save: {failed instanceof Error ? failed.message : String(failed)}
+        </AppText>
+      ) : null}
+    </Card>
   );
 }
 

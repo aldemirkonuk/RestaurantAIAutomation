@@ -17,6 +17,7 @@ const reconcileShadowItem = vi.hoisted(() => vi.fn())
 const recordSpotCount = vi.hoisted(() => vi.fn())
 const updateInventoryItem = vi.hoisted(() => vi.fn())
 const recordPour = vi.hoisted(() => vi.fn())
+const activeHouse = vi.hoisted(() => ({ id: '' }))
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../../../services/api/inventory', async () => {
@@ -30,6 +31,12 @@ vi.mock('../../../services/api/orders', async () => {
     '../../../services/api/orders',
   )
   return { ...actual, getOrders }
+})
+vi.mock('../../../services/api/client', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/api/client')>(
+    '../../../services/api/client',
+  )
+  return { ...actual, getActiveRestaurantId: () => activeHouse.id }
 })
 vi.mock('../../../stores', () => ({
   useNotificationStore: () => ({ success: vi.fn(), error: vi.fn() }),
@@ -83,6 +90,39 @@ function renderRow(overrides: Partial<InventoryItem> = {}, locations: any[] = []
     </QueryClientProvider>,
   )
 }
+
+/**
+ * F-145 (S195): a drink is 86'd from /inventory as well as from the cellar.
+ * The row had no sold-out control at all.
+ */
+describe('RowExpansion — sold out (86)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it("offers to mark the wine sold out, and says when it already is", async () => {
+    const { apiClient } = await import('../../../services/api/client')
+    activeHouse.id = 'house-1'
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({
+      data: {
+        open: { id: 'so-1', cause: 'broken', note: null, startedAt: '2026-09-02T17:30:00Z', startedBy: 'u', endedAt: null, endedBy: null },
+        recent: [],
+      },
+    } as any)
+    try {
+      renderRow()
+      expect(await screen.findByTestId('sold-out-open')).toHaveTextContent(/sold out/i)
+      expect(screen.getByTestId('sold-out-back')).toBeInTheDocument()
+      expect(get).toHaveBeenCalledWith('/inventory/house-1/item/inv-1/stock-out')
+    } finally {
+      get.mockRestore()
+      activeHouse.id = ''
+    }
+  })
+})
 
 describe('RowExpansion — View ledger', () => {
   beforeEach(() => {

@@ -2881,6 +2881,13 @@ export class InventoryService {
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+    // S195: who 86'd it is on /logs. A second tap marked nothing, so files
+    // nothing.
+    if (!error) {
+      await this.recordStockOut(restaurantId, inventoryId, userId, true, {
+        cause,
+      });
+    }
     return this.readStockOuts(client, restaurantId, inventoryId);
   }
 
@@ -2897,12 +2904,13 @@ export class InventoryService {
       "endStockOut",
       this.logger,
     );
-    const { error } = await client
+    const { data: ended, error } = await client
       .from("stock_outs")
       .update({ ended_at: new Date().toISOString(), ended_by: userId })
       .eq("restaurant_id", restaurantId)
       .eq("inventory_id", inventoryId)
-      .is("ended_at", null);
+      .is("ended_at", null)
+      .select("id, cause");
     if (error) {
       this.logger.error(`endStockOut ${inventoryId}: ${error.message}`);
       throw new HttpException(
@@ -2910,7 +2918,70 @@ export class InventoryService {
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+    // A delivery ends an 86 in the database (drink_back_on, 20270105500000);
+    // a person ending one is filed here with the same action.
+    for (const r of ended ?? []) {
+      await this.recordStockOut(restaurantId, inventoryId, userId, false, {
+        stock_out_id: r.id,
+        cause: r.cause,
+      });
+    }
     return this.readStockOuts(client, restaurantId, inventoryId);
+  }
+
+  /**
+   * The audit half of an 86 (S195): `drink_sold_out` when a person marks it,
+   * `drink_back_on` when a person brings it back. Never throws: the 86 stands
+   * or ends either way, and a failed row is logged.
+   */
+  private async recordStockOut(
+    restaurantId: string,
+    inventoryId: string,
+    actorUserId: string | null,
+    soldOut: boolean,
+    extra: Record<string, unknown>,
+  ): Promise<void> {
+    const action = soldOut ? "drink_sold_out" : "drink_back_on";
+    try {
+      const client = this.dbService.getClient();
+      const { data: item, error: nameError } = await client
+        .from("restaurant_inventory")
+        .select("wine_name, master_wine_library (name)")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .maybeSingle();
+      // The row is filed without the wine's name rather than not at all.
+      if (nameError) {
+        this.logger.warn(
+          `${action}: the wine's name could not be read: ${nameError.message}`,
+        );
+      }
+      const subject =
+        (item as any)?.wine_name || (item as any)?.master_wine_library?.name;
+      const { error } = await client.from("system_audit_log").insert({
+        actor_type: actorUserId ? "user" : "system",
+        actor_id: actorUserId,
+        action,
+        entity_type: "inventory_item",
+        entity_id: inventoryId,
+        restaurant_id: restaurantId,
+        reason: null,
+        changes: {
+          ...(subject ? { subject } : {}),
+          fields: { sold_out: { from: !soldOut, to: soldOut } },
+          ...extra,
+        },
+      });
+      if (error) {
+        this.logger.error(
+          `${action} happened but the audit row failed to write: ${error.message}`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `${action} happened but the audit row threw: ${err?.message}`,
+      );
+    }
   }
 
   /** The open stock-out (or null) and the last ten, newest first. */

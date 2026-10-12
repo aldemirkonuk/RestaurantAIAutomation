@@ -245,6 +245,29 @@ describe("MenuNext — a line price that is not the house's own (F-618)", () => 
   });
 });
 
+describe("MenuNext — a drink 86'd shows sold out on the house's menu (F-145)", () => {
+  it('marks only the sold-out line', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({ id: 'a', name: 'Xinomavro', inventory_item_id: 'inv-1', sold_out: true }),
+          line({ id: 'b', name: 'Assyrtiko', inventory_item_id: 'inv-2' }),
+        ],
+      }),
+    );
+    mount();
+    const rows = await screen.findAllByTestId('menu-row');
+    expect(rows[0].querySelector('[data-testid="menu-sold-out"]')?.textContent).toBe('sold out');
+    expect(rows[1].querySelector('[data-testid="menu-sold-out"]')).toBeNull();
+  });
+
+  it('says when which drinks are sold out could not be read', async () => {
+    mockGetMenu.mockResolvedValue(menu({ soldOutReadable: false, soldOutReason: 'Which drinks are sold out could not be read (timeout).' }));
+    mount();
+    expect(await screen.findByTestId('menu-sold-out-unread')).toHaveTextContent('timeout');
+  });
+});
+
 describe('MenuNext — money states its own house currency', () => {
   it('prints the HOUSE currency, never a bare dollar sign', async () => {
     mockCurrency.mockResolvedValue(currency({ code: 'TRY' }));

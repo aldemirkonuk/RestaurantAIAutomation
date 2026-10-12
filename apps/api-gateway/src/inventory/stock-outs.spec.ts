@@ -17,6 +17,7 @@ function serviceOver(opts: { owned?: boolean } = {}) {
   const owned = opts.owned ?? true;
   const rows: any[] = [];
   const writes: { op: string; row?: any; patch?: any }[] = [];
+  const audits: any[] = [];
   let seq = 0;
 
   const client = {
@@ -78,8 +79,11 @@ function serviceOver(opts: { owned?: boolean } = {}) {
             }
           } else if (table === "stock_outs" && op === "update") {
             writes.push({ op, patch: payload });
-            for (const r of rows.filter((x) => filters.every((f) => f(x))))
-              Object.assign(r, payload);
+            const hit = rows.filter((x) => filters.every((f) => f(x)));
+            for (const r of hit) Object.assign(r, payload);
+            result = { data: hit.map((r) => ({ ...r })), error: null };
+          } else if (table === "system_audit_log" && op === "insert") {
+            audits.push(payload);
           } else if (table === "stock_outs") {
             result = {
               data: rows
@@ -98,7 +102,7 @@ function serviceOver(opts: { owned?: boolean } = {}) {
   const svc = Object.create(InventoryService.prototype) as any;
   svc.dbService = { getClient: () => client };
   svc.logger = { error: () => {}, warn: () => {}, log: () => {} };
-  return { svc: svc as InventoryService, rows, writes };
+  return { svc: svc as InventoryService, rows, writes, audits };
 }
 
 describe("a drink can be 86'd and the stock-out is kept (F-145)", () => {
@@ -159,6 +163,40 @@ describe("a drink can be 86'd and the stock-out is kept (F-145)", () => {
       endedBy: "user-b",
     });
     expect(state.recent[0].endedAt).not.toBeNull();
+  });
+
+  it("files who 86'd it and who brought it back on the record, once each (S195)", async () => {
+    const { svc, audits } = serviceOver();
+    await svc.startStockOut(HOUSE, ITEM, { cause: "broken" }, "user-a");
+    // A second tap marks nothing, so it files nothing.
+    await svc.startStockOut(HOUSE, ITEM, { cause: "ran_out" }, "user-b");
+    await svc.endStockOut(HOUSE, ITEM, "user-c");
+    // Nothing was open any more, so nothing more is filed.
+    await svc.endStockOut(HOUSE, ITEM, "user-c");
+
+    expect(audits).toEqual([
+      expect.objectContaining({
+        actor_type: "user",
+        actor_id: "user-a",
+        action: "drink_sold_out",
+        entity_type: "inventory_item",
+        entity_id: ITEM,
+        restaurant_id: HOUSE,
+        changes: expect.objectContaining({
+          cause: "broken",
+          fields: { sold_out: { from: false, to: true } },
+        }),
+      }),
+      expect.objectContaining({
+        actor_id: "user-c",
+        action: "drink_back_on",
+        entity_id: ITEM,
+        changes: expect.objectContaining({
+          cause: "broken",
+          fields: { sold_out: { from: true, to: false } },
+        }),
+      }),
+    ]);
   });
 
   it("refuses a stock-out with no reason, and writes nothing", async () => {
