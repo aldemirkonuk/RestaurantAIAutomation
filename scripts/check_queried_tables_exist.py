@@ -355,7 +355,14 @@ KNOWN_MISSING_FUNCTIONS: dict[str, str] = {}
 # so all twelve are already in the queried set from the map literal itself and
 # are checked against migrations there. The module is dev-only and returns 404
 # under NODE_ENV=production, so if it is ever deleted this should go back to 24.
-DYNAMIC_CEILING = 26
+# 2026-10-12, raised 26 -> 27 (F-1120, integ round 27) for ONE site in
+# apps/api-gateway/src/menus/menu-sections.service.ts: `this.db.rpc(fn, args)`
+# inside its private `rpc(fn, args)` wrapper (ADR 0340 lane 3b). The blind spot
+# changes no verdict: every caller writes `this.rpc("add_menu_section", ...)`,
+# which TS_RPC_RE matches as a literal `.rpc(` site, so all eleven function names
+# are already in the queried set and checked against migrations. If the wrapper
+# goes, this goes back to 26.
+DYNAMIC_CEILING = 27
 
 
 # ---------------------------------------------------------------------------
