@@ -65,6 +65,9 @@ describe("a session in no house (ADR 0164, R4)", () => {
       "GET /auth/houses",
       "GET /auth/me",
       "GET /auth/me/linked-providers",
+      // F-750 (S195): an organisation is not a house; its owner may hand it
+      // over from a session in none, like deleting the account it unblocks.
+      "GET /auth/me/organisations",
       "GET /auth/verify",
       "GET /organizations/branches",
       "GET /passkeys",
@@ -74,6 +77,7 @@ describe("a session in no house (ADR 0164, R4)", () => {
       "POST /auth/invite/:code/accept",
       "POST /auth/logout",
       "POST /auth/me/link/:provider",
+      "POST /auth/me/organisations/:organizationId/hand-over",
       "POST /auth/me/password",
       "POST /auth/register/house",
       "POST /auth/resend-verification",

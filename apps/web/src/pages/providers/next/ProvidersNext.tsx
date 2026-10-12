@@ -28,6 +28,7 @@ import { ink } from "../../../lib/mudavym/motion";
 import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from "./pv-format";
 import { TwinSheet } from "./TwinSheet";
 import { NewVendorSheet, type VendorDraft } from "./NewVendorSheet";
+import { VendorCsvImport } from "./VendorCsvImport";
 import { businessTypeLabel } from "./VendorRecordEdit";
 import { UsualCurrencyCoveragePanel } from "./UsualCurrencyCoveragePanel";
 import {
@@ -304,6 +305,8 @@ export default function ProvidersNext() {
   const held = heldAt && heldAt.house === house ? heldAt : null;
   const [resumeWith, setResumeWith] = useState<VendorDraft | undefined>(undefined);
   const canChange = useCanChangeVendors();
+  // F-685: the spreadsheet import, beside "Add a vendor".
+  const [importing, setImporting] = useState(false);
   const [view, setView] = useState<ProvidersView>(viewFromUrl);
   const chooseView = (next: ProvidersView) => {
     setView(next);
@@ -443,6 +446,26 @@ export default function ProvidersNext() {
                   ? 'Vendors not known'
                   : 'Reading your vendors…'}
             </span>
+            {canChange && (
+              <button
+                type="button"
+                onClick={() => setImporting((v) => !v)}
+                data-testid="import-vendors"
+                aria-expanded={importing}
+                style={{
+                  fontFamily: SANS,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  padding: "7px 13px",
+                  borderRadius: 9,
+                  border: "1px solid var(--seal, #1A5E6B)",
+                  background: "transparent",
+                  color: "var(--seal, #1A5E6B)",
+                }}
+              >
+                Import a list
+              </button>
+            )}
             {canChange ? (
             <button
               type="button"
@@ -470,6 +493,14 @@ export default function ProvidersNext() {
             )}
           </div>
         </header>
+
+        {importing && canChange && (
+          <VendorCsvImport
+            house={house}
+            existing={data.cards.map((c) => ({ name: c.provider.name, email: c.provider.email }))}
+            onClose={() => setImporting(false)}
+          />
+        )}
 
         {held && !adding && canChange && (
           <div data-testid="vendor-draft-held" className="mb-4" style={{ maxWidth: 520 }}>

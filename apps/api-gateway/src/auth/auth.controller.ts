@@ -461,6 +461,46 @@ export class AuthController {
     return { success: true, message: "Left restaurant" };
   }
 
+  // F-750 (S195): the organisations this person owns and who could take each
+  // over. An organisation is not a house, so a session with no house reads it.
+  @Get("me/organisations")
+  @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
+  async getOrganisationsToHandOver(@Req() req: Request & { user: any }) {
+    return this.authService.organisationsToHandOver(req.user.userId);
+  }
+
+  // F-750 (S195): the way out of the "only owner of your organisation" refusal
+  // on DELETE /auth/me. Handing it over cannot be taken back by the giver, so
+  // it asks for the same proof as deleting the account (F-1347).
+  @Post("me/organisations/:organizationId/hand-over")
+  @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
+  @HttpCode(HttpStatus.OK)
+  async handOverOrganisation(
+    @Req() req: Request & { user: any },
+    @Param("organizationId") organizationId: string,
+    @Body("toUserId") toUserId?: string,
+    @Body("emailCode") emailCode?: string,
+  ) {
+    if (!UUID.test(organizationId ?? "") || !UUID.test(toUserId ?? "")) {
+      throw new BadRequestException(
+        "Choose the organisation and the person to hand it to. Nothing was changed.",
+      );
+    }
+    await this.authService.assertProvedItIsYou(
+      req.user.userId,
+      req.user.authTime,
+      emailCode,
+      "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then the organisation can be handed over. Nothing was changed.",
+    );
+    return this.authService.handOverOrganisation(
+      req.user.userId,
+      organizationId,
+      toUserId as string,
+    );
+  }
+
   @Delete("me")
   @UseGuards(JwtAuthGuard)
   @AllowUnverified() // deleting an account you cannot verify must stay possible

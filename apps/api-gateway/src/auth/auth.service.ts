@@ -4955,6 +4955,245 @@ export class AuthService {
     await members.removeMember(userId, restaurantId, userId);
   }
 
+  /**
+   * The organisations this person owns, each with who could take it over
+   * (`GET /auth/me/organisations`, F-750, S195). A candidate is another member
+   * of the organisation who owns one of its houses today: only such a person
+   * can open a new location in it (ADR 0164, OD-131(a), F-1035), which is the
+   * power the hand-over exists to keep alive. Any read that fails is a 503,
+   * never an empty list that reads as "nobody to hand it to".
+   */
+  async organisationsToHandOver(userId: string): Promise<{
+    organizations: {
+      id: string;
+      name: string;
+      candidates: { userId: string; name: string; email: string | null }[];
+    }[];
+  }> {
+    const db = this.databaseService.supabase;
+    const unreadable = (what: string, message: string) => {
+      this.logger.error(
+        `organisationsToHandOver could not read ${what} for ${userId}: ${message}`,
+      );
+      return new ServiceUnavailableException(
+        "Could not read who owns your organisation. Try again.",
+      );
+    };
+    const { data: owned, error: ownedError } = await db
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", userId)
+      .eq("role", ORG_OWNER);
+    if (ownedError) throw unreadable("owned organisations", ownedError.message);
+    const orgIds = [
+      ...new Set((owned ?? []).map((r: any) => r.organization_id as string)),
+    ];
+    if (orgIds.length === 0) return { organizations: [] };
+
+    const { data: orgs, error: orgsError } = await db
+      .from("organizations")
+      .select("id, name")
+      .in("id", orgIds);
+    if (orgsError) throw unreadable("organisations", orgsError.message);
+    const { data: members, error: membersError } = await db
+      .from("organization_members")
+      .select("organization_id, user_id, role")
+      .in("organization_id", orgIds);
+    if (membersError) throw unreadable("members", membersError.message);
+    const { data: houses, error: housesError } = await db
+      .from("restaurants")
+      .select("id, organization_id")
+      .in("organization_id", orgIds);
+    if (housesError) throw unreadable("houses", housesError.message);
+    const orgOfHouse = new Map<string, string>(
+      (houses ?? []).map((h: any) => [h.id, h.organization_id]),
+    );
+    const houseOwners = new Set<string>();
+    if (orgOfHouse.size > 0) {
+      const { data: access, error: accessError } = await db
+        .from("user_restaurant_access")
+        .select("user_id, restaurant_id")
+        .in("restaurant_id", [...orgOfHouse.keys()])
+        .eq("role", "owner")
+        .eq("is_active", true);
+      if (accessError) throw unreadable("house owners", accessError.message);
+      for (const a of access ?? []) {
+        houseOwners.add(`${orgOfHouse.get(a.restaurant_id)}:${a.user_id}`);
+      }
+    }
+    const candidateRows = (members ?? []).filter(
+      (m: any) =>
+        m.user_id !== userId &&
+        m.role !== ORG_OWNER &&
+        houseOwners.has(`${m.organization_id}:${m.user_id}`),
+    );
+    const people = new Map<string, { name: string; email: string | null }>();
+    if (candidateRows.length > 0) {
+      const { data: users, error: usersError } = await db
+        .from("users")
+        .select("user_id, name, email")
+        .in("user_id", [...new Set(candidateRows.map((m: any) => m.user_id))]);
+      if (usersError) throw unreadable("names", usersError.message);
+      for (const u of users ?? []) {
+        people.set(u.user_id, { name: u.name, email: u.email ?? null });
+      }
+    }
+    return {
+      organizations: orgIds.map((id) => ({
+        id,
+        name:
+          (orgs ?? []).find((o: any) => o.id === id)?.name ??
+          "Your organisation",
+        candidates: candidateRows
+          .filter((m: any) => m.organization_id === id)
+          .map((m: any) => ({
+            userId: m.user_id,
+            name: people.get(m.user_id)?.name ?? "A member",
+            email: people.get(m.user_id)?.email ?? null,
+          })),
+      })),
+    };
+  }
+
+  /**
+   * An organisation owner hands the organisation to another member
+   * (`POST /auth/me/organisations/:id/hand-over`, F-750, S195). The receiver
+   * must already own one of its houses, so they can open new locations in it
+   * (ADR 0164, OD-131(a), F-1035); they become its owner and
+   * `organizations.owner_id` names them. The giver steps down to `manager`,
+   * the role a house owner holds in an organisation they did not open
+   * (org-role.ts), and keeps every house role they hold. The receiver is
+   * promoted BEFORE the giver steps down, so a failure in between leaves two
+   * owners, never none; a retry finishes it.
+   */
+  async handOverOrganisation(
+    userId: string,
+    organizationId: string,
+    toUserId: string,
+  ): Promise<{ organizationId: string; newOwnerUserId: string }> {
+    const db = this.databaseService.supabase;
+    const nothing = "Nothing was changed; try again.";
+    if (toUserId === userId) {
+      throw new BadRequestException(
+        "Choose someone else to hand the organisation to. Nothing was changed.",
+      );
+    }
+    const { data: rows, error: rowsError } = await db
+      .from("organization_members")
+      .select("user_id, role")
+      .eq("organization_id", organizationId)
+      .in("user_id", [userId, toUserId]);
+    if (rowsError) {
+      this.logger.error(
+        `handOverOrganisation could not read organisation ${organizationId}: ${rowsError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        `Could not check who owns this organisation. ${nothing}`,
+      );
+    }
+    const mine = (rows ?? []).find((r: any) => r.user_id === userId);
+    const theirs = (rows ?? []).find((r: any) => r.user_id === toUserId);
+    if (mine?.role !== ORG_OWNER) {
+      throw new ForbiddenException({
+        message:
+          "Only an owner of the organisation can hand it over. Nothing was changed.",
+        code: "NOT_ORGANISATION_OWNER",
+      });
+    }
+    if (!theirs) {
+      throw new BadRequestException(
+        "That person is not part of this organisation. Nothing was changed.",
+      );
+    }
+
+    const { data: houses, error: housesError } = await db
+      .from("restaurants")
+      .select("id")
+      .eq("organization_id", organizationId);
+    if (housesError) {
+      this.logger.error(
+        `handOverOrganisation could not read organisation ${organizationId}'s houses: ${housesError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        `Could not check that person's restaurants. ${nothing}`,
+      );
+    }
+    let ownsAHouse = false;
+    if ((houses ?? []).length > 0) {
+      const { data: access, error: accessError } = await db
+        .from("user_restaurant_access")
+        .select("restaurant_id")
+        .eq("user_id", toUserId)
+        .eq("role", "owner")
+        .eq("is_active", true)
+        .in(
+          "restaurant_id",
+          (houses ?? []).map((h: any) => h.id),
+        );
+      if (accessError) {
+        this.logger.error(
+          `handOverOrganisation could not read ${toUserId}'s houses: ${accessError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          `Could not check that person's restaurants. ${nothing}`,
+        );
+      }
+      ownsAHouse = (access ?? []).length > 0;
+    }
+    if (!ownsAHouse) {
+      throw new BadRequestException(
+        "Only someone who owns one of this organisation's restaurants can take " +
+          "it over, so they can open new locations. Make them an owner of a " +
+          "restaurant on the Team page first. Nothing was changed.",
+      );
+    }
+
+    if (theirs.role !== ORG_OWNER) {
+      const { error: promoteError } = await db
+        .from("organization_members")
+        .update({ role: ORG_OWNER })
+        .eq("organization_id", organizationId)
+        .eq("user_id", toUserId);
+      if (promoteError) {
+        this.logger.error(
+          `handOverOrganisation could not make ${toUserId} an owner of ${organizationId}: ${promoteError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          `Could not hand the organisation over. ${nothing}`,
+        );
+      }
+    }
+    // Read by nothing since F-660 (organization_members decides), so a failed
+    // write here is logged rather than undoing the hand-over.
+    const { error: ownerIdError } = await db
+      .from("organizations")
+      .update({ owner_id: toUserId })
+      .eq("id", organizationId);
+    if (ownerIdError) {
+      this.logger.warn(
+        `handOverOrganisation: organizations.owner_id for ${organizationId} not updated: ${ownerIdError.message}`,
+      );
+    }
+    const { error: stepDownError } = await db
+      .from("organization_members")
+      .update({ role: "manager" })
+      .eq("organization_id", organizationId)
+      .eq("user_id", userId);
+    if (stepDownError) {
+      this.logger.error(
+        `handOverOrganisation could not step ${userId} down in ${organizationId}: ${stepDownError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "They now own the organisation, but you are still an owner too. Try " +
+          "again to finish handing it over.",
+      );
+    }
+    this.logger.log(
+      `Organisation ${organizationId} handed over by ${userId} to ${toUserId}`,
+    );
+    return { organizationId, newOwnerUserId: toUserId };
+  }
+
   async deleteAccount(userId: string): Promise<void> {
     // ADR 0242 (OD-204): an account that goes leaves each house through the one
     // removal path first. Checked before anything is written, so a gateway
@@ -4976,9 +5215,10 @@ export class AuthService {
     // organizations/org-role.ts), and deleting the users row cascades the
     // organization_members row away and nulls
     // organizations.owner_id, so the last owner going would leave nobody who
-    // ever could. There is no route that makes someone else an organisation
-    // owner yet, so this refuses rather than inventing a hand-over. A read
-    // that fails refuses too: it cannot be told apart from "not an owner".
+    // ever could. The way out is handOverOrganisation (below, S195): the owner
+    // hands the organisation to someone who owns one of its houses, then this
+    // passes. A read that fails refuses too: it cannot be told apart from
+    // "not an owner".
     const { data: orgOwnerRows, error: orgOwnerError } =
       await this.databaseService.supabase
         .from("organization_members")
@@ -5011,8 +5251,9 @@ export class AuthService {
       if ((count ?? 0) <= 1) {
         throw new BadRequestException(
           "You are the only owner of your organisation. If your account goes, " +
-            "nobody could open a new location in it, so it can't be deleted yet. " +
-            "Nothing was deleted.",
+            "nobody could open a new location in it. Hand the organisation over " +
+            "to someone who owns one of its restaurants first (Profile, " +
+            '"Hand over your organisation"), then try again. Nothing was deleted.',
         );
       }
     }

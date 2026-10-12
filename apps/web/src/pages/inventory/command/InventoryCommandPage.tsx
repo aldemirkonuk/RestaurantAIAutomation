@@ -23,6 +23,7 @@ import {
   Trash2,
   Power,
   Barcode,
+  Upload,
 } from "lucide-react";
 import { useInventoryPage, type InventoryItem } from "../index";
 import {
@@ -81,6 +82,7 @@ import { RestaurantBranchSwitcher } from "../../../components/layout/RestaurantB
 import { useAuth } from "../../../contexts/AuthContext";
 import { watchSpotCountOutbox } from "../../../lib/spotCountOutbox";
 import { toast } from "sonner";
+import { OpeningStockImport } from "./OpeningStockImport";
 import {
   Kpi,
   StockGauge,
@@ -412,6 +414,8 @@ export function InventoryCommandPage() {
   const [showMenuScanner, setShowMenuScanner] = useState(false);
   const [showManualReceipt, setShowManualReceipt] = useState(false);
   const [showStorageManager, setShowStorageManager] = useState(false);
+  // F-685: the opening-stock spreadsheet, for owners and managers.
+  const [showOpeningStock, setShowOpeningStock] = useState(false);
   const [verifyOrder, setVerifyOrder] = useState<any | null>(null);
   const [showVerifyList, setShowVerifyList] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -1303,6 +1307,15 @@ export function InventoryCommandPage() {
           >
             <Power className="w-3.5 h-3.5" /> Inactive wines
           </button>
+          {canEditPrice && (
+            <button
+              onClick={() => setShowOpeningStock((v) => !v)}
+              aria-expanded={showOpeningStock}
+              className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+            >
+              <Upload className="w-3.5 h-3.5" /> Load opening stock
+            </button>
+          )}
           <button
             onClick={() => setShowAddWineSelection(true)}
             className="flex items-center gap-1.5 h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white rounded-lg text-xs font-bold shadow-sm"
@@ -1311,6 +1324,20 @@ export function InventoryCommandPage() {
           </button>
         </div>
       </div>
+
+      {showOpeningStock && canEditPrice && (
+        <OpeningStockImport
+          carried={inventory.map((w) => ({
+            inventoryId: w.inventoryId,
+            name: w.name,
+            vintage: w.vintage,
+            producer: w.producer,
+          }))}
+          shelves={locations.map((l) => ({ id: l.id, name: l.name }))}
+          onDone={() => void refetchInventory()}
+          onClose={() => setShowOpeningStock(false)}
+        />
+      )}
 
       {verifyNotice && (
         <div

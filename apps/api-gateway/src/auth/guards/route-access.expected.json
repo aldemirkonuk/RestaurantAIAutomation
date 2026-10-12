@@ -165,6 +165,8 @@
   "POST /auth/me/link/:provider (AuthController.linkProvider)": "open",
   "DELETE /auth/me/link/:provider (AuthController.unlinkProvider)": "open",
   "POST /auth/me/leave-restaurant (AuthController.leaveRestaurant)": "open",
+  "GET /auth/me/organisations (AuthController.getOrganisationsToHandOver)": "open",
+  "POST /auth/me/organisations/:organizationId/hand-over (AuthController.handOverOrganisation)": "open",
   "DELETE /auth/me (AuthController.deleteAccount)": "open",
   "GET /auth/me/role (AuthController.getMyRole)": "open",
   "POST /auth/invite/:code/accept (AuthController.acceptInviteAsAuthed)": "open",
