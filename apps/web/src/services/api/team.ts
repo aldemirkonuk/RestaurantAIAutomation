@@ -198,6 +198,11 @@ export interface WeekPayload {
     pricedShifts?: number
     unpricedShifts?: number
     targetPct?: number | null
+    /** The week's net sales from the till; null when not all known (F-1549). */
+    netSales?: number | null
+    /** Cost as a percentage of `netSales`; null with `laborPctWhy` saying why. */
+    laborPct?: number | null
+    laborPctWhy?: string | null
     costCovers?: 'scheduled_shifts'
     /** Worked shifts that are an owner's and so not in a manager's total (item 71); 0 for the owner. */
     ownerShiftsLeftOut?: number

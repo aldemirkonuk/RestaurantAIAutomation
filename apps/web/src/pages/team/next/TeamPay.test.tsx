@@ -1054,3 +1054,55 @@ describe("a manager's own time off is an owner's to decide (F-1547)", () => {
     expect(screen.queryByRole('button', { name: 'Turn it down' })).toBeNull();
   });
 });
+
+// ── F-1549: the target is measured against the week's sales, or says why not ──
+
+describe('the labour target sits beside a share of sales, never alone', () => {
+  const targetWeek = (labor: Record<string, unknown>) =>
+    weekPayload({
+      labor: {
+        enabled: true,
+        moneyVisible: true,
+        totalHours: 42,
+        totalCost: 840,
+        costComplete: true,
+        pricedShifts: 5,
+        unpricedShifts: 0,
+        targetPct: 30,
+        overtime: [],
+        leave: { readable: true, paid: [], paidDays: 0, unknownTypeDays: 0 },
+        ...labor,
+      },
+      settings: {
+        restaurant_id: 'r1',
+        labor_tracking_enabled: true,
+        labor_target_pct: 30,
+        labor_target_chosen: true,
+        configured: true,
+      },
+      money: TRY_HOUSE,
+      country: 'Türkiye',
+    });
+
+  it('prints the share of sales in the house’s hand beside the target', async () => {
+    api.week = targetWeek({ laborPct: 12.5, laborPctWhy: null });
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(await within(labour).findByText(/%12,5 of sales · target 30%/)).toBeInTheDocument();
+    expect(within(labour).queryByTestId('labour-share-unknown')).not.toBeInTheDocument();
+  });
+
+  it('with no sales known, says so instead of "target 30% of sales"', async () => {
+    api.week = targetWeek({
+      laborPct: null,
+      laborPctWhy: 'No till is sending sales to this house yet, so the week’s sales are not known.',
+    });
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(await within(labour).findByText(/target 30%/)).toBeInTheDocument();
+    expect(within(labour).queryByText(/target 30% of sales/)).not.toBeInTheDocument();
+    expect(within(labour).getByTestId('labour-share-unknown')).toHaveTextContent(
+      'No till is sending sales to this house yet',
+    );
+  });
+});

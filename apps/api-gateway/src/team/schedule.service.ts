@@ -46,6 +46,7 @@ import { readHouseZone } from "../common/house-day";
 import { houseMembersInRoles } from "../common/tenant/live-membership";
 import { houseFrame as frameOf } from "../common/house-frame";
 import { dayWords, weekWords } from "./house-date-words";
+import { labourShare, readWeekSales } from "./week-sales";
 
 /** Why a week's coverage is `null` (F-1376): its rules could not be read. */
 export const COVERAGE_RULES_UNREAD =
@@ -237,6 +238,26 @@ export class ScheduleService {
       shiftRows,
     );
     const frame = await this.houseFrame(restaurantId);
+    // `labourRegion` is the state already read inside the country (ADR
+    // 0305), so it reads back as itself ("US-CA" is California's key).
+    const labour = houseLabour({
+      ...frame,
+      state_province: frame.labourRegion,
+    });
+    // The cost is priced again on the house's rules NOW, as the hours are
+    // (F-1548): a cost stored before the owner recorded the state or fixed the
+    // country was priced on the old rules, and the week's hours and its cost
+    // then disagreed. Only for a viewer who gets the money.
+    // `onTheRoster` answers a new array, so its rows are swapped in place for
+    // their re-priced copies; the rows read from the database are not touched.
+    if (settings?.labor_tracking_enabled && seesMoney(viewer)) {
+      const priced = await this.priceOnHouseRules(
+        restaurantId,
+        shiftRows,
+        labour,
+      );
+      shiftRows.splice(0, shiftRows.length, ...priced);
+    }
     const labor = await this.computeLabor(
       restaurantId,
       weekStart,
@@ -244,9 +265,7 @@ export class ScheduleService {
       settings,
       viewer,
       roster,
-      // `labourRegion` is the state already read inside the country (ADR
-      // 0305), so it reads back as itself ("US-CA" is California's key).
-      houseLabour({ ...frame, state_province: frame.labourRegion }),
+      labour,
     );
 
     return {
@@ -265,6 +284,71 @@ export class ScheduleService {
         ? { money: await this.houseMoney(restaurantId) }
         : {}),
     };
+  }
+
+  /**
+   * Each assigned shift's cost priced again on the house's labour rules as
+   * they are now, at the wage the person had on the shift's day — the rule
+   * `laborCost` prices a write with (the old wage of the first change after
+   * that day, else the wage on file). F-1548: the stored `labor_cost` was
+   * priced at write time, so a house whose state was recorded or whose
+   * country was fixed later kept costs on the old rules while its hours were
+   * read on the new ones. A person with no wage stays unpriced (ADR 0088).
+   * Nothing is written: the stored cost is re-priced on its next write.
+   */
+  private async priceOnHouseRules(
+    restaurantId: string,
+    shifts: any[],
+    labour: HouseLabour,
+  ): Promise<any[]> {
+    const ids = [
+      ...new Set(shifts.filter((s) => s.member_id).map((s) => s.member_id)),
+    ];
+    if (ids.length === 0) return shifts;
+    const first = shifts
+      .map((s) => String(s.shift_date ?? "").slice(0, 10))
+      .sort()[0];
+    const [people, changes] = await Promise.all([
+      this.sb
+        .from("team_members")
+        .select("id, hourly_wage")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids),
+      this.sb
+        .from("team_member_wage_changes")
+        .select("member_id, old_wage, changed_at")
+        .eq("restaurant_id", restaurantId)
+        .in("member_id", ids)
+        .gte("changed_at", `${addDays(first, 1)}T00:00:00.000Z`)
+        .order("changed_at", { ascending: true }),
+    ]);
+    const failed = people.error ?? changes.error;
+    if (failed) {
+      this.logger.error(
+        `getWeek: could not read the wages to price the week in ` +
+          `${restaurantId}: ${failed.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the wages to cost this week, so the week is not shown.",
+      );
+    }
+    const wageNow = new Map<string, unknown>(
+      (people.data ?? []).map((p: any) => [p.id, p.hourly_wage]),
+    );
+    const history = (changes.data ?? []) as any[];
+    return shifts.map((s) => {
+      if (!s.member_id) return s;
+      const day = String(s.shift_date ?? "").slice(0, 10);
+      const after = Date.parse(`${addDays(day, 1)}T00:00:00Z`);
+      const later = history.find(
+        (c) => c.member_id === s.member_id && Date.parse(c.changed_at) >= after,
+      );
+      const wage = later ? later.old_wage : wageNow.get(s.member_id);
+      return {
+        ...s,
+        labor_cost: priceShift((wage ?? null) as any, s, labour),
+      };
+    });
   }
 
   /**
@@ -2242,11 +2326,23 @@ export class ScheduleService {
           priced.reduce((s, sh) => s + Number(sh.labor_cost), 0) * 100,
         ) / 100
       : null;
+    // The share of sales the target is measured against (F-1549): the cost
+    // over the week's net sales, the dashboard's figure for the same house
+    // days. `null` with the reason whenever the sales are not all known.
+    const sales = await readWeekSales(
+      this.sb,
+      restaurantId,
+      weekStart,
+      labour.zone ?? null,
+    );
     return {
       enabled: true,
       ...hours,
       /** `null` = this week cannot be costed yet. Never a partial, never 0. */
       totalCost,
+      /** The week's net sales from the till; `null` = not all known. */
+      netSales: sales.netSales,
+      ...labourShare(totalCost, sales, ownerShiftsLeftOut),
       costComplete,
       pricedShifts: priced.length,
       unpricedShifts,
