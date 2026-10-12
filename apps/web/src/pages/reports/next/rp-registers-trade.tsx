@@ -30,7 +30,7 @@ import {
   weekStart,
   weekdayIndex,
 } from './rp-format';
-import { AMOUNTS_WITHHELD } from './rp-registers-house';
+import { AMOUNTS_WITHHELD, zeroChecksSaid } from './rp-registers-house';
 import { analysis, arr, obj, str, type AnalysisSpec } from './rp-spec';
 import { houseToday } from '@/lib/houseZone';
 import type { Cat, Cell } from './rp-view';
@@ -113,6 +113,8 @@ export interface TillWindow {
   checkCount: number | null;
   /** Of `checkCount`, the checks with no total, left out of `revenue` (F-1444). 0 from an older gateway. */
   checksWithoutTotal: number;
+  /** Of `checkCount`, the checks rung at 0, a comp or a staff meal (F-1534). 0 from an older gateway. */
+  checksTakingNoMoney: number;
   from: string;
   to: string;
   days: number;
@@ -176,6 +178,7 @@ const trailingTill = analysis<TillWindow>({
       revenue: num(d.revenue),
       checkCount: num(d.checkCount),
       checksWithoutTotal: num(d.checksWithoutTotal) ?? 0,
+      checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       from: str(d.from),
       to: str(d.to),
       days: num(d.days) ?? 0,
@@ -221,8 +224,10 @@ const trailingTill = analysis<TillWindow>({
         basis: [],
       };
     // F-1444: a check with no total is left out of Taken, so the average
-    // divides by the checks that carry one, never by every check.
-    const totaled = w.checkCount != null ? w.checkCount - w.checksWithoutTotal : null;
+    // divides by the checks that carry one, never by every check. F-1534: nor
+    // by a check rung at 0 (a comp, a staff meal), which took no money.
+    const totaled =
+      w.checkCount != null ? w.checkCount - w.checksWithoutTotal - w.checksTakingNoMoney : null;
     const avg = w.revenue != null && totaled != null && totaled > 0 ? w.revenue / totaled : null;
     const figures = [
       { label: 'Taken', value: money(w.revenue), note: 'No POS revenue recorded' },
@@ -242,9 +247,12 @@ const trailingTill = analysis<TillWindow>({
     // F-446 (the on-screen twin of F-412's export note): no refund reaches the
     // till — the POS check carries no refund field and no adapter reads one —
     // so "Taken" is what was rung up, and the page says so wherever it prints it.
+    // F-1536: Taken is the checks' totals, which hold tax and tips on most
+    // tills, while the dashboard draws net sales; the page says which it is.
     const notes = [
-      ...(w.revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : []),
+      ...(w.revenue != null ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF] : []),
       ...(w.checksWithoutTotal > 0 ? [tillUntotaledSaid(w.checksWithoutTotal)] : []),
+      ...(w.checksTakingNoMoney > 0 ? [zeroChecksSaid(w.checksTakingNoMoney)] : []),
     ];
     if (w.dailySeries.length === 0)
       return {
@@ -330,6 +338,16 @@ const till: AnalysisSpec = {
         ? `/analytics/pos-revenue/${rid}?week=${ctx.week}`
         : trailingTill.path!(rid, ctx),
 };
+
+/**
+ * F-1536: said beside every till figure. Taken sums the checks' totals, which
+ * on most tills hold tax and the tip, and the dashboard draws net sales.
+ *
+ * Word for word the gateway's `TILL_TOTALS_NOT_NET`
+ * (`reports/exports/report-export-cuttings.ts`); change one and the other with it.
+ */
+export const TILL_TOTALS_NOT_NET =
+  "Taken is the check totals as your till sends them. On most tills that includes tax and tips, so it reads higher than the dashboard's net sales, which are before tax and tips.";
 
 /**
  * Said beside every till figure: refunds are not taken off "Taken".

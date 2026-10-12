@@ -259,7 +259,7 @@ export class TableAnalyticsService {
         client
           .from("pos_checks")
           .select(
-            "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
+            "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, subtotal, total, tip, items",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -386,7 +386,9 @@ export class TableAnalyticsService {
         covers: number;
         wineChecks: number;
         tips: number;
-        totalWithTip: number;
+        tipBase: number;
+        paidChecks: number;
+        zeroChecks: number;
       }
     >();
     for (const c of checks) {
@@ -405,23 +407,22 @@ export class TableAnalyticsService {
         covers: 0,
         wineChecks: 0,
         tips: 0,
-        totalWithTip: 0,
+        tipBase: 0,
+        paidChecks: 0,
+        zeroChecks: 0,
       };
       a.revenue += c.total || 0;
       a.checks += 1;
+      tallyCheck(a, c);
       a.covers += c.covers || 0;
       const items: any[] = Array.isArray(c.items) ? c.items : [];
       a.wineChecks += items.some((it) => it?.is_wine) ? 1 : 0;
-      if (c.tip != null && c.total) {
-        a.tips += c.tip;
-        a.totalWithTip += c.total;
-      }
       agg.set(c.table_id, a);
     }
 
     const rows = shown.map((t: any) => {
       const a = agg.get(t.id);
-      const avgCheck = a && a.checks > 0 ? a.revenue / a.checks : null;
+      const avgCheck = a && a.paidChecks > 0 ? a.revenue / a.paidChecks : null;
       return {
         tableId: t.id,
         label: t.label,
@@ -432,6 +433,8 @@ export class TableAnalyticsService {
         distanceToBarM: t.distance_to_bar_m,
         distanceToPoolM: t.distance_to_pool_m,
         checks: a?.checks ?? 0,
+        paidChecks: a?.paidChecks ?? 0,
+        checksTakingNoMoney: a?.zeroChecks ?? 0,
         revenue: a?.revenue ?? 0,
         covers: a?.covers ?? 0,
         avgCheck,
@@ -445,14 +448,16 @@ export class TableAnalyticsService {
             ? Math.min(1, (a.covers || 0) / (t.seats * Math.max(1, a.checks)))
             : null,
         wineAttachRate: a && a.checks > 0 ? a.wineChecks / a.checks : null,
-        tipPct: a && a.totalWithTip > 0 ? a.tips / a.totalWithTip : null,
+        tipPct: a && a.tipBase > 0 ? a.tips / a.tipBase : null,
         tipPerSeat: a && t.seats > 0 ? a.tips / t.seats : null,
         turnoverPerSeat: a && t.seats > 0 ? a.checks / t.seats : null,
       };
     });
 
     // Peer standings on avg check (tables with enough sample).
-    const eligible = rows.filter((r) => r.checks >= 3 && r.avgCheck !== null);
+    const eligible = rows.filter(
+      (r) => r.paidChecks >= 3 && r.avgCheck !== null,
+    );
     const standings = E.peerComparison(
       eligible.map((r) => ({ entity: r.tableId, value: r.avgCheck as number })),
     );
@@ -605,6 +610,13 @@ export class TableAnalyticsService {
       learnedTables: shown.filter((t: any) => t.learned_at != null).length,
       /** Shown tables with at least one distance recorded. */
       geometryRecorded,
+      /**
+       * Checks at a shown table rung at 0 (a comp, a staff meal): in Checks,
+       * out of every average check (F-1534).
+       */
+      checksTakingNoMoney: rows.reduce((n, r) => n + r.checksTakingNoMoney, 0),
+      /** Tip % is over net sales, the checks' subtotal (F-1532). */
+      tipBasis: "net" as const,
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -624,7 +636,9 @@ export class TableAnalyticsService {
         covers: number;
         wineChecks: number;
         tips: number;
-        totalWithTip: number;
+        tipBase: number;
+        paidChecks: number;
+        zeroChecks: number;
       }
     >();
     const obs = {
@@ -642,17 +656,16 @@ export class TableAnalyticsService {
         covers: 0,
         wineChecks: 0,
         tips: 0,
-        totalWithTip: 0,
+        tipBase: 0,
+        paidChecks: 0,
+        zeroChecks: 0,
       };
       a.revenue += c.total || 0;
       a.checks += 1;
+      tallyCheck(a, c);
       a.covers += c.covers || 0;
       const items: any[] = Array.isArray(c.items) ? c.items : [];
       a.wineChecks += items.some((it) => it?.is_wine) ? 1 : 0;
-      if (c.tip != null && c.total) {
-        a.tips += c.tip;
-        a.totalWithTip += c.total;
-      }
       byWaiter.set(server, a);
       if (c.table_id) {
         obs.y.push(c.total || 0);
@@ -664,16 +677,18 @@ export class TableAnalyticsService {
     const waiters = Array.from(byWaiter.entries()).map(([name, a]) => ({
       name,
       checks: a.checks,
+      paidChecks: a.paidChecks,
+      checksTakingNoMoney: a.zeroChecks,
       revenue: a.revenue,
-      avgCheck: a.checks > 0 ? a.revenue / a.checks : null,
+      avgCheck: a.paidChecks > 0 ? a.revenue / a.paidChecks : null,
       wineAttachRate: a.checks > 0 ? a.wineChecks / a.checks : null,
-      tipPct: a.totalWithTip > 0 ? a.tips / a.totalWithTip : null,
+      tipPct: a.tipBase > 0 ? a.tips / a.tipBase : null,
       revenuePerCover: a.covers > 0 ? a.revenue / a.covers : null,
     }));
 
     const standings = E.peerComparison(
       waiters
-        .filter((w) => w.checks >= 3 && w.avgCheck !== null)
+        .filter((w) => w.paidChecks >= 3 && w.avgCheck !== null)
         .map((w) => ({ entity: w.name, value: w.avgCheck as number })),
     );
     const standingByName = new Map(standings.map((s) => [s.entity, s]));
@@ -707,6 +722,13 @@ export class TableAnalyticsService {
         (a: any, b: any) => (b.revenue ?? 0) - (a.revenue ?? 0),
       ),
       adjusted,
+      /** Checks rung at 0 (a comp, a staff meal): in Checks, out of Avg check (F-1534). */
+      checksTakingNoMoney: waiters.reduce(
+        (n, w) => n + w.checksTakingNoMoney,
+        0,
+      ),
+      /** Tip % is over net sales, the checks' subtotal (F-1532). */
+      tipBasis: "net" as const,
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -830,4 +852,30 @@ function recorded(v: unknown): number {
 function isoOf(v: string): string {
   const t = Date.parse(v);
   return Number.isNaN(t) ? v : new Date(t).toISOString();
+}
+
+/**
+ * The parts of one check a table's or a server's average and tip rate rest on.
+ *
+ * - F-1534: a check rung at 0 (a comp, a staff meal) took no money. It is
+ *   counted in `zeroChecks` and left out of `paidChecks`, the count every
+ *   average check divides by, so it does not pull the average down. A check
+ *   with no total is in neither: it is not a 0 (F-1444).
+ * - F-1532: the tip rate is tips over the net sales (`subtotal`) of the checks
+ *   that carried both. It used to be over `total`, which on Square and most
+ *   tills already holds the tip, so a 20% tip read as 15.9%.
+ */
+function tallyCheck(
+  a: { tips: number; tipBase: number; paidChecks: number; zeroChecks: number },
+  c: { total?: unknown; subtotal?: unknown; tip?: unknown },
+): void {
+  const total = recorded(c.total);
+  if (total === 0) a.zeroChecks += 1;
+  else if (Number.isFinite(total)) a.paidChecks += 1;
+  const net = recorded(c.subtotal);
+  const tip = recorded(c.tip);
+  if (Number.isFinite(tip) && Number.isFinite(net) && net > 0) {
+    a.tips += tip;
+    a.tipBase += net;
+  }
 }

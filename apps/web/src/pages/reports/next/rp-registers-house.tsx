@@ -474,6 +474,28 @@ export function emptyWindowLine(w: PosWindow): string | null {
 
 /* ──────────────────────────────────────────────────────── 8. the room ─── */
 
+/**
+ * F-1532: the room and server registers sum the checks' totals, which on most
+ * tills hold tax and the tip, while the dashboard draws net sales (ADR 0287).
+ * Word for word the gateway's `REGISTER_TOTALS_NOT_NET`
+ * (`reports/exports/report-export-cuttings.ts`); change one and the other with it.
+ */
+export const REGISTER_TOTALS_NOT_NET =
+  "Taken and the average check are check totals as your till sends them. On most tills that includes tax and tips, so they read higher than the dashboard's net sales, which are before tax and tips.";
+
+/** F-1532: word for word the gateway's `REGISTER_TIP_ON_NET`. */
+export const REGISTER_TIP_ON_NET =
+  'Tip is tips over net sales, before tax and tips, on the checks that recorded a tip.';
+
+/**
+ * F-1534: checks rung at 0, a comp or a staff meal, on the till, room and
+ * server registers. Word for word the gateway's `zeroChecksSaid`
+ * (`reports/exports/report-export-cuttings.ts`).
+ */
+export function zeroChecksSaid(n: number): string {
+  return `${n} ${n === 1 ? 'check was' : 'checks were'} rung at 0, such as a comp or a staff meal: counted in Checks, left out of the average check.`;
+}
+
 export interface SeatsRegister extends PosWindow {
   dataStatus: string;
   /** Checks in the window with no table: the till named none, or a word no table answers (ADR 0303); null from an older gateway. */
@@ -484,6 +506,8 @@ export interface SeatsRegister extends PosWindow {
   hiddenTables: number | null;
   /** The house's tables hidden now, whatever the window held; null from an older gateway. */
   hiddenTablesInHouse: number | null;
+  /** Checks at a shown table rung at 0, out of every average (F-1534); 0 from an older gateway. */
+  checksTakingNoMoney: number;
   tables: Array<{
     tableId: string;
     label: string;
@@ -517,6 +541,7 @@ const seats = analysis<SeatsRegister>({
       checksAtHiddenTables: num(d.checksAtHiddenTables),
       hiddenTables: num(d.hiddenTables),
       hiddenTablesInHouse: num(d.hiddenTablesInHouse),
+      checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
@@ -535,6 +560,7 @@ const seats = analysis<SeatsRegister>({
   view: (s) => {
     const basis = [
       `Non-voided pos_checks the till attributed to a shown table over the last ${s.sinceDays} days.`,
+      REGISTER_TOTALS_NOT_NET,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
     ];
     // ADR 0303: tables are learned from the till, so nothing is drawn. A check
@@ -566,6 +592,7 @@ const seats = analysis<SeatsRegister>({
         ? `${countOf(withoutTable, 'check has', 'checks have')} no table: counted in takings, not in the room.`
         : null,
       hiddenNote,
+      s.checksTakingNoMoney > 0 ? zeroChecksSaid(s.checksTakingNoMoney) : null,
     ].filter((n): n is string => n !== null);
     const served = s.tables.filter((t) => t.checks > 0);
     const figures = [
@@ -661,6 +688,10 @@ const seats = analysis<SeatsRegister>({
 
 export interface ServiceRegister extends PosWindow {
   dataStatus: string;
+  /** 'net' when Tip % is over the checks' subtotal (F-1532); null from an older gateway, which took it over the total. */
+  tipBasis: 'net' | null;
+  /** Checks rung at 0, out of Avg check (F-1534); 0 from an older gateway. */
+  checksTakingNoMoney: number;
   adjusted: { method?: string; r2?: number | null } | null;
   waiters: Array<{
     name: string;
@@ -688,6 +719,8 @@ const service = analysis<ServiceRegister>({
     return {
       ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
+      tipBasis: d.tipBasis === 'net' ? 'net' : null,
+      checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
         name: str(w.name),
@@ -703,6 +736,8 @@ const service = analysis<ServiceRegister>({
   view: (s) => {
     const basis = [
       `Non-voided pos_checks grouped by server name over the last ${s.sinceDays} days.`,
+      REGISTER_TOTALS_NOT_NET,
+      s.tipBasis === 'net' ? REGISTER_TIP_ON_NET : null,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
       s.adjusted?.method ?? null,
     ];
@@ -765,6 +800,7 @@ const service = analysis<ServiceRegister>({
       figures,
       notes: [
         'A server’s raw average is partly the section they were given. The adjusted fit above is the engine’s attempt to remove it; where it reads an em dash, the raw ranking is all there is.',
+        ...(s.checksTakingNoMoney > 0 ? [zeroChecksSaid(s.checksTakingNoMoney)] : []),
       ],
       basis,
     };

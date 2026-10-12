@@ -254,3 +254,60 @@ describe("TableAnalyticsService — the window is the till's house days (F-575)"
     );
   });
 });
+
+// F-1532 / F-1534 (sim 50, analytics-real-house): a US check of $100 food,
+// $6 tax and a $20 tip reaches the till as total 126, subtotal 100, tip 20.
+// The server Tip read 20/126 = 15.9% because the tip sat in its own
+// denominator; it is now over net sales, 20%. A comp rung at 0 pulled the
+// average check down as if it were a sale; it is now counted apart.
+describe("TableAnalyticsService — the tip rate is over net sales, and a check rung at 0 is not an average (F-1532, F-1534)", () => {
+  const usCheck = (over: Record<string, unknown> = {}) =>
+    check({ subtotal: 100, total: 126, tip: 20, ...over });
+  const comp = (id: string) => check({ id, subtotal: 0, total: 0, tip: null });
+
+  it("the server register takes Tip over the subtotal and leaves a comp out of Avg check", async () => {
+    const { service } = makeService({
+      pos_checks: [ok([usCheck({ id: "a" }), usCheck({ id: "b" }), comp("z")])],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    const maya = out.waiters.find((w: any) => w.name === "Maya");
+    expect(maya.tipPct).toBeCloseTo(0.2, 6);
+    expect(maya.checks).toBe(3);
+    expect(maya.avgCheck).toBeCloseTo(126, 6);
+    expect(maya.checksTakingNoMoney).toBe(1);
+    expect(out.checksTakingNoMoney).toBe(1);
+    expect(out.tipBasis).toBe("net");
+  });
+
+  it("the table register does the same per table", async () => {
+    const { service } = makeService({
+      restaurant_tables: [ok([{ id: "t1", label: "T1", seats: 4 }])],
+      pos_checks: [ok([usCheck({ id: "a" }), comp("z")])],
+    });
+    const out: any = await service.getTablePerformance("r1", 90);
+    const t1 = out.tables.find((t: any) => t.tableId === "t1");
+    expect(t1.tipPct).toBeCloseTo(0.2, 6);
+    expect(t1.avgCheck).toBeCloseTo(126, 6);
+    expect(t1.checks).toBe(2);
+    expect(out.checksTakingNoMoney).toBe(1);
+  });
+
+  it("a check with no subtotal adds nothing to the tip rate rather than a tip over nothing", async () => {
+    const { service } = makeService({
+      pos_checks: [
+        ok([usCheck({ id: "a" }), usCheck({ id: "b", subtotal: null })]),
+      ],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.waiters[0].tipPct).toBeCloseTo(0.2, 6);
+  });
+
+  it("reads the subtotal with the check", async () => {
+    const { service, calls } = makeService({ pos_checks: [ok([usCheck()])] });
+    await service.getWaiterPerformance("r1", 90);
+    const select = calls.find(
+      (c) => c.table === "pos_checks" && c.method === "select",
+    );
+    expect(String(select?.args[0])).toMatch(/\bsubtotal\b/);
+  });
+});

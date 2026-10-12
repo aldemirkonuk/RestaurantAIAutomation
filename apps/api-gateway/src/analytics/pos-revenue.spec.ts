@@ -30,7 +30,11 @@ import {
   readHouseZone,
 } from "../common/house-day";
 import { ScenarioVerifyService } from "../simpos/scenario-verify.service";
-import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
+import {
+  EXPORT_CUTTINGS,
+  TILL_TOTALS_NOT_NET,
+  zeroChecksSaid,
+} from "../reports/exports/report-export-cuttings";
 import type { ExportDoc } from "../reports/exports/report-export-doc";
 import { PAYLOADS } from "../reports/exports/__fixtures__/cutting-payloads";
 
@@ -1967,5 +1971,71 @@ describe("turns and days of stock are withheld when cost of goods is short (F-14
     expect(doc.notes.join(" ")).toContain(
       "Inventory turns and Days of inventory are not taken from it.",
     );
+  });
+});
+
+// F-1534 (sim 50): a comp or a staff meal rung at 0 is a check that took no
+// money. The till counts it and the average check leaves it out; the avg_check
+// goal does the same. F-1536: the till export says Taken holds tax and tips.
+describe("a check rung at 0 is counted and kept out of the average (F-1534, F-1536)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const day = `${LA_TODAY}T19:00:00Z`;
+  const at = (total: unknown) => ({
+    total,
+    opened_at: day,
+    closed_at: day,
+    items: [],
+  });
+
+  it("the till window counts the checks rung at 0", async () => {
+    const { service } = makeGoals({
+      pos_checks: probeThen([at(120), at(80), at(0), at(0)]),
+    });
+    const result = await service.getPosRevenueWindow("r1", 30);
+    expect(result.revenue).toBeCloseTo(200);
+    expect(result.checkCount).toBe(4);
+    expect(result.checksTakingNoMoney).toBe(2);
+  });
+
+  it("the average check goal leaves a check rung at 0 out", async () => {
+    const { service } = makeGoals({
+      pos_checks: [at(120), at(80), at(0)],
+    });
+    const out = await (service as any).computeMetricWithSeries(
+      "r1",
+      "avg_check",
+      LA_TODAY,
+      undefined,
+      LA,
+    );
+    expect(out.current).toBeCloseTo(100);
+    await expect(
+      (
+        makeGoals({ pos_checks: [at(0), at(0)] }).service as any
+      ).computeMetricWithSeries("r1", "avg_check", LA_TODAY, undefined, LA),
+    ).rejects.toThrow("rung at 0");
+  });
+
+  it("the till export averages over the checks that took money and says the rest", () => {
+    const doc = EXPORT_CUTTINGS.till.write(
+      {
+        ...(PAYLOADS.till as Record<string, unknown>),
+        revenue: 300,
+        checkCount: 4,
+        checksWithoutTotal: 0,
+        checksTakingNoMoney: 1,
+      },
+      { days: 30 },
+    );
+    expect(doc.figures.find((x) => x.label === "Average check")?.value).toBe(
+      100,
+    );
+    expect(doc.notes).toContain(zeroChecksSaid(1));
+    expect(doc.notes).toContain(TILL_TOTALS_NOT_NET);
   });
 });

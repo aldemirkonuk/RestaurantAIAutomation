@@ -288,7 +288,10 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
   // F-1444: checks with no total are left out of Taken, so the average
   // divides by the checks that carry one. An older payload says none.
   const untotaled = num(d.checksWithoutTotal) ?? 0;
-  const totaled = checks != null ? checks - untotaled : null;
+  // F-1534: a check rung at 0 (a comp, a staff meal) is left out of the
+  // average too. An older payload says none.
+  const zeroRung = num(d.checksTakingNoMoney) ?? 0;
+  const totaled = checks != null ? checks - untotaled - zeroRung : null;
   // The page's own derivation, rp-registers-trade.tsx `till.view`: an average
   // needs both operands and a non-zero count, or it is not an average.
   const avg =
@@ -319,8 +322,11 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
     // Toast's `payment.refunded` has no handler. "Taken" is therefore what was
     // rung up, and the file says so rather than letting it read as net.
     notes: [
-      ...(revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : []),
+      ...(revenue != null
+        ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]
+        : []),
       ...(untotaled > 0 ? [tillUntotaledSaid(untotaled)] : []),
+      ...(zeroRung > 0 ? [zeroChecksSaid(zeroRung)] : []),
     ],
     tables:
       series.length === 0
@@ -349,6 +355,31 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
       "The series is sparse on purpose: a day with no check is absent, not written as zero.",
     ],
   });
+}
+
+/**
+ * F-1536: said on every till export that carries a figure. Taken sums the
+ * checks' `total`, which on Square, Toast and Clover holds tax and the tip
+ * (pos-hub/pos-adapters.ts), while the dashboard draws net sales, the
+ * subtotal (ADR 0287). Word for word rp-registers-trade.tsx.
+ */
+export const TILL_TOTALS_NOT_NET =
+  "Taken is the check totals as your till sends them. On most tills that includes tax and tips, so it reads higher than the dashboard's net sales, which are before tax and tips.";
+
+/** F-1532: the room and server registers' twin of `TILL_TOTALS_NOT_NET`. */
+export const REGISTER_TOTALS_NOT_NET =
+  "Taken and the average check are check totals as your till sends them. On most tills that includes tax and tips, so they read higher than the dashboard's net sales, which are before tax and tips.";
+
+/** F-1532: the server register's tip rate is over net sales, never over a total that holds the tip. */
+export const REGISTER_TIP_ON_NET =
+  "Tip is tips over net sales, before tax and tips, on the checks that recorded a tip.";
+
+/**
+ * F-1534: checks rung at 0, said on the till, room and server exports as the
+ * screen says them (rp-registers-trade.tsx `zeroChecksSaid`, word for word).
+ */
+export function zeroChecksSaid(n: number): string {
+  return `${n} ${n === 1 ? "check was" : "checks were"} rung at 0, such as a comp or a staff meal: counted in Checks, left out of the average check.`;
 }
 
 /** Said on every till export that carries a figure: refunds are not taken off "Taken". */
@@ -894,6 +925,7 @@ function writeSeats(payload: unknown): ExportDoc {
   const sinceDays = num(s.sinceDays) ?? 90;
   const basis = sentences(
     `Non-voided pos_checks the till attributed to a shown table over the last ${sinceDays} days.`,
+    REGISTER_TOTALS_NOT_NET,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
   );
   const tables = arr(s.tables).map((t) => ({
@@ -981,6 +1013,9 @@ function writeSeats(payload: unknown): ExportDoc {
         ? `${nounCount(withoutTable, "check has", "checks have")} no table: counted in takings, not in the room.`
         : "",
       hiddenNote,
+      (num(s.checksTakingNoMoney) ?? 0) > 0
+        ? zeroChecksSaid(num(s.checksTakingNoMoney) ?? 0)
+        : "",
     ],
     basis,
   });
@@ -994,6 +1029,8 @@ function writeService(payload: unknown): ExportDoc {
   const adj = s.adjusted == null ? null : obj(s.adjusted);
   const basis = sentences(
     `Non-voided pos_checks grouped by server name over the last ${sinceDays} days.`,
+    REGISTER_TOTALS_NOT_NET,
+    s.tipBasis === "net" ? REGISTER_TIP_ON_NET : null,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
     adj ? adj.method : null,
   );
@@ -1051,6 +1088,9 @@ function writeService(payload: unknown): ExportDoc {
     ],
     notes: [
       "A server's raw average is partly the section they were given. The adjusted fit is the engine's attempt to remove it; where it is withheld, the raw figures are all there is.",
+      (num(s.checksTakingNoMoney) ?? 0) > 0
+        ? zeroChecksSaid(num(s.checksTakingNoMoney) ?? 0)
+        : "",
     ],
     basis,
   });
