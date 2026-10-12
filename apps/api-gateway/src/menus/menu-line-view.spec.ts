@@ -5,6 +5,7 @@ import {
   DRINK_SECTIONS,
   DRINK_WORDS,
   FOOD_NOUNS,
+  isCocktailLine,
   isKitchenLine,
   lineForViewer,
   menuCategoryOf,
@@ -295,4 +296,39 @@ describe("the menu read routes pass the viewer's view", () => {
       }
     },
   );
+});
+
+/**
+ * F-1503: a section that names cocktails and a stocked drink is decided line
+ * by line, so its spirits and beers keep their stock rows.
+ */
+describe("isCocktailLine — mixed sections (F-1503)", () => {
+  it("a cocktail-only section is all cocktails, as before (F-1470)", () => {
+    expect(isCocktailLine("Signature Cocktails", "Maker's Mark 5cl")).toBe(
+      true,
+    );
+    expect(isCocktailLine("Kokteyller", "Mojito")).toBe(true);
+    expect(isCocktailLine("Wine & Cocktails", "Negroni")).toBe(false);
+  });
+
+  it.each([
+    ["Cocktails & Spirits", "Maker's Mark 5cl"],
+    ["Cocktails & Spirits", "Jameson bottle"],
+    ["Beer & Cocktails", "Efes Pilsen 50 cl"],
+    ["Beer & Cocktails", "Guinness Stout"],
+    ["Kokteyller ve Rakılar", "Yeni Rakı 70'lik"],
+    ["Kokteyller ve Rakılar", "Tekirdağ Rakı duble"],
+    ["Kokteyl & Bira", "Efes Bira"],
+  ])("in %s, %s is stocked", (section, name) => {
+    expect(isCocktailLine(section, name)).toBe(false);
+  });
+
+  it.each([
+    ["Cocktails & Spirits", "Negroni"],
+    ["Cocktails & Spirits", "Gin Tonic"],
+    ["Beer & Cocktails", "Beer Cocktail 40cl"],
+    ["Kokteyller ve Rakılar", "Rakı Sour"],
+  ])("in %s, %s is a cocktail", (section, name) => {
+    expect(isCocktailLine(section, name)).toBe(true);
+  });
 });

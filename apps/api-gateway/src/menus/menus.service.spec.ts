@@ -424,6 +424,21 @@ describe("MenusService.getMenu", () => {
     expect(back.items.some((i: any) => "sold_out" in i)).toBe(false);
   });
 
+  // F-1505: a cocktail line carried before F-1470 still holds its old
+  // 0-stock row; its section says it is a cocktail, so the 86 reaches it.
+  it("marks a cocktail carried before F-1470 sold out while its spirit is 86'd", async () => {
+    const tables = cocktailMenu();
+    const line = tables.menu_items.find((i: any) => i.id === "mi-4");
+    line.inventory_item_id = "inv-negroni-legacy";
+    line.category = "Signature Cocktails";
+    const result: any = await makeService(tables).getMenu("rest-1");
+    const byId = Object.fromEntries(result.items.map((i: any) => [i.id, i]));
+    expect(byId["mi-4"]).toMatchObject({
+      sold_out: true,
+      sold_out_because: ["gin"],
+    });
+  });
+
   it("says when which cocktails an 86 stops could not be read, and still marks the wines", async () => {
     const tables = cocktailMenu();
     tables.stock_outs.push({
@@ -1981,6 +1996,40 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(
         calls.filter(([fn]) => fn === "set_house_menu_price"),
       ).toHaveLength(1);
+    });
+
+    // F-1503: "Cocktails & Spirits" is decided line by line: the bourbon
+    // with a pour size keeps its stock row and price; the Negroni is made.
+    it("a mixed cocktails-and-spirits section keeps its spirits as stock", async () => {
+      const { tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64 },
+      ]);
+      for (const [id, name] of [
+        ["mi-makers", "Maker's Mark 5cl"],
+        ["mi-negroni", "Negroni"],
+      ]) {
+        tables.menu_items.push({
+          id,
+          menu_id: read.menuId,
+          restaurant_id: "rest-1",
+          name,
+          category: "Cocktails & Spirits",
+          bottle_price: 16,
+          wine_library_id: `mw-${id}`,
+          status: "approved",
+        });
+      }
+      const plan = await service.planFor("rest-1", read.menuId);
+      const kind = (name: string) =>
+        plan.lines.find((l) => l.name === name)!.bottle.result;
+      expect(kind("Negroni")).toBe("cocktail");
+      expect(kind("Maker's Mark 5cl")).not.toBe("cocktail");
+
+      const r = await choose(service, read.menuId);
+      expect(r.priceSync).toMatchObject({ cocktail: 1 });
+      expect(
+        tables.restaurant_inventory.map((i) => i.master_wine_id).sort(),
+      ).toEqual(["mw-1", "mw-mi-makers"]);
     });
 
     // F-946: the house removed the wine; a menu made current lists it again.

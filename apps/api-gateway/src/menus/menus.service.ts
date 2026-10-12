@@ -129,7 +129,7 @@ function carriedWine(line: InsertedMenuItem): string | null {
   // F-1470: nor does a cocktail. It is made from its recipe's ingredients,
   // so a stock row of its own sat at 0 below its threshold and read as
   // critical low stock every morning. Its recipe's linked lines are its stock.
-  return line.kitchen_line === true || isCocktailLine(line.category)
+  return line.kitchen_line === true || isCocktailLine(line.category, line.name)
     ? null
     : (line.wine_library_id ?? null);
 }
@@ -1550,8 +1550,13 @@ export class MenusService {
   }> {
     const byLine = new Map<Record<string, unknown>, string>();
     const none = { byLine, lines: [], error: null };
+    // F-1505: a cocktail line carried before F-1470 still holds its old
+    // 0-stock row as inventory_item_id; its section says it is a cocktail,
+    // so it is matched by name too.
     const bare = items.filter(
-      (i) => !i.inventory_item_id && cocktailNameKey(i.name as string) !== "",
+      (i) =>
+        (!i.inventory_item_id || isCocktailLine(i.category, i.name)) &&
+        cocktailNameKey(i.name as string) !== "",
     );
     if (bare.length === 0) return none;
     const { data: cocktails, error } = await this.dbService.supabase
@@ -2027,7 +2032,7 @@ export class MenusService {
         const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
         let result: PlanResult;
         if (line.kitchen_line === true) result = "kitchen";
-        else if (isCocktailLine(line.category)) result = "cocktail";
+        else if (isCocktailLine(line.category, line.name)) result = "cocktail";
         else if (!wineId) result = "not_linked";
         else if (!row) result = menuPrice === null ? "blank_never_priced" : "new_wine";
         else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
@@ -2304,7 +2309,7 @@ export class MenusService {
       const outcome =
         line.kitchen_line === true
           ? "kitchen"
-          : isCocktailLine(line.category)
+          : isCocktailLine(line.category, line.name)
             ? "cocktail"
             : (entry?.outcome ?? "not_linked");
       counts[outcome] = (counts[outcome] ?? 0) + 1;
