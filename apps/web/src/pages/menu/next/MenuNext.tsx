@@ -624,6 +624,12 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
             sold out
           </span>
         ) : null}
+        {/* F-1474: a cocktail is out while a spirit its recipe takes is 86'd. */}
+        {line.sold_out_because?.length ? (
+          <span className="cl-note" style={{ display: 'block' }} data-testid="menu-sold-out-because">
+            {line.sold_out_because.join(', ')} {line.sold_out_because.length === 1 ? 'is' : 'are'} sold out (86)
+          </span>
+        ) : null}
         {reason ? (
           <span className="cl-note" style={{ display: 'block' }} data-testid="menu-flag-reason">
             {reason.text}

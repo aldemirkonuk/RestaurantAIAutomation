@@ -471,6 +471,11 @@ export interface CocktailVM {
    * are absent for a reader the gateway withholds them from.
    */
   serve?: ServeVM | null;
+  /**
+   * F-1474: the recipe lines whose stock is 86'd now, in the bar's words; the
+   * cocktail cannot be served while any is. Null when none is, or unread.
+   */
+  soldOut?: string[] | null;
 }
 
 /** Mirrored from `apps/api-gateway/src/beverages/cocktail-recipe.ts`. */
@@ -492,6 +497,8 @@ export interface CocktailListVM {
   scopeNote: string;
   /** F-1329: why no row carries a cost, when the costs could not be read. */
   costsUnread?: string | null;
+  /** F-1474: why no row says whether an 86 stops it, when that was not read. */
+  soldOutUnread?: string | null;
   /** The costs are kept for the owner and managers (ADR 0145). */
   amountsWithheld?: true;
 }

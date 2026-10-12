@@ -169,3 +169,42 @@ export function serveCost(
       linked === 0 ? "no recipe line is linked to stock" : withheldReason,
   };
 }
+
+/**
+ * F-1474: the cocktails an 86 reaches. A cocktail cannot be served while any
+ * recipe line linked to stock takes from a row with an open stock-out
+ * (`stock_outs`, ended_at null). Each is named by the line's own words, the
+ * way the bar wrote it, so the owner reads which bottle stops the drink.
+ */
+export function cocktailsSoldOut(
+  lines: Array<{
+    cocktail_id: string;
+    inventory_id?: string | null;
+    free_text?: string | null;
+  }>,
+  out: Set<string>,
+): Map<string, string[]> {
+  const by = new Map<string, string[]>();
+  for (const l of lines) {
+    if (!l.inventory_id || !out.has(l.inventory_id)) continue;
+    const list = by.get(l.cocktail_id) ?? [];
+    const word = l.free_text?.trim() || "a linked ingredient";
+    if (!list.includes(word)) list.push(word);
+    by.set(l.cocktail_id, list);
+  }
+  return by;
+}
+
+/**
+ * F-1474: how a menu line's name is compared with a cocktail's -- the till's
+ * rule (pos-hub's cocktailNameKey, F-1329): trimmed, one space between words,
+ * case folded, the Turkish dotted and dotless i read as one letter. Exact
+ * after that; nothing fuzzier names a recipe.
+ */
+export function cocktailNameKey(name: string | null | undefined): string {
+  return String(name ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[ıİI]/g, "i")
+    .toLowerCase();
+}

@@ -238,6 +238,11 @@ export interface MenuLine {
   house_glass_price?: number | null
   /** The linked wine is 86'd (an open stock-out, F-145); absent otherwise. */
   sold_out?: true
+  /**
+   * F-1474: a cocktail line is sold out because these recipe lines' stock is
+   * 86'd, in the bar's words; absent otherwise.
+   */
+  sold_out_because?: string[]
 }
 
 export interface ActiveMenu {
