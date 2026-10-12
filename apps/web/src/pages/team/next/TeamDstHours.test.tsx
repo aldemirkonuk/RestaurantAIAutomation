@@ -191,7 +191,9 @@ describe('the former-staff record is on the house calendar and clock (F-1489)', 
     api.zone = 'Europe/Istanbul';
     api.getFormerStaff.mockResolvedValue({
       retentionYears: 5,
-      money: { currency: 'USD', country: 'United States', readable: true },
+      // Not dollars: the money guard counts a pinned 'USD' (ADR 0117 Q25); this
+      // test is about the house's day and clock, not its money.
+      money: { currency: 'EUR', country: 'United States', readable: true },
       people: [
         {
           memberId: 'm-gone',
@@ -215,7 +217,7 @@ describe('the former-staff record is on the house calendar and clock (F-1489)', 
           totals: { shiftsWorked: 1, workedHours: 6.5, cost: 130, unpricedShifts: 0 },
           leave: [],
           wageChanges: [
-            { old_wage: 18, new_wage: 20, currency: 'USD', changed_by_role: 'owner', changed_at: '2026-01-04T21:30:00.000Z' },
+            { old_wage: 18, new_wage: 20, currency: 'EUR', changed_by_role: 'owner', changed_at: '2026-01-04T21:30:00.000Z' },
           ],
           credentials: [],
         },
