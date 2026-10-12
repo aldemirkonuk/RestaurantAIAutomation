@@ -96,6 +96,11 @@ export interface DayLedger {
   checks: number | null;
   /** The checks that carried a subtotal: "from net_checks of checks". */
   net_checks: number | null;
+  /**
+   * An owner or manager ruled the day out of the figures (F-1535). With no
+   * check on it, `checks` is null: it is not a day of no sales.
+   */
+  excluded?: boolean;
 }
 
 /**
@@ -523,6 +528,7 @@ export function useMonthLedger(
             net_sales: num(raw.net_sales),
             checks: num(raw.checks),
             net_checks: num(raw.net_checks),
+            excluded: raw.excluded === true,
           };
         });
         const legacyTotals = res as unknown as {

@@ -321,7 +321,12 @@ export function DayDetail({
         style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : 4) }}
       >
         {salesShown && (
-          <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
+          // F-1535: a day ruled out with no check is not a day of no sales.
+          day.excluded && day.checks == null ? (
+            <MiniFig label="Net sales" value={netSalesValue(day)} note="Ruled out, not counted" />
+          ) : (
+            <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
+          )
         )}
         {salesShown && <MiniFig label="Checks" value={figure(day.checks)} />}
         {/* F-1052: in the currency it was paid in. F-1055: a day paid in two

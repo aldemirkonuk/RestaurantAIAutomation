@@ -240,6 +240,14 @@ export interface CalendarDay {
   checks: number | null;
   /** The day's checks that carried a subtotal: "from net_checks of checks". */
   net_checks: number | null;
+  /**
+   * An owner or manager ruled the day out (`analytics_day_exclusions`, ADR
+   * 0317), as /reports and the calendar do (F-1535). A ruled-out day with no
+   * check is not a quiet day: its figures are null and it is not one of the
+   * month's counted days. Checks that did land still stand. Only said when
+   * sales are read.
+   */
+  excluded?: boolean;
   events: CalendarDayEvent[];
 }
 
@@ -668,6 +676,34 @@ async function readMonthTakings(
     until,
     days,
   };
+}
+
+/**
+ * The house days in [from, to] an owner or manager ruled out of the figures
+ * (`analytics_day_exclusions`, ADR 0317), or a throw: an unread list would
+ * draw a ruled-out outage as "no sales" (ADR 0290 §6, F-1535).
+ */
+async function readMonthExclusions(
+  client: any,
+  restaurantId: string,
+  from: string,
+  to: string,
+): Promise<Set<string>> {
+  const { data, error } = await client
+    .from("analytics_day_exclusions")
+    .select("business_date")
+    .eq("restaurant_id", restaurantId)
+    .gte("business_date", from)
+    .lte("business_date", to);
+  if (error) {
+    throw new Error(`analytics_day_exclusions read failed: ${error.message}`);
+  }
+  const out = new Set<string>();
+  for (const r of data ?? []) {
+    const d = String(r.business_date ?? "").slice(0, 10);
+    if (d) out.add(d);
+  }
+  return out;
 }
 
 /**
@@ -1185,7 +1221,7 @@ export class DashboardService {
       const start = localMidnight(first, zone);
       const end = localMidnight(nextFirst, zone);
 
-      const [eventsByDay, orders, takings] = await Promise.all([
+      const [eventsByDay, orders, takings, excluded] = await Promise.all([
         eventsRead,
         readAll("The month's deliveries", (after) => {
           // `wine_name` was in this select; `procurement_orders` has never had
@@ -1206,6 +1242,14 @@ export class DashboardService {
         withSales
           ? readMonthTakings(client, restaurantId, start, end, zone)
           : Promise.resolve(null),
+        withSales
+          ? readMonthExclusions(
+              client,
+              restaurantId,
+              first,
+              dates[dates.length - 1],
+            )
+          : Promise.resolve(new Set<string>()),
       ]);
 
       const spend = new Map<
@@ -1242,6 +1286,11 @@ export class DashboardService {
         // includes today until its first check lands, and every day ahead.
         const counted =
           since !== null && until !== null && date >= since && date <= until;
+        // F-1535: a day an owner or manager ruled out (a till outage, a
+        // closure) is not a measured zero either: with no check it is unknown
+        // and not one of the month's counted days. A check that did land on
+        // it still stands.
+        const ruledOut = excluded.has(date);
         return {
           date,
           procurement_spend: paid.total,
@@ -1253,6 +1302,10 @@ export class DashboardService {
           net_sales: counted ? (sold ? sold.net_sales : 0) : null,
           checks: counted ? (sold ? sold.checks : 0) : null,
           net_checks: counted ? (sold ? sold.net_checks : 0) : null,
+          ...(withSales ? { excluded: ruledOut } : {}),
+          ...(ruledOut && !sold
+            ? { net_sales: null, checks: null, net_checks: null }
+            : {}),
           events: eventsByDay.get(date) ?? [],
         };
       });

@@ -499,12 +499,41 @@ export class AnalyticsService {
       : sinceDays;
   }
 
-  /** Aggregate rows into a dense daily series over [sinceDays, today]. */
+  /**
+   * F-1516: the house's first recorded sale, when this window holds its
+   * whole record (it was set up inside the window): demand is not averaged
+   * over the days before its till began. A house set up before the window
+   * may have sold before it, so its first line here is not its first.
+   */
+  private salesRecordedFrom(
+    openedOn: string | null,
+    consumption: Array<{ date: string }>,
+    sinceDays: number,
+  ): string | null {
+    const openedDaysAgo = openedOn
+      ? Math.floor(
+          (Date.parse(new Date().toISOString().slice(0, 10)) -
+            Date.parse(openedOn)) /
+            86400000,
+        )
+      : null;
+    let from: string | null = null;
+    if (openedDaysAgo != null && openedDaysAgo < sinceDays)
+      for (const c of consumption)
+        if (c.date && (!from || c.date < from)) from = c.date;
+    return from;
+  }
+
+  /**
+   * Aggregate rows into a dense daily series over [sinceDays, today]. With
+   * `bounds`, it ends yesterday and starts no earlier than `from` (F-1533).
+   */
   private toDailySeries(
     rows: Array<{ date: string; value: number }>,
     sinceDays: number,
     /** With a zone, "today" is the house's (ADR 0296); without, UTC's. */
     zone: string | null = null,
+    bounds: { from?: string | null; throughYesterday?: boolean } = {},
   ): { dates: string[]; values: number[] } {
     const byDay = new Map<string, number>();
     for (const r of rows) {
@@ -515,12 +544,14 @@ export class AnalyticsService {
     const values: number[] = [];
     const today = new Date();
     const houseDay = zone ? houseToday(zone, today) : null;
-    for (let d = sinceDays - 1; d >= 0; d--) {
+    const last = bounds.throughYesterday ? 1 : 0;
+    for (let d = sinceDays - 1 + last; d >= last; d--) {
       const day = houseDay
         ? shiftHouseDay(houseDay, -d)
         : new Date(today.getTime() - d * 86400000)
             .toISOString()
             .substring(0, 10);
+      if (bounds.from && day < bounds.from) continue;
       dates.push(day);
       values.push(byDay.get(day) || 0);
     }
@@ -1068,22 +1099,11 @@ export class AnalyticsService {
       this.loadHouse(restaurantId),
     ]);
     const inventory = this.activeOnly(allInventory);
-    // F-1516: the house's first recorded sale, when this window holds its
-    // whole record (it was set up inside the window): demand is not averaged
-    // over the days before its till began. A house set up before the window
-    // may have sold before it, so its first line here is not its first.
-    const openedDaysAgo = house.openedOn
-      ? Math.floor(
-          (Date.parse(new Date().toISOString().slice(0, 10)) -
-            Date.parse(house.openedOn)) /
-            86400000,
-        )
-      : null;
-    let salesRecordedFrom: string | null = null;
-    if (openedDaysAgo != null && openedDaysAgo < sinceDays)
-      for (const c of consumption)
-        if (c.date && (!salesRecordedFrom || c.date < salesRecordedFrom))
-          salesRecordedFrom = c.date;
+    const salesRecordedFrom = this.salesRecordedFrom(
+      house.openedOn,
+      consumption,
+      sinceDays,
+    );
 
     // Demand series per house item — the ledger's key (ADR 0115). Keyed by
     // master wine, every drink that is not a wine (no master) read zero
@@ -1428,10 +1448,17 @@ export class AnalyticsService {
       this.dbService.getClient(),
       restaurantId,
     );
-    const consumption = await this.loadConsumption(
-      restaurantId,
+    const [consumption, house] = await Promise.all([
+      this.loadConsumption(restaurantId, sinceDays, zone),
+      this.loadHouse(restaurantId),
+    ]);
+    // F-1533: fitted from the house's first recorded sale (F-1516's rule),
+    // never on the zeros before its till began, and through yesterday: today
+    // is not over, so its count so far is not a day of history.
+    const recordsFrom = this.salesRecordedFrom(
+      house.openedOn,
+      consumption,
       sinceDays,
-      zone,
     );
     const scoped = consumption.filter(
       (c) => !opts.masterWineId || c.masterWineId === opts.masterWineId,
@@ -1443,7 +1470,10 @@ export class AnalyticsService {
     const rows = scoped
       .filter((c) => c.qty != null)
       .map((c) => ({ date: c.date, value: c.qty as number }));
-    const { dates, values } = this.toDailySeries(rows, sinceDays, zone);
+    const { dates, values } = this.toDailySeries(rows, sinceDays, zone, {
+      from: recordsFrom,
+      throughYesterday: true,
+    });
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
     // `warmup` is the seeding window each model reads before its recursion can
@@ -1526,9 +1556,10 @@ export class AnalyticsService {
           };
     }
 
+    // The history ends yesterday, so the first projected day is today.
     const futureDates: string[] = [];
     const today = new Date();
-    for (let h = 1; h <= horizon; h++)
+    for (let h = 0; h < horizon; h++)
       futureDates.push(
         zone
           ? shiftHouseDay(houseToday(zone, today), h)
@@ -1571,7 +1602,7 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
+        demand: `bottles/day over ${dates.length} days through yesterday (up to ${sinceDays}${recordsFrom ? `, from the house's first recorded sale on ${recordsFrom}` : ""}; today is not over and is not history), zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
         model: projection
           ? `${model} fitted on ${values.length} days of history`
           : unmeasuredWine

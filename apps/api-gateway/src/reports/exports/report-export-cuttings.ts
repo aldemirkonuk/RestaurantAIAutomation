@@ -1424,7 +1424,13 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     bench: { title: "Against ourselves", window: () => "180 days of buying, 90 days of weekdays, each goal since it was set", takesWindow: false, write: writeBench },
     pacing: { title: "Spend pacing", window: () => "180 days of purchasing, compared in two 30-day windows", takesWindow: false, write: writePacing },
     week: { title: "The week’s shape", window: () => "the last 90 days of the consumption log", takesWindow: false, write: writeWeek },
-    ahead: { title: "What’s coming", window: () => "120 days of history, 14 days ahead", takesWindow: false, write: writeAhead },
+    ahead: {
+      title: "What’s coming",
+      window: () =>
+        "up to 120 days of history, from the first sale through yesterday; 14 days ahead",
+      takesWindow: false,
+      write: writeAhead,
+    },
     quadrants: { title: "Margin against movement", window: () => "the list as it stands, against 90 days of movement", takesWindow: false, write: writeQuadrants },
     ledger: {
       title: "Figures of record",

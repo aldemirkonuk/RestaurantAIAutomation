@@ -159,6 +159,9 @@ const NOT_RECORDED_FIG: CSSProperties = {
   color: 'var(--ink-4, #665D50)',
 };
 
+/** A day an owner or manager ruled out of the figures (F-1535). */
+const RULED_OUT = 'ruled out';
+
 /**
  * What a cell says. `salesShown` picks the headline (F2, ADR 0290); a role
  * that sees no money (DASH-W22) gets no figure on a day with deliveries — its
@@ -190,6 +193,8 @@ function cellFigure(
 
 /** A day's net sales in words, for its label (count and say, netsales F1). */
 function salesSaid(day: DayLedger): string {
+  // F-1535: a day ruled out (a till outage, a closure) is not "no sales".
+  if (day.excluded && day.checks == null) return `${RULED_OUT}, not counted`;
   if (day.checks == null) return 'net sales unknown';
   if (day.checks === 0) return 'no sales';
   if (day.net_sales == null) return `net sales ${NOT_RECORDED}`;
@@ -504,7 +509,12 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
           const heat = day && head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead(day)) : 0;
           const fig = cellFigure(day, salesShown, zoneUnset, seesAmounts);
           // Count and say: a figure short of its day's checks says so here.
-          const from = salesShown && !zoneUnset && day ? fromChecks(day.net_checks, day.checks) : null;
+          const from =
+            salesShown && !zoneUnset && day
+              ? day.excluded && day.checks == null
+                ? RULED_OUT
+                : fromChecks(day.net_checks, day.checks)
+              : null;
           return (
             <button
               key={dateStr}

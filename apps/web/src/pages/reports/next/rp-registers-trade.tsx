@@ -758,7 +758,7 @@ const ahead = analysis<AheadRegister>({
   title: 'What’s coming',
   register: 'forecast register',
   answers: 'What the model expects the next fortnight to take out of the cellar',
-  window: () => '120 days of history, 14 days ahead',
+  window: () => 'up to 120 days of history, from the first sale through yesterday; 14 days ahead',
   path: (rid) => `/analytics/forecast/${rid}?horizon=14`,
   graphs: ['line', 'area', 'bars', 'table', 'figure'],
   graphNote:

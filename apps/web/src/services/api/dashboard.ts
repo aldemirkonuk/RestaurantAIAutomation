@@ -279,6 +279,8 @@ export interface CalendarMonthDay {
   checks?: number | null;
   /** The checks that carried a subtotal ("from net_checks of checks"). */
   net_checks?: number | null;
+  /** An owner or manager ruled the day out of the figures (F-1535). */
+  excluded?: boolean;
   events: Array<{
     id?: string;
     title?: string | null;
