@@ -46,6 +46,7 @@ import {
   fmtMoneyExact,
   houseLocale,
   fmtWeekday,
+  labourRules,
   resolveName,
   workedHours,
 } from './tm-format';
@@ -159,8 +160,11 @@ function MemberDetail({
   onCertificates: () => void;
 }) {
   const fmtTime = useShiftTime();
+  const region = useHouseRegion();
   /** The house's decimal mark for hours (F-1120). */
-  const hoursIn = houseLocale(useHouseRegion());
+  const hoursIn = houseLocale(region);
+  /** Its country's breaks (founder S195), as the gateway counts them. */
+  const rules = labourRules(region);
   const name = resolveName(member);
   const { user } = useAuth();
   // An owner opening their own row sets their OWN dates: not logged, and the
@@ -170,7 +174,7 @@ function MemberDetail({
   // Worked hours: breaks out, a called-out shift out — as the gateway counts.
   const hours = mine
     .filter((s) => s.state !== 'callout')
-    .reduce((sum, s) => sum + workedHours(s), 0);
+    .reduce((sum, s) => sum + workedHours(s, rules), 0);
   const myCerts = (certs ?? []).filter((c) => c.member_id === member.id);
   const myLeave = (timeOff ?? []).filter((r) => r.member_id === member.id);
   const areaNames = house.areas
@@ -351,7 +355,9 @@ export function RosterSheet({
   onCertificates: (m: TeamMember) => void;
   onAdd: () => void;
 }) {
-  const hoursIn = houseLocale(useHouseRegion());
+  const region = useHouseRegion();
+  const hoursIn = houseLocale(region);
+  const rules = labourRules(region);
   const [openId, setOpenId] = useState<string | null>(null);
   const hoursById = useMemo(() => {
     const m = new Map<string, number>();
@@ -359,11 +365,11 @@ export function RosterSheet({
       if (!s.member_id || s.state === 'callout') continue;
       m.set(
         s.member_id,
-        (m.get(s.member_id) ?? 0) + workedHours(s),
+        (m.get(s.member_id) ?? 0) + workedHours(s, rules),
       );
     }
     return m;
-  }, [shifts]);
+  }, [shifts, rules]);
   const flagById = useMemo(() => {
     const m = new Map<string, Certification>();
     for (const c of certs ?? []) {

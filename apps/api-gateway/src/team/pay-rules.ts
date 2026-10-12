@@ -59,15 +59,138 @@
  * hold: averaging agreements, part-time contracts, the worker's written consent.
  * So a person over 45 worked hours is a flag to REVIEW, and it never carries a
  * price.
+ *
+ * WHOSE RULES: THE HOUSE'S COUNTRY
+ * --------------------------------
+ * [2026-10-11, founder ruling S195 (F-155, F-1385, F-1399): "Every house gets
+ * its rules based on its location." The Turkish rules above are now the TR
+ * row of `LABOUR_RULES`, keyed by the house's `restaurants.country`. US: the
+ * FLSA 40-hour week as the review line, no federal break, so none is assumed.
+ * GB: the Working Time Regulations' 48-hour average week and a 20-minute
+ * break over 6 hours of work. DE: the Arbeitszeitgesetz's 30 minutes over 6
+ * hours and 45 over 9, a 10-hour day and a 48-hour week (§3, six working days
+ * of 8 hours). Any other country, or none recorded: no rule is claimed and no
+ * break assumed (`NO_LABOUR_RULES`), never Turkey's.]
  */
 
-import { resolveZone, zoneOffsetMs } from "../calendar/zoned-time";
+import {
+  resolveZone,
+  zoneOffsetMs,
+  zonedWallClockToUtc,
+} from "../calendar/zoned-time";
+import { countryCodeOf, houseFrame } from "../common/house-frame";
 
 /** The three roles `user_restaurant_access_role_check` allows. */
 export type TeamRole = "owner" | "manager" | "staff";
 
 /** The Turkish statutory week (4857 Art. 63). Over it is a review, not a price. */
 export const WEEKLY_REVIEW_HOURS = 45;
+
+// ── the labour rules of the house's country (founder S195, 2026-10-11) ──────
+
+/** The countries whose labour rules are built in. */
+export type LabourCountry = "TR" | "US" | "GB" | "DE";
+
+export interface LabourRules {
+  /** Whose rules these are; `null` = the house's country is not built in. */
+  country: LabourCountry | null;
+  /** Worked hours in a Monday-week over which a person is named to review; `null` = no line. */
+  weeklyReviewHours: number | null;
+  /** Worked hours in one shift over which it is named to review; `null` = no line. */
+  dailyReviewHours: number | null;
+  /** The statutory breaks, least first, in minutes; empty = none is owed, none assumed. */
+  breakSteps: readonly number[];
+  /** The break the law owes for `workedMin` minutes of WORK (breaks excluded); 0 = none. */
+  breakForWork(workedMin: number): number;
+}
+
+export const LABOUR_RULES: Readonly<Record<LabourCountry, LabourRules>> = {
+  TR: {
+    country: "TR",
+    weeklyReviewHours: WEEKLY_REVIEW_HOURS,
+    dailyReviewHours: null,
+    breakSteps: [15, 30, 60],
+    breakForWork: (w) => art68BreakForWork(w),
+  },
+  // FLSA: overtime past 40 hours in the workweek; no federal meal break.
+  US: {
+    country: "US",
+    weeklyReviewHours: 40,
+    dailyReviewHours: null,
+    breakSteps: [],
+    breakForWork: () => 0,
+  },
+  // Working Time Regulations 1998, reg. 4 (48-hour average week) and reg. 12
+  // (20 minutes when daily working time is more than 6 hours).
+  GB: {
+    country: "GB",
+    weeklyReviewHours: 48,
+    dailyReviewHours: null,
+    breakSteps: [20],
+    breakForWork: (w) => (w > 360 ? 20 : 0),
+  },
+  // Arbeitszeitgesetz §3 (8 hours a working day, up to 10; six working days)
+  // and §4 (30 minutes over 6 hours of work, 45 over 9).
+  DE: {
+    country: "DE",
+    weeklyReviewHours: 48,
+    dailyReviewHours: 10,
+    breakSteps: [30, 45],
+    breakForWork: (w) => (w > 540 ? 45 : w > 360 ? 30 : 0),
+  },
+};
+
+/** A country whose rules are not built in: no line, no break assumed. */
+export const NO_LABOUR_RULES: LabourRules = {
+  country: null,
+  weeklyReviewHours: null,
+  dailyReviewHours: null,
+  breakSteps: [],
+  breakForWork: () => 0,
+};
+
+/** The rules for what `restaurants.country` holds (a code or a name). */
+export function labourRulesFor(
+  country: string | null | undefined,
+): LabourRules {
+  let code = countryCodeOf(country ?? null);
+  // `countryCodeOf("Germany")` answers the retired "DD" (ICU still names it,
+  // and it sorts first); a German house is DE here.
+  if (code === "DD") code = "DE";
+  return code && code in LABOUR_RULES
+    ? LABOUR_RULES[code as LabourCountry]
+    : NO_LABOUR_RULES;
+}
+
+/**
+ * What the hour rules need to know about the house: its country's rules and
+ * its zone (F-1367: a shift's span is read as two instants in that zone, so a
+ * DST night counts the hours really worked). Without a zone, the wall clock.
+ */
+export interface HouseLabour {
+  rules: LabourRules;
+  zone?: string | null;
+}
+
+/**
+ * The house's labour frame from its `restaurants` row: the rules of its
+ * country (else of the one country its zone is in, `houseFrame`'s region)
+ * and its zone (else its country's only zone).
+ */
+export function houseLabour(
+  row: { country?: string | null; timezone?: string | null } | null | undefined,
+): HouseLabour {
+  const frame = houseFrame(row ?? null);
+  return { rules: labourRulesFor(frame.region), zone: frame.zone };
+}
+
+/**
+ * The frame an hour rule falls back to when a caller passes none: the
+ * Turkish rules on the wall clock, as before S195. Every service path passes
+ * the house's own (`houseLabour`); this keeps older callers' figures as they
+ * were.
+ */
+const TR_WALL_CLOCK: HouseLabour = { rules: LABOUR_RULES.TR, zone: null };
 
 /**
  * Who is looking, as far as money is concerned: their role here and, for a
@@ -469,6 +592,7 @@ export function planLeavingShifts(
   clock: RemovalClock,
   instant: Date,
   wage: number | string | null | undefined,
+  house: HouseLabour = TR_WALL_CLOCK,
 ): LeavingPlan {
   const plan: LeavingPlan = { open: [], split: [], unjudged: [] };
   const late = houseWallClock(instant, clock.zone, "late");
@@ -510,11 +634,15 @@ export function planLeavingShifts(
       worked: {
         end_time: cut,
         recorded_break_min: breaks.worked,
-        labor_cost: priceShift(wage, {
-          start_time: s.start_time,
-          end_time: cut,
-          recorded_break_min: breaks.worked,
-        }),
+        labor_cost: priceShift(
+          wage,
+          {
+            start_time: s.start_time,
+            end_time: cut,
+            recorded_break_min: breaks.worked,
+          },
+          { rules: house.rules },
+        ),
       },
       rest: {
         shift_date: addDaysIso(day, Math.floor(cutMin / DAY_MIN)),
@@ -542,8 +670,9 @@ export function planLeavingShifts(
  *   role         — the shift names a role their position and skills do not
  *                  list. A warning.
  *   weekly_hours — with it, their worked hours in its Monday-week pass the
- *                  Turkish statutory week (`WEEKLY_REVIEW_HOURS`, 4857 Art.
- *                  63). A warning.
+ *                  review line of the house's country (`LabourRules`
+ *                  `weeklyReviewHours`: 45 in Türkiye, 4857 Art. 63; none
+ *                  where the country is not built in). A warning.
  *
  * Chosen from what the code records. Not checks, and said so in ADR 0215:
  * `team_availability` (a table no route writes, so it would never fire) and a
@@ -613,6 +742,7 @@ export function handoverChecks(
   theirs: readonly TheirShift[],
   leave: readonly { start_date: string; end_date: string; status?: string | null }[],
   allowDoubleBooking: boolean,
+  house: HouseLabour = TR_WALL_CLOCK,
 ): Map<string, HandoverCheck[]> {
   const out = new Map<string, HandoverCheck[]>();
   const working = (theirs ?? []).filter(
@@ -627,8 +757,9 @@ export function handoverChecks(
   const week = new Map<string, number>();
   const add = (s: ShiftLike & { shift_date: string }) => {
     const k = mondayOf(s.shift_date);
-    week.set(k, (week.get(k) ?? 0) + workedHours(s));
+    week.set(k, (week.get(k) ?? 0) + workedHours(s, house));
   };
+  const reviewAt = house.rules.weeklyReviewHours;
   working.forEach(add);
   given.forEach(add);
 
@@ -666,11 +797,11 @@ export function handoverChecks(
       });
     }
     const hours = week.get(mondayOf(day)) ?? 0;
-    if (hours > WEEKLY_REVIEW_HOURS) {
+    if (reviewAt != null && hours > reviewAt) {
       checks.push({
         code: "weekly_hours",
         level: "warn",
-        message: `With it they work ${Math.round(hours * 100) / 100} hours that week, over the ${WEEKLY_REVIEW_HOURS}-hour week.`,
+        message: `With it they work ${Math.round(hours * 100) / 100} hours that week, over the ${reviewAt}-hour week.`,
       });
     }
     out.set(g.id, checks);
@@ -923,10 +1054,30 @@ function toMinutes(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
-/** The span a shift is scheduled across, breaks included. Overnight wraps. */
-export function hoursBetween(start: string, end: string): number {
+/**
+ * The span a shift is scheduled across, breaks included. Overnight wraps.
+ * With `on` (its `shift_date` and the house's zone), start and end are read
+ * as instants in that zone, the end on the next day when it wraps, so a DST
+ * night counts the hours really worked (F-1367): 22:00-06:00 in Detroit on
+ * 2026-10-31 is 9 hours, not 8. Without either, the wall clock.
+ */
+export function hoursBetween(
+  start: string,
+  end: string,
+  on?: { date?: string | null; zone?: string | null } | null,
+): number {
   let diff = toMinutes(end) - toMinutes(start);
   if (diff < 0) diff += 24 * 60; // crosses midnight
+  const day = typeof on?.date === "string" ? on.date.slice(0, 10) : "";
+  const tz = resolveZone(on?.zone ?? null);
+  if (diff > 0 && tz && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    const endDay =
+      toMinutes(end) <= toMinutes(start) ? addDaysIso(day, 1) : day;
+    const ms =
+      zonedWallClockToUtc(endDay, end, tz).getTime() -
+      zonedWallClockToUtc(day, start, tz).getTime();
+    if (Number.isFinite(ms) && ms > 0) return ms / HOUR_MS;
+  }
   return diff / 60;
 }
 
@@ -968,14 +1119,25 @@ export function art68BreakForWork(workedMin: number): number {
  * 60 — the reading Art. 68 does not support, because it counts working time.
  */
 export function art68MinimumBreak(spanMin: number): number {
-  for (const b of [15, 30, 60]) {
-    if (b >= art68BreakForWork(spanMin - b)) return b;
+  return minimumBreak(spanMin, LABOUR_RULES.TR);
+}
+
+/**
+ * The same search for any country's rules: no break when the law owes none
+ * for the whole span, else the least statutory break that the work it leaves
+ * still complies with. A country with no break rule is always 0.
+ */
+export function minimumBreak(spanMin: number, rules: LabourRules): number {
+  for (const b of [0, ...rules.breakSteps]) {
+    if (b >= rules.breakForWork(spanMin - b)) return b;
   }
-  return 60;
+  return rules.breakSteps[rules.breakSteps.length - 1] ?? 0;
 }
 
 /** A shift as the hour rules read it. */
 export interface ShiftLike {
+  /** Its house-local day; with the house's zone, the span is read in real hours. */
+  shift_date?: string | null;
   start_time: string;
   end_time: string;
   /** Planned breaks (baseline table; no product path writes it). */
@@ -1006,30 +1168,49 @@ export function recordedBreakMinutes(s: ShiftLike): number | null {
 /**
  * The break a shift is counted with, and whether it was assumed. Recorded
  * wins; a shift with nothing recorded — of any length, founder 2026-09-22
- * round 6y — is counted with the Art. 68 minimum for its length and says so
- * (`assumed: true`). A shift with no length (malformed times) assumes
- * nothing, so it is never priced on a negative span.
+ * round 6y — is counted with the minimum its house's country owes for its
+ * length (Art. 68 in Türkiye) and says so (`assumed: true`); where the law
+ * owes none, or the country is not built in, nothing is assumed. A shift
+ * with no length (malformed times) assumes nothing, so it is never priced on
+ * a negative span.
  */
-export function breakCounted(s: ShiftLike): {
+export function breakCounted(
+  s: ShiftLike,
+  house: HouseLabour = TR_WALL_CLOCK,
+): {
   minutes: number;
   assumed: boolean;
 } {
   const recorded = recordedBreakMinutes(s);
   if (recorded != null) return { minutes: recorded, assumed: false };
-  const span = Math.round(hoursBetween(s.start_time, s.end_time) * 60);
+  const span = Math.round(spanHours(s, house) * 60);
   if (span <= 0) return { minutes: 0, assumed: false };
-  return { minutes: art68MinimumBreak(span), assumed: true };
+  const minutes = minimumBreak(span, house.rules);
+  return minutes > 0
+    ? { minutes, assumed: true }
+    : { minutes: 0, assumed: false };
+}
+
+/** A shift's span in hours, in real hours when its day and the zone are known. */
+export function spanHours(
+  s: ShiftLike,
+  house: HouseLabour = TR_WALL_CLOCK,
+): number {
+  return hoursBetween(s.start_time, s.end_time, {
+    date: s.shift_date ?? null,
+    zone: house.zone ?? null,
+  });
 }
 
 /**
- * Hours worked on a shift: its span minus the break it is counted with (4857
- * Art. 68), never below zero.
+ * Hours worked on a shift: its span minus the break it is counted with,
+ * never below zero.
  */
-export function workedHours(s: ShiftLike): number {
-  return Math.max(
-    0,
-    hoursBetween(s.start_time, s.end_time) - breakCounted(s).minutes / 60,
-  );
+export function workedHours(
+  s: ShiftLike,
+  house: HouseLabour = TR_WALL_CLOCK,
+): number {
+  return Math.max(0, spanHours(s, house) - breakCounted(s, house).minutes / 60);
 }
 
 /**
@@ -1039,11 +1220,12 @@ export function workedHours(s: ShiftLike): number {
 export function priceShift(
   wage: number | string | null | undefined,
   s: ShiftLike,
+  house: HouseLabour = TR_WALL_CLOCK,
 ): number | null {
   if (wage == null) return null;
   const rate = Number(wage);
   if (!Number.isFinite(rate)) return null;
-  return Math.round(workedHours(s) * rate * 100) / 100;
+  return Math.round(workedHours(s, house) * rate * 100) / 100;
 }
 
 /** A called-out shift was not worked: its person is replaced by a cover shift. */

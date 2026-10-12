@@ -113,6 +113,9 @@ function seed(): StubDb {
     time_off_requests: [],
     notifications: [],
     system_audit_log: [],
+      // A Turkish house: these cases are the TR row of the per-country labour
+      // rules (founder S195); labour-country.spec.ts holds the others.
+      restaurants: [{ id: RID, country: "TR" }],
   }));
 }
 
@@ -1212,6 +1215,7 @@ describe("L3 — whoever approves marks leave paid or unpaid; staff may say so",
 describe("F-191 — the person who asked for time off hears the answer", () => {
   it("tells the requester, in their inbox, that their days were approved or turned down", async () => {
     const db = seed();
+    db.tables.restaurants = []; // no country recorded: the days as the fallback words
     const req = await teamOf(db).createTimeOff(STAFF, RID, {
       memberId: "m-staff",
       startDate: "2026-09-08",
@@ -2986,6 +2990,7 @@ describe("F-1034 — a decided time-off request is not decided again from a stal
 describe("F-1227 — a staff member's time-off request reaches the house's leads", () => {
   it("puts it on every owner's and manager's bell, and says how many were told", async () => {
     const db = seed();
+    db.tables.restaurants = []; // no country recorded: the days as the fallback words
     const req: any = await teamOf(db).createTimeOff(STAFF, RID, {
       memberId: "m-staff",
       startDate: WEEK,

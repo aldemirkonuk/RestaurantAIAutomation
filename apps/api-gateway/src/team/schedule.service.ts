@@ -15,6 +15,8 @@ import {
   breakCounted,
   handoverChecks,
   HandoverShift,
+  HouseLabour,
+  houseLabour,
   hoursBetween,
   isWorked,
   leaveInWeek,
@@ -26,8 +28,8 @@ import {
   MoneyViewer,
   shiftForViewer,
   ShiftLike,
+  spanHours,
   TeamRole,
-  WEEKLY_REVIEW_HOURS,
   workedHours,
 } from "./pay-rules";
 import {
@@ -234,6 +236,7 @@ export class ScheduleService {
       weekStart,
       shiftRows,
     );
+    const frame = await this.houseFrame(restaurantId);
     const labor = await this.computeLabor(
       restaurantId,
       weekStart,
@@ -241,6 +244,7 @@ export class ScheduleService {
       settings,
       viewer,
       roster,
+      houseLabour(frame),
     );
 
     return {
@@ -252,7 +256,7 @@ export class ScheduleService {
       labor,
       receipts,
       settings,
-      ...(await this.houseFrame(restaurantId)),
+      ...frame,
       // The currency travels with the money, and only to whoever gets the
       // money: /team printed every figure in US dollars (ADR 0215).
       ...(seesMoney(viewer)
@@ -283,6 +287,28 @@ export class ScheduleService {
       return { timezone: null, country: null };
     }
     return { timezone: data?.timezone ?? null, country: data?.country ?? null };
+  }
+
+  /**
+   * The labour rules and zone a shift is priced on (founder S195: a house's
+   * rules follow its country). A failed read refuses, like a failed wage
+   * read: a cost priced on the wrong country's break is not a cost.
+   */
+  private async houseLabourOf(restaurantId: string): Promise<HouseLabour> {
+    const { data, error } = await this.sb
+      .from("restaurants")
+      .select("timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `houseLabourOf: could not read the country of ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read where this restaurant is, so its labour rules are unknown and the shift was not priced.",
+      );
+    }
+    return houseLabour(data);
   }
 
   /**
@@ -521,6 +547,7 @@ export class ScheduleService {
       ...new Set(copyable.map((s: any) => s.member_id).filter(Boolean)),
     ] as string[];
     const wageOf = new Map<string, number | null>();
+    const labour = await this.houseLabourOf(restaurantId);
     if (memberIds.length) {
       const { data: wages, error: wagesErr } = await this.sb
         .from("team_members")
@@ -601,7 +628,7 @@ export class ScheduleService {
         // A member who is no longer on the roster has no wage here and the
         // shift is unpriced, not free.
         labor_cost: s.member_id
-          ? priceShift(wageOf.get(s.member_id) ?? null, copy)
+          ? priceShift(wageOf.get(s.member_id) ?? null, copy, labour)
           : null,
       };
     });
@@ -1023,7 +1050,11 @@ export class ScheduleService {
     }
     const wage =
       later && later.length > 0 ? later[0].old_wage : (m?.hourly_wage ?? null);
-    return priceShift(wage ?? null, shift);
+    return priceShift(
+      wage ?? null,
+      { ...shift, shift_date: shiftDate },
+      await this.houseLabourOf(restaurantId),
+    );
   }
 
   /**
@@ -1881,6 +1912,7 @@ export class ScheduleService {
       .maybeSingle();
     if (settingsErr) fail("whether double booking is allowed", settingsErr);
     const allowDoubleBooking = settings?.allow_double_booking === true;
+    const labour = await this.houseLabourOf(restaurantId);
 
     const ignore = new Set([...(opts.ignore ?? []), ...all.map((g) => g.id)]);
     for (const [memberId, given] of givenBy) {
@@ -1895,6 +1927,7 @@ export class ScheduleService {
         ) as any[],
         (leave ?? []).filter((l: any) => l.member_id === memberId) as any[],
         allowDoubleBooking,
+        labour,
       );
       for (const g of given) {
         const codes = new Map(
@@ -2085,8 +2118,9 @@ export class ScheduleService {
    *    called out, and the cover shift was priced too, so the week paid twice
    *    for one slot. It is out of the hours, the cost and the review flag.
    *  - **Over 45 worked hours is a review.** `overtime` keeps its key (two
-   *    clients read it) but it is the Turkish week, not the US 40, and it never
-   *    carries a price. It is computed whether or not cost tracking is on: it is
+   *    clients read it) and it never carries a price. [S195, 2026-10-11: the
+   *    line is the house's country's — 45 in Türkiye, 40 in the US, 48 in
+   *    GB and DE, none where the country is not built in.] It is computed whether or not cost tracking is on: it is
    *    about hours, and hours are not money.
    *  - **Money is the owner's.** A manager's block carries hours and the review
    *    and no cost, no priced/unpriced counts and no cost target. The owner's
@@ -2100,6 +2134,7 @@ export class ScheduleService {
     settings: any,
     viewer: MoneyViewer,
     roster: ReadonlySet<string>,
+    labour: HouseLabour,
   ): Promise<any> {
     const worked = shifts.filter(isWorked);
     let totalHours = 0;
@@ -2108,10 +2143,10 @@ export class ScheduleService {
     let assumedBreakShifts = 0;
     const byMember = new Map<string, number>();
     for (const s of worked) {
-      const w = workedHours(s);
+      const w = workedHours(s, labour);
       totalHours += w;
-      breakHours += hoursSpan(s) - w;
-      const b = breakCounted(s);
+      breakHours += spanHours(s, labour) - w;
+      const b = breakCounted(s, labour);
       if (b.assumed) {
         assumedBreakShifts += 1;
         assumedBreakHours += b.minutes / 60;
@@ -2119,8 +2154,9 @@ export class ScheduleService {
       if (s.member_id)
         byMember.set(s.member_id, (byMember.get(s.member_id) ?? 0) + w);
     }
+    const reviewAt = labour.rules.weeklyReviewHours;
     const overtime = [...byMember.entries()]
-      .filter(([, h]) => h > WEEKLY_REVIEW_HOURS)
+      .filter(([, h]) => reviewAt != null && h > reviewAt)
       .map(([memberId, h]) => ({ memberId, hours: Math.round(h * 10) / 10 }));
     const moneyVisible = seesMoney(viewer);
     const hours = {
@@ -2134,7 +2170,9 @@ export class ScheduleService {
        */
       assumedBreakHours: Math.round(assumedBreakHours * 10) / 10,
       assumedBreakShifts,
-      weeklyReviewHours: WEEKLY_REVIEW_HOURS,
+      /** The house's country's review line; `null` = its rules are not built in. */
+      weeklyReviewHours: reviewAt,
+      labourCountry: labour.rules.country,
       overtime,
     };
 
@@ -2341,8 +2379,4 @@ function shiftHasEnded(
   const endDay =
     start && end < start ? addDays(sh.shift_date, 1) : sh.shift_date;
   return `${endDay} ${end}` <= nowOnClock;
-}
-/** A shift's scheduled span, breaks included. */
-function hoursSpan(sh: any): number {
-  return hoursBetween(sh.start_time, sh.end_time);
 }

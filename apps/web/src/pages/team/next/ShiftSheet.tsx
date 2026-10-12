@@ -11,9 +11,12 @@
  * THE BREAK (ADR 0215; founder 2026-09-21, "Take all five", and 2026-09-22
  * round 6y for shifts of 4 hours or less). Whoever edits the shift records the
  * break taken, in minutes. Left empty, nothing is recorded, and the shift —
- * any length — is counted with the Labour Law 4857 Art. 68 minimum and shown
- * as assumed; the sheet says which minimum, live, as the times move. Emptying
- * a recorded break clears the record rather than keeping it.
+ * any length — is counted with the minimum its house's country owes (Labour
+ * Law 4857 Art. 68 in Türkiye; founder S195: the rules follow the house's
+ * location) and shown as assumed; the sheet says which minimum, live, as the
+ * times move. Where the law owes none, or the country is not built in, none
+ * is assumed. Emptying a recorded break clears the record rather than keeping
+ * it.
  */
 
 import { useRef, useState } from 'react';
@@ -28,11 +31,11 @@ import {
   type TeamMember,
 } from '../../../services/api/team';
 import {
-  art68BreakForWork,
   breakCounted,
   breakUnderMinimum,
   fmtHours,
   houseLocale,
+  labourRules,
   mondayOf,
   resolveName,
   shiftHours,
@@ -135,25 +138,32 @@ export function ShiftSheet({
     shift_breaks: target.shift?.shift_breaks ?? null,
     recorded_break_min: breakValid ? breakTyped : null,
   };
-  const counted = breakCounted(preview);
-  // F-1020: Labour Law 4857 is Turkey's. A house elsewhere, or one whose
-  // country is not known, is told what is counted, never another country's law.
+  // F-1020 / F-155: each house is told its own country's rule, and a house
+  // whose country is not built in is told that, never another country's law.
   const region = useHouseRegion();
-  const turkish = region === 'TR';
+  const rules = labourRules(region);
+  const counted = breakCounted(preview, rules);
+  const law = rules.breakLaw;
   // F-1149: the hours in the break sentence carry the house's decimal mark.
   const hoursIn = houseLocale(region);
   const breakHint = !breakValid
     ? `A break is a whole number of minutes, less than the shift's ${spanMin}.`
     : counted.assumed
-      ? turkish
-        ? `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break: the legal minimum for it (Labour Law 4857 Art. 68), shown as assumed. Type the real break to replace it.`
+      ? law
+        ? `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break: the legal minimum for it (${law}), shown as assumed. Type the real break to replace it.`
         : `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break, shown as assumed. Type the real break to replace it.`
       : breakTyped === 0
         ? 'Recorded as no break taken: the whole shift counts as worked.'
         : breakTyped !== null
           ? `Recorded: ${counted.minutes} minutes, not counted as work.`
-          : 'Nothing recorded.';
-  const underMinimum = breakValid && breakUnderMinimum(preview);
+          : spanMin <= 0
+            ? 'Nothing recorded.'
+            : rules.country === 'US'
+            ? 'Nothing recorded, so the whole shift counts as worked: US federal law sets no break. Type the real break to take it out.'
+            : rules.country === null
+              ? "Nothing recorded, so the whole shift counts as worked. Your country's break rules are not built in yet; type the real break to take it out."
+              : 'Nothing recorded, so the whole shift counts as worked: it is too short to be owed a break.';
+  const underMinimum = breakValid && breakUnderMinimum(preview, rules);
 
   /**
    * On an edit, an emptied field is sent as `null` so the gateway clears it:
@@ -384,9 +394,9 @@ export function ShiftSheet({
                 8-hour shift complies with 30, but a 20-minute break leaves 7h40m
                 of work, which is owed 60 (Art. 68 counts working time). */}
             {underMinimum && breakTyped !== null
-              ? turkish
-                ? ` That is under the legal minimum of ${art68BreakForWork(spanMin - breakTyped)} minutes for the ${fmtHours((spanMin - breakTyped) / 60, hoursIn)} of work it leaves (Art. 68).`
-                : ` That is under the ${art68BreakForWork(spanMin - breakTyped)}-minute break counted for the ${fmtHours((spanMin - breakTyped) / 60, hoursIn)} of work it leaves.`
+              ? law
+                ? ` That is under the legal minimum of ${rules.breakForWork(spanMin - breakTyped)} minutes for the ${fmtHours((spanMin - breakTyped) / 60, hoursIn)} of work it leaves (${law}).`
+                : ` That is under the ${rules.breakForWork(spanMin - breakTyped)}-minute break counted for the ${fmtHours((spanMin - breakTyped) / 60, hoursIn)} of work it leaves.`
               : ''}
           </p>
         </label>

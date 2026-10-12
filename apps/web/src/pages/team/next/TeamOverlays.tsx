@@ -51,12 +51,13 @@ import {
   addDays,
   fmtDayShort,
   fmtWeekRange,
+  labourRules,
   resolveName,
   todayIso,
   workedHours,
 } from './tm-format';
 import { houseToday, useHouseZone } from '@/lib/houseZone';
-import { MutationError, Tag } from './tm-bits';
+import { MutationError, Tag, useHouseRegion } from './tm-bits';
 import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
 import { dayWords } from '@/components/mudavym/awayWords';
@@ -1201,6 +1202,8 @@ export function ExportPopover({
   onClose: () => void;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
+  /** Hours on the house's country's breaks (founder S195). */
+  const rules = labourRules(useHouseRegion());
   const rows = useMemo(
     () =>
       (shifts ?? [])
@@ -1227,11 +1230,11 @@ export function ExportPopover({
     { header: 'Kind', value: (s) => s.shift_type },
     { header: 'State', value: (s) => s.state },
     // Hours are what payroll is handed (founder, 2026-09-21: "Hand hours
-    // over"): worked hours, breaks taken out (4857 Art. 68).
+    // over"): worked hours, breaks taken out (the house's country's rule).
     {
       header: 'Hours worked',
       value: (s) =>
-        Math.round(workedHours(s) * 100) / 100,
+        Math.round(workedHours(s, rules) * 100) / 100,
     },
     // The owner only, and in the house's own money: the header names the
     // currency, because a bare number in a spreadsheet has none.
