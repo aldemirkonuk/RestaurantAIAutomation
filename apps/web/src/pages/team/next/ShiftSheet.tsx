@@ -45,6 +45,7 @@ import { MutationError, useHouseRegion } from './tm-bits';
 import { serverMessage } from './TeamOverlays';
 import { NotConfirmedError, saveOrConfirm } from './confirmSave';
 import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
+import { getHouseZone } from '@/lib/houseZone';
 
 /** The gateway's `shift_type` vocabulary (`dto/team.dto.ts`), said as service. */
 const SHIFT_TYPES: ReadonlyArray<[string, string]> = [
@@ -116,7 +117,11 @@ export function ShiftSheet({
   });
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const spanMin = Math.round(shiftHours(form.startTime, form.endTime) * 60);
+  /** The house's zone, held by the page: a DST night is the hours it is priced on (F-1462). */
+  const zone = getHouseZone();
+  const spanMin = Math.round(
+    shiftHours(form.startTime, form.endTime, { date: form.shiftDate, zone }) * 60,
+  );
   const breakText = form.breakMin.trim();
   const breakTyped = breakText === '' ? null : Number(breakText);
   const breakValid =
@@ -135,6 +140,7 @@ export function ShiftSheet({
   const preview = {
     start_time: form.startTime,
     end_time: form.endTime,
+    shift_date: form.shiftDate,
     shift_breaks: target.shift?.shift_breaks ?? null,
     recorded_break_min: breakValid ? breakTyped : null,
   };
@@ -142,7 +148,7 @@ export function ShiftSheet({
   // whose country is not built in is told that, never another country's law.
   const region = useHouseRegion();
   const rules = labourRules(region);
-  const counted = breakCounted(preview, rules);
+  const counted = breakCounted(preview, rules, zone);
   const law = rules.breakLaw;
   // F-1149: the hours in the break sentence carry the house's decimal mark.
   const hoursIn = houseLocale(region);
@@ -163,7 +169,7 @@ export function ShiftSheet({
             : rules.country === null
               ? "Nothing recorded, so the whole shift counts as worked. Your country's break rules are not built in yet; type the real break to take it out."
               : 'Nothing recorded, so the whole shift counts as worked: it is too short to be owed a break.';
-  const underMinimum = breakValid && breakUnderMinimum(preview, rules);
+  const underMinimum = breakValid && breakUnderMinimum(preview, rules, zone);
 
   /**
    * On an edit, an emptied field is sent as `null` so the gateway clears it:

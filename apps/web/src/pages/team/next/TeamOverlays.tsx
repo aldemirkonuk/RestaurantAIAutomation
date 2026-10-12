@@ -56,7 +56,7 @@ import {
   todayIso,
   workedHours,
 } from './tm-format';
-import { houseToday, useHouseZone } from '@/lib/houseZone';
+import { getHouseZone, houseToday, useHouseZone } from '@/lib/houseZone';
 import { MutationError, Tag, useHouseRegion } from './tm-bits';
 import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
@@ -1204,6 +1204,8 @@ export function ExportPopover({
   const [failed, setFailed] = useState<string | null>(null);
   /** Hours on the house's country's breaks (founder S195). */
   const rules = labourRules(useHouseRegion());
+  /** And on the house's clock: a DST night is the hours it is priced on (F-1481). */
+  const zone = getHouseZone();
   const rows = useMemo(
     () =>
       (shifts ?? [])
@@ -1234,7 +1236,7 @@ export function ExportPopover({
     {
       header: 'Hours worked',
       value: (s) =>
-        Math.round(workedHours(s, rules) * 100) / 100,
+        Math.round(workedHours(s, rules, zone) * 100) / 100,
     },
     // The owner only, and in the house's own money: the header names the
     // currency, because a bare number in a spreadsheet has none.

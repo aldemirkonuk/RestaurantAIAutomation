@@ -222,11 +222,26 @@ export function WeekGrid({
       if (!s.member_id || s.state === 'callout') continue;
       m.set(
         s.member_id,
-        (m.get(s.member_id) ?? 0) + workedHours(s, rules),
+        (m.get(s.member_id) ?? 0) + workedHours(s, rules, zone),
       );
     }
     return m;
-  }, [rows, rules]);
+  }, [rows, rules, zone]);
+
+  /**
+   * WORKED hours per person per day (F-1482): a country's daily line (Germany's
+   * 10 hours, §3 ArbZG) is on the working day, so a split shift's two halves
+   * add up, as the week's figure does per week.
+   */
+  const dayHoursByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of rows) {
+      if (!s.member_id || s.state === 'callout') continue;
+      const key = `${s.member_id}|${s.shift_date}`;
+      m.set(key, (m.get(key) ?? 0) + workedHours(s, rules, zone));
+    }
+    return m;
+  }, [rows, rules, zone]);
 
   /** Sat/Sun closes per member — the legacy fairness signal, unchanged. */
   const closesById = useMemo(() => {
@@ -264,11 +279,13 @@ export function WeekGrid({
     // country owes (ADR 0215; any length, founder round 6y; S195): the lens
     // says the break is assumed, and a recorded break shorter than the law
     // asks for says that instead.
-    const assumedBreak = breakCounted(s, rules).assumed;
-    const shortBreak = breakUnderMinimum(s, rules);
-    // A day past the country's daily ceiling (Germany's 10 hours, §3 ArbZG).
-    const longDay =
-      rules.dailyReviewHours != null && workedHours(s, rules) > rules.dailyReviewHours;
+    const assumedBreak = breakCounted(s, rules, zone).assumed;
+    const shortBreak = breakUnderMinimum(s, rules, zone);
+    // A day past the country's daily ceiling (Germany's 10 hours, §3 ArbZG),
+    // counted over every shift the person works that day (F-1482).
+    const dayHours =
+      id && s.state !== 'callout' ? (dayHoursByKey.get(`${id}|${s.shift_date}`) ?? 0) : 0;
+    const longDay = rules.dailyReviewHours != null && dayHours > rules.dailyReviewHours;
     const lapsed = id ? lapsedIds.has(id) : false;
     const compliance = assumedBreak || shortBreak || longDay || lapsed || s.state === 'callout';
     const why =
@@ -295,11 +312,11 @@ export function WeekGrid({
     const f = flagsFor(s);
     if (lens === 'labour') {
       // Hours for anyone who is not the owner: the cost is withheld, not unknown.
-      if (!moneyVisible) return fmtHours(workedHours(s, rules), hoursIn);
+      if (!moneyVisible) return fmtHours(workedHours(s, rules, zone), hoursIn);
       if (!labourEnabled) return 'labour off';
       // An owner's shift, to a manager who sees pay: withheld because it is
       // the owner's (founder 2026-09-27, item 71), so hours, not "not priced".
-      if (s.pay_withheld === 'owner') return fmtHours(workedHours(s, rules), hoursIn);
+      if (s.pay_withheld === 'owner') return fmtHours(workedHours(s, rules, zone), hoursIn);
       // An unpriced shift is unknown, not free. `?? 0` here is exactly the
       // defect ADR 0089 found in the Tonight pulse.
       return s.labor_cost == null ? `${EM} not priced` : fmtMoneyWhole(s.labor_cost, money);
@@ -641,6 +658,7 @@ export function WeekGrid({
                     coverReach={offered.get(selectedShift.id) ?? null}
                     moneyVisible={moneyVisible}
                     money={money}
+                    zone={zone}
                   />
                 )}
               </div>
@@ -794,6 +812,7 @@ function ShiftDetail({
   coverReach,
   moneyVisible,
   money,
+  zone,
 }: {
   shift: Shift;
   member: TeamMember;
@@ -817,6 +836,8 @@ function ShiftDetail({
   coverReach: CoverReach | null;
   moneyVisible: boolean;
   money: HouseMoney | null;
+  /** The house's zone: a DST night's hours are real hours (F-1462). */
+  zone?: string | null;
 }) {
   const fmtTime = useShiftTime();
   const region = useHouseRegion();
@@ -841,9 +862,9 @@ function ShiftDetail({
         <Fact k="State" v={shift.state} />
         <Fact
           k="Hours"
-          v={fmtHours(workedHours(shift, rules), hoursIn)}
+          v={fmtHours(workedHours(shift, rules, zone), hoursIn)}
         />
-        <Fact k="Break" v={fmtBreak(shift, rules)} />
+        <Fact k="Break" v={fmtBreak(shift, rules, zone)} />
         {moneyVisible && (
           <Fact
             k="Cost"
