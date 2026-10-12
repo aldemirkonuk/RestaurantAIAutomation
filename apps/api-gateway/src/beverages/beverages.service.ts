@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
   beverageTypesForRegister,
@@ -38,6 +43,7 @@ import type {
 import { ilikeValue } from "../wines/wines.service";
 import { resolveUnitCost } from "../analytics/inventory-cost";
 import {
+  cocktailNameKey,
   cocktailsSoldOut,
   lineCost,
   serveCost,
@@ -718,6 +724,10 @@ export class BeveragesService {
    * on the page rather than a missing button.
    */
   async createCocktail(restaurantId: string, dto: CreateCocktailDto) {
+    await this.assertCocktailNameFree(restaurantId, null, [
+      dto.name,
+      dto.displayName,
+    ]);
     const { data, error } = await this.dbService
       .getClient()
       .from("cocktails")
@@ -764,6 +774,12 @@ export class BeveragesService {
         dto.price,
       );
     }
+    if (dto.name !== undefined || dto.displayName !== undefined) {
+      await this.assertCocktailNameFree(restaurantId, cocktailId, [
+        dto.name,
+        dto.displayName,
+      ]);
+    }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     // Only fields the caller actually sent. A PATCH that nulled every absent
     // field would erase a row's method and glass on a price edit.
@@ -800,6 +816,38 @@ export class BeveragesService {
       );
     }
     return data;
+  }
+
+  /**
+   * F-1504: the till and the menu find a cocktail by its name (F-1329,
+   * F-1474), and a name two live cocktails share names neither, so no sale
+   * takes either recipe. A second live cocktail of this house with the same
+   * name, written as the till compares it, is refused before it is written.
+   */
+  private async assertCocktailNameFree(
+    restaurantId: string,
+    cocktailId: string | null,
+    names: Array<string | null | undefined>,
+  ): Promise<void> {
+    const keys = new Set(names.map(cocktailNameKey).filter((k) => k !== ""));
+    if (keys.size === 0) return;
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("cocktails")
+      .select("id, name, display_name")
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null);
+    if (error) throw this.explain(error, "cocktails");
+    for (const c of (data ?? []) as Array<Record<string, unknown>>) {
+      if (cocktailId !== null && String(c.id) === cocktailId) continue;
+      for (const v of [c.name, c.display_name]) {
+        if (typeof v === "string" && keys.has(cocktailNameKey(v))) {
+          throw new ConflictException(
+            `“${v.trim()}” is already on this house's list. The till finds a cocktail by its name, so two with one name would take neither recipe. Amend that one, or give this one another name`,
+          );
+        }
+      }
+    }
   }
 
   private async assertCocktailPriceUnchanged(

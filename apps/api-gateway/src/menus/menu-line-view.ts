@@ -308,18 +308,75 @@ export function isKitchenLine(category: unknown, raw: unknown): boolean {
 const COCKTAIL_WORDS = ["cocktail", "cocktails", "kokteyl", "kokteyller"];
 
 /**
+ * Section words that name a stocked drink beside cocktails (F-1503):
+ * "Cocktails & Spirits", "Beer & Cocktails", "Kokteyller ve Rakılar".
+ */
+const STOCKED_DRINK_WORDS = [
+  "spirit",
+  "spirits",
+  "beer",
+  "beers",
+  "whisky",
+  "whiskey",
+  "whiskies",
+  "bourbon",
+  "gin",
+  "vodka",
+  "rum",
+  "tequila",
+  "cognac",
+  "liqueur",
+  "liqueurs",
+  "shots",
+  "rakı",
+  "rakılar",
+  "bira",
+  "biralar",
+  "viski",
+  "votka",
+  "cin",
+  "konyak",
+  "likör",
+  "likörler",
+];
+
+/** Words that make a line in a mixed section a beer, so stocked (F-1503). */
+const BEER_WORDS = ["beer", "lager", "pilsner", "pils", "ipa", "stout", "bira"];
+
+/**
+ * A pour size or a bottle in a line's name (F-1503): "Maker's Mark 5cl",
+ * "Efes 50 cl", "Yeni Rakı 70'lik", "Jameson bottle", "Jack duble".
+ */
+const STOCKED_SIZE =
+  /\d\s*(cl|ml|lt?|oz)(?![\p{L}])|\d\s*'?\s*l[iı]k(?![\p{L}])|(?<![\p{L}])(bottle|şişe|pint|duble|tek)(?![\p{L}])/iu;
+
+/**
  * Whether a menu line is a cocktail, from its section (F-1470): the section
  * names cocktails and no wine. A cocktail is made from its ingredients, never
  * stocked, so a menu made current gives it no stock row of its own; what it
  * takes off the shelf is its recipe's linked lines (F-1329). "Wine &
  * cocktails" names a wine and stays a drink line as before.
+ *
+ * F-1503: a section that also names a stocked drink ("Cocktails & Spirits",
+ * "Kokteyller ve Rakılar") is decided line by line. A line with a pour size
+ * or a bottle, or one naming a beer, is stocked and keeps its stock row; any
+ * other line there is a cocktail, as before. A spirit with no size ("Gin
+ * Tonic", "Hendrick's") cannot be told from a cocktail by its name and stays
+ * a cocktail.
  */
-export function isCocktailLine(category: unknown): boolean {
+export function isCocktailLine(category: unknown, name?: unknown): boolean {
   const section = typeof category === "string" ? category : "";
   const runs = wordRuns(section);
   const says = (words: string[]) =>
     runs.some((run) => words.some((w) => run.includes(` ${w} `)));
-  return says(COCKTAIL_WORDS) && !says(WINE_WORDS);
+  if (!says(COCKTAIL_WORDS) || says(WINE_WORDS)) return false;
+  if (!says(STOCKED_DRINK_WORDS)) return true;
+  const line = typeof name === "string" ? name : "";
+  const lineRuns = wordRuns(line);
+  const lineSays = (words: string[]) =>
+    lineRuns.some((run) => words.some((w) => run.includes(` ${w} `)));
+  if (lineSays(COCKTAIL_WORDS)) return true;
+  return !(STOCKED_SIZE.test(line) || lineSays(BEER_WORDS));
 }
 
 /**

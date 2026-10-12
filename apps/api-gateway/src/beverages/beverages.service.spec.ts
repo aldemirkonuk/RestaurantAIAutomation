@@ -402,6 +402,61 @@ describe("BeveragesService cocktail writes", () => {
     expect(inserted[0]).not.toHaveProperty("restaurantId");
   });
 
+  // F-1504: the till and the menu find a cocktail by its name; two live
+  // cocktails sharing one name would each take neither recipe.
+  it("refuses a second cocktail whose name the till would read as one already listed", async () => {
+    const { service } = await richService({
+      tables: {
+        cocktails: [
+          { data: [{ id: "c-1", name: "Negroni", display_name: null }] },
+        ],
+      },
+    });
+    await expect(
+      service.createCocktail(RID, { name: "  NEGRONI " } as never),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining(
+        "“Negroni” is already on this house's list",
+      ),
+    });
+    await expect(
+      service.createCocktail(RID, {
+        name: "Spritz",
+        displayName: "negroni",
+      } as never),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("refuses a rename onto another cocktail's name, and lets one keep its own", async () => {
+    const list = {
+      data: [
+        { id: COCKTAIL_ID, name: "Spritz", display_name: "Aperol Spritz" },
+        { id: "c-2", name: "Negroni", display_name: "Kırmızı Negroni" },
+      ],
+    };
+    const renamed = { data: { id: COCKTAIL_ID } };
+    const { service } = await richService({
+      tables: { cocktails: [list, list, renamed] },
+    });
+    await expect(
+      service.updateCocktail(
+        RID,
+        COCKTAIL_ID,
+        { displayName: "KIRMIZI NEGRONİ" },
+        true,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      service.updateCocktail(
+        RID,
+        COCKTAIL_ID,
+        { name: "Spritz", displayName: "Aperol Spritz" },
+        true,
+      ),
+    ).resolves.toMatchObject({ id: COCKTAIL_ID });
+  });
+
   it("refuses to report success for an update that matched no row", async () => {
     const { service } = await richService({
       tables: { cocktails: [{ data: null }] },
