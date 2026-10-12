@@ -332,8 +332,14 @@ describe("a delivery turned away opens the 86 it ended again (F-1520)", () => {
       ended_by: null,
       ended_by_receipt: "txn-in",
     });
+    // The six are on the shelf; stock_live is the ledger's projection.
+    db.tables.restaurant_inventory[0].stock_live = 6;
     db.rpcHandlers.apply_stock_movement = (args) => {
       const id = db.id("txn");
+      const row = db.tables.restaurant_inventory.find(
+        (r) => r.id === args.p_inventory_id,
+      );
+      if (row) row.stock_live = Number(row.stock_live ?? 0) + args.p_delta;
       db.tables.inventory_transactions.push({
         id,
         inventory_id: args.p_inventory_id,
@@ -408,6 +414,26 @@ describe("a delivery turned away opens the 86 it ended again (F-1520)", () => {
     await another.stock.reverse(HOUSE, "del-1", "user-ayse", "rejected");
     expect(another.db.tables.stock_outs[0].ended_at).not.toBeNull();
     expect(another.db.tables.system_audit_log).toEqual([]);
+  });
+
+  it("leaves it on when a count since the receipt put bottles on the shelf (F-1525)", async () => {
+    const counted = delivered((db) => {
+      // A count after the receipt found four more than the ledger held.
+      db.tables.inventory_transactions.push({
+        id: "txn-count",
+        inventory_id: ITEM,
+        delivery_id: null,
+        transaction_type: "adjustment",
+        stock_type: "live",
+        quantity_change: 4,
+        created_at: "2026-10-11T09:30:00Z",
+      });
+      db.tables.restaurant_inventory[0].stock_live = 10;
+    });
+    await counted.stock.reverse(HOUSE, "del-1", "user-ayse", "rejected");
+    expect(counted.db.tables.restaurant_inventory[0].stock_live).toBe(4);
+    expect(counted.db.tables.stock_outs[0].ended_at).not.toBeNull();
+    expect(counted.db.tables.system_audit_log).toEqual([]);
   });
 });
 
