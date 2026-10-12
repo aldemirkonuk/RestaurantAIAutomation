@@ -376,7 +376,9 @@ describe("setting a recurrence", () => {
   });
 
   it("refuses a rule on a cancelled or rejected order (F-302)", async () => {
-    for (const status of ["CANCELLED", "REJECTED", "FAILED"]) {
+    // FAILED left this list with F-669 (founder S198): its only writer is a
+    // truck refused at the door, which does not end the agreement.
+    for (const status of ["CANCELLED", "REJECTED"]) {
       const { service, calls } = makeService({ order: { ...PARENT, status } });
       await expect(
         service.setRecurrence(
@@ -390,6 +392,18 @@ describe("setting a recurrence", () => {
       ).rejects.toMatchObject({ response: { reason: "order_closed" } });
       expect(calls.orderUpdates).toHaveLength(0);
     }
+  });
+
+  it("keeps a rule on an order whose truck was refused at the door (F-669)", async () => {
+    const { service } = makeService({ order: { ...PARENT, status: "FAILED" } });
+    await expect(
+      service.setRecurrence(
+        "rest-1",
+        "order-parent",
+        "11111111-1111-4111-8111-111111111111",
+        { frequency: "weekly" },
+      ),
+    ).resolves.toBeDefined();
   });
 
   it("does not bring an ended series back by replacing its rule (F-303)", async () => {
