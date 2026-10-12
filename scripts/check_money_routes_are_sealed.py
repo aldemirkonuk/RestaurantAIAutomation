@@ -523,7 +523,10 @@ def class_methods(text: str) -> dict[str, str]:
         if not m:
             continue
         name = m.group(1)
-        if name in ("constructor", "if", "for", "while", "switch", "catch"):
+        # `return` too (F-1113): a module-level function's two-space
+        # `return (` (document-intake.service.ts isSpreadsheet, F-1403) is a
+        # statement, not a method; reading it as one made the guard exit 2.
+        if name in ("constructor", "if", "for", "while", "switch", "catch", "return"):
             continue
         out[name] = method_body(lines, i)
     return out
