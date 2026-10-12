@@ -8,7 +8,7 @@
  * it into stock, retries book nothing twice, and the order reads back as
  * logged at the door on every order read.
  */
-import { HttpException } from "@nestjs/common";
+import { ConflictException, HttpException } from "@nestjs/common";
 import {
   logDeliveryAtDoor,
   statedOrderDay,
@@ -185,6 +185,61 @@ describe("logDeliveryAtDoor — one tap writes the order and counts it in", () =
         ),
       },
     });
+  });
+
+  // F-1501: a key resent with different answers was booked as the old truck.
+  it("refuses a resent key whose answers differ from the order it wrote, booking nothing", async () => {
+    const written = {
+      id: "order-0",
+      orderNumber: "ORD-2026-00000",
+      providerId: "prov-1",
+      inventoryId: "inv-1",
+      bottlesTotal: "12.000",
+    };
+    for (const over of [
+      { inventoryId: "inv-2" },
+      { providerId: "prov-2" },
+      { quantity: 3 },
+    ]) {
+      const d = deps({ findLogged: jest.fn().mockResolvedValue(written) });
+      await expect(logDeliveryAtDoor(d, input(over))).rejects.toMatchObject({
+        status: 409,
+        response: {
+          reason: "logged_tap_differs",
+          orderId: "order-0",
+          message: expect.stringMatching(
+            /already added to the books as order ORD-2026-00000.*nothing new was booked/,
+          ),
+        },
+      });
+      expect(d.createOrder).not.toHaveBeenCalled();
+      expect(d.recordDoorReceipt).not.toHaveBeenCalled();
+    }
+    // The same answers are a retry, and go through.
+    const same = deps({ findLogged: jest.fn().mockResolvedValue(written) });
+    await expect(logDeliveryAtDoor(same, input())).resolves.toMatchObject({
+      orderId: "order-0",
+      orderAlreadyWritten: true,
+    });
+  });
+
+  it("tells a receipt's 409 as already counted, never as 'did not reach stock'", async () => {
+    const d = deps({
+      recordDoorReceipt: jest.fn().mockRejectedValue(
+        new ConflictException({
+          reason: "receipt_key_reused",
+          message: "This receipt was already sent with a different count.",
+        }),
+      ),
+    });
+    const err = await logDeliveryAtDoor(d, input()).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.getResponse()).toMatchObject({
+      reason: "logged_count_differs",
+      orderId: "order-1",
+    });
+    expect(err.getResponse().message).toMatch(/counted into stock/);
+    expect(err.getResponse().message).not.toMatch(/did not reach stock/);
   });
 
   it("refuses a case with no bottle count before anything is written", async () => {

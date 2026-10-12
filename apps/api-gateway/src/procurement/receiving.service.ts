@@ -11,6 +11,7 @@ import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
+import type { LoggedOrder } from "./logged-at-door";
 import { closeDeliveryItemToNameBookedElsewhere } from "./delivery-item-to-name";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
@@ -1308,25 +1309,41 @@ export class ReceivingService {
   /**
    * The order a "No order on file" tap already wrote (F-669), found by the
    * tap's id, which is that order's `placement_id`. Null when there is none.
-   * A failed read throws: "could not tell" is never "not written".
+   * A failed read throws: "could not tell" is never "not written". The
+   * vendor, wine and bottles come back too, so a key resent with different
+   * answers is refused rather than booked as the old truck (F-1501).
    */
   async findLoggedAtDoorOrder(
     restaurantId: string,
     key: string,
-  ): Promise<{ id: string; orderNumber: string | null } | null> {
+  ): Promise<LoggedOrder | null> {
     const { data, error } = await this.db
       .getClient()
       .from("procurement_orders")
-      .select("id, order_number")
+      .select("id, order_number, provider_id, inventory_id, bottles_total")
       .eq("restaurant_id", restaurantId)
       .eq("placement_id", key)
       .eq("source", "retroactive")
       .limit(1);
     if (error) throw new Error(error.message);
     const row = (data ?? [])[0] as
-      | { id: string; order_number: string | null }
+      | {
+          id: string;
+          order_number: string | null;
+          provider_id: string | null;
+          inventory_id: string | null;
+          bottles_total: number | string | null;
+        }
       | undefined;
-    return row ? { id: row.id, orderNumber: row.order_number ?? null } : null;
+    return row
+      ? {
+          id: row.id,
+          orderNumber: row.order_number ?? null,
+          providerId: row.provider_id ?? null,
+          inventoryId: row.inventory_id ?? null,
+          bottlesTotal: row.bottles_total ?? null,
+        }
+      : null;
   }
 
   /**

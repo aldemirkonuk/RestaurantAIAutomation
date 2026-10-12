@@ -25,10 +25,19 @@
  * the door receipt's idempotency key. A retry after a dropped answer finds
  * the order it already wrote and the receipt it already booked, so the same
  * tap never books a second order or a second count.
+ *
+ * THE KEY BINDS TO WHAT WAS SAID (F-1501). A key that comes back with a
+ * different vendor, wine or bottle count is not a retry: the order it wrote
+ * is compared with the request and a mismatch is refused in words (409), so
+ * the old truck is never booked under the new answers. A 409 from the
+ * receipt is the same kind of answer, and is never told as "did not reach
+ * stock": the first count did reach it.
  */
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
+  HttpStatus,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import type { DoorReceiptInput, DoorReceiptResult } from "./receiving.service";
@@ -100,12 +109,21 @@ export interface LogAtDoorInput {
   signedByInitials: string | null;
 }
 
+/** The order a tap already wrote, with what it was written for. */
+export interface LoggedOrder {
+  id: string;
+  orderNumber: string | null;
+  providerId?: string | null;
+  inventoryId?: string | null;
+  bottlesTotal?: number | string | null;
+}
+
 export interface LogAtDoorDeps {
   /** The order this tap already wrote, if a first attempt got that far. */
   findLogged: (
     restaurantId: string,
     key: string,
-  ) => Promise<{ id: string; orderNumber: string | null } | null>;
+  ) => Promise<LoggedOrder | null>;
   createOrder: (
     restaurantId: string,
     userId: string,
@@ -156,7 +174,7 @@ export async function logDeliveryAtDoor(
     });
   }
 
-  let existing: { id: string; orderNumber: string | null } | null;
+  let existing: LoggedOrder | null;
   try {
     existing = await deps.findLogged(input.restaurantId, input.key);
   } catch {
@@ -169,33 +187,58 @@ export async function logDeliveryAtDoor(
     });
   }
 
-  const order: { id: string; orderNumber: string | null } =
-    existing ??
-    (await deps
-      .createOrder(
-        input.restaurantId,
-        input.userId,
-        {
-          inventoryId: input.inventoryId,
-          providerId: input.providerId,
-          quantity: input.quantity,
-          unitType: input.unit,
-          ...(input.unit === "case"
-            ? { bottlesPerUnit: input.bottlesPerCase as number }
-            : {}),
-          placementId: input.key,
-          managerNotes: "Logged at door: no order on file",
-        },
-        {
-          source: "retroactive",
-          alreadyFulfilled: {
-            deliveredAt: null,
-            invoiceTotal: null,
-            placedOnStated,
+  const asOrder = (o: LoggedOrder | null) =>
+    o?.orderNumber ? ` as order ${o.orderNumber}` : "";
+  if (existing) {
+    const bottles =
+      input.unit === "case"
+        ? input.quantity * (input.bottlesPerCase as number)
+        : input.quantity;
+    const differs =
+      (existing.providerId != null &&
+        existing.providerId !== input.providerId) ||
+      (existing.inventoryId != null &&
+        existing.inventoryId !== input.inventoryId) ||
+      (existing.bottlesTotal != null &&
+        Number(existing.bottlesTotal) !== bottles);
+    if (differs) {
+      throw new ConflictException({
+        reason: "logged_tap_differs",
+        orderId: existing.id,
+        message:
+          `This delivery was already added to the books${asOrder(existing)} with a different vendor, wine or count, ` +
+          "so nothing new was booked. Check that order under Orders before adding this delivery again.",
+      });
+    }
+  }
+
+  const order: { id: string; orderNumber: string | null } = existing
+    ? { id: existing.id, orderNumber: existing.orderNumber }
+    : await deps
+        .createOrder(
+          input.restaurantId,
+          input.userId,
+          {
+            inventoryId: input.inventoryId,
+            providerId: input.providerId,
+            quantity: input.quantity,
+            unitType: input.unit,
+            ...(input.unit === "case"
+              ? { bottlesPerUnit: input.bottlesPerCase as number }
+              : {}),
+            placementId: input.key,
+            managerNotes: "Logged at door: no order on file",
           },
-        },
-      )
-      .then((o) => ({ id: o.id, orderNumber: o.orderNumber ?? null })));
+          {
+            source: "retroactive",
+            alreadyFulfilled: {
+              deliveredAt: null,
+              invoiceTotal: null,
+              placedOnStated,
+            },
+          },
+        )
+        .then((o) => ({ id: o.id, orderNumber: o.orderNumber ?? null }));
 
   let receipt: DoorReceiptResult;
   try {
@@ -214,6 +257,23 @@ export async function logDeliveryAtDoor(
       expectedQtyInCountedUom: input.quantity,
     });
   } catch (err) {
+    // A receipt already counted under this key with a different count: the
+    // first count IS in stock, so "did not reach stock" would be false and
+    // a retry would only repeat it (F-1501).
+    if (
+      err instanceof HttpException &&
+      err.getStatus() === HttpStatus.CONFLICT &&
+      (err.getResponse() as { reason?: string })?.reason ===
+        "receipt_key_reused"
+    ) {
+      throw new ConflictException({
+        reason: "logged_count_differs",
+        orderId: order.id,
+        message:
+          `This delivery was already added to the books${asOrder(order)} and counted into stock with a different count, ` +
+          "so nothing new was added. Check that order under Orders before counting it again.",
+      });
+    }
     // The order exists; the count did not land. Said in words, with what to
     // do: the same tap again reuses this order and books the count once.
     const why =
