@@ -196,7 +196,9 @@ export default function WineDetailScreen() {
 /**
  * F-145 (S195): 86 a drink from the phone, or bring it back. Anyone of the
  * house may; the gateway records who and when, and a delivery booked in
- * brings it back on its own.
+ * brings it back on its own -- unless it was pulled, which only a person
+ * brings back (F-1496). "Back on" names the 86 on screen (F-1521): a newer
+ * one since this was read is refused with who and why, and read again.
  */
 function SoldOutCard({ itemId, house }: { itemId: string; house: HouseMoneyFrame }) {
   const qc = useQueryClient();
@@ -220,8 +222,12 @@ function SoldOutCard({ itemId, house }: { itemId: string; house: HouseMoneyFrame
     onSuccess: settled,
   });
   const back = useMutation({
-    mutationFn: () => api<StockOutState>(`${base}/end`, { method: "POST" }),
+    mutationFn: (stockOutId: string) =>
+      api<StockOutState>(`${base}/end`, { method: "POST", body: { stockOutId } }),
     onSuccess: settled,
+    onError: () => {
+      void qc.invalidateQueries({ queryKey: key });
+    },
   });
   if (!restaurantId || q.isLoading) return null;
   const failed = mark.error ?? back.error;
@@ -236,7 +242,7 @@ function SoldOutCard({ itemId, house }: { itemId: string; house: HouseMoneyFrame
       </AppText>
       {q.isError ? null : q.data?.open ? (
         <PressableScale
-          onPress={() => back.mutate()}
+          onPress={() => q.data?.open && back.mutate(q.data.open.id)}
           disabled={busy}
           accessibilityLabel="Back on"
           style={{ paddingVertical: space.sm }}

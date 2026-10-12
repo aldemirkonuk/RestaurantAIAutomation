@@ -2998,10 +2998,17 @@ export class InventoryService {
     return this.readStockOuts(client, restaurantId, inventoryId);
   }
 
+  /**
+   * F-1521: `stockOutId` is the 86 the person saw. Only that one is ended: if
+   * another is open now (an owner pulled it since the screen was read), it
+   * stands and the answer is 409 with who and why. Without an id (an older
+   * phone) the open one is ended, as before.
+   */
   async endStockOut(
     restaurantId: string,
     inventoryId: string,
     userId: string | null,
+    stockOutId?: string | null,
   ) {
     const client = this.dbService.getClient();
     await assertInventoryBelongsToRestaurant(
@@ -3011,13 +3018,18 @@ export class InventoryService {
       "endStockOut",
       this.logger,
     );
-    const { data: ended, error } = await client
+    const seen =
+      typeof stockOutId === "string" && stockOutId.trim()
+        ? stockOutId.trim()
+        : null;
+    let end = client
       .from("stock_outs")
       .update({ ended_at: new Date().toISOString(), ended_by: userId })
       .eq("restaurant_id", restaurantId)
       .eq("inventory_id", inventoryId)
-      .is("ended_at", null)
-      .select("id, cause");
+      .is("ended_at", null);
+    if (seen) end = end.eq("id", seen);
+    const { data: ended, error } = await end.select("id, cause");
     if (error) {
       this.logger.error(`endStockOut ${inventoryId}: ${error.message}`);
       throw new HttpException(
@@ -3033,7 +3045,51 @@ export class InventoryService {
         cause: r.cause,
       });
     }
-    return this.readStockOuts(client, restaurantId, inventoryId);
+    const state = await this.readStockOuts(client, restaurantId, inventoryId);
+    if (seen && !(ended ?? []).length && state.open && state.open.id !== seen) {
+      throw new HttpException(
+        await this.changedSinceWords(restaurantId, state.open),
+        HttpStatus.CONFLICT,
+      );
+    }
+    return state;
+  }
+
+  /** F-1521: the 86 open now, said as who marked it and why. */
+  private async changedSinceWords(
+    restaurantId: string,
+    open: {
+      cause: StockOutCause;
+      note: string | null;
+      startedBy: string | null;
+    },
+  ): Promise<string> {
+    let who = "Someone";
+    if (open.startedBy) {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("users")
+        .select("name")
+        .eq("user_id", open.startedBy)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      // Unnamed rather than unsaid: the refusal stands either way.
+      if (error)
+        this.logger.warn(
+          `endStockOut: who marked it could not be read: ${error.message}`,
+        );
+      const name = (data as { name?: string | null } | null)?.name?.trim();
+      if (name) who = name;
+    }
+    const why =
+      open.cause === "ran_out"
+        ? "it ran out"
+        : open.cause === "broken"
+          ? "it broke"
+          : open.cause === "pulled"
+            ? "they pulled it"
+            : "another reason";
+    return `This changed since you looked: ${who} marked it sold out again because ${why}${open.note ? ` (${open.note})` : ""}. It is still sold out; look again before you bring it back.`;
   }
 
   /**

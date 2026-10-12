@@ -66,6 +66,7 @@ import { formatMoney } from '@/lib/currency';
 import { displayGroupMark, readOptionalAmount, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { Wordmark } from '@/components/mudavym';
+import { comesBackWords } from '../../cellar/next/SoldOutControl';
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
@@ -627,9 +628,9 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
           {reason?.hand ? 'by hand' : line.status.replace('_', ' ')}
         </span>
-        {/* F-145: 86'd on /cellar, /inventory or the phone; back on when a delivery is booked in. */}
+        {/* F-145: 86'd on /cellar, /inventory or the phone. F-1496: the menu reads no cause, and a pulled one stays off after a delivery, so both ways back are said. */}
         {line.sold_out ? (
-          <span className="cl-chip" data-testid="menu-sold-out" title="Not available to guests until it is brought back or a delivery is booked in.">
+          <span className="cl-chip" data-testid="menu-sold-out" title={`Not available to guests. ${comesBackWords()}`}>
             sold out
           </span>
         ) : null}

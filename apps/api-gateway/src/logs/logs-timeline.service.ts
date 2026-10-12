@@ -626,13 +626,24 @@ export class LogsTimelineService {
                 : "Someone"));
         const act = String(r.action ?? "").replace(/_/g, " ");
         const moved = changeWords(fields);
+        // F-1522: a delivery put the drink back on (or, turned away, took it
+        // off again); the person on the row booked the delivery, not the 86.
+        const byDelivery =
+          r.action === "drink_back_on" && r.changes?.ended_by_receipt
+            ? "back on: delivery booked"
+            : r.action === "drink_sold_out" && r.changes?.reopened_after_receipt
+              ? "sold out again: the delivery that brought it back was turned away"
+              : null;
+        const by = actorName ? ` by ${actorName}` : "";
         return {
           id: r.id,
           source: "system_audit_log" as const,
           // NULLABLE in the baseline — see TimelineEvent.occurredAt.
           occurredAt: r.created_at ?? null,
           correlationId: r.correlation_id ?? null,
-          summary: `${who}: ${act}${subject ? ` — ${subject}` : ""}${moved ? ` (${moved})` : ""}`,
+          summary: byDelivery
+            ? `${subject ?? "A drink"} ${byDelivery}${by}`
+            : `${who}: ${act}${subject ? ` — ${subject}` : ""}${moved ? ` (${moved})` : ""}`,
           detail: {
             actorType: r.actor_type,
             actorId: hide ? null : (r.actor_id ?? null),

@@ -25,6 +25,13 @@ describe("sold out (86) on the phone", () => {
     expect(line).toContain("a delivery is booked in");
   });
 
+  it("F-1496: never promises a delivery brings back a pulled wine", () => {
+    const pulled: StockOutState = { open: { ...open.open!, cause: "pulled", note: null }, recent: [] };
+    const line = soldOutLine(pulled, false);
+    expect(line).toContain("It comes back only when someone brings it back.");
+    expect(line).not.toContain("delivery");
+  });
+
   it("says a wine that is not sold out is available", () => {
     expect(soldOutLine({ open: null, recent: [] }, false)).toMatch(/^Available\./);
   });

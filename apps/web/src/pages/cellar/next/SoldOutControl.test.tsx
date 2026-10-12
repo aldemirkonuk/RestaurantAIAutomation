@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import SoldOutControl, { SoldOutChip, type StockOut, type StockOutState } from './SoldOutControl';
+import SoldOutControl, { SoldOutChip, comesBackWords, type StockOut, type StockOutState } from './SoldOutControl';
 import { toInventoryItem } from '../../inventory/useInventoryPage';
 
 const get = vi.fn();
@@ -71,9 +71,24 @@ describe('SoldOutControl -- a drink can be 86\'d, with why (F-145)', () => {
 
     fireEvent.click(await screen.findByTestId('sold-out-back'));
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith(`${BASE}/end`));
+    // F-1521: it names the 86 on screen, so the gateway ends only that one.
+    await waitFor(() => expect(post).toHaveBeenCalledWith(`${BASE}/end`, { stockOutId: 'so-1' }));
     expect(await screen.findByTestId('sold-out-confirm')).toBeInTheDocument();
     expect(screen.getByTestId('sold-out-past')).toHaveTextContent(/Sold out before: .*\(broken\)/);
+  });
+
+  it('F-1521: a newer 86 since the screen was read is refused, said, and read again', async () => {
+    const pulled = so({ id: 'so-2', cause: 'pulled', note: 'corked lot' });
+    get
+      .mockResolvedValueOnce({ data: { open: so(), recent: [so()] } })
+      .mockResolvedValue({ data: { open: pulled, recent: [pulled] } });
+    post.mockRejectedValue(new Error('This changed since you looked: Deniz marked it sold out again because they pulled it (corked lot).'));
+    mount();
+
+    fireEvent.click(await screen.findByTestId('sold-out-back'));
+
+    expect(await screen.findByTestId('sold-out-failed')).toHaveTextContent(/Deniz marked it sold out again/);
+    await waitFor(() => expect(screen.getByTestId('sold-out-open')).toHaveTextContent(/pulled \(corked lot\)/));
   });
 
   it('says a failed read is not the same as not sold out', async () => {
@@ -165,5 +180,21 @@ describe('F-1434: an 86 is seen on the lists, and a broken bottle is said to sta
 
     const unread = toInventoryItem({ id: 'inv-2', stockLive: 1, soldOut: null, soldOutReadable: false } as never);
     expect(unread.soldOutReadable).toBe(false);
+  });
+});
+
+/** F-1496: a pulled 86 stays off after a delivery (20270106300000). */
+describe('how an 86 comes back, by its cause', () => {
+  it('never promises a delivery for a pulled drink', () => {
+    expect(comesBackWords('pulled')).toBe('It comes back only when someone brings it back.');
+    expect(comesBackWords('pulled')).not.toMatch(/delivery/);
+  });
+
+  it('says a delivery brings back one that ran out', () => {
+    expect(comesBackWords('ran_out')).toMatch(/a delivery is booked in/);
+  });
+
+  it('says both when the cause is not known', () => {
+    expect(comesBackWords()).toMatch(/unless it was pulled/);
   });
 });
