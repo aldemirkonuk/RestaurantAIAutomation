@@ -27,6 +27,9 @@ const shelf = vi.hoisted(() => ({ a: 12, b: 0 }))
 
 vi.mock('../../services/api/client', () => ({
   apiClient: { get: mockGet, put: vi.fn(), post: vi.fn(), request: vi.fn() },
+  // An opened row mounts SoldOutControl (F-145), which reads the active house.
+  getActiveRestaurantId: () => RESTAURANT,
+  getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }))
 vi.mock('../../contexts/AuthContext', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

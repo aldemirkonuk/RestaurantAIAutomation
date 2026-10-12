@@ -91,7 +91,9 @@ export default function SoldOutControl({
   });
 
   if (!house || q.isLoading) return null;
-  if (q.isError || !q.data) {
+  // A reply without its `recent` list is not a state we can draw: say it was
+  // not read rather than throw and blank the row (F-1107).
+  if (q.isError || !q.data || !Array.isArray(q.data.recent)) {
     return (
       <p className="cl-note" role="alert" data-testid="sold-out-unread" style={{ marginTop: 4 }}>
         Whether this is sold out could not be read. That is not the same as not sold out.
