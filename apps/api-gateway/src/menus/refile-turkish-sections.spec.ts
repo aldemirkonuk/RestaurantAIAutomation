@@ -1,7 +1,12 @@
 import * as fs from "fs";
 import * as path from "path";
 
-import { DRINK_WORD_KINDS, FOOD_NOUNS } from "./menu-line-view";
+import {
+  DRINK_WORD_KINDS,
+  FOOD_NOUNS,
+  MEAT_SECTIONS,
+  WINE_WORDS,
+} from "./menu-line-view";
 
 /**
  * F-1314: library rows stored before F-1293 under a Turkish section are
@@ -38,5 +43,12 @@ describe("the refile migration reads Turkish sections as the import does (F-1314
       (m) => m[1],
     );
     expect(nouns).toEqual([...FOOD_NOUNS]);
+  });
+
+  it("lets a wine word win and reads 'et' as meat only as the whole heading (F-1392)", () => {
+    const words = (name: string) =>
+      [...block(sql, name).matchAll(/\('([^']+)'\)/g)].map((m) => m[1]);
+    expect(words("wine_words")).toEqual([...WINE_WORDS]);
+    expect(words("meat_sections")).toEqual([...MEAT_SECTIONS]);
   });
 });

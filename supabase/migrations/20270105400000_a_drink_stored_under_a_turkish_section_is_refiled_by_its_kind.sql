@@ -26,9 +26,10 @@
 -- is no longer 'unknown', and its menu_category is now an English word the
 -- reader does not match, so a second run changes nothing.
 --
--- The two word lists below must stay the gateway's DRINK_WORD_KINDS and
--- FOOD_NOUNS (apps/api-gateway/src/menus/menu-line-view.ts);
--- refile-turkish-sections.spec.ts parses this file and holds them equal.
+-- The four word lists below must stay the gateway's DRINK_WORD_KINDS,
+-- FOOD_NOUNS, WINE_WORDS and MEAT_SECTIONS (apps/api-gateway/src/menus/
+-- menu-line-view.ts, F-1392 for the last two); refile-turkish-sections.spec.ts
+-- parses this file and holds them equal.
 
 CREATE OR REPLACE FUNCTION public.menu_kind_of_turkish_section(p_section text)
 RETURNS text
@@ -64,10 +65,23 @@ AS $function$
   ),
   food_nouns(word) AS (
     VALUES
-      ('et'), ('etler'), ('yemek'), ('yemekler'), ('yemekleri'), ('tavuk'),
+      ('etler'), ('yemek'), ('yemekler'), ('yemekleri'), ('tavuk'),
       ('balık'), ('balıklar'), ('köfte'), ('kebap'), ('kebaplar'), ('meze'),
       ('mezeler'), ('salata'), ('salatalar'), ('çorba'), ('çorbalar'),
       ('ızgara'), ('ızgaralar')
+  ),
+  -- F-1392: a wine word beats a food noun ("Balık Şarapları", "Et yanına
+  -- kırmızı şaraplar" are wines), and 'et' is meat only as the whole heading
+  -- ("Et", "Kırmızı Et", "Beyaz Et"): it is also French "and". The gateway's
+  -- WINE_WORDS and MEAT_SECTIONS.
+  wine_words(word) AS (
+    VALUES
+      ('wine'), ('wines'), ('şarap'), ('şaraplar'), ('şarapları'), ('vin'),
+      ('vins'), ('champagne'), ('rouges'), ('blancs'), ('rosés')
+  ),
+  meat_sections(word) AS (
+    VALUES
+      ('et'), ('kırmızı et'), ('beyaz et')
   ),
   kinds AS (
     SELECT DISTINCT d.kind
@@ -75,8 +89,12 @@ AS $function$
     WHERE position(' ' || d.word || ' ' IN r.run) > 0
   )
   SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM food_nouns f, runs r
-                 WHERE position(' ' || f.word || ' ' IN r.run) > 0) THEN NULL
+    WHEN NOT EXISTS (SELECT 1 FROM wine_words ww, runs r
+                     WHERE position(' ' || ww.word || ' ' IN r.run) > 0)
+     AND (EXISTS (SELECT 1 FROM meat_sections m, runs r
+                  WHERE btrim(r.run) = m.word)
+          OR EXISTS (SELECT 1 FROM food_nouns f, runs r
+                     WHERE position(' ' || f.word || ' ' IN r.run) > 0)) THEN NULL
     WHEN (SELECT count(*) FROM kinds) = 1 THEN (SELECT kind FROM kinds)
     ELSE NULL
   END;

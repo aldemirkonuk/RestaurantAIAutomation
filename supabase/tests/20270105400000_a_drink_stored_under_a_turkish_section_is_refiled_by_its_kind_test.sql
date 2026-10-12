@@ -24,6 +24,7 @@ insert into t_fx values
   ('kopuklu',   gen_random_uuid(), 'KÖPÜKLÜ'),
   ('tatli',     gen_random_uuid(), 'Tatlı Şarap'),
   ('et',        gen_random_uuid(), 'Kırmızı Et'),
+  ('et_wine',   gen_random_uuid(), 'Et yanına kırmızı şaraplar'),
   ('two',       gen_random_uuid(), 'Beyaz ve Roze'),
   ('english',   gen_random_uuid(), 'beer'),
   ('item_raki', gen_random_uuid(), null),
@@ -80,7 +81,9 @@ begin
       ('bira', 'beer', 'beer'), ('viski', 'spirit', 'whiskey'),
       ('kokteyl', 'cocktail', 'cocktail'), ('alkolsuz', 'non_alcoholic', 'non-alcoholic'),
       ('kirmizi', 'wine', 'red'), ('kopuklu', 'wine', 'sparkling'),
-      ('tatli', 'wine', 'dessert'), ('english', 'beer', 'beer')
+      ('tatli', 'wine', 'dessert'), ('english', 'beer', 'beer'),
+      -- F-1392: a wine word beats the food noun, and 'et' here is not the heading.
+      ('et_wine', 'wine', 'red')
     ) as t(k, kind, cat)
   loop
     select w.beverage_kind, w.data_enrichment ->> 'menu_category' into got, mc
@@ -137,7 +140,7 @@ begin
     raise exception 'T4 FAIL: a second run refiled % row(s) and % item(s)', r.library_rows, r.house_items;
   end if;
   select count(*) into n from public.master_wine_library w join t_fx f on f.v = w.id;
-  if n <> 12 then raise exception 'T4 FAIL: % of 12 seeded library rows remain', n; end if;
+  if n <> 13 then raise exception 'T4 FAIL: % of 13 seeded library rows remain', n; end if;
   if (select data_enrichment ->> 'menu_category_as_written' from public.master_wine_library
        where id = (select v from t_fx where k = 'raki')) <> 'Rakı' then
     raise exception 'T4 FAIL: the second run overwrote the heading as written';
