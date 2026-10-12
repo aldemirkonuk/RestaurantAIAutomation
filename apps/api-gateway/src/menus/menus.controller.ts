@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,8 +12,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
+import { isUUID } from "class-validator";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -317,8 +320,22 @@ export class MenuVersionsController {
   async plan(
     @CurrentUser("restaurantId") restaurantId: string,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Query("menuIds") menuIds?: string,
   ) {
-    return this.menusService.planFor(this.house(restaurantId), menuId);
+    // ADR 0340 rule 20: `?menuIds=a,b` plans a batch (one menu per kind) with
+    // this one; absent, this menu alone.
+    if (menuIds === undefined || menuIds === "")
+      return this.menusService.planFor(this.house(restaurantId), menuId);
+    const ids = menuIds
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id !== "");
+    if (ids.length > 3 || ids.some((id) => !isUUID(id))) {
+      throw new BadRequestException(
+        "menuIds names up to three other menus, by id, separated by commas.",
+      );
+    }
+    return this.menusService.planFor(this.house(restaurantId), menuId, ids);
   }
 
   @Post(":menuId/make-current")
@@ -342,6 +359,24 @@ export class MenuVersionsController {
       house,
       "choose the current menu",
     );
+    // ADR 0340 rule 20: a batch (other menus, picks, per-kind part-read).
+    if (
+      dto?.menuIds !== undefined ||
+      dto?.picks !== undefined ||
+      dto?.partReadAcceptedKinds !== undefined
+    )
+      return this.menusService.makeCurrent(
+        house,
+        menuId,
+        userId,
+        dto.fingerprint ?? null,
+        dto.partReadAccepted === true,
+        {
+          menuIds: dto.menuIds,
+          picks: dto.picks,
+          partReadAcceptedKinds: dto.partReadAcceptedKinds,
+        },
+      );
     // F-1292: a menu read only in part is made current only when the person
     // said so; the service refuses it otherwise.
     if (dto?.partReadAccepted === true)

@@ -153,6 +153,37 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
     expect(plan).toHaveBeenCalledWith("rest-1", MENU);
   });
 
+  it("ADR 0340 rule 20: a batch is planned and chosen with its other menus, picks and part-read kinds", async () => {
+    const OTHER = "00000000-0000-4000-8000-000000000002";
+    const { c, plan, make } = controller("manager");
+    await c.plan("rest-1", MENU, OTHER);
+    expect(plan).toHaveBeenLastCalledWith("rest-1", MENU, [OTHER]);
+    await expect(c.plan("rest-1", MENU, "not-an-id")).rejects.toMatchObject({
+      status: 400,
+    });
+    const picks = [
+      { wineLibraryId: "mw-a", kind: "bottle" as const, price: 45 },
+    ];
+    await c.makeCurrent("rest-1", "u-1", MENU, {
+      fingerprint: "fp-1",
+      menuIds: [OTHER],
+      picks,
+      partReadAcceptedKinds: ["food"],
+    });
+    expect(make).toHaveBeenLastCalledWith(
+      "rest-1",
+      MENU,
+      "u-1",
+      "fp-1",
+      false,
+      {
+        menuIds: [OTHER],
+        picks,
+        partReadAcceptedKinds: ["food"],
+      },
+    );
+  });
+
   it("any member of the house may read the menus; the house comes from the token", async () => {
     const { c, list } = controller("staff");
     await c.list("rest-1");

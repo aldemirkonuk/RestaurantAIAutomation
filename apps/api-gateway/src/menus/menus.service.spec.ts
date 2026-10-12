@@ -155,6 +155,50 @@ function makeFakeSupabase(
       return { data: { sections: 0, inherited: 0, lines: 0 }, error: null };
     }
     rpcCalls.push([fn, args]);
+    // ADR 0340 rule 20: makeCurrent calls make_menus_current with every menu
+    // of the batch. A test's single-menu `make_menu_current` answers each id
+    // in turn (not recorded again), all or nothing, and the fake builds the
+    // batch reply, reading `made_current_at` and `carried_at` off the row. A
+    // row from before `carried_at` (no such key) that is already current
+    // reads as carried, as every such test was written.
+    if (fn === "make_menus_current" && rpcImpl) {
+      const menus = (tables.restaurant_menus || []) as Row[];
+      const before = menus.map((m) => ({ ...m }));
+      const out: Row[] = [];
+      for (const id of (args.p_menu_ids as string[]) ?? []) {
+        const one = rpcImpl("make_menu_current", {
+          p_restaurant_id: args.p_restaurant_id,
+          p_menu_id: id,
+          p_actor: args.p_actor,
+        }) as { data: Row | null; error: unknown };
+        if (one.error) {
+          menus.forEach((m, i) => {
+            for (const k of Object.keys(m)) delete m[k];
+            Object.assign(m, before[i]);
+          });
+          return one;
+        }
+        const row = menus.find((m) => m.id === id) ?? {};
+        const outcome = one.data?.outcome;
+        out.push({
+          ...(one.data ?? {}),
+          menu_id: id,
+          menu_type: row.menu_type ?? null,
+          made_current_at:
+            one.data?.made_current_at ?? row.made_current_at ?? null,
+          carried_at:
+            "carried_at" in row
+              ? row.carried_at
+              : outcome === "already_current"
+                ? (row.made_current_at ?? "2026-09-21T12:00:00Z")
+                : null,
+        });
+      }
+      return {
+        data: { made_current_at: out[0]?.made_current_at ?? null, menus: out },
+        error: null,
+      };
+    }
     return rpcImpl ? rpcImpl(fn, args) : { data: null, error: { message: `no rpc ${fn} in this fake` } };
   };
   // The private bucket the menu read keeps its source in. Uploads land in
@@ -2322,7 +2366,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
       ).rejects.toThrow(
         /no lines, so making it current would empty the house's menu/,
       );
-      expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(
+      expect(calls.filter(([fn]) => fn === "make_menus_current")).toHaveLength(
         0,
       );
       expect(
@@ -2342,7 +2386,9 @@ describe("MenusService — every menu read is kept as its own version", () => {
       const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
       (tables as any).__readFails = [{ menu_items: "statement timeout" }];
       await expect(service.makeCurrent("rest-1", read.menuId, "user-2", fp)).rejects.toThrow(/statement timeout/);
-      expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(0);
+      expect(calls.filter(([fn]) => fn === "make_menus_current")).toHaveLength(
+        0,
+      );
       expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
       expect(tables.restaurant_menus.find((m) => m.id === read.menuId)!.status).toBe("draft");
     });
@@ -2707,7 +2753,7 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     });
     const plan = await service.planFor("rest-1", "menu-new");
     expect(plan.retiring).toEqual([
-      { menuId: "menu-old", name: "Wine list", lines: 1 },
+      { menuId: "menu-old", name: "Wine list", kind: null, lines: 1 },
     ]);
     // The menu already current takes nothing off.
     expect((await service.planFor("rest-1", "menu-old")).retiring).toEqual([]);
@@ -2878,7 +2924,7 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     (tables as any).__readFails = [{ house_price_locks: "permission denied" }];
     await expect(service.planFor("rest-1", "menu-new")).rejects.toBeInstanceOf(InternalServerErrorException);
     await expect(service.makeCurrent("rest-1", "menu-new", "user-2", plan.fingerprint)).rejects.toThrow(/price locks could not be read.*permission denied/);
-    expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(0);
+    expect(calls.filter(([fn]) => fn === "make_menus_current")).toHaveLength(0);
   });
 
   it("L25: a plan whose people cannot be named says so, and still decides nothing from names", async () => {
@@ -3155,6 +3201,9 @@ describe("MenusService — a line is a drink only when stored or proven (ADR 034
         name: "House red",
         category: "Starters",
         line_kind: "drink",
+        // ADR 0340 rule 7 / lane 3c: a drink line with no vocabulary
+        // category is Unsure and blocks make-live; this one has its own.
+        drink_category: "red",
         wine_library_id: "mw-house",
         bottle_price: 40,
       },
@@ -3344,5 +3393,489 @@ describe("MenusService — a line is a drink only when stored or proven (ADR 034
       },
     ]);
     expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toEqual([]);
+  });
+});
+
+describe("MenusService — one live menu per kind: the plan and make-live per kind (ADR 0340 lane 3c)", () => {
+  const AT = {
+    beverage: "2026-10-12T12:00:00Z",
+    food: "2026-10-12T12:00:01Z",
+    desserts: "2026-10-12T12:00:02Z",
+  } as Record<string, string>;
+  const wine = (
+    id: string,
+    menuId: string,
+    w: string,
+    bottle: number | null,
+    extra: Row = {},
+  ) => ({
+    id,
+    restaurant_id: "rest-1",
+    menu_id: menuId,
+    status: "approved",
+    source: "scan",
+    created_at: "2026-10-12T09:00:00Z",
+    name: `Wine ${w}`,
+    category: "red",
+    line_kind: "drink",
+    drink_category: "red",
+    wine_library_id: w,
+    bottle_price: bottle,
+    ...extra,
+  });
+  const dish = (
+    id: string,
+    menuId: string,
+    name: string,
+    price: number | null,
+    extra: Row = {},
+  ) => ({
+    id,
+    restaurant_id: "rest-1",
+    menu_id: menuId,
+    status: "approved",
+    source: "scan",
+    created_at: "2026-10-12T09:00:00Z",
+    name,
+    category: "Mains",
+    line_kind: "dish",
+    price,
+    ...extra,
+  });
+  const menu = (id: string, kind: string, status: string, extra: Row = {}) => ({
+    id,
+    restaurant_id: "rest-1",
+    name: `${kind} ${id}`,
+    menu_type: kind,
+    status,
+    ...(status === "active"
+      ? {
+          made_current_at: "2026-10-01T10:00:00Z",
+          carried_at: "2026-10-01T10:00:05Z",
+        }
+      : {}),
+    ...extra,
+  });
+
+  /**
+   * A house: Drinks and Food live, a Drinks draft and a Food draft. The
+   * database function is per kind (lane 1): it archives only the live menu of
+   * the chosen menu's kind. `set_house_menu_price` moves the house row, so a
+   * test reads the one live price there; `priceFails` names inventory ids
+   * whose write fails.
+   */
+  function house(
+    opts: {
+      lines?: Row[];
+      inventory?: Row[];
+      locks?: Row[];
+      refuse?: string;
+      priceFails?: string[];
+    } = {},
+  ) {
+    const calls: RpcCall[] = [];
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [
+        menu("drinks-live", "beverage", "active"),
+        menu("food-live", "food", "active"),
+        menu("drinks-new", "beverage", "draft"),
+        menu("food-new", "food", "draft"),
+      ],
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: opts.inventory ?? [],
+      house_price_locks: opts.locks ?? [],
+      menu_sections: [],
+      menu_items: opts.lines ?? [],
+    } as Record<string, Row[]>;
+    const rpc = (fn: string, args: Row) => {
+      if (fn === "make_menu_current") {
+        if (opts.refuse && args.p_menu_id === opts.refuse)
+          return {
+            data: null,
+            error: {
+              code: "22023",
+              message: "refused: this menu cannot go live",
+            },
+          };
+        const m = tables.restaurant_menus.find(
+          (x) =>
+            x.id === args.p_menu_id && x.restaurant_id === args.p_restaurant_id,
+        );
+        if (!m)
+          return { data: null, error: { code: "P0002", message: "no menu" } };
+        if (m.status === "active")
+          return {
+            data: { outcome: "already_current", previous_menu_ids: [] },
+            error: null,
+          };
+        const prev = tables.restaurant_menus.filter(
+          (x) => x.status === "active" && x.menu_type === m.menu_type,
+        );
+        for (const p of prev) p.status = "archived";
+        Object.assign(m, {
+          status: "active",
+          made_current_at: AT[m.menu_type],
+          carried_at: null,
+        });
+        return {
+          data: {
+            outcome: "made_current",
+            previous_menu_ids: prev.map((p) => p.id),
+            made_current_at: AT[m.menu_type],
+          },
+          error: null,
+        };
+      }
+      if (fn === "set_house_menu_price") {
+        if ((opts.priceFails ?? []).includes(args.p_inventory_id))
+          return { data: null, error: { message: "connection reset" } };
+        const row = tables.restaurant_inventory.find(
+          (r) => r.id === args.p_inventory_id,
+        );
+        if (row && args.p_set_bottle)
+          row.menu_price_current = args.p_bottle_price;
+        return { data: { outcome: "changed", held: [] }, error: null };
+      }
+      return { data: null, error: { message: `no rpc ${fn}` } };
+    };
+    const service = makeService(tables, { rpcCalls: calls, rpc });
+    return { calls, tables, service };
+  }
+  const inv = (id: string, w: string, price: number | null) => ({
+    id,
+    restaurant_id: "rest-1",
+    master_wine_id: w,
+    wine_name: `Wine ${w}`,
+    is_active: true,
+    menu_price_current: price,
+    menu_price_glass: null,
+  });
+  const lock = (inventoryId: string) => ({
+    id: `lock-${inventoryId}`,
+    restaurant_id: "rest-1",
+    inventory_id: inventoryId,
+    kind: "bottle",
+    locked_price: 30,
+    locked_by: "user-1",
+    locked_at: "2026-10-01T09:00:00Z",
+    released_at: null,
+  });
+
+  it("plans per kind: a Drinks draft retires only the live Drinks menu, says only its lines are gone, and a lock on a wine the live Food menu lists is not dormant", async () => {
+    const { service } = house({
+      inventory: [inv("inv-a", "mw-a", 40), inv("inv-p", "mw-pair", 30)],
+      locks: [lock("inv-p")],
+      lines: [
+        wine("l-d0a", "drinks-live", "mw-a", 40),
+        wine("l-d0b", "drinks-live", "mw-b", 55),
+        dish("l-f0", "food-live", "Mixed grill", 18),
+        wine("l-f0w", "food-live", "mw-pair", 30),
+        wine("l-d1a", "drinks-new", "mw-a", 40),
+      ],
+    });
+    const plan = await service.planFor("rest-1", "drinks-new");
+    expect(plan.retiring.map((m) => m.menuId)).toEqual(["drinks-live"]);
+    expect(plan.gone.map((g) => g.menuItemId)).toEqual(["l-d0b"]);
+    expect(plan.dormantLocks).toEqual([]);
+    expect(plan.menus).toEqual([
+      {
+        menuId: "drinks-new",
+        kind: "beverage",
+        current: false,
+        partRead: null,
+        lines: 1,
+        unsure: 0,
+        conflicts: 0,
+      },
+    ]);
+  });
+
+  it("two prices for one wine across the batch block make-live until picked, and nothing is written", async () => {
+    const { service, calls, tables } = house({
+      inventory: [inv("inv-a", "mw-a", 40)],
+      lines: [
+        wine("l-d1a", "drinks-new", "mw-a", 45),
+        wine("l-f1a", "food-new", "mw-a", 50),
+        dish("l-f1d", "food-new", "Mixed grill", 18),
+      ],
+    });
+    const plan = await service.planFor("rest-1", "drinks-new", ["food-new"]);
+    expect(plan.conflicts).toHaveLength(1);
+    expect(plan.conflicts[0]).toMatchObject({
+      wineLibraryId: "mw-a",
+      kind: "bottle",
+    });
+    expect(plan.conflicts[0].prices.map((p) => p.price).sort()).toEqual([
+      45, 50,
+    ]);
+    await expect(
+      service.makeCurrent(
+        "rest-1",
+        "drinks-new",
+        "user-2",
+        plan.fingerprint,
+        false,
+        { menuIds: ["food-new"] },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // A pick at a price nobody listed is refused too.
+    await expect(
+      service.makeCurrent(
+        "rest-1",
+        "drinks-new",
+        "user-2",
+        plan.fingerprint,
+        false,
+        {
+          menuIds: ["food-new"],
+          picks: [{ wineLibraryId: "mw-a", kind: "bottle", price: 47 }],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(calls.map(([fn]) => fn)).toEqual([]);
+    expect(tables.menu_items.find((l) => l.id === "l-f1a")!.bottle_price).toBe(
+      50,
+    );
+    expect(
+      tables.restaurant_menus
+        .filter((m) => m.status === "active")
+        .map((m) => m.id)
+        .sort(),
+    ).toEqual(["drinks-live", "food-live"]);
+  });
+
+  it.each([
+    ["keep live", 30],
+    ["take draft", 52],
+  ])(
+    "%s: a pick is a draft edit before the switch, and the carry leaves one live price",
+    async (_label, picked) => {
+      const { service, calls, tables } = house({
+        inventory: [inv("inv-p", "mw-pair", 30)],
+        lines: [
+          wine("l-f0w", "food-live", "mw-pair", 30),
+          dish("l-f0", "food-live", "Mixed grill", 18),
+          wine("l-d1p", "drinks-new", "mw-pair", 52),
+        ],
+      });
+      const plan = await service.planFor("rest-1", "drinks-new");
+      expect(plan.conflicts).toHaveLength(1);
+      expect(plan.conflicts[0].prices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            menuItemId: "l-f0w",
+            live: true,
+            price: 30,
+          }),
+          expect.objectContaining({
+            menuItemId: "l-d1p",
+            live: false,
+            price: 52,
+          }),
+        ]),
+      );
+      const r = await service.makeCurrent(
+        "rest-1",
+        "drinks-new",
+        "user-2",
+        plan.fingerprint,
+        false,
+        {
+          picks: [{ wineLibraryId: "mw-pair", kind: "bottle", price: picked }],
+        },
+      );
+      expect(r.picked).toBe(1);
+      // The draft took the pick; the other kind's live line was never written here.
+      expect(
+        tables.menu_items.find((l) => l.id === "l-d1p")!.bottle_price,
+      ).toBe(picked);
+      expect(
+        tables.menu_items.find((l) => l.id === "l-f0w")!.bottle_price,
+      ).toBe(30);
+      // The only price write is the carry's, after the switch, at the pick.
+      const fns = calls.map(([fn]) => fn);
+      expect(fns.indexOf("make_menus_current")).toBeGreaterThanOrEqual(0);
+      const writes = calls.filter(([fn]) => fn === "set_house_menu_price");
+      expect(fns.indexOf("set_house_menu_price")).toBeGreaterThan(
+        fns.indexOf("make_menus_current"),
+      );
+      expect(
+        writes.map(([, a]) => [
+          a.p_bottle_price,
+          a.p_effective_from,
+          a.p_change_source,
+        ]),
+      ).toEqual([[picked, AT.beverage, "menu_current"]]);
+      expect(tables.restaurant_inventory[0].menu_price_current).toBe(picked);
+    },
+  );
+
+  it("a refused switch leaves every live price and live line as it was", async () => {
+    const { service, calls, tables } = house({
+      refuse: "food-new",
+      inventory: [inv("inv-p", "mw-pair", 30)],
+      lines: [
+        wine("l-f0w", "food-live", "mw-pair", 30),
+        wine("l-d1p", "drinks-new", "mw-pair", 52),
+        dish("l-f1d", "food-new", "Mixed grill", 18),
+      ],
+    });
+    const plan = await service.planFor("rest-1", "drinks-new", ["food-new"]);
+    await expect(
+      service.makeCurrent(
+        "rest-1",
+        "drinks-new",
+        "user-2",
+        plan.fingerprint,
+        false,
+        {
+          menuIds: ["food-new"],
+          picks: [{ wineLibraryId: "mw-pair", kind: "bottle", price: 52 }],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(
+      0,
+    );
+    expect(tables.restaurant_inventory[0].menu_price_current).toBe(30);
+    expect(tables.menu_items.find((l) => l.id === "l-f0w")!.bottle_price).toBe(
+      30,
+    );
+    expect(
+      tables.restaurant_menus
+        .filter((m) => m.status === "active")
+        .map((m) => m.id)
+        .sort(),
+    ).toEqual(["drinks-live", "food-live"]);
+  });
+
+  it("a line's stored kind or a dish price moved after the plan was shown is a 409, nothing switched", async () => {
+    const { service, calls, tables } = house({
+      lines: [
+        dish("l-f0", "food-live", "Mixed grill", 18),
+        dish("l-f1", "food-new", "Mixed grill", 20),
+      ],
+    });
+    const plan = await service.planFor("rest-1", "food-new");
+    expect(plan.lines.find((l) => l.menuItemId === "l-f1")!.dish).toEqual({
+      price: 20,
+      livePrice: 18,
+      changed: true,
+    });
+    tables.menu_items.find((l) => l.id === "l-f1")!.price = 21;
+    await expect(
+      service.makeCurrent("rest-1", "food-new", "user-2", plan.fingerprint),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(calls.map(([fn]) => fn)).toEqual([]);
+  });
+
+  it("an Unsure line on a Food draft blocks that batch: nothing is switched", async () => {
+    const { service, calls } = house({
+      lines: [dish("l-f1", "food-new", "Mixed grill", 20, { line_kind: null })],
+    });
+    const plan = await service.planFor("rest-1", "food-new");
+    expect(plan.unsure).toEqual([
+      {
+        menuId: "food-new",
+        menuItemId: "l-f1",
+        name: "Mixed grill",
+        reason: "kind_not_decided",
+      },
+    ]);
+    await expect(
+      service.makeCurrent("rest-1", "food-new", "user-2", plan.fingerprint),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(calls.map(([fn]) => fn)).toEqual([]);
+  });
+
+  it("a carry that did not finish is finished by the retry, dated by that menu's own choice; a finished one is not carried again", async () => {
+    const { service, calls, tables } = house({
+      inventory: [inv("inv-a", "mw-a", 40)],
+      priceFails: ["inv-a"],
+      lines: [
+        wine("l-d1a", "drinks-new", "mw-a", 45),
+        dish("l-f1d", "food-new", "Mixed grill", 18),
+      ],
+    });
+    const first = await service.planFor("rest-1", "drinks-new", ["food-new"]);
+    const r1 = await service.makeCurrent(
+      "rest-1",
+      "drinks-new",
+      "user-2",
+      first.fingerprint,
+      false,
+      {
+        menuIds: ["food-new"],
+      },
+    );
+    expect(r1.menus.map((m) => [m.menuId, m.outcome, m.carryFinished])).toEqual(
+      [
+        ["drinks-new", "made_current", false],
+        ["food-new", "made_current", true],
+      ],
+    );
+    const row = (id: string) =>
+      tables.restaurant_menus.find((m) => m.id === id)!;
+    expect(row("drinks-new").carried_at).toBeNull();
+    expect(typeof row("food-new").carried_at).toBe("string");
+    // The versions list says which carry has not finished (rule 4).
+    const listed = (await service.listVersions("rest-1")).versions;
+    expect(listed.find((v) => v.menuId === "drinks-new")!.carryFinished).toBe(
+      false,
+    );
+    expect(listed.find((v) => v.menuId === "food-new")!.carryFinished).toBe(
+      true,
+    );
+    expect(listed.find((v) => v.menuId === "drinks-live")!.carryFinished).toBe(
+      true,
+    );
+
+    // The connection comes back; the person chooses the same batch again.
+    calls.length = 0;
+    (tables.restaurant_inventory[0] as Row).menu_price_current = 40;
+    const again = await service.planFor("rest-1", "drinks-new", ["food-new"]);
+    const house2 = makeService(tables, {
+      rpcCalls: calls,
+      rpc: (fn: string, args: Row) =>
+        fn === "make_menu_current"
+          ? {
+              data: { outcome: "already_current", previous_menu_ids: [] },
+              error: null,
+            }
+          : fn === "set_house_menu_price"
+            ? (() => {
+                tables.restaurant_inventory[0].menu_price_current =
+                  args.p_bottle_price;
+                return { data: { outcome: "changed", held: [] }, error: null };
+              })()
+            : { data: null, error: { message: `no rpc ${fn}` } },
+    });
+    const r2 = await house2.makeCurrent(
+      "rest-1",
+      "drinks-new",
+      "user-2",
+      again.fingerprint,
+      false,
+      {
+        menuIds: ["food-new"],
+      },
+    );
+    expect(r2.outcome).toBe("already_current");
+    expect(
+      r2.menus.map((m) => [m.menuId, m.recarried, m.carryFinished]),
+    ).toEqual([
+      ["drinks-new", true, true],
+      ["food-new", false, true],
+    ]);
+    const writes = calls.filter(([fn]) => fn === "set_house_menu_price");
+    expect(
+      writes.map(([, a]) => [
+        a.p_bottle_price,
+        a.p_effective_from,
+        a.p_menu_id,
+      ]),
+    ).toEqual([[45, AT.beverage, "drinks-new"]]);
+    expect(typeof row("drinks-new").carried_at).toBe("string");
+    expect(tables.restaurant_inventory[0].menu_price_current).toBe(45);
   });
 });

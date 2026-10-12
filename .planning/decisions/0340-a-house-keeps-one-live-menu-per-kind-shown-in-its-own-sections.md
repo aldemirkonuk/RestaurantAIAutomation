@@ -242,6 +242,9 @@ different axis (§F19).
      `line_kind` on a Food or Desserts menu is **not** a drink; see the Review log, "Lane 3a
      corrections".]
    - A NULL `line_kind` on a **new** line cannot reach make-live: the plan counts it Unsure.
+     [2026-10-12, lane 3c: built for Food and Desserts drafts only; a NULL `line_kind` on a
+     Drinks draft is not counted Unsure until uploads write `line_kind` (lane 5b). See the
+     Review log, "Lane 3c corrections".]
 
    **The effective drink category** of a drink line is `line.drink_category ?? nearest
    ancestor section's drink_category ?? (category if it is a vocabulary token)`; otherwise
@@ -638,6 +641,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 3a (`fix/menus-line-kind`, a line is a drink only when stored or proven) | One `lineIsDrink(line, menuKind)` in `menu-line-view.ts` (the web's twin in `firstProof.ts`) now gates the import resolver call, `addMenuItem`, the carry, `kitchen_line` and `readKitchenInventoryIds`; the resolver gets only the effective token; a confirmed category is written on the house item as declared. 20 new jest cases (18 fail on the base; the 2 that pass pin unchanged legacy behaviour) and 3 vitest cases; 9 code mutations all killed; three new claim rows, five existing rows edited in place; seven corrections (Review log, "Lane 3a corrections"). Not run: G0, L8 |
 
 | 2026-10-12 | Lane 3b (`feat/menus-sections-api`, the sections API and sections on every upload) | Migration `20270107500000` adds ten section functions (materialise, rename, reparent, delete, move to a kind, set category, confirm a section, confirm a line, assign lines, keep a Gone line), each writing its `menu_section_changes` row in the same step and looking every id up inside the house; `MenuSectionsController` serves 12 owner/manager routes under `/menu-versions/:menuId`; every upload now materialises its sections and gets a `read_together_id`; resolve-on-tap links lines a tap made drinks. SQL test T1-T7 PASS on the PGlite corpus and FAIL without the migration; 5 new `menus.service` cases fail on the base; 59 cases in `menu-sections.service.spec.ts`, role-gating cases in the price-corrections spec; SQL, code and claim mutations all killed; one new claims fragment (two rows), one row edited in place; corrections in the Review log, "Lane 3b corrections". Not run: G0, L8 |
+| 2026-10-12 | Lane 3c (`feat/menus-make-live-per-kind`, the plan and make-live per kind) | `computePlan` works out a batch (one menu per kind) against the post-switch live set: retiring, `returned`, `dormantLocks`, `gone[]`, `unsure[]`, `conflicts[]` and dish matches by section key and name; `makeCurrent` reads every menu of the batch before the switch, refuses Unsure and unpicked conflicts, writes picks on drafts only, calls `make_menus_current`, carries per menu, sets `carried_at`, and on a retry carries again any menu whose carry did not finish. `GET plan?menuIds=` and the make-current body take the batch; the one-menu calls are unchanged. 9 new jest cases fail on the base and pass after; 4 code mutations all killed; three existing claim rows edited in place, one new fragment (three rows); corrections in the Review log, "Lane 3c corrections". Not run: G0, L8, web tsc/vitest (no web file touched) |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -893,6 +897,56 @@ with the alternative it rejects):
   extractor's own section tree, fuzzy inheritance. The README row for 0340 is owed in a
   later PR. Founder-gated and not done: the G0 production read, the L8 eval and every flag
   flip.
+
+Lane 3c corrections (2026-10-12, against base `0464b9447`; each is the smallest right fix,
+with its basis and the alternative it rejected):
+
+- **Branch and fragment names.** Built on `feat/menus-make-live-per-kind` (the task's name),
+  not the plan's `feat/menus-plan-per-kind`; the claims fragment is
+  `claims.d/feat-menus-make-live-per-kind.jsonl` to match.
+- **The batch is refused whole when a menu in it has an Unsure line (400), and the client
+  sends the ready subset.** Rule 20 lets the owner make live any subset with nothing
+  blocking; the gateway makes live exactly the menus it is sent. Rejected: dropping blocked
+  menus on the server, which would make live a different set from the plan the fingerprint
+  names.
+- **Unsure is only what this lane can tell:** a Food or Desserts draft line with no
+  `line_kind` (`kind_not_decided`) and a drink line with no effective vocabulary category
+  (`no_drink_category`). A NULL `line_kind` on a Drinks draft is **not** Unsure here: every
+  upload still makes one Drinks draft with NULL kinds, and counting them would block every
+  menu choice today. It waits for the lane that writes `line_kind` on upload (5b). The
+  `kindOf`, model-disagreement and golden-set reasons of rule 15 are not built. The lane 3a
+  test "a line stored as a dish is never carried..." gained a `drink_category` on its drink
+  line, since that line is now Unsure without one.
+- **A conflict is keyed by the wine (`wine_library_id`), not by an existing house row.** Two
+  drafts listing a wine the house has no row for yet at two prices would otherwise carry
+  twice and keep whichever wrote last. A line with no wine still cannot conflict.
+- **Picks are checked, not hashed.** Rule 18 says the fingerprint covers picks, but picks are
+  made after the plan is shown and sent with make-current, so the plan's fingerprint cannot
+  contain them. Each conflict needs one pick at one of the prices it shows; a pick for no
+  conflict, a second pick, or another price is a 400. Rejected: sending picks to `GET plan`
+  and hashing them, which needs a second plan round trip per pick.
+- **A pick is written on the drafts before the switch;** a failed write is a 500 with
+  nothing made live, and drafts keep the picks already written (draft edits, rule 19).
+- **`carried_at` is set only when no line of the carry failed** (and only where it is still
+  NULL). A line held by a lock or kept blank is not a failure. A failed mark is reported as a
+  failed entry with an empty line id; choosing the menu again finishes it.
+- **Live menus from before `carried_at` read as not carried.** Choosing such a menu again
+  carries it once more, dated by its old `made_current_at`; `set_house_menu_price` refuses
+  as stale anything a person set after that date, so the rerun cannot overwrite a newer
+  price. A menu with no `made_current_at` is not re-carried. `listVersions` now says
+  `carryFinished` (null for a menu never made current). Rejected: back-filling `carried_at`
+  in a migration, which would mark carries finished that nobody checked.
+- **The make-current body has no `menuId` field.** The plan's "old `menuId` accepted" has
+  nothing to keep: the single-menu body was `{fingerprint, partReadAccepted}` with the menu
+  in the URL, and it is unchanged. The new fields are `menuIds` (up to three UUIDs),
+  `picks` and `partReadAcceptedKinds`; `partReadAccepted: true` still accepts every menu.
+- **Each menu of the batch is dated by its own read** for "set after the read" (L13), and
+  the reply keeps every old field (`outcome` is `made_current` when any menu was made
+  current) and adds `menus[]` and `picked`.
+- **Not built here:** the web review (lane 6), uploads that make more than one draft (they
+  still make one Drinks draft), ENDPOINTS (not regenerated, as in lane 3b). The README row
+  for 0340 is owed in its own PR. Founder-gated and not done: the G0 production read, the L8
+  eval and every flag flip.
 
 ## Founder forks
 
