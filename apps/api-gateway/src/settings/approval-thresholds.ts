@@ -134,14 +134,25 @@ export interface OrderUnderTest {
  * never happened as far as the vendor is concerned and does not count. A
  * missing time sorts last, as Postgres sorts ascending.
  *
- * Only the earliest line of a first cart is held: whether every line of a
- * first cart should wait until one is sealed is not decided.
+ * The whole first CART is first (coordinator under the founder's delegation,
+ * 2026-10-11, S195: approval is per purchase order, and a cart is one). The
+ * schema is one order per line, so the lines of one placement share a
+ * `placement_id`; an earlier order counts against a line only when it is not
+ * of the line's own placement. A line placed alone (no `placement_id`) is
+ * its own placement.
  */
 export interface VendorOrderStamp {
   id: string;
   status: string | null;
   requested_at?: string | null;
   created_at?: string | null;
+  /** `procurement_orders.placement_id`: the cart it was placed with, or null. */
+  placement_id?: string | null;
+}
+
+/** Whether two orders were placed together, in one cart. */
+function samePlacement(a: VendorOrderStamp, b: VendorOrderStamp): boolean {
+  return !!a.placement_id && a.placement_id === b.placement_id;
 }
 
 const NEVER_PLACED_STATUSES = new Set(["CANCELLED", "REJECTED"]);
@@ -195,7 +206,8 @@ export function isFirstOrderToVendorAmong(
     }
     if (
       countsAsPlacedWithVendor(o.status) &&
-      compareVendorOrders(o, self) < 0
+      compareVendorOrders(o, self) < 0 &&
+      !samePlacement(o, self)
     ) {
       return false;
     }
@@ -205,17 +217,31 @@ export function isFirstOrderToVendorAmong(
 
 /**
  * The same answer for every order in a ledger at once, by id. `null` for an
- * order with no vendor.
+ * order with no vendor. Per vendor it keeps every counted order seen so far
+ * while they are all of one placement: an order is first exactly when each
+ * of them is of its own placement, as `isFirstOrderToVendorAmong` asks.
  */
 export function firstOrderToVendorById(
   rows: Array<VendorOrderStamp & { provider_id: string | null }>,
 ): Map<string, boolean | null> {
   const out = new Map<string, boolean | null>();
-  const seen = new Set<string>();
+  // The vendor's one placement so far; `null` once two placements were seen.
+  const placed = new Map<string, VendorOrderStamp | null>();
   for (const r of [...rows].sort(compareVendorOrders)) {
     const vendor = r.provider_id;
-    out.set(r.id, vendor ? !seen.has(vendor) : null);
-    if (vendor && countsAsPlacedWithVendor(r.status)) seen.add(vendor);
+    if (!vendor) {
+      out.set(r.id, null);
+      continue;
+    }
+    const first = placed.has(vendor) ? placed.get(vendor)! : undefined;
+    out.set(
+      r.id,
+      first === undefined || (first !== null && samePlacement(first, r)),
+    );
+    if (!countsAsPlacedWithVendor(r.status)) continue;
+    if (first === undefined) placed.set(vendor, r);
+    else if (first !== null && !samePlacement(first, r))
+      placed.set(vendor, null);
   }
   return out;
 }

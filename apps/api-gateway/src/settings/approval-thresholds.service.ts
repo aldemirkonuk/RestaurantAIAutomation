@@ -131,6 +131,7 @@ interface OrderRow {
   id: string;
   status: string | null;
   created_at?: string | null;
+  placement_id?: string | null;
   provider_id: string | null;
   inventory_id: string | null;
   requested_at: string | null;
@@ -340,7 +341,7 @@ export class ApprovalThresholdsService {
         this.databaseService.client
           .from("procurement_orders")
           .select(
-            "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
+            "id, status, provider_id, inventory_id, requested_at, created_at, placement_id, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)

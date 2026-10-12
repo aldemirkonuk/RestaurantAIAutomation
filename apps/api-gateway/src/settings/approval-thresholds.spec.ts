@@ -638,7 +638,7 @@ describe("the first order to a vendor — one test for the gate, the walk and th
     created_at,
   });
 
-  it("holds only the earliest line of a first cart, tie broken by created_at then id", () => {
+  it("of orders placed on their own (no cart id), holds only the earliest, tie broken by created_at then id", () => {
     const flags = firstOrderToVendorById([
       row("c", "PENDING", T, "2026-10-01T10:00:02Z"),
       row("b", "PENDING", T),
@@ -647,6 +647,55 @@ describe("the first order to a vendor — one test for the gate, the walk and th
     expect(flags.get("a")).toBe(true);
     expect(flags.get("b")).toBe(false);
     expect(flags.get("c")).toBe(false);
+  });
+
+  it("[REVERT-FAILS] holds every line of a first cart, and no line of a later cart (F-731, S195)", () => {
+    const cart = (
+      id: string,
+      placement: string | null,
+      at: string,
+      c = at,
+    ) => ({
+      ...row(id, "PENDING", at, c),
+      placement_id: placement,
+    });
+    const rows = [
+      cart("a", "P1", T),
+      cart("b", "P1", T, "2026-10-01T10:00:01Z"),
+      cart("c", "P1", T, "2026-10-01T10:00:02Z"),
+      cart("d", "P2", "2026-10-02T10:00:00Z"),
+      cart("e", null, "2026-10-03T10:00:00Z"),
+      // A line of the first cart filed after another placement is not of
+      // the first placement any more.
+      cart("f", "P1", "2026-10-04T10:00:00Z"),
+    ];
+    const flags = firstOrderToVendorById(rows);
+    expect(["a", "b", "c"].map((id) => flags.get(id))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(["d", "e", "f"].map((id) => flags.get(id))).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    for (const r of rows) {
+      expect(isFirstOrderToVendorAmong(r, rows)).toBe(flags.get(r.id));
+    }
+  });
+
+  it("a cancelled line of the first cart does not end it, and a cancelled other cart does not count", () => {
+    const rows = [
+      { ...row("x", "CANCELLED", "2026-09-01T00:00:00Z"), placement_id: "P0" },
+      { ...row("a", "CANCELLED", T), placement_id: "P1" },
+      { ...row("b", "PENDING", T, "2026-10-01T10:00:01Z"), placement_id: "P1" },
+    ];
+    const flags = firstOrderToVendorById(rows);
+    expect(flags.get("b")).toBe(true);
+    for (const r of rows) {
+      expect(isFirstOrderToVendorAmong(r, rows)).toBe(flags.get(r.id));
+    }
   });
 
   it("a cancelled or turned-down earlier order does not make the vendor known", () => {

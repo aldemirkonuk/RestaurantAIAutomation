@@ -45,6 +45,14 @@
  * departure cleanup now waits for credentials as well. Availability is not
  * kept (still ON DELETE CASCADE), so nothing here purges it.
  *
+ * THE NAME ON THE REMOVAL'S AUDIT ROW, 2026-10-11 (F-704, coordinator under
+ * the founder's delegation, S195): once the five years have run, the
+ * `team_member_removed` row in `system_audit_log` keeps the event but its
+ * `display_name` reads 'Former staff member' and its `position` nothing
+ * (`forget_expired_removal_names()`, migration `20270105700000`). It runs
+ * LAST, after the wage purge, on the same clock; `actor_id`, who acted, is
+ * not touched.
+ *
  * A failed run is logged as an error and reported as failed, never as "nothing
  * was due": an unreadable answer is not an empty one. The two purges are not
  * one transaction (two RPC calls): if the shifts-and-leave purge fails, the
@@ -72,6 +80,8 @@ export interface WageRetentionRun {
   credentialsDeleted: number | null;
   /** Departure records deleted once nothing of theirs was left. `null` when the run failed. */
   departuresDeleted: number | null;
+  /** Removal audit rows whose name and position were replaced (F-704). `null` when the run failed. */
+  namesForgotten: number | null;
   at: string;
   error?: string;
 }
@@ -109,6 +119,7 @@ export class WageRecordRetentionService {
         leaveRowsDeleted: null,
         credentialsDeleted: null,
         departuresDeleted: null,
+        namesForgotten: null,
         at,
         error,
       };
@@ -164,10 +175,22 @@ export class WageRecordRetentionService {
         // An answer without its counts is not "0 deleted".
         return failed("the wage purge answered without its counts");
       }
+
+      // Last, on the same clock (F-704): the removal's audit row keeps the
+      // event and loses the name and position.
+      const { data: nData, error: nError } = await this.db.supabase.rpc(
+        "forget_expired_removal_names",
+      );
+      if (nError) return failed(nError.message);
+      const nRow = Array.isArray(nData) ? nData[0] : nData;
+      const namesForgotten = readCount(nRow?.names_forgotten);
+      if (!Number.isInteger(namesForgotten) || namesForgotten < 0) {
+        return failed("the removal-name purge answered without its count");
+      }
       this.logger.log(
         `${WAGE_RETENTION_JOB_NAME}: ${credentialsDeleted} credential(s), ${shiftsDeleted} shift(s), ` +
           `${leaveRowsDeleted} leave row(s), ${wageRowsDeleted} wage change row(s) and ${departuresDeleted} ` +
-          `departure record(s) past five years deleted.`,
+          `departure record(s) past five years deleted; ${namesForgotten} removal record(s) no longer name the person.`,
       );
       return {
         ok: true,
@@ -176,6 +199,7 @@ export class WageRecordRetentionService {
         leaveRowsDeleted,
         credentialsDeleted,
         departuresDeleted,
+        namesForgotten,
         at,
       };
     } catch (err: any) {
