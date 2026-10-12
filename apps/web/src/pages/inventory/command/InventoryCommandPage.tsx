@@ -1983,7 +1983,9 @@ export function InventoryCommandPage() {
                               title={
                                 item.velocityPerDay == null
                                   ? "Sales could not be read"
-                                  : `On the list ${item.velocityDays ?? 0} day(s): too new to plan on`
+                                  : item.velocityFromTill
+                                    ? `Sales recorded for ${item.velocityDays ?? 0} day(s) since the till's first sale: too early to plan on`
+                                    : `On the list ${item.velocityDays ?? 0} day(s): too new to plan on`
                               }
                             >
                               {velocityLabel(item)}

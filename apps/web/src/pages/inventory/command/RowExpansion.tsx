@@ -396,9 +396,12 @@ export function RowExpansion({
             v={
               velocity == null
                 ? item.analyticsReadable === false ? 'could not be read' : '—'
-                : item.velocityIsNew
-                  ? `new, ${fmtOneDecimal(velocity)} btl/day over ${item.velocityDays} day${item.velocityDays === 1 ? '' : 's'}`
-                  : velocityLabel(item)
+                : item.velocityFromTill
+                  ? // F-1516: the stock was here before the till began.
+                    `${item.velocityIsNew ? 'early, ' : ''}${fmtOneDecimal(velocity)} btl/day over ${item.velocityDays} day${item.velocityDays === 1 ? '' : 's'} since the till's first sale`
+                  : item.velocityIsNew
+                    ? `new, ${fmtOneDecimal(velocity)} btl/day over ${item.velocityDays} day${item.velocityDays === 1 ? '' : 's'}`
+                    : velocityLabel(item)
             }
           />
           <KV k="On order, not here yet" v={onOrder == null ? (ordersUnread ? 'could not be read' : '—') : `${onOrder} btl`} />
@@ -407,7 +410,11 @@ export function RowExpansion({
           <KV k="Reorder point" v={reorderPoint == null ? 'n/a' : `${reorderPoint} btl (${ASSUMED_LEAD_DAYS}-day delivery wait)`} />
           <KV k="Runway now" v={run == null ? 'n/a' : `${Math.round(run)} day${Math.round(run) === 1 ? '' : 's'}`} tone={run != null && run <= 5 ? 'amber' : undefined} />
           <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-            {velocity != null ? `From the last ${item.velocityDays ?? 30} days of sales, ` : 'From par alone, '}
+            {velocity == null
+              ? 'From par alone, '
+              : item.velocityFromTill
+                ? `From the ${item.velocityDays} day${item.velocityDays === 1 ? '' : 's'} since the till's first sale, `
+                : `From the last ${item.velocityDays ?? 30} days of sales, `}
             an assumed {ASSUMED_LEAD_DAYS}-day delivery wait and two more weeks on the shelf, less bottles already on order.
             Reports, What to buy back, uses 90 days of sales, a 7-day wait and a safety margin, so its answer can differ.
           </p>

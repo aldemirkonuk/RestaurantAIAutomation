@@ -278,6 +278,9 @@ export class InventoryService {
       // is averaged over 3, not 30), and whether it is too new to plan on.
       velocityDays: analytics?.velocity_days ?? undefined,
       velocityIsNew: analytics?.is_new ?? undefined,
+      // F-1516: true when those days are fewer because the house's sales
+      // records began after the wine was listed (its first till sale).
+      velocityFromTill: analytics?.velocity_from_till ?? undefined,
       daysOfCover: analytics?.days_of_cover ?? undefined,
       reorderPoint: analytics?.reorder_point ?? undefined,
       reorderSuggested: analytics?.reorder_suggested ?? false,
@@ -373,7 +376,7 @@ export class InventoryService {
         client
           .from("inventory_analytics")
           .select(
-            "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, velocity_days, is_new",
+            "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, velocity_days, is_new, velocity_from_till",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)

@@ -226,6 +226,8 @@ export interface LedgerRegister {
   cogs: number | null;
   /** The code `cogs` is in, when the gateway names one (F-1145). */
   cogsCurrency?: string | null;
+  /** The house's stated money; null when none is on record (F-1052). */
+  houseCurrency?: string | null;
   /** Delivered orders with no price, left out of `cogs` (F-701). */
   cogsUnpricedCount?: number;
   /** Why `cogs` is blank when the orders were in two currencies (F-1054). */
@@ -241,6 +243,8 @@ export interface LedgerRegister {
    * from an older gateway.
    */
   turnsSpanNote?: string | null;
+  /** F-1491: true when the short span is why turns are withheld. */
+  turnsSpanShort?: boolean;
   gmroi: number | null;
   deadStockCapital: number | null;
 }
@@ -266,6 +270,7 @@ const ledger = analysis<LedgerRegister>({
       pricedInventoryValue: num(d.pricedInventoryValue),
       cogs: num(d.cogs),
       cogsCurrency: codeOf(d.cogsCurrency),
+      houseCurrency: codeOf(d.houseCurrency),
       cogsUnpricedCount: num(d.cogsUnpricedCount) ?? undefined,
       cogsNote: typeof d.cogsNote === 'string' ? d.cogsNote : null,
       revenue: num(d.revenue),
@@ -274,6 +279,7 @@ const ledger = analysis<LedgerRegister>({
       inventoryTurnover: num(d.inventoryTurnover),
       daysInventoryOutstanding: num(d.daysInventoryOutstanding),
       turnsSpanNote: typeof d.turnsSpanNote === 'string' ? d.turnsSpanNote : null,
+      turnsSpanShort: d.turnsSpanShort === true,
       gmroi: num(d.gmroi),
       deadStockCapital: num(d.deadStockCapital),
     };
@@ -287,6 +293,21 @@ const ledger = analysis<LedgerRegister>({
     const shortCogsWhy = shortCogs
       ? `${figure(f.cogsUnpricedCount as number)} delivered ${f.cogsUnpricedCount === 1 ? 'order has' : 'orders have'} no price, so Cost of goods is short`
       : undefined;
+    // F-1518: why turns and days of stock read a dash, in the export's order
+    // (report-export-cuttings.ts writeLedger), the gateway's own: an unpriced
+    // delivery, Cost of goods in another money, Cost of goods withheld, the
+    // short span, then the cost basis. The scaled-up span is not a reason;
+    // it is said only beside a figure that is drawn.
+    const turnsDrawn = f.inventoryTurnover != null || f.daysInventoryOutstanding != null;
+    const turnsWhy =
+      shortCogsWhy ??
+      (f.cogsCurrency && f.houseCurrency && f.cogsCurrency !== f.houseCurrency
+        ? `Cost of goods is in ${f.cogsCurrency}, not the house's ${f.houseCurrency}, and with no exchange rate on record it is not set against the cellar`
+        : f.cogsNote
+          ? `Cost of goods is withheld: ${f.cogsNote}`
+          : f.turnsSpanShort && f.turnsSpanNote
+            ? f.turnsSpanNote
+            : 'Needs a complete cost basis and a delivered order with a price');
     const all = [
       partial
         ? {
@@ -315,8 +336,8 @@ const ledger = analysis<LedgerRegister>({
       // deliveries left out for no price that is short, so neither is drawn.
       // F-1491: otherwise a dash here had no reason; a young house's is its
       // short span.
-      { label: 'Inventory turns', value: shortCogs ? EM : figure(f.inventoryTurnover), note: shortCogsWhy ?? f.turnsSpanNote ?? undefined },
-      { label: 'Days of inventory', value: shortCogs ? EM : figure(f.daysInventoryOutstanding), note: shortCogsWhy ?? f.turnsSpanNote ?? undefined },
+      { label: 'Inventory turns', value: shortCogs ? EM : figure(f.inventoryTurnover), note: turnsWhy },
+      { label: 'Days of inventory', value: shortCogs ? EM : figure(f.daysInventoryOutstanding), note: turnsWhy },
       { label: 'GMROI', value: figure(f.gmroi) },
       {
         label: 'Capital sitting still',
@@ -383,8 +404,9 @@ const ledger = analysis<LedgerRegister>({
           : []),
       ]),
         // F-1491: the span turns and days of stock are taken over, staff
-        // included — they keep those two figures.
-        ...(f.turnsSpanNote ? [f.turnsSpanNote] : []),
+        // included — they keep those two figures. F-1518: only when it is
+        // their reason or they are drawn from it.
+        ...(f.turnsSpanNote && (f.turnsSpanShort || (!shortCogs && turnsDrawn)) ? [f.turnsSpanNote] : []),
       ],
       basis: [
         f.basis?.revenue,

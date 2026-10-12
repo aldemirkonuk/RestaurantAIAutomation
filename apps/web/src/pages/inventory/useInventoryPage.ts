@@ -40,6 +40,11 @@ export interface InventoryItem extends Omit<Wine, "threshold"> {
   velocityDays?: number;
   /** On the list fewer than 7 days: the rate is too young to plan on. */
   velocityIsNew?: boolean;
+  /**
+   * F-1516: velocityDays are fewer because the house's sales records began
+   * after the wine was listed; the rate is taken from the till's first sale.
+   */
+  velocityFromTill?: boolean;
   /** false = the sales figures could not be read for this list (F-689). */
   analyticsReadable?: boolean;
   daysOfCover?: number;
@@ -227,6 +232,7 @@ export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryI
         : ((item as any).velocityPerDay ?? undefined),
     velocityDays: (item as any).velocityDays ?? undefined,
     velocityIsNew: (item as any).velocityIsNew ?? undefined,
+    velocityFromTill: (item as any).velocityFromTill ?? undefined,
     daysOfCover:
       (item as any).analyticsReadable === false
         ? undefined

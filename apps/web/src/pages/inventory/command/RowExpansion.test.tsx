@@ -538,6 +538,15 @@ describe('RowExpansion — one reorder answer (F-081, F-391, F-630, F-689)', () 
     await screen.findByText('Selling')
     expect(kv('Selling')).toBe('new, 2.0 btl/day over 3 days')
   })
+
+  // F-1516: stock loaded three weeks before the till began. The rate is the
+  // till's two days, and the card says so instead of calling the wine new.
+  it("a rate taken from the till's first sale says so", async () => {
+    renderRow({ velocityPerDay: 3, velocityDays: 2, velocityIsNew: true, velocityFromTill: true })
+    await screen.findByText('Selling')
+    expect(kv('Selling')).toBe("early, 3.0 btl/day over 2 days since the till's first sale")
+    expect(screen.getByText(/From the 2 days since the till's first sale,/)).toBeTruthy()
+  })
 })
 
 /**
