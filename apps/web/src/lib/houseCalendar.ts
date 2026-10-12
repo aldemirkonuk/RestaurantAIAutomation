@@ -46,24 +46,44 @@ export function houseToday(zone: string | null | undefined, now: Date = new Date
 }
 
 /**
- * The instant the house's clock reads 00:00 on calendar day `y`-`m`-`d`
- * (`m` 1-based; an overflowing day or month rolls over, so `d + 1` on the 31st
- * is the 1st of the next month).
+ * The instant the house's clock reads `h`:`mi` on calendar day `y`-`m`-`d`
+ * (`m` 1-based; an overflowing day or month rolls over). `null` with no zone,
+ * or one this browser cannot read. The gateway's `zonedWallClockToUtc`, in
+ * the same two passes: a time inside a spring-forward gap lands in the new
+ * offset, an hour on.
  */
-export function houseMidnight(zone: string | null | undefined, y: number, m: number, d: number): number {
-  const wall = Date.UTC(y, m - 1, d);
-  const day = new Date(wall);
+export function houseInstant(
+  zone: string | null | undefined,
+  y: number,
+  m: number,
+  d: number,
+  h = 0,
+  mi = 0,
+): number | null {
+  const wall = Date.UTC(y, m - 1, d, h, mi);
   const offsetAt = (at: number): number | null => {
     const p = zone ? partsIn(zone, at) : null;
     if (!p) return null;
     return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(at / 1000) * 1000;
   };
   const first = offsetAt(wall);
-  if (first === null) return new Date(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()).getTime();
-  // Twice: the offset at the guess can differ from the offset at midnight
-  // when a clock change falls between them.
+  if (first === null) return null;
+  // Twice: the offset at the guess can differ from the offset at the wall
+  // clock when a clock change falls between them.
   const second = offsetAt(wall - first);
   return wall - (second ?? first);
+}
+
+/**
+ * The instant the house's clock reads 00:00 on calendar day `y`-`m`-`d`
+ * (`m` 1-based; an overflowing day or month rolls over, so `d + 1` on the 31st
+ * is the 1st of the next month).
+ */
+export function houseMidnight(zone: string | null | undefined, y: number, m: number, d: number): number {
+  const at = houseInstant(zone, y, m, d);
+  if (at !== null) return at;
+  const day = new Date(Date.UTC(y, m - 1, d));
+  return new Date(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()).getTime();
 }
 
 /**

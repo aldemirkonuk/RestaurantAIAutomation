@@ -5,6 +5,7 @@
 
 import { countryByName } from '@/lib/countries';
 import { CURRENCY_NOT_RECORDED, currencyMinorUnits } from '@/lib/currency';
+import { houseInstant } from '@/lib/houseCalendar';
 
 export const EM = '—';
 
@@ -222,13 +223,32 @@ export function fmtTime(t: string, locale?: string): string {
   return m ? `${hh}:${String(m).padStart(2, '0')}${suffix}` : `${hh}${suffix}`;
 }
 
-/** Hours a shift spans; an end before its start is an overnight, not a negative. */
-export function shiftHours(start: string, end: string): number {
+/**
+ * Hours a shift spans; an end before its start is an overnight, not a negative.
+ * With `on` (its `shift_date` and the house's zone), start and end are read as
+ * instants on the house's clock, the end on the next day when it wraps, so a
+ * DST night counts the hours really worked — the gateway's `hoursBetween`
+ * (F-1367, F-1462): 22:00-06:00 in Detroit on 2026-10-31 is 9 hours, not 8.
+ * Without either, the wall clock.
+ */
+export function shiftHours(
+  start: string,
+  end: string,
+  on?: { date?: string | null; zone?: string | null } | null,
+): number {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
   if (![sh, sm, eh, em].every(Number.isFinite)) return 0;
   let diff = eh * 60 + em - (sh * 60 + sm);
   if (diff < 0) diff += 1440;
+  const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(on?.date ?? '');
+  if (diff > 0 && day && on?.zone) {
+    const [y, m, d] = [Number(day[1]), Number(day[2]), Number(day[3])];
+    const wraps = eh * 60 + em <= sh * 60 + sm;
+    const from = houseInstant(on.zone, y, m, d, sh, sm);
+    const to = houseInstant(on.zone, y, m, wraps ? d + 1 : d, eh, em);
+    if (from !== null && to !== null && to > from) return (to - from) / 3_600_000;
+  }
   return diff / 60;
 }
 
@@ -364,6 +384,8 @@ export function minimumBreak(spanMin: number, rules: LabourRules): number {
 export interface ShiftBreakSource {
   start_time: string;
   end_time: string;
+  /** The shift's day: with the house's zone, its hours are real hours (F-1462). */
+  shift_date?: string | null;
   shift_breaks?: ReadonlyArray<{ duration_min?: number | null }> | null;
   /** Recorded by whoever edits the shift; 0 = no break taken; null = nothing recorded. */
   recorded_break_min?: number | null;
@@ -386,18 +408,28 @@ export function recordedBreakMinutes(s: ShiftBreakSource): number | null {
 }
 
 /**
+ * A shift's span in hours: real hours when its day and the house's zone are
+ * known (`useHouseZone`), as the gateway's `spanHours` prices it (F-1462,
+ * F-1481, F-1487), else the wall clock.
+ */
+export function spanHours(s: ShiftBreakSource, zone?: string | null): number {
+  return shiftHours(s.start_time, s.end_time, { date: s.shift_date ?? null, zone: zone ?? null });
+}
+
+/**
  * The break a shift is counted with, and whether it is assumed (any length):
  * the minimum the house's country owes, or nothing where it owes none or its
  * rules are not built in. `rules` defaults to Türkiye's for older callers; a
- * page passes its house's (`labourRules(useHouseRegion())`).
+ * page passes its house's (`labourRules(useHouseRegion())`) and its zone.
  */
 export function breakCounted(
   s: ShiftBreakSource,
   rules: LabourRules = LABOUR_RULES.TR,
+  zone?: string | null,
 ): { minutes: number; assumed: boolean } {
   const recorded = recordedBreakMinutes(s);
   if (recorded != null) return { minutes: recorded, assumed: false };
-  const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
+  const span = Math.round(spanHours(s, zone) * 60);
   if (span <= 0) return { minutes: 0, assumed: false };
   const minutes = minimumBreak(span, rules);
   return minutes > 0 ? { minutes, assumed: true } : { minutes: 0, assumed: false };
@@ -407,13 +439,21 @@ export function breakCounted(
  * Hours WORKED on a shift: its span minus the break it is counted with (a
  * break is not working time), never below zero.
  */
-export function workedHours(s: ShiftBreakSource, rules: LabourRules = LABOUR_RULES.TR): number {
-  return Math.max(0, shiftHours(s.start_time, s.end_time) - breakCounted(s, rules).minutes / 60);
+export function workedHours(
+  s: ShiftBreakSource,
+  rules: LabourRules = LABOUR_RULES.TR,
+  zone?: string | null,
+): number {
+  return Math.max(0, spanHours(s, zone) - breakCounted(s, rules, zone).minutes / 60);
 }
 
 /** The break as a shift's fact: "30 min · assumed" / "45 min" / "none taken" / "none". */
-export function fmtBreak(s: ShiftBreakSource, rules: LabourRules = LABOUR_RULES.TR): string {
-  const b = breakCounted(s, rules);
+export function fmtBreak(
+  s: ShiftBreakSource,
+  rules: LabourRules = LABOUR_RULES.TR,
+  zone?: string | null,
+): string {
+  const b = breakCounted(s, rules, zone);
   if (b.assumed) return `${b.minutes} min · assumed`;
   if (recordedBreakMinutes(s) === 0) return 'none taken';
   return b.minutes > 0 ? `${b.minutes} min` : 'none';
@@ -427,10 +467,11 @@ export function fmtBreak(s: ShiftBreakSource, rules: LabourRules = LABOUR_RULES.
 export function breakUnderMinimum(
   s: ShiftBreakSource,
   rules: LabourRules = LABOUR_RULES.TR,
+  zone?: string | null,
 ): boolean {
   const recorded = recordedBreakMinutes(s);
   if (recorded == null) return false;
-  const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
+  const span = Math.round(spanHours(s, zone) * 60);
   return recorded < rules.breakForWork(span - recorded);
 }
 

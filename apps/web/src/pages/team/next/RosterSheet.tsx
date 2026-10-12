@@ -113,6 +113,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
 import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
+import { getHouseZone } from '@/lib/houseZone';
 
 const EMPLOYMENT: ReadonlyArray<[string, string]> = [
   ['full_time', 'full time'],
@@ -165,6 +166,8 @@ function MemberDetail({
   const hoursIn = houseLocale(region);
   /** Its country's breaks (founder S195), as the gateway counts them. */
   const rules = useHouseLabourRules();
+  /** Its zone, held by the page (`useHouseZone`): a DST night is real hours (F-1462). */
+  const zone = getHouseZone();
   const name = resolveName(member);
   const { user } = useAuth();
   // An owner opening their own row sets their OWN dates: not logged, and the
@@ -174,7 +177,7 @@ function MemberDetail({
   // Worked hours: breaks out, a called-out shift out — as the gateway counts.
   const hours = mine
     .filter((s) => s.state !== 'callout')
-    .reduce((sum, s) => sum + workedHours(s, rules), 0);
+    .reduce((sum, s) => sum + workedHours(s, rules, zone), 0);
   const myCerts = (certs ?? []).filter((c) => c.member_id === member.id);
   const myLeave = (timeOff ?? []).filter((r) => r.member_id === member.id);
   const areaNames = house.areas
@@ -358,6 +361,7 @@ export function RosterSheet({
   const region = useHouseRegion();
   const hoursIn = houseLocale(region);
   const rules = useHouseLabourRules();
+  const zone = getHouseZone();
   const [openId, setOpenId] = useState<string | null>(null);
   const hoursById = useMemo(() => {
     const m = new Map<string, number>();
@@ -365,11 +369,11 @@ export function RosterSheet({
       if (!s.member_id || s.state === 'callout') continue;
       m.set(
         s.member_id,
-        (m.get(s.member_id) ?? 0) + workedHours(s, rules),
+        (m.get(s.member_id) ?? 0) + workedHours(s, rules, zone),
       );
     }
     return m;
-  }, [shifts, rules]);
+  }, [shifts, rules, zone]);
   const flagById = useMemo(() => {
     const m = new Map<string, Certification>();
     for (const c of certs ?? []) {

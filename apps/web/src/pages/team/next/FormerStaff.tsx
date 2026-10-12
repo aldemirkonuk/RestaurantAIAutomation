@@ -20,15 +20,36 @@ import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getFormerStaff, type FormerStaffPerson } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
-import { EM, fmtDayShort, fmtHours, fmtMoneyExact, fmtMoneyWhole, houseLocale, type HouseMoneyLike } from './tm-format';
-import { Alert } from './tm-bits';
+import { getHouseZone, houseToday } from '@/lib/houseZone';
+import {
+  EM,
+  fmtDayShort,
+  fmtHours,
+  fmtMoneyExact,
+  fmtMoneyWhole,
+  houseLocale,
+  todayIso,
+  type HouseMoneyLike,
+} from './tm-format';
+import { Alert, useShiftTime } from './tm-bits';
 
-function day(iso: string | null | undefined): string {
-  return iso ? fmtDayShort(iso.slice(0, 10)) : EM;
+/**
+ * The house's calendar day of a stamp (F-1489): a removal at 01:00 in
+ * Istanbul is stored as the previous evening in UTC, and its first ten
+ * characters named that UTC day. A bare date is a calendar day already.
+ */
+function houseDay(iso: string, zone: string | null): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const at = new Date(iso);
+  return Number.isFinite(at.getTime()) ? todayIso(houseToday(zone, at)) : iso.slice(0, 10);
 }
 
-function year(iso: string): string {
-  return iso.slice(0, 4);
+function day(iso: string | null | undefined, zone: string | null): string {
+  return iso ? fmtDayShort(houseDay(iso, zone)) : EM;
+}
+
+function year(iso: string, zone: string | null): string {
+  return houseDay(iso, zone).slice(0, 4);
 }
 
 const LEAVE_TYPE: Record<string, string> = {
@@ -40,6 +61,10 @@ const LEAVE_TYPE: Record<string, string> = {
 function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
   // F-1149: hours carry the house's decimal mark, read off the money's country.
   const hoursIn = houseLocale(money.country);
+  // F-1489: days on the house's calendar (the page holds `useHouseZone`), and
+  // shift times on its clock, as the rest of /team prints them.
+  const zone = getHouseZone();
+  const fmtTime = useShiftTime();
   return (
     <article
       data-testid={`former-${p.memberId}`}
@@ -50,7 +75,7 @@ function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
         {p.position ? <span className="tm-quiet">{` · ${p.position}`}</span> : null}
       </h3>
       <p className="tm-fact__k" style={{ textTransform: 'none', letterSpacing: '0.1em' }}>
-        {`Removed ${day(p.leftAt)} ${year(p.leftAt)} · kept until ${day(p.keptUntil)} ${year(p.keptUntil)}`}
+        {`Removed ${day(p.leftAt, zone)} ${year(p.leftAt, zone)} · kept until ${day(p.keptUntil, zone)} ${year(p.keptUntil, zone)}`}
       </p>
       {p.name === null ? (
         <p className="tm-hint">
@@ -79,7 +104,7 @@ function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
           <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: 12 }}>
             {p.shifts.map((s) => (
               <li key={s.id}>
-                {`${day(s.shift_date)} ${year(s.shift_date)} · ${s.start_time}–${s.end_time} · ${fmtHours(s.workedHours, hoursIn)}`}
+                {`${day(s.shift_date, zone)} ${year(s.shift_date, zone)} · ${fmtTime(s.start_time)}–${fmtTime(s.end_time)} · ${fmtHours(s.workedHours, hoursIn)}`}
                 {s.state === 'callout' ? ' · called out' : ''}
                 {` · ${s.labor_cost === null ? 'no wage on file' : fmtMoneyExact(s.labor_cost, money)}`}
               </li>
@@ -94,7 +119,7 @@ function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
           : `Leave: ${p.leave
               .map(
                 (l) =>
-                  `${day(l.start_date)}–${day(l.end_date)} ${year(l.end_date)} (${l.status}, ${LEAVE_TYPE[l.leave_type] ?? l.leave_type})`,
+                  `${day(l.start_date, zone)}–${day(l.end_date, zone)} ${year(l.end_date, zone)} (${l.status}, ${LEAVE_TYPE[l.leave_type] ?? l.leave_type})`,
               )
               .join('; ')}`}
       </p>
@@ -105,7 +130,7 @@ function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
           : `Wage: ${p.wageChanges
               .map((w) => {
                 const m = { currency: w.currency, country: money.country, readable: true };
-                return `${day(w.changed_at)} ${year(w.changed_at)} ${fmtMoneyExact(w.old_wage, m)} → ${fmtMoneyExact(w.new_wage, m)}${w.changed_by_role ? ` (by the ${w.changed_by_role})` : ''}`;
+                return `${day(w.changed_at, zone)} ${year(w.changed_at, zone)} ${fmtMoneyExact(w.old_wage, m)} → ${fmtMoneyExact(w.new_wage, m)}${w.changed_by_role ? ` (by the ${w.changed_by_role})` : ''}`;
               })
               .join('; ')}`}
       </p>
@@ -114,7 +139,7 @@ function Person({ p, money }: { p: FormerStaffPerson; money: HouseMoneyLike }) {
         {p.credentials.length === 0
           ? 'No credential kept.'
           : `Credentials: ${p.credentials
-              .map((c) => `${c.cert_type.replace(/_/g, ' ')} (issued ${day(c.issued_at)}, expires ${day(c.expires_at)})`)
+              .map((c) => `${c.cert_type.replace(/_/g, ' ')} (issued ${day(c.issued_at, zone)}, expires ${day(c.expires_at, zone)})`)
               .join('; ')}`}
       </p>
     </article>

@@ -54,6 +54,7 @@ import {
 import { apiClient } from '../../../services/api/client';
 import { getAway } from '../../../services/api/areas';
 import { awayKey } from './useHouseAreas';
+import { getHouseZone } from '@/lib/houseZone';
 import { mondayOf, parsePeriod, resolveName, shiftHours } from './tm-format';
 
 /**
@@ -394,10 +395,14 @@ export interface TeamNextData {
 /**
  * The hours a shift spans, by the one rule the gateway, the grid and the
  * calendar feed share: an end before the start is the next morning, equal
- * times are no hours at all (never a full day).
+ * times are no hours at all (never a full day), and with the house's zone a
+ * DST night is the hours really worked (F-1462).
  */
-export function hoursOf(s: Pick<Shift, 'start_time' | 'end_time'>): number {
-  return shiftHours(s.start_time, s.end_time);
+export function hoursOf(
+  s: Pick<Shift, 'start_time' | 'end_time'> & { shift_date?: string | null },
+  zone?: string | null,
+): number {
+  return shiftHours(s.start_time, s.end_time, { date: s.shift_date ?? null, zone: zone ?? null });
 }
 
 /**
@@ -481,14 +486,15 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
   const shifts = weekQ.data?.shifts ?? [];
   const members = membersQ.data ?? [];
 
+  const zone = getHouseZone();
   const hoursByMember = useMemo(() => {
     const m = new Map<string, number>();
     for (const s of shifts) {
       if (!s.member_id) continue;
-      m.set(s.member_id, (m.get(s.member_id) ?? 0) + hoursOf(s));
+      m.set(s.member_id, (m.get(s.member_id) ?? 0) + hoursOf(s, zone));
     }
     return m;
-  }, [shifts]);
+  }, [shifts, zone]);
 
   // F-1017: approved time off and Away dates take a person out of the
   // suggestion for that day. The gateway refuses leave with a 409, so a
