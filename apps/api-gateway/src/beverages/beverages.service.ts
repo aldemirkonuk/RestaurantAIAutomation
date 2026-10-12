@@ -278,6 +278,33 @@ export interface StockChoice {
 const ROLLUP_SELECT =
   "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count";
 
+/**
+ * F-1471: what a recipe takes off the shelf, as one comparable string: each
+ * linked line's stock row, amount and unit, in any order. Words and unlinked
+ * lines take nothing, so they are not in it.
+ */
+function stockTaken(
+  lines: Array<{
+    inventory_id?: string | null;
+    quantity?: unknown;
+    unit?: unknown;
+  }>,
+): string {
+  return lines
+    .filter((l) => l.inventory_id)
+    .map((l) =>
+      [
+        l.inventory_id,
+        l.quantity === null || l.quantity === undefined
+          ? ""
+          : String(Number(l.quantity)),
+        typeof l.unit === "string" ? l.unit.trim() : "",
+      ].join("|"),
+    )
+    .sort()
+    .join("\n");
+}
+
 @Injectable()
 export class BeveragesService {
   private readonly logger = new Logger(BeveragesService.name);
@@ -819,6 +846,12 @@ export class BeveragesService {
     restaurantId: string,
     cocktailId: string,
     dto: SetCocktailIngredientsDto,
+    // F-1471: owner or manager (beverages.controller.ts). A linked line is
+    // what a till sale takes off the shelf, so only they may link, unlink or
+    // re-measure one, as only they may map a till button (F-387). Anyone may
+    // still write the recipe's words and its unlinked lines (F-270). Unsaid
+    // is no: a caller that does not say may not move a link.
+    mayLink = false,
   ) {
     const client = this.dbService.getClient();
 
@@ -869,10 +902,31 @@ export class BeveragesService {
     // leaves the old recipe exactly as it was.
     const { data: before, error: beforeError } = await client
       .from("cocktail_ingredients")
-      .select("id")
+      .select("id, inventory_id, quantity, unit")
       .eq("cocktail_id", cocktailId);
     if (beforeError) throw this.explain(beforeError, "cocktail_ingredients");
-    const oldIds = ((before ?? []) as { id: string }[]).map((r) => r.id);
+    const oldRows = (before ?? []) as Array<{
+      id: string;
+      inventory_id?: string | null;
+      quantity?: unknown;
+      unit?: unknown;
+    }>;
+    const oldIds = oldRows.map((r) => r.id);
+    if (
+      !mayLink &&
+      stockTaken(oldRows) !==
+        stockTaken(
+          dto.lines.map((l) => ({
+            inventory_id: l.inventoryId,
+            quantity: l.quantity,
+            unit: l.unit,
+          })),
+        )
+    ) {
+      throw new ForbiddenException(
+        "Only managers and owners can change which stock a recipe takes, or how much. Nothing was changed.",
+      );
+    }
 
     let newIds: string[] = [];
     if (dto.lines.length > 0) {

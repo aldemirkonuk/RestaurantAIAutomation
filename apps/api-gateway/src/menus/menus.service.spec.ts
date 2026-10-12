@@ -1872,6 +1872,47 @@ describe("MenusService — every menu read is kept as its own version", () => {
       ).toHaveLength(1);
     });
 
+    // F-1470: a cocktail is made from its recipe, never stocked. A stock row
+    // of its own sat at 0 under its threshold: critical every morning.
+    it("a cocktail line seeds no stock row and sets no price when its menu is made current, and the plan says why", async () => {
+      const { calls, tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64 },
+      ]);
+      for (const [id, section] of [
+        ["mi-negroni", "Signature Cocktails"],
+        ["mi-mojito", "Kokteyller"],
+      ]) {
+        tables.menu_items.push({
+          id,
+          menu_id: read.menuId,
+          restaurant_id: "rest-1",
+          name: id,
+          category: section,
+          bottle_price: 16,
+          wine_library_id: `mw-${id}`,
+          status: "approved",
+        });
+      }
+      const plan = await service.planFor("rest-1", read.menuId);
+      const negroni = plan.lines.find((l) => l.name === "mi-negroni")!;
+      expect(negroni.bottle.result).toBe("cocktail");
+      expect(plan.counts).toMatchObject({ cocktail: 4, not_linked: 0 });
+
+      const r = await choose(service, read.menuId);
+      expect(r).toMatchObject({
+        outcome: "made_current",
+        lines: 3,
+        failed: [],
+      });
+      expect(r.priceSync).toMatchObject({ cocktail: 2 });
+      expect(tables.restaurant_inventory.map((i) => i.master_wine_id)).toEqual([
+        "mw-1",
+      ]);
+      expect(
+        calls.filter(([fn]) => fn === "set_house_menu_price"),
+      ).toHaveLength(1);
+    });
+
     // F-946: the house removed the wine; a menu made current lists it again.
     it("brings back a wine the house removed when the chosen menu lists it", async () => {
       const { tables, service, read } = await readThenChoose([

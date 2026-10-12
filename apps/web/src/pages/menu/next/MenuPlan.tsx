@@ -115,6 +115,10 @@ function pricesSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'lines'>): 
   // A food line is set aside, not an unmatched wine (F-1297).
   const kitchen = plan.lines.filter((l) => l.bottle.result === 'kitchen').length;
   if (kitchen > 0) more.push(`${plural(kitchen, 'kitchen line', 'kitchen lines')} set aside, with no price`);
+  // A cocktail is made from its recipe, not kept in stock (F-1470).
+  const cocktails = plan.lines.filter((l) => l.bottle.result === 'cocktail').length;
+  if (cocktails > 0)
+    more.push(`${plural(cocktails, 'cocktail is', 'cocktails are')} made from ${cocktails === 1 ? 'its recipe' : 'their recipes'}, so ${cocktails === 1 ? 'it gets' : 'they get'} no stock row and no price here`);
   if (plan.dormantLocks.length > 0)
     more.push(
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,
@@ -159,6 +163,8 @@ export function kindWords(line: PlanLine, k: PlanKind, currency?: string | null)
       return 'not matched to a wine, so no price';
     case 'kitchen':
       return 'a kitchen line, set aside';
+    case 'cocktail':
+      return 'a cocktail, made from its recipe; priced on /cocktails';
     case 'new_wine':
       return k.menuPrice === null ? EM : `new to the house at ${money(k.menuPrice, currency)}`;
     default:

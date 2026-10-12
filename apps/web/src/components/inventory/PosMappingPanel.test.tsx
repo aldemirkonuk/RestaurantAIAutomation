@@ -11,6 +11,8 @@ const rejectProposal = vi.hoisted(() => vi.fn());
 const runCatalogMatch = vi.hoisted(() => vi.fn());
 const setSaleUnits = vi.hoisted(() => vi.fn());
 const getTargetMargin = vi.hoisted(() => vi.fn());
+const listHouseCocktails = vi.hoisted(() => vi.fn());
+const upsertMapping = vi.hoisted(() => vi.fn());
 const house = vi.hoisted(() => ({ country: null as string | null }));
 
 vi.mock("../../services/api/posHub", () => ({
@@ -21,6 +23,8 @@ vi.mock("../../services/api/posHub", () => ({
   rejectProposal,
   runCatalogMatch,
   setSaleUnits,
+  listHouseCocktails,
+  upsertMapping,
 }));
 vi.mock("../../services/api/pricing", () => ({ getTargetMargin }));
 vi.mock("../../hooks/useHouseGroupMark", () => ({
@@ -79,6 +83,9 @@ beforeEach(() => {
   getMatchProposals.mockResolvedValue([proposal()]);
   getUnresolvedLines.mockResolvedValue(queue());
   getItemMappings.mockResolvedValue([]);
+  listHouseCocktails.mockResolvedValue([]);
+  upsertMapping.mockResolvedValue({});
+  rejectProposal.mockResolvedValue({});
   approveProposals.mockResolvedValue({
     requested: 1,
     approved: 1,
@@ -311,6 +318,96 @@ describe("PosMappingPanel", () => {
     expect(await screen.findByText(/could not be read/i)).toBeInTheDocument();
     expect(
       screen.getByText(/not a claim that the\s+queue is empty/i),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * F-1469: a till button that sells a cocktail is linked to the cocktail, not
+ * to the stock row whose name it is closest to, so each sale takes the
+ * cocktail's recipe. Before this, nothing in the app could say so.
+ */
+describe("PosMappingPanel: a button that sells a cocktail (F-1469)", () => {
+  const spritz = { id: "ck-spritz", name: "Aperol Spritz" };
+
+  it("links a proposed button to the cocktail, with no stock row, and sets the proposal aside", async () => {
+    listHouseCocktails.mockResolvedValue([spritz]);
+    getMatchProposals.mockResolvedValue([
+      proposal({ id: "prop-sp", external_item_id: "btn-sp", item_name: "Aperol Spritz" }),
+    ]);
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    await user.selectOptions(
+      await screen.findByLabelText("Cocktail for Aperol Spritz"),
+      "ck-spritz",
+    );
+
+    await waitFor(() => expect(upsertMapping).toHaveBeenCalled());
+    expect(upsertMapping).toHaveBeenCalledWith(
+      {
+        source: "simpos",
+        external_item_id: "btn-sp",
+        item_name: "Aperol Spritz",
+        is_wine: false,
+        inventory_id: null,
+        cocktail_id: "ck-spritz",
+      },
+      undefined,
+    );
+    await waitFor(() =>
+      expect(rejectProposal).toHaveBeenCalledWith("prop-sp", undefined),
+    );
+  });
+
+  it("links a button that matched nothing to a cocktail", async () => {
+    listHouseCocktails.mockResolvedValue([spritz]);
+    getMatchProposals.mockResolvedValue([]);
+    getUnresolvedLines.mockResolvedValue(
+      queue({
+        items: [
+          {
+            source: "simpos",
+            external_item_id: "btn-neg",
+            item_name: "Spritz dbl",
+            reason: "unmapped",
+            mapped_inventory_id: null,
+            occurrences: 3,
+            qty_total: 4,
+            first_seen: null,
+            last_seen: null,
+            line_ids: [],
+          },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    await user.selectOptions(
+      await screen.findByLabelText("Cocktail for Spritz dbl"),
+      "ck-spritz",
+    );
+
+    await waitFor(() =>
+      expect(upsertMapping).toHaveBeenCalledWith(
+        expect.objectContaining({
+          external_item_id: "btn-neg",
+          item_name: "Spritz dbl",
+          inventory_id: null,
+          cocktail_id: "ck-spritz",
+        }),
+        undefined,
+      ),
+    );
+    expect(rejectProposal).not.toHaveBeenCalled();
+  });
+
+  it("says when the cocktails could not be read, rather than offering none", async () => {
+    listHouseCocktails.mockRejectedValue(new Error("timeout"));
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+    expect(
+      await screen.findByText("cocktails could not be read"),
     ).toBeInTheDocument();
   });
 });

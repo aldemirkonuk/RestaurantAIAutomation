@@ -1380,8 +1380,11 @@ export class PosHubService {
     ]);
     const mappings = mappingLookup.rows;
     if (mappingLookup.error) errors.push(mappingLookup.error);
-    // F-1329: the house's cocktails are read by name only when a line no
-    // mapping names could be one; a check of mapped lines reads nothing more.
+    // F-1329: the house's cocktails are read by name only when a line's
+    // mapping names no cocktail; a check whose every line names one reads
+    // nothing more. F-1469: a MAPPED line counts too. A button mapped onto
+    // the Aperol row before its cocktail was written down ("Aperol Spritz")
+    // otherwise took one Aperol serve per Spritz, never the recipe.
     const cocktailLookup = checks.some(
       (c) =>
         Array.isArray(c?.items) &&
@@ -1393,7 +1396,7 @@ export class PosHubService {
               it.externalItemId,
               mappings,
               it.modifierIds ?? [],
-            ).unmapped,
+            ).cocktailId === null,
         ),
     )
       ? await this.loadHouseCocktails(restaurantId)
@@ -1563,12 +1566,13 @@ export class PosHubService {
           if (is_wine) wineItems++;
           const category = it.category ?? mapped.category ?? null;
           // F-1329: the cocktail this line sells, by its mapping, else by
-          // its exact name among the house's own cocktails.
+          // its exact name among the house's own cocktails. F-1469: the name
+          // is tried for a mapped line too; a recipe that links stock is
+          // what the drink is made of, and it wins over the mapping's row.
           const cocktailId =
             mapped.cocktailId ??
-            (mapped.unmapped
-              ? (cocktailLookup.byName.get(cocktailNameKey(it.name)) ?? null)
-              : null);
+            cocktailLookup.byName.get(cocktailNameKey(it.name)) ??
+            null;
           return {
             name: it.name,
             external_item_id: it.externalItemId ?? null,

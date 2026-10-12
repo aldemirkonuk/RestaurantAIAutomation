@@ -65,7 +65,11 @@ import {
  * (menus.controller.ts, POST /menus/items). The coordinator's call for the
  * founder, 2026-10-08 (F-270). The rest of a cocktail (name, method, glass,
  * garnish, section, description) and its recipe stay open to anyone of the
- * house, so a bartender can still write down how a drink is made.
+ * house, so a bartender can still write down how a drink is made. F-1471
+ * (coordinator, 2026-10-12): once a recipe line could take stock (F-1329), the
+ * link, amount and unit of a LINKED line became what a till sale depletes, and
+ * those are an owner's or a manager's, as till mappings are (F-387). The
+ * recipe's words and its unlinked lines stay open.
  */
 /**
  * The books that say what the house PAID: invoices, orders and quotes. The
@@ -403,9 +407,28 @@ export class BeveragesController {
     @Param("restaurantId") restaurantId: string,
     @Param("cocktailId", new ParseUUIDPipe()) cocktailId: string,
     @Body() dto: SetCocktailIngredientsDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    // F-1471: a line linked to stock is what every till sale of the drink
+    // takes off the shelf, so linking, unlinking or re-measuring one is an
+    // owner's or a manager's, as mapping a till button is (F-387). The
+    // service refuses a CHANGED link from anyone else; the page sends the
+    // unchanged links back with every save, so that alone is not refused.
+    const mayLink = user?.userId
+      ? ["owner", "manager"].includes(
+          (await this.organizations.resolveRestaurantRole(
+            user.userId,
+            restaurantId,
+          )) ?? "",
+        )
+      : false;
     return this.guard(() =>
-      this.beverages.setCocktailIngredients(restaurantId, cocktailId, dto),
+      this.beverages.setCocktailIngredients(
+        restaurantId,
+        cocktailId,
+        dto,
+        mayLink,
+      ),
     );
   }
 

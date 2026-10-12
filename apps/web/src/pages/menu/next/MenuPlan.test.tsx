@@ -129,6 +129,17 @@ describe('the plan in one sentence', () => {
       makeCurrentSentence({ outcome: 'made_current', menuId: 'm1', previousMenuIds: [], lines: 3, priceSync: { changed: 1, kitchen: 2 }, flagged: 0, failed: [] }),
     ).toBe('This is now the current menu: 3 lines, 1 price set from this menu, 2 kitchen lines set aside.');
   });
+  // F-1470: a cocktail is made from its recipe, never "not matched to a wine".
+  it('counts cocktails as made from their recipes, in the plan and in what the choice did', () => {
+    const negroni = line({ menuItemId: 'c1', name: 'Negroni', wineLibraryId: null, inventoryId: null, house: null, bottle: { ...line().bottle, result: 'cocktail', lastSet: null }, glass: { ...line().glass, result: 'cocktail' } });
+    const s = planSentence(plan({ lines: [negroni], counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, cocktail: 2, new_wine: 0 }, dormantLocks: [] }));
+    expect(s).toBe('Choosing this menu changes no price. 1 cocktail is made from its recipe, so it gets no stock row and no price here.');
+    expect(s).not.toMatch(/not matched/);
+    expect(kindWords(negroni, negroni.bottle)).toBe('a cocktail, made from its recipe; priced on /cocktails');
+    expect(
+      makeCurrentSentence({ outcome: 'made_current', menuId: 'm1', previousMenuIds: [], lines: 3, priceSync: { changed: 1, cocktail: 2 }, flagged: 0, failed: [] }),
+    ).toBe('This is now the current menu: 3 lines, 1 price set from this menu, 2 cocktails made from their recipes, not stocked.');
+  });
 });
 
 describe('F-696: the plan says the current menu it takes off, and the lines that leave with it', () => {

@@ -1,8 +1,10 @@
+import { ForbiddenException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { DatabaseService } from "../database/database.service";
 import { BeveragesService } from "./beverages.service";
 import { lineCost, recipeMeasure, serveCost } from "./cocktail-recipe";
-import { cocktailsForRole } from "./beverages.controller";
+import { BeveragesController, cocktailsForRole } from "./beverages.controller";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 /**
  * F-1329 (OD-113, founder S195: the industry approach). A recipe line names
@@ -136,7 +138,9 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
     });
     await service.setCocktailIngredients(RID, COCKTAIL_ID, {
       lines: [{ freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN }],
-    });
+      },
+      true,
+    );
     const insert = log.find((l) => l[1] === "insert");
     expect((insert![2] as any[])[0]).toMatchObject({
       inventory_id: GIN,
@@ -155,7 +159,9 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
         lines: [
           { freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN },
         ],
-      }),
+        },
+        true,
+      ),
     ).rejects.toThrow(
       /stock row this house does not have\. No recipe line was written/,
     );
@@ -264,4 +270,165 @@ describe("cocktailsForRole: what the house paid stays with the owner and manager
     expect(lines[0].cost).toMatchObject({ state: "withheld" });
     expect(lines[1].cost).toEqual({ state: "not_linked" });
   });
+});
+
+/**
+ * F-1471: a recipe line linked to stock is what every till sale of the drink
+ * takes off the shelf, so linking, unlinking or re-measuring one is an
+ * owner's or a manager's, as mapping a till button is (F-387). The words and
+ * the unlinked lines stay open to anyone of the house (F-270).
+ */
+const USER = { userId: "u-1" };
+
+/** The real OrganizationsService decides; only its access-row read is stubbed. */
+function orgs(role: string | null) {
+  const organizations = new OrganizationsService({} as never);
+  jest.spyOn(organizations, "resolveRestaurantRole").mockResolvedValue(role);
+  return organizations;
+}
+
+/** A service whose recipe holds `before`, recording every insert. */
+function recipeService(before: Array<Record<string, unknown>>) {
+  const inserts: unknown[] = [];
+  const db = {
+    getClient: () => ({
+      from: (table: string) => {
+        const self: Record<string, unknown> = {};
+        for (const m of ["select", "is", "order"])
+          self[m] = jest.fn(() => self);
+        self.maybeSingle = jest.fn(() =>
+          Promise.resolve({ data: { id: COCKTAIL_ID }, error: null }),
+        );
+        self.eq = jest.fn(() =>
+          table === "cocktail_ingredients"
+            ? Object.assign(
+                Promise.resolve({ data: before, error: null }),
+                self,
+              )
+            : self,
+        );
+        self.in = jest.fn(() =>
+          Promise.resolve({
+            data: [{ id: GIN }, { id: CAMPARI }],
+            error: null,
+          }),
+        );
+        self.insert = jest.fn((rows: unknown) => {
+          inserts.push(rows);
+          return {
+            select: () =>
+              Promise.resolve({ data: [{ id: "new-0" }], error: null }),
+          };
+        });
+        self.delete = jest.fn(() => self);
+        return self;
+      },
+    }),
+  };
+  return { svc: new BeveragesService(db as never), inserts };
+}
+
+const LINKED_GIN = [
+  { id: "old-0", inventory_id: GIN, quantity: "30", unit: "ml" },
+];
+
+describe("recipe lines that take stock — owner or manager only (F-1471)", () => {
+  it.each(["staff", null])(
+    "%s is refused pointing a line at a different stock row, and nothing is written",
+    async (role) => {
+      const { svc, inserts } = recipeService(LINKED_GIN);
+      const c = new BeveragesController(svc, orgs(role as string | null));
+      await expect(
+        c.setIngredients(
+          RID,
+          COCKTAIL_ID,
+          {
+            lines: [
+              {
+                freeText: "gin",
+                quantity: 30,
+                unit: "ml",
+                inventoryId: CAMPARI,
+              },
+            ],
+          },
+          USER,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(inserts).toHaveLength(0);
+    },
+  );
+
+  it("staff are refused linking a line that took nothing, or changing its amount", async () => {
+    const c = new BeveragesController(recipeService([]).svc, orgs("staff"));
+    await expect(
+      c.setIngredients(
+        RID,
+        COCKTAIL_ID,
+        {
+          lines: [
+            { freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN },
+          ],
+        },
+        USER,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    const again = new BeveragesController(
+      recipeService(LINKED_GIN).svc,
+      orgs("staff"),
+    );
+    await expect(
+      again.setIngredients(
+        RID,
+        COCKTAIL_ID,
+        {
+          lines: [
+            { freeText: "gin", quantity: 60, unit: "ml", inventoryId: GIN },
+          ],
+        },
+        USER,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("staff may rewrite the words and add an unlinked line when the links come back unchanged", async () => {
+    const { svc, inserts } = recipeService(LINKED_GIN);
+    const c = new BeveragesController(svc, orgs("staff"));
+    await c.setIngredients(
+      RID,
+      COCKTAIL_ID,
+      {
+        lines: [
+          {
+            freeText: "London dry gin",
+            quantity: 30,
+            unit: "ml",
+            inventoryId: GIN,
+          },
+          { freeText: "orange peel" },
+        ],
+      },
+      USER,
+    );
+    expect(inserts).toHaveLength(1);
+  });
+
+  it.each(["owner", "manager"])(
+    "a %s may link a line to stock",
+    async (role) => {
+      const { svc, inserts } = recipeService([]);
+      const c = new BeveragesController(svc, orgs(role));
+      await c.setIngredients(
+        RID,
+        COCKTAIL_ID,
+        {
+          lines: [
+            { freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN },
+          ],
+        },
+        USER,
+      );
+      expect(inserts).toHaveLength(1);
+    },
+  );
 });

@@ -304,6 +304,24 @@ export function isKitchenLine(category: unknown, raw: unknown): boolean {
   );
 }
 
+/** The section words that say a line is a cocktail (F-1470). */
+const COCKTAIL_WORDS = ["cocktail", "cocktails", "kokteyl", "kokteyller"];
+
+/**
+ * Whether a menu line is a cocktail, from its section (F-1470): the section
+ * names cocktails and no wine. A cocktail is made from its ingredients, never
+ * stocked, so a menu made current gives it no stock row of its own; what it
+ * takes off the shelf is its recipe's linked lines (F-1329). "Wine &
+ * cocktails" names a wine and stays a drink line as before.
+ */
+export function isCocktailLine(category: unknown): boolean {
+  const section = typeof category === "string" ? category : "";
+  const runs = wordRuns(section);
+  const says = (words: string[]) =>
+    runs.some((run) => words.some((w) => run.includes(` ${w} `)));
+  return says(COCKTAIL_WORDS) && !says(WINE_WORDS);
+}
+
 /**
  * The section a menu line hands the library resolver (F-1293): a vocabulary
  * member as it is, a Turkish drink section as the kind it names, anything
