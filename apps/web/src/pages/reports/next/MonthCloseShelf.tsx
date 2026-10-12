@@ -36,11 +36,13 @@ export interface MonthCloseMoney {
 
 export interface MonthCloseFigures {
   currency: string | null;
+  /** Net, the checks' subtotal (ADR 0287 AW17, F-1494); null when no check carried one. */
   till: {
     posConnected: boolean;
-    revenue: number | null;
+    netSales: number | null;
+    netSalesCheckCount: number | null;
     checkCount: number | null;
-    days: Array<{ date: string; revenue: number }>;
+    days: Array<{ date: string; netSales: number }>;
   };
   valuation: {
     inventoryValue: number | null;
@@ -75,7 +77,7 @@ export interface MonthCloseChange {
 }
 
 export interface MonthCloseAgainstNow {
-  figure: 'till_revenue' | 'till_checks' | 'purchases' | 'variance_net';
+  figure: 'till_net_sales' | 'till_checks' | 'purchases' | 'variance_net';
   label: string;
   atClose: number | null;
   now: number | null;
@@ -168,9 +170,19 @@ function Kept({ close }: { close: MonthClose }) {
   return (
     <ul className="rp-cap" aria-label={`Figures kept for ${monthLabel(close.month)}`}>
       <li>
-        Taken through the till:{' '}
-        {f.till.posConnected ? money(f.till.revenue, 'full', f.currency) : 'no till connected'}
-        {f.till.checkCount !== null ? ` over ${countOf(f.till.checkCount, 'check', 'checks')}` : ''}
+        Net sales through the till:{' '}
+        {!f.till.posConnected
+          ? 'no till connected'
+          : f.till.netSales === null
+            ? `${EM}, not recorded: no check carried a net figure`
+            : money(f.till.netSales, 'full', f.currency)}
+        {!f.till.posConnected || f.till.checkCount === null
+          ? ''
+          : f.till.netSales !== null &&
+              f.till.netSalesCheckCount !== null &&
+              f.till.netSalesCheckCount < f.till.checkCount
+            ? ` from ${f.till.netSalesCheckCount} of ${countOf(f.till.checkCount, 'check', 'checks')}; the rest carried no net figure`
+            : ` over ${countOf(f.till.checkCount, 'check', 'checks')}`}
       </li>
       <li>
         Bought (delivered): {bought}
@@ -212,7 +224,14 @@ function Since({ detail }: { detail: MonthCloseDetail }) {
         })}
       </ul>
       {detail.changes.length === 0 ? (
-        <p className="rp-cap">Nothing dated in this month has changed since it was closed.</p>
+        // F-1467: never "nothing changed" while a figure above moved.
+        detail.againstNow.some((a) => a.delta !== null && a.delta !== 0) ? (
+          <p className="rp-cap">
+            A figure above has moved since the month was closed, but no single change could be listed for it.
+          </p>
+        ) : (
+          <p className="rp-cap">Nothing dated in this month has changed since it was closed.</p>
+        )
       ) : (
         <>
           <p className="rp-sentence">
@@ -331,7 +350,7 @@ export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfP
             Closed months
           </h2>
           <p className="rp-cap">
-            Closing a month keeps its figures as they stand today: what the till took, what was
+            Closing a month keeps its figures as they stand today: the till’s net sales, what was
             bought, the count variance and the cellar’s value. Nothing is locked. If anything dated
             in that month changes later, it is listed under the month — who, what and by how much.
             Closing it again keeps a new version beside the first.
