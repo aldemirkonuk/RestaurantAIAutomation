@@ -161,6 +161,8 @@ export interface RemovalReceipt {
   /** "Replace with" (item 27): shifts handed to `handedTo` instead of opened. */
   shiftsHandedOver: number;
   handedTo: string | null;
+  /** A "no account yet" person's unused invite this removal cancelled (F-1545). */
+  inviteCancelled: boolean;
 }
 
 @Injectable()
@@ -1405,6 +1407,28 @@ export class TeamService {
       );
     }
 
+    // A "no account yet" row stands in for an invite (F-1545): the invite
+    // stops being good with it, before the first write, or the person could
+    // still join days later and be given a fresh roster row and access the
+    // owner just took away. Expired the way `cancelPendingInvitesFrom`
+    // expires one, and refused if it cannot be: a removal that left the
+    // invite live is not the removal the dialog promised.
+    let inviteCancelled = false;
+    if (member && !member.user_id) {
+      const { data: standIn, error: standInErr } = await this.sb
+        .from("team_members")
+        .select("invite_id")
+        .eq("id", memberId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (standInErr) this.cannotReadRemovalTarget(memberId, standInErr);
+      inviteCancelled = await this.cancelStandInInvite(
+        restaurantId,
+        memberId,
+        standIn?.invite_id ?? null,
+      );
+    }
+
     // A roster row with no account passed no refusal above; its shifts open
     // here, still before the roster row goes (item 26).
     if (released === null)
@@ -1455,6 +1479,8 @@ export class TeamService {
         // Which door, and whether the person left on their own (ADR 0242).
         via: actor.via,
         self_leave: selfLeave,
+        // F-1545: the unused invite a "no account yet" row stood in for.
+        invite_cancelled: inviteCancelled,
       },
       notice: selfLeave
         ? undefined
@@ -1540,8 +1566,40 @@ export class TeamService {
       clock: released.clock,
       shiftsHandedOver: released.handedOver.length,
       handedTo: released.handedTo,
+      inviteCancelled,
       ...receipt,
     };
+  }
+
+  /**
+   * F-1545: the unused invite a "no account yet" roster row stands in for
+   * stops being good, the way `cancelPendingInvitesFrom` expires one. True
+   * when an invite was cancelled; false when there was none still open. A
+   * failed write throws before anything was removed.
+   */
+  private async cancelStandInInvite(
+    restaurantId: string,
+    memberId: string,
+    inviteId: string | null,
+  ): Promise<boolean> {
+    if (!inviteId) return false;
+    const now = new Date().toISOString();
+    const { data, error } = await this.sb
+      .from("organization_invites")
+      .update({ expires_at: now })
+      .eq("id", inviteId)
+      .eq("restaurant_id", restaurantId)
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .select("id");
+    if (error) {
+      this.logger.error(
+        `deleteMember could not cancel invite ${inviteId} for ${memberId} ` +
+          `in ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException("Failed to remove member");
+    }
+    return (data ?? []).length > 0;
   }
 
   /**
@@ -2422,6 +2480,10 @@ export class TeamService {
         );
       }
     }
+    // Whether a manager is filing for themselves (F-1547), read before the
+    // write: a failed lookup refuses, so the owners are never silently skipped.
+    const ownMember =
+      role === "manager" ? await this.ownMemberId(userId, restaurantId) : null;
 
     // The same days asked for twice (F-1006): the page's own guard lasted one
     // session, so a reload or a second device filed them again, and two
@@ -2477,6 +2539,15 @@ export class TeamService {
       const managersTold = await this.tellLeaders(userId, restaurantId, data);
       return { ...data, managersTold };
     }
+    // F-1547: a manager's own time off is not theirs to decide
+    // (`reviewTimeOff`), so it goes to the owners' bell the way a staff ask
+    // goes to the leads', and waits for one of them.
+    if (role === "manager" && ownMember === dto.memberId) {
+      const ownersTold = await this.tellLeaders(userId, restaurantId, data, [
+        "owner",
+      ]);
+      return { ...data, ownersTold };
+    }
     return data;
   }
 
@@ -2493,6 +2564,7 @@ export class TeamService {
       start_date?: string;
       end_date?: string;
     },
+    roles?: readonly ("owner" | "manager")[],
   ): Promise<number> {
     const { data: member, error: memberErr } = await this.sb
       .from("team_members")
@@ -2520,6 +2592,7 @@ export class TeamService {
       // taken back or answered (`settleLeadsTimeOffLine`).
       metadata: { action: "time_off_requested", request_id: row.id ?? null },
       groupKey: row.id ? timeOffBellKey(row.id) : undefined,
+      roles,
     });
     return told.length;
   }
@@ -2576,7 +2649,7 @@ export class TeamService {
     requestId: string,
     dto: ReviewRequestDto,
   ): Promise<any> {
-    await this.assertAccess(userId, restaurantId, "manager");
+    const { role } = await this.assertAccess(userId, restaurantId, "manager");
     // A removed person's request is kept, not reviewed (ADR 0215 item 20;
     // `assertOnTheRoster`). A failed read is an error, not a missing request.
     const { data: cur, error: curErr } = await this.sb
@@ -2596,6 +2669,17 @@ export class TeamService {
     }
     if (!cur) throw new NotFoundException("Request not found");
     await this.assertOnTheRoster(restaurantId, cur, "Request not found");
+    // A manager does not decide their own time off (F-1547): it waits for an
+    // owner, whose bell it is on (`createTimeOff`). An owner deciding their
+    // own is still allowed — nobody stands above them in the house.
+    if (
+      role !== "owner" &&
+      (await this.ownMemberId(userId, restaurantId)) === cur.member_id
+    ) {
+      throw new ForbiddenException(
+        "This is your own time off, so an owner decides it. It is waiting for them. Nothing was changed.",
+      );
+    }
     // The person who asked took it back (F-936); there is nothing to decide.
     if (cur.status === "withdrawn") {
       throw new ConflictException(

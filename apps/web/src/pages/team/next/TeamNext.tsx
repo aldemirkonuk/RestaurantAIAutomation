@@ -967,6 +967,8 @@ function TeamNextManager({
           weekStart={weekStart}
           onClose={() => setOverlay(null)}
           onChanged={refreshWeek}
+          viewerIsOwner={viewerIsOwner}
+          viewerUserId={viewerUserId}
         />
       )}
       {overlay?.kind === 'rules' && (

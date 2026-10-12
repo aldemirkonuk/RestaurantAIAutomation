@@ -169,6 +169,36 @@ describe('a DST night counts the hours really worked, as the gateway prices it (
     }).columns;
     expect(cols.find((c) => c.header === 'Hours worked')?.value(shift({}))).toBe(9);
   });
+
+  it('hands payroll no hours and no cost for a called-out or an open shift (F-1546)', () => {
+    render(
+      <ExportPopover
+        anchorRef={createRef<HTMLElement>()}
+        weekStart="2026-10-26"
+        shifts={[shift({})] as never}
+        members={[]}
+        moneyVisible
+        money={{ readable: true, currency: 'EUR' } as never}
+        onClose={() => {}}
+      />,
+      { wrapper: houseWrapper('en-Latn-US') },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /CSV/ }));
+    const cols = (api.exportTable.mock.calls.at(-1)![0] as {
+      columns: { header: string; value: (s: unknown) => unknown }[];
+    }).columns;
+    const hours = cols.find((c) => c.header === 'Hours worked')!;
+    const cost = cols.find((c) => c.header.startsWith('Labour cost'))!;
+    const calledOut = shift({ state: 'callout', labor_cost: 96 });
+    const open = shift({ member_id: null, state: 'open', labor_cost: 96 });
+    expect(hours.value(calledOut)).toBe('');
+    expect(cost.value(calledOut)).toBe('');
+    expect(hours.value(open)).toBe('');
+    expect(cost.value(open)).toBe('');
+    // A worked shift is still handed over in full.
+    expect(hours.value(shift({ labor_cost: 96 }))).toBe(8);
+    expect(cost.value(shift({ labor_cost: 96 }))).toBe(96);
+  });
 });
 
 describe("Germany's 10-hour day is the whole working day (F-1482)", () => {

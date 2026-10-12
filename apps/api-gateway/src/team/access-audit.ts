@@ -178,6 +178,9 @@ export async function noticeToHouseLeads(
     /** Stamped on every row so `resolveBellLines` can clear them all at once
      * when the thing is dealt with (F-1488: a time-off ask). */
     groupKey?: string;
+    /** Who counts as a lead for this notice; owners and managers unless
+     * narrowed (F-1547: a manager's own time off goes to the owners). */
+    roles?: readonly ("owner" | "manager")[];
   },
 ): Promise<string[]> {
   const told: string[] = [];
@@ -189,6 +192,12 @@ export async function noticeToHouseLeads(
     let leadIds: string[];
     try {
       leadIds = await houseMembersInRoles(sb, n.restaurantId, ["owner", "manager"]);
+      if (n.roles) {
+        const narrowed = new Set(
+          await houseMembersInRoles(sb, n.restaurantId, [...n.roles]),
+        );
+        leadIds = leadIds.filter((u) => narrowed.has(u));
+      }
     } catch (err: any) {
       logger.error(`${n.metadata.action}: could not read who to tell — ${err?.message}`);
       return told;
