@@ -52,6 +52,13 @@ vi.mock('@/hooks/queries/useProviderQueries', () => ({
   useProviders: () => vendorList.value,
 }));
 
+// The house's group mark, as the price fields read it. Null (unknown) unless a
+// test says otherwise — the real hook's read answers nothing here either.
+const houseMark = vi.hoisted(() => ({ value: null as '.' | ',' | null }));
+vi.mock('@/hooks/useHouseGroupMark', () => ({
+  useHouseGroupMark: () => houseMark.value,
+}));
+
 import { NewOrderSheet, lineRefusal, minimumNotes } from './NewOrderSheet';
 import { VendorFirstPanel } from './VendorFirstPanel';
 
@@ -84,6 +91,7 @@ async function addLine(item = ITEM, qty = '5') {
 }
 
 beforeEach(() => {
+  houseMark.value = null;
   auth.activeRestaurantId = 'rest-A';
   auth.user = { userId: 'actor-A', restaurantId: 'rest-A' };
   localStorage.clear();
@@ -712,5 +720,77 @@ describe('leaving the cart mid-flow (F-712)', () => {
     draw();
     expect(screen.getByTestId('new-order-line')).toHaveTextContent(/being placed when the page closed/);
     expect(screen.getByTestId('new-order-place')).toBeDisabled();
+  });
+});
+
+describe('a taken price is written the way the house types it (F-1552)', () => {
+  it('[REVERT-FAILS] a Turkish house takes 12.375 as "12,375" and places 12.375, not 12375', async () => {
+    houseMark.value = '.';
+    api.get.mockResolvedValue({
+      data: {
+        state: 'found',
+        price: 12.375,
+        priceUom: 'bottle',
+        pricePackSize: 1,
+        currency: 'EUR',
+        sentence: 'Last agreed with Kavaklıdere on 2026-09-01: EUR 12.375 per bottle.',
+      },
+    });
+    draw();
+    await addLine(ITEM, '6');
+    fireEvent.click(await screen.findByTestId('new-order-take-offer'));
+    expect(screen.getByTestId('new-order-price')).toHaveValue('12,375');
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(api.post.mock.calls[0][1]).toMatchObject({ quotedPrice: 12.375, currency: 'EUR' });
+  });
+});
+
+describe('the cart counts and names what is still to place (F-1554)', () => {
+  const ITEM3 = { id: 'inv-3', wineName: 'Kalecik Karası', producer: 'Turasan', wineVintage: 2020 };
+
+  it('[REVERT-FAILS] a line keeps the vintage its search result showed', async () => {
+    shelf.value = { data: [ITEM3], isLoading: false, isError: false, error: null };
+    draw();
+    await addLine(ITEM3 as typeof ITEM, '2');
+    expect(screen.getByTestId('new-order-line')).toHaveTextContent('Kalecik Karası 2020');
+  });
+
+  it('[REVERT-FAILS] the Place button counts only the lines not yet placed', async () => {
+    api.post
+      .mockResolvedValueOnce({ data: { orderNumber: 'PO-one' } })
+      .mockRejectedValueOnce(Object.assign(new Error('refused'), { response: { status: 400 } }));
+    draw();
+    await addLine(ITEM, '2');
+    await addLine(ITEM2, '3');
+    expect(screen.getByTestId('new-order-place')).toHaveTextContent('Place 2 orders');
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(screen.getByTestId('new-order-tally')).toHaveTextContent(/1 of 2/));
+    expect(screen.getByTestId('new-order-place')).toHaveTextContent('Place the order');
+  });
+
+  it('[REVERT-FAILS] a no_vendors refusal on a retry counts only the lines that were tried', async () => {
+    shelf.value = { data: [ITEM, ITEM2, ITEM3], isLoading: false, isError: false, error: null };
+    const refused = () => Object.assign(new Error('refused'), { response: { status: 400 } });
+    api.post
+      .mockResolvedValueOnce({ data: { orderNumber: 'PO-one' } })
+      .mockRejectedValueOnce(refused())
+      .mockRejectedValueOnce(refused())
+      .mockResolvedValueOnce({ data: { orderNumber: 'PO-two' } })
+      .mockRejectedValueOnce(
+        Object.assign(new Error('no active vendors'), {
+          response: { status: 403, data: { reason: 'no_vendors' } },
+        }),
+      );
+    const onNoVendors = vi.fn();
+    draw({ onNoVendors });
+    await addLine(ITEM, '2');
+    await addLine(ITEM2, '3');
+    await addLine(ITEM3 as typeof ITEM, '4');
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(screen.getByTestId('new-order-tally')).toHaveTextContent(/1 of 3/));
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(onNoVendors).toHaveBeenCalled());
+    expect(screen.getByTestId('new-order-tally')).toHaveTextContent('1 of 2 were placed before the refusal');
   });
 });

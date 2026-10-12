@@ -4,7 +4,7 @@
  * was refused everywhere.
  */
 import { describe, expect, it } from 'vitest'
-import { displayGroupMark, groupMarkForCountry, parseDecimal, readingsDisagree } from './parseDecimal'
+import { displayGroupMark, groupMarkForCountry, parseDecimal, readingsDisagree, writeDecimal } from './parseDecimal'
 
 describe('parseDecimal', () => {
   it('reads a decimal comma and a decimal point alike', () => {
@@ -91,5 +91,22 @@ describe('displayGroupMark', () => {
     expect(displayGroupMark('en-US')).toBe(',')
     expect(displayGroupMark('tr-TR')).toBe('.')
     expect(displayGroupMark('fr-FR')).toBeNull()
+  })
+})
+
+describe('writeDecimal (F-1552)', () => {
+  it('writes a number back so the same house reads the same number', () => {
+    expect(writeDecimal(12.375, '.')).toBe('12,375')
+    expect(parseDecimal(writeDecimal(12.375, '.'), '.')).toBe(12.375)
+    expect(writeDecimal(12.375, ',')).toBe('12.375')
+    expect(parseDecimal(writeDecimal(12.375, ','), ',')).toBe(12.375)
+    expect(writeDecimal(2400, '.')).toBe('2400')
+    expect(parseDecimal(writeDecimal(2400, '.'), '.')).toBe(2400)
+  })
+
+  it('writes nothing for a number that is not one', () => {
+    expect(writeDecimal(null, '.')).toBe('')
+    expect(writeDecimal(undefined)).toBe('')
+    expect(writeDecimal(Number.NaN)).toBe('')
   })
 })

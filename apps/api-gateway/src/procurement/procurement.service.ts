@@ -1467,11 +1467,67 @@ export class ProcurementService {
       existing = existingRows?.[0] as any | undefined;
     }
 
+    // F-1551: a merge folds this request into the open order only when the
+    // two agree about the money. An order in TRY does not take an EUR line
+    // (the header would keep TRY while its own line said EUR), and a request
+    // that names no price does not merge into an order that has one — the
+    // merge replaces the line whole, so it would write the agreed price and
+    // total as 0. Either way the request becomes its own order and the open
+    // one is left exactly as it was. An order with no currency yet takes the
+    // new code, written with its provenance the way an insert writes it.
+    const existingCurrency = this.readStatedCurrency(existing?.currency);
+    const priceStated =
+      (dto.finalPrice ?? dto.quotedPrice) !== undefined &&
+      (dto.finalPrice ?? dto.quotedPrice) !== null;
+    const existingPriced =
+      existing?.final_price !== undefined &&
+      existing?.final_price !== null &&
+      Number(existing.final_price) !== 0;
+    if (
+      existing &&
+      ((existingCurrency !== null && existingCurrency !== placedCurrency) ||
+        (!priceStated && existingPriced))
+    ) {
+      this.logger.log(
+        "Open order is in another currency or has a price this request does not state; placing a new order",
+        { restaurantId, orderId: existing.id },
+      );
+      existing = undefined;
+    }
+
+    /*
+     * B2 — THE ORDER CARRIES THE CURRENCY IT WAS PLACED IN (founder, 2026-09-06
+     * batch 65: *"we will use the currency from where we order it"*).
+     *
+     * The code is whatever reached the DTO — the same value the agreement LINE
+     * records two hundred lines below, read once here so the header and the line
+     * cannot disagree about the money of one order.
+     *
+     * The PROVENANCE is derived on the server from the vendor's own stated
+     * currency, never taken from the client: a writer's label about itself is a
+     * claim, and this one decides whether a manager later reads "we suggested
+     * it" or "somebody chose it". `orderCurrencySource`'s header says why the
+     * `typed` arm is honest. (`placedCurrency` itself is read above, with the fees.)
+     * Read before the merge, which writes the same pair (F-1551).
+     */
+    const vendorUsual = await this.readVendorUsualCurrency(
+      restaurantId,
+      dto.providerId,
+    );
+    const placedCurrencySource = orderCurrencySource({
+      recorded: placedCurrency,
+      vendorUsualCurrency: vendorUsual,
+    });
+
     if (existing && dto.providerId) {
       const { data: updated, error: updateError } =
         await this.databaseService.supabase
           .from("procurement_orders")
           .update({
+            // The same two keys the insert writes (F-1551): the order took this
+            // line's money above, or already had it.
+            currency: placedCurrency,
+            currency_source: placedCurrencySource,
             quantity: dto.quantity,
             unit_type: units.unitType,
             bottles_total: bottlesTotal,
@@ -1559,29 +1615,8 @@ export class ProcurementService {
       ? (fulfilled.deliveredAt ?? new Date().toISOString())
       : null;
 
-    /*
-     * B2 — THE ORDER CARRIES THE CURRENCY IT WAS PLACED IN (founder, 2026-09-06
-     * batch 65: *"we will use the currency from where we order it"*).
-     *
-     * The code is whatever reached the DTO — the same value the agreement LINE
-     * records two hundred lines below, read once here so the header and the line
-     * cannot disagree about the money of one order.
-     *
-     * The PROVENANCE is derived on the server from the vendor's own stated
-     * currency, never taken from the client: a writer's label about itself is a
-     * claim, and this one decides whether a manager later reads "we suggested
-     * it" or "somebody chose it". `orderCurrencySource`'s header says why the
-     * `typed` arm is honest. (`placedCurrency` itself is read above, with the fees.)
-     */
-    const vendorUsual = await this.readVendorUsualCurrency(
-      restaurantId,
-      dto.providerId,
-    );
-    const placedCurrencySource = orderCurrencySource({
-      recorded: placedCurrency,
-      vendorUsualCurrency: vendorUsual,
-    });
-
+    // B2: `placedCurrency` and `placedCurrencySource` are read above, before
+    // the merge, which writes the same pair.
     const payload = {
       order_number: orderNumber,
       restaurant_id: restaurantId,
@@ -10116,8 +10151,10 @@ export class ProcurementService {
     const replyReferences = emailHeaders.references || undefined;
 
     if (!providerEmail) {
+      // The ask path's sentence (F-1553), in the house's words and with no
+      // order id: the card shows it as it comes.
       throw new BadRequestException(
-        `Provider has no email address — cannot send order email for order ${orderId}`,
+        "This vendor has no email address on file, so there is nowhere to send. Nothing was sent.",
       );
     }
 

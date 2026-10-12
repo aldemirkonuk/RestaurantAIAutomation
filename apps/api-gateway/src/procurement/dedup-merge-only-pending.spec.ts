@@ -26,13 +26,18 @@ const VENDOR = "11111111-1111-4111-8111-111111111111";
 const USER = "44444444-4444-4444-8444-444444444444";
 
 function makeDb(orders: Row[], opts: { updateFindsNothing?: boolean } = {}) {
-  const writes: Array<{ kind: "update" | "insert"; filters: unknown[] }> = [];
+  const writes: Array<{
+    kind: "update" | "insert";
+    filters: unknown[];
+    payload?: Row;
+  }> = [];
 
   const supabase: any = {
     from(table: string) {
       const filters: Array<[string, string, unknown]> = [];
       let head = false;
       let write: "update" | "insert" | null = null;
+      let payload: Row | undefined;
 
       const matches = (r: Row) =>
         filters.every(([op, col, val]) => {
@@ -59,7 +64,7 @@ function makeDb(orders: Row[], opts: { updateFindsNothing?: boolean } = {}) {
         }
         if (table === "procurement_orders") {
           if (write) {
-            writes.push({ kind: write, filters: [...filters] });
+            writes.push({ kind: write, filters: [...filters], payload });
             if (write === "update" && opts.updateFindsNothing) {
               return { data: null, error: null };
             }
@@ -95,12 +100,14 @@ function makeDb(orders: Row[], opts: { updateFindsNothing?: boolean } = {}) {
         is: () => q,
         order: () => q,
         limit: () => q,
-        insert: () => {
+        insert: (p?: Row) => {
           write = "insert";
+          payload = p;
           return q;
         },
-        update: () => {
+        update: (p?: Row) => {
           write = "update";
+          payload = p;
           return q;
         },
         single: async () => settle(true),
@@ -177,5 +184,51 @@ describe("createOrder's dedup merge folds only into a PENDING order (F-1131)", (
       service(db).createOrder(HOUSE, USER, reQuote),
     ).rejects.toBeTruthy();
     expect(writes.map((w) => w.kind)).toEqual(["update", "insert"]);
+  });
+});
+
+describe("createOrder's dedup merge never changes an open order's money (F-1551)", () => {
+  const pending = (over: Row): Row => ({ ...openOrder("PENDING"), ...over });
+
+  it("does not fold an EUR line into a TRY order — the line becomes its own order", async () => {
+    const { db, writes } = makeDb([pending({ currency: "TRY" })]);
+    await expect(
+      service(db).createOrder(HOUSE, USER, { ...reQuote, currency: "EUR" }),
+    ).rejects.toBeTruthy();
+    expect(writes.map((w) => w.kind)).toEqual(["insert"]);
+    expect(writes[0].payload).toMatchObject({ currency: "EUR" });
+  });
+
+  it("writes the line's currency and its provenance onto an order that had none", async () => {
+    const { db, writes } = makeDb([pending({ currency: null })]);
+    await expect(
+      service(db).createOrder(HOUSE, USER, { ...reQuote, currency: "EUR" }),
+    ).rejects.toBeTruthy();
+    expect(writes.map((w) => w.kind)).toEqual(["update"]);
+    expect(writes[0].payload).toMatchObject({
+      currency: "EUR",
+      currency_source: "typed",
+    });
+  });
+
+  it("still folds a line in the order's own currency into it", async () => {
+    const { db, writes } = makeDb([pending({ currency: "EUR" })]);
+    await expect(
+      service(db).createOrder(HOUSE, USER, { ...reQuote, currency: "EUR" }),
+    ).rejects.toBeTruthy();
+    expect(writes.map((w) => w.kind)).toEqual(["update"]);
+    expect(writes[0].payload).toMatchObject({ currency: "EUR" });
+  });
+
+  it("never writes an unpriced request over the open order's agreed price", async () => {
+    const { db, writes } = makeDb([
+      pending({ currency: "EUR", final_price: 18, total_cost: 108 }),
+    ]);
+    const unpriced = { ...reQuote, currency: "EUR" };
+    delete unpriced.finalPrice;
+    await expect(
+      service(db).createOrder(HOUSE, USER, unpriced),
+    ).rejects.toBeTruthy();
+    expect(writes.map((w) => w.kind)).toEqual(["insert"]);
   });
 });

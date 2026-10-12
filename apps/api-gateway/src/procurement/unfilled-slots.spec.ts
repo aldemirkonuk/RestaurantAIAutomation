@@ -198,3 +198,24 @@ describe("the gateway refuses a letter with a blank the send cannot fill", () =>
     });
   });
 });
+
+describe("a vendor with no email address on file (F-1553)", () => {
+  it("refuses the send in the ask path's words, with no order id, and leaves the seal unspent", async () => {
+    const { service, seal } = serviceWith({
+      ...pendingRow,
+      content: "Dear Hasan, six cases. Ayşe",
+      providers: { ...pendingRow.providers, contact_email: null },
+    });
+    const refusal = service.approveDraft(REST, ORDER, {} as any, {
+      userId: "u1",
+      challenge: "c",
+      grantId: null,
+    });
+    await expect(refusal).rejects.toThrow(BadRequestException);
+    await expect(refusal).rejects.toThrow(
+      "This vendor has no email address on file, so there is nowhere to send. Nothing was sent.",
+    );
+    await expect(refusal).rejects.not.toThrow(ORDER);
+    expect(seal.redeem).not.toHaveBeenCalled();
+  });
+});

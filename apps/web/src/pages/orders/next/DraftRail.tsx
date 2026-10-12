@@ -301,6 +301,9 @@ function DraftDetail({
       ? standingDraft.at_send ?? null
       : null;
   const slots = atSend ? atSend.unfillable : unfilledSlots(draft.draftContent);
+  // No address on file (F-1553): the gateway refuses the send, so neither
+  // hold is offered and the card says where to add one.
+  const noAddress = !(draft.providerEmail ?? "").trim();
   const fills = atSend?.fills ?? [];
   // ORD-W10: the words can be changed on the card (PATCH …/draft). While the
   // box is open both holds stay shut, so a hold is always over saved words.
@@ -342,6 +345,13 @@ function DraftDetail({
     // failed with status code 403" (lane E audit D9).
     if (getErrorStatus(err) === 403) {
       setActionError(`The hold was refused, so nothing was sent: ${getErrorMessage(err)}`);
+      setAttempt((a) => a + 1);
+      return;
+    }
+    // A 400 is the gateway refusing the letter before it left — a blank, no
+    // address — so it is "not sent", never "not confirmed" (F-1553).
+    if (getErrorStatus(err) === 400 && verb === "sent") {
+      setActionError(`Nothing was sent: ${getErrorMessage(err)}`);
       setAttempt((a) => a + 1);
       return;
     }
@@ -567,13 +577,33 @@ function DraftDetail({
           .
         </p>
       )}
+      {noAddress && (
+        <p
+          data-testid="draft-no-address"
+          role="status"
+          style={{ fontFamily: SANS, fontSize: 12, color: "var(--ink-1, #211C16)", margin: 0 }}
+        >
+          {draft.providerName ?? "This vendor"} has no email address on file, so this letter cannot be sent from here.
+          Add one on{" "}
+          {/* A plain link, as AgreementSheet's: the rail mounts in suites with
+              no router, and /vendors reads `?vendor=` at mount. */}
+          <a
+            data-testid="draft-no-address-link"
+            href={`/vendors?vendor=${encodeURIComponent(draft.providerId)}`}
+            style={{ color: "var(--seal-deep, #14515C)" }}
+          >
+            the vendor&rsquo;s record
+          </a>
+          , or copy the letter above and send it the way you usually reach them.
+        </p>
+      )}
       <div className="grid gap-1">
         {act === "ask" ? (
           <HoldToApprove
             key={`ask-${draft.orderId}-${attempt}`}
             label="Hold to ask a manager to send it"
             approvedLabel="Asked — waiting for a manager"
-            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim() || slots.length > 0 || editing}
+            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim() || slots.length > 0 || editing || noAddress}
             onApprove={async () => {
               setActionError(null);
               try {
@@ -597,7 +627,7 @@ function DraftDetail({
             key={`send-${draft.orderId}-${attempt}`}
             label={`Hold to approve & send to ${draft.providerName ?? "the vendor"}`}
             approvedLabel="Approved — leaving the house"
-            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send" || slots.length > 0 || editing}
+            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send" || slots.length > 0 || editing || noAddress}
             onChallenge={() =>
               issueDraftSendChallenge({
                 orderId: draft.orderId,
