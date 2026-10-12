@@ -842,8 +842,15 @@ export class RecommendationsService {
     }));
 
     const gini = ctx.risk?.revenueConcentration?.gini;
+    // F-1492: the drinks poured into cocktails are not sales of those drinks,
+    // and the cocktails' own sales are not in the figure, so the card says so.
+    const cocktailPours = ctx.risk?.revenueConcentration?.cocktailPoursLeftOut;
     rule("revenue_concentration", (gini ?? 0) > 0.6, () => ({
-      observation: `Revenue rides on very few drinks (Gini ${num(gini, 2)}).`,
+      observation:
+        `Revenue rides on very few drinks (Gini ${num(gini, 2)}).` +
+        ((cocktailPours ?? 0) > 0
+          ? " Your cocktails are left out of this: what they sell for is not yet counted against any drink."
+          : ""),
       recommendation:
         "Protect the top sellers' stock first (raise their service level to 98%), then use pairing prompts to spread demand to adjacent wines.",
       rationale:

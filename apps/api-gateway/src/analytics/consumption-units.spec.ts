@@ -1531,4 +1531,51 @@ describe("revenue concentration is over what sold, not the shelf (F-1016)", () =
       "1 drink(s) left out because a sale carried no price",
     );
   });
+
+  // F-1492: a cocktail's recipe line (F-1329) is written with no price, the
+  // till's being the cocktail's. Read as an unpriced sale it took the gin's
+  // own priced sales out of the figure.
+  it("a pour into a cocktail is not an unpriced sale, and is said (F-1492)", async () => {
+    const pour = sold(3, 1, null).map((r) => ({
+      ...r,
+      source: "pos",
+      wine_name: "Negroni: gin",
+      notes: "pos:square:chk-9:NEGRONI:2:0",
+    }));
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [item(1), item(2), item(3)],
+        wine_consumption_log: [
+          ...sold(1, 5, 60),
+          ...sold(2, 5, 60),
+          ...sold(3, 5, 60),
+          ...pour,
+        ],
+      }),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.revenueConcentration.soldCount).toBe(3);
+    expect(out.revenueConcentration.unpricedLeftOut).toBe(0);
+    expect(out.revenueConcentration.cocktailPoursLeftOut).toBe(1);
+    expect(out.basis.revenueConcentration).not.toContain("carried no price");
+    expect(out.basis.revenueConcentration).toContain(
+      "1 pour(s) into cocktails are not counted as sales of the drinks poured, and the cocktails' own sales are not in these figures",
+    );
+  });
+
+  it("a plain sale the till sent no price for is still left out (F-1492)", async () => {
+    const plain = sold(3, 1, null).map((r) => ({
+      ...r,
+      source: "pos",
+      wine_name: "Item 3",
+      notes: "pos:square:chk-9:item-3:2",
+    }));
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [item(1), item(2), item(3)],
+        wine_consumption_log: [...sold(1, 5, 60), ...sold(3, 4, 60), ...plain],
+      }),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.revenueConcentration.unpricedLeftOut).toBe(1);
+    expect(out.revenueConcentration.cocktailPoursLeftOut).toBe(0);
+  });
 });

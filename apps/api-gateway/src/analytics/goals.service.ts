@@ -1257,6 +1257,14 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         await this.analyticsService.getFinancialSummary(restaurantId);
       const dio = financial?.daysInventoryOutstanding;
       if (typeof dio !== "number" || !Number.isFinite(dio)) {
+        // F-1491: a young house's days of stock are withheld for its short
+        // span, not its cost basis; a fully costed cellar was told otherwise.
+        if (financial?.turnsSpanShort === true) {
+          const days = Number(financial.turnsPeriodDays);
+          throw new Error(
+            `Days of stock cannot be read for this restaurant yet: it needs ${AnalyticsService.MIN_TURNS_SPAN_DAYS} days of buying on record, and this house has ${days} day${days === 1 ? "" : "s"} since its first delivery.`,
+          );
+        }
         throw new Error(
           "Days of stock cannot be read for this restaurant yet: it is cost of goods over inventory value, and inventory value is only known when every bottle on hand carries a recorded cost.",
         );

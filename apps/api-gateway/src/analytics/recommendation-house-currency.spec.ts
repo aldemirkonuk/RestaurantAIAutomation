@@ -160,3 +160,33 @@ describe("concentration cards in the house's number marks (F-1040)", () => {
     expect(o.revenue).toBe("Revenue rides on very few drinks (Gini 0.71).");
   });
 });
+
+/**
+ * F-1492: a cocktail's pours are not sales of the drinks poured, and the
+ * cocktails' own sales are not in the revenue-concentration figure, so the
+ * card says so rather than reading as the whole room.
+ */
+describe("the revenue concentration card says when cocktails are left out (F-1492)", () => {
+  const card = async (cocktailPoursLeftOut: number) => {
+    const out = await serviceFor(
+      "USD",
+      {},
+      {
+        revenueConcentration: { gini: 0.72, cocktailPoursLeftOut },
+      },
+    ).getRecommendations("r-1");
+    return out.recommendations.find(
+      (r) => r.ruleKey === "revenue_concentration",
+    )?.observation;
+  };
+
+  it("names the cocktails when pours into them were left out", async () => {
+    expect(await card(4)).toBe(
+      "Revenue rides on very few drinks (Gini 0.72). Your cocktails are left out of this: what they sell for is not yet counted against any drink.",
+    );
+  });
+
+  it("says nothing more when no cocktail was poured", async () => {
+    expect(await card(0)).toBe("Revenue rides on very few drinks (Gini 0.72).");
+  });
+});

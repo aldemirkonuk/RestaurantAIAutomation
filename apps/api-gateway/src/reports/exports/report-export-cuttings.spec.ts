@@ -583,7 +583,33 @@ describe("two currencies are said in the file, not read as an empty window (F-10
     );
     const plain = EXPORT_CUTTINGS.ledger.write(PAYLOADS.ledger, { days: null });
     expect(why(plain, "Inventory turns")).toBe(
-      "Needs a complete cost basis and a year of delivered orders",
+      "Needs a complete cost basis and a delivered order with a price",
+    );
+  });
+
+  // F-1491: a fully costed house under a month of buying had its turns
+  // withheld for "a year of delivered orders"; the span is its reason.
+  it("inventory turns and days give a young house's short span as their reason, and the basis says it", () => {
+    const SHORT =
+      "Turns and days of stock need 30 days of buying on record; this house has 21 days, counted from its first delivery.";
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as object),
+        cogs: 2000,
+        turnsSpanShort: true,
+        turnsSpanNote: SHORT,
+        basis: {
+          ...((PAYLOADS.ledger as any).basis ?? {}),
+          turns: "null: the house has 21 days of buying on record",
+        },
+      },
+      { days: null },
+    );
+    for (const label of ["Inventory turns", "Days of inventory"])
+      expect(why(doc, label)).toBe(SHORT);
+    expect(doc.notes).toContain(SHORT);
+    expect(doc.basis).toContain(
+      "null: the house has 21 days of buying on record",
     );
   });
 });

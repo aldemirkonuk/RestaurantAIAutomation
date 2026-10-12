@@ -74,3 +74,28 @@ describe('Figures of record — Cost of goods in two currencies', () => {
     expect(cogsOf({ ...base, cogsNote: null })?.note).toBe('No delivered order came back for the window');
   });
 });
+
+// F-1491: a house under a month of buying had its turns and days of stock
+// withheld with no reason on the screen, and the basis list left turns out.
+describe('Figures of record — a young house is told why it has no turns', () => {
+  const SHORT =
+    'Turns and days of stock need 30 days of buying on record; this house has 21 days, counted from its first delivery.';
+  const young = {
+    ...base,
+    turnsSpanNote: SHORT,
+    basis: { turns: 'null: the house has 21 days of buying on record' },
+  };
+
+  it('says the span beside the two figures, in the notes and in the basis', () => {
+    const v = view(young);
+    for (const label of ['Inventory turns', 'Days of inventory'])
+      expect(v.figures?.find((x) => x.label === label)).toMatchObject({ value: EM, note: SHORT });
+    expect(v.notes).toContain(SHORT);
+    expect(v.basis).toContain('null: the house has 21 days of buying on record');
+  });
+
+  it('says it to staff too, who keep the two figures', () => {
+    const v = view({ ...young, amountsWithheld: true });
+    expect(v.notes).toContain(SHORT);
+  });
+});

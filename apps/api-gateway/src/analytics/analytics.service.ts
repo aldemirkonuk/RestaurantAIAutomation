@@ -29,6 +29,29 @@ import {
 } from "../common/house-day";
 
 /**
+ * F-1492: a consumption line the till wrote for one linked line of a
+ * cocktail's recipe (F-1329, pos-hub.service.ts planRecipeLine). It carries no
+ * price — the till's price is the cocktail's — and is keyed by the cocktail
+ * line's own key with the recipe line's place after it (`…:lineNo:j`), named
+ * `<cocktail>: <recipe line>`. A plain sale's key ends at `:lineNo`.
+ */
+function isRecipePour(c: {
+  source?: unknown;
+  notes?: unknown;
+  wine_name?: unknown;
+  total_revenue?: unknown;
+}): boolean {
+  return (
+    c.total_revenue == null &&
+    c.source === "pos" &&
+    typeof c.notes === "string" &&
+    /:\d+:\d+$/.test(c.notes) &&
+    typeof c.wine_name === "string" &&
+    c.wine_name.includes(": ")
+  );
+}
+
+/**
  * AnalyticsService — the quantitative heart of WineOps.
  *
  * Pulls raw operational data from Supabase and runs it through the pure
@@ -388,7 +411,7 @@ export class AnalyticsService {
         client
           .from("wine_consumption_log")
           .select(
-            "id, inventory_id, consumption_type, quantity, volume_ml, total_revenue, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
+            "id, inventory_id, wine_name, consumption_type, quantity, volume_ml, total_revenue, source, notes, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -413,6 +436,9 @@ export class AnalyticsService {
           c.total_revenue == null || Number.isNaN(Number(c.total_revenue))
             ? null
             : Number(c.total_revenue),
+        // F-1492: a pour the till took for a cocktail's recipe (F-1329),
+        // not a sale of this drink: its price is the cocktail's.
+        recipePour: isRecipePour(c),
         servings: servingsOf(c),
         volumeMl: volumeMlOf(c),
         date: zone
@@ -775,17 +801,29 @@ export class AnalyticsService {
     // F-1412: COGS is what the house bought over the days it has records
     // for, not always a year. A house open six weeks has six weeks of
     // purchases; set against today's cellar as if a year, its turns read a
-    // ninth of the truth and its days of stock nine times too many. The span
-    // runs from the house's set-up day, or its first delivered order when
-    // that is earlier, to today, at most a year. Turns are given per year
-    // (scaled up from the span); under a month of records they are not given.
+    // ninth of the truth and its days of stock nine times too many. Turns are
+    // given per year (scaled up from the span); under a month of records they
+    // are not given.
+    //
+    // F-1493: the span starts at the first record of buying, the first
+    // delivered order, not at sign-up. COGS holds only delivered orders, so a
+    // house that signed up three weeks before its first delivery spread 24
+    // days of buying over 45. A house set up over a year ago keeps the year:
+    // its buying before the window is not read here, so the first order
+    // inside it is not its first. With no order the set-up day stands (COGS
+    // is then blank and turns are not given for that reason).
     const today = new Date().toISOString().slice(0, 10);
-    let spanStart = house.openedOn;
+    const daysTo = (d: string) =>
+      Math.floor((Date.parse(today) - Date.parse(d)) / 86400000) + 1;
+    let firstBuying: string | null = null;
     for (const o of orders)
-      if (o.date && (!spanStart || o.date < spanStart)) spanStart = o.date;
-    const spanDays = spanStart
-      ? Math.floor((Date.parse(today) - Date.parse(spanStart)) / 86400000) + 1
-      : 365;
+      if (o.date && (!firstBuying || o.date < firstBuying))
+        firstBuying = o.date;
+    const spanStart =
+      house.openedOn && daysTo(house.openedOn) >= 365
+        ? house.openedOn
+        : (firstBuying ?? house.openedOn);
+    const spanDays = spanStart ? daysTo(spanStart) : 365;
     const periodDays = Number.isFinite(spanDays)
       ? Math.min(365, Math.max(1, spanDays))
       : 365;
@@ -922,8 +960,8 @@ export class AnalyticsService {
           periodDays >= 365
             ? "delivered order cost over the last 365 days ÷ today's inventory value; days of stock = 365 ÷ turns"
             : spanTooShort
-              ? `null: the house has ${periodDays} day${periodDays === 1 ? "" : "s"} of records, and turns and days of stock need at least ${AnalyticsService.MIN_TURNS_SPAN_DAYS}`
-              : `delivered order cost over the ${periodDays} days the house has records for ÷ today's inventory value, scaled to a year; days of stock = ${periodDays} ÷ turns over those days`,
+              ? `null: the house has ${periodDays} day${periodDays === 1 ? "" : "s"} of buying on record (since its first delivered order), and turns and days of stock need at least ${AnalyticsService.MIN_TURNS_SPAN_DAYS}`
+              : `delivered order cost over the ${periodDays} days since the house's first delivered order ÷ today's inventory value, scaled to a year; days of stock = ${periodDays} ÷ turns over those days`,
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d, among wines on the list for at least ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
           "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null or in a currency other than the house's, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio; grossMarginDollars, grossMargin, cogsRatio, primeCostRatio and gmroi are taken over the on-hand wines that carry a bottle price only, so a wine with no price adds neither sales nor cost to them (priceCoverage counts it)",
@@ -960,6 +998,25 @@ export class AnalyticsService {
       daysInventoryOutstanding: dio,
       /** The days turns and days of stock are taken over (F-1412). */
       turnsPeriodDays: periodDays,
+      /**
+       * F-1491: true when turns and days of stock are withheld because the
+       * house has under a month of buying on record — its own reason, not the
+       * cost basis's. Only with an order: with none, COGS is the reason.
+       */
+      turnsSpanShort: spanTooShort && orders.length > 0,
+      /**
+       * F-1491: the span said in plain words for the page and the export:
+       * why turns are withheld, or the days they are scaled up from; null
+       * over a full year or with no delivered order.
+       */
+      turnsSpanNote:
+        orders.length === 0
+          ? null
+          : spanTooShort
+            ? `Turns and days of stock need ${AnalyticsService.MIN_TURNS_SPAN_DAYS} days of buying on record; this house has ${periodDays} day${periodDays === 1 ? "" : "s"}, counted from its first delivery.`
+            : periodDays < 365
+              ? `Turns and days of stock are taken over the ${periodDays} days since this house's first delivery, and turns are scaled up to a year.`
+              : null,
       gmroi,
       deadStockCapital,
       deadStockTop: deadStock.slice(0, 10),
@@ -1199,11 +1256,19 @@ export class AnalyticsService {
     // "protect the top sellers" pointed at the deepest stock. A drink with a
     // line that carries no price is left out and counted, never read as 0;
     // a drink that sold nothing is not in the room's revenue at all.
+    //
+    // F-1492: a pour into a cocktail is not a sale of the drink poured. It
+    // carries no price of its own, and read as an unpriced sale it took the
+    // gin's own priced sales out with it. It is skipped and counted; the
+    // cocktail's till price lives on the check, not in this log, so the
+    // cocktails themselves are not in these figures, and the basis says so.
     const soldValue = new Map<string, number>();
     const unpricedSales = new Set<string>();
+    let cocktailPours = 0;
     for (const c of consumption) {
       if (!c.inventoryId) continue;
-      if (c.revenue == null) unpricedSales.add(c.inventoryId);
+      if (c.recipePour) cocktailPours++;
+      else if (c.revenue == null) unpricedSales.add(c.inventoryId);
       else
         soldValue.set(
           c.inventoryId,
@@ -1242,7 +1307,7 @@ export class AnalyticsService {
     return {
       basis: {
         demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}`,
-        revenueConcentration: `over what each drink sold in the last 90d (${skuRevenue.length} drink(s) with sales)${unpricedSales.size > 0 ? `; ${unpricedSales.size} drink(s) left out because a sale carried no price` : ""}`,
+        revenueConcentration: `over what each drink sold in the last 90d (${skuRevenue.length} drink(s) with sales)${unpricedSales.size > 0 ? `; ${unpricedSales.size} drink(s) left out because a sale carried no price` : ""}${cocktailPours > 0 ? `; ${cocktailPours} pour(s) into cocktails are not counted as sales of the drinks poured, and the cocktails' own sales are not in these figures` : ""}`,
         vendorConcentration: mixedCurrency
           ? `delivered procurement_orders (trailing 365d) — null: the orders were placed in ${orderCurrencies.join(", ")}, and with no exchange rate on record their spend shares cannot be compared`
           : `delivered procurement_orders (trailing 365d) — shares of ${orders.length - vendorUnpricedCount} priced order${orders.length - vendorUnpricedCount === 1 ? "" : "s"}` +
@@ -1277,6 +1342,8 @@ export class AnalyticsService {
         hhi: skuHhi,
         soldCount: skuRevenue.length,
         unpricedLeftOut: unpricedSales.size,
+        /** F-1492: pours into cocktails, which are not sales; cocktails are not in the figures. */
+        cocktailPoursLeftOut: cocktailPours,
         interpretation:
           gini === null
             ? "insufficient data"
