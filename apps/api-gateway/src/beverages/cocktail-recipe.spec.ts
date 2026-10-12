@@ -136,8 +136,13 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
       restaurant_inventory: [{ data: [{ id: GIN }] }],
       cocktail_ingredients: [{ data: [] }, { data: [{ id: "new-0" }] }],
     });
-    await service.setCocktailIngredients(RID, COCKTAIL_ID, {
-      lines: [{ freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN }],
+    await service.setCocktailIngredients(
+      RID,
+      COCKTAIL_ID,
+      {
+        lines: [
+          { freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN },
+        ],
       },
       true,
     );
@@ -155,10 +160,13 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
       restaurant_inventory: [{ data: [] }],
     });
     await expect(
-      service.setCocktailIngredients(RID, COCKTAIL_ID, {
-        lines: [
-          { freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN },
-        ],
+      service.setCocktailIngredients(
+        RID,
+        COCKTAIL_ID,
+        {
+          lines: [
+            { freeText: "gin", quantity: 30, unit: "ml", inventoryId: GIN },
+          ],
         },
         true,
       ),
