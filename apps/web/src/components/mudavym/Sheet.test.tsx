@@ -732,6 +732,47 @@ describe('the scrim, the name and the nudge', () => {
     }
   });
 
+  /* F-1422: 'Invite someone' near the foot of the page opened below the fold,
+     and a modal popover locks page scroll, so its buttons were out of reach. */
+  function PlacedPopover({ rect }: { rect: Partial<DOMRect> }) {
+    const anchor = useRef<HTMLButtonElement | null>(null);
+    return (
+      <div className="mudavym">
+        <button
+          type="button"
+          ref={(el) => {
+            anchor.current = el;
+            if (el) {
+              el.getBoundingClientRect = () =>
+                ({ top: 0, bottom: 0, left: 0, right: 0, ...rect }) as DOMRect;
+            }
+          }}
+        >
+          invite
+        </button>
+        <Popover open modal anchorRef={anchor} onClose={() => {}} label="Invite" width={440}>
+          <button type="button">Done</button>
+        </Popover>
+      </div>
+    );
+  }
+
+  it('opens a popover above an anchor near the bottom edge, and never past the top', () => {
+    // jsdom's window is 768 px tall; the anchor sits 40 px from its foot.
+    render(<PlacedPopover rect={{ top: 700, bottom: 728, right: 900 }} />);
+    const panel = screen.getByRole('dialog', { name: 'Invite' });
+    expect(panel.style.top).toBe('');
+    expect(panel.style.bottom).toBe(`${768 - 700 + 10}px`);
+    expect(panel.style.maxHeight).toBe(`min(72vh, ${700 - 26}px)`);
+  });
+
+  it('keeps a popover under its anchor when there is room, capped to the bottom edge', () => {
+    render(<PlacedPopover rect={{ top: 100, bottom: 128, right: 900 }} />);
+    const panel = screen.getByRole('dialog', { name: 'Invite' });
+    expect(panel.style.top).toBe('138px');
+    expect(panel.style.maxHeight).toBe(`min(72vh, ${768 - 128 - 26}px)`);
+  });
+
   /* Judge probe J7: the "reads like a title" nudge fired for a menu. */
   it('does not nudge a popover or a menu to write a contract sentence', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

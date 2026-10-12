@@ -601,6 +601,28 @@ describe('SettingsNext — the editorial spine', () => {
   // (jsdom never rendering it) is not the failure mode; scrollIntoView simply
   // stayed uncalled, which is the same silent shape as the 900-second token
   // trap this repo has already been burned by once.
+  // F-1426: preventDefault cancelled the fragment jump, so a contents click
+  // scrolled the page but left focus (and the next Tab) in the contents.
+  it('takes focus to the register a contents link names, as well as scrolling to it', () => {
+    mount('/settings');
+    const link = within(screen.getByRole('navigation', { name: /settings registers/i }))
+      .getByText('What it carries')
+      .closest('a')!;
+    fireEvent.click(link);
+    const target = document.getElementById(link.getAttribute('href')!.slice(1))!;
+    expect(target.tagName).toBe('SECTION');
+    expect(document.activeElement).toBe(target);
+    fireEvent.click(screen.getByRole('button', { name: 'What changed here' }));
+    expect(document.activeElement).toBe(document.getElementById('a-record'));
+  });
+
+  // F-1427: the house shell already renders the page's <main>; a second one
+  // nested inside it is not a landmark.
+  it('renders no <main> of its own inside the shell', () => {
+    mount('/settings');
+    expect(screen.queryByRole('main')).not.toBeInTheDocument();
+  });
+
   it('honours a ?tab=hours deep link the same way — graft B lives under "The house"', () => {
     mount('/settings?tab=hours');
     expect(screen.getByTestId('st-section-hours')).toBeInTheDocument();

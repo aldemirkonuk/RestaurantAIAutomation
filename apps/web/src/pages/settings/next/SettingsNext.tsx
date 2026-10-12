@@ -214,7 +214,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
   // and settings.md §13.39) — computed from `data`, never the DOM.
   const tallyLine = certaintyTallyLine(data);
 
-  const mainRef = useRef<HTMLElement | null>(null);
+  const mainRef = useRef<HTMLDivElement | null>(null);
   const scrolledRef = useRef(false);
 
   // A `?tab=` bookmark still has to land somewhere true. Every register is
@@ -244,11 +244,14 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     );
   }, []);
 
-  const scrollToAnchor = useCallback((anchor: string) => {
+  // F-1426: a contents click takes focus to the register too, so the next Tab
+  // starts there rather than back in the contents. A deep link only scrolls.
+  const scrollToAnchor = useCallback((anchor: string, moveFocus = false) => {
     const el = document.getElementById(anchor);
     if (el && typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
     }
+    if (el && moveFocus) el.focus({ preventScroll: true });
   }, []);
 
   // `?tab=services|pos|email|calendar` still has to land somewhere true. The
@@ -295,7 +298,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-4)', margin: '8px 0 0', maxWidth: 660 }}>
             {capitalise(word(split.recorded.length))} of these record <em>who</em> changed a setting and what it was
             before — {listed(split.recorded.map((s) => s.label))} — and so do the opening hours and the target margin; you can read every change under{' '}
-            <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record')}
+            <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record', true)}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here
             </button>.{split.partly.map((p) => ` ${p.spec.label} records it only for ${p.only}.`).join('')} The
@@ -334,7 +337,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
               <a
                 key={group.id}
                 href={`#${group.anchor}`}
-                onClick={(e) => { e.preventDefault(); scrollToAnchor(group.anchor); }}
+                onClick={(e) => { e.preventDefault(); scrollToAnchor(group.anchor, true); }}
                 className="st-tab st-ink st-focus"
                 style={{
                   display: 'flex', gap: 9, alignItems: 'baseline', padding: '6px 9px', marginBottom: 2,
@@ -398,9 +401,11 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
           </nav>
 
           {/* ── The interview — every register, in its fixed order ─────── */}
-          <main ref={mainRef} style={{ minWidth: 0 }}>
+          {/* F-1427: a <div>, not a second <main> — the house shell's own
+              <main> already holds this page. */}
+          <div ref={mainRef} style={{ minWidth: 0 }}>
             {groups.map((group) => (
-              <section key={group.id} id={group.anchor} aria-labelledby={`st-group-${group.id}`} style={{ marginBottom: 36 }}>
+              <section key={group.id} id={group.anchor} tabIndex={-1} aria-labelledby={`st-group-${group.id}`} style={{ marginBottom: 36 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
                   <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.14em', color: 'var(--seal-deep)' }}>
                     {group.roman}
@@ -508,7 +513,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                 )}
               </section>
             ))}
-          </main>
+          </div>
         </div>
 
         <footer style={{ display: 'flex', flexDirection: 'column', gap: 10,

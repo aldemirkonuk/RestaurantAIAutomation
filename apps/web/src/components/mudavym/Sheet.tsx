@@ -367,6 +367,17 @@ const ENTER_BOTTOM: Keyframe[] = [
   { transform: 'none', opacity: 1 },
 ];
 
+type AnchoredPos = {
+  top?: number;
+  bottom?: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+};
+
+/** Below this much room under its anchor, a popover opens above it instead. */
+const MIN_POPOVER_ROOM = 240;
+
 /**
  * Position a popover under its anchor, right-aligned and clamped to the
  * viewport. The maths is `hooks/useAnchoredDialogPosition.ts:21-32`, kept here
@@ -376,8 +387,8 @@ function useAnchoredPosition(
   open: boolean,
   anchorRef: RefObject<HTMLElement | null> | undefined,
   width: number,
-): { top: number; left: number; width: number } | null {
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+): AnchoredPos | null {
+  const [pos, setPos] = useState<AnchoredPos | null>(null);
   useLayoutEffect(() => {
     if (!open || !anchorRef?.current) {
       setPos(null);
@@ -394,7 +405,17 @@ function useAnchoredPosition(
       if (left + w > window.innerWidth - 16) {
         left = Math.max(16, window.innerWidth - w - 16);
       }
-      setPos({ top: r.bottom + 10, left, width: w });
+      // Vertically too (F-1422): a modal popover locks page scroll, so one
+      // that runs past the bottom edge can never be scrolled into view. Below
+      // the anchor when there is room; above it when there is more room there;
+      // and never taller than the side it opened on.
+      const below = window.innerHeight - r.bottom - 10 - 16;
+      const above = r.top - 10 - 16;
+      if (below < MIN_POPOVER_ROOM && above > below) {
+        setPos({ bottom: window.innerHeight - r.top + 10, left, width: w, maxHeight: above });
+      } else {
+        setPos({ top: r.bottom + 10, left, width: w, maxHeight: Math.max(below, 0) });
+      }
     };
     update();
     window.addEventListener('resize', update);
@@ -1007,8 +1028,10 @@ function OverlayRoot({
           shape === 'popover'
             ? {
                 width: pos?.width ?? width,
-                top: pos?.top ?? 0,
+                top: pos ? pos.top : 0,
+                bottom: pos?.bottom,
                 left: pos?.left ?? 0,
+                maxHeight: pos ? `min(72vh, ${pos.maxHeight}px)` : undefined,
                 // `opacity`, NOT `visibility`: a `visibility: hidden` subtree
                 // cannot take focus, so the one frame before the anchor is
                 // measured silently swallowed the focus move.

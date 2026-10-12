@@ -24,7 +24,7 @@
  * step down here; the gateway refuses that too (F-193).
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { InviteTeamDialog } from '@/components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '@/components/team/TeamLaborSettings';
 import { Action, ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
@@ -53,6 +53,17 @@ function RoleChange({ name, current, isSelf, onlyOwner, busy, onConfirm }: {
   onConfirm: (next: string) => void;
 }) {
   const [pending, setPending] = useState<string | null>(null);
+  const selectRef = useRef<HTMLSelectElement | null>(null);
+  const yesRef = useRef<HTMLButtonElement | null>(null);
+  const consequenceId = useId();
+  // F-1425: picking a role arms "Yes, change" and takes focus to it; either
+  // answer unmounts the pair, so focus goes back to the picker.
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (pending !== null && !wasPending.current) yesRef.current?.focus();
+    else if (pending === null && wasPending.current) selectRef.current?.focus();
+    wasPending.current = pending !== null;
+  }, [pending]);
   if (onlyOwner) {
     return (
       <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)', maxWidth: 260, textAlign: 'right' }}>
@@ -67,6 +78,7 @@ function RoleChange({ name, current, isSelf, onlyOwner, busy, onConfirm }: {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
       <select
+        ref={selectRef}
         aria-label={`Role for ${name}`}
         value={next}
         disabled={busy}
@@ -80,10 +92,10 @@ function RoleChange({ name, current, isSelf, onlyOwner, busy, onConfirm }: {
       </select>
       {pending && (
         <>
-          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2)', maxWidth: 260, textAlign: 'right' }}>
+          <span id={consequenceId} role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2)', maxWidth: 260, textAlign: 'right' }}>
             {consequence}
           </span>
-          <Action tone="grave" disabled={busy} onClick={() => { setPending(null); onConfirm(pending); }}>Yes, change</Action>
+          <Action tone="grave" disabled={busy} buttonRef={yesRef} describedBy={consequenceId} onClick={() => { setPending(null); onConfirm(pending); }}>Yes, change</Action>
           <Action tone="quiet" onClick={() => setPending(null)}>Keep as is</Action>
         </>
       )}
@@ -167,6 +179,7 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
                         <ConfirmAction
                           label={isSelf ? 'Leave' : 'Remove'}
                           confirmLabel={isSelf ? 'Yes, leave' : 'Yes, remove'}
+                          subject={isSelf ? 'this branch' : name}
                           busy={writer.busy === `remove:${m.user_id}`}
                           consequence={isSelf
                             ? 'You lose access to this branch and need a new invite to come back.'
@@ -227,6 +240,7 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
                     <ConfirmAction
                       label="Revoke"
                       confirmLabel="Yes, revoke"
+                      subject={inv.target_email ? `the invite for ${inv.target_email}` : `invite ${inv.code}`}
                       busy={writer.busy === `invite:${inv.code}`}
                       consequence="The link stops working for anyone holding it."
                       onConfirm={() => { if (inv.code) void revokeInvite(inv.code); }}

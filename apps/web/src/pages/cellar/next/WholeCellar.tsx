@@ -287,6 +287,8 @@ export default function WholeCellar({
                         key={id}
                         tabIndex={0}
                         data-selected={id === picked}
+                        // F-1428: chosen is said, not only drawn.
+                        aria-selected={id === picked}
                         onClick={() => setPicked((k) => (k === id ? null : id))}
                         onKeyDown={(e) => {
                           if (e.target !== e.currentTarget) return;

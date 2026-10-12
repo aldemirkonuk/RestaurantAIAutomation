@@ -293,14 +293,16 @@ export default function ReceivingNext() {
           className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]"
           style={{ alignItems: 'start' }}
         >
-          <main>
+          {/* F-1427: the shell's own <main> already holds this page; a second
+              one nested inside it is not a landmark. */}
+          <div>
             {highlightOrderId && rendering === 'staff' && (
               <HighlightElsewhereNote orderId={highlightOrderId} />
             )}
             {rendering === 'staff' && <StaffBody />}
             {rendering === 'manager' && <ManagerBody highlightOrderId={highlightOrderId} />}
             {rendering === 'owner' && <OwnerBody highlightOrderId={highlightOrderId} />}
-          </main>
+          </div>
           <aside>
             {/* "Did it arrive?" (ADR 0207 round 3) — asked of owners and
                 managers; a staff rendering never asks for it. */}

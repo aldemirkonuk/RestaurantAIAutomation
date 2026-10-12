@@ -524,6 +524,8 @@ export default function CatalogueRegister({
                       <tr
                         key={r.key}
                         data-selected={r.key === openKey}
+                        // F-1428: the row opens in place, and says so.
+                        aria-expanded={r.key === openKey}
                         data-ours={r.house !== null ? 'true' : 'false'}
                         tabIndex={0}
                         onClick={() => setOpenKey((k) => (k === r.key ? null : r.key))}

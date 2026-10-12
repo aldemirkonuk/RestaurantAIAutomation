@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { TeamSection } from './TeamSection';
 import type { SettingsNextData } from './useSettingsNextData';
 
@@ -21,7 +21,7 @@ const INVITES = [
   { id: 'i2', code: 'STAF2345', role: 'staff', expires_at: FUTURE, created_at: null, target_email: null },
 ];
 
-function mount(role: 'owner' | 'manager', invites: unknown[] = INVITES) {
+function mount(role: 'owner' | 'manager', invites: unknown[] = INVITES, members: unknown[] = []) {
   const data = {
     role,
     canManage: true,
@@ -37,7 +37,7 @@ function mount(role: 'owner' | 'manager', invites: unknown[] = INVITES) {
       reload: vi.fn(),
       set: vi.fn(),
       data: {
-        members: [],
+        members,
         invitesDenied: false,
         invites,
       },
@@ -57,13 +57,13 @@ describe('the invite book (F-1140)', () => {
 
   it('a manager is not offered Revoke on an owner’s invite, and is told who can', () => {
     mount('manager');
-    expect(screen.getAllByRole('button', { name: 'Revoke' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Revoke/ })).toHaveLength(1);
     expect(screen.getByText('Only an owner can withdraw an invite for an owner.')).toBeInTheDocument();
   });
 
   it('an owner is offered Revoke on both', () => {
     mount('owner');
-    expect(screen.getAllByRole('button', { name: 'Revoke' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^Revoke/ })).toHaveLength(2);
   });
 });
 
@@ -85,7 +85,49 @@ describe('an owner’s invite a manager sees without its code (F-1298, F-1313)',
 
   it('offers no Revoke, and says who can withdraw it', () => {
     mount('manager', codeless);
-    expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Revoke/ })).toBeNull();
     expect(screen.getByText('Only an owner can withdraw an invite for an owner.')).toBeInTheDocument();
+  });
+});
+
+// F-1425: each step of a two-step confirm unmounts the button just pressed, so
+// focus fell to the page and the consequence was never said; and every row's
+// button was named only "Remove" or "Revoke".
+describe('two-step confirms, from the keyboard and a screen reader (F-1425)', () => {
+  const MEMBERS = [
+    { user_id: 'u-me', role: 'owner', users: { name: 'Deniz', email: 'd@x.test' }, created_at: null },
+    { user_id: 'u2', role: 'manager', users: { name: 'Ayşe', email: 'a@x.test' }, created_at: null },
+  ];
+
+  it('names who or what each button acts on', () => {
+    mount('owner', INVITES, MEMBERS);
+    expect(screen.getByRole('button', { name: 'Remove Ayşe' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Leave this branch' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revoke invite STAF2345' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Revoke the invite for deniz@example.test' }),
+    ).toBeInTheDocument();
+  });
+
+  it('takes focus to "Yes, …" with the consequence said, and back on "Keep as is"', () => {
+    mount('owner', INVITES, MEMBERS);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Ayşe' }));
+    const yes = screen.getByRole('button', { name: 'Yes, remove Ayşe' });
+    expect(document.activeElement).toBe(yes);
+    expect(yes).toHaveAccessibleDescription('They lose access to this branch immediately.');
+    expect(screen.getByRole('status')).toHaveTextContent('They lose access to this branch immediately.');
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as is' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove Ayşe' }));
+  });
+
+  it('a role change takes focus to "Yes, change" and back to the picker', () => {
+    mount('owner', INVITES, MEMBERS);
+    const picker = screen.getByLabelText('Role for Ayşe');
+    fireEvent.change(picker, { target: { value: 'staff' } });
+    const yes = screen.getByRole('button', { name: 'Yes, change' });
+    expect(document.activeElement).toBe(yes);
+    expect(yes).toHaveAccessibleDescription('Ayşe becomes staff here.');
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as is' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Role for Ayşe'));
   });
 });
