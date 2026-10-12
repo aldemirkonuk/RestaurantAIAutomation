@@ -175,6 +175,9 @@ export async function noticeToHouseLeads(
     title: string;
     message: string;
     metadata: Record<string, unknown>;
+    /** Stamped on every row so `resolveBellLines` can clear them all at once
+     * when the thing is dealt with (F-1488: a time-off ask). */
+    groupKey?: string;
   },
 ): Promise<string[]> {
   const told: string[] = [];
@@ -208,6 +211,7 @@ export async function noticeToHouseLeads(
         action_url: "/team",
         action_label: "Open the schedule",
         metadata: n.metadata,
+        group_key: n.groupKey ?? null,
         created_at: new Date().toISOString(),
       });
       if (insErr) {
