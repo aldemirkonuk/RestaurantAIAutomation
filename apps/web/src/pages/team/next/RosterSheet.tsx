@@ -46,7 +46,6 @@ import {
   fmtMoneyExact,
   houseLocale,
   fmtWeekday,
-  labourRules,
   resolveName,
   workedHours,
 } from './tm-format';
@@ -57,6 +56,7 @@ import {
   Mark,
   MutationError,
   Tag,
+  useHouseLabourRules,
   useHouseRegion,
   useShiftTime,
 } from './tm-bits';
@@ -164,7 +164,7 @@ function MemberDetail({
   /** The house's decimal mark for hours (F-1120). */
   const hoursIn = houseLocale(region);
   /** Its country's breaks (founder S195), as the gateway counts them. */
-  const rules = labourRules(region);
+  const rules = useHouseLabourRules();
   const name = resolveName(member);
   const { user } = useAuth();
   // An owner opening their own row sets their OWN dates: not logged, and the
@@ -357,7 +357,7 @@ export function RosterSheet({
 }) {
   const region = useHouseRegion();
   const hoursIn = houseLocale(region);
-  const rules = labourRules(region);
+  const rules = useHouseLabourRules();
   const [openId, setOpenId] = useState<string | null>(null);
   const hoursById = useMemo(() => {
     const m = new Map<string, number>();

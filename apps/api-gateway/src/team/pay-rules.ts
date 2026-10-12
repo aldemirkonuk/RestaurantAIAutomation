@@ -71,6 +71,13 @@
  * hours and 45 over 9, a 10-hour day and a 48-hour week (§3, six working days
  * of 8 hours). Any other country, or none recorded: no rule is claimed and no
  * break assumed (`NO_LABOUR_RULES`), never Turkey's.]
+ *
+ * [ADR 0330 US-CA row: where the law sits in the state, the state's row goes
+ * on top of its country's (`SUBDIVISION_LABOUR_RULES`). California keeps the
+ * FLSA 40-hour week, adds a review past 8 worked hours in a day and a
+ * 30-minute meal period on a shift of more than 5 hours of work (Labor Code
+ * §510, §512). The state is read only inside the recorded country (ADR 0305,
+ * `houseJurisdictionKey`), so a house with no country never gets one.]
  */
 
 import {
@@ -79,6 +86,7 @@ import {
   zonedWallClockToUtc,
 } from "../calendar/zoned-time";
 import { countryCodeOf, houseFrame } from "../common/house-frame";
+import { houseJurisdictionKey } from "../price-index/house-jurisdiction";
 
 /** The three roles `user_restaurant_access_role_check` allows. */
 export type TeamRole = "owner" | "manager" | "staff";
@@ -91,6 +99,9 @@ export const WEEKLY_REVIEW_HOURS = 45;
 /** The countries whose labour rules are built in. */
 export type LabourCountry = "TR" | "US" | "GB" | "DE";
 
+/** The states whose own labour rules are built in, as ISO 3166-2 keys. */
+export type LabourRegion = "US-CA";
+
 export interface LabourRules {
   /** Whose rules these are; `null` = the house's country is not built in. */
   country: LabourCountry | null;
@@ -98,6 +109,8 @@ export interface LabourRules {
   weeklyReviewHours: number | null;
   /** Worked hours in one shift over which it is named to review; `null` = no line. */
   dailyReviewHours: number | null;
+  /** The state whose row this is ("US-CA"), on top of `country`; `null` = the country's own. */
+  region: LabourRegion | null;
   /** The statutory breaks, least first, in minutes; empty = none is owed, none assumed. */
   breakSteps: readonly number[];
   /** The break the law owes for `workedMin` minutes of WORK (breaks excluded); 0 = none. */
@@ -109,6 +122,7 @@ export const LABOUR_RULES: Readonly<Record<LabourCountry, LabourRules>> = {
     country: "TR",
     weeklyReviewHours: WEEKLY_REVIEW_HOURS,
     dailyReviewHours: null,
+    region: null,
     breakSteps: [15, 30, 60],
     breakForWork: (w) => art68BreakForWork(w),
   },
@@ -117,6 +131,7 @@ export const LABOUR_RULES: Readonly<Record<LabourCountry, LabourRules>> = {
     country: "US",
     weeklyReviewHours: 40,
     dailyReviewHours: null,
+    region: null,
     breakSteps: [],
     breakForWork: () => 0,
   },
@@ -126,6 +141,7 @@ export const LABOUR_RULES: Readonly<Record<LabourCountry, LabourRules>> = {
     country: "GB",
     weeklyReviewHours: 48,
     dailyReviewHours: null,
+    region: null,
     breakSteps: [20],
     breakForWork: (w) => (w > 360 ? 20 : 0),
   },
@@ -135,6 +151,7 @@ export const LABOUR_RULES: Readonly<Record<LabourCountry, LabourRules>> = {
     country: "DE",
     weeklyReviewHours: 48,
     dailyReviewHours: 10,
+    region: null,
     breakSteps: [30, 45],
     breakForWork: (w) => (w > 540 ? 45 : w > 360 ? 30 : 0),
   },
@@ -145,21 +162,49 @@ export const NO_LABOUR_RULES: LabourRules = {
   country: null,
   weeklyReviewHours: null,
   dailyReviewHours: null,
+  region: null,
   breakSteps: [],
   breakForWork: () => 0,
+};
+
+/**
+ * A state's own rules, laid over its country's row (ADR 0330). California:
+ * overtime past 8 hours in a workday as well as 40 in the week (Labor Code
+ * §510), and a meal period of at least 30 minutes for a work period of more
+ * than 5 hours (§512).
+ */
+export const SUBDIVISION_LABOUR_RULES: Readonly<
+  Record<LabourRegion, LabourRules>
+> = {
+  "US-CA": {
+    ...LABOUR_RULES.US,
+    dailyReviewHours: 8,
+    region: "US-CA",
+    breakSteps: [30],
+    breakForWork: (w) => (w > 300 ? 30 : 0),
+  },
 };
 
 /** The rules for what `restaurants.country` holds (a code or a name). */
 export function labourRulesFor(
   country: string | null | undefined,
+  /** The house's state as an ISO key ("US-CA"), already read inside its country. */
+  region?: string | null,
 ): LabourRules {
   let code = countryCodeOf(country ?? null);
   // `countryCodeOf("Germany")` answers the retired "DD" (ICU still names it,
   // and it sorts first); a German house is DE here.
   if (code === "DD") code = "DE";
-  return code && code in LABOUR_RULES
-    ? LABOUR_RULES[code as LabourCountry]
-    : NO_LABOUR_RULES;
+  const own =
+    code && code in LABOUR_RULES
+      ? LABOUR_RULES[code as LabourCountry]
+      : NO_LABOUR_RULES;
+  const state =
+    region && region in SUBDIVISION_LABOUR_RULES
+      ? SUBDIVISION_LABOUR_RULES[region as LabourRegion]
+      : null;
+  // A state's row only ever sits on top of its own country's.
+  return state && own.country === state.country ? state : own;
 }
 
 /**
@@ -174,14 +219,25 @@ export interface HouseLabour {
 
 /**
  * The house's labour frame from its `restaurants` row: the rules of its
- * country (else of the one country its zone is in, `houseFrame`'s region)
- * and its zone (else its country's only zone).
+ * country (else of the one country its zone is in, `houseFrame`'s region),
+ * with its state's row on top where one is built in (ADR 0330, US-CA), and
+ * its zone (else its country's only zone).
  */
 export function houseLabour(
-  row: { country?: string | null; timezone?: string | null } | null | undefined,
+  row:
+    | {
+        country?: string | null;
+        timezone?: string | null;
+        state_province?: string | null;
+      }
+    | null
+    | undefined,
 ): HouseLabour {
   const frame = houseFrame(row ?? null);
-  return { rules: labourRulesFor(frame.region), zone: frame.zone };
+  // The state is read only inside the RECORDED country (ADR 0305): a zone
+  // names no state, and "CA" means nothing without its country.
+  const region = houseJurisdictionKey(row?.state_province, row?.country);
+  return { rules: labourRulesFor(frame.region, region), zone: frame.zone };
 }
 
 /**

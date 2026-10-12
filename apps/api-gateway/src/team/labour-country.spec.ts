@@ -10,6 +10,7 @@ import {
   minimumBreak,
   NO_LABOUR_RULES,
   priceShift,
+  SUBDIVISION_LABOUR_RULES,
   workedHours,
 } from "./pay-rules";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
@@ -296,5 +297,105 @@ describe("F-155 / F-1385 — /team reads a US house on US rules", () => {
     } as any);
     const row = db.tables.shifts.find((s) => s.id === created.id)!;
     expect(row.labor_cost).toBe(200); // 10h x 20, no Art. 68 hour taken out
+  });
+});
+
+describe("ADR 0330 US-CA — a Californian house gets its state's rules on top of FLSA", () => {
+  const CA = SUBDIVISION_LABOUR_RULES["US-CA"];
+
+  it("reads California only inside a recorded United States", () => {
+    expect(houseLabour({ country: "US", state_province: "CA" }).rules).toBe(CA);
+    expect(
+      houseLabour({ country: "United States", state_province: "California" })
+        .rules,
+    ).toBe(CA);
+    // Another state keeps the federal row; so does a house with no state.
+    expect(houseLabour({ country: "US", state_province: "NY" }).rules).toBe(
+      LABOUR_RULES.US,
+    );
+    expect(houseLabour({ country: "US" }).rules).toBe(LABOUR_RULES.US);
+    // No country recorded: the zone gives the US, but no state is read (ADR 0305).
+    expect(
+      houseLabour({ timezone: "America/Los_Angeles", state_province: "CA" })
+        .rules,
+    ).toBe(LABOUR_RULES.US);
+    // "CA" on a house in another country is not California.
+    expect(houseLabour({ country: "TR", state_province: "CA" }).rules).toBe(
+      LABOUR_RULES.TR,
+    );
+    expect(labourRulesFor("GB", "US-CA")).toBe(LABOUR_RULES.GB);
+  });
+
+  it("keeps the 40-hour week, adds an 8-hour day and a 30-minute meal period over 5 hours of work", () => {
+    expect(CA.country).toBe("US");
+    expect(CA.region).toBe("US-CA");
+    expect(CA.weeklyReviewHours).toBe(40);
+    expect(CA.dailyReviewHours).toBe(8);
+    expect(minimumBreak(5 * 60, CA)).toBe(0); // exactly 5 hours: none owed
+    expect(minimumBreak(6 * 60, CA)).toBe(30);
+    const house = { rules: CA };
+    expect(breakCounted(at("09:00", "18:00"), house)).toEqual({
+      minutes: 30,
+      assumed: true,
+    });
+    expect(breakCounted(at("09:00", "13:00"), house)).toEqual({
+      minutes: 0,
+      assumed: false,
+    });
+    expect(workedHours(at("09:00", "18:00"), house)).toBe(8.5);
+  });
+
+  it("names a 9-hour day and the long week in a California house", async () => {
+    const db = seed({
+      country: "US",
+      state_province: "CA",
+      timezone: "America/Los_Angeles",
+    });
+    longWeek(db); // five 9-hour spans: 8.5 worked each after the meal period
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labourRegion).toBe("US-CA");
+    expect(week.labor.labourRegion).toBe("US-CA");
+    expect(week.labor.weeklyReviewHours).toBe(40);
+    expect(week.labor.dailyReviewHours).toBe(8);
+    expect(week.labor.totalHours).toBe(42.5);
+    expect(week.labor.assumedBreakShifts).toBe(5);
+    expect(week.labor.overtime).toEqual([{ memberId: "m-staff", hours: 42.5 }]);
+    expect(week.labor.overDay).toHaveLength(5);
+    expect(week.labor.overDay[0]).toEqual({
+      memberId: "m-staff",
+      date: "2026-09-07",
+      hours: 8.5,
+    });
+  });
+
+  it("the same week in Texas is federal: no meal period assumed, no daily line", async () => {
+    const db = seed({
+      country: "US",
+      state_province: "TX",
+      timezone: "America/Chicago",
+    });
+    longWeek(db);
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labourRegion).toBeNull();
+    expect(week.labor.dailyReviewHours).toBeNull();
+    expect(week.labor.totalHours).toBe(45);
+    expect(week.labor.assumedBreakShifts).toBe(0);
+    expect(week.labor.overDay).toEqual([]);
+  });
+
+  it("prices a new California shift without its meal period", async () => {
+    const db = seed({
+      country: "US",
+      state_province: "California",
+      timezone: "America/Los_Angeles",
+    });
+    const created = await scheduleOf(db).createShift(OWNER, RID, {
+      memberId: "m-staff",
+      shiftDate: WEEK,
+      startTime: "09:00",
+      endTime: "19:00",
+    } as any);
+    const row = db.tables.shifts.find((s) => s.id === created.id)!;
+    expect(row.labor_cost).toBe(190); // 9.5h x 20: the 30-minute meal is not paid
   });
 });
