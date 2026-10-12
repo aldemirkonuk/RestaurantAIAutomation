@@ -150,6 +150,30 @@ export interface UnverifiedDelivery {
   severity: 'fresh' | 'stale' | 'overdue'
 }
 
+/** "New delivery → No order on file → Add to the books" (F-669). */
+export interface LogAtDoorRequest {
+  /** One id per tap: a retry with the same key never books twice. */
+  key: string
+  providerId: string
+  inventoryId: string
+  quantity: number
+  unit: 'case' | 'bottle'
+  bottlesPerCase?: number
+  orderedOn: 'today' | 'yesterday' | 'unknown'
+  /** The phone's own date, `YYYY-MM-DD`: what "Today" means here. */
+  phoneToday?: string
+  clientCapturedAt?: string
+  signedByInitials?: string
+}
+
+export interface LogAtDoorResponse {
+  orderId: string
+  orderNumber: string | null
+  loggedAtDoor: true
+  placedOnStated: string | null
+  orderAlreadyWritten: boolean
+}
+
 /**
  * What `POST /procurement/documents` answers. An owner or a manager gets the
  * whole parse. Anyone else gets only the keys the door reads (`docType`,
@@ -278,6 +302,16 @@ export const receivingApi = {
       `/procurement/receiving/orders/${orderId}/history`,
       before ? { params: { before } } : undefined,
     )
+    return data
+  },
+
+  /**
+   * A truck with no order on file: write the order, already delivered, and
+   * count it into stock in one tap. No price is sent: the paper sets it at
+   * the desk.
+   */
+  async logAtDoor(body: LogAtDoorRequest): Promise<LogAtDoorResponse> {
+    const { data } = await apiClient.post('/procurement/orders/logged-at-door', body)
     return data
   },
 

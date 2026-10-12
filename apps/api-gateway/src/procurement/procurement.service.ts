@@ -594,6 +594,10 @@ interface ProcurementOrderRow {
   completed_at: string | null;
   /** Read by `select("*")` routes only; see `mapOrderRow`. */
   match_verified_at?: string | null;
+  /** Who wrote it ('retroactive' = logged at the door, F-669). `select("*")` only. */
+  source?: string | null;
+  /** The day staff said it was ordered (F-669). `select("*")` only. */
+  placed_on_stated?: string | null;
   is_emergency: boolean | null;
   priority_level: number | null;
   wine_name?: string | null;
@@ -1115,6 +1119,12 @@ export class ProcurementService {
         deliveredAt?: string | null;
         /** The total printed on the invoice, stored verbatim in final_confirmed_cost. */
         invoiceTotal?: number | null;
+        /**
+         * The day staff at the door said it was ordered, `YYYY-MM-DD`, or null
+         * for "Don't know" (F-669, founder S198). Display only: never fed to
+         * lead time or the cutoff. Stamped with `userId` as who said it.
+         */
+        placedOnStated?: string | null;
       };
       /**
        * This order is one occurrence of a recurrence carried by another order
@@ -1580,6 +1590,10 @@ export class ProcurementService {
       // per-bottle arithmetic so a rounding difference between them is visible
       // rather than absorbed.
       final_confirmed_cost: fulfilled?.invoiceTotal ?? null,
+      // What the door was told about the order day (F-669). Both keys always
+      // written: a day with nobody who said it is the halfway state.
+      placed_on_stated: fulfilled?.placedOnStated ?? null,
+      placed_on_stated_by: fulfilled?.placedOnStated ? asUuid(userId) : null,
       is_emergency: dto.isEmergency ?? false,
       priority_level: dto.priorityLevel ?? 5,
       manager_notes: dto.managerNotes ?? null,
@@ -9506,6 +9520,13 @@ export class ProcurementService {
       // "this route did not read the column". `currencyCode` reads membership,
       // so a stored value that names no currency reads as none, not as money.
       currency: "currency" in row ? currencyCode(row.currency) : undefined,
+      // "Logged at door" (F-669): the key test again. Absent = this route did
+      // not read `source`; false = read, and the house placed it.
+      loggedAtDoor: "source" in row ? row.source === "retroactive" : undefined,
+      placedOnStated:
+        "placed_on_stated" in row
+          ? statedDeliveryDayOf(row.placed_on_stated)
+          : undefined,
       isEmergency: row.is_emergency ?? undefined,
       priorityLevel: row.priority_level ?? undefined,
       wineName: row.wine_name ?? undefined,

@@ -115,6 +115,15 @@ type OrderWire = Order & {
   freight?: number | null;
   /** `procurement_orders.currency`, sent by `mapOrderRow`; null names none. */
   currency?: string | null;
+  /**
+   * The order was written at the door for a truck that came with no order on
+   * file (F-669, `source = 'retroactive'`): "Logged at door". In spend and
+   * stock, out of lead time, on-time and fill rate. Absent where the route
+   * does not read the order's source.
+   */
+  loggedAtDoor?: boolean;
+  /** The day the door said it was ordered, `YYYY-MM-DD`; null for Don't know. */
+  placedOnStated?: string | null;
 };
 
 export interface OrderRowVM {
@@ -176,6 +185,12 @@ export interface OrderRowVM {
    * by hand rather than by `toRow`.
    */
   refusedAtDoor?: string | null;
+  /**
+   * "Logged at door · ordered 10 Oct" (F-669): the truck came with no order on
+   * file and the door added it to the books. Null when the order was placed
+   * the usual way, or when the route did not say.
+   */
+  loggedAtDoor?: string | null;
   /**
    * Does this order repeat? A MEASURED fact since 2026-09-05 — it was a
    * hardcoded `false` before that, because the route sent nothing. False here
@@ -524,6 +539,18 @@ export function refusedAtDoorLabel(o: Pick<Order, 'status' | 'doorRefusal'>): st
   return String(o.status ?? '').toUpperCase() === 'FAILED' ? 'Refused at door' : null;
 }
 
+/**
+ * The words for an order the door wrote for a truck with no order on file
+ * (F-669): "Logged at door", and the day it was ordered when the door knew it.
+ */
+export function loggedAtDoorLabel(o: Pick<OrderWire, 'loggedAtDoor' | 'placedOnStated'>): string | null {
+  if (o.loggedAtDoor !== true) return null;
+  const day = typeof o.placedOnStated === 'string' ? Date.parse(`${o.placedOnStated}T00:00:00Z`) : NaN;
+  if (Number.isNaN(day)) return 'Logged at door';
+  const said = new Date(day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return `Logged at door · ordered ${said}`;
+}
+
 export function toRow(
   o: OrderWire,
   providerNameById: Map<string, string>,
@@ -662,6 +689,7 @@ export function toRow(
     stage: stageOf(status),
     status,
     refusedAtDoor: refusedAtDoorLabel(o),
+    loggedAtDoor: loggedAtDoorLabel(o),
     recurring,
     recurrence,
     recurrenceLabel: recurrenceLabel(recurrence),

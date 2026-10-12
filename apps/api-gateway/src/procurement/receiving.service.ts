@@ -1306,6 +1306,30 @@ export class ReceivingService {
   }
 
   /**
+   * The order a "No order on file" tap already wrote (F-669), found by the
+   * tap's id, which is that order's `placement_id`. Null when there is none.
+   * A failed read throws: "could not tell" is never "not written".
+   */
+  async findLoggedAtDoorOrder(
+    restaurantId: string,
+    key: string,
+  ): Promise<{ id: string; orderNumber: string | null } | null> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("id, order_number")
+      .eq("restaurant_id", restaurantId)
+      .eq("placement_id", key)
+      .eq("source", "retroactive")
+      .limit(1);
+    if (error) throw new Error(error.message);
+    const row = (data ?? [])[0] as
+      | { id: string; order_number: string | null }
+      | undefined;
+    return row ? { id: row.id, orderNumber: row.order_number ?? null } : null;
+  }
+
+  /**
    * Deliveries counted by case and never counted by bottle.
    *
    * This is the whole safety net for booking stock at the door. The approximate

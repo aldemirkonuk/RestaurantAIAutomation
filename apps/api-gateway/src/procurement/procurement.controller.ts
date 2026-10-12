@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  Optional,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -33,6 +34,7 @@ import {
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   CreateOrderDto,
+  LogDeliveryAtDoorDto,
   OrderFilterDto,
   OrderListResponseDto,
   OrderResponseDto,
@@ -54,6 +56,8 @@ import {
   type SendOrAsk,
 } from "./procurement.service";
 import { assertHoldsHouseMoney } from "./documents/document-money-gate";
+import { ReceivingService } from "./receiving.service";
+import { logDeliveryAtDoor, type LogAtDoorResult } from "./logged-at-door";
 
 /**
  * `?quantityReceivedInOrderUom=` -> a whole non-negative count, or a 400 that
@@ -148,7 +152,64 @@ export function readCountedAgoMs(raw: string | undefined): number | undefined {
 @Controller("procurement")
 @UseGuards(JwtAuthGuard)
 export class ProcurementController {
-  constructor(private readonly procurementService: ProcurementService) {}
+  constructor(
+    private readonly procurementService: ProcurementService,
+    // The door's count, for "No order on file" (F-669). Optional so a test
+    // module that never reaches that route need not provide it.
+    @Optional() private readonly receiving?: ReceivingService,
+  ) {}
+
+  @Post("orders/logged-at-door")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "No order on file: add a delivery to the books at the door",
+    description:
+      "F-669 (founder S198). Writes the order already delivered with source 'retroactive' (shown as Logged at door; in spend and stock, out of lead time, on-time and fill rate) and counts the delivery into stock through the ordinary door receipt. Open to staff like the door: no price is taken, the paper sets the money at the desk. Idempotent on `key`.",
+  })
+  async logAtDoor(
+    @Body() dto: LogDeliveryAtDoorDto,
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
+  ): Promise<LogAtDoorResult> {
+    const receiving = this.receiving;
+    if (!receiving) {
+      throw new HttpException(
+        "The door count is not wired into this server, so nothing was booked.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    try {
+      return await logDeliveryAtDoor(
+        {
+          findLogged: (rid, key) => receiving.findLoggedAtDoorOrder(rid, key),
+          createOrder: (rid, uid, order, provenance) =>
+            this.procurementService.createOrder(rid, uid, order, provenance),
+          recordDoorReceipt: (input) => receiving.recordDoorReceipt(input),
+        },
+        {
+          restaurantId: user.restaurantId,
+          userId: user.userId,
+          role: user.role ?? null,
+          key: dto.key,
+          providerId: dto.providerId,
+          inventoryId: dto.inventoryId,
+          quantity: dto.quantity,
+          unit: dto.unit,
+          bottlesPerCase: dto.bottlesPerCase ?? null,
+          orderedOn: dto.orderedOn,
+          phoneToday: dto.phoneToday ?? null,
+          clientCapturedAt: dto.clientCapturedAt ?? null,
+          signedByInitials: dto.signedByInitials ?? null,
+        },
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        "The delivery could not be added to the books. Tap Add to the books again: the same tap never books it twice.",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 
   @Post("orders")
   @ApiOperation({ summary: "Create procurement order" })

@@ -450,6 +450,7 @@
     "manager"
   ],
   "POST /procurement/orders (ProcurementController.createOrder)": "open",
+  "POST /procurement/orders/logged-at-door (ProcurementController.logAtDoor)": "open",
   "GET /procurement/orders (ProcurementController.listOrders)": "open",
   "GET /procurement/orders/pending/count (ProcurementController.getPendingOrderCount)": "open",
   "GET /procurement/orders/open/by-provider (ProcurementController.countOpenOrdersByProvider)": [

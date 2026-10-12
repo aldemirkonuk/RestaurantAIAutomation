@@ -39,6 +39,7 @@ import { DayLine } from '@/components/mudavym/DayLine';
 import { ink } from '@/lib/mudavym/motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { prefetchWhenOnline } from '@/lib/lazyWithRefresh';
+import { NoOrderOnFileSheet } from './NoOrderOnFileSheet';
 import { RcArrivalAsks } from './RcArrivalAsks';
 import { RcCreditDrafts } from './RcCreditDrafts';
 import { RcManagerQueue } from './RcManagerQueue';
@@ -238,6 +239,10 @@ export default function ReceivingNext() {
    */
   const [searchParams] = useSearchParams();
   const highlightOrderId = searchParams.get('order');
+  /** "New delivery → No order on file" (F-669): a truck nobody ordered in
+   *  the app. Mounted only while open, so the page fetches no vendor or
+   *  shelf list for it until someone taps. */
+  const [noOrderOpen, setNoOrderOpen] = useState(false);
 
   return (
     <div
@@ -279,8 +284,28 @@ export default function ReceivingNext() {
               one event · three renderings · this one is {rendering}
             </span>
             <RolePreview actual={actual} preview={preview} onPreview={setPreview} />
+            <button
+              type="button"
+              data-testid="new-delivery-no-order"
+              onClick={() => setNoOrderOpen(true)}
+              style={{
+                fontFamily: SANS,
+                fontSize: 13,
+                fontWeight: 600,
+                minHeight: 44,
+                padding: '0 14px',
+                borderRadius: 10,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: 'transparent',
+                color: 'var(--seal-deep, #14515C)',
+                cursor: 'pointer',
+              }}
+            >
+              New delivery · no order on file
+            </button>
           </div>
         </header>
+        {noOrderOpen && <NoOrderOnFileSheet open onClose={() => setNoOrderOpen(false)} />}
 
         {/* ── the day line (sketch 119 §E) ─────────────────────────────── */}
         {/* A PAGE element, self-gated by the shell flag — renders nothing
