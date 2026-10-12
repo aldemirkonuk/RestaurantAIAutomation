@@ -294,6 +294,11 @@ export async function upsertMapping(
 export interface HouseCocktail {
   id: string;
   name: string;
+  /**
+   * F-1507: how many of its recipe lines name a stock row, so a link can say
+   * when its sales will take nothing. Null when that could not be read.
+   */
+  linkedLines?: number | null;
 }
 
 /**
@@ -305,10 +310,18 @@ export async function listHouseCocktails(
 ): Promise<HouseCocktail[]> {
   const id = requireRestaurant(restaurantId);
   const { data } = await apiClient.get<{
-    rows?: Array<{ id: string; name: string; display_name?: string | null }>;
+    rows?: Array<{
+      id: string;
+      name: string;
+      display_name?: string | null;
+      serve?: { linked?: number } | null;
+    }>;
+    costsUnread?: string | null;
   }>(`/cocktails/${id}`, { params: { limit: 500 } });
+  // A row with no serve and a clean read has no recipe lines: none linked.
   return (data?.rows ?? []).map((r) => ({
     id: r.id,
     name: r.display_name || r.name,
+    linkedLines: data?.costsUnread ? null : (r.serve?.linked ?? 0),
   }));
 }

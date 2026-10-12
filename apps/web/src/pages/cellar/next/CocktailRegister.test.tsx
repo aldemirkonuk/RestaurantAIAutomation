@@ -449,7 +449,9 @@ describe('a recipe linked to stock', () => {
     draw();
     const cost = screen.getAllByTestId('cocktail-cost')[0];
     expect(cost).toHaveTextContent('withheld');
-    expect(cost).toHaveAttribute('title', 'its stock row has no recorded cost');
+    // F-1509: the reason is visible text on the row, not a hover title.
+    expect(cost).toHaveTextContent('its stock row has no recorded cost');
+    expect(cost).not.toHaveAttribute('title');
     expect(screen.getAllByTestId('cocktail-cost')[1]).toHaveTextContent('—');
   });
 

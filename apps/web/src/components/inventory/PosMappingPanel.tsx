@@ -221,9 +221,38 @@ export function PosMappingPanel({
   const noSaleVolume = (unresolved.data?.items ?? []).filter(
     (i) => i.reason === "no_sale_volume",
   );
-  const stillUnmapped = (unresolved.data?.items ?? []).filter(
+  /**
+   * F-1506: a queued button that is now linked to a cocktail. Its queued
+   * lines rang up before the link and stay queued (nothing marks them
+   * resolved), so it is shown as linked rather than as not recognised.
+   */
+  const cocktailFor = (g: UnresolvedLineGroup): HouseCocktail | null => {
+    const m = (mappings.data ?? []).find(
+      (x) =>
+        x.cocktail_id &&
+        x.source === g.source &&
+        (g.external_item_id
+          ? x.external_item_id === g.external_item_id
+          : x.item_name === g.item_name),
+    );
+    if (!m) return null;
+    return (
+      (cocktails.data ?? []).find((c) => c.id === m.cocktail_id) ?? {
+        id: m.cocktail_id as string,
+        name: "a cocktail",
+      }
+    );
+  };
+  const notMapped = (unresolved.data?.items ?? []).filter(
     (i) => i.reason !== "no_sale_volume",
   );
+  const linkedToCocktail = notMapped
+    .map((g) => ({ g, cocktail: cocktailFor(g) }))
+    .filter(
+      (x): x is { g: UnresolvedLineGroup; cocktail: HouseCocktail } =>
+        x.cocktail !== null,
+    );
+  const stillUnmapped = notMapped.filter((g) => cocktailFor(g) === null);
 
   // A mapping row for a queued `no_sale_volume` button, so its unit can be
   // answered without re-approving an identity that is already settled.
@@ -365,15 +394,42 @@ export function PosMappingPanel({
         },
         restaurantId,
       );
-      if (proposalId) await rejectProposal(proposalId, restaurantId);
-      toast.success(
-        `From the next sale, ${button.item_name} takes the ${cocktail.name} recipe off the shelf.`,
-      );
-      await load();
-      onChanged?.();
     } catch (e) {
       toast.error(`Could not link ${button.item_name} to ${cocktail.name}: ${errText(e)}`);
+      setBusy(false);
+      return;
+    }
+    try {
+      // F-1508: the link is written by now. A failure here is the proposal
+      // alone, and must not read as the link failing.
+      if (proposalId) {
+        try {
+          await rejectProposal(proposalId, restaurantId);
+        } catch (e) {
+          toast.error(
+            `${button.item_name} is linked to ${cocktail.name}, but its stock suggestion could not be cleared (${errText(e)}). Tap "Not this" on it to clear it.`,
+          );
+          return;
+        }
+      }
+      // F-1507: a recipe with no line linked to stock takes nothing, so the
+      // toast does not promise the recipe when there is nothing to take.
+      if (cocktail.linkedLines === 0) {
+        toast.warning(
+          `${button.item_name} is linked to ${cocktail.name}, but none of its recipe lines is linked to stock yet, so its sales will take nothing until they are.`,
+        );
+      } else if (cocktail.linkedLines == null) {
+        toast.success(
+          `${button.item_name} is linked to ${cocktail.name}. Each sale takes the recipe lines that are linked to stock.`,
+        );
+      } else {
+        toast.success(
+          `From the next sale, ${button.item_name} takes the ${cocktail.name} recipe off the shelf.`,
+        );
+      }
     } finally {
+      await load();
+      onChanged?.();
       setBusy(false);
     }
   };
@@ -772,6 +828,32 @@ export function PosMappingPanel({
               </div>
             </section>
           )}
+
+          {/* ── 4. linked to a cocktail since they queued (F-1506) ── */}
+          {linkedToCocktail.length > 0 && (
+            <section>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                Linked to a cocktail — {linkedToCocktail.length} button(s)
+              </h3>
+              <p className="text-[11px] text-gray-500 mb-2">
+                Each sale from now takes the cocktail's recipe. The sales
+                counted here rang up before the link and took nothing.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {linkedToCocktail.map(({ g, cocktail }) => (
+                  <span
+                    key={`${g.source}:${g.external_item_id}:${g.item_name}`}
+                    data-testid="pos-linked-cocktail"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] text-emerald-800"
+                  >
+                    <Check className="w-3 h-3" />
+                    {g.item_name} → {cocktail.name}
+                    <b className="font-mono text-emerald-600">{g.qty_total}</b>
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </div>
@@ -813,7 +895,9 @@ function CocktailPick({
       <option value="">It's a cocktail…</option>
       {rows.map((c) => (
         <option key={c.id} value={c.id}>
-          {c.name}
+          {c.linkedLines === 0
+            ? `${c.name} (no recipe line linked to stock yet)`
+            : c.name}
         </option>
       ))}
     </select>
