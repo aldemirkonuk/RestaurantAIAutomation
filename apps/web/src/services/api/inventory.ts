@@ -186,6 +186,12 @@ export async function adjustStock(
     /** The shelf a take-off leaves from, or bottles found go to (F-1163). */
     fromLocationId?: string;
     toLocationId?: string;
+    /**
+     * What kind of take-off this is on the ledger (F-1539). A write-off goes in
+     * as 'waste', a comp as 'comp': the month close reads those as stock that
+     * left on purpose, never as bottles missing from a count.
+     */
+    transactionType?: 'adjustment' | 'waste' | 'comp' | 'correction';
   }
 ): Promise<unknown> {
   const response = await apiClient.post('/inventory-ledger/transactions', {
@@ -193,7 +199,7 @@ export async function adjustStock(
     ...(body.wineId ? { wineId: body.wineId } : {}),
     ...(body.fromLocationId ? { fromLocationId: body.fromLocationId } : {}),
     ...(body.toLocationId ? { toLocationId: body.toLocationId } : {}),
-    transactionType: 'adjustment',
+    transactionType: body.transactionType ?? 'adjustment',
     source: 'manual',
     quantityChange: body.quantityChange,
     reason: body.reason,

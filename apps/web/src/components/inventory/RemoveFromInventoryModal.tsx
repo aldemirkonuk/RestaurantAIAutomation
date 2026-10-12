@@ -2,11 +2,15 @@
  * Remove from inventory — replaces the old browser `confirm()` flow.
  *
  * Policy (decided 2026-07-29): removal is blocked while a wine still carries
- * live/shadow stock or an open bottle. The manager must first reconcile that
- * stock to zero with an explicit, ledger-visible reason — the same
- * mechanism RowExpansion's "Manual adjust" uses (reconcileItem). Only after
+ * live/shadow stock or an open bottle. The bottles still on the shelf are
+ * first taken off as a movement carrying the chosen reason — the same
+ * mechanism RowExpansion's "Manual adjust" uses (adjustStock). Only after
  * every selected item is at zero does the soft-delete (deleteInventoryItem)
- * run. This keeps cost-basis / P&L reporting honest: nothing disappears
+ * run.
+ *
+ * F-1539: this used to send a shelf count of 0. A count is a variance, so the
+ * month close showed every removed bottle as missing. A take-off is not a
+ * count: breakage is written off, a comp is a comp, and none of it is short. This keeps cost-basis / P&L reporting honest: nothing disappears
  * from the ledger silently, and the economic impact (value being written
  * off) is shown to the manager before they confirm.
  */
@@ -16,7 +20,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, Loader2, Trash2, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { deleteInventoryItem, reconcileItem } from '../../services/api/inventory'
+import { adjustStock, deleteInventoryItem } from '../../services/api/inventory'
+import { newClientCountId } from '../../lib/spotCountOutbox'
+import { formatVolume } from '../../utils/volumeUtils'
+import { useRestaurantSettingsStore } from '../../stores/restaurantSettingsStore'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import { fmtMoney } from '../../pages/inventory/command/bits'
 import { recordedCost, type InventoryItem } from '../../pages/inventory/useInventoryPage'
@@ -30,6 +37,18 @@ const REMOVE_REASONS = [
   { value: 'Count correction', label: 'Never actually had stock (data entry error)' },
 ]
 
+/**
+ * How each reason goes on the ledger (F-1539). A bottle sent back to the vendor
+ * is an adjustment: 'return' on this ledger means a bottle coming back IN.
+ */
+const REMOVE_MOVEMENT: Record<string, 'adjustment' | 'waste' | 'comp' | 'correction'> = {
+  Discontinued: 'waste',
+  Breakage: 'waste',
+  'Return to vendor': 'adjustment',
+  'Comp / gift': 'comp',
+  'Count correction': 'correction',
+}
+
 interface RemoveFromInventoryModalProps {
   isOpen: boolean
   items: InventoryItem[]
@@ -42,6 +61,7 @@ type Phase = 'confirm' | 'working' | 'error'
 
 export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: RemoveFromInventoryModalProps) {
   const queryClient = useQueryClient()
+  const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const [reason, setReason] = useState(REMOVE_REASONS[0].value)
   const [phase, setPhase] = useState<Phase>('confirm')
   const [failures, setFailures] = useState<{ name: string; message: string }[]>([])
@@ -82,17 +102,28 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
     setPhase('working')
     const failed: { name: string; message: string }[] = []
 
-    for (const { item, total } of rows) {
+    for (const { item, live } of rows) {
       const inventoryId = item.inventoryId
       if (!inventoryId) continue
       try {
-        // Step 1: zero out any remaining stock, on the ledger, with the chosen reason.
-        if (total > 0) {
-          await reconcileItem(inventoryId, {
-            wineId: item.id,
-            actualCount: 0,
-            notes: `Removed from inventory — ${reason}`,
-          })
+        // Step 1: take the shelf's bottles off, on the ledger, with the chosen
+        // reason. The server refuses more than it holds, so a bottle sold since
+        // the page loaded stops the removal here, before anything is deleted.
+        if (live > 0) {
+          const moved = (await adjustStock(inventoryId, {
+            wineId: item.id || undefined,
+            quantityChange: -live,
+            reason: `Removed from inventory — ${reason}`,
+            transactionType: REMOVE_MOVEMENT[reason] ?? 'adjustment',
+            idempotencyKey: `remove:${inventoryId}:${newClientCountId()}`,
+          })) as { quantityAfter?: number } | null
+          // Bottles booked in since the page loaded are still on the books.
+          const left = moved?.quantityAfter ?? 0
+          if (left > 0) {
+            throw new Error(
+              `${left} more bottle${left === 1 ? ' was' : 's were'} booked in since this page loaded and ${left === 1 ? 'is' : 'are'} still on the books, so the wine was not removed. Open it again to take ${left === 1 ? 'it' : 'them'} off too.`,
+            )
+          }
         }
         // Step 2: soft-delete the inventory row (keeps the wine in the Wine Library).
         await deleteInventoryItem(inventoryId)
@@ -169,7 +200,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                   <span className="font-medium text-gray-800 truncate pr-2">{item.name}</span>
                   <span className="font-mono text-gray-500 shrink-0">
                     {live + shadow > 0 ? `${live} live / ${shadow} shadow` : 'no stock'}
-                    {openMl > 0 ? ` · ${openMl}ml open` : ''}
+                    {openMl > 0 ? ` · ${formatVolume(openMl, measurementUnit)} open` : ''}
                     {value == null ? (
                       <span className="ml-2 text-gray-400">no cost recorded</span>
                     ) : (
@@ -194,8 +225,8 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                       {totalValue > 0 ? 'left out of that figure. ' : 'not shown. '}
                     </>
                   ) : null}
-                  Remaining stock is reconciled to zero and logged to the ledger with the reason below before removal —
-                  nothing is deleted silently.
+                  The bottles still on the books are taken off on the ledger with the reason below before removal —
+                  nothing is deleted silently, and none of it shows as missing at the month close.
                 </p>
               </div>
             )}

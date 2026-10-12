@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RowExpansion } from './RowExpansion'
 import type { InventoryItem } from '../useInventoryPage'
 import { setHouseLocale } from '../../../lib/houseCurrency'
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 
 const navigate = vi.hoisted(() => vi.fn())
 const getItemActivity = vi.hoisted(() => vi.fn())
@@ -806,6 +807,26 @@ describe('RowExpansion — figures in the house locale', () => {
       expect(screen.queryByText(/Eki/)).toBeNull()
     } finally {
       setHouseLocale(null)
+    }
+  })
+})
+
+describe("RowExpansion — the open bottle in the house's unit (F-1543)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('[REVERT-FAILS] says oz in a house that measures in oz, never raw ml', () => {
+    useRestaurantSettingsStore.setState({ measurementUnit: 'oz' })
+    try {
+      renderRow({ openMl: 250 } as Partial<InventoryItem>)
+      expect(screen.getByText('8.5oz left')).toBeInTheDocument()
+      expect(screen.queryByText(/250 ml left/)).toBeNull()
+    } finally {
+      useRestaurantSettingsStore.setState({ measurementUnit: 'ml' })
     }
   })
 })

@@ -307,7 +307,8 @@ export function RowExpansion({
         </div>
         {(item.openMl ?? 0) > 0 && (
           <span className="ml-auto inline-flex items-center gap-2 text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-3 py-1">
-            Open bottle: <b className="font-mono text-gray-700">{item.openMl} ml left</b>
+            {/* In the house's unit, as the count panel says it (F-1543). */}
+            Open bottle: <b className="font-mono text-gray-700">{formatVolume(item.openMl ?? 0, measurementUnit)} left</b>
           </span>
         )}
       </div>
