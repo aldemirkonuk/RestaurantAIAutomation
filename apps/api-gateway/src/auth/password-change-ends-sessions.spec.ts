@@ -310,6 +310,38 @@ describe("a password change keeps the session that made it and signs out the oth
     await expect(guard(db, phone.accessToken)).resolves.toBeTruthy();
   });
 
+  // F-1395 class: the change's own refusal answers before the code is checked,
+  // so it never spends the emailed code and the retry is not refused on it.
+  it("a FIRST password refused because one was set elsewhere meanwhile does not check or spend the typed code", async () => {
+    const db = world();
+    const laptop = await signIn(db);
+    const row = db.tables.users.find((r: Row) => r.user_id === U) as Row;
+    row.password_hash = null;
+    const stale = Math.floor(Date.now() / 1000) - 11 * 60;
+    const req = {
+      user: { ...(await guard(db, laptop.accessToken)), authTime: stale },
+    } as any;
+    // Another device sets a password between the change's read and its write.
+    const realFrom = db.supabase.from.bind(db.supabase);
+    let usersReads = 0;
+    (db.supabase as any).from = (table: string) => {
+      if (table === "users" && ++usersReads === 2) row.password_hash = HASH;
+      return realFrom(table);
+    };
+    const svc = service(db);
+    const prove = jest
+      .spyOn(svc, "assertProvedItIsYou")
+      .mockResolvedValue(undefined);
+
+    const err = await new AuthController(svc)
+      .changePassword(req, { newPassword: NEW, emailCode: "123456" } as any)
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(prove).not.toHaveBeenCalled();
+    expect(row.password_hash).toBe(HASH);
+  });
+
   it("a FIRST password on a sign-in from the last ten minutes is set", async () => {
     const db = world();
     const laptop = await signIn(db);

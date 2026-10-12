@@ -316,6 +316,63 @@ describe("Mudavym unreachable at load keeps the person signed in (F-1378, rehit 
     expect(await screen.findByText("the page")).toBeInTheDocument();
   });
 
+  // F-1431: the real 401 handler runs, and its shared refresh answers 503.
+  function meRefusedThenRefresh(refresh: () => Promise<unknown>) {
+    h.globalPost.mockImplementation(refresh);
+    h.instance.get.mockImplementation(async (url: string) =>
+      url === "/api/v1/auth/me"
+        ? rejectedHandler({
+            response: { status: 401, data: {} },
+            config: { url, headers: {} },
+          })
+        : { data: [] },
+    );
+  }
+
+  it("an expired token whose refresh answers 503 says unreachable, never the sign-in page (F-1431)", async () => {
+    localStorage.setItem("accessToken", jwt({ sub: U, restaurantId: A }));
+    localStorage.setItem("refreshToken", "r");
+    meRefusedThenRefresh(() => Promise.reject({ response: { status: 503 } }));
+    render(
+      <AuthProvider>
+        <MemoryRouter initialEntries={["/inventory"]}>
+          <Routes>
+            <Route
+              path="/inventory"
+              element={
+                <ProtectedRoute>
+                  <div>the page</div>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/login" element={<div>the sign-in page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+    expect(
+      await screen.findByText("Mudavym can't be reached — you're still signed in"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("the sign-in page")).toBeNull();
+    expect(h.globalPost).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem("refreshToken")).toBe("r");
+  });
+
+  it("an expired token whose house ended goes to the chooser, not unreachable (F-1431)", async () => {
+    localStorage.setItem("accessToken", jwt({ sub: U, restaurantId: A }));
+    localStorage.setItem("refreshToken", "r");
+    meRefusedThenRefresh(async () => ({
+      data: {
+        accessToken: jwt({ sub: U }),
+        refreshToken: "r2",
+        houseAccessEnded: { restaurantId: A },
+      },
+    }));
+    const ctx = await mount();
+    expect(assign).toHaveBeenCalled();
+    expect(ctx().unreachable).toBe(false);
+  });
+
   it("a 401 that ends the session is not unreachable", async () => {
     localStorage.setItem("accessToken", "stale-access-token");
     h.instance.get.mockImplementation(async (url: string) =>
