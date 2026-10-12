@@ -141,4 +141,42 @@ begin
     'T5 FAIL the uncosted opening count did not reach 7';
 end $$;
 
+-- T6 F-1556 (integ28): one menu-first wine on two shelves, the file's cost
+-- sent with its LAST line only (the web page's order). The first line books
+-- 4 uncosted bottles on the cellar; the last books 2 on the bar at 300.00 and
+-- costs the cellar's 4 too, so all 6 carry the cost and cost_applied is true.
+-- (Sent with the FIRST line instead, the cellar is costed and the bar's 2
+-- land uncosted -- the defect.)
+do $$
+declare
+  v_house  uuid := (select v from t_fx where k = 'house');
+  v_wine   uuid := gen_random_uuid();
+  v_item   uuid := gen_random_uuid();
+  v_bar    uuid := gen_random_uuid();
+  r jsonb;
+begin
+  insert into public.master_wine_library (id, wine_id, name, primary_type)
+  values (v_wine, 'SYN-OC-' || left(replace(v_wine::text, '-', ''), 12), 'SYNTHETIC Okuzgozu two shelves', 'red');
+  insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
+  values (v_item, v_house, v_wine, 750, 150);
+  insert into public.storage_locations (id, restaurant_id, zone, capacity_bottles)
+  values (v_bar, v_house, 'Bar', 50);
+
+  r := public.record_stock_count(
+    p_inventory_id => v_item, p_counted_qty => 4, p_idempotency_key => 'syn-opcost-t6a-' || v_item::text,
+    p_source => 'import', p_transaction_type => 'initial', p_reason => 'SYNTHETIC opening stock',
+    p_location_id => (select v from t_fx where k = 'cellar'));
+  r := public.record_stock_count(
+    p_inventory_id => v_item, p_counted_qty => 2, p_idempotency_key => 'syn-opcost-t6b-' || v_item::text,
+    p_source => 'import', p_transaction_type => 'initial', p_reason => 'SYNTHETIC opening stock',
+    p_location_id => v_bar, p_unit_cost => 300.00, p_cost_provenance => 'manual');
+  assert (r->>'cost_applied')::boolean is true,
+    format('T6 FAIL the last line''s cost_applied is %s, expected true', r->>'cost_applied');
+  assert (select sum(qty) from public.inventory_lots where inventory_id = v_item and stock_state = 'live') = 6,
+    'T6 FAIL the wine is not at 6 bottles across its two shelves';
+  assert (select count(*) from public.inventory_lots
+           where inventory_id = v_item and stock_state = 'live' and qty > 0 and unit_cost is distinct from 300.00) = 0,
+    'T6 FAIL a shelf of the wine was left without the file''s cost';
+end $$;
+
 rollback;

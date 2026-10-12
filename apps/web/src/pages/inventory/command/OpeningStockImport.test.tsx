@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+const csv = vi.hoisted(() => ({ text: 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300' }));
 const api = vi.hoisted(() => ({
   bulkCreateInventoryItems: vi.fn(),
   recordSpotCount: vi.fn(async (..._a: unknown[]) => ({ item: null, count: { costApplied: true } as { costApplied?: boolean } })),
@@ -15,7 +16,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../../services/api/inventory', () => api);
 vi.mock('../../../lib/csvImport', async (orig) => ({
   ...(await orig<typeof import('../../../lib/csvImport')>()),
-  readCsvFile: vi.fn(async () => 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300'),
+  readCsvFile: vi.fn(async () => csv.text),
 }));
 
 import { OpeningStockImport } from './OpeningStockImport';
@@ -97,6 +98,44 @@ describe('OpeningStockImport (F-1514)', () => {
       target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Load 1 wine' }));
-    expect(await screen.findByText(/Already had a cost, which was kept: Yakut/)).toBeTruthy();
+    expect(await screen.findByText(/Already had a cost before this file, which was kept: Yakut/)).toBeTruthy();
+  });
+
+  // F-1556 (integ28): one uncosted wine on two shelves. The cost went with the
+  // first line, which costed the wine, so the second line's bottles landed
+  // uncosted and the outcome called the first line "already had a cost".
+  it('[REVERT-FAILS] costs a wine on two shelves once, with its last line, so every shelf is costed', async () => {
+    api.recordSpotCount.mockClear();
+    csv.text = 'Wine,Vintage,Quantity,Shelf,Cost\nYakut,2020,4,Cellar,300\nYakut,2020,2,Bar,';
+    // A count sent with no cost reports no cost decision; the costed last
+    // line finds no costed bottle (the first line's are uncosted) and applies.
+    api.recordSpotCount
+      .mockResolvedValueOnce({ item: null, count: {} })
+      .mockResolvedValueOnce({ item: null, count: { costApplied: true } });
+    render(
+      <OpeningStockImport
+        carried={[{ inventoryId: 'inv-1', name: 'Yakut', vintage: 2020, hasCost: false }]}
+        shelves={[
+          { id: 'shelf-c', name: 'Cellar' },
+          { id: 'shelf-b', name: 'Bar' },
+        ]}
+        onDone={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
+      target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
+    });
+    expect(await screen.findAllByText(/so this one is used for its bottles on every shelf in this file/)).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Load 2 wines' }));
+    await waitFor(() => expect(api.recordSpotCount).toHaveBeenCalledTimes(2));
+    expect(api.recordSpotCount.mock.calls[0][1]).toMatchObject({ locationId: 'shelf-c', countedQty: 4 });
+    expect(api.recordSpotCount.mock.calls[0][1]).not.toHaveProperty('costPerBottle');
+    expect(api.recordSpotCount.mock.calls[1][1]).toMatchObject({ locationId: 'shelf-b', countedQty: 2, costPerBottle: 300 });
+    // The cost was sent once, with the last line, so no line of this file is
+    // reported as a cost the wine already had.
+    expect(await screen.findByText(/0 received · 2 counted/)).toBeTruthy();
+    expect(screen.queryByText(/Already had a cost/)).toBeNull();
+    csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
   });
 });

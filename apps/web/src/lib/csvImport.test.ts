@@ -114,6 +114,42 @@ describe('planOpeningStock', () => {
     expect(costed.count[0]).toMatchObject({ inventoryId: 'inv-1', qty: 7, cost: null, costIgnored: true });
   });
 
+  // F-1556: one uncosted wine on two shelves is costed once, for both lines.
+  it('[REVERT-FAILS] gives every line of a wine on several shelves the one cost the file names', () => {
+    const two = [...shelves, { id: 'shelf-b', name: 'Bar' }];
+    const one = planOpeningStock(
+      parseCsvRows('wine,vintage,quantity,shelf,cost\nYakut,2020,4,Mahzen A,300\nYakut,2020,2,Bar,'),
+      carried,
+      two,
+      'en-US',
+    );
+    expect(one.count.map((c) => [c.shelfId, c.cost, c.costAcrossShelves])).toEqual([
+      ['shelf-a', 300, 'same'],
+      ['shelf-b', 300, 'same'],
+    ]);
+    const differ = planOpeningStock(
+      parseCsvRows('wine,vintage,quantity,shelf,cost\nYakut,2020,3,Mahzen A,300\nYakut,2020,1,Bar,340'),
+      carried,
+      two,
+      'en-US',
+    );
+    expect(differ.count.map((c) => [c.cost, c.costAcrossShelves])).toEqual([
+      [310, 'averaged'],
+      [310, 'averaged'],
+    ]);
+    // A wine with a cost of its own keeps it on every line.
+    const costed = planOpeningStock(
+      parseCsvRows('wine,vintage,quantity,shelf,cost\nYakut,2020,4,Mahzen A,300\nYakut,2020,2,Bar,'),
+      [{ ...carried[0], hasCost: true }],
+      two,
+      'en-US',
+    );
+    expect(costed.count.map((c) => [c.cost, c.costAcrossShelves])).toEqual([
+      [null, undefined],
+      [null, undefined],
+    ]);
+  });
+
   it('reads a US cost with a dot decimal in a US house', () => {
     const plan = planOpeningStock(parseCsvRows('wine,quantity,cost\nOpus One,6,1250.50'), [], [], 'en-US');
     expect(plan.receive[0]).toMatchObject({ qty: 6, cost: 1250.5 });
