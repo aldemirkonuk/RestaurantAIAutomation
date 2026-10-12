@@ -484,7 +484,14 @@ MIN_TABLES_WITH_COLUMNS = 150
 # `parsed as unknown as Record<string, unknown>` cast, whose comma split the
 # payload parser and made the WHOLE write invisible to this guard. The cast is
 # hoisted to a const; the write is checkable again. Shrink-only, per the header.
-UNREADABLE_WRITE_CEILING = 12
+# Raised 12 -> 13 on 2026-10-12 (F-1121, integ round 27) for ONE site: the
+# `restaurant_inventory` insert in menus.service.ts's seeding (ADR 0340 rule 8,
+# lane 3a) spreads `...(item.declared_kind ? { kind, identity_provenance } : {})`.
+# It cannot be inline keys: an undeclared line must send NO `kind` key at all
+# (the library decides, set_house_item_identity), and menus.service.spec.ts
+# pins that with `not.toHaveProperty("kind")`. Both spread keys are columns
+# of restaurant_inventory (20260903171000).
+UNREADABLE_WRITE_CEILING = 13
 
 # KNOWN_BAD_COLUMNS — the shrink-only debt ratchet.
 #
