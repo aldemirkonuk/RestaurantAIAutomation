@@ -852,7 +852,7 @@ describe("RowExpansion — the open bottle in the house's unit (F-1543)", () => 
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
