@@ -18,7 +18,10 @@ import { PhotoCountService } from "./photo-count.service";
 import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
-import { mapStockCountResult } from "./stock-count-result";
+import {
+  mapStockCountResult,
+  OPENING_COUNT_SOURCE,
+} from "./stock-count-result";
 import {
   setHouseMenuPrice,
   type HousePriceResult,
@@ -935,6 +938,13 @@ export class InventoryService {
       countedAgoMs?: number;
       // F-291: the shelf that was counted. Absent = every shelf at once.
       locationId?: string | null;
+      /**
+       * F-1514, ADR 0335 §2: an opening count, the first count variance is
+       * measured FROM, never a variance itself. Kept as source 'import' and
+       * movement 'initial', which the month close leaves out of its count
+       * variance. The caller checks the person may load opening stock.
+       */
+      opening?: boolean;
     },
   ) {
     // An age past the epoch is not a time anyone counted at, and one past
@@ -1021,10 +1031,10 @@ export class InventoryService {
         p_counted_qty: Math.round(Number(dto.countedQty)),
         p_idempotency_key: idempotencyKey,
         p_stock_state: stockState,
-        p_source: "mobile_count",
-        p_transaction_type: "reconciliation",
+        p_source: dto.opening ? OPENING_COUNT_SOURCE : "mobile_count",
+        p_transaction_type: dto.opening ? "initial" : "reconciliation",
         p_performed_by: dto.performedBy ?? null,
-        p_reason: dto.reason ?? "Spot count",
+        p_reason: dto.reason ?? (dto.opening ? "Opening stock" : "Spot count"),
         p_counted_at: countedAt,
         // F-291: with a shelf, record_stock_count compares and corrects that
         // shelf only. Sent only when set, so a count of every shelf calls the
@@ -1798,6 +1808,11 @@ export class InventoryService {
   ) {
     const source = dto.source || "bulk_receive";
     const results: Array<Record<string, any>> = [];
+    // F-1515: the shelves each wine of an opening-stock file has landed on in
+    // this request (null: no shelf). Lines are applied one at a time, so a
+    // second line for the same wine COUNTS it, and a line with no shelf
+    // counts every shelf: it would replace the first line's bottles.
+    const openingShelves = new Map<string, Set<string | null>>();
 
     for (let index = 0; index < dto.items.length; index++) {
       const line = dto.items[index];
@@ -1817,6 +1832,22 @@ export class InventoryService {
           { liveOnly: true },
         );
         const resolved = await this.resolveBulkLineWine(line, restaurantId);
+        const shelf = line.storageLocationId ?? null;
+        const shelvesSoFar = openingShelves.get(resolved.masterWineId);
+        if (source === "opening_stock" && shelvesSoFar) {
+          if (shelf !== null && shelvesSoFar.has(shelf)) {
+            throw new HttpException(
+              "This wine is on an earlier line of the same file for the same shelf, so this line was not used. Nothing was changed for it.",
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+          if (shelf === null || shelvesSoFar.has(null)) {
+            throw new HttpException(
+              "This wine is on an earlier line of the same file, and one of the two lines names no shelf. A line with no shelf counts the wine on every shelf, so it would replace the other line's bottles instead of adding to them. Nothing was changed for this line: name a shelf on each line, or list the wine once with its total.",
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+        }
         const outcome = await this.receiveBulkLine(
           restaurantId,
           line,
@@ -1824,6 +1855,12 @@ export class InventoryService {
           source,
           dto.reason,
         );
+        if (source === "opening_stock") {
+          openingShelves.set(
+            resolved.masterWineId,
+            (shelvesSoFar ?? new Set<string | null>()).add(shelf),
+          );
+        }
         // A NEW row's price goes through the one writer, by the person
         // (receiveBulkLine no longer puts it in the insert). An existing
         // row's price is left as it is, as before this build.
@@ -1996,7 +2033,12 @@ export class InventoryService {
       const patch: Record<string, any> = {};
       if (!existing.is_active) patch.is_active = true;
       if (line.providerId) patch.provider_id = line.providerId;
-      if (line.storageLocationId !== undefined)
+      // F-1515: an opening-stock line with no shelf says nothing about where
+      // the wine lives, so it leaves the wine's shelf as it is.
+      if (
+        line.storageLocationId !== undefined &&
+        !(source === "opening_stock" && line.storageLocationId === null)
+      )
         patch.storage_location_id = line.storageLocationId;
       if (line.thresholdMin !== undefined)
         patch.threshold_min = line.thresholdMin;
@@ -2026,6 +2068,7 @@ export class InventoryService {
           clientCountId: `opening-stock:${randomUUID()}`,
           reason: reason || "Opening stock",
           locationId: line.storageLocationId ?? null,
+          opening: true,
         });
         return {
           status: existing.is_active ? "counted" : "reactivated",

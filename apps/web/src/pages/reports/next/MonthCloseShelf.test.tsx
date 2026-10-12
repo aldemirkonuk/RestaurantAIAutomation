@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 
 import MonthCloseShelf, { monthBefore, type MonthClose, type MonthCloseDetail } from './MonthCloseShelf';
+import { houseToday } from '@/lib/houseZone';
+import { monthLabel, thisMonth } from './rp-registers-trade';
 
 const close = (over: Partial<MonthClose> = {}): MonthClose => ({
   id: 'c1',
@@ -183,6 +185,29 @@ describe('MonthCloseShelf (F-1013)', () => {
     wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);
     expect(await screen.findByText(/closed again \(version 2\)/)).toBeInTheDocument();
     expect(screen.getByText(/closed, an earlier version/)).toBeInTheDocument();
+  });
+
+  // F-1517 (sim 49): the shelf preselected last month for a house opened this
+  // month, and let any month before the house opened be picked.
+  it('[REVERT-FAILS] preselects no month for a house opened this month, and says when its first can close', async () => {
+    const opened = thisMonth(houseToday('Europe/Istanbul'));
+    api.get.mockResolvedValueOnce({ data: { closes: [], openedMonth: opened } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    expect(
+      await screen.findByText(new RegExp(`This house opened in ${monthLabel(opened)}\\. Its first month can be closed`)),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Month to close')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Close the month' })).toBeDisabled();
+  });
+
+  it('[REVERT-FAILS] offers no month before the house opened', async () => {
+    api.get.mockResolvedValueOnce({ data: { closes: [], openedMonth: '2025-03' } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    await screen.findByText('No month has been closed for this house yet.');
+    const input = screen.getByLabelText('Month to close');
+    expect(input).toHaveAttribute('min', '2025-03');
+    expect(input).toHaveValue(monthBefore(thisMonth(houseToday('Europe/Istanbul'))));
+    expect(screen.getByRole('button', { name: 'Close the month' })).toBeEnabled();
   });
 
   it('says the list could not be read rather than showing an empty house', async () => {

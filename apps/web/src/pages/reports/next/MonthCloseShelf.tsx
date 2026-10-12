@@ -91,11 +91,21 @@ export interface MonthCloseDetail extends MonthClose {
   againstNow: MonthCloseAgainstNow[];
 }
 
-export async function listMonthCloses(): Promise<MonthClose[]> {
-  const { data } = await apiClient.get<{ closes: MonthClose[] }>('/reports/month-close');
+export interface MonthCloseList {
+  closes: MonthClose[];
+  /** F-1517: the house's month it opened in (YYYY-MM), the first it can close; null when unknown. */
+  openedMonth: string | null;
+}
+
+export async function listMonthCloses(): Promise<MonthCloseList> {
+  const { data } = await apiClient.get<{ closes: MonthClose[]; openedMonth?: string | null }>(
+    '/reports/month-close',
+  );
   if (!data || !Array.isArray(data.closes))
     throw new Error('the gateway answered without a list of closed months');
-  return data.closes;
+  const opened = data.openedMonth;
+  const known = typeof opened === 'string' && /^\d{4}-\d{2}$/.test(opened);
+  return { closes: data.closes, openedMonth: known ? opened : null };
 }
 
 export async function closeMonth(month: string): Promise<MonthClose> {
@@ -331,7 +341,7 @@ function Row({ close, zone, latest }: { close: MonthClose; zone: string | null; 
 export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfProps) {
   const qc = useQueryClient();
   const lastMonth = monthBefore(thisMonth(houseToday(zone)));
-  const [month, setMonth] = useState(lastMonth);
+  const [chosen, setMonth] = useState<string | null>(null);
   const key = ['month-closes', restaurantId];
   const list = useQuery({ queryKey: key, queryFn: listMonthCloses });
   const close = useMutation({
@@ -339,7 +349,12 @@ export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfP
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
   const failure = failureOf(list.error);
-  const closes = list.data;
+  const closes = list.data?.closes;
+  // F-1517: no month before the house opened can be closed, and a house
+  // opened this month has none to close yet, so none is preselected for it.
+  const opened = list.data?.openedMonth ?? null;
+  const noneYet = opened !== null && opened > lastMonth;
+  const month = chosen ?? (noneYet ? '' : lastMonth);
   const seen = new Set<string>();
 
   return (
@@ -364,6 +379,7 @@ export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfP
               className="rp-select rp-focus"
               aria-label="Month to close"
               value={month}
+              min={opened ?? undefined}
               max={lastMonth}
               onChange={(e) => setMonth(e.target.value)}
             />
@@ -379,6 +395,13 @@ export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfP
           </button>
         </div>
       </div>
+
+      {noneYet && opened && (
+        <p className="rp-cap">
+          This house opened in {monthLabel(opened)}. Its first month can be closed once{' '}
+          {monthLabel(opened)} has ended.
+        </p>
+      )}
 
       {close.isError && (
         <p className="rp-note" role="alert">

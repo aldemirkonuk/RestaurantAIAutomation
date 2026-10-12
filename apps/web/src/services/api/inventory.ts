@@ -440,6 +440,8 @@ export async function recordSpotCount(
     countedAgoMs?: number;
     /** F-291: the shelf counted; absent = every shelf at once. */
     locationId?: string;
+    /** F-1514: an opening count (ADR 0335 §2), left out of count variance; owners and managers only. */
+    opening?: boolean;
   },
   restaurantId?: string
 ): Promise<{ item: InventoryItem | null; count?: SpotCountRecord | null }> {
