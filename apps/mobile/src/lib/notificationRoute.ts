@@ -74,6 +74,19 @@ export function routeForActionUrl(actionUrl: string | null | undefined): MobileR
 }
 
 /**
+ * Where an alert card on Today opens (F-1451): the same place its notice opens
+ * from the inbox. Its order when it names one, else its `actionUrl` read as
+ * the inbox reads it; null keeps the card where it is.
+ */
+export function alertCardRoute(item: {
+  orderId?: string | null;
+  actionUrl?: string | null;
+}): MobileRoute {
+  if (item.orderId) return `/supply/${item.orderId}`;
+  return routeForActionUrl(item.actionUrl);
+}
+
+/**
  * Destination for a push payload. Prefers the structured ids the mobile feed
  * already carries, then falls back to translating the web `actionUrl`, then to
  * the inbox — never to nowhere, because a tapped banner that does nothing
@@ -131,6 +144,10 @@ export async function openNotificationTap(
     refused: (message: string) => void;
     /** The order a delivery belongs to, or null when it has none or the read failed. */
     deliveryOrder?: (deliveryId: string) => Promise<string | null>;
+    /** The order whose count is open and unsaved on this phone (F-1452). */
+    unsavedCount?: () => string | null;
+    /** Asks the person whether to leave that count; true = leave it. */
+    confirmLeaveCount?: () => Promise<boolean>;
   },
 ): Promise<void> {
   const d = data ?? {};
@@ -138,6 +155,13 @@ export async function openNotificationTap(
   const house = typeof raw === "string" && raw.length > 0 ? raw : null;
   let route = routeForNotificationData(d);
   if (house && deps.currentHouse && house !== deps.currentHouse) {
+    // Moving house clears everything read under this one, and a count being
+    // typed in is lost with it (F-1452). The person is asked first; "stay"
+    // opens nothing.
+    if (deps.unsavedCount?.() && deps.confirmLeaveCount) {
+      const leave = await deps.confirmLeaveCount().catch(() => false);
+      if (!leave) return;
+    }
     const moved = await deps.chooseHouse(house).catch(() => false);
     if (!moved) {
       deps.refused(
@@ -155,3 +179,32 @@ export async function openNotificationTap(
   }
   deps.navigate(route);
 }
+
+/**
+ * The order whose delivery count is open and not yet saved on this phone
+ * (F-1452). The receive screen holds its figures in its own state, so it says
+ * here while it has some; a push from another house asks before moving.
+ */
+let unsavedCountOrder: string | null = null;
+
+export function holdUnsavedCount(orderId: string | null): void {
+  unsavedCountOrder = orderId;
+}
+
+/** Let go of the hold, only when it is still this order's. */
+export function releaseUnsavedCount(orderId: string): void {
+  if (unsavedCountOrder === orderId) unsavedCountOrder = null;
+}
+
+export function unsavedCount(): string | null {
+  return unsavedCountOrder;
+}
+
+/** What the phone asks before leaving a count for another house's notice. */
+export const LEAVE_COUNT_WORDS = {
+  title: "Leave this count?",
+  message:
+    "This notice is from another of your restaurants. Opening it leaves the delivery you are counting, and the numbers you entered are not saved.",
+  stay: "Keep counting",
+  leave: "Open the notice",
+} as const;

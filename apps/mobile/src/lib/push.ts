@@ -5,7 +5,12 @@ import Constants from "expo-constants";
 import { api } from "@/api/client";
 import { queryClient } from "@/lib/queryClient";
 import { feedKey, pulseKey } from "@/api/queries";
-import { openNotificationTap, routeForNotificationData } from "@/lib/notificationRoute";
+import {
+  LEAVE_COUNT_WORDS,
+  openNotificationTap,
+  routeForNotificationData,
+  unsavedCount,
+} from "@/lib/notificationRoute";
 import { useSession } from "@/state/session";
 import { color } from "@/design/tokens";
 import { afterSignIn, beforeSignOutRequest } from "@/state/session";
@@ -166,6 +171,20 @@ export function attachPushListeners(onNavigate: (route: string) => void): () => 
       chooseHouse: (houseId) => useSession.getState().chooseHouse(houseId),
       navigate: onNavigate,
       refused: (message) => Alert.alert("Not opened", message),
+      // F-1452: a count being typed in is not dropped without asking.
+      unsavedCount,
+      confirmLeaveCount: () =>
+        new Promise<boolean>((resolve) =>
+          Alert.alert(
+            LEAVE_COUNT_WORDS.title,
+            LEAVE_COUNT_WORDS.message,
+            [
+              { text: LEAVE_COUNT_WORDS.stay, style: "cancel", onPress: () => resolve(false) },
+              { text: LEAVE_COUNT_WORDS.leave, style: "destructive", onPress: () => resolve(true) },
+            ],
+            { cancelable: true, onDismiss: () => resolve(false) },
+          ),
+        ),
       // F-1309: a delivery notice opens the order it belongs to.
       deliveryOrder: async (deliveryId) => {
         const res = await api<{ event?: { order_id?: unknown; orderId?: unknown } }>(

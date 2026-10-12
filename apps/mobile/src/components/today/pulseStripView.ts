@@ -33,6 +33,12 @@ export const REVENUE_UNAVAILABLE_MESSAGE = REVENUE_UNAVAILABLE_MESSAGES.unread;
 
 export const DECISIONS_UNREAD_LABEL = "Couldn't check what's waiting";
 
+/** Said after the count when more notices wait than Today reads (F-1450). */
+export const DECISIONS_MORE_SUFFIX = ", maybe more in your notices";
+/** Said instead of "All clear" when no decision was counted but more notices
+ *  wait than Today reads (F-1450). */
+export const DECISIONS_MORE_LABEL = "More waiting in your notices";
+
 export type PulseRevenueView =
   | {
       status: "known";
@@ -142,7 +148,11 @@ export function resolvePulseStripView(
     decisionsLabel = DECISIONS_UNREAD_LABEL;
   } else if (data.pendingDecisions > 0) {
     // Always true and always useful, independent of whether revenue loaded.
-    decisionsLabel = `${data.pendingDecisions} decision${data.pendingDecisions === 1 ? "" : "s"} waiting`;
+    // Notices are not decisions (F-1450); when there were more unread
+    // notices than the feed reads, a delivery may be among them.
+    decisionsLabel = `${data.pendingDecisions} decision${data.pendingDecisions === 1 ? "" : "s"} waiting${data.decisionsMore ? DECISIONS_MORE_SUFFIX : ""}`;
+  } else if (data.decisionsMore) {
+    decisionsLabel = DECISIONS_MORE_LABEL;
   } else if (revenueKnown && !stale) {
     // We only assert "All clear" when the full picture — revenue included —
     // is actually known, and current: a count that could not be refreshed
@@ -220,3 +230,43 @@ export const INSIGHTS_READ_FAILED = {
   goals: "Couldn't load your goals just now.",
   cellar: "Couldn't read the cellar just now, so these figures are not shown.",
 } as const;
+
+// ── Feed Zero ────────────────────────────────────────────────────────
+
+/**
+ * What the Today screen remembers to decide when "Shift clear" plays: the
+ * house the count belongs to, the last settled count, and whether it played.
+ */
+export interface FeedZeroWatch {
+  house: string | null;
+  prev: number;
+  fired: boolean;
+}
+
+export const FEED_ZERO_START: FeedZeroWatch = { house: null, prev: 0, fired: false };
+
+/**
+ * One step of the Feed Zero rule (F-1449). It plays when the last card of a
+ * feed that has loaded leaves, once per house. A feed that is still loading
+ * says nothing, and a change of house starts over: switching house clears
+ * every read, and the empty list before the new house's feed arrives is not
+ * the shift being cleared.
+ */
+export function feedZeroStep(
+  watch: FeedZeroWatch,
+  now: { house: string | null | undefined; count: number; settled: boolean },
+): { watch: FeedZeroWatch; show: boolean } {
+  const house = now.house ?? null;
+  if (house !== watch.house) {
+    return {
+      watch: { house, prev: now.settled ? now.count : 0, fired: false },
+      show: false,
+    };
+  }
+  if (!now.settled) return { watch, show: false };
+  const show = watch.prev > 0 && now.count === 0 && !watch.fired;
+  return {
+    watch: { house, prev: now.count, fired: watch.fired || show },
+    show,
+  };
+}

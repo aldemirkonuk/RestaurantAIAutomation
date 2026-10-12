@@ -24,6 +24,7 @@ import {
 import { useFeedLocal } from "@/state/feedLocal";
 import { useSession } from "@/state/session";
 import type { FeedItem } from "@/api/types";
+import { alertCardRoute } from "@/lib/notificationRoute";
 import { countsMatchRequest } from "./countsMatchRequest";
 
 const KIND_LABEL: Record<FeedItem["kind"], string> = {
@@ -193,6 +194,10 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
         pathname: "/cellar/receive/[orderId]",
         params: { orderId: item.orderId, feedItemId: item.id },
       });
+    } else if (item.kind === "alert") {
+      // The notice's own place, as the inbox opens it (F-1451).
+      const to = alertCardRoute(item);
+      if (to) router.push(to as never);
     } else if (item.orderId) {
       router.push({ pathname: "/supply/[id]", params: { id: item.orderId } });
     }

@@ -31,6 +31,18 @@ import {
   TodayPulseResponse,
 } from "./dto/mobile.dto";
 
+/** The unread notices the feed reads; one more is asked for to know when
+ *  there were more (F-1450). */
+const FEED_NOTICES = 40;
+
+/** The cards that wait on a person's say; alerts and discrepancy reports are
+ *  news (F-1450). */
+const DECISION_KINDS: ReadonlySet<DecisionKind> = new Set<DecisionKind>([
+  "order_approval",
+  "draft_approval",
+  "receipt_verification",
+]);
+
 /** One window of the register's takings: net sales and checks, or unknown. */
 interface WindowTakings {
   revenue: number | null;
@@ -83,10 +95,11 @@ export class MobileService {
       ),
       collect(
         "notifications",
+        // One past the cap, so a capped read is known and said (F-1450).
         this.notificationsService.getUnreadNotifications({
           userId,
           restaurantId,
-          limit: 40,
+          limit: FEED_NOTICES + 1,
         }),
       ),
       // The house's own money for the order amounts (F-341), grouped by its
@@ -187,7 +200,8 @@ export class MobileService {
       );
     }
 
-    for (const n of notifications as any[]) {
+    const noticesMore = notifications.length > FEED_NOTICES;
+    for (const n of notifications.slice(0, FEED_NOTICES) as any[]) {
       const meta = n.metadata ?? n.meta ?? {};
       const notifOrderId = meta.orderId ?? null;
       const type = n.type ?? "";
@@ -255,6 +269,8 @@ export class MobileService {
           createdAt: n.createdAt ?? n.created_at ?? new Date().toISOString(),
           notificationId: n.id,
           orderId: notifOrderId,
+          // The card opens the notice's place, as the inbox does (F-1451).
+          actionUrl: n.actionUrl ?? null,
           meta,
         }),
       );
@@ -272,8 +288,12 @@ export class MobileService {
           (i) => i.kind === "receipt_verification",
         ).length,
         alerts: items.filter((i) => i.kind === "alert").length,
+        // What waits on a person's say: orders, replies and deliveries to
+        // count. A notice is news, not a decision (F-1450).
+        decisions: items.filter((i) => DECISION_KINDS.has(i.kind)).length,
       },
       generatedAt: new Date().toISOString(),
+      ...(noticesMore ? { noticesMore: true as const } : {}),
       ...(withholdMoney ? { amountsWithheld: true as const } : {}),
     };
   }
@@ -320,7 +340,10 @@ export class MobileService {
       revenueLastWeek,
       deltaPct,
       // null = the feed could not be read; the strip must not say "All clear".
-      pendingDecisions: feed ? feed.counts.total : null,
+      pendingDecisions: feed ? feed.counts.decisions : null,
+      // More unread notices than the feed reads: a delivery among them may
+      // not be counted, so the phone says "maybe more" (F-1450).
+      decisionsMore: feed?.noticesMore === true,
       criticalCount: feed
         ? feed.items.filter((i) => i.priority === "critical").length
         : null,
