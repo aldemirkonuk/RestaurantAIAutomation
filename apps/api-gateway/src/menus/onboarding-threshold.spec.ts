@@ -51,6 +51,14 @@ function fakeDb(
             : [],
           error: null,
         };
+      // Its lines: a live menu counts only with a drink line (ADR 0340 rule 26).
+      if (table === "menu_items")
+        return {
+          data: opts.activeMenu
+            ? [{ id: "l-1", menu_id: "m-1", category: "red", line_kind: "drink" }]
+            : [],
+          error: null,
+        };
       return { data: null, error: null };
     };
     const c: any = {
@@ -64,6 +72,11 @@ function fakeDb(
         call.filters.push([col, val]);
         return c;
       },
+      in: () => c,
+      neq: () => c,
+      gt: () => c,
+      order: () => c,
+      limit: () => c,
       maybeSingle: async () => {
         if (table === "user_onboarding_progress")
           return { data: opts.progress ?? null, error: null };

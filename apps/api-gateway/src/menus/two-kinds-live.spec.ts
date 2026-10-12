@@ -246,6 +246,45 @@ describe("ADR 0340: onboarding reads the live kinds and fails loud", () => {
     expect(p.activated).toBe(true);
   });
 
+  // Rule 26 (§F13): a live menu counts only with a drink line on it.
+  it("a house whose only live menu is Food is not activated", async () => {
+    const p = await service(
+      withProgress({
+        restaurant_menus: [menu("m-food", "food")],
+        menu_items: [
+          line("f1", "m-food", { name: "Köfte", line_kind: "dish", price: 18 }),
+          // No stored kind: on a Food menu it is still not a drink (rule 7).
+          line("f2", "m-food", { name: "Ayran", category: "non-alcoholic" }),
+        ],
+      }),
+    ).getOnboardingProgress("owner", RID);
+    expect(p.menu_current).toBe(false);
+    expect(p.activated).toBe(false);
+  });
+
+  it("a dessert wine stored as a drink on a live Desserts menu activates it", async () => {
+    const p = await service(
+      withProgress({
+        restaurant_menus: [menu("m-desserts", "desserts")],
+        menu_items: [
+          line("w1", "m-desserts", {
+            name: "Muscat de Beaumes-de-Venise",
+            line_kind: "drink",
+          }),
+        ],
+      }),
+    ).getOnboardingProgress("owner", RID);
+    expect(p.menu_current).toBe(true);
+  });
+
+  it("a failed menu lines read THROWS; it never reads as 'no menu'", async () => {
+    await expect(
+      service(withProgress(twoKindsLive()), {
+        menu_items: "permission denied",
+      }).getOnboardingProgress("owner", RID),
+    ).rejects.toThrow(/could not be read \(permission denied\)/);
+  });
+
   it("a failed menus read THROWS; it never reads as 'no menu'", async () => {
     await expect(
       service(withProgress(twoKindsLive()), {

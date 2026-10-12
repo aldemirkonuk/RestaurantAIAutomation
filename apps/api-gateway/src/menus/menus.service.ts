@@ -34,6 +34,7 @@ import {
 import { itemNeedsPencil } from "./pencil-rule";
 import {
   LIVE_MENU_KINDS,
+  readCurrentMenuLines,
   readCurrentMenuRows,
   type CurrentMenuRow,
 } from "./current-menu-lines";
@@ -4453,15 +4454,17 @@ export class MenusService {
     // still pending. Auto-satisfy it from the house's actual state instead.
     // The current menu is read every time: a draft read ticks menu_uploaded
     // (markMenuUploaded on every import) but stocks nothing, so it is not the
-    // menu half of "activated" (F-1061, F-031). Any live kind counts (ADR 0340
-    // rule 26; its "with a drink line" waits for lane 3a's stored line kind,
-    // and make_menu_current refuses an empty menu), and a failed read THROWS:
-    // it never reads as "no menu" (ADR 0067; it swallowed its error before).
-    const live = await readCurrentMenuRows(
+    // menu half of "activated" (F-1061, F-031). ADR 0340 rule 26 (§F13): a
+    // live menu of any kind counts only when it holds a drink line, by the
+    // same lineIsDrink the drink readers use (readCurrentMenuLines, drinks),
+    // so a house whose only live menu is Food is not activated. A failed read
+    // of either table THROWS: it never reads as "no menu" (ADR 0067).
+    const live = await readCurrentMenuLines(
       this.dbService.supabase,
       data.restaurant_id,
+      { drinks: true },
     );
-    const menuCurrent = live.length > 0;
+    const menuCurrent = live.rows.length > 0;
     let menuUploaded = !!data.menu_uploaded;
     if (!menuUploaded) {
       if (menuCurrent) {

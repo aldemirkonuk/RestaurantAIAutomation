@@ -8,7 +8,7 @@ import HouseMenu from './HouseMenu'
 import { setHouseCurrency } from '../lib/houseCurrency'
 import { formatMoney } from '../lib/currency'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, getMenuPlan, makeMenuCurrent, getOnboardingProgress, auth } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, getMenuPlan, makeMenuCurrent, getOnboardingProgress, listMenuSections, auth } = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
@@ -19,6 +19,7 @@ const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, revie
   getMenuPlan: vi.fn(),
   makeMenuCurrent: vi.fn(),
   getOnboardingProgress: vi.fn(),
+  listMenuSections: vi.fn(),
   auth: {
     activeRestaurantId: undefined as string | undefined,
     user: { name: 'Selin Kaya', emailVerified: true } as {
@@ -105,7 +106,7 @@ vi.mock('../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../services/api/menus')>(
     '../services/api/menus',
   )
-  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions, getMenuPlan, makeMenuCurrent, getOnboardingProgress }
+  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions, getMenuPlan, makeMenuCurrent, getOnboardingProgress, listMenuSections }
 })
 vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
@@ -156,6 +157,7 @@ beforeEach(() => {
   addCustomProvider.mockResolvedValue({ id: 'vendor-1', name: 'Suvla' })
   listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] })
   getOnboardingProgress.mockResolvedValue(null)
+  listMenuSections.mockResolvedValue([])
   auth.user = { name: 'Selin Kaya', emailVerified: true }
   sessionStorage.clear()
   localStorage.clear()
@@ -1123,6 +1125,108 @@ describe('the first proof says whether its menu is current (F-1295)', () => {
     mountWithQuery()
     expect(await screen.findByRole('heading', { name: 'Your menu, set by Mudavym.' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument()
+  })
+
+  // ADR 0340 lane 6b: a read split by kind made a Drinks and a Food draft.
+  // The first proof shows each kind, offers every draft not yet live in one
+  // tap, and offers a kind the plan left a draft again (no dead end).
+  const drinkLine = { ...pencilLine, menuItemId: 'd1', name: 'Yakut', category: 'red', rawText: 'Yakut 40', bottlePrice: 40, matched: true, needsReview: false }
+  const dishLine = { ...pencilLine, menuItemId: 'f1', name: 'Grilled octopus', category: 'Starters', rawText: 'Grilled octopus starter 24', bottlePrice: null, needsReview: false }
+  function splitProof(drafts: Array<[string, string, unknown[]]>) {
+    const items = drafts.flatMap(([, , lines]) => lines)
+    return {
+      menuId: (drafts.find(([, kind]) => kind === 'beverage') ?? drafts[0])[0],
+      itemsExtracted: items.length,
+      submissionsCreated: 0,
+      items,
+      drafts: drafts.map(([menuId, kind, lines]) => ({ menuId, kind, items: lines })),
+      readTogetherId: 'rt-1',
+    }
+  }
+  const BOTH: Array<[string, string, unknown[]]> = [['m-drinks', 'beverage', [drinkLine]], ['m-food', 'food', [dishLine]]]
+  const planKind = (kind: string) => ({ kind, menuPrice: null, housePrice: null, result: 'not_linked', lastSet: null, setAfterRead: false, lock: null })
+  const planLine = (menuItemId: string, name: string, menuId: string, menuKind: string) => ({
+    menuItemId, name, producer: null, vintage: null, wineLibraryId: null, inventoryId: null, house: null,
+    bottle: planKind('bottle'), glass: planKind('glass'), flag: null, returned: false, vintageMismatch: false,
+    menuId, menuKind, lineKind: menuKind === 'food' ? 'dish' : 'drink', sectionId: null,
+  })
+  const planMenu = (menuId: string, kind: string) => ({ menuId, kind, current: false, partRead: null, lines: 1, unsure: 0, conflicts: 0 })
+  const counts = { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 1, new_wine: 0 }
+  const made = (menuId: string, kind: string) => ({ menuId, kind, outcome: 'made_current', madeCurrentAt: null, recarried: false, carryFinished: true, lines: 1 })
+
+  it('shows each kind the read found, a Food line on its own menu and never set aside', () => {
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(splitProof(BOTH)))
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(screen.getByTestId('proof-kinds')).toHaveTextContent('Drinks 1 · Food 1')
+    expect(screen.getByTestId('proof-kind-food')).toHaveTextContent('Grilled octopus')
+    expect(screen.queryByText(/kitchen line/)).toBeNull()
+  })
+
+  it('makes every draft of the read live in one tap, and is "set" once all are', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, role: 'owner' }
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(splitProof(BOTH)))
+    listMenuVersions.mockResolvedValue({ current: null, currentByKind: { beverage: null, food: null, desserts: null }, lastUsed: null, versions: [{ menuId: 'm-drinks' }, { menuId: 'm-food' }] })
+    getMenuPlan.mockResolvedValue({
+      menuId: 'm-drinks', current: false, readAt: null, generatedAt: '2026-10-12T12:00:00Z', fingerprint: 'fp-both',
+      lines: [planLine('d1', 'Yakut', 'm-drinks', 'beverage'), planLine('f1', 'Grilled octopus', 'm-food', 'food')],
+      counts, dormantLocks: [], retiring: [], namesReadable: true, namesReason: null,
+      menus: [planMenu('m-drinks', 'beverage'), planMenu('m-food', 'food')], gone: [], unsure: [], conflicts: [],
+    })
+    makeMenuCurrent.mockResolvedValue({
+      outcome: 'made_current', menuId: 'm-drinks', previousMenuIds: [], lines: 2, priceSync: { not_linked: 1 }, flagged: 0, failed: [],
+      menus: [made('m-drinks', 'beverage'), made('m-food', 'food')],
+    })
+    mountWithQuery()
+    fireEvent.click(await screen.findByRole('button', { name: 'Make Drinks and Food current' }))
+    await waitFor(() => expect(getMenuPlan).toHaveBeenCalledWith('m-drinks', ['m-food']))
+    fireEvent.click(await screen.findByRole('button', { name: 'Make Drinks + Food live' }))
+    await waitFor(() =>
+      expect(makeMenuCurrent).toHaveBeenCalledWith('m-drinks', 'fp-both', false, { menuIds: ['m-food'], picks: [], partReadAcceptedKinds: [] }),
+    )
+    expect(await screen.findByRole('heading', { name: 'Your menu, set by Mudavym.' })).toBeInTheDocument()
+    expect(screen.queryByTestId('proof-not-current')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Drinks + Food updated')
+    expect(screen.getByTestId('proof-kind-food')).toHaveTextContent('now current')
+  })
+
+  it('offers a kind the plan left a draft again, alone', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, role: 'owner' }
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(splitProof(BOTH)))
+    listMenuVersions.mockResolvedValue({ current: null, currentByKind: { beverage: null, food: null, desserts: null }, lastUsed: null, versions: [{ menuId: 'm-drinks' }, { menuId: 'm-food' }] })
+    getMenuPlan.mockResolvedValue({
+      menuId: 'm-drinks', current: false, readAt: null, generatedAt: '2026-10-12T12:00:00Z', fingerprint: 'fp-both',
+      lines: [planLine('d1', 'Yakut', 'm-drinks', 'beverage'), planLine('f1', 'Grilled octopus', 'm-food', 'food')],
+      counts, dormantLocks: [], retiring: [], namesReadable: true, namesReason: null,
+      menus: [planMenu('m-drinks', 'beverage'), planMenu('m-food', 'food')], gone: [], unsure: [], conflicts: [],
+    })
+    // The reply names only Drinks: Food stayed a draft.
+    makeMenuCurrent.mockResolvedValue({
+      outcome: 'made_current', menuId: 'm-drinks', previousMenuIds: [], lines: 1, priceSync: { not_linked: 1 }, flagged: 0, failed: [],
+      menus: [made('m-drinks', 'beverage')],
+    })
+    mountWithQuery()
+    fireEvent.click(await screen.findByRole('button', { name: 'Make Drinks and Food current' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Make Drinks + Food live' }))
+    expect(await screen.findByTestId('proof-not-current')).toHaveTextContent('Food is still a draft, not current, so nothing on it has changed.')
+    expect(screen.getByRole('heading', { name: 'Your menu, read by Mudavym.' })).toBeInTheDocument()
+    getMenuPlan.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Make it current' }))
+    await waitFor(() => expect(getMenuPlan).toHaveBeenCalledWith('m-food', []))
+  })
+
+  it('offers no drink line to add when the read made no Drinks draft', async () => {
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(splitProof([['m-food', 'food', [dishLine]]])))
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(screen.getByTestId('proof-kind-food')).toHaveTextContent('Grilled octopus')
+    expect(screen.queryByText(/Not on this menu/)).toBeNull()
+  })
+
+  it('with the split off, one menu is offered exactly as before', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, role: 'owner' }
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    mountWithQuery()
+    expect(screen.queryByTestId('proof-kinds')).toBeNull()
+    expect(await screen.findByRole('button', { name: 'Make it current' })).toBeInTheDocument()
   })
 
   it('with no proof in this tab, a kept menu that is not current is said so', async () => {

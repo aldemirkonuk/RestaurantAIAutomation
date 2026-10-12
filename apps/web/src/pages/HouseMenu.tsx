@@ -4,16 +4,21 @@ import { BrandMark } from '../components/brand/BrandMark'
 import { useAuth } from '../contexts/AuthContext'
 import {
   addMenuItem,
+  isMenuKind,
+  kindName,
   listMenuVersions,
   reviewMenuItem,
   type MenuFileResult,
+  type MenuImportResult,
   type MenuImportReviewItem,
+  type MenuKind,
   type MenuReadNotes,
+  type MenuVersions,
 } from '../services/api/menus'
 import {
   MENU_KINDS,
   absentFamilies,
-  isKitchenLine,
+  lineIsDrink,
   lineNeedsPencil,
   lineSourceCrop,
   pencilReason,
@@ -22,7 +27,7 @@ import {
 import { formatHouseMoney } from '../lib/houseCurrency'
 import { useHouseCurrency } from '../hooks/useHouseCurrency'
 import { MenuPlan } from './menu/next/MenuPlan'
-import { makeCurrentSentence } from './menu/next/MenuVersions'
+import { makeCurrentSentence, untouchedKinds } from './menu/next/MenuVersions'
 
 // A legacy 'wine' line sorts first; every other section is the gateway's own.
 const sectionOrder: string[] = ['wine', ...MENU_KINDS]
@@ -89,6 +94,34 @@ function partReadSaid(reason: string): string {
   return `Only part of this menu was read: ${reason}, so drinks may be missing. Reading it again, as a clearer photo or a smaller file, may read the rest.`
 }
 
+/**
+ * The drafts one read made, one per menu kind (ADR 0340 rule 13), as the
+ * gateway made them: Drinks, Food, Desserts. Empty when the read was not split
+ * by kind (MENUS_SPLIT_BY_KIND off), which is one menu, as before.
+ */
+type ProofDraft = { menuId: string; kind: MenuKind; lines: MenuImportReviewItem[] }
+function proofDrafts(drafts: MenuImportResult['drafts']): ProofDraft[] {
+  return (drafts ?? []).flatMap((d) =>
+    isMenuKind(d.kind)
+      ? [{ menuId: d.menuId, kind: d.kind, lines: (d.items ?? []) as MenuImportReviewItem[] }]
+      : [],
+  )
+}
+
+/** The house's live menu of each kind, by kind (ADR 0340 rule 1); an older gateway names only `current`. */
+function liveByKind(v: MenuVersions): Record<string, string> {
+  const live: Record<string, string> = {}
+  for (const [kind, menu] of Object.entries(v.currentByKind ?? {})) if (menu) live[kind] = menu.menuId
+  if (Object.keys(live).length === 0 && v.current) live[v.current.kind ?? 'beverage'] = v.current.menuId
+  return live
+}
+
+/** "Drinks", "Drinks and Food", "Drinks, Food and Desserts". */
+function kindsSaid(kinds: MenuKind[]): string {
+  const names = kinds.map((k) => kindName(k) ?? k)
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '')
+}
+
 export default function HouseMenu() {
   const navigate = useNavigate()
   const { activeRestaurantId, activeRole, user } = useAuth()
@@ -109,21 +142,26 @@ export default function HouseMenu() {
   const [held, setHeld] = useState<'checking' | 'held' | 'none' | 'unknown'>('checking')
   // undefined: not known (still asking, or the books could not be read).
   const [currentId, setCurrentId] = useState<string | null | undefined>(undefined)
+  // The live menu of each kind (ADR 0340), so a read split into Drinks, Food
+  // and Desserts drafts knows which of them are live. undefined: not known.
+  const [live, setLive] = useState<Record<string, string> | undefined>(undefined)
   const [planning, setPlanning] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
   useEffect(() => {
-    let live = true
+    let alive = true
     setHeld('checking')
     setCurrentId(undefined)
+    setLive(undefined)
     listMenuVersions()
       .then((v) => {
-        if (!live) return
+        if (!alive) return
         setHeld(v.current || v.versions.length > 0 ? 'held' : 'none')
         setCurrentId(v.current?.menuId ?? null)
+        setLive(liveByKind(v))
       })
-      .catch(() => live && setHeld('unknown'))
+      .catch(() => alive && setHeld('unknown'))
     return () => {
-      live = false
+      alive = false
     }
   }, [proof])
   const [lineError, setLineError] = useState<{ id: string; message: string } | null>(null)
@@ -136,8 +174,21 @@ export default function HouseMenu() {
   const [addSection, setAddSection] = useState('')
   const sourceImage = proof?.sourceImage ?? null
 
-  const kitchen = items.filter(isKitchenLine)
-  const drinkItems = items.filter((item) => !isKitchenLine(item))
+  // ADR 0340 rules 13 and 18 (lane 6b): a read split by kind made one draft
+  // per kind. A line on the Food or Desserts draft is on its own menu, shown
+  // under its kind, never "set aside"; a line on the Drinks draft, or on no
+  // draft of the read, is placed as before (lineIsDrink on its menu's kind).
+  const drafts = useMemo(() => proofDrafts(proof?.drafts), [proof])
+  const kindOfLine = useMemo(
+    () => new Map(drafts.flatMap((d) => d.lines.map((line) => [line.menuItemId, d.kind] as const))),
+    [drafts],
+  )
+  const ownMenu = (item: MenuImportReviewItem) => {
+    const kind = kindOfLine.get(item.menuItemId)
+    return kind === 'food' || kind === 'desserts'
+  }
+  const kitchen = items.filter((item) => !ownMenu(item) && !lineIsDrink(item, kindOfLine.get(item.menuItemId)))
+  const drinkItems = items.filter((item) => !ownMenu(item) && lineIsDrink(item, kindOfLine.get(item.menuItemId)))
 
   const grouped = useMemo(() => {
     const map = new Map<string, MenuImportReviewItem[]>()
@@ -224,9 +275,24 @@ export default function HouseMenu() {
 
   const pencilled = drinkItems.filter((item) => lineNeedsPencil(item)).length
   // Only a menu the books name as current is "set"; a read menu is kept until
-  // it is chosen (F-1295).
-  const isCurrent = currentId === proof.menuId
-  const notCurrent = currentId !== undefined && !isCurrent
+  // it is chosen (F-1295). A read split by kind is "set" once every draft of
+  // it is live; until then the drafts not yet live are offered together, and
+  // a kind left a draft by the plan (an Unsure line it still holds) is offered
+  // again here, never a dead end (ADR 0340 rules 18, 20).
+  const split = drafts.length > 0
+  const liveIds = live ? Object.values(live) : undefined
+  const pending = liveIds ? drafts.filter((d) => !liveIds.includes(d.menuId)) : []
+  const anyLive = split && liveIds !== undefined && pending.length < drafts.length
+  const isCurrent = split ? liveIds !== undefined && pending.length === 0 : currentId === proof.menuId
+  const notCurrent = split ? pending.length > 0 : currentId !== undefined && !isCurrent
+  const pendingKinds = pending.map((d) => d.kind)
+  // The Food and Desserts drafts, each with its lines as they stand now.
+  const kindBlocks = drafts
+    .filter((d) => d.kind !== 'beverage')
+    .map((d) => ({ ...d, lines: items.filter((item) => kindOfLine.get(item.menuItemId) === d.kind) }))
+  // A new drink line goes on the Drinks draft; a read with no Drinks draft
+  // offers none (a drink on a Food menu is not a drink, rule 7).
+  const drinksMenuId = split ? (drafts.find((d) => d.kind === 'beverage')?.menuId ?? null) : proof.menuId
   // The kinds of drink with no line here, and the sections a new line for
   // them can go in (F-024).
   const absentKinds = absentFamilies(drinkItems)
@@ -256,11 +322,11 @@ export default function HouseMenu() {
 
   const addAbsent = async () => {
     const category = addSection || addChoices[0]
-    if (!addName.trim() || !category || !proof) return
+    if (!addName.trim() || !category || !drinksMenuId) return
     setSaving('add')
     setAddError(null)
     try {
-      const created = await addMenuItem(proof.menuId, { name: addName.trim(), category })
+      const created = await addMenuItem(drinksMenuId, { name: addName.trim(), category })
       setItems((current) => [
         ...current,
         { ...created, category, needsReview: false, matched: true },
@@ -290,21 +356,49 @@ export default function HouseMenu() {
         <p className="mt-4 max-w-2xl text-[#6d685f]">
           It&apos;s a first proof — we&apos;ve pencilled the lines worth a second look.
         </p>
-        {notCurrent && chosen === null ? (
+        {split ? (
+          // ADR 0340 rule 18: the kinds the read found, counted up front.
+          <p data-testid="proof-kinds" className="mt-2 max-w-2xl font-mono text-xs uppercase tracking-wider text-[#1a5e6b]">
+            {drafts.map((d) => `${kindName(d.kind)} ${items.filter((item) => kindOfLine.get(item.menuItemId) === d.kind).length}`).join(' · ')}
+          </p>
+        ) : null}
+        {notCurrent && (split || chosen === null) ? (
           <div data-testid="proof-not-current" className="mt-4 max-w-2xl text-[#6d685f]">
-            <p>It is read but not yet your current menu, so no price has changed.</p>
+            <p>
+              {anyLive
+                ? `${kindsSaid(pendingKinds)} ${pending.length === 1 ? 'is' : 'are'} still a draft, not current, so nothing on ${pending.length === 1 ? 'it' : 'them'} has changed.`
+                : 'It is read but not yet your current menu, so no price has changed.'}
+            </p>
             {canManage ? (
               planning ? (
                 <div className="mt-4">
                   <MenuPlan
-                    menuId={proof.menuId}
+                    key={pending.map((d) => d.menuId).join(',') || proof.menuId}
+                    menuId={split ? pending[0].menuId : proof.menuId}
+                    // ADR 0340 rule 20: every draft of the read not yet live is
+                    // reviewed and made live in one tap; the plan holds the
+                    // Unsure taps and the price picks (rules 18, 19).
+                    batchIds={split ? pending.slice(1).map((d) => d.menuId) : undefined}
                     canManage={canManage}
                     currency={currency}
                     onCancel={() => setPlanning(false)}
                     onDone={(r) => {
                       setPlanning(false)
-                      setChosen(makeCurrentSentence(r, currency))
-                      setCurrentId(proof.menuId)
+                      if (!split) {
+                        setChosen(makeCurrentSentence(r, currency))
+                        setCurrentId(proof.menuId)
+                        return
+                      }
+                      const before = live ?? {}
+                      setChosen(makeCurrentSentence(r, currency, untouchedKinds(r, Object.keys(before))))
+                      // Every menu the reply names went live; a reply that names
+                      // none (an older gateway) made only the lead.
+                      const made = r.menus?.length
+                        ? r.menus.map((m) => ({ menuId: m.menuId, kind: m.kind }))
+                        : [{ menuId: r.menuId, kind: drafts.find((d) => d.menuId === r.menuId)?.kind ?? null }]
+                      const next = { ...before }
+                      for (const m of made) if (m.kind) next[m.kind] = m.menuId
+                      setLive(next)
                     }}
                   />
                 </div>
@@ -314,7 +408,7 @@ export default function HouseMenu() {
                   onClick={() => setPlanning(true)}
                   className="mt-3 bg-[#1a5e6b] px-4 py-2 text-white"
                 >
-                  Make it current
+                  {split && pending.length > 1 ? `Make ${kindsSaid(pendingKinds)} current` : 'Make it current'}
                 </button>
               )
             ) : (
@@ -458,12 +552,31 @@ export default function HouseMenu() {
             </section>
           ))}
         </div>
+        {kindBlocks.map((block) => (
+          // A Food or Desserts draft of the read: its own menu, made live with
+          // the rest (ADR 0340 rules 13, 20). A dish has no house price in v1.
+          <section key={block.menuId} data-testid={`proof-kind-${block.kind}`} className="mt-12">
+            <h2 className="border-b border-[#211f1b]/30 pb-2 font-serif text-3xl">{kindName(block.kind)}</h2>
+            <p className="mt-2 text-sm text-[#6d685f]">
+              {block.lines.length} {block.lines.length === 1 ? 'line' : 'lines'}, kept as the house&apos;s {kindName(block.kind)} menu
+              {live?.[block.kind] === block.menuId ? ', now current.' : ', not current yet.'}
+            </p>
+            <ul>
+              {block.lines.map((item) => (
+                <li key={item.menuItemId} className="flex justify-between gap-3 border-b border-[#211f1b]/15 py-3">
+                  <span className="font-serif text-lg">{item.name}</span>
+                  <span className="font-mono text-sm">{price(item)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
         {kitchen.length > 0 && (
           <p className="mt-10 text-sm text-[#6d685f]">
             {kitchen.length} kitchen {kitchen.length === 1 ? 'line' : 'lines'} set aside — not Mudavym&apos;s job yet.
           </p>
         )}
-        {absent.length > 0 && (
+        {absent.length > 0 && drinksMenuId && (
           <div className="mt-12 border-t border-[#211f1b]/20 pt-6 text-sm text-[#6d685f]">
             <p>
               Not on this menu: {absent.slice(0, 4).map(sectionName).join(', ')}. Pour any of these?{' '}

@@ -646,6 +646,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 5a (`feat/menus-kindof`, heading classifier and golden set) | `kindOf(heading, line)` and `classifyHeading` in `menu-line-view.ts` read a heading or a section's heading path (nearest deciding heading wins) as drinks, food, desserts or `unknown` (the default) from their own word lists in English, Turkish, French, Italian, Spanish and German; "Dessert" (singular) is decided by the line's shape; `kindVerdict` gives the rule-15 Unsure reasons. `ScanParserService.classifyHeadings` is the F12 second opinion: one text-only call, `allowance: "unlimited"`, `spendLedgerUnreadable: "closed"`, resolving null (rules only) on any failure. `kind-of.golden.spec.ts` holds 460 headings; 25 new cases, 24 of which fail on the base (the row-count case calls no code) and all pass after; 9 code mutations and 9 claim mutations killed (a first row-count mutation survived, so the row now counts each list); one new fragment (two rows); corrections in the Review log, "Lane 5a corrections". Nothing calls either yet (lane 5b). Not run: G0, L8, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 5b (`feat/menus-section-extraction`, the section table and the split by kind, behind a flag) | Behind `MENUS_SPLIT_BY_KIND` (off unless exactly `true`): the scan parser reads a section table (sections before their lines, a path of at most three levels, a section open across a chunk seam carried by its path), the CSV and Excel readers keep heading rows as the path (a sheet's name tops it when more than one sheet has rows), and `importSplitByKind` makes one draft per kind found (`splitByKind`: the rules, else the read's kind, else the F12 second opinion), all with one `read_together_id`, each with its lines and its printed sections (`materialise_read_sections`, migration `20270107700000`); a failure drops every draft of the read. A line is stored `drink` or `dish` only with no Unsure reason; only a `drink` reaches the resolver. With the flag off and on: the seam key folds names in any script and holds no price, a draft's kind is passed, never defaulted, and `part_read` is its own column. 28 new jest cases (25 fail on the base, 3 pin unchanged flag-off behaviour) and SQL test T1-T4 (PASS on the PGlite corpus, FAIL without the migration); 12 code mutations, one SQL mutation and every claim row's mutation killed; one new fragment (five rows), no existing row edited; corrections in the Review log, "Lane 5b corrections". Not run: G0, L8, the flag flip, Postgres other than PGlite, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 6 (`feat/menus-review-per-kind`, the web review per kind) | The plan screen reviews a batch in rule 18's order (counts up front; Conflicts, Unsure per section with one Drink/Food/Dessert tap, Price changed, New, Gone with Keep by button and swipe, Same collapsed), with a kind strip that takes a section drag, a long press or a "Move to…" button ([[0112]] sheet); picks are held on the client and sent with make-live (`?menuIds=`, `picks`, `partReadAcceptedKinds`); a kind with an Unsure line can be left as a draft, which re-reads the plan. `/menu` counts lines per kind, adds to a chosen kind's menu, renames a section, and a price pick names its menu and the other live kinds it also changed on; Locked prices name each menu's price; the make-live sentence names the kinds updated and untouched. Web tsc exits 0; 170 vitest cases in 8 files pass; on the base sources 31 of the new cases fail and the 2 that pass pin unchanged one-kind behaviour. No claim row, no migration, no gateway file; corrections in the Review log, "Lane 6 corrections". Not run: G0, L8, the flag flip, a Browser-pane review at phone width, a test of the `batchIds` call site in `MenuVersions` |
+| 2026-10-12 | Lane 6b (`feat/menus-onboarding-per-kind`, the first run per kind) | The first proof (`HouseMenu.tsx`, the first run since [[0213]]) shows a split read's kinds ("Drinks 1 · Food 1"), keeps Food and Desserts lines in their own blocks instead of "set aside", and makes every draft of the read live in one tap through `MenuPlan`'s batch (`batchIds`); a kind left as a draft is named and offered again. Onboarding's `menu_current` (and so `activated`) now needs a drink line on a live menu (rule 26, F13) through `readCurrentMenuLines(..., {drinks: true})`. 5 new vitest cases (4 fail on the base; the fifth pins the one-menu path) and 3 new jest cases (2 fail on the base); web and gateway tsc exit 0; one new fragment (two rows), one row edited in place; every claim mutation that changes behaviour killed (an added unused line survives); corrections in the Review log, "Lane 6b corrections". Not run: G0, L8, the flag flip, a Browser-pane first run at phone width |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -1132,6 +1133,40 @@ with its basis and the rejected alternative):
   `batchIds` call site (a sixteenth file), and the Browser-pane review at phone width
   (no browser in this lane). Founder-gated and not done: G0, L8 and the flag flip
   (`MENUS_SPLIT_BY_KIND` stays off); the README row for 0340 is owed in its own PR.
+
+Lane 6b corrections (2026-10-12, against base `e0c4ff1a4`; each is the smallest right fix,
+with its basis and the rejected alternative):
+
+- **The first run is not `MenuReviewScreen`.** Only its own test
+  imports `components/onboarding/MenuReviewScreen.tsx` since [[0213]] made `/house/menu`
+  (`HouseMenu.tsx`) the first proof: `GetStarted` writes the import reply with
+  `writeProof` and navigates there. The lane was built in `HouseMenu.tsx`. Rejected:
+  editing the dead component (tests would pass on a screen no house sees); deleting it here
+  (a separate change, owed in its own PR; rule 20's list of make-current callers still
+  names it).
+- **The upload components and `GetStarted` needed no change.** No kind is chosen before an
+  upload; the reply's `drafts[]` and `readTogetherId` already pass through `writeProof`
+  untouched. Rejected: a kind picker before upload (the read decides each line's kind).
+- **Rule 26 was unbuilt, so it is built here.** `getOnboardingProgress` counted any
+  `menus` row with `is_active`; it now asks `readCurrentMenuLines` for drink lines on the
+  live menus, so a Food-only house is not activated, and a dessert wine stored `drink` on
+  Desserts is. A failed line read throws, as the other readers do. This adds lane 6b to
+  the lanes that edit `menus.service.ts`, so it merges in that serial order. Rejected:
+  leaving it to lane 3a (that lane shipped without it) or a count of active menus per kind
+  (says nothing about a drink line).
+- **The make-live button names the kinds.** With more than one draft pending it reads
+  "Make Drinks and Food current"; with one it keeps "Make it current". With the split off,
+  the proof is the one-menu screen it was.
+- **"Not on this menu" adds to the Drinks draft only,** and is hidden when the read has no
+  Drinks draft. Rejected: adding to the first draft (a wine added to a Food menu).
+- **Owed by a later lane:** a dish price in the proof's Food block (review items carry no
+  dish price); `MenuCsvUpload`'s several-file merge, which keeps the first file's
+  `drafts` and `menuId` while its items come from every file (pre-existing);
+  `HouseContents.tsx` and the no-proof branch of `HouseMenu` still read `v.current`
+  (lane 7); the onboarding read now pages every drink line of the live menus, heavier than
+  the old one-row read; the Browser-pane first run at phone width (no browser in this
+  lane). Founder-gated and not done: G0, L8 and the flag flip (`MENUS_SPLIT_BY_KIND` stays
+  off); the README row for 0340 is owed in its own PR.
 
 ## Founder forks
 
