@@ -663,8 +663,11 @@ export class LogsTimelineService {
   /**
    * Names for the people behind a page of rows, resolved WITHIN this house
    * only (F-482): an id is named when `public.users` says it belongs to this
-   * house or it holds (or held — a former member's acts stay theirs) a
-   * `user_restaurant_access` row for it. Any other id's name is read but
+   * house or it holds a `user_restaurant_access` row for it, or held one: a
+   * former member's acts stay theirs, so an id with a
+   * `house_memberships_ended` row for this house is named too (F-1512; the
+   * removal clears the other two). The month-close shelf names them the same
+   * way, and ADR 0337 never touches who acted. Any other id's name is read but
    * dropped here, never returned to this reader, and its row reads "Someone
    * not on this house's team". A lookup that fails returns null — said on each row as a name
    * that could not be read, never as a stranger — and is logged; the rows
@@ -683,7 +686,7 @@ export class LogsTimelineService {
     ];
     if (unique.length === 0) return out;
     try {
-      const [users, access] = await Promise.all([
+      const [users, access, ended] = await Promise.all([
         db
           .from("users")
           .select("user_id, name, email, restaurant_id")
@@ -693,10 +696,20 @@ export class LogsTimelineService {
           .select("user_id")
           .eq("restaurant_id", restaurantId)
           .in("user_id", unique),
+        db
+          .from("house_memberships_ended")
+          .select("user_id")
+          .eq("restaurant_id", restaurantId)
+          .in("user_id", unique),
       ]);
       if (users.error) throw users.error;
       if (access.error) throw access.error;
-      const held = new Set((access.data ?? []).map((a: any) => a.user_id));
+      if (ended.error) throw ended.error;
+      const held = new Set(
+        [...(access.data ?? []), ...(ended.data ?? [])].map(
+          (a: any) => a.user_id,
+        ),
+      );
       for (const u of users.data ?? []) {
         if (u.restaurant_id !== restaurantId && !held.has(u.user_id)) continue;
         out.set(u.user_id, u.name?.trim() || u.email || "A team member");

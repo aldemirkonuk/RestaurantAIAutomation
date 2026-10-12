@@ -15,7 +15,7 @@ import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { ExpoPushService } from "../push/expo-push.service";
 import {
   teamPushHolds,
-  type PushHoldReason,
+  type TeamPushHolds,
   type TeamPushSend,
 } from "../notifications/push-hold";
 import { resolveBellLines } from "../notifications/resolve-bell-lines";
@@ -471,7 +471,7 @@ export class TeamService {
     userIds: string[],
     restaurantId: string,
     sent: TeamPushSend,
-  ): Promise<Map<string, PushHoldReason>> {
+  ): Promise<TeamPushHolds> {
     return teamPushHolds(this.sb, restaurantId, userIds, sent, {
       warn: (line) => this.logger.warn(line),
       note: (line) => this.logger.log(line),
@@ -1423,6 +1423,7 @@ export class TeamService {
       .eq("restaurant_id", restaurantId);
     if (error)
       throw new InternalServerErrorException("Failed to remove member");
+    await this.settleLeaversTimeOffLines(restaurantId, memberId);
 
     // Leaving on one's own (ADR 0242): the same removal, recorded as a leave,
     // with no "you were removed" notice to the person who chose it.
@@ -1515,13 +1516,15 @@ export class TeamService {
           });
           const told = informed.filter((id) => !held.has(id));
           if (told.length)
-            await this.push.sendToUsers(told, {
-              title,
-              body: message,
-              priority: "high",
-              house: restaurantId,
-              data: { type: "team_member_left", actionUrl: "/team" },
-            });
+            await held.afterSend(
+              await this.push.sendToUsers(told, {
+                title,
+                body: message,
+                priority: "high",
+                house: restaurantId,
+                data: { type: "team_member_left", actionUrl: "/team" },
+              }),
+            );
         } catch (err: any) {
           this.logger.error(`team_member_left: push threw — ${err?.message}`);
         }
@@ -2538,6 +2541,33 @@ export class TeamService {
       this.logger.warn(
         `time_off_requested: the leads' bell line for ${requestId} was not cleared — ${bell.error}`,
       );
+  }
+
+  /**
+   * F-1511: a person who leaves with a time-off ask still waiting takes it off
+   * every lead's bell. The request row is kept as it was (ADR 0215 item 20)
+   * and can no longer be answered (`assertOnTheRoster`), so a line asking for
+   * a decision would wait for ever. Never throws: the removal is done; an
+   * unread or uncleared line is logged.
+   */
+  private async settleLeaversTimeOffLines(
+    restaurantId: string,
+    memberId: string,
+  ): Promise<void> {
+    const { data, error } = await this.sb
+      .from("time_off_requests")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", memberId)
+      .eq("status", "pending");
+    if (error) {
+      this.logger.warn(
+        `time_off_requested: could not read ${memberId}'s waiting asks on leaving, so the leads' bell lines for them stay — ${error.message}`,
+      );
+      return;
+    }
+    for (const row of data ?? [])
+      await this.settleLeadsTimeOffLine(restaurantId, row.id);
   }
 
   async reviewTimeOff(

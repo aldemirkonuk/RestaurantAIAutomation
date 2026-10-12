@@ -164,7 +164,7 @@ describe("teamPushHolds — team pushes may arrive in quiet hours, and say so (F
       },
     };
     const warns: string[] = [];
-    await teamPushHolds(
+    const holds = await teamPushHolds(
       logged,
       "h1",
       ["quiet", "off", "awake"],
@@ -172,6 +172,9 @@ describe("teamPushHolds — team pushes may arrive in quiet hours, and say so (F
       { warn: (l) => warns.push(l), note: () => undefined },
       threeUtc,
     );
+    // F-1510: nothing is filed until the push service took the push.
+    expect(rows).toEqual([]);
+    await holds.afterSend({ outcome: "accepted_by_service" });
     expect(warns).toEqual([]);
     expect(rows).toHaveLength(1);
     expect(rows[0].table).toBe("system_audit_log");
@@ -201,14 +204,16 @@ describe("teamPushHolds — team pushes may arrive in quiet hours, and say so (F
       },
     };
     const noon = new Date("2026-10-10T12:00:00Z");
-    await teamPushHolds(
-      failing,
-      "h1",
-      ["quiet", "awake"],
-      { what: "team_broadcast", by: "manager-1" },
-      { warn: () => undefined, note: () => undefined },
-      noon,
-    );
+    await (
+      await teamPushHolds(
+        failing,
+        "h1",
+        ["quiet", "awake"],
+        { what: "team_broadcast", by: "manager-1" },
+        { warn: () => undefined, note: () => undefined },
+        noon,
+      )
+    ).afterSend({ outcome: "accepted_by_service" });
     expect(tries).toEqual([]);
     const warns: string[] = [];
     const held = await teamPushHolds(
@@ -219,9 +224,64 @@ describe("teamPushHolds — team pushes may arrive in quiet hours, and say so (F
       { warn: (l) => warns.push(l), note: () => undefined },
       threeUtc,
     );
+    await held.afterSend({ outcome: "accepted_by_service" });
     expect(tries).toEqual(["system_audit_log"]);
     expect(warns[0]).toContain("TEAM_PUSH_QUIET_HOURS_UNLOGGED");
     expect([...held.entries()]).toEqual([["off", "push_off"]]);
+  });
+
+  function recording() {
+    const rows: any[] = [];
+    const db = {
+      from(table: string) {
+        const chain: any = sb.from(table);
+        chain.insert = (row: any) => {
+          rows.push(row);
+          return Promise.resolve({ error: null });
+        };
+        return chain;
+      },
+    };
+    return { rows, db };
+  }
+
+  it("[REVERT-FAILS] F-1510: no /logs row says a push was sent when nothing went", async () => {
+    const { rows, db } = recording();
+    for (const result of [
+      { outcome: "no_device_registered" },
+      { outcome: "read_failed" },
+      { outcome: "no_recipients" },
+      null,
+    ]) {
+      const holds = await teamPushHolds(
+        db,
+        "h1",
+        ["quiet", "awake"],
+        { what: "team_broadcast", by: "manager-1" },
+        { warn: () => undefined, note: () => undefined },
+        threeUtc,
+      );
+      expect(rows).toEqual([]);
+      await holds.afterSend(result);
+    }
+    expect(rows).toEqual([]);
+  });
+
+  it("[REVERT-FAILS] F-1498: a crew note held in quiet hours is named as a team note on /logs", async () => {
+    const { rows, db } = recording();
+    const holds = await teamPushHolds(
+      db,
+      "h1",
+      ["quiet"],
+      { what: "team_note", by: "manager-1" },
+      { warn: () => undefined, note: () => undefined },
+      threeUtc,
+    );
+    await holds.afterSend({ outcome: "accepted_by_service" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].changes.subject).toBe(
+      "A team note was sent to 1 person inside their quiet hours",
+    );
   });
 
   it("leaves the house rule as it was: pushHolds still holds the same person for quiet hours", async () => {

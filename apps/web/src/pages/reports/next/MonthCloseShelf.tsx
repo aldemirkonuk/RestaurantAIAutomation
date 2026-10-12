@@ -13,7 +13,7 @@
  * Shown to owners and managers only (the routes refuse anyone else). Its own
  * section under the export shelf, in the shelf's styles.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/services/api/client';
 import { houseToday } from '@/lib/houseZone';
@@ -356,9 +356,15 @@ export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfP
   const noneYet = opened !== null && opened > lastMonth;
   const month = chosen ?? (noneYet ? '' : lastMonth);
   const seen = new Set<string>();
+  // F-1513: a /logs month-close line links here (`/reports#rp-month-close`);
+  // the router does not scroll to a hash, so the shelf brings itself in.
+  const self = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (window.location.hash === '#rp-month-close') self.current?.scrollIntoView?.({ block: 'start' });
+  }, []);
 
   return (
-    <section id="rp-month-close" className="rp-exports" aria-labelledby="rp-month-close-title">
+    <section ref={self} id="rp-month-close" className="rp-exports" aria-labelledby="rp-month-close-title">
       <div className="rp-exports__head">
         <div>
           <h2 id="rp-month-close-title" className="rp-cut__title">

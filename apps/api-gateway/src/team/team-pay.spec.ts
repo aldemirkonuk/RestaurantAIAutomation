@@ -3184,6 +3184,25 @@ describe("F-1227 — a staff member's time-off request reaches the house's leads
     expect(askLines(db).map((n) => n.status)).toEqual(["read", "read"]);
   });
 
+  it("[REVERT-FAILS] F-1511: a waiting ask leaves every lead's bell when the person leaves; the request is kept", async () => {
+    const db = seed();
+    const req: any = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    db.tables.time_off_requests.find((r) => r.id === req.id)!.status =
+      "pending";
+    expect(askLines(db).map((n) => n.status)).toEqual(["unread", "unread"]);
+
+    await teamOf(db).deleteMember(OWNER, RID, "m-staff");
+
+    expect(askLines(db).map((n) => n.status)).toEqual(["read", "read"]);
+    expect(
+      db.tables.time_off_requests.find((r) => r.id === req.id),
+    ).toMatchObject({ status: "pending", member_id: "m-staff" });
+  });
+
   it("tells nobody when a manager files for someone; they already know", async () => {
     const db = seed();
     const req: any = await teamOf(db).createTimeOff(MANAGER, RID, {

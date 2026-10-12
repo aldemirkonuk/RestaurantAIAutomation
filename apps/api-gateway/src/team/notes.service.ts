@@ -558,7 +558,7 @@ export class NotesService {
     // now is a team push, so quiet hours do not hold it and each one sent
     // inside someone's window is logged (`teamPushHolds`); the Away release
     // keeps quiet hours (`pushHolds`, ADR 0218).
-    const holds: Map<string, PushHoldReason> = opts.sentBy
+    const teamHolds = opts.sentBy
       ? await teamPushHolds(
           this.sb,
           restaurantId,
@@ -569,9 +569,12 @@ export class NotesService {
             note: (line) => this.logger.log(line),
           },
         )
-      : await pushHolds(this.sb, restaurantId, userIds, (line) =>
-          this.logger.warn(line),
-        );
+      : null;
+    const holds: Map<string, PushHoldReason> =
+      teamHolds ??
+      (await pushHolds(this.sb, restaurantId, userIds, (line) =>
+        this.logger.warn(line),
+      ));
     const pushIds = userIds.filter((id: string) => !holds.has(id));
     const devices = await this.push.devicesByUser(userIds);
     let pushDetail = "";
@@ -589,6 +592,8 @@ export class NotesService {
       });
       pushDetail = outcome.detail;
       delivered = { ...delivered, push: outcome.tokens };
+      // F-1510: the quiet-hours /logs row is filed only when the push went.
+      await teamHolds?.afterSend(outcome);
     }
     for (const m of targets) {
       if (devices === null) {

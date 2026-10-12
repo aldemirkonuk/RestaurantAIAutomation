@@ -929,7 +929,7 @@ export class NotificationsService {
         // `pushHolds`, the one sendToUser reads too (F-539, F-835).
         // A team push (`opts.teamPush`) is held by Push off only (F-1340).
         const addressed = alertIds ?? userIds;
-        const held = opts.teamPush
+        const teamHeld = opts.teamPush
           ? await teamPushHolds(
               this.databaseService.supabase,
               restaurantId,
@@ -940,15 +940,18 @@ export class NotificationsService {
                 note: (line) => this.logger.log(line),
               },
             )
-          : await pushHolds(
-              this.databaseService.supabase,
-              restaurantId,
-              addressed,
-              (line) => this.logger.warn(line),
-            );
+          : null;
+        const held =
+          teamHeld ??
+          (await pushHolds(
+            this.databaseService.supabase,
+            restaurantId,
+            addressed,
+            (line) => this.logger.warn(line),
+          ));
         const pushTo = addressed.filter((id) => !held.has(id));
         if (pushTo.length > 0) {
-          await this.expoPushService.sendToUsers(pushTo, {
+          const pushed = await this.expoPushService.sendToUsers(pushTo, {
             title: payload.title,
             body: payload.message,
             priority: payload.priority === "critical" ? "high" : "default",
@@ -961,6 +964,8 @@ export class NotificationsService {
               restaurantId,
             },
           });
+          // F-1510: the quiet-hours /logs row is filed only when the push went.
+          await teamHeld?.afterSend(pushed);
         }
       }
 

@@ -423,6 +423,7 @@ export function linkOutFor(e: TimelineEvent, ctx: LinkContext): LinkOut | null {
       if (entity === 'restaurant_member') return { to: '/team', label: 'Open the team' };
       // F-1522: a drink 86'd or back on; /inventory shows its sold-out state.
       if (entity === 'inventory_item') return { to: '/inventory', label: 'Open the stock' };
+      if (entity === 'month_close') return { to: '/reports#rp-month-close', label: 'Open the closed months' };
       return null;
     }
     default:
