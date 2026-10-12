@@ -2778,6 +2778,59 @@ describe("K5 — every door out of a house releases the person's shifts (ADR 024
     );
   });
 
+  it("[REVERT-FAILS] F-1490: the left-the-team push honours Push off; quiet hours pass and are filed on /logs", async () => {
+    const db = world();
+    db.tables.restaurants = [{ id: RID, timezone: "UTC", country: null }];
+    db.tables.shifts.push(
+      shift({
+        id: "staff-today",
+        member_id: "m-staff",
+        shift_date: "2026-09-22",
+        start_time: "18:00",
+        end_time: "23:00",
+      }),
+    );
+    // 12:00 UTC (world()'s clock): the owner's window 11:00-13:00 is open.
+    db.tables.notification_preferences = [
+      { restaurant_id: RID, user_id: MANAGER, push_enabled: false },
+      {
+        restaurant_id: RID,
+        user_id: OWNER,
+        push_enabled: true,
+        quiet_hours_enabled: true,
+        quiet_hours_start: "11:00",
+        quiet_hours_end: "13:00",
+      },
+    ];
+    const push = {
+      sendToUsers: jest.fn(async () => ({ outcome: "accepted_by_service" })),
+    };
+    const team = new TeamService(asDatabaseService(db), undefined, push as any);
+    const members = new MembersService(asDatabaseService(db), undefined, team);
+
+    await members.removeMember(STAFF, RID, STAFF);
+
+    // Both leads still get the inbox notice; only the one with Push on is pushed.
+    const leads = db.tables.notifications.filter(
+      (n) => n.metadata?.action === "team_member_left",
+    );
+    expect(leads.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+    expect(push.sendToUsers).toHaveBeenCalledTimes(1);
+    expect(push.sendToUsers).toHaveBeenCalledWith(
+      [OWNER],
+      expect.objectContaining({ title: "Sam left the team" }),
+    );
+    const logged = (db.tables.system_audit_log ?? []).filter(
+      (r) => r.action === "message_sent_in_quiet_hours",
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      actor_id: STAFF,
+      restaurant_id: RID,
+      changes: { what: "team_member_left", recipients: [OWNER] },
+    });
+  });
+
   // F-1183 (a rehit of F-523): the leave's push went out with no house in its
   // data or title, so a tap on a two-house phone opened whichever house was
   // current. Through the real push service: only Expo's HTTP call is caught.
@@ -3070,6 +3123,65 @@ describe("F-1227 — a staff member's time-off request reaches the house's leads
     expect(req.managersTold).toBe(0);
     expect(db.tables.time_off_requests).toHaveLength(1);
     expect(db.tables.notifications).toHaveLength(0);
+  });
+
+  // F-1488: a withdrawn ask stayed on every lead's bell as "It waits for
+  // your decision". The line names its request now and clears with it.
+  const askLines = (db: StubDb) =>
+    db.tables.notifications.filter(
+      (n) => n.metadata?.action === "time_off_requested",
+    );
+
+  it("[REVERT-FAILS] F-1488: a withdrawn ask leaves every lead's bell; another ask's line stays", async () => {
+    const db = seed();
+    const req: any = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    const other: any = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: "2026-09-21",
+      endDate: "2026-09-21",
+    } as any);
+    for (const r of db.tables.time_off_requests) r.status = "pending";
+    expect(
+      askLines(db)
+        .map((n) => n.metadata.request_id)
+        .sort(),
+    ).toEqual([req.id, req.id, other.id, other.id].sort());
+
+    await teamOf(db).withdrawTimeOff(STAFF, RID, req.id);
+
+    const lines = askLines(db);
+    expect(
+      lines
+        .filter((n) => n.metadata.request_id === req.id)
+        .map((n) => n.status),
+    ).toEqual(["read", "read"]);
+    expect(
+      lines
+        .filter((n) => n.metadata.request_id === other.id)
+        .map((n) => n.status),
+    ).toEqual(["unread", "unread"]);
+  });
+
+  it("F-1488: an answered ask leaves the other lead's bell too", async () => {
+    const db = seed();
+    const req: any = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    db.tables.time_off_requests.find((r) => r.id === req.id)!.status =
+      "pending";
+
+    await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+      expectStatus: "pending",
+    } as any);
+
+    expect(askLines(db).map((n) => n.status)).toEqual(["read", "read"]);
   });
 
   it("tells nobody when a manager files for someone; they already know", async () => {

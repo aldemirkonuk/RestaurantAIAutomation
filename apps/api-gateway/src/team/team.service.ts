@@ -18,6 +18,7 @@ import {
   type PushHoldReason,
   type TeamPushSend,
 } from "../notifications/push-hold";
+import { resolveBellLines } from "../notifications/resolve-bell-lines";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
 import { leavesNoOwner, NO_OWNER_LEFT } from "../restaurants/last-owner";
@@ -76,6 +77,10 @@ import {
 } from "./dto/team.dto";
 
 type Role = "owner" | "manager" | "staff";
+
+/** The leads' bell lines for one staff time-off ask share this key (F-1488). */
+export const timeOffBellKey = (requestId: string): string =>
+  `time_off_requested:${requestId}`;
 
 /**
  * How long a removed person's records are kept: `wage_record_retention()` in
@@ -1486,7 +1491,7 @@ export class TeamService {
         );
       const title = `${who} left the team`;
       const message = parts.join(" ");
-      const told = await noticeToHouseLeads(this.sb, this.logger, {
+      const informed = await noticeToHouseLeads(this.sb, this.logger, {
         restaurantId,
         exceptUserId: userId,
         title,
@@ -1499,15 +1504,24 @@ export class TeamService {
           shifts_unjudged: unjudged,
         },
       });
-      if (told.length && this.push) {
+      if (informed.length && this.push) {
         try {
-          await this.push.sendToUsers(told, {
-            title,
-            body: message,
-            priority: "high",
-            house: restaurantId,
-            data: { type: "team_member_left", actionUrl: "/team" },
+          // F-1490: a team push (ADR 0332). A lead with Push off is not
+          // pushed, as Settings promises; one inside quiet hours still is,
+          // and that is filed on /logs. The inbox notice above stays.
+          const held = await this.teamPushHolds(informed, restaurantId, {
+            what: "team_member_left",
+            by: userId,
           });
+          const told = informed.filter((id) => !held.has(id));
+          if (told.length)
+            await this.push.sendToUsers(told, {
+              title,
+              body: message,
+              priority: "high",
+              house: restaurantId,
+              data: { type: "team_member_left", actionUrl: "/team" },
+            });
         } catch (err: any) {
           this.logger.error(`team_member_left: push threw — ${err?.message}`);
         }
@@ -2470,7 +2484,12 @@ export class TeamService {
   private async tellLeaders(
     requesterId: string,
     restaurantId: string,
-    row: { member_id?: string; start_date?: string; end_date?: string },
+    row: {
+      id?: string;
+      member_id?: string;
+      start_date?: string;
+      end_date?: string;
+    },
   ): Promise<number> {
     const { data: member, error: memberErr } = await this.sb
       .from("team_members")
@@ -2494,9 +2513,31 @@ export class TeamService {
       exceptUserId: requesterId,
       title: `${who} asked for time off`,
       message: `${who} asked for ${days} off. It waits for your decision under Time off on Team.`,
-      metadata: { action: "time_off_requested" },
+      // F-1488: the request is named so the line clears when the ask is
+      // taken back or answered (`settleLeadsTimeOffLine`).
+      metadata: { action: "time_off_requested", request_id: row.id ?? null },
+      groupKey: row.id ? timeOffBellKey(row.id) : undefined,
     });
     return told.length;
+  }
+
+  /**
+   * F-1488: a staff time-off ask that no longer waits (taken back, or
+   * answered by one lead) stops asking every lead for a decision: their bell
+   * lines for it are marked read, the F-526 rule (`resolveBellLines`). Never
+   * throws: the withdrawal or decision is saved; a line left unread is logged.
+   */
+  private async settleLeadsTimeOffLine(
+    restaurantId: string,
+    requestId: string,
+  ): Promise<void> {
+    const bell = await resolveBellLines(this.sb, restaurantId, {
+      groupKey: timeOffBellKey(requestId),
+    });
+    if (!bell.ok)
+      this.logger.warn(
+        `time_off_requested: the leads' bell line for ${requestId} was not cleared — ${bell.error}`,
+      );
   }
 
   async reviewTimeOff(
@@ -2560,6 +2601,7 @@ export class TeamService {
     if (error)
       throw new InternalServerErrorException("Failed to review request");
     if (!data) throw new ConflictException(decidedElsewhere);
+    await this.settleLeadsTimeOffLine(restaurantId, requestId);
     // The person who asked hears the answer (F-191): before this, a decision
     // reached nobody, and My Shifts said to look on the manager's desk. Only a
     // changed answer is news: marking an approved request paid or unpaid sends
@@ -2630,6 +2672,7 @@ export class TeamService {
         "This request has already been answered, so it cannot be withdrawn. Ask your manager to change it.",
       );
     }
+    await this.settleLeadsTimeOffLine(restaurantId, requestId);
     return data;
   }
 

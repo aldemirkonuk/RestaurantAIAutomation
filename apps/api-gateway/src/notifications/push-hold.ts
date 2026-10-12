@@ -50,11 +50,12 @@ export interface TeamPushSend {
  * work overloads and people catch up out of hours (the founder's F-540
  * ruling, 2026-10-11, F-1340). It is allowed because it is seen: every person
  * pushed inside their window gets one `TEAM_PUSH_IN_QUIET_HOURS` line on
- * `note`, naming the house, the person, the sender, the push and the time.
- * Settings › Quiet hours says team messages can still arrive. A crew note
- * written now reads this too (F-1340); its Away release keeps `pushHolds`
- * (ADR 0218). The "someone left" push does not read this yet: a CLAIMS row
- * pins it to the bare send (F-1340, reported, not built).
+ * `note`, naming the house, the person, the sender, the push and the time,
+ * and the push gets ONE `system_audit_log` row (`message_sent_in_quiet_hours`,
+ * ADR 0332 §3) so the owner sees it on /logs, not only in server output
+ * (F-1463). Settings › Quiet hours says team messages can still arrive. A crew
+ * note written now reads this too (F-1340); its Away release keeps `pushHolds`
+ * (ADR 0218). The "someone left" push reads this too (F-1490).
  */
 export async function teamPushHolds(
   supabase: any,
@@ -77,7 +78,60 @@ export async function teamPushHolds(
       `TEAM_PUSH_IN_QUIET_HOURS restaurant=${restaurantId} to=${id} by=${sent.by ?? "nobody (the system)"} what=${sent.what} at=${now.toISOString()} — sent during quiet hours: a team push may arrive inside quiet hours (F-540).`,
     );
   }
+  if (quiet.length > 0)
+    await logQuietHoursSend(supabase, restaurantId, quiet, sent, log.warn, now);
   return held;
+}
+
+/** The push's kind in the owner's words, for the /logs line. */
+const TEAM_PUSH_WORDS: Record<string, string> = {
+  team_broadcast: "A team message",
+  shift_offer: "A shift offer",
+  shift_callout: "A call for cover",
+  team_member_left: "A note that someone left the team",
+};
+
+/**
+ * One `system_audit_log` row for a team push that reached people inside their
+ * quiet hours (ADR 0332 §3, F-1463): the sender as actor, the house, and the
+ * people inside their window by user id. /logs reads this table, so the row
+ * reads there as "Ayşe: message sent in quiet hours — A shift offer was sent
+ * to 2 people inside their quiet hours". Never throws: the push still goes,
+ * and a row that failed is said on `warn`, with the stdout line above as the
+ * fallback record.
+ */
+async function logQuietHoursSend(
+  supabase: any,
+  restaurantId: string,
+  quiet: string[],
+  sent: TeamPushSend,
+  warn: (line: string) => void,
+  now: Date,
+): Promise<void> {
+  const kind = TEAM_PUSH_WORDS[sent.what] ?? "A team message";
+  const people = quiet.length === 1 ? "1 person" : `${quiet.length} people`;
+  try {
+    const { error } = await supabase.from("system_audit_log").insert({
+      actor_type: sent.by ? "user" : "system",
+      actor_id: sent.by,
+      action: "message_sent_in_quiet_hours",
+      entity_type: "team_push",
+      entity_id: null,
+      changes: {
+        subject: `${kind} was sent to ${people} inside their quiet hours`,
+        what: sent.what,
+        recipients: quiet,
+        sent_at: now.toISOString(),
+      },
+      restaurant_id: restaurantId,
+      reason: null,
+    });
+    if (error) throw new Error(error.message);
+  } catch (e: any) {
+    warn(
+      `TEAM_PUSH_QUIET_HOURS_UNLOGGED restaurant=${restaurantId} what=${sent.what} — ${e?.message}. The push went; only the server output above records it.`,
+    );
+  }
 }
 
 async function readHolds(

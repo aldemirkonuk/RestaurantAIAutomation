@@ -151,6 +151,79 @@ describe("teamPushHolds — team pushes may arrive in quiet hours, and say so (F
     expect(notes[0]).toContain("sent during quiet hours");
   });
 
+  it("[REVERT-FAILS] F-1463: files one /logs row naming the sender, the house and who was in quiet hours", async () => {
+    const rows: Array<{ table: string; row: any }> = [];
+    const logged = {
+      from(table: string) {
+        const chain: any = sb.from(table);
+        chain.insert = (row: any) => {
+          rows.push({ table, row });
+          return Promise.resolve({ error: null });
+        };
+        return chain;
+      },
+    };
+    const warns: string[] = [];
+    await teamPushHolds(
+      logged,
+      "h1",
+      ["quiet", "off", "awake"],
+      { what: "shift_offer", by: "manager-1" },
+      { warn: (l) => warns.push(l), note: () => undefined },
+      threeUtc,
+    );
+    expect(warns).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].table).toBe("system_audit_log");
+    expect(rows[0].row).toMatchObject({
+      actor_type: "user",
+      actor_id: "manager-1",
+      action: "message_sent_in_quiet_hours",
+      restaurant_id: "h1",
+      changes: {
+        subject: "A shift offer was sent to 1 person inside their quiet hours",
+        what: "shift_offer",
+        recipients: ["quiet"],
+      },
+    });
+  });
+
+  it("F-1463: nobody in quiet hours files no row; a row that fails is said, and the hold still stands", async () => {
+    const tries: string[] = [];
+    const failing = {
+      from(table: string) {
+        const chain: any = sb.from(table);
+        chain.insert = () => {
+          tries.push(table);
+          return Promise.resolve({ error: { message: "denied" } });
+        };
+        return chain;
+      },
+    };
+    const noon = new Date("2026-10-10T12:00:00Z");
+    await teamPushHolds(
+      failing,
+      "h1",
+      ["quiet", "awake"],
+      { what: "team_broadcast", by: "manager-1" },
+      { warn: () => undefined, note: () => undefined },
+      noon,
+    );
+    expect(tries).toEqual([]);
+    const warns: string[] = [];
+    const held = await teamPushHolds(
+      failing,
+      "h1",
+      ["quiet", "off"],
+      { what: "team_broadcast", by: "manager-1" },
+      { warn: (l) => warns.push(l), note: () => undefined },
+      threeUtc,
+    );
+    expect(tries).toEqual(["system_audit_log"]);
+    expect(warns[0]).toContain("TEAM_PUSH_QUIET_HOURS_UNLOGGED");
+    expect([...held.entries()]).toEqual([["off", "push_off"]]);
+  });
+
   it("leaves the house rule as it was: pushHolds still holds the same person for quiet hours", async () => {
     const held = await pushHolds(
       sb,
