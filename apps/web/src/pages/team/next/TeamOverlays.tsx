@@ -51,13 +51,12 @@ import {
   addDays,
   fmtDayShort,
   fmtWeekRange,
-  labourRules,
   resolveName,
   todayIso,
   workedHours,
 } from './tm-format';
 import { houseToday, useHouseZone } from '@/lib/houseZone';
-import { MutationError, Tag, useHouseRegion } from './tm-bits';
+import { MutationError, Tag, useHouseLabourRules } from './tm-bits';
 import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
 import { dayWords } from '@/components/mudavym/awayWords';
@@ -1203,7 +1202,7 @@ export function ExportPopover({
 }) {
   const [failed, setFailed] = useState<string | null>(null);
   /** Hours on the house's country's breaks (founder S195). */
-  const rules = labourRules(useHouseRegion());
+  const rules = useHouseLabourRules();
   const rows = useMemo(
     () =>
       (shifts ?? [])

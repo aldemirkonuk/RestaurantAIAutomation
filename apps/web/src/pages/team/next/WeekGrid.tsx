@@ -56,14 +56,21 @@ import {
   fmtHours,
   fmtMoneyWhole,
   houseLocale,
-  labourRules,
   recordedBreakMinutes,
   resolveName,
   todayIso,
   weekDays,
   workedHours,
 } from './tm-format';
-import { Card, Fact, KV, Mark, useHouseRegion, useShiftTime } from './tm-bits';
+import {
+  Card,
+  Fact,
+  KV,
+  Mark,
+  useHouseLabourRules,
+  useHouseRegion,
+  useShiftTime,
+} from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
 import { deleteOrConfirm, type ShiftSheetTarget } from './ShiftSheet';
 
@@ -161,7 +168,7 @@ export function WeekGrid({
   /** The house's decimal mark for hours (F-1120). */
   const hoursIn = houseLocale(region);
   /** The house's country's labour rules (founder S195); none claimed where not built in. */
-  const rules = labourRules(region);
+  const rules = useHouseLabourRules();
   const reviewAt = rules.weeklyReviewHours;
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const today = todayIso(houseToday(zone));
@@ -266,7 +273,8 @@ export function WeekGrid({
     // asks for says that instead.
     const assumedBreak = breakCounted(s, rules).assumed;
     const shortBreak = breakUnderMinimum(s, rules);
-    // A day past the country's daily ceiling (Germany's 10 hours, §3 ArbZG).
+    // A day past the daily line (Germany's 10 hours, §3 ArbZG; California's
+    // 8, Labor Code §510).
     const longDay =
       rules.dailyReviewHours != null && workedHours(s, rules) > rules.dailyReviewHours;
     const lapsed = id ? lapsedIds.has(id) : false;
@@ -822,7 +830,7 @@ function ShiftDetail({
   const region = useHouseRegion();
   /** The house's decimal mark for hours (F-1120). */
   const hoursIn = houseLocale(region);
-  const rules = labourRules(region);
+  const rules = useHouseLabourRules();
   const name = resolveName(member);
   const coverSent = coverReach !== null;
   // F-1231: on a phone the grid scrolls sideways, and the detail spans all of

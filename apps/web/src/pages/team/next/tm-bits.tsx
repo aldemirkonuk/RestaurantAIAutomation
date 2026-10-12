@@ -7,7 +7,14 @@
  */
 
 import { createContext, useContext, type ReactNode } from 'react';
-import { EM, fmtTime, initialsOf, type ResolvedName } from './tm-format';
+import {
+  EM,
+  fmtTime,
+  initialsOf,
+  labourRules,
+  type LabourRules,
+  type ResolvedName,
+} from './tm-format';
 
 /**
  * The house's locale for shift times (F-1007): set once where the week is
@@ -16,14 +23,26 @@ import { EM, fmtTime, initialsOf, type ResolvedName } from './tm-format';
  */
 const ShiftClock = createContext<string | undefined>(undefined);
 
+/**
+ * The state whose labour rules sit on the country's ("US-CA", ADR 0330), as
+ * the gateway read it inside the house's country. Unset: the country's own.
+ */
+const LabourRegion = createContext<string | null | undefined>(undefined);
+
 export function ShiftClockProvider({
   locale,
+  labourRegion,
   children,
 }: {
   locale: string | undefined;
+  labourRegion?: string | null;
   children: ReactNode;
 }) {
-  return <ShiftClock.Provider value={locale}>{children}</ShiftClock.Provider>;
+  return (
+    <ShiftClock.Provider value={locale}>
+      <LabourRegion.Provider value={labourRegion}>{children}</LabourRegion.Provider>
+    </ShiftClock.Provider>
+  );
 }
 
 /** `fmtTime` on the house's clock, for whatever is inside a ShiftClockProvider. */
@@ -45,6 +64,16 @@ export function useHouseRegion(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The house's labour rules: its state's where one is built in (California),
+ * else its country's (founder S195), else none claimed.
+ */
+export function useHouseLabourRules(): LabourRules {
+  const region = useHouseRegion();
+  const state = useContext(LabourRegion);
+  return labourRules(state || region);
 }
 
 /** Initials, or an em dash when there is no name to shorten. */

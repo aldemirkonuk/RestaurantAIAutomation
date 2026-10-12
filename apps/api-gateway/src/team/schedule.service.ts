@@ -244,7 +244,9 @@ export class ScheduleService {
       settings,
       viewer,
       roster,
-      houseLabour(frame),
+      // `labourRegion` is the state already read inside the country (ADR
+      // 0305), so it reads back as itself ("US-CA" is California's key).
+      houseLabour({ ...frame, state_province: frame.labourRegion }),
     );
 
     return {
@@ -271,22 +273,30 @@ export class ScheduleService {
    * house's clock — "17:00" in a Turkish house, not "5p" (F-1007). The country
    * is not money and goes to every viewer. `null` when none is stated or it
    * could not be read; the client then falls back to its own clock.
+   * `labourRegion` is the state whose labour rules sit on top of the
+   * country's ("US-CA", ADR 0330); `null` when the country's own apply.
    */
-  private async houseFrame(
-    restaurantId: string,
-  ): Promise<{ timezone: string | null; country: string | null }> {
+  private async houseFrame(restaurantId: string): Promise<{
+    timezone: string | null;
+    country: string | null;
+    labourRegion: string | null;
+  }> {
     const { data, error } = await this.sb
       .from("restaurants")
-      .select("timezone, country")
+      .select("timezone, country, state_province")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
       this.logger.warn(
         `houseFrame: could not read the time zone of ${restaurantId}: ${error.message}`,
       );
-      return { timezone: null, country: null };
+      return { timezone: null, country: null, labourRegion: null };
     }
-    return { timezone: data?.timezone ?? null, country: data?.country ?? null };
+    return {
+      timezone: data?.timezone ?? null,
+      country: data?.country ?? null,
+      labourRegion: houseLabour(data).rules.region,
+    };
   }
 
   /**
@@ -297,7 +307,7 @@ export class ScheduleService {
   private async houseLabourOf(restaurantId: string): Promise<HouseLabour> {
     const { data, error } = await this.sb
       .from("restaurants")
-      .select("timezone, country")
+      .select("timezone, country, state_province")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
@@ -2152,6 +2162,8 @@ export class ScheduleService {
     let assumedBreakHours = 0;
     let assumedBreakShifts = 0;
     const byMember = new Map<string, number>();
+    /** Worked hours per person per house day, for a daily line (US-CA, DE). */
+    const byMemberDay = new Map<string, number>();
     for (const s of worked) {
       const w = workedHours(s, labour);
       totalHours += w;
@@ -2161,13 +2173,27 @@ export class ScheduleService {
         assumedBreakShifts += 1;
         assumedBreakHours += b.minutes / 60;
       }
-      if (s.member_id)
+      if (s.member_id) {
         byMember.set(s.member_id, (byMember.get(s.member_id) ?? 0) + w);
+        const k = `${s.member_id}|${String(s.shift_date ?? "").slice(0, 10)}`;
+        byMemberDay.set(k, (byMemberDay.get(k) ?? 0) + w);
+      }
     }
     const reviewAt = labour.rules.weeklyReviewHours;
     const overtime = [...byMember.entries()]
       .filter(([, h]) => reviewAt != null && h > reviewAt)
       .map(([memberId, h]) => ({ memberId, hours: Math.round(h * 10) / 10 }));
+    // A day over the daily line (ADR 0330: California's 8 hours, Labor Code
+    // §510; Germany's 10). Every shift that person works that day counts,
+    // so a split shift is one day. A review, never a price, like the week.
+    const dayAt = labour.rules.dailyReviewHours;
+    const overDay = [...byMemberDay.entries()]
+      .filter(([, h]) => dayAt != null && h > dayAt)
+      .map(([k, h]) => {
+        const [memberId, date] = k.split("|");
+        return { memberId, date, hours: Math.round(h * 10) / 10 };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
     const moneyVisible = seesMoney(viewer);
     const hours = {
       moneyVisible,
@@ -2184,6 +2210,12 @@ export class ScheduleService {
       weeklyReviewHours: reviewAt,
       labourCountry: labour.rules.country,
       overtime,
+      /** The house's daily line (8 in California, 10 in Germany); `null` = none. */
+      dailyReviewHours: dayAt,
+      /** The state whose rules sit on the country's ("US-CA"); `null` = none. */
+      labourRegion: labour.rules.region,
+      /** People over `dailyReviewHours` worked hours on a day. */
+      overDay,
     };
 
     if (!settings?.labor_tracking_enabled) return { enabled: false, ...hours };

@@ -1691,7 +1691,7 @@ export class TeamService {
   }> {
     const { data: house, error: houseErr } = await this.sb
       .from("restaurants")
-      .select("timezone, country")
+      .select("timezone, country, state_province")
       .eq("id", restaurantId)
       .maybeSingle();
     if (houseErr) refuse("read the house's clock", houseErr);
@@ -2017,7 +2017,7 @@ export class TeamService {
 
     const { data: house, error: houseErr } = await this.sb
       .from("restaurants")
-      .select("currency, country, timezone")
+      .select("currency, country, timezone, state_province")
       .eq("id", restaurantId)
       .maybeSingle();
     const labour = houseLabour(houseErr ? null : house);

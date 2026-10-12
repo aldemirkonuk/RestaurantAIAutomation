@@ -35,13 +35,12 @@ import {
   breakUnderMinimum,
   fmtHours,
   houseLocale,
-  labourRules,
   mondayOf,
   resolveName,
   shiftHours,
   todayIso,
 } from './tm-format';
-import { MutationError, useHouseRegion } from './tm-bits';
+import { MutationError, useHouseLabourRules, useHouseRegion } from './tm-bits';
 import { serverMessage } from './TeamOverlays';
 import { NotConfirmedError, saveOrConfirm } from './confirmSave';
 import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
@@ -141,7 +140,7 @@ export function ShiftSheet({
   // F-1020 / F-155: each house is told its own country's rule, and a house
   // whose country is not built in is told that, never another country's law.
   const region = useHouseRegion();
-  const rules = labourRules(region);
+  const rules = useHouseLabourRules();
   const counted = breakCounted(preview, rules);
   const law = rules.breakLaw;
   // F-1149: the hours in the break sentence carry the house's decimal mark.
@@ -158,7 +157,7 @@ export function ShiftSheet({
           ? `Recorded: ${counted.minutes} minutes, not counted as work.`
           : spanMin <= 0
             ? 'Nothing recorded.'
-            : rules.country === 'US'
+            : rules.country === 'US' && rules.breakSteps.length === 0
             ? 'Nothing recorded, so the whole shift counts as worked: US federal law sets no break. Type the real break to take it out.'
             : rules.country === null
               ? "Nothing recorded, so the whole shift counts as worked. Your country's break rules are not built in yet; type the real break to take it out."

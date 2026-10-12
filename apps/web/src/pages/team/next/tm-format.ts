@@ -265,7 +265,11 @@ export function art68MinimumBreak(spanMin: number): number {
    Regulations (48-hour average week, 20 minutes over 6 hours of work);
    Germany's Arbeitszeitgesetz (30 minutes over 6 hours, 45 over 9, a 10-hour
    day, 48-hour week). Any other country, or none known: nothing claimed,
-   nothing assumed — never Turkey's rules. */
+   nothing assumed — never Turkey's rules. Where the law sits in the state,
+   the state's row goes on top of its country's (ADR 0330): California keeps
+   the 40-hour week, adds an 8-hour day and a 30-minute meal period over 5
+   hours of work. The gateway reads the state inside the house's country and
+   sends it as `labourRegion` ("US-CA"). */
 
 export interface LabourRules {
   /** Whose rules; `null` = the house's country is not built in. */
@@ -313,6 +317,17 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
   },
 };
 
+/** A state's own rules, on top of its country's (`labourRegion`, ADR 0330). */
+export const SUBDIVISION_LABOUR_RULES: Readonly<Record<'US-CA', LabourRules>> = {
+  'US-CA': {
+    ...LABOUR_RULES.US,
+    dailyReviewHours: 8,
+    breakSteps: [30],
+    breakForWork: (w) => (w > 300 ? 30 : 0),
+    breakLaw: 'California Labor Code §512',
+  },
+};
+
 export const NO_LABOUR_RULES: LabourRules = {
   country: null,
   weeklyReviewHours: null,
@@ -322,9 +337,16 @@ export const NO_LABOUR_RULES: LabourRules = {
   breakLaw: null,
 };
 
-/** The rules for a house's region (`useHouseRegion`, or a country name or code). */
+/**
+ * The rules for a house's region (`useHouseRegion`, or a country name or
+ * code), or for the state the gateway read inside it (`labourRegion`, "US-CA").
+ */
 export function labourRules(regionOrCountry: string | null | undefined): LabourRules {
   const raw = (regionOrCountry ?? '').trim();
+  const state = raw.toUpperCase();
+  if (state in SUBDIVISION_LABOUR_RULES) {
+    return SUBDIVISION_LABOUR_RULES[state as keyof typeof SUBDIVISION_LABOUR_RULES];
+  }
   const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : countryByName(raw || null)?.code;
   return code && code in LABOUR_RULES
     ? LABOUR_RULES[code as keyof typeof LABOUR_RULES]

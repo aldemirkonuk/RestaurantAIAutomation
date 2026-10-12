@@ -346,6 +346,8 @@ export interface TeamNextData {
   /** The coverage rules themselves — `null` until they answer, never `[]`. */
   coverageRules: CoverageRule[] | null;
   overtimeNamed: { name: string; hours: number }[];
+  /** People over the house's daily line, by day (California's 8 hours, ADR 0330). */
+  overDayNamed: { name: string; date: string; hours: number }[];
   /** The roster itself. `null` until it answers — an empty team is not a silence. */
   members: TeamMember[] | null;
   /** The whole credential file. `null` until it answers; `[]` means none exist. */
@@ -632,6 +634,15 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     }));
   }, [weekQ.data, members]);
 
+  const overDayNamed = useMemo(() => {
+    const nameOf = new Map(members.map((m) => [m.id, resolveName(m).text]));
+    return (weekQ.data?.labor.overDay ?? []).map((o) => ({
+      name: nameOf.get(o.memberId) ?? 'unknown member',
+      date: o.date,
+      hours: o.hours,
+    }));
+  }, [weekQ.data, members]);
+
   /**
    * The gateway sends three fields the shared `WeekPayload` type does not name
    * yet (see LaborVM). Read through one narrowing here rather than sprinkling
@@ -694,6 +705,7 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
 
   return {
     overtimeNamed,
+    overDayNamed,
     weekStart,
     week: weekQ.data ?? null,
     members: membersQ.data === undefined ? null : members,

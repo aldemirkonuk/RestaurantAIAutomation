@@ -407,6 +407,57 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
     de.unmount();
   });
 
+  it("names California's meal period in a California house, on top of the US week (ADR 0330)", () => {
+    const sheet = (end_time: string) => (
+      <ShiftSheet
+        target={{ shift: { ...baseShift, start_time: '09:00', end_time } as never }}
+        members={[]}
+        scheduleId="sch1"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />
+    );
+    const caWrapper = ({ children }: { children: ReactNode }) =>
+      wrapper({
+        children: (
+          <ShiftClockProvider locale="en-Latn-US" labourRegion="US-CA">
+            {children}
+          </ShiftClockProvider>
+        ),
+      });
+    const long = render(sheet('17:00'), { wrapper: caWrapper });
+    expect(
+      screen.getByText(/counted with a 30-minute break: the legal minimum for it \(California Labor Code §512\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/US federal law sets no break/)).not.toBeInTheDocument();
+    long.unmount();
+    render(sheet('13:00'), { wrapper: caWrapper });
+    expect(screen.getByText(/it is too short to be owed a break/)).toBeInTheDocument();
+  });
+
+  it('names a day over 8 worked hours in a California house (ADR 0330)', async () => {
+    api.week = {
+      ...api.week,
+      country: 'US',
+      labourRegion: 'US-CA',
+      labor: {
+        enabled: true,
+        moneyVisible: false,
+        totalHours: 34,
+        weeklyReviewHours: 40,
+        dailyReviewHours: 8,
+        overtime: [],
+        overDay: [{ memberId: 'm-x', date: '2026-09-07', hours: 8.5 }],
+      },
+    };
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(
+      await within(labour).findByText(/Over 8h worked in a day — review before publishing:/),
+    ).toBeInTheDocument();
+    expect(within(labour).getByText(/No one is scheduled over 40 worked hours\./)).toBeInTheDocument();
+  });
+
   it("claims no law and assumes no break where the country's rules are not built in (F-1399)", () => {
     render(
       <ShiftSheet

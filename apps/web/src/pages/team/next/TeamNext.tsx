@@ -349,16 +349,17 @@ function TeamNextManager({
   /**
    * The house's country's labour rules (founder S195, 2026-10-11: "Every
    * house gets its rules based on its location"): Türkiye's 45-hour week,
-   * the US 40, 48 in GB and Germany; elsewhere none is claimed.
+   * the US 40, 48 in GB and Germany; elsewhere none is claimed. A state's
+   * own rules sit on top where the gateway read one (ADR 0330: California).
    */
-  const labour = labourRules(data.week?.country);
+  const labour = labourRules(data.week?.labourRegion || data.week?.country);
   const reviewAt = labour.weeklyReviewHours;
   /**
    * People over the house's week. A review, never a price: whether it is
    * overtime pay depends on agreements Mudavym does not hold (ADR 0215).
    * Shown to owner and manager alike — it is hours, not money.
    */
-  const reviewLine =
+  const weekLine =
     reviewAt === null ? (
       <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '8px 0 0' }}>
         {"Your country's working-time rules are not built in yet, so no one is flagged for a long week."}
@@ -373,6 +374,27 @@ function TeamNextManager({
         {`No one is scheduled over ${reviewAt} worked hours.`}
       </p>
     );
+  /** A day over the house's daily line (California's 8 hours, ADR 0330). Also a review. */
+  const dayAt = labour.dailyReviewHours;
+  const dayLine =
+    dayAt === null ? null : data.overDayNamed.length > 0 ? (
+      <p style={{ fontSize: 12, color: 'var(--ink-2)', margin: '4px 0 0' }}>
+        {`Over ${dayAt}h worked in a day — review before publishing: `}
+        {data.overDayNamed
+          .map((o) => `${o.name} (${fmtWeekday(o.date)}, ${o.hours}h)`)
+          .join(', ')}
+      </p>
+    ) : (
+      <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '4px 0 0' }}>
+        {`No one is scheduled over ${dayAt} worked hours in a day.`}
+      </p>
+    );
+  const reviewLine = (
+    <>
+      {weekLine}
+      {dayLine}
+    </>
+  );
   /**
    * The breaks the hours rest on (ADR 0215; founder 2026-09-21, "Take all
    * five", and 2026-09-22 round 6y for shifts of 4 hours or less): a shift
@@ -406,7 +428,10 @@ function TeamNextManager({
   const pendingLeave = (data.timeOff ?? []).filter((r) => r.status === 'pending').length;
 
   return (
-    <ShiftClockProvider locale={houseLocale(data.week?.country)}>
+    <ShiftClockProvider
+      locale={houseLocale(data.week?.country)}
+      labourRegion={data.week?.labourRegion ?? null}
+    >
     <div className="tm-page mudavym" data-ground={ground === 'charcoal' ? 'charcoal' : undefined}>
       <div className="tm-wrap">
         <header className="tm-head">

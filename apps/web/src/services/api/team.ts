@@ -188,6 +188,10 @@ export interface WeekPayload {
     weeklyReviewHours?: number
     /** People over `weeklyReviewHours` worked hours. The key is historical. */
     overtime?: Array<{ memberId: string; hours: number }>
+    /** The daily line: 8 in California, 10 in Germany; `null` = none (ADR 0330). */
+    dailyReviewHours?: number | null
+    /** People over `dailyReviewHours` worked hours on one day. */
+    overDay?: Array<{ memberId: string; date: string; hours: number }>
     // Owner only, below.
     totalCost?: number | null
     costComplete?: boolean
@@ -210,6 +214,8 @@ export interface WeekPayload {
   money?: HouseMoney
   /** The house's country, to every viewer: shift times print on its clock (F-1007). */
   country?: string | null
+  /** The state whose labour rules sit on the country's ("US-CA"); `null` = the country's (ADR 0330). */
+  labourRegion?: string | null
 }
 
 export interface MyWeekPayload {
