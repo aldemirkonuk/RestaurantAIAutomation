@@ -97,6 +97,23 @@ export interface OrderLine {
   asking: boolean;
   /** What happened to THIS line at the last save. */
   outcome: { ok: true; orderNumber: string } | { ok: false; message: string; uncertain?: boolean } | null;
+  /** The cart it was sent with (F-731), once it has been sent. */
+  placementId?: string;
+}
+
+/**
+ * One id for one cart (F-731). The gateway keeps one order per line, so this
+ * is what tells it the lines were placed together: the first cart to a
+ * vendor is then held for approval as a whole. A v4 uuid even where
+ * `crypto.randomUUID` is missing, because the gateway refuses anything else.
+ */
+function newPlacementId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
 let seq = 0;
@@ -517,6 +534,8 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
     setTally(null);
 
     const attempted = lines.filter((l) => !l.outcome?.ok).length;
+    // A retry of the same cart is the same placement, so it keeps its id.
+    const placementId = lines.find((l) => l.placementId)?.placementId ?? newPlacementId();
     let placed = 0;
     // Lines the gateway folded into an open pending order for the same wine and
     // vendor rather than writing a new one (F-1131): said apart, never as new.
@@ -546,7 +565,10 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
       if (line.outcome?.ok) { survivors.push(line); continue; }
       // Written down BEFORE the request: if the page dies while it is out,
       // the line comes back as "not known whether placed", never as unplaced.
-      writeSessionDraft(cartKey(scope), { lines: survivors.concat(lines.slice(i)), inFlight: line.key } satisfies KeptCart);
+      writeSessionDraft(cartKey(scope), {
+        lines: survivors.concat({ ...line, placementId }, lines.slice(i + 1)),
+        inFlight: line.key,
+      } satisfies KeptCart);
       try {
         const { data } = await apiClient.post<{ id?: string; orderNumber?: string; mergedIntoOpenOrder?: boolean }>(
           '/procurement/orders',
@@ -565,14 +587,15 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
             pricePackSize: num(line.price, group) !== null ? num(line.pricePackSize, group) : undefined,
             currency: num(line.price, group) !== null ? line.currency : undefined,
             managerNotes: line.notes.trim() || undefined,
+            placementId,
           },
         );
         if (!stillCurrent()) {
           if (data?.id || data?.orderNumber) {
             placed += 1;
-            survivors.push({ ...line, outcome: { ok: true, orderNumber: data?.orderNumber ?? data?.id ?? EM } });
+            survivors.push({ ...line, placementId, outcome: { ok: true, orderNumber: data?.orderNumber ?? data?.id ?? EM } });
           } else {
-            survivors.push({ ...line, outcome: { ok: false, uncertain: true, message: 'Mudavym sent back no receipt for this order. Check the order book before trying again.' } });
+            survivors.push({ ...line, placementId, outcome: { ok: false, uncertain: true, message: 'Mudavym sent back no receipt for this order. Check the order book before trying again.' } });
           }
           return leftMidway(lines.slice(i + 1));
         }
@@ -583,6 +606,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
         // account below is what the gateway answered, order number and all.
         survivors.push({
           ...line,
+          placementId,
           outcome: { ok: true, orderNumber: data?.orderNumber ?? data?.id ?? EM },
         });
       } catch (e) {
@@ -590,7 +614,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
           ?.response;
         if (!stillCurrent()) {
           const unsure = !status?.status || status.status >= 500;
-          survivors.push({ ...line, outcome: { ok: false, uncertain: unsure, message: unsure
+          survivors.push({ ...line, placementId, outcome: { ok: false, uncertain: unsure, message: unsure
             ? `Placement was not confirmed (${getErrorMessage(e)}). Check the order book before replacing this line.` : getErrorMessage(e) } });
           return leftMidway(lines.slice(i + 1));
         }
@@ -609,7 +633,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
           return;
         }
         const uncertain = !status?.status || status.status >= 500;
-        survivors.push({ ...line, outcome: { ok: false, uncertain, message: uncertain
+        survivors.push({ ...line, placementId, outcome: { ok: false, uncertain, message: uncertain
           ? `Placement was not confirmed (${getErrorMessage(e)}). Check the order book before replacing this line.` : getErrorMessage(e) } });
       }
     }

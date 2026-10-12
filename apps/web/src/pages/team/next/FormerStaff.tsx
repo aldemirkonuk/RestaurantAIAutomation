@@ -143,8 +143,9 @@ export function FormerStaffSheet({ onClose }: { onClose: () => void }) {
           shifts, leave, wage changes and credentials — stays here for{' '}
           {q.data?.retentionYears ?? 5} years after the removal and is then deleted. Their
           availability is not kept. None of it appears in the week, the roster or the leave list.
-          The line in What changed here that says they were removed keeps their name and position
-          after that: it is the house's record of who did what, and it is not deleted.
+          The line in What changed here that says they were removed is not deleted: it is the
+          house's record of who did what. After those {q.data?.retentionYears ?? 5} years it no
+          longer names them or their position; it reads “Former staff member”.
         </span>
       }
     >

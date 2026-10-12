@@ -267,6 +267,16 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   managerNotes?: string;
+
+  /**
+   * One id shared by every line of one cart placed together (F-731): the
+   * schema is one order per line, so this is what says they were one
+   * placement. A first cart to a vendor is held as a whole by it.
+   */
+  @ApiPropertyOptional()
+  @IsUUID()
+  @IsOptional()
+  placementId?: string;
 }
 
 export class UpdateOrderDto {

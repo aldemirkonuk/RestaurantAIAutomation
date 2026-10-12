@@ -234,6 +234,21 @@ describe('the act — the cart the rebuilt page could not build', () => {
     expect(api.post.mock.calls[2][1]).toMatchObject({ inventoryId: ITEM2.id });
   });
 
+  it('[REVERT-FAILS] sends one cart id with every line, and the same id on a retry, so a first cart is held whole (F-731)', async () => {
+    api.post
+      .mockResolvedValueOnce({ data: { orderNumber: 'PO-one' } })
+      .mockRejectedValueOnce(Object.assign(new Error('refused'), { response: { status: 400 } }))
+      .mockResolvedValue({ data: { orderNumber: 'PO-two' } });
+    draw(); await addLine(ITEM, '2'); await addLine(ITEM2, '3');
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(screen.getByTestId('new-order-tally')).toHaveTextContent(/1 of 2/));
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
+    const ids = api.post.mock.calls.map((c) => (c[1] as { placementId?: string }).placementId);
+    expect(ids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(ids).toEqual([ids[0], ids[0], ids[0]]);
+  });
+
   it('stops the remaining cart when the active house changes during a placement', async () => {
     let finish!: (value: unknown) => void;
     api.post.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));

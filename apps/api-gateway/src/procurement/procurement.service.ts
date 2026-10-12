@@ -393,6 +393,8 @@ interface OrderUnderTestRow {
   status?: string | null;
   requested_at?: string | null;
   created_at?: string | null;
+  /** The cart it was placed with (F-731); null for a line placed alone. */
+  placement_id?: string | null;
   currency?: string | null;
   procurement_order_items?: unknown;
 }
@@ -1580,6 +1582,9 @@ export class ProcurementService {
       // decision — the exact false claim this column exists to prevent — whereas
       // NULL reads correctly as "placed before anyone recorded this".
       created_by: asUuid(userId),
+      // The cart this line was placed with (F-731): every line of one
+      // placement shares it, so a first cart to a vendor is held whole.
+      placement_id: asUuid(dto.placementId),
       source: provenance?.source ?? null,
       recurring_order_id: asUuid(provenance?.recurringOrderId),
       // The lineage of a recurrence occurrence: which order carries the rule,
@@ -5545,7 +5550,7 @@ export class ProcurementService {
       const { data: orderRow, error } = await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, currency, procurement_order_items(price_uom, price_pack_size)",
+          "id, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, placement_id, currency, procurement_order_items(price_uom, price_pack_size)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -5667,7 +5672,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, order_number, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, currency, procurement_order_items(price_uom, price_pack_size)",
+          "id, order_number, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, placement_id, currency, procurement_order_items(price_uom, price_pack_size)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -5846,6 +5851,7 @@ export class ProcurementService {
       final_price: string | number | null;
       requested_at: string | null;
       created_at: string | null;
+      placement_id: string | null;
       currency: string | null;
       procurement_order_items?: unknown;
     }>;
@@ -5856,7 +5862,7 @@ export class ProcurementService {
           this.databaseService.supabase
             .from("procurement_orders")
             .select(
-              "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
+              "id, status, provider_id, inventory_id, requested_at, created_at, placement_id, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -5998,7 +6004,9 @@ export class ProcurementService {
    *   order judged among them by `isFirstOrderToVendorAmong` — the test the
    *   /orders walk and the /settings retrospective use too (F-731): any other
    *   order used to count, so a cancelled order, or the second line of the
-   *   first cart, made the vendor "known" and the rule never fired. `null`
+   *   first cart, made the vendor "known" and the rule never fired. Every
+   *   line of that first cart (one `placement_id`) is first, so the cart is
+   *   held whole. `null`
    *   when it cannot be told — no vendor on the row, or a read that failed.
    *   Never `false`: `decideApproval` treats `null` as untestable and refuses
    *   to fire `new_vendor` on it, which is the difference between a rule and a
@@ -6052,7 +6060,7 @@ export class ProcurementService {
         const { data, error } = await db
           .from("providers")
           .select(
-            "id, orders:procurement_orders!procurement_orders_provider_id_fkey(id, status, requested_at, created_at)",
+            "id, orders:procurement_orders!procurement_orders_provider_id_fkey(id, status, requested_at, created_at, placement_id)",
           )
           .in("id", chunk)
           .eq("orders.restaurant_id", restaurantId)
@@ -6124,6 +6132,7 @@ export class ProcurementService {
             status: row.status ?? null,
             requested_at: row.requested_at ?? null,
             created_at: row.created_at ?? null,
+            placement_id: row.placement_id ?? null,
           },
           sameVendor,
           sameVendor.length < FIRST_ORDER_PAGE,

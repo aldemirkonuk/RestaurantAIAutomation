@@ -1427,18 +1427,21 @@ describe("R1 — the retention job: credentials, shifts and leave, then wages, s
     data: [{ wage_rows_deleted: wage, departures_deleted: dep }],
     error: null,
   });
+  const NAMES_OK = (n = 0) => ({ data: [{ names_forgotten: n }], error: null });
 
   it("calls the credential purge, the shifts-and-leave purge, then the wage purge, in that order, and reports all five counts (founder 2026-09-22 round 6y; credentials 2026-09-25 round 4)", async () => {
     const rpc = rpcOf({
       purge_expired_credential_records: CRED_OK(4),
       purge_expired_shift_and_leave_records: SL_OK(2, 1),
       purge_expired_wage_records: WAGE_OK(3, 1),
+      forget_expired_removal_names: NAMES_OK(2),
     });
     const run = await svcWith(rpc).purgeExpired();
     expect(rpc.mock.calls.map((c) => c[0])).toEqual([
       "purge_expired_credential_records",
       "purge_expired_shift_and_leave_records",
       "purge_expired_wage_records",
+      "forget_expired_removal_names",
     ]);
     expect(run).toMatchObject({
       ok: true,
@@ -1447,7 +1450,30 @@ describe("R1 — the retention job: credentials, shifts and leave, then wages, s
       leaveRowsDeleted: 1,
       wageRowsDeleted: 3,
       departuresDeleted: 1,
+      namesForgotten: 2,
     });
+  });
+
+  it("F-704: after the wage purge, the removal's audit row loses the name and position, and a failed or countless answer fails the run", async () => {
+    for (const answer of [
+      { data: null, error: { message: "boom" } },
+      { data: [{ names_forgotten: null }], error: null },
+    ]) {
+      const rpc = rpcOf({
+        purge_expired_credential_records: CRED_OK(),
+        purge_expired_shift_and_leave_records: SL_OK(),
+        purge_expired_wage_records: WAGE_OK(),
+        forget_expired_removal_names: answer,
+      });
+      const run = await svcWith(rpc).purgeExpired();
+      expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+        "purge_expired_credential_records",
+        "purge_expired_shift_and_leave_records",
+        "purge_expired_wage_records",
+        "forget_expired_removal_names",
+      ]);
+      expect(run).toMatchObject({ ok: false, namesForgotten: null });
+    }
   });
 
   it("does not call the wage purge at all when the shifts-and-leave purge fails", async () => {
@@ -1571,12 +1597,14 @@ describe("R1 — the retention job: credentials, shifts and leave, then wages, s
       purge_expired_credential_records: CRED_OK(),
       purge_expired_shift_and_leave_records: SL_OK(),
       purge_expired_wage_records: WAGE_OK(),
+      forget_expired_removal_names: NAMES_OK(),
     });
     await svcWith(rpc).scheduled();
     expect(rpc.mock.calls.map((c) => c[0])).toEqual([
       "purge_expired_credential_records",
       "purge_expired_shift_and_leave_records",
       "purge_expired_wage_records",
+      "forget_expired_removal_names",
     ]);
   });
 });
