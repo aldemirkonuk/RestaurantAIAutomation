@@ -182,7 +182,7 @@ describe('F-1331 — a transfer moves the number on all three surfaces', () => {
     const [from, to] = screen.getAllByRole('combobox').slice(-2)
     await userEvent.selectOptions(from, RACK_A)
     await userEvent.selectOptions(to, RACK_B)
-    const qty = screen.getAllByRole('spinbutton').at(-1)!
+    const qty = screen.getByLabelText('Bottles to move')
     await userEvent.clear(qty)
     await userEvent.type(qty, '5')
     await userEvent.click(screen.getByRole('button', { name: /^move$/i }))
