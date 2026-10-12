@@ -325,6 +325,9 @@ const PROCUREMENT_ORDER_COLUMNS = new Set([
   "created_by",
   "source",
   "recurring_order_id",
+  // 20270105700000_a_removed_persons_name_fades_and_a_cart_is_one_placement.sql
+  // (F-731): the lines of one cart share a placement id.
+  "placement_id",
 ]);
 
 /** NOT NULL with no default. An insert missing any of these raises 23502. */
