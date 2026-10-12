@@ -44,7 +44,8 @@ import axios from "axios";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { RegisterAccountDto } from "./dto/register-account.dto";
 import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
-import { resolveSignUpTimezone } from "./sign-up-timezone";
+import { newHouseZoneColumns } from "./sign-up-timezone";
+import { resolveHouseCountry } from "../organizations/house-state-country";
 import {
   houseWriteError,
   isSharedPlace,
@@ -1874,6 +1875,10 @@ export class AuthService {
 
       const baseSlug = slugBase(dto.restaurantName);
       const coords = this.coordinateColumns(dto);
+      const zone = newHouseZoneColumns(
+        resolveHouseCountry(dto.country)?.code,
+        dto.timezone,
+      );
       const insertRow = (google_place_id: string | undefined) =>
         this.databaseService.supabase
           .from("restaurants")
@@ -1888,10 +1893,13 @@ export class AuthService {
             postal_code: dto.postalCode,
             neighborhood: dto.neighborhood,
             phone: dto.restaurantPhone,
-            // Item 62 (2026-09-27): the browser's zone, validated against
-            // Intl, or nothing — never a caller-typed string trusted as-is.
-            // See sign-up-timezone.ts.
-            timezone: resolveSignUpTimezone(dto.timezone),
+            // ADR 0304 PR-2 (F-1519): the address's zone, else the device's
+            // when it is one of the country's own clocks, else none — each
+            // written with its source. Item 62's "browser zone, else none"
+            // is now the second and third steps. See sign-up-timezone.ts.
+            timezone: zone.timezone,
+            timezone_source: zone.timezone_source,
+            timezone_source_zone: zone.timezone_source_zone,
             currency: dto.currency ?? null,
             organization_id: orgId,
             latitude: coords.latitude,
@@ -2030,6 +2038,10 @@ export class AuthService {
       // which the client omits) so the capture-contract guard can read every
       // column this insert writes — a conditional spread is unreadable to it.
       const coords = this.coordinateColumns(dto);
+      const zone = newHouseZoneColumns(
+        resolveHouseCountry(dto.country)?.code,
+        dto.timezone,
+      );
 
       const { data: restaurant, error: restErr } =
         await this.databaseService.supabase
@@ -2051,12 +2063,13 @@ export class AuthService {
             // "America/New_York"` — a fabricated answer for the same fault
             // ADR 0116 removed from the column itself
             // (`20260903170000_a_default_is_not_an_answer.sql` dropped the
-            // DEFAULT and left the column nullable). The web form sends
-            // `Intl.DateTimeFormat().resolvedOptions().timeZone`; this
-            // validates it against Intl and stores NULL for anything absent
-            // or not a real IANA zone rather than inventing a house's clock.
-            // See sign-up-timezone.ts.
-            timezone: resolveSignUpTimezone(dto.timezone),
+            // DEFAULT and left the column nullable). ADR 0304 PR-2 (F-1519)
+            // puts the address first: the country's own zone, else the
+            // device's when it is one of that country's clocks, else NULL,
+            // each written with its source. See sign-up-timezone.ts.
+            timezone: zone.timezone,
+            timezone_source: zone.timezone_source,
+            timezone_source_zone: zone.timezone_source_zone,
             // The money this house reports in, as CONFIRMED on the form's
             // currency step — or NULL, which means the question has not been
             // answered and every reader must say so rather than print a dollar

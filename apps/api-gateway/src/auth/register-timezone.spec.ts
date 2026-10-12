@@ -161,6 +161,14 @@ const FIRST_HOUSE_BASE: CreateFirstHouseDto = {
   country: "Türkiye",
 } as CreateFirstHouseDto;
 
+/**
+ * A country that keeps several clocks names no zone from the address, so
+ * the item-62 cases (a bad or absent browser zone gives none) still reach
+ * the browser's answer under ADR 0304 PR-2. Spain lists Madrid, Ceuta and
+ * the Canaries.
+ */
+const SEVERAL_CLOCKS = { city: "Madrid", country: "Spain" } as const;
+
 describe("resolveSignUpTimezone", () => {
   it("stores a real IANA zone as-is", () => {
     expect(resolveSignUpTimezone("Europe/Istanbul")).toBe("Europe/Istanbul");
@@ -205,7 +213,11 @@ describe("registerRestaurant — the house's timezone (item 62)", () => {
   it("writes NULL — never America/New_York — for an invalid zone", async () => {
     const { svc, inserts } = makeRegisterService();
 
-    await svc.registerRestaurant({ ...BASE, timezone: "not a real zone" });
+    await svc.registerRestaurant({
+      ...BASE,
+      ...SEVERAL_CLOCKS,
+      timezone: "not a real zone",
+    });
 
     const row = restaurantPayload(inserts);
     expect(row.timezone).toBeNull();
@@ -215,7 +227,7 @@ describe("registerRestaurant — the house's timezone (item 62)", () => {
   it("writes NULL — never America/New_York — when no zone arrived at all", async () => {
     const { svc, inserts } = makeRegisterService();
 
-    await svc.registerRestaurant({ ...BASE });
+    await svc.registerRestaurant({ ...BASE, ...SEVERAL_CLOCKS });
 
     const row = restaurantPayload(inserts);
     expect(row.timezone).toBeNull();
@@ -248,6 +260,7 @@ describe("createFirstHouse — the house's timezone (item 62)", () => {
 
     await svc.createFirstHouse("user-1", {
       ...FIRST_HOUSE_BASE,
+      ...SEVERAL_CLOCKS,
       timezone: "not a real zone",
     });
 
@@ -257,8 +270,83 @@ describe("createFirstHouse — the house's timezone (item 62)", () => {
   it("writes NULL when no zone arrived at all", async () => {
     const { svc, inserts } = makeFirstHouseService();
 
-    await svc.createFirstHouse("user-1", { ...FIRST_HOUSE_BASE });
+    await svc.createFirstHouse("user-1", {
+      ...FIRST_HOUSE_BASE,
+      ...SEVERAL_CLOCKS,
+    });
 
     expect(restaurantPayload(inserts).timezone).toBeNull();
   });
+});
+
+/**
+ * ADR 0304 PR-2 (F-1519): both sign-up routes take the zone from the address
+ * first, then the browser's when it is one of the country's own clocks, then
+ * none, and write where it came from. Before this change they wrote
+ * `resolveSignUpTimezone(dto.timezone)`: a Türkiye house signed up from a
+ * New York laptop got New York's clock, with no source.
+ */
+describe("sign-up — the house's zone comes from its address (ADR 0304 PR-2)", () => {
+  const routes = [
+    {
+      name: "registerRestaurant",
+      run: async (extra: Partial<RegisterRestaurantDto>) => {
+        const { svc, inserts } = makeRegisterService();
+        await svc.registerRestaurant({ ...BASE, ...extra });
+        return restaurantPayload(inserts);
+      },
+    },
+    {
+      name: "createFirstHouse",
+      run: async (extra: Partial<CreateFirstHouseDto>) => {
+        const { svc, inserts } = makeFirstHouseService();
+        await svc.createFirstHouse("user-1", { ...FIRST_HOUSE_BASE, ...extra });
+        return restaurantPayload(inserts);
+      },
+    },
+  ];
+
+  for (const route of routes) {
+    describe(route.name, () => {
+      it("writes the one-clock country's zone over a device elsewhere, from the address", async () => {
+        const row = await route.run({
+          country: "Türkiye",
+          timezone: "America/New_York",
+        });
+        expect(row.timezone).toBe("Europe/Istanbul");
+        expect(row.timezone_source).toBe("address");
+        expect(row.timezone_source_zone).toBe("Europe/Istanbul");
+      });
+
+      it("writes the device's zone, from the device, when it is one of the country's clocks", async () => {
+        const row = await route.run({
+          ...SEVERAL_CLOCKS,
+          timezone: "Europe/Madrid",
+        });
+        expect(row.timezone).toBe("Europe/Madrid");
+        expect(row.timezone_source).toBe("device");
+        expect(row.timezone_source_zone).toBe("Europe/Madrid");
+      });
+
+      it("writes no zone and no source for a device in another country", async () => {
+        const row = await route.run({
+          ...SEVERAL_CLOCKS,
+          timezone: "Europe/Istanbul",
+        });
+        expect(row.timezone).toBeNull();
+        expect(row.timezone_source).toBeNull();
+        expect(row.timezone_source_zone).toBeNull();
+      });
+
+      it("takes a United States house's zone from the device, since the state is not read yet", async () => {
+        const row = await route.run({
+          city: "Chicago",
+          country: "United States",
+          timezone: "America/Chicago",
+        });
+        expect(row.timezone).toBe("America/Chicago");
+        expect(row.timezone_source).toBe("device");
+      });
+    });
+  }
 });

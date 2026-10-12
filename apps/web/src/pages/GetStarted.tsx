@@ -597,11 +597,14 @@ function GetStartedSteps() {
             </div>
           </div>
           <div className="border-y border-[#211f1b]/15 py-4 text-sm">
-            <span>Timezone · {timezone ?? 'Not detected'}</span>
+            <span>Timezone · from the address</span>
+            {/* ADR 0304 PR-2 (F-1519): the gateway takes the country's own
+                clock first, then this device's when it is one of that
+                country's clocks, then none. */}
             <p className="mt-2 text-xs text-[#6d685f]">
               {timezone
-                ? "The timezone is this device's clock, not the address's. If the restaurant keeps another, change it in Settings once the house is open."
-                : "This device did not give a timezone. Set the restaurant's in Settings once the house is open."}
+                ? `The house takes the clock its country keeps. Where the country keeps several, it takes this device's (${timezone}) if it is one of them, and otherwise none. Change it in Settings once the house is open.`
+                : "The house takes the clock its country keeps. This device did not give a timezone, so where the country keeps several, set the restaurant's in Settings once the house is open."}
             </p>
           </div>
           <CurrencyStep country={country} choice={currencyChoice} onChange={setCurrencyChoice} />

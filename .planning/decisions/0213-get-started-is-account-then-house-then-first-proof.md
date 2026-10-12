@@ -110,6 +110,19 @@ routes that insert a `restaurants` row (`auth.service.ts` twice,
 `organizations.service.ts` once; grepped 2026-09-28) follow item 62: the
 browser's zone, else none. That CLAIMS
 row is now resolved, and the register entry is struck.]**
+**[Amended 2026-10-12 by ADR 0304 PR-2 (F-1519): "Browser zone, else none"
+is now the address, then the owner's device, then none, on both SIGN-UP
+routes. `registerRestaurant` and `createFirstHouse` write
+`newHouseZoneColumns` (`sign-up-timezone.ts`): the country's own zone with
+`timezone_source` = `address`; else the browser's zone, still validated by
+`resolveSignUpTimezone`, with source `device` when it is one of that
+country's clocks; else `null` with no source. GetStarted no longer says the
+zone is this device's clock. CLAIMS row
+`ITEM-62-SIGNUP-TIMEZONE-NO-NY-DEFAULT` is amended in place to check this.
+`createLocation` already took the address first (F-1400) but still writes
+no `device` source; that and the rest of ADR 0304's PR-2 row (the US state
+order, the live preview line, clearing a stale state) are not in this
+change.]**
 **What a `null` zone means downstream is not uniform yet, and this bracket
 does not change it. At `origin/main` 29ba4e820 the low-stock digest runs
 EVERY house on a hard-coded New York clock

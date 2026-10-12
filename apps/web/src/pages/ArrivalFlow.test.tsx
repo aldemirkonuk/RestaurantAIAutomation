@@ -907,12 +907,13 @@ describe('approved arrival flow', () => {
 })
 
 describe('a new owner is told what each step does, and a reload resumes it', () => {
-  it('says the timezone is this device\'s clock, not the address\'s (F-003)', async () => {
+  it('says the timezone comes from the address first, then this device (F-003, F-1519)', async () => {
     await toRestaurantStep()
-    expect(screen.queryByText(/address sets the house's timezone/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/The timezone is this device's clock, not the address's/)).not.toBeInTheDocument()
+    expect(screen.getByText('Timezone · from the address')).toBeInTheDocument()
     expect(
-      screen.getByText(/The timezone is this device's clock, not the address's/),
-    ).toHaveTextContent('change it in Settings once the house is open')
+      screen.getByText(/The house takes the clock its country keeps/),
+    ).toHaveTextContent(/this device's .* if it is one of them.*Change it in Settings once the house is open/)
   })
 
   it('says how to go on when the restaurant is not on Google yet (F-005)', async () => {
