@@ -25,6 +25,8 @@ import {
   getDiscardedLines,
   restoreMenuItem,
   reviewMenuItem,
+  listMenuSections,
+  renameMenuSection,
   type ActiveMenu,
   type DiscardedLine,
   type MenuLine,
@@ -67,6 +69,9 @@ vi.mock('../../../services/api/menus', async () => {
     getDiscardedLines: vi.fn(),
     restoreMenuItem: vi.fn(),
     reviewMenuItem: vi.fn(),
+    // ADR 0340: the live menus' sections, and a section renamed from a line.
+    listMenuSections: vi.fn().mockResolvedValue([]),
+    renameMenuSection: vi.fn(),
     // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
     // mount; here it answers "none kept" so this file tests the current menu.
     listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
@@ -114,6 +119,8 @@ const mockDiscarded = vi.mocked(getDiscardedLines);
 const mockRestore = vi.mocked(restoreMenuItem);
 const mockReview = vi.mocked(reviewMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
+const mockSections = vi.mocked(listMenuSections);
+const mockRename = vi.mocked(renameMenuSection);
 
 function line(over: Partial<MenuLine> = {}): MenuLine {
   return {
@@ -940,5 +947,103 @@ describe('MenuNext — a house switch starts the page empty (F-1004)', () => {
     await waitFor(() => expect(mockGetMenu).toHaveBeenCalledWith('r2'));
     expect(await screen.findByRole('button', { name: 'Edit Turkish coffee' })).toBeInTheDocument();
     expect(screen.queryByTestId('menu-edit-said')).not.toBeInTheDocument();
+  });
+});
+
+// ADR 0340 lane 6: one live menu per kind on /menu.
+describe('MenuNext — one live menu per kind', () => {
+  const KINDS = [
+    { menuId: 'm-drinks', kind: 'beverage', name: 'Drinks', status: 'active' },
+    { menuId: 'm-food', kind: 'food', name: 'Food', status: 'active' },
+  ];
+  const drinks = line({ id: 'd1', name: 'Raki', menu_id: 'm-drinks', menu_type: 'beverage', section_id: 's-anise', category: 'spirit' });
+  const dish = line({ id: 'f1', name: 'Lamb', menu_id: 'm-food', menu_type: 'food', section_id: null, category: null, by_glass_price: null });
+  beforeEach(() => {
+    auth.role = 'manager';
+    mockSections.mockReset();
+    mockSections.mockImplementation(async (id: string) =>
+      id === 'm-drinks'
+        ? [
+            {
+              id: 's-anise',
+              menu_id: 'm-drinks',
+              parent_id: null,
+              position: 0,
+              title: 'Anise',
+              title_as_read: 'Anise',
+              key: 'anise',
+              drink_category: 'spirit',
+              suggested_kind: null,
+              suggested_category: null,
+              suggestion_confidence: null,
+              inherited_from_section_id: null,
+              confirmed_by: null,
+              confirmed_at: null,
+            },
+          ]
+        : [],
+    );
+    mockRename.mockReset();
+  });
+  afterEach(() => {
+    auth.role = null;
+  });
+
+  it('counts the live lines per kind, and says a house has one current menu of each kind', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm-drinks', kinds: KINDS, items: [drinks, dish] }));
+    mount();
+    expect(
+      await screen.findByText('2 lines on the current menus: Drinks 1 · Food 1. A house has one current menu of each kind.'),
+    ).toBeInTheDocument();
+  });
+
+  it('with one kind live, the sentence is the one it always was, and Add asks no menu', async () => {
+    mockGetMenu.mockResolvedValue(menu({ kinds: [KINDS[0]] }));
+    mount();
+    expect(await screen.findByText('1 line on the current menu.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Menu')).toBeNull();
+  });
+
+  it('Add asks which menu; a dish goes to Food with no drink price or section', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm-drinks', kinds: KINDS, items: [drinks, dish] }));
+    mockAdd.mockResolvedValue({} as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Menu'), { target: { value: 'm-food' } });
+    expect(screen.queryByLabelText('Glass')).toBeNull();
+    expect(screen.getByTestId('menu-add-dish-note')).toHaveTextContent('A dish is added with no price');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Köfte' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalledWith('m-food', { name: 'Köfte' }));
+    expect(await screen.findByTestId('menu-add-price-note')).toHaveTextContent(
+      'Added to the Food menu, Unsorted, with no price: a dish has no house price',
+    );
+  });
+
+  it('Add on Drinks posts to the Drinks menu with its prices', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm-drinks', kinds: KINDS, items: [drinks, dish] }));
+    mockAdd.mockResolvedValue({} as never);
+    mount();
+    await screen.findByLabelText('Menu');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ouzo' } });
+    fireEvent.change(screen.getByLabelText('Glass'), { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalledWith('m-drinks', { name: 'Ouzo', category: undefined, by_glass_price: 90, bottle_price: undefined }));
+  });
+
+  it('a line in a section shows its title, and Section renames that section', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm-drinks', kinds: KINDS, items: [drinks, dish] }));
+    mockRename.mockResolvedValue({});
+    mount();
+    const row = (await screen.findByText('Raki')).closest('tr') as HTMLElement;
+    await waitFor(() => expect(row).toHaveTextContent('Anise'));
+    expect(row).toHaveTextContent('Drinks');
+    fireEvent.click(within(row).getByRole('button', { name: 'Edit Raki' }));
+    const field = screen.getByLabelText('Section of Raki');
+    expect(field).toHaveValue('Anise');
+    fireEvent.change(field, { target: { value: 'Anise spirits' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockRename).toHaveBeenCalledWith('m-drinks', 's-anise', 'Anise spirits'));
+    expect(mockReview).not.toHaveBeenCalled();
+    expect(await screen.findByTestId('menu-edit-said')).toHaveTextContent('Raki: Saved: Section title.');
   });
 });

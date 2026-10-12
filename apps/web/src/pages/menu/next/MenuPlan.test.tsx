@@ -8,14 +8,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, kindWords, orderedRows, planSentence } from './MenuPlan';
-import { makeCurrentSentence } from './MenuVersions';
-import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
+import { MenuPlan, kindWords, makeLiveArgs, orderedRows, planSentence, unsureGroups, unsureWords } from './MenuPlan';
+import { makeCurrentSentence, untouchedKinds } from './MenuVersions';
+import {
+  confirmMenuSection,
+  getMenuPlan,
+  keepGoneLine,
+  listMenuSections,
+  makeMenuCurrent,
+  moveMenuSection,
+  type MenuPlan as Plan,
+  type MenuSection,
+  type PlanLine,
+} from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 
 vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
-  return { ...actual, getMenuPlan: vi.fn(), makeMenuCurrent: vi.fn() };
+  return {
+    ...actual,
+    getMenuPlan: vi.fn(),
+    makeMenuCurrent: vi.fn(),
+    listMenuSections: vi.fn(),
+    moveMenuSection: vi.fn(),
+    confirmMenuSection: vi.fn(),
+    confirmMenuLine: vi.fn(),
+    keepGoneLine: vi.fn(),
+  };
 });
 vi.mock('../../../services/api/pricing', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/pricing')>('../../../services/api/pricing');
@@ -26,6 +45,10 @@ const mockPlan = vi.mocked(getMenuPlan);
 const mockMake = vi.mocked(makeMenuCurrent);
 const mockLock = vi.mocked(lockPrice);
 const mockRelease = vi.mocked(releasePriceLock);
+const mockSections = vi.mocked(listMenuSections);
+const mockMove = vi.mocked(moveMenuSection);
+const mockConfirmSection = vi.mocked(confirmMenuSection);
+const mockKeep = vi.mocked(keepGoneLine);
 
 const person = (name: string | null) => ({ userId: 'u1', name });
 
@@ -104,6 +127,11 @@ beforeEach(() => {
   mockMake.mockReset();
   mockLock.mockReset();
   mockRelease.mockReset();
+  mockSections.mockReset();
+  mockSections.mockResolvedValue([]);
+  mockMove.mockReset();
+  mockConfirmSection.mockReset();
+  mockKeep.mockReset();
 });
 
 describe('the plan in one sentence', () => {
@@ -145,7 +173,7 @@ describe('the plan in one sentence', () => {
 describe('F-696: the plan says the current menu it takes off, and the lines that leave with it', () => {
   it('leads the sentence with the menu that ends and counts its lines', () => {
     expect(planSentence(plan({ retiring: [{ menuId: 'menu-old', name: 'Wine list', lines: 42 }] }))).toBe(
-      'Choosing this menu takes Wine list off: its 42 lines leave the menu. A house has one current menu at a time. Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 locked price is not on this menu and stays locked.',
+      'Choosing this menu takes Wine list off: its 42 lines leave the menu. A house has one current menu of each kind. Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 locked price is not on this menu and stays locked.',
     );
     expect(planSentence(plan({ retiring: [{ menuId: 'menu-old', name: null, lines: 1 }] }))).toMatch(
       /^Choosing this menu takes the current menu off: its 1 line leaves the menu\./,
@@ -443,5 +471,212 @@ describe('the make-current sentence (F-919)', () => {
     );
     expect(s).toMatch(/Barolo \(bottle, locked at TRY\s1,250\.00\)/);
     expect(s).not.toContain('1250.00');
+  });
+});
+
+// ADR 0340 lane 6: a read split by kind is reviewed and made live together,
+// in rule 18's order (Conflicts, Unsure, Price changed, New, Gone, Same).
+const DRINKS = { menuId: 'menu-new', kind: 'beverage', current: false, partRead: null, lines: 2, unsure: 0, conflicts: 1 };
+const FOOD = { menuId: 'menu-food', kind: 'food', current: false, partRead: null, lines: 3, unsure: 3, conflicts: 0 };
+const CONFLICT = {
+  wineLibraryId: 'mw-2',
+  inventoryId: 'inv-2',
+  kind: 'bottle' as const,
+  name: 'Chianti',
+  prices: [
+    { price: 55, menuId: 'menu-new', menuItemId: 'n1', live: false, menuKind: 'beverage' },
+    { price: 58, menuId: 'menu-des', menuItemId: 'd1', live: true, menuKind: 'desserts' },
+  ],
+};
+const KITCHEN = { kind: 'bottle' as const, menuPrice: null, housePrice: null, result: 'kitchen' as const, lastSet: null, lock: null };
+const FOOD_LINES = [
+  line({ menuItemId: 'f1', name: 'Lamb', menuId: 'menu-food', menuKind: 'food', sectionId: 's-mains', lineKind: null, bottle: KITCHEN }),
+  line({ menuItemId: 'f2', name: 'Fish', menuId: 'menu-food', menuKind: 'food', sectionId: 's-mains', lineKind: null, bottle: KITCHEN }),
+  line({ menuItemId: 'f3', name: 'Mystery', menuId: 'menu-food', menuKind: 'food', sectionId: null, lineKind: null, bottle: KITCHEN }),
+];
+const SECTION = (over: Partial<MenuSection>): MenuSection => ({
+  id: 's-mains',
+  menu_id: 'menu-food',
+  parent_id: null,
+  position: 0,
+  title: 'Mains',
+  title_as_read: 'Mains',
+  key: 'mains',
+  drink_category: null,
+  suggested_kind: null,
+  suggested_category: null,
+  suggestion_confidence: null,
+  inherited_from_section_id: null,
+  confirmed_by: null,
+  confirmed_at: null,
+  ...over,
+});
+
+function batchPlan(over: Partial<Plan> = {}): Plan {
+  return plan({
+    lines: [line(), BAROLO, ...FOOD_LINES],
+    menus: [DRINKS, FOOD],
+    conflicts: [CONFLICT],
+    unsure: [
+      { menuId: 'menu-food', menuItemId: 'f1', name: 'Lamb', reason: 'kind_not_decided' },
+      { menuId: 'menu-food', menuItemId: 'f2', name: 'Fish', reason: 'kind_not_decided' },
+      { menuId: 'menu-food', menuItemId: 'f3', name: 'Mystery', reason: 'kind_not_decided' },
+    ],
+    gone: [{ menuId: 'menu-live-food', menuItemId: 'g1', name: 'Old soup', kind: 'food', sectionKey: 'soups' }],
+    ...over,
+  });
+}
+
+function mountBatch(onDone = vi.fn()) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MenuPlan menuId="menu-new" batchIds={['menu-food']} canManage onDone={onDone} onCancel={vi.fn()} />
+    </QueryClientProvider>,
+  );
+  return { onDone };
+}
+
+describe('the review per kind (ADR 0340 rule 18)', () => {
+  it('Unsure lines group by section; a line in no section stands alone; counted up front', () => {
+    const groups = unsureGroups(batchPlan().unsure ?? [], batchPlan().lines, [SECTION({})]);
+    expect(groups.map((g) => [g.title, g.lines.length])).toEqual([
+      ['Mains', 2],
+      ['Mystery', 1],
+    ]);
+    expect(unsureWords(groups)).toBe('1 section, 3 lines to check');
+  });
+
+  it('plans the batch, counts what to answer first, and holds make-live while anything blocks', async () => {
+    mockPlan.mockResolvedValue(batchPlan());
+    mockSections.mockImplementation(async (id) => (id === 'menu-food' ? [SECTION({})] : []));
+    mountBatch();
+    expect(await screen.findByTestId('menu-plan-counts')).toHaveTextContent(
+      '1 wine at two prices to pick · 1 section, 3 lines to check · 1 price changed · 1 gone',
+    );
+    expect(mockPlan).toHaveBeenCalledWith('menu-new', ['menu-food']);
+    expect(await screen.findByText(/Unsure, 1 section, 3 lines to check/)).toBeInTheDocument();
+    expect(screen.getByTestId('conflict-pick')).toHaveTextContent('Chianti (bottle)');
+    expect(screen.getByRole('button', { name: 'Make Drinks + Food live' })).toBeDisabled();
+  });
+
+  it('a blocked kind is left as a draft with one tap, and the plan is read again without it', async () => {
+    mockPlan.mockResolvedValueOnce(batchPlan());
+    mockPlan.mockResolvedValueOnce(plan({ menus: [{ ...DRINKS, conflicts: 0 }], conflicts: [], unsure: [], gone: [] }));
+    mountBatch();
+    fireEvent.click(await screen.findByRole('button', { name: 'Leave Food as a draft' }));
+    await waitFor(() => expect(mockPlan).toHaveBeenLastCalledWith('menu-new', []));
+    expect(await screen.findByTestId('menu-plan-left')).toHaveTextContent('Left as a draft: Food.');
+    expect(await screen.findByRole('button', { name: 'Make it current' })).toBeEnabled();
+  });
+
+  it('a picked price is sent with make-live; nothing is written before', async () => {
+    mockPlan.mockResolvedValue(batchPlan({ menus: [DRINKS, { ...FOOD, unsure: 0 }], unsure: [], gone: [] }));
+    const result = { outcome: 'made_current' as const, menuId: 'menu-new', previousMenuIds: [], lines: 5, priceSync: { changed: 1 }, flagged: 0, failed: [] };
+    mockMake.mockResolvedValue(result);
+    const { onDone } = mountBatch();
+    const live = await screen.findByRole('button', { name: 'Make Drinks + Food live' });
+    expect(live).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /58/ }));
+    expect(mockMake).not.toHaveBeenCalled();
+    fireEvent.click(live);
+    await waitFor(() =>
+      expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1', false, {
+        menuIds: ['menu-food'],
+        picks: [{ wineLibraryId: 'mw-2', kind: 'bottle', price: 58 }],
+        partReadAcceptedKinds: [],
+      }),
+    );
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(result));
+  });
+
+  it('"Food" on an Unsure section of another kind moves it to Food, then says its lines are dishes', async () => {
+    mockPlan.mockResolvedValue(
+      batchPlan({
+        menus: [DRINKS, FOOD],
+        conflicts: [],
+        gone: [],
+        lines: [line({ menuItemId: 'f1', name: 'Lamb', menuId: 'menu-new', menuKind: 'beverage', sectionId: 's-x' })],
+        unsure: [{ menuId: 'menu-new', menuItemId: 'f1', name: 'Lamb', reason: 'no_drink_category' }],
+      }),
+    );
+    mockSections.mockImplementation(async (id) => (id === 'menu-new' ? [SECTION({ id: 's-x', menu_id: 'menu-new', title: 'Grill' })] : []));
+    mockMove.mockResolvedValue({ id: 's-x', from_menu_id: 'menu-new', menu_id: 'menu-food', kind: 'food', created_menu: false, line_ids: ['f1'], resolved: 0 });
+    mockConfirmSection.mockResolvedValue({ id: 's-x', menu_id: 'menu-food', line_kind: 'dish', applied_line_ids: ['f1'], left_line_ids: [], resolved: 1 });
+    mountBatch();
+    const group = await screen.findByTestId('menu-plan-unsure-group');
+    await waitFor(() => expect(group).toHaveTextContent('Grill'));
+    fireEvent.click(within(group).getByRole('button', { name: 'Food' }));
+    await waitFor(() => expect(mockConfirmSection).toHaveBeenCalledWith('menu-food', 's-x', 'dish', undefined));
+    expect(mockMove).toHaveBeenCalledWith('menu-new', 's-x', 'food');
+    expect(await screen.findByText('Grill is Food.')).toBeInTheDocument();
+  });
+
+  it('a gone line is kept onto the draft of its kind, by its button or by a swipe right', async () => {
+    mockPlan.mockResolvedValue(batchPlan({ menus: [DRINKS, { ...FOOD, unsure: 0 }], unsure: [], conflicts: [] }));
+    mockKeep.mockResolvedValue({ line_id: 'k1', menu_id: 'menu-food', section_id: null, kept_from_line_id: 'g1' });
+    mountBatch();
+    const row = await screen.findByTestId('menu-plan-gone-line');
+    fireEvent.pointerDown(row, { clientX: 10 });
+    fireEvent.pointerUp(row, { clientX: 30 });
+    expect(mockKeep).not.toHaveBeenCalled();
+    fireEvent.pointerDown(row, { clientX: 10 });
+    fireEvent.pointerUp(row, { clientX: 120 });
+    await waitFor(() => expect(mockKeep).toHaveBeenCalledWith('menu-food', 'g1'));
+    fireEvent.click(within(row).getByRole('button', { name: 'Keep Old soup on the menu' }));
+    await waitFor(() => expect(mockKeep).toHaveBeenCalledTimes(2));
+  });
+
+  it('a menu of the batch made live in a batch is retired per kind, in the sentence', () => {
+    expect(
+      planSentence(batchPlan({ retiring: [{ menuId: 'old-food', name: null, lines: 4, kind: 'food' }] })),
+    ).toMatch(/^Making these menus live takes the live Food menu off: its 4 lines leave the menu\. A house has one current menu of each kind\./);
+  });
+});
+
+describe('the make-live call', () => {
+  it('one menu with no pick is the call it always was; a batch or a pick is the batch call', () => {
+    expect(makeLiveArgs(['m1'], {}, [], true, [])).toEqual({ menuId: 'm1', partReadAccepted: true, batch: undefined });
+    expect(makeLiveArgs(['m1', 'm2'], {}, [], true, ['food'])).toEqual({
+      menuId: 'm1',
+      partReadAccepted: false,
+      batch: { menuIds: ['m2'], picks: [], partReadAcceptedKinds: ['food'] },
+    });
+    expect(makeLiveArgs(['m1'], { 'mw-2:bottle': 58, 'gone:glass': 1 }, [CONFLICT], false, []).batch?.picks).toEqual([
+      { wineLibraryId: 'mw-2', kind: 'bottle', price: 58 },
+    ]);
+  });
+});
+
+describe('the make-live sentence per kind (rule 20)', () => {
+  const made = (kind: string, over = {}) => ({
+    menuId: `m-${kind}`,
+    kind,
+    outcome: 'made_current' as const,
+    madeCurrentAt: '2026-10-12T10:00:00Z',
+    recarried: false,
+    carryFinished: true,
+    lines: 2,
+    ...over,
+  });
+  const base = { outcome: 'made_current' as const, menuId: 'm-beverage', previousMenuIds: [], lines: 5, priceSync: { changed: 3 }, flagged: 0, failed: [] };
+
+  it('names the kinds updated and the live kinds left untouched', () => {
+    const r = { ...base, menus: [made('beverage'), made('desserts')] };
+    expect(untouchedKinds(r, ['beverage', 'food'])).toEqual(['food']);
+    expect(makeCurrentSentence(r, undefined, ['food'])).toBe('Drinks + Desserts updated · 5 lines, 3 prices set from this menu · Food untouched.');
+  });
+
+  it('one menu with no other kind live reads as it always did', () => {
+    const r = { ...base, menus: [made('beverage')] };
+    expect(makeCurrentSentence(r, undefined, untouchedKinds(r, ['beverage']))).toBe(
+      'This is now the current menu: 5 lines, 3 prices set from this menu.',
+    );
+    expect(untouchedKinds({ ...base, menus: undefined }, ['food'])).toEqual([]);
+  });
+
+  it('a carry that did not write every price is said', () => {
+    const r = { ...base, menus: [made('beverage', { carryFinished: false }), made('food')] };
+    expect(makeCurrentSentence(r)).toMatch(/Drinks: not every price was written yet; choosing that menu again writes the rest\.$/);
   });
 });

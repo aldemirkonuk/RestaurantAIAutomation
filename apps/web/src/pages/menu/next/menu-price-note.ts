@@ -1,4 +1,4 @@
-import type { MenuImportReviewItem } from '../../../services/api/menus';
+import { kindName, type MenuImportReviewItem } from '../../../services/api/menus';
 import { formatMoney } from '@/lib/currency';
 
 /**
@@ -8,11 +8,22 @@ import { formatMoney } from '@/lib/currency';
  * moved. Null when there is nothing to say (no price on the line, or a line
  * that matches no wine the house stocks). `currency` is the house's: a locked
  * price is printed in it, as the table above the note prints it (F-1003).
+ *
+ * `menuKind` (ADR 0340) is the live menu the line went on. A line added to a
+ * Food or Desserts menu is a dish: it links no wine and moves no house price,
+ * so the note says where it went instead of saying nothing.
  */
 export function housePriceNote(
   item: Pick<MenuImportReviewItem, 'priceSync' | 'priceSyncError' | 'priceHeld'> | null | undefined,
   currency: string | null,
+  menuKind: string | null = null,
 ): { tone: 'alert' | 'said'; text: string } | null {
+  if (item && (menuKind === 'food' || menuKind === 'desserts')) {
+    return {
+      tone: 'said',
+      text: `Added to the ${kindName(menuKind)} menu, Unsorted, with no price: a dish has no house price, and its price comes from a menu read.`,
+    };
+  }
   // ADR 0193 round 3 (L5): a kind a lock held is always named, even when the
   // other kind changed -- "changed" alone would hide the hold.
   const held = item?.priceHeld ?? [];

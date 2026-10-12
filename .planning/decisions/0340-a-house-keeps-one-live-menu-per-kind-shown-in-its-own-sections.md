@@ -645,6 +645,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 4 (`fix/menus-union-readers-drink-kinds`, union readers read drink lines) | The cellar and beverages (through `readCurrentMenuLines(..., {drinks: true})`), vendor supply and price locks read only lines `lineIsDrink` keeps, on any live menu; promotions offers only lines not marked `kitchen_line` (`offerMenuLines`); price-lock rows name their menu and kind (`onMenus`). Migration `20270107600000` recreates `house_beverage_ledger` with a 35th column `menu_price_conflict`: drink lines only, a product counted once across menus, two prices named instead of `max()`, the section's own title. SQL test T1-T8 PASS on the PGlite corpus and FAIL at T2 without the migration; 8 SQL mutations, 7 code mutations and both claim mutations killed; two existing claim rows edited in place, no new fragment; corrections in the Review log, "Lane 4 corrections". Not run: G0, L8, Postgres other than PGlite, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 5a (`feat/menus-kindof`, heading classifier and golden set) | `kindOf(heading, line)` and `classifyHeading` in `menu-line-view.ts` read a heading or a section's heading path (nearest deciding heading wins) as drinks, food, desserts or `unknown` (the default) from their own word lists in English, Turkish, French, Italian, Spanish and German; "Dessert" (singular) is decided by the line's shape; `kindVerdict` gives the rule-15 Unsure reasons. `ScanParserService.classifyHeadings` is the F12 second opinion: one text-only call, `allowance: "unlimited"`, `spendLedgerUnreadable: "closed"`, resolving null (rules only) on any failure. `kind-of.golden.spec.ts` holds 460 headings; 25 new cases, 24 of which fail on the base (the row-count case calls no code) and all pass after; 9 code mutations and 9 claim mutations killed (a first row-count mutation survived, so the row now counts each list); one new fragment (two rows); corrections in the Review log, "Lane 5a corrections". Nothing calls either yet (lane 5b). Not run: G0, L8, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 5b (`feat/menus-section-extraction`, the section table and the split by kind, behind a flag) | Behind `MENUS_SPLIT_BY_KIND` (off unless exactly `true`): the scan parser reads a section table (sections before their lines, a path of at most three levels, a section open across a chunk seam carried by its path), the CSV and Excel readers keep heading rows as the path (a sheet's name tops it when more than one sheet has rows), and `importSplitByKind` makes one draft per kind found (`splitByKind`: the rules, else the read's kind, else the F12 second opinion), all with one `read_together_id`, each with its lines and its printed sections (`materialise_read_sections`, migration `20270107700000`); a failure drops every draft of the read. A line is stored `drink` or `dish` only with no Unsure reason; only a `drink` reaches the resolver. With the flag off and on: the seam key folds names in any script and holds no price, a draft's kind is passed, never defaulted, and `part_read` is its own column. 28 new jest cases (25 fail on the base, 3 pin unchanged flag-off behaviour) and SQL test T1-T4 (PASS on the PGlite corpus, FAIL without the migration); 12 code mutations, one SQL mutation and every claim row's mutation killed; one new fragment (five rows), no existing row edited; corrections in the Review log, "Lane 5b corrections". Not run: G0, L8, the flag flip, Postgres other than PGlite, web tsc/vitest (no web file touched) |
+| 2026-10-12 | Lane 6 (`feat/menus-review-per-kind`, the web review per kind) | The plan screen reviews a batch in rule 18's order (counts up front; Conflicts, Unsure per section with one Drink/Food/Dessert tap, Price changed, New, Gone with Keep by button and swipe, Same collapsed), with a kind strip that takes a section drag, a long press or a "Move to…" button ([[0112]] sheet); picks are held on the client and sent with make-live (`?menuIds=`, `picks`, `partReadAcceptedKinds`); a kind with an Unsure line can be left as a draft, which re-reads the plan. `/menu` counts lines per kind, adds to a chosen kind's menu, renames a section, and a price pick names its menu and the other live kinds it also changed on; Locked prices name each menu's price; the make-live sentence names the kinds updated and untouched. Web tsc exits 0; 170 vitest cases in 8 files pass; on the base sources 31 of the new cases fail and the 2 that pass pin unchanged one-kind behaviour. No claim row, no migration, no gateway file; corrections in the Review log, "Lane 6 corrections". Not run: G0, L8, the flag flip, a Browser-pane review at phone width, a test of the `batchIds` call site in `MenuVersions` |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -1081,6 +1082,56 @@ with its basis and the alternative it rejected):
   "1.250,00", and the review's "Same section as Reds?" prompt. Founder-gated and not done:
   the G0 production read, the L8 eval and the flag flip (`MENUS_SPLIT_BY_KIND` stays off);
   the README row for 0340 is owed in its own PR.
+
+Lane 6 corrections (2026-10-12, against base `23b54f98b`; each is the smallest right fix,
+with its basis and the rejected alternative):
+
+- **Two paths in the lane plan were wrong.** `LockedPrices.tsx` is
+  `pages/menu/next/LockedPrices.tsx`, not `pages/LockedPrices.tsx`; and the make-live
+  toast copy (item 14) is `makeCurrentSentence` in `MenuVersions.tsx`, so it is not a
+  file of its own. Rejected: a new file for the copy (one more file to hold one function).
+- **The add form takes a kind, not a section.** `AddMenuItemDto` has no section, kind or
+  dish price, so a line added to a live menu lands Unsorted and, on a Food or Desserts
+  menu, is judged by `lineIsDrink`. The form asks which menu when more than one kind is
+  live, and for a dish hides Section, Glass and Bottle and says "Added to the Food menu,
+  Unsorted, with no price". Owed: a section and a dish price on add (a gateway change).
+  Rejected: sending a section the DTO would drop (the screen would claim a placement the
+  gateway never made).
+- **No drag library exists in `apps/web`,** so the kind strip uses native HTML5 drag, and
+  the long press (500 ms) and the "Move to…" button open the same [[0112]] sheet.
+  Rejected: adding a drag dependency for one drop target.
+- **A blocked kind is left as a draft by re-reading the plan without it.** The gateway
+  refuses any Unsure line with a 400, so "Leave Food as a draft" drops that menu from
+  `?menuIds=` and the plan is read again; the fingerprint sent is always the one of the
+  plan shown. Rejected: sending the shown fingerprint with a smaller `menuIds` (a 409
+  every time).
+- **Picks live on the client until make-live** and are not in the plan's fingerprint
+  (lane 3c hashes the draft lines a pick will write, not the pick). Rejected: writing a
+  pick on tap (rule 19: every pick is a draft edit made at make-live).
+- **The make-live sentence does not count new lines.** The make-current reply has no
+  "new" count, so it reads "Drinks + Desserts updated · 5 lines, 3 prices set from this
+  menu · Food untouched", and adds a note when a carry did not finish. Rejected: counting
+  new lines from the plan on the client (a number the write did not report).
+- **"Also changed on Desserts" shows only after a line correction whose `priceSync` is
+  `changed`,** not after a lock change: the lock change's reply does not say the house
+  price moved. Rejected: saying it on every pick (a claim broader than the reply).
+- **The "Section" edit renames the section, for every line in it.** A line in no section
+  keeps the per-line category edit. Rejected: moving one line out of its section from
+  this field (assign is the sections API's own route).
+- **The web `PriceLock` type in `pricing.ts` is not changed;** `LockedPrices` reads
+  `onMenus` through an intersection type, so a reply without it renders as before.
+- **With one kind live, the price line keeps S202's exact words** ("the menu says Y");
+  with more than one it names the line's menu. Basis: the ADR-0193 S202 claim row greps for
+  that literal, and a first build that composed it from a variable regressed the row.
+  Rejected: editing that row in place (it still describes the one-kind screen truly).
+- **Sections are read only for owners and managers,** as the sections routes allow; staff
+  see the counts and no move controls.
+- **Owed by a later lane:** `readTogetherId` on a listed version (Versions groups by
+  `drafts` from the import reply only), the "not on any menu" tag on a Gone line, the
+  "Same section as Reds?" prompt, an ENDPOINTS regenerate, a `MenuVersions` test of the
+  `batchIds` call site (a sixteenth file), and the Browser-pane review at phone width
+  (no browser in this lane). Founder-gated and not done: G0, L8 and the flag flip
+  (`MENUS_SPLIT_BY_KIND` stays off); the README row for 0340 is owed in its own PR.
 
 ## Founder forks
 

@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LockedPrices, markerWords } from './LockedPrices';
+import { LockedPrices, markerWords, onMenusWords } from './LockedPrices';
 import { housePriceNote } from './menu-price-note';
 import { formatMoney } from '@/lib/currency';
 import {
@@ -353,5 +353,32 @@ describe('the add-a-line note names a held kind (L5)', () => {
     )?.text;
     expect(text).toContain(`the bottle price is locked at ${formatMoney(1250, 'TRY')}, so`);
     expect(text).not.toContain('1250.00');
+  });
+});
+
+// ADR 0340 lane 6: a house with Drinks and Desserts live names the menu a
+// locked wine is on, and which of them reads another price.
+describe('locked prices across kinds', () => {
+  const both = { onMenus: [
+    { menuId: 'm-d', kind: 'beverage', price: 50 },
+    { menuId: 'm-s', kind: 'desserts', price: 55 },
+  ] };
+
+  it('names every live menu the wine is on, with its price', () => {
+    expect(onMenusWords({ ...lock(), ...both })).toBe('on Drinks at 50.00 · on Desserts at 55.00');
+    expect(onMenusWords({ ...lock(), onMenus: [] })).toBeNull();
+    expect(onMenusWords(lock())).toBeNull();
+  });
+
+  it('a differing price names its kind; with one menu the words are as before', () => {
+    expect(markerWords({ ...lock({ markers: ['menu_differs'] }), ...both })).toEqual(['the Desserts menu reads 55.00']);
+    expect(markerWords(lock({ markers: ['menu_differs'] }))).toEqual(['the current menu reads 55.00']);
+  });
+
+  it('a dish added to a Food menu says where it went, not nothing', () => {
+    expect(housePriceNote({ priceSync: 'not_linked' }, null, 'food')?.text).toBe(
+      'Added to the Food menu, Unsorted, with no price: a dish has no house price, and its price comes from a menu read.',
+    );
+    expect(housePriceNote({ priceSync: 'not_linked' }, null, 'beverage')).toBeNull();
   });
 });

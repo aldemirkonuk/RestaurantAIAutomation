@@ -41,18 +41,31 @@
  * edits, so this form asks for exactly those and nothing invented. A house
  * with no active menu row (`menuId: null`) is told so, plainly, rather than
  * shown an empty add form that would 404 on submit.
+ *
+ * ONE LIVE MENU PER KIND (ADR 0340, lane 6). A house may have Drinks, Food
+ * and Desserts live at once; `getMenu` returns every live kind's lines, each
+ * naming its menu. The standing sentence counts them per kind; Add asks which
+ * menu when more than one is live (the add route takes a menu, not a section,
+ * and a line added to a live menu lands Unsorted); a dish gets no glass or
+ * bottle price here. "Section" on a line in a section renames that section
+ * (every line in it shows the new title); a line in no section keeps the old
+ * per-line category edit.
  */
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   addMenuItem,
   discardMenuItem,
   getDiscardedLines,
   getMenu,
+  kindName,
+  listMenuSections,
+  renameMenuSection,
   restoreMenuItem,
   reviewMenuItem,
+  type ActiveMenu,
   type DiscardedLine,
   type EditableMenuItemField,
   type MenuLine,
@@ -60,7 +73,7 @@ import {
 import { housePriceNote } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
-import { PricePick, housePriceDiffers } from './PricePick';
+import { PricePick, alsoOnKinds, housePriceDiffers } from './PricePick';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { displayGroupMark, readOptionalAmount, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
@@ -135,8 +148,24 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
     onSuccess: refresh,
   });
 
+  // The live menus' sections (ADR 0340): a line's Section is its section's
+  // title. Read only for an owner or a manager; the sections routes refuse
+  // anyone else, and staff keep the per-line category.
+  const sectionReads = useQueries({
+    queries: (q.data?.kinds ?? []).map((k) => ({
+      queryKey: ['menu', 'sections', k.menuId],
+      enabled: canManage,
+      queryFn: () => listMenuSections(k.menuId),
+    })),
+  });
+  const sections = new Map(
+    sectionReads.flatMap((r) => r.data ?? []).map((sct) => [sct.id, { title: sct.title, menuId: sct.menu_id }]),
+  );
+
   const add = useMutation({
     mutationFn: (fields: {
+      /** The live menu to add to (one kind's); the page's root menu when not given. */
+      menuId?: string
       name: string
       producer?: string
       category?: string
@@ -146,8 +175,10 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
       by_glass_price?: number
       bottle_price?: number
     }) => {
-      if (!q.data?.menuId) throw new Error('No active menu to add to');
-      return addMenuItem(q.data.menuId, fields);
+      const { menuId, ...item } = fields;
+      const to = menuId ?? q.data?.menuId;
+      if (!to) throw new Error('No active menu to add to');
+      return addMenuItem(to, item);
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
   });
@@ -156,8 +187,17 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
   // in order and stopped at the first refusal, so the page can say which
   // fields were saved and which was not, never "saved" for a half-saved line.
   const edit = useMutation({
-    mutationFn: async ({ itemId, changes }: { itemId: string; changes: EditChange[] }) => {
+    mutationFn: async ({ itemId, changes, rename }: { itemId: string; changes: EditChange[]; rename?: SectionRename | null }) => {
       const out: EditOutcome = { saved: [], notes: [], failed: null };
+      if (rename) {
+        try {
+          await renameMenuSection(rename.menuId, rename.sectionId, rename.title);
+          out.saved.push('section');
+        } catch (e) {
+          out.failed = { field: 'section', reason: refusalReason(e), ...refusalShape(e) };
+          return out;
+        }
+      }
       for (const c of changes) {
         try {
           const r = await reviewMenuItem(itemId, c.field, c.value);
@@ -171,18 +211,37 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
       }
       return out;
     },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: key }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: key });
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'sections'] });
+    },
   });
 
-  return { q, discarded, discard, restore, add, edit };
+  return { q, discarded, discard, restore, add, edit, sections };
 }
 
 type EditChange = { field: EditableMenuItemField; value: string };
+/** A section's title, renamed from a line in it (rename is allowed on a live menu). */
+type SectionRename = { menuId: string; sectionId: string; title: string };
+type SavedField = EditableMenuItemField | 'section';
 type EditOutcome = {
-  saved: EditableMenuItemField[]
+  saved: SavedField[]
   notes: { tone: 'alert' | 'said'; text: string }[]
-  failed: { field: EditableMenuItemField; reason: string; refused: boolean; spoke: boolean } | null
+  failed: { field: SavedField; reason: string; refused: boolean; spoke: boolean } | null
 };
+
+/**
+ * "Drinks 84 · Food 41 · Desserts 9": the live lines per kind, in the order
+ * the gateway lists the kinds. Null when one kind (or none) is live, or the
+ * reply does not say which menu each line is on.
+ */
+export function perKindWords(menu: Pick<ActiveMenu, 'kinds' | 'items'>): string | null {
+  const kinds = menu.kinds ?? [];
+  if (kinds.length < 2) return null;
+  return kinds
+    .map((k) => `${kindName(k.kind) ?? k.name ?? 'Menu'} ${menu.items.filter((l) => l.menu_id === k.menuId).length}`)
+    .join(' · ');
+}
 
 /**
  * Why the gateway refused a field, in its own words (F-920). The catch used to
@@ -223,6 +282,7 @@ const FIELD_WORDS: Record<string, string> = {
   name: 'Name',
   producer: 'Producer',
   category: 'Section',
+  section: 'Section title',
   vintage: 'Vintage',
   region: 'Region',
   grape_variety: 'Grape',
@@ -263,7 +323,7 @@ function editPriceNote(
 
 /** One sentence for what Edit saved, and what it did not. */
 function editSentence(o: EditOutcome): string {
-  const words = (fs: EditableMenuItemField[]) => fs.map((f) => FIELD_WORDS[f] ?? f).join(', ');
+  const words = (fs: SavedField[]) => fs.map((f) => FIELD_WORDS[f] ?? f).join(', ');
   const saved = o.saved.length ? `Saved: ${words(o.saved)}.` : '';
   if (!o.failed) return saved || 'Nothing had changed, so nothing was saved.';
   // Only a refusal (4xx) is known to have written nothing; a 5xx that names
@@ -289,19 +349,25 @@ function flagReason(note: string | null | undefined): { hand: boolean; text: str
 }
 
 /** The changes between a line and what was typed for it, in the order shown. */
-function editChanges(
+export function editChanges(
   line: MenuLine,
   typed: { name: string; category: string; glass: string; bottle: string },
   group: GroupMark | null = null,
   display: GroupMark | null = null,
-): { changes: EditChange[]; error: string | null } {
+  section: { title: string; menuId: string } | null = null,
+): { changes: EditChange[]; rename: SectionRename | null; error: string | null } {
   const changes: EditChange[] = [];
+  let rename: SectionRename | null = null;
   const name = typed.name.trim();
-  if (!name) return { changes: [], error: 'A line needs a name.' };
+  if (!name) return { changes: [], rename: null, error: 'A line needs a name.' };
   if (name !== line.name) changes.push({ field: 'name', value: name });
   const category = typed.category.trim();
-  if (category !== (line.category ?? '')) {
-    if (!category) return { changes: [], error: 'A section cannot be cleared here; type the section it belongs to.' };
+  if (section && line.section_id) {
+    // ADR 0340: "Section" edits the section's title, for every line in it.
+    if (!category) return { changes: [], rename: null, error: 'A section needs a title.' };
+    if (category !== section.title) rename = { menuId: section.menuId, sectionId: line.section_id, title: category };
+  } else if (category !== (line.category ?? '')) {
+    if (!category) return { changes: [], rename: null, error: 'A section cannot be cleared here; type the section it belongs to.' };
     changes.push({ field: 'category', value: category });
   }
   for (const [field, raw, was] of [
@@ -309,19 +375,21 @@ function editChanges(
     ['bottle_price', typed.bottle.trim(), line.bottle_price],
   ] as const) {
     if (raw === '') {
-      if (was !== null) return { changes: [], error: `${FIELD_WORDS[field]} cannot be cleared here. Discard the line to take it off.` };
+      if (was !== null)
+        return { changes: [], rename: null, error: `${FIELD_WORDS[field]} cannot be cleared here. Discard the line to take it off.` };
       continue;
     }
     // Read the way the house writes it, as the add form does (F-878): a bare
     // Number() refused "45,50" and a number input showed it as blank.
     const read = readOptionalAmount(raw, group);
-    if (!read.ok || read.value === null) return { changes: [], error: `${FIELD_WORDS[field]} must be a number, 0 or more.` };
+    if (!read.ok || read.value === null)
+      return { changes: [], rename: null, error: `${FIELD_WORDS[field]} must be a number, 0 or more.` };
     const asked = twoReadingsProblem(raw, group, display);
-    if (asked) return { changes: [], error: asked };
+    if (asked) return { changes: [], rename: null, error: asked };
     const n = read.value;
     if (n !== was) changes.push({ field, value: String(n) });
   }
-  return { changes, error: null };
+  return { changes, rename, error: null };
 }
 
 /** What a put-back line returns as, in the house's words. */
@@ -375,19 +443,26 @@ function DiscardedLines({ lines, onRestore, restoringId }: {
   );
 }
 
-function AddItemForm({ onAdd, adding, error }: {
+function AddItemForm({ onAdd, adding, error, kinds = [] }: {
   // The reset callback fires only on a SUCCESSFUL add. Clearing the form at
   // submit time (the prior behaviour) threw the person's typed entry away on
   // a failed POST, with no way to recover it — "a draft is not sent" cuts
   // both ways: a failure must not erase it either.
   onAdd: (
-    fields: { name: string; category?: string; by_glass_price?: number; bottle_price?: number },
+    fields: { menuId?: string; name: string; category?: string; by_glass_price?: number; bottle_price?: number },
     opts: { onSuccess: () => void },
   ) => void
   adding: boolean
   error: string | null
+  /** The live menus; with more than one, the form asks which the line goes on (ADR 0340). */
+  kinds?: NonNullable<ActiveMenu['kinds']>
 }) {
   const [name, setName] = useState('');
+  const [menuId, setMenuId] = useState<string>(kinds[0]?.menuId ?? '');
+  const chosenKind = kinds.find((k) => k.menuId === menuId)?.kind ?? null;
+  // A dish (Food, Desserts) has no glass or bottle price and no drink section;
+  // the add route has no dish price, so none is asked for here.
+  const dish = chosenKind === 'food' || chosenKind === 'desserts';
   const [category, setCategory] = useState('');
   const [byGlass, setByGlass] = useState('');
   const [bottle, setBottle] = useState('');
@@ -408,12 +483,15 @@ function AddItemForm({ onAdd, adding, error }: {
     e.preventDefault();
     if (!name.trim() || !glassRead.ok || !bottleRead.ok || twoWays) return;
     onAdd(
-      {
-        name: name.trim(),
-        category: category.trim() || undefined,
-        by_glass_price: glassRead.value ?? undefined,
-        bottle_price: bottleRead.value ?? undefined,
-      },
+      dish
+        ? { menuId, name: name.trim() }
+        : {
+            ...(kinds.length > 1 && menuId ? { menuId } : {}),
+            name: name.trim(),
+            category: category.trim() || undefined,
+            by_glass_price: glassRead.value ?? undefined,
+            bottle_price: bottleRead.value ?? undefined,
+          },
       {
         onSuccess: () => {
           setName('');
@@ -427,6 +505,20 @@ function AddItemForm({ onAdd, adding, error }: {
 
   return (
     <form onSubmit={submit} className="cl-row-controls" data-testid="menu-add-form">
+      {kinds.length > 1 ? (
+        <>
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-menu">
+            Menu
+          </label>
+          <select id="menu-add-menu" className="cl-field cl-focus" value={menuId} onChange={(e) => setMenuId(e.target.value)}>
+            {kinds.map((k) => (
+              <option key={k.menuId} value={k.menuId}>
+                {kindName(k.kind) ?? k.name ?? 'Menu'}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : null}
       <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-name">
         Name
       </label>
@@ -438,6 +530,12 @@ function AddItemForm({ onAdd, adding, error }: {
         placeholder="What's on the menu"
         style={{ minWidth: 180 }}
       />
+      {dish ? (
+        <span className="cl-note" data-testid="menu-add-dish-note">
+          A dish is added with no price: its price comes from a menu read.
+        </span>
+      ) : (
+        <>
       <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-category">
         Section
       </label>
@@ -473,6 +571,8 @@ function AddItemForm({ onAdd, adding, error }: {
         onChange={(e) => setBottle(e.target.value)}
         style={{ width: 80 }}
       />
+        </>
+      )}
       <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim() || unreadable !== null || twoWays !== null}>
         {adding ? 'Adding…' : 'Add to menu'}
       </button>
@@ -495,15 +595,17 @@ function AddItemForm({ onAdd, adding, error }: {
   );
 }
 
-function EditRow({ line, saving, onSave, onCancel }: {
+function EditRow({ line, saving, onSave, onCancel, section = null }: {
   line: MenuLine
   saving: boolean
-  onSave: (changes: EditChange[]) => void
+  onSave: (changes: EditChange[], rename: SectionRename | null) => void
   onCancel: () => void
+  /** The line's section, when it is in one and it could be read: Section edits its title. */
+  section?: { title: string; menuId: string } | null
 }) {
   const [typed, setTyped] = useState({
     name: line.name,
-    category: line.category ?? '',
+    category: section && line.section_id ? section.title : (line.category ?? ''),
     glass: line.by_glass_price === null ? '' : String(line.by_glass_price),
     bottle: line.bottle_price === null ? '' : String(line.bottle_price),
   });
@@ -514,9 +616,9 @@ function EditRow({ line, saving, onSave, onCancel }: {
     setError(null);
   };
   const save = () => {
-    const r = editChanges(line, typed, group, displayGroupMark());
+    const r = editChanges(line, typed, group, displayGroupMark(), section);
     if (r.error) return setError(r.error);
-    onSave(r.changes);
+    onSave(r.changes, r.rename);
   };
   return (
     <tr data-testid="menu-edit-row">
@@ -525,7 +627,14 @@ function EditRow({ line, saving, onSave, onCancel }: {
         <input className="cl-field cl-focus" aria-label={`Name of ${line.name}`} value={typed.name} onChange={set('name')} autoFocus />
       </td>
       <td>
-        <input className="cl-field cl-focus" aria-label={`Section of ${line.name}`} value={typed.category} onChange={set('category')} style={{ width: 110 }} />
+        <input
+          className="cl-field cl-focus"
+          aria-label={`Section of ${line.name}`}
+          value={typed.category}
+          onChange={set('category')}
+          style={{ width: 110 }}
+          title={section && line.section_id ? 'Renames this section for every line in it.' : undefined}
+        />
       </td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
       <td>
@@ -565,13 +674,15 @@ function EditRow({ line, saving, onSave, onCancel }: {
  * X — the menu says Y", and an owner or a manager picks one (PricePick). A
  * blank line price beside a known house price shows that price too.
  */
-function PriceCell({ line, linePrice, housePrice, currency, kind, canPick }: {
+function PriceCell({ line, linePrice, housePrice, currency, kind, canPick, menuKind = null, alsoOn = [] }: {
   line: MenuLine
   linePrice: number | null
   housePrice: number | null | undefined
   currency: string | null
   kind: 'glass' | 'bottle'
   canPick: boolean
+  menuKind?: string | null
+  alsoOn?: string[]
 }) {
   const { activeRestaurantId } = useAuth();
   return (
@@ -587,14 +698,22 @@ function PriceCell({ line, linePrice, housePrice, currency, kind, canPick }: {
           housePrice={housePrice as number}
           canPick={canPick}
           fmt={(v) => money(v, currency)}
+          menuKind={menuKind}
+          alsoOn={alsoOn}
         />
       ) : null}
     </td>
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, focusEdit = false, focusDiscard = false }: {
+function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, focusEdit = false, focusDiscard = false, sectionTitle = null, menuKind = null, alsoOn = [] }: {
   line: MenuLine
+  /** The title of the line's section, when it is in one that could be read. */
+  sectionTitle?: string | null
+  /** The line's menu, named when more than one kind is live. */
+  menuKind?: string | null
+  /** The other live kinds the same item is on (rule 21). */
+  alsoOn?: string[]
   currency: string | null
   onDiscard: () => void
   discarding: boolean
@@ -620,10 +739,13 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
   return (
     <tr data-testid="menu-row">
       <td>{line.name}</td>
-      <td className="cl-dim">{line.category ?? EM}</td>
+      <td className="cl-dim">
+        {sectionTitle ?? line.category ?? EM}
+        {menuKind ? <span style={{ display: 'block', fontSize: 11 }}>{menuKind}</span> : null}
+      </td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <PriceCell line={line} linePrice={line.by_glass_price} housePrice={line.house_glass_price} currency={currency} kind="glass" canPick={canDiscard} />
-      <PriceCell line={line} linePrice={line.bottle_price} housePrice={line.house_bottle_price} currency={currency} kind="bottle" canPick={canDiscard} />
+      <PriceCell line={line} linePrice={line.by_glass_price} housePrice={line.house_glass_price} currency={currency} kind="glass" canPick={canDiscard} menuKind={menuKind} alsoOn={alsoOn} />
+      <PriceCell line={line} linePrice={line.bottle_price} housePrice={line.house_bottle_price} currency={currency} kind="bottle" canPick={canDiscard} menuKind={menuKind} alsoOn={alsoOn} />
       <td>
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
           {reason?.hand ? 'by hand' : line.status.replace('_', ' ')}
@@ -694,7 +816,8 @@ function MenuPage() {
   // gateway refuses anyone else regardless of what this page offers.
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
-  const { q, discarded, discard, restore, add, edit } = useActiveMenu(activeRestaurantId, canManage);
+  const { q, discarded, discard, restore, add, edit, sections } = useActiveMenu(activeRestaurantId, canManage);
+  const manyKinds = (q.data?.kinds?.length ?? 0) > 1;
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -765,7 +888,9 @@ function MenuPage() {
               {/* Not the menu's stored name: every read is named by the
                   importer ("Wine List" before F-018), never by the house,
                   and a beer is not on a wine list (F-066). */}
-              {q.data.items.length} {q.data.items.length === 1 ? 'line' : 'lines'} on the current menu.
+              {perKindWords(q.data)
+                ? `${q.data.items.length} ${q.data.items.length === 1 ? 'line' : 'lines'} on the current menus: ${perKindWords(q.data)}. A house has one current menu of each kind.`
+                : `${q.data.items.length} ${q.data.items.length === 1 ? 'line' : 'lines'} on the current menu.`}
             </p>
 
             <div style={{ marginTop: 16 }}>
@@ -774,6 +899,7 @@ function MenuPage() {
                   (the gateway refuses anyone else). */}
               {canManage ? (
                 <AddItemForm
+                  kinds={q.data.kinds ?? []}
                   adding={add.isPending}
                   error={add.isError ? refusalReason(add.error) : null}
                   onAdd={(fields, opts) => add.mutate(fields, opts)}
@@ -784,7 +910,8 @@ function MenuPage() {
                 </p>
               )}
               {(() => {
-                const note = add.isSuccess ? housePriceNote(add.data, currency) : null;
+                const addedTo = q.data.kinds?.find((k) => k.menuId === add.variables?.menuId)?.kind ?? null;
+                const note = add.isSuccess ? housePriceNote(add.data, currency, addedTo) : null;
                 return note ? (
                   <p
                     role={note.tone === 'alert' ? 'alert' : 'status'}
@@ -824,11 +951,12 @@ function MenuPage() {
                         <EditRow
                           key={line.id}
                           line={line}
+                          section={line.section_id ? (sections.get(line.section_id) ?? null) : null}
                           saving={edit.isPending}
                           onCancel={() => leaveEdit(line.id)}
-                          onSave={(changes) =>
+                          onSave={(changes, rename) =>
                             edit.mutate(
-                              { itemId: line.id, changes },
+                              { itemId: line.id, changes, rename },
                               {
                                 onSuccess: (outcome) => {
                                   setEdited({ name: line.name, outcome });
@@ -842,6 +970,9 @@ function MenuPage() {
                       <MenuRow
                         key={line.id}
                         line={line}
+                        sectionTitle={line.section_id ? (sections.get(line.section_id)?.title ?? null) : null}
+                        menuKind={manyKinds ? kindName(line.menu_type) : null}
+                        alsoOn={alsoOnKinds(q.data.items, line)}
                         currency={currency}
                         canDiscard={canManage}
                         focusEdit={leftEditId === line.id}

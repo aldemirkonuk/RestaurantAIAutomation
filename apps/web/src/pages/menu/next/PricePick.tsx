@@ -19,10 +19,24 @@
  *
  * Used on /menu (each price cell) and on the wine's reading stand in the
  * cellar (WineMenuPrices, beside the lock note).
+ *
+ * ADR 0340 (one live menu per kind): a house may have Drinks and Desserts
+ * live at once, and the same wine on both. The line names its menu's kind
+ * when more than one kind is live, and a correction that moved the house
+ * price says the other live kinds it also changed on (rule 21: the follow
+ * trigger brings every other live line of that item to the house price).
+ * ConflictPick is the make-live review's pick (rule 19): one wine at two
+ * prices across what would be live, and the owner picks the one it has.
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getMenu, reviewMenuItem } from '../../../services/api/menus';
+import {
+  getMenu,
+  kindName,
+  reviewMenuItem,
+  type MenuLine,
+  type PriceConflict,
+} from '../../../services/api/menus';
 import { changeLockedPrice, listPriceLocks, type PriceLock } from '../../../services/api/pricing';
 
 type Kind = 'bottle' | 'glass';
@@ -31,6 +45,33 @@ type Kind = 'bottle' | 'glass';
 export function housePriceDiffers(linePrice: number | null, housePrice: number | null | undefined): boolean {
   if (housePrice === null || housePrice === undefined) return false;
   return linePrice === null || Math.abs(linePrice - housePrice) >= 0.005;
+}
+
+/**
+ * The other live kinds the same house item is a drink line on: where a price
+ * correction on `line` also lands (rule 21). Dishes are left out: the follow
+ * trigger never gives a dish a drink price. Empty for a line with no house
+ * item, or when the reply did not say which menu each line is on.
+ */
+export function alsoOnKinds(items: MenuLine[], line: Pick<MenuLine, 'id' | 'inventory_item_id' | 'menu_type'>): string[] {
+  if (!line.inventory_item_id || !line.menu_type) return [];
+  const names = items
+    .filter(
+      (l) =>
+        l.id !== line.id &&
+        l.inventory_item_id === line.inventory_item_id &&
+        l.line_kind !== 'dish' &&
+        l.menu_type &&
+        l.menu_type !== line.menu_type,
+    )
+    .map((l) => kindName(l.menu_type))
+    .filter((n): n is string => n !== null);
+  return [...new Set(names)];
+}
+
+/** "Desserts", "Food and Desserts". */
+function joinKinds(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 function why(err: unknown): string {
@@ -42,8 +83,12 @@ function why(err: unknown): string {
   return e?.message || 'no reason given';
 }
 
-export function PricePick({ house, inventoryId, lineId, kind, linePrice, housePrice, canPick, fmt }: {
+export function PricePick({ house, inventoryId, lineId, kind, linePrice, housePrice, canPick, fmt, menuKind = null, alsoOn = [] }: {
   house: string | null
+  /** The line's menu, named only when more than one kind is live ("the Drinks menu says"). */
+  menuKind?: string | null
+  /** The other live kinds this item is on: a moved house price follows there (rule 21). */
+  alsoOn?: string[]
   inventoryId: string | null
   lineId: string
   kind: Kind
@@ -81,6 +126,11 @@ export function PricePick({ house, inventoryId, lineId, kind, linePrice, housePr
         return { text: r.sentence, alert: false };
       }
       const r = await reviewMenuItem(lineId, field, String(price));
+      if (r.priceSync === 'changed' && alsoOn.length > 0)
+        return {
+          text: `The house now charges ${fmt(price)}, as the menu says; also changed on ${joinKinds(alsoOn)}.`,
+          alert: false,
+        };
       if (r.priceSync === 'changed' || r.priceSync === 'unchanged')
         return { text: `The house now charges ${fmt(price)}, as the menu says.`, alert: false };
       if (r.priceSync === 'locked')
@@ -103,7 +153,15 @@ export function PricePick({ house, inventoryId, lineId, kind, linePrice, housePr
   });
 
   const ours = lock ? `Locked at ${fmt(lock.lockedPrice)}` : `Your price ${fmt(housePrice)}`;
-  const theirs = linePrice === null ? 'the menu shows no price' : `the menu says ${fmt(linePrice)}`;
+  // One kind live keeps the S202 words exactly ("the menu says Y"); more than
+  // one names the line's menu ("the Drinks menu says Y").
+  const menuWords = menuKind ? `the ${menuKind} menu` : 'the menu';
+  const theirs =
+    linePrice === null
+      ? `${menuWords} shows no price`
+      : menuKind
+        ? `${menuWords} says ${fmt(linePrice)}`
+        : `the menu says ${fmt(linePrice)}`;
   return (
     <span style={{ display: 'block' }} data-testid={`price-pick-${kind}`}>
       <span
@@ -177,7 +235,9 @@ export function WineMenuPrices({ house, inventoryId, canPick, fmt }: {
     );
   }
   if (q.data.housePricesReadable === false) return null;
-  const picks = q.data.items
+  const items = q.data.items;
+  const manyKinds = (q.data.kinds?.length ?? 0) > 1;
+  const picks = items
     .filter((l) => l.inventory_item_id === inventoryId)
     .flatMap((l) =>
       (['bottle', 'glass'] as const)
@@ -185,7 +245,15 @@ export function WineMenuPrices({ house, inventoryId, canPick, fmt }: {
           const linePrice = kind === 'bottle' ? l.bottle_price : l.by_glass_price;
           const housePrice = kind === 'bottle' ? l.house_bottle_price : l.house_glass_price;
           return housePriceDiffers(linePrice, housePrice)
-            ? { key: `${l.id}-${kind}`, lineId: l.id, kind, linePrice, housePrice: housePrice as number }
+            ? {
+                key: `${l.id}-${kind}`,
+                lineId: l.id,
+                kind,
+                linePrice,
+                housePrice: housePrice as number,
+                menuKind: manyKinds ? kindName(l.menu_type) : null,
+                alsoOn: alsoOnKinds(items, l),
+              }
             : null;
         })
         .filter((x): x is NonNullable<typeof x> => x !== null),
@@ -204,8 +272,67 @@ export function WineMenuPrices({ house, inventoryId, canPick, fmt }: {
           housePrice={p.housePrice}
           canPick={canPick}
           fmt={fmt}
+          menuKind={p.menuKind}
+          alsoOn={p.alsoOn}
         />
       ))}
     </div>
+  );
+}
+
+/** The key one pick is held under: one answer per wine and price kind. */
+export function conflictKey(c: Pick<PriceConflict, 'wineLibraryId' | 'kind'>): string {
+  return `${c.wineLibraryId}:${c.kind}`;
+}
+
+/**
+ * One wine at two prices of one price kind across what would be live (ADR
+ * 0340 rule 19, S198). Each price names the menu it is on and whether that
+ * menu is live; the owner taps the one the wine has. Nothing is written: the
+ * pick is held by the review and sent with "Make live" (a pick is a draft
+ * edit only). Staff read the prices and get no buttons.
+ */
+export function ConflictPick({ conflict, picked, canPick, onPick, fmt }: {
+  conflict: PriceConflict
+  picked: number | null
+  canPick: boolean
+  onPick: (price: number) => void
+  fmt: (v: number | null) => string
+}) {
+  const prices = [...new Set(conflict.prices.map((p) => p.price))];
+  const where = (price: number) =>
+    conflict.prices
+      .filter((p) => p.price === price)
+      .map((p) => `${kindName(p.menuKind) ?? 'a menu'} (${p.live ? 'live' : 'draft'})`)
+      .join(', ');
+  return (
+    <li data-testid="conflict-pick" style={{ marginTop: 6 }}>
+      <span>
+        {conflict.name} ({conflict.kind}):{' '}
+        {prices.map((p) => `${fmt(p)} on ${where(p)}`).join(' · ')}
+      </span>
+      {canPick ? (
+        <span role="group" aria-label={`The ${conflict.kind} price of ${conflict.name}`} style={{ display: 'block', marginTop: 4 }}>
+          {prices.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className="cl-btn cl-focus"
+              aria-pressed={picked === p}
+              data-on={picked === p ? 'true' : 'false'}
+              onClick={() => onPick(p)}
+              style={{ marginRight: 6 }}
+            >
+              {fmt(p)}
+            </button>
+          ))}
+        </span>
+      ) : null}
+      {picked !== null ? (
+        <span className="cl-said" style={{ display: 'block', fontSize: 12 }}>
+          Picked {fmt(picked)}: every draft line of it takes this price when the menus go live.
+        </span>
+      ) : null}
+    </li>
   );
 }

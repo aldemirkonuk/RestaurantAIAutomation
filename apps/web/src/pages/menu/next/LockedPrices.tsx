@@ -16,6 +16,11 @@
  *   POST /pricing/locks/:id/move          move to another wine at a named price
  *   GET  /pricing/advice                  the house's wines, to choose a move target
  * The gateway refuses staff whatever this page offers.
+ *
+ * ADR 0340 (one live menu per kind): the gateway names every live menu a
+ * lock's wine is on (`onMenus`, with that menu's price of the lock's kind),
+ * so a row says "on Drinks at 950 · on Desserts at 1,000" and a differing
+ * menu price names the kind it is on, never one menu standing for all.
  */
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +37,22 @@ import { useAuthStore } from '../../../stores';
 import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '../../../lib/parseDecimal';
 import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark';
 import { formatMoney } from '../../../lib/currency';
+import { kindName } from '../../../services/api/menus';
+
+/**
+ * A lock as the gateway sends it since ADR 0340: every live menu its wine is
+ * on. [] = on no live menu; null or absent = unknown (or an older gateway).
+ */
+type MenuLock = PriceLock & { onMenus?: Array<{ menuId: string; kind: string | null; price: number | null }> | null };
+
+/** "on Drinks at 950.00 · on Desserts at 1,000.00": every live menu the wine is on, by kind. Null when unknown or none. */
+export function onMenusWords(l: MenuLock, currency?: string | null): string | null {
+  const on = l.onMenus ?? [];
+  if (on.length === 0) return null;
+  return on
+    .map((m) => `on ${kindName(m.kind) ?? 'a menu'} at ${m.price === null ? 'no price' : money(m.price, currency)}`)
+    .join(' · ');
+}
 
 const EM = '—';
 
@@ -64,19 +85,25 @@ function readPrice(raw: string, group: GroupMark | null = null): number | null {
 }
 
 /** One lock's facts, in words. The menu grouping says "not on the current menu" itself. */
-export function markerWords(l: PriceLock, currency?: string | null): string[] {
+export function markerWords(l: MenuLock, currency?: string | null): string[] {
   const out: string[] = [];
   const has = (m: LockMarker) => l.markers.includes(m);
   if (has('off_target') && l.advice) out.push(`off your target margin: ${l.advice.sentence}`);
   if (has('advice_unknown')) out.push(`no advice: ${l.adviceUnknownReason ?? 'the reason was not given'}`);
-  if (has('menu_differs')) out.push(`the current menu reads ${money(l.menuPrice, currency)}`);
+  const differing = (l.onMenus ?? []).filter((m) => m.price !== null && Math.abs(m.price - l.lockedPrice) >= 0.005);
+  if (has('menu_differs') && (l.onMenus?.length ?? 0) > 1 && differing.length > 0) {
+    // More than one live kind: name the menu that reads another price.
+    out.push(
+      differing.map((m) => `the ${kindName(m.kind) ?? 'current'} menu reads ${money(m.price, currency)}`).join(', and '),
+    );
+  } else if (has('menu_differs')) out.push(`the current menu reads ${money(l.menuPrice, currency)}`);
   if (has('wine_removed')) out.push('the wine was removed from inventory');
   if (has('author_without_access')) out.push('set by someone who no longer manages this house');
   return out;
 }
 
 function LockRow({ l, canManage, onSaid, currency }: {
-  l: PriceLock;
+  l: MenuLock;
   canManage: boolean;
   onSaid: (s: string) => void;
   currency?: string | null;
@@ -146,6 +173,11 @@ function LockRow({ l, canManage, onSaid, currency }: {
           by {l.lockedBy.name ?? 'someone whose name could not be read'}, {l.ageDays} day{l.ageDays === 1 ? '' : 's'} ago
         </span>
       </div>
+      {onMenusWords(l, currency) ? (
+        <span className="cl-dim" style={{ display: 'block', marginTop: 2 }} data-testid="locked-price-menus">
+          {onMenusWords(l, currency)}
+        </span>
+      ) : null}
       {l.note ? <span className="cl-note" style={{ display: 'block', marginTop: 2 }}>“{l.note}”</span> : null}
       {words.length > 0 ? (
         <ul style={{ margin: '4px 0 0', paddingLeft: 18 }} data-testid="locked-price-facts">

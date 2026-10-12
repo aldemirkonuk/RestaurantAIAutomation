@@ -22,17 +22,51 @@
  *
  * Simple and readable for people (the founder's Wave Four / Arrival bar): one
  * sentence first, the detail after. No motion.
+ *
+ * ONE LIVE MENU PER KIND (ADR 0340, lane 6). A read can make a draft per kind
+ * (Drinks, Food, Desserts), and they are reviewed together: the plan is asked
+ * for the batch (`?menuIds=`), and the review reads in rule 18's order, the
+ * counts up front:
+ *   1. Conflicts, blocking: one wine at two prices; the owner picks one
+ *      (rule 19; a pick is held here and sent with "Make live").
+ *   2. Unsure, blocking: one tap per section (Drink and its category, Food,
+ *      Dessert), the lines a section answer left one tap each.
+ *   3. Price changed: the L13 table above (set-after-read first, Keep), and a
+ *      dish beside the same dish on its kind's live menu.
+ *   4. New. 5. Gone, with Keep (a button, and a swipe right).
+ *   6. Same as last time and Unchanged, collapsed.
+ * A kind strip above the groups moves a section between the read's drafts
+ * (KindStrip.tsx). One tap makes every ready kind live; a kind still blocked
+ * is left as a draft with one tap, and the plan is read again without it, so
+ * the fingerprint sent is the plan shown (the gateway refuses a batch with
+ * any Unsure line, 400).
  */
-import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  confirmMenuLine,
+  confirmMenuSection,
   getMenuPlan,
+  isMenuKind,
+  keepGoneLine,
+  kindName,
+  listMenuSections,
   makeMenuCurrent,
+  moveMenuSection,
+  type GoneLine,
   type MakeCurrentResult,
+  type MakeLiveBatch,
+  type MenuKind,
   type MenuPlan as Plan,
+  type MenuSection,
   type PlanKind,
   type PlanLine,
+  type PlanMenu,
+  type UnsureLine,
 } from '../../../services/api/menus';
+import { MENU_KINDS as DRINK_CATEGORIES } from '../../../lib/firstProof';
+import { ConflictPick, conflictKey } from './PricePick';
+import { KindStrip, type MovableSection, type StripKind } from './KindStrip';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { dateIn } from '../../dashboard/next/format';
 import { formatMoney } from '../../../lib/currency';
@@ -82,15 +116,21 @@ function plural(n: number, one: string, many: string): string {
  * What leaves with the menu this choice ends (F-696): the house has one current
  * menu, so choosing this one takes the other off, every line on it included.
  */
-export function retiringSentence(plan: Pick<Plan, 'retiring'>): string | null {
+export function retiringSentence(plan: Pick<Plan, 'retiring'> & Partial<Pick<Plan, 'menus'>>): string | null {
   const off = plan.retiring ?? [];
   if (off.length === 0) return null;
-  const each = off.map((m) => `${m.name ?? 'the current menu'} off: its ${plural(m.lines, 'line leaves', 'lines leave')} the menu`);
-  return `Choosing this menu takes ${each.join('; and ')}. A house has one current menu at a time.`;
+  const each = off.map((m) => {
+    const kind = kindName(m.kind);
+    const what = m.name ?? (kind ? `the live ${kind} menu` : 'the current menu');
+    return `${what} off: its ${plural(m.lines, 'line leaves', 'lines leave')} the menu`;
+  });
+  const lead = (plan.menus?.length ?? 0) > 1 ? 'Making these menus live takes' : 'Choosing this menu takes';
+  // ADR 0340 rule 1: one live menu of each kind; a Food menu never ends the Drinks one.
+  return `${lead} ${each.join('; and ')}. A house has one current menu of each kind.`;
 }
 
 /** The plan in one sentence, in the order a person reads a menu change. */
-export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'> & Partial<Pick<Plan, 'retiring'>>): string {
+export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'> & Partial<Pick<Plan, 'retiring' | 'menus'>>): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const off = retiringSentence(plan);
   const prices = pricesSentence(plan);
@@ -184,6 +224,247 @@ export interface Row {
   k: PlanKind;
 }
 
+/** Unsure lines, grouped by the section they are in (one tap per section, rule 18); a line with no section stands alone. */
+export interface UnsureGroup {
+  menuId: string;
+  sectionId: string | null;
+  title: string;
+  lines: UnsureLine[];
+}
+
+export function unsureGroups(
+  unsure: UnsureLine[],
+  lines: PlanLine[],
+  sections: MenuSection[],
+): UnsureGroup[] {
+  const sectionOf = new Map(lines.map((l) => [l.menuItemId, l.sectionId ?? null]));
+  const titleOf = new Map(sections.map((s) => [s.id, s.title]));
+  const out = new Map<string, UnsureGroup>();
+  for (const u of unsure) {
+    const sectionId = sectionOf.get(u.menuItemId) ?? null;
+    const key = sectionId ? `s:${sectionId}` : `l:${u.menuItemId}`;
+    const g = out.get(key);
+    if (g) g.lines.push(u);
+    else
+      out.set(key, {
+        menuId: u.menuId,
+        sectionId,
+        title: sectionId ? (titleOf.get(sectionId) ?? 'A section') : u.name,
+        lines: [u],
+      });
+  }
+  return [...out.values()];
+}
+
+/** "2 sections, 3 lines to check": what the Unsure group asks, counted up front. */
+export function unsureWords(groups: UnsureGroup[]): string {
+  const sections = groups.filter((g) => g.sectionId !== null).length;
+  const lines = groups.reduce((n, g) => n + g.lines.length, 0);
+  return sections > 0
+    ? `${plural(sections, 'section', 'sections')}, ${plural(lines, 'line', 'lines')} to check`
+    : `${plural(lines, 'line', 'lines')} to check`;
+}
+
+/** A batch menu that cannot go live yet: an Unsure line on a draft (a current menu blocks nothing). */
+export function blockedMenus(menus: PlanMenu[]): PlanMenu[] {
+  return menus.filter((m) => !m.current && m.unsure > 0);
+}
+
+/** The review's counts, in rule 18's order: what to answer first, then what will change. */
+export function reviewCounts(plan: Plan, groups: UnsureGroup[]): string {
+  const parts: string[] = [];
+  const conflicts = plan.conflicts ?? [];
+  if (conflicts.length > 0) parts.push(`${plural(conflicts.length, 'wine', 'wines')} at two prices to pick`);
+  if (groups.length > 0) parts.push(unsureWords(groups));
+  const changed = orderedRows(plan.lines).filter((r) => r.k.result === 'change').length + changedDishes(plan.lines).length;
+  if (changed > 0) parts.push(`${plural(changed, 'price', 'prices')} changed`);
+  const fresh = newLines(plan.lines).length;
+  if (fresh > 0) parts.push(`${fresh} new`);
+  const gone = plan.gone ?? [];
+  if (gone.length > 0) parts.push(`${gone.length} gone`);
+  return parts.join(' · ');
+}
+
+/** A dish whose price differs from the same dish on its kind's live menu (by section key and name). */
+export function changedDishes(lines: PlanLine[]): PlanLine[] {
+  return lines.filter((l) => l.dish?.changed === true);
+}
+
+/** A line new to the house's menu: a wine new to the house, or a dish no live menu of its kind lists. */
+export function newLines(lines: PlanLine[]): PlanLine[] {
+  return lines.filter(
+    (l) => l.bottle.result === 'new_wine' || l.glass.result === 'new_wine' || (l.lineKind === 'dish' && !l.dish),
+  );
+}
+
+/** The make-live call for what the review holds: one menu as before, or the batch with its picks. */
+export function makeLiveArgs(
+  ids: string[],
+  picks: Record<string, number>,
+  conflicts: Plan['conflicts'],
+  partOk: boolean,
+  partKinds: MenuKind[],
+): { menuId: string; partReadAccepted: boolean; batch: MakeLiveBatch | undefined } {
+  const [menuId, ...others] = ids;
+  const answered = (conflicts ?? [])
+    .filter((c) => picks[conflictKey(c)] !== undefined)
+    .map((c) => ({ wineLibraryId: c.wineLibraryId, kind: c.kind, price: picks[conflictKey(c)] }));
+  if (others.length === 0 && answered.length === 0) return { menuId, partReadAccepted: partOk, batch: undefined };
+  return {
+    menuId,
+    partReadAccepted: others.length === 0 && partOk,
+    batch: {
+      menuIds: others,
+      picks: answered,
+      partReadAcceptedKinds: others.length === 0 ? [] : partKinds,
+    },
+  };
+}
+
+/** The live line not on this read stays when kept: a button, and a swipe right on a touch screen. */
+function GoneRow({ g, draftId, canManage, onKept }: {
+  g: GoneLine;
+  draftId: string | null;
+  canManage: boolean;
+  onKept: (said: string) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const start = useRef<number | null>(null);
+  const keep = useMutation({
+    mutationFn: () => keepGoneLine(draftId as string, g.menuItemId),
+    onSuccess: () => {
+      setError(null);
+      const kind = kindName(g.kind);
+      onKept(`${g.name} stays: it is on the ${kind ? `${kind} ` : ''}draft now.`);
+    },
+    onError: (e) => setError(reasonOf(e)),
+  });
+  const canKeep = canManage && draftId !== null;
+  return (
+    <li
+      data-testid="menu-plan-gone-line"
+      onPointerDown={canKeep ? (e) => (start.current = e.clientX) : undefined}
+      onPointerUp={
+        canKeep
+          ? (e) => {
+              const from = start.current;
+              start.current = null;
+              if (from !== null && e.clientX - from > 64 && !keep.isPending) keep.mutate();
+            }
+          : undefined
+      }
+      style={{ touchAction: 'pan-y', padding: '2px 0' }}
+    >
+      {g.name}
+      {kindName(g.kind) ? <span className="cl-dim"> · {kindName(g.kind)}</span> : null}{' '}
+      {canKeep ? (
+        <button
+          type="button"
+          className="cl-btn cl-focus"
+          disabled={keep.isPending}
+          onClick={() => keep.mutate()}
+          aria-label={`Keep ${g.name} on the menu`}
+        >
+          {keep.isPending ? 'Keeping…' : 'Keep'}
+        </button>
+      ) : null}
+      {error ? (
+        <span role="alert" className="cl-note" style={{ display: 'block' }}>
+          {error}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
+/** One tap for an Unsure section (or a lone line): Drink with its category, Food, or Dessert. */
+function UnsureAnswer({ group, menuKind, onAnswered, onMoved }: {
+  group: UnsureGroup;
+  menuKind: MenuKind | null;
+  onAnswered: (said: string) => void;
+  /** A section moved to another kind's draft (a missing one is made): the batch gains it. */
+  onMoved: (menuId: string) => void;
+}) {
+  const [category, setCategory] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const answer = useMutation({
+    mutationFn: async (to: 'drink' | 'food' | 'desserts') => {
+      const kind: MenuKind = to === 'drink' ? 'beverage' : to;
+      const lineKind = to === 'drink' ? 'drink' : 'dish';
+      const drinkCategory = to === 'drink' ? category : undefined;
+      if (group.sectionId === null) {
+        // A line with no section answers alone, on its own menu (a line moves with a section only).
+        const only = group.lines[0];
+        await confirmMenuLine(only.menuId, only.menuItemId, lineKind, drinkCategory);
+        return `${group.title}: ${to === 'drink' ? `a drink (${category})` : 'a dish'}.`;
+      }
+      let menuId = group.menuId;
+      if (menuKind !== kind) {
+        const moved = await moveMenuSection(menuId, group.sectionId, kind);
+        menuId = moved.menu_id;
+        onMoved(menuId);
+      }
+      const r = await confirmMenuSection(menuId, group.sectionId, lineKind, drinkCategory);
+      const left = r.left_line_ids.length;
+      return `${group.title} is ${kindName(kind)}${to === 'drink' ? ` (${category})` : ''}${
+        left > 0 ? `; ${plural(left, 'line', 'lines')} in it still to check one by one` : ''
+      }.`;
+    },
+    onSuccess: (said) => {
+      setError(null);
+      onAnswered(said);
+    },
+    onError: (e) => setError(reasonOf(e)),
+  });
+  const id = `unsure-cat-${group.sectionId ?? group.lines[0].menuItemId}`;
+  return (
+    <li data-testid="menu-plan-unsure-group" style={{ marginTop: 6 }}>
+      <span>
+        {group.title}
+        <span className="cl-dim">
+          {' '}
+          · {kindName(menuKind) ?? 'a draft'} · {plural(group.lines.length, 'line', 'lines')}
+          {group.sectionId !== null ? `: ${group.lines.map((l) => l.name).join(', ')}` : ''}
+        </span>
+      </span>
+      <span className="cl-row-controls" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, alignItems: 'center' }}>
+        <label className="cl-dim" htmlFor={id} style={{ fontSize: 12 }}>
+          Drink
+        </label>
+        <select id={id} className="cl-field cl-focus" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">which kind of drink</option>
+          {DRINK_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="cl-btn cl-focus"
+          disabled={answer.isPending || !category}
+          onClick={() => answer.mutate('drink')}
+        >
+          Drink
+        </button>
+        <button type="button" className="cl-btn cl-focus" disabled={answer.isPending} onClick={() => answer.mutate('food')}>
+          {group.sectionId !== null ? 'Food' : 'Dish'}
+        </button>
+        {group.sectionId !== null ? (
+          <button type="button" className="cl-btn cl-focus" disabled={answer.isPending} onClick={() => answer.mutate('desserts')}>
+            Dessert
+          </button>
+        ) : null}
+      </span>
+      {error ? (
+        <span role="alert" className="cl-note" style={{ display: 'block' }}>
+          {error}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
 function KeepSwitch({
   row,
   canManage,
@@ -235,12 +516,15 @@ function KeepSwitch({
 
 export function MenuPlan({
   menuId,
+  batchIds = [],
   canManage,
   onDone,
   onCancel,
   currency,
 }: {
   menuId: string;
+  /** The read's other drafts, one per kind, reviewed and made live with this one (ADR 0340 rule 20). */
+  batchIds?: string[];
   canManage: boolean;
   /** The house's currency, as /menu read it for its line table. */
   currency?: string | null;
@@ -259,12 +543,64 @@ export function MenuPlan({
   const [unsure, setUnsure] = useState(false);
   /** The person said a menu read only in part may still be made current (F-1292). */
   const [partOk, setPartOk] = useState(false);
-  const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan', menuId] });
+  /** Kinds a part-read was accepted for, in a batch (rule 17). */
+  const [partKinds, setPartKinds] = useState<MenuKind[]>([]);
+  /** The owner's pick per conflict (rule 19): held here, sent with make-live. */
+  const [picks, setPicks] = useState<Record<string, number>>({});
+  /** Drafts left out of this make-live (a blocked kind), and drafts a section move made. */
+  const [left, setLeft] = useState<Array<{ menuId: string; kind: string | null }>>([]);
+  const [added, setAdded] = useState<string[]>([]);
+  const [moving, setMoving] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const ids = [...new Set([menuId, ...batchIds, ...added])].filter((id) => !left.some((l) => l.menuId === id));
+  const lead = ids[0] ?? menuId;
+  const others = ids.slice(1);
+  const planKey = others.length > 0 ? ['menu', 'plan', lead, ...others] : ['menu', 'plan', lead];
+  const q = useQuery({ queryKey: planKey, enabled: ids.length > 0, queryFn: () => getMenuPlan(lead, others) });
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan'] });
+
+  // The sections of each draft of the batch: titles for the Unsure taps, the
+  // kind strip's moves, and "Same as last time" (rule 18). Read only where the
+  // gateway says which menus are in the batch, and only for an owner or a
+  // manager (the sections routes refuse anyone else).
+  const drafts = (q.data?.menus ?? []).filter((m) => !m.current);
+  const sectionReads = useQueries({
+    queries: drafts.map((m) => ({
+      queryKey: ['menu', 'sections', m.menuId],
+      enabled: canManage,
+      queryFn: () => listMenuSections(m.menuId),
+    })),
+  });
+  const sections: MenuSection[] = sectionReads.flatMap((r) => r.data ?? []);
+  const sectionsUnread = sectionReads.some((r) => r.isError);
+  const refreshAll = () => {
+    refresh();
+    void queryClient.invalidateQueries({ queryKey: ['menu', 'sections'] });
+  };
+
+  const move = useMutation({
+    mutationFn: (v: { section: MovableSection; kind: MenuKind }) => moveMenuSection(v.section.menuId, v.section.id, v.kind),
+    onMutate: (v) => {
+      setMoving(v.section.id);
+      setMoveError(null);
+    },
+    onSuccess: (r, v) => {
+      if (!ids.includes(r.menu_id)) setAdded((a) => [...a, r.menu_id]);
+      setSaid(
+        `${v.section.title} moved to ${kindName(v.kind)}${r.created_menu ? `, on a new ${kindName(v.kind)} draft` : ''}.`,
+      );
+      refreshAll();
+    },
+    onError: (e) => setMoveError(reasonOf(e)),
+    onSettled: () => setMoving(null),
+  });
 
   const choose = useMutation({
-    mutationFn: (fingerprint: string) =>
-      partOk ? makeMenuCurrent(menuId, fingerprint, true) : makeMenuCurrent(menuId, fingerprint),
+    mutationFn: (fingerprint: string) => {
+      const a = makeLiveArgs(ids, picks, q.data?.conflicts, partOk, partKinds);
+      if (a.batch) return makeMenuCurrent(a.menuId, fingerprint, a.partReadAccepted, a.batch);
+      return a.partReadAccepted ? makeMenuCurrent(a.menuId, fingerprint, true) : makeMenuCurrent(a.menuId, fingerprint);
+    },
     onMutate: () => setUnsure(false),
     onSuccess: (r) => {
       void queryClient.invalidateQueries({ queryKey: ['menu'] });
@@ -310,6 +646,38 @@ export function MenuPlan({
     );
   }
   const plan = q.data;
+  const menus = plan.menus ?? [];
+  const batch = menus.length > 1;
+  const conflicts = plan.conflicts ?? [];
+  const gone = plan.gone ?? [];
+  const groups = unsureGroups(plan.unsure ?? [], plan.lines, sections);
+  const blocked = blockedMenus(menus);
+  const unpicked = conflicts.filter((c) => picks[conflictKey(c)] === undefined).length;
+  const kindOf = (id: string): MenuKind | null => {
+    const k = menus.find((m) => m.menuId === id)?.kind;
+    return isMenuKind(k) ? k : null;
+  };
+  const partReads = menus.filter((m) => !m.current && m.partRead);
+  const partUnaccepted = batch
+    ? partReads.filter((m) => !(isMenuKind(m.kind) && partKinds.includes(m.kind))).length > 0
+    : !!plan.partRead && !partOk;
+  const draftOf = (kind: string | null) => menus.find((m) => !m.current && m.kind === kind)?.menuId ?? null;
+  const fmt = (v: number | null) => money(v, currency);
+  const strip: StripKind[] = drafts
+    .filter((m) => isMenuKind(m.kind))
+    .map((m) => ({ kind: m.kind as MenuKind, count: m.lines, menuId: m.menuId }));
+  const movable: MovableSection[] = sections
+    .filter((sct) => sct.parent_id === null && kindOf(sct.menu_id) !== null)
+    .map((sct) => ({
+      id: sct.id,
+      title: sct.title,
+      menuId: sct.menu_id,
+      kind: kindOf(sct.menu_id) as MenuKind,
+      lines: plan.lines.filter((l) => l.sectionId === sct.id).length,
+    }));
+  const same = sections.filter((sct) => sct.inherited_from_section_id !== null);
+  const counted = reviewCounts(plan, groups);
+  const liveNames = menus.filter((m) => !m.current).map((m) => kindName(m.kind) ?? 'a menu');
   const replacing = orderedRows(plan.lines);
   const typedAfter = replacing.filter((r) => r.k.setAfterRead === true).length;
   const returned = plan.lines.filter((l) => l.returned);
@@ -323,6 +691,87 @@ export function MenuPlan({
       <p className="cl-standing" style={{ marginTop: 6 }} data-testid="menu-plan-sentence">
         {planSentence(plan)}
       </p>
+      {counted ? (
+        <p className="cl-said" style={{ marginTop: 4 }} data-testid="menu-plan-counts">
+          {counted}
+        </p>
+      ) : null}
+      {strip.length > 0 && (batch || movable.length > 0) ? (
+        <KindStrip
+          kinds={strip}
+          sections={movable}
+          canMove={canManage}
+          moving={moving}
+          onMove={(section, kind) => move.mutate({ section, kind })}
+        />
+      ) : null}
+      {moveError ? (
+        <p role="alert" className="cl-said" style={{ marginTop: 6 }}>
+          That section did not move: {moveError}.
+        </p>
+      ) : null}
+      {canManage && sectionsUnread ? (
+        <p className="cl-note" role="alert">
+          The sections of this read could not be read, so lines are shown one by one.
+        </p>
+      ) : null}
+
+      {conflicts.length > 0 ? (
+        <div style={{ marginTop: 12 }} data-testid="menu-plan-conflicts">
+          <p className="cl-said">
+            {plural(conflicts.length, 'wine is', 'wines are')} at two prices across what would be live. A wine has one
+            price, so {canManage ? 'pick the one it has' : 'an owner or a manager picks the one it has'} before these go live:
+          </p>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {conflicts.map((c) => (
+              <ConflictPick
+                key={conflictKey(c)}
+                conflict={c}
+                picked={picks[conflictKey(c)] ?? null}
+                canPick={canManage}
+                onPick={(price) => setPicks((p) => ({ ...p, [conflictKey(c)]: price }))}
+                fmt={fmt}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {groups.length > 0 ? (
+        <div style={{ marginTop: 12 }} data-testid="menu-plan-unsure-lines">
+          <p className="cl-said">
+            Unsure, {unsureWords(groups)}: the read could not tell what {groups.length === 1 ? 'this is' : 'these are'}.
+            {canManage ? ' One tap per section says it.' : ' An owner or a manager says it.'}
+          </p>
+          {canManage ? (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {groups.map((g) => (
+                <UnsureAnswer
+                  key={g.sectionId ?? g.lines[0].menuItemId}
+                  group={g}
+                  menuKind={kindOf(g.menuId)}
+                  onMoved={(id) => {
+                    if (!ids.includes(id)) setAdded((a) => [...a, id]);
+                  }}
+                  onAnswered={(s) => {
+                    setSaid(s);
+                    setMoved(false);
+                    refreshAll();
+                  }}
+                />
+              ))}
+            </ul>
+          ) : (
+            <ul className="cl-said" style={{ paddingLeft: 18 }}>
+              {groups.map((g) => (
+                <li key={g.sectionId ?? g.lines[0].menuItemId}>
+                  {g.title} ({plural(g.lines.length, 'line', 'lines')})
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
       {moved ? (
         <p role="status" className="cl-said" style={{ marginTop: 6 }} data-testid="menu-plan-moved">
           A price or a lock changed since this was shown, so nothing was changed. Here it is again.
@@ -393,6 +842,70 @@ export function MenuPlan({
         </>
       ) : null}
 
+      {changedDishes(plan.lines).length > 0 ? (
+        <ul className="cl-said" style={{ marginTop: 10, paddingLeft: 18 }} data-testid="menu-plan-dishes">
+          {changedDishes(plan.lines).map((l) => (
+            <li key={`d-${l.menuItemId}`}>
+              {l.name}
+              {kindName(l.menuKind) ? ` (${kindName(l.menuKind)})` : ''}: {fmt(l.dish?.livePrice ?? null)} on the live menu,{' '}
+              {fmt(l.dish?.price ?? null)} on this one
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {newLines(plan.lines).length > 0 && (batch || menus.length > 0) ? (
+        <details style={{ marginTop: 12 }} data-testid="menu-plan-new" open={newLines(plan.lines).length <= 12}>
+          <summary className="cl-said cl-focus" style={{ cursor: 'pointer' }}>
+            New ({newLines(plan.lines).length})
+          </summary>
+          <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
+            {newLines(plan.lines).map((l) => (
+              <li key={`n-${l.menuItemId}`}>
+                {l.name}
+                {kindName(l.menuKind) ? <span className="cl-dim"> · {kindName(l.menuKind)}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      {gone.length > 0 ? (
+        <div style={{ marginTop: 12 }} data-testid="menu-plan-gone">
+          <p className="cl-said">
+            Gone: {plural(gone.length, 'line on a live menu is', 'lines on a live menu are')} not on this read, so{' '}
+            {gone.length === 1 ? 'it leaves' : 'they leave'} the menu
+            {canManage ? '. Keep one (or swipe it right) to carry it onto the draft.' : ' unless an owner or a manager keeps them.'}
+          </p>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {gone.map((g) => (
+              <GoneRow
+                key={g.menuItemId}
+                g={g}
+                draftId={draftOf(g.kind)}
+                canManage={canManage}
+                onKept={(s) => {
+                  setSaid(s);
+                  setMoved(false);
+                  refreshAll();
+                }}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {same.length > 0 ? (
+        <details style={{ marginTop: 12 }} data-testid="menu-plan-same">
+          <summary className="cl-said cl-focus" style={{ cursor: 'pointer' }}>
+            Same as last time ({plural(same.length, 'section', 'sections')})
+          </summary>
+          <p className="cl-said" style={{ marginTop: 4 }}>
+            {same.map((sct) => sct.title).join(', ')}
+          </p>
+        </details>
+      ) : null}
+
       {returned.length > 0 || mismatched.length > 0 ? (
         <ul className="cl-said" style={{ marginTop: 10, paddingLeft: 18 }} data-testid="menu-plan-returned">
           {returned.map((l) => (
@@ -461,7 +974,33 @@ export function MenuPlan({
         </p>
       ) : null}
 
-      {!plan.current && plan.partRead ? (
+      {batch && partReads.length > 0 ? (
+        <div role="alert" className="cl-said" style={{ marginTop: 12 }} data-testid="menu-plan-part-read">
+          {partReads.map((m) => (
+            <div key={m.menuId} style={{ marginTop: 4 }}>
+              <p style={{ margin: 0 }}>
+                Only part of the {kindName(m.kind) ?? 'menu'} draft was read: {m.partRead}. Making it live takes every line
+                that was not read off that menu.
+              </p>
+              {canManage && isMenuKind(m.kind) ? (
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                  <input
+                    type="checkbox"
+                    checked={partKinds.includes(m.kind)}
+                    onChange={(e) => {
+                      const k = m.kind as MenuKind;
+                      setPartKinds((ks) => (e.target.checked ? [...ks, k] : ks.filter((x) => x !== k)));
+                    }}
+                  />
+                  Make {kindName(m.kind)} live anyway, with those lines missing
+                </label>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {!batch && !plan.current && plan.partRead ? (
         // F-1292: a menu read only in part takes every drink that was not read
         // off the house's menu. Said first, and chosen only once confirmed.
         <div role="alert" className="cl-said" style={{ marginTop: 12 }} data-testid="menu-plan-part-read">
@@ -478,6 +1017,37 @@ export function MenuPlan({
         </div>
       ) : null}
 
+      {canManage && batch && blocked.length > 0 ? (
+        <div style={{ marginTop: 12 }} data-testid="menu-plan-blocked">
+          {blocked.map((m) => (
+            <p key={m.menuId} className="cl-said" style={{ margin: '4px 0' }}>
+              {kindName(m.kind) ?? 'A menu'} has {plural(m.unsure, 'line', 'lines')} still to check, so it cannot go live
+              yet.{' '}
+              <button
+                type="button"
+                className="cl-btn cl-focus"
+                disabled={choose.isPending || ids.length <= 1}
+                onClick={() => {
+                  setLeft((l) => [...l, { menuId: m.menuId, kind: m.kind }]);
+                  setMoved(false);
+                }}
+              >
+                Leave {kindName(m.kind) ?? 'it'} as a draft
+              </button>
+            </p>
+          ))}
+          <p className="cl-note">The other kinds go live without it; it stays in the list below.</p>
+        </div>
+      ) : null}
+      {canManage && left.length > 0 ? (
+        <p className="cl-note" data-testid="menu-plan-left">
+          Left as a draft: {left.map((l) => kindName(l.kind) ?? 'a menu').join(', ')}.{' '}
+          <button type="button" className="cl-btn cl-focus" onClick={() => setLeft([])} disabled={choose.isPending}>
+            Put {left.length === 1 ? 'it' : 'them'} back
+          </button>
+        </p>
+      ) : null}
+
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
         {canManage && !plan.current && plan.lines.length === 0 ? (
           // F-681: an empty menu made current archived the house's real one.
@@ -489,10 +1059,16 @@ export function MenuPlan({
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
-            disabled={choose.isPending || (!!plan.partRead && !partOk)}
+            disabled={choose.isPending || partUnaccepted || blocked.length > 0 || groups.length > 0 || unpicked > 0}
             onClick={() => choose.mutate(plan.fingerprint)}
           >
-            {choose.isPending ? 'Making it current…' : 'Make it current'}
+            {batch
+              ? choose.isPending
+                ? 'Making them live…'
+                : `Make ${liveNames.join(' + ')} live`
+              : choose.isPending
+                ? 'Making it current…'
+                : 'Make it current'}
           </button>
         ) : null}
         {onCancel ? (

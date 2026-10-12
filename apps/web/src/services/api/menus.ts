@@ -88,6 +88,31 @@ export interface MenuImportResult {
    * lines, or why it was not read). The lines of every read file are in `items`.
    */
   files?: MenuFileResult[]
+  /**
+   * ADR 0340 rule 4: with the split on (MENUS_SPLIT_BY_KIND), one read makes
+   * one draft per kind it found, read together. Absent when the split is off.
+   */
+  drafts?: Array<{ menuId: string; kind: MenuKind | string | null; items?: unknown[] }>
+  readTogetherId?: string | null
+}
+
+/**
+ * The kinds a house keeps one live menu of (ADR 0340 rule 1). A legacy menu
+ * type (full, bar, events) is never one of them and never goes live.
+ */
+export const MENU_KINDS = ['beverage', 'food', 'desserts'] as const
+export type MenuKind = (typeof MENU_KINDS)[number]
+
+/** A kind in the house's words: Drinks, Food, Desserts. Null for a kind it does not know. */
+export function kindName(kind: string | null | undefined): string | null {
+  if (kind === 'beverage') return 'Drinks'
+  if (kind === 'food') return 'Food'
+  if (kind === 'desserts') return 'Desserts'
+  return null
+}
+
+export function isMenuKind(kind: unknown): kind is MenuKind {
+  return typeof kind === 'string' && (MENU_KINDS as readonly string[]).includes(kind)
 }
 
 export interface MenuReadNotes {
@@ -243,6 +268,14 @@ export interface MenuLine {
    * 86'd, in the bar's words; absent otherwise.
    */
   sold_out_because?: string[]
+  /** ADR 0340: the live menu this line is on, its kind, and its section. Absent from an older gateway. */
+  menu_id?: string
+  menu_type?: string | null
+  section_id?: string | null
+  line_kind?: 'drink' | 'dish' | null
+  drink_category?: string | null
+  /** A dish's own price (a dish has no bottle or glass). */
+  price?: number | null
 }
 
 export interface ActiveMenu {
@@ -256,6 +289,8 @@ export interface ActiveMenu {
   /** False when which drinks are sold out could not be read (F-145); none is marked then. */
   soldOutReadable?: boolean
   soldOutReason?: string | null
+  /** Every live menu, one per kind, in Drinks, Food, Desserts order (ADR 0340 rule 25). */
+  kinds?: Array<{ menuId: string; kind: string | null; name: string | null; status: string }>
 }
 
 /**
@@ -394,10 +429,15 @@ export interface MenuVersion {
   retiredAt: string | null
   retiredBy: MenuPerson | null
   createdAt: string | null
+  /** ADR 0340: the menu's kind, and whether its carry wrote every line. Absent from an older gateway. */
+  kind?: string | null
+  carryFinished?: boolean
 }
 
 export interface MenuVersions {
   current: MenuVersion | null
+  /** The live menu of each kind; null for a kind with none (ADR 0340 rule 1). */
+  currentByKind?: Record<string, MenuVersion | null>
   lastUsed: MenuVersion | null
   versions: MenuVersion[]
   /** false = who read or chose these menus could not be named (the reason says why). */
@@ -431,6 +471,18 @@ export interface MakeCurrentResult {
   held?: Array<HeldKind & { menuItemId: string; name: string }>
   /** Locked wines that came back with this menu. */
   returned?: Array<{ menuItemId: string; name: string }>
+  /** Per menu of a batch (ADR 0340 rule 4). Absent from an older gateway. */
+  menus?: Array<{
+    menuId: string
+    kind: string | null
+    outcome: 'made_current' | 'already_current'
+    madeCurrentAt: string | null
+    recarried: boolean
+    carryFinished: boolean
+    lines: number
+  }>
+  /** How many conflicts the owner's picks answered. */
+  picked?: number
 }
 
 /** What choosing a menu WOULD do, per line and per kind (ADR 0193 round 3, L13). */
@@ -479,6 +531,57 @@ export interface PlanLine {
   flag: 'blank_kept_last_known' | 'blank_no_house_price' | null
   returned: boolean
   vintageMismatch: boolean
+  /** ADR 0340: the batch menu this line is on, its kind, line kind and section. Absent from an older gateway. */
+  menuId?: string
+  menuKind?: string | null
+  lineKind?: string | null
+  sectionId?: string | null
+  /** A dish beside the same dish on its kind's live menu (by section key and name); display only. */
+  dish?: { price: number | null; livePrice: number | null; changed: boolean } | null
+}
+
+/** One menu of a make-live batch, as the plan reads it (ADR 0340 rules 18, 20). */
+export interface PlanMenu {
+  menuId: string
+  kind: string | null
+  current: boolean
+  partRead: string | null
+  lines: number
+  /** Unsure lines on it, and conflicts one of its lines is in. A current menu blocks nothing. */
+  unsure: number
+  conflicts: number
+}
+
+/** A live line no menu of the batch lists: it leaves unless kept (rule 18, "Gone"). */
+export interface GoneLine {
+  menuId: string
+  menuItemId: string
+  name: string
+  kind: string | null
+  sectionKey: string | null
+}
+
+export interface UnsureLine {
+  menuId: string
+  menuItemId: string
+  name: string
+  reason: 'kind_not_decided' | 'no_drink_category'
+}
+
+/** One wine at two prices of one price kind across what would be live (rule 19). */
+export interface PriceConflict {
+  wineLibraryId: string
+  inventoryId: string | null
+  kind: 'bottle' | 'glass'
+  name: string
+  prices: Array<{ price: number; menuId: string; menuItemId: string; live: boolean; menuKind: string | null }>
+}
+
+/** The owner's answer to one conflict: the one price the wine has, for one price kind. */
+export interface PricePickAnswer {
+  wineLibraryId: string
+  kind: 'bottle' | 'glass'
+  price: number
 }
 
 export interface MenuPlan {
@@ -509,7 +612,7 @@ export interface MenuPlan {
    * one. Empty when this menu is already current or none is. Optional only
    * for an older gateway.
    */
-  retiring?: Array<{ menuId: string; name: string | null; lines: number }>
+  retiring?: Array<{ menuId: string; name: string | null; lines: number; kind?: string | null }>
   /**
    * Why only part of this menu was read; null when it was read whole. The
    * gateway refuses to make it current unless the person confirms (F-1292).
@@ -519,11 +622,22 @@ export interface MenuPlan {
   namesReason: string | null
   /** The house's IANA zone, for printing dates as the house's day (F-699). */
   timezone?: string | null
+  /** ADR 0340: every menu of the batch (the URL's first), Gone, Unsure and conflicts. Absent from an older gateway. */
+  menus?: PlanMenu[]
+  gone?: GoneLine[]
+  unsure?: UnsureLine[]
+  conflicts?: PriceConflict[]
 }
 
-/** What choosing this menu would do. Nothing is written. A failed read throws. */
-export async function getMenuPlan(menuId: string): Promise<MenuPlan> {
-  const response = await apiClient.get<MenuPlan>(`/menu-versions/${menuId}/plan`)
+/**
+ * What choosing this menu would do. Nothing is written. A failed read throws.
+ * `otherIds` plans a batch, one menu per kind (ADR 0340 rule 20; at most three).
+ */
+export async function getMenuPlan(menuId: string, otherIds: string[] = []): Promise<MenuPlan> {
+  const response = await apiClient.get<MenuPlan>(
+    `/menu-versions/${menuId}/plan`,
+    otherIds.length > 0 ? { params: { menuIds: otherIds.join(',') } } : undefined,
+  )
   return response.data
 }
 
@@ -550,10 +664,118 @@ export async function makeMenuCurrent(
   menuId: string,
   fingerprint: string,
   partReadAccepted = false,
+  batch?: MakeLiveBatch,
 ): Promise<MakeCurrentResult> {
   const response = await apiClient.post<MakeCurrentResult>(
     `/menu-versions/${menuId}/make-current`,
-    partReadAccepted ? { fingerprint, partReadAccepted } : { fingerprint },
+    makeCurrentBody(fingerprint, partReadAccepted, batch),
   )
+  return response.data
+}
+
+/** What a make-live batch adds to the one-menu call (ADR 0340 rules 17, 19, 20). */
+export interface MakeLiveBatch {
+  /** The other menus of the batch; the URL's menu is always in it. */
+  menuIds?: string[]
+  picks?: PricePickAnswer[]
+  partReadAcceptedKinds?: MenuKind[]
+}
+
+/**
+ * The make-current body. One menu with no batch sends exactly what it always
+ * sent; a batch field is sent only when it holds something, since any batch
+ * field takes the gateway's batch path.
+ */
+export function makeCurrentBody(
+  fingerprint: string,
+  partReadAccepted: boolean,
+  batch?: MakeLiveBatch,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { fingerprint }
+  if (partReadAccepted) body.partReadAccepted = true
+  if (batch?.menuIds && batch.menuIds.length > 0) body.menuIds = batch.menuIds
+  if (batch?.picks && batch.picks.length > 0) body.picks = batch.picks
+  if (batch?.partReadAcceptedKinds && batch.partReadAcceptedKinds.length > 0) {
+    body.partReadAcceptedKinds = batch.partReadAcceptedKinds
+  }
+  return body
+}
+
+// ── Sections (ADR 0340 rules 10, 14-16; owner or manager) ──────────────────
+
+export interface MenuSection {
+  id: string
+  menu_id: string
+  parent_id: string | null
+  position: number
+  title: string
+  title_as_read: string | null
+  key: string | null
+  drink_category: string | null
+  suggested_kind: string | null
+  suggested_category: string | null
+  suggestion_confidence: number | null
+  /** The live section this one carries over from: "Same as last time" (rule 18). */
+  inherited_from_section_id: string | null
+  confirmed_by: string | null
+  confirmed_at: string | null
+}
+
+export async function listMenuSections(menuId: string): Promise<MenuSection[]> {
+  const response = await apiClient.get<{ menuId: string; sections: MenuSection[] }>(
+    `/menu-versions/${menuId}/sections`,
+  )
+  return response.data?.sections ?? []
+}
+
+export async function renameMenuSection(menuId: string, sectionId: string, title: string): Promise<unknown> {
+  const response = await apiClient.patch(`/menu-versions/${menuId}/sections/${sectionId}`, { title })
+  return response.data
+}
+
+/** Moves a draft section to the read's draft of another kind; a missing kind's draft is made (rule 10). */
+export async function moveMenuSection(
+  menuId: string,
+  sectionId: string,
+  kind: MenuKind,
+): Promise<{ id: string; from_menu_id: string; menu_id: string; kind: string; created_menu: boolean; line_ids: string[]; resolved: number }> {
+  const response = await apiClient.post(`/menu-versions/${menuId}/sections/${sectionId}/move`, { kind })
+  return response.data
+}
+
+/** Confirms what a draft section's lines are: a drink of a category, or a dish (rule 15). */
+export async function confirmMenuSection(
+  menuId: string,
+  sectionId: string,
+  lineKind: 'drink' | 'dish',
+  drinkCategory?: string,
+): Promise<{ id: string; menu_id: string; line_kind: string; applied_line_ids: string[]; left_line_ids: string[]; resolved: number }> {
+  const response = await apiClient.post(
+    `/menu-versions/${menuId}/sections/${sectionId}/confirm`,
+    drinkCategory ? { lineKind, drinkCategory } : { lineKind },
+  )
+  return response.data
+}
+
+/** Confirms one draft line's kind (the lines a section answer left). */
+export async function confirmMenuLine(
+  menuId: string,
+  lineId: string,
+  lineKind: 'drink' | 'dish',
+  drinkCategory?: string,
+): Promise<{ line_id: string; menu_id: string; line_kind: string; drink_category: string | null; resolved: number }> {
+  const response = await apiClient.post(
+    `/menu-versions/${menuId}/lines/${lineId}/confirm`,
+    drinkCategory ? { lineKind, drinkCategory } : { lineKind },
+  )
+  return response.data
+}
+
+/** Keeps a live line the draft does not list: copies it onto the draft (rule 18, "Gone", Keep). */
+export async function keepGoneLine(
+  draftMenuId: string,
+  liveLineId: string,
+): Promise<{ line_id: string; menu_id: string; section_id: string | null; kept_from_line_id: string }> {
+  const response = await apiClient.post(`/menu-versions/${draftMenuId}/lines/${liveLineId}/keep`, {})
   return response.data
 }

@@ -28,6 +28,7 @@ import {
   MENU_CADENCES,
   getMenuSourceUrl,
   importMenu,
+  kindName,
   listMenuVersions,
   type MakeCurrentResult,
   type MenuCadence,
@@ -117,8 +118,23 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
   failed: () => '',
 };
 
-/** What making a menu current did, in one sentence -- every outcome it was told, and every lock by name. */
-export function makeCurrentSentence(r: MakeCurrentResult, currency?: string | null): string {
+/**
+ * The live kinds a make-live left as they were (ADR 0340 rule 20: "Food
+ * untouched"): every kind live before it that the reply names no menu of.
+ * Empty for a reply that names no menus (an older gateway).
+ */
+export function untouchedKinds(r: Pick<MakeCurrentResult, 'menus'>, liveKinds: string[]): string[] {
+  const made = r.menus;
+  if (!made) return [];
+  return liveKinds.filter((k) => !made.some((m) => m.kind === k));
+}
+
+/**
+ * What making a menu current did, in one sentence -- every outcome it was told, and every lock by name.
+ * With more than one live kind in play (ADR 0340 rule 20) it leads with the kinds:
+ * "Drinks + Desserts updated · … · Food untouched."
+ */
+export function makeCurrentSentence(r: MakeCurrentResult, currency?: string | null, untouched: string[] = []): string {
   if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
@@ -150,7 +166,19 @@ export function makeCurrentSentence(r: MakeCurrentResult, currency?: string | nu
   const failed = r.failed.length
     ? ` ${r.failed.length} could not be priced: ${r.failed.map((f) => `${f.name} (${f.error})`).join('; ')}.`
     : '';
-  return `This is now the current menu: ${parts.join(', ')}.${held}${returned}${failed}`;
+  const made = (r.menus ?? []).filter((m) => m.outcome === 'made_current' || m.recarried);
+  // A carry that did not write every line is said, never read as done (rule 4).
+  const unfinished = (r.menus ?? []).filter((m) => m.carryFinished === false);
+  const carry = unfinished.length
+    ? ` ${unfinished.map((m) => kindName(m.kind) ?? 'One menu').join(' and ')}: not every price was written yet; choosing ${unfinished.length === 1 ? 'that menu' : 'those menus'} again writes the rest.`
+    : '';
+  const names = made.map((m) => kindName(m.kind)).filter((n): n is string => n !== null);
+  if ((r.menus?.length ?? 0) > 1 || (untouched.length > 0 && names.length > 0)) {
+    const still = untouched.map((k) => kindName(k) ?? k);
+    const lead = names.length ? `${names.join(' + ')} updated` : 'Updated';
+    return `${lead} · ${parts.join(', ')}${still.length ? ` · ${still.join(', ')} untouched` : ''}.${held}${returned}${failed}${carry}`;
+  }
+  return `This is now the current menu: ${parts.join(', ')}.${held}${returned}${failed}${carry}`;
 }
 
 /** A menu date the gateway accepts: a day or just a month. Empty = none. */
@@ -170,7 +198,13 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function ReadMenuForm({ canManage, onRead, currency }: { canManage: boolean; onRead: () => void; currency?: string | null }) {
+function ReadMenuForm({ canManage, onRead, currency, liveKinds = [] }: {
+  canManage: boolean
+  onRead: () => void
+  currency?: string | null
+  /** The kinds live now: a make-live names the ones it left untouched (ADR 0340 rule 20). */
+  liveKinds?: string[]
+}) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   // F-1404: the 10 MB check every picker makes, before a byte is sent.
@@ -319,12 +353,14 @@ function ReadMenuForm({ canManage, onRead, currency }: { canManage: boolean; onR
           {planning && chosen === null ? (
             <MenuPlan
               menuId={result.menuId}
+              // ADR 0340 rule 4: a read split by kind made a draft per kind; they are reviewed and made live together.
+              batchIds={(result.drafts ?? []).map((d) => d.menuId).filter((id) => id !== result.menuId)}
               canManage={canManage}
               currency={currency}
               onCancel={() => setPlanning(false)}
               onDone={(r) => {
                 setPlanning(false);
-                setChosen(makeCurrentSentence(r, currency));
+                setChosen(makeCurrentSentence(r, currency, untouchedKinds(r, liveKinds)));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
               }}
@@ -429,6 +465,9 @@ export function MenuVersions({ canManage, currency }: {
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
   const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  const liveKinds = Object.entries(q.data?.currentByKind ?? {})
+    .filter(([, v]) => v !== null)
+    .map(([k]) => k);
 
   return (
     <section style={{ marginTop: 32 }} aria-labelledby="menu-versions-h">
@@ -439,7 +478,7 @@ export function MenuVersions({ canManage, currency }: {
         Every menu this house reads is kept: the file and the lines it found. Reading one does not change the current
         menu or any price; choosing it does.
       </p>
-      <ReadMenuForm canManage={canManage} onRead={refresh} currency={currency} />
+      <ReadMenuForm canManage={canManage} onRead={refresh} currency={currency} liveKinds={liveKinds} />
       {said ? (
         <p role="status" className="cl-said" style={{ marginTop: 10 }}>
           {said}
@@ -502,7 +541,7 @@ export function MenuVersions({ canManage, currency }: {
                 onCancel={() => setPlanFor(null)}
                 onDone={(r) => {
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r, currency));
+                  setSaid(makeCurrentSentence(r, currency, untouchedKinds(r, liveKinds)));
                   refresh();
                 }}
               />
