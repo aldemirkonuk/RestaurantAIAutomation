@@ -51,7 +51,10 @@ export function SetupNudgeBanner() {
       title="Finish setting up Mudavym."
       body="Upload your wine list and set a low-stock threshold to unlock inventory and ordering."
       primaryLabel="Finish setup"
-      onPrimary={() => navigate('/get-started')}
+      // SETUP-11 (ADR 0309): this banner shows only to an owner or a manager
+      // inside a house, so it leads to that house's contents — never back into
+      // /get-started, the wizard that creates a house.
+      onPrimary={() => navigate('/house')}
       onLater={() => guidance?.snoozeSetupNudge()}
       onDismissForever={() => guidance?.dismissSetupNudgeForever()}
       dismissForeverLabel="Don't remind me"
