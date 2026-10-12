@@ -1214,23 +1214,67 @@ export class ProvidersService {
     requireHouse(restaurantId);
     let imported = 0;
     let failed = 0;
+    let skipped = 0;
     const errors: string[] = [];
 
+    // F-1458: a vendor already in this house's book is left as it is, by the
+    // same key the import screen sorts on (name, folded; or email). The screen
+    // used to send its whole file while the book was still being read, so
+    // every vendor in it was added a second time. A book that cannot be read
+    // refuses the import, never waves it through as "nothing to match".
+    const { data: book, error: bookError } = await this.databaseService.supabase
+      .from("providers")
+      .select("name, contact_email")
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null);
+    if (bookError) {
+      throw new ServiceUnavailableException(
+        "Your vendor list could not be read, so nothing was added. Try again in a moment.",
+      );
+    }
+    const foldName = (s: string | null | undefined) =>
+      (s ?? "")
+        .trim()
+        .toLocaleLowerCase("tr")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    const names = new Set(
+      ((book ?? []) as Array<{ name: string | null }>).map((v) =>
+        foldName(v.name),
+      ),
+    );
+    const emails = new Set(
+      ((book ?? []) as Array<{ contact_email: string | null }>)
+        .map((v) => (v.contact_email ?? "").trim().toLowerCase())
+        .filter(Boolean),
+    );
+
     for (const providerDto of dto.providers) {
+      const name = foldName(providerDto.name);
+      const email = (providerDto.email ?? "").trim().toLowerCase();
+      if ((name && names.has(name)) || (email && emails.has(email))) {
+        skipped++;
+        errors.push(
+          `${providerDto.name}: already in your vendors, left as it is.`,
+        );
+        continue;
+      }
       try {
         // The caller's house, from the token. Called with no house, every
         // imported vendor was written with restaurant_id NULL (the column is
         // nullable) and belonged to nobody.
         await this.createProvider(providerDto, restaurantId, userId);
         imported++;
+        if (name) names.add(name);
+        if (email) emails.add(email);
       } catch (err: any) {
         failed++;
         errors.push(`${providerDto.name}: ${err.message || "Unknown error"}`);
       }
     }
 
-    this.logger.log("Bulk import completed", { imported, failed });
-    return { imported, failed, errors };
+    this.logger.log("Bulk import completed", { imported, failed, skipped });
+    return { imported, failed, skipped, errors };
   }
 
   // =========================================================================

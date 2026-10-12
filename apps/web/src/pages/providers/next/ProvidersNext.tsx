@@ -273,6 +273,9 @@ export function ProvidersNextRoute() {
 
 export default function ProvidersNext() {
   const data = useProvidersNextData();
+  // F-1458: the vendor import may only sort a file against a book that was
+  // read, never against the empty list a loading or failed read leaves.
+  const bookKnown = data.hasData && !data.isError;
   // The house's formats tag for the terms' money (F-1137).
   useHouseCurrency();
   // Supplies my menu -> All my vendors -> Find new vendors (founder,
@@ -447,12 +450,19 @@ export default function ProvidersNext() {
                   : 'Reading your vendors…'}
             </span>
             {canChange && (
+              // F-1458: the file is sorted against the vendors already in the
+              // book; until the book has been read that list is empty, not
+              // known, and every vendor in the file would be added again.
               <button
                 type="button"
                 onClick={() => setImporting((v) => !v)}
                 data-testid="import-vendors"
-                aria-expanded={importing}
+                aria-expanded={importing && bookKnown}
+                disabled={!bookKnown}
+                title={bookKnown ? undefined : 'Your vendor list has to be read first, so nobody is added twice.'}
                 style={{
+                  opacity: bookKnown ? 1 : 0.5,
+                  cursor: bookKnown ? 'pointer' : 'not-allowed',
                   fontFamily: SANS,
                   fontSize: 12.5,
                   fontWeight: 600,
@@ -494,7 +504,7 @@ export default function ProvidersNext() {
           </div>
         </header>
 
-        {importing && canChange && (
+        {importing && canChange && bookKnown && (
           <VendorCsvImport
             house={house}
             existing={data.cards.map((c) => ({ name: c.provider.name, email: c.provider.email }))}

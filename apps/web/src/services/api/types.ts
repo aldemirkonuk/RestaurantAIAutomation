@@ -212,8 +212,11 @@ export interface BulkCreateInventoryRequest {
 
 export interface BulkInventoryLineResult {
   index: number;
-  /** `stock_added` = the wine was already in inventory, so the quantity was appended to it. */
-  status: 'created' | 'stock_added' | 'reactivated' | 'failed';
+  /**
+   * `stock_added` = the wine was already in inventory, so the quantity was appended to it.
+   * `counted` = opening stock for a wine already carried, counted to the line's quantity.
+   */
+  status: 'created' | 'stock_added' | 'counted' | 'reactivated' | 'failed';
   inventoryId?: string;
   masterWineId?: string;
   wineName: string;

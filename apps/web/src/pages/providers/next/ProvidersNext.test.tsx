@@ -201,6 +201,13 @@ vi.mock('./scorecard/MailTone', () => ({
     <div data-testid="mail-tone-stub">mail of {providerId}</div>
   ),
 }));
+// The import panel's own sorting is pinned in lib/csvImport tests; here it
+// only shows which book it was handed (F-1458).
+vi.mock('./VendorCsvImport', () => ({
+  VendorCsvImport: ({ existing }: { existing: unknown[] }) => (
+    <div data-testid="vendor-csv-import">sorted against {existing.length}</div>
+  ),
+}));
 const auth = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'manager' | 'staff' | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRole: auth.role, user: { role: auth.role }, activeRestaurantId: 'r1' }),
@@ -600,6 +607,45 @@ describe('the book for staff (VEN-W30, "Staff read only")', () => {
     render(<ProvidersNext />);
     expect(screen.getByTestId('add-vendor')).toHaveTextContent('Add a vendor');
     expect(screen.queryByTestId('vendors-read-only')).toBeNull();
+  });
+});
+
+describe('the vendor import waits for the book (F-1458)', () => {
+  it('[REVERT-FAILS] is not offered while the book is still being read', () => {
+    mockData.current = { ...base, hasData: false, isError: false, cards: [] };
+    render(<ProvidersNext />);
+    const button = screen.getByTestId('import-vendors');
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(screen.queryByTestId('vendor-csv-import')).toBeNull();
+  });
+
+  it('[REVERT-FAILS] is not offered when the book could not be read', () => {
+    mockData.current = { ...base, hasData: false, isError: true, errorMessage: 'boom', cards: [] };
+    render(<ProvidersNext />);
+    const button = screen.getByTestId('import-vendors');
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(screen.queryByTestId('vendor-csv-import')).toBeNull();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeTruthy();
+  });
+
+  it('[REVERT-FAILS] is not offered when a re-read of a known book failed', () => {
+    mockData.current = { ...base, isError: true, errorMessage: 'boom', cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }] };
+    render(<ProvidersNext />);
+    expect(screen.getByTestId('import-vendors')).toBeDisabled();
+  });
+
+  it('control: once the book is read, the import sorts against it', () => {
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    const button = screen.getByTestId('import-vendors');
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(screen.getByTestId('vendor-csv-import')).toHaveTextContent('sorted against 1');
   });
 });
 
