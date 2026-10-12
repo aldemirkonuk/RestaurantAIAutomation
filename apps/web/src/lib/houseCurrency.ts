@@ -29,6 +29,12 @@ let current: string | null | undefined = undefined;
  * group by. Until it is known, en-US, as before (F-908).
  */
 let currentLocale = 'en-US';
+/**
+ * Whether that tag was read from the house's recorded country, not the en-US
+ * stand-in. A menu CSV's code page is guessed from it, and a guess made on the
+ * stand-in reads a Turkish file as Windows-1252 and keeps it garbled (F-1402).
+ */
+let localeKnown = false;
 const listeners = new Set<() => void>();
 
 /** What the money helpers fall back to when a caller passes no currency. */
@@ -61,6 +67,7 @@ export function localeOfCountry(country: string | null | undefined): string {
 
 /** Written by `useHouseCurrency` (and tests), from the same read as the code. */
 export function setHouseLocale(locale: string | null | undefined): void {
+  localeKnown = typeof locale === 'string' && locale !== '';
   const next = typeof locale === 'string' && locale ? locale : 'en-US';
   if (next === currentLocale) return;
   currentLocale = next;
@@ -70,6 +77,11 @@ export function setHouseLocale(locale: string | null | undefined): void {
 /** The house's formats tag, for figures that are not money (F-992). */
 export function getHouseLocale(): string {
   return currentLocale;
+}
+
+/** The house's formats tag when it was read from its country; null while unknown (F-1402). */
+export function getHouseLocaleIfKnown(): string | null {
+  return localeKnown ? currentLocale : null;
 }
 
 /** For `useSyncExternalStore` in the hook. */

@@ -9,7 +9,7 @@ import {
   Image as ImageIcon,
   SwitchCamera,
 } from 'lucide-react'
-import { SCAN_ACCEPT, isScannable, resetFileInput } from '../../lib/uploadAccept'
+import { SCAN_ACCEPT, isScannable, resetFileInput, validateSelection } from '../../lib/uploadAccept'
 
 const ORCHESTRATOR_URL =
   import.meta.env?.VITE_AGENT_ORCHESTRATOR_URL ||
@@ -394,6 +394,14 @@ export function CameraCapture({
       setCameraError(
         `"${file.name}" is not a photo or PDF. Pick an image or a PDF menu.`,
       )
+      resetFileInput(input)
+      return
+    }
+
+    // F-1404: the 10 MB check every picker makes, before a byte is sent.
+    const tooBig = validateSelection([file]).errors
+    if (tooBig.length) {
+      setCameraError(tooBig.join(' '))
       resetFileInput(input)
       return
     }

@@ -1,4 +1,4 @@
-import { getHouseLocale } from './houseCurrency';
+import { getHouseLocaleIfKnown } from './houseCurrency';
 
 /**
  * Why a CSV menu was not read, and the Excel setting that fixes it (F-1294).
@@ -14,12 +14,20 @@ export const CSV_NOT_READABLE =
  * tried strictly first; a file that is not UTF-8 is read as Windows-1254 in a
  * Turkish house and Windows-1252 anywhere else. A file that still holds the
  * replacement character is refused, never sent.
+ *
+ * While the house's locale is unknown (/get-started renders outside the house
+ * shell, so nothing has read it yet), there is no code page to guess: a file
+ * that is not UTF-8 is refused in the same words (F-1402).
  */
-export function decodeCsvBytes(bytes: ArrayBuffer | Uint8Array, locale: string = getHouseLocale()): string {
+export function decodeCsvBytes(
+  bytes: ArrayBuffer | Uint8Array,
+  locale: string | null = getHouseLocaleIfKnown(),
+): string {
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
+    if (!locale) throw new Error(CSV_NOT_READABLE);
     text = new TextDecoder(/^tr(-|$)/i.test(locale) ? 'windows-1254' : 'windows-1252').decode(bytes);
   }
   if (text.includes('�')) throw new Error(CSV_NOT_READABLE);
@@ -27,6 +35,6 @@ export function decodeCsvBytes(bytes: ArrayBuffer | Uint8Array, locale: string =
 }
 
 /** A CSV menu file as text, read the way `decodeCsvBytes` says. */
-export async function readMenuCsv(file: Blob, locale?: string): Promise<string> {
+export async function readMenuCsv(file: Blob, locale?: string | null): Promise<string> {
   return decodeCsvBytes(await file.arrayBuffer(), locale);
 }

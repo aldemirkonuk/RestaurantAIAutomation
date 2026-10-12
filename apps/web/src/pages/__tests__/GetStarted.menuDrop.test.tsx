@@ -120,6 +120,27 @@ describe('GetStarted — the menu drop zone', () => {
     expect(screen.getByRole('button', { name: /Use the camera/ })).toBeInTheDocument()
   })
 
+  // F-1404: the drop zone sent a file of any size, and the gateway's body
+  // limit came back as "Request failed with status code 413".
+  it('a menu over 10 MB is refused before it is sent, in plain words', async () => {
+    await toMenuStep()
+    const big = new File(['%PDF-1.7'], 'menu.pdf', { type: 'application/pdf' })
+    Object.defineProperty(big, 'size', { value: 14 * 1024 * 1024 })
+    drop([big])
+    expect(await screen.findByRole('alert')).toHaveTextContent('"menu.pdf" is 14.0 MB — the limit is 10.0 MB.')
+    expect(importMenu).not.toHaveBeenCalled()
+  })
+
+  it('a 413 from the gateway says the file size and the limit, not a status code', async () => {
+    importMenu.mockRejectedValueOnce(
+      Object.assign(new AxiosError('Request failed with status code 413'), { response: { status: 413, data: '' } }),
+    )
+    await toMenuStep()
+    drop([png('page-1.png')])
+    expect(await screen.findByRole('alert')).toHaveTextContent('"page-1.png" is 1 KB; the limit is 10.0 MB, so it was not read.')
+    expect(screen.queryByText(/status code/)).toBeNull()
+  })
+
   const unanswered = 'No answer came back from the menu read. It may still be reading and keeping this menu: give it a few minutes and look for it under Menus kept before reading it again.'
   const timeout = () => Object.assign(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'), { request: {} })
 

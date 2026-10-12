@@ -5,6 +5,7 @@
  * always matches the active filters. Heavy writers (ExcelJS, jsPDF) are
  * dynamically imported so they stay out of the main bundle.
  */
+import { getHouseLocale } from './houseCurrency'
 
 export type TableExportFormat =
   | 'csv'
@@ -31,6 +32,8 @@ export interface TableExportOptions<T> {
   filename: string
   /** Document title used by PDF / print / markdown / html output. */
   title?: string
+  /** The formats tag the text files are written in; the house's own by default (F-1401). */
+  locale?: string
 }
 
 const EXTENSIONS: Partial<Record<TableExportFormat, string>> = {
@@ -61,8 +64,26 @@ function toCells<T>(rows: T[], columns: TableExportColumn<T>[]): Cell[][] {
   )
 }
 
-function cellText(cell: Cell): string {
-  return typeof cell === 'number' ? String(cell) : cell
+function cellText(cell: Cell, decimal = '.'): string {
+  return typeof cell === 'number' ? String(cell).replace('.', decimal) : cell
+}
+
+/**
+ * The gateway's report CSV rule (`report-export-render.ts`, csvMarks, F-907):
+ * Excel splits a double-clicked .csv on the system list separator, which is
+ * ";" wherever the decimal mark is "," (Türkiye, most of Europe). A
+ * comma-joined file opened there as one column, and "12.5" as text or a date
+ * (F-1401). TSV and the clipboard keep the tab but take the same decimal.
+ */
+export function csvMarks(locale: string | null | undefined): { sep: ',' | ';'; decimal: string } {
+  let decimal = '.'
+  try {
+    decimal =
+      new Intl.NumberFormat(locale || 'en-US').formatToParts(1.5).find((p) => p.type === 'decimal')?.value ?? '.'
+  } catch {
+    // An unusable tag writes the en-US marks, as the gateway does.
+  }
+  return decimal === ',' ? { sep: ';', decimal } : { sep: ',', decimal: '.' }
 }
 
 /**
@@ -229,17 +250,19 @@ export async function exportTable<T>({
   columns,
   filename,
   title = filename,
+  locale = getHouseLocale(),
 }: TableExportOptions<T>): Promise<void> {
   const headers = columns.map((c) => c.header)
   const cells = toCells(rows, columns)
-  const matrix = cells.map((row) => row.map(cellText))
+  const marks = csvMarks(locale)
+  const matrix = cells.map((row) => row.map((c) => cellText(c)))
   const ext = EXTENSIONS[format]
   const fullName = ext ? `${filename}.${ext}` : filename
 
   switch (format) {
     case 'csv': {
-      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c))))]
-        .map((row) => row.map(escapeCsv).join(','))
+      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c), marks.decimal)))]
+        .map((row) => row.map(escapeCsv).join(marks.sep))
         .join('\n')
       // BOM so Excel opens it as UTF-8 (Turkish letters, em dashes), as the
       // gateway's report CSV does.
@@ -250,7 +273,7 @@ export async function exportTable<T>({
     case 'tsv': {
       // Tabs survive a paste straight into Excel / Google Sheets cells.
       const clean = (v: string) => v.replace(/[\t\r\n]+/g, ' ')
-      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c))))]
+      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c), marks.decimal)))]
         .map((row) => row.map(clean).join('\t'))
         .join('\n')
       downloadBlob(new Blob([body], { type: 'text/tab-separated-values;charset=utf-8' }), fullName)
@@ -380,7 +403,7 @@ export async function exportTable<T>({
       // Pasted into a sheet, a cell is read as a formula exactly as in a CSV,
       // so it gets the same guard.
       const clean = (v: string) => v.replace(/[\t\r\n]+/g, ' ')
-      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c))))]
+      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c), marks.decimal)))]
         .map((row) => row.map(clean).join('\t'))
         .join('\n')
       await navigator.clipboard.writeText(body)

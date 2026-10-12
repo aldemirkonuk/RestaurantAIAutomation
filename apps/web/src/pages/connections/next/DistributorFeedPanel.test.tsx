@@ -401,6 +401,34 @@ describe('handing over a file', () => {
     );
   });
 
+  // F-1403: a spreadsheet went to the vision model as a photo and came back
+  // "the extraction model could not be reached".
+  it('refuses a spreadsheet price list before a byte is sent, and says what to send', async () => {
+    const up = uploader({ documentId: 'd', duplicate: false, document: null });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [new File(['sku;price\n1;850\n'], 'fiyat-listesi.xlsx')] },
+    });
+    expect(
+      await screen.findByText(/fiyat-listesi\.xlsx is a spreadsheet.*nothing was sent\. Send the price list as a PDF, or as the EDI 832/),
+    ).toBeInTheDocument();
+    expect(up.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  // F-1404: only one of five upload doors checked the size.
+  it('refuses a file over 10 MB before a byte is sent, and words a 413 the same way', async () => {
+    const up = uploader(null, { response: { status: 413, data: '' }, message: 'Request failed with status code 413' });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    const big = file('big.832');
+    Object.defineProperty(big, 'size', { value: 12 * 1024 * 1024 });
+    fireEvent.change(screen.getByTestId('cx-df-file'), { target: { files: [big] } });
+    expect(await screen.findByText(/"big\.832" is 12\.0 MB — the limit is 10\.0 MB\. Nothing was sent\./)).toBeInTheDocument();
+    expect(up.mutateAsync).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId('cx-df-file'), { target: { files: [file('q3.832')] } });
+    expect(await screen.findByText(/"q3\.832" is 1 KB; the limit is 10\.0 MB, so it was not read\./)).toBeInTheDocument();
+    expect(screen.queryByText(/status code 413/)).not.toBeInTheDocument();
+  });
+
   it('lets a person name the sender, and defaults to naming none', () => {
     render(<DistributorFeedPanel distributors={reg(catalogue)} />);
     const select = screen.getByLabelText(

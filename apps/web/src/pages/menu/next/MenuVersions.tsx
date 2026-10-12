@@ -40,6 +40,7 @@ import { MenuPlan } from './MenuPlan';
 import { dateIn } from '../../dashboard/next/format';
 import { formatMoney } from '../../../lib/currency';
 import { readMenuCsv } from '../../../lib/menuCsvText';
+import { tooLargeWords, validateSelection } from '../../../lib/uploadAccept';
 
 const EM = '—';
 
@@ -47,6 +48,8 @@ const EM = '—';
 export function reasonOf(err: unknown): string {
   const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
   if (e?.response?.status === 403) return 'only an owner or a manager can choose the current menu';
+  // F-1404: the gateway's body limit answers with no message of its own.
+  if (e?.response?.status === 413) return tooLargeWords(null);
   const m = e?.response?.data?.message;
   if (typeof m === 'string' && m) return m;
   if (Array.isArray(m) && m.length) return String(m[0]);
@@ -168,6 +171,8 @@ function fileToBase64(file: File): Promise<string> {
 function ReadMenuForm({ canManage, onRead, currency }: { canManage: boolean; onRead: () => void; currency?: string | null }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
+  // F-1404: the 10 MB check every picker makes, before a byte is sent.
+  const [pickError, setPickError] = useState<string | null>(null);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
@@ -216,7 +221,12 @@ function ReadMenuForm({ canManage, onRead, currency }: { canManage: boolean; onR
             type="file"
             accept="image/*,application/pdf,.csv,.xlsx,.xls"
             aria-label="Menu to read"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const picked = e.target.files?.[0] ?? null;
+              const refused = picked ? validateSelection([picked], { accept: () => true }).errors : [];
+              setPickError(refused.length ? refused.join(' ') : null);
+              setFile(refused.length ? null : picked);
+            }}
           />
         </label>
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -238,6 +248,11 @@ function ReadMenuForm({ canManage, onRead, currency }: { canManage: boolean; onR
           {read.isPending ? 'Reading…' : 'Read this menu'}
         </button>
       </form>
+      {pickError ? (
+        <p role="alert" className="cl-note" data-testid="menu-read-pick-error">
+          {pickError}
+        </p>
+      ) : null}
       {dateRead.error ? (
         <p role="alert" className="cl-note">
           {dateRead.error}

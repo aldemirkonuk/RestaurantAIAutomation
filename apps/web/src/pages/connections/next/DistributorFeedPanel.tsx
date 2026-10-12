@@ -33,6 +33,7 @@ import { Building2, FileUp, Gavel } from 'lucide-react';
 import { AttachmentRow } from './AttachmentRow';
 import { readError } from './cx-format';
 import { downloadBlob } from '@/lib/tableExport';
+import { tooLargeRefusal, validateSelection } from '@/lib/uploadAccept';
 import type {
   CatalogueAdmissionVM,
   DistributorCatalogueVM,
@@ -43,6 +44,9 @@ import type {
 } from './useConnectionsNextData';
 
 const ICON = { width: 15, height: 15, strokeWidth: 1.8 } as const;
+
+/** A spreadsheet by its name: the gateway refuses these unread too (F-1403). */
+const SPREADSHEET_RE = /\.(csv|tsv|xlsx|xlsm|xls|ods|numbers)$/i;
 
 interface Register<T> {
   data: T | null;
@@ -158,6 +162,20 @@ export function DistributorFeedPanel({
        its own words, which this panel prints. What is never done is the one
        thing that would be easy: filling three characters in on the house's
        behalf. */
+    // F-1403: a spreadsheet is not something the reader can look at; it used
+    // to go to the vision model as a photo and come back "could not be reached".
+    if (SPREADSHEET_RE.test(file.name) || /csv|spreadsheet|excel/.test(file.type)) {
+      setUploadError(
+        `${file.name} is a spreadsheet, and a spreadsheet price list cannot be read here yet, so nothing was sent. Send the price list as a PDF, or as the EDI 832 file your distributor can export.`,
+      );
+      return;
+    }
+    // F-1404: the 10 MB check every picker makes, before a byte is sent.
+    const tooBig = validateSelection([file], { accept: () => true }).errors;
+    if (tooBig.length) {
+      setUploadError(`${tooBig.join(' ')} Nothing was sent.`);
+      return;
+    }
     const declared = currency.trim().toUpperCase();
     if (declared && !/^[A-Z]{3}$/.test(declared)) {
       setUploadError(
@@ -199,7 +217,8 @@ export function DistributorFeedPanel({
     } catch (err) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       setUploadError(
-        e.response?.data?.message ??
+        tooLargeRefusal(err, file) ??
+          e.response?.data?.message ??
           e.message ??
           'The upload failed and the gateway sent no sentence with it. Nothing was stored.',
       );

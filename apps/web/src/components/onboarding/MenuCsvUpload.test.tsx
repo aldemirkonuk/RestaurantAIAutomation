@@ -106,6 +106,17 @@ describe('MenuCsvUpload: one file (F-684)', () => {
     expect(screen.queryByRole('button', { name: /^Import/ })).not.toBeInTheDocument()
     setHouseLocale('en-US')
   })
+
+  // F-1402: on /get-started the house locale is not read, and the en-US
+  // stand-in read a Turkish Excel CSV as Windows-1252, garbled and unsaid.
+  it('refuses a file that is not UTF-8 while the house locale is unknown', async () => {
+    setHouseLocale(null)
+    const { container } = render(<MenuCsvUpload onSuccess={vi.fn()} />)
+    const bytes = new Uint8Array([0x41, 0x64, 0x3b, 0xde, 0x69, 0xfe, 0x65, 0x0a, 0x59, 0x61, 0x6b, 0x75, 0x74, 0x3b, 0x38, 0x35, 0x30, 0x0a])
+    pick(container, [new File([bytes], 'menu.csv', { type: 'text/csv' })])
+    expect(await screen.findByText(/CSV UTF-8/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Import/ })).not.toBeInTheDocument()
+  })
 })
 
 const proofLine = (id: string, name: string) => ({
