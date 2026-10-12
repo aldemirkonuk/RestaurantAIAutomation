@@ -230,7 +230,8 @@ describe("readVendorMenuSupply -- 'Supplies my menu' reads drink lines only (ADR
       new Date("2026-10-12T12:00:00Z"),
     );
     expect(out.menu.current).toBe(true);
-    expect(out.menu.menus).toBe(3);
+    // F-1562: only the live menus that list a drink (Drinks, Desserts) count; Food does not.
+    expect(out.menu.menus).toBe(2);
     // d1, d3, e1 -- d3 carries no wine.
     expect(out.menu.lines).toBe(3);
     expect(out.menu.linkedLines).toBe(2);

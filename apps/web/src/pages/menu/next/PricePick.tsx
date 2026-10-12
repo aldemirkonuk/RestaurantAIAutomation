@@ -146,6 +146,8 @@ export function PricePick({ house, inventoryId, lineId, kind, linePrice, housePr
     onSuccess: (r) => {
       setSaid(r);
       void queryClient.invalidateQueries({ queryKey: ['menu', 'active'] });
+      // The Full menu prints this line's price too (F-1560).
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'full'] });
       void queryClient.invalidateQueries({ queryKey: ['pricing', 'locks'] });
       void queryClient.invalidateQueries({ queryKey: ['inventory'] });
     },

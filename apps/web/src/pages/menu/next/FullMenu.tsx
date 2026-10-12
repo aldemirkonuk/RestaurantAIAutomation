@@ -34,9 +34,17 @@ import {
 } from '../../../services/api/menus';
 import { offlineStorage } from '../../../lib/offline-storage';
 import { formatMoney } from '../../../lib/currency';
+import { formatVenueTime } from '../../../lib/venueTime';
 import { reasonOf } from './MenuVersions';
 
 export const FULL_MENU_PRINT_LABEL = 'House copy — no allergen information';
+
+/**
+ * The read's key, under `['menu']`. Every change made on /menu to a line, a
+ * price or a section refreshes it, so what shows here and what Print prints
+ * are the menu as it now stands (F-1560).
+ */
+export const fullMenuKey = (house: string) => ['menu', 'full', house] as const;
 
 const DRAG_TYPE = 'text/plain';
 
@@ -127,10 +135,15 @@ export function linePriceWords(line: MenuLine, currency?: string | null): string
   return parts.join(' · ');
 }
 
-/** "the copy kept on this device, as of 12 Oct 2026, 14:05". */
-function asOfWords(asOf: string): string {
-  const d = new Date(asOf);
-  return Number.isNaN(d.getTime()) ? asOf : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+/**
+ * "the copy kept on this device, as of Mon, Oct 12, 2:05 PM GMT+3": on the
+ * house's clock (the zone the gateway sent with the copy), never the
+ * device's; with no zone kept, the device's clock is named as such (F-1563).
+ */
+export function asOfWords(asOf: string, zone?: string | null): string {
+  if (Number.isNaN(new Date(asOf).getTime())) return asOf;
+  const at = formatVenueTime(asOf, zone ?? null);
+  return at.inVenueZone ? at.text : `${at.text} on this device's clock`;
 }
 
 const DISMISS_KEY = (house: string) => `full-menu:dishes-card-dismissed:${house}`;
@@ -151,11 +164,17 @@ function writeDismissed(house: string): void {
   }
 }
 
-const PRINT_CSS = `
+/*
+ * Only the document prints. Everything that neither holds it nor is in it is
+ * taken out of the layout (display: none), and what holds it loses its own
+ * spacing, so the rest of /menu adds no blank pages (F-1564). `visibility:
+ * hidden` kept the hidden page's height and printed it as empty paper.
+ */
+export const PRINT_CSS = `
 @media print {
-  body * { visibility: hidden !important; }
-  .fm-doc, .fm-doc * { visibility: visible !important; }
-  .fm-doc { position: absolute; left: 0; top: 0; width: 100%; }
+  body *:not(:has(.fm-doc)):not(.fm-doc):not(.fm-doc *) { display: none !important; }
+  body *:has(.fm-doc) { margin: 0 !important; padding: 0 !important; border: 0 !important; min-height: 0 !important; height: auto !important; overflow: visible !important; box-shadow: none !important; }
+  .fm-doc { width: 100%; }
   .fm-noprint { display: none !important; }
   .fm-kind { break-inside: auto; page-break-before: auto; }
   .fm-section h4, .fm-section h5, .fm-section h6 { break-after: avoid; }
@@ -430,7 +449,7 @@ export function FullMenu({ house, canManage, currency }: {
   currency?: string | null
 }) {
   const queryClient = useQueryClient();
-  const q = useQuery({ queryKey: ['menu', 'full', house], queryFn: () => loadFullMenu(house) });
+  const q = useQuery({ queryKey: fullMenuKey(house), queryFn: () => loadFullMenu(house) });
   const [failed, setFailed] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(() => readDismissed(house));
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
@@ -471,8 +490,9 @@ export function FullMenu({ house, canManage, currency }: {
           Full menu
         </h2>
         {menu && menu.kinds.length > 0 ? (
-          <button type="button" className="cl-btn cl-focus" onClick={() => window.print()}>
-            Print
+          // Not while a fresh read is on its way: Print prints the menu as it now stands.
+          <button type="button" className="cl-btn cl-focus" disabled={q.isFetching} onClick={() => window.print()}>
+            {q.isFetching ? 'Reading the latest prices…' : 'Print'}
           </button>
         ) : null}
       </div>
@@ -495,7 +515,7 @@ export function FullMenu({ house, canManage, currency }: {
           {read?.asOf ? (
             <p className="cl-said fm-noprint" role="status" data-testid="full-menu-as-of">
               The full menu could not be read now ({read.failure}). This is the copy kept on this device, as of{' '}
-              {asOfWords(read.asOf)}; it may be out of date.
+              {asOfWords(read.asOf, menu.timezone)}; it may be out of date.
             </p>
           ) : null}
           {failed ? (

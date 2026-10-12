@@ -123,6 +123,11 @@ export interface FullMenuKind {
 export interface FullMenu {
   /** When the server read it: the "as of" an offline copy shows. */
   readAt: string;
+  /**
+   * The house's IANA zone (`restaurants.timezone`), kept with an offline copy
+   * so its "as of" prints on the house's clock (F-1563). Null when unset.
+   */
+  timezone: string | null;
   /** The kinds in the house's order: `restaurants.menu_kind_order`, else Drinks, Food, Desserts. */
   kindOrder: string[];
   /** Whether the house has set its own order (false = the default). */
@@ -2064,6 +2069,7 @@ export class MenusService {
     const readAt = new Date().toISOString();
     const empty: FullMenu = {
       readAt,
+      timezone: await this.houseZone(restaurantId),
       kindOrder: order.kindOrder,
       kindOrderSet: order.set,
       kinds: [],
@@ -4108,6 +4114,11 @@ export class MenusService {
       );
     }
 
+    // F-1561: a read's lines keep their place as read in `position` (ADR
+    // 0340 rule 7), so the Full menu and its House copy list them where the
+    // house printed them, not A-Z. One line typed in by hand (addMenuItem)
+    // is not a read and has no place yet: NULL sorts it after the read's.
+    const inReadOrder = !(method === "manual" && items.length === 1);
     const menuItemRows = resolved.map(({ item, masterWineId }, idx) => ({
       menu_id: menuId,
       restaurant_id: restaurantId,
@@ -4125,6 +4136,7 @@ export class MenusService {
       line_kind: item.line_kind ?? null,
       kind_flag: item.kind_flag ?? null,
       raw_extracted_text: item.raw_text ?? null,
+      position: inReadOrder ? idx : null,
       wine_library_id: masterWineId,
       source: method,
       status:

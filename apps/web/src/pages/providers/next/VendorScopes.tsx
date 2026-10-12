@@ -209,7 +209,8 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
     <p data-testid="scope-menu-basis" style={quiet}>
       Vendors with a price in the last {windowDays} days, an order, or a stock line for one of the{' '}
       {menu.wines} wine{menu.wines === 1 ? '' : 's'} on your current menu
-      {menu.menus > 1 ? ` (${menu.menus} menus are marked current; all are read)` : ''}
+      {/* Two live menus with drinks (Drinks, and Desserts with a dessert wine) are normal (ADR 0340), not a fault (F-1562). */}
+      {menu.menus > 1 ? ` (your ${menu.menus} live menus with drinks on them)` : ''}
       {readAt ? `, current since ${readAt}` : ''}. {WINES_ONLY}
     </p>
   );

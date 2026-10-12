@@ -112,6 +112,18 @@ describe('PricePick across kinds', () => {
   });
 });
 
+describe('PricePick and the Full menu (F-1560)', () => {
+  it('a pick refreshes the Full menu, so it and its printed copy show the price as it now stands', async () => {
+    const spy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    mockReview.mockResolvedValue({ menuItemId: 'l1', fieldName: 'bottle_price', newValue: '950', priceSync: 'changed' });
+    wrap(<PricePick house="h1" inventoryId="inv-1" lineId="l1" kind="bottle" linePrice={900} housePrice={950} canPick fmt={fmt} />);
+    fireEvent.click(screen.getByTestId('price-pick-menu-bottle'));
+    await screen.findByRole('status');
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['menu', 'full'] });
+    spy.mockRestore();
+  });
+});
+
 const CONFLICT: PriceConflict = {
   wineLibraryId: 'w1',
   inventoryId: 'inv-1',

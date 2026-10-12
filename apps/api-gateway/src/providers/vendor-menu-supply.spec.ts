@@ -282,6 +282,30 @@ describe("readVendorMenuSupply — the current menu", () => {
     ]);
   });
 
+  it("F-1562: with Drinks and Food live, only the Drinks menu is counted and dates the supply", async () => {
+    const t = baseTables();
+    t.restaurant_menus[0].menu_type = "beverage";
+    t.restaurant_menus.push({
+      id: "m-food",
+      restaurant_id: HOUSE,
+      status: "active",
+      menu_type: "food",
+      made_current_at: "2026-10-05T00:00:00Z",
+    });
+    t.menu_items.push({
+      id: "f1",
+      menu_id: "m-food",
+      restaurant_id: HOUSE,
+      status: "active",
+      line_kind: "dish",
+      wine_library_id: null,
+    });
+    const { supabase } = fakeDb(t);
+    const out = await readVendorMenuSupply(supabase, HOUSE, NOW);
+    expect(out.menu.menus).toBe(1);
+    expect(out.menu.readAt).toBe("2026-09-01T00:00:00Z");
+  });
+
   it("more than 1000 menu lines are all read — no silent PostgREST cap", async () => {
     const t = baseTables();
     const n = PAGE_ROWS * 2 + 7;
