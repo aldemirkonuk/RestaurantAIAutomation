@@ -809,6 +809,7 @@ type Day = {
   net_sales: number | null;
   checks: number | null;
   net_checks?: number | null;
+  excluded?: boolean;
   events: unknown[];
 };
 
@@ -1238,6 +1239,32 @@ describe('DashboardNext — the month counts and says (ADR 0290 §2, §4)', () =
     // The two days after the register's last check read the dash, not $0.
     expect(cellFig('2026-10-31')).toBe('—');
     expect(dayCell('2026-10-31').getAttribute('aria-label')).toMatch(/^Saturday, October 31(, today)?: net sales unknown, /);
+  });
+
+  // F-1535: a till outage the manager ruled out read '·' "no sales" and
+  // counted toward the month's days.
+  it("draws a ruled-out day as the dash and 'ruled out', never 'no sales'", async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        days: { '2026-10-02': { net_sales: null, checks: null, net_checks: null, excluded: true } },
+        monthly_net_sales: 300,
+        monthly_checks: 4,
+        monthly_net_checks: 4,
+        monthly_days_counted: 2,
+        monthly_days_begun: 3,
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('—'));
+    expect(dayCell('2026-10-02').querySelector('.dn-cell-from')?.textContent).toBe('ruled out');
+    expect(dayCell('2026-10-02').getAttribute('aria-label')).toMatch(/^Friday, October 2: ruled out, not counted, /);
+    expect(screen.getByTestId('dn-month-totals').textContent).toMatch(/from 2 of 3 days/);
+
+    fireEvent.click(dayCell('2026-10-02'));
+    const net = await screen.findByText('Net sales');
+    expect(net.nextElementSibling?.textContent).toBe('Ruled out, not counted');
   });
 
   it('draws the dash for a month with no counted day, never $0', async () => {

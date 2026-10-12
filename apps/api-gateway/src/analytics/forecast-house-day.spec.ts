@@ -58,30 +58,32 @@ const forecastFor = (house: Record<string, unknown>, lines: any[]) =>
 describe("the demand forecast runs on the house's days", () => {
   afterEach(() => jest.useRealTimers());
 
-  it("an LA house at 23:30 Thursday files tonight's pours on Thursday and projects from Friday", async () => {
+  // F-1533: the history ends yesterday (today is not over) and the first
+  // projected day is today, both on the house's clock.
+  it("an LA house at 23:30 Thursday files Wednesday night's pours on Wednesday and projects from Thursday", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-10-09T06:30:00Z"));
     const out: any = await forecastFor(
       { timezone: "America/Los_Angeles", country: "US" },
-      [line("2026-10-09T03:00:00Z")],
+      [line("2026-10-08T03:00:00Z")],
     );
     const { dates, values } = out.history;
-    expect(dates[dates.length - 1]).toBe("2026-10-08");
+    expect(dates[dates.length - 1]).toBe("2026-10-07");
     expect(values[values.length - 1]).toBe(2);
     expect(out.forecast.map((f: any) => f.date)).toEqual([
+      "2026-10-08",
       "2026-10-09",
       "2026-10-10",
-      "2026-10-11",
     ]);
   });
 
-  it("an Istanbul house at 01:30 Friday reads Friday as today", async () => {
+  it("an Istanbul house at 01:30 Friday reads Thursday as yesterday", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-10-08T22:30:00Z"));
     const out: any = await forecastFor(
       { timezone: "Europe/Istanbul", country: "TR" },
-      [line("2026-10-08T22:00:00Z")],
+      [line("2026-10-07T22:00:00Z")],
     );
     const { dates, values } = out.history;
-    expect(dates[dates.length - 1]).toBe("2026-10-09");
+    expect(dates[dates.length - 1]).toBe("2026-10-08");
     expect(values[values.length - 1]).toBe(2);
   });
 });

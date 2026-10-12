@@ -97,6 +97,7 @@ const COLUMNS: Record<string, string[]> = {
     "closed_at",
     "voided",
   ],
+  analytics_day_exclusions: ["restaurant_id", "business_date", "reason"],
 };
 
 type Row = Record<string, any>;
@@ -1069,6 +1070,83 @@ describe("AW21 — net sales on the house's day", () => {
       net_checks: 0,
       net_sales: null,
     });
+  });
+});
+
+// F-1535: a till outage on Oct 14 that a manager ruled out read "no sales"
+// and counted toward "from 31 of 31 days", while /reports and the calendar
+// treat the same day as ruled out (ADR 0317).
+describe("F-1535 — a day ruled out is not a quiet day", () => {
+  beforeEach(() => jest.useFakeTimers().setSystemTime(AFTER_OCTOBER));
+
+  const outage = (errors: Record<string, ErrorRule> = {}) =>
+    fakeDb(
+      {
+        restaurants: house(LA),
+        pos_checks: [
+          check(1, "2026-10-01T20:00:00Z", "2026-10-01T21:00:00Z", 30),
+          check(2, "2026-10-20T20:00:00Z", "2026-10-20T21:00:00Z", 40),
+          check(3, "2026-11-04T20:00:00Z", "2026-11-04T21:00:00Z", 30),
+        ],
+        analytics_day_exclusions: [
+          {
+            restaurant_id: HOUSE,
+            business_date: "2026-10-14",
+            reason: "till down",
+          },
+          // A ruled-out day the till still counted keeps its checks.
+          { restaurant_id: HOUSE, business_date: "2026-10-20", reason: null },
+          { restaurant_id: "house-2", business_date: "2026-10-15" },
+          { restaurant_id: HOUSE, business_date: "2026-11-03" },
+        ],
+      },
+      errors,
+    );
+
+  it("leaves a ruled-out day with no check unknown and out of N of M days", async () => {
+    const month = await serviceOver(outage()).getCalendarRevenue(
+      HOUSE,
+      2026,
+      10,
+      { withSales: true },
+    );
+    expect(day(month, "2026-10-14")).toMatchObject({
+      excluded: true,
+      checks: null,
+      net_sales: null,
+      net_checks: null,
+    });
+    expect(day(month, "2026-10-20")).toMatchObject({
+      excluded: true,
+      checks: 1,
+      net_sales: 40,
+    });
+    // Another house's ruling is not this one's.
+    expect(day(month, "2026-10-15")).toMatchObject({
+      excluded: false,
+      checks: 0,
+      net_sales: 0,
+    });
+    expect([month.monthly_days_counted, month.monthly_days_begun]).toEqual([
+      30, 31,
+    ]);
+    expect(month.monthly_net_sales).toBe(70);
+  });
+
+  it("does not read the rulings for a role that sees no sales", async () => {
+    const db = outage();
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10);
+    expect(db.calls.some((c) => c.table === "analytics_day_exclusions")).toBe(
+      false,
+    );
+    expect(day(month, "2026-10-14").excluded).toBeUndefined();
+  });
+
+  it("fails the month when the rulings cannot be read, instead of drawing no sales", async () => {
+    const db = outage({ analytics_day_exclusions: "permission denied" });
+    await expect(
+      serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, { withSales: true }),
+    ).rejects.toThrow(/permission denied/);
   });
 });
 
