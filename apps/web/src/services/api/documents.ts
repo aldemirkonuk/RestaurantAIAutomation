@@ -107,6 +107,15 @@ export interface ProcurementDocumentLine {
   match_method?: 'vendor_sku' | 'description' | 'qty_price' | 'manual' | 'edi_reference' | null
 }
 
+/** An order item a document line is paired to (`procurement_order_items`). */
+export interface PairedOrderLine {
+  id: string
+  order_id: string
+  wine_name: string | null
+  quantity: number | null
+  unit_type: string | null
+}
+
 /** One pairing the matcher produced, applied or merely suggested. */
 export interface DocumentLineMatch {
   documentLineId: string
@@ -187,6 +196,11 @@ export const documentsApi = {
     document: ProcurementDocument
     lines: ProcurementDocumentLine[]
     links: unknown[]
+    /**
+     * The order items the lines are paired to, each with its own order
+     * (F-1566). `null` = the read failed; KEY ABSENT = not sent.
+     */
+    orderLines?: PairedOrderLine[] | null
   }> {
     const { data } = await apiClient.get(`/procurement/documents/${id}`)
     return data

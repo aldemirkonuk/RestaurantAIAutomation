@@ -1666,6 +1666,11 @@ export class DocumentIntakeService {
    * read printed. A number alone is not enough; two vendors can both print
    * "INV-1001". Superseded documents do not count. A failed read is logged
    * and the paper is stored, which is what happened before this check existed.
+   *
+   * A paper sent with an order also names that order's vendor (F-1565). A US
+   * invoice usually prints no tax id, so its first copy is often filed with
+   * no vendor at all; an earlier copy already filed to this same order then
+   * counts, unless it is another vendor's or prints another date or total.
    */
   private async findSamePaper(
     input: IntakeInput,
@@ -1705,6 +1710,14 @@ export class DocumentIntakeService {
     const tax = normalizeTaxId(parsed.vendorTaxId ?? null, country);
     const vendors = new Set<string>();
     if (input.providerId) vendors.add(input.providerId);
+    const filed = input.orderId
+      ? await this.copiesFiledToOrder(
+          input.restaurantId,
+          input.orderId,
+          rows.map((r) => r.id),
+        )
+      : null;
+    if (filed?.providerId) vendors.add(filed.providerId);
     if (tax.ok) {
       const p = await client
         .from("providers")
@@ -1718,6 +1731,14 @@ export class DocumentIntakeService {
 
     const hit = rows.find((r) => {
       if (r.provider_id && vendors.has(r.provider_id)) return true;
+      if (
+        filed?.documentIds.has(r.id) &&
+        (!r.provider_id ||
+          !filed.providerId ||
+          r.provider_id === filed.providerId) &&
+        samePrintedDateAndTotal(r.extracted, parsed)
+      )
+        return true;
       if (!tax.ok) return false;
       const ex = (r.extracted ?? {}) as {
         vendorTaxId?: string | null;
@@ -1730,6 +1751,53 @@ export class DocumentIntakeService {
       return was.ok && was.identity.normalized === tax.identity.normalized;
     });
     return hit ?? null;
+  }
+
+  /**
+   * For `findSamePaper`: the vendor of the order a paper was sent with, and
+   * which of the candidate earlier copies are already filed to that order. A
+   * failed read is logged and counts as nothing found.
+   */
+  private async copiesFiledToOrder(
+    restaurantId: string,
+    orderId: string,
+    candidateIds: string[],
+  ): Promise<{ providerId: string | null; documentIds: Set<string> }> {
+    const client = this.db.getClient();
+    const [order, linked] = await Promise.all([
+      client
+        .from("procurement_orders")
+        .select("provider_id")
+        .eq("id", orderId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+      client
+        .from("procurement_document_links")
+        .select("document_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .in("document_id", candidateIds),
+    ]);
+    if (order.error)
+      this.logger.warn(
+        `order ${orderId} could not be read to look for an earlier copy of its paper: ${order.error.message}`,
+      );
+    if (linked.error)
+      this.logger.warn(
+        `papers filed to order ${orderId} could not be read to look for an earlier copy: ${linked.error.message}`,
+      );
+    const providerId = order.error
+      ? null
+      : ((order.data as { provider_id?: string | null } | null)?.provider_id ??
+        null);
+    const documentIds = new Set(
+      linked.error
+        ? []
+        : ((linked.data ?? []) as { document_id: string }[]).map(
+            (l) => l.document_id,
+          ),
+    );
+    return { providerId, documentIds };
   }
 
   /**
@@ -3049,6 +3117,29 @@ export function isDocumentLike(
 /** Order numbers compared as printed, ignoring case and spacing. */
 function samePo(po: string): string {
   return po.replace(/\s+/g, "").toUpperCase();
+}
+
+/**
+ * Whether an earlier read and this one agree on the printed date and total
+ * (F-1565). Only a value both reads have can disagree: a total held back for
+ * its currency, or a date not read, is not a difference.
+ */
+function samePrintedDateAndTotal(
+  earlier: unknown,
+  now: ParsedDocument,
+): boolean {
+  const was = (earlier ?? {}) as {
+    docDate?: string | null;
+    total?: number | null;
+  };
+  if (was.docDate && now.docDate && was.docDate !== now.docDate) return false;
+  if (
+    typeof was.total === "number" &&
+    typeof now.total === "number" &&
+    Math.abs(was.total - now.total) >= 0.005
+  )
+    return false;
+  return true;
 }
 
 /** What a spreadsheet price list is told (F-1403), in the owner's words. */
