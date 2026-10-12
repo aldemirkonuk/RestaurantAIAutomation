@@ -143,6 +143,10 @@ export const SECTION_IDS = [
   // id existed they opened the page at the top with no such control on it.
   // A special-cased block in `SettingsNext.tsx`, like 'hours'.
   'target-margin',
+  // F-1537 (2026-10-12): whether the house's till prices include tax, and its
+  // rates. The dashboard's setup line links here. A special-cased block, like
+  // 'target-margin'. Appended, never inserted.
+  'tax-basis',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -329,6 +333,7 @@ export const TAB_TO_ANCHOR: Record<SectionId, string> = {
   'mail-reading': 'a-own',
   location: 'a-house',
   'target-margin': 'a-house',
+  'tax-basis': 'a-house',
 };
 
 /* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────

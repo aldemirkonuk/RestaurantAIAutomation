@@ -139,7 +139,14 @@ export type SettingsRegister =
    * both shared one `set_by`, so a staff tile change read as the ceremony's
    * setter, and neither change left a row here.
    */
-  | "cellar-settings";
+  | "cellar-settings"
+  /**
+   * Whether the house's till prices include tax, and its rates
+   * (`restaurants.tax_basis`, `house_tax_rates`; F-620 / F-1537, founder
+   * 2026-10-12, S218). Its own register: the answer decides what "net sales"
+   * means for every check written after it, and what margin advice divides.
+   */
+  | "tax-basis";
 
 /**
  * Every member of `SettingsRegister`, as a record the compiler holds to the
@@ -164,6 +171,7 @@ const KNOWN_REGISTERS: Record<SettingsRegister, true> = {
   location: true,
   hours: true,
   "cellar-settings": true,
+  "tax-basis": true,
 };
 
 /**
@@ -254,6 +262,13 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * alerts that leave the building, rather than a register of its own.
    */
   "recommendation_digest_changed",
+  /**
+   * An owner or manager said whether the house's till prices include tax
+   * (F-1537, 2026-10-12). Until then `restaurants.tax_basis` had no writer.
+   */
+  "house_tax_basis_confirmed",
+  /** A tax rate row was appended for the house (F-1537, 2026-10-12). */
+  "house_tax_rate_added",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

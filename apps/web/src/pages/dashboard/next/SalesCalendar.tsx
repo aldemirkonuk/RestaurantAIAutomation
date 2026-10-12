@@ -56,6 +56,7 @@ import { DASH, dateIn, figure, longDay, money, monthName } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
 import { TryAgain } from './TryAgain';
+import { TaxBasisSetupLine } from '@/pages/settings/next/TaxBasisSection';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -471,6 +472,9 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
           {month.state === 'ready' && month.ledger.monthlyBottles === 1 ? 'bottle' : 'bottles'} in
         </p>
       </div>
+
+      {/* F-1537: the one setup line while the house has not said whether its till prices include tax. */}
+      {salesShown && <TaxBasisSetupLine className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" />}
 
       {zoneUnset && (
         <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-zone-unset">

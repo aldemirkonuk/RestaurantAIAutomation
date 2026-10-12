@@ -59,6 +59,7 @@ export const REGISTERS: SettingsRegister[] = [
   "location",
   "hours",
   "cellar-settings",
+  "tax-basis",
 ];
 
 /**
