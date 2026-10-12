@@ -62,8 +62,9 @@ describe("PATCH inventory item — who may change a price", () => {
       "inv-1",
       { wineName: "House red" } as any,
       {
-      userId: "u-1",
-    });
+        userId: "u-1",
+      },
+    );
     expect(update).toHaveBeenCalledTimes(1);
   });
 });
