@@ -967,10 +967,10 @@ export class AnalyticsService {
           cogs != null && cogsUnpricedCount > 0
             ? `null: ${cogsUnpricedCount} delivered order${cogsUnpricedCount === 1 ? "" : "s"} with no price ${cogsUnpricedCount === 1 ? "is" : "are"} left out of cost of goods, so it is short, and turns and days of stock are not taken from it`
             : periodDays >= 365
-            ? "delivered order cost over the last 365 days ÷ today's inventory value; days of stock = 365 ÷ turns"
-            : spanTooShort
-              ? `null: the house has ${periodDays} day${periodDays === 1 ? "" : "s"} of buying on record (since its first delivered order), and turns and days of stock need at least ${AnalyticsService.MIN_TURNS_SPAN_DAYS}`
-              : `delivered order cost over the ${periodDays} days since the house's first delivered order ÷ today's inventory value, scaled to a year; days of stock = ${periodDays} ÷ turns over those days`,
+              ? "delivered order cost over the last 365 days ÷ today's inventory value; days of stock = 365 ÷ turns"
+              : spanTooShort
+                ? `null: the house has ${periodDays} day${periodDays === 1 ? "" : "s"} of buying on record (since its first delivered order), and turns and days of stock need at least ${AnalyticsService.MIN_TURNS_SPAN_DAYS}`
+                : `delivered order cost over the ${periodDays} days since the house's first delivered order ÷ today's inventory value, scaled to a year; days of stock = ${periodDays} ÷ turns over those days`,
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d, among wines on the list for at least ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
           "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, in a currency other than the house's, or short of delivered orders with no price (cogsUnpricedCount), and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio; grossMarginDollars, grossMargin, cogsRatio, primeCostRatio and gmroi are taken over the on-hand wines that carry a bottle price only, so a wine with no price adds neither sales nor cost to them (priceCoverage counts it)",

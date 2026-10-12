@@ -802,12 +802,12 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
     unpricedOrders > 0 && num(d.cogs) != null
       ? `${unpricedOrders} delivered ${unpricedOrders === 1 ? "order has" : "orders have"} no price, so Cost of goods is short and is not set against the cellar`
       : cogsOwn && houseOwn && cogsOwn !== houseOwn
-      ? `Cost of goods is in ${cogsOwn}, not the house's ${houseOwn}, and with no exchange rate on record it is not set against the cellar`
-      : str(d.cogsNote)
-        ? `Cost of goods is withheld: ${str(d.cogsNote)}`
-        : d.turnsSpanShort === true && spanNote
-          ? spanNote
-          : `${costBasis} and a delivered order with a price`;
+        ? `Cost of goods is in ${cogsOwn}, not the house's ${houseOwn}, and with no exchange rate on record it is not set against the cellar`
+        : str(d.cogsNote)
+          ? `Cost of goods is withheld: ${str(d.cogsNote)}`
+          : d.turnsSpanShort === true && spanNote
+            ? spanNote
+            : `${costBasis} and a delivered order with a price`;
   return doc({
     figures: [
       partial
