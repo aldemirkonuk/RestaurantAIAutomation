@@ -1766,10 +1766,26 @@ describe("MenusService — every menu read is kept as its own version", () => {
   });
 
   it("a source that could not be stored is SAID on the version, and the read is still kept", async () => {
-    const tables: Record<string, Row[]> = { ...base(), __storageFails: ["bucket unavailable"] as any };
-    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
-    const r = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
-    expect(r.source).toEqual({ kept: false, failure: "the source file was not kept: bucket unavailable" });
+    const tables: Record<string, Row[]> = {
+      ...base(),
+      __storageFails: ["bucket unavailable"] as any,
+    };
+    const service = makeService(tables, {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
+    const r = await service.importMenu(
+      {
+        method: "csv",
+        data: { csvContent: csv },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
+    expect(r.source).toEqual({
+      kept: false,
+      failure: "the source file was not kept: bucket unavailable",
+    });
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version.source_path).toBeNull();
     expect(version.source_failure).toMatch(/bucket unavailable/);
@@ -1851,10 +1867,18 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
   it("a date that is not on the calendar is refused BEFORE the billed read", async () => {
     const parse = jest.fn();
-    const service = makeService(base(), { wineSubmissions, scanParser: { parse } });
+    const service = makeService(base(), {
+      wineSubmissions,
+      scanParser: { parse },
+    });
     await expect(
       service.importMenu(
-        { method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1", menuDate: "2026-02-30" } as any,
+        {
+          method: "scan",
+          data: { imageBase64: "JVBERi0=" },
+          restaurantId: "rest-1",
+          menuDate: "2026-02-30",
+        } as any,
         "user-1",
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -2785,7 +2809,9 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(plan.fingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(plan.namesReadable).toBe(true);
     expect(calls).toHaveLength(0);
-    expect(tables.restaurant_menus.find((m) => m.id === "menu-new")!.status).toBe("draft");
+    expect(
+      tables.restaurant_menus.find((m) => m.id === "menu-new")!.status,
+    ).toBe("draft");
   });
 
   it("F-696: the plan names the current menu this choice takes off and counts the lines that leave with it; a different one current by the choice is a plan that moved", async () => {
