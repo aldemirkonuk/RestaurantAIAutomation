@@ -127,6 +127,32 @@ describe("adapters normalize to the canonical check", () => {
     });
     expect(clover.items[0].price).toBeNull();
   });
+  // F-1437: a Square comp is a 100% discount on the line; the unit price read
+  // is net of it, so the comp rule sees its 0.
+  it("square reads a line's price net of its discount, so a comp is 0", () => {
+    const [check] = squareAdapter.normalize({
+      id: "sq-comp",
+      state: "COMPLETED",
+      line_items: [
+        {
+          name: "Pinot Noir glass",
+          quantity: "2",
+          base_price_money: { amount: 1600 },
+          total_discount_money: { amount: 3200 },
+        },
+        {
+          name: "Malbec glass",
+          quantity: "2",
+          base_price_money: { amount: 1500 },
+          total_discount_money: { amount: 600 },
+        },
+        { name: "Ribeye", quantity: "1", base_price_money: { amount: 5800 } },
+      ],
+    });
+    expect(check.items[0].price).toBe(0);
+    expect(check.items[1].price).toBeCloseTo(12);
+    expect(check.items[2].price).toBeCloseTo(58);
+  });
   it("clover converts epoch millis and cents", () => {
     const [check] = cloverAdapter.normalize({
       id: "clv-1",

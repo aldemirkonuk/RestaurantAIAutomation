@@ -167,6 +167,8 @@ describe('the mark drawn in the emoji’s place', () => {
       ['payment_due', 'Payments'],
       ['ai_suggestion', 'Advice'],
       ['constraint_triggered', 'Advice'],
+      // F-1436: a bottle the till's taken-back glass left to count by hand.
+      ['inventory_needs_count', 'Stock'],
     ] as const) {
       expect(kindOf(type), `${type} must not fall to Other`).toBe(register);
     }
