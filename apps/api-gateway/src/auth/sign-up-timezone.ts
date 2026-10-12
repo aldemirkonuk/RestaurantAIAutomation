@@ -7,6 +7,16 @@ import { isKnownTimeZone } from "../calendar/reminder-window";
  * — which would have thrown the browser's answer away even when it was
  * good — and rejected "Keep New York default").
  *
+ * [Amended 2026-10-12 by ADR 0304 PR-2 (F-1519): the two sign-up routes no
+ * longer write this function's answer directly. They write
+ * `newHouseZoneColumns` (below), which follows `newHouseZone`: the
+ * country's own zone; else, when there is no country or `Intl` lists no
+ * zones for it, the browser's; else the browser's when it is one of the
+ * country's or its listed territories' clocks (`TERRITORIES`, below);
+ * else none. The browser's also stands over the country's own when it is
+ * one of those territories' clocks. Each is written with its source. This
+ * function still validates the browser's zone inside that.]
+ *
  * `registerRestaurant` (auth.service.ts) wrote `dto.timezone || "America/New
  * York"` until this change: an application-level re-invention of the exact
  * fault `20260903170000_a_default_is_not_an_answer.sql` (ADR 0116) had
@@ -140,5 +150,40 @@ export function newHouseZone(
   return {
     zone: inPlace(countryCode) || territories.some(inPlace) ? device : null,
     fromAddress: false,
+  };
+}
+
+/** The three `restaurants` columns a new house's zone is written as. */
+export type NewHouseZoneColumns = {
+  timezone: string | null;
+  timezone_source: "address" | "device" | null;
+  timezone_source_zone: string | null;
+};
+
+/**
+ * ADR 0304 PR-2 for the two sign-up routes (F-1519): the zone `newHouseZone`
+ * picks, with the source the `restaurants_timezone_source_known` CHECK
+ * binds to it. `address` when the country named it, `device` when the
+ * device's zone stood, and no source when there is no zone. A source names
+ * the zone it vouches for, so `timezone_source_zone` is always the same
+ * value as `timezone` or null with it. `countryCode` is an ISO 3166-1
+ * alpha-2 code; the caller resolves the form's country text to it.
+ */
+export function newHouseZoneColumns(
+  countryCode: string | null | undefined,
+  deviceZone: string | null | undefined,
+): NewHouseZoneColumns {
+  const { zone, fromAddress } = newHouseZone(countryCode, deviceZone);
+  if (zone === null) {
+    return {
+      timezone: null,
+      timezone_source: null,
+      timezone_source_zone: null,
+    };
+  }
+  return {
+    timezone: zone,
+    timezone_source: fromAddress ? "address" : "device",
+    timezone_source_zone: zone,
   };
 }
