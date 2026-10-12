@@ -139,9 +139,37 @@ export default function OrdersNext() {
     return (station === null ? oneTime : oneTime.filter((r) => r.stage === station)).sort(byDate);
   }, [data.rows, station]);
 
+  /**
+   * The spine counts the whole book; the rows are the newest orders (F-1368).
+   * How many of the chosen station's orders sit in older pages not loaded
+   * yet, so the station never calls itself empty, or short, while the spine
+   * says otherwise (F-1429, F-1438). Zero once every page is loaded.
+   */
+  const stationTotal =
+    station === null ? null : station === 'recurring' ? data.recurringCount : data.counts[station];
+  const olderAtStation =
+    typeof stationTotal === 'number' && data.loadOlder
+      ? Math.max(0, stationTotal - visibleRows.length)
+      : 0;
+  const olderAtStationWords = (n: number) =>
+    station === 'recurring'
+      ? `${n} repeating ${n === 1 ? 'order is' : 'orders are'} older than the orders shown`
+      : `${n} ${n === 1 ? 'order' : 'orders'} at ${station} ${n === 1 ? 'is' : 'are'} older than the orders shown`;
+
+  /** A drafted letter may name an order older than the loaded rows (F-1439). */
+  const draftRowOf = (orderId: string) =>
+    data.rows.find((r) => r.id === orderId) ??
+    data.draftRows?.find((r) => r.id === orderId) ??
+    null;
+
   const responsesRow = useMemo(
-    () => (responsesFor === null ? null : (data.rows.find((r) => r.id === responsesFor) ?? null)),
-    [data.rows, responsesFor],
+    () =>
+      responsesFor === null
+        ? null
+        : (data.rows.find((r) => r.id === responsesFor) ??
+          data.draftRows?.find((r) => r.id === responsesFor) ??
+          null),
+    [data.rows, data.draftRows, responsesFor],
   );
 
   const recurrenceRow = useMemo(
@@ -589,6 +617,13 @@ export default function OrdersNext() {
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 Reading the order book…
               </p>
+            ) : visibleRows.length === 0 && !data.isError && olderAtStation > 0 ? (
+              <p
+                data-testid="station-older"
+                style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}
+              >
+                {`${olderAtStationWords(olderAtStation)} — load older orders to see them.`}
+              </p>
             ) : visibleRows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 {/*
@@ -603,12 +638,17 @@ export default function OrdersNext() {
                   * is; the one it will not say is "there are none" off a book
                   * that never answered.
                   */}
+                {/* The gateway read every order's recurrence for the spine, so
+                    "none repeats" is said of the whole book, not of the rows
+                    loaded here (F-1429). */}
                 {station === 'recurring'
-                  ? emptyStationSentence(
-                      data.hasData,
-                      data.rows.length,
-                      data.recurrenceReadCount ?? 0,
-                    )
+                  ? data.recurringCount !== null && typeof data.totalInBook === 'number'
+                    ? emptyStationSentence(data.hasData, data.totalInBook, data.totalInBook)
+                    : emptyStationSentence(
+                        data.hasData,
+                        data.rows.length,
+                        data.recurrenceReadCount ?? 0,
+                      )
                   : station === null
                     ? 'The book is open and empty — no active orders.'
                     : `Nothing sits at ${station} right now.`}
@@ -636,6 +676,14 @@ export default function OrdersNext() {
                     />
                   </div>
                 ))}
+                {olderAtStation > 0 && (
+                  <p
+                    data-testid="station-older"
+                    style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)', marginTop: 8 }}
+                  >
+                    {`${olderAtStationWords(olderAtStation)} — load older orders to see them.`}
+                  </p>
+                )}
               </div>
             )}
 
@@ -660,7 +708,8 @@ export default function OrdersNext() {
                 </button>
                 {typeof data.totalInBook === 'number' && (
                   <span style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-                    Showing the newest {data.rows.length} of {data.totalInBook} orders.
+                    {/* The window alone, not the linked order read on its own (F-1432). */}
+                    Showing the newest {data.windowCount ?? data.rows.length} of {data.totalInBook} orders.
                   </span>
                 )}
               </div>
@@ -685,11 +734,11 @@ export default function OrdersNext() {
           <DraftRail
             focusOrderId={expandedId}
             onOpenResponses={(orderId) =>
-              data.rows.some((r) => r.id === orderId) ? () => setResponsesFor(orderId) : undefined
+              draftRowOf(orderId) ? () => setResponsesFor(orderId) : undefined
             }
-            currencyOf={(orderId) =>
-              data.rows.find((r) => r.id === orderId)?.currency ?? data.houseCurrency ?? null
-            }
+            // The order's own money. An order not read yet says "currency not
+            // recorded", never the house's money for a letter in another (F-1439).
+            currencyOf={(orderId) => draftRowOf(orderId)?.currency ?? null}
           />
         </div>
       </div>

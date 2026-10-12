@@ -32,6 +32,7 @@ import { useOrdersNextData } from './useOrdersNextData'
 
 // A variable, not a literal: scripts/check_money_states_its_currency.py.
 const FIXTURE_CURRENCY = 'EUR'
+const LETTER_ORDER_CURRENCY = 'USD'
 
 const order = (id: string, status = 'PENDING') => ({
   id,
@@ -58,11 +59,18 @@ const SUMMARY = {
 }
 
 let pageGets: number[] = []
+let letters: Array<{ id: string; orderId: string }> = []
 
 beforeEach(() => {
   pageGets = []
+  letters = []
   get.mockReset()
   get.mockImplementation(async (url: string, config?: { params?: Record<string, unknown> }) => {
+    if (url === '/procurement/conversations/active') return { data: letters }
+    if (url === '/procurement/orders' && typeof config?.params?.ids === 'string') {
+      const ids = (config.params.ids as string).split(',')
+      return { data: { orders: ids.map((id) => ({ ...order(id, 'CONFIRMED'), currency: LETTER_ORDER_CURRENCY })) } }
+    }
     if (url === '/procurement/orders') {
       const page = Number(config?.params?.page ?? 1)
       pageGets.push(page)
@@ -141,5 +149,25 @@ describe('useOrdersNextData — the newest orders, the whole book’s figures (F
     await waitFor(() => expect(result.current.hasData).toBe(true))
     expect(result.current.targetPending).toBe(false)
     expect(get.mock.calls.some((c) => String(c[0]).startsWith('/procurement/orders/n2'))).toBe(false)
+  })
+
+  it('counts only the loaded window in "the newest N", not a linked order read on its own (F-1432)', async () => {
+    const { result } = renderHook(() => useOrdersNextData('old-7'), { wrapper })
+    await waitFor(() => expect(result.current.rows.some((r) => r.id === 'old-7')).toBe(true))
+    expect(result.current.rows).toHaveLength(3)
+    expect(result.current.windowCount).toBe(2)
+  })
+
+  it('reads by id an order a drafted letter names outside the window, never into the ledger (F-1439)', async () => {
+    letters = [
+      { id: 'c-1', orderId: 'n1' },
+      { id: 'c-2', orderId: 'old-9' },
+    ]
+    const { result } = renderHook(() => useOrdersNextData(), { wrapper })
+    await waitFor(() => expect(result.current.draftRows?.map((r) => r.id)).toEqual(['old-9']))
+    expect(result.current.draftRows![0].currency).toBe(LETTER_ORDER_CURRENCY)
+    expect(result.current.rows.some((r) => r.id === 'old-9')).toBe(false)
+    const byId = get.mock.calls.find((c) => c[0] === '/procurement/orders' && c[1]?.params?.ids)!
+    expect(byId[1].params.ids).toBe('old-9')
   })
 })

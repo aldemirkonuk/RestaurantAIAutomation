@@ -18,7 +18,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { readFailureWords } from '@/lib/readFailure';
 import { useOrderWindow } from '@/hooks/queries/useOrderQueries';
-import { getOrder, type OrderBookSummary } from '@/services/api/orders';
+import { getOrder, getOrdersByIds, type OrderBookSummary } from '@/services/api/orders';
+import { useActiveConversations } from '@/hooks/queries/useDraftEmailQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
 import { num, sumByCurrency, type MoneyInCurrency } from './format';
@@ -430,6 +431,17 @@ export interface ApprovalGate {
 
 export interface OrdersNextData {
   rows: OrderRowVM[];
+  /**
+   * How many of `rows` are the loaded window, without the linked order read
+   * on its own (F-1432). Absent only on data built by hand.
+   */
+  windowCount?: number;
+  /**
+   * Orders a drafted letter names that are older than the loaded rows, read
+   * by id (F-1439). Never in the ledger; the rail reads its money and answers
+   * from them. Absent only on data built by hand.
+   */
+  draftRows?: OrderRowVM[];
   /** Station counts. Null while unknown (loading with no cache, or errored). */
   counts: Record<Stage, number | null>;
   recurringCount: number | null;
@@ -702,6 +714,26 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
     retry: false,
   });
 
+  // The rail lists every drafted letter, not only those on loaded orders. An
+  // order older than the window is read by id (as /calendar does), so its
+  // letter shows the order's own money and keeps its answers (F-1439). Same
+  // key as `useOrdersByIds`, so the two share one read.
+  const conversations = useActiveConversations();
+  const draftOutsideIds = useMemo(() => {
+    if (!windowOrders || !Array.isArray(conversations.data)) return [] as string[];
+    const loaded = new Set(windowOrders.map((o) => o.id));
+    const ids = conversations.data
+      .map((c) => c?.orderId)
+      .filter((id): id is string => typeof id === 'string' && id !== '' && !loaded.has(id));
+    return [...new Set(ids)].sort();
+  }, [windowOrders, conversations.data]);
+  const draftOrdersQuery = useQuery({
+    queryKey: [...queryKeys.orders.all, 'by-id', restaurantId, draftOutsideIds] as const,
+    queryFn: () => getOrdersByIds(draftOutsideIds, restaurantId),
+    enabled: draftOutsideIds.length > 0 && !!restaurantId,
+    staleTime: 30_000,
+  });
+
   // Tenant-keyed: a restaurant switch must never carry the previous house's
   // verdicts. `retry: false` because a 403/500 here is a real state the page
   // renders in words — silently retrying would make the page look like it is
@@ -756,6 +788,10 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
       ? [...windowOrders, ...target].map((o) => toRow(o, providerNameById, houseCurrency, group))
       : [];
     const summary = windowQuery.data?.pages[0]?.summary;
+    const wanted = new Set(draftOutsideIds);
+    const draftRows = (draftOrdersQuery.data ?? [])
+      .filter((o) => o?.id && wanted.has(o.id))
+      .map((o) => toRow(o, providerNameById, houseCurrency, group));
 
     const counts: Record<Stage, number | null> = {
       pending: null,
@@ -814,6 +850,8 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
 
     return {
       houseCurrency,
+      windowCount: windowOrders?.length ?? 0,
+      draftRows,
       approvalByOrder,
       approvalGateError,
       approvalPolicyNote: gate?.readable ? gate.policyNote : null,
@@ -842,5 +880,5 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
       loadingOlder: windowQuery.isFetchingNextPage,
       targetPending: targetOutside && targetQuery.isLoading,
     };
-  }, [windowOrders, windowQuery.isLoading, windowQuery.isError, windowQuery.error, windowQuery.refetch, windowQuery.dataUpdatedAt, windowQuery.data, windowQuery.hasNextPage, windowQuery.fetchNextPage, windowQuery.isFetchingNextPage, targetOrderId, targetOutside, targetQuery.data, targetQuery.isLoading, providerNameById, houseCurrency, group, gateQuery.data, gateQuery.isError, gateQuery.error, gateQuery.refetch]);
+  }, [windowOrders, windowQuery.isLoading, windowQuery.isError, windowQuery.error, windowQuery.refetch, windowQuery.dataUpdatedAt, windowQuery.data, windowQuery.hasNextPage, windowQuery.fetchNextPage, windowQuery.isFetchingNextPage, targetOrderId, targetOutside, targetQuery.data, targetQuery.isLoading, draftOutsideIds, draftOrdersQuery.data, providerNameById, houseCurrency, group, gateQuery.data, gateQuery.isError, gateQuery.error, gateQuery.refetch]);
 }
