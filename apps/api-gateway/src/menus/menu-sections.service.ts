@@ -28,6 +28,38 @@ export interface ResolveOutcome {
   error: string | null;
 }
 
+/** The owner's word for each kind a section can move to (ADR 0340 rule 1). */
+const KIND_WORDS: Record<string, string> = {
+  beverage: "Drinks",
+  food: "Food",
+  desserts: "Desserts",
+};
+
+/**
+ * A move refused by `UNIQUE (menu_id, key)` (F-1531), as refusalOf mapped
+ * it (23505, a 409 carrying the database's text): the move cuts the
+ * section's key back to its own heading (20270107200000, rule 10), so a
+ * target draft with a section of the same name refuses it. The refusal is
+ * intended; only its words were the database's.
+ */
+export function moveRefusalOf(
+  refused: unknown,
+  kind: string,
+  title: string | null,
+): unknown {
+  if (
+    refused instanceof ConflictException &&
+    /menu_sections_menu_id_key_key/.test(refused.message)
+  ) {
+    const menu = KIND_WORDS[kind] ?? "That menu";
+    const name = title?.trim() ? `called "${title.trim()}"` : "with this name";
+    return new ConflictException(
+      `${menu} already has a section ${name}. Rename one of them first, then move it. Nothing was moved.`,
+    );
+  }
+  return refused;
+}
+
 /** A database function's refusal, mapped to the answer the review shows. */
 export function refusalOf(
   error: { code?: string; message?: string } | null,
@@ -99,10 +131,10 @@ export class MenuSectionsService {
     house: string,
     menuId: string,
     sectionId: string,
-  ): Promise<void> {
+  ): Promise<{ title: string | null }> {
     const { data, error } = await this.db
       .from("menu_sections")
-      .select("id")
+      .select("id, title")
       .eq("id", sectionId)
       .eq("menu_id", menuId)
       .eq("restaurant_id", house)
@@ -114,6 +146,7 @@ export class MenuSectionsService {
     }
     if (!data)
       throw new NotFoundException("That menu, section or line was not found.");
+    return { title: (data as { title?: string | null }).title ?? null };
   }
 
   /** The house's line ON THIS MENU, or 404. */
@@ -272,13 +305,18 @@ export class MenuSectionsService {
     userId: string,
     kind: string,
   ) {
-    await this.assertSection(house, menuId, sectionId);
-    const moved = await this.rpc("move_menu_section_to_kind", {
-      p_restaurant_id: house,
-      p_section_id: sectionId,
-      p_kind: kind,
-      p_actor: userId,
-    });
+    const { title } = await this.assertSection(house, menuId, sectionId);
+    let moved: any;
+    try {
+      moved = await this.rpc("move_menu_section_to_kind", {
+        p_restaurant_id: house,
+        p_section_id: sectionId,
+        p_kind: kind,
+        p_actor: userId,
+      });
+    } catch (refused) {
+      throw moveRefusalOf(refused, kind, title);
+    }
     // Lines moved onto the Drinks draft become drinks there: link them.
     const resolved =
       kind === "beverage"

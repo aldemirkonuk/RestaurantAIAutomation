@@ -196,7 +196,7 @@ async function inPool<T>(
   };
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, lane));
 }
-const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
+const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price", "price"]);
 
 interface ResolvedItem {
   item: WineExtractItem;
@@ -1469,6 +1469,27 @@ export class MenusService {
       );
     }
 
+    // ADR 0340 rule 7 (F-1530): the person may say what the line is. A dish
+    // holds one `price` and no drink category; a drink holds bottle and glass
+    // prices. A line sent with a dish price is a dish. Sent with neither, no
+    // kind is stored and lineIsDrink judges it by its menu, as before. The
+    // shapes the table's CHECKs refuse are refused here, in words, not as a
+    // 500 from the insert.
+    const lineKind =
+      dto.line_kind ?? (dto.price !== undefined ? "dish" : undefined);
+    const drinkPriced =
+      dto.bottle_price !== undefined || dto.by_glass_price !== undefined;
+    if (lineKind === "dish" && (drinkPriced || dto.category !== undefined)) {
+      throw new BadRequestException(
+        "A dish has one price and no drink category: send its price, not a bottle or glass price. Nothing was added.",
+      );
+    }
+    if (lineKind === "drink" && dto.price !== undefined) {
+      throw new BadRequestException(
+        "A drink is priced by the bottle or by the glass, not with a dish price. Nothing was added.",
+      );
+    }
+
     const item: WineExtractItem = {
       name: dto.name,
       producer: dto.producer,
@@ -1478,6 +1499,8 @@ export class MenusService {
       grape_variety: dto.grape_variety,
       by_glass_price: dto.by_glass_price,
       bottle_price: dto.bottle_price,
+      ...(lineKind ? { line_kind: lineKind } : {}),
+      ...(lineKind === "dish" ? { price: dto.price } : {}),
     };
 
     // ADR 0340 rule 8: the line is judged by lineIsDrink on this menu's kind,
@@ -1814,8 +1837,37 @@ export class MenusService {
       throw new NotFoundException("No menu item of this restaurant");
     }
 
+    // ADR 0340 rule 7 (F-1530): a line's prices are its stored kind's. A dish
+    // has one `price` and a NULL category (its heading is its section's
+    // name); any other line is priced by the bottle or the glass. These were
+    // CHECK violations answered as a 500, or (category) heading text written
+    // back onto a dish. Refused before anything is written.
+    const isDish = menuItem.line_kind === "dish";
+    if (
+      isDish &&
+      dto.fieldName !== "price" &&
+      PRICE_FIELDS.has(dto.fieldName)
+    ) {
+      throw new BadRequestException(
+        "This line is a dish, and a dish has one price, not a bottle or glass price: correct its price instead. Nothing was changed.",
+      );
+    }
+    if (isDish && dto.fieldName === "category") {
+      throw new BadRequestException(
+        "A dish has no drink category; the heading it sits under is its section's name, so rename the section instead. Nothing was changed.",
+      );
+    }
+    if (!isDish && dto.fieldName === "price") {
+      throw new BadRequestException(
+        "Only a line marked as a dish has one price; a drink is priced by the bottle or the glass. Nothing was changed.",
+      );
+    }
+
     const oldValue = (menuItem as Record<string, unknown>)[dto.fieldName];
     const isPrice = PRICE_FIELDS.has(dto.fieldName);
+    // A dish's price is the menu's only: the house's own price is a drink's
+    // bottle or glass price (ADR 0193), so a dish price syncs nothing.
+    const setsHousePrice = isPrice && dto.fieldName !== "price";
     const newValueTyped: string | number = isPrice
       ? parseFloat(dto.newValue.replace(/[^0-9.]/g, ""))
       : dto.newValue;
@@ -1881,7 +1933,7 @@ export class MenusService {
     let priceSyncError: string | null = null;
     let priceHeld: HeldKind[] = [];
     let lineMenuCurrent = false;
-    if (isPrice) {
+    if (setsHousePrice) {
       const { data: lineMenu, error: lineMenuErr } = await this.dbService.supabase
         .from("restaurant_menus")
         .select("status")
@@ -1897,7 +1949,7 @@ export class MenusService {
         lineMenuCurrent = (lineMenu as { status?: string } | null)?.status === "active";
       }
     }
-    if (isPrice && priceSync === undefined) {
+    if (setsHousePrice && priceSync === undefined) {
       if (!lineMenuCurrent) {
         priceSync = "not_current";
       } else if (!menuItem.inventory_item_id) {

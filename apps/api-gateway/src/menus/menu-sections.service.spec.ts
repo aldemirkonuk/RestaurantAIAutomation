@@ -4,7 +4,11 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { MenuSectionsService, refusalOf } from "./menu-sections.service";
+import {
+  MenuSectionsService,
+  moveRefusalOf,
+  refusalOf,
+} from "./menu-sections.service";
 
 /**
  * ADR 0340 lane 3b: a menu's sections, edited by a person. The database
@@ -52,6 +56,16 @@ function fixtures() {
         parent_id: null,
         position: 0,
         key: "red",
+      },
+      {
+        // A section whose heading the target draft already has (F-1531).
+        id: "sec-dup",
+        restaurant_id: HOUSE,
+        menu_id: DRAFT,
+        parent_id: null,
+        position: 1,
+        key: "port/glass",
+        title: "Glass",
       },
       {
         id: "sec-l",
@@ -167,6 +181,15 @@ function makeService() {
     }
     switch (fn) {
       case "move_menu_section_to_kind":
+        if (args.p_section_id === "sec-dup")
+          return {
+            data: null,
+            error: {
+              code: "23505",
+              message:
+                'duplicate key value violates unique constraint "menu_sections_menu_id_key_key"',
+            },
+          };
         return {
           data: {
             id: args.p_section_id,
@@ -419,5 +442,29 @@ describe("refusalOf — a database refusal reaches the person as the right answe
       message: "assign_menu_lines: no line was named; nothing was changed",
     });
     expect(e.message).toBe("no line was named; nothing was changed");
+  });
+});
+
+describe("A section moved onto a draft that has one of the same name (F-1531)", () => {
+  it("answers 409 in the owner's words, naming the kind and the section, never the constraint", async () => {
+    const { service, resolveCalls } = makeService();
+    const refused = await service
+      .moveToKind(HOUSE, DRAFT, "sec-dup", "u-1", "desserts")
+      .catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ConflictException);
+    const message = (refused as ConflictException).message;
+    expect(message).toBe(
+      'Desserts already has a section called "Glass". Rename one of them first, then move it. Nothing was moved.',
+    );
+    expect(message).not.toMatch(/duplicate key|constraint|menu_sections/);
+    expect(resolveCalls).toEqual([]);
+  });
+
+  it("any other refusal of the move keeps refusalOf's answer", () => {
+    const live = refusalOf({
+      code: "55000",
+      message: "That is decided in a review.",
+    });
+    expect(moveRefusalOf(live, "food", "Glass")).toBe(live);
   });
 });

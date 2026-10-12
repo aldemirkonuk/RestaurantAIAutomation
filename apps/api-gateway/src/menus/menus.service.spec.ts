@@ -4195,3 +4195,185 @@ describe("MenusService — one upload, one draft per kind, behind MENUS_SPLIT_BY
     ]);
   });
 });
+
+describe("MenusService — a dish's price and a line's kind are written by their routes (ADR 0340 rule 7, F-1530)", () => {
+  const menu = (status: string, menuType: string) => ({
+    id: "menu-1",
+    restaurant_id: "rest-1",
+    status,
+    menu_type: menuType,
+  });
+  const dish = () => ({
+    id: "mi-d",
+    menu_id: "menu-1",
+    restaurant_id: "rest-1",
+    name: "Künefe",
+    line_kind: "dish",
+    category: null,
+    price: 240,
+    bottle_price: null,
+    by_glass_price: null,
+    inventory_item_id: null,
+    submission_id: null,
+    status: "approved",
+  });
+  const drink = () => ({
+    ...dish(),
+    id: "mi-w",
+    name: "Sauternes",
+    line_kind: "drink",
+    category: "dessert",
+    price: null,
+    bottle_price: 2400,
+  });
+  const housePrice = () => ({
+    data: { outcome: "changed", held: [] },
+    error: null,
+  });
+
+  it("a dish's price is corrected on the line and sets no house drink price", async () => {
+    const calls: RpcCall[] = [];
+    const tables = {
+      menu_items: [dish()],
+      restaurant_menus: [menu("active", "desserts")],
+    };
+    const service = makeService(tables, { rpc: housePrice, rpcCalls: calls });
+    const r = await service.reviewMenuItem("mi-d", "user-1", "rest-1", {
+      fieldName: "price",
+      newValue: "260",
+    } as any);
+    expect(tables.menu_items[0]).toMatchObject({
+      price: 260,
+      bottle_price: null,
+    });
+    expect(calls).toEqual([]);
+    expect(r).not.toHaveProperty("priceSync");
+  });
+
+  it.each(["bottle_price", "by_glass_price", "category"])(
+    "a dish refuses %s with a 400 that says why, and nothing is written",
+    async (fieldName) => {
+      const calls: RpcCall[] = [];
+      const tables = {
+        menu_items: [dish()],
+        restaurant_menus: [menu("active", "desserts")],
+      };
+      const service = makeService(tables, { rpc: housePrice, rpcCalls: calls });
+      const refused = await service
+        .reviewMenuItem("mi-d", "user-1", "rest-1", {
+          fieldName,
+          newValue: "260",
+        } as any)
+        .catch((e: unknown) => e);
+      expect(refused).toBeInstanceOf(BadRequestException);
+      expect((refused as Error).message).toMatch(/dish/);
+      expect(tables.menu_items[0]).toEqual(dish());
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it("a drink refuses a dish price with a 400, and nothing is written", async () => {
+    const tables = {
+      menu_items: [drink()],
+      restaurant_menus: [menu("active", "desserts")],
+    };
+    const service = makeService(tables, { rpc: housePrice });
+    await expect(
+      service.reviewMenuItem("mi-w", "user-1", "rest-1", {
+        fieldName: "price",
+        newValue: "260",
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tables.menu_items[0]).toEqual(drink());
+  });
+
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: Array<{ name: string }>) =>
+      items.map((i) => ({
+        masterWineId: `mw-${i.name}`,
+        matched: true,
+        libraryTier: 1,
+        confidence: 99,
+      })),
+    normalizeText: (t: string | null | undefined) =>
+      t ? t.toLowerCase() : null,
+  };
+  const liveTables = (menuType: string): Record<string, Row[]> => ({
+    restaurant_menus: [menu("active", menuType)],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: [],
+    menu_items: [],
+    master_wine_library_submissions: [],
+  });
+
+  it("a dessert wine added to the live Desserts menu as a drink is stored a drink, linked and stocked", async () => {
+    const tables = liveTables("desserts");
+    const service = makeService(tables, {
+      wineSubmissions,
+      rpc: housePrice,
+    });
+    const item = await service.addMenuItem(
+      {
+        menuId: "menu-1",
+        name: "Sauternes",
+        bottle_price: 2400,
+        line_kind: "drink",
+      } as any,
+      "user-1",
+      "rest-1",
+      true,
+    );
+    expect(tables.menu_items[0]).toMatchObject({
+      line_kind: "drink",
+      price: null,
+      wine_library_id: "mw-Sauternes",
+    });
+    expect(tables.restaurant_inventory.map((r) => r.master_wine_id)).toEqual([
+      "mw-Sauternes",
+    ]);
+    expect(item.inventoryItemId).not.toBeNull();
+  });
+
+  it("a line added with a dish price is a dish holding that price, never a bottle price", async () => {
+    const tables = liveTables("food");
+    const service = makeService(tables, {
+      wineSubmissions,
+      rpc: housePrice,
+    });
+    await service.addMenuItem(
+      { menuId: "menu-1", name: "Mantı", price: 320 } as any,
+      "user-1",
+      "rest-1",
+      true,
+    );
+    expect(tables.menu_items[0]).toMatchObject({
+      line_kind: "dish",
+      price: 320,
+      bottle_price: null,
+      by_glass_price: null,
+      wine_library_id: null,
+    });
+  });
+
+  it.each([
+    [{ line_kind: "dish", bottle_price: 9 }],
+    [{ price: 9, by_glass_price: 3 }],
+    [{ line_kind: "dish", category: "Tatlılar" }],
+    [{ line_kind: "drink", price: 9 }],
+  ])(
+    "a shape the table refuses (%j) is a 400 in words, and nothing is added",
+    async (shape) => {
+      const tables = liveTables("desserts");
+      const service = makeService(tables, { wineSubmissions, rpc: housePrice });
+      await expect(
+        service.addMenuItem(
+          { menuId: "menu-1", name: "Künefe", ...shape } as any,
+          "user-1",
+          "rest-1",
+          true,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(tables.menu_items).toEqual([]);
+    },
+  );
+});

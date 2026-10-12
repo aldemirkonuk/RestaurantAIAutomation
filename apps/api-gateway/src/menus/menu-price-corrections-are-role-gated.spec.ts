@@ -6,6 +6,9 @@ import {
   MenusController,
 } from "./menus.controller";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
+import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 
 /**
  * The founder, 2026-09-21 (answer 1, relayed): price edits, the target margin,
@@ -46,6 +49,44 @@ describe("PATCH /menus/items/:id — a PRICE correction is an owner's or a manag
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(review).not.toHaveBeenCalled();
   });
+
+  // F-1530: a dish's one price (ADR 0340 rule 7) is a field of the route, and
+  // a price like the others: an owner's or a manager's.
+  it("a dish's price is a field the route accepts", async () => {
+    const dto = plainToInstance(ReviewMenuItemDto, {
+      fieldName: "price",
+      newValue: "14",
+    });
+    expect(await validate(dto)).toEqual([]);
+  });
+
+  it.each(["staff", null])(
+    "%s is refused a dish price correction before anything is written (F-1530)",
+    async (role) => {
+      const { c, review } = controller(role as string | null);
+      await expect(
+        c.reviewMenuItem(
+          "mi-1",
+          { fieldName: "price", newValue: "14" } as any,
+          USER,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(review).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["owner", "manager"])(
+    "a %s may correct a dish's price",
+    async (role) => {
+      const { c, review } = controller(role);
+      await c.reviewMenuItem(
+        "mi-1",
+        { fieldName: "price", newValue: "14" } as any,
+        USER,
+      );
+      expect(review).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("a session naming no house cannot correct a price", async () => {
     const { c, review } = controller("owner");
