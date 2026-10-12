@@ -37,10 +37,13 @@ export const COVER_AFTER_LEAD_DAYS = 14
 export const fmtOneDecimal = (n: number) =>
   n.toLocaleString(getHouseLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
-/** A sales rate a person can read: "1.5 btl/day", "new", or a dash (F-687, F-689). */
+/**
+ * A sales rate a person can read: "1.5 btl/day", "new", or a dash (F-687,
+ * F-689). "early" when the few days are the till's, not the wine's (F-1516).
+ */
 export function velocityLabel(item: InventoryItem): string {
   if (item.velocityPerDay == null) return '—'
-  if (item.velocityIsNew) return 'new'
+  if (item.velocityIsNew) return item.velocityFromTill ? 'early' : 'new'
   return `${fmtOneDecimal(item.velocityPerDay)} btl/day`
 }
 

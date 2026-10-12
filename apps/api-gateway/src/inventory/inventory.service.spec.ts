@@ -293,6 +293,38 @@ describe("InventoryService", () => {
       expect(cols).toContain("velocity_days");
       expect(cols).toContain("is_new");
     });
+
+    // F-1516: a house that loaded its stock before its till began has its
+    // rate taken over the till's days; the row says so.
+    it("reads velocity_from_till and maps it", async () => {
+      mockSupabaseChain.eq.mockImplementationOnce(() =>
+        Promise.resolve({ data: [], error: null }),
+      );
+      const select = mockSupabaseChain.select;
+      const result = (service as any).mapInventoryItem(
+        {
+          id: "inv-t",
+          wine_name: "Narince",
+          master_wine_library: null,
+          restaurants: null,
+        },
+        undefined,
+        undefined,
+        {
+          velocity_per_day: 3,
+          velocity_days: 2,
+          is_new: true,
+          velocity_from_till: true,
+        },
+      );
+      expect(result.velocityFromTill).toBe(true);
+
+      await (service as any).fetchAnalytics("r-1");
+      const cols = select.mock.calls
+        .map(([c]: [string]) => c)
+        .find((c: string) => c?.includes("velocity_per_day"));
+      expect(cols).toContain("velocity_from_till");
+    });
   });
 
   describe("the house bottle price is menu_price_current (ADR 0193)", () => {

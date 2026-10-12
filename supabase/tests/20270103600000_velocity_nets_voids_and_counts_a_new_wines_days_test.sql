@@ -16,7 +16,8 @@ create temporary table t_fx (k text primary key, v uuid) on commit drop;
 insert into t_fx values
   ('house', gen_random_uuid()),
   ('wine_old', gen_random_uuid()), ('item_old', gen_random_uuid()),
-  ('wine_new', gen_random_uuid()), ('item_new', gen_random_uuid());
+  ('wine_new', gen_random_uuid()), ('item_new', gen_random_uuid()),
+  ('wine_seed', gen_random_uuid()), ('item_seed', gen_random_uuid());
 
 insert into public.restaurants (id, name, slug)
 select v, 'SYNTHETIC velocity house', 'syn-velocity-' || left(replace(v::text, '-', ''), 16)
@@ -24,8 +25,8 @@ select v, 'SYNTHETIC velocity house', 'syn-velocity-' || left(replace(v::text, '
 
 insert into public.master_wine_library (id, wine_id, name, primary_type)
 select v, 'SYN-VT-' || left(replace(v::text, '-', ''), 12),
-       case k when 'wine_old' then 'SYNTHETIC Narince' else 'SYNTHETIC Boğazkere' end, 'red'
-  from t_fx where k in ('wine_old', 'wine_new');
+       case k when 'wine_old' then 'SYNTHETIC Narince' when 'wine_seed' then 'SYNTHETIC Kalecik' else 'SYNTHETIC Boğazkere' end, 'red'
+  from t_fx where k in ('wine_old', 'wine_new', 'wine_seed');
 
 -- The old wine has been on the list for 60 days; the new one for two and a
 -- half (day 3 of its life, counting the listing day as day 1).
@@ -33,14 +34,30 @@ insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bott
 select (select v from t_fx where k = i), (select v from t_fx where k = 'house'),
        (select v from t_fx where k = w), 750, 150, now() - age
   from (values ('item_old', 'wine_old', interval '60 days'),
-               ('item_new', 'wine_new', interval '2 days 12 hours')) as x(i, w, age);
+               ('item_new', 'wine_new', interval '2 days 12 hours'),
+               ('item_seed', 'wine_seed', interval '60 days')) as x(i, w, age);
 
 do $$
 declare
   v_house uuid := (select v from t_fx where k = 'house');
   v_old uuid := (select v from t_fx where k = 'item_old');
   v_new uuid := (select v from t_fx where k = 'item_new');
+  v_seed uuid := (select v from t_fx where k = 'item_seed');
 begin
+  -- F-1516: a rate starts no earlier than the house's first recorded sale.
+  -- This house has sold since 50 days ago (another wine), so the windows
+  -- below are the wines' own.
+  perform public.apply_stock_movement(
+    p_inventory_id => v_seed, p_stock_state => 'live', p_delta => 2,
+    p_transaction_type => 'purchase', p_source => 'manual',
+    p_unit_cost => 10, p_cost_provenance => 'manual',
+    p_idempotency_key => 'vt-seed-in-' || v_seed::text,
+    p_restaurant_id => v_house, p_occurred_at => now() - interval '55 days');
+  perform public.apply_stock_movement(
+    p_inventory_id => v_seed, p_stock_state => 'live', p_delta => -1,
+    p_transaction_type => 'sale', p_source => 'pos',
+    p_idempotency_key => 'vt-seed-sale-' || v_seed::text,
+    p_restaurant_id => v_house, p_occurred_at => now() - interval '50 days');
   perform public.apply_stock_movement(
     p_inventory_id => v_old, p_stock_state => 'live', p_delta => 20,
     p_transaction_type => 'purchase', p_source => 'manual',

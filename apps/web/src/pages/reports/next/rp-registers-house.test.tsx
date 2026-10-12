@@ -83,6 +83,7 @@ describe('Figures of record — a young house is told why it has no turns', () =
   const young = {
     ...base,
     turnsSpanNote: SHORT,
+    turnsSpanShort: true,
     basis: { turns: 'null: the house has 21 days of buying on record' },
   };
 
@@ -97,5 +98,45 @@ describe('Figures of record — a young house is told why it has no turns', () =
   it('says it to staff too, who keep the two figures', () => {
     const v = view({ ...young, amountsWithheld: true });
     expect(v.notes).toContain(SHORT);
+  });
+});
+
+// F-1518: a house past a month of buying whose turns are withheld for another
+// reason was told they were "taken over the 45 days since its first delivery,
+// scaled up" — the span, which is not why the figure is missing.
+describe('Figures of record — the dash on turns gives its own reason', () => {
+  const SCALED =
+    "Turns and days of stock are taken over the 45 days since this house's first delivery, and turns are scaled up to a year.";
+  const note = (raw: Record<string, unknown>, label: string) =>
+    view(raw).figures?.find((x) => x.label === label)?.note;
+
+  it('Cost of goods in another money is the reason, not the span', () => {
+    const raw = { ...base, cogs: 900, cogsCurrency: 'EUR', houseCurrency: 'TRY', turnsSpanNote: SCALED, turnsSpanShort: false };
+    for (const label of ['Inventory turns', 'Days of inventory'])
+      expect(note(raw, label)).toBe(
+        "Cost of goods is in EUR, not the house's TRY, and with no exchange rate on record it is not set against the cellar",
+      );
+    expect(view(raw).notes).not.toContain(SCALED);
+  });
+
+  it('an uncosted cellar is the reason, not the span', () => {
+    const raw = { ...base, cogs: 900, cogsCurrency: 'EUR', houseCurrency: 'EUR', turnsSpanNote: SCALED, turnsSpanShort: false };
+    expect(note(raw, 'Inventory turns')).toBe('Needs a complete cost basis and a delivered order with a price');
+    expect(view(raw).notes).not.toContain(SCALED);
+  });
+
+  it('a drawn figure keeps the scaled span in the notes (control)', () => {
+    const raw = {
+      ...base,
+      inventoryValue: 2000,
+      cogs: 900,
+      cogsCurrency: 'EUR',
+      houseCurrency: 'EUR',
+      inventoryTurnover: 3.65,
+      daysInventoryOutstanding: 100,
+      turnsSpanNote: SCALED,
+      turnsSpanShort: false,
+    };
+    expect(view(raw).notes).toContain(SCALED);
   });
 });

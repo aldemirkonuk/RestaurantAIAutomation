@@ -468,6 +468,12 @@ export class AnalyticsService {
    * the inventory_analytics view's rule. A sale dated before the listing
    * (an import) moves the start back to that sale. An unknown listing date
    * keeps the whole window, which is what every wine got before.
+   *
+   * F-1516: never from before `recordsFrom`, the house's first recorded
+   * sale, when it is known. A house that loaded its stock three weeks before
+   * its till began has no sale before then for any wine; those days are not
+   * days the wine did not sell (the inventory_analytics view's rule since
+   * 20270106400000).
    */
   private daysOnList(
     listedAt: string | null | undefined,
@@ -475,10 +481,14 @@ export class AnalyticsService {
     sinceDays: number,
     /** With a zone, today is the house's, as `toDailySeries` ends on. */
     zone: string | null = null,
+    recordsFrom: string | null = null,
   ): number {
-    if (!listedAt) return sinceDays;
-    let first = String(listedAt).slice(0, 10);
+    if (!listedAt && !recordsFrom) return sinceDays;
+    let first = listedAt
+      ? String(listedAt).slice(0, 10)
+      : (recordsFrom as string);
     for (const r of rows) if (r.date && r.date < first) first = r.date;
+    if (recordsFrom && recordsFrom > first) first = recordsFrom;
     const today = zone
       ? houseToday(zone)
       : new Date().toISOString().slice(0, 10);
@@ -1052,11 +1062,28 @@ export class AnalyticsService {
       restaurantId,
     );
 
-    const [allInventory, consumption] = await Promise.all([
+    const [allInventory, consumption, house] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadConsumption(restaurantId, sinceDays, zone),
+      this.loadHouse(restaurantId),
     ]);
     const inventory = this.activeOnly(allInventory);
+    // F-1516: the house's first recorded sale, when this window holds its
+    // whole record (it was set up inside the window): demand is not averaged
+    // over the days before its till began. A house set up before the window
+    // may have sold before it, so its first line here is not its first.
+    const openedDaysAgo = house.openedOn
+      ? Math.floor(
+          (Date.parse(new Date().toISOString().slice(0, 10)) -
+            Date.parse(house.openedOn)) /
+            86400000,
+        )
+      : null;
+    let salesRecordedFrom: string | null = null;
+    if (openedDaysAgo != null && openedDaysAgo < sinceDays)
+      for (const c of consumption)
+        if (c.date && (!salesRecordedFrom || c.date < salesRecordedFrom))
+          salesRecordedFrom = c.date;
 
     // Demand series per house item — the ledger's key (ADR 0115). Keyed by
     // master wine, every drink that is not a wine (no master) read zero
@@ -1081,7 +1108,13 @@ export class AnalyticsService {
       // order that cannot be counted adds nothing, and says so (onOrder null).
       const position = i.qty + (i.onOrder ?? 0);
       const rows = demandByWine.get(i.id) || [];
-      const demandDays = this.daysOnList(i.listedAt, rows, sinceDays, zone);
+      const demandDays = this.daysOnList(
+        i.listedAt,
+        rows,
+        sinceDays,
+        zone,
+        salesRecordedFrom,
+      );
       const { values } = this.toDailySeries(rows, demandDays, zone);
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
@@ -1182,11 +1215,13 @@ export class AnalyticsService {
         serviceLevel,
         leadTimeDays: leadTime,
         demandWindowDays: sinceDays,
+        /** F-1516: the house's first recorded sale; null when not known. */
+        salesRecordedFrom,
       },
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d, or over the days since the wine was listed when that is fewer (skus[].demandDays) — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
+        demand: `bottles/day over ${sinceDays}d, or over the days since the wine was listed when that is fewer (skus[].demandDays)${salesRecordedFrom ? `, and never from before the house's first recorded sale on ${salesRecordedFrom}` : ""} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost; stockout risk and the reorder list count bottles already ordered and not yet arrived (skus[].onOrder; null when an open order states no bottle count or the orders could not be read, and then only the shelf is counted)`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
