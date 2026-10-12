@@ -31,6 +31,11 @@ SYNTH_WRITE_SET: list[str] = [
     "user_restaurant_access",
     "restaurant_menus",
     "menu_items",
+    # ADR 0340: a menu's own sections and their change log. Nothing writes
+    # them for a sim house yet (no seed, no route); listed now so the first
+    # writer cannot leave them in a real tenant.
+    "menu_sections",
+    "menu_section_changes",
     "restaurant_inventory",
     "master_wine_library",  # always — provisional sim wines
     "master_wine_library_submissions",  # always — sim submissions

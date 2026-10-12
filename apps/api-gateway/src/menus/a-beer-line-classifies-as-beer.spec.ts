@@ -204,9 +204,15 @@ function makeMenusService() {
     return api;
   };
 
+  // ADR 0340 rule 12: an upload makes its sections in one database
+  // function after its lines are written; answered so the import completes.
+  const rpc = async () => ({
+    data: { sections: 0, inherited: 0, lines: 0 },
+    error: null,
+  });
   const dbService = {
-    supabase: { from: chain },
-    getClient: () => ({ from: chain }),
+    supabase: { from: chain, rpc },
+    getClient: () => ({ from: chain, rpc }),
   } as unknown as DatabaseService;
 
   const wineSubmissions = {

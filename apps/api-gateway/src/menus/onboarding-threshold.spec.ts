@@ -43,6 +43,14 @@ function fakeDb(
         };
       if (table === "restaurant_inventory")
         return { data: null, count: opts.carried ?? 0, error: null };
+      // The house's live menus are a list since ADR 0340 (one per kind).
+      if (table === "restaurant_menus")
+        return {
+          data: opts.activeMenu
+            ? [{ id: "m-1", menu_type: "beverage", status: "active" }]
+            : [],
+          error: null,
+        };
       return { data: null, error: null };
     };
     const c: any = {
@@ -59,8 +67,6 @@ function fakeDb(
       maybeSingle: async () => {
         if (table === "user_onboarding_progress")
           return { data: opts.progress ?? null, error: null };
-        if (table === "restaurant_menus")
-          return { data: opts.activeMenu ? { id: "m-1" } : null, error: null };
         if (table === "restaurants")
           return {
             data: {

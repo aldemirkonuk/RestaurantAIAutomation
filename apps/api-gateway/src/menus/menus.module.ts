@@ -1,10 +1,12 @@
 import { Module } from "@nestjs/common";
 import {
+  MenuSectionsController,
   MenuVersionsController,
   MenusController,
   OnboardingController,
 } from "./menus.controller";
 import { MenusService } from "./menus.service";
+import { MenuSectionsService } from "./menu-sections.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { DatabaseModule } from "../database/database.module";
@@ -37,9 +39,16 @@ import { SealModule } from "../common/seal/seal.module";
     OrganizationsModule,
     SealModule,
   ],
-  controllers: [MenusController, MenuVersionsController, OnboardingController, ArrivalController],
+  controllers: [
+    MenusController,
+    MenuVersionsController,
+    MenuSectionsController,
+    OnboardingController,
+    ArrivalController,
+  ],
   providers: [
     MenusService,
+    MenuSectionsService,
     CsvParserService,
     ScanParserService,
     ArrivalService,

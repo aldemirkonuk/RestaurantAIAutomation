@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
@@ -10,8 +12,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
+import { isUUID } from "class-validator";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -25,6 +29,18 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { SetThresholdDto } from "./dto/set-threshold.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { MakeMenuCurrentDto } from "./dto/make-menu-current.dto";
+import {
+  AssignMenuLinesDto,
+  ConfirmMenuLineDto,
+  ConfirmMenuSectionDto,
+  CreateMenuSectionDto,
+  MoveMenuSectionDto,
+  RenameMenuSectionDto,
+  ReorderMenuSectionsDto,
+  ReparentMenuSectionDto,
+  SetMenuSectionCategoryDto,
+} from "./dto/menu-section.dto";
+import { MenuSectionsService } from "./menu-sections.service";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 
 /** The two fields of a menu line that are prices (ADR 0193). */
@@ -304,8 +320,22 @@ export class MenuVersionsController {
   async plan(
     @CurrentUser("restaurantId") restaurantId: string,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Query("menuIds") menuIds?: string,
   ) {
-    return this.menusService.planFor(this.house(restaurantId), menuId);
+    // ADR 0340 rule 20: `?menuIds=a,b` plans a batch (one menu per kind) with
+    // this one; absent, this menu alone.
+    if (menuIds === undefined || menuIds === "")
+      return this.menusService.planFor(this.house(restaurantId), menuId);
+    const ids = menuIds
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id !== "");
+    if (ids.length > 3 || ids.some((id) => !isUUID(id))) {
+      throw new BadRequestException(
+        "menuIds names up to three other menus, by id, separated by commas.",
+      );
+    }
+    return this.menusService.planFor(this.house(restaurantId), menuId, ids);
   }
 
   @Post(":menuId/make-current")
@@ -329,6 +359,24 @@ export class MenuVersionsController {
       house,
       "choose the current menu",
     );
+    // ADR 0340 rule 20: a batch (other menus, picks, per-kind part-read).
+    if (
+      dto?.menuIds !== undefined ||
+      dto?.picks !== undefined ||
+      dto?.partReadAcceptedKinds !== undefined
+    )
+      return this.menusService.makeCurrent(
+        house,
+        menuId,
+        userId,
+        dto.fingerprint ?? null,
+        dto.partReadAccepted === true,
+        {
+          menuIds: dto.menuIds,
+          picks: dto.picks,
+          partReadAcceptedKinds: dto.partReadAcceptedKinds,
+        },
+      );
     // F-1292: a menu read only in part is made current only when the person
     // said so; the service refuses it otherwise.
     if (dto?.partReadAccepted === true)
@@ -439,5 +487,349 @@ export class OnboardingController {
   async getVendorEmail(@CurrentUser() user: { restaurantId: string }) {
     const address = await this.inboundAddress.addressFor(user.restaurantId);
     return { address };
+  }
+}
+
+/**
+ * A menu's sections, edited in the review and on the Full menu (ADR 0340
+ * rules 6, 9, 10, 12, 18; lane 3b). Every route, the read included, is an
+ * owner's or a manager's: sections are how the house files its drinks, and
+ * the change log names who did what. The house and the actor come from the
+ * signed token, never the path or the body; a menu, section or line of
+ * another house is a 404 (ADR 0147). On a live menu a rename, a reparent
+ * that keeps the drink category, a reorder and a delete are allowed; a
+ * category, a kind, a line move and a confirmation are a review's (409).
+ */
+@ApiTags("menus")
+@Controller("menu-versions")
+@UseGuards(JwtAuthGuard, TenantGuard)
+export class MenuSectionsController {
+  constructor(
+    private readonly sections: MenuSectionsService,
+    private readonly organizations: OrganizationsService,
+  ) {}
+
+  /** The session's house, after the owner-or-manager check. */
+  private async manager(
+    restaurantId: string | undefined,
+    userId: string,
+    action: string,
+  ): Promise<string> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so it has no menus.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      action,
+    );
+    return restaurantId;
+  }
+
+  @Get(":menuId/sections")
+  @ApiOperation({
+    summary: "A menu's sections in the house's order — owner or manager only",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  async list(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "read a menu's sections",
+    );
+    return this.sections.list(house, menuId);
+  }
+
+  @Post(":menuId/sections")
+  @ApiOperation({ summary: "Add a section — owner or manager only; logged" })
+  @ApiResponse({
+    status: 409,
+    description: "A section with that name is already there.",
+  })
+  async create(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Body() dto: CreateMenuSectionDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "add a section to a menu",
+    );
+    return this.sections.create(
+      house,
+      menuId,
+      userId,
+      dto.title,
+      dto.parentId ?? null,
+      dto.drinkCategory ?? null,
+    );
+  }
+
+  @Post(":menuId/sections/order")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Reorder the sections under one parent — owner or manager only; logged",
+  })
+  async reorder(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Body() dto: ReorderMenuSectionsDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "reorder a menu's sections",
+    );
+    return this.sections.reorder(
+      house,
+      menuId,
+      userId,
+      dto.parentId ?? null,
+      dto.ids,
+    );
+  }
+
+  @Patch(":menuId/sections/:sectionId")
+  @ApiOperation({
+    summary: "Rename a section — owner or manager only; the key stays; logged",
+  })
+  async rename(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("sectionId", new ParseUUIDPipe()) sectionId: string,
+    @Body() dto: RenameMenuSectionDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "rename a menu section",
+    );
+    return this.sections.rename(house, menuId, sectionId, userId, dto.title);
+  }
+
+  @Post(":menuId/sections/:sectionId/parent")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Put a section inside another (or at the top level) — owner or manager only; logged",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "On a live menu, the move would change the drink category its lines are filed under.",
+  })
+  async reparent(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("sectionId", new ParseUUIDPipe()) sectionId: string,
+    @Body() dto: ReparentMenuSectionDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "move a menu section",
+    );
+    return this.sections.reparent(
+      house,
+      menuId,
+      sectionId,
+      userId,
+      dto.parentId ?? null,
+    );
+  }
+
+  @Delete(":menuId/sections/:sectionId")
+  @ApiOperation({
+    summary:
+      "Delete a section with no subsections; its lines go to Unsorted — owner or manager only; logged",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "The section has sections inside it.",
+  })
+  async remove(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("sectionId", new ParseUUIDPipe()) sectionId: string,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "delete a menu section",
+    );
+    return this.sections.remove(house, menuId, sectionId, userId);
+  }
+
+  @Post(":menuId/sections/:sectionId/move")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Move a section to the upload's Drinks, Food or Desserts draft — owner or manager only; logged",
+    description:
+      "Drafts of one upload only (409 otherwise). The target draft is made in the same step when the upload produced none. The section lands at the target's top level. Lines moved onto the Drinks draft are resolved against the library.",
+  })
+  async move(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("sectionId", new ParseUUIDPipe()) sectionId: string,
+    @Body() dto: MoveMenuSectionDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "move a menu section to another menu",
+    );
+    return this.sections.moveToKind(house, menuId, sectionId, userId, dto.kind);
+  }
+
+  @Post(":menuId/sections/:sectionId/category")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Set a section's drink category on a draft — owner or manager only; logged",
+    description: "409 on a live or kept menu.",
+  })
+  async setCategory(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("sectionId", new ParseUUIDPipe()) sectionId: string,
+    @Body() dto: SetMenuSectionCategoryDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "set a menu section's drink category",
+    );
+    return this.sections.setCategory(
+      house,
+      menuId,
+      sectionId,
+      userId,
+      dto.drinkCategory ?? null,
+    );
+  }
+
+  @Post(":menuId/sections/:sectionId/confirm")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Confirm a section's lines as drinks or dishes on a draft — owner or manager only; logged",
+    description:
+      "Lines that agree take the kind; the rest are named for their own tap. Lines that became drinks are resolved against the library.",
+  })
+  async confirmSection(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("sectionId", new ParseUUIDPipe()) sectionId: string,
+    @Body() dto: ConfirmMenuSectionDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "confirm a menu section",
+    );
+    return this.sections.confirmSection(
+      house,
+      menuId,
+      sectionId,
+      userId,
+      dto.lineKind,
+      dto.drinkCategory ?? null,
+    );
+  }
+
+  @Post(":menuId/lines/section")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Put lines in a section, or Unsorted, on a draft — owner or manager only; logged",
+  })
+  async assignLines(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Body() dto: AssignMenuLinesDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "move lines between menu sections",
+    );
+    return this.sections.assignLines(
+      house,
+      menuId,
+      userId,
+      dto.sectionId ?? null,
+      dto.lineIds,
+    );
+  }
+
+  @Post(":menuId/lines/:lineId/confirm")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Confirm one line as a drink or a dish on a draft — owner or manager only; logged",
+  })
+  async confirmLine(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("lineId", new ParseUUIDPipe()) lineId: string,
+    @Body() dto: ConfirmMenuLineDto,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "confirm a menu line",
+    );
+    return this.sections.confirmLine(
+      house,
+      menuId,
+      lineId,
+      userId,
+      dto.lineKind,
+      dto.drinkCategory ?? null,
+    );
+  }
+
+  @Post(":menuId/lines/:lineId/keep")
+  @ApiOperation({
+    summary:
+      "Keep a Gone line: copy the live menu's line into this draft — owner or manager only; logged",
+    description:
+      "`menuId` is the draft; `lineId` is a line of the house's live menu of the same kind. 409 when the draft already has it.",
+  })
+  async keepGoneLine(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("lineId", new ParseUUIDPipe()) lineId: string,
+  ) {
+    const house = await this.manager(
+      restaurantId,
+      userId,
+      "keep a line on the menu",
+    );
+    return this.sections.keepGoneLine(house, menuId, lineId, userId);
   }
 }

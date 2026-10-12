@@ -3,6 +3,7 @@ import {
   MENU_KINDS,
   absentFamilies,
   isKitchenLine,
+  lineIsDrink,
   lineNeedsPencil,
   lineSourceCrop,
   pencilReason,
@@ -187,5 +188,32 @@ describe('pencilReason — every pencil says why (F-021)', () => {
 
   it('has nothing to say about an inked line', () => {
     expect(pencilReason({ matched: true, needsReview: false, category: 'beer' })).toBeNull()
+  })
+})
+
+describe('lineIsDrink — a line is a drink only when stored or proven (ADR 0340 rule 7)', () => {
+  it('a stored kind decides, whatever the section says', () => {
+    expect(lineIsDrink({ category: 'Starters', rawText: null, lineKind: 'drink' })).toBe(true)
+    expect(lineIsDrink({ category: 'red', rawText: null, lineKind: 'dish' })).toBe(false)
+    expect(lineIsDrink({ category: 'red', rawText: null, lineKind: 'dish' }, 'beverage')).toBe(false)
+  })
+
+  it('with no stored kind, a line on a Food or Desserts menu is not a drink', () => {
+    expect(lineIsDrink({ category: 'red', rawText: 'Barolo 120' }, 'food')).toBe(false)
+    expect(lineIsDrink({ category: null, rawText: 'Baklava 9' }, 'desserts')).toBe(false)
+    expect(lineIsDrink({ category: 'dessert', rawText: 'Moscato 9', lineKind: 'drink' }, 'desserts')).toBe(true)
+  })
+
+  it('with no stored kind elsewhere, the legacy rule decides, exactly as isKitchenLine', () => {
+    for (const menuKind of ['beverage', 'full', null, undefined]) {
+      for (const item of [
+        { category: 'red', rawText: 'Barolo 120' },
+        { category: 'Starters', rawText: null },
+        { category: null, rawText: 'Tiramisu dessert 9' },
+        { category: null, rawText: 'House pour 9' },
+      ]) {
+        expect(lineIsDrink(item, menuKind)).toBe(!isKitchenLine(item))
+      }
+    }
   })
 })

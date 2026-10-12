@@ -2,12 +2,20 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
+  confirmedDrinkCategory,
   DRINK_SECTIONS,
   DRINK_WORDS,
+  effectiveDrinkCategory,
   FOOD_NOUNS,
+  houseKindOf,
   isCocktailLine,
   isKitchenLine,
   lineForViewer,
+  lineIsDrink,
+  NON_DRINK_MENU_KINDS,
+  readKitchenInventoryIds,
+  readMenuSectionCategories,
+  type SectionCategory,
   menuCategoryOf,
   seesRawLine,
   KITCHEN_HINTS,
@@ -57,6 +65,15 @@ describe("menu-line-view", () => {
     expect(SECTION_HINTS).toEqual(list("SECTION_HINTS"));
     expect(FOOD_NOUNS).toEqual(list("FOOD_NOUNS"));
     expect(MEAT_SECTIONS).toEqual(list("MEAT_SECTIONS"));
+    // ADR 0340 rule 7: the menu kinds whose undecided line is no drink.
+    const kinds = web.match(/const NON_DRINK_MENU_KINDS = \[([^\]]*)\]/);
+    if (!kinds)
+      throw new Error(
+        "firstProof.ts has no NON_DRINK_MENU_KINDS; this guard is blind",
+      );
+    expect(NON_DRINK_MENU_KINDS).toEqual(
+      [...kinds[1].matchAll(/'([^']*)'/g)].map((q) => q[1]),
+    );
   });
 
   // F-1272: a CSV's Tür/Kategori cell is kept in Turkish, and the raw line is
@@ -330,5 +347,395 @@ describe("isCocktailLine — mixed sections (F-1503)", () => {
     ["Kokteyller ve Rakılar", "Rakı Sour"],
   ])("in %s, %s is a cocktail", (section, name) => {
     expect(isCocktailLine(section, name)).toBe(true);
+  });
+});
+
+/**
+ * ADR 0340 lane 3a (rules 7 and 8): a line is a drink only when its stored
+ * kind says so, or, with none, when the legacy rule proves it on a menu that
+ * is not Food or Desserts. Its category is always a vocabulary token.
+ */
+describe("menu-line-view — a line is a drink only when stored or proven (ADR 0340 rules 7, 8)", () => {
+  const legacy = [
+    { category: "red", raw: "Barolo,Vietti,2019,red,120" },
+    { category: "Starters", raw: null },
+    { category: null, raw: "Tiramisu,,,,12,3.10,Metro,74%,Dessert" },
+    { category: null, raw: "House pour 9" },
+    { category: "Kırmızı Et", raw: "Kuzu şiş" },
+    { category: "Rakı", raw: "Yeni Rakı 70cl" },
+  ];
+
+  it("lineIsDrink: a stored kind decides, whatever the section or the menu", () => {
+    for (const menuKind of ["beverage", "food", "desserts", null]) {
+      expect(
+        lineIsDrink({ line_kind: "drink", category: "Starters" }, menuKind),
+      ).toBe(true);
+      expect(
+        lineIsDrink({ line_kind: "dish", category: "red" }, menuKind),
+      ).toBe(false);
+    }
+  });
+
+  it("lineIsDrink: an undecided line on a Food or Desserts menu is not a drink", () => {
+    for (const menuKind of ["food", "desserts"]) {
+      for (const l of legacy) expect(lineIsDrink(l, menuKind)).toBe(false);
+    }
+  });
+
+  it("lineIsDrink: an undecided line anywhere else keeps today's rule exactly", () => {
+    for (const menuKind of [
+      "beverage",
+      "full",
+      "bar",
+      "events",
+      null,
+      undefined,
+    ]) {
+      for (const l of legacy)
+        expect(lineIsDrink(l, menuKind)).toBe(
+          !isKitchenLine(l.category, l.raw),
+        );
+    }
+  });
+
+  it("kitchen_line is NOT lineIsDrink on the line's own menu kind", () => {
+    const row = {
+      id: "a",
+      name: "Barolo",
+      category: "red",
+      line_kind: null,
+      raw_extracted_text: "Barolo 120",
+    };
+    expect(lineForViewer(row, { rawLine: false }).kitchen_line).toBe(false);
+    expect(
+      lineForViewer(row, { rawLine: false }, "beverage").kitchen_line,
+    ).toBe(false);
+    expect(lineForViewer(row, { rawLine: false }, "food").kitchen_line).toBe(
+      true,
+    );
+    expect(
+      lineForViewer(
+        { ...row, line_kind: "drink" },
+        { rawLine: false },
+        "desserts",
+      ).kitchen_line,
+    ).toBe(false);
+    expect(
+      lineForViewer(
+        { ...row, line_kind: "dish" },
+        { rawLine: false },
+        "beverage",
+      ).kitchen_line,
+    ).toBe(true);
+    // The parity the legacy rule keeps: every legacy line on a Drinks menu.
+    for (const l of legacy)
+      expect(
+        lineForViewer(
+          { id: "x", category: l.category, raw_extracted_text: l.raw },
+          { rawLine: false },
+          "beverage",
+        ).kitchen_line,
+      ).toBe(isKitchenLine(l.category, l.raw));
+  });
+
+  const sections = new Map<string, SectionCategory>([
+    ["wines", { parent_id: null, drink_category: null, confirmed_at: null }],
+    [
+      "red",
+      {
+        parent_id: "wines",
+        drink_category: "red",
+        confirmed_at: "2026-10-12T10:00:00Z",
+      },
+    ],
+    ["turkey", { parent_id: "red", drink_category: null, confirmed_at: null }],
+    ["bar", { parent_id: null, drink_category: "spirit", confirmed_at: null }],
+    [
+      "loop-a",
+      { parent_id: "loop-b", drink_category: null, confirmed_at: null },
+    ],
+    [
+      "loop-b",
+      { parent_id: "loop-a", drink_category: null, confirmed_at: null },
+    ],
+  ]);
+
+  it("effectiveDrinkCategory: the line, then its sections walking up, then the token its category names", () => {
+    expect(
+      effectiveDrinkCategory(
+        { drink_category: "beer", section_id: "red", category: "Şarap" },
+        sections,
+      ),
+    ).toBe("beer");
+    expect(
+      effectiveDrinkCategory(
+        { section_id: "turkey", category: "Şarap" },
+        sections,
+      ),
+    ).toBe("red");
+    expect(
+      effectiveDrinkCategory({ section_id: "bar", category: "red" }, sections),
+    ).toBe("spirit");
+    expect(
+      effectiveDrinkCategory(
+        { section_id: "wines", category: "white" },
+        sections,
+      ),
+    ).toBe("white");
+    // F-1293 stays: a Turkish drink section goes as the token it names.
+    expect(effectiveDrinkCategory({ category: "Rakı" })).toBe("spirit");
+    expect(effectiveDrinkCategory({ category: "Kırmızı şarap" })).toBe("red");
+    // A cycle, a missing section and a non-token line category end the walk.
+    expect(
+      effectiveDrinkCategory(
+        { section_id: "loop-a", category: "beer" },
+        sections,
+      ),
+    ).toBe("beer");
+    expect(
+      effectiveDrinkCategory(
+        { section_id: "gone", drink_category: "Bourbon", category: "red" },
+        sections,
+      ),
+    ).toBe("red");
+  });
+
+  it("effectiveDrinkCategory never returns heading text: a heading with no token is null", () => {
+    for (const heading of [
+      "Şarap",
+      "Bourbon & Rye",
+      "Wines",
+      "wine",
+      "Starters",
+      "",
+      "  ",
+      undefined,
+      null,
+      7,
+    ]) {
+      expect(
+        effectiveDrinkCategory({ category: heading as any }, sections),
+      ).toBeNull();
+    }
+    expect(
+      effectiveDrinkCategory(
+        { section_id: "wines", category: "Wines" },
+        sections,
+      ),
+    ).toBeNull();
+  });
+
+  it("confirmedDrinkCategory: the line's own, or the nearest categorised section's only when it was confirmed", () => {
+    expect(
+      confirmedDrinkCategory(
+        { drink_category: "beer", section_id: "bar" },
+        sections,
+      ),
+    ).toBe("beer");
+    expect(confirmedDrinkCategory({ section_id: "turkey" }, sections)).toBe(
+      "red",
+    );
+    expect(confirmedDrinkCategory({ section_id: "red" }, sections)).toBe("red");
+    // Back-filled or inherited, never tapped: not a confirmation.
+    expect(confirmedDrinkCategory({ section_id: "bar" }, sections)).toBeNull();
+    // A token read out of the line's category is not a confirmation.
+    expect(confirmedDrinkCategory({ category: "red" }, sections)).toBeNull();
+    expect(
+      confirmedDrinkCategory(
+        { section_id: "loop-a", category: "red" },
+        sections,
+      ),
+    ).toBeNull();
+  });
+
+  it("houseKindOf files every wine style as wine and every other token as its own house kind", () => {
+    for (const t of [
+      "red",
+      "white",
+      "rose",
+      "sparkling",
+      "orange",
+      "dessert",
+      "fortified",
+    ] as const)
+      expect(houseKindOf(t)).toBe("wine");
+    expect(houseKindOf("beer")).toBe("beer");
+    expect(houseKindOf("cider")).toBe("cider");
+    expect(houseKindOf("sake")).toBe("sake");
+    expect(houseKindOf("cocktail")).toBe("cocktail");
+    expect(houseKindOf("spirit")).toBe("spirit");
+    expect(houseKindOf("whiskey")).toBe("whiskey");
+    expect(houseKindOf("soft drink")).toBe("soft_drink");
+    expect(houseKindOf("non-alcoholic")).toBe("non_alcoholic");
+  });
+
+  /** A filtering fake for the two readers here. */
+  const client = (
+    tables: Record<string, Array<Record<string, unknown>>>,
+    fails: Record<string, string> = {},
+  ) =>
+    ({
+      from: (table: string) => {
+        const keep: Array<(r: Record<string, unknown>) => boolean> = [];
+        const q: any = {
+          select: () => q,
+          eq: (c: string, v: unknown) => (keep.push((r) => r[c] === v), q),
+          neq: (c: string, v: unknown) => (keep.push((r) => r[c] !== v), q),
+          not: (c: string, _op: string, _v: unknown) => (
+            keep.push((r) => r[c] != null),
+            q
+          ),
+          gt: (c: string, v: unknown) => (
+            keep.push((r) => String(r[c]) > String(v)),
+            q
+          ),
+          order: () => q,
+          limit: () => q,
+          then: (resolve: any) =>
+            resolve(
+              fails[table]
+                ? { data: null, error: { message: fails[table] } }
+                : {
+                    data: (tables[table] ?? []).filter((r) =>
+                      keep.every((k) => k(r)),
+                    ),
+                    error: null,
+                  },
+            ),
+        };
+        return q;
+      },
+    }) as any;
+
+  it("readKitchenInventoryIds judges each line on its own menu's kind and its stored kind", async () => {
+    const db = client({
+      restaurant_menus: [
+        { id: "m-drinks", restaurant_id: "rest-1", menu_type: "beverage" },
+        { id: "m-food", restaurant_id: "rest-1", menu_type: "food" },
+      ],
+      menu_items: [
+        // Legacy line on Drinks, kitchen by the old rule.
+        {
+          id: "1",
+          restaurant_id: "rest-1",
+          menu_id: "m-drinks",
+          inventory_item_id: "inv-starter",
+          category: "Starters",
+          status: "approved",
+        },
+        // Legacy wine on Drinks.
+        {
+          id: "2",
+          restaurant_id: "rest-1",
+          menu_id: "m-drinks",
+          inventory_item_id: "inv-red",
+          category: "red",
+          status: "approved",
+        },
+        // An undecided line on Food that names a wine section.
+        {
+          id: "3",
+          restaurant_id: "rest-1",
+          menu_id: "m-food",
+          inventory_item_id: "inv-food-red",
+          category: "red",
+          status: "approved",
+        },
+        // A stored dish under a drink section.
+        {
+          id: "4",
+          restaurant_id: "rest-1",
+          menu_id: "m-drinks",
+          inventory_item_id: "inv-dish",
+          category: "red",
+          line_kind: "dish",
+          status: "approved",
+        },
+        // A stored drink under a kitchen heading.
+        {
+          id: "5",
+          restaurant_id: "rest-1",
+          menu_id: "m-drinks",
+          inventory_item_id: "inv-drink",
+          category: "Starters",
+          line_kind: "drink",
+          status: "approved",
+        },
+      ],
+    });
+    const { ids, error } = await readKitchenInventoryIds(db, "rest-1");
+    expect(error).toBeNull();
+    expect([...ids].sort()).toEqual([
+      "inv-dish",
+      "inv-food-red",
+      "inv-starter",
+    ]);
+  });
+
+  it("readKitchenInventoryIds says a failed menus read, never an empty set", async () => {
+    const r = await readKitchenInventoryIds(
+      client({}, { restaurant_menus: "timeout" }),
+      "rest-1",
+    );
+    expect(r).toEqual({ ids: new Set(), error: "timeout" });
+  });
+
+  it("readMenuSectionCategories reads one menu's sections of this house and says a failed read", async () => {
+    const db = client({
+      menu_sections: [
+        {
+          id: "s1",
+          restaurant_id: "rest-1",
+          menu_id: "m1",
+          parent_id: null,
+          drink_category: "red",
+          confirmed_at: "2026-10-12T10:00:00Z",
+        },
+        {
+          id: "s2",
+          restaurant_id: "rest-1",
+          menu_id: "m1",
+          parent_id: "s1",
+          drink_category: null,
+          confirmed_at: null,
+        },
+        {
+          id: "s3",
+          restaurant_id: "rest-1",
+          menu_id: "m2",
+          parent_id: null,
+          drink_category: "beer",
+          confirmed_at: null,
+        },
+        {
+          id: "s4",
+          restaurant_id: "rest-2",
+          menu_id: "m1",
+          parent_id: null,
+          drink_category: "beer",
+          confirmed_at: null,
+        },
+      ],
+    });
+    const r = await readMenuSectionCategories(db, "rest-1", "m1");
+    expect(r.error).toBeNull();
+    expect([...r.sections.entries()]).toEqual([
+      [
+        "s1",
+        {
+          parent_id: null,
+          drink_category: "red",
+          confirmed_at: "2026-10-12T10:00:00Z",
+        },
+      ],
+      ["s2", { parent_id: "s1", drink_category: null, confirmed_at: null }],
+    ]);
+    const f = await readMenuSectionCategories(
+      client({}, { menu_sections: "denied" }),
+      "rest-1",
+      "m1",
+    );
+    expect(f.error).toBe("denied");
+    expect(f.sections.size).toBe(0);
   });
 });

@@ -1,5 +1,10 @@
 import { ForbiddenException } from "@nestjs/common";
-import { MenuVersionsController, MenusController } from "./menus.controller";
+import { METHOD_METADATA } from "@nestjs/common/constants";
+import {
+  MenuSectionsController,
+  MenuVersionsController,
+  MenusController,
+} from "./menus.controller";
 import { OrganizationsService } from "../organizations/organizations.service";
 
 /**
@@ -148,6 +153,37 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
     expect(plan).toHaveBeenCalledWith("rest-1", MENU);
   });
 
+  it("ADR 0340 rule 20: a batch is planned and chosen with its other menus, picks and part-read kinds", async () => {
+    const OTHER = "00000000-0000-4000-8000-000000000002";
+    const { c, plan, make } = controller("manager");
+    await c.plan("rest-1", MENU, OTHER);
+    expect(plan).toHaveBeenLastCalledWith("rest-1", MENU, [OTHER]);
+    await expect(c.plan("rest-1", MENU, "not-an-id")).rejects.toMatchObject({
+      status: 400,
+    });
+    const picks = [
+      { wineLibraryId: "mw-a", kind: "bottle" as const, price: 45 },
+    ];
+    await c.makeCurrent("rest-1", "u-1", MENU, {
+      fingerprint: "fp-1",
+      menuIds: [OTHER],
+      picks,
+      partReadAcceptedKinds: ["food"],
+    });
+    expect(make).toHaveBeenLastCalledWith(
+      "rest-1",
+      MENU,
+      "u-1",
+      "fp-1",
+      false,
+      {
+        menuIds: [OTHER],
+        picks,
+        partReadAcceptedKinds: ["food"],
+      },
+    );
+  });
+
   it("any member of the house may read the menus; the house comes from the token", async () => {
     const { c, list } = controller("staff");
     await c.list("rest-1");
@@ -241,4 +277,96 @@ describe("PATCH /menus/:rid/items/:id/restore — owner or manager only (F-268)"
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(restore).not.toHaveBeenCalled();
   });
+});
+
+describe("/menu-versions/:menuId/sections and /lines — every route is an owner's or a manager's (ADR 0340, lane 3b)", () => {
+  const MENU = "00000000-0000-4000-8000-000000000001";
+  const SEC = "00000000-0000-4000-8000-000000000002";
+  const LINE = "00000000-0000-4000-8000-000000000003";
+  // Every route handler, called as Nest would: house and actor from the token.
+  const ROUTES: Record<
+    string,
+    (c: MenuSectionsController, house: string | undefined) => Promise<unknown>
+  > = {
+    list: (c, h) => c.list(h as string, "u-1", MENU),
+    create: (c, h) => c.create(h as string, "u-1", MENU, { title: "Reds" }),
+    reorder: (c, h) => c.reorder(h as string, "u-1", MENU, { ids: [SEC] }),
+    rename: (c, h) =>
+      c.rename(h as string, "u-1", MENU, SEC, { title: "Reds" }),
+    reparent: (c, h) =>
+      c.reparent(h as string, "u-1", MENU, SEC, { parentId: null }),
+    remove: (c, h) => c.remove(h as string, "u-1", MENU, SEC),
+    move: (c, h) => c.move(h as string, "u-1", MENU, SEC, { kind: "food" }),
+    setCategory: (c, h) =>
+      c.setCategory(h as string, "u-1", MENU, SEC, { drinkCategory: "red" }),
+    confirmSection: (c, h) =>
+      c.confirmSection(h as string, "u-1", MENU, SEC, { lineKind: "drink" }),
+    assignLines: (c, h) =>
+      c.assignLines(h as string, "u-1", MENU, {
+        sectionId: SEC,
+        lineIds: [LINE],
+      }),
+    confirmLine: (c, h) =>
+      c.confirmLine(h as string, "u-1", MENU, LINE, { lineKind: "dish" }),
+    keepGoneLine: (c, h) => c.keepGoneLine(h as string, "u-1", MENU, LINE),
+  };
+  function controller(role: string | null) {
+    const calls: string[] = [];
+    const sections = new Proxy(
+      {},
+      {
+        get: (_t, name) => async () => {
+          calls.push(String(name));
+          return { ok: true };
+        },
+      },
+    );
+    const c = new MenuSectionsController(sections as any, orgs(role));
+    return { c, calls };
+  }
+
+  it("the table above names every route the controller has, so a new route cannot skip this gate", () => {
+    const proto = MenuSectionsController.prototype as any;
+    const handlers = Object.getOwnPropertyNames(proto).filter(
+      (name) =>
+        name !== "constructor" &&
+        Reflect.getMetadata(METHOD_METADATA, proto[name]) !== undefined,
+    );
+    expect(handlers.sort()).toEqual(Object.keys(ROUTES).sort());
+  });
+
+  it.each(Object.keys(ROUTES))(
+    "an owner and a manager may call %s, for the token's house",
+    async (name) => {
+      for (const role of ["owner", "manager"]) {
+        const { c, calls } = controller(role);
+        await ROUTES[name](c, "rest-1");
+        expect(calls).toHaveLength(1);
+      }
+    },
+  );
+
+  it.each(Object.keys(ROUTES))(
+    "staff and a person with no role are refused %s before anything is read or written",
+    async (name) => {
+      for (const role of ["staff", null]) {
+        const { c, calls } = controller(role);
+        await expect(ROUTES[name](c, "rest-1")).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+        expect(calls).toEqual([]);
+      }
+    },
+  );
+
+  it.each(Object.keys(ROUTES))(
+    "a session naming no house is refused %s",
+    async (name) => {
+      const { c, calls } = controller("owner");
+      await expect(ROUTES[name](c, undefined)).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(calls).toEqual([]);
+    },
+  );
 });

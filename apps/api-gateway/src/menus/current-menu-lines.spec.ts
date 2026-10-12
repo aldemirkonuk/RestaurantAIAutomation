@@ -1,6 +1,8 @@
 import {
+  CURRENT_MENU_COLUMNS,
   CURRENT_MENU_LINE_COLUMNS,
   readCurrentMenuLines,
+  readCurrentMenuRows,
 } from "./current-menu-lines";
 
 /**
@@ -187,6 +189,58 @@ describe("readCurrentMenuLines", () => {
       /current menu \(restaurant_menus\) could not be read \(permission denied/,
     );
     expect(readsOf("menu_items")).toHaveLength(0);
+  });
+
+  it("names each line's menu kind, and reads only the kinds asked for (ADR 0340)", async () => {
+    const { db, readsOf } = fakeDb({
+      restaurant_menus: {
+        rows: [
+          { ...menu("food", "active"), menu_type: "food" },
+          { ...menu("drinks", "active"), menu_type: "beverage" },
+        ],
+      },
+      menu_items: { rows: [line("f1", "food"), line("d1", "drinks")] },
+    });
+    const all = await readCurrentMenuLines(db, RID);
+    expect(all.rows.map((r) => [r.id, r.menu_type])).toEqual([
+      ["d1", "beverage"],
+      ["f1", "food"],
+    ]);
+    expect(readsOf("restaurant_menus")[0].calls).toContainEqual([
+      "select",
+      [CURRENT_MENU_COLUMNS],
+    ]);
+
+    const food = await readCurrentMenuLines(db, RID, { kinds: ["food"] });
+    expect(food.currentMenus).toBe(1);
+    expect(food.rows.map((r) => r.id)).toEqual(["f1"]);
+    expect(readsOf("restaurant_menus")[1].calls).toContainEqual([
+      "in",
+      ["menu_type", ["food"]],
+    ]);
+  });
+
+  it("an empty kinds list reads no menu at all", async () => {
+    const { db, readsOf } = fakeDb({
+      restaurant_menus: {
+        rows: [{ ...menu("drinks", "active"), menu_type: "beverage" }],
+      },
+    });
+    await expect(readCurrentMenuRows(db, RID, [])).resolves.toEqual([]);
+    expect(readsOf("restaurant_menus")).toHaveLength(0);
+  });
+
+  it("the line read names the ADR 0340 line columns", () => {
+    for (const col of [
+      "section_id",
+      "position",
+      "line_kind",
+      "drink_category",
+      "price",
+    ])
+      expect(
+        CURRENT_MENU_LINE_COLUMNS.split(",").map((c) => c.trim()),
+      ).toContain(col);
   });
 
   it("THROWS when the lines cannot be read — never a shorter menu", async () => {
