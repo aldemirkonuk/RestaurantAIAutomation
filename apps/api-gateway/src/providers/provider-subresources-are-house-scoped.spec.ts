@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  GoneException,
+  NotFoundException,
+} from "@nestjs/common";
 import { ProvidersController } from "./providers.controller";
 import { ProvidersService } from "./providers.service";
 
@@ -642,6 +646,28 @@ describe("every provider route answers only for the caller's house", () => {
       expect(world.insertsNaming(PROV_B)).toEqual([]);
     },
   );
+
+  it("POST :id/retroactive-order is fenced: own vendor, 410, nothing written (F-669)", async () => {
+    const world = makeWorld();
+    const err = await world.controller
+      .createRetroactiveOrder(
+        PROV_A,
+        {
+          inventoryId: "inv-a",
+          quantity: 1,
+          unitType: "bottle",
+          invoiceTotal: 10,
+        } as never,
+        personA as never,
+      )
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(err).toBeInstanceOf(GoneException);
+    expect((err as GoneException).message).toMatch(/at the door/);
+    expect(world.writes).toEqual([]);
+  });
 
   it.each(ALL_ROUTES)(
     "%s with a session that names no house is 403 and touches no table",

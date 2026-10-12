@@ -67,6 +67,13 @@ ACTION row, never the order.
    (`parkOrderAwaitingApproval`). `PATCH` moved an order to any of the twelve from any
    other, including states **nothing ever writes**: `IN_TRANSIT` and `FAILED` have no
    writer in the codebase and are reachable only through that route.
+   **[2026-10-11, F-669, founder S198: `FAILED` now has exactly one writer, a truck
+   refused at the door (`delivery.service.ts` failRefusedOrder). It stays the internal
+   state, and no new order state is added. It is shown as "Refused at door — <reason>"
+   with its credit standing, never "cancelled". It no longer ends a standing-order series
+   (`ORDER_ENDS_ITS_SERIES_STATUSES`), and a credit or replacement letter may still be
+   staged on it (migration `a_refused_truck_can_still_be_written_about`). See the
+   amendment at the end of this file.]**
 5. **THE ONE WITH TEETH — a cancellation erases money the shelf still holds.**
    `cancelOrder` releases shadow stock only from APPROVED/CONFIRMED/IN_TRANSIT, so
    cancelling a DELIVERED order reverses **nothing**: the receipt event stands, the stock
@@ -710,3 +717,26 @@ gets a seal the same day — the two are one decision. Rejected: seal it now.
 returned `RecurrenceRunOutcome` plus an unconditional log line, the reminder sweep's
 pattern in the same file. Rejected: a durable runs table (new surface; reverse this if
 run history is ever needed in a page).
+
+## Amendment 2026-10-11 — a refused truck is not a cancelled order (F-669, founder S198)
+
+The founder approved the F-669 plan in S198 (`p4-scratch/sim-run/arch/refused-plan.md`).
+This amends the table and its words. It adds no state.
+
+- **The words come from the delivery, not from the status.** A refusal happens to a
+  truck. The label comes from the door's `procurement_receipt_events.refusal_reason`, or
+  from a `REJECTED` (wrong-venue) delivery, and the credit claim's standing travels with
+  it: `doorRefusal` on every order read, built by `procurement/door-refusal.ts`. A truck
+  refused *before* it was booked in leaves its order open (Q3 above, F-748). That order
+  says "Refused at door" too, although its status never moved.
+- **`FAILED` does not end a series.** One bad truck no longer stops next week's
+  standing order. `ORDER_ENDS_ITS_SERIES_STATUSES` is `CANCELLED` and `REJECTED` only.
+- **A letter may still be written about it.** `stage_order_letter`, the gateway seal
+  and the agents refuse letters on `CANCELLED` and `REJECTED` only.
+- **A replacement truck lands on a NEW order.** It is never reopened onto the refused
+  one. The alternative was a "refused, awaiting replacement" state that returns to
+  receiving. It was rejected because it reopens this table and its trigger.
+- **Rejected:** a new `REFUSED` state (it touches about 10 status lists to show a label
+  the delivery already carries); reusing `REJECTED` (it already means "the house turned
+  down the proposal"); changing only the words (the series would still end and the
+  letter would still be blocked).

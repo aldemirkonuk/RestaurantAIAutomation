@@ -107,6 +107,7 @@ describe("summarizeOrderBook (F-1368)", () => {
           row("IN_TRANSIT"),
           row("CANCELLED"),
           row("REJECTED"),
+          row("FAILED"),
           row("APPROVED", { recurrence_frequency: "weekly" }),
           row("CANCELLED", { recurrence_frequency: "monthly" }),
         ],
@@ -116,7 +117,7 @@ describe("summarizeOrderBook (F-1368)", () => {
       withAmounts: true,
       now: NOW,
     });
-    expect(s.total).toBe(1009);
+    expect(s.total).toBe(1010);
     expect(s.counts).toEqual({
       pending: 2,
       approved: 1,
@@ -125,6 +126,8 @@ describe("summarizeOrderBook (F-1368)", () => {
     });
     expect(s.recurring).toBe(2);
     expect(s.cancelled).toBe(3);
+    // A truck refused at the door is counted apart, never as cancelled (F-669).
+    expect(s.refused).toBe(1);
     expect(calls.ranges).toEqual([
       [0, 999],
       [1000, 1999],
@@ -252,6 +255,7 @@ describe("GET /procurement/orders?summary=true (F-1368)", () => {
     counts: { pending: 1, approved: 1, ordered: 1, delivered: 0 },
     recurring: 0,
     cancelled: 0,
+    refused: 0,
     zone: "UTC",
   };
   const svc = () =>

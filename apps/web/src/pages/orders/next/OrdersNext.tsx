@@ -555,8 +555,9 @@ export default function OrdersNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            Order {targetRow.orderNumber || targetRow.id.slice(0, 8)} is cancelled, so the ledger
-            does not list it — it is kept in the cancelled count below.
+            {targetRow.refusedAtDoor
+              ? `Order ${targetRow.orderNumber || targetRow.id.slice(0, 8)}: ${targetRow.refusedAtDoor}. The ledger does not list it — it is kept in the refused count below.`
+              : `Order ${targetRow.orderNumber || targetRow.id.slice(0, 8)} is cancelled, so the ledger does not list it — it is kept in the cancelled count below.`}
           </div>
         )}
 
@@ -668,6 +669,14 @@ export default function OrdersNext() {
             {data.cancelledCount !== null && data.cancelledCount > 0 && (
               <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)', marginTop: 10 }}>
                 {data.cancelledCount} cancelled — kept in the book, off the figures.
+              </p>
+            )}
+            {typeof data.refusedCount === 'number' && data.refusedCount > 0 && (
+              <p
+                data-testid="refused-count"
+                style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)', marginTop: 4 }}
+              >
+                {data.refusedCount} refused at the door — kept in the book, off the figures.
               </p>
             )}
           </section>

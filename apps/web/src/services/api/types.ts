@@ -384,6 +384,15 @@ export interface PendingOrderPriority {
   unknown: PendingFlagReason[];
 }
 
+/** `OrderResponseDto.doorRefusal` (F-669). */
+export interface DoorRefusal {
+  /** Why the truck was turned away, in the house's words; null when not recorded. */
+  reason: string | null;
+  /** The credit claim's standing; null when it could not be read. */
+  credit: 'none' | 'not_asked' | 'requested' | 'received' | 'denied' | 'written_off' | null;
+  label: string;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -455,6 +464,15 @@ export interface Order {
    * units that the gateway no longer reads or writes.
    */
   received?: ShelfReceived;
+  /**
+   * A truck refused at the door (F-669, founder S198): the reason and the
+   * credit claim's standing, and the label every surface shows, e.g.
+   * "Refused at door — broken case · credit requested". THREE states: the
+   * block; `null` (the door was read and the order was not refused); or the
+   * KEY ABSENT (the door could not be read, or this route does not read it).
+   * The order is never called "cancelled" when this is set.
+   */
+  doorRefusal?: DoorRefusal | null;
   /**
    * The unit `finalPrice` is stated in — ADR 0119, read from the order LINE.
    * THREE values: a unit; `null` (the line was read and states none, which is

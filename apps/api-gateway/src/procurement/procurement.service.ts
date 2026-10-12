@@ -369,7 +369,13 @@ export interface OrderBookSummary {
   /** One-time orders per stage; a repeating order sits in `recurring` instead. */
   counts: Record<OrderBookStage, number>;
   recurring: number;
+  /** Closed by the house: cancelled or turned down. */
   cancelled: number;
+  /**
+   * Closed because the truck was refused at the door (FAILED; F-669, founder
+   * S198). Off the figures like a cancelled order, but never called one.
+   */
+  refused: number;
   /** The clock the months are filed by. */
   zone: string;
   /** Absent when the reader does not hold the house's money (F-441). */
@@ -9165,6 +9171,7 @@ export class ProcurementService {
       counts: { pending: 0, approved: 0, ordered: 0, delivered: 0 },
       recurring: 0,
       cancelled: 0,
+      refused: 0,
       zone,
     };
     const months = new Map<
@@ -9208,7 +9215,14 @@ export class ProcurementService {
         const recurring =
           typeof r.recurrence_frequency === "string" &&
           frequencies.has(r.recurrence_frequency.trim().toLowerCase());
-        if (stage === "cancelled") summary.cancelled += 1;
+        if (stage === "cancelled") {
+          if (
+            String(r.status ?? "").toUpperCase() ===
+            ProcurementOrderStatus.FAILED
+          )
+            summary.refused += 1;
+          else summary.cancelled += 1;
+        }
         if (recurring) summary.recurring += 1;
         else if (stage !== "cancelled") summary.counts[stage] += 1;
 
