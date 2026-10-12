@@ -13,6 +13,7 @@ import { AppText } from "@/components/ui/AppText";
 import { color, space } from "@/design/tokens";
 import { spring } from "@/design/motion";
 import { useFeed } from "@/api/queries";
+import { todayBadgeCount } from "./todayBadge";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -100,7 +101,7 @@ function TabItem({
 export function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { data: feed } = useFeed();
-  const pending = feed?.counts.total ?? 0;
+  const pending = todayBadgeCount(feed);
 
   return (
     <View

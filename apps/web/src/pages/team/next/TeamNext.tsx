@@ -618,7 +618,11 @@ function TeamNextManager({
                     ? 'Wages only, for the shifts on the schedule — not SGK, meals or bonuses.'
                     : 'Wages only, for the shifts on the schedule — not employer taxes, meals or bonuses.'}
                   {labour.overtimePayHours !== null &&
-                    ` Every hour is at the regular wage: overtime pay for hours over ${labour.overtimePayHours} a week is not included.`}
+                    ` Every hour is at the regular wage: overtime pay for hours over ${labour.overtimePayHours} a week${
+                      labour.dailyOvertimePayHours !== null
+                        ? ` or ${labour.dailyOvertimePayHours} a day`
+                        : ''
+                    } is not included.`}
                 </p>
                 {(labor.ownerShiftsLeftOut ?? 0) > 0 && (
                   // Founder 2026-09-27 (item 71): "if owner taking money, manager

@@ -123,11 +123,13 @@ export function normalizeDescription(raw?: string | null): {
   // read from their last digit alone, as 5 L, and flagged as substitutions.
   // The unit must end the word (F-1430): an apostrophe counts as a word
   // boundary, so "2018 L'Evangile" read as 2018 litres. "lt" and "cl" are
-  // how European labels and price lists write the same marks.
+  // how European labels and price lists write the same marks. Any letter
+  // ends it, not just a-z (F-1495): "2018 Léoville" read as 2018 litres and
+  // "2016 Clément" as 2016 centilitres, and Turkish names the same way.
   const litres = text.match(
-    /(\d+(?:[.,]\d+)?)\s*(?:litre|liter|ltr|lt|l)(?![a-z0-9'’])/,
+    /(\d+(?:[.,]\d+)?)\s*(?:litre|liter|ltr|lt|l)(?![\p{L}\p{N}'’])/u,
   );
-  const cl = text.match(/(\d+(?:[.,]\d+)?)\s*cl(?![a-z0-9'’])/);
+  const cl = text.match(/(\d+(?:[.,]\d+)?)\s*cl(?![\p{L}\p{N}'’])/u);
   if (ml) formatMl = Number(ml[1]);
   else if (litres)
     formatMl = Math.round(Number(litres[1].replace(",", ".")) * 1000);
