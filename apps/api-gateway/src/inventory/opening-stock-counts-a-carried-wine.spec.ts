@@ -66,6 +66,28 @@ describe("opening stock counts a wine the house already carries (F-1457)", () =>
     );
   });
 
+  // F-1524: the line's cost per bottle goes with the count, so a wine the
+  // house carries with no cost yet takes it (record_stock_count decides).
+  it("hands the line's cost per bottle to the opening count, but never a sample's", async () => {
+    const t = service({ id: ITEM, is_active: true });
+    for (const extra of [
+      { costPerBottle: 18 },
+      { costPerBottle: 0, costProvenance: "sample" },
+    ]) {
+      await t.svc.bulkCreateInventoryItems(HOUSE, {
+        source: "opening_stock",
+        items: [{ ...line, ...extra }],
+      } as any);
+    }
+    const calls = (t.svc.recordSpotCount as jest.Mock).mock.calls;
+    expect(calls[0][2]).toMatchObject({
+      opening: true,
+      costPerBottle: 18,
+      costProvenance: "manual",
+    });
+    expect(calls[1][2]).not.toHaveProperty("costPerBottle");
+  });
+
   it("the same file sent twice counts twice to the same number", async () => {
     const t = service({ id: ITEM, is_active: true });
     for (let i = 0; i < 2; i++) {

@@ -653,6 +653,63 @@ describe("InventoryService", () => {
       );
     });
 
+    // F-1524: a menu-first house carries every wine at 0 with no cost, so its
+    // opening-stock file is a count — and the file's cost per bottle was
+    // dropped. It now goes to record_stock_count, which applies it only to a
+    // wine with no live costed lot, and says which happened.
+    it("sends an opening count's cost per bottle as a person's price, and says whether it was applied", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { id: "inv-1" },
+        error: null,
+      });
+      mockRpc.mockResolvedValueOnce({
+        data: { count_id: "c-1", replayed: false, cost_applied: true },
+        error: null,
+      });
+      const out: any = await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 6,
+        clientCountId: "opening-cost-1",
+        opening: true,
+        costPerBottle: 14.5,
+      });
+      expect(mockRpc).toHaveBeenCalledWith(
+        "record_stock_count",
+        expect.objectContaining({
+          p_transaction_type: "initial",
+          p_unit_cost: 14.5,
+          p_cost_provenance: "manual",
+        }),
+      );
+      expect(out.count.costApplied).toBe(true);
+    });
+
+    it("sends no cost on a count that names none, and refuses a cost on a count that is not the opening stock", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { id: "inv-1" },
+        error: null,
+      });
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 6,
+        clientCountId: "opening-nocost-1",
+        opening: true,
+      });
+      const sent = mockRpc.mock.calls.find(
+        (c) => c[0] === "record_stock_count",
+      )?.[1];
+      expect(sent).not.toHaveProperty("p_unit_cost");
+      expect(sent).not.toHaveProperty("p_cost_provenance");
+
+      mockRpc.mockClear();
+      await expect(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 6,
+          clientCountId: "spot-cost-1",
+          costPerBottle: 3,
+        }),
+      ).rejects.toThrow(/only be given with the opening stock/);
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
     // F-291: a count of one shelf names the shelf, so the database compares and
     // corrects that shelf only; a count of every shelf sends no location at all.
     it("passes the counted shelf as p_location_id, and sends none for a count of every shelf", async () => {

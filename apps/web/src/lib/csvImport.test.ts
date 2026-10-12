@@ -98,10 +98,20 @@ describe('planOpeningStock', () => {
       { line: 4, name: 'Doluca DLC', vintage: null, qty: 2, shelfId: null, shelfName: null, cost: null },
     ]);
     expect(plan.count).toEqual([
-      { line: 3, name: 'Yakut', inventoryId: 'inv-1', qty: 7, shelfId: null, shelfName: null, costIgnored: true },
+      // F-1524: Yakut has no cost yet (a menu put it on the list), so the
+      // file's 300 is its first cost.
+      { line: 3, name: 'Yakut', inventoryId: 'inv-1', qty: 7, shelfId: null, shelfName: null, cost: 300, costIgnored: false },
     ]);
     expect(plan.refused.map((r) => r.line)).toEqual([5, 6, 7, 8, 9]);
     expect(plan.refused[1].reason).toMatch(/No shelf called "Garage" in this restaurant/);
+  });
+
+  it('[REVERT-FAILS] uses the file cost for a carried wine with no cost, and keeps a cost the wine already has (F-1524)', () => {
+    const rows = parseCsvRows('wine,vintage,quantity,cost\nYakut,2020,7,300');
+    const uncosted = planOpeningStock(rows, carried, [], 'en-US');
+    expect(uncosted.count[0]).toMatchObject({ inventoryId: 'inv-1', qty: 7, cost: 300, costIgnored: false });
+    const costed = planOpeningStock(rows, [{ ...carried[0], hasCost: true }], [], 'en-US');
+    expect(costed.count[0]).toMatchObject({ inventoryId: 'inv-1', qty: 7, cost: null, costIgnored: true });
   });
 
   it('reads a US cost with a dot decimal in a US house', () => {

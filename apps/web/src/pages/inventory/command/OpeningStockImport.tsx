@@ -7,7 +7,9 @@
  *     batch receipt a delivery uses), with its shelf and cost;
  *   - a wine already carried is COUNTED to the file's number
  *     (`POST .../item/:id/count`, on its shelf when one is named), so the same
- *     file imported twice never doubles the cellar.
+ *     file imported twice never doubles the cellar. Its cost per bottle
+ *     goes with the count when the wine has no cost yet (F-1524: a menu puts
+ *     every wine on the list with none); a cost it has is kept.
  *
  * Owners and managers only: a cost is theirs to set (F-312), and the page
  * offers this to them alone.
@@ -32,6 +34,8 @@ interface Outcome {
   received: number;
   addedToCarried: number;
   counted: number;
+  /** F-1524: counted wines that turned out to have a cost already, kept. */
+  costKept: string[];
   failed: string[];
 }
 
@@ -41,7 +45,13 @@ export function OpeningStockImport({
   onDone,
   onClose,
 }: {
-  carried: { inventoryId?: string; name: string; vintage?: number | null; producer?: string | null }[];
+  carried: {
+    inventoryId?: string;
+    name: string;
+    vintage?: number | null;
+    producer?: string | null;
+    hasCost?: boolean;
+  }[];
   shelves: { id: string; name: string }[];
   onDone: () => void;
   onClose: () => void;
@@ -67,7 +77,7 @@ export function OpeningStockImport({
     if (!plan) return;
     setSending(true);
     setProblem(null);
-    const out: Outcome = { received: 0, addedToCarried: 0, counted: 0, failed: [] };
+    const out: Outcome = { received: 0, addedToCarried: 0, counted: 0, costKept: [], failed: [] };
     try {
       if (plan.receive.length > 0) {
         const r = await bulkCreateInventoryItems(
@@ -95,14 +105,17 @@ export function OpeningStockImport({
       }
       for (const c of plan.count) {
         try {
-          await recordSpotCount(c.inventoryId, {
+          const r = await recordSpotCount(c.inventoryId, {
             countedQty: c.qty,
             reason: "Opening stock, imported from a spreadsheet",
             // F-1514: the first count, not a variance in the month close.
             opening: true,
             ...(c.shelfId ? { locationId: c.shelfId } : {}),
+            // F-1524: used only if the wine still has no cost when it lands.
+            ...(c.cost !== null ? { costPerBottle: c.cost } : {}),
           });
           out.counted += 1;
+          if (c.cost !== null && r?.count?.costApplied === false) out.costKept.push(c.name);
         } catch (e) {
           out.failed.push(`${c.name}: ${getErrorMessage(e)}`);
         }
@@ -164,7 +177,8 @@ export function OpeningStockImport({
               <li key={`c${c.line}`}>
                 {c.name}: counted to {c.qty}
                 {c.shelfName ? ` on ${c.shelfName}` : ""}
-                {c.costIgnored ? " (the cost on this line is not applied to a wine you already carry)" : ""}
+                {c.cost !== null ? `, ${formatHouseMoney(c.cost)} each (this wine has no cost yet, so this one is used)` : ""}
+                {c.costIgnored ? " (this wine already has a cost, which is kept; the cost on this line is not used)" : ""}
               </li>
             ))}
             {plan.refused.map((r) => (
@@ -183,6 +197,11 @@ export function OpeningStockImport({
               ? ` · ${outcome.addedToCarried} matched a wine you already carry under another name, and were added to it`
               : ""}
           </p>
+          {outcome.costKept.length > 0 && (
+            <p className="text-gray-500">
+              Already had a cost, which was kept: {outcome.costKept.join(", ")}
+            </p>
+          )}
           {outcome.failed.map((f) => (
             <p key={f} className="text-gray-500">
               Not changed: {f}

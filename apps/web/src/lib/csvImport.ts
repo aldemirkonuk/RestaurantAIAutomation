@@ -203,7 +203,9 @@ export interface StockCountRow {
   qty: number;
   shelfId: string | null;
   shelfName: string | null;
-  /** A cost on the line is not applied to a wine already carried. */
+  /** F-1524: the line's cost per bottle, used when the wine has no cost yet. */
+  cost: number | null;
+  /** The line names a cost, but the wine already has one, which is kept. */
   costIgnored: boolean;
 }
 
@@ -224,7 +226,14 @@ export interface OpeningStockPlan {
  */
 export function planOpeningStock(
   rows: string[][],
-  carried: { inventoryId?: string; name: string; vintage?: number | null; producer?: string | null }[],
+  carried: {
+    inventoryId?: string;
+    name: string;
+    vintage?: number | null;
+    producer?: string | null;
+    /** F-1524: the wine already has a cost (live costed bottles). */
+    hasCost?: boolean;
+  }[],
   shelves: { id: string; name: string }[],
   locale: string = getHouseLocale(),
 ): OpeningStockPlan {
@@ -304,7 +313,10 @@ export function planOpeningStock(
         qty,
         shelfId: shelf?.id ?? null,
         shelfName: shelf?.name ?? null,
-        costIgnored: cost !== null,
+        // F-1524: a wine the menu put on the list carries no cost, so the
+        // file's cost is its first; a real cost is never overwritten.
+        cost: match.hasCost ? null : cost,
+        costIgnored: cost !== null && !!match.hasCost,
       });
       return;
     }

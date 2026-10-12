@@ -806,6 +806,8 @@ export class InventoryController {
       locationId?: string | null;
       /** F-1514: an opening count (ADR 0335 §2), not a variance. */
       opening?: boolean;
+      /** F-1524: an opening count's cost per bottle, used only for a wine with no cost yet. */
+      costPerBottle?: number | null;
     },
     @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
@@ -830,6 +832,8 @@ export class InventoryController {
         {
           ...dto,
           opening: dto?.opening === true,
+          // F-1524: a cost sent here was typed by a person, whatever the body says.
+          costProvenance: "manual",
           performedBy: user?.userId ?? null,
         },
       );

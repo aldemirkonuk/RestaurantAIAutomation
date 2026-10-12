@@ -42,8 +42,9 @@ begin
   select pg_get_function_arguments(p.oid) into args
     from pg_proc p join pg_namespace s on s.oid = p.pronamespace
    where s.nspname = 'public' and p.proname = 'record_stock_count';
-  assert args like '%p_counted_at timestamp with time zone DEFAULT NULL::timestamp with time zone',
-    format('T1 FAIL record_stock_count does not end with p_counted_at DEFAULT NULL: %s', args);
+  -- F-1524 (20270109000000) appends p_unit_cost and p_cost_provenance after it.
+  assert args like '%p_counted_at timestamp with time zone DEFAULT NULL::timestamp with time zone%',
+    format('T1 FAIL record_stock_count has no p_counted_at DEFAULT NULL: %s', args);
 end $$;
 
 -- T2 two queued counts, sent oldest first: 12 at -6h, then 10 at -5h30.

@@ -60,7 +60,8 @@ begin
   select pg_get_function_arguments(p.oid) into args
     from pg_proc p join pg_namespace s on s.oid = p.pronamespace
    where s.nspname = 'public' and p.proname = 'record_stock_count';
-  assert args like '%p_location_id uuid DEFAULT NULL::uuid, p_counted_at timestamp with time zone DEFAULT NULL::timestamp with time zone',
+  -- F-1524 (20270109000000) appends p_unit_cost and p_cost_provenance after it.
+  assert args like '%p_location_id uuid DEFAULT NULL::uuid, p_counted_at timestamp with time zone DEFAULT NULL::timestamp with time zone%',
     format('T1 FAIL record_stock_count has no p_location_id DEFAULT NULL before p_counted_at: %s', args);
 end $$;
 
