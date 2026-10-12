@@ -168,6 +168,9 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // withholds the advice from staff. Its writes check the house's role in
     // the handler (assertCanManageRestaurant) and are recorded "open",
     // unchanged.
+    // MonthCloseController joined with sim F-1013 (founder 2026-10-11,
+    // option C, the snapshot close): a closed month is the house's books, so
+    // its four routes name owner AND manager, as the export shelf does.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -190,6 +193,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "promotions/promotions.controller.ts",
       "providers/provider-intelligence.controller.ts",
       "reports/exports/report-exports.controller.ts",
+      "reports/month-close/month-close.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);
   });

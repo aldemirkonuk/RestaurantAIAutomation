@@ -539,6 +539,22 @@
     "owner",
     "manager"
   ],
+  "POST /reports/month-close (MonthCloseController.close)": [
+    "owner",
+    "manager"
+  ],
+  "GET /reports/month-close (MonthCloseController.list)": [
+    "owner",
+    "manager"
+  ],
+  "GET /reports/month-close/:id (MonthCloseController.get)": [
+    "owner",
+    "manager"
+  ],
+  "GET /reports/month-close/:id/till.csv (MonthCloseController.tillFile)": [
+    "owner",
+    "manager"
+  ],
   "GET /vendor-intel/compare (VendorIntelController.compare)": [
     "owner",
     "manager"
