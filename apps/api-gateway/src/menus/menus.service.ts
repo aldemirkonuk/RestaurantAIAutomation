@@ -2454,7 +2454,8 @@ export class MenusService {
           const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
           let result: PlanResult;
           if (line.kitchen_line === true) result = "kitchen";
-          else if (isCocktailLine(line.category, line.name)) result = "cocktail";
+          else if (isCocktailLine(line.category, line.name))
+            result = "cocktail";
           else if (!wineId) result = "not_linked";
           else if (!row)
             result = menuPrice === null ? "blank_never_priced" : "new_wine";
