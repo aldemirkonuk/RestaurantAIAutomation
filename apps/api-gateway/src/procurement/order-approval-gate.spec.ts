@@ -429,7 +429,8 @@ describe("approveOrder — the ceiling", () => {
 
     await sealedApprove(svc);
 
-    expect(calls.auditInserts).toHaveLength(0);
+    // No refusal is filed; since F-1417 the approval itself is (one row).
+    expect(calls.auditInserts.map((r) => r.action)).toEqual(["order_approved"]);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
 
@@ -439,7 +440,8 @@ describe("approveOrder — the ceiling", () => {
 
     await sealedApprove(svc);
 
-    expect(calls.auditInserts).toHaveLength(0);
+    // No refusal is filed; since F-1417 the approval itself is (one row).
+    expect(calls.auditInserts.map((r) => r.action)).toEqual(["order_approved"]);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
 
@@ -464,7 +466,8 @@ describe("approveOrder — the ceiling", () => {
     await sealedApprove(svc);
 
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
-    expect(calls.auditInserts).toHaveLength(0);
+    // No refusal is filed; since F-1417 the approval itself is (one row).
+    expect(calls.auditInserts.map((r) => r.action)).toEqual(["order_approved"]);
   });
 
   it("[F-1134] an unpriced order under a manager ceiling is held: staff are refused, told the price is missing", async () => {
@@ -886,7 +889,8 @@ describe("approveOrder — a house with no policy, and a policy that cannot be r
     await sealedApprove(svc);
 
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
-    expect(calls.auditInserts).toHaveLength(0);
+    // No refusal is filed; since F-1417 the approval itself is (one row).
+    expect(calls.auditInserts.map((r) => r.action)).toEqual(["order_approved"]);
   });
 
   it("an UNREADABLE policy refuses — silence is not permission", async () => {
