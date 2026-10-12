@@ -93,6 +93,18 @@ export function parseDecimal(raw: string, group: GroupMark | null = null): numbe
 }
 
 /**
+ * A number written back into a field the way this house types it, so
+ * `parseDecimal` reads it as the same number (F-1552). `String(12.375)` is
+ * "12.375", which a house that groups with "." reads by rule 4 as 12375; here
+ * it is "12,375". No grouping is ever added. Null or not a number is blank.
+ */
+export function writeDecimal(n: number | null | undefined, group: GroupMark | null = null): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return ''
+  const plain = String(n)
+  return group === '.' ? plain.replace('.', ',') : plain
+}
+
+/**
  * The mark a country's numbers group thousands with, from the runtime's own
  * locale data (CLDR via `Intl`), or null when it is neither "." nor "," or the
  * country is unknown. `countryCode` is ISO 3166-1 alpha-2: "TR" gives ".",

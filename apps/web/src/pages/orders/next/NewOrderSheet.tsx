@@ -55,7 +55,7 @@ import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { CURRENCY_CODES, currencyLabel, formatMoney } from '@/lib/currency';
 import { listVendorTerms } from '@/services/api/vendorTerms';
 import { queryKeys } from '@/lib/query-keys';
-import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { parseDecimal, writeDecimal, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import {
   readSessionDraft,
@@ -82,6 +82,8 @@ export interface OrderLine {
   key: string;
   inventoryId: string;
   wineName: string;
+  /** The year the shelf row names, when it names one (F-1554). Absent on a cart kept before it was carried. */
+  vintage?: string;
   providerId: string;
   quantity: string;
   unitType: PriceUom;
@@ -117,12 +119,15 @@ function newPlacementId(): string {
 }
 
 let seq = 0;
-function newLine(inventoryId: string, wineName: string): OrderLine {
+function newLine(inventoryId: string, wineName: string, vintage?: unknown): OrderLine {
   seq += 1;
   return {
     key: `line-${seq}`,
     inventoryId,
     wineName,
+    // The search result shows the year; the line keeps it, so two vintages
+    // of one wine are never two lines that read the same (F-1554).
+    vintage: vintage ? String(vintage) : undefined,
     providerId: '',
     quantity: '',
     // The order's own unit. `bottle` is the schema's own omitted-means default
@@ -417,7 +422,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
     setLines((prev) =>
       prev.some(waiting)
         ? prev
-        : [...prev, { ...newLine(String(item.id), String(item.wineName ?? EM)), quantity: seed.quantity }],
+        : [...prev, { ...newLine(String(item.id), String(item.wineName ?? EM), item.wineVintage), quantity: seed.quantity }],
     );
   }, [open, seed, shelf, inventory.isLoading, inventory.isError, lines]);
   const vendors = useMemo(() => (providers.data ?? []) as Array<Record<string, any>>, [providers.data]);
@@ -490,7 +495,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
   );
 
   const addLine = (item: Record<string, any>) => {
-    setLines((prev) => [...prev, newLine(String(item.id), String(item.wineName ?? EM))]);
+    setLines((prev) => [...prev, newLine(String(item.id), String(item.wineName ?? EM), item.wineVintage)]);
     setSearch('');
   };
 
@@ -512,8 +517,9 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
     () => new Map(lines.map((l) => [l.key, lineRefusal(l, group)])),
     [lines, group],
   );
+  const unplacedCount = lines.filter((l) => !l.outcome?.ok).length;
   const canPlace =
-    !placing && lines.some((l) => !l.outcome?.ok) && lines.every((l) => l.outcome?.ok || refusals.get(l.key) === null);
+    !placing && unplacedCount > 0 && lines.every((l) => l.outcome?.ok || refusals.get(l.key) === null);
 
   /**
    * Place them. One POST per line, and the account is built from what came
@@ -626,7 +632,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
           setTally(
             placed === 0
               ? 'Nothing was placed.'
-              : `${placed} of ${lines.length} were placed before the refusal; the rest are untouched.`,
+              : `${placed} of ${attempted} were placed before the refusal; the rest are untouched.`,
           );
           setPlacing(false);
           onNoVendors();
@@ -690,10 +696,11 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
               cursor: canPlace ? 'pointer' : 'not-allowed',
             }}
           >
+            {/* Only the lines still to place (F-1554): a placed line is a receipt. */}
             {placing
               ? 'Placing…'
-              : lines.length > 1
-                ? `Place ${lines.length} orders`
+              : unplacedCount > 1
+                ? `Place ${unplacedCount} orders`
                 : 'Place the order'}
           </button>
         </div>
@@ -823,6 +830,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
                 <div className="flex items-baseline justify-between gap-2">
                   <span style={{ fontFamily: SERIF, fontSize: 14, color: 'var(--ink-1, #211C16)' }}>
                     {line.wineName}
+                    {line.vintage ? ` ${line.vintage}` : ''}
                   </span>
                   <button
                     type="button"
@@ -982,7 +990,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
                         type="button"
                         data-testid="new-order-take-offer"
                         onClick={() =>
-                          patch(line.key, { price: String(line.offer?.price ?? ''), priceUom: (line.offer?.priceUom as PriceUom) || '', pricePackSize: line.offer?.pricePackSize != null ? String(line.offer.pricePackSize) : '', currency: line.offer?.currency ?? '' })
+                          patch(line.key, { price: writeDecimal(line.offer?.price, group), priceUom: (line.offer?.priceUom as PriceUom) || '', pricePackSize: line.offer?.pricePackSize != null ? String(line.offer.pricePackSize) : '', currency: line.offer?.currency ?? '' })
                         }
                         style={{
                           marginTop: 4,

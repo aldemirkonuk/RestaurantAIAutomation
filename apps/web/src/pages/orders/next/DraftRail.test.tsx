@@ -403,3 +403,41 @@ describe('the card tells the thread and the figure as they are', () => {
     expect(screen.getByTestId('draft-figure')).toHaveTextContent('first quote');
   });
 });
+
+describe('a vendor with no email address on file (F-1553)', () => {
+  it('[REVERT-FAILS] offers no hold, says there is no address, and points at the vendor record', () => {
+    seams.drafts = [{ ...DRAFT, providerEmail: null }];
+    draw();
+    expect(screen.getByRole('button', { name: /Hold to approve & send/ })).toBeDisabled();
+    expect(screen.getByTestId('draft-no-address')).toHaveTextContent(
+      'Kavaklıdere has no email address on file, so this letter cannot be sent from here.',
+    );
+    expect(screen.getByTestId('draft-no-address-link')).toHaveAttribute('href', '/vendors?vendor=p-1');
+    expect(seams.issueDraftSendChallenge).not.toHaveBeenCalled();
+  });
+
+  it('[REVERT-FAILS] a staff member is not offered the ask either', () => {
+    seams.standing = AS_STAFF;
+    seams.drafts = [{ ...DRAFT, providerEmail: '  ' }];
+    draw();
+    expect(screen.getByRole('button', { name: /Hold to ask a manager/ })).toBeDisabled();
+  });
+
+  it('a vendor with an address gets no such sentence', () => {
+    draw();
+    expect(screen.queryByTestId('draft-no-address')).toBeNull();
+  });
+
+  it('[REVERT-FAILS] a 400 from the send says nothing was sent, not "not confirmed"', async () => {
+    seams.issueDraftSendChallenge.mockResolvedValue('proof-1');
+    seams.approveMutateAsync.mockRejectedValue(
+      Object.assign(new Error('This vendor has no email address on file, so there is nowhere to send. Nothing was sent.'), {
+        response: { status: 400 },
+      }),
+    );
+    draw();
+    holdIt(/Hold to approve & send to Kavaklıdere/);
+    await waitFor(() => expect(screen.getByText(/^Nothing was sent: This vendor has no email address/)).toBeInTheDocument());
+    expect(screen.queryByText(/Send not confirmed/)).toBeNull();
+  });
+});
