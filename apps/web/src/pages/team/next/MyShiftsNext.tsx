@@ -206,6 +206,15 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
     // with the withdrawal already made.
     mutationFn: (requestId: string) =>
       withdrawTimeOff(requestId, undefined, `time-off-withdraw:${requestId}`),
+    // F-1454: taking back the request just sent frees its days to be asked
+    // again, and its "went to your manager" sentence goes with it.
+    onSuccess: (_r, requestId) => {
+      const row = (mineQ.data ?? []).find((t) => t.id === requestId);
+      if (row && `${row.start_date}|${row.end_date}` === sentKey) {
+        setSentKey(null);
+        askOff.reset();
+      }
+    },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['team-next-my-time-off', rid] });
     },
