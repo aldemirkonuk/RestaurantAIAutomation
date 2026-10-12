@@ -50,6 +50,14 @@ describe("normalizeDescription", () => {
     expect(normalizeDescription("2018 Léoville 75 cl").formatMl).toBe(750);
   });
 
+  it("does not read a vintage before a producer's initial as litres (F-1527)", () => {
+    expect(normalizeDescription("2018 L. Jadot Beaune").formatMl).toBeNull();
+    expect(normalizeDescription("1999 L Jadot").formatMl).toBeNull();
+    expect(normalizeDescription("2018 L. Jadot 1.5L").formatMl).toBe(1500);
+    expect(normalizeDescription("2016 Léoville 75 cl").formatMl).toBe(750);
+    expect(normalizeDescription("Jameson 1 LT").formatMl).toBe(1000);
+  });
+
   it("reads LT and CL marks, centilitres as ten millilitres (F-1430)", () => {
     expect(normalizeDescription("Jameson 1 LT").formatMl).toBe(1000);
     expect(normalizeDescription("Rioja Reserva 75cl").formatMl).toBe(750);

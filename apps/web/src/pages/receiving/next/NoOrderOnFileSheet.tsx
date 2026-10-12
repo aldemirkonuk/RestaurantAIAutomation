@@ -202,7 +202,7 @@ export function NoOrderOnFileSheet({ open, onClose }: { open: boolean; onClose: 
   const missing = !providerId
     ? 'Choose who brought it.'
     : !inventoryId
-      ? 'Choose the wine.'
+      ? 'Choose the drink.'
       : !qtyOk
         ? `Say how many ${unit === 'case' ? 'cases' : 'bottles'} came.`
         : !perCaseOk
@@ -351,7 +351,7 @@ export function NoOrderOnFileSheet({ open, onClose }: { open: boolean; onClose: 
               disabled={locked}
               onChange={(e) => edit(setInventoryId)(e.target.value)}
             >
-              <option value="">{inventory.isLoading ? 'Loading the shelf…' : 'Choose a wine'}</option>
+              <option value="">{inventory.isLoading ? 'Loading the shelf…' : 'Choose a drink'}</option>
               {shelf.map((i) => (
                 <option key={String(i.id)} value={String(i.id)}>
                   {doorWineLabel(i)}

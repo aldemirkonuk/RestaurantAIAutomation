@@ -545,6 +545,10 @@ export class DeliveryStockService {
    * later 86 of the item, or a later delivery of it, stands. Filed as
    * `drink_sold_out` naming the reversal. Never refuses the reversal; a
    * failure is logged and the drink stays on.
+   *
+   * F-1525: and only when the shelf is empty after the reversal. A count or
+   * a shelving since the receipt put bottles there that this delivery did
+   * not bring, so live on-hand above zero keeps the drink on sale.
    */
   private async reopenStockOutsItEnded(
     restaurantId: string,
@@ -605,6 +609,18 @@ export class DeliveryStockService {
           )
         )
           continue;
+        const shelf = await db
+          .from("restaurant_inventory")
+          .select("stock_live")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", so.inventory_id)
+          .maybeSingle();
+        if (shelf.error) throw shelf.error;
+        const onHand = Number(
+          (shelf.data as { stock_live?: number | string | null } | null)
+            ?.stock_live ?? 0,
+        );
+        if (onHand > 0) continue;
         const reopened = await db
           .from("stock_outs")
           .update({ ended_at: null, ended_by: null, ended_by_receipt: null })

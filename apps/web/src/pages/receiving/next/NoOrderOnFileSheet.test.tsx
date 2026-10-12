@@ -229,6 +229,16 @@ describe('No order on file → Add to the books', () => {
     expect(localStorage.getItem('mudavym:door:no-order-pending:r-1')).toBeNull();
   });
 
+  // F-1528: the door takes every drink, not only wine.
+  it('asks for the drink, not the wine', () => {
+    render(<NoOrderOnFileSheet open onClose={() => {}} />);
+    const picker = screen.getByLabelText('What came?') as HTMLSelectElement;
+    expect(picker.options[0].textContent).toBe('Choose a drink');
+    fireEvent.change(screen.getByLabelText('Who brought it?'), { target: { value: 'p-1' } });
+    expect(screen.getByText('Choose the drink.')).toBeInTheDocument();
+    expect(screen.queryByText(/wine/i)).toBeNull();
+  });
+
   // F-1502: two vintages of one wine read as two identical options.
   it('tells two vintages of the same wine apart in the picker, with the size when it is not a standard bottle', () => {
     render(<NoOrderOnFileSheet open onClose={() => {}} />);

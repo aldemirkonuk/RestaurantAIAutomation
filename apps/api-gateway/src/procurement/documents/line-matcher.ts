@@ -126,10 +126,14 @@ export function normalizeDescription(raw?: string | null): {
   // how European labels and price lists write the same marks. Any letter
   // ends it, not just a-z (F-1495): "2018 Léoville" read as 2018 litres and
   // "2016 Clément" as 2016 centilitres, and Turkish names the same way.
-  const litres = text.match(
-    /(\d+(?:[.,]\d+)?)\s*(?:litre|liter|ltr|lt|l)(?![\p{L}\p{N}'’])/u,
+  // A whole year is never a size (F-1527): "2018 L. Jadot" is a vintage and
+  // a producer's initial, so 1900-2099 is passed over for the next mark.
+  const sized = (re: RegExp) =>
+    [...text.matchAll(re)].find((m) => !/^(19|20)\d\d$/.test(m[1])) ?? null;
+  const litres = sized(
+    /(\d+(?:[.,]\d+)?)\s*(?:litre|liter|ltr|lt|l)(?![\p{L}\p{N}'’])/gu,
   );
-  const cl = text.match(/(\d+(?:[.,]\d+)?)\s*cl(?![\p{L}\p{N}'’])/u);
+  const cl = sized(/(\d+(?:[.,]\d+)?)\s*cl(?![\p{L}\p{N}'’])/gu);
   if (ml) formatMl = Number(ml[1]);
   else if (litres)
     formatMl = Math.round(Number(litres[1].replace(",", ".")) * 1000);
