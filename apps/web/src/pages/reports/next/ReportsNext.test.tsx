@@ -587,6 +587,27 @@ describe('ReportsNext — the sheet', () => {
     expect(asked.month).toBeNull();
   });
 
+  it('reads one calendar quarter through the same month reader, and says which (F-1577)', () => {
+    const q3 = { days: 30, month: '2026-Q3' };
+    expect(CATALOGUE.till.path!('r1', q3)).toBe('/analytics/pos-revenue/r1?month=2026-Q3');
+    expect(CATALOGUE.till.window({ ...q3, zone: 'UTC' })).toMatch(
+      /^Q3 2026 \(July to September\) of POS checks(, so far)?, by the house’s days$/,
+    );
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    const quarters = within(till).getByLabelText('Calendar quarter') as HTMLSelectElement;
+    // The house's quarter and the three before it, after "A quarter…".
+    expect(quarters.options).toHaveLength(5);
+    const quarter = quarters.options[2].value;
+    expect(quarter).toMatch(/^\d{4}-Q[1-4]$/);
+    fireEvent.change(quarters, { target: { value: quarter } });
+    expect(asked.month).toBe(quarter);
+    expect((within(till).getByLabelText('Calendar month') as HTMLSelectElement).value).toBe('');
+    expect(within(till).getByText(/^Q[1-4] \d{4} \(.+\) of POS checks, by the house’s days$/)).toBeInTheDocument();
+    fireEvent.click(within(till).getByRole('button', { name: '30d' }));
+    expect(asked.month).toBeNull();
+  });
+
   it('asks nothing while you are reading: no drawing or subject control until Arrange', () => {
     paint();
     const till = screen.getByRole('region', { name: 'Through the till' });
@@ -1998,8 +2019,18 @@ describe('ReportsNext — a signed change is a fraction, printed in percent (A-0
     paint();
     expect(within(figureIn('Spend pacing', 'Pace')).getByText('+33.3%')).toBeInTheDocument();
     expect(
-      within(figureIn('Against ourselves', 'Pace against last month')).getByText('+33.3%'),
+      within(figureIn('Against ourselves', 'Pace, last 30 days (today so far) against the 30 before')).getByText('+33.3%'),
     ).toBeInTheDocument();
+  });
+
+  it('names the two 30-day windows the pace compares, not months (F-1574)', () => {
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    // The dashboard's "month" is the calendar month to date; this is not it.
+    expect(within(bench).queryByText(/against last month/i)).toBeNull();
+    expect(within(bench).getByText('Pace, last 30 days (today so far) against the 30 before')).toBeInTheDocument();
+    expect(CATALOGUE.pacing.answers).not.toMatch(/month/);
+    expect(CATALOGUE.pacing.window({ days: 30 })).toMatch(/the last one ending today so far/);
   });
 
   it('prints the 28-day trend as a change per day, and says so', () => {

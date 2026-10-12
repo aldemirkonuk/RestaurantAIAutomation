@@ -288,6 +288,14 @@ function Row({ close, zone, latest }: { close: MonthClose; zone: string | null; 
           {when(close.closedAt, zone)} by {close.closedBy ? (close.closedBy.name ?? 'a team member') : 'someone no longer on the team'}
         </p>
         <Kept close={close} />
+        {/* F-1578: the kept file is the export shelf's till file, gross check
+            totals, while the figure above is net; say so beside the two. */}
+        {close.hasTillFile && (
+          <p className="rp-cap">
+            The Till CSV is the check totals as your till sent them. On most tills that includes tax
+            and tips, so it reads higher than the net sales above.
+          </p>
+        )}
         {open &&
           (failure ? (
             <p className="rp-note" role="alert">

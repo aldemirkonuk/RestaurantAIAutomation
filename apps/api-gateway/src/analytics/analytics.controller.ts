@@ -1384,7 +1384,7 @@ export class AnalyticsController {
     name: "month",
     required: false,
     description:
-      "A calendar month, YYYY-MM: its first house day to its last (or to today while it runs). Replaces `days` when given.",
+      "A calendar month, YYYY-MM, or a quarter, YYYY-Qn: its first house day to its last (or to today while it runs). Replaces `days` when given.",
   })
   @ApiQuery({
     name: "week",

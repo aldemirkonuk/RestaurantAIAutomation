@@ -54,7 +54,7 @@ import { Grip, PlacingBar } from './Placing';
 import type { ArrangeApi } from './rp-arrange';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
-import { monthLabel, thisMonth } from './rp-registers-trade';
+import { isQuarter, monthLabel, thisMonth, thisQuarter } from './rp-registers-trade';
 import { houseToday } from '@/lib/houseZone';
 import type { Register } from './useReportsNextData';
 
@@ -85,6 +85,10 @@ function GraphIcon({ graph }: { graph: GraphType }) {
  * is how a close and an accountant's period are cut, and "the last 30 days"
  * read on 2 October cannot isolate July. The twelve months up to this one are
  * offered; picking a trailing window again leaves the month.
+ *
+ * Or one calendar quarter (F-1577): the house's quarter and the three before
+ * it, read whole by the same reader as a month, so Q3 is one figure rather
+ * than three months added by hand. It rides the `month` value as YYYY-Qn.
  */
 export function TillWindowPicker({
   days,
@@ -110,6 +114,13 @@ export function TillWindowPicker({
       thisMonth(new Date(now.getFullYear(), now.getMonth() - i, 1)),
     );
   }, [zone]);
+  const quarters = useMemo(() => {
+    const now = houseToday(zone);
+    return Array.from({ length: 4 }, (_, i) =>
+      thisQuarter(new Date(now.getFullYear(), now.getMonth() - 3 * i, 1)),
+    );
+  }, [zone]);
+  const quarter = month !== null && isQuarter(month);
   return (
     <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
       {options.map((d) => (
@@ -127,13 +138,28 @@ export function TillWindowPicker({
         <select
           className="rp-select rp-focus rp-no-drag"
           aria-label="Calendar month"
-          value={month ?? ''}
+          value={quarter ? '' : (month ?? '')}
           onChange={(e) => onMonth(e.target.value || null)}
         >
           <option value="">A month…</option>
           {months.map((m) => (
             <option key={m} value={m}>
               {monthLabel(m)}
+            </option>
+          ))}
+        </select>
+      )}
+      {onMonth && (
+        <select
+          className="rp-select rp-focus rp-no-drag"
+          aria-label="Calendar quarter"
+          value={quarter ? (month ?? '') : ''}
+          onChange={(e) => onMonth(e.target.value || null)}
+        >
+          <option value="">A quarter…</option>
+          {quarters.map((q) => (
+            <option key={q} value={q}>
+              {monthLabel(q)}
             </option>
           ))}
         </select>

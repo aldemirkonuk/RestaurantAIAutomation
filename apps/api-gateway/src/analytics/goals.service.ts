@@ -1630,6 +1630,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * to its last, or to the house's today while the month is still running.
    * A month that has not begun on the house's clock is refused, not read as
    * an empty month. `days` is then the number of house days the month spans.
+   * `month` may name a calendar quarter instead, YYYY-Qn (F-1577): its first
+   * month's first day to its third month's last, read by the same whole
+   * reader, so an owner reads Q3 without adding three months by hand.
    *
    * `week` reads one Monday-to-Sunday week instead (F-1236): `last` is the
    * last full week on the house's clock, the one that ended before today;
@@ -1647,7 +1650,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const monthDays = month ? monthBounds(month) : null;
     if (month && !monthDays)
       throw new BadRequestException(
-        "A month is written as year and month, like 2026-07.",
+        "A month is written as year and month, like 2026-07, and a quarter as year and quarter, like 2026-Q3.",
       );
     if (month && week)
       throw new BadRequestException("Read one month or one week, not both.");
@@ -1756,8 +1759,20 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   }
 }
 
-/** First and last calendar day of a YYYY-MM month, or null when it is not one. */
+/**
+ * First and last calendar day of a YYYY-MM month, or of a YYYY-Qn quarter
+ * (F-1577), or null when it is neither.
+ */
 function monthBounds(month: string): { first: string; last: string } | null {
+  const q = /^(\d{4})-Q([1-4])$/.exec(month);
+  if (q) {
+    const firstMonth = (Number(q[2]) - 1) * 3 + 1;
+    const first = monthBounds(`${q[1]}-${String(firstMonth).padStart(2, "0")}`);
+    const last = monthBounds(
+      `${q[1]}-${String(firstMonth + 2).padStart(2, "0")}`,
+    );
+    return first && last ? { first: first.first, last: last.last } : null;
+  }
   const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
   if (!m) return null;
   const lastDay = new Date(

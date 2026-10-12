@@ -241,12 +241,14 @@ const PAID: CellarColumn = {
 
 const SOLD: CellarColumn = {
   id: 'sold',
-  label: 'Sold',
+  // F-1576: every check ever, not a window — the period is in the label, as
+  // /reports puts its window beside every till figure.
+  label: 'Sold, all time',
   kind: 'figure',
   side: 'house',
   source: 'pos_checks.items.qty, every check not voided + pos_unresolved_lines.qty with no check behind them, where the line’s name has this row’s beverage_house_key',
   meaning:
-    'How many the till has rung up under this row’s name: every line, on a check that was not voided or queued with no check behind it, whose name has the same words as this row in any order, wine or not, mapped or not. A till name that adds a size, such as "(single 50ml)" or "70cl bottle", is not counted here; it shows in the row’s own record. Read whole, not sampled.',
+    'How many the till has rung up under this row’s name since the till first sent a check, not over a window as /reports reads it: every line, on a check that was not voided or queued with no check behind it, whose name has the same words as this row in any order, wine or not, mapped or not. A till name that adds a size, such as "(single 50ml)" or "70cl bottle", is not counted here; it shows in the row’s own record. Read whole, not sampled.',
   fill: null,
   on: true,
   why: '',
@@ -255,12 +257,13 @@ const SOLD: CellarColumn = {
 
 const CHARGED: CellarColumn = {
   id: 'charged',
-  label: 'Taken',
+  // F-1576: not /reports' Taken, which is whole check totals over a window.
+  label: 'Taken at line price, all time',
   kind: 'figure',
   side: 'house',
   source: 'pos_checks.items.price · qty, every check not voided + pos_unresolved_lines.price · qty with no check behind them, where the line’s name has this row’s beverage_house_key',
   meaning:
-    'What the till actually took for it — the price charged, not the price listed. The two differ every time somebody comps, discounts or rings the wrong button, and the difference is the only place a menu price is ever checked. Read from the same lines as Sold.',
+    'What the till actually took for it — the price charged, not the price listed. The two differ every time somebody comps, discounts or rings the wrong button, and the difference is the only place a menu price is ever checked. Read from the same lines as Sold, since the till first sent a check. This is not the Taken on /reports: that one is whole check totals, tax and tips in on most tills, over the window it names.',
   fill: null,
   on: true,
   why: '',

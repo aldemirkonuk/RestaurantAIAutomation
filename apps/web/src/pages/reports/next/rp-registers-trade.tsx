@@ -125,8 +125,20 @@ export interface TillWindow {
   dailySeries: Array<{ date: string; revenue: number }>;
 }
 
-/** "July 2026" for 2026-07, in the reader's language. */
+/** True for a calendar quarter, YYYY-Qn, which the till reads like a month (F-1577). */
+export function isQuarter(period: string): boolean {
+  return /^\d{4}-Q[1-4]$/.test(period);
+}
+
+/** "July 2026" for 2026-07, and "Q3 2026 (July to September)" for 2026-Q3, in the reader's language. */
 export function monthLabel(month: string): string {
+  if (isQuarter(month)) {
+    const [year, q] = month.split('-Q');
+    const first = (Number(q) - 1) * 3 + 1;
+    const name = (m: number) =>
+      new Date(Number(year), m - 1, 1, 12).toLocaleDateString(undefined, { month: 'long' });
+    return `Q${q} ${year} (${name(first)} to ${name(first + 2)})`;
+  }
   const d = new Date(`${month}-01T12:00:00`);
   return Number.isNaN(d.getTime())
     ? month
@@ -140,6 +152,11 @@ export function monthLabel(month: string): string {
  */
 export function thisMonth(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** This quarter as YYYY-Qn, on the calendar of the Date given (F-1577). */
+export function thisQuarter(now: Date = new Date()): string {
+  return `${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`;
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -325,7 +342,7 @@ const till: AnalysisSpec = {
   ...trailingTill,
   window: (ctx) =>
     ctx.month
-      ? `${monthLabel(ctx.month)} of POS checks${ctx.month === thisMonth(houseToday(ctx.zone)) ? ', so far' : ''}, by the house’s days`
+      ? `${monthLabel(ctx.month)} of POS checks${ctx.month === (isQuarter(ctx.month) ? thisQuarter : thisMonth)(houseToday(ctx.zone)) ? ', so far' : ''}, by the house’s days`
       : ctx.week
         ? 'last week of POS checks, Monday to Sunday, by the house’s days'
         : trailingTill.window(ctx),
@@ -466,8 +483,8 @@ export function unpricedNotes(spend?: number, committed?: number): string[] {
 const pacing = analysis<PacingRegister>({
   title: 'Spend pacing',
   register: 'cashflow register',
-  answers: 'Whether buying is running hot or cold against the month before',
-  window: () => '180 days of purchasing, compared in two 30-day windows',
+  answers: 'Whether buying is running hot or cold against the 30 days before',
+  window: () => '180 days of purchasing, compared in two 30-day windows, the last one ending today so far',
   path: (rid) => `/analytics/cashflow/${rid}`,
   graphs: ['bars', 'table', 'figure'],
   graphNote:

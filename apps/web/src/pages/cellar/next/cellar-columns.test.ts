@@ -115,6 +115,15 @@ describe('every register has a column set, and every column accounts for itself'
     expect(lines.join(' ')).toMatch(/vendor_price_observations/);
     expect(lines.join(' ')).toMatch(/0 rows in the whole database/);
   });
+
+  it('Sold and Taken name their period and basis, apart from /reports’ Taken (F-1576)', () => {
+    const sold = HOUSE_SPINE.find((c) => c.id === 'sold')!;
+    const taken = HOUSE_SPINE.find((c) => c.id === 'charged')!;
+    // Every check ever, not a window: the label says so, as /reports does.
+    expect(sold.label).toBe('Sold, all time');
+    expect(taken.label).toBe('Taken at line price, all time');
+    expect(taken.meaning).toMatch(/not the Taken on \/reports/);
+  });
 });
 
 describe('the general set — the whole cellar at once', () => {
