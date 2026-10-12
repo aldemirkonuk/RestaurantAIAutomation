@@ -121,6 +121,51 @@ function houseHandler(
           error: null,
           count: 3,
         };
+      case "pos_checks":
+        // Net 900 on gross 1,000; a voided check; a check with no net figure;
+        // one opened on 1 Aug house time (UTC+3), outside July.
+        return {
+          data: [
+            {
+              id: "k1",
+              external_check_id: "T-1",
+              subtotal: 900,
+              total: 1000,
+              voided: false,
+              opened_at: "2026-07-03T18:00:00Z",
+              closed_at: "2026-07-03T20:00:00Z",
+            },
+            {
+              id: "k2",
+              external_check_id: "T-2",
+              subtotal: 50,
+              total: 60,
+              voided: true,
+              opened_at: "2026-07-03T18:00:00Z",
+              closed_at: "2026-07-03T20:00:00Z",
+            },
+            {
+              id: "k3",
+              external_check_id: "T-3",
+              subtotal: null,
+              total: 30,
+              voided: false,
+              opened_at: "2026-07-04T18:00:00Z",
+              closed_at: "2026-07-04T20:00:00Z",
+            },
+            {
+              id: "k4",
+              external_check_id: "T-4",
+              subtotal: 70,
+              total: 80,
+              voided: false,
+              opened_at: "2026-07-31T22:30:00Z",
+              closed_at: "2026-07-31T23:00:00Z",
+            },
+          ],
+          error: null,
+          count: 4,
+        };
       case "stock_counts":
         return {
           data: [
@@ -189,12 +234,24 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
 
     const f = row.figures as MonthFigures;
     expect(f.currency).toBe("TRY");
+    // F-1494: net (ADR 0287 AW17), the subtotal, never the gross total; the
+    // checks it came from are counted, and each counted check is kept.
     expect(f.till).toEqual({
       posConnected: true,
-      revenue: 1000,
-      checkCount: 10,
-      days: [{ date: "2026-07-03", revenue: 1000 }],
+      netSales: 900,
+      netSalesCheckCount: 1,
+      checkCount: 2,
+      days: [{ date: "2026-07-03", netSales: 900 }],
+      kept: { k1: 900, k3: null },
     });
+    expect(f.purchases.kept).toEqual({
+      o1: { total: 300, currency: "TRY" },
+      o2: { total: 50, currency: "EUR" },
+      o3: { total: null, currency: "TRY" },
+    });
+    // The snapshot is the record's; the page gets the figures only.
+    expect(dto.figures.till).not.toHaveProperty("kept");
+    expect(dto.figures.purchases).not.toHaveProperty("kept");
     // An order with no currency is the house's money; one per currency, never added together.
     expect(f.purchases).toEqual({
       orders: 3,
@@ -203,6 +260,7 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
         { currency: "EUR", total: 50 },
         { currency: "TRY", total: 300 },
       ],
+      kept: expect.any(Object),
     });
     expect(f.variance).toEqual({
       counts: 2,
@@ -292,9 +350,19 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
 });
 
 describe("MonthCloseService.getClose — changed after close", () => {
+  const STAFF = "33333333-3333-4333-8333-333333333333";
+  const ACCOUNTANT = "44444444-4444-4444-8444-444444444444";
+  const GONE = "55555555-5555-4555-8555-555555555555";
   const kept: MonthFigures = {
     currency: "TRY",
-    till: { posConnected: true, revenue: 1000, checkCount: 10, days: [] },
+    till: {
+      posConnected: true,
+      netSales: 1000,
+      netSalesCheckCount: 2,
+      checkCount: 2,
+      days: [],
+      kept: { k1: 120, k5: 880 },
+    },
     valuation: {
       inventoryValue: null,
       pricedInventoryValue: 4200,
@@ -302,9 +370,13 @@ describe("MonthCloseService.getClose — changed after close", () => {
       valuedAt: "2026-08-02T09:00:00Z",
     },
     purchases: {
-      orders: 1,
+      orders: 2,
       unpriced: 0,
-      totals: [{ currency: "TRY", total: 300 }],
+      totals: [{ currency: "TRY", total: 500 }],
+      kept: {
+        o1: { total: 300, currency: "TRY" },
+        o2: { total: 200, currency: "TRY" },
+      },
     },
     variance: { counts: 1, netBottles: -2, shortBottles: 2, overBottles: 0 },
   };
@@ -319,78 +391,303 @@ describe("MonthCloseService.getClose — changed after close", () => {
     figures: kept,
     till_csv: "Day,Taken",
   };
+  const july = {
+    opened_at: "2026-07-20T18:00:00Z",
+    closed_at: "2026-07-20T20:00:00Z",
+  };
 
-  it("lists a check voided after the close, a late stock movement and a changed order, against the record", async () => {
-    const STAFF = "33333333-3333-4333-8333-333333333333";
-    const { svc, calls } = service(
-      houseHandler({
-        month_closes: () => ({ data: closeRow, error: null }),
-        pos_checks: () => ({
-          data: [
-            {
-              // Arrived in July; voided at the till after the close. The row was
-              // updated, so imported_at still says July.
-              id: "k1",
-              external_check_id: "T-17",
-              total: 120,
-              voided: true,
-              opened_at: "2026-07-20T18:00:00Z",
-              closed_at: "2026-07-20T20:00:00Z",
-              imported_at: "2026-07-20T20:01:00Z",
-              source_modified_at: "2026-08-03T10:00:00Z",
+  function detailHandler(
+    over: Partial<Record<string, (ops: Op[]) => Answer>> = {},
+  ) {
+    return houseHandler({
+      month_closes: () => ({ data: closeRow, error: null }),
+      pos_checks: () => ({
+        data: [
+          {
+            // F-1467: voided by a file import after the close. The re-send
+            // kept July's imported_at and carried no till time, so no
+            // timestamp says it changed.
+            id: "k1",
+            external_check_id: "T-17",
+            subtotal: 120,
+            total: 130,
+            voided: true,
+            ...july,
+            imported_at: "2026-07-20T20:01:00Z",
+            source_modified_at: null,
+          },
+          {
+            id: "k5",
+            external_check_id: "T-20",
+            subtotal: 880,
+            total: 950,
+            voided: false,
+            ...july,
+            imported_at: "2026-07-20T20:01:00Z",
+            source_modified_at: null,
+          },
+          {
+            // Arrived after the close.
+            id: "k6",
+            external_check_id: "T-21",
+            subtotal: 40,
+            total: 45,
+            voided: false,
+            ...july,
+            imported_at: "2026-08-03T11:00:00Z",
+            source_modified_at: null,
+          },
+          {
+            // Opened on 1 Aug house time (UTC+3): outside July, not listed.
+            id: "k2",
+            external_check_id: "T-18",
+            subtotal: 80,
+            total: 90,
+            voided: false,
+            opened_at: "2026-07-31T22:30:00Z",
+            closed_at: "2026-07-31T23:00:00Z",
+            imported_at: "2026-08-03T11:00:00Z",
+            source_modified_at: null,
+          },
+        ],
+        error: null,
+        count: 4,
+      }),
+      inventory_transactions: () => ({
+        data: [
+          {
+            id: "t1",
+            inventory_id: "w1",
+            transaction_type: "waste",
+            source: "manual",
+            quantity_change: -1,
+            performed_by: STAFF,
+            transaction_date: "2026-07-15T12:00:00Z",
+            created_at: "2026-08-04T08:00:00Z",
+          },
+          {
+            // F-1468: the till writes its sales with no person on them.
+            id: "t2",
+            inventory_id: "w1",
+            transaction_type: "sale",
+            source: "pos",
+            quantity_change: -1,
+            performed_by: null,
+            transaction_date: "2026-07-28T12:00:00Z",
+            created_at: "2026-08-04T07:00:00Z",
+          },
+          {
+            id: "t3",
+            inventory_id: "w1",
+            transaction_type: "adjustment",
+            source: "manual",
+            quantity_change: 1,
+            performed_by: null,
+            transaction_date: "2026-07-27T12:00:00Z",
+            created_at: "2026-08-04T06:00:00Z",
+          },
+          {
+            id: "t4",
+            inventory_id: "w1",
+            transaction_type: "waste",
+            source: "manual",
+            quantity_change: -1,
+            performed_by: GONE,
+            transaction_date: "2026-07-26T12:00:00Z",
+            created_at: "2026-08-04T05:00:00Z",
+          },
+        ],
+        error: null,
+        count: 4,
+      }),
+      restaurant_inventory: () => ({
+        data: [{ id: "w1", display_name: "Barolo 2019", wine_name: null }],
+        error: null,
+      }),
+      procurement_orders: (ops) =>
+        arg(ops, "in")?.[0] === "id"
+          ? {
+              data: [
+                {
+                  // The late invoice moved the total; verified by the accountant.
+                  id: "o1",
+                  order_number: "PO-9",
+                  delivered_at: "2026-07-04T10:00:00Z",
+                  updated_at: "2026-08-05T08:00:00Z",
+                  received_by: STAFF,
+                  match_verified_by: ACCOUNTANT,
+                  match_verified_at: "2026-08-05T08:00:00Z",
+                },
+              ],
+              error: null,
+            }
+          : {
+              data: [
+                {
+                  id: "o1",
+                  total_cost: 340,
+                  currency: null,
+                  delivered_at: "2026-07-04T10:00:00Z",
+                },
+                {
+                  // F-1466: edited after the close (a verified price that
+                  // left the total where it was): not a change to the month.
+                  id: "o2",
+                  total_cost: 200,
+                  currency: null,
+                  delivered_at: "2026-07-05T10:00:00Z",
+                },
+              ],
+              error: null,
+              count: 2,
             },
-            {
-              // Opened on 1 Aug house time (UTC+3): outside July, not listed.
-              id: "k2",
-              external_check_id: "T-18",
-              total: 80,
-              voided: false,
-              opened_at: "2026-07-31T22:30:00Z",
-              closed_at: "2026-07-31T23:00:00Z",
-              imported_at: "2026-08-03T11:00:00Z",
-              source_modified_at: null,
-            },
-          ],
-          error: null,
-          count: 2,
-        }),
-        inventory_transactions: () => ({
-          data: [
-            {
-              id: "t1",
-              inventory_id: "w1",
-              transaction_type: "waste",
-              quantity_change: -1,
-              performed_by: STAFF,
-              transaction_date: "2026-07-15T12:00:00Z",
-              created_at: "2026-08-04T08:00:00Z",
-            },
-          ],
-          error: null,
-          count: 1,
-        }),
-        restaurant_inventory: () => ({
-          data: [{ id: "w1", display_name: "Barolo 2019", wine_name: null }],
-          error: null,
-        }),
+      stock_counts: () => ({
+        data: [
+          { id: "c1", expected_qty: 12, counted_qty: 10, variance_qty: -2 },
+        ],
+        error: null,
+        count: 1,
+      }),
+      users: () => ({
+        data: [
+          { user_id: ACTOR, name: "Ayla" },
+          { user_id: STAFF, name: "Deniz" },
+          { user_id: ACCOUNTANT, name: "Selin" },
+        ],
+        error: null,
+      }),
+      ...over,
+    });
+  }
+
+  it("lists each change that moved a figure, by whom, and the list adds up to the figure", async () => {
+    const { svc, calls } = service(detailHandler());
+    const detail = await svc.getClose(HOUSE, "close-1");
+
+    const rows = detail.changes.map((c) => [
+      c.kind,
+      c.who,
+      c.what,
+      c.delta,
+      c.day,
+    ]);
+    // F-1466: the order is listed by what moved (+40), by who verified the
+    // invoice; the order whose total did not move is not listed at all.
+    expect(rows).toContainEqual([
+      "purchase",
+      "Selin",
+      "Order PO-9 cost changed",
+      40,
+      "2026-07-04",
+    ]);
+    expect(rows.filter((r) => r[0] === "purchase")).toHaveLength(1);
+    // F-1467: the void with no timestamp after the close is listed.
+    expect(rows).toContainEqual([
+      "till",
+      "The till",
+      "Check T-17 voided at the till",
+      -120,
+      "2026-07-20",
+    ]);
+    expect(rows).toContainEqual([
+      "till",
+      "The till",
+      "Check T-21 arrived from the till",
+      40,
+      "2026-07-20",
+    ]);
+    expect(rows.filter((r) => r[0] === "till")).toHaveLength(2);
+    // F-1468: the till, not a departed person; a null actor elsewhere is not recorded.
+    expect(rows).toContainEqual([
+      "stock",
+      "Deniz",
+      "Written off: Barolo 2019",
+      -1,
+      "2026-07-15",
+    ]);
+    expect(rows).toContainEqual([
+      "stock",
+      "The till",
+      "Sale: Barolo 2019",
+      -1,
+      "2026-07-28",
+    ]);
+    expect(rows).toContainEqual([
+      "stock",
+      "not recorded",
+      "Stock adjusted: Barolo 2019",
+      1,
+      "2026-07-27",
+    ]);
+    expect(rows).toContainEqual([
+      "stock",
+      "someone no longer on the team",
+      "Written off: Barolo 2019",
+      -1,
+      "2026-07-26",
+    ]);
+    expect(detail.changesNotListed).toBe(0);
+
+    const by = Object.fromEntries(
+      detail.againstNow.map((a) => [`${a.figure}:${a.currency}`, a]),
+    );
+    // F-1494: the till figure is net, and labelled so.
+    expect(by["till_net_sales:TRY"]).toMatchObject({
+      label: "Net sales through the till",
+      atClose: 1000,
+      now: 920,
+      delta: -80,
+    });
+    expect(by["purchases:TRY"]).toMatchObject({
+      atClose: 500,
+      now: 540,
+      delta: 40,
+    });
+    // The listed changes add up to each figure's move.
+    const sum = (kind: string) =>
+      detail.changes
+        .filter((c) => c.kind === kind)
+        .reduce((n, c) => n + (c.delta ?? 0), 0);
+    expect(sum("till")).toBe(by["till_net_sales:TRY"].delta);
+    expect(sum("purchase")).toBe(by["purchases:TRY"].delta);
+
+    // The record is returned as kept, without its snapshot.
+    expect(detail.figures.till).not.toHaveProperty("kept");
+    expect(detail.figures.till.netSales).toBe(1000);
+    expect(detail.closedBy).toEqual({ id: ACTOR, name: "Ayla" });
+    // The till is read whole, the voided checks too.
+    const tillRead = calls.find((c) => c.table === "pos_checks")!;
+    expect(
+      has(tillRead.ops, "eq") &&
+        !tillRead.ops.some((o) => o.m === "eq" && o.a[0] === "voided"),
+    ).toBe(true);
+  });
+
+  it("names nobody for a price change verified before the close, and lists an order that left the month", async () => {
+    const { svc } = service(
+      detailHandler({
         procurement_orders: (ops) =>
-          has(ops, "gt")
+          arg(ops, "in")?.[0] === "id"
             ? {
                 data: [
                   {
                     id: "o1",
                     order_number: "PO-9",
-                    total_cost: 340,
-                    currency: null,
-                    status: "DELIVERED",
                     delivered_at: "2026-07-04T10:00:00Z",
                     updated_at: "2026-08-05T08:00:00Z",
                     received_by: STAFF,
-                    created_by: ACTOR,
+                    match_verified_by: ACCOUNTANT,
+                    match_verified_at: "2026-07-30T08:00:00Z",
+                  },
+                  {
+                    id: "o2",
+                    order_number: "PO-10",
+                    delivered_at: "2026-07-05T10:00:00Z",
+                    updated_at: "2026-08-05T09:00:00Z",
+                    received_by: STAFF,
                   },
                 ],
                 error: null,
-                count: 1,
               }
             : {
                 data: [
@@ -404,71 +701,23 @@ describe("MonthCloseService.getClose — changed after close", () => {
                 error: null,
                 count: 1,
               },
-        stock_counts: () => ({
-          data: [
-            { id: "c1", expected_qty: 12, counted_qty: 10, variance_qty: -2 },
-          ],
-          error: null,
-          count: 1,
-        }),
-        users: () => ({
-          data: [
-            { user_id: ACTOR, name: "Ayla" },
-            { user_id: STAFF, name: "Deniz" },
-          ],
-          error: null,
-        }),
       }),
-      { ...till, revenue: 880, checkCount: 10 },
     );
-
     const detail = await svc.getClose(HOUSE, "close-1");
-
-    // The till read catches a check changed after the close, not only one that first arrived after it.
-    const tillRead = calls.find((c) => c.table === "pos_checks")!;
-    expect(String(arg(tillRead.ops, "or")![0])).toContain(
-      "source_modified_at.gt.",
+    const rows = detail.changes
+      .filter((c) => c.kind === "purchase")
+      .map((c) => [c.who, c.what, c.delta]);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        ["not recorded", "Order PO-9 cost changed", 40],
+        [
+          "not recorded",
+          "Order PO-10 is no longer counted as delivered in this month",
+          -200,
+        ],
+      ]),
     );
-
-    expect(
-      detail.changes.map((c) => [c.kind, c.who, c.what, c.delta, c.day]),
-    ).toEqual([
-      [
-        "purchase",
-        "Deniz",
-        "Order PO-9 changed; it now stands at",
-        340,
-        "2026-07-04",
-      ],
-      ["stock", "Deniz", "Written off: Barolo 2019", -1, "2026-07-15"],
-      ["till", "The till", "Check T-17 voided at the till", -120, "2026-07-20"],
-    ]);
-    expect(detail.changes.find((c) => c.kind === "till")!.at).toBe(
-      "2026-08-03T10:00:00Z",
-    );
-    expect(detail.changesNotListed).toBe(0);
-
-    const by = Object.fromEntries(
-      detail.againstNow.map((a) => [`${a.figure}:${a.currency}`, a]),
-    );
-    expect(by["till_revenue:TRY"]).toMatchObject({
-      atClose: 1000,
-      now: 880,
-      delta: -120,
-    });
-    expect(by["purchases:TRY"]).toMatchObject({
-      atClose: 300,
-      now: 340,
-      delta: 40,
-    });
-    expect(by["variance_net:null"]).toMatchObject({
-      atClose: -2,
-      now: -2,
-      delta: 0,
-    });
-    // The record itself is returned as kept.
-    expect(detail.figures).toEqual(kept);
-    expect(detail.closedBy).toEqual({ id: ACTOR, name: "Ayla" });
+    expect(rows).toHaveLength(2);
   });
 
   it("reads one house's closes only", async () => {
@@ -489,7 +738,13 @@ describe("MonthCloseService.getClose — changed after close", () => {
 describe("againstNow", () => {
   const base: MonthFigures = {
     currency: "TRY",
-    till: { posConnected: true, revenue: null, checkCount: 4, days: [] },
+    till: {
+      posConnected: true,
+      netSales: null,
+      netSalesCheckCount: 0,
+      checkCount: 4,
+      days: [],
+    },
     valuation: {
       inventoryValue: null,
       pricedInventoryValue: null,
@@ -507,7 +762,7 @@ describe("againstNow", () => {
   it("says nothing of a delta when either side is unknown, and keeps each currency apart", () => {
     const now: MonthFigures = {
       ...base,
-      till: { ...base.till, revenue: 50, checkCount: 5 },
+      till: { ...base.till, netSales: 50, checkCount: 5 },
       purchases: {
         orders: 2,
         unpriced: 0,
@@ -518,7 +773,7 @@ describe("againstNow", () => {
       },
     };
     const rows = againstNow(base, now);
-    expect(rows.find((r) => r.figure === "till_revenue")).toMatchObject({
+    expect(rows.find((r) => r.figure === "till_net_sales")).toMatchObject({
       atClose: null,
       now: 50,
       delta: null,

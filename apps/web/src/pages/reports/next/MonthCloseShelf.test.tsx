@@ -24,7 +24,7 @@ const close = (over: Partial<MonthClose> = {}): MonthClose => ({
   hasTillFile: true,
   figures: {
     currency: 'EUR',
-    till: { posConnected: true, revenue: 1000, checkCount: 10, days: [] },
+    till: { posConnected: true, netSales: 1000, netSalesCheckCount: 10, checkCount: 10, days: [] },
     valuation: { inventoryValue: null, pricedInventoryValue: 4200, unpricedWines: 3, valuedAt: '2026-08-02T09:00:00Z' },
     purchases: { orders: 2, unpriced: 1, totals: [{ currency: 'EUR', total: 300 }] },
     variance: { counts: 2, netBottles: -1, shortBottles: 2, overBottles: 1 },
@@ -58,7 +58,14 @@ const detail = (): MonthCloseDetail => ({
   ],
   changesNotListed: 0,
   againstNow: [
-    { figure: 'till_revenue', label: 'Taken through the till', atClose: 1000, now: 880, delta: -120, currency: 'EUR' },
+    {
+      figure: 'till_net_sales',
+      label: 'Net sales through the till',
+      atClose: 1000,
+      now: 880,
+      delta: -120,
+      currency: 'EUR',
+    },
   ],
 });
 
@@ -92,7 +99,8 @@ describe('MonthCloseShelf (F-1013)', () => {
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/reports/month-close', { month: '2026-07' }));
     const kept = await screen.findByLabelText(/Figures kept for/);
-    expect(kept.textContent).toContain('Taken through the till: €1,000');
+    // F-1494: the till's figure is net (ADR 0287 AW17), and says so.
+    expect(kept.textContent).toContain('Net sales through the till: €1,000 over 10 checks');
     expect(kept.textContent).toContain('1 order with no price');
     expect(kept.textContent).toContain('2 bottles short, 1 bottle over');
     // The cellar's value is not invented: only the priced wines, and how many have no cost.
@@ -126,9 +134,46 @@ describe('MonthCloseShelf (F-1013)', () => {
       '2026-07-15 · Deniz · Written off: Barolo 2019 -1 bottle',
     ]);
     expect(screen.getByLabelText('Kept against now').textContent).toContain(
-      'Taken through the till: €1,000 kept, €880 now (-€120)',
+      'Net sales through the till: €1,000 kept, €880 now (-€120)',
     );
     expect(api.get).toHaveBeenCalledWith('/reports/month-close/c1');
+  });
+
+  it('says when net sales come from only some checks, or from none (F-1494)', async () => {
+    const f = close().figures;
+    api.get.mockResolvedValueOnce({
+      data: {
+        closes: [
+          close({ figures: { ...f, till: { ...f.till, netSales: 800, netSalesCheckCount: 8 } } }),
+          close({
+            id: 'c0',
+            month: '2026-06',
+            figures: { ...f, till: { ...f.till, netSales: null, netSalesCheckCount: 0 } },
+          }),
+        ],
+      },
+    });
+    wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);
+    const kept = await screen.findAllByLabelText(/Figures kept for/);
+    expect(kept[0].textContent).toContain(
+      'Net sales through the till: €800 from 8 of 10 checks; the rest carried no net figure',
+    );
+    expect(kept[1].textContent).toContain('Net sales through the till: —, not recorded: no check carried a net figure');
+    expect(kept[1].textContent).not.toContain('€0');
+  });
+
+  it('never says nothing changed while a figure moved (F-1467)', async () => {
+    api.get.mockImplementation(async (url: string) =>
+      url === '/reports/month-close' ? { data: { closes: [close()] } } : { data: { ...detail(), changes: [] } },
+    );
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'What changed since' }));
+    expect(
+      await screen.findByText(
+        'A figure above has moved since the month was closed, but no single change could be listed for it.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing dated in this month has changed/)).not.toBeInTheDocument();
   });
 
   it('marks an earlier version of a month closed again', async () => {

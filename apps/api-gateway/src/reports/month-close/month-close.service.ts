@@ -52,10 +52,21 @@ import { renderCsv } from "../exports/report-export-render";
  *    month" cannot be rebuilt later; the close says when it was taken.
  *  - A figure the engine could not compute is kept as null, never as 0, and
  *    a read that fails refuses the close rather than keeping a short record.
+ *  - The till's figure is NET sales, the checks' subtotal (ADR 0287 AW17,
+ *    F-1494), as every owner sales figure is. The till file kept beside it is
+ *    the export shelf's, written as that shelf writes it.
+ *  - What changed after the close is found by setting the month as read now
+ *    against a per-check and per-order snapshot kept with the figures, so the
+ *    listed changes add up to each figure's move (F-1466, F-1467).
  */
 
 /** How many changed rows of one kind a close lists before it says "and N more". */
 export const CHANGED_AFTER_CLOSE_CAP = 200;
+/** Said of a change whose record names nobody (F-1468). */
+const NOT_RECORDED = "not recorded";
+/** A users.user_id, as a change row carries it before it is named. */
+const USER_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Mirrors `month_closes_till_csv_size`. */
 const MAX_TILL_CSV_BYTES = 5 * 1024 * 1024;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -65,14 +76,30 @@ const MONTH_CLOSES_TABLE = "month_closes";
 const ROW_COLUMNS =
   "id, restaurant_id, month, version, closed_by, closed_at, zone, figures";
 
-/** The till's month, as the till reads it (`GoalsService.getPosRevenueWindow`). */
+/**
+ * The till's month, NET (F-1494): ADR 0287 rule AW17 makes an owner's sales
+ * figure the checks' `subtotal`, before tax and surcharge, labelled "net" —
+ * never `total`, and never a fallback to it. Its rule 3 is followed here: the
+ * subtotals that exist are summed, the checks they came from are counted, and
+ * the figure is null, never 0, when no check carried one.
+ */
 export interface TillFigures {
   posConnected: boolean;
-  /** Sum of the month's non-voided checks; null when the till could not say. */
-  revenue: number | null;
+  /** Sum of `subtotal` over the month's non-voided checks; null when none carried one or the till could not say. */
+  netSales: number | null;
+  /** Checks whose subtotal is in `netSales`; below `checkCount` when some carried none. */
+  netSalesCheckCount: number | null;
   checkCount: number | null;
-  /** Only days that took money. */
-  days: Array<{ date: string; revenue: number }>;
+  /** Only days with a net figure. */
+  days: Array<{ date: string; netSales: number }>;
+  /**
+   * Each counted check's net figure at the close, by id (F-1467). A later void
+   * or change is found by setting the month's checks against this, not by a
+   * timestamp: a re-sent check keeps its first `imported_at`, and the till's
+   * own `source_modified_at` is written only when the till sends one. Kept in
+   * the record; never sent to the page.
+   */
+  kept?: Record<string, number | null>;
 }
 
 /** The cellar's value when the month was closed (`AnalyticsService.getFinancialSummary`). */
@@ -98,6 +125,12 @@ export interface PurchaseFigures {
   unpriced: number;
   /** One total per currency: there is no rate to add one to another. */
   totals: MoneyTotal[];
+  /**
+   * Each counted order's total and money at the close, by id (F-1466): an
+   * order is listed as changed only when what it counts for moved. Kept in
+   * the record; never sent to the page.
+   */
+  kept?: Record<string, { total: number | null; currency: string | null }>;
 }
 
 /** Shelf counts taken on the month's house days. */
@@ -151,7 +184,7 @@ export interface ChangedAfterClose {
 }
 
 export interface FigureAgainstNow {
-  figure: "till_revenue" | "till_checks" | "purchases" | "variance_net";
+  figure: "till_net_sales" | "till_checks" | "purchases" | "variance_net";
   label: string;
   atClose: number | null;
   now: number | null;
@@ -165,6 +198,23 @@ export interface MonthCloseDetailDto extends MonthCloseDto {
   /** Changes past the cap of each kind, not listed. */
   changesNotListed: number;
   againstNow: FigureAgainstNow[];
+}
+
+/** One check of the month, filed on its house day. */
+interface TillCheck {
+  id: string;
+  ref: string;
+  day: string;
+  /** Its `subtotal`; null when the till sent none. */
+  net: number | null;
+  voided: boolean;
+  imported_at: string | null;
+  source_modified_at: string | null;
+}
+
+/** Money summed from floats, back to cents. */
+function cents(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 interface CloseRow {
@@ -213,18 +263,11 @@ function codeOf(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim().toUpperCase() : null;
 }
 
-/** The till's word for a check, in plain terms. */
-function checkLabel(c: {
-  external_check_id?: unknown;
-  voided?: unknown;
-}): string {
-  const ref =
-    typeof c.external_check_id === "string" && c.external_check_id
-      ? ` ${c.external_check_id}`
-      : "";
-  return c.voided === true
-    ? `Check${ref} voided at the till`
-    : `Check${ref} arrived from the till`;
+/** The figures as the page reads them: the per-check and per-order snapshot stays in the record. */
+function withoutSnapshot(f: MonthFigures): MonthFigures {
+  const { kept: _till, ...till } = f.till;
+  const { kept: _orders, ...purchases } = f.purchases;
+  return { ...f, till, purchases };
 }
 
 const MOVEMENT_WORDS: Record<string, string> = {
@@ -390,32 +433,26 @@ export class MonthCloseService {
     const row = await this.readRow(restaurantId, closeId, true);
     const { first, last } = monthDays(row.month);
     const bounds = houseDayBounds(first, last, row.zone);
-    const inMonth = (day: string | null) =>
-      day !== null && day >= first && day <= last;
-
-    const [till, stock, purchases] = await Promise.all([
-      this.tillChanges(restaurantId, row, bounds, inMonth),
-      this.stockChanges(restaurantId, row, bounds),
-      this.purchaseChanges(restaurantId, row, bounds),
-    ]);
     const currency = row.figures.currency ?? null;
-    const { figures: now } = await this.readFigures(
-      restaurantId,
-      row.month,
-      row.zone,
-      currency,
-      false,
-    );
+
+    const [{ figures: now, checks }, stock] = await Promise.all([
+      this.readFigures(restaurantId, row.month, row.zone, currency, false),
+      this.stockChanges(restaurantId, row, bounds),
+    ]);
+    const till = this.tillChanges(row, checks);
+    const purchases = await this.purchaseChanges(restaurantId, row, now);
 
     const people = await this.peopleNames([
       row.closed_by,
       ...stock.rows.map((r) => r.who),
       ...purchases.rows.map((r) => r.who),
     ]);
+    // A user id is named, or said to be gone; a phrase ("The till", "not
+    // recorded") is already the answer (F-1468).
     const named = (c: ChangedAfterClose): ChangedAfterClose =>
-      c.kind === "till"
-        ? c
-        : { ...c, who: people.get(c.who) ?? "someone no longer on the team" };
+      USER_ID_RE.test(c.who)
+        ? { ...c, who: people.get(c.who) ?? "someone no longer on the team" }
+        : c;
 
     const changes = [
       ...till.rows,
@@ -501,11 +538,30 @@ export class MonthCloseService {
     zone: string,
     currency: string | null,
     withValuation = true,
-  ): Promise<{ figures: MonthFigures; tillWindow: unknown }> {
+  ): Promise<{
+    figures: MonthFigures;
+    tillWindow: unknown;
+    checks: TillCheck[];
+  }> {
     const { first, last } = monthDays(month);
     const bounds = houseDayBounds(first, last, zone);
-    const [tillWindow, summary, orders, counts] = await Promise.all([
+    const [tillWindow, rawChecks, summary, orders, counts] = await Promise.all([
       this.goals.getPosRevenueWindow(restaurantId, 30, month),
+      // The month's checks, voided ones too: the net figure is summed from
+      // them, and a later read sets each against the one kept (F-1467).
+      readWholeWindow<Record<string, unknown>>(
+        "The till's checks in this month",
+        () =>
+          this.db
+            .from("pos_checks")
+            .select(
+              "id, external_check_id, subtotal, voided, opened_at, closed_at, imported_at, source_modified_at",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("opened_at", bounds.readFromIso)
+            .lt("opened_at", bounds.endIso) as never,
+      ),
       withValuation
         ? this.analytics.getFinancialSummary(restaurantId, 0)
         : Promise.resolve(null),
@@ -537,16 +593,55 @@ export class MonthCloseService {
     ]);
 
     const totals = new Map<string | null, number>();
+    const keptOrders: NonNullable<PurchaseFigures["kept"]> = {};
     let unpriced = 0;
     for (const o of orders) {
       const cost = orderSpend(o);
+      // An order naming no currency is in the house's money (F-1052).
+      const code = codeOf(o.currency) ?? currency;
+      keptOrders[String(o.id)] = { total: cost, currency: code };
       if (cost === null) {
         unpriced += 1;
         continue;
       }
-      // An order naming no currency is in the house's money (F-1052).
-      const code = codeOf(o.currency) ?? currency;
       totals.set(code, (totals.get(code) ?? 0) + cost);
+    }
+
+    // Net, by ADR 0287 AW17 (F-1494): the month's non-voided checks, filed
+    // on the house's days.
+    const checks: TillCheck[] = [];
+    for (const c of rawChecks) {
+      const day = houseDayOf(
+        c as { closed_at?: string | null; opened_at?: string | null },
+        zone,
+      );
+      if (day === null || day < first || day > last) continue;
+      checks.push({
+        id: String(c.id),
+        ref: typeof c.external_check_id === "string" ? c.external_check_id : "",
+        day,
+        net: finite(c.subtotal),
+        voided: c.voided === true,
+        imported_at: typeof c.imported_at === "string" ? c.imported_at : null,
+        source_modified_at:
+          typeof c.source_modified_at === "string"
+            ? c.source_modified_at
+            : null,
+      });
+    }
+    const keptChecks: Record<string, number | null> = {};
+    const netByDay = new Map<string, number>();
+    let netSales: number | null = null;
+    let netSalesCheckCount = 0;
+    let checkCount = 0;
+    for (const c of checks) {
+      if (c.voided) continue;
+      checkCount += 1;
+      keptChecks[c.id] = c.net;
+      if (c.net === null) continue;
+      netSales = (netSales ?? 0) + c.net;
+      netSalesCheckCount += 1;
+      netByDay.set(c.day, (netByDay.get(c.day) ?? 0) + c.net);
     }
 
     let netBottles = 0;
@@ -565,12 +660,25 @@ export class MonthCloseService {
     const coverage = (s.costCoverage ?? {}) as Record<string, unknown>;
     const figures: MonthFigures = {
       currency,
-      till: {
-        posConnected: tillWindow.posConnected,
-        revenue: tillWindow.revenue,
-        checkCount: tillWindow.checkCount,
-        days: tillWindow.dailySeries,
-      },
+      till: tillWindow.posConnected
+        ? {
+            posConnected: true,
+            netSales: netSales === null ? null : cents(netSales),
+            netSalesCheckCount,
+            checkCount,
+            days: [...netByDay.entries()]
+              .sort(([a], [b]) => (a < b ? -1 : 1))
+              .map(([date, net]) => ({ date, netSales: cents(net) })),
+            kept: keptChecks,
+          }
+        : {
+            posConnected: false,
+            netSales: null,
+            netSalesCheckCount: null,
+            checkCount: null,
+            days: [],
+            kept: {},
+          },
       valuation: {
         inventoryValue: finite(s.inventoryValue),
         pricedInventoryValue: finite(s.pricedInventoryValue),
@@ -583,6 +691,7 @@ export class MonthCloseService {
         totals: [...totals.entries()]
           .map(([c, total]) => ({ currency: c, total }))
           .sort((a, b) => String(a.currency).localeCompare(String(b.currency))),
+        kept: keptOrders,
       },
       variance: {
         counts: counts.length,
@@ -591,7 +700,7 @@ export class MonthCloseService {
         overBottles,
       },
     };
-    return { figures, tillWindow };
+    return { figures, tillWindow, checks };
   }
 
   /** The till's month written up as the export shelf writes it, kept with the record. */
@@ -623,63 +732,74 @@ export class MonthCloseService {
   }
 
   /**
-   * Checks filed on the month's house days that reached the books, or that
-   * the till changed (a void, a late close), after the close. `imported_at`
-   * is the first arrival only: a later copy of the same check updates the
-   * row and leaves it, so `source_modified_at` is read beside it.
+   * The month's checks set against the ones kept at the close (F-1467): a
+   * check voided since, one whose net figure moved, one that arrived since,
+   * and one kept that is no longer in the month. No timestamp decides it: a
+   * re-sent check keeps its first `imported_at`, and `source_modified_at` is
+   * the till's clock, written only when the till sends one, so a void from a
+   * file import could change the figure and be listed nowhere. Each change
+   * moves the net figure by its delta, so the list adds up to the figure.
+   *
+   * A close kept before the snapshot existed lists no check; the shelf then
+   * says a figure moved without a listed change, never that nothing did.
    */
-  private async tillChanges(
-    restaurantId: string,
+  private tillChanges(
     row: CloseRow,
-    bounds: { readFromIso: string; endIso: string },
-    inMonth: (day: string | null) => boolean,
-  ): Promise<{ rows: ChangedAfterClose[]; more: number }> {
-    const { data, error, count } = await this.db
-      .from("pos_checks")
-      .select(
-        "id, external_check_id, total, voided, opened_at, closed_at, imported_at, source_modified_at",
-        {
-          count: "exact",
-        },
-      )
-      .eq("restaurant_id", restaurantId)
-      .or(
-        `imported_at.gt."${row.closed_at}",source_modified_at.gt."${row.closed_at}"`,
-      )
-      .gte("opened_at", bounds.readFromIso)
-      .lt("opened_at", bounds.endIso)
-      .order("imported_at", { ascending: false })
-      .limit(CHANGED_AFTER_CLOSE_CAP);
-    if (error)
-      throw new Error(
-        `The till's checks since the close could not be read: ${error.message}`,
-      );
+    checks: TillCheck[],
+  ): { rows: ChangedAfterClose[]; more: number } {
+    const kept = row.figures.till?.kept;
+    if (!kept) return { rows: [], more: 0 };
+    const closed = Date.parse(row.closed_at);
+    // When it reached the books, as well as the row says; never before the close.
+    const at = (c: TillCheck) =>
+      [c.source_modified_at, c.imported_at]
+        .filter((t): t is string => t !== null && Date.parse(t) > closed)
+        .sort((x, y) => Date.parse(y) - Date.parse(x))[0] ?? row.closed_at;
+    const has = (id: string) => Object.prototype.hasOwnProperty.call(kept, id);
+    const ref = (c: TillCheck) => (c.ref ? ` ${c.ref}` : "");
     const rows: ChangedAfterClose[] = [];
-    for (const c of (data ?? []) as Array<Record<string, unknown>>) {
-      const day = houseDayOf(
-        c as { closed_at?: string | null; opened_at?: string | null },
-        row.zone,
-      );
-      if (!inMonth(day)) continue;
-      const total = finite(c.total);
-      const arrived = String(c.imported_at);
-      const changed =
-        typeof c.source_modified_at === "string" ? c.source_modified_at : null;
+    const push = (c: TillCheck | null, what: string, delta: number | null) =>
       rows.push({
         kind: "till",
-        at:
-          changed !== null && Date.parse(changed) > Date.parse(arrived)
-            ? changed
-            : arrived,
-        day: day as string,
+        at: c ? at(c) : row.closed_at,
+        day: c ? c.day : row.month,
         who: "The till",
-        what: checkLabel(c),
-        delta: c.voided === true ? (total === null ? null : -total) : total,
+        what,
+        delta: delta === null ? null : cents(delta),
         unit: "money",
         currency: null,
       });
+    const seen = new Set<string>();
+    for (const c of checks) {
+      seen.add(c.id);
+      const was = has(c.id) ? kept[c.id] : undefined;
+      if (was !== undefined && c.voided)
+        push(
+          c,
+          `Check${ref(c)} voided at the till`,
+          was === null ? null : -was,
+        );
+      else if (was !== undefined && c.net !== was)
+        push(
+          c,
+          `Check${ref(c)} changed at the till`,
+          (c.net ?? 0) - (was ?? 0),
+        );
+      else if (was === undefined && !c.voided)
+        push(c, `Check${ref(c)} arrived from the till`, c.net);
     }
-    return { rows, more: Math.max(0, (count ?? 0) - CHANGED_AFTER_CLOSE_CAP) };
+    for (const id of Object.keys(kept))
+      if (!seen.has(id))
+        push(
+          null,
+          "A check kept at the close is no longer in this month",
+          kept[id] === null ? null : -(kept[id] as number),
+        );
+    rows.sort((x, y) => Date.parse(y.at) - Date.parse(x.at));
+    return {
+      rows: rows.slice(0, CHANGED_AFTER_CLOSE_CAP),
+      more: Math.max(0, rows.length - CHANGED_AFTER_CLOSE_CAP),
+    };
   }
 
   /** Stock movements dated inside the month and recorded after the close. */
@@ -691,7 +811,7 @@ export class MonthCloseService {
     const { data, error, count } = await this.db
       .from("inventory_transactions")
       .select(
-        "id, inventory_id, transaction_type, quantity_change, performed_by, transaction_date, created_at",
+        "id, inventory_id, transaction_type, source, quantity_change, performed_by, transaction_date, created_at",
         {
           count: "exact",
         },
@@ -717,7 +837,14 @@ export class MonthCloseService {
         kind: "stock" as const,
         at: String(t.created_at),
         day: houseDayOf(String(t.transaction_date), row.zone) ?? "",
-        who: typeof t.performed_by === "string" ? t.performed_by : "",
+        // F-1468: the till writes its sales and returns with no person on
+        // them. That is the till, not someone who has left the team.
+        who:
+          typeof t.performed_by === "string"
+            ? t.performed_by
+            : t.source === "pos"
+              ? "The till"
+              : NOT_RECORDED,
         what: `${MOVEMENT_WORDS[String(t.transaction_type)] ?? "Stock changed"}: ${wines.get(String(t.inventory_id)) ?? "a wine no longer listed"}`,
         delta: finite(t.quantity_change),
         unit: "bottles" as const,
@@ -727,54 +854,110 @@ export class MonthCloseService {
     };
   }
 
-  /** Orders delivered inside the month and changed after the close. */
+  /**
+   * Orders whose counted money moved since the close (F-1466): the month's
+   * delivered orders as read now, set against the ones kept. An order is
+   * listed only when what it counts for changed — its total, its money, or
+   * whether it counts at all — and by how much, so the list adds up to
+   * "Bought (delivered)". Any other edit (a note, a verified price that left
+   * the total where it was) is not a change to the month. The person named is
+   * the one the order records for that change: who verified the invoice after
+   * the close, or who received an order that came into the month; otherwise
+   * it is not recorded, never the person at the door by default.
+   */
   private async purchaseChanges(
     restaurantId: string,
     row: CloseRow,
-    bounds: { startIso: string; endIso: string },
+    now: MonthFigures,
   ): Promise<{ rows: ChangedAfterClose[]; more: number }> {
-    const { data, error, count } = await this.db
+    const kept = row.figures.purchases?.kept;
+    if (!kept) return { rows: [], more: 0 };
+    const current = now.purchases.kept ?? {};
+    const moved = [
+      ...new Set([...Object.keys(kept), ...Object.keys(current)]),
+    ].filter((id) => {
+      const a = kept[id];
+      const b = current[id];
+      return !a || !b || a.total !== b.total || a.currency !== b.currency;
+    });
+    if (moved.length === 0) return { rows: [], more: 0 };
+    const listed = moved.slice(0, CHANGED_AFTER_CLOSE_CAP);
+    const { data, error } = await this.db
       .from("procurement_orders")
       .select(
-        "id, order_number, total_cost, currency, status, delivered_at, updated_at, received_by, created_by",
-        {
-          count: "exact",
-        },
+        "id, order_number, delivered_at, updated_at, received_by, match_verified_by, match_verified_at",
       )
       .eq("restaurant_id", restaurantId)
-      .gt("updated_at", row.closed_at)
-      .gte("delivered_at", bounds.startIso)
-      .lt("delivered_at", bounds.endIso)
-      .order("updated_at", { ascending: false })
-      .limit(CHANGED_AFTER_CLOSE_CAP);
+      .in("id", listed);
     if (error)
       throw new Error(
         `The orders changed since the close could not be read: ${error.message}`,
       );
+    const byId = new Map(
+      ((data ?? []) as Array<Record<string, unknown>>).map((o) => [
+        String(o.id),
+        o,
+      ]),
+    );
+    const closed = Date.parse(row.closed_at);
+    const after = (v: unknown) =>
+      typeof v === "string" && Date.parse(v) > closed;
+    const rows = listed.map((id): ChangedAfterClose => {
+      const o = byId.get(id) ?? {};
+      const a = kept[id];
+      const b = current[id];
+      const name = `Order${o.order_number ? ` ${String(o.order_number)}` : ""}`;
+      let what: string;
+      let delta: number | null;
+      let currency: string | null;
+      let who = NOT_RECORDED;
+      if (a && b && a.currency !== b.currency) {
+        what = `${name} is now in ${b.currency ?? "the house's money"}, not ${a.currency ?? "the house's money"}`;
+        delta = null;
+        currency = b.currency;
+      } else if (a && b) {
+        what =
+          a.total === null
+            ? `${name} now carries a price`
+            : b.total === null
+              ? `${name} no longer carries a price`
+              : `${name} cost changed`;
+        delta = cents((b.total ?? 0) - (a.total ?? 0));
+        currency = b.currency;
+      } else if (a) {
+        what = `${name} is no longer counted as delivered in this month`;
+        delta = a.total === null ? null : -a.total;
+        currency = a.currency;
+      } else {
+        what = `${name} was counted as delivered in this month after the close`;
+        delta = b.total;
+        currency = b.currency;
+        if (typeof o.received_by === "string") who = o.received_by;
+      }
+      if (
+        a &&
+        b &&
+        typeof o.match_verified_by === "string" &&
+        after(o.match_verified_at)
+      )
+        who = o.match_verified_by;
+      return {
+        kind: "purchase",
+        at: after(o.updated_at) ? String(o.updated_at) : row.closed_at,
+        day:
+          typeof o.delivered_at === "string"
+            ? (houseDayOf(o.delivered_at, row.zone) ?? row.month)
+            : row.month,
+        who,
+        what,
+        delta,
+        unit: "money",
+        currency,
+      };
+    });
     return {
-      rows: ((data ?? []) as Array<Record<string, unknown>>).map((o) => {
-        const counted = (ORDER_SPEND_STATUSES as readonly string[]).includes(
-          String(o.status),
-        );
-        return {
-          kind: "purchase" as const,
-          at: String(o.updated_at),
-          day: houseDayOf(String(o.delivered_at), row.zone) ?? "",
-          who:
-            typeof o.received_by === "string"
-              ? o.received_by
-              : typeof o.created_by === "string"
-                ? o.created_by
-                : "",
-          what: counted
-            ? `Order ${String(o.order_number ?? "")} changed; it now stands at`
-            : `Order ${String(o.order_number ?? "")} is no longer counted as delivered`,
-          delta: counted ? orderSpend(o) : null,
-          unit: "money" as const,
-          currency: codeOf(o.currency),
-        };
-      }),
-      more: Math.max(0, (count ?? 0) - CHANGED_AFTER_CLOSE_CAP),
+      rows,
+      more: Math.max(0, moved.length - CHANGED_AFTER_CLOSE_CAP),
     };
   }
 
@@ -848,7 +1031,7 @@ export class MonthCloseService {
         ? { id: row.closed_by, name: names.get(row.closed_by) ?? null }
         : null,
       zone: row.zone,
-      figures: row.figures,
+      figures: withoutSnapshot(row.figures),
       hasTillFile,
     };
   }
@@ -875,10 +1058,11 @@ export function againstNow(
   });
   const out: FigureAgainstNow[] = [
     pair(
-      "till_revenue",
-      "Taken through the till",
-      kept.till.revenue,
-      now.till.revenue,
+      "till_net_sales",
+      "Net sales through the till",
+      // A close kept before F-1494 has no net figure: unknown, never NaN.
+      kept.till.netSales ?? null,
+      now.till.netSales,
       kept.currency,
     ),
     pair(
