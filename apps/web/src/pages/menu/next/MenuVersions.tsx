@@ -28,6 +28,7 @@ import {
   MENU_CADENCES,
   getMenuSourceUrl,
   importMenu,
+  isMenuKind,
   kindName,
   listMenuVersions,
   type MakeCurrentResult,
@@ -377,6 +378,27 @@ function ReadMenuForm({ canManage, onRead, currency, liveKinds = [] }: {
   );
 }
 
+/**
+ * A kept menu of a legacy kind (`full`, `bar`, `events`): nothing may make it
+ * live (ADR 0340 rule 1), so its row is read only. A row with no kind (an older
+ * gateway) is not legacy: it is the one menu the house had.
+ */
+export function isLegacyVersion(v: Pick<MenuVersion, 'kind'>): boolean {
+  return typeof v.kind === 'string' && !isMenuKind(v.kind);
+}
+
+/** The timeline a kept menu sits on: its kind, with legacy and unknown kinds on Drinks (rule 1). */
+export function timelineOf(v: Pick<MenuVersion, 'kind'>): 'beverage' | 'food' | 'desserts' {
+  return v.kind === 'food' || v.kind === 'desserts' ? v.kind : 'beverage';
+}
+
+/** Kept menus grouped by timeline, Drinks, Food, Desserts; a timeline with none is left out. */
+export function versionTimelines(versions: MenuVersion[]): Array<{ kind: 'beverage' | 'food' | 'desserts'; versions: MenuVersion[] }> {
+  return (['beverage', 'food', 'desserts'] as const)
+    .map((kind) => ({ kind, versions: versions.filter((v) => timelineOf(v) === kind) }))
+    .filter((t) => t.versions.length > 0);
+}
+
 function VersionRow({ v, zone, canManage, lastUsedId, planning, onPlan }: {
   v: MenuVersion
   zone: string | null
@@ -395,14 +417,24 @@ function VersionRow({ v, zone, canManage, lastUsedId, planning, onPlan }: {
       setLinkError(reasonOf(err));
     }
   };
+  const legacy = isLegacyVersion(v);
+  const label = versionLabel(v, zone);
   const standing = v.current
     ? `current since ${day(v.madeCurrentAt, zone)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
     : v.status === 'archived'
       ? `${v.menuId === lastUsedId ? 'last one used, ' : ''}used until ${day(v.retiredAt, zone)}`
       : 'kept, never current';
   return (
-    <tr data-testid="menu-version-row">
-      <td>{versionLabel(v, zone)}</td>
+    <tr data-testid="menu-version-row" data-legacy={legacy ? 'true' : undefined}>
+      <td>
+        {label}
+        {legacy ? (
+          <span className="cl-note" style={{ display: 'block' }} data-testid="menu-version-legacy">
+            Old kind: {v.kind}. Kept to read; it cannot be made live again as itself. Reading its file again makes a
+            new draft.
+          </span>
+        ) : null}
+      </td>
       <td className="cl-dim">{standing}</td>
       <td className="cl-dim">
         {v.linesExtracted === null ? EM : `${v.linesExtracted} line${v.linesExtracted === 1 ? '' : 's'}`}
@@ -436,15 +468,17 @@ function VersionRow({ v, zone, canManage, lastUsedId, planning, onPlan }: {
         ) : null}
       </td>
       <td>
-        {!v.current && canManage ? (
+        {/* ADR 0340 rule 20: a used menu is restored through the same
+            review, so a price it sets is dated by the choice (0193 L11). */}
+        {!v.current && canManage && !legacy ? (
           <button
             type="button"
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={`Make ${versionLabel(v, zone)} current`}
+            aria-label={v.status === 'archived' ? `Restore ${label}` : `Make ${label} current`}
           >
-            {planning ? 'See below' : 'Make current'}
+            {planning ? 'See below' : v.status === 'archived' ? 'Restore' : 'Make current'}
           </button>
         ) : null}
       </td>
@@ -500,8 +534,22 @@ export function MenuVersions({ canManage, currency }: {
           </p>
           {q.data && q.data.versions.length > 0 ? (
             <>
-            <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 10 }}>
-              <table className="cl-table" style={{ width: '100%' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 560px), 1fr))', gap: 12, marginTop: 10 }}>
+            {versionTimelines(q.data.versions).map((t) => {
+              const live = q.data?.currentByKind?.[t.kind] ?? null;
+              const name = kindName(t.kind) ?? t.kind;
+              return (
+            <div key={t.kind} data-testid={`menu-versions-timeline-${t.kind}`} style={{ minWidth: 0 }}>
+            <h3 className="cl-crumb" style={{ margin: '0 0 4px' }}>
+              {name}
+            </h3>
+            {q.data?.currentByKind ? (
+              <p className="cl-note" style={{ margin: '0 0 6px' }}>
+                {live ? `Live: ${versionLabel(live, q.data.timezone)}.` : `No ${name} menu is live.`}
+              </p>
+            ) : null}
+            <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
+              <table className="cl-table" style={{ width: '100%' }} aria-label={`${name} menus kept`}>
                 <thead>
                   <tr>
                     <th>Menu</th>
@@ -512,7 +560,7 @@ export function MenuVersions({ canManage, currency }: {
                   </tr>
                 </thead>
                 <tbody>
-                  {q.data.versions.map((v) => (
+                  {t.versions.map((v) => (
                     <VersionRow
                       key={v.menuId}
                       v={v}
@@ -528,6 +576,10 @@ export function MenuVersions({ canManage, currency }: {
                   ))}
                 </tbody>
               </table>
+            </div>
+            </div>
+              );
+            })}
             </div>
             {q.data.namesReadable === false ? (
               <p className="cl-note">{q.data.namesReason ?? 'Who read or chose these menus could not be named.'}</p>

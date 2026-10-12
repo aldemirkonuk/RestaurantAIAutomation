@@ -283,7 +283,12 @@ export default function HouseMenu() {
   const liveIds = live ? Object.values(live) : undefined
   const pending = liveIds ? drafts.filter((d) => !liveIds.includes(d.menuId)) : []
   const anyLive = split && liveIds !== undefined && pending.length < drafts.length
-  const isCurrent = split ? liveIds !== undefined && pending.length === 0 : currentId === proof.menuId
+  // ADR 0340 (lane 7): a menu is "set" when it is among the current menus,
+  // the live menu of any kind -- not only the one `current` names (Drinks), so
+  // a Food menu made live is not offered again as if it were not.
+  const isCurrent = split
+    ? liveIds !== undefined && pending.length === 0
+    : currentId === proof.menuId || (liveIds?.includes(proof.menuId) ?? false)
   const notCurrent = split ? pending.length > 0 : currentId !== undefined && !isCurrent
   const pendingKinds = pending.map((d) => d.kind)
   // The Food and Desserts drafts, each with its lines as they stand now.

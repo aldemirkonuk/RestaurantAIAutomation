@@ -72,6 +72,7 @@ import {
 } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
+import { FullMenu } from './FullMenu';
 import { LockedPrices } from './LockedPrices';
 import { PricePick, alsoOnKinds, housePriceDiffers } from './PricePick';
 import { settingsApi } from '../../../services/api/settings';
@@ -1093,6 +1094,9 @@ function MenuPage() {
             leaves the menu (the founder, 2026-09-21: "add a section to that
             where you can lock price, but wha f that menu item disappears?"). */}
         {activeRestaurantId ? <LockedPrices canManage={canManage} currency={currency} /> : null}
+
+        {/* ADR 0340 rule 22 (lane 7): every live kind as one document. */}
+        {activeRestaurantId ? <FullMenu house={activeRestaurantId} canManage={canManage} currency={currency} /> : null}
 
         {activeRestaurantId ? <MenuVersions canManage={canManage} currency={currency} /> : null}
 

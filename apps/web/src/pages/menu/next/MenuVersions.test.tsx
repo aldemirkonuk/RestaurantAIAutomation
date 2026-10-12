@@ -5,14 +5,16 @@
  * is offered the choice of the current menu.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   MenuVersions,
+  isLegacyVersion,
   makeCurrentSentence,
   readMenuDate,
   sourceWords,
   versionLabel,
+  versionTimelines,
 } from './MenuVersions';
 import {
   getMenuPlan,
@@ -221,8 +223,55 @@ describe('MenuVersions', () => {
     expect(rows).toHaveLength(3);
     expect(rows[1]).toHaveTextContent('current since 2026-09-01, chosen by Bo');
     expect(rows[2]).toHaveTextContent('last one used, used until 2026-09-01');
-    // The current menu offers no "Make current"; the others do.
-    expect(screen.getAllByRole('button', { name: /^Make .* current$/ })).toHaveLength(2);
+    // The current menu offers nothing; a draft is made current, a used menu restored (ADR 0340 rule 20).
+    expect(screen.getAllByRole('button', { name: /^Make .* current$/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Restore / })).toHaveLength(1);
+  });
+
+  it('ADR 0340 rule 20: each kind has its own timeline, and a legacy row sits read only on Drinks', async () => {
+    const drinks = version({ menuId: 'd1', kind: 'beverage', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z' });
+    const food = version({ menuId: 'f1', kind: 'food', status: 'archived', retiredAt: '2026-09-02T00:00:00Z' });
+    const bar = version({ menuId: 'b1', kind: 'bar', status: 'archived', retiredAt: '2026-08-01T00:00:00Z' });
+    mockList.mockResolvedValue({
+      current: drinks,
+      lastUsed: null,
+      currentByKind: { beverage: drinks, food: null, desserts: null },
+      versions: [drinks, food, bar],
+    });
+    mount(true);
+    const drinksLine = await screen.findByTestId('menu-versions-timeline-beverage');
+    const foodLine = screen.getByTestId('menu-versions-timeline-food');
+    // A kind with no kept menu has no timeline.
+    expect(screen.queryByTestId('menu-versions-timeline-desserts')).not.toBeInTheDocument();
+    expect(drinksLine).toHaveTextContent('Live: the menu read 2026-09-20.');
+    expect(foodLine).toHaveTextContent('No Food menu is live.');
+    // The legacy bar menu is on Drinks, named by its old kind, with no button.
+    const legacy = within(drinksLine).getByTestId('menu-version-legacy');
+    expect(legacy).toHaveTextContent('Old kind: bar.');
+    const legacyRow = legacy.closest('tr') as HTMLElement;
+    expect(within(legacyRow).queryByRole('button', { name: /^Restore |^Make / })).not.toBeInTheDocument();
+    // Its file still opens: it stays readable (0193 "every extraction stays accessible").
+    expect(within(legacyRow).getByRole('button', { name: 'Open PDF' })).toBeInTheDocument();
+    expect(within(foodLine).getAllByTestId('menu-version-row')).toHaveLength(1);
+    expect(within(foodLine).getByRole('button', { name: 'Restore the menu read 2026-09-20' })).toBeInTheDocument();
+  });
+
+  it('restore opens the same review, and nothing is made live until it is confirmed', async () => {
+    const food = version({ menuId: 'f1', kind: 'food', status: 'archived', retiredAt: '2026-09-02T00:00:00Z' });
+    mockList.mockResolvedValue({ current: null, lastUsed: food, currentByKind: { beverage: null, food: null, desserts: null }, versions: [food] });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore the menu read 2026-09-20' }));
+    await waitFor(() => expect(mockPlan.mock.calls[0]?.[0]).toBe('f1'));
+    expect(await screen.findByRole('button', { name: 'Make it current' })).toBeInTheDocument();
+    expect(mockMake).not.toHaveBeenCalled();
+  });
+
+  it('a row with no kind (an older gateway) is not legacy: it is restored as before', () => {
+    expect(isLegacyVersion(version())).toBe(false);
+    expect(isLegacyVersion(version({ kind: null }))).toBe(false);
+    expect(isLegacyVersion(version({ kind: 'events' }))).toBe(true);
+    expect(isLegacyVersion(version({ kind: 'desserts' }))).toBe(false);
+    expect(versionTimelines([version({ kind: 'full' }), version({ kind: null })]).map((t) => [t.kind, t.versions.length])).toEqual([['beverage', 2]]);
   });
 
   it('a failed read of the kept menus says so -- not "none kept"', async () => {

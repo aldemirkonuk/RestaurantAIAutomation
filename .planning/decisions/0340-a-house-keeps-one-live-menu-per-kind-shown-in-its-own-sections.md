@@ -647,6 +647,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 5b (`feat/menus-section-extraction`, the section table and the split by kind, behind a flag) | Behind `MENUS_SPLIT_BY_KIND` (off unless exactly `true`): the scan parser reads a section table (sections before their lines, a path of at most three levels, a section open across a chunk seam carried by its path), the CSV and Excel readers keep heading rows as the path (a sheet's name tops it when more than one sheet has rows), and `importSplitByKind` makes one draft per kind found (`splitByKind`: the rules, else the read's kind, else the F12 second opinion), all with one `read_together_id`, each with its lines and its printed sections (`materialise_read_sections`, migration `20270107700000`); a failure drops every draft of the read. A line is stored `drink` or `dish` only with no Unsure reason; only a `drink` reaches the resolver. With the flag off and on: the seam key folds names in any script and holds no price, a draft's kind is passed, never defaulted, and `part_read` is its own column. 28 new jest cases (25 fail on the base, 3 pin unchanged flag-off behaviour) and SQL test T1-T4 (PASS on the PGlite corpus, FAIL without the migration); 12 code mutations, one SQL mutation and every claim row's mutation killed; one new fragment (five rows), no existing row edited; corrections in the Review log, "Lane 5b corrections". Not run: G0, L8, the flag flip, Postgres other than PGlite, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 6 (`feat/menus-review-per-kind`, the web review per kind) | The plan screen reviews a batch in rule 18's order (counts up front; Conflicts, Unsure per section with one Drink/Food/Dessert tap, Price changed, New, Gone with Keep by button and swipe, Same collapsed), with a kind strip that takes a section drag, a long press or a "Move to…" button ([[0112]] sheet); picks are held on the client and sent with make-live (`?menuIds=`, `picks`, `partReadAcceptedKinds`); a kind with an Unsure line can be left as a draft, which re-reads the plan. `/menu` counts lines per kind, adds to a chosen kind's menu, renames a section, and a price pick names its menu and the other live kinds it also changed on; Locked prices name each menu's price; the make-live sentence names the kinds updated and untouched. Web tsc exits 0; 170 vitest cases in 8 files pass; on the base sources 31 of the new cases fail and the 2 that pass pin unchanged one-kind behaviour. No claim row, no migration, no gateway file; corrections in the Review log, "Lane 6 corrections". Not run: G0, L8, the flag flip, a Browser-pane review at phone width, a test of the `batchIds` call site in `MenuVersions` |
 | 2026-10-12 | Lane 6b (`feat/menus-onboarding-per-kind`, the first run per kind) | The first proof (`HouseMenu.tsx`, the first run since [[0213]]) shows a split read's kinds ("Drinks 1 · Food 1"), keeps Food and Desserts lines in their own blocks instead of "set aside", and makes every draft of the read live in one tap through `MenuPlan`'s batch (`batchIds`); a kind left as a draft is named and offered again. Onboarding's `menu_current` (and so `activated`) now needs a drink line on a live menu (rule 26, F13) through `readCurrentMenuLines(..., {drinks: true})`. 5 new vitest cases (4 fail on the base; the fifth pins the one-menu path) and 3 new jest cases (2 fail on the base); web and gateway tsc exit 0; one new fragment (two rows), one row edited in place; every claim mutation that changes behaviour killed (an added unused line survives); corrections in the Review log, "Lane 6b corrections". Not run: G0, L8, the flag flip, a Browser-pane first run at phone width |
+| 2026-10-12 | Lane 7 (`feat/menus-full-view`, the Full menu, versions per kind, among the current menus) | `GET /menus/:restaurantId/full` composes every live kind in the house's order (`restaurants.menu_kind_order`, default Drinks, Food, Desserts), each as its section tree plus "Not in a section", lines through `readLinesOf(..., {rawLine: false})`, 86 marks on drink lines only, and legacy dishes on Drinks left off (and named in `hiddenDishes`) once a Food menu is live; `PATCH /menus/:restaurantId/kind-order` (owner or manager) stores the order; both take the house from the token. `FullMenu.tsx` on `/menu` lays it out, renames a section, moves sections and kind blocks by drag or Earlier/Later, prints with "House copy — no allergen information", names the hidden dishes in a card, and shows the last copy kept on this device with its "as of" time when a read fails. `MenuVersions` shows one timeline per kind (legacy kinds read only on Drinks; a used menu is restored through the review). `HouseContents` and `HouseMenu` count a menu as current when it is among the live menus of any kind. 21 new jest cases and 24 new vitest cases (on the base sources every one fails), plus one existing `MenuVersions` case updated for Restore; gateway and web tsc exit 0; one new fragment (five rows), 11 claim mutations all killed; corrections in the Review log, "Lane 7 corrections". Not run: G0, L8, the flag flip, a Browser-pane owner and staff view at desktop and phone width |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -1167,6 +1168,63 @@ with its basis and the rejected alternative):
   the old one-row read; the Browser-pane first run at phone width (no browser in this
   lane). Founder-gated and not done: G0, L8 and the flag flip (`MENUS_SPLIT_BY_KIND` stays
   off); the README row for 0340 is owed in its own PR.
+
+Lane 7 corrections (2026-10-12, against base `62423fb79`; each is the smallest right fix,
+with its basis and the rejected alternative):
+
+- **"Move these dishes to Food" names the dishes; it does not move them yet.** Moving them
+  means a Food draft holding the live Food lines plus the legacy dishes, made live through
+  the review: a new database function (sections are written only by one, rule 9 and lane
+  3b) with its SQL test, past this lane's 15 files. The card names each hidden dish not
+  already on Food, says how to move them today (read a Food menu that lists them, make it
+  live through its review), says nothing is deleted, and can be put away once per house on
+  this device. Rejected: copying lines from the browser one by one (no single write, a
+  half-moved menu on any failure); a migration here (over budget, unreviewed SQL). The
+  move is owed by a later lane.
+- **Rule 22's 86 sentence is stale against F-1474.** It says cocktails cannot be 86'd; since
+  F-1474 a cocktail line is marked sold out through its recipe (`sold_out_because`). The
+  Full menu marks drink lines only (`kitchen_line` false) through the same `readSoldOut`
+  `getMenu` uses, so a linked drink and a cocktail are marked and a dish never is.
+  Rejected: refusing cocktail marks to match the old sentence (a sold-out cocktail shown
+  as available).
+- **A dish already on the live Food menu is hidden but not named in the card.** A legacy
+  dish whose name (trimmed, case-folded) is on Food is a copy; `hiddenDishes` sends
+  `onFood: true` and the card leaves it out. Rejected: naming every hidden dish (asks the
+  manager to move what is already there).
+- **The house comes from the token on both new routes.** `JwtAuthGuard` already refuses a
+  path house that is not the token's; `sessionHouse` repeats it in the controller (a 404,
+  as a missing menu, and a 400 for a session with no house) so the service never trusts
+  the path. Rejected: the path alone (a guard change would expose another house).
+- **The order is stored whole.** The page sends the three kinds; a kind not live keeps its
+  place (`kindOrderWith`), so moving Food before Drinks with no Desserts menu does not
+  reorder Desserts. The CHECK on `menu_kind_order` (lane 1) and `isMenuKindOrder` both
+  refuse anything else. No migration.
+- **No separate role spec and no new cache file.** The role and tenant cases sit in
+  `full-menu.spec.ts` (any member reads; owner and manager write; staff, a null role and
+  a session naming no one are refused before the write), and the offline copy uses the
+  existing read cache (`lib/offline-storage.ts`, cleared at sign-out) under
+  `full-menu:<house>`, with its tests in `FullMenu.test.tsx`. Rejected: a query-cache
+  persister (none exists in the web app; adding one changes every query).
+- **A copy kept on this device is read only.** Rename and move are hidden while the page
+  shows a kept copy, so nothing is sent from a page the gateway did not just answer.
+- **Restore reuses "Make current"'s review.** An archived row of a menu kind reads
+  "Restore" and opens `MenuPlan` for that menu (0193 L11: a price is dated by the choice); a
+  legacy row (`full`, `bar`, `events`) has no button, says its old kind, and keeps its
+  "Open" source button. A row with no kind (an older gateway) is not legacy. Versions of
+  each kind sit side by side where the screen is wide enough (a CSS grid), stacked on a
+  phone.
+- **"Among the current menus".** `HouseContents` asks `isAmongCurrentMenus`; `HouseMenu`'s
+  one-menu path counts the proof as set when its id is among `liveByKind`'s live ids as
+  well as `current`. Its no-proof branch reads `current` only to know whether any menu is
+  live, which `current` (Drinks, else the first live kind) still answers. Rejected:
+  changing `current`'s meaning in the gateway (every older reader of it would change).
+- **`MenuNext.test.tsx` mocks the Full menu read,** as it mocks `listMenuVersions`, so the
+  page's own alerts are not crowded by a failed Full menu read in that file.
+- **Owed by a later lane:** the "Move these dishes" action (above); ENDPOINTS regenerated
+  for the two routes; the Browser-pane owner and staff views at desktop and phone width (no
+  browser in this lane); a guest page and exports that reuse the composer. Founder-gated
+  and not done: G0, L8 and the flag flip (`MENUS_SPLIT_BY_KIND` stays off); the README row
+  for 0340 is owed in its own PR.
 
 ## Founder forks
 

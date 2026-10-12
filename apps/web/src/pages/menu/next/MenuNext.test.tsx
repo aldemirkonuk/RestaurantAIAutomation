@@ -75,6 +75,11 @@ vi.mock('../../../services/api/menus', async () => {
     // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
     // mount; here it answers "none kept" so this file tests the current menu.
     listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
+    // The Full menu (FullMenu.tsx, its own test file) reads on mount too; here
+    // it answers "nothing live" so its words never stand among this file's.
+    getFullMenu: vi.fn().mockResolvedValue({
+      readAt: '2026-10-12T00:00:00Z', kindOrder: ['beverage', 'food', 'desserts'], kindOrderSet: false, kinds: [], hiddenDishes: [],
+    }),
   };
 });
 

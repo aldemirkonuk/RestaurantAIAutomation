@@ -892,6 +892,19 @@ describe('approved arrival flow', () => {
     expect(screen.queryByText(/Kept as a draft/)).toBeNull()
   })
 
+  it('ADR 0340 lane 7: the menu read is current when it is live as any kind, not only as `current`', async () => {
+    storeProof('menu', [{ id: 'a', name: 'Yakut', category: 'red' }])
+    listMenuVersions.mockResolvedValue({
+      current: { menuId: 'drinks-live' },
+      currentByKind: { beverage: { menuId: 'drinks-live' }, food: { menuId: 'menu' }, desserts: null },
+      lastUsed: null,
+      versions: [],
+    })
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText("It is the house's current menu.")).toBeInTheDocument()
+    expect(screen.queryByText(/Kept as a draft/)).toBeNull()
+  })
+
   it('does not tell a menu of wines and soft drinks it has no wine or soft drinks (F-024)', () => {
     storeProof('menu', [
       { id: 'a', name: 'Yakut', category: 'red' },
@@ -1124,6 +1137,21 @@ describe('the first proof says whether its menu is current (F-1295)', () => {
     listMenuVersions.mockResolvedValue({ current: { menuId: 'menu' }, lastUsed: null, versions: [{ menuId: 'menu' }] })
     mountWithQuery()
     expect(await screen.findByRole('heading', { name: 'Your menu, set by Mudavym.' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument()
+  })
+
+  it('ADR 0340 lane 7: a menu live as another kind than `current` is "set" -- among the current menus', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, role: 'owner' }
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    listMenuVersions.mockResolvedValue({
+      current: { menuId: 'drinks-live', kind: 'beverage' },
+      currentByKind: { beverage: { menuId: 'drinks-live', kind: 'beverage' }, food: { menuId: 'menu', kind: 'food' }, desserts: null },
+      lastUsed: null,
+      versions: [{ menuId: 'menu' }, { menuId: 'drinks-live' }],
+    })
+    mountWithQuery()
+    expect(await screen.findByRole('heading', { name: 'Your menu, set by Mudavym.' })).toBeInTheDocument()
+    expect(screen.queryByTestId('proof-not-current')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument()
   })
 

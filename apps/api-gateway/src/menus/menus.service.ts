@@ -89,6 +89,90 @@ const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
 const PAGE_ROWS = 1000;
 const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
+
+/**
+ * The section columns the Full menu reads (ADR 0340 rule 22). A const so
+ * check_read_columns_exist.py checks it against the migrations.
+ */
+const FULL_MENU_SECTION_COLUMNS =
+  "id, menu_id, parent_id, position, title, drink_category";
+
+/** One section of the Full menu: its lines in the house's order, then its own sections. */
+export interface FullMenuSection {
+  id: string;
+  parentId: string | null;
+  title: string;
+  position: number;
+  drinkCategory: string | null;
+  lines: Array<Record<string, unknown>>;
+  sections: FullMenuSection[];
+}
+
+/** One live kind of the Full menu (ADR 0340 rule 22). */
+export interface FullMenuKind {
+  kind: string;
+  menuId: string;
+  name: string | null;
+  madeCurrentAt: string | null;
+  sections: FullMenuSection[];
+  /** Lines in no section (a line added to a live menu lands here). */
+  unsorted: Array<Record<string, unknown>>;
+}
+
+/** The Full menu: every live kind as one document (ADR 0340 rule 22, §F10). */
+export interface FullMenu {
+  /** When the server read it: the "as of" an offline copy shows. */
+  readAt: string;
+  /** The kinds in the house's order: `restaurants.menu_kind_order`, else Drinks, Food, Desserts. */
+  kindOrder: string[];
+  /** Whether the house has set its own order (false = the default). */
+  kindOrderSet: boolean;
+  kinds: FullMenuKind[];
+  /**
+   * Legacy dishes on the live Drinks menu (no stored `line_kind`, and the
+   * legacy rule says kitchen), left off the document because a Food menu is
+   * live. Empty while no Food menu is live: then they show in their section.
+   * `onFood`: a live Food line has the same name.
+   */
+  hiddenDishes: Array<{
+    id: string;
+    name: string;
+    menuId: string;
+    onFood: boolean;
+  }>;
+  rawLineWithheld: true;
+  soldOutReadable: boolean;
+  soldOutReason: string | null;
+}
+
+/** Whether `order` names each live menu kind exactly once (`restaurants_menu_kind_order_is_the_three_kinds`). */
+export function isMenuKindOrder(order: unknown): order is string[] {
+  return (
+    Array.isArray(order) &&
+    order.length === LIVE_MENU_KINDS.length &&
+    new Set(order).size === order.length &&
+    order.every((k) => (LIVE_MENU_KINDS as readonly unknown[]).includes(k))
+  );
+}
+
+/** A line's place: its stored position first (none last), then its name. */
+function byPlace(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): number {
+  const pos = (v: unknown) =>
+    typeof v === "number" ? v : Number.MAX_SAFE_INTEGER;
+  return (
+    pos(a.position) - pos(b.position) ||
+    String(a.name ?? "").localeCompare(String(b.name ?? ""))
+  );
+}
+
+/** A name as two lines are compared by: trimmed, lower-cased. */
+const sameName = (v: unknown) =>
+  String(v ?? "")
+    .trim()
+    .toLowerCase();
 /**
  * A large menu made current (F-448): the house's rows for its wines are read
  * this many at a time, and this many lines are carried side by side. Done one
@@ -1950,6 +2034,221 @@ export class MenusService {
       soldOutReadable: out.readable,
       soldOutReason: out.reason,
     };
+  }
+
+  /**
+   * The Full menu (ADR 0340 rule 22, §F10): every live kind of the house as
+   * one document, composed here so the page, an export and the phase-2 guest
+   * page read the same thing. Kind blocks come in the house's order
+   * (`restaurants.menu_kind_order`, else Drinks, Food, Desserts); each holds
+   * its sections as a tree in the house's order, its lines by position, and
+   * the lines in no section.
+   *
+   * - Every line goes through `lineForViewer` (`readLinesOf`): the
+   *   `MEMBER_LINE_KEYS` allowlist, `kitchen_line`, and never the raw line,
+   *   whoever reads (rule 23: every role reads the prices it reads today).
+   * - 86 marks (`readSoldOut`) are asked for drink lines only: a dish is
+   *   never marked sold out, whatever stock row a legacy line still links.
+   * - Once a Food menu is live, a legacy dish on the live Drinks menu (no
+   *   stored `line_kind`, the legacy rule says kitchen) is left off the
+   *   document and named in `hiddenDishes`; before that it shows in its
+   *   section, as today.
+   *
+   * Every read is this house's (`restaurant_id`); a failed read throws, never
+   * a shorter menu (ADR 0067). A failed 86 read marks nothing and says so.
+   */
+  async getFullMenu(restaurantId: string): Promise<FullMenu> {
+    const db = this.dbService.supabase;
+    const live = await readCurrentMenuRows(db, restaurantId);
+    const order = await this.readKindOrder(restaurantId);
+    const readAt = new Date().toISOString();
+    const empty: FullMenu = {
+      readAt,
+      kindOrder: order.kindOrder,
+      kindOrderSet: order.set,
+      kinds: [],
+      hiddenDishes: [],
+      rawLineWithheld: true,
+      soldOutReadable: true,
+      soldOutReason: null,
+    };
+    if (live.length === 0) return empty;
+
+    const lines = await this.readLinesOf(live, restaurantId, {
+      rawLine: false,
+    });
+    const sections = await this.readFullMenuSections(
+      restaurantId,
+      live.map((m) => m.id),
+    );
+    const drinks = lines.filter((l) => l.kitchen_line !== true);
+    const sold = await this.readSoldOut(restaurantId, drinks);
+    const marked = new Map(sold.items.map((l) => [String(l.id), l]));
+    const all = lines.map((l) => marked.get(String(l.id)) ?? l);
+
+    const foodLive = live.some((m) => m.menu_type === "food");
+    const foodNames = new Set(
+      all.filter((l) => l.menu_type === "food").map((l) => sameName(l.name)),
+    );
+    const isHidden = (l: Record<string, unknown>) =>
+      foodLive &&
+      l.menu_type === "beverage" &&
+      (l.line_kind === null || l.line_kind === undefined) &&
+      l.kitchen_line === true;
+    const hiddenDishes = all.filter(isHidden).map((l) => ({
+      id: String(l.id),
+      name: String(l.name ?? ""),
+      menuId: String(l.menu_id),
+      onFood: foodNames.has(sameName(l.name)),
+    }));
+
+    const rank = (kind: string | null) => {
+      const at = order.kindOrder.indexOf(String(kind));
+      return at === -1 ? order.kindOrder.length : at;
+    };
+    const kinds = [...live]
+      .sort((a, b) => rank(a.menu_type) - rank(b.menu_type))
+      .map((m): FullMenuKind => {
+        const nodes = new Map<string, FullMenuSection>();
+        for (const s of sections.filter((x) => x.menu_id === m.id)) {
+          nodes.set(String(s.id), {
+            id: String(s.id),
+            parentId: typeof s.parent_id === "string" ? s.parent_id : null,
+            title: String(s.title ?? ""),
+            position: Number(s.position ?? 0),
+            drinkCategory:
+              typeof s.drink_category === "string" ? s.drink_category : null,
+            lines: [],
+            sections: [],
+          });
+        }
+        const top: FullMenuSection[] = [];
+        for (const node of nodes.values()) {
+          const parent = node.parentId ? nodes.get(node.parentId) : undefined;
+          (parent ? parent.sections : top).push(node);
+        }
+        const unsorted: Array<Record<string, unknown>> = [];
+        for (const l of all) {
+          if (l.menu_id !== m.id || isHidden(l)) continue;
+          const node =
+            typeof l.section_id === "string"
+              ? nodes.get(l.section_id)
+              : undefined;
+          (node ? node.lines : unsorted).push(l);
+        }
+        const tidy = (list: FullMenuSection[]) => {
+          list.sort(
+            (a, b) => a.position - b.position || a.id.localeCompare(b.id),
+          );
+          for (const n of list) {
+            n.lines.sort(byPlace);
+            tidy(n.sections);
+          }
+        };
+        tidy(top);
+        unsorted.sort(byPlace);
+        return {
+          kind: String(m.menu_type),
+          menuId: m.id,
+          name: m.name,
+          madeCurrentAt: m.made_current_at,
+          sections: top,
+          unsorted,
+        };
+      });
+
+    return {
+      ...empty,
+      kinds,
+      hiddenDishes,
+      soldOutReadable: sold.readable,
+      soldOutReason: sold.reason,
+    };
+  }
+
+  /**
+   * The order of the house's kind blocks on the Full menu. A stored value
+   * that is not the three kinds once each (the CHECK forbids it) reads as the
+   * default. A failed read throws: the page says it, never a guessed order.
+   */
+  private async readKindOrder(
+    restaurantId: string,
+  ): Promise<{ kindOrder: string[]; set: boolean }> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("menu_kind_order")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order of this house's menus could not be read: ${error.message}`,
+      );
+    }
+    const stored = (data as { menu_kind_order?: unknown } | null)
+      ?.menu_kind_order;
+    return isMenuKindOrder(stored)
+      ? { kindOrder: [...stored], set: true }
+      : { kindOrder: [...LIVE_MENU_KINDS], set: false };
+  }
+
+  /** The sections of these menus of this house, keyset-paged. A failed page throws. */
+  private async readFullMenuSections(
+    restaurantId: string,
+    menuIds: string[],
+  ): Promise<Array<Record<string, unknown>>> {
+    const rows: Array<Record<string, unknown>> = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = this.dbService.supabase
+        .from("menu_sections")
+        .select(FULL_MENU_SECTION_COLUMNS)
+        .eq("restaurant_id", restaurantId)
+        .in("menu_id", menuIds);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q
+        .order("id", { ascending: true })
+        .limit(PAGE_ROWS);
+      if (error) {
+        throw new InternalServerErrorException(
+          `The sections of this house's menus could not be read: ${error.message}`,
+        );
+      }
+      const page = (data ?? []) as Array<Record<string, unknown>>;
+      rows.push(...page);
+      if (page.length < PAGE_ROWS) break;
+      after = String(page[page.length - 1].id);
+    }
+    return rows;
+  }
+
+  /**
+   * Sets the order of the kind blocks on the Full menu (ADR 0340 rule 22):
+   * the three kinds, each once. The caller has checked the person may manage
+   * the house. Nothing else on the house row is written.
+   */
+  async setMenuKindOrder(
+    restaurantId: string,
+    order: unknown,
+  ): Promise<{ kindOrder: string[] }> {
+    if (!isMenuKindOrder(order)) {
+      throw new BadRequestException(
+        "The order names Drinks, Food and Desserts (beverage, food, desserts) once each. Nothing was changed.",
+      );
+    }
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .update({ menu_kind_order: order })
+      .eq("id", restaurantId)
+      .select("id");
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order of the menus was not saved: ${error.message}. Nothing was changed.`,
+      );
+    }
+    if (!data || (data as unknown[]).length === 0) {
+      throw new NotFoundException("That restaurant was not found.");
+    }
+    return { kindOrder: [...order] };
   }
 
   /**

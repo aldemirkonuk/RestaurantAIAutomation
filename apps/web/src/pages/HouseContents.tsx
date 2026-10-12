@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
-import { getOnboardingProgress, listMenuVersions, updateOnboardingProgress } from '../services/api/menus'
+import { getOnboardingProgress, isAmongCurrentMenus, listMenuVersions, updateOnboardingProgress } from '../services/api/menus'
 import { pencilledCount, readProof } from '../lib/firstProof'
 import { readLastInvoiceLater, writeLastInvoiceLater } from '../lib/houseLater'
 import { useAuth } from '../contexts/AuthContext'
@@ -28,7 +28,8 @@ export default function HouseContents() {
     let live = true
     listMenuVersions()
       .then((kept) => {
-        if (live) setStanding(kept.current?.menuId === proofMenuId ? 'current' : 'draft')
+        // Among the current menus, of any kind (ADR 0340, lane 7), not only `current`.
+        if (live) setStanding(isAmongCurrentMenus(kept, proofMenuId) ? 'current' : 'draft')
       })
       .catch(() => {
         if (live) setStanding('unread')

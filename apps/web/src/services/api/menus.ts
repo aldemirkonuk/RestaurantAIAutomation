@@ -647,6 +647,17 @@ export async function listMenuVersions(): Promise<MenuVersions> {
   return response.data
 }
 
+/**
+ * Whether `menuId` is among the house's current menus: the live menu of any
+ * kind (ADR 0340 rule 1), not only the one `current` names (Drinks, else the
+ * first live kind). An older gateway that names only `current` is read by it.
+ */
+export function isAmongCurrentMenus(v: Pick<MenuVersions, 'current' | 'currentByKind'>, menuId: string | null | undefined): boolean {
+  if (!menuId) return false
+  if (v.current?.menuId === menuId) return true
+  return Object.values(v.currentByKind ?? {}).some((m) => m?.menuId === menuId)
+}
+
 /** A five-minute link to a kept menu's source file. 404 (with why) when none was kept. */
 export async function getMenuSourceUrl(
   menuId: string
@@ -777,5 +788,62 @@ export async function keepGoneLine(
   liveLineId: string,
 ): Promise<{ line_id: string; menu_id: string; section_id: string | null; kept_from_line_id: string }> {
   const response = await apiClient.post(`/menu-versions/${draftMenuId}/lines/${liveLineId}/keep`, {})
+  return response.data
+}
+
+/** Reorders the sections under one parent (null = the top level); allowed on a live menu (rule 9). */
+export async function reorderMenuSections(menuId: string, parentId: string | null, ids: string[]): Promise<unknown> {
+  const response = await apiClient.post(`/menu-versions/${menuId}/sections/order`, parentId ? { parentId, ids } : { ids })
+  return response.data
+}
+
+// ── The Full menu (ADR 0340 rule 22) ──────────────────────────────────────
+
+/** One section of the Full menu: its lines in the house's order, then its own sections. */
+export interface FullMenuSection {
+  id: string
+  parentId: string | null
+  title: string
+  position: number
+  drinkCategory: string | null
+  lines: MenuLine[]
+  sections: FullMenuSection[]
+}
+
+/** One live kind of the Full menu. */
+export interface FullMenuKind {
+  kind: string
+  menuId: string
+  name: string | null
+  madeCurrentAt: string | null
+  sections: FullMenuSection[]
+  /** Lines in no section (a line added to a live menu lands here). */
+  unsorted: MenuLine[]
+}
+
+/** Every live kind of the house as one document, composed by the gateway (§F10). */
+export interface FullMenu {
+  /** When the gateway read it: the "as of" an offline copy shows. */
+  readAt: string
+  /** The kinds in the house's order. */
+  kindOrder: string[]
+  kindOrderSet: boolean
+  kinds: FullMenuKind[]
+  /** Legacy dishes on the live Drinks menu, left off because a Food menu is live. */
+  hiddenDishes: Array<{ id: string; name: string; menuId: string; onFood: boolean }>
+  rawLineWithheld?: true
+  soldOutReadable?: boolean
+  soldOutReason?: string | null
+}
+
+/** The Full menu of this house. A failed read throws; it is never an empty menu. */
+export async function getFullMenu(restaurantId: string): Promise<FullMenu> {
+  const response = await apiClient.get<FullMenu>(`/menus/${restaurantId}/full`)
+  return response.data
+}
+
+/** Sets the order of Drinks, Food and Desserts on the Full menu (owner or manager). */
+export async function setMenuKindOrder(restaurantId: string, order: string[]): Promise<{ kindOrder: string[] }> {
+  const response = await apiClient.patch<{ kindOrder: string[] }>(`/menus/${restaurantId}/kind-order`, { order })
   return response.data
 }

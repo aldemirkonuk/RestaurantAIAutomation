@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -15,8 +16,20 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { isUUID } from "class-validator";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
+  IsIn,
+  isUUID,
+} from "class-validator";
+import {
+  ApiOperation,
+  ApiProperty,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { TenantGuard } from "../common/tenant/tenant.guard";
@@ -42,9 +55,46 @@ import {
 } from "./dto/menu-section.dto";
 import { MenuSectionsService } from "./menu-sections.service";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
+import { LIVE_MENU_KINDS } from "./current-menu-lines";
 
 /** The two fields of a menu line that are prices (ADR 0193). */
 const MENU_PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
+
+/** The order of the kind blocks on the Full menu (ADR 0340 rule 22). */
+export class SetMenuKindOrderDto {
+  @ApiProperty({
+    description:
+      "Drinks, Food and Desserts (beverage, food, desserts), each once, in the order the Full menu shows them.",
+    type: [String],
+  })
+  @IsArray()
+  @ArrayMinSize(LIVE_MENU_KINDS.length)
+  @ArrayMaxSize(LIVE_MENU_KINDS.length)
+  @ArrayUnique()
+  @IsIn(LIVE_MENU_KINDS as unknown as string[], { each: true })
+  order: string[];
+}
+
+/**
+ * The session's house, for a route whose path names one (ADR 0340 rule 24,
+ * [[0147]]): the house comes from the token; a path naming another house is
+ * the same 404 as a missing one, and a session with no house is refused.
+ */
+function sessionHouse(
+  pathHouse: string,
+  tokenHouse: string | null | undefined,
+): string {
+  if (!tokenHouse) {
+    throw new HttpException(
+      "This session is not attached to a restaurant, so it has no menus.",
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  if (pathHouse !== tokenHouse) {
+    throw new NotFoundException("That menu was not found.");
+  }
+  return tokenHouse;
+}
 
 @ApiTags("menus")
 @Controller("menus")
@@ -66,6 +116,50 @@ export class MenusController {
   })
   async getMenu(@Param("restaurantId") restaurantId: string) {
     return this.menusService.getMenu(restaurantId, { rawLine: false });
+  }
+
+  @Get(":restaurantId/full")
+  @ApiOperation({
+    summary:
+      "The Full menu: every live kind of the house as one document, in the house's order (ADR 0340 rule 22)",
+    description:
+      "Any member of the house reads it, with the prices that member reads on /menus/:restaurantId (rule 23). The house comes from the token; a path naming another house is a 404. No line is sent its raw line. A failed read is an error, never a shorter menu.",
+  })
+  async getFullMenu(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser("restaurantId") tokenHouse: string | null,
+  ) {
+    return this.menusService.getFullMenu(
+      sessionHouse(restaurantId, tokenHouse),
+    );
+  }
+
+  @Patch(":restaurantId/kind-order")
+  @ApiOperation({
+    summary:
+      "Set the order of Drinks, Food and Desserts on the Full menu — owner or manager only (ADR 0340 rule 22)",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  async setKindOrder(
+    @Param("restaurantId") restaurantId: string,
+    @Body() dto: SetMenuKindOrderDto,
+    @CurrentUser() user: { userId?: string; restaurantId?: string | null },
+  ) {
+    const house = sessionHouse(restaurantId, user?.restaurantId);
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "Ordering the menus names the person, and this session names no one. Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      house,
+      "set the order of the menus",
+    );
+    return this.menusService.setMenuKindOrder(house, dto?.order);
   }
 
   @Post("import")
