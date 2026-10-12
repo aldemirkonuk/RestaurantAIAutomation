@@ -289,7 +289,7 @@ const summary = (house: any, orders: any[]) =>
 describe("turns and days of stock over the house's own span (F-1412)", () => {
   it("takes a sixty-day-old house's purchases over sixty days, not a year", async () => {
     const out = await summary({ currency: "USD", created_at: ago(59) }, [
-      order(50),
+      order(59),
     ]);
     // $2,000 over 60 days against $1,000 held: 2 turns in 60 days, so
     // about 12.2 a year and 30 days of stock — not 2 turns and 182.5 days.
@@ -318,11 +318,51 @@ describe("turns and days of stock over the house's own span (F-1412)", () => {
 
   it("gives no turns under a month of records, and says why", async () => {
     const out = await summary({ currency: "USD", created_at: ago(9) }, [
-      order(5),
+      order(9),
     ]);
     expect(out.cogs).toBe(2000);
     expect(out.inventoryTurnover).toBeNull();
     expect(out.daysInventoryOutstanding).toBeNull();
-    expect(out.basis.turns).toContain("10 days of records");
+    expect(out.basis.turns).toContain("10 days of buying on record");
+  });
+
+  // F-1493: COGS holds delivered orders only, so the span is the days of
+  // buying, not the days since sign-up.
+  it("starts the span at the first delivery, not at sign-up (F-1493)", async () => {
+    const out = await summary({ currency: "USD", created_at: ago(80) }, [
+      order(60),
+    ]);
+    // $2,000 over the 61 days of buying against $1,000 held: 30.5 days of
+    // stock, not 40.5 over the 81 days since sign-up.
+    expect(out.turnsPeriodDays).toBe(61);
+    expect(out.daysInventoryOutstanding).toBeCloseTo(30.5, 5);
+    expect(out.inventoryTurnover).toBeCloseTo((2 * 365) / 61, 5);
+  });
+
+  // F-1491: the reason a young house's turns are withheld, in plain words,
+  // and the span a scaled figure is taken over.
+  it("says why a house under a month of buying has no turns (F-1491)", async () => {
+    const out = await summary({ currency: "USD", created_at: ago(45) }, [
+      order(20),
+    ]);
+    expect(out.inventoryTurnover).toBeNull();
+    expect(out.turnsSpanShort).toBe(true);
+    expect(out.turnsSpanNote).toBe(
+      "Turns and days of stock need 30 days of buying on record; this house has 21 days, counted from its first delivery.",
+    );
+  });
+
+  it("names the days a scaled figure is taken over, and nothing over a year (F-1491)", async () => {
+    const young = await summary({ currency: "USD", created_at: ago(59) }, [
+      order(59),
+    ]);
+    expect(young.turnsSpanShort).toBe(false);
+    expect(young.turnsSpanNote).toContain(
+      "the 60 days since this house's first delivery",
+    );
+    const old = await summary({ currency: "USD", created_at: ago(900) }, [
+      order(50),
+    ]);
+    expect(old.turnsSpanNote).toBeNull();
   });
 });

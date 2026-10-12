@@ -235,6 +235,12 @@ export interface LedgerRegister {
   cogsRatio: number | null;
   inventoryTurnover: number | null;
   daysInventoryOutstanding: number | null;
+  /**
+   * F-1491: why turns and days of stock are withheld for a house under a
+   * month of buying, or the days they are scaled up from; null otherwise and
+   * from an older gateway.
+   */
+  turnsSpanNote?: string | null;
   gmroi: number | null;
   deadStockCapital: number | null;
 }
@@ -243,7 +249,7 @@ const ledger = analysis<LedgerRegister>({
   title: 'Figures of record',
   register: 'financial register',
   answers: 'What the cellar is worth, and how hard that capital is working',
-  window: () => '365 days of COGS; the cellar as it stands today',
+  window: () => '365 days of COGS; turns over up to a year of buying; the cellar as it stands today',
   path: (rid) => `/analytics/financial/${rid}`,
   graphs: ['table', 'figure'],
   graphNote:
@@ -267,6 +273,7 @@ const ledger = analysis<LedgerRegister>({
       cogsRatio: num(d.cogsRatio),
       inventoryTurnover: num(d.inventoryTurnover),
       daysInventoryOutstanding: num(d.daysInventoryOutstanding),
+      turnsSpanNote: typeof d.turnsSpanNote === 'string' ? d.turnsSpanNote : null,
       gmroi: num(d.gmroi),
       deadStockCapital: num(d.deadStockCapital),
     };
@@ -306,8 +313,10 @@ const ledger = analysis<LedgerRegister>({
       { label: 'COGS ratio', value: ratioPct(f.cogsRatio) },
       // F-1443: turns and days divide Cost of goods by the cellar; with
       // deliveries left out for no price that is short, so neither is drawn.
-      { label: 'Inventory turns', value: shortCogs ? EM : figure(f.inventoryTurnover), note: shortCogsWhy },
-      { label: 'Days of inventory', value: shortCogs ? EM : figure(f.daysInventoryOutstanding), note: shortCogsWhy },
+      // F-1491: otherwise a dash here had no reason; a young house's is its
+      // short span.
+      { label: 'Inventory turns', value: shortCogs ? EM : figure(f.inventoryTurnover), note: shortCogsWhy ?? f.turnsSpanNote ?? undefined },
+      { label: 'Days of inventory', value: shortCogs ? EM : figure(f.daysInventoryOutstanding), note: shortCogsWhy ?? f.turnsSpanNote ?? undefined },
       { label: 'GMROI', value: figure(f.gmroi) },
       {
         label: 'Capital sitting still',
@@ -331,7 +340,8 @@ const ledger = analysis<LedgerRegister>({
         </dl>
       ),
       figures,
-      notes: f.amountsWithheld
+      notes: [
+        ...(f.amountsWithheld
         ? [AMOUNTS_WITHHELD]
         : [
         ...(cc && !cc.complete
@@ -371,11 +381,16 @@ const ledger = analysis<LedgerRegister>({
               `${figure(f.cogsUnpricedCount)} delivered ${f.cogsUnpricedCount === 1 ? 'order carries' : 'orders carry'} no price, so Cost of goods leaves ${f.cogsUnpricedCount === 1 ? 'it' : 'them'} out and is short by what ${f.cogsUnpricedCount === 1 ? 'it' : 'they'} cost. Inventory turns and Days of inventory are not taken from it.`,
             ]
           : []),
+      ]),
+        // F-1491: the span turns and days of stock are taken over, staff
+        // included — they keep those two figures.
+        ...(f.turnsSpanNote ? [f.turnsSpanNote] : []),
       ],
       basis: [
         f.basis?.revenue,
         f.basis?.cogs,
         f.basis?.inventoryValue,
+        f.basis?.turns,
         f.basis?.deadStock,
         f.basis?.costDerived,
       ],

@@ -795,6 +795,9 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
   const houseOwn = str(d.houseCurrency).trim().toUpperCase();
   // F-1443: a COGS short of its unpriced deliveries is not set against the
   // cellar either; that comes first, as the gateway withholds for it first.
+  // F-1491: a house under a month of buying has its own reason, the
+  // gateway's `turnsSpanNote`; "a year of delivered orders" was never asked.
+  const spanNote = str(d.turnsSpanNote);
   const turnsWhy =
     unpricedOrders > 0 && num(d.cogs) != null
       ? `${unpricedOrders} delivered ${unpricedOrders === 1 ? "order has" : "orders have"} no price, so Cost of goods is short and is not set against the cellar`
@@ -802,7 +805,9 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
       ? `Cost of goods is in ${cogsOwn}, not the house's ${houseOwn}, and with no exchange rate on record it is not set against the cellar`
       : str(d.cogsNote)
         ? `Cost of goods is withheld: ${str(d.cogsNote)}`
-        : `${costBasis} and a year of delivered orders`;
+        : d.turnsSpanShort === true && spanNote
+          ? spanNote
+          : `${costBasis} and a delivered order with a price`;
   return doc({
     figures: [
       partial
@@ -868,8 +873,17 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
       unpricedOrders > 0
         ? `${unpricedOrders} delivered ${unpricedOrders === 1 ? "order carries" : "orders carry"} no price, so Cost of goods leaves ${unpricedOrders === 1 ? "it" : "them"} out and is short by what ${unpricedOrders === 1 ? "it" : "they"} cost. Inventory turns and Days of inventory are not taken from it.`
         : "",
+      // F-1491: the span turns and days of stock are taken over, as the screen says it.
+      spanNote,
     ],
-    basis: sentences(b.revenue, b.cogs, b.inventoryValue, b.deadStock, b.costDerived),
+    basis: sentences(
+      b.revenue,
+      b.cogs,
+      b.inventoryValue,
+      b.turns,
+      b.deadStock,
+      b.costDerived,
+    ),
   });
 }
 
@@ -1372,7 +1386,13 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     week: { title: "The week’s shape", window: () => "the last 90 days of the consumption log", takesWindow: false, write: writeWeek },
     ahead: { title: "What’s coming", window: () => "120 days of history, 14 days ahead", takesWindow: false, write: writeAhead },
     quadrants: { title: "Margin against movement", window: () => "the list as it stands, against 90 days of movement", takesWindow: false, write: writeQuadrants },
-    ledger: { title: "Figures of record", window: () => "365 days of COGS; the cellar as it stands today", takesWindow: false, write: writeLedger },
+    ledger: {
+      title: "Figures of record",
+      window: () =>
+        "365 days of COGS; turns over up to a year of buying; the cellar as it stands today",
+      takesWindow: false,
+      write: writeLedger,
+    },
     seats: { title: "The room", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeSeats },
     service: { title: "Who served it", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeService },
     restock: { title: "What to buy back", window: () => "demand over the last 90 days, at the service level in the params", takesWindow: false, write: writeRestock },

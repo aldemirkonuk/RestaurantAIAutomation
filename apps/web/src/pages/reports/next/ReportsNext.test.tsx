@@ -516,7 +516,7 @@ describe('ReportsNext — the sheet', () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Figures of record' })).getByText(
-        '365 days of COGS; the cellar as it stands today',
+        '365 days of COGS; turns over up to a year of buying; the cellar as it stands today',
       ),
     ).toBeInTheDocument();
     expect(

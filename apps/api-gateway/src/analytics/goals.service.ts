@@ -1262,6 +1262,16 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         // F-1443: say the reason the summary withheld it for, when it is
         // the deliveries with no price rather than the cellar's cost.
         const unpriced = Number(financial?.cogsUnpricedCount) || 0;
+        // F-1491: a young house's days of stock are withheld for its short
+        // span, not its cost basis; a fully costed cellar was told otherwise.
+        // The unpriced deliveries come first, as the summary's basis.turns
+        // names them first.
+        if (unpriced === 0 && financial?.turnsSpanShort === true) {
+          const days = Number(financial.turnsPeriodDays);
+          throw new Error(
+            `Days of stock cannot be read for this restaurant yet: it needs ${AnalyticsService.MIN_TURNS_SPAN_DAYS} days of buying on record, and this house has ${days} day${days === 1 ? "" : "s"} since its first delivery.`,
+          );
+        }
         throw new Error(
           unpriced > 0
             ? `Days of stock cannot be read for this restaurant yet: ${unpriced} delivered order${unpriced === 1 ? " has" : "s have"} no price, so cost of goods is short. Price ${unpriced === 1 ? "it" : "them"} to score this goal.`

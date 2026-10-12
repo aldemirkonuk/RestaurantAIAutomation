@@ -22,7 +22,11 @@ import { GoalsService } from "./goals.service";
 const verdicts = { record: () => {}, recordForEvent: () => {} } as any;
 
 /** A goals service whose financial register answers with `dio`. */
-function serviceWith(dio: unknown, seen?: { patch: Record<string, unknown> }) {
+function serviceWith(
+  dio: unknown,
+  seen?: { patch: Record<string, unknown> },
+  extra: Record<string, unknown> = {},
+) {
   const chain: any = {
     select: () => chain,
     eq: () => chain,
@@ -45,7 +49,12 @@ function serviceWith(dio: unknown, seen?: { patch: Record<string, unknown> }) {
     { get: () => undefined } as any,
     {} as any,
     verdicts,
-    { getFinancialSummary: async () => ({ daysInventoryOutstanding: dio }) } as any,
+    {
+      getFinancialSummary: async () => ({
+        daysInventoryOutstanding: dio,
+        ...extra,
+      }),
+    } as any,
   );
 }
 
@@ -119,5 +128,23 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         }),
       ).rejects.toThrow(/Days of stock cannot be read/);
     }
+  });
+
+  it("names the short span, not the cost basis, for a house under a month of buying (F-1491)", async () => {
+    // A fully costed cellar three weeks into its buying: the cost sentence
+    // was false for it, and createGoal refused on it.
+    const service = serviceWith(null, undefined, {
+      turnsSpanShort: true,
+      turnsPeriodDays: 21,
+    });
+    const err = service.createGoal("r1", {
+      name: "x",
+      metricKey: "days_of_inventory",
+      targetValue: 9,
+    });
+    await expect(err).rejects.toThrow(
+      "it needs 30 days of buying on record, and this house has 21 days since its first delivery",
+    );
+    await expect(err).rejects.not.toThrow(/recorded cost/);
   });
 });
