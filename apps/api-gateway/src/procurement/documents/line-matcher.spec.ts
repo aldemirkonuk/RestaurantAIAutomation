@@ -35,6 +35,18 @@ describe("normalizeDescription", () => {
     expect(normalizeDescription("Rioja 0,75 l").formatMl).toBe(750);
   });
 
+  it("does not read a vintage or a count before L' as litres (F-1430)", () => {
+    expect(normalizeDescription("2018 L'Evangile Pomerol").formatMl).toBeNull();
+    expect(normalizeDescription("6 L’Ecole No 41 Merlot").formatMl).toBeNull();
+    expect(normalizeDescription("2018 L'Evangile 750ml").formatMl).toBe(750);
+  });
+
+  it("reads LT and CL marks, centilitres as ten millilitres (F-1430)", () => {
+    expect(normalizeDescription("Jameson 1 LT").formatMl).toBe(1000);
+    expect(normalizeDescription("Rioja Reserva 75cl").formatMl).toBe(750);
+    expect(normalizeDescription("Sauternes 37,5 cl").formatMl).toBe(375);
+  });
+
   it("does not mistake a SKU digit run for a vintage", () => {
     expect(normalizeDescription("SGW-11872 Barolo").vintage).toBeNull();
   });

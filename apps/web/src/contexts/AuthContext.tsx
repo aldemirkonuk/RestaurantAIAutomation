@@ -598,6 +598,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 "disk (houseAccessEnded, or a transient refresh failure), " +
                 "not a sign-out.",
             );
+            // F-1431 (rehit of F-1378): the same pair still on disk means the
+            // refresh did not answer (a 503, a dropped connection) — Mudavym
+            // was not reached, so say that, not the sign-in form. A
+            // houseAccessEnded refresh stored a new pair and is on its way to
+            // the chooser; that is not "unreachable".
+            if (localStorage.getItem("accessToken") === token) {
+              setUnreachable(true);
+            }
           }
         } else {
           console.warn(

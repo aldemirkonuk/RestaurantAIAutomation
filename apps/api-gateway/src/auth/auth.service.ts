@@ -1231,6 +1231,7 @@ export class AuthService {
     caller: string,
     expectedCurrentHash?: string | null,
     provedEmail?: string | null,
+    proveItIsYou?: () => Promise<void>,
   ): Promise<any> {
     const checkHash = expectedCurrentHash !== undefined;
     const proved =
@@ -1262,6 +1263,11 @@ export class AuthService {
         throw new ConflictException(
           "Your password was changed elsewhere just now. Sign in again and retry.",
         );
+      }
+      // After every refusal above, before the first write; once (F-1395 class).
+      if (proveItIsYou) {
+        await proveItIsYou();
+        proveItIsYou = undefined;
       }
 
       const from = sessionVersionOf(current);
@@ -4287,15 +4293,20 @@ export class AuthService {
           "Your current password is incorrect. Nothing was changed.",
         );
       }
-    } else {
-      // F-1347: a first password is proof of nothing, so it needs the proof.
-      await this.assertProvedItIsYou(
-        userId,
-        session.authTime,
-        session.emailCode,
-        "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then your password can be set. Nothing was changed.",
-      );
     }
+    // F-1347: a first password is proof of nothing, so it needs the proof.
+    // F-1395 class: checked inside the write, after its own refusals (the
+    // row unreadable, the password set elsewhere meanwhile), so a refusal
+    // never spends the emailed code the person typed.
+    const proveItIsYou = user.password_hash
+      ? undefined
+      : () =>
+          this.assertProvedItIsYou(
+            userId,
+            session.authTime,
+            session.emailCode,
+            "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then your password can be set. Nothing was changed.",
+          );
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
     // R1 (audit 3aaaf502e, 2026-09-26): pass the hash just verified above so
@@ -4310,6 +4321,8 @@ export class AuthService {
       passwordHash,
       "changePassword",
       user.password_hash ?? null,
+      undefined,
+      proveItIsYou,
     );
 
     // ADR 0229 (founder 2026-09-26, round 7, item 44): a change keeps every

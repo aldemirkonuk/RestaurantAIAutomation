@@ -121,10 +121,17 @@ export function normalizeDescription(raw?: string | null): {
   const ml = text.match(/(\d{3,4})\s*ml\b/);
   // Any digits either side of the mark (F-1380): "1.75L" and "0.75 l" were
   // read from their last digit alone, as 5 L, and flagged as substitutions.
-  const litres = text.match(/(\d+(?:[.,]\d+)?)\s*(?:l|ltr|liter|litre)\b/);
+  // The unit must end the word (F-1430): an apostrophe counts as a word
+  // boundary, so "2018 L'Evangile" read as 2018 litres. "lt" and "cl" are
+  // how European labels and price lists write the same marks.
+  const litres = text.match(
+    /(\d+(?:[.,]\d+)?)\s*(?:litre|liter|ltr|lt|l)(?![a-z0-9'’])/,
+  );
+  const cl = text.match(/(\d+(?:[.,]\d+)?)\s*cl(?![a-z0-9'’])/);
   if (ml) formatMl = Number(ml[1]);
   else if (litres)
     formatMl = Math.round(Number(litres[1].replace(",", ".")) * 1000);
+  else if (cl) formatMl = Math.round(Number(cl[1].replace(",", ".")) * 10);
 
   const tokens = text
     // Keep letters and digits; everything else is punctuation noise that varies
