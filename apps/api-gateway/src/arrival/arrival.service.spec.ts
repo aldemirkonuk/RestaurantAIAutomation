@@ -501,3 +501,136 @@ describe("Arrival's configuration boundary", () => {
     );
   });
 });
+
+describe("Arrival's menu line is 'already stated' only on the live Drinks menu (ADR 0340 rule 25)", () => {
+  type Row = Record<string, any>;
+  function arrivalOver(tables: Record<string, Row[]>, menusFail = false) {
+    const from = (table: string) => {
+      const keep: Array<(r: Row) => boolean> = [];
+      const q: any = {
+        select: () => q,
+        eq: (c: string, v: unknown) => (keep.push((r) => r[c] === v), q),
+        in: (c: string, vs: unknown[]) => (
+          keep.push((r) => vs.includes(r[c])),
+          q
+        ),
+        is: (c: string, v: unknown) => (
+          keep.push((r) => (r[c] ?? null) === v),
+          q
+        ),
+        limit: () => q,
+        then: (resolve: any, reject: any) =>
+          Promise.resolve(
+            menusFail && table === "restaurant_menus"
+              ? { data: null, error: { message: "statement timeout" } }
+              : {
+                  data: (tables[table] ?? []).filter((r) =>
+                    keep.every((k) => k(r)),
+                  ),
+                  error: null,
+                },
+          ).then(resolve, reject),
+      };
+      return q;
+    };
+    const service: any = Object.create(ArrivalService.prototype);
+    service.db = { client: { from } };
+    return service;
+  }
+  const house = {
+    restaurant_menus: [
+      {
+        id: "m-drinks",
+        restaurant_id: actor.restaurantId,
+        status: "active",
+        menu_type: "beverage",
+      },
+      {
+        id: "m-food",
+        restaurant_id: actor.restaurantId,
+        status: "active",
+        menu_type: "food",
+      },
+      {
+        id: "m-old",
+        restaurant_id: actor.restaurantId,
+        status: "archived",
+        menu_type: "beverage",
+      },
+      {
+        id: "m-draft",
+        restaurant_id: actor.restaurantId,
+        status: "draft",
+        menu_type: "beverage",
+      },
+    ],
+    menu_items: [
+      {
+        id: "l1",
+        menu_id: "m-drinks",
+        restaurant_id: actor.restaurantId,
+        name: "Malbec",
+        producer: null,
+      },
+      {
+        id: "l2",
+        menu_id: "m-old",
+        restaurant_id: actor.restaurantId,
+        name: "Syrah",
+        producer: null,
+      },
+      {
+        id: "l3",
+        menu_id: "m-draft",
+        restaurant_id: actor.restaurantId,
+        name: "Rioja",
+        producer: null,
+      },
+      {
+        id: "l4",
+        menu_id: "m-food",
+        restaurant_id: actor.restaurantId,
+        name: "Köfte",
+        producer: null,
+      },
+    ],
+  };
+  const ask = (service: any, name: string) =>
+    service.current(actor, {
+      target: "menu_item",
+      field: "name",
+      value: { name },
+    });
+
+  it("a line on the live Drinks menu is stated", async () => {
+    const out = await ask(arrivalOver(house), "Malbec");
+    expect(out.stated).toBe(true);
+    expect(out.value).toMatchObject({ id: "l1" });
+  });
+
+  it.each(["Syrah", "Rioja", "Köfte"])(
+    "%s, on an archived, draft or Food menu, is not stated",
+    async (name) => {
+      const out = await ask(arrivalOver(house), name);
+      expect(out).toEqual({ value: null, stated: false, snapshot: null });
+    },
+  );
+
+  it("a house with no live Drinks menu has no stated line", async () => {
+    const tables = {
+      ...house,
+      restaurant_menus: house.restaurant_menus.filter(
+        (m) => m.id !== "m-drinks",
+      ),
+    };
+    expect((await ask(arrivalOver(tables), "Malbec")).stated).toBe(false);
+  });
+
+  it("a failed menus read is unavailable, never 'not stated'", async () => {
+    await expect(ask(arrivalOver(house, true), "Malbec")).rejects.toMatchObject(
+      {
+        message: expect.stringContaining("could not be read"),
+      },
+    );
+  });
+});

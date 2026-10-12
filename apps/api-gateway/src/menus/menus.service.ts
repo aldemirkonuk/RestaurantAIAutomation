@@ -25,6 +25,11 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import {
+  LIVE_MENU_KINDS,
+  readCurrentMenuRows,
+  type CurrentMenuRow,
+} from "./current-menu-lines";
+import {
   isCocktailLine,
   isKitchenLine,
   lineForViewer,
@@ -337,6 +342,8 @@ export interface MenuVersion {
   name: string | null;
   /** Why only part of this menu was read (cut short, pages skipped, parts failed); null when it was read whole (F-1292). */
   partRead: string | null;
+  /** The menu kind (ADR 0340): `beverage` (Drinks), `food`, `desserts`; a legacy `full|bar|events` row says its old kind. */
+  kind: string | null;
   status: "active" | "draft" | "archived" | string;
   current: boolean;
   cadence: MenuCadence | null;
@@ -355,7 +362,7 @@ export interface MenuVersion {
 }
 
 const VERSION_SELECT =
-  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
+  "id, name, menu_type, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
 /**
  * The columns every line read asks for. `raw_extracted_text` is read so
@@ -367,7 +374,7 @@ const VERSION_SELECT =
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
 export const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at, section_id, position, line_kind, drink_category, price";
 /**
  * A discarded line: the member columns (no raw line: this read does not pass
  * through lineForViewer), and what it would go back to (F-268).
@@ -1165,22 +1172,19 @@ export class MenusService {
   }
 
   /**
-   * The lines taken off the house's current menu, so an owner or a manager can
-   * see them and put one back (F-268). Same paged read as getMenu, the other
-   * half of the status split; no current menu means none.
+   * The lines taken off the house's current menus, so an owner or a manager
+   * can see them and put one back (F-268). Same paged read as getMenu, the
+   * other half of the status split; no current menu means none. Every live
+   * kind's discarded lines are read (ADR 0340 rule 25), through the one
+   * current-menu read, which throws on a failed read.
    */
   async getDiscardedLines(
     restaurantId: string,
   ): Promise<{ items: Array<Record<string, unknown>> }> {
-    const { data: menu, error: menuErr } = await this.dbService.supabase
-      .from("restaurant_menus")
-      .select("id")
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
-    if (!menu) return { items: [] };
+    const activeIds = (
+      await readCurrentMenuRows(this.dbService.supabase, restaurantId)
+    ).map((m) => m.id);
+    if (activeIds.length === 0) return { items: [] };
 
     // Paged like readLines (PostgREST stops at 1000 rows without saying so);
     // a failed page is an error, never a shorter list.
@@ -1190,7 +1194,7 @@ export class MenusService {
       let q = this.dbService.supabase
         .from("menu_items")
         .select(DISCARDED_LINE_SELECT)
-        .eq("menu_id", menu.id)
+        .in("menu_id", activeIds)
         .eq("restaurant_id", restaurantId)
         .eq("status", "discarded");
       if (after) q = q.gt("id", after);
@@ -1405,10 +1409,18 @@ export class MenusService {
 
   /**
    * Read path for the interactive menu (decision 39 — the menus module had
-   * no GET at all, which is why no menu page could exist). Returns the
-   * restaurant's active menu with its items, newest first within category.
+   * no GET at all, which is why no menu page could exist). Returns every
+   * live menu of the house (one per kind, ADR 0340) and their lines.
    * A line's raw line is sent only when `view.rawLine` says so (default: not);
    * a reply without it says `rawLineWithheld: true`.
+   *
+   * `kinds` names each live menu (Drinks, Food, Desserts order). The root
+   * `menuId` / `name` / `status` and `items` keep the one-menu shape for the
+   * pages that read it today: `items` is the union of every live kind's
+   * lines, each saying its `menu_id` and `menu_type`, and `menuId` is the
+   * live Drinks menu, or, when no Drinks menu is live, the first live kind's
+   * (the menu a one-menu house was already shown). Two live kinds are no
+   * longer an error: `.maybeSingle()` failed on them (ADR 0340 rule 25).
    */
   async getMenu(
     restaurantId: string,
@@ -1417,6 +1429,12 @@ export class MenusService {
     menuId: string | null;
     name: string | null;
     status: string | null;
+    kinds: Array<{
+      menuId: string;
+      kind: string | null;
+      name: string | null;
+      status: string;
+    }>;
     items: Array<Record<string, unknown>>;
     rawLineWithheld?: true;
     housePricesReadable?: boolean;
@@ -1424,22 +1442,27 @@ export class MenusService {
     soldOutReadable?: boolean;
     soldOutReason?: string | null;
   }> {
-    const { data: menu, error: menuErr } = await this.dbService.supabase
-      .from("restaurant_menus")
-      .select("id, name, status")
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
+    const live = await readCurrentMenuRows(
+      this.dbService.supabase,
+      restaurantId,
+    );
     const withheld = view.rawLine ? {} : { rawLineWithheld: true as const };
-    if (!menu) return { menuId: null, name: null, status: null, items: [], ...withheld };
+    if (live.length === 0)
+      return {
+        menuId: null,
+        name: null,
+        status: null,
+        kinds: [],
+        items: [],
+        ...withheld,
+      };
+    const menu = live.find((m) => m.menu_type === "beverage") ?? live[0];
 
     // A discarded line (migration 20260922230100, ADR 0160 sec110 item 7) is
     // a soft remove: the row stays for the record, but this read path must
     // not keep serving it as live. Read in pages: PostgREST stops at 1000
     // rows without saying so, and a long wine list is exactly that long.
-    const items = await this.readLines(menu.id, restaurantId, view);
+    const items = await this.readLinesOf(live, restaurantId, view);
     const house = await this.readHousePrices(restaurantId, items);
     const out = await this.readSoldOut(restaurantId, house.items);
 
@@ -1447,6 +1470,12 @@ export class MenusService {
       menuId: menu.id,
       name: menu.name,
       status: menu.status,
+      kinds: live.map((m) => ({
+        menuId: m.id,
+        kind: m.menu_type,
+        name: m.name,
+        status: m.status,
+      })),
       items: out.items,
       ...withheld,
       housePricesReadable: house.readable,
@@ -1671,47 +1700,67 @@ export class MenusService {
   }
 
   /**
-   * The house's CURRENT menu(s) and every live line on them — the set
+   * The house's CURRENT menus and every live line on them — the set
    * `/promotions`' "On my menu" rung reads (founder item 36; research-filters
    * adversarial pass F1/F2). Only `status = 'active'` versions: a draft (read,
    * never chosen) or an archived menu (current once) is not "on my menu".
-   * Production can hold more than one active menu for a house (ADR 0193's
-   * migration adds no unique index), so this TOLERATES several and returns the
-   * union — `getMenu`'s `.maybeSingle()` would throw there — and says so in
-   * the log. Every line is read through `readLines` (keyset-paged; discarded
-   * lines excluded), so a list past PostgREST's 1000-row stop is read whole.
-   * `readAt` is when the menu became current, else when it was read, else its
-   * own date — never a draft's `created_at` (F8).
+   * A house keeps one live menu per kind (ADR 0340), so this returns the
+   * union of up to three, each menu and line saying its kind; `opts.kinds`
+   * narrows it to those kinds. The menus come from the one current-menu read
+   * (`readCurrentMenuRows`), which throws on a failed read. Every line is
+   * read through `readLines` (keyset-paged; discarded lines excluded), so a
+   * list past PostgREST's 1000-row stop is read whole. `readAt` is when the
+   * menu became current, else when it was read, else its own date — never a
+   * draft's `created_at` (F8).
    */
-  async readCurrentMenus(restaurantId: string): Promise<{
-    menus: Array<{ menuId: string; name: string | null; readAt: string | null }>;
-    lines: Array<Record<string, unknown> & { menu_id: string }>;
-  }> {
-    const { data, error } = await this.dbService.supabase
-      .from("restaurant_menus")
-      .select("id, name, made_current_at, extracted_at, menu_date")
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "active");
-    if (error) throw new Error(`The current menu (restaurant_menus) could not be read: ${error.message}`);
-    const actives = (data ?? []) as Array<{
-      id: string;
+  async readCurrentMenus(
+    restaurantId: string,
+    opts: { kinds?: readonly string[] } = {},
+  ): Promise<{
+    menus: Array<{
+      menuId: string;
+      kind: string | null;
       name: string | null;
-      made_current_at: string | null;
-      extracted_at: string | null;
-      menu_date: string | null;
+      readAt: string | null;
     }>;
-    if (actives.length > 1) {
-      this.logger.warn(
-        `Restaurant ${restaurantId} has ${actives.length} active menus; reading their lines as one union`,
-      );
+    lines: Array<
+      Record<string, unknown> & { menu_id: string; menu_type: string | null }
+    >;
+  }> {
+    const actives = await readCurrentMenuRows(
+      this.dbService.supabase,
+      restaurantId,
+      opts.kinds,
+    );
+    return {
+      menus: actives.map((m) => ({
+        menuId: m.id,
+        kind: m.menu_type,
+        name: m.name,
+        readAt: m.made_current_at ?? m.extracted_at ?? m.menu_date ?? null,
+      })),
+      lines: (await this.readLinesOf(actives, restaurantId)) as Array<
+        Record<string, unknown> & { menu_id: string; menu_type: string | null }
+      >,
+    };
+  }
+
+  /**
+   * Every live line of these current menus, menu by menu in the order given
+   * (kind order, from `readCurrentMenuRows`), each line saying its `menu_id`
+   * and its menu's `menu_type`, so no reader has to guess a line's kind.
+   */
+  private async readLinesOf(
+    menus: CurrentMenuRow[],
+    restaurantId: string,
+    view: LineView = { rawLine: false },
+  ): Promise<Array<Record<string, unknown>>> {
+    const lines: Array<Record<string, unknown>> = [];
+    for (const m of menus) {
+      for (const line of await this.readLines(m.id, restaurantId, view))
+        lines.push({ ...line, menu_id: m.id, menu_type: m.menu_type });
     }
-    const menus: Array<{ menuId: string; name: string | null; readAt: string | null }> = [];
-    const lines: Array<Record<string, unknown> & { menu_id: string }> = [];
-    for (const m of actives) {
-      menus.push({ menuId: m.id, name: m.name ?? null, readAt: m.made_current_at ?? m.extracted_at ?? m.menu_date ?? null });
-      for (const line of await this.readLines(m.id, restaurantId)) lines.push({ ...line, menu_id: m.id });
-    }
-    return { menus, lines };
+    return lines;
   }
 
   /**
@@ -1761,7 +1810,10 @@ export class MenusService {
    * error, never an empty history.
    */
   async listVersions(restaurantId: string): Promise<{
+    /** The live Drinks menu, else the first live kind's: the one-menu shape pages read today. */
     current: MenuVersion | null;
+    /** Every live menu by its kind (ADR 0340): `beverage`, `food`, `desserts`; a kind with no live menu is null. */
+    currentByKind: Record<string, MenuVersion | null>;
     lastUsed: MenuVersion | null;
     versions: MenuVersion[];
     namesReadable: boolean;
@@ -1792,13 +1844,22 @@ export class MenusService {
     const versions = rows
       .map((r) => this.toVersion(r, names))
       .sort((a, b) => String(b.extractedAt ?? b.createdAt ?? "").localeCompare(String(a.extractedAt ?? a.createdAt ?? "")));
-    const current = versions.find((v) => v.current) ?? null;
+    const currentByKind: Record<string, MenuVersion | null> = {};
+    for (const kind of LIVE_MENU_KINDS)
+      currentByKind[kind] =
+        versions.find((v) => v.current && v.kind === kind) ?? null;
+    const current =
+      currentByKind.beverage ??
+      LIVE_MENU_KINDS.map((k) => currentByKind[k]).find((v) => v !== null) ??
+      versions.find((v) => v.current) ??
+      null;
     const lastUsed =
       versions
         .filter((v) => v.status === "archived" && v.retiredAt)
         .sort((a, b) => String(b.retiredAt).localeCompare(String(a.retiredAt)))[0] ?? null;
     return {
       current,
+      currentByKind,
       lastUsed,
       versions,
       namesReadable: namesError === null,
@@ -2346,6 +2407,7 @@ export class MenusService {
       menuId: r.id,
       name: r.name ?? null,
       partRead: partReadOf(r.name),
+      kind: r.menu_type ?? null,
       status: r.status,
       current: r.status === "active",
       cadence: r.cadence ?? null,
@@ -3084,17 +3146,18 @@ export class MenusService {
     // still pending. Auto-satisfy it from the house's actual state instead.
     // The current menu is read every time: a draft read ticks menu_uploaded
     // (markMenuUploaded on every import) but stocks nothing, so it is not the
-    // menu half of "activated" (F-1061, F-031).
-    const { data: activeMenu } = await this.dbService.supabase
-      .from("restaurant_menus")
-      .select("id")
-      .eq("restaurant_id", data.restaurant_id)
-      .eq("status", "active")
-      .maybeSingle();
-    const menuCurrent = !!activeMenu;
+    // menu half of "activated" (F-1061, F-031). Any live kind counts (ADR 0340
+    // rule 26; its "with a drink line" waits for lane 3a's stored line kind,
+    // and make_menu_current refuses an empty menu), and a failed read THROWS:
+    // it never reads as "no menu" (ADR 0067; it swallowed its error before).
+    const live = await readCurrentMenuRows(
+      this.dbService.supabase,
+      data.restaurant_id,
+    );
+    const menuCurrent = live.length > 0;
     let menuUploaded = !!data.menu_uploaded;
     if (!menuUploaded) {
-      if (activeMenu) {
+      if (menuCurrent) {
         menuUploaded = true;
         const { error: healErr } = await this.dbService.supabase
           .from("user_onboarding_progress")

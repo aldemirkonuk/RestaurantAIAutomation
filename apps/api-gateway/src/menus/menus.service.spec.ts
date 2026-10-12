@@ -191,6 +191,7 @@ describe("MenusService.getMenu", () => {
       menuId: null,
       name: null,
       status: null,
+      kinds: [],
       items: [],
       rawLineWithheld: true,
     });
@@ -468,8 +469,14 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
     "price_flag",
     "price_flag_note",
     "created_at",
+    // ADR 0340 rule 25: the line's section, place, kind, drink category and dish price.
+    "section_id",
+    "position",
+    "line_kind",
+    "drink_category",
+    "price",
   ];
-  const ROOT_KEYS = ["menuId", "name", "status", "items"];
+  const ROOT_KEYS = ["menuId", "name", "status", "kinds", "items"];
 
   function house() {
     const [barolo, tiramisu] = new CsvParserService().parse(CSV);
@@ -495,6 +502,11 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
       price_flag_note: null,
       raw_extracted_text: null,
       created_at: "2026-10-07T10:00:00Z",
+      section_id: null,
+      position: null,
+      line_kind: null,
+      drink_category: null,
+      price: null,
       ...over,
     });
     return {
@@ -593,7 +605,16 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
         ].sort(),
       );
       expect(r.rawLineWithheld).toBe(true);
-      expect(Object.keys(byName(r.items, "Barolo")).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
+      // getMenu's union also says which live menu, and which kind, each line is on (ADR 0340).
+      expect(Object.keys(byName(r.items, "Barolo")).sort()).toEqual(
+        [
+          ...MEMBER_KEYS,
+          "kitchen_line",
+          "raw_line_withheld",
+          "menu_id",
+          "menu_type",
+        ].sort(),
+      );
       expect(byName(r.items, "Tiramisu").kitchen_line).toBe(true);
       const text = JSON.stringify(r);
       for (const secret of SECRETS) expect(text).not.toContain(secret);

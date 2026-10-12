@@ -16,6 +16,7 @@ import { VendorTermsService } from "../vendor-terms/vendor-terms.service";
 import { ProvidersService } from "../providers/providers.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { MenusService } from "../menus/menus.service";
+import { readCurrentMenuRows } from "../menus/current-menu-lines";
 import { isIso4217 } from "../common/iso-4217";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { ARRIVAL_APPLY_ACT, arrivalSealArgs } from "./arrival-seal";
@@ -166,7 +167,9 @@ export class ArrivalService {
       ),
       // No raw line for anyone here: nothing on /arrival reads it, and a CSV
       // line is the whole row, cost and supplier cells included
-      // (menu-line-view.ts). Every line still says kitchen_line.
+      // (menu-line-view.ts). Every line still says kitchen_line. The reply
+      // names every live kind (`kinds`) beside the one-menu shape; two live
+      // kinds no longer make this source unreadable (ADR 0340 rule 25).
       this.source(() => this.menus.getMenu(actor.restaurantId, { rawLine: false })),
     ]);
     return {
@@ -222,10 +225,29 @@ export class ArrivalService {
     const { target, field, subjectId } = input;
     if (target === "menu_item") {
       const value = input.value as { name: string; producer?: string };
+      // A line is already stated only when it is on the house's live Drinks
+      // menu (ADR 0340 rule 25): Arrival's line is a drink, and a line on a
+      // draft, an archived menu or a Food menu is not the house's drink list.
+      // Read before, it matched every menu of any status. A failed read is
+      // unavailable, never "not stated".
+      let drinks: Array<{ id: string }>;
+      try {
+        drinks = await readCurrentMenuRows(this.db.client, actor.restaurantId, [
+          "beverage",
+        ]);
+      } catch {
+        throw new ServiceUnavailableException(SAFE_FAILURE);
+      }
+      if (drinks.length === 0)
+        return { value: null, stated: false, snapshot: null };
       let query = this.db.client
         .from("menu_items")
         .select("id, name, producer")
         .eq("restaurant_id", actor.restaurantId)
+        .in(
+          "menu_id",
+          drinks.map((m) => m.id),
+        )
         .eq("name", value.name);
       query = value.producer
         ? query.eq("producer", value.producer)

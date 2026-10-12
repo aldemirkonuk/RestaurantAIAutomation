@@ -629,6 +629,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Four adversarial reviews (prices/stock, claims/contracts, product/AI, lane feasibility) | Not ready as written: 43 musts across reviews (many shared). All valid ones fixed here and in the lanes plan; rejected points in the Review log |
 | 2026-10-12 | Lane 0 (`docs/menus-kinds-adr`, records only) | Filed as 0340 after a sweep of refs, open PRs and worktrees; brackets written into 0193, 0293 and 0186; the two founder forks filed as OD-228 and OD-229; five open CLAIMS rows, each mutation-tested; 16 code citations corrected against `24ee6705f` (Review log, "Lane 0 corrections") |
 | 2026-10-12 | Lane 1 (`feat/menus-kinds-schema`, schema only) | Four migrations `20270107100000`-`20270107400000` and their SQL tests (PASS on the PGlite corpus, FAIL on a build without each); 38 SQL mutations and 7 claim mutations all killed; three lane-0 rows flipped to resolved, four new rows; nine corrections (Review log, "Lane 1 corrections"). Not run: G0 (production read), any Postgres other than PGlite |
+| 2026-10-12 | Lane 2 (`fix/menus-readers-per-kind`, gateway readers only) | Every gateway reader of "the" active menu that this lane names reads the live menus as a list through one function (`readCurrentMenuRows`); 14 new jest cases fail on the base and pass after; 11 code mutations all killed; one lane-0 row flipped, three new rows, two existing rows edited in place; eight corrections (Review log, "Lane 2 corrections"). Not run: G0, L8, web tsc/vitest |
 
 ## Review log
 
@@ -754,6 +755,43 @@ Rejected or narrowed, with why:
 - **R1.S1 / R3.M10 "skip the index with a notice instead of RAISE".** Rejected: an index that
   may silently not exist makes every later rule unprovable. Kept RAISE with a G0 re-run at
   merge and a stated rollback (F7).
+
+Lane 2 corrections (2026-10-12, against the lane 1 tip `2d2aaa513`; each is the smallest
+right fix, with the alternative it rejects):
+- **One read, in `current-menu-lines.ts`.** `readCurrentMenuRows(db, restaurantId, kinds?)`
+  is the one read of the live menus (status `active`, ordered Drinks, Food, Desserts, then
+  id; a failed read throws, an empty `kinds` list reads nothing). `getMenu`,
+  `getDiscardedLines`, `readCurrentMenus`, `listVersions`, `getOnboardingProgress`,
+  `readCurrentMenuLines` and Arrival's opening menu call it. `readCurrentMenus` already
+  existed and now takes `{ kinds }`. Rejected: a private MenusService helper, which the
+  cellar's `readCurrentMenuLines` could not import without a module cycle.
+- **`getMenu` keeps its one-menu fields** (`menuId`, `name`, `status`) and adds `kinds`.
+  They name the Drinks menu, or the first live kind when Drinks is not live, so a house with
+  one menu of any kind reads exactly as before. Rejected: null when Drinks is not live, which
+  would show a Food-only house as having no menu on every page that reads `menuId` today.
+- **`listVersions` adds `currentByKind`** and keeps `current` on the same rule as `getMenu`.
+- **Onboarding counts any live kind** as "a current menu" and now throws on a failed read
+  instead of reading "no menu" (ADR 0067). Rule 26's "with a drink line" is **not** built
+  here: it needs lane 3a's `lineIsDrink`; the code comment says so.
+- **Arrival `:170` needed no code change** (comment only); `current()` for `menu_item`
+  (`:226` at base) now states a line only on a live **Drinks** menu, and a failed menus read
+  answers 503 (`SAFE_FAILURE`), not "not stated".
+- **Claims:** the lane-0 row ADR-0340-NO-SINGLE-ROW-ACTIVE-MENU-READ was flipped **in place**
+  in `claims.d/docs-menus-kinds-adr.jsonl`; new rows are in
+  `claims.d/fix-menus-readers-per-kind.jsonl`. Two existing rows that pinned the old code were
+  edited in place, not re-filed: PROMOTIONS-HOUSE-FIRST-LADDER in `CLAIMS.jsonl` (its verify
+  named the old one-argument signature) and A-MENU-LINE-RAW-LINE-GOES-ONLY-TO-A-HOLDER in
+  `claims.d/fix-a-menu-line-carries-its-raw-line.jsonl` (the line read moved into
+  `readLinesOf`).
+- **Files differ from the plan.** Not needed: `menu-line-view.spec.ts`,
+  `onboarding-progress-per-house.spec.ts`, `check_read_columns_exist.py` (the new columns
+  already pass it). Needed instead: `onboarding-threshold.spec.ts` (its fake answered one
+  row). `read_error_baseline.json` drops the `activeMenu` site (123 sites, 30 files).
+  `DELIVERY-AUDIT.md`'s denominator was **not** updated, to stay within 15 files; the base
+  measured 124 sites, not the 125 that file states, so the edit is owed by a later lane.
+- **Left on their own active reads** for lanes 3c and 4: the plan reads in `menus.service.ts`
+  (`:2002`, `:2110` at base), vendor-menu-supply and price-locks. They do not use
+  `.maybeSingle()` on the menus row, so they do not fail with two kinds live.
 
 ## Founder forks
 

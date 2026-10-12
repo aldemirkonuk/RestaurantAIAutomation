@@ -257,6 +257,15 @@ export const MEMBER_LINE_KEYS = [
   "price_flag",
   "price_flag_note",
   "created_at",
+  // ADR 0340 rule 25: the line's own section, its place in it, whether it is
+  // a drink or a dish (NULL = legacy or undecided), its drink category token,
+  // and a dish's price. A dish price is a sale price like bottle_price, so it
+  // follows the same allowlist (rule 23).
+  "section_id",
+  "position",
+  "line_kind",
+  "drink_category",
+  "price",
 ] as const;
 
 /** Who a line read is for. `rawLine` true sends the raw line itself. */
