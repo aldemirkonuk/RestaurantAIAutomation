@@ -131,3 +131,107 @@ describe("glassCostFrom — a pour's share of the bottle", () => {
     expect(a.advisedPrice).toBe(24);
   });
 });
+
+/**
+ * F-620 (founder 2026-10-12, S218: F1 build it, F3 stamp cost basis). A house
+ * whose till prices include tax is advised on the price WITHOUT tax, and the
+ * advised price is shown back WITH it. The ledger's case: a 600 TL wine with
+ * 20 % KDV and a 200 TL cost read a 66.7 % margin; the true one is 60 %.
+ */
+describe("adviseToTarget -- a house whose till prices include tax (F-620)", () => {
+  const kdv20 = { rate: 0.2, refusal: null, targetReconfirm: false };
+  const wine = { kind: "bottle" as const, price: 600, unitCost: 200 };
+
+  it("the ledger's wine: 600 with 20 % inside and a 200 cost is a 60 % margin, not 66.7 %", () => {
+    const before = adviseToTarget({ ...wine, targetPct: 60, bandPct: 0 });
+    expect(before.currentMarginPct).toBeCloseTo(66.667, 2);
+    const a = adviseToTarget({ ...wine, targetPct: 60, bandPct: 0, pricesIncludeTax: kdv20 });
+    expect(a.currentMarginPct).toBeCloseTo(60, 6);
+    expect(a.state).toBe("on_target");
+    expect(a.taxRate).toBe(0.2);
+    expect(a.sentence).toMatch(/Your prices include 20% tax; the margin is on the price without it\.$/);
+  });
+
+  it("the advised price is shown with tax inside: cost 200 at 65 % is 571.43 net, 685.71 on the menu", () => {
+    const a = adviseToTarget({ ...wine, targetPct: 65, bandPct: 1, pricesIncludeTax: kdv20 });
+    expect(a.state).toBe("raise");
+    expect(a.advisedPrice).toBe(685.71);
+    // The gap is the same ratio with or without tax: (600 - 685.714) / 685.714.
+    expect(a.gapPct).toBeCloseTo(-12.5, 6);
+    expect(a.sentence).toMatch(/^Raise the bottle to 685\.71 \(now 600\.00, 12\.5% below it\): today's margin is 60%/);
+  });
+
+  it("without pricesIncludeTax nothing changes, key for key: no taxRate key, the same margin", () => {
+    const a = adviseToTarget({ ...wine, targetPct: 65, bandPct: 1 });
+    expect("taxRate" in a).toBe(false);
+    expect(a.advisedPrice).toBe(571.43);
+    expect(a.currentMarginPct).toBeCloseTo(66.667, 2);
+  });
+
+  it("a target set before the switch is asked for again, with no margin stated", () => {
+    const a = adviseToTarget({
+      ...wine,
+      targetPct: 65,
+      bandPct: 1,
+      pricesIncludeTax: { ...kdv20, targetReconfirm: true },
+    });
+    expect(a.state).toBe("target_unconfirmed");
+    expect(a.currentMarginPct).toBeNull();
+    expect(a.advisedPrice).toBeNull();
+    expect(a.sentence).toMatch(/confirm it again in Settings, Target margin/);
+  });
+
+  it("no target still comes first: re-confirming needs a target to confirm", () => {
+    const a = adviseToTarget({
+      ...wine,
+      targetPct: null,
+      bandPct: null,
+      pricesIncludeTax: { ...kdv20, targetReconfirm: true },
+    });
+    expect(a.state).toBe("no_target");
+  });
+
+  it("a cost not proven pre-tax refuses with the caller's named reason, and states no margin", () => {
+    const a = adviseToTarget({
+      ...wine,
+      targetPct: 65,
+      bandPct: 1,
+      pricesIncludeTax: {
+        rate: 0.2,
+        refusal: { state: "cost_not_pre_tax", sentence: "Cannot advise: cost basis not stated." },
+        targetReconfirm: false,
+      },
+    });
+    expect(a.state).toBe("cost_not_pre_tax");
+    expect(a.sentence).toBe("Cannot advise: cost basis not stated.");
+    expect(a.currentMarginPct).toBeNull();
+    expect(a.advisedPrice).toBeNull();
+    expect(a.taxRate).toBeNull();
+  });
+
+  it("a missing cost is still 'no recorded cost', before any tax reason", () => {
+    const a = adviseToTarget({
+      ...wine,
+      unitCost: null,
+      targetPct: 65,
+      bandPct: 1,
+      pricesIncludeTax: {
+        rate: null,
+        refusal: { state: "no_tax_rate", sentence: "no rate" },
+        targetReconfirm: false,
+      },
+    });
+    expect(a.state).toBe("no_cost");
+  });
+
+  it("no rate and no refusal is still a refusal, never a margin on the gross price", () => {
+    const a = adviseToTarget({
+      ...wine,
+      targetPct: 65,
+      bandPct: 1,
+      pricesIncludeTax: { rate: null, refusal: null, targetReconfirm: false },
+    });
+    expect(a.state).toBe("no_tax_rate");
+    expect(a.currentMarginPct).toBeNull();
+  });
+});

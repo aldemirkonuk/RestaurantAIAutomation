@@ -107,6 +107,7 @@ function house(): Record<string, Row[]> {
     restaurants: [
       {
         id: "rest-1",
+        tax_basis: "unset",
         target_margin_bottle_pct: "65.00",
         target_margin_glass_pct: "75.00",
         target_margin_band_pct: "2.00",
@@ -404,5 +405,37 @@ describe("PriceLocksService -- the acts", () => {
       p_note: null,
     });
     expect(r).toMatchObject({ outcome: "moved", previousLockId: "lock-b", lock: { movedFromLockId: "lock-b", lockedPrice: 42 } });
+  });
+});
+
+// F-620: a lock's advice is the advice's own, a house's tax basis included.
+describe("PriceLocksService.list -- a house whose till prices include tax (F-620)", () => {
+  const inclusive = () => {
+    const t = house();
+    Object.assign(t.restaurants[0], {
+      tax_basis: "prices_include_tax",
+      tax_basis_confirmed_at: ago(30),
+      timezone: "Europe/Istanbul",
+    });
+    t.house_tax_rates = [
+      { id: "r1", restaurant_id: "rest-1", version: 1, key_kind: "house", key: "", rate: "0.2000", effective_from: "2026-01-01", effective_to: null },
+    ];
+    return t;
+  };
+
+  it("a cost that does not say whether tax is inside leaves the lock's advice unknown, with the reason", async () => {
+    const r = await service(inclusive()).svc.list("rest-1");
+    const a = r.locks.find((l) => l.lockId === "lock-a")!;
+    expect(a.markers).toContain("advice_unknown");
+    expect(a.adviceUnknownReason).toMatch(/cost basis not stated/);
+  });
+
+  it("a basis that cannot be read leaves every lock's advice unread and says why", async () => {
+    const t = inclusive();
+    (t as any).__readFails = { house_tax_rates: "denied" };
+    const r = await service(t).svc.list("rest-1");
+    expect(r.markersReadable).toBe(false);
+    expect(r.markersReason).toMatch(/prices include tax could not be read/);
+    expect(r.locks.every((l) => l.advice === null)).toBe(true);
   });
 });

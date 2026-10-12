@@ -20,6 +20,23 @@ export type AdviceState =
   | 'on_target'
   | 'raise'
   | 'lower'
+  // Only for a house whose till prices include tax (F-620):
+  | 'target_unconfirmed'
+  | 'no_tax_rate'
+  | 'cost_not_pre_tax'
+
+/** The three states only a house whose till prices include tax can reach (F-620). */
+export type TaxAdviceState = 'target_unconfirmed' | 'no_tax_rate' | 'cost_not_pre_tax'
+
+/**
+ * Present only for a house whose till prices include tax (F-620; founder
+ * 2026-10-12, S218, F3): since when, and whether the target was set before
+ * that and must be confirmed again before any advice is given.
+ */
+export interface PricesIncludeTax {
+  since: string | null
+  targetReconfirm: boolean
+}
 
 export interface PriceAdvice {
   kind: PriceKind
@@ -35,6 +52,8 @@ export interface PriceAdvice {
   /** Today's price against the advised one, PERCENT of the advised price (negative = below). */
   gapPct: number | null
   sentence: string
+  /** The tax rate divided out of the price (0.2 = 20 %); only for a house whose prices include tax. */
+  taxRate?: number | null
   /**
    * ADR 0193 round 3: the lock that holds this price, when one does. A locked
    * price keeps its advice (a true margin is never hidden) but cannot be
@@ -80,7 +99,9 @@ export interface HouseAdvice {
     pourMl: number | null
   }
   wines: WineAdvice[]
-  counts: Record<AdviceState, number>
+  /** The three tax states are counted only for a house whose prices include tax. */
+  counts: Record<Exclude<AdviceState, TaxAdviceState>, number> & Partial<Record<TaxAdviceState, number>>
+  pricesIncludeTax?: PricesIncludeTax
   /** false = whether a price is locked is UNKNOWN (never "not locked"); accepting is refused. */
   locks?: { readable: boolean; reason: string | null; held: number }
 }
@@ -103,6 +124,7 @@ export interface TargetMarginReadout {
   statedBy: { userId: string | null; name: string | null } | null
   audited?: boolean
   auditReason?: string | null
+  pricesIncludeTax?: PricesIncludeTax
 }
 
 /** Per-wine advice. A failed read throws; the page says it could not be read. */

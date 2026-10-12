@@ -218,6 +218,26 @@ describe('HousePriceCell', () => {
     expect(screen.getByText('no cost recorded')).toBeInTheDocument()
     expect(screen.queryByText('on target')).not.toBeInTheDocument()
   })
+
+  // F-620: a house whose till prices include tax.
+  it('a target set before the switch links to Settings to confirm it again, and offers no tap', () => {
+    mount({ advice: ready({ ...raise, state: 'target_unconfirmed', advisedPrice: null, currentMarginPct: null }) })
+    expect(screen.getByText('confirm your target again')).toHaveAttribute('href', '/settings?tab=target-margin')
+    expect(screen.queryByRole('button', { name: /Raise/ })).not.toBeInTheDocument()
+  })
+
+  it('a cost not proven pre-tax, or no rate, is said with its sentence, never "on target"', () => {
+    mount({
+      advice: ready({ ...raise, state: 'cost_not_pre_tax', advisedPrice: null, sentence: 'Cannot advise: cost basis not stated.' }),
+    })
+    expect(screen.getByText('cost without tax not known')).toHaveAttribute('title', 'Cannot advise: cost basis not stated.')
+    expect(screen.queryByText('on target')).not.toBeInTheDocument()
+  })
+
+  it('no tax rate for the wine is said', () => {
+    mount({ advice: ready({ ...raise, state: 'no_tax_rate', advisedPrice: null }) })
+    expect(screen.getByText('no tax rate')).toBeInTheDocument()
+  })
 })
 
 describe('parsePriceInput', () => {

@@ -135,3 +135,40 @@ describe('TargetMarginSection', () => {
     expect(screen.getByText(/Only managers and owners can state the margin/)).toBeInTheDocument()
   })
 })
+
+// F-620 (founder 2026-10-12, S218, F3): a house whose till prices include tax
+// confirms its target again once, and Record takes the same numbers as that.
+describe('TargetMarginSection — the target is confirmed again when prices include tax (F-620)', () => {
+  const SET = { ...UNSET, bottlePct: 65, bandPct: 2, statedAt: '2026-09-21T10:00:00Z', statedBy: { userId: 'u', name: 'Ada' } }
+  const SWITCHED = { ...SET, pricesIncludeTax: { since: '2026-10-12T08:00:00Z', targetReconfirm: true } }
+
+  it('the same numbers can be recorded again only as the re-confirmation', () => {
+    const recorded = { bottlePct: 65, glassPct: null, bandPct: 2 }
+    expect(readTargetInputs('65', '', '2', recorded).canRecord).toBe(false)
+    const r = readTargetInputs('65', '', '2', recorded, true)
+    expect(r.canRecord).toBe(true)
+    expect(r.sentence).toMatch(/confirm 65 percent on a bottle and no glass target again, now worked out on prices without tax/)
+    expect(r.body).toEqual({ bottlePct: 65, glassPct: null, bandPct: 2 })
+  })
+
+  it('says once why advice stopped, and Record sends the same target as the answer', async () => {
+    getTargetMargin.mockResolvedValue(SWITCHED)
+    setTargetMargin.mockResolvedValue({ ...SET, statedAt: '2026-10-12T09:00:00Z', pricesIncludeTax: { since: '2026-10-12T08:00:00Z', targetReconfirm: false } })
+    render(<TargetMarginSection canManage />)
+    expect(await screen.findByTestId('st-target-reconfirm')).toHaveTextContent(
+      /Confirm your target again\..*include tax since 2026-10-12/,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Record' }))
+    await waitFor(() => expect(setTargetMargin).toHaveBeenCalledWith({ bottlePct: 65, glassPct: null, bandPct: 2 }))
+    await waitFor(() => expect(screen.queryByTestId('st-target-reconfirm')).not.toBeInTheDocument())
+  })
+
+  it('a house that has not said its prices include tax sees nothing new', async () => {
+    getTargetMargin.mockResolvedValue(SET)
+    render(<TargetMarginSection canManage />)
+    expect(await screen.findByLabelText('bottle')).toHaveValue('65')
+    expect(screen.queryByTestId('st-target-reconfirm')).not.toBeInTheDocument()
+    expect(screen.queryByText(/prices include tax/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled()
+  })
+})

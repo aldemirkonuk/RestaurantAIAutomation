@@ -8,7 +8,12 @@ import {
 import { readHouseMoney } from "../common/house-money";
 import { DatabaseService } from "../database/database.service";
 import { lineIsDrink, RAW_LINE_COLUMN } from "../menus/menu-line-view";
-import { MarginAdviceService, type InventoryPriceRow } from "./margin-advice.service";
+import {
+  MarginAdviceService,
+  ROLLUP_SELECT,
+  readAdviceTaxTerms,
+  type InventoryPriceRow,
+} from "./margin-advice.service";
 import { fmtMoney, type HouseMoneyTerms } from "./margin-to-target";
 import { confirmedPourFrom, readHouseTargetMargin, targetsFrom } from "./target-margin.service";
 import { type LockKind, lockFromRow, readOpenLocks, readPeople } from "./price-locks";
@@ -234,7 +239,7 @@ export class PriceLocksService {
       const { data, error } = await client
         .from("restaurant_inventory")
         .select(
-          "id, master_wine_id, wine_name, is_active, deleted_at, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, vintage, bottle_size_ml)",
+          "id, master_wine_id, wine_name, is_active, deleted_at, sale_type, menu_price_current, menu_price_glass, last_purchase_price, last_purchase_price_tax_basis, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, vintage, bottle_size_ml)",
         )
         .eq("restaurant_id", restaurantId)
         .in("id", inventoryIds);
@@ -253,15 +258,21 @@ export class PriceLocksService {
         ? Promise.resolve({ data: [], error: null } as { data: unknown[]; error: { message: string } | null })
         : client
             .from("inventory_lot_rollup")
-            .select(
-              "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
-            )
+            // The advice's own columns, the tax proof's (F-620) among them.
+            .select(ROLLUP_SELECT)
             .eq("restaurant_id", restaurantId)
             .in("inventory_id", inventoryIds),
       readHouseMoney(client, restaurantId),
     ]);
-    const adviceReadable = targets.error === null && !rollup.error;
+    // F-620: the lock's advice is the advice's own, tax basis included; an
+    // unread basis leaves the advice unknown, never read as "unset".
+    const tax =
+      targets.error === null
+        ? await readAdviceTaxTerms(client, restaurantId, targets.row?.target_margin_set_at ?? null)
+        : { terms: null, error: null };
+    const adviceReadable = targets.error === null && !rollup.error && tax.error === null;
     if (targets.error !== null) missing.push(`the target margin could not be read (${targets.error})`);
+    if (tax.error !== null) missing.push(`whether the house's prices include tax could not be read (${tax.error})`);
     if (rollup.error) missing.push(`the recorded costs could not be read (${rollup.error.message})`);
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) lots.set(String(r.inventory_id), r);
@@ -270,6 +281,7 @@ export class PriceLocksService {
       pourMl: confirmedPourFrom(targets.row),
       currency: targets.row?.currency ?? null,
       locale: house.locale,
+      tax: tax.terms,
     };
 
     // Who set each lock, and whether they still manage this house.

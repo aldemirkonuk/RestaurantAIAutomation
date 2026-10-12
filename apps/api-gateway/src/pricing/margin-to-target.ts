@@ -40,6 +40,25 @@
  * WHAT IT REFUSES TO GUESS: a missing target, band, price or cost is a named
  * state ("no target set", "cannot advise: no recorded cost"), never a healthy
  * margin and never a default (ADR 0020, ADR 0051).
+ *
+ * A HOUSE WHOSE TILL PRICES INCLUDE TAX (F-620; founder 2026-10-12, S218: F1
+ * build it, F3 stamp cost basis). With `pricesIncludeTax` given, the margin is
+ * worked out on the price WITHOUT tax and the advised price is shown back WITH
+ * it, because that is what the menu prints:
+ *
+ *     net price    = price / (1 + r)
+ *     margin       = (net price - cost) / net price
+ *     advised      = cost / (1 - target) * (1 + r)
+ *
+ * The 0193 formula itself is unchanged; only the price it reads is made
+ * pre-tax. It goes ahead only when the caller has proven the cost pre-tax too
+ * and found the item's rate; otherwise the caller's named refusal is said
+ * ("cost basis not stated", "no tax rate"), never a margin on a mixed basis.
+ * A target set before the house said its prices include tax is not advised
+ * on until an owner or manager confirms it again (`target_unconfirmed`): it
+ * was chosen against tax-inclusive prices, and "on target" must not flip to
+ * "raise" silently. Without `pricesIncludeTax` -- every house that is unset,
+ * excludes tax or charges no VAT -- nothing here changes, key for key.
  */
 import { priceForMargin } from "../analytics/engine/pricing-agility";
 import { moneyIn } from "../procurement/agreed-price";
@@ -53,7 +72,32 @@ export type AdviceState =
   | "no_cost"
   | "on_target"
   | "raise"
-  | "lower";
+  | "lower"
+  // Only for a house whose till prices include tax (F-620):
+  | "target_unconfirmed"
+  | "no_tax_rate"
+  | "cost_not_pre_tax";
+
+/** The states only a house whose till prices include tax can reach. */
+export const TAX_ADVICE_STATES = [
+  "target_unconfirmed",
+  "no_tax_rate",
+  "cost_not_pre_tax",
+] as const;
+
+/**
+ * What a house whose till prices include tax adds to one line's advice. The
+ * caller (MarginAdviceService) finds the rate and proves the cost; this file
+ * only does the arithmetic and says the refusal at its place in the order.
+ */
+export interface PricesIncludeTax {
+  /** The item's rate in force today, a fraction (0.2 = 20 %); null = refused. */
+  rate: number | null;
+  /** Set when the line must refuse; said after no_target/no_price/no_cost. */
+  refusal: { state: "no_tax_rate" | "cost_not_pre_tax"; sentence: string } | null;
+  /** The target was set before the switch and not confirmed since. */
+  targetReconfirm: boolean;
+}
 
 export interface AdviceInput {
   kind: PriceKind;
@@ -76,6 +120,11 @@ export interface AdviceInput {
    * (F-1174). Omitted or null prints the bare figure, as before.
    */
   money?: HouseMoneyTerms;
+  /**
+   * Only for a house whose till prices include tax (F-620). Omitted: the
+   * advice is exactly what it was before, with no new key.
+   */
+  pricesIncludeTax?: PricesIncludeTax;
 }
 
 /** The house's currency code and formats tag; either may be unknown (null). */
@@ -103,6 +152,11 @@ export interface PriceAdvice {
   gapPct: number | null;
   /** One plain sentence a manager can read, its money in the house's own (F-1174). */
   sentence: string;
+  /**
+   * The tax rate divided out of the price, a fraction; present only for a
+   * house whose till prices include tax (null when none could be used).
+   */
+  taxRate?: number | null;
 }
 
 /** Rounds to cents. The advice is a menu price, and a menu has no fractions of a cent. */
@@ -144,6 +198,12 @@ export function glassCostFrom(
 export function adviseToTarget(input: AdviceInput): PriceAdvice {
   const { kind, price, unitCost, targetPct, bandPct } = input;
   const fmt = (n: number) => fmtMoney(n, input.money);
+  const tax = input.pricesIncludeTax;
+  // The rate in use: only when the caller found one and refused nothing.
+  const rate =
+    tax && tax.refusal === null && tax.rate !== null && Number.isFinite(tax.rate) && tax.rate >= 0 && tax.rate < 1
+      ? tax.rate
+      : null;
   const base: PriceAdvice = {
     kind,
     state: "no_target",
@@ -155,13 +215,19 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     advisedPrice: null,
     gapPct: null,
     sentence: "",
+    ...(tax ? { taxRate: rate } : {}),
   };
+  // The price the margin is worked on: without tax for an inclusive house.
+  const netOf = (p: number): number => (rate === null ? p : p / (1 + rate));
 
   const known =
     price !== null && Number.isFinite(price) && price > 0 &&
-    unitCost !== null && Number.isFinite(unitCost);
+    unitCost !== null && Number.isFinite(unitCost) &&
+    // An inclusive house's margin is stated only on a proven basis (F3).
+    (!tax || rate !== null);
   if (known) {
-    base.currentMarginPct = ((price - unitCost) / price) * 100;
+    const net = netOf(price);
+    base.currentMarginPct = ((net - unitCost) / net) * 100;
   }
 
   if (targetPct === null || bandPct === null) {
@@ -169,6 +235,16 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
       ...base,
       state: "no_target",
       sentence: `No target margin is set for a ${kind}, so there is no advice. Set one in Settings.`,
+    };
+  }
+  if (tax?.targetReconfirm) {
+    return {
+      ...base,
+      // The margin is on a new basis the target was not chosen against.
+      currentMarginPct: null,
+      state: "target_unconfirmed",
+      sentence:
+        "Your till prices include tax now, so margin is worked out on prices without it. Your target was set before that: confirm it again in Settings, Target margin, and advice starts.",
     };
   }
   if (kind === "glass" && input.pourConfirmed === false) {
@@ -202,9 +278,22 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
           : `Cannot advise: the recorded cost is ${fmt(unitCost)}, and a target margin cannot price a free ${kind}.`,
     };
   }
+  if (tax && tax.refusal !== null) {
+    return { ...base, state: tax.refusal.state, sentence: tax.refusal.sentence };
+  }
+  if (tax && rate === null) {
+    // A caller that refused nothing must have found a rate; said, not assumed.
+    return {
+      ...base,
+      state: "no_tax_rate",
+      sentence: "Cannot advise: the tax rate inside this price is not known.",
+    };
+  }
 
   const margin = base.currentMarginPct as number;
-  const target = priceForMargin(unitCost, targetPct / 100);
+  const netTarget = priceForMargin(unitCost, targetPct / 100);
+  // Shown back with tax inside, as the menu prints it.
+  const target = netTarget === null || rate === null ? netTarget : netTarget * (1 + rate);
   if (target === null) {
     // priceForMargin refuses only cost <= 0 or a target outside [0, 1); both
     // are excluded above and by the database's CHECK, so this is unreachable
@@ -216,6 +305,10 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     };
   }
   const advised = toCents(target);
+  const taxSaid =
+    rate === null
+      ? ""
+      : ` Your prices include ${pct(toCents(rate * 100))} tax; the margin is on the price without it.`;
   // The gap as a percent of the ADVISED price: "close enough" is measured in
   // the same unit, so the number a manager reads is the number that decided.
   const gap = ((price - target) / target) * 100;
@@ -226,7 +319,7 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
       ...base,
       state: "on_target",
       gapPct: gap,
-      sentence: `On target: ${fmt(price)} is ${gapAbs} ${gap < 0 ? "below" : "above"} the advised ${fmt(advised)}, within your ${pct(bandPct)} (margin ${pct(toCents(margin))} against a ${pct(targetPct)} target).`,
+      sentence: `On target: ${fmt(price)} is ${gapAbs} ${gap < 0 ? "below" : "above"} the advised ${fmt(advised)}, within your ${pct(bandPct)} (margin ${pct(toCents(margin))} against a ${pct(targetPct)} target).${taxSaid}`,
     };
   }
 
@@ -237,7 +330,7 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     advisedPrice: advised,
     gapPct: gap,
     sentence: raise
-      ? `Raise the ${kind} to ${fmt(advised)} (now ${fmt(price)}, ${gapAbs} below it): today's margin is ${pct(toCents(margin))}, your target is ${pct(targetPct)}.`
-      : `Lower the ${kind} to ${fmt(advised)} (now ${fmt(price)}, ${gapAbs} above it): today's margin is ${pct(toCents(margin))}, above your ${pct(targetPct)} target.`,
+      ? `Raise the ${kind} to ${fmt(advised)} (now ${fmt(price)}, ${gapAbs} below it): today's margin is ${pct(toCents(margin))}, your target is ${pct(targetPct)}.${taxSaid}`
+      : `Lower the ${kind} to ${fmt(advised)} (now ${fmt(price)}, ${gapAbs} above it): today's margin is ${pct(toCents(margin))}, above your ${pct(targetPct)} target.${taxSaid}`,
   };
 }

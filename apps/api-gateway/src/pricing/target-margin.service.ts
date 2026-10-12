@@ -73,6 +73,32 @@ export interface TargetMarginReadout {
   statedBy: { userId: string | null; name: string | null } | null;
   audited?: boolean;
   auditReason?: string | null;
+  /**
+   * Present only for a house whose till prices include tax (F-620; founder
+   * 2026-10-12, S218, F3): since when, and whether the target was set before
+   * that and must be confirmed again before advice resumes.
+   */
+  pricesIncludeTax?: { since: string | null; targetReconfirm: boolean };
+}
+
+/**
+ * A target set before the house said its till prices include tax was chosen
+ * against tax-inclusive prices; margin is now worked out without tax, so the
+ * target is asked for again rather than read on the new basis (F-620, F3).
+ * Owed exactly when the house includes tax, a target was set, and it was set
+ * before `tax_basis_confirmed_at`. No column holds it: re-recording the target
+ * moves `target_margin_set_at` past the switch.
+ */
+export function targetReconfirmOwed(
+  targetSetAt: string | null | undefined,
+  basis: string | null | undefined,
+  basisConfirmedAt: string | null | undefined,
+): boolean {
+  if (basis !== "prices_include_tax" || !targetSetAt || !basisConfirmedAt) return false;
+  const set = Date.parse(targetSetAt);
+  const since = Date.parse(basisConfirmedAt);
+  if (!Number.isFinite(set) || !Number.isFinite(since)) return true;
+  return set < since;
 }
 
 interface TargetRow {
@@ -86,6 +112,9 @@ interface TargetRow {
   pour_size_confirmed_at?: string | null;
   /** The house's stated currency; its menu prices are in it (F-343). */
   currency?: string | null;
+  /** `restaurants.tax_basis` and its confirmation moment (F-620). */
+  tax_basis?: string | null;
+  tax_basis_confirmed_at?: string | null;
 }
 
 /** NUMERIC arrives from PostgREST as a string; anything unparseable is "not set". */
@@ -107,7 +136,7 @@ export async function readHouseTargetMargin(
   const { data, error } = await client
     .from("restaurants")
     .select(
-      "target_margin_bottle_pct, target_margin_glass_pct, target_margin_band_pct, target_margin_set_by, target_margin_set_at, default_pour_ml, pour_size_confirmed_by, pour_size_confirmed_at, currency",
+      "target_margin_bottle_pct, target_margin_glass_pct, target_margin_band_pct, target_margin_set_by, target_margin_set_at, default_pour_ml, pour_size_confirmed_by, pour_size_confirmed_at, currency, tax_basis, tax_basis_confirmed_at",
     )
     .eq("id", restaurantId)
     .maybeSingle();
@@ -289,6 +318,20 @@ export class TargetMarginService {
       fields.target_margin_glass_pct = { from: previous.glassPct, to: glass };
     if (previous.bandPct !== band)
       fields.target_margin_band_pct = { from: previous.bandPct, to: band };
+    // F-620: the same target recorded again after the switch is the owner's
+    // re-confirmation, and the trail says so rather than "nothing changed".
+    if (
+      Object.keys(fields).length === 0 &&
+      targetReconfirmOwed(
+        before.row?.target_margin_set_at,
+        before.row?.tax_basis,
+        before.row?.tax_basis_confirmed_at,
+      )
+    )
+      fields.target_margin_set_at = {
+        from: before.row?.target_margin_set_at ?? null,
+        to: "confirmed again on prices without tax",
+      };
 
     const receipt = await this.audit.record({
       restaurantId,
@@ -476,6 +519,18 @@ export class TargetMarginService {
       statedBy: row?.target_margin_set_by
         ? { userId: row.target_margin_set_by, name: authorName }
         : null,
+      ...(row?.tax_basis === "prices_include_tax"
+        ? {
+            pricesIncludeTax: {
+              since: row.tax_basis_confirmed_at ?? null,
+              targetReconfirm: targetReconfirmOwed(
+                row.target_margin_set_at,
+                row.tax_basis,
+                row.tax_basis_confirmed_at,
+              ),
+            },
+          }
+        : {}),
     };
   }
 

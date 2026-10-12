@@ -16,16 +16,26 @@ import {
   type AdviceState,
   type HouseMoneyTerms,
   type PriceAdvice,
+  type PricesIncludeTax,
   type PriceKind,
+  TAX_ADVICE_STATES,
   adviseToTarget,
   fmtMoney,
   glassCostFrom,
 } from "./margin-to-target";
+import { asCostTaxBasis, type CostTaxBasis } from "../common/tax-basis";
+import { houseToday } from "../common/house-day";
+import {
+  type HouseRateRow,
+  loadHouseTaxContext,
+} from "../pos-hub/tax-basis-resolver";
+import { rateRowInForce } from "../settings/house-tax-basis.service";
 import { readHouseMoney } from "../common/house-money";
 import {
   confirmedPourFrom,
   confirmedWinePourFrom,
   readHouseTargetMargin,
+  targetReconfirmOwed,
   targetsFrom,
 } from "./target-margin.service";
 import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
@@ -72,6 +82,26 @@ import { readForKeys, readWholeWindow } from "../common/read-whole-window";
  * Nothing here changes a price except `accept`, which a manager calls with
  * one tap, and which re-computes the advice server-side and refuses if it is
  * no longer what the manager saw.
+ *
+ * A HOUSE WHOSE TILL PRICES INCLUDE TAX (F-620; founder 2026-10-12, S218: F1
+ * build it, F2 only from now, F3 stamp cost basis). For a house whose
+ * `tax_basis` is `prices_include_tax`, the margin is worked out on the price
+ * without tax (margin-to-target.ts), and only when:
+ *   - the wine's rate is known: its own `house_item` rate in force today, else
+ *     the whole-house rate when no till-category rate is in force (a wine is
+ *     not matched to a till category here, so a category rate would be a
+ *     guess), on the house's own day;
+ *   - the cost is PROVEN pre-tax (F3): the lot WAC only when every bottle it
+ *     averages says `excludes_tax` (`wac_pre_tax_qty = wac_qty > 0`), the last
+ *     purchase price by `last_purchase_price_tax_basis`, the last price paid
+ *     by its lot's `unit_cost_tax_basis`. Otherwise the line refuses with a
+ *     named reason: "cost basis not stated", or the cost includes tax;
+ *   - the target was confirmed on or after the switch
+ *     (`target_margin_set_at >= tax_basis_confirmed_at`), else
+ *     `target_unconfirmed` asks the owner to confirm it again.
+ * Every other house (`unset`, `prices_exclude_tax`, `not_vat_charging`, which
+ * is every US house) gets exactly the advice it got before, key for key. A
+ * basis that cannot be read is a refusal, never "unset" (ADR 0020).
  */
 
 export const MARGIN_ADVICE_ENGINE = "margin-to-target/1";
@@ -111,6 +141,11 @@ export interface WineAdvice {
 
 export interface HouseAdvice {
   restaurantId: string;
+  /**
+   * Present only for a house whose till prices include tax (F-620): since
+   * when, and whether the target must be confirmed again first.
+   */
+  pricesIncludeTax?: { since: string | null; targetReconfirm: boolean };
   generatedAt: string;
   target: {
     bottlePct: number | null;
@@ -125,8 +160,11 @@ export interface HouseAdvice {
     pourMl: number | null;
   };
   wines: WineAdvice[];
-  /** Advice lines by state, bottle and glass together. */
-  counts: Record<AdviceState, number>;
+  /**
+   * Advice lines by state, bottle and glass together. The three tax states are
+   * counted only for a house whose till prices include tax.
+   */
+  counts: AdviceCounts;
   /**
    * Whether the house's price locks could be read (L25). `false` means every
    * `locked` below is UNKNOWN, not "not locked", and accepting is refused.
@@ -142,6 +180,8 @@ export interface InventoryPriceRow {
   menu_price_glass: number | string | null;
   last_purchase_price: number | string | null;
   bottle_size_ml: number | null;
+  /** Whether tax is inside `last_purchase_price` (F3); null = not stated. */
+  last_purchase_price_tax_basis?: string | null;
   /** restaurant_inventory.kind; a stated kind other than wine gets no glass advice (F-1171). */
   kind?: string | null;
   pour_size_ml?: number | string | null;
@@ -165,7 +205,129 @@ interface HouseTerms {
   currency?: string | null;
   /** The house's formats tag (`readHouseMoney`), for the money in a sentence (F-1174). */
   locale?: string | null;
+  /**
+   * Only for a house whose till prices include tax (F-620). Omitted or null:
+   * the advice is exactly as before.
+   */
+  tax?: AdviceTaxTerms | null;
 }
+
+/** What an inclusive house adds to the advice (`readAdviceTaxTerms`). */
+export interface AdviceTaxTerms {
+  /** Today on the house's clock; null when its time zone is not set. */
+  day: string | null;
+  rates: HouseRateRow[];
+  /** `tax_basis_confirmed_at`: the switch. */
+  since: string | null;
+  targetReconfirm: boolean;
+}
+
+/**
+ * The house's tax terms for advice. `terms` is null for every house that is
+ * not `prices_include_tax` (the advice is then as before). A failed read, or a
+ * basis this build does not know, is `error`: the caller refuses to advise
+ * rather than advise on a basis nobody read (ADR 0020).
+ */
+export async function readAdviceTaxTerms(
+  client: DatabaseService["client"],
+  restaurantId: string,
+  targetSetAt: string | null,
+  now: Date = new Date(),
+): Promise<{ terms: AdviceTaxTerms | null; error: string | null }> {
+  const read = await loadHouseTaxContext(client, restaurantId);
+  if (!read.ok) return { terms: null, error: read.message };
+  const { ctx } = read;
+  if (ctx.basis !== "prices_include_tax") return { terms: null, error: null };
+  return {
+    terms: {
+      day: ctx.zone ? houseToday(ctx.zone, now) : null,
+      rates: ctx.rates,
+      since: ctx.confirmedAt,
+      targetReconfirm: targetReconfirmOwed(targetSetAt, ctx.basis, ctx.confirmedAt),
+    },
+    error: null,
+  };
+}
+
+/** Counts by state; the three tax states only for an inclusive house. */
+export type AdviceCounts = Record<
+  Exclude<AdviceState, (typeof TAX_ADVICE_STATES)[number]>,
+  number
+> &
+  Partial<Record<(typeof TAX_ADVICE_STATES)[number], number>>;
+
+/** The rate in force today for one wine, or why there is none (F-620). */
+export function wineTaxRate(
+  tax: AdviceTaxTerms,
+  inventoryId: string,
+): { rate: number } | { reason: string } {
+  if (tax.day === null)
+    return {
+      reason:
+        "Cannot advise: this house's time zone isn't set, so the tax rate in force today is not known. Set it in Settings.",
+    };
+  const day = tax.day;
+  const own = rateRowInForce(tax.rates, "house_item", inventoryId, day);
+  if (own && own.rate !== null) return { rate: own.rate };
+  const byCategory = tax.rates.some(
+    (r) =>
+      r.keyKind === "pos_category" &&
+      rateRowInForce(tax.rates, "pos_category", r.key, day)?.rate != null,
+  );
+  if (byCategory)
+    return {
+      reason:
+        "Cannot advise: your tax rates are set by till category, and this wine is not matched to one here. Give this wine its own rate in Settings, under “Do its prices include tax?”.",
+    };
+  const house = rateRowInForce(tax.rates, "house", "", day);
+  if (house && house.rate !== null) return { rate: house.rate };
+  return {
+    reason:
+      "Cannot advise: no tax rate of this house is in force today, so the tax inside this price is not known. Add one in Settings, under “Do its prices include tax?”.",
+  };
+}
+
+/** Whether a cost is proven pre-tax (F3). */
+export type CostTaxProof = "pre_tax" | "includes_tax" | "not_stated";
+
+/**
+ * The tax basis of the cost the advice uses. The lot WAC is proven pre-tax
+ * only when every bottle it averages says `excludes_tax`; a WAC with any
+ * bottle unstated or tax-inclusive is not.
+ */
+export function costTaxProof(
+  costBasis: WineAdvice["costBasis"],
+  row: InventoryPriceRow,
+  lot: Record<string, unknown> | null,
+  lastPaid: LastPaid | null,
+): CostTaxProof {
+  const stated = (b: CostTaxBasis | null): CostTaxProof =>
+    b === "excludes_tax" ? "pre_tax" : b === "includes_tax" ? "includes_tax" : "not_stated";
+  if (costBasis === "invoice_lot_wac" || costBasis === "invoice_lot_wac_partial") {
+    const wacQty = n(lot?.wac_qty);
+    const pre = n(lot?.wac_pre_tax_qty);
+    const inc = n(lot?.wac_tax_included_qty);
+    if (wacQty === null || wacQty <= 0) return "not_stated";
+    if (pre === wacQty) return "pre_tax";
+    if (inc === wacQty) return "includes_tax";
+    return "not_stated";
+  }
+  if (costBasis === "last_purchase_price")
+    return stated(asCostTaxBasis(row.last_purchase_price_tax_basis));
+  if (costBasis === "last_paid_lot") return stated(lastPaid?.taxBasis ?? null);
+  return "not_stated";
+}
+
+/** The named refusal for a cost that is not proven pre-tax (F3). */
+export const COST_NOT_PRE_TAX_SENTENCE: Record<
+  Exclude<CostTaxProof, "pre_tax">,
+  string
+> = {
+  not_stated:
+    "Cannot advise: cost basis not stated. Your till prices include tax, so margin is worked out without tax, and this wine's recorded cost does not say whether tax is inside it.",
+  includes_tax:
+    "Cannot advise: this wine's recorded cost includes tax. Your till prices include tax, so margin is worked out without tax, and only a cost recorded without tax can be used.",
+};
 
 /** The last price paid for a wine, from its most recent costed lot (F-1172). */
 export interface LastPaid {
@@ -173,14 +335,17 @@ export interface LastPaid {
   /** The lot's stated currency; null when it states none. */
   currency: string | null;
   receivedAt: string | null;
+  /** Whether tax is inside the lot's cost (F3); null = not stated. */
+  taxBasis?: CostTaxBasis | null;
 }
 
-const INVENTORY_SELECT =
-  "id, wine_name, kind, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, bottle_size_ml)";
+export const INVENTORY_SELECT =
+  "id, wine_name, kind, sale_type, menu_price_current, menu_price_glass, last_purchase_price, last_purchase_price_tax_basis, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, bottle_size_ml)";
 
 // cost_currency / cost_currency_count (F-343): which money the WAC is in.
-const ROLLUP_SELECT =
-  "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count";
+// wac_pre_tax_qty / wac_tax_included_qty (F3): whether tax is inside it.
+export const ROLLUP_SELECT =
+  "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count, wac_pre_tax_qty, wac_tax_included_qty";
 
 /** The no-cost sentence, when the cost exists but in another money (F-343). */
 const OTHER_MONEY_SENTENCE =
@@ -227,7 +392,7 @@ async function readLastPaid(
             client
               .from("inventory_lots")
               .select(
-                "id, inventory_id, unit_cost, unit_cost_currency, cost_provenance, received_at",
+                "id, inventory_id, unit_cost, unit_cost_currency, unit_cost_tax_basis, cost_provenance, received_at",
                 { count: "exact" },
               )
               .eq("restaurant_id", restaurantId)
@@ -255,6 +420,7 @@ async function readLastPaid(
       currency:
         typeof r.unit_cost_currency === "string" ? r.unit_cost_currency : null,
       receivedAt: typeof r.received_at === "string" ? r.received_at : null,
+      taxBasis: asCostTaxBasis(r.unit_cost_tax_basis),
     });
   }
   return { byId, error: null };
@@ -276,7 +442,7 @@ function n(v: unknown): number | null {
   return Number.isFinite(x) ? x : null;
 }
 
-function emptyCounts(): Record<AdviceState, number> {
+function emptyCounts(pricesIncludeTax: boolean): AdviceCounts {
   return {
     no_target: 0,
     pour_unconfirmed: 0,
@@ -285,6 +451,9 @@ function emptyCounts(): Record<AdviceState, number> {
     on_target: 0,
     raise: 0,
     lower: 0,
+    ...(pricesIncludeTax
+      ? { target_unconfirmed: 0, no_tax_rate: 0, cost_not_pre_tax: 0 }
+      : {}),
   };
 }
 
@@ -355,11 +524,24 @@ export class MarginAdviceService {
       );
     }
 
+    // F-620: the house's tax basis. Unreadable is a refusal, never "unset".
+    const tax = await readAdviceTaxTerms(
+      client,
+      restaurantId,
+      targets.row?.target_margin_set_at ?? null,
+    );
+    if (tax.error !== null) {
+      throw new InternalServerErrorException(
+        `Whether this house's prices include tax could not be read, so no advice was computed: ${tax.error}`,
+      );
+    }
+
     const t: HouseTerms = {
       ...targetsFrom(targets.row),
       pourMl: confirmedPourFrom(targets.row),
       currency: targets.row?.currency ?? null,
       locale: money.locale,
+      tax: tax.terms,
     };
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of rollup.data ?? []) {
@@ -392,7 +574,7 @@ export class MarginAdviceService {
     // A failed lock read is said (locks.readable false), never taken for "no
     // lock" (L25): every `locked` is then unknown and accept refuses.
     const byKind = lockIndex(lockRead.locks);
-    const counts = emptyCounts();
+    const counts = emptyCounts(tax.terms !== null);
     let held = 0;
     const wines = rows.map((row) => {
       const w = this.adviseWine(
@@ -402,8 +584,8 @@ export class MarginAdviceService {
         byKind,
         lastPaid.byId.get(row.id) ?? null,
       );
-      if (w.bottle) counts[w.bottle.state] += 1;
-      if (w.glass) counts[w.glass.state] += 1;
+      if (w.bottle) counts[w.bottle.state] = (counts[w.bottle.state] ?? 0) + 1;
+      if (w.glass) counts[w.glass.state] = (counts[w.glass.state] ?? 0) + 1;
       if (w.bottle?.locked) held += 1;
       if (w.glass?.locked) held += 1;
       return w;
@@ -411,6 +593,14 @@ export class MarginAdviceService {
 
     return {
       restaurantId,
+      ...(tax.terms
+        ? {
+            pricesIncludeTax: {
+              since: tax.terms.since,
+              targetReconfirm: tax.terms.targetReconfirm,
+            },
+          }
+        : {}),
       generatedAt: new Date().toISOString(),
       target: {
         bottlePct: t.bottlePct,
@@ -491,6 +681,24 @@ export class MarginAdviceService {
       !isWine && a.state === "pour_unconfirmed"
         ? { ...a, sentence: NOT_A_WINE_GLASS_SENTENCE }
         : a;
+    // F-620: an inclusive house's lines carry the rate and the cost proof.
+    let taxed: { pricesIncludeTax: PricesIncludeTax } | Record<string, never> = {};
+    if (t.tax) {
+      const found = wineTaxRate(t.tax, row.id);
+      const proof = costTaxProof(costBasis, row, lot, fromLastPaid ? lastPaid : null);
+      taxed = {
+        pricesIncludeTax: {
+          rate: "rate" in found ? found.rate : null,
+          refusal:
+            "reason" in found
+              ? { state: "no_tax_rate", sentence: found.reason }
+              : proof !== "pre_tax"
+                ? { state: "cost_not_pre_tax", sentence: COST_NOT_PRE_TAX_SENTENCE[proof] }
+                : null,
+          targetReconfirm: t.tax.targetReconfirm,
+        },
+      };
+    }
     const mark = (kind: PriceKind): LockMark | null => {
       const l = locks.get(`${row.id}:${kind}`);
       return l ? { lockId: l.lockId, lockedPrice: l.lockedPrice, lockedBy: l.lockedBy, lockedAt: l.lockedAt } : null;
@@ -515,6 +723,7 @@ export class MarginAdviceService {
                 targetPct: t.bottlePct,
                 bandPct: t.bandPct,
                 money,
+                ...taxed,
               }),
             ),
             locked: mark("bottle"),
@@ -532,6 +741,7 @@ export class MarginAdviceService {
                   bandPct: t.bandPct,
                   pourConfirmed: pourMl !== null,
                   money,
+                  ...taxed,
                 }),
               ),
             ),
@@ -628,11 +838,22 @@ export class MarginAdviceService {
       );
     }
 
+    // The same tax terms the advice read (F-620); unreadable refuses.
+    const tax = await readAdviceTaxTerms(
+      client,
+      restaurantId,
+      targets.row?.target_margin_set_at ?? null,
+    );
+    if (tax.error !== null)
+      throw new InternalServerErrorException(
+        `Whether this house's prices include tax could not be read; nothing was changed. ${tax.error}`,
+      );
     const t: HouseTerms = {
       ...targetsFrom(targets.row),
       pourMl: confirmedPourFrom(targets.row),
       currency: targets.row?.currency ?? null,
       locale: money.locale,
+      tax: tax.terms,
     };
     // The same last price paid the advice read (F-1172), or accept would
     // refuse the very advice it showed.
@@ -681,7 +902,13 @@ export class MarginAdviceService {
         band_pct: advice.bandPct,
         engine_version: MARGIN_ADVICE_ENGINE,
         inputs: {
-          rule: "price = cost / (1 - target)",
+          rule:
+            advice.taxRate != null
+              ? "price = cost / (1 - target) * (1 + tax rate)"
+              : "price = cost / (1 - target)",
+          ...(advice.taxRate != null
+            ? { taxRate: advice.taxRate, taxBasis: "prices_include_tax" }
+            : {}),
           kind,
           price: advice.price,
           unitCost: advice.unitCost,

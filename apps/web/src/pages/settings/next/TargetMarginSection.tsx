@@ -21,6 +21,12 @@
  *   3. Three states, never two. A failed read says so; nothing set says what
  *      that costs (every wine reads "no target set"); a set target says who
  *      typed it and when.
+ *   5. A house whose till prices include tax (F-620; founder 2026-10-12,
+ *      S218, F3) has its margin worked out on prices without tax. A target
+ *      set before the house said so was chosen against prices with tax, so
+ *      the gateway gives no advice until it is confirmed again: this section
+ *      says so once, and Record accepts the same numbers as that answer. A
+ *      house that has not said, or whose prices exclude tax, sees nothing new.
  *
  * Owners and managers only — the gateway's `assertCanManageRestaurant` on
  * `PUT /pricing/target-margin` is the rule; the disabled fields are a courtesy.
@@ -98,6 +104,7 @@ export function readTargetInputs(
   glassRaw: string,
   bandRaw: string,
   recorded: { bottlePct: number | null; glassPct: number | null; bandPct: number | null },
+  reconfirm = false,
 ): { canRecord: boolean; sentence: string; body: { bottlePct: number | null; glassPct: number | null; bandPct: number } | null } {
   const b = parsePct('bottle', bottleRaw);
   const g = parsePct('glass', glassRaw);
@@ -128,6 +135,13 @@ export function readTargetInputs(
   }
   const same =
     b.value === recorded.bottlePct && g.value === recorded.glassPct && band === recorded.bandPct;
+  if (same && reconfirm) {
+    return {
+      canRecord: true,
+      sentence: `Record will confirm ${b.value !== null ? `${b.value} percent on a bottle` : 'no bottle target'} and ${g.value !== null ? `${g.value} percent on a glass` : 'no glass target'} again, now worked out on prices without tax, and advice starts again.`,
+      body: { bottlePct: b.value, glassPct: g.value, bandPct: band },
+    };
+  }
   if (same) return { canRecord: false, sentence: 'That is what is already recorded.', body: null };
   const parts = [
     b.value !== null ? `${b.value} percent on a bottle` : 'no bottle target',
@@ -203,7 +217,8 @@ function TargetMarginBody({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
-  const read = readTargetInputs(bottle, glass, band, reg);
+  const reconfirm = reg.pricesIncludeTax?.targetReconfirm === true;
+  const read = readTargetInputs(bottle, glass, band, reg, reconfirm);
   const isSet = reg.bottlePct !== null || reg.glassPct !== null;
 
   const record = async () => {
@@ -260,6 +275,17 @@ function TargetMarginBody({
         and what it sells for, and says “raise to” or “lower to” the price that earns this margin. It never changes a
         price on its own, and it never uses the market average, which stays in its own column.
       </Note>
+
+      {reconfirm && (
+        <div role="status" data-testid="st-target-reconfirm">
+          <Note>
+            <strong>Confirm your target again.</strong> Your till prices include tax
+            {reg.pricesIncludeTax?.since ? ` since ${reg.pricesIncludeTax.since.slice(0, 10)}` : ''}, so margin is now
+            worked out on prices without tax. Your target was set before that, so no wine is advised until you check the
+            numbers below and press Record.
+          </Note>
+        </div>
+      )}
 
       <Row
         label="Target margin"
@@ -400,6 +426,8 @@ function TargetMarginBody({
         57.14. A glass costs its share of the bottle (cost × the house's confirmed pour ÷ bottle size). A wine with no
         recorded cost gets no advice and says so. Close enough is measured as a percent of the advised price: at 3
         percent, a bottle advised at 57.14 is left alone anywhere from 55.43 to 58.86.
+        {reg.pricesIncludeTax &&
+          ' Your till prices include tax, so the price is taken without tax first (600 with 20 percent tax inside is 500), the cost must be recorded without tax too, and the advised price is shown with the tax back in.'}
       </p>
     </>
   );

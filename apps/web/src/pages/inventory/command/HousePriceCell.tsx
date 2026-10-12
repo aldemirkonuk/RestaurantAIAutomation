@@ -400,6 +400,30 @@ function QuietState({ lines, targetSet }: { lines: PriceAdvice[]; targetSet: boo
     )
   }
   const states = new Set(lines.map((l) => l.state))
+  // F-620: a house whose till prices include tax is asked to confirm its
+  // target again, and a cost or rate it cannot prove is said, never priced.
+  if (states.has('target_unconfirmed'))
+    return (
+      <a
+        href="/settings?tab=target-margin"
+        className="text-gray-400 hover:text-gray-600 hover:underline"
+        title={lines.find((l) => l.state === 'target_unconfirmed')?.sentence}
+      >
+        confirm your target again
+      </a>
+    )
+  if (states.has('cost_not_pre_tax'))
+    return (
+      <span className="text-gray-400" title={lines.find((l) => l.state === 'cost_not_pre_tax')?.sentence}>
+        cost without tax not known
+      </span>
+    )
+  if (states.has('no_tax_rate'))
+    return (
+      <span className="text-gray-400" title={lines.find((l) => l.state === 'no_tax_rate')?.sentence}>
+        no tax rate
+      </span>
+    )
   if (states.has('no_cost'))
     return (
       <span className="text-gray-400" title={lines.find((l) => l.state === 'no_cost')?.sentence}>
