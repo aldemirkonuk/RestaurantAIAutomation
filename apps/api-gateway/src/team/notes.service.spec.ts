@@ -140,7 +140,7 @@ describe("NotesService — F-1226: a note's notice opens the week it is about", 
   });
 });
 
-describe("NotesService — F-1337: one push per person, and Push off and quiet hours hold it", () => {
+describe("NotesService — F-1337/F-1340: one push per person; Push off holds it, quiet hours do not (logged)", () => {
   // A window around this minute, on UTC: a house with no zone or country.
   const hhmm = (d: Date) => d.toISOString().slice(11, 16);
   const quietNow = () => ({
@@ -149,7 +149,7 @@ describe("NotesService — F-1337: one push per person, and Push off and quiet h
     quiet_hours_end: hhmm(new Date(Date.now() + 60 * 60 * 1000)),
   });
 
-  it("the funnel does not push; the note pushes once, only to who wants it now", async () => {
+  it("the funnel does not push; the note pushes once, through quiet hours but never past Push off", async () => {
     const db = seed();
     db.tables.restaurants = [{ id: RID, timezone: null, country: null }];
     db.tables.notification_preferences = [
@@ -163,6 +163,9 @@ describe("NotesService — F-1337: one push per person, and Push off and quiet h
       },
     ];
     const { notes, notifications, push } = svc(db);
+    const said = jest
+      .spyOn((notes as any).logger, "log")
+      .mockImplementation(() => undefined);
     push.devicesByUser.mockResolvedValueOnce(
       new Map([
         [SAM, 1],
@@ -180,17 +183,62 @@ describe("NotesService — F-1337: one push per person, and Push off and quiet h
       skipMobilePush: true,
     });
     expect(push.sendToUsers).toHaveBeenCalledTimes(1);
-    expect(push.sendToUsers.mock.calls[0][0]).toEqual([MANAGER]);
+    // F-1340, the founder's F-540 ruling (S195): a note is a team push, so
+    // Ray, inside his quiet hours, is pushed, and the log line says so.
+    expect([...push.sendToUsers.mock.calls[0][0]].sort()).toEqual(
+      [MANAGER, RAY].sort(),
+    );
     const pushOf = (member: string) =>
       db.tables.team_note_deliveries.find(
         (d: any) => d.member_id === member && d.channel === "push",
       );
     expect(pushOf("m-sam")).toMatchObject({ state: "declined" });
     expect(pushOf("m-sam")!.detail).toMatch(/switched push off/);
-    expect(pushOf("m-ray")).toMatchObject({ state: "declined" });
-    expect(pushOf("m-ray")!.detail).toMatch(/quiet hours/);
+    expect(pushOf("m-ray")).toMatchObject({ state: "accepted_by_service" });
     expect(pushOf("m-moe")).toMatchObject({ state: "accepted_by_service" });
     expect(res.addressed).toBe(3);
+    const lines = said.mock.calls
+      .map((c) => String(c[0]))
+      .filter((l) => l.startsWith("TEAM_PUSH_IN_QUIET_HOURS"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(`to=${RAY}`);
+    expect(lines[0]).toContain(`by=${MANAGER}`);
+    expect(lines[0]).toContain("what=team_note");
+  });
+
+  it("an Away release still waits out quiet hours: the held note's push is not sent (ADR 0218)", async () => {
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: null, country: null }];
+    db.tables.team_notes = [
+      {
+        id: "n-1",
+        restaurant_id: RID,
+        week_start: WEEK,
+        body: "Saturday moves to seven.",
+      },
+    ];
+    db.tables.team_note_deliveries = [
+      {
+        id: "d-1",
+        note_id: "n-1",
+        member_id: "m-ray",
+        channel: "push",
+        state: "held_away",
+        detail: "",
+      },
+    ];
+    db.tables.notification_preferences = [
+      { restaurant_id: RID, user_id: RAY, push_enabled: true, ...quietNow() },
+    ];
+    const { notes, notifications, push } = svc(db);
+    notifications.persistForRestaurant.mockResolvedValueOnce({ inserted: 1 });
+    push.devicesByUser.mockResolvedValueOnce(new Map([[RAY, 1]]));
+    await notes.releaseHeld(RID, "n-1", "m-ray");
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+    expect(db.tables.team_note_deliveries[0]).toMatchObject({
+      state: "declined",
+    });
+    expect(db.tables.team_note_deliveries[0].detail).toMatch(/quiet hours/);
   });
 
   it("nobody is pushed when everyone addressed is held", async () => {

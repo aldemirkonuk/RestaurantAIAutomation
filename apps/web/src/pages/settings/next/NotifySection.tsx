@@ -275,9 +275,9 @@ export default function NotifySection({
                   line still lands on your bell, so you see it when you next look. The alerting
                   agent also drops every channel for anything below <strong>critical</strong>.
                   Scheduled mail — the weekly report and order reminders — is <strong>not</strong> held
-                  for this window and goes out on its own clock. A message to the team, a shift offer
-                  or a call for cover still reaches your phone in this window, because work does not
-                  always fit the day. Each one sent in your quiet hours is recorded. Turn Push off to
+                  for this window and goes out on its own clock. A message to the team, a note from
+                  your manager, a shift offer or a call for cover still reaches your phone in this
+                  window, because work does not always fit the day. Each one sent in your quiet hours is recorded. Turn Push off to
                   stop them.
                 </>
               }
