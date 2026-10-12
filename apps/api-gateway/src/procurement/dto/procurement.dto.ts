@@ -1032,6 +1032,46 @@ export class PendingOrderPriorityDto {
   unknown!: PendingFlagReason[];
 }
 
+/**
+ * "Refused at door — <reason>" (F-669, founder S198). See `door-refusal.ts`.
+ */
+export class DoorRefusalDto {
+  @ApiProperty({
+    nullable: true,
+    description:
+      "Why the truck was turned away, in the house's words. null = the door recorded no reason.",
+  })
+  reason!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    enum: [
+      "none",
+      "not_asked",
+      "requested",
+      "received",
+      "denied",
+      "written_off",
+    ],
+    description:
+      "The credit claim on this order. none = no claim opened; null = the claims could not be read.",
+  })
+  credit!:
+    | "none"
+    | "not_asked"
+    | "requested"
+    | "received"
+    | "denied"
+    | "written_off"
+    | null;
+
+  @ApiProperty({
+    description:
+      "The whole label, e.g. 'Refused at door — broken case · credit requested'. Never 'cancelled'.",
+  })
+  label!: string;
+}
+
 export class OrderResponseDto {
   @ApiProperty()
   id: string;
@@ -1163,6 +1203,22 @@ export class OrderResponseDto {
       "What this order received, from the stock ledger (ADR 0192). Key ABSENT = this route did not read the ledger; readable:false = a read failed and why says which.",
   })
   received?: ShelfReceivedDto;
+
+  /**
+   * The truck for this order was refused at the door (F-669, founder S198).
+   * Sent by the routes that read the door: `GET /procurement/orders` and
+   * `GET /procurement/orders/:id`. null = read, and not refused; key ABSENT =
+   * this route did not read the door. The order's status stays what it is
+   * (FAILED, or still open with the vendor when the truck was refused before
+   * it was booked in); this is the label a person reads instead of it.
+   */
+  @ApiPropertyOptional({
+    type: () => DoorRefusalDto,
+    nullable: true,
+    description:
+      "Refused at the door: the reason and the credit standing. null = not refused; key ABSENT = this route did not read the door.",
+  })
+  doorRefusal?: DoorRefusalDto | null;
 
   /**
    * "Waiting on you"'s flag (ADR 0256). Sent by `GET /procurement/orders/pending`

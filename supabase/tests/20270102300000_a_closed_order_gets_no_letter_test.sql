@@ -37,9 +37,11 @@ $$;
 CREATE OR REPLACE FUNCTION pg_temp.ok(cond boolean, label text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN IF cond IS NOT TRUE THEN RAISE EXCEPTION 'FAIL %', label; END IF; RAISE NOTICE 'PASS %', label; END $$;
 
--- C1-C3: a cancelled, turned-down or failed order gets nothing written
+-- C1-C3: a cancelled or turned-down order gets nothing written. FAILED was
+-- here until F-669 (migration a_refused_truck_can_still_be_written_about): a
+-- truck refused at the door now gets its credit or replacement letter.
 DO $$ DECLARE st text; o uuid; a jsonb; BEGIN
-  FOREACH st IN ARRAY ARRAY['CANCELLED', 'REJECTED', 'FAILED', 'cancelled'] LOOP
+  FOREACH st IN ARRAY ARRAY['CANCELLED', 'REJECTED', 'cancelled'] LOOP
     o := pg_temp.order_in(st);
     a := public.stage_order_letter(pg_temp.letter(o), NULL);
     PERFORM pg_temp.ok(a->>'id' IS NULL AND NOT (a->>'staged')::boolean

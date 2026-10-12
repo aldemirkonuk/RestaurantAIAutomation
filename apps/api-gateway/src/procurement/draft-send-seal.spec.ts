@@ -304,11 +304,10 @@ describe("sendDraftedReply", () => {
  * seal nor the send looked at the order: a second manager could send a
  * letter for an order the house shows as cancelled.
  */
-describe("a letter for a cancelled, turned-down or failed order", () => {
+describe("a letter for a cancelled or turned-down order", () => {
   it.each([
     ["CANCELLED", /was cancelled/],
     ["REJECTED", /was turned down/],
-    ["FAILED", /was closed as failed/],
   ])("is never sealed when the order is %s", async (status, words) => {
     const s = stub({
       pending: {
@@ -324,8 +323,10 @@ describe("a letter for a cancelled, turned-down or failed order", () => {
     expect(s.issued).toHaveLength(0);
   });
 
-  it("is still sealed while the order is open or completed", async () => {
-    for (const status of ["APPROVED", "COMPLETED", undefined]) {
+  // FAILED is a truck refused at the door: its credit or replacement letter
+  // is the next thing the house sends (F-669, founder S198).
+  it("is still sealed while the order is open, completed or refused at the door", async () => {
+    for (const status of ["APPROVED", "COMPLETED", "FAILED", undefined]) {
       const s = stub({
         pending: {
           id: "conv-1",

@@ -36,12 +36,15 @@ ORDER_LETTER_LIVE_STATUSES: Tuple[str, ...] = (
 
 # The order states in which ``stage_order_letter`` stages nothing (F-516,
 # migration ``a_closed_order_gets_no_letter``): the house closed the order, so
-# no letter about it may reach the vendor. COMPLETED is not one of them.
-ORDER_LETTER_CLOSED_STATUSES: Tuple[str, ...] = ("CANCELLED", "REJECTED", "FAILED")
+# no letter about it may reach the vendor. COMPLETED is not one of them, and
+# neither is FAILED since F-669 (founder S198; migration
+# ``a_refused_truck_can_still_be_written_about``): a truck refused at the door
+# is exactly when the house writes for a credit or a replacement.
+ORDER_LETTER_CLOSED_STATUSES: Tuple[str, ...] = ("CANCELLED", "REJECTED")
 
 
 class OrderLetterOrderClosed(RuntimeError):
-    """The order is closed (cancelled, turned down or failed): no letter.
+    """The order is closed (cancelled or turned down): no letter.
 
     Raised by ``stage_order_letter`` when the database door refused, so the
     caller can tell it from "the order already has its letter" (F-516).
@@ -76,8 +79,8 @@ def stage_order_letter(
     already had a live outbound letter (of type ``kind`` when given); the id is
     then that letter's, and nothing was written.
 
-    Raises ``OrderLetterOrderClosed`` when the order is cancelled, turned down
-    or failed (nothing was written), ``OrderLetterDoorMissing`` when the
+    Raises ``OrderLetterOrderClosed`` when the order is cancelled or turned
+    down (nothing was written), ``OrderLetterDoorMissing`` when the
     function is not deployed yet, and lets every other error propagate: a
     letter that could not be staged must not be reported as staged.
     """

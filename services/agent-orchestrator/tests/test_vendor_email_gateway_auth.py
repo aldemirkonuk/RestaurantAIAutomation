@@ -1273,7 +1273,7 @@ async def test_the_approved_letter_names_its_order_and_wine(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("closed", ["CANCELLED", "REJECTED", "FAILED"])
+@pytest.mark.parametrize("closed", ["CANCELLED", "REJECTED"])
 async def test_no_letter_is_sent_about_a_closed_order(
     monkeypatch: pytest.MonkeyPatch, closed: str
 ):
@@ -1287,6 +1287,22 @@ async def test_no_letter_is_sent_about_a_closed_order(
 
     assert _FakeSession.calls == []
     assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
+
+
+@pytest.mark.asyncio
+async def test_a_letter_about_a_truck_refused_at_the_door_is_sent(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """F-669 (founder S198): a FAILED order is a truck refused at the door. Its
+    credit or replacement letter, once a person approved it, goes out."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    agent = _approved_agent(_approved_conversation())
+    agent.database.supabase.order["status"] = "FAILED"
+
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    assert len(_FakeSession.calls) == 1
+    assert _FakeSession.calls[0]["json"]["orderId"] == ORDER_A
 
 
 @pytest.mark.asyncio
