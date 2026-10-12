@@ -55,7 +55,14 @@ function fakeDb(
       if (table === "menu_items")
         return {
           data: opts.activeMenu
-            ? [{ id: "l-1", menu_id: "m-1", category: "red", line_kind: "drink" }]
+            ? [
+                {
+                  id: "l-1",
+                  menu_id: "m-1",
+                  category: "red",
+                  line_kind: "drink",
+                },
+              ]
             : [],
           error: null,
         };
