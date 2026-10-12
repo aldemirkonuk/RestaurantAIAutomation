@@ -16,7 +16,11 @@ import { AwayHoldService } from "./away-hold.service";
 import { NO_SENDER_ON_RETURN, heldDetail, splitForAway } from "./away-hold";
 import { weekWords } from "./schedule.service";
 import { houseFrame as frameOf } from "../common/house-frame";
-import { pushHolds, type PushHoldReason } from "../notifications/push-hold";
+import {
+  pushHolds,
+  teamPushHolds,
+  type PushHoldReason,
+} from "../notifications/push-hold";
 
 /**
  * One receipt: what happened to ONE person on ONE channel.
@@ -355,6 +359,7 @@ export class NotesService {
       dto.weekStart,
       textChannels,
       senders,
+      { sentBy: userId },
     );
 
     const channelsToReport: Array<"whatsapp" | "sms"> =
@@ -463,8 +468,14 @@ export class NotesService {
      * again rather than deleted under a receipt that says "delivered". The
      * funnel swallows its own failures and answers `inserted: 0`, so for a
      * person with an account 0 is a failed write, never "nobody wanted it".
+     *
+     * `sentBy`: the manager writing the note now. A note written now is a
+     * team push, so it may reach someone inside their quiet hours, logged
+     * (`teamPushHolds`, the founder's F-540 ruling, F-1340). Without it (the
+     * Away release) quiet hours still hold the push: a held note arrives only
+     * after quiet hours end (ADR 0218).
      */
-    opts: { strictInbox?: boolean } = {},
+    opts: { strictInbox?: boolean; sentBy?: string } = {},
   ): Promise<{ receipts: DeliveryReceipt[]; delivered: { inbox: boolean; push: number } }> {
     const receipts: DeliveryReceipt[] = [];
     let delivered = { inbox: false, push: 0 };
@@ -543,14 +554,24 @@ export class NotesService {
     // Per person, not per batch. `devicesByUser` returning null is a READ
     // FAILURE and every receipt says so; it is not eleven people without a
     // phone.
-    // F-1337: Push off for this house, or inside quiet hours, holds the
-    // push, the one rule the funnel and team broadcast keep (`pushHolds`).
-    const holds: Map<string, PushHoldReason> = await pushHolds(
-      this.sb,
-      restaurantId,
-      userIds,
-      (line) => this.logger.warn(line),
-    );
+    // F-1337: Push off for this house holds the push. F-1340: a note written
+    // now is a team push, so quiet hours do not hold it and each one sent
+    // inside someone's window is logged (`teamPushHolds`); the Away release
+    // keeps quiet hours (`pushHolds`, ADR 0218).
+    const holds: Map<string, PushHoldReason> = opts.sentBy
+      ? await teamPushHolds(
+          this.sb,
+          restaurantId,
+          userIds,
+          { what: "team_note", by: opts.sentBy },
+          {
+            warn: (line) => this.logger.warn(line),
+            note: (line) => this.logger.log(line),
+          },
+        )
+      : await pushHolds(this.sb, restaurantId, userIds, (line) =>
+          this.logger.warn(line),
+        );
     const pushIds = userIds.filter((id: string) => !holds.has(id));
     const devices = await this.push.devicesByUser(userIds);
     let pushDetail = "";

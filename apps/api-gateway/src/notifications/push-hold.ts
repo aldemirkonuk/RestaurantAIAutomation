@@ -52,8 +52,9 @@ export interface TeamPushSend {
  * pushed inside their window gets one `TEAM_PUSH_IN_QUIET_HOURS` line on
  * `note`, naming the house, the person, the sender, the push and the time.
  * Settings › Quiet hours says team messages can still arrive. A crew note
- * and the "someone left" push do not read this yet: CLAIMS rows pin them to
- * `pushHolds` and to the bare send (F-1340, reported, not built).
+ * written now reads this too (F-1340); its Away release keeps `pushHolds`
+ * (ADR 0218). The "someone left" push does not read this yet: a CLAIMS row
+ * pins it to the bare send (F-1340, reported, not built).
  */
 export async function teamPushHolds(
   supabase: any,
