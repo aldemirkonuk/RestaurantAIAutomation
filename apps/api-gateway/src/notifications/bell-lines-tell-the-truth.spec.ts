@@ -132,6 +132,37 @@ describe("F-528 — the phone push honours quiet hours and the Push switch", () 
     expect(pushes.map((p) => p.ids)).toEqual([[OWNER]]);
   });
 
+  // F-1340, the founder's F-540 ruling (2026-10-11): a push the team sends
+  // one another (a shift offer) may arrive inside quiet hours, and is logged.
+  it("[REVERT-FAILS] a team push reaches a person inside quiet hours, keeps Push off, and logs it (F-1340)", async () => {
+    jest.useFakeTimers({
+      now: ONE_AM_ISTANBUL,
+      doNotFake: ["nextTick", "setImmediate"],
+    });
+    const db = seed({
+      notification_preferences: [
+        quiet(OWNER),
+        { ...quiet(COOK), push_enabled: false },
+      ],
+    });
+    const { svc, pushes } = funnel(db);
+    const lines: string[] = [];
+    (svc as any).logger.log = (l: string) => void lines.push(l);
+
+    await svc.persistForRestaurant(HOUSE, LINE, {
+      teamPush: { what: "shift_offer", by: "u-manager" },
+    });
+
+    expect(pushes.map((p) => p.ids)).toEqual([[OWNER]]);
+    const quietLines = lines.filter((l) =>
+      l.startsWith("TEAM_PUSH_IN_QUIET_HOURS"),
+    );
+    expect(quietLines).toHaveLength(1);
+    expect(quietLines[0]).toContain(`to=${OWNER}`);
+    expect(quietLines[0]).toContain("by=u-manager");
+    expect(quietLines[0]).toContain("what=shift_offer");
+  });
+
   it("preferences that cannot be read push everyone, as before they were read", async () => {
     jest.useFakeTimers({
       now: ONE_AM_ISTANBUL,

@@ -1498,15 +1498,21 @@ export class ScheduleService {
     // The day as the house writes a date, as the publish notice does (F-1229);
     // the link keeps the ISO date.
     const { locale } = frameOf(await this.houseFrame(restaurantId));
-    await this.notifications.persistForRestaurant(restaurantId, {
-      type: "system",
-      title: "Shift call-out — cover needed",
-      message: `${original.role ?? "A shift"} on ${weekWords(original.shift_date, locale)} ${original.start_time}-${original.end_time} is open.`,
-      priority: "critical",
-      actionUrl: shiftLink(openShift.id, original.shift_date),
-      actionLabel: "Find cover",
-      metadata: { shiftId: openShift.id, calloutShiftId: shiftId },
-    });
+    // A team push: Push off holds it, quiet hours do not, and a push sent
+    // inside someone's window is logged (the founder's F-540 ruling, F-1340).
+    await this.notifications.persistForRestaurant(
+      restaurantId,
+      {
+        type: "system",
+        title: "Shift call-out — cover needed",
+        message: `${original.role ?? "A shift"} on ${weekWords(original.shift_date, locale)} ${original.start_time}-${original.end_time} is open.`,
+        priority: "critical",
+        actionUrl: shiftLink(openShift.id, original.shift_date),
+        actionLabel: "Find cover",
+        metadata: { shiftId: openShift.id, calloutShiftId: shiftId },
+      },
+      { teamPush: { what: "shift_callout", by: userId } },
+    );
     return {
       callout: shiftForViewer(calloutShift, viewer),
       open: shiftForViewer(openShift, viewer),
@@ -1607,7 +1613,11 @@ export class ScheduleService {
           actionLabel: "Claim it",
           metadata: { shiftId, action: "shift_offer" },
         },
-        { onlyUserIds: targetUserIds },
+        // A team push: Push off holds it, quiet hours do not (F-1340).
+        {
+          onlyUserIds: targetUserIds,
+          teamPush: { what: "shift_offer", by: userId },
+        },
       );
       notified = out?.inserted ?? 0;
     }
