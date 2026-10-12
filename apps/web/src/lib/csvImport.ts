@@ -241,7 +241,8 @@ export function planOpeningStock(
   }
   const group = displayGroupMark(locale);
   const at = (r: string[], i: number) => (i >= 0 ? (r[i] ?? '').trim() : '');
-  const seen = new Set<string>();
+  // Per wine: the shelf ('' for none) of each line kept so far, and its line.
+  const seen = new Map<string, Map<string, number>>();
   rows.slice(1).forEach((r, i) => {
     const line = i + 2;
     const name = at(r, col.name);
@@ -274,9 +275,19 @@ export function planOpeningStock(
       }
     }
     const producer = at(r, col.producer);
-    const key = `${fold(name)}|${vintage ?? ''}|${fold(producer)}|${shelf?.id ?? ''}`;
-    if (seen.has(key)) return refuse('Listed twice in this file for the same shelf; the first one is used.');
-    seen.add(key);
+    const wineKey = `${fold(name)}|${vintage ?? ''}|${fold(producer)}`;
+    const shelfKey = shelf?.id ?? '';
+    const lines = seen.get(wineKey) ?? new Map<string, number>();
+    if (lines.has(shelfKey)) return refuse('Listed twice in this file for the same shelf; the first one is used.');
+    // F-1515: a line with no shelf counts the wine on every shelf, so beside
+    // another line for the same wine it would replace those bottles, not add.
+    const unshelved = shelfKey === '' ? [...lines.values()][0] : lines.get('');
+    if (unshelved !== undefined) {
+      return refuse(
+        `Also on line ${unshelved}, and one of the two names no shelf. A line with no shelf counts the wine on every shelf, so it would replace the other line's bottles instead of adding to them. Name a shelf on each line, or list the wine once with its total.`,
+      );
+    }
+    seen.set(wineKey, lines.set(shelfKey, line));
 
     const match = carried.find(
       (w) =>

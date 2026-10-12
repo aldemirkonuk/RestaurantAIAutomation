@@ -598,6 +598,29 @@ describe("InventoryService", () => {
       expect(usedRpcs).not.toContain("set_stock_absolute");
     });
 
+    // F-1514, ADR 0335 §2: an opening count is the first count variance is
+    // measured from. It is kept under its own source, which the month close
+    // leaves out of the count variance, and moves stock as 'initial'.
+    it("keeps an opening count as source 'import' and movement 'initial', never a spot count", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { id: "inv-1" },
+        error: null,
+      });
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 12,
+        clientCountId: "opening-1",
+        opening: true,
+      });
+      expect(mockRpc).toHaveBeenCalledWith(
+        "record_stock_count",
+        expect.objectContaining({
+          p_source: "import",
+          p_transaction_type: "initial",
+          p_reason: "Opening stock",
+        }),
+      );
+    });
+
     // F-291: a count of one shelf names the shelf, so the database compares and
     // corrects that shelf only; a count of every shelf sends no location at all.
     it("passes the counted shelf as p_location_id, and sends none for a count of every shelf", async () => {

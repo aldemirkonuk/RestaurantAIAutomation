@@ -98,6 +98,8 @@ export function OpeningStockImport({
           await recordSpotCount(c.inventoryId, {
             countedQty: c.qty,
             reason: "Opening stock, imported from a spreadsheet",
+            // F-1514: the first count, not a variance in the month close.
+            opening: true,
             ...(c.shelfId ? { locationId: c.shelfId } : {}),
           });
           out.counted += 1;

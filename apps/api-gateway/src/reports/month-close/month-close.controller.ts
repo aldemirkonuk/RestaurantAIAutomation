@@ -90,7 +90,7 @@ export class MonthCloseController {
   })
   async list(
     @CurrentUser() user: Caller,
-  ): Promise<{ closes: MonthCloseDto[] }> {
+  ): Promise<{ closes: MonthCloseDto[]; openedMonth: string | null }> {
     try {
       return await this.closes.listCloses(user.restaurantId);
     } catch (error) {

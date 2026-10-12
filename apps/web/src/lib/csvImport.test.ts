@@ -109,6 +109,40 @@ describe('planOpeningStock', () => {
     expect(plan.receive[0]).toMatchObject({ qty: 6, cost: 1250.5 });
   });
 
+  // F-1515 (sim 49): one wine on two lines, one naming no shelf. The no-shelf
+  // line counts the wine on every shelf, so it wiped out the other's bottles.
+  it('refuses a second line for the same wine when one of the two names no shelf', () => {
+    const two = [...shelves, { id: 'shelf-b', name: 'Bar' }];
+    const plan = planOpeningStock(
+      parseCsvRows(
+        [
+          'Wine;Vintage;Qty;Shelf',
+          'Öküzgözü Reserve;2019;10;Mahzen A',
+          'Öküzgözü Reserve;2019;4;',
+          'Yakut;2020;3;',
+          'Yakut;2020;5;Bar',
+          'Sevilen;2018;6;Mahzen A',
+          'Sevilen;2018;2;Bar',
+        ].join('\n'),
+      ),
+      carried,
+      two,
+      'tr-TR',
+    );
+    expect(plan.refused.map((r) => r.line)).toEqual([3, 5]);
+    expect(plan.refused[0].reason).toBe(
+      "Also on line 2, and one of the two names no shelf. A line with no shelf counts the wine on every shelf, so it would replace the other line's bottles instead of adding to them. Name a shelf on each line, or list the wine once with its total.",
+    );
+    expect(plan.refused[1].reason).toMatch(/^Also on line 4,/);
+    // The first line of each stands; one wine on two named shelves is two lines.
+    expect(plan.receive.map((w) => [w.line, w.qty])).toEqual([
+      [2, 10],
+      [6, 6],
+      [7, 2],
+    ]);
+    expect(plan.count.map((c) => [c.line, c.qty])).toEqual([[4, 3]]);
+  });
+
   it('says in plain words when the quantity column is missing', () => {
     const plan = planOpeningStock(parseCsvRows('wine,shelf\nOpus One,A'), [], []);
     expect(plan.fileProblem).toMatch(/needs a "Wine" column and a "Quantity" column/);

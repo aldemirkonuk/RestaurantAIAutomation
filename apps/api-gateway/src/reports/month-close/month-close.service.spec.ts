@@ -331,6 +331,102 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  // F-1514 (sim 49, integ20-new-house-30-days.md): opening stock loaded
+  // after the first menu counts each menu-seeded wine from 0. ADR 0335 §2:
+  // that is the opening count variance is measured from, not a variance, so
+  // the first close must not read the whole cellar as "bottles over".
+  it("leaves opening counts out of the month's count variance", async () => {
+    const rows = [
+      {
+        id: "c1",
+        expected_qty: 12,
+        counted_qty: 10,
+        variance_qty: -2,
+        source: "mobile_count",
+      },
+      {
+        id: "o1",
+        expected_qty: 0,
+        counted_qty: 40,
+        variance_qty: 40,
+        source: "import",
+      },
+    ];
+    const { svc, calls } = service(
+      houseHandler({
+        stock_counts: (ops) => {
+          const left = ops
+            .filter((o) => o.m === "neq")
+            .reduce(
+              (acc, o) =>
+                acc.filter((r: any) => r[o.a[0] as string] !== o.a[1]),
+              rows,
+            );
+          return { data: left, error: null, count: left.length };
+        },
+      }),
+    );
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const f = (arg(insert.ops, "insert")![0] as any).figures as MonthFigures;
+    expect(f.variance).toEqual({
+      counts: 1,
+      netBottles: -2,
+      shortBottles: 2,
+      overBottles: 0,
+    });
+  });
+
+  // F-1517: a house opened on 1 August (house time) cannot close July, which
+  // would keep today's cellar as July's. Midnight is the house's, not UTC's.
+  it("refuses a month that ended before the house opened, on the house's clock", async () => {
+    const opened = (created_at: string) =>
+      houseHandler({
+        restaurants: () => ({
+          data: {
+            name: "SYNTHETIC House",
+            currency: "try",
+            timezone: ZONE,
+            country: "TR",
+            created_at,
+          },
+          error: null,
+        }),
+      });
+    const late = service(opened("2026-07-31T22:00:00Z"));
+    await expect(late.svc.closeMonth(HOUSE, ACTOR, "2026-07")).rejects.toThrow(
+      "This house opened in August 2026, so there is nothing of July 2026 to close. Its first month to close is August 2026.",
+    );
+    expect(late.calls.some((c) => c.table === "month_closes")).toBe(false);
+    // Control: opened during July, July closes.
+    const early = service(opened("2026-07-15T09:00:00Z"));
+    await expect(
+      early.svc.closeMonth(HOUSE, ACTOR, "2026-07"),
+    ).resolves.toMatchObject({ month: "2026-07" });
+  });
+
+  it("names the house's first month beside its closes", async () => {
+    const { svc } = service(
+      houseHandler({
+        restaurants: () => ({
+          data: {
+            timezone: ZONE,
+            country: "TR",
+            created_at: "2026-07-31T22:00:00Z",
+          },
+          error: null,
+        }),
+        month_closes: () => ({ data: [], error: null }),
+      }),
+    );
+    await expect(svc.listCloses(HOUSE)).resolves.toEqual({
+      closes: [],
+      openedMonth: "2026-08",
+    });
+  });
+
   it("refuses rather than keep a short record when a read fails", async () => {
     const { svc, calls } = service(
       houseHandler({

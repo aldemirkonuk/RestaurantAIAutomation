@@ -17,6 +17,7 @@ import {
 } from "../../common/house-day";
 import { houseFrame } from "../../common/house-frame";
 import { readWholeWindow } from "../../common/read-whole-window";
+import { OPENING_COUNT_SOURCE } from "../../inventory/stock-count-result";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { orderSpend } from "../../procurement/order-spend";
 import {
@@ -320,6 +321,14 @@ export class MonthCloseService {
         `${monthName(month)} is not over yet on this house's clock. A month can be closed once it has ended.`,
       );
 
+    // F-1517: a month that ended before the house opened holds nothing of
+    // it; closing one would keep today's cellar as that month's.
+    const opened = await this.openedMonth(restaurantId);
+    if (opened !== null && month < opened)
+      throw new BadRequestException(
+        `This house opened in ${monthName(opened)}, so there is nothing of ${monthName(month)} to close. Its first month to close is ${monthName(opened)}.`,
+      );
+
     const house = await this.readHouse(restaurantId);
     const { figures, tillWindow } = await this.readFigures(
       restaurantId,
@@ -401,8 +410,33 @@ export class MonthCloseService {
 
   /* ──────────────────────────────────────────────────────────── reads ── */
 
+  /**
+   * F-1517: the house's month (on its own clock) it was opened in, the first
+   * month it can close. Null when the house names no zone or no opening time.
+   */
+  async openedMonth(restaurantId: string): Promise<string | null> {
+    const { data, error } = await this.db
+      .from("restaurants")
+      .select("created_at, timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error)
+      throw new Error(
+        `When the house was opened could not be read: ${error.message}`,
+      );
+    const h = (data ?? {}) as Record<string, unknown>;
+    const zone = houseFrame({
+      timezone: typeof h.timezone === "string" ? h.timezone : null,
+      country: typeof h.country === "string" ? h.country : null,
+    }).zone;
+    if (!zone || typeof h.created_at !== "string") return null;
+    return houseDayOf(h.created_at, zone)?.slice(0, 7) ?? null;
+  }
+
   /** The house's closes, newest month first, every version. */
-  async listCloses(restaurantId: string): Promise<{ closes: MonthCloseDto[] }> {
+  async listCloses(
+    restaurantId: string,
+  ): Promise<{ closes: MonthCloseDto[]; openedMonth: string | null }> {
     const { data, error } = await this.db
       .from(MONTH_CLOSES_TABLE)
       .select(`${ROW_COLUMNS}, till_csv`)
@@ -422,6 +456,8 @@ export class MonthCloseService {
       closes: rows.map((r) =>
         this.toDto(r, typeof r.till_csv === "string", names),
       ),
+      // The page's earliest month; closeMonth refuses anything before it.
+      openedMonth: await this.openedMonth(restaurantId),
     };
   }
 
@@ -587,6 +623,9 @@ export class MonthCloseService {
               count: "exact",
             })
             .eq("restaurant_id", restaurantId)
+            // F-1514, ADR 0335 §2: an opening count is the first count
+            // variance is measured from, never a variance itself.
+            .neq("source", OPENING_COUNT_SOURCE)
             .gte("counted_at", bounds.startIso)
             .lt("counted_at", bounds.endIso) as never,
       ),

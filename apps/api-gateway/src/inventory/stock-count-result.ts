@@ -12,6 +12,15 @@
  * this every recorded count had disagreed and any variance rate over them was
  * 1.0 by construction.
  */
+/**
+ * F-1514, ADR 0335 §2: the `stock_counts.source` an opening count is kept
+ * under. The opening count is the first count variance is measured from, so
+ * the month close leaves it out of the month's count variance. 'import' is an
+ * existing `inventory_transaction_source` value (the movement carries it too),
+ * and no other path writes a count with it.
+ */
+export const OPENING_COUNT_SOURCE = "import";
+
 export interface StockCountRecord {
   countId: string | null;
   /** What the lots said, read under the same lock the delta was computed from. */

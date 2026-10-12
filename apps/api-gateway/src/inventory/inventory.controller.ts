@@ -436,6 +436,16 @@ export class InventoryController {
         "set what a wine cost",
       );
     }
+    // ADR 0335 §3, F-1514: opening stock is an owner's or a manager's. Its
+    // counts are left out of the month's count variance, so nobody else may
+    // book a count as one.
+    if (dto.source === "opening_stock") {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "load opening stock",
+      );
+    }
     try {
       return await this.inventoryService.bulkCreateInventoryItems(
         restaurantId,
@@ -794,9 +804,20 @@ export class InventoryController {
       /** A queued count's age at send time (F-249); absent for a live count. */
       countedAgoMs?: number;
       locationId?: string | null;
+      /** F-1514: an opening count (ADR 0335 §2), not a variance. */
+      opening?: boolean;
     },
     @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
+    // ADR 0335 §3: only an owner or a manager loads opening stock, and an
+    // opening count is left out of the month's count variance.
+    if (dto?.opening === true) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "load opening stock",
+      );
+    }
     try {
       const out = await this.inventoryService.recordSpotCount(
         restaurantId,
@@ -806,7 +827,11 @@ export class InventoryController {
         // verified JWT and the body field is ignored — an attributed ledger
         // whose attribution is client-asserted is worse than none, because it
         // reads as evidence.
-        { ...dto, performedBy: user?.userId ?? null },
+        {
+          ...dto,
+          opening: dto?.opening === true,
+          performedBy: user?.userId ?? null,
+        },
       );
       return (
         out && { ...out, item: inventoryItemForRole(out.item, user?.role) }
