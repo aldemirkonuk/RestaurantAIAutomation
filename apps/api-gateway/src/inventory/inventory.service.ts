@@ -445,6 +445,42 @@ export class InventoryService {
   }
 
   /**
+   * F-1434: which of this house's items are sold out (86'd) now -- the open
+   * stock_outs rows, the same rows the item's stock-out route reads. One
+   * house-wide read, so every list row (wine, spirit, beer or anything else)
+   * can say it is sold out without being opened. `null` is an answer we do
+   * not have, and the list then says so; it is never read as "none sold out".
+   */
+  private async fetchOpenStockOuts(
+    restaurantId: string,
+  ): Promise<Map<string, { cause: string; startedAt: string }> | null> {
+    const client = this.dbService.getClient();
+    let rows: any[];
+    try {
+      rows = await readEveryRange("The sold-out drinks", (from, to) =>
+        client
+          .from("stock_outs")
+          .select("id, inventory_id, cause, started_at", { count: "exact" })
+          .eq("restaurant_id", restaurantId)
+          .is("ended_at", null)
+          .order("id", { ascending: true })
+          .range(from, to),
+      );
+    } catch (err: any) {
+      this.logger.warn(`fetchOpenStockOuts failed: ${err?.message}`);
+      return null;
+    }
+    const map = new Map<string, { cause: string; startedAt: string }>();
+    for (const r of rows) {
+      map.set(String(r.inventory_id), {
+        cause: String(r.cause),
+        startedAt: String(r.started_at),
+      });
+    }
+    return map;
+  }
+
+  /**
    * The money one house keeps its books in, for the all-locations export
    * (F-599). `restaurants.currency` is nullable and never defaulted here; a
    * failed read is `readable: false`, never "not recorded" (ADR 0083).
@@ -470,15 +506,15 @@ export class InventoryService {
 
   async getRestaurantInventory(restaurantId: string, active = true) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const [data, rollup, locations, analytics, shelfCounts] = await Promise.all(
-      [
+    const [data, rollup, locations, analytics, shelfCounts, soldOut] =
+      await Promise.all([
         this.dbService.getRestaurantInventory(restaurantId, active),
         this.fetchLotRollup(restaurantId, true),
         this.fetchLocationBreakdown(restaurantId, true),
         this.fetchAnalytics(restaurantId),
         this.fetchShelfCounts(restaurantId),
-      ],
-    );
+        this.fetchOpenStockOuts(restaurantId),
+      ]);
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
         row,
@@ -492,6 +528,11 @@ export class InventoryService {
       analyticsReadable: analytics.ok,
       // F-1235: each shelf's newest count in the window; null = not known.
       shelfCounts: shelfCounts ? (shelfCounts.get(row.id) ?? []) : null,
+      // F-1434: the open 86 (cause, since when), null when it is not sold
+      // out. `soldOutReadable: false` means the sold-out read failed, so a
+      // null here is not "available".
+      soldOut: soldOut ? (soldOut.get(row.id) ?? null) : null,
+      soldOutReadable: soldOut !== null,
     }));
   }
 

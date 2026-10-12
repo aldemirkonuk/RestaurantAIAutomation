@@ -100,6 +100,10 @@ export interface InventoryItem {
   abcClass?: "A" | "B" | "C";
   deadStock?: boolean;
   daysSinceSale?: number;
+  /** The open 86 (F-1434); null when it is not sold out. */
+  soldOut?: { cause: string; startedAt: string } | null;
+  /** false: whether it is sold out could not be read for this list. */
+  soldOutReadable?: boolean;
   locations?: Array<{
     locationId: string;
     locationName?: string;

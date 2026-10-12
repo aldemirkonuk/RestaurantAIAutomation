@@ -41,6 +41,7 @@ import {
 import { EM, count as houseCount, houseNamingFor, libraryFigure, libraryMoney, money, volume, year } from './cellar-format';
 import IsThisTheBottlePanel, { type BottleReading } from './IsThisTheBottlePanel';
 import { readingsFrom } from './readings';
+import { SoldOutChip } from './SoldOutControl';
 import { foldText } from '@/lib/textFold';
 
 /**
@@ -669,6 +670,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                   onClick={() => choose(b.id)}
                 >
                   <span className="cl-serif cl-index-row-name">{b.name}</span>
+                  <SoldOutChip soldOut={b.cellar?.soldOut} readable={b.cellar?.soldOutReadable !== false} />
                   <span className="cl-dim cl-index-row-meta">
                     <span>{[b.style, year(b.vintage)].filter(Boolean).join(' · ') || EM}</span>
                     <span className="cl-num">
@@ -718,6 +720,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                   <span className="cl-serif" style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.25 }}>
                     {b.name}
                   </span>
+                  <SoldOutChip soldOut={b.cellar?.soldOut} readable={b.cellar?.soldOutReadable !== false} />
                   <span className="cl-dim" style={{ fontSize: 11 }}>
                     {[b.producer, b.style].filter(Boolean).join(' · ') || 'unattributed'}
                   </span>
@@ -776,6 +779,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                     >
                       <td>
                         <span style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
+                        <SoldOutChip soldOut={b.cellar?.soldOut} readable={b.cellar?.soldOutReadable !== false} />
                         <span className="cl-dim" style={{ fontSize: 11 }}>
                           {[b.producer, b.grape].filter(Boolean).join(' · ') || 'unattributed'}
                         </span>

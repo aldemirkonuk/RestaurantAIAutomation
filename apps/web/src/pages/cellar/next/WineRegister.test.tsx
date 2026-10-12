@@ -445,3 +445,19 @@ describe('F-665: the menu-read tally says queued, and what became of it', () => 
     );
   });
 });
+
+describe('WineRegister -- an 86 shows on the list row (F-1434)', () => {
+  it('marks a sold-out bottle in the table without opening it, and only that one', () => {
+    const cellarRow = {
+      inventoryId: 'inv-b', stockLive: 4, thresholdMin: 2, providerId: null, providerName: null,
+      lastCountedAt: null, glassesPerBottle: null, menuPriceGlass: null, menuPriceBottle: null,
+      velocityPerDay: null, daysSinceSale: null, analyticsReadable: true,
+      soldOut: { cause: 'ran_out', startedAt: '2026-10-10T21:00:00Z' }, soldOutReadable: true,
+    } as unknown as BottleVM['cellar'];
+    mount([bottle(), bottle({ id: 'w2', name: 'Barolo Riserva', cellar: cellarRow })]);
+    const chips = within(screen.getByRole('table')).getAllByTestId('sold-out-chip');
+    expect(chips).toHaveLength(1);
+    expect(chips[0].closest('tr')).toHaveTextContent('Barolo Riserva');
+  });
+});
+

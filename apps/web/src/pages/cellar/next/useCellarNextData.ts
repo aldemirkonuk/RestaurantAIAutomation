@@ -181,6 +181,10 @@ export interface CellarRow {
    * default), which is the read-before-this-field behaviour, never worse.
    */
   analyticsReadable: boolean;
+  /** The open 86 on this row (F-1434); null when it is not sold out. */
+  soldOut?: { cause: string; startedAt: string } | null;
+  /** false: whether it is sold out could not be read for this list. */
+  soldOutReadable?: boolean;
   /**
    * The bottle size THIS HOUSE stated on its own row (`restaurant_inventory.bottle_size_ml`),
    * null when it stated none. Never the library's 750: that is a column default on every
@@ -1533,6 +1537,8 @@ export function useCellarNextData() {
         daysSinceSale: num(it.daysSinceSale),
         analyticsReadable: it.analyticsReadable ?? true,
         bottleSizeMl: num((it as { bottle_size_ml?: unknown }).bottle_size_ml),
+        soldOut: it.soldOut ?? null,
+        soldOutReadable: it.soldOutReadable !== false,
       });
     }
     return m;

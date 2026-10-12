@@ -4,6 +4,7 @@ import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { color, space } from "@/design/tokens";
 import type { InventoryItem } from "@/api/types";
+import { soldOutChip } from "@/lib/soldOut";
 
 function stockTone(item: InventoryItem): "primary" | "warning" | "danger" {
   const qty = item.quantity ?? item.lotLiveQty ?? 0;
@@ -26,6 +27,7 @@ export function WineRow({
     .filter(Boolean)
     .join(" · ");
   const tone = stockTone(item);
+  const soldOut = soldOutChip(item);
 
   return (
     <PressableScale
@@ -49,8 +51,26 @@ export function WineRow({
             {facts}
           </AppText>
         ) : null}
-        {item.reorderSuggested || item.deadStock ? (
+        {soldOut || item.reorderSuggested || item.deadStock ? (
           <View style={{ flexDirection: "row", gap: space.xs, marginTop: 3 }}>
+            {soldOut ? (
+              <View
+                style={{
+                  backgroundColor: item.soldOut ? color.wineTint : color.fill,
+                  paddingHorizontal: space.sm,
+                  paddingVertical: 1,
+                  borderRadius: 999,
+                }}
+              >
+                <AppText
+                  variant="caption"
+                  tone={item.soldOut ? "wine" : "tertiary"}
+                  style={{ fontSize: 10.5 }}
+                >
+                  {soldOut}
+                </AppText>
+              </View>
+            ) : null}
             {item.reorderSuggested ? (
               <View
                 style={{

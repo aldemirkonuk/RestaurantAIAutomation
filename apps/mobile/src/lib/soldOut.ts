@@ -63,5 +63,25 @@ export function soldOutLine(
     ? String(open.startedAt).slice(0, 16)
     : `${d.toLocaleDateString(locale, { day: "numeric", month: "numeric", ...tz })} ${d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", ...tz })}`;
   const why = CAUSE_WORDS[open.cause] ?? open.cause;
-  return `Sold out since ${at}, ${why}${open.note ? ` (${open.note})` : ""}. It comes back when you say so or a delivery is booked in.`;
+  // F-1434: an 86 moves no stock, so a broken bottle is still on the books.
+  const stillOnStock =
+    open.cause === "broken"
+      ? " This does not take the broken bottle off stock; record it as breakage too."
+      : "";
+  return `Sold out since ${at}, ${why}${open.note ? ` (${open.note})` : ""}. It comes back when you say so or a delivery is booked in.${stillOnStock}`;
+}
+
+/**
+ * The chip on a cellar list row (F-1434). The gateway's list carries each
+ * row's open 86 (`soldOut`) and whether that could be read
+ * (`soldOutReadable`), for every kind of drink. Null when there is nothing
+ * to say; a failed read is said, never shown as available.
+ */
+export function soldOutChip(item: {
+  soldOut?: { cause: string; startedAt: string } | null;
+  soldOutReadable?: boolean;
+}): string | null {
+  if (item.soldOut) return "sold out (86)";
+  if (item.soldOutReadable === false) return "sold out? not read";
+  return null;
 }

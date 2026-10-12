@@ -99,6 +99,7 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import { SoldOutChip } from "../../cellar/next/SoldOutControl";
 import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
 // Moved to components/mudavym (founder, 2026-09-22, round 6z, verbatim pick 8:
 // "Queue it; Mudavym + hold (Recommended)") — the card is now built on the
@@ -1900,6 +1901,10 @@ export function InventoryCommandPage() {
                           <div className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-900 leading-tight">
                             <span className="truncate">{item.name}</span>
                             <AbcBadge abc={item.abcClass} />
+                            <SoldOutChip
+                              soldOut={item.soldOut}
+                              readable={item.soldOutReadable !== false}
+                            />
                           </div>
                           <NameThisWineHint inventoryId={item.inventoryId} />
                           <div className="text-[11px] text-gray-400 mt-0.5 truncate">
