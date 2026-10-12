@@ -138,6 +138,10 @@ export interface RestaurantBranch {
   city: string | null;
   chain_id: string | null; // null = standalone restaurant (D-10)
   chain_name: string | null; // null = standalone; set = chain label for Header grouping
+  // Whether this person owns the branch's organisation: the gateway's rule
+  // for opening a location, creating a chain or moving a branch between
+  // chains. A house owner by invite does not (F-1570). Absent when unread.
+  organization_owner?: boolean;
 }
 
 interface RegisterRestaurantData {

@@ -31,10 +31,25 @@ vi.mock('@/components/locations/EditLocationChainDialog', () => ({
 const houseCurrencyReload = vi.fn();
 const houseTimeZoneReload = vi.fn();
 
-function data(isOwner: boolean, restaurantId = 'r1'): SettingsNextData {
+function data(
+  isOwner: boolean,
+  restaurantId = 'r1',
+  // null: the gateway could not read it, so the field is absent.
+  organizationOwner: boolean | null = isOwner,
+  chains: unknown[] = [],
+): SettingsNextData {
   return {
-    chains: { status: 'ok', data: [], error: null, reload: () => {} },
-    locations: [{ id: 'r1', name: 'Uptown', city: 'Chicago', chain_id: null, chain_name: null }],
+    chains: { status: 'ok', data: chains, error: null, reload: () => {} },
+    locations: [
+      {
+        id: 'r1',
+        name: 'Uptown',
+        city: 'Chicago',
+        chain_id: null,
+        chain_name: null,
+        ...(organizationOwner === null ? {} : { organization_owner: organizationOwner }),
+      },
+    ],
     restaurantId,
     isOwner,
     refreshBranches: async () => {},
@@ -110,5 +125,38 @@ describe('Locations — a country correction', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Country saved' }));
     expect(houseCurrencyReload).not.toHaveBeenCalled();
     expect(houseTimeZoneReload).not.toHaveBeenCalled();
+  });
+});
+
+// F-1570 (rehit of F-242): a house owner by invite is the organisation's
+// manager, and the gateway refuses them all three owner's acts, so the page
+// gates on the branch's `organization_owner`, not on the house role.
+describe('Locations — a co-owner by invite', () => {
+  const CHAIN = [{ id: 'c1', name: 'Harbour Group', location_count: null, updated_at: null }];
+
+  it('is not offered Add a location, Create a chain or Assign a branch, and is told why', () => {
+    draw(<LocationsSection data={data(true, 'r1', false, CHAIN)} />);
+    expect(screen.queryByRole('button', { name: 'Add a location' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create a chain' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Assign a branch' })).toBeNull();
+    expect(screen.getByText(/for the owner of the whole business/)).toBeTruthy();
+  });
+
+  it('opens no form from the switcher link', () => {
+    draw(<LocationsSection data={data(true, 'r1', false)} />, '/settings?tab=locations&action=add');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('the business owner is offered all three', () => {
+    draw(<LocationsSection data={data(true, 'r1', true, CHAIN)} />);
+    expect(screen.getByRole('button', { name: 'Add a location' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Create a chain' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Assign a branch' })).toBeTruthy();
+  });
+
+  it('an ownership the gateway could not read offers nothing and claims nothing', () => {
+    draw(<LocationsSection data={data(true, 'r1', null)} />);
+    expect(screen.queryByRole('button', { name: 'Add a location' })).toBeNull();
+    expect(screen.queryByText(/for the owner of the whole business/)).toBeNull();
   });
 });

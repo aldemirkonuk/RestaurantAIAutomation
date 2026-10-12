@@ -352,6 +352,56 @@ describe("TeamService — F-1545: removing a 'no account yet' person cancels the
     expect(db.tables.organization_invites[0].expires_at).toBe(LATER);
   });
 
+  it("F-1555: expires every live invite this house made to the row's address, not only the newest", async () => {
+    const db = seed();
+    withInvitedStandIn(db, { target_email: "cook@example.test" });
+    db.tables.organization_invites.push(
+      // The earlier invite a re-invite left behind: the roster row no
+      // longer points at it.
+      {
+        id: "inv-0",
+        restaurant_id: RID,
+        invited_by: OWNER,
+        role: "staff",
+        target_email: "cook@example.test",
+        used_at: null,
+        expires_at: LATER,
+      },
+      {
+        id: "inv-other-address",
+        restaurant_id: RID,
+        invited_by: OWNER,
+        role: "staff",
+        target_email: "someone@example.test",
+        used_at: null,
+        expires_at: LATER,
+      },
+      {
+        id: "inv-other-house",
+        restaurant_id: OTHER_RID,
+        invited_by: OWNER,
+        role: "staff",
+        target_email: "cook@example.test",
+        used_at: null,
+        expires_at: LATER,
+      },
+    );
+    db.tables.team_members.find((m) => m.id === "m-new")!.email =
+      " Cook@Example.test ";
+
+    const receipt: any = await service(db).deleteMember(MANAGER, RID, "m-new");
+
+    const expiresAt = (id: string) =>
+      db.tables.organization_invites.find((i) => i.id === id)!.expires_at;
+    for (const id of ["inv-0", "inv-1"])
+      expect(new Date(String(expiresAt(id))).getTime()).toBeLessThanOrEqual(
+        Date.now(),
+      );
+    expect(expiresAt("inv-other-address")).toBe(LATER);
+    expect(expiresAt("inv-other-house")).toBe(LATER);
+    expect(receipt.inviteCancelled).toBe(true);
+  });
+
   it("leaves an invite that was already used alone", async () => {
     const db = seed();
     withInvitedStandIn(db, { used_at: "2026-10-01T10:00:00.000Z" });

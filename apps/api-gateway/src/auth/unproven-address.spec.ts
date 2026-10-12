@@ -1702,3 +1702,34 @@ describe("the two rules, at their edges", () => {
     ).toBe(false);
   });
 });
+
+/* ── F-1555 ─────────────────────────────────────────────────────────────── */
+
+describe("F-1555: a new invite to an address replaces the earlier live one to it in the house", () => {
+  const live = (w: ReturnType<typeof world>, code: string) => {
+    const inv = w.db.tables.organization_invites.find((i) => i.code === code)!;
+    return inv.used_at === null && inv.expires_at > new Date().toISOString();
+  };
+
+  it("the earlier invite stops being good and cannot be joined with; the new one, and other addresses', stay live", async () => {
+    const w = world();
+    const other = await w.invite("someone@example.com");
+    const first = await w.invite(VICTIM);
+    const second = await w.invite(` ${VICTIM.toUpperCase()} `);
+
+    expect(live(w, first)).toBe(false);
+    expect(live(w, second)).toBe(true);
+    expect(live(w, other)).toBe(true);
+    await expect(
+      w.join(first, VICTIM, ATTACKER_PASSWORD),
+    ).rejects.toBeDefined();
+    expect(w.row(VICTIM)).toBeUndefined();
+  });
+
+  it("an invite with no address replaces nothing", async () => {
+    const w = world();
+    const first = await w.invite(VICTIM);
+    await w.invite();
+    expect(live(w, first)).toBe(true);
+  });
+});

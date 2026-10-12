@@ -52,6 +52,12 @@ function chainSizeLine(total: number | null | undefined, mine: number): string {
 
 export function LocationsSection({ data }: { data: SettingsNextData }) {
   const { chains, locations, restaurantId, isOwner, refreshBranches } = data;
+  // F-1570: opening a location, creating a chain and moving a branch between
+  // chains are the business owner's acts; the gateway refuses a house owner by
+  // invite, so only an owner of this branch's organisation is offered them.
+  // An answer the gateway could not read offers nothing and explains nothing.
+  const businessOwner = locations.find((b) => b.id === restaurantId)?.organization_owner;
+  const ownsBusiness = isOwner && businessOwner === true;
   const [adding, setAdding] = useState(false);
   const [creatingChain, setCreatingChain] = useState(false);
   const [assigning, setAssigning] = useState<{ id: string; name: string } | null>(null);
@@ -60,16 +66,16 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // F-913: the house switcher's "Add location" lands here with `action=add`.
-  // It opens the form for an owner, once; the param is dropped so a reload or
-  // a back step does not reopen it.
+  // It opens the form for the business owner, once; the param is dropped so a
+  // reload or a back step does not reopen it.
   const addAsked = searchParams.get('action') === 'add';
   useEffect(() => {
     if (!addAsked) return;
-    if (isOwner) setAdding(true);
+    if (ownsBusiness) setAdding(true);
     const next = new URLSearchParams(searchParams);
     next.delete('action');
     setSearchParams(next, { replace: true });
-  }, [addAsked, isOwner, searchParams, setSearchParams]);
+  }, [addAsked, ownsBusiness, searchParams, setSearchParams]);
 
   const standalone = locations.filter((b) => !b.chain_id);
   const asLite = (b: RestaurantBranch) => ({ id: b.id, name: b.name, city: b.city ?? null });
@@ -78,13 +84,20 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
     <>
       <Note>
         The branches below come from your own session — the same list the header switches between. Chains are read
-        separately, and only an owner may add a location or create or rename a chain. Both records carry their own last-changed date, kept by
+        separately, and only the owner of the business may add a location or create or rename a chain. Both records carry their own last-changed date, kept by
         the database: a branch’s moves on any edit to it, a chain’s on a rename.
       </Note>
 
-      {/* Only an owner may open a new location (the gateway refuses anyone else,
-          F-242), so the button is not offered to a role that would be refused. */}
-      {isOwner && (
+      {/* Only the business owner may open a new location (the gateway refuses
+          anyone else, F-242, F-1570), so the button is not offered to a role
+          that would be refused; a house owner by invite is told why instead. */}
+      {isOwner && businessOwner === false && (
+        <Note role="status">
+          You own this house, but adding a location or a chain is for the owner of the whole business. Ask them to
+          do it.
+        </Note>
+      )}
+      {ownsBusiness && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 8px' }}>
           <button ref={addAnchor} type="button" onClick={() => setAdding(true)} className="st-ink st-focus"
             style={{ fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: '6px 13px', borderRadius: 8,
@@ -112,7 +125,7 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
                     when: c.updated_at ?? null,
                     whenUnknown: 'the gateway returned no date for this chain',
                   }}
-                  control={isOwner ? <Action onClick={() => setAssigning({ id: c.id, name: c.name })}>Assign a branch</Action> : undefined}
+                  control={ownsBusiness ? <Action onClick={() => setAssigning({ id: c.id, name: c.name })}>Assign a branch</Action> : undefined}
                 />
               );
             })}
@@ -173,7 +186,8 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
         <EditLocationChainDialog
           open
           branch={editing}
-          canMoveChain={isOwner}
+          // F-1570: the gateway reads the edited branch's own organisation.
+          canMoveChain={editing.organization_owner === true}
           chains={(chains.data ?? []).map((c) => ({ ...c, locationCount: c.location_count ?? undefined }))}
           onClose={() => setEditing(null)}
           onSaved={async () => { await refreshBranches(); setEditing(null); }}

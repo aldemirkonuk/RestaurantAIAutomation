@@ -223,6 +223,8 @@ describe("branches carry their own last-changed date", () => {
         chain_id: "c1",
         chain_name: "Harbour Group",
         updated_at: "2026-09-01T08:30:00.000Z",
+        // No organisation row in this world: not its owner (F-1570).
+        organization_owner: false,
       },
     ]);
   });
@@ -249,5 +251,43 @@ describe("branches carry their own last-changed date", () => {
     expect(branches[0].updated_at).toBe("2026-08-11T12:00:00.000Z");
     expect(branches[0].city).toBeNull();
     expect(branches[0].chain_name).toBeNull();
+  });
+});
+
+describe("F-1570: each branch says whether the caller owns its organisation", () => {
+  const ura = [
+    {
+      restaurant_id: "r1",
+      restaurants: {
+        id: "r1",
+        name: "Kadıköy",
+        city: "Istanbul",
+        chain_id: null,
+        organization_id: "org-1",
+        updated_at: null,
+        restaurant_chains: null,
+      },
+    },
+  ];
+  const restaurants = [{ organization_id: "org-1" }];
+
+  it("an organisation owner who owns a house in it is its owner", async () => {
+    const { service } = makeService({
+      orgMembers: [{ organization_id: "org-1", role: "owner" }],
+      ura,
+      restaurants,
+    });
+    const [branch] = await service.getBranchesForUser("u1");
+    expect(branch.organization_owner).toBe(true);
+  });
+
+  it("a house owner by invite is the organisation's manager, so not its owner", async () => {
+    const { service } = makeService({
+      orgMembers: [{ organization_id: "org-1", role: "manager" }],
+      ura,
+      restaurants,
+    });
+    const [branch] = await service.getBranchesForUser("u1");
+    expect(branch.organization_owner).toBe(false);
   });
 });

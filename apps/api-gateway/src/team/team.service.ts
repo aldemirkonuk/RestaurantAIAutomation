@@ -20,6 +20,7 @@ import {
 } from "../notifications/push-hold";
 import { resolveBellLines } from "../notifications/resolve-bell-lines";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
+import { normalizeEmail } from "../passkeys/sign-in-codes.service";
 import { markMembershipLeft } from "../auth/membership-ended";
 import { leavesNoOwner, NO_OWNER_LEFT } from "../restaurants/last-owner";
 import { noticeToHouseLeads, recordAccessChange } from "./access-audit";
@@ -1430,7 +1431,7 @@ export class TeamService {
     if (member && !member.user_id) {
       const { data: standIn, error: standInErr } = await this.sb
         .from("team_members")
-        .select("invite_id")
+        .select("invite_id, email")
         .eq("id", memberId)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
@@ -1439,6 +1440,7 @@ export class TeamService {
         restaurantId,
         memberId,
         standIn?.invite_id ?? null,
+        normalizeEmail(standIn?.email) || null,
       );
     }
 
@@ -1586,33 +1588,45 @@ export class TeamService {
 
   /**
    * F-1545: the unused invite a "no account yet" roster row stands in for
-   * stops being good, the way `cancelPendingInvitesFrom` expires one. True
-   * when an invite was cancelled; false when there was none still open. A
-   * failed write throws before anything was removed.
+   * stops being good, the way `cancelPendingInvitesFrom` expires one. So does
+   * every other unused invite this house made to the row's address (F-1555):
+   * a re-invite points the row at the newest one only, and an older link
+   * would still let the person join. True when an invite was cancelled;
+   * false when there was none still open. A failed write throws before
+   * anything was removed.
    */
   private async cancelStandInInvite(
     restaurantId: string,
     memberId: string,
     inviteId: string | null,
+    email: string | null,
   ): Promise<boolean> {
-    if (!inviteId) return false;
+    if (!inviteId && !email) return false;
     const now = new Date().toISOString();
-    const { data, error } = await this.sb
-      .from("organization_invites")
-      .update({ expires_at: now })
-      .eq("id", inviteId)
-      .eq("restaurant_id", restaurantId)
-      .is("used_at", null)
-      .gt("expires_at", now)
-      .select("id");
-    if (error) {
-      this.logger.error(
-        `deleteMember could not cancel invite ${inviteId} for ${memberId} ` +
-          `in ${restaurantId}: ${error.message}`,
-      );
-      throw new InternalServerErrorException("Failed to remove member");
+    const live = () =>
+      this.sb
+        .from("organization_invites")
+        .update({ expires_at: now })
+        .eq("restaurant_id", restaurantId)
+        .is("used_at", null)
+        .gt("expires_at", now);
+    let cancelled = 0;
+    for (const [column, value] of [
+      ["id", inviteId],
+      ["target_email", email],
+    ] as const) {
+      if (!value) continue;
+      const { data, error } = await live().eq(column, value).select("id");
+      if (error) {
+        this.logger.error(
+          `deleteMember could not cancel invites (${column}) for ${memberId} ` +
+            `in ${restaurantId}: ${error.message}`,
+        );
+        throw new InternalServerErrorException("Failed to remove member");
+      }
+      cancelled += (data ?? []).length;
     }
-    return (data ?? []).length > 0;
+    return cancelled > 0;
   }
 
   /**

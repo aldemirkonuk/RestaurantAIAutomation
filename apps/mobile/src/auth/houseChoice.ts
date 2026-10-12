@@ -12,6 +12,8 @@
  * SecureStore; `state/session.ts` reads and writes the record.
  */
 
+import { routeAfterVerification } from "./outcomes";
+
 /** The SecureStore key. Kept across sign-out on purpose: ids and times only. */
 export const LAST_HOUSE_KEY = "mudavym.lastHouse.v1";
 
@@ -219,4 +221,57 @@ export function openHouse(
     name: here?.name ?? null,
     canSwitch: list.some((h) => h.id !== restaurantId),
   };
+}
+
+/**
+ * A membership waiting for this person to accept it (ADR 0229 fork 13): an
+ * invite join granted it before their address was proved, so it grants
+ * nothing until they say yes. Acceptance names the membership, not the house.
+ */
+export interface HeldHouse extends HouseSummary {
+  membershipId: string;
+  role: "owner" | "manager" | "staff" | null;
+}
+
+/** `/auth/houses`' `held`, or [] from a gateway that sends none. */
+export function parseHeld(raw: unknown): HeldHouse[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (h): h is HeldHouse =>
+      !!h &&
+      typeof h.id === "string" &&
+      typeof h.membershipId === "string" &&
+      typeof h.name === "string",
+  );
+}
+
+/**
+ * What the chooser does (F-1569). A phone joiner whose address is not proved
+ * yet has a held house and a session that cannot read its houses, so it goes
+ * to /verify-email first, where the mail and its link are explained. A held
+ * house keeps the person on the chooser to accept it, the way web
+ * ChooseHouse does; only no house and nothing held is /no-access.
+ */
+export function chooserStep(
+  emailVerified: boolean | undefined,
+  houses: HouseSummary[] | null,
+  held: HeldHouse[],
+): "verify" | "loading" | "noAccess" | "choose" {
+  if (emailVerified === false) return "verify";
+  if (houses === null) return "loading";
+  if (houses.length === 0 && held.length === 0) return "noAccess";
+  return "choose";
+}
+
+/**
+ * Where a session goes once its address is proved. A session in no house (a
+ * joiner whose house is held) goes to the chooser to accept it; F-1569 sent it
+ * to /get-started, which offers to open a restaurant instead.
+ */
+export function landingAfterVerification(
+  restaurantId: string | null | undefined,
+  progress: { menu_uploaded?: boolean | null } | null,
+): string {
+  if (!restaurantId) return "/choose-house";
+  return routeAfterVerification(progress);
 }

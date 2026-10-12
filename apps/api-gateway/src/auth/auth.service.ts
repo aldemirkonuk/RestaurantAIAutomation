@@ -2538,6 +2538,26 @@ export class AuthService {
     // mints cannot all see room (`sendInviteEmail`).
     const targetEmail = normalizeEmail(dto.targetEmail) || null;
     const emailSecret = targetEmail ? newInviteEmailSecret() : null;
+    // A new invite to an address replaces the earlier live one to it in this
+    // house (F-1555): the roster row will stand in for the new one only, so a
+    // removal that cancels it would otherwise leave the older link good.
+    // Expired before the insert, so the new invite is never caught by it. A
+    // failed write is logged, not refused: removing the person still expires
+    // every live invite to the address (`TeamService.cancelStandInInvite`).
+    if (targetEmail) {
+      const now = new Date().toISOString();
+      const { error: supersedeErr } = await this.databaseService.supabase
+        .from("organization_invites")
+        .update({ expires_at: now })
+        .eq("restaurant_id", restaurantId)
+        .eq("target_email", targetEmail)
+        .is("used_at", null)
+        .gt("expires_at", now);
+      if (supersedeErr)
+        this.logger.error(
+          `generateInvite could not expire earlier invites in ${restaurantId}: ${supersedeErr.message}`,
+        );
+    }
     const { data: invite, error } = await this.databaseService.supabase
       .from("organization_invites")
       .insert({
