@@ -116,6 +116,9 @@ export function houseDateLine(zone: string | null, now: Date = new Date()): stri
 export const KIND_BY_TYPE: Readonly<Record<string, string>> = {
   inventory_low_stock: 'Stock',
   low_stock: 'Stock',
+  // A till took back a poured glass, so a bottle needs counting by hand:
+  // api-gateway pos-hub/pos-hub.service.ts fileNeedsCountNote (F-1436).
+  inventory_needs_count: 'Stock',
   order_pending: 'Orders',
   overdue_order: 'Orders',
   order_inquiry: 'Orders',

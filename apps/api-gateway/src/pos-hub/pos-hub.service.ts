@@ -25,9 +25,11 @@ import { AreaRoutingService } from "../areas/area-routing.service";
 import { recipeMeasure } from "../beverages/cocktail-recipe";
 import {
   fileRefusedChecksNote,
+  tillName,
   type RefusedCheck,
   type RefusedChecksNote,
 } from "./refused-checks-note";
+import { createHash } from "crypto";
 
 /**
  * `record_glass_pour` COALESCEs a missing `bottle_size_ml` to 750 before it
@@ -279,7 +281,7 @@ function quoteClosedAt(value: unknown): string {
  * partition `lines`: every line counted there lands in exactly one of
  * notStock, booked, alreadyBooked, queued.* or failed.
  * `consumptionNotWritten` and `backdatedOver72h` are sub-counts of the lines
- * that moved stock.
+ * that moved stock; `alreadyCounted` is a sub-count of alreadyBooked.
  */
 export interface StockTally {
   /**
@@ -305,6 +307,13 @@ export interface StockTally {
   booked: number;
   /** A replay: an earlier import already moved this line's stock. */
   alreadyBooked: number;
+  /**
+   * F-1433, of alreadyBooked: sold before the item's last count of every
+   * shelf, and reached the hub after it (a nightly export, a till that synced
+   * late). The count already holds the sale, so no stock moved; the sale's
+   * consumption row is written, and errors[] names the item and the count.
+   */
+  alreadyCounted: number;
   /** Lines in pos_unresolved_lines, by the reason written there. */
   queued: { unmapped: number; no_sale_volume: number };
   /**
@@ -318,7 +327,12 @@ export interface StockTally {
   backdatedOver72h: number;
 }
 
-type StockFailureKind = "stock" | "queue" | "consumption" | "neverTaken";
+type StockFailureKind =
+  | "stock"
+  | "queue"
+  | "consumption"
+  | "neverTaken"
+  | "alreadyCounted";
 
 /**
  * The import report a check's stock effects count into (ADR 0281), keyed by
@@ -472,6 +486,7 @@ export class StockReport {
     notStock: 0,
     booked: 0,
     alreadyBooked: 0,
+    alreadyCounted: 0,
     queued: { unmapped: 0, no_sale_volume: 0 },
     failed: 0,
     consumptionNotWritten: 0,
@@ -490,6 +505,16 @@ export class StockReport {
   >();
   private overflowLines = 0;
   private readonly overflowKeys = new Set<string>();
+  /**
+   * F-1436: the items a person must count by hand (a poured glass the till
+   * took back), each with the first check that asked. errors[] reaches only
+   * the caller, and a webhook has none, so ingest() rings the house as well.
+   */
+  readonly needsCount = new Map<string, string>();
+
+  askForCount(label: string, checkId: string): void {
+    if (!this.needsCount.has(label)) this.needsCount.set(label, checkId);
+  }
 
   noteFailure(
     kind: StockFailureKind,
@@ -549,6 +574,12 @@ export class StockReport {
           // nothing looks like one to a person comparing the till with stock.
           out.push(
             `stock: "${g.label}" was voided on ${lines} before this hub booked its sale, so no stock was taken and none was returned (first on check ${g.checkId})`,
+          );
+          break;
+        case "alreadyCounted":
+          // F-1433: not a failure either; the message is the count's time.
+          out.push(
+            `stock: "${g.label}" was sold on ${lines} before the count of ${g.message}, so that count already holds it and no stock was taken again; the sale is kept (first on check ${g.checkId})`,
           );
           break;
       }
@@ -1669,10 +1700,17 @@ export class PosHubService {
     }
     // Grouped, bounded: one line per (failure kind, item), not one per line.
     errors.push(...stock.errorLines());
+    if (stock.needsCount.size > 0) {
+      await this.fileNeedsCountNote(
+        restaurantId,
+        providerKey,
+        stock.needsCount,
+      );
+    }
     const t = stock.tally;
     this.logger.log(
       `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${refusedUnreadableDate} refused for an unreadable closed_at, ${olderCopies} older copies skipped, ${wineItems} wine items; ` +
-        `stock booked ${t.booked}, already ${t.alreadyBooked}, queued ${t.queued.unmapped + t.queued.no_sale_volume}, failed ${t.failed}`,
+        `stock booked ${t.booked}, already ${t.alreadyBooked}, counted before ${t.alreadyCounted}, queued ${t.queued.unmapped + t.queued.no_sale_volume}, failed ${t.failed}`,
     );
     // ADR 0281 (amended 2026-10-05): one bell note per import that refused a
     // check, after the loop, never per check. It never throws.
@@ -1701,6 +1739,71 @@ export class PosHubService {
       stock: t,
       bellNote,
     };
+  }
+
+  /**
+   * F-1436: "count this bottle and correct its stock by hand" reached only
+   * errors[], which a webhook's till never reads. One inbox note per import
+   * names the items, for the bar (ADR 0218's ladder: the bar's people, and
+   * the owners and managers, are written to). Low priority: a row, no push,
+   * since a count waits for the next shift. The same items on the same checks
+   * sent again within a day add no second note (the group key). It never
+   * throws: the import has already said it in errors[].
+   */
+  private async fileNeedsCountNote(
+    restaurantId: string,
+    providerKey: string,
+    items: Map<string, string>,
+  ): Promise<void> {
+    const names = [...items.keys()].map((n) =>
+      n.length > 40 ? `${n.slice(0, 40)}…` : n,
+    );
+    if (!this.notifications) {
+      this.logger.warn(
+        `POS_NEEDS_COUNT_NOTE_NOT_FILED r=${restaurantId} source=${providerKey} items=${names.length}: the bell is not wired on this server`,
+      );
+      return;
+    }
+    const one = names.length === 1;
+    const shown = names.slice(0, 5);
+    const more = names.length - shown.length;
+    const list = shown.join(", ") + (more > 0 ? `, and ${more} more` : "");
+    const digest = createHash("sha256")
+      .update(
+        [...items.entries()]
+          .map(([name, checkId]) => `${name}\u0000${checkId}`)
+          .sort()
+          .join("\u0001"),
+      )
+      .digest("hex")
+      .slice(0, 16);
+    try {
+      const { inserted } = await this.notifications.persistForRestaurant(
+        restaurantId,
+        {
+          type: "inventory_needs_count",
+          title: one
+            ? `Count ${shown[0]}: a poured glass was taken back`
+            : `Count ${names.length} bottles: poured glasses were taken back`,
+          message:
+            `${tillName(providerKey)} took back a glass or part of a bottle of ${list} after it was poured. ` +
+            `A poured glass cannot go back on the shelf by itself, so count ${one ? "this bottle" : "these bottles"} and correct ${one ? "its" : "their"} stock by hand.`,
+          priority: "low",
+          actionUrl: "/inventory",
+          actionLabel: "Open inventory",
+          groupKey: `inventory_needs_count:${providerKey}:${digest}`,
+          metadata: { items: names.length },
+        },
+        { dedupeWithinMinutes: 24 * 60, area: "bar" },
+      );
+      this.logger.log(
+        `POS_NEEDS_COUNT_NOTE r=${restaurantId} source=${providerKey} items=${names.length} rows=${inserted}`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `POS_NEEDS_COUNT_NOTE_NOT_FILED r=${restaurantId} source=${providerKey}: ${err?.message ?? String(err)}`,
+      );
+    }
   }
 
   /**
@@ -2094,9 +2197,15 @@ export class PosHubService {
   private async loadInventoryVolumes(
     restaurantId: string,
     inventoryIds: string[],
-  ): Promise<{ volumes: Map<string, InventoryVolumes>; error: string | null }> {
+  ): Promise<{
+    volumes: Map<string, InventoryVolumes>;
+    /** F-1433: each row's last count of every shelf, as epoch ms. */
+    countedAt: Map<string, number>;
+    error: string | null;
+  }> {
     const out = new Map<string, InventoryVolumes>();
-    if (!inventoryIds.length) return { volumes: out, error: null };
+    const countedAt = new Map<string, number>();
+    if (!inventoryIds.length) return { volumes: out, countedAt, error: null };
     // ADR 0141, second correction 2026-09-12: SCOPED TO THE HOUSE. This read
     // had no restaurant filter, so it answered for another house's item as
     // readily as for this one's, and the caller poured whatever it returned.
@@ -2105,7 +2214,9 @@ export class PosHubService {
     const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_inventory")
-      .select("id, bottle_size_ml, pour_size_ml, menu_price_current")
+      .select(
+        "id, bottle_size_ml, pour_size_ml, menu_price_current, last_counted_at",
+      )
       .eq("restaurant_id", restaurantId)
       .in("id", inventoryIds);
     // An empty map is the safe degrade — resolveSaleVolume queues the line
@@ -2120,8 +2231,14 @@ export class PosHubService {
       );
     for (const row of data || []) {
       out.set(row.id, inventoryVolumesFromRow(row));
+      // F-1165: only a count of every shelf stamps last_counted_at, so a
+      // shelf count (whose shelf a sale may not drain) never stands here.
+      const counted = row.last_counted_at
+        ? Date.parse(String(row.last_counted_at))
+        : NaN;
+      if (Number.isFinite(counted)) countedAt.set(row.id, counted);
     }
-    return { volumes: out, error: error ? error.message : null };
+    return { volumes: out, countedAt, error: error ? error.message : null };
   }
 
   /**
@@ -2705,6 +2822,37 @@ export class PosHubService {
       }
       tally.alreadyBooked++;
     };
+    // F-1433: a sale that closed before the item's last count of every shelf
+    // but reaches the hub after it (a nightly export at 03:00 for a bar
+    // counted at 02:00, a till that synced late) is already in that count.
+    // Taking it off again took it twice. It moves no stock; its consumption
+    // row is written under the line's own key, so a replay writes it once,
+    // and errors[] says so. A count of one shelf does not stand here (a sale
+    // names no shelf), and a count at the sale's own instant or before it
+    // does not either: that sale is taken as before.
+    const saleMs = Date.parse(when.at);
+    const countedAfterSale = (inventoryId: string): string | null => {
+      const at = inventoryRead.countedAt.get(inventoryId);
+      return at !== undefined && saleMs < at
+        ? new Date(at).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+        : null;
+    };
+    const alreadyCounted = async (
+      lines: PlannedStockLine[],
+      countedAt: string,
+    ) => {
+      for (const l of lines) {
+        tally.alreadyBooked++;
+        tally.alreadyCounted++;
+        report.noteFailure(
+          "alreadyCounted",
+          l.it.name,
+          countedAt,
+          check.externalCheckId,
+        );
+        await consume(l, l.consumed, l.consumedQty, l.idem);
+      }
+    };
     if (ledger && !ledger.ok) {
       // Fail closed: without knowing what this check already moved, a sale
       // could be taken twice and a void could return what was never taken.
@@ -2740,10 +2888,24 @@ export class PosHubService {
           check.externalCheckId,
         );
       }
+      // F-1433: a sale already in a count took no stock but wrote its
+      // consumption row; the void takes that row back (F-1197's mark). Only
+      // an item with a count can hold one, so no other item is read.
+      const prefix = checkLedgerPrefix(source, check.externalCheckId);
+      for (const id of new Set(planned.map((l) => l.inventoryId))) {
+        if (!inventoryRead.countedAt.has(id)) continue;
+        const name = planned.find((l) => l.inventoryId === id)?.it.name ?? id;
+        await reverseConsumption(id, name, `${prefix}${id}:void:0`, false);
+      }
     } else if (ledger && ledger.empty) {
       // The first import of a closed check: each line under its own B15 key,
       // exactly as before, so a replay racing this import is still a no-op.
       for (const line of planned) {
+        const counted = countedAfterSale(line.inventoryId);
+        if (counted) {
+          await alreadyCounted([line], counted);
+          continue;
+        }
         const reason = `POS sale (${line.label}): ${line.it.name}`;
         const error =
           line.bottles > 0
@@ -2788,6 +2950,7 @@ export class PosHubService {
         const lines = planned.filter((l) => l.inventoryId === inventoryId);
         const rows = ledger.rows.get(inventoryId) ?? 0;
         const name = lines[0]?.it.name ?? `inventory item ${inventoryId}`;
+        const counted = countedAfterSale(inventoryId);
 
         // Whole bottles.
         const bottleLines = lines.filter((l) => l.bottles > 0);
@@ -2827,6 +2990,9 @@ export class PosHubService {
               cutKey,
             );
           }
+        } else if (bottleDiff > 0 && counted) {
+          // F-1433: what this copy adds was sold before the count.
+          await alreadyCounted(bottleLines, counted);
         } else {
           const kind = isVoid ? "void" : "bottles";
           const key = `${prefix}${inventoryId}:${kind}:${rows}`;
@@ -2920,6 +3086,7 @@ export class PosHubService {
               }
             } else if ((ledger.ml.get(inventoryId) ?? 0) > 0) {
               fail(l.it.name, POURED_CANNOT_RETURN, 1);
+              report.askForCount(l.it.name, check.externalCheckId);
             } else {
               report.noteFailure(
                 "neverTaken",
@@ -2945,6 +3112,9 @@ export class PosHubService {
           for (const l of pourLines) {
             await replayConsumption(l, l.pours * l.pourMl);
           }
+        } else if (wantMl > hadMl && counted) {
+          // F-1433: what this copy adds was sold before the count.
+          await alreadyCounted(pourLines, counted);
         } else if (wantMl > hadMl) {
           const key = `${prefix}${inventoryId}:ml:${rows}`;
           const error = await pour(
@@ -2970,6 +3140,7 @@ export class PosHubService {
           // poured glass has no automatic way back (B19 covers only a whole
           // voided check), so a person corrects it; errors[] says so.
           fail(name, POURED_CANNOT_RETURN, pourLines.length);
+          report.askForCount(name, check.externalCheckId);
         }
       }
     }

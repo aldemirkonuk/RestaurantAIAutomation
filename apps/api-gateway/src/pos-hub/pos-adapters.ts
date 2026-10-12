@@ -266,6 +266,22 @@ export const genericAdapter: PosAdapter = {
   },
 };
 
+/**
+ * F-1437: a Square line's unit price as sold. `base_price_money` is the price
+ * before discounts, so a comp rung as a 100% discount kept the full price and
+ * the comp rule (a till price of 0 is a comp, F-1198) never saw its 0. The
+ * line's `total_discount_money` is for the whole line, so it is spread over
+ * the quantity. No base price is still no price (null), not 0.
+ */
+const squareUnitPrice = (li: any): number | null => {
+  const base = cents(li?.base_price_money?.amount);
+  if (base === null) return null;
+  const discount = cents(li?.total_discount_money?.amount) ?? 0;
+  const qty = qtyOf(li?.quantity);
+  if (discount <= 0 || !(qty > 0)) return base;
+  return Math.max(0, base - discount / qty);
+};
+
 // ---------------------------------------------------------------------------
 // Square — Orders API (order object or webhook envelope)
 // ---------------------------------------------------------------------------
@@ -338,7 +354,7 @@ export const squareAdapter: PosAdapter = {
               externalItemId: li.catalog_object_id ?? null,
               category: null,
               qty: qtyOf(li.quantity),
-              price: cents(li.base_price_money?.amount) ?? null,
+              price: squareUnitPrice(li),
               modifierIds: modifierIdsOf(
                 li.modifiers,
                 (m) => m?.catalog_object_id,
