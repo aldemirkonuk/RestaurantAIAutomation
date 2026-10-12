@@ -38,6 +38,7 @@ const OTHER = "prov-winebow";
 type DoorRow = ReceiptEventRow & {
   provider_id: string | null;
   order_number: string | null;
+  order_source?: string | null;
 };
 
 function regs(over: Partial<HouseRegisters> = {}): HouseRegisters {
@@ -1437,5 +1438,38 @@ describe("who is sent the scorecard's money (F-561)", () => {
     expect(amountsFor({ role: "sommelier" })).toBe("withheld");
     expect(amountsFor({ role: null })).toBe("withheld");
     expect(amountsFor(null)).toBe("withheld");
+  });
+});
+
+describe("an order logged at the door (F-669, founder S198)", () => {
+  it("is listed under on-time as 'logged at door' and never counted", () => {
+    const rows = [
+      arrival("2026-09-10T09:00:00Z", "2026-09-10"),
+      arrival("2026-09-11T09:00:00Z", "2026-09-10"),
+      // Booked at the door; its "expected date" is not a promise anyone made.
+      arrival("2026-09-12T09:00:00Z", "2026-09-01", { source: "retroactive" }),
+      arrival("2026-09-13T09:00:00Z", null, { source: "retroactive" }),
+    ];
+    const m = measure(build(regs({ arrivals: ok(rows) })).card, "onTime");
+    expect(m.sample).toBe(2);
+    expect(m.hits).toBe(1);
+    expect(m.excluded).toEqual([{ because: "logged at door", count: 2 }]);
+    expect(m.rows).toBe(4);
+  });
+
+  it("keeps a clean or short count out of lines-as-ordered, and still counts a refusal", () => {
+    const rows = [
+      door("accepted", "2026-09-10T09:00:00Z"),
+      door("accepted", "2026-09-10T10:00:00Z", { order_source: "retroactive" }),
+      door("short", "2026-09-10T11:00:00Z", { order_source: "retroactive" }),
+      door("refused", "2026-09-10T12:00:00Z", {
+        order_source: "retroactive",
+        refusal_reason: "broken_case",
+      }),
+    ];
+    const m = measure(build(regs({ door: ok(rows) })).card, "linesAsOrdered");
+    expect(m.sample).toBe(2);
+    expect(m.hits).toBe(1);
+    expect(m.excluded).toEqual([{ because: "logged at door", count: 2 }]);
   });
 });

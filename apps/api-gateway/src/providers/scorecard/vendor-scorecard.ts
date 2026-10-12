@@ -158,6 +158,12 @@ export interface OrderArrivalRow {
    * existed.
    */
   cancel_reason_code?: string | null;
+  /**
+   * `procurement_orders.source`. 'retroactive' is an order logged at the door
+   * after its truck came ("Logged at door", F-669): listed, never counted for
+   * on-time.
+   */
+  source?: string | null;
   /** The status this order held the instant its cancellation was written. */
   cancelled_from_status?: string | null;
   cancelled_at?: string | null;
@@ -503,6 +509,27 @@ export function onTimeEntries(
     }
     const landed = ms(o.delivered_at);
     if (landed === null) continue;
+    if (o.source === "retroactive") {
+      // Logged at the door (F-669, founder S198): listed so the habit shows,
+      // outside the rate — the vendor was never asked by a date.
+      const w = whichWindow(landed, b);
+      if (!w) continue;
+      out.push({
+        id: `onTime:${o.id}`,
+        measure: "onTime",
+        at: o.delivered_at as string,
+        window: w,
+        open: false,
+        title: o.order_number || COPY.entry.order(o.id),
+        source: { table: "procurement_orders", id: o.id, orderId: o.id },
+        counted: false,
+        hit: null,
+        excludedBecause: COPY.entry.loggedAtDoor,
+        detail: COPY.entry.loggedAtDoorOnTimeDetail,
+        daysLate: null,
+      });
+      continue;
+    }
     const deadline = deadlineOf(o.expected_delivery_date, zone);
     const verdict = deadline ? landedVerdict(landed, deadline) : null;
     const late = verdict === "late";
@@ -750,6 +777,8 @@ export function doorEntries(
   rows: (ReceiptEventRow & {
     provider_id: string | null;
     order_number: string | null;
+    /** The order's `source`; 'retroactive' = logged at the door (F-669). */
+    order_source?: string | null;
   })[],
   b: Bounds,
 ): DocketEntry[] {
@@ -806,6 +835,23 @@ export function doorEntries(
     const photographed = Boolean(verdict.damage_photo_path);
     const outcome = String(verdict.outcome).toLowerCase();
     const asOrdered = outcome === "accepted" && rejected <= 0 && !photographed;
+    // Logged at the door (F-669, founder S198): no order was placed, so a
+    // clean count or a "short" has nothing to be measured against and is
+    // listed, not counted. A refusal, a part-refused line or a photographed
+    // case is still the vendor's quality, and still counts.
+    if (
+      chosen.order_source === "retroactive" &&
+      (asOrdered || outcome === "short")
+    ) {
+      out.push({
+        ...base,
+        counted: false,
+        hit: null,
+        excludedBecause: COPY.entry.loggedAtDoor,
+        detail: COPY.entry.loggedAtDoorLinesDetail,
+      });
+      continue;
+    }
     let detail: string;
     if (outcome === "refused") {
       detail = COPY.entry.refused(

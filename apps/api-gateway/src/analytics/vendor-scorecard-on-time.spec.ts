@@ -173,8 +173,40 @@ describe("getVendorScorecard reads the one on-time rule", () => {
       couldNotSupply: 0,
       houseDecisionCancels: 0,
       uncategorisedCancels: 0,
+      loggedAtDoor: 0,
     });
     expect(out.vendors[0].onTimeRate).toBeCloseTo(1 / 2);
+  });
+
+  it("keeps an order logged at the door out of on-time and lead time, and says how many (F-669)", async () => {
+    // A day late by its stated date, and three hours from "created" to
+    // landing — a lead time that would flatter the vendor. It was never
+    // placed through the house, so it is neither.
+    const logged = order({
+      id: "o5",
+      status: "DELIVERED",
+      source: "retroactive",
+      created_at: "2026-09-12T06:00:00Z",
+      expected_delivery_date: "2026-09-11",
+      delivered_at: "2026-09-12T09:00:00Z",
+    });
+    const without: any = await service(istanbulHouses, orders, [
+      notYet(OTHER),
+    ]).getVendorScorecard(HOUSE);
+    const out: any = await service(
+      istanbulHouses,
+      [...orders, logged],
+      [notYet(OTHER)],
+    ).getVendorScorecard(HOUSE);
+    expect(out.vendors[0].onTimeCounts).toMatchObject({
+      onTime: 1,
+      late: 1,
+      loggedAtDoor: 1,
+    });
+    expect(out.vendors[0].onTimeRate).toBeCloseTo(1 / 2);
+    expect(out.vendors[0].leadTimeDays).toEqual(
+      without.vendors[0].leadTimeDays,
+    );
   });
 
   it("counts the order still out as late once this house answered Not yet (question 8, confirmed)", async () => {

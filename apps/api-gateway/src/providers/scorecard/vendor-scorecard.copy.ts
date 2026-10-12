@@ -326,6 +326,13 @@ export const COPY = {
     ourMessage: "Our message",
 
     noExpectedDate: "no expected date",
+    // F-669 (founder S198): a phoned-in delivery booked at the door. In
+    // spend and stock; never a timing or as-ordered verdict on the vendor.
+    loggedAtDoor: "logged at door",
+    loggedAtDoorOnTimeDetail:
+      "Booked at the door after the truck came, so it was never placed through the house and cannot be early or late.",
+    loggedAtDoorLinesDetail:
+      "Booked at the door after the truck came, so there was no order to check the lines against.",
     noExpectedDateDetail:
       "Landed with no expected date on the order, so it cannot be early or late.",
     onTime: (date: string): string => `Landed by the expected date (${date}).`,

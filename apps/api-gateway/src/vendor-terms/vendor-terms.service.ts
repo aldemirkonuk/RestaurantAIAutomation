@@ -264,6 +264,7 @@ interface OrderRow {
   total_cost: string | number | null;
   status: string | null;
   currency?: string | null;
+  source?: string | null;
 }
 
 function num(v: string | number | null | undefined): number | null {
@@ -313,6 +314,7 @@ export class VendorTermsService {
         totalCost: num(o.total_cost),
         status: o.status,
         currency: o.currency ?? null,
+        source: o.source ?? null,
       });
       ordersByProvider.set(o.provider_id, list);
     }
@@ -897,7 +899,7 @@ export class VendorTermsService {
         this.databaseService.client
           .from("procurement_orders")
           .select(
-            "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status, currency",
+            "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status, currency, source",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)

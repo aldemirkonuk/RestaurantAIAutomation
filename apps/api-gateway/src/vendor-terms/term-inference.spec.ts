@@ -189,6 +189,44 @@ describe("lead time", () => {
   });
 });
 
+describe("an order logged at the door is not a placement (F-669, founder S198)", () => {
+  // Booked after its truck came: its request date is when somebody typed it
+  // in, a same-day "lead time" that would make the vendor look instant.
+  const logged = order({
+    requestedAt: "2026-09-05T18:00:00Z",
+    deliveredAt: "2026-09-05T09:00:00Z",
+    source: "retroactive",
+  });
+  const placed = [
+    order({
+      requestedAt: "2026-09-01T08:00:00Z",
+      deliveredAt: "2026-09-04T08:00:00Z",
+    }),
+    order({
+      requestedAt: "2026-09-02T08:00:00Z",
+      deliveredAt: "2026-09-05T08:00:00Z",
+    }),
+  ];
+
+  it("keeps it out of the lead time", () => {
+    const f = inferLeadTime([...placed, logged, logged], "UTC");
+    expect(f.known).toBe(true);
+    if (!f.known) return;
+    expect(f.n).toBe(2);
+    expect(f.medianDays).toBe(3);
+  });
+
+  it("keeps it out of the order cutoff", () => {
+    const only = inferOrderCutoff([logged, logged, logged], "UTC");
+    expect(only.known).toBe(false);
+  });
+
+  it("still counts its arrival weekday, because the truck did come", () => {
+    const f = inferDeliveryWeekdays([logged], "UTC");
+    expect(f.n).toBe(1);
+  });
+});
+
 describe("order cutoff — a bracket, never a time", () => {
   it("brackets the cutoff between the latest hit and the earliest miss", () => {
     const rows = [

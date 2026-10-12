@@ -342,7 +342,7 @@ export class AdvancedAnalyticsService {
         client
           .from("procurement_orders")
           .select(
-            "id, provider_id, providers(name), total_cost, currency, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+            "id, provider_id, providers(name), total_cost, currency, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status, source",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -656,8 +656,14 @@ export class AdvancedAnalyticsService {
       const delivered = os.filter((o) =>
         hasStatus(o.status, ORDER_ARRIVED_STATUSES),
       );
+      // An order logged at the door (source 'retroactive', F-669, founder
+      // S198) was written down after its truck came: its created_at is not a
+      // placement, so it is kept out of lead time and on-time. It stays in
+      // spend and prices below.
       const leadTimes = delivered
-        .filter((o) => o.delivered_at && o.created_at)
+        .filter(
+          (o) => o.delivered_at && o.created_at && o.source !== "retroactive",
+        )
         .map(
           (o) =>
             (new Date(o.delivered_at).getTime() -
@@ -692,8 +698,15 @@ export class AdvancedAnalyticsService {
         couldNotSupply: 0,
         houseDecisionCancels: 0,
         uncategorisedCancels: 0,
+        // Logged at the door, never placed through the house (F-669):
+        // informational, outside the rate.
+        loggedAtDoor: 0,
       };
       for (const o of os) {
+        if (o.source === "retroactive") {
+          counts.loggedAtDoor += 1;
+          continue;
+        }
         if (o.status === ProcurementOrderStatus.CANCELLED) {
           const from = o.cancelled_from_status as ProcurementOrderStatus | null;
           if (
