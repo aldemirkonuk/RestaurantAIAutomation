@@ -21,6 +21,7 @@ import {
   eventDayLabel,
   eventTimeLabel,
   eventTitle,
+  quietTeamWords,
   teamIsQuiet,
 } from "@/components/team/teamEvents";
 import { readState } from "@/components/today/pulseStripView";
@@ -220,7 +221,7 @@ export default function TeamScreen() {
         }) ? (
           <EmptyState
             title="Quiet in here"
-            message="Schedule shifts and events from the web dashboard; they show up here live."
+            message={quietTeamWords(fullRota)}
           />
         ) : null}
       </ScrollView>

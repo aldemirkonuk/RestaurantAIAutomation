@@ -101,3 +101,25 @@ export function describeInviteRejection(reason: string | undefined): string {
       return "This invite can't be used. Ask for a fresh one.";
   }
 }
+
+/**
+ * Joining lands in the house the invite names (ADR 0164, R1; F-1455). The
+ * accept route mints nothing, so the session stays where it was until the
+ * phone switches it, as the web does after the same accept. True when the
+ * session is in that house (or the reply named none); false when the switch
+ * was refused, and the person then chooses the house themselves.
+ */
+export async function openInvitedHouse(
+  restaurantId: string | null | undefined,
+  deps: {
+    currentHouse: string | null | undefined;
+    chooseHouse: (houseId: string) => Promise<boolean>;
+  },
+): Promise<boolean> {
+  if (!restaurantId || restaurantId === deps.currentHouse) return true;
+  return deps.chooseHouse(restaurantId).catch(() => false);
+}
+
+/** Said when the invited house could not be opened after the accept. */
+export const INVITED_HOUSE_NOT_OPENED =
+  "You joined, but that restaurant couldn't be opened just now. Choose it from your restaurants.";

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, ScrollView, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -38,6 +38,7 @@ import {
 import { useSession } from "@/state/session";
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
+import { holdUnsavedCount, releaseUnsavedCount } from "@/lib/notificationRoute";
 import { holdsHouseMoney } from "@/lib/receiptMoney";
 import { readHousePrice } from "@/lib/houseMoney";
 import {
@@ -127,6 +128,22 @@ export default function ReceivingScreen() {
   const [sweepKey, setSweepKey] = useState(0);
   const [breatheKey, setBreatheKey] = useState(0);
   const [sealed, setSealed] = useState(false);
+  // Figures typed in and not yet saved (F-1452): a push from another house
+  // asks before it moves the phone and drops them.
+  const countOpen =
+    !sealed &&
+    (acceptedRaw != null ||
+      rejectedQty > 0 ||
+      invoiceQtyRaw != null ||
+      priceText != null ||
+      rejectedReason !== "" ||
+      note !== "");
+  useEffect(() => {
+    if (!orderId) return;
+    if (countOpen) holdUnsavedCount(orderId);
+    else releaseUnsavedCount(orderId);
+    return () => releaseUnsavedCount(orderId);
+  }, [countOpen, orderId]);
   // A count for this order already waiting on this phone (F-951): a second one
   // would book the same bottles twice, so it is refused while the first waits.
   const user = useSession((s) => s.user);

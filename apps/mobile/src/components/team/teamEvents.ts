@@ -61,3 +61,14 @@ export function teamIsQuiet(input: {
     input.upcomingCount === 0
   );
 }
+
+/**
+ * What the quiet Team tab says (F-1456). Someone who reads the whole rota
+ * plans it, and plans on the web; staff do not, so they are told when their
+ * own shifts arrive instead of being sent to a dashboard they cannot use.
+ */
+export function quietTeamWords(readsWholeRota: boolean): string {
+  return readsWholeRota
+    ? "Schedule shifts and events from the web dashboard; they show up here live."
+    : "Nothing on for you yet. Your shifts show here once your manager publishes the week.";
+}

@@ -27,6 +27,9 @@ export interface FeedItem {
   notificationId: string | null;
   draftContent: string | null;
   meta: Record<string, any>;
+  /** An alert's notice link, as the inbox opens it (F-1451). Absent from an
+   *  older gateway. */
+  actionUrl?: string | null;
 }
 
 export interface FeedResponse {
@@ -56,8 +59,15 @@ export interface TodayPulse {
   checksToday: number | null;
   revenueLastWeek: number | null;
   deltaPct: number | null;
-  /** null when the decision feed could not be read — unknown, not zero. */
+  /**
+   * Orders, replies and deliveries waiting; notices are not decisions
+   * (F-1450). null when the decision feed could not be read — unknown, not
+   * zero.
+   */
   pendingDecisions: number | null;
+  /** True when there were more unread notices than the feed reads, so more
+   *  may be waiting than the count says (F-1450). Absent from an older gateway. */
+  decisionsMore?: boolean;
   criticalCount: number | null;
   /** The house's midnight that opened tonight; null when it has no zone. */
   windowStart: string | null;

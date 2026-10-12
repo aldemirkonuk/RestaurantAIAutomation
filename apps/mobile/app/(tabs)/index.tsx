@@ -19,6 +19,11 @@ import { PulseStrip } from "@/components/today/PulseStrip";
 import { DecisionCard } from "@/components/today/DecisionCard";
 import { FeedZero } from "@/components/today/FeedZero";
 import { WaitingStrip } from "@/components/today/WaitingStrip";
+import {
+  FEED_ZERO_START,
+  feedZeroStep,
+  type FeedZeroWatch,
+} from "@/components/today/pulseStripView";
 import { color, space } from "@/design/tokens";
 import { useFeed, useHouses, useUnreadCount } from "@/api/queries";
 import { openHouse } from "@/auth/houseChoice";
@@ -122,17 +127,20 @@ export default function TodayScreen() {
     (i) => !locallyGone.has(i.id) && !hidden[i.id] && !waiting.has(i.id),
   );
 
-  // Feed Zero fires when the last visible decision leaves — once per session.
+  // Feed Zero fires when the last visible decision leaves — once per house,
+  // and only over a feed that has loaded for that house (F-1449).
   const [showZero, setShowZero] = useState(false);
-  const firedZero = useRef(false);
-  const prevCount = useRef(0);
+  const zeroWatch = useRef<FeedZeroWatch>(FEED_ZERO_START);
+  const feedSettled = data !== undefined && !isLoading;
   useEffect(() => {
-    if (prevCount.current > 0 && items.length === 0 && !firedZero.current) {
-      firedZero.current = true;
-      setShowZero(true);
-    }
-    prevCount.current = items.length;
-  }, [items.length]);
+    const step = feedZeroStep(zeroWatch.current, {
+      house: user?.restaurantId,
+      count: items.length,
+      settled: feedSettled,
+    });
+    zeroWatch.current = step.watch;
+    if (step.show) setShowZero(true);
+  }, [items.length, feedSettled, user?.restaurantId]);
 
   // F-675: the header names the open house as well as greeting the person.
   const header = todayHeader({

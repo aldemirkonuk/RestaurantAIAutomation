@@ -277,3 +277,95 @@ describe("today pulse carries the house's money (F-885)", () => {
     expect(pulse.timezone).toBeNull();
   });
 });
+
+/**
+ * F-1450: the pulse said "N decisions waiting" with N = every card, so each
+ * unread notice counted as a decision, and the notices were read 40 at a time
+ * with nothing said about the rest. F-1451: an alert card carried no link,
+ * so tapping it opened nothing while the inbox opened its place.
+ */
+describe("what the feed counts as a decision (F-1450, F-1451)", () => {
+  function withFeed(notices: unknown[], orders: unknown[] = []) {
+    const notifications = {
+      getUnreadNotifications: jest.fn().mockResolvedValue(notices),
+    };
+    const service = new MobileService(
+      {
+        supabase: {
+          from: () => ({
+            select: () => ({
+              in: () => Promise.resolve({ data: [], error: null }),
+            }),
+          }),
+        },
+      } as never,
+      {
+        listPendingOrders: jest.fn().mockResolvedValue(orders),
+      } as never,
+      { getPendingConversations: jest.fn().mockResolvedValue([]) } as never,
+      notifications as never,
+    );
+    return { service, notifications };
+  }
+  const notice = (i: number, over: Record<string, unknown> = {}) => ({
+    id: `n-${i}`,
+    type: "low_stock",
+    title: `Notice ${i}`,
+    message: "",
+    priority: "medium",
+    createdAt: "2026-10-11T10:00:00.000Z",
+    metadata: {},
+    ...over,
+  });
+
+  it("counts orders and deliveries to count, not every unread notice", async () => {
+    const { service } = withFeed(
+      [
+        notice(1),
+        notice(2),
+        notice(3, { type: "invoice_received", metadata: { orderId: "o-9" } }),
+      ],
+      [{ id: "o-1", providerId: null, requestedAt: "2026-10-11T09:00:00Z" }],
+    );
+    const feed = await service.getFeed("u-1", "r-1");
+    expect(feed.counts.total).toBe(4);
+    expect(feed.counts.decisions).toBe(2);
+
+    const pulse = await service.getTodayPulse("u-1", "r-1");
+    expect(pulse.pendingDecisions).toBe(2);
+    expect(pulse.decisionsMore).toBe(false);
+  });
+
+  it("reads one notice past the cap and says there are more", async () => {
+    const { service, notifications } = withFeed(
+      Array.from({ length: 41 }, (_, i) => notice(i)),
+    );
+    const feed = await service.getFeed("u-1", "r-1");
+    expect(notifications.getUnreadNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 41 }),
+    );
+    expect(feed.items).toHaveLength(40);
+    expect(feed.noticesMore).toBe(true);
+
+    const pulse = await service.getTodayPulse("u-1", "r-1");
+    expect(pulse.decisionsMore).toBe(true);
+  });
+
+  it("says nothing about more when every notice was read", async () => {
+    const { service } = withFeed(
+      Array.from({ length: 40 }, (_, i) => notice(i)),
+    );
+    const feed = await service.getFeed("u-1", "r-1");
+    expect(feed.items).toHaveLength(40);
+    expect(feed.noticesMore).toBeUndefined();
+  });
+
+  it("carries the notice's link on its alert card (F-1451)", async () => {
+    const { service } = withFeed([
+      notice(1, { actionUrl: "/inventory?highlight=w-7" }),
+    ]);
+    const feed = await service.getFeed("u-1", "r-1");
+    expect(feed.items[0].kind).toBe("alert");
+    expect(feed.items[0].actionUrl).toBe("/inventory?highlight=w-7");
+  });
+});

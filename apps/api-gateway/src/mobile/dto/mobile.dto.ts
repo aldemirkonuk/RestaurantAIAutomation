@@ -51,6 +51,9 @@ export interface FeedItem {
   notificationId: string | null;
   draftContent: string | null;
   meta: Record<string, any>;
+  /** An alert's notice link, so the card opens what the inbox opens
+   *  (F-1451). */
+  actionUrl?: string | null;
 }
 
 export interface FeedResponse {
@@ -61,8 +64,14 @@ export interface FeedResponse {
     draftApprovals: number;
     receiptVerifications: number;
     alerts: number;
+    /** Orders, replies and deliveries to count: what waits on a person's
+     *  say. Alerts and discrepancy reports are not decisions (F-1450). */
+    decisions: number;
   };
   generatedAt: string;
+  /** More unread notices than the feed reads (F-1450): the rest are in the
+   *  inbox, and the feed's counts may be short. */
+  noticesMore?: true;
   /** Present when the caller does not hold the house's money (F-957): the
    *  order cards carry no amount, in `amount` or in the subtitle. */
   amountsWithheld?: true;
@@ -87,8 +96,11 @@ export interface TodayPulseResponse {
   checksToday: number | null;
   revenueLastWeek: number | null;
   deltaPct: number | null;
-  /** null when the decision feed could not be read — unknown, not zero. */
+  /** Orders, replies and deliveries waiting (`counts.decisions`; F-1450).
+   *  null when the decision feed could not be read — unknown, not zero. */
   pendingDecisions: number | null;
+  /** More unread notices than the feed reads, so more may wait (F-1450). */
+  decisionsMore?: boolean;
   criticalCount: number | null;
   /** The house's midnight that opened tonight; null when it has no zone. */
   windowStart: string | null;

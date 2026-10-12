@@ -11,7 +11,12 @@ import {
 import { space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
 import { useSession } from "@/state/session";
-import { describeInviteRejection, normalizeInviteCode } from "@/auth/inviteCode";
+import {
+  INVITED_HOUSE_NOT_OPENED,
+  describeInviteRejection,
+  normalizeInviteCode,
+  openInvitedHouse,
+} from "@/auth/inviteCode";
 import { authErrorMessage, statusOf } from "@/auth/outcomes";
 import { acceptInvite, fetchInvitePreview, type InvitePreview } from "@/api/auth";
 
@@ -40,6 +45,8 @@ export default function InviteLandingScreen() {
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  // The invited house could not be opened after the accept (F-1455).
+  const [notMoved, setNotMoved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,8 +72,14 @@ export default function InviteLandingScreen() {
     setAccepting(true);
     setError(null);
     try {
-      await acceptInvite(code);
+      const result = await acceptInvite(code);
       await refreshUser();
+      // The web switches to the house just joined; so does the phone (F-1455).
+      const moved = await openInvitedHouse(result?.restaurantId, {
+        currentHouse: useSession.getState().user?.restaurantId,
+        chooseHouse: (houseId) => useSession.getState().chooseHouse(houseId),
+      });
+      setNotMoved(!moved);
       setAccepted(true);
       haptic.confirm();
     } catch (e) {
@@ -101,7 +114,17 @@ export default function InviteLandingScreen() {
         <AuthNotice tone="success">
           <AppText variant="footnote">{where} is on your account now.</AppText>
         </AuthNotice>
-        <AuthButton label="Open Mudavym" onPress={() => router.replace("/")} />
+        {notMoved ? (
+          <AuthNotice tone="warning">
+            <AppText variant="footnote" tone="warning">
+              {INVITED_HOUSE_NOT_OPENED}
+            </AppText>
+          </AuthNotice>
+        ) : null}
+        <AuthButton
+          label="Open Mudavym"
+          onPress={() => router.replace((notMoved ? "/choose-house" : "/") as never)}
+        />
       </AuthShell>
     );
   }
