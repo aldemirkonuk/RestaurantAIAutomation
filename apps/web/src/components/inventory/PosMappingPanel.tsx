@@ -39,9 +39,12 @@ import {
   getItemMappings,
   getMatchProposals,
   getUnresolvedLines,
+  listHouseCocktails,
   rejectProposal,
   runCatalogMatch,
   setSaleUnits,
+  upsertMapping,
+  type HouseCocktail,
   type PosItemMapping,
   type PosMatchProposal,
   type UnresolvedLineGroup,
@@ -131,6 +134,9 @@ export function PosMappingPanel({
     useState<LoadState<UnresolvedLinesResponse>>(emptyState);
   const [mappings, setMappings] =
     useState<LoadState<PosItemMapping[]>>(emptyState);
+  // F-1469: the house's cocktails, so a button can be linked to one.
+  const [cocktails, setCocktails] =
+    useState<LoadState<HouseCocktail[]>>(emptyState);
   const [answers, setAnswers] = useState<Record<string, UnitAnswer>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -171,12 +177,18 @@ export function PosMappingPanel({
 
     // Each read reports its own outcome. One failing must not blank the others,
     // and none of them may report a failure as "nothing here".
-    const [p, u, m, t] = await Promise.allSettled([
+    const [p, u, m, t, c] = await Promise.allSettled([
       getMatchProposals(restaurantId, "pending"),
       getUnresolvedLines(restaurantId),
       getItemMappings(restaurantId),
       getTargetMargin(),
+      listHouseCocktails(restaurantId),
     ]);
+    setCocktails(
+      c.status === "fulfilled"
+        ? { data: c.value, error: null, loading: false }
+        : { data: null, error: errText(c.reason), loading: false },
+    );
     setHousePour(
       t.status === "fulfilled" && t.value?.pour?.confirmed
         ? t.value.pour.ml
@@ -322,6 +334,45 @@ export function PosMappingPanel({
       onChanged?.();
     } catch (e) {
       toast.error(`Could not record the unit: ${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * F-1469: this button sells one of the house's cocktails. The mapping names
+   * the cocktail and no stock row, so each sale takes the cocktail's recipe
+   * (its linked lines) and nothing else. A proposal it answers is set aside:
+   * the stock row it offered is not what the button is.
+   */
+  const linkCocktail = async (
+    button: { source: string; external_item_id: string | null; item_name: string },
+    cocktailId: string,
+    proposalId?: string,
+  ) => {
+    const cocktail = (cocktails.data ?? []).find((c) => c.id === cocktailId);
+    if (!cocktail) return;
+    setBusy(true);
+    try {
+      await upsertMapping(
+        {
+          source: button.source,
+          external_item_id: button.external_item_id ?? undefined,
+          item_name: button.item_name,
+          is_wine: false,
+          inventory_id: null,
+          cocktail_id: cocktail.id,
+        },
+        restaurantId,
+      );
+      if (proposalId) await rejectProposal(proposalId, restaurantId);
+      toast.success(
+        `From the next sale, ${button.item_name} takes the ${cocktail.name} recipe off the shelf.`,
+      );
+      await load();
+      onChanged?.();
+    } catch (e) {
+      toast.error(`Could not link ${button.item_name} to ${cocktail.name}: ${errText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -567,6 +618,12 @@ export function PosMappingPanel({
                       >
                         Not this
                       </button>
+                      <CocktailPick
+                        itemName={p.item_name}
+                        cocktails={cocktails}
+                        disabled={busy}
+                        onPick={(id) => void linkCocktail(p, id, p.id)}
+                      />
                     </div>
                     {otherFor === p.id && (
                       <OtherServeForm
@@ -692,7 +749,8 @@ export function PosMappingPanel({
                 These rang up and matched nothing in inventory. Food belongs
                 here and is safe to ignore. Any drink here (wine, beer,
                 spirits, soft drinks) moves no stock until you add it to
-                inventory, then "Re-read POS catalog".
+                inventory, then "Re-read POS catalog". A cocktail moves stock
+                once you pick it here: each sale then takes its recipe.
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {stillUnmapped.map((g) => (
@@ -703,6 +761,12 @@ export function PosMappingPanel({
                   >
                     {g.item_name}
                     <b className="font-mono text-gray-400">{g.qty_total}</b>
+                    <CocktailPick
+                      itemName={g.item_name}
+                      cocktails={cocktails}
+                      disabled={busy}
+                      onPick={(id) => void linkCocktail(g, id)}
+                    />
                   </span>
                 ))}
               </div>
@@ -711,6 +775,48 @@ export function PosMappingPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * F-1469: "this button is a cocktail". Shown only when the house has
+ * cocktails; a failed read says so rather than hiding the choice.
+ */
+function CocktailPick({
+  itemName,
+  cocktails,
+  disabled,
+  onPick,
+}: {
+  itemName: string;
+  cocktails: LoadState<HouseCocktail[]>;
+  disabled: boolean;
+  onPick: (cocktailId: string) => void;
+}) {
+  if (cocktails.error) {
+    return (
+      <span className="text-[11px] text-amber-700">
+        cocktails could not be read
+      </span>
+    );
+  }
+  const rows = cocktails.data ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <select
+      aria-label={`Cocktail for ${itemName}`}
+      value=""
+      disabled={disabled}
+      onChange={(e) => e.target.value && onPick(e.target.value)}
+      className="h-7 rounded-md border border-gray-200 bg-white px-1.5 text-[11px] text-gray-600"
+    >
+      <option value="">It's a cocktail…</option>
+      {rows.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
   );
 }
 

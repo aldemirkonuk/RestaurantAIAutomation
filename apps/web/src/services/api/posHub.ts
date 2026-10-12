@@ -141,6 +141,8 @@ export interface PosItemMapping {
   master_wine_id: string | null;
   sale_unit: string | null;
   sale_volume_ml: number | null;
+  /** F-1469: the cocktail this button sells; its recipe says what it takes. */
+  cocktail_id?: string | null;
   updated_at: string | null;
 }
 
@@ -275,6 +277,8 @@ export async function upsertMapping(
     master_wine_id?: string | null;
     sale_unit?: string | null;
     sale_volume_ml?: number | null;
+    /** F-1469: the cocktail this button sells. Its recipe is what a sale takes. */
+    cocktail_id?: string | null;
   },
   restaurantId?: string,
 ): Promise<PosItemMapping> {
@@ -284,4 +288,27 @@ export async function upsertMapping(
     mapping,
   );
   return data;
+}
+
+/** One of the house's cocktails, as a till button may be linked to it (F-1469). */
+export interface HouseCocktail {
+  id: string;
+  name: string;
+}
+
+/**
+ * The house's cocktails, for linking a till button to one (F-1469). A failed
+ * read throws; it is never an empty list.
+ */
+export async function listHouseCocktails(
+  restaurantId?: string,
+): Promise<HouseCocktail[]> {
+  const id = requireRestaurant(restaurantId);
+  const { data } = await apiClient.get<{
+    rows?: Array<{ id: string; name: string; display_name?: string | null }>;
+  }>(`/cocktails/${id}`, { params: { limit: 500 } });
+  return (data?.rows ?? []).map((r) => ({
+    id: r.id,
+    name: r.display_name || r.name,
+  }));
 }

@@ -40,6 +40,17 @@ const MAPPINGS = [
     inventory_id: null,
     cocktail_id: "ck-bitter",
   },
+  // F-1469: a button mapped onto a stock row before its cocktail was
+  // written down. Its mapping names no cocktail.
+  {
+    external_item_id: "spritz-btn",
+    item_name: "Aperol Spritz",
+    is_wine: true,
+    inventory_id: "inv-gin",
+    sale_unit: "glass",
+    sale_volume_ml: 50,
+    cocktail_id: null,
+  },
 ];
 
 /** The house's cocktails, read by name for a line no mapping names. */
@@ -312,6 +323,26 @@ describe("a cocktail sold on the till takes its linked recipe lines (F-1329)", (
     ]);
 
     expect(stock["inv-campari"]).toMatchObject({ sealed: 11, openMl: 640 });
+    expect(queued).toHaveLength(0);
+  });
+
+  it("a mapped button that names no cocktail still takes the recipe of the cocktail its name is (F-1469)", async () => {
+    const { service, stock, queued } = makeDb();
+
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [
+        {
+          name: "Aperol Spritz",
+          externalItemId: "spritz-btn",
+          qty: 1,
+          price: 350,
+        },
+      ]),
+    ]);
+
+    // The recipe's 60 ml, not the mapping's 50 ml glass of the gin row.
+    expect(stock["inv-campari"]).toMatchObject({ sealed: 11, openMl: 640 });
+    expect(stock["inv-gin"]).toMatchObject({ sealed: 12, openMl: 0 });
     expect(queued).toHaveLength(0);
   });
 

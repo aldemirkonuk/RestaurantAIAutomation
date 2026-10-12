@@ -25,6 +25,7 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import {
+  isCocktailLine,
   isKitchenLine,
   lineForViewer,
   menuCategoryOf,
@@ -99,6 +100,8 @@ interface InsertedMenuItem {
   id: string;
   wine_library_id: string | null;
   name: string;
+  // F-1470: a cocktail section's line is made, not stocked (isCocktailLine).
+  category?: string | null;
   // The menu's own prices: ADR 0193 carries them to the house's price. Dated
   // by the moment the menu was CHOSEN (round 3, L11), never by the line.
   by_glass_price?: number | string | null;
@@ -119,7 +122,12 @@ interface InsertedMenuItem {
  * the plan says so before.
  */
 function carriedWine(line: InsertedMenuItem): string | null {
-  return line.kitchen_line === true ? null : (line.wine_library_id ?? null);
+  // F-1470: nor does a cocktail. It is made from its recipe's ingredients,
+  // so a stock row of its own sat at 0 below its threshold and read as
+  // critical low stock every morning. Its recipe's linked lines are its stock.
+  return line.kitchen_line === true || isCocktailLine(line.category)
+    ? null
+    : (line.wine_library_id ?? null);
 }
 
 /**
@@ -159,6 +167,7 @@ export type PlanResult =
   | "blank_never_priced"
   | "not_linked"
   | "kitchen"
+  | "cocktail"
   | "new_wine";
 
 export interface PlanPerson {
@@ -271,6 +280,7 @@ function emptyPlanCounts(): Record<PlanResult, number> {
     blank_never_priced: 0,
     not_linked: 0,
     kitchen: 0,
+    cocktail: 0,
     new_wine: 0,
   };
 }
@@ -1924,6 +1934,7 @@ export class MenusService {
         const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
         let result: PlanResult;
         if (line.kitchen_line === true) result = "kitchen";
+        else if (isCocktailLine(line.category)) result = "cocktail";
         else if (!wineId) result = "not_linked";
         else if (!row) result = menuPrice === null ? "blank_never_priced" : "new_wine";
         else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
@@ -2196,10 +2207,13 @@ export class MenusService {
     for (const line of lines) {
       const entry = priceSync.get(line.id);
       // A kitchen line is set aside, not an unmatched wine (F-1297).
+      // F-1470: so is a cocktail; its recipe is its stock.
       const outcome =
         line.kitchen_line === true
           ? "kitchen"
-          : (entry?.outcome ?? "not_linked");
+          : isCocktailLine(line.category)
+            ? "cocktail"
+            : (entry?.outcome ?? "not_linked");
       counts[outcome] = (counts[outcome] ?? 0) + 1;
       if (entry?.flag) flagged += 1;
       for (const h of entry?.held ?? []) held.push({ menuItemId: line.id, name: line.name, ...h });
@@ -2410,7 +2424,9 @@ export class MenusService {
     const { data, error: menuItemsErr } = await this.dbService.supabase
       .from("menu_items")
       .insert(menuItemRows)
-      .select("id, wine_library_id, name, by_glass_price, bottle_price, created_at");
+      .select(
+        "id, wine_library_id, name, category, by_glass_price, bottle_price, created_at",
+      );
 
     if (menuItemsErr) {
       this.logger.error(`Failed to insert menu_items: ${menuItemsErr.message}`);
