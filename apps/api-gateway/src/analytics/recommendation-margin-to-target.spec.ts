@@ -46,7 +46,12 @@ function feed(opts: {
         b[m] = () => b;
       b.maybeSingle = async () =>
         table === "restaurants"
-          ? { data: opts.house ? { tax_basis: "unset", ...opts.house } : opts.house, error: null }
+          ? {
+              data: opts.house
+                ? { tax_basis: "unset", ...opts.house }
+                : opts.house,
+              error: null,
+            }
           : { data: null, error: null };
       b.then = (resolve: any, reject: any) => {
         let r: any = { data: [], error: null };

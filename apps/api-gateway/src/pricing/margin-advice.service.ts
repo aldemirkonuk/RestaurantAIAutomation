@@ -243,7 +243,11 @@ export async function readAdviceTaxTerms(
       day: ctx.zone ? houseToday(ctx.zone, now) : null,
       rates: ctx.rates,
       since: ctx.confirmedAt,
-      targetReconfirm: targetReconfirmOwed(targetSetAt, ctx.basis, ctx.confirmedAt),
+      targetReconfirm: targetReconfirmOwed(
+        targetSetAt,
+        ctx.basis,
+        ctx.confirmedAt,
+      ),
     },
     error: null,
   };
@@ -302,8 +306,15 @@ export function costTaxProof(
   lastPaid: LastPaid | null,
 ): CostTaxProof {
   const stated = (b: CostTaxBasis | null): CostTaxProof =>
-    b === "excludes_tax" ? "pre_tax" : b === "includes_tax" ? "includes_tax" : "not_stated";
-  if (costBasis === "invoice_lot_wac" || costBasis === "invoice_lot_wac_partial") {
+    b === "excludes_tax"
+      ? "pre_tax"
+      : b === "includes_tax"
+        ? "includes_tax"
+        : "not_stated";
+  if (
+    costBasis === "invoice_lot_wac" ||
+    costBasis === "invoice_lot_wac_partial"
+  ) {
     const wacQty = n(lot?.wac_qty);
     const pre = n(lot?.wac_pre_tax_qty);
     const inc = n(lot?.wac_tax_included_qty);
@@ -682,10 +693,16 @@ export class MarginAdviceService {
         ? { ...a, sentence: NOT_A_WINE_GLASS_SENTENCE }
         : a;
     // F-620: an inclusive house's lines carry the rate and the cost proof.
-    let taxed: { pricesIncludeTax: PricesIncludeTax } | Record<string, never> = {};
+    let taxed: { pricesIncludeTax: PricesIncludeTax } | Record<string, never> =
+      {};
     if (t.tax) {
       const found = wineTaxRate(t.tax, row.id);
-      const proof = costTaxProof(costBasis, row, lot, fromLastPaid ? lastPaid : null);
+      const proof = costTaxProof(
+        costBasis,
+        row,
+        lot,
+        fromLastPaid ? lastPaid : null,
+      );
       taxed = {
         pricesIncludeTax: {
           rate: "rate" in found ? found.rate : null,
@@ -693,7 +710,10 @@ export class MarginAdviceService {
             "reason" in found
               ? { state: "no_tax_rate", sentence: found.reason }
               : proof !== "pre_tax"
-                ? { state: "cost_not_pre_tax", sentence: COST_NOT_PRE_TAX_SENTENCE[proof] }
+                ? {
+                    state: "cost_not_pre_tax",
+                    sentence: COST_NOT_PRE_TAX_SENTENCE[proof],
+                  }
                 : null,
           targetReconfirm: t.tax.targetReconfirm,
         },

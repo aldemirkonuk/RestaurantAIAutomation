@@ -268,11 +268,19 @@ export class PriceLocksService {
     // unread basis leaves the advice unknown, never read as "unset".
     const tax =
       targets.error === null
-        ? await readAdviceTaxTerms(client, restaurantId, targets.row?.target_margin_set_at ?? null)
+        ? await readAdviceTaxTerms(
+            client,
+            restaurantId,
+            targets.row?.target_margin_set_at ?? null,
+          )
         : { terms: null, error: null };
-    const adviceReadable = targets.error === null && !rollup.error && tax.error === null;
+    const adviceReadable =
+      targets.error === null && !rollup.error && tax.error === null;
     if (targets.error !== null) missing.push(`the target margin could not be read (${targets.error})`);
-    if (tax.error !== null) missing.push(`whether the house's prices include tax could not be read (${tax.error})`);
+    if (tax.error !== null)
+      missing.push(
+        `whether the house's prices include tax could not be read (${tax.error})`,
+      );
     if (rollup.error) missing.push(`the recorded costs could not be read (${rollup.error.message})`);
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) lots.set(String(r.inventory_id), r);

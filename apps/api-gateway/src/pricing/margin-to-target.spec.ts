@@ -145,20 +145,34 @@ describe("adviseToTarget -- a house whose till prices include tax (F-620)", () =
   it("the ledger's wine: 600 with 20 % inside and a 200 cost is a 60 % margin, not 66.7 %", () => {
     const before = adviseToTarget({ ...wine, targetPct: 60, bandPct: 0 });
     expect(before.currentMarginPct).toBeCloseTo(66.667, 2);
-    const a = adviseToTarget({ ...wine, targetPct: 60, bandPct: 0, pricesIncludeTax: kdv20 });
+    const a = adviseToTarget({
+      ...wine,
+      targetPct: 60,
+      bandPct: 0,
+      pricesIncludeTax: kdv20,
+    });
     expect(a.currentMarginPct).toBeCloseTo(60, 6);
     expect(a.state).toBe("on_target");
     expect(a.taxRate).toBe(0.2);
-    expect(a.sentence).toMatch(/Your prices include 20% tax; the margin is on the price without it\.$/);
+    expect(a.sentence).toMatch(
+      /Your prices include 20% tax; the margin is on the price without it\.$/,
+    );
   });
 
   it("the advised price is shown with tax inside: cost 200 at 65 % is 571.43 net, 685.71 on the menu", () => {
-    const a = adviseToTarget({ ...wine, targetPct: 65, bandPct: 1, pricesIncludeTax: kdv20 });
+    const a = adviseToTarget({
+      ...wine,
+      targetPct: 65,
+      bandPct: 1,
+      pricesIncludeTax: kdv20,
+    });
     expect(a.state).toBe("raise");
     expect(a.advisedPrice).toBe(685.71);
     // The gap is the same ratio with or without tax: (600 - 685.714) / 685.714.
     expect(a.gapPct).toBeCloseTo(-12.5, 6);
-    expect(a.sentence).toMatch(/^Raise the bottle to 685\.71 \(now 600\.00, 12\.5% below it\): today's margin is 60%/);
+    expect(a.sentence).toMatch(
+      /^Raise the bottle to 685\.71 \(now 600\.00, 12\.5% below it\): today's margin is 60%/,
+    );
   });
 
   it("without pricesIncludeTax nothing changes, key for key: no taxRate key, the same margin", () => {
@@ -198,7 +212,10 @@ describe("adviseToTarget -- a house whose till prices include tax (F-620)", () =
       bandPct: 1,
       pricesIncludeTax: {
         rate: 0.2,
-        refusal: { state: "cost_not_pre_tax", sentence: "Cannot advise: cost basis not stated." },
+        refusal: {
+          state: "cost_not_pre_tax",
+          sentence: "Cannot advise: cost basis not stated.",
+        },
         targetReconfirm: false,
       },
     });

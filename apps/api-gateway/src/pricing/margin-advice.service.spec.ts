@@ -1024,7 +1024,16 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
     // The target was confirmed again after the switch.
     target_margin_set_at: "2026-10-12T09:00:00Z",
   };
-  const KDV = { id: "r1", restaurant_id: "rest-1", version: 1, key_kind: "house", key: "", rate: "0.2000", effective_from: "2026-01-01", effective_to: null };
+  const KDV = {
+    id: "r1",
+    restaurant_id: "rest-1",
+    version: 1,
+    key_kind: "house",
+    key: "",
+    rate: "0.2000",
+    effective_from: "2026-01-01",
+    effective_to: null,
+  };
   // The ledger's wine: 600 on the menu, 200 cost.
   const RAKI_WINE = {
     ...WINE_A,
@@ -1034,7 +1043,18 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
     menu_price_current: "600.00",
     menu_price_glass: null,
   };
-  const STAMPED = [{ inventory_id: "inv-k", restaurant_id: "rest-1", live_qty: 6, wac: "200", has_invoice_cost: true, wac_qty: 6, wac_pre_tax_qty: 6, wac_tax_included_qty: 0 }];
+  const STAMPED = [
+    {
+      inventory_id: "inv-k",
+      restaurant_id: "rest-1",
+      live_qty: 6,
+      wac: "200",
+      has_invoice_cost: true,
+      wac_qty: 6,
+      wac_pre_tax_qty: 6,
+      wac_tax_included_qty: 0,
+    },
+  ];
   const UNSTAMPED = [{ ...STAMPED[0], wac_pre_tax_qty: 0 }];
 
   const strip = (o: any) => ({ ...o, generatedAt: "-" });
@@ -1042,9 +1062,18 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
   it.each(["unset", "prices_exclude_tax", "not_vat_charging"])(
     "%s is a strict no-op: the same advice, key for key, and no rate is read",
     async (basis) => {
-      const plain = await service({ house: HOUSE_SET, inventory: [WINE_A, WINE_NO_COST], rollup: ROLLUP }).svc.adviseHouse("rest-1");
+      const plain = await service({
+        house: HOUSE_SET,
+        inventory: [WINE_A, WINE_NO_COST],
+        rollup: ROLLUP,
+      }).svc.adviseHouse("rest-1");
       const f = service({
-        house: { ...HOUSE_SET, tax_basis: basis, tax_basis_confirmed_at: basis === "unset" ? null : SWITCH, timezone: "America/New_York" },
+        house: {
+          ...HOUSE_SET,
+          tax_basis: basis,
+          tax_basis_confirmed_at: basis === "unset" ? null : SWITCH,
+          timezone: "America/New_York",
+        },
         inventory: [WINE_A, WINE_NO_COST],
         rollup: ROLLUP,
         taxRates: [KDV],
@@ -1052,35 +1081,72 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
       const out = await f.svc.adviseHouse("rest-1");
       expect(strip(out)).toEqual(strip(plain));
       expect("pricesIncludeTax" in out).toBe(false);
-      expect(Object.keys(out.counts).sort()).toEqual(
-        ["lower", "no_cost", "no_price", "no_target", "on_target", "pour_unconfirmed", "raise"],
-      );
-      for (const w of out.wines) for (const a of [w.bottle, w.glass]) if (a) expect("taxRate" in a).toBe(false);
+      expect(Object.keys(out.counts).sort()).toEqual([
+        "lower",
+        "no_cost",
+        "no_price",
+        "no_target",
+        "on_target",
+        "pour_unconfirmed",
+        "raise",
+      ]);
+      for (const w of out.wines)
+        for (const a of [w.bottle, w.glass])
+          if (a) expect("taxRate" in a).toBe(false);
       expect(f.selects.some(([t]) => t === "house_tax_rates")).toBe(false);
     },
   );
 
   it("unset: accept records the rule it always did, with no tax key", async () => {
-    const { svc, inserts } = service({ house: HOUSE_SET, inventory: [WINE_A], rollup: ROLLUP });
+    const { svc, inserts } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+    });
     await svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9");
     expect(inserts[0][1].inputs.rule).toBe("price = cost / (1 - target)");
     expect("taxRate" in inserts[0][1].inputs).toBe(false);
   });
 
   it("600 with 20 % KDV inside and a 200 cost proven pre-tax: a 60 % margin, raise to 685.71 on the menu", async () => {
-    const { svc } = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: STAMPED, taxRates: [KDV] });
+    const { svc } = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+      taxRates: [KDV],
+    });
     const out = await svc.adviseHouse("rest-1");
-    expect(out.pricesIncludeTax).toEqual({ since: SWITCH, targetReconfirm: false });
+    expect(out.pricesIncludeTax).toEqual({
+      since: SWITCH,
+      targetReconfirm: false,
+    });
     const b = out.wines[0].bottle!;
     expect(b.currentMarginPct).toBeCloseTo(60, 6);
-    expect(b).toMatchObject({ state: "raise", advisedPrice: 685.71, taxRate: 0.2 });
-    expect(out.counts).toMatchObject({ raise: 1, cost_not_pre_tax: 0, no_tax_rate: 0, target_unconfirmed: 0 });
+    expect(b).toMatchObject({
+      state: "raise",
+      advisedPrice: 685.71,
+      taxRate: 0.2,
+    });
+    expect(out.counts).toMatchObject({
+      raise: 1,
+      cost_not_pre_tax: 0,
+      no_tax_rate: 0,
+      target_unconfirmed: 0,
+    });
   });
 
   it("accept applies the tax-inclusive price and records the rate it divided out", async () => {
-    const { svc, inserts, rpcs } = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: STAMPED, taxRates: [KDV] });
+    const { svc, inserts, rpcs } = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+      taxRates: [KDV],
+    });
     await svc.accept("rest-1", "inv-k", "bottle", 685.71, "user-9");
-    expect(inserts[0][1]).toMatchObject({ recommended_price: 685.71, current_price: 600 });
+    expect(inserts[0][1]).toMatchObject({
+      recommended_price: 685.71,
+      current_price: 600,
+    });
     expect(inserts[0][1].current_margin_pct).toBeCloseTo(0.6, 6);
     expect(inserts[0][1].inputs).toMatchObject({
       rule: "price = cost / (1 - target) * (1 + tax rate)",
@@ -1091,12 +1157,19 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
   });
 
   it("a WAC whose bottles do not say whether tax is inside: 'cost basis not stated', no margin, nothing to accept", async () => {
-    const { svc, inserts, rpcs } = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: UNSTAMPED, taxRates: [KDV] });
+    const { svc, inserts, rpcs } = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: UNSTAMPED,
+      taxRates: [KDV],
+    });
     const b = (await svc.adviseHouse("rest-1")).wines[0].bottle!;
     expect(b.state).toBe("cost_not_pre_tax");
     expect(b.sentence).toMatch(/^Cannot advise: cost basis not stated\./);
     expect(b.currentMarginPct).toBeNull();
-    await expect(svc.accept("rest-1", "inv-k", "bottle", 685.71, "user-9")).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      svc.accept("rest-1", "inv-k", "bottle", 685.71, "user-9"),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(inserts).toHaveLength(0);
     expect(rpcs).toHaveLength(0);
   });
@@ -1108,7 +1181,9 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
       rollup: [{ ...STAMPED[0], wac_pre_tax_qty: 5, wac_tax_included_qty: 1 }],
       taxRates: [KDV],
     });
-    expect((await svc.adviseHouse("rest-1")).wines[0].bottle!.sentence).toMatch(/cost basis not stated/);
+    expect((await svc.adviseHouse("rest-1")).wines[0].bottle!.sentence).toMatch(
+      /cost basis not stated/,
+    );
   });
 
   it("a cost recorded with tax inside is refused in its own words", async () => {
@@ -1126,49 +1201,128 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
   it("the last purchase price is used only when it says no tax is inside", async () => {
     const proven = service({
       house: INCLUSIVE,
-      inventory: [{ ...RAKI_WINE, last_purchase_price: "200", last_purchase_price_tax_basis: "excludes_tax" }],
+      inventory: [
+        {
+          ...RAKI_WINE,
+          last_purchase_price: "200",
+          last_purchase_price_tax_basis: "excludes_tax",
+        },
+      ],
       rollup: [],
       taxRates: [KDV],
     });
-    expect((await proven.svc.adviseHouse("rest-1")).wines[0].bottle).toMatchObject({ state: "raise", advisedPrice: 685.71 });
+    expect(
+      (await proven.svc.adviseHouse("rest-1")).wines[0].bottle,
+    ).toMatchObject({ state: "raise", advisedPrice: 685.71 });
     const unstated = service({
       house: INCLUSIVE,
-      inventory: [{ ...RAKI_WINE, last_purchase_price: "200", last_purchase_price_tax_basis: null }],
+      inventory: [
+        {
+          ...RAKI_WINE,
+          last_purchase_price: "200",
+          last_purchase_price_tax_basis: null,
+        },
+      ],
       rollup: [],
       taxRates: [KDV],
     });
-    expect((await unstated.svc.adviseHouse("rest-1")).wines[0].bottle!.state).toBe("cost_not_pre_tax");
+    expect(
+      (await unstated.svc.adviseHouse("rest-1")).wines[0].bottle!.state,
+    ).toBe("cost_not_pre_tax");
   });
 
   it("the last price paid (F-1172) is used only when its lot says no tax is inside", async () => {
-    const lot = { id: "lot-1", restaurant_id: "rest-1", inventory_id: "inv-k", stock_state: "live", unit_cost: "200", unit_cost_currency: "TRY", cost_provenance: "invoice", received_at: "2026-10-01" };
-    const proven = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: [], lots: [{ ...lot, unit_cost_tax_basis: "excludes_tax" }], taxRates: [KDV] });
-    expect((await proven.svc.adviseHouse("rest-1")).wines[0].bottle).toMatchObject({ state: "raise", advisedPrice: 685.71 });
-    const unstated = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: [], lots: [lot], taxRates: [KDV] });
-    expect((await unstated.svc.adviseHouse("rest-1")).wines[0].bottle!.state).toBe("cost_not_pre_tax");
+    const lot = {
+      id: "lot-1",
+      restaurant_id: "rest-1",
+      inventory_id: "inv-k",
+      stock_state: "live",
+      unit_cost: "200",
+      unit_cost_currency: "TRY",
+      cost_provenance: "invoice",
+      received_at: "2026-10-01",
+    };
+    const proven = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: [],
+      lots: [{ ...lot, unit_cost_tax_basis: "excludes_tax" }],
+      taxRates: [KDV],
+    });
+    expect(
+      (await proven.svc.adviseHouse("rest-1")).wines[0].bottle,
+    ).toMatchObject({ state: "raise", advisedPrice: 685.71 });
+    const unstated = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: [],
+      lots: [lot],
+      taxRates: [KDV],
+    });
+    expect(
+      (await unstated.svc.adviseHouse("rest-1")).wines[0].bottle!.state,
+    ).toBe("cost_not_pre_tax");
   });
 
   it("the wine's own rate wins over the whole-house rate", async () => {
-    const own = { ...KDV, id: "r2", version: 2, key_kind: "house_item", key: "inv-k", rate: "0.1000" };
-    const { svc } = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: STAMPED, taxRates: [{ ...KDV, rate: "0.2000" }, own] });
+    const own = {
+      ...KDV,
+      id: "r2",
+      version: 2,
+      key_kind: "house_item",
+      key: "inv-k",
+      rate: "0.1000",
+    };
+    const { svc } = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+      taxRates: [{ ...KDV, rate: "0.2000" }, own],
+    });
     const b = (await svc.adviseHouse("rest-1")).wines[0].bottle!;
     // 200 / 0.35 * 1.1 = 628.57
     expect(b).toMatchObject({ taxRate: 0.1, advisedPrice: 628.57 });
   });
 
   it("rates set by till category are not guessed onto a wine, even with a whole-house rate", async () => {
-    const cat = { ...KDV, id: "r2", version: 2, key_kind: "pos_category", key: "Alcohol", rate: "0.2000" };
-    const { svc } = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: STAMPED, taxRates: [{ ...KDV, rate: "0.1000" }, cat] });
+    const cat = {
+      ...KDV,
+      id: "r2",
+      version: 2,
+      key_kind: "pos_category",
+      key: "Alcohol",
+      rate: "0.2000",
+    };
+    const { svc } = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+      taxRates: [{ ...KDV, rate: "0.1000" }, cat],
+    });
     const b = (await svc.adviseHouse("rest-1")).wines[0].bottle!;
     expect(b.state).toBe("no_tax_rate");
     expect(b.sentence).toMatch(/set by till category/);
   });
 
   it("no rate in force today, or no time zone: no_tax_rate, said", async () => {
-    const none = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: STAMPED, taxRates: [] });
-    expect((await none.svc.adviseHouse("rest-1")).wines[0].bottle!.sentence).toMatch(/no tax rate of this house is in force today/);
-    const noZone = service({ house: { ...INCLUSIVE, timezone: null, country: null }, inventory: [RAKI_WINE], rollup: STAMPED, taxRates: [KDV] });
-    expect((await noZone.svc.adviseHouse("rest-1")).wines[0].bottle!.sentence).toMatch(/time zone isn't set/);
+    const none = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+      taxRates: [],
+    });
+    expect(
+      (await none.svc.adviseHouse("rest-1")).wines[0].bottle!.sentence,
+    ).toMatch(/no tax rate of this house is in force today/);
+    const noZone = service({
+      house: { ...INCLUSIVE, timezone: null, country: null },
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+      taxRates: [KDV],
+    });
+    expect(
+      (await noZone.svc.adviseHouse("rest-1")).wines[0].bottle!.sentence,
+    ).toMatch(/time zone isn't set/);
   });
 
   it("a target set before the switch is asked for again on every line, and cannot be accepted", async () => {
@@ -1179,19 +1333,42 @@ describe("MarginAdviceService -- a house whose till prices include tax (F-620)",
       taxRates: [KDV],
     });
     const out = await svc.adviseHouse("rest-1");
-    expect(out.pricesIncludeTax).toEqual({ since: SWITCH, targetReconfirm: true });
-    expect(out.wines[0].bottle).toMatchObject({ state: "target_unconfirmed", currentMarginPct: null });
+    expect(out.pricesIncludeTax).toEqual({
+      since: SWITCH,
+      targetReconfirm: true,
+    });
+    expect(out.wines[0].bottle).toMatchObject({
+      state: "target_unconfirmed",
+      currentMarginPct: null,
+    });
     expect(out.counts.target_unconfirmed).toBe(1);
-    await expect(svc.accept("rest-1", "inv-k", "bottle", 685.71, "user-9")).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      svc.accept("rest-1", "inv-k", "bottle", 685.71, "user-9"),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(inserts).toHaveLength(0);
   });
 
   it("a basis or rate table that cannot be read is a refusal, never 'unset'", async () => {
-    const rates = service({ house: INCLUSIVE, inventory: [RAKI_WINE], rollup: STAMPED, taxRatesError: { message: "denied" } });
-    await expect(rates.svc.adviseHouse("rest-1")).rejects.toThrow(/prices include tax could not be read/);
-    await expect(rates.svc.accept("rest-1", "inv-k", "bottle", 685.71, "user-9")).rejects.toBeInstanceOf(InternalServerErrorException);
+    const rates = service({
+      house: INCLUSIVE,
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+      taxRatesError: { message: "denied" },
+    });
+    await expect(rates.svc.adviseHouse("rest-1")).rejects.toThrow(
+      /prices include tax could not be read/,
+    );
+    await expect(
+      rates.svc.accept("rest-1", "inv-k", "bottle", 685.71, "user-9"),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
     expect(rates.inserts).toHaveLength(0);
-    const odd = service({ house: { ...INCLUSIVE, tax_basis: "sometimes" }, inventory: [RAKI_WINE], rollup: STAMPED });
-    await expect(odd.svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(InternalServerErrorException);
+    const odd = service({
+      house: { ...INCLUSIVE, tax_basis: "sometimes" },
+      inventory: [RAKI_WINE],
+      rollup: STAMPED,
+    });
+    await expect(odd.svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
   });
 });

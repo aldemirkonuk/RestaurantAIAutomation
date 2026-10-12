@@ -418,7 +418,16 @@ describe("PriceLocksService.list -- a house whose till prices include tax (F-620
       timezone: "Europe/Istanbul",
     });
     t.house_tax_rates = [
-      { id: "r1", restaurant_id: "rest-1", version: 1, key_kind: "house", key: "", rate: "0.2000", effective_from: "2026-01-01", effective_to: null },
+      {
+        id: "r1",
+        restaurant_id: "rest-1",
+        version: 1,
+        key_kind: "house",
+        key: "",
+        rate: "0.2000",
+        effective_from: "2026-01-01",
+        effective_to: null,
+      },
     ];
     return t;
   };

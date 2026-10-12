@@ -94,7 +94,10 @@ export interface PricesIncludeTax {
   /** The item's rate in force today, a fraction (0.2 = 20 %); null = refused. */
   rate: number | null;
   /** Set when the line must refuse; said after no_target/no_price/no_cost. */
-  refusal: { state: "no_tax_rate" | "cost_not_pre_tax"; sentence: string } | null;
+  refusal: {
+    state: "no_tax_rate" | "cost_not_pre_tax";
+    sentence: string;
+  } | null;
   /** The target was set before the switch and not confirmed since. */
   targetReconfirm: boolean;
 }
@@ -201,7 +204,12 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
   const tax = input.pricesIncludeTax;
   // The rate in use: only when the caller found one and refused nothing.
   const rate =
-    tax && tax.refusal === null && tax.rate !== null && Number.isFinite(tax.rate) && tax.rate >= 0 && tax.rate < 1
+    tax &&
+    tax.refusal === null &&
+    tax.rate !== null &&
+    Number.isFinite(tax.rate) &&
+    tax.rate >= 0 &&
+    tax.rate < 1
       ? tax.rate
       : null;
   const base: PriceAdvice = {
@@ -222,7 +230,8 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
 
   const known =
     price !== null && Number.isFinite(price) && price > 0 &&
-    unitCost !== null && Number.isFinite(unitCost) &&
+    unitCost !== null &&
+    Number.isFinite(unitCost) &&
     // An inclusive house's margin is stated only on a proven basis (F3).
     (!tax || rate !== null);
   if (known) {
@@ -279,7 +288,11 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     };
   }
   if (tax && tax.refusal !== null) {
-    return { ...base, state: tax.refusal.state, sentence: tax.refusal.sentence };
+    return {
+      ...base,
+      state: tax.refusal.state,
+      sentence: tax.refusal.sentence,
+    };
   }
   if (tax && rate === null) {
     // A caller that refused nothing must have found a rate; said, not assumed.
@@ -293,7 +306,8 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
   const margin = base.currentMarginPct as number;
   const netTarget = priceForMargin(unitCost, targetPct / 100);
   // Shown back with tax inside, as the menu prints it.
-  const target = netTarget === null || rate === null ? netTarget : netTarget * (1 + rate);
+  const target =
+    netTarget === null || rate === null ? netTarget : netTarget * (1 + rate);
   if (target === null) {
     // priceForMargin refuses only cost <= 0 or a target outside [0, 1); both
     // are excluded above and by the database's CHECK, so this is unreachable

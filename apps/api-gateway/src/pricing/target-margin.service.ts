@@ -94,7 +94,8 @@ export function targetReconfirmOwed(
   basis: string | null | undefined,
   basisConfirmedAt: string | null | undefined,
 ): boolean {
-  if (basis !== "prices_include_tax" || !targetSetAt || !basisConfirmedAt) return false;
+  if (basis !== "prices_include_tax" || !targetSetAt || !basisConfirmedAt)
+    return false;
   const set = Date.parse(targetSetAt);
   const since = Date.parse(basisConfirmedAt);
   if (!Number.isFinite(set) || !Number.isFinite(since)) return true;

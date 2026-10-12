@@ -312,35 +312,67 @@ describe("TargetMarginService -- the target is confirmed again on the switch (F-
     target_margin_set_by: "user-1",
     target_margin_set_at: "2026-09-21T09:00:00Z",
   };
-  const SWITCHED = { ...SET, tax_basis: "prices_include_tax", tax_basis_confirmed_at: "2026-10-12T08:00:00Z" };
+  const SWITCHED = {
+    ...SET,
+    tax_basis: "prices_include_tax",
+    tax_basis_confirmed_at: "2026-10-12T08:00:00Z",
+  };
 
   it("an inclusive house whose target predates the switch reads targetReconfirm true", async () => {
     const r = await fake(SWITCHED).svc.read("rest-1");
-    expect(r.pricesIncludeTax).toEqual({ since: "2026-10-12T08:00:00Z", targetReconfirm: true });
+    expect(r.pricesIncludeTax).toEqual({
+      since: "2026-10-12T08:00:00Z",
+      targetReconfirm: true,
+    });
   });
 
   it("a target set after the switch is not asked for again", async () => {
-    const r = await fake({ ...SWITCHED, target_margin_set_at: "2026-10-12T09:00:00Z" }).svc.read("rest-1");
-    expect(r.pricesIncludeTax).toEqual({ since: "2026-10-12T08:00:00Z", targetReconfirm: false });
+    const r = await fake({
+      ...SWITCHED,
+      target_margin_set_at: "2026-10-12T09:00:00Z",
+    }).svc.read("rest-1");
+    expect(r.pricesIncludeTax).toEqual({
+      since: "2026-10-12T08:00:00Z",
+      targetReconfirm: false,
+    });
   });
 
-  it.each(["unset", "prices_exclude_tax", "not_vat_charging"])("%s: the readout carries no tax key at all", async (basis) => {
-    const r = await fake({ ...SET, tax_basis: basis, tax_basis_confirmed_at: basis === "unset" ? null : "2026-10-12T08:00:00Z" }).svc.read("rest-1");
-    expect("pricesIncludeTax" in r).toBe(false);
-  });
+  it.each(["unset", "prices_exclude_tax", "not_vat_charging"])(
+    "%s: the readout carries no tax key at all",
+    async (basis) => {
+      const r = await fake({
+        ...SET,
+        tax_basis: basis,
+        tax_basis_confirmed_at:
+          basis === "unset" ? null : "2026-10-12T08:00:00Z",
+      }).svc.read("rest-1");
+      expect("pricesIncludeTax" in r).toBe(false);
+    },
+  );
 
   it("recording the same target again after the switch is the re-confirmation, and the trail says so", async () => {
     const { svc, updates, audits } = fake(SWITCHED);
-    await svc.write("rest-1", { bottlePct: 65, glassPct: null, bandPct: 2 }, "user-2");
+    await svc.write(
+      "rest-1",
+      { bottlePct: 65, glassPct: null, bandPct: 2 },
+      "user-2",
+    );
     expect(updates).toHaveLength(1);
     expect(audits[0].fields).toEqual({
-      target_margin_set_at: { from: "2026-09-21T09:00:00Z", to: "confirmed again on prices without tax" },
+      target_margin_set_at: {
+        from: "2026-09-21T09:00:00Z",
+        to: "confirmed again on prices without tax",
+      },
     });
   });
 
   it("an unset house recording the same target files the same empty change it always did", async () => {
     const { svc, audits } = fake({ ...SET, tax_basis: "unset" });
-    await svc.write("rest-1", { bottlePct: 65, glassPct: null, bandPct: 2 }, "user-2");
+    await svc.write(
+      "rest-1",
+      { bottlePct: 65, glassPct: null, bandPct: 2 },
+      "user-2",
+    );
     expect(audits[0].fields).toEqual({});
   });
 });
