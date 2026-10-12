@@ -70,10 +70,28 @@ export const REASON_WORDS: Record<string, string> = {
   damaged: 'Refused at the door',
   price_variance: 'Billed above the agreed price',
   never_ordered: 'Billed for something never ordered',
+  never_arrived: 'Never arrived',
   other: 'Another reason',
 };
 
-export function reasonWords(code: string | null | undefined): string {
+/**
+ * A claim opened from a delivery's own thread carries the delivery's reason
+ * in `evidence.reason` (delivery.service.ts CARRIED, F-669). That reason says
+ * what happened better than the claim's code (F-1480): a wrong-restaurant
+ * refusal files as `other`, and a damaged case the house KEPT files as
+ * `damaged` beside a truck refused at the door.
+ */
+const DELIVERY_REASON_WORDS: Record<string, string> = {
+  WRONG_VENUE: 'Refused at the door — sent to the wrong restaurant',
+  DAMAGED: 'Arrived damaged',
+};
+
+export function reasonWords(
+  code: string | null | undefined,
+  evidence?: Record<string, unknown> | null,
+): string {
+  const carried = evidence && typeof evidence.reason === 'string' ? evidence.reason : null;
+  if (carried && DELIVERY_REASON_WORDS[carried]) return DELIVERY_REASON_WORDS[carried];
   if (!code) return 'No reason recorded';
   return REASON_WORDS[code] ?? `Recorded as “${code}”`;
 }
@@ -355,7 +373,7 @@ function ClaimRow({
     >
       <span style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-          {reasonWords(claim.reason)}
+          {reasonWords(claim.reason, claim.evidence)}
           {claim.self_evidenced && (
             <span
               title="Provable from the vendor's own paperwork"
@@ -710,7 +728,7 @@ function ClaimSheet({
       onClose={onClose}
       label="One vendor credit claim. Each move below writes the claim's new state to the ledger; closing writes nothing."
       eyebrow="Credit claim"
-      title={reasonWords(claim.reason)}
+      title={reasonWords(claim.reason, claim.evidence)}
       closeLabel="Close"
     >
       <dl style={{ margin: 0 }}>

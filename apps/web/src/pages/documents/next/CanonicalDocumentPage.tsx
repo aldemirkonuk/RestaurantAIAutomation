@@ -85,6 +85,7 @@ import { AuthContext } from '@/contexts/AuthContext'
 import { useMayActForTheHouse } from '@/hooks/useMayActForTheHouse'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
+import { documentsApi } from '../../../services/api/documents'
 import {
   deliveriesApi,
   doorBookingSentences,
@@ -93,6 +94,16 @@ import {
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
+
+/** The one order a document's links name, or null for none or several (F-1477). */
+function soleOrderOf(links: unknown[] | null | undefined): string | null {
+  const ids = new Set(
+    ((links ?? []) as Array<{ order_id?: unknown } | null>)
+      .map((l) => l?.order_id)
+      .filter((o): o is string => typeof o === 'string' && o !== ''),
+  )
+  return ids.size === 1 ? [...ids][0] : null
+}
 
 export interface CanonicalDocumentPageProps {
   /** The document to draw when it is not the route's `:id` (the /orders sheet). */
@@ -240,6 +251,28 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const soleDelivery =
     res?.deliveries && res.deliveries.length === 1 ? res.deliveries[0] : null
+
+  /**
+   * The order this paper is filed against, when it is filed against exactly
+   * one (F-1477). A door count on a document with no delivery makes one; it
+   * carries this order so a truck refused there reaches its order — the
+   * order's refusal mark, its credit claim. Several orders (one invoice over
+   * two POs), none, or a read that failed: no order is guessed.
+   */
+  const doorMakesDelivery =
+    !!doc && !soleDelivery && doc.docType !== 'receiving_advice'
+  const linksQ = useQuery({
+    queryKey: ['document-order-links', rid, id],
+    queryFn: () => documentsApi.detail(id),
+    enabled: !!id && doorMakesDelivery,
+    staleTime: 30_000,
+  })
+  /** Waits for the links when the count is sent before they were read. */
+  const doorOrderId = async (): Promise<string | null> => {
+    if (!doorMakesDelivery) return null
+    const read = linksQ.data ?? (await linksQ.refetch()).data
+    return soleOrderOf(read?.links)
+  }
 
   const eventQ = useQuery({
     queryKey: ['delivery-event', soleDelivery?.deliveryId],
@@ -816,11 +849,15 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                   : (input) => {
                       setDoorBooking(null)
                       return deliveryWrite(async () => {
+                        const orderId = soleDelivery ? null : await doorOrderId()
                         const res = await deliveriesApi.recordDoorCount({
                           ...input,
                           ...(soleDelivery
                             ? { deliveryId: soleDelivery.deliveryId }
-                            : { createDelivery: true }),
+                            : {
+                                createDelivery: true,
+                                ...(orderId ? { orderId } : {}),
+                              }),
                           ...(doc.jurisdiction ? { jurisdiction: doc.jurisdiction } : {}),
                         })
                         // Say what went onto the shelf — and what did not —

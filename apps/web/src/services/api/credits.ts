@@ -73,6 +73,11 @@ export interface ProcurementCredit {
   reason: string | null
   /** The matcher's own sentence for the discrepancy, written when the claim opened. */
   summary?: string | null
+  /**
+   * What the claim was opened from. A claim opened on a delivery's thread
+   * names the delivery's reason here (`reason`: WRONG_VENUE, DAMAGED, …).
+   */
+  evidence?: Record<string, unknown> | null
   notes: string | null
   self_evidenced: boolean
   opened_at: string
