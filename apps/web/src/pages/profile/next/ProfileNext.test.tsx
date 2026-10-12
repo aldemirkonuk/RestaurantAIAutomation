@@ -104,6 +104,11 @@ vi.mock('./useProfileNextData', () => ({
   useProfileNextData: () => mockData.current,
 }));
 
+/** F-750: the hand-over card reads the gateway; `OrganisationHandOver.test.tsx` owns it. */
+vi.mock('./OrganisationHandOver', () => ({
+  OrganisationHandOver: () => <div data-testid="org-handover-stub" />,
+}));
+
 /**
  * The ground store is REAL (founder, 2026-10-01, page walk-through DASH-W23:
  * the theme row on this page is now the person's Paper/Charcoal ground). Only
@@ -1429,10 +1434,12 @@ describe('ProfileNext — the one irreversible act', () => {
   });
 
   // F-836: handing a house over never clears the organisation refusal, so the
-  // lead must not promise it does.
-  it('says an account that opened a restaurant cannot be deleted yet, and promises no hand-over', () => {
+  // lead must not promise it does. F-750: handing the organisation over does,
+  // and the lead points at the card that does it.
+  it('points an account that opened a restaurant at the organisation hand-over, not a house hand-over', () => {
     draw();
-    expect(screen.getByText(/If you opened a restaurant here, your account cannot be deleted yet/)).toBeInTheDocument();
+    expect(screen.getByText(/If you opened a restaurant here, hand your organisation over first/)).toBeInTheDocument();
+    expect(screen.getByTestId('org-handover-stub')).toBeInTheDocument();
     expect(screen.queryByText(/hand ownership over first/)).not.toBeInTheDocument();
   });
 });

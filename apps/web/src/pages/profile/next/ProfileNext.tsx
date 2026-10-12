@@ -143,6 +143,7 @@ import { OwnNotifySection } from '../../settings/next/NotifySection';
 import { useProfileNextData, type ProfileNextData } from './useProfileNextData';
 import { getErrorMessage } from '../../../services/api/client';
 import { StepUpField, useStepUpCode } from './StepUpCode';
+import { OrganisationHandOver } from './OrganisationHandOver';
 
 export interface ProfileNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
@@ -412,9 +413,12 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
             </Btn>
           </Card>
 
+          {/* F-750: the way out of "the only owner of your organisation". */}
+          <OrganisationHandOver />
+
           <Card
             title="Delete account"
-            lead="Permanently deletes your Mudavym account. It cannot be undone. If you opened a restaurant here, your account cannot be deleted yet: nobody else can take over your organisation so far. If you are the only owner of a restaurant someone else opened, make another member an owner of it first. Both are checked before anything is deleted."
+            lead="Permanently deletes your Mudavym account. It cannot be undone. If you opened a restaurant here, hand your organisation over first (just above) to someone who owns one of its restaurants. If you are the only owner of a restaurant, make another member an owner of it first. Both are checked before anything is deleted."
           >
             <label
               htmlFor="pf-confirm-delete"
