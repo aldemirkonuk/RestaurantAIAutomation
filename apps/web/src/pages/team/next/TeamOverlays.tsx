@@ -883,8 +883,9 @@ export function TimeOffSheet({
   onClose: () => void;
   onChanged: () => void;
   /**
-   * F-1547: a manager's own time off is an owner's to decide; the gateway
-   * refuses the manager, and this only keeps the desk from offering it.
+   * F-1547: nobody but an owner decides their own time off; a manager's goes
+   * to another manager or an owner. The gateway refuses the manager, and this
+   * only keeps the desk from offering it.
    */
   viewerIsOwner?: boolean;
   viewerUserId?: string | null;
@@ -972,6 +973,17 @@ export function TimeOffSheet({
   /** The viewer's own request, and the viewer is not an owner (F-1547). */
   const ownersToDecide = (r: TimeOffRow) =>
     viewerIsOwner === false && !!ownMemberId && r.member_id === ownMemberId;
+  /**
+   * Who decides it (F-1547, decision manager-leave): another manager may, so
+   * "an owner decides it" is said only when the viewer is the house's only
+   * manager with an account here.
+   */
+  const anotherManager = (members ?? []).some(
+    (m) => m.role === 'manager' && !!m.user_id && m.id !== ownMemberId,
+  );
+  const ownDecider = anotherManager
+    ? 'Your own request: another manager or an owner decides it.'
+    : 'Your own request: an owner decides it.';
   /** Who decided a request, when they are on the roster (F-1547). */
   const deciderOf = (r: TimeOffRow) => {
     const m = r.reviewed_by
@@ -1040,7 +1052,7 @@ export function TimeOffSheet({
               {` · ${leaveWords(r.leave_type)}`}
             </div>
             {ownersToDecide(r) ? (
-              <p className="tm-note">Your own request: an owner decides it.</p>
+              <p className="tm-note">{ownDecider}</p>
             ) : (
               <div className="tm-actions">
                 <button

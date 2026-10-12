@@ -3225,10 +3225,10 @@ describe("F-1547 — a manager's own time off is an owner's to decide", () => {
     } as any);
   }
 
-  it("puts a manager's own request on the owners' bell, and only theirs", async () => {
+  it("puts a manager's own request on the owners' bell (no other manager here)", async () => {
     const db = seed();
     const req: any = await managerAsksForThemselves(db);
-    expect(req.ownersTold).toBe(1);
+    expect(req.leadsTold).toBe(1);
     const told = db.tables.notifications.filter(
       (n) => n.metadata?.action === "time_off_requested",
     );

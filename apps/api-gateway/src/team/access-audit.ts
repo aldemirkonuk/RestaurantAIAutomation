@@ -67,7 +67,11 @@ export interface AccessChange {
     | "away_ended_for_member"
     // ADR 0238 — an owner or manager assigned or withdrew one staff member's
     // right to set up zones (`StorageLocationsService.setSetupAccess`).
-    | "zone_setup_access_changed";
+    | "zone_setup_access_changed"
+    // F-1547 — a manager's time off decided, or re-marked paid/unpaid, by
+    // another manager or an owner. Days and paid/unpaid only, never an amount.
+    | "time_off_decided_for_manager"
+    | "time_off_remarked_for_manager";
   entityType: "team_member" | "restaurant_member" | "house_area";
   entityId: string;
   /** Before → after, as it will be read back off the /logs timeline. */
@@ -181,6 +185,12 @@ export async function noticeToHouseLeads(
     /** Who counts as a lead for this notice; owners and managers unless
      * narrowed (F-1547: a manager's own time off goes to the owners). */
     roles?: readonly ("owner" | "manager")[];
+    /** Read only when nobody holds any of `roles` here: a house with no owner
+     * row tells its managers instead (F-1547; ADR 0218 ladder step 3). */
+    fallbackRoles?: readonly ("owner" | "manager")[];
+    /** Others not told besides `exceptUserId` (F-1547: the manager the
+     * notice is about is not asked to decide their own leave). */
+    alsoExcept?: readonly string[];
   },
 ): Promise<string[]> {
   const told: string[] = [];
@@ -197,12 +207,19 @@ export async function noticeToHouseLeads(
           await houseMembersInRoles(sb, n.restaurantId, [...n.roles]),
         );
         leadIds = leadIds.filter((u) => narrowed.has(u));
+        if (leadIds.length === 0 && n.fallbackRoles) {
+          const fallback = new Set(
+            await houseMembersInRoles(sb, n.restaurantId, [...n.fallbackRoles]),
+          );
+          leadIds = [...fallback];
+        }
       }
     } catch (err: any) {
       logger.error(`${n.metadata.action}: could not read who to tell — ${err?.message}`);
       return told;
     }
-    const leads = leadIds.filter((u) => u !== n.exceptUserId);
+    const skip = new Set([n.exceptUserId, ...(n.alsoExcept ?? [])]);
+    const leads = leadIds.filter((u) => !skip.has(u));
     for (const userId of leads) {
       const { error: insErr } = await sb.from("notifications").insert({
         user_id: userId,

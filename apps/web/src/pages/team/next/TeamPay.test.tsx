@@ -1013,6 +1013,31 @@ describe("a manager's own time off is an owner's to decide (F-1547)", () => {
     );
   });
 
+  it('says another manager may decide it when the house has one (F-1547, manager-leave)', () => {
+    const withPeer = [
+      ...members.map((m) => (m.id === 'm-mgr' ? { ...m, role: 'manager' } : m)),
+      member({ id: 'm-peer', user_id: 'u-peer', display_name: 'Pia Peer', role: 'manager' }),
+    ];
+    render(
+      <TimeOffSheet
+        requests={[own] as never}
+        failed={false}
+        members={withPeer as never}
+        weekStart="2026-09-07"
+        onClose={() => {}}
+        onChanged={() => {}}
+        viewerIsOwner={false}
+        viewerUserId="u-mgr"
+      />,
+      { wrapper },
+    );
+    expect(
+      screen.getByText('Your own request: another manager or an owner decides it.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Your own request: an owner decides it.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Approve as paid' })).toBeNull();
+  });
+
   it("offers the owner the decision on the manager's request", () => {
     render(sheet([own], true, 'u-own'), { wrapper });
     expect(screen.queryByText('Your own request: an owner decides it.')).toBeNull();
