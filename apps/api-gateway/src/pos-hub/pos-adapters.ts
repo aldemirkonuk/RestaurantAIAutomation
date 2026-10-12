@@ -116,12 +116,20 @@ export const readMoney = (
   return Number.isFinite(n) ? { value: n } : { value: null, unread: v };
 };
 
-/** The check's money fields, read with readMoney; the first unread one is named. */
+/**
+ * The check's money fields, read with readMoney; the first unread one is named.
+ *
+ * F-1537: `tax` is the tax the till states INSIDE its subtotal. It is optional
+ * and written onto the check only when the till sent one, so a feed that never
+ * names it reads exactly as before. Only a house whose prices include tax ever
+ * reads it (tax-basis-resolver, rung 1).
+ */
 const moneyOf = (r: any) => {
   const out: {
     subtotal: number | null;
     total: number | null;
     tip: number | null;
+    tax?: number;
     moneyUnread?: { field: string; value: unknown };
   } = { subtotal: null, total: null, tip: null };
   for (const field of ["subtotal", "total", "tip"] as const) {
@@ -130,6 +138,10 @@ const moneyOf = (r: any) => {
     if ("unread" in m && !out.moneyUnread)
       out.moneyUnread = { field, value: m.unread };
   }
+  const tax = readMoney(r.tax);
+  if (tax.value !== null) out.tax = tax.value;
+  if ("unread" in tax && !out.moneyUnread)
+    out.moneyUnread = { field: "tax", value: tax.unread };
   (Array.isArray(r.items) ? r.items : []).forEach((it: any, i: number) => {
     const m = readMoney(it?.price);
     if ("unread" in m && !out.moneyUnread) {
@@ -158,6 +170,45 @@ const qtyUnreadOf = (
       return { qtyUnread: { field: `items[${i}].qty`, value: m.unread } };
   }
   return {};
+};
+
+/**
+ * F-1537: a line's tax rate as the till states it, written as a PERCENT
+ * (`20`, `"20"`, `"%20"`, `"8,25"`), returned as a fraction (0.2). Absent is
+ * no rate. A value from 0 up to 1 (not 0 itself) is not read: "0.20" is the
+ * fraction spelling of 20 % or a fifth of one percent, and no KDV or VAT rate
+ * a restaurant charges is under one percent, so it is refused rather than
+ * scaled by a guess. So is 100 or more, a negative, and anything readMoney
+ * cannot read. Same rule as the Settings rate (lane 2, decision (4)).
+ */
+export const readTaxRate = (
+  v: unknown,
+): { rate: number | null; unread?: unknown } => {
+  if (v === null || v === undefined || v === "") return { rate: null };
+  const m = readMoney(typeof v === "string" ? v.replace(/%/g, "") : v);
+  if ("unread" in m || m.value === null) return { rate: null, unread: v };
+  const pct = m.value;
+  if (pct < 0 || pct >= 100 || (pct > 0 && pct < 1))
+    return { rate: null, unread: v };
+  return { rate: pct / 100 };
+};
+/** The first line whose tax_rate was present and not read, named for errors[]. */
+const taxRateUnreadOf = (
+  lines: any[],
+): { taxRateUnread?: { field: string; value: unknown } } => {
+  for (let i = 0; i < lines.length; i++) {
+    const r = readTaxRate(lines[i]?.tax_rate ?? lines[i]?.taxRate);
+    if ("unread" in r)
+      return {
+        taxRateUnread: { field: `items[${i}].tax_rate`, value: r.unread },
+      };
+  }
+  return {};
+};
+/** A line's stated rate, only when the till stated one. */
+const lineTaxRateOf = (it: any): { taxRate?: number } => {
+  const r = readTaxRate(it?.tax_rate ?? it?.taxRate);
+  return r.rate !== null ? { taxRate: r.rate } : {};
 };
 
 const voidedOf = (v: unknown): { voided: boolean; voidedUnread?: unknown } => {
@@ -246,6 +297,7 @@ export const genericAdapter: PosAdapter = {
           Array.isArray(r.items) ? r.items : [],
           (it) => it?.qty ?? it?.quantity,
         ),
+        ...taxRateUnreadOf(Array.isArray(r.items) ? r.items : []),
         items: (Array.isArray(r.items) ? r.items : []).map(
           (it: any): CanonicalItem => ({
             name: String(it.name ?? "unknown"),
@@ -259,6 +311,7 @@ export const genericAdapter: PosAdapter = {
               it.modifierIds ?? it.modifier_ids,
               (m) => m,
             ),
+            ...lineTaxRateOf(it),
           }),
         ),
         raw: r,
@@ -345,6 +398,9 @@ export const squareAdapter: PosAdapter = {
           serverName: null,
           covers: null,
           subtotal: squareNetSales(o.net_amounts),
+          // F-1537: the till's own tax is already off (rung 1), so a house
+          // whose prices include tax never has its rates divided out again.
+          subtotalPreTax: true,
           total: cents(o.total_money?.amount),
           tip: cents(o.total_tip_money?.amount),
           ...qtyUnreadOf(o.line_items ?? [], (li) => li?.quantity),
@@ -466,6 +522,12 @@ export const toastAdapter: PosAdapter = {
             null
           : null,
         covers: num(c.numberOfGuests),
+        // F-1537: Toast's own tax figures are NOT read (no `tax`, no
+        // `subtotalPreTax`) until a captured vendor payload shows what
+        // `amount` holds with and without Toast's "tax included" option (ADR
+        // 0105 D4). Until then a Toast house that says its prices include tax
+        // goes through its own rates (tax-basis-resolver, rung 2). The spec
+        // "Toast's stated tax waits for a captured payload" holds this gate.
         subtotal: num(c.amount),
         total: num(c.totalAmount ?? c.amount),
         tip: num(c.tipAmount),

@@ -53,7 +53,11 @@ function makeDb(
           if (table === "restaurants") {
             const timezone =
               opts.timezone === undefined ? "Europe/Istanbul" : opts.timezone;
-            return { data: { timezone, country: null }, error: null };
+            // F-1537: unset, a strict no-op, as every house is today.
+            return {
+              data: { timezone, country: null, tax_basis: "unset" },
+              error: null,
+            };
           }
           const row = [...checks.values()].find(
             (r) =>

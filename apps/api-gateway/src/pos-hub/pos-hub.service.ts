@@ -16,6 +16,11 @@ import { LowStockAlertsService } from "../notifications/low-stock-alerts.service
 import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import {
+  loadHouseTaxContext,
+  resolveCheckSubtotal,
+  type HouseTaxContextRead,
+} from "./tax-basis-resolver";
+import {
   PROVIDER_BY_KEY,
   POS_PROVIDERS,
   registrySummary,
@@ -1455,6 +1460,13 @@ export class PosHubService {
     let zoneRead: Promise<string | null> | null = null;
     const houseZone = () =>
       (zoneRead ??= readHouseZone(client, restaurantId).then((z) => z.zone));
+    // F-1537: the house's tax basis, read once, when the first check reaches
+    // the write. An unset house is a strict no-op: its rows are written
+    // exactly as before (tax-basis-resolver, rule 1).
+    let taxRead: Promise<HouseTaxContextRead> | null = null;
+    const houseTax = () =>
+      (taxRead ??= loadHouseTaxContext(client, restaurantId));
+    const netNotRecorded = new Map<string, number>();
 
     for (const check of checks) {
       try {
@@ -1521,6 +1533,20 @@ export class PosHubService {
           errors.push(
             `${check.externalCheckId}: not imported, ${check.qtyUnread.field} not readable as a quantity — write it as 2 or 0.5 (it was ${quoteClosedAt(check.qtyUnread.value)})`,
           );
+          continue;
+        }
+        // F-1537: a line tax rate that reads as neither a percent nor absent
+        // is not guessed into one ("0.20" is 20 % or a fifth of one).
+        if (check.taxRateUnread !== undefined) {
+          errors.push(
+            `${check.externalCheckId}: not imported, ${check.taxRateUnread.field} not readable as a percent — write 20 for 20 percent (it was ${quoteClosedAt(check.taxRateUnread.value)})`,
+          );
+          continue;
+        }
+        // F-1537: a check is not written on a tax basis nobody read.
+        const tax = await houseTax();
+        if (!tax.ok) {
+          errors.push(`${check.externalCheckId}: not imported, ${tax.message}`);
           continue;
         }
         // F-1238: a check a file import stored before this house's till sent
@@ -1628,6 +1654,36 @@ export class PosHubService {
           };
         });
 
+        // F-1537: the subtotal made pre-tax under the house's basis, once,
+        // here (ADR 0295 draft rule 1; never at read time). `as_before`
+        // (unset) adds nothing to the row.
+        const taxStamp = resolveCheckSubtotal(
+          {
+            subtotal: check.subtotal ?? null,
+            total: check.total ?? null,
+            tip: check.tip ?? null,
+            ...(check.tax !== undefined ? { tax: check.tax } : {}),
+            subtotalPreTax: check.subtotalPreTax === true,
+            closedAt: typeof when.closedAt === "string" ? when.closedAt : null,
+            openedAt: check.openedAt ?? null,
+            lines: items.map((l, i) => ({
+              qty: l.qty,
+              price: l.price,
+              category: l.category,
+              inventoryId: l.inventory_id ?? null,
+              ...(check.items[i]?.taxRate !== undefined
+                ? { taxRate: check.items[i].taxRate as number }
+                : {}),
+            })),
+          },
+          tax.ctx,
+        );
+        if (taxStamp.kind === "stamped" && taxStamp.unresolved) {
+          netNotRecorded.set(
+            taxStamp.unresolved,
+            (netNotRecorded.get(taxStamp.unresolved) ?? 0) + 1,
+          );
+        }
         const row = {
           restaurant_id: restaurantId,
           source,
@@ -1668,6 +1724,16 @@ export class PosHubService {
           ...(check.sourceModifiedAt
             ? { source_modified_at: check.sourceModifiedAt }
             : {}),
+          // F-1537: a house that stated its basis gets the pre-tax subtotal
+          // and the row says how; an unset house gets nothing new.
+          ...(taxStamp.kind === "stamped"
+            ? {
+                subtotal: taxStamp.subtotal,
+                gross_subtotal: taxStamp.gross_subtotal,
+                tax_basis: taxStamp.tax_basis,
+                tax_rate_version: taxStamp.tax_rate_version,
+              }
+            : {}),
         };
         const { error } = await client.from("pos_checks").upsert(row, {
           onConflict: "restaurant_id,source,external_check_id",
@@ -1700,6 +1766,13 @@ export class PosHubService {
       const more = refusedUnreadableDate - MAX_REFUSED_CHECK_LINES;
       errors.push(
         `${more} more check${more === 1 ? " was" : "s were"} not imported, ${CLOSED_AT_NOT_READABLE}; counted in refusedUnreadableDate, not named here`,
+      );
+    }
+    // F-1537: checks written with net sales not recorded (subtotal null),
+    // one line per reason; the dashboard counts them (0290 count-and-say).
+    for (const [why, n] of netNotRecorded) {
+      errors.push(
+        `${n} check${n === 1 ? " was" : "s were"} stored with net sales not recorded: ${why}`,
       );
     }
     // Grouped, bounded: one line per (failure kind, item), not one per line.

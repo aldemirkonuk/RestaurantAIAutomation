@@ -26,6 +26,10 @@ export interface CanonicalItem {
    *  `<item id>:<modifier id>`); otherwise it is queued, never depleted at
    *  the item's one mapped volume. */
   modifierIds?: string[];
+  /** F-1537: the tax rate the till states for this line, as a FRACTION
+   *  (0.2 = 20 %), read from a percent (`tax_rate: 20`). Absent when the till
+   *  states none; the house's own rates are used then (tax-basis-resolver). */
+  taxRate?: number;
 }
 
 /**
@@ -77,6 +81,9 @@ export interface CanonicalCheck {
   /** F-1193: set only when a line's quantity was present but not read as a
    *  number ("2,000" is two thousand or two): ingest() refuses the check. */
   qtyUnread?: { field: string; value: unknown };
+  /** F-1537: set only when a line's `tax_rate` was present but not read as a
+   *  percent ("0.20" is 20 % or a fifth of one): ingest() refuses the check. */
+  taxRateUnread?: { field: string; value: unknown };
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */
   tableRef?: string | null;
@@ -91,6 +98,13 @@ export interface CanonicalCheck {
   subtotal?: number | null;
   total?: number | null;
   tip?: number | null;
+  /** F-1537: the tax the till states is INSIDE `subtotal` (generic/CSV
+   *  `tax`). Absent when the till states none. Read only for a house whose
+   *  prices include tax (tax-basis-resolver, rung 1); never read as net. */
+  tax?: number;
+  /** F-1537: the adapter already took the till's own tax off `subtotal`
+   *  (Square, F-340), so the house's rates are never divided out of it again. */
+  subtotalPreTax?: boolean;
   items: CanonicalItem[];
   /** Untouched source payload for audit/debug. */
   raw?: unknown;

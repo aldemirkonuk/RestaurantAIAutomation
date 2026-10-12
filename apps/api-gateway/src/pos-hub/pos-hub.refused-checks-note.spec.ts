@@ -294,6 +294,10 @@ function makeService(opts: Opts = {}) {
           select: (cols: string) => ((filters.select = cols), q),
           eq: (c: string, v: unknown) => ((filters[c] = v), q),
           maybeSingle: async () => {
+            // F-1537: ingest's read of the house's tax basis is not the
+            // note's read of its zone; the house is unset, a strict no-op.
+            if (String(filters.select ?? "").includes("tax_basis"))
+              return { data: { tax_basis: "unset" }, error: null };
             calls.houseReads.push(filters);
             if (opts.houseError) return { data: null, error: opts.houseError };
             const house =

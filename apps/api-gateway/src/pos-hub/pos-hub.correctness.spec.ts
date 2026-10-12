@@ -32,8 +32,13 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
         in: () => q,
         // What earlier imports of the check moved: nothing (sim wave 8).
         like: async () => ({ data: [], error: null }),
+        // F-1537: the house row is unset (a strict no-op), as every house is
+        // until its owner answers.
         maybeSingle: async () => ({
-          data: opts.inventory ?? null,
+          data:
+            table === "restaurants"
+              ? { tax_basis: "unset" }
+              : (opts.inventory ?? null),
           error: null,
         }),
         single: async () => ({ data: { id: "map-1" }, error: null }),
