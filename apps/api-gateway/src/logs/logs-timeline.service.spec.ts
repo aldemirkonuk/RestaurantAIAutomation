@@ -977,6 +977,48 @@ describe("LogsTimelineService.getTimeline", () => {
       });
     });
 
+    // F-1522: the receipt trigger files drink_back_on with the receiver as
+    // the actor; the row read "Ayşe: drink back on — Tito's", as if she
+    // had tapped it.
+    it("says a delivery put a drink back on, not the person who booked it", async () => {
+      const { events } = await svc({
+        system_audit_log: [
+          {
+            ...audit("a1", "drink_back_on", "u-ayse", {
+              subject: "Tito's",
+              fields: { sold_out: { from: true, to: false } },
+              ended_by_receipt: "txn-1",
+            }),
+            entity_type: "inventory_item",
+            reason: "stock received",
+          },
+          {
+            ...audit("a2", "drink_sold_out", "u-ayse", {
+              subject: "Tito's",
+              fields: { sold_out: { from: false, to: true } },
+              reopened_after_receipt: "txn-1",
+            }),
+            entity_type: "inventory_item",
+            created_at: "2026-09-20T10:00:00Z",
+          },
+          {
+            ...audit("a3", "drink_back_on", "u-ayse", {
+              subject: "Tito's",
+              fields: { sold_out: { from: true, to: false } },
+            }),
+            entity_type: "inventory_item",
+            created_at: "2026-09-20T08:00:00Z",
+          },
+        ],
+      }).getTimeline("r1", { role: "owner" });
+
+      expect(events.map((e) => e.summary)).toEqual([
+        "Tito's sold out again: the delivery that brought it back was turned away by Ayşe Demir",
+        "Tito's back on: delivery booked by Ayşe Demir",
+        "Ayşe Demir: drink back on — Tito's (sold out: yes → no)",
+      ]);
+    });
+
     it("names a person who holds access to this house, and never names someone from another house", async () => {
       const { events } = await svc({
         system_audit_log: [

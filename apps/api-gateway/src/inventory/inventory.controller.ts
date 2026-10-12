@@ -902,17 +902,21 @@ export class InventoryController {
     );
   }
 
+  // F-1521: the body names the stock-out the person saw; another open one
+  // since is refused with 409, never ended unseen.
   @Post(":restaurantId/item/:itemId/stock-out/end")
   @ApiOperation({ summary: "Bring a sold-out item back" })
   async endStockOut(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
+    @Body() dto?: { stockOutId?: string | null },
     @CurrentUser() user?: { userId?: string },
   ) {
     return this.inventoryService.endStockOut(
       restaurantId,
       itemId,
       user?.userId ?? null,
+      dto?.stockOutId ?? null,
     );
   }
 

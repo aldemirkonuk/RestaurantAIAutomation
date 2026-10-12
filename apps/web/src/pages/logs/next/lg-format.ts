@@ -421,6 +421,8 @@ export function linkOutFor(e: TimelineEvent, ctx: LinkContext): LinkOut | null {
       if (entity === 'generated_report') return { to: '/documents-reports', label: 'Open the reports' };
       if (entity === 'restaurant_feature_flag') return { to: '/settings?tab=features', label: 'Open the features' };
       if (entity === 'restaurant_member') return { to: '/team', label: 'Open the team' };
+      // F-1522: a drink 86'd or back on; /inventory shows its sold-out state.
+      if (entity === 'inventory_item') return { to: '/inventory', label: 'Open the stock' };
       return null;
     }
     default:

@@ -95,6 +95,17 @@ export function SoldOutChip({
   return null;
 }
 
+/**
+ * How an 86 ends, by its cause (F-1496): a delivery booked in brings a drink
+ * back, except one that was pulled on purpose (20270106300000), which only a
+ * person brings back. Without a cause (the menu reads none) both are said.
+ */
+export function comesBackWords(cause?: StockOutCause | null): string {
+  if (cause === 'pulled') return 'It comes back only when someone brings it back.';
+  if (cause) return 'It comes back when someone brings it back or a delivery is booked in.';
+  return 'It comes back when someone brings it back, or when a delivery is booked in unless it was pulled.';
+}
+
 /** One past stock-out, in words. */
 export function pastWords(s: StockOut, zone?: string | null): string {
   return `${when(s.startedAt, zone)} (${CAUSE_WORDS[s.cause] ?? s.cause})`;
@@ -128,11 +139,18 @@ export default function SoldOutControl({
       void qc.invalidateQueries({ queryKey: queryKeys.inventory.lists() });
     },
   });
+  // F-1521: names the 86 on screen, so a newer one (an owner's pull since
+  // this was read) is refused rather than ended unseen; the refusal says who
+  // and why, and the row reads again.
   const back = useMutation({
-    mutationFn: async () => (await apiClient.post<StockOutState>(`${base}/end`)).data,
+    mutationFn: async (stockOutId: string) =>
+      (await apiClient.post<StockOutState>(`${base}/end`, { stockOutId })).data,
     onSuccess: (data) => {
       qc.setQueryData(key, data);
       void qc.invalidateQueries({ queryKey: queryKeys.inventory.lists() });
+    },
+    onError: () => {
+      void qc.invalidateQueries({ queryKey: key });
     },
   });
 
@@ -160,7 +178,7 @@ export default function SoldOutControl({
           <button
             type="button"
             className="cl-btn"
-            onClick={() => back.mutate()}
+            onClick={() => back.mutate(open.id)}
             disabled={back.isPending}
             data-testid="sold-out-back"
           >

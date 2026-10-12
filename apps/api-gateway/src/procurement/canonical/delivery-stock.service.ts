@@ -532,7 +532,133 @@ export class DeliveryStockService {
       if (!moved.ok) return moved;
       bottlesReturned += qty;
     }
+    if (bottlesReturned > 0)
+      await this.reopenStockOutsItEnded(restaurantId, deliveryId, userId, why);
     return { ok: true, value: { deliveryId, bottlesReturned } };
+  }
+
+  /**
+   * F-1520: a delivery that put an 86'd drink back on sale (the receipt
+   * trigger stamps `stock_outs.ended_by_receipt` with its purchase row,
+   * 20270106300000) and is then turned away took its bottles with it, so the
+   * 86 it ended opens again. Not when someone has said something newer: a
+   * later 86 of the item, or a later delivery of it, stands. Filed as
+   * `drink_sold_out` naming the reversal. Never refuses the reversal; a
+   * failure is logged and the drink stays on.
+   */
+  private async reopenStockOutsItEnded(
+    restaurantId: string,
+    deliveryId: string,
+    userId: string | null,
+    why: string,
+  ): Promise<void> {
+    const db = this.db.getClient();
+    try {
+      const receipts = await db
+        .from("inventory_transactions")
+        .select("id, created_at")
+        .eq("delivery_id", deliveryId)
+        .eq("transaction_type", "purchase");
+      if (receipts.error) throw receipts.error;
+      const at = new Map<string, string>();
+      for (const r of (receipts.data ?? []) as {
+        id: string;
+        created_at: string;
+      }[])
+        at.set(r.id, r.created_at);
+      if (at.size === 0) return;
+      const ended = await db
+        .from("stock_outs")
+        .select("id, inventory_id, cause, ended_by_receipt")
+        .eq("restaurant_id", restaurantId)
+        .in("ended_by_receipt", [...at.keys()]);
+      if (ended.error) throw ended.error;
+      for (const so of (ended.data ?? []) as {
+        id: string;
+        inventory_id: string;
+        cause: string;
+        ended_by_receipt: string;
+      }[]) {
+        const receipt = so.ended_by_receipt;
+        const latest = await db
+          .from("stock_outs")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", so.inventory_id)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latest.error) throw latest.error;
+        if ((latest.data as { id?: string } | null)?.id !== so.id) continue;
+        const later = await db
+          .from("inventory_transactions")
+          .select("delivery_id")
+          .eq("inventory_id", so.inventory_id)
+          .eq("transaction_type", "purchase")
+          .eq("stock_type", "live")
+          .gt("quantity_change", 0)
+          .gt("created_at", at.get(receipt) ?? "");
+        if (later.error) throw later.error;
+        if (
+          ((later.data ?? []) as { delivery_id: string | null }[]).some(
+            (t) => t.delivery_id !== deliveryId,
+          )
+        )
+          continue;
+        const reopened = await db
+          .from("stock_outs")
+          .update({ ended_at: null, ended_by: null, ended_by_receipt: null })
+          .eq("id", so.id)
+          .eq("ended_by_receipt", receipt)
+          .select("id");
+        // 23505: another 86 opened in between; it stands.
+        if (reopened.error?.code === "23505") continue;
+        if (reopened.error) throw reopened.error;
+        if (!((reopened.data ?? []) as unknown[]).length) continue;
+        const item = await db
+          .from("restaurant_inventory")
+          .select("wine_name, master_wine_library (name)")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", so.inventory_id)
+          .maybeSingle();
+        // The row is filed without the wine's name rather than not at all.
+        if (item.error)
+          this.logger.warn(
+            `delivery ${deliveryId}: the wine's name could not be read: ${item.error.message}`,
+          );
+        const named = item.data as {
+          wine_name?: string | null;
+          master_wine_library?: { name?: string | null } | null;
+        } | null;
+        const subject = named?.wine_name || named?.master_wine_library?.name;
+        const audit = await db.from("system_audit_log").insert({
+          actor_type: userId ? "user" : "system",
+          actor_id: userId,
+          action: "drink_sold_out",
+          entity_type: "inventory_item",
+          entity_id: so.inventory_id,
+          restaurant_id: restaurantId,
+          reason: "delivery turned away",
+          changes: {
+            ...(subject ? { subject } : {}),
+            fields: { sold_out: { from: false, to: true } },
+            stock_out_id: so.id,
+            cause: so.cause,
+            delivery_id: deliveryId,
+            reopened_after_receipt: receipt,
+            why,
+          },
+        });
+        if (audit.error)
+          this.logger.error(
+            `delivery ${deliveryId}: ${so.inventory_id} is sold out again but the audit row failed: ${audit.error.message}`,
+          );
+      }
+    } catch (err: unknown) {
+      this.logger.error(
+        `delivery ${deliveryId} was turned away, but the 86 it ended could not be checked or opened again: ${(err as { message?: string })?.message ?? String(err)}`,
+      );
+    }
   }
 
   // -------------------------------------------------------------------------

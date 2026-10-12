@@ -875,6 +875,7 @@ export class InventoryLedgerService {
         live.error.message || "The bottles could not be moved onto the shelf",
       );
     }
+    await this.endStockOutOnShelving(restaurantId, userId, inventoryId);
     const out = await this.databaseService.supabase.rpc(
       "apply_stock_movement",
       {
@@ -900,6 +901,71 @@ export class InventoryLedgerService {
       );
     }
     return { moved: shadow };
+  }
+
+  /**
+   * F-1523: bottles on order counted onto the shelf bring an 86'd drink back,
+   * as a delivery booked in does (S195, end_stock_out_on_receipt) -- except a
+   * pulled one, which stays until a person brings it back (20270106300000).
+   * The person who shelved them ended it, so it is theirs on the record.
+   * Never refuses the move: the bottles are on the shelf either way.
+   */
+  private async endStockOutOnShelving(
+    restaurantId: string,
+    userId: string,
+    inventoryId: string,
+  ): Promise<void> {
+    const db = this.databaseService.supabase;
+    try {
+      const { data: ended, error } = await db
+        .from("stock_outs")
+        .update({ ended_at: new Date().toISOString(), ended_by: userId })
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", inventoryId)
+        .is("ended_at", null)
+        .neq("cause", "pulled")
+        .select("id, cause");
+      if (error) throw error;
+      if (!ended?.length) return;
+      const { data: item, error: nameError } = await db
+        .from("restaurant_inventory")
+        .select("wine_name, master_wine_library (name)")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .maybeSingle();
+      // The row is filed without the wine's name rather than not at all.
+      if (nameError)
+        this.logger.warn(
+          `drink_back_on: the wine's name could not be read: ${nameError.message}`,
+        );
+      const subject =
+        (item as any)?.wine_name || (item as any)?.master_wine_library?.name;
+      for (const r of ended as Array<{ id: string; cause: string }>) {
+        const { error: auditError } = await db.from("system_audit_log").insert({
+          actor_type: "user",
+          actor_id: userId,
+          action: "drink_back_on",
+          entity_type: "inventory_item",
+          entity_id: inventoryId,
+          restaurant_id: restaurantId,
+          reason: "bottles on order counted onto the shelf",
+          changes: {
+            ...(subject ? { subject } : {}),
+            fields: { sold_out: { from: true, to: false } },
+            stock_out_id: r.id,
+            cause: r.cause,
+          },
+        });
+        if (auditError)
+          this.logger.error(
+            `drink_back_on ${inventoryId} happened but the audit row failed: ${auditError.message}`,
+          );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `${inventoryId}: bottles shelved, but its 86 could not be ended: ${err?.message}`,
+      );
+    }
   }
 
   // ==========================================================================

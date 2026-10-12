@@ -1,7 +1,9 @@
 /**
  * Sold out (86) on the phone, the words for it. F-145, coordinator call S195:
  * a drink is 86'd from /cellar, /inventory and the phone, by anyone of the
- * house, and comes back when a person says so or a delivery is booked in.
+ * house, and comes back when a person says so or a delivery is booked in --
+ * except a pulled one, which only a person brings back (F-1496,
+ * 20270106300000).
  *
  * The gateway answers GET/POST /inventory/:house/item/:item/stock-out with
  * the item's open stock-out (or null) and its last ten. A failed read is said
@@ -68,7 +70,12 @@ export function soldOutLine(
     open.cause === "broken"
       ? " This does not take the broken bottle off stock; record it as breakage too."
       : "";
-  return `Sold out since ${at}, ${why}${open.note ? ` (${open.note})` : ""}. It comes back when you say so or a delivery is booked in.${stillOnStock}`;
+  // F-1496: a delivery does not end a pulled 86 (20270106300000).
+  const back =
+    open.cause === "pulled"
+      ? "It comes back only when someone brings it back."
+      : "It comes back when you say so or a delivery is booked in.";
+  return `Sold out since ${at}, ${why}${open.note ? ` (${open.note})` : ""}. ${back}${stillOnStock}`;
 }
 
 /**
