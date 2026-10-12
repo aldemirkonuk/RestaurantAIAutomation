@@ -1136,6 +1136,17 @@ export class OrderResponseDto {
   @ApiPropertyOptional()
   approvedAt?: string;
 
+  /**
+   * WHO approved the order, by name (F-1417): `procurement_orders.approved_by`
+   * was stored but shown nowhere. A string is the approver's name (or the
+   * words for Mudavym, when the vendor-reply agent approved it, ADR 0325);
+   * `null` is "read, and no name is on record"; the key ABSENT is "this route
+   * did not read it" (only `GET /procurement/orders` does today), or the
+   * names could not be read.
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  approvedByName?: string | null;
+
   @ApiPropertyOptional()
   deliveredAt?: string;
 

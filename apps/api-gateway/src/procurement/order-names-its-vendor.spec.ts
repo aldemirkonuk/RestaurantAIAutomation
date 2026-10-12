@@ -355,3 +355,52 @@ describe("the detail route states the day the order arrives (F-569)", () => {
     expect("expectedDeliveryDate" in wire).toBe(false);
   });
 });
+
+describe("the orders list names who approved each order (F-1417)", () => {
+  const MANAGER = "11111111-1111-4111-8111-111111111111";
+  const AGENT = "00000000-0000-4000-8000-0000000a6e17";
+
+  function withNames(db: DatabaseService, namesOf: jest.Mock) {
+    const svc: any = service(db);
+    svc.vendorSendAuthority = { namesOf };
+    return svc as ProcurementService;
+  }
+
+  it("sends the approver's name, Mudavym's words for the agent, and null for none", async () => {
+    const namesOf = jest
+      .fn()
+      .mockResolvedValue(new Map([[MANAGER, "Ayşe Demir"]]));
+    const { db } = makeDb({
+      data: [
+        orderRow({
+          id: "o-1",
+          approved_by: MANAGER,
+          approved_at: "2026-09-02T10:00:00Z",
+        }),
+        orderRow({
+          id: "o-2",
+          approved_by: AGENT,
+          approved_at: "2026-09-02T11:00:00Z",
+        }),
+        orderRow({ id: "o-3", approved_by: null }),
+      ],
+    });
+    const res = await withNames(db, namesOf).listOrders("rest-1", {} as any);
+    expect(res.orders.map((o) => o.approvedByName)).toEqual([
+      "Ayşe Demir",
+      "Mudavym, from the vendor's reply",
+      null,
+    ]);
+    // One read for the page, and the agent's id is no person to look up.
+    expect(namesOf).toHaveBeenCalledTimes(1);
+    expect(namesOf.mock.calls[0][0]).not.toContain(AGENT);
+  });
+
+  it("sends no approvedByName when the names could not be read, never a false 'no one'", async () => {
+    const namesOf = jest.fn().mockRejectedValue(new Error("connection reset"));
+    const { db } = makeDb({ data: [orderRow({ approved_by: MANAGER })] });
+    const res = await withNames(db, namesOf).listOrders("rest-1", {} as any);
+    const wire = JSON.parse(JSON.stringify(res.orders[0]));
+    expect("approvedByName" in wire).toBe(false);
+  });
+});

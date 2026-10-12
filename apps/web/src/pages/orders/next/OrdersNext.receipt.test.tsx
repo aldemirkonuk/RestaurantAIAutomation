@@ -61,7 +61,13 @@ vi.mock('@/contexts/AuthContext', () => ({
 import OrdersNext from './OrdersNext';
 import { CLOSE_SHORT_DONE, NO_RECEIPT_SENTENCE } from './ReceiptSheet';
 import { RECURRENCE_UNREAD } from './recurrence';
-import { closeShortOwed, type OrderRowVM, type OrdersNextData } from './useOrdersNextData';
+import {
+  approvedLine,
+  closeShortOwed,
+  toRow,
+  type OrderRowVM,
+  type OrdersNextData,
+} from './useOrdersNextData';
 
 function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
   return {
@@ -167,6 +173,44 @@ describe('an order line opens its receipt in a right sheet', () => {
     const sheet = await screen.findByTestId('receipt-sheet');
     expect(await within(sheet).findByText(/could not be read/)).toBeInTheDocument();
     expect(within(sheet).queryByText(NO_RECEIPT_SENTENCE)).toBeNull();
+  });
+});
+
+/**
+ * F-1417 — who approved an order was stored but shown nowhere. The order row
+ * and its receipt now say "Approved by <name> at <time>".
+ */
+describe('the order and its receipt say who approved it', () => {
+  it('reads the name the list route sends into one sentence', () => {
+    const vm = toRow(
+      {
+        id: 'o-9',
+        status: 'approved',
+        approvedAt: '2026-09-02T10:00:00Z',
+        approvedByName: 'Ayşe Demir',
+      } as never,
+      new Map(),
+    );
+    expect(vm.approvedLine).toMatch(/^Approved by Ayşe Demir at .+\.$/);
+  });
+
+  it('says no name is on record when none is, and only the time when the name was not read', () => {
+    expect(approvedLine('2026-09-02T10:00:00Z', null)).toMatch(
+      /^Approved at .+\. No name is on record for who approved it\.$/,
+    );
+    expect(approvedLine('2026-09-02T10:00:00Z', undefined)).toMatch(/^Approved at [^.]+\.$/);
+    expect(approvedLine(null, 'Ayşe Demir')).toBeNull();
+  });
+
+  it('shows the sentence on the order row and on its receipt', async () => {
+    const said = 'Approved by Ayşe Demir at 2/9, 13:00.';
+    state.current = ordersData([row({ approvedLine: said })]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    openReceipt();
+
+    expect(screen.getByTestId('order-approved-by')).toHaveTextContent(said);
+    const sheet = await screen.findByTestId('receipt-sheet');
+    expect(within(sheet).getByText(said)).toBeInTheDocument();
   });
 });
 

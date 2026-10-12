@@ -72,6 +72,21 @@ describe('MenuScanUpload', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 
+  it('says a refused-as-too-big page in plain words, not a status code (F-1404)', async () => {
+    importMenu.mockRejectedValueOnce(
+      Object.assign(new AxiosError('Request failed with status code 413'), {
+        response: { status: 413, data: '' },
+      }),
+    )
+    render(<MenuScanUpload onSuccess={vi.fn()} />)
+    await act(async () => {
+      captured!('iVBORw0KGgo=')
+    })
+    expect(await screen.findByText('This file is too big — under 10 MB please.')).toBeInTheDocument()
+    expect(screen.queryByText(/413/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
   it('does not promise a read time the page cannot keep (F-793)', async () => {
     importMenu.mockReturnValueOnce(new Promise(() => {}))
     render(<MenuScanUpload onSuccess={vi.fn()} />)

@@ -589,7 +589,7 @@ function PriceCell({ linePrice, housePrice, currency, kind }: {
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, focusEdit = false }: {
+function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, focusEdit = false, focusDiscard = false }: {
   line: MenuLine
   currency: string | null
   onDiscard: () => void
@@ -601,12 +601,18 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
   onEdit: (() => void) | null
   // Back from Save or Cancel, the row's own Edit takes focus again (F-1038).
   focusEdit?: boolean
+  // Put back, the line's own Discard takes focus again (F-1425).
+  focusDiscard?: boolean
 }) {
   const reason = line.status === 'flagged' ? flagReason(line.review_notes) : null;
   const editRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (focusEdit) editRef.current?.focus();
   }, [focusEdit]);
+  const discardRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (focusDiscard) discardRef.current?.focus();
+  }, [focusDiscard]);
   return (
     <tr data-testid="menu-row">
       <td>{line.name}</td>
@@ -645,6 +651,7 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
         ) : null}
         {canDiscard ? (
           <button
+            ref={discardRef}
             type="button"
             className="cl-btn cl-focus"
             disabled={discarding}
@@ -684,10 +691,21 @@ function MenuPage() {
   // The line this person just took off, offered back in place (F-268): the
   // undo is why Discard needs no confirm step.
   const [justDiscarded, setJustDiscarded] = useState<{ id: string; name: string } | null>(null);
+  // Discard takes its row, and its button, off the page, which dropped focus
+  // to the body (F-1425). Focus goes to "Put it back" instead, and once the
+  // line is back, to that line's own Discard.
+  const putBackRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (justDiscarded) putBackRef.current?.focus();
+  }, [justDiscarded]);
+  const [putBackId, setPutBackId] = useState<string | null>(null);
   const putBack = (id: string) => {
     setRestoringId(id);
     restore.mutate(id, {
-      onSuccess: () => setJustDiscarded((d) => (d?.id === id ? null : d)),
+      onSuccess: () => {
+        setPutBackId(id);
+        setJustDiscarded((d) => (d?.id === id ? null : d));
+      },
       onSettled: () => setRestoringId(null),
     });
   };
@@ -817,6 +835,7 @@ function MenuPage() {
                         currency={currency}
                         canDiscard={canManage}
                         focusEdit={leftEditId === line.id}
+                        focusDiscard={putBackId === line.id}
                         onEdit={
                           canManage
                             ? () => {
@@ -829,6 +848,7 @@ function MenuPage() {
                         discarding={discard.isPending && discardingId === line.id}
                         onDiscard={() => {
                           setDiscardingId(line.id);
+                          setPutBackId(null);
                           discard.mutate(line.id, {
                             onSuccess: () => setJustDiscarded({ id: line.id, name: line.name }),
                             onSettled: () => setDiscardingId(null),
@@ -896,6 +916,7 @@ function MenuPage() {
               <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-just-discarded">
                 {justDiscarded.name} is off the menu.{' '}
                 <button
+                  ref={putBackRef}
                   type="button"
                   className="cl-btn cl-focus"
                   disabled={restoringId === justDiscarded.id}

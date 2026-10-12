@@ -3,6 +3,11 @@ import { RotateCcw } from 'lucide-react'
 import { CameraCapture } from '../scanner/CameraCapture'
 import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
 import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../../lib/menuReadWithoutAnswer'
+import { MAX_UPLOAD_BYTES } from '../../lib/uploadAccept'
+
+// The gateway's size limit answers with a bare 413 and no words, which the
+// owner used to see as "Request failed with status code 413" (F-1404).
+const TOO_BIG = `This file is too big — under ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB please.`
 
 interface MenuScanUploadProps {
   onSuccess: MenuImportSuccess
@@ -24,6 +29,12 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
       const result = await importMenu('scan', { imageBase64 })
       onSuccess(result, { image: imageBase64 })
     } catch (e: any) {
+      if (e?.response?.status === 413) {
+        // The same page would be refused again, so nothing is kept to resend.
+        setLastImage(null)
+        setError(TOO_BIG)
+        return
+      }
       if (readWithoutAnswer(e)) {
         setLastImage(null)
         setError(READ_WITHOUT_ANSWER)

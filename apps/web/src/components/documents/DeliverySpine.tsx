@@ -76,9 +76,12 @@ function Ladder({ state }: { state: string }) {
 
 function Card({
   doc,
+  jurisdiction,
   onOpen,
 }: {
   doc: Spine['documents'][number]
+  /** The delivery's own jurisdiction, so the card's date prints its way. */
+  jurisdiction: string | null
   onOpen?: (id: string) => void
 }) {
   const label = ROLE_LABELS[doc.role] ?? doc.role
@@ -126,7 +129,12 @@ function Card({
           color: 'var(--ink-4, #665D50)',
         }}
       >
-        {fmtDate(doc.docDate ?? doc.createdAt)} · {doc.status ?? 'status unrecorded'}
+        {/* Each card prints in its own document's way: its delivery's
+            jurisdiction and its own currency. A spine row carries no seller,
+            so there is no country to pass; a currency that is neither TRY nor
+            USD falls back to the house's formats (F-1398). */}
+        {fmtDate(doc.docDate ?? doc.createdAt, jurisdiction, doc.currency)} ·{' '}
+        {doc.status ?? 'status unrecorded'}
       </span>
       <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-2, #4F473C)' }}>
         {doc.total === undefined
@@ -155,6 +163,12 @@ function Card({
       )}
     </li>
   )
+}
+
+/** The currency every document on the delivery shares, else null (F-1398). */
+function oneCurrency(d: Spine): string | null {
+  const set = new Set(d.documents.map((x) => x.currency).filter(Boolean))
+  return set.size === 1 ? [...set][0] : null
 }
 
 export function DeliverySpine({
@@ -233,7 +247,9 @@ export function DeliverySpine({
                 </span>
                 {d.documents.length}{' '}
                 {d.documents.length === 1 ? 'document' : 'documents'} ·{' '}
-                {d.deliveredAt ? fmtDate(d.deliveredAt) : 'not yet delivered'}
+                {d.deliveredAt
+                  ? fmtDate(d.deliveredAt, d.jurisdiction, oneCurrency(d))
+                  : 'not yet delivered'}
                 {d.provenance === 'UNORDERED' && (
                   <strong
                     data-testid="unordered-mark"
@@ -302,6 +318,7 @@ export function DeliverySpine({
                       ...doc,
                       isSelected: doc.documentId === selectedDocumentId,
                     }}
+                    jurisdiction={d.jurisdiction}
                     onOpen={onOpenDocument}
                   />
                 ))}

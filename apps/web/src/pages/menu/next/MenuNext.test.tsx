@@ -473,6 +473,29 @@ describe('MenuNext — put a discarded line back (F-268)', () => {
     await waitFor(() => expect(screen.queryByTestId('menu-just-discarded')).not.toBeInTheDocument());
   });
 
+  it('moves focus to "Put it back" after a discard, and back to the line once it is back (F-1425)', async () => {
+    let onMenu = true;
+    mockGetMenu.mockImplementation(async () =>
+      menu({ items: onMenu ? [line({ id: 'l9', name: 'Raki' })] : [] }),
+    );
+    mockDiscard.mockImplementation(async () => {
+      onMenu = false;
+      return { menuItemId: 'l9', status: 'discarded' };
+    });
+    mockRestore.mockImplementation(async () => {
+      onMenu = true;
+      return { menuItemId: 'l9', status: 'approved' };
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    const undo = await screen.findByRole('button', { name: 'Put it back' });
+    await waitFor(() => expect(undo).toHaveFocus());
+    fireEvent.click(undo);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Discard Raki' })).toHaveFocus(),
+    );
+  });
+
   it('lists the lines taken off, says what each goes back as, and puts one back', async () => {
     mockGetMenu.mockResolvedValue(menu());
     mockDiscarded.mockResolvedValue({

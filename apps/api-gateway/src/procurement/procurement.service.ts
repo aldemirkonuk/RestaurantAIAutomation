@@ -607,6 +607,11 @@ interface ProcurementOrderRow {
    */
   provider_name?: string | null;
   /**
+   * The approver's name, set only by a route that read it (F-1417). Read
+   * through the key test like `provider_name`: absent is "not read".
+   */
+  approved_by_name?: string | null;
+  /**
    * `procurement_orders.expected_delivery_date` — a `date` column, the day the
    * order says it arrives. Optional and read through the key test like
    * `provider_name`: a route that selected a column list without it has not
@@ -639,6 +644,22 @@ interface ProcurementOrderRow {
    * column list has not learned the order names no currency.
    */
   currency?: string | null;
+}
+
+/** The words for an order the vendor-reply agent approved (ADR 0325). */
+export const AGENT_APPROVER_WORDS = "Mudavym, from the vendor's reply";
+
+/**
+ * One order's approver as a name (F-1417): the agent in its own words, a
+ * person by the name on record, and `null` when no name is on record.
+ */
+function approverName(
+  approvedBy: string | null | undefined,
+  names: Map<string, string>,
+): string | null {
+  if (!approvedBy) return null;
+  if (approvedBy === INBOUND_RESPONDER_AGENT_ID) return AGENT_APPROVER_WORDS;
+  return names.get(approvedBy) ?? null;
 }
 
 /**
@@ -3636,10 +3657,16 @@ export class ProcurementService {
       restaurantId,
       (data || []) as any[],
     );
+    // Who approved each order, by name (F-1417). One read for the page; when
+    // it fails the key stays absent, never a false "no one".
+    const approvers = await this.approverNames((data || []) as any[]);
 
     const orders = (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
         ...row,
+        ...(approvers
+          ? { approved_by_name: approverName(row.approved_by, approvers) }
+          : {}),
         wine_name:
           row.inventory?.wine_name ||
           (row.inventory as any)?.wine?.name ||
@@ -9441,6 +9468,26 @@ export class ProcurementService {
   }
 
   /**
+   * The names of the people who approved these orders (F-1417), or null when
+   * they could not be read (the routes then send no `approvedByName`).
+   */
+  private async approverNames(
+    rows: Array<{ approved_by?: string | null }>,
+  ): Promise<Map<string, string> | null> {
+    if (!this.vendorSendAuthority) return null;
+    try {
+      return await this.vendorSendAuthority.namesOf(
+        rows
+          .map((r) => r.approved_by)
+          .filter((id) => id !== INBOUND_RESPONDER_AGENT_ID),
+      );
+    } catch (e: any) {
+      this.logger.warn(`Approvers' names could not be read: ${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
    * One `procurement_orders` row as the API states it.
    *
    * `priceUnit` is what THIS ROUTE knows about the agreed price's unit (ADR
@@ -9494,6 +9541,9 @@ export class ProcurementService {
       status: row.status as ProcurementOrderStatus,
       requestedAt: row.requested_at ?? undefined,
       approvedAt: row.approved_at ?? undefined,
+      // The key test again (F-1417): absent is "this route did not read it".
+      approvedByName:
+        "approved_by_name" in row ? (row.approved_by_name ?? null) : undefined,
       deliveredAt: row.delivered_at ?? undefined,
       completedAt: row.completed_at ?? undefined,
       // When the three-way match was checked (F-710). The key test: a route
