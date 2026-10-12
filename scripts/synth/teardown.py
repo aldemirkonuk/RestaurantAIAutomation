@@ -69,6 +69,12 @@ DELETE_ORDER: list[str] = [
     "inventory_lots",
     "restaurant_inventory",
     "menu_items",
+    # ADR 0340: a menu's own sections and their change log. After menu_items
+    # (a line points at its section, ON DELETE SET NULL, so the lines go
+    # first and nothing is rewritten), before restaurant_menus (a section's
+    # menu FK cascades, but that cascade is a schema fact; see above).
+    "menu_section_changes",
+    "menu_sections",
     "restaurant_menus",
     "master_wine_library_submissions",
     "master_wine_library",
@@ -310,6 +316,10 @@ TEARDOWN_HANDLERS: dict[str, Callable[..., None]] = {
     "analytics_insights": _handler_by_restaurant("analytics_insights"),
     "restaurant_inventory": _handler_by_restaurant("restaurant_inventory"),
     "menu_items": _handler_by_restaurant("menu_items"),
+    # ADR 0340: both carry a NOT NULL restaurant_id
+    # (20270107200000_a_menu_keeps_the_houses_own_sections.sql).
+    "menu_section_changes": _handler_by_restaurant("menu_section_changes"),
+    "menu_sections": _handler_by_restaurant("menu_sections"),
     "restaurant_menus": _handler_by_restaurant("restaurant_menus"),
     "master_wine_library_submissions": _handler_master_wine_library_submissions,
     "master_wine_library": _handler_master_wine_library,
@@ -355,6 +365,9 @@ def assert_teardown_coverage() -> None:
         ("sim_scenario_runs", "restaurants"),
         ("notifications", "restaurants"),
         ("analytics_insights", "restaurants"),
+        ("menu_items", "menu_sections"),  # (menu_id, section_id), SET NULL
+        ("menu_sections", "restaurant_menus"),  # (menu_id, restaurant_id)
+        ("menu_section_changes", "restaurants"),
     ):
         if child not in DELETE_ORDER or parent not in DELETE_ORDER:
             raise WriteSetTeardownCoverageError(

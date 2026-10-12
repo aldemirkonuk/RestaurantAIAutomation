@@ -25,6 +25,7 @@ const RECORD_WORDS: Record<string, string> = {
   calendar_day_notes: "calendar notes",
   menu_price_versions: "menu price changes",
   restaurant_menus: "menus",
+  menu_section_changes: "menu section changes",
   house_price_locks: "price locks",
   delivery_line_acceptances: "delivery checks",
   procurement_order_arrival_answers: "delivery answers",

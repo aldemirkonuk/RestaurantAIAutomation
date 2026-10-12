@@ -628,6 +628,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Coordinator research (data, flow, readers, AI briefs; code at `24ee6705f`) | Drafted; F1-F17 under delegation; one adversarial finding changed F5 |
 | 2026-10-12 | Four adversarial reviews (prices/stock, claims/contracts, product/AI, lane feasibility) | Not ready as written: 43 musts across reviews (many shared). All valid ones fixed here and in the lanes plan; rejected points in the Review log |
 | 2026-10-12 | Lane 0 (`docs/menus-kinds-adr`, records only) | Filed as 0340 after a sweep of refs, open PRs and worktrees; brackets written into 0193, 0293 and 0186; the two founder forks filed as OD-228 and OD-229; five open CLAIMS rows, each mutation-tested; 16 code citations corrected against `24ee6705f` (Review log, "Lane 0 corrections") |
+| 2026-10-12 | Lane 1 (`feat/menus-kinds-schema`, schema only) | Four migrations `20270107100000`-`20270107400000` and their SQL tests (PASS on the PGlite corpus, FAIL on a build without each); 38 SQL mutations and 7 claim mutations all killed; three lane-0 rows flipped to resolved, four new rows; nine corrections (Review log, "Lane 1 corrections"). Not run: G0 (production read), any Postgres other than PGlite |
 
 ## Review log
 
@@ -682,6 +683,50 @@ corrected citation or sentence, recorded here and in the lanes plan):
   (was `:373-390`), raw-line withholding `menus.controller.ts:49-52, :264-271` (was `:91-99`),
   `price-locks.service.ts:589` (was `:588`), the 0186 baseline figures at
   `scan-parser.service.ts:64-65`.
+
+
+Lane 1 corrections (2026-10-12, against the lane 0 tip `0266eee31`; each is the smallest
+right fix, with the alternative it rejects):
+- **`reorder_menu_sections` takes `p_actor`** (rule 6 lists no actor). The change log's
+  `actor` is NOT NULL and `users` RESTRICT, so the RPC must be told who reordered. Rejected:
+  a nullable actor, which would make the "audited" log optional.
+- **The change log refuses UPDATE, not DELETE** (rule 6 says "append-only"). A house's own
+  hard delete cascades its rows (`restaurant_id ... ON DELETE CASCADE`) and the sim teardown
+  deletes sim houses' rows; refusing DELETE would break both. Rejected: a DELETE trigger with
+  a bypass setting, a second mechanism for the same two callers.
+- **`menu_items` has no `updated_at`** (baseline `:3783` table, no trigger), so rule 11's "the
+  `updated_at` trigger is allowed to fire" does not apply; the back-fill UPDATE fires nothing.
+- **The follow trigger keeps one old skip** (rule 21 narrowed): a change with source `import`
+  or `menu_current` that names **no** menu still follows nowhere. Basis: such a call cannot
+  say which menu already shows the price, and `supabase/tests/20270105500000` T4 writes exactly
+  that and expects no line to move; the gateway's callers of both sources pass `menuId`.
+  Rejected: following everywhere, which would rewrite the line the import itself just wrote.
+- **A dish's price CHECK is NULL-safe.** `price IS NULL OR (line_kind = 'dish' AND ...)`
+  passes a NULL `line_kind`, so a legacy line could hold a dish price; the test caught it and
+  the CHECK reads `coalesce(line_kind = 'dish', false)`.
+- **A heading with no letter or digit** (`'---'`) has an empty key; the back-fill leaves its
+  lines Unsorted exactly as a blank category (rule 11), and `add_menu_section` refuses it
+  (22023).
+- **The key is "Turkish-aware" as far as the database can be:** `İ`, `I` and `ı` fold to `i`
+  before `lower()`, and `[^[:alnum:]]` is dropped (`menu_section_key_part`). `lower()` and
+  `[:alnum:]` on other non-ASCII letters follow the database ctype: PGlite's is `C.UTF-8`
+  (measured); **production's was not read** (G0). The back-fill order is `lower()` of the
+  lowest spelling in the database collation, which approximates the JS `localeCompare` at
+  `menus.service.ts:1748-1751` and can differ on non-ASCII first letters. Positions are
+  0-based.
+- **Synth teardown order:** `menu_section_changes` and `menu_sections` go **after**
+  `menu_items` and before `restaurant_menus` (the lanes plan said before `menu_items`): a line
+  points at its section with `ON DELETE SET NULL`, so deleting lines first rewrites nothing.
+  Order pairs added to `assert_teardown_coverage`.
+- **Claims:** the three lane-0 rows lane 1 resolves were flipped **in place** in
+  `claims.d/docs-menus-kinds-adr.jsonl` (R2.S8 above), not re-filed. The legacy-kind row's
+  verify now reads the refusal of any kind outside beverage/food/desserts, since neither
+  function names `'full'`, `'bar'` or `'events'`. New rows are in
+  `claims.d/feat-menus-kinds-schema.jsonl`. The lane is 15 files, not 13 (this record, the
+  lane-0 fragment and `account-delete-blockers.ts` were not in the plan's count).
+- **The back-fill is proved outside CI.** SQL tests run on a migrated database, where the
+  back-fill has already run on no rows; it is proved by a PGlite harness that seeds rows
+  before `20270107200000` and then applies it (Verification item 11), plus three mutations.
 
 Rejected or narrowed, with why:
 - **R4.S2 "a later edit on one kind silently rewrites the other kind's line."** The code says
