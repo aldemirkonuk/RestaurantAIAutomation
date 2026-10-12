@@ -673,6 +673,18 @@ export class InventoryController {
         "change a wine's par",
       );
     }
+    // Taking a wine off the list or putting it back is the owner's or the
+    // manager's call, like removing it (F-633); the service files who did it
+    // (F-1416).
+    if (dto.isActive !== undefined) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        dto.isActive
+          ? "put a wine back on the list"
+          : "take a wine off the list",
+      );
+    }
     try {
       return inventoryItemForRole(
         await this.inventoryService.updateInventoryItem(

@@ -220,7 +220,7 @@ describe("PATCH /menus/:rid/items/:id/restore — owner or manager only (F-268)"
   it.each(["owner", "manager"])("a %s may put a line back", async (role) => {
     const { c, restore } = controller(role);
     await c.restoreMenuItem("rest-1", "mi-1", { userId: "u-1" });
-    expect(restore).toHaveBeenCalledWith("rest-1", "mi-1");
+    expect(restore).toHaveBeenCalledWith("rest-1", "mi-1", "u-1");
   });
 
   it.each(["staff", null])(

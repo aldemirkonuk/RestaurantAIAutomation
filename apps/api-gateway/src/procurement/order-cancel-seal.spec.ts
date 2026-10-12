@@ -430,6 +430,14 @@ describe("a cancellation leaves paper", () => {
     expect(row!.changes.to).toBe(ProcurementOrderStatus.CANCELLED);
     expect(row!.changes.act).toBe(ORDER_CANCEL_ACT);
     expect(row!.changes.sealed).toBe(true);
+    // F-1420: /logs names the order by its number and reads the move.
+    expect(row!.changes.subject).toBe("PO-2026-0007");
+    expect(row!.changes.fields).toEqual({
+      status: {
+        from: ProcurementOrderStatus.APPROVED,
+        to: ProcurementOrderStatus.CANCELLED,
+      },
+    });
   });
 });
 
@@ -987,6 +995,14 @@ describe("closing a short order (F-104)", () => {
     expect(audit).toBeDefined();
     expect(audit!.reason).toBe("vendor is out of the 2010");
     expect(audit!.changes.from).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+    // F-1420: the order by its number, and the move /logs prints.
+    expect(audit!.changes.subject).toBe("PO-2026-0007");
+    expect(audit!.changes.fields).toEqual({
+      status: {
+        from: ProcurementOrderStatus.PARTIALLY_RECEIVED,
+        to: ProcurementOrderStatus.COMPLETED,
+      },
+    });
     expect(roleGate.calls[0].action).toBe("close an order short");
   });
 

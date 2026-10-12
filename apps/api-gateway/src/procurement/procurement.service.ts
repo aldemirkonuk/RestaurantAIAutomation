@@ -654,6 +654,22 @@ function embeddedProviderName(embed: unknown): string | null {
 }
 
 /**
+ * How an order is named on its audit rows (F-1420): its number and its wine,
+ * "PO-2026-0007 · Opus One 2018", so /logs reads as the order and not as a raw
+ * id. Falls back to the id only when the order carries neither.
+ */
+export function orderAuditSubject(order: {
+  id: string;
+  orderNumber?: string | null;
+  wineName?: string | null;
+}): string {
+  const parts = [order.orderNumber?.trim(), order.wineName?.trim()].filter(
+    (p): p is string => Boolean(p),
+  );
+  return parts.length > 0 ? parts.join(" · ") : order.id;
+}
+
+/**
  * The subject line a drafted reply sends under.
  *
  * Both approveDraft (the live send) and getActiveConversations (the panel
@@ -4572,6 +4588,7 @@ export class ProcurementService {
     await this.recordOrderCancelled({
       restaurantId,
       orderId,
+      subject: orderAuditSubject(order),
       actorUserId: userId,
       from: preStatus,
       reason: spokenReason,
@@ -4678,7 +4695,12 @@ export class ProcurementService {
           entity_id: orderId,
           changes: {
             register: "orders",
-            subject: orderId,
+            subject: orderAuditSubject(order),
+            // `fields` is what /logs prints as "status: from → to" (F-1420);
+            // the top-level pair stays for rows' older readers.
+            fields: {
+              status: { from, to: ProcurementOrderStatus.COMPLETED },
+            },
             from,
             to: ProcurementOrderStatus.COMPLETED,
             reason: spokenReason,
@@ -4778,6 +4800,8 @@ export class ProcurementService {
   private async recordOrderCancelled(record: {
     restaurantId: string;
     orderId: string;
+    /** `orderAuditSubject` (F-1420). */
+    subject: string;
     actorUserId: string;
     from: ProcurementOrderStatus;
     reason: string;
@@ -4794,7 +4818,13 @@ export class ProcurementService {
           entity_id: record.orderId,
           changes: {
             register: "orders",
-            subject: record.orderId,
+            subject: record.subject,
+            fields: {
+              status: {
+                from: record.from,
+                to: ProcurementOrderStatus.CANCELLED,
+              },
+            },
             from: record.from,
             to: ProcurementOrderStatus.CANCELLED,
             act: ORDER_CANCEL_ACT,
@@ -5245,6 +5275,10 @@ export class ProcurementService {
     const order = this.mapOrderRow(orderRow);
     await this.clearSealLine(restaurantId, orderId);
 
+    // F-1417: who sealed the order is filed, as a refusal, a cancel and a
+    // close-short already are, so /logs shows it.
+    await this.recordOrderApproved(restaurantId, order, userId, current.status);
+
     // Reserve shadow stock so managers can see "X bottles on order" before
     // delivery — once per order, in bottles (F-491, F-494).
     await this.reserveOrderOnce(restaurantId, orderId);
@@ -5286,6 +5320,55 @@ export class ProcurementService {
     }
 
     return order;
+  }
+
+  /**
+   * File `order_approved` in `system_audit_log` (F-1417): the actor, the order
+   * by number and wine, the status it left, its total and that the seal was
+   * spent. Never throws, the same contract as `recordOrderCancelled`: the
+   * approval has happened, and a failed write is logged loudly.
+   */
+  private async recordOrderApproved(
+    restaurantId: string,
+    order: OrderResponseDto,
+    actorUserId: string,
+    from: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: "user",
+          actor_id: actorUserId,
+          action: "order_approved",
+          entity_type: "procurement_order",
+          entity_id: order.id,
+          changes: {
+            register: "orders",
+            subject: orderAuditSubject(order),
+            fields: {
+              status: { from, to: ProcurementOrderStatus.APPROVED },
+            },
+            act: ORDER_SEAL_ACT,
+            sealed: true,
+            total: order.totalCost ?? null,
+            currency: order.currency ?? null,
+          },
+          restaurant_id: restaurantId,
+          reason: null,
+        });
+      if (error) {
+        this.logger.error(
+          `order_approved happened but the audit row failed to write: ${error.message}. ` +
+            `Order ${order.id} IS approved and the log does not say who approved it.`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `order_approved happened but the audit row threw: ${err?.message}. ` +
+          `Order ${order.id} IS approved and the log does not say who approved it.`,
+      );
+    }
   }
 
   /* ── The seal on an order ───────────────────────────────────────────────── */

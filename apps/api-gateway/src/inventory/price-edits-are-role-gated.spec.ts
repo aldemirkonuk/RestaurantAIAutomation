@@ -1,6 +1,11 @@
 import { ForbiddenException } from "@nestjs/common";
 import { InventoryController } from "./inventory.controller";
+import { InventoryService } from "./inventory.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+
+jest.mock("../common/tenant/assert-inventory-belongs-to-restaurant", () => ({
+  assertInventoryBelongsToRestaurant: jest.fn(async () => undefined),
+}));
 
 /**
  * ADR 0193 -- the founder, 2026-09-21: "it should be changed whenever the
@@ -52,7 +57,11 @@ describe("PATCH inventory item — who may change a price", () => {
 
   it("an edit that is neither price nor par by staff is unchanged by this gate", async () => {
     const { c, update } = controller("staff");
-    await c.updateInventoryItem("rest-1", "inv-1", { isActive: true } as any, {
+    await c.updateInventoryItem(
+      "rest-1",
+      "inv-1",
+      { wineName: "House red" } as any,
+      {
       userId: "u-1",
     });
     expect(update).toHaveBeenCalledTimes(1);
@@ -232,4 +241,136 @@ describe("POST inventory items — a par on add is gated", () => {
       expect(bulk).toHaveBeenCalled();
     },
   );
+});
+
+/**
+ * F-1416 (2026-10-11). PATCH /inventory/:restaurantId/item/:itemId took
+ * `isActive` from any role and filed nothing, so "Make active" quietly undid
+ * an owner's audited removal (F-633). Taking a wine off the list or putting
+ * it back is now owner/manager only, and filed with who did it.
+ */
+
+describe("PATCH inventory item — who may take a wine off the list", () => {
+  it.each([true, false])(
+    "staff is refused isActive=%s and nothing is written",
+    async (isActive) => {
+      const { c, update } = controller("staff");
+      await expect(
+        c.updateInventoryItem("rest-1", "inv-1", { isActive } as any, {
+          userId: "u-1",
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["owner", "manager"])(
+    "a %s may, and the service is told who",
+    async (role) => {
+      const { c, update } = controller(role);
+      await c.updateInventoryItem(
+        "rest-1",
+        "inv-1",
+        { isActive: true } as any,
+        {
+          userId: "u-1",
+        },
+      );
+      expect(update).toHaveBeenCalledWith(
+        "rest-1",
+        "inv-1",
+        { isActive: true },
+        "u-1",
+      );
+    },
+  );
+});
+
+/** A recording fake of the query-builder calls updateInventoryItem makes. */
+function fakeUpdateDb(oldItem: Record<string, any>) {
+  const inserts: any[] = [];
+  const from = (table: string) => {
+    const chain: any = {
+      select: () => chain,
+      update: () => chain,
+      eq: () => chain,
+      single: () => Promise.resolve({ data: oldItem, error: null }),
+      insert: (row: any) => {
+        inserts.push({ table, row });
+        return Promise.resolve({ error: null });
+      },
+      then: (res: any, rej: any) =>
+        Promise.resolve({ data: null, error: null }).then(res, rej),
+    };
+    return chain;
+  };
+  return { client: { from }, inserts };
+}
+
+function updateService(db: ReturnType<typeof fakeUpdateDb>) {
+  const s = new InventoryService({ getClient: () => db.client } as any);
+  jest.spyOn(s as any, "writeHousePrices").mockResolvedValue(null);
+  jest.spyOn(s as any, "fetchLotRollup").mockResolvedValue(new Map());
+  jest.spyOn(s as any, "mapInventoryItem").mockReturnValue({ id: "inv-1" });
+  return s;
+}
+
+/**
+ * F-1416 (2026-10-11): taking a wine off the list, or putting it back, through
+ * the PATCH is filed with who did it, like a removal.
+ */
+describe("updateInventoryItem — the list change is filed (F-1416)", () => {
+  it("taking a wine off the list files inventory_item_deactivated with the actor", async () => {
+    const db = fakeUpdateDb({ is_active: true, wine_name: "Opus One 2018" });
+    await updateService(db).updateInventoryItem(
+      "rest-1",
+      "inv-1",
+      { isActive: false } as any,
+      "u-1",
+    );
+    const audit = db.inserts.find((i) => i.table === "system_audit_log");
+    expect(audit?.row).toMatchObject({
+      actor_type: "user",
+      actor_id: "u-1",
+      action: "inventory_item_deactivated",
+      entity_type: "inventory_item",
+      entity_id: "inv-1",
+      restaurant_id: "rest-1",
+      changes: {
+        subject: "Opus One 2018",
+        fields: { active: { from: true, to: false } },
+      },
+    });
+  });
+
+  it("putting it back files inventory_item_reactivated", async () => {
+    const db = fakeUpdateDb({
+      is_active: false,
+      wine_name: null,
+      master_wine_library: { name: "Barolo" },
+    });
+    await updateService(db).updateInventoryItem(
+      "rest-1",
+      "inv-1",
+      { isActive: true } as any,
+      "u-2",
+    );
+    const audit = db.inserts.find((i) => i.table === "system_audit_log");
+    expect(audit?.row).toMatchObject({
+      actor_id: "u-2",
+      action: "inventory_item_reactivated",
+      changes: { subject: "Barolo" },
+    });
+  });
+
+  it("no change, no row", async () => {
+    const db = fakeUpdateDb({ is_active: true, wine_name: "Opus One 2018" });
+    await updateService(db).updateInventoryItem(
+      "rest-1",
+      "inv-1",
+      { isActive: true } as any,
+      "u-1",
+    );
+    expect(db.inserts.some((i) => i.table === "system_audit_log")).toBe(false);
+  });
 });
