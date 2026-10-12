@@ -50,6 +50,13 @@ export interface UseInventoryResult {
    * for its other four consumers.
    */
   isPending: boolean;
+  /**
+   * True only once the inventory-list read has come back with an answer and
+   * its last attempt did not fail (F-1457). While it is loading or failed,
+   * `inventory` above is `[]` — not "this house carries nothing" — so a
+   * consumer that sorts a file against what is carried must wait for this.
+   */
+  listKnown: boolean;
   refetch: () => Promise<void>;
   updateItem: (itemId: string, data: Partial<InventoryItem>) => Promise<void>;
 }
@@ -89,6 +96,7 @@ export function useInventoryData(_options: UseInventoryOptions = {}): UseInvento
     summaryError: summaryQuery.error?.message || null,
     lowStockError: lowStockQuery.error?.message || null,
     isPending: inventoryQuery.isPending || summaryQuery.isPending || lowStockQuery.isPending,
+    listKnown: inventoryQuery.status === 'success',
     refetch,
     updateItem,
   };

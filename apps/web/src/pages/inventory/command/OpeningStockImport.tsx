@@ -87,6 +87,9 @@ export function OpeningStockImport({
         for (const line of r.results) {
           if (line.status === "failed") out.failed.push(`${line.wineName}: ${line.error ?? "not received"}`);
           else if (line.status === "stock_added") out.addedToCarried += 1;
+          // F-1457: a wine already carried that the list did not match by
+          // name is counted to the file's number by the gateway, not added.
+          else if (line.status === "counted") out.counted += 1;
           else out.received += 1;
         }
       }

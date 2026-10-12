@@ -252,6 +252,7 @@ export function InventoryCommandPage() {
     lowStockError,
     hasFailedRead,
     figuresUnknown,
+    inventoryListKnown,
   } = page;
 
   /** Renders `value`, or the em dash when any of the three inventory reads
@@ -1313,10 +1314,19 @@ export function InventoryCommandPage() {
             <Power className="w-3.5 h-3.5" /> Inactive wines
           </button>
           {canEditPrice && (
+            // F-1457: the file is sorted against the wines already carried,
+            // and until the list has been read that set is empty, not known —
+            // every wine would be received again on top of what is there.
             <button
               onClick={() => setShowOpeningStock((v) => !v)}
-              aria-expanded={showOpeningStock}
-              className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+              aria-expanded={showOpeningStock && !!inventoryListKnown}
+              disabled={!inventoryListKnown}
+              title={
+                inventoryListKnown
+                  ? undefined
+                  : "Your wine list has to be read first, so nothing is loaded twice."
+              }
+              className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Upload className="w-3.5 h-3.5" /> Load opening stock
             </button>
@@ -1330,7 +1340,7 @@ export function InventoryCommandPage() {
         </div>
       </div>
 
-      {showOpeningStock && canEditPrice && (
+      {showOpeningStock && canEditPrice && inventoryListKnown && (
         <OpeningStockImport
           carried={inventory.map((w) => ({
             inventoryId: w.inventoryId,

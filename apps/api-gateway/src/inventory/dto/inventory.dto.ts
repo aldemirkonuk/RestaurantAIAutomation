@@ -463,10 +463,10 @@ export class BulkInventoryLineResultDto {
 
   @ApiProperty({
     description:
-      "created = new inventory row; stock_added = quantity appended to an item already carried; reactivated = soft-deleted item revived; failed = see error",
-    enum: ["created", "stock_added", "reactivated", "failed"],
+      "created = new inventory row; stock_added = quantity appended to an item already carried; counted = an item already carried counted to the line's quantity (opening stock); reactivated = soft-deleted item revived; failed = see error",
+    enum: ["created", "stock_added", "counted", "reactivated", "failed"],
   })
-  status: "created" | "stock_added" | "reactivated" | "failed";
+  status: "created" | "stock_added" | "counted" | "reactivated" | "failed";
 
   @ApiPropertyOptional({ description: "Resulting inventory item ID" })
   inventoryId?: string;
@@ -496,6 +496,11 @@ export class BulkCreateInventoryResultDto {
 
   @ApiProperty({ description: "Lines that topped up an existing item" })
   stockAdded: number;
+
+  @ApiPropertyOptional({
+    description: "Opening-stock lines that counted an item already carried",
+  })
+  counted?: number;
 
   @ApiProperty({ description: "Lines that revived a soft-deleted item" })
   reactivated: number;

@@ -547,6 +547,10 @@ export class BulkImportResultDto {
   @ApiProperty()
   failed: number;
 
+  /** Vendors already in the book, left as they are (F-1458). */
+  @ApiPropertyOptional()
+  skipped?: number;
+
   @ApiProperty({ type: [String] })
   errors: string[];
 }

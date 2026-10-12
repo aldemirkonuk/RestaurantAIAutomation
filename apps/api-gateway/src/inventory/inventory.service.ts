@@ -8,6 +8,7 @@ import {
   forwardRef,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow, WHOLE_READ_PAGE } from "../common/read-whole-window";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
@@ -1878,6 +1879,7 @@ export class InventoryService {
     const summary = {
       created: tally("created"),
       stockAdded: tally("stock_added"),
+      counted: tally("counted"),
       reactivated: tally("reactivated"),
       failed: tally("failed"),
       results,
@@ -2013,6 +2015,23 @@ export class InventoryService {
 
       inventoryId = existing.id;
       status = existing.is_active ? "stock_added" : "reactivated";
+
+      // F-1457, ADR 0335 §2: opening stock is a COUNT per house item, never
+      // a delivery. A wine the house already carries is counted to the
+      // file's number, so the same file sent twice (or sent while the page
+      // still thought the list was empty) cannot double the cellar.
+      if (source === "opening_stock" && line.stockLive != null) {
+        await this.recordSpotCount(restaurantId, inventoryId, {
+          countedQty: qty,
+          clientCountId: `opening-stock:${randomUUID()}`,
+          reason: reason || "Opening stock",
+          locationId: line.storageLocationId ?? null,
+        });
+        return {
+          status: existing.is_active ? "counted" : "reactivated",
+          inventoryId,
+        };
+      }
     } else {
       const insertData: Record<string, any> = {
         restaurant_id: restaurantId,

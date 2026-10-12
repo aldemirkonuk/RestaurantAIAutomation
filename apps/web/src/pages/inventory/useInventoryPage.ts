@@ -422,6 +422,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     summaryError,
     lowStockError,
     isPending,
+    listKnown: inventoryListKnown,
     refetch: refetchInventory,
     updateItem: updateInventoryItem,
   } = useInventoryData();
@@ -750,6 +751,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     lowStockError,
     hasFailedRead,
     figuresUnknown,
+    inventoryListKnown,
     refetchInventory,
     updateInventoryItem,
 
