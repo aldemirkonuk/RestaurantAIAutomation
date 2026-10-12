@@ -1802,3 +1802,170 @@ describe("goal pace for levels, unmeasured goals and percent targets (F-183, F-1
     );
   });
 });
+
+// F-1444: `pos_checks.total` is nullable and an adapter with no total column
+// writes null. The till added such a check as $0 and still counted it, so
+// Taken was short and the average check diluted, with nothing said.
+describe("the till leaves a check with no total out and says how many (F-1444)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const day = `${LA_TODAY}T19:00:00Z`;
+  const at = (total: unknown) => ({
+    total,
+    opened_at: day,
+    closed_at: day,
+    items: [],
+  });
+
+  it("sums the checks that carry a total and counts the rest", async () => {
+    const { service } = makeGoals({
+      pos_checks: probeThen([at(120), at(80), at(null), at(0)]),
+    });
+    const result = await service.getPosRevenueWindow("r1", 30);
+    expect(result.revenue).toBeCloseTo(200);
+    expect(result.checkCount).toBe(4);
+    expect(result.checksWithoutTotal).toBe(1);
+  });
+
+  it("states no Taken when no check carries a total, rather than $0", async () => {
+    const { service } = makeGoals({
+      pos_checks: probeThen([at(null), at(null)]),
+    });
+    const result = await service.getPosRevenueWindow("r1", 30);
+    expect(result.revenue).toBeNull();
+    expect(result.checksWithoutTotal).toBe(2);
+  });
+
+  it("the average check goal divides by the checks that carry a total", async () => {
+    const { service } = makeGoals({
+      pos_checks: [at(120), at(80), at(null)],
+    });
+    const out = await (service as any).computeMetricWithSeries(
+      "r1",
+      "avg_check",
+      LA_TODAY,
+      undefined,
+      LA,
+    );
+    expect(out.current).toBeCloseTo(100);
+    await expect(
+      (
+        makeGoals({ pos_checks: [at(null)] }).service as any
+      ).computeMetricWithSeries("r1", "avg_check", LA_TODAY, undefined, LA),
+    ).rejects.toThrow("carries a total");
+  });
+
+  it("the till export averages over the checks with a total and says the rest", () => {
+    const doc = EXPORT_CUTTINGS.till.write(
+      {
+        ...(PAYLOADS.till as Record<string, unknown>),
+        revenue: 200,
+        checkCount: 4,
+        checksWithoutTotal: 2,
+      },
+      { days: 30 },
+    );
+    const avg = doc.figures.find((x) => x.label === "Average check")?.value;
+    expect(avg).toBe(100);
+    expect(doc.notes.join(" ")).toContain(
+      "2 checks have no total from the till, so they are left out of Taken and of the Average check",
+    );
+  });
+});
+
+// F-1443: Cost of goods leaves out deliveries with no price, so it is short.
+// Turns and days of stock taken from it read as measured; they are withheld,
+// and the goal, the screen and the export say why.
+describe("turns and days of stock are withheld when cost of goods is short (F-1443)", () => {
+  const STOCKED = {
+    id: "inv-1",
+    wine_name: "Invoiced Chablis",
+    stock_live: 5,
+    menu_price_current: 60,
+    last_purchase_price: 20,
+    threshold_min: 2,
+    master_wine_id: "mw-1",
+  };
+  const DELIVERED = {
+    id: "po-1",
+    provider_id: "prov-1",
+    total_cost: 480,
+    final_price: null,
+    bottles_total: 12,
+    quantity: 12,
+    status: "DELIVERED",
+    delivered_at: new Date(Date.now() - 200 * 86400000).toISOString(),
+    created_at: new Date(Date.now() - 210 * 86400000).toISOString(),
+  };
+
+  it("gives turns and days for priced deliveries, and withholds them with one unpriced", async () => {
+    const priced: any = await makeAnalytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [DELIVERED],
+    }).service.getFinancialSummary("r1");
+    expect(priced.inventoryTurnover).not.toBeNull();
+    expect(priced.daysInventoryOutstanding).not.toBeNull();
+
+    const short: any = await makeAnalytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [
+        DELIVERED,
+        { ...DELIVERED, id: "po-2", total_cost: 0, final_price: 17 },
+      ],
+    }).service.getFinancialSummary("r1");
+    expect(short.cogs).toBe(480);
+    expect(short.cogsUnpricedCount).toBe(1);
+    expect(short.inventoryTurnover).toBeNull();
+    expect(short.daysInventoryOutstanding).toBeNull();
+    expect(short.basis.turns).toContain(
+      "1 delivered order with no price is left out of cost of goods",
+    );
+  });
+
+  it("the days-of-stock goal says the deliveries with no price are why", async () => {
+    const { service } = makeGoals(
+      {},
+      {},
+      {
+        getFinancialSummary: async () => ({
+          daysInventoryOutstanding: null,
+          cogsUnpricedCount: 2,
+        }),
+      },
+    );
+    await expect(
+      (service as any).computeMetricWithSeries(
+        "r1",
+        "days_of_inventory",
+        null,
+        undefined,
+        null,
+      ),
+    ).rejects.toThrow("2 delivered orders have no price");
+  });
+
+  it("the export withholds turns and days for that reason", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as Record<string, unknown>),
+        cogs: 480,
+        cogsUnpricedCount: 1,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+      },
+      { days: 30 },
+    );
+    const turns = doc.figures.find((x) => x.label === "Inventory turns")?.value;
+    expect(turns).toEqual({
+      withheld: true,
+      why: "1 delivered order has no price, so Cost of goods is short and is not set against the cellar",
+    });
+    expect(doc.notes.join(" ")).toContain(
+      "Inventory turns and Days of inventory are not taken from it.",
+    );
+  });
+});

@@ -276,6 +276,10 @@ const ledger = analysis<LedgerRegister>({
     const uncosted = f.uncosted ?? [];
     const pc = f.priceCoverage;
     const partial = f.inventoryValue == null && f.pricedInventoryValue != null && !!cc && cc.unpriced > 0;
+    const shortCogs = (f.cogsUnpricedCount ?? 0) > 0;
+    const shortCogsWhy = shortCogs
+      ? `${figure(f.cogsUnpricedCount as number)} delivered ${f.cogsUnpricedCount === 1 ? 'order has' : 'orders have'} no price, so Cost of goods is short`
+      : undefined;
     const all = [
       partial
         ? {
@@ -300,8 +304,10 @@ const ledger = analysis<LedgerRegister>({
       },
       { label: 'Gross margin', value: ratioPct(f.grossMargin), note: 'Needs a complete cost basis' },
       { label: 'COGS ratio', value: ratioPct(f.cogsRatio) },
-      { label: 'Inventory turns', value: figure(f.inventoryTurnover) },
-      { label: 'Days of inventory', value: figure(f.daysInventoryOutstanding) },
+      // F-1443: turns and days divide Cost of goods by the cellar; with
+      // deliveries left out for no price that is short, so neither is drawn.
+      { label: 'Inventory turns', value: shortCogs ? EM : figure(f.inventoryTurnover), note: shortCogsWhy },
+      { label: 'Days of inventory', value: shortCogs ? EM : figure(f.daysInventoryOutstanding), note: shortCogsWhy },
       { label: 'GMROI', value: figure(f.gmroi) },
       {
         label: 'Capital sitting still',
@@ -362,7 +368,7 @@ const ledger = analysis<LedgerRegister>({
         // and said so, rather than added as $0.
         ...(f.cogsUnpricedCount && f.cogsUnpricedCount > 0
           ? [
-              `${figure(f.cogsUnpricedCount)} delivered ${f.cogsUnpricedCount === 1 ? 'order carries' : 'orders carry'} no price, so Cost of goods leaves ${f.cogsUnpricedCount === 1 ? 'it' : 'them'} out and is short by what ${f.cogsUnpricedCount === 1 ? 'it' : 'they'} cost.`,
+              `${figure(f.cogsUnpricedCount)} delivered ${f.cogsUnpricedCount === 1 ? 'order carries' : 'orders carry'} no price, so Cost of goods leaves ${f.cogsUnpricedCount === 1 ? 'it' : 'them'} out and is short by what ${f.cogsUnpricedCount === 1 ? 'it' : 'they'} cost. Inventory turns and Days of inventory are not taken from it.`,
             ]
           : []),
       ],

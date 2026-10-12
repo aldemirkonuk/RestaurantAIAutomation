@@ -37,12 +37,15 @@ import { animate, settle } from '@/lib/mudavym';
 import type { AlertItem } from './useDashboardNextData';
 import {
   NOT_RECORDED,
+  PRICE_NOT_KNOWN,
   SPEND_KEPT_APART,
   barScaleOf,
   fromChecks,
   fromDays,
   spendMoney,
   spendPartsSaid,
+  unpricedOf,
+  unpricedSaid,
   useDayActivity,
   useDayOrders,
   useMonthLedger,
@@ -180,9 +183,9 @@ function cellFigure(
   // F-1055: a day paid in two currencies shows each part, not a bare dash;
   // F-1052: a day paid in one other currency shows it in that currency.
   if (day.procurement_spend == null) return spendPartsSaid(day.procurement_spend_parts, 'compact') ?? DASH;
-  return day.procurement_spend > 0
-    ? spendMoney(day.procurement_spend, day.procurement_spend_currency, 'compact')
-    : '·';
+  if (day.procurement_spend > 0) return spendMoney(day.procurement_spend, day.procurement_spend_currency, 'compact');
+  // F-1442: a day of deliveries with no price came in; it is not a quiet day.
+  return unpricedOf(day) > 0 ? PRICE_NOT_KNOWN : '·';
 }
 
 /** A day's net sales in words, for its label (count and say, netsales F1). */
@@ -234,14 +237,19 @@ function cellLabel(
     if (o.salesShown) parts.push(salesSaid(day));
     if (o.seesAmounts) {
       const apart = spendPartsSaid(day.procurement_spend_parts);
+      // F-1442: a delivery with no price is said, never read as none.
+      const unpriced = unpricedOf(day);
+      const short = unpricedSaid(unpriced);
       parts.push(
         day.procurement_spend == null
           ? apart
             ? `${apart} paid to vendors, ${SPEND_KEPT_APART}`
             : 'paid to vendors unknown'
           : day.procurement_spend > 0
-            ? `${spendMoney(day.procurement_spend, day.procurement_spend_currency)} paid to vendors`
-            : 'no deliveries',
+            ? `${spendMoney(day.procurement_spend, day.procurement_spend_currency)} paid to vendors${short ? `, ${short}` : ''}`
+            : unpriced > 0
+              ? `${unpriced} ${unpriced === 1 ? 'delivery' : 'deliveries'}, ${PRICE_NOT_KNOWN}`
+              : 'no deliveries',
       );
     } else {
       parts.push(
@@ -350,7 +358,7 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
           0,
           ...daily.map((d) => {
             const f = cellFigure(d, salesShown, zoneUnset, seesAmounts);
-            return f === NOT_RECORDED ? 0 : f.length;
+            return f === NOT_RECORDED || f === PRICE_NOT_KNOWN ? 0 : f.length;
           }),
         ),
       ),
@@ -445,6 +453,10 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
                   ? `${spendPartsSaid(ledger?.monthlySpendParts)}, ${SPEND_KEPT_APART}`
                   : spendMoney(ledger?.monthlySpend, ledger?.monthlySpendCurrency)}
               </span>
+              {/* F-1442: the month's figure leaves its unpriced deliveries out; say so. */}
+              {unpricedSaid(ledger?.monthlyUnpriced) && (
+                <span data-testid="dn-month-unpriced">{` (${unpricedSaid(ledger?.monthlyUnpriced)})`}</span>
+              )}
               {' · '}
             </>
           )}
@@ -535,7 +547,7 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
                   className="dn-cell-fig"
                   // "not recorded" is words, not a figure: the text face, the
                   // cell's word size, free to wrap inside a narrow cell.
-                  style={!isFuture && fig === NOT_RECORDED ? NOT_RECORDED_FIG : cellSized(figSize)}
+                  style={!isFuture && (fig === NOT_RECORDED || fig === PRICE_NOT_KNOWN) ? NOT_RECORDED_FIG : cellSized(figSize)}
                 >
                   {isFuture ? '' : fig}
                 </span>

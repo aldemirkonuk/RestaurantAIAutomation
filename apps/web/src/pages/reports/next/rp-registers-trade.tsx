@@ -111,6 +111,8 @@ export interface TillWindow {
   /** null — never 0 — when no POS has ever landed a check. */
   revenue: number | null;
   checkCount: number | null;
+  /** Of `checkCount`, the checks with no total, left out of `revenue` (F-1444). 0 from an older gateway. */
+  checksWithoutTotal: number;
   from: string;
   to: string;
   days: number;
@@ -173,6 +175,7 @@ const trailingTill = analysis<TillWindow>({
       posConnected: d.posConnected === true,
       revenue: num(d.revenue),
       checkCount: num(d.checkCount),
+      checksWithoutTotal: num(d.checksWithoutTotal) ?? 0,
       from: str(d.from),
       to: str(d.to),
       days: num(d.days) ?? 0,
@@ -217,10 +220,10 @@ const trailingTill = analysis<TillWindow>({
         notes: [],
         basis: [],
       };
-    const avg =
-      w.revenue != null && w.checkCount != null && w.checkCount > 0
-        ? w.revenue / w.checkCount
-        : null;
+    // F-1444: a check with no total is left out of Taken, so the average
+    // divides by the checks that carry one, never by every check.
+    const totaled = w.checkCount != null ? w.checkCount - w.checksWithoutTotal : null;
+    const avg = w.revenue != null && totaled != null && totaled > 0 ? w.revenue / totaled : null;
     const figures = [
       { label: 'Taken', value: money(w.revenue), note: 'No POS revenue recorded' },
       { label: 'Checks', value: figure(w.checkCount) },
@@ -239,7 +242,10 @@ const trailingTill = analysis<TillWindow>({
     // F-446 (the on-screen twin of F-412's export note): no refund reaches the
     // till — the POS check carries no refund field and no adapter reads one —
     // so "Taken" is what was rung up, and the page says so wherever it prints it.
-    const notes = w.revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : [];
+    const notes = [
+      ...(w.revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : []),
+      ...(w.checksWithoutTotal > 0 ? [tillUntotaledSaid(w.checksWithoutTotal)] : []),
+    ];
     if (w.dailySeries.length === 0)
       return {
         say: 'The till answered, and no check fell inside this window.',
@@ -335,6 +341,15 @@ const till: AnalysisSpec = {
  */
 export const TILL_REFUNDS_NOT_TAKEN_OFF =
   "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.";
+
+/**
+ * F-1444: word for word the gateway's `tillUntotaledSaid`
+ * (`reports/exports/report-export-cuttings.ts`), so the screen and the file
+ * say the same thing.
+ */
+export function tillUntotaledSaid(n: number): string {
+  return `${n} ${n === 1 ? 'check has' : 'checks have'} no total from the till, so ${n === 1 ? 'it is' : 'they are'} left out of Taken and of the Average check rather than counted as nothing paid.`;
+}
 
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
