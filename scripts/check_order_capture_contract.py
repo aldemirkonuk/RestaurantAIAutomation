@@ -491,7 +491,12 @@ MIN_TABLES_WITH_COLUMNS = 150
 # (the library decides, set_house_item_identity), and menus.service.spec.ts
 # pins that with `not.toHaveProperty("kind")`. Both spread keys are columns
 # of restaurant_inventory (20260903171000).
-UNREADABLE_WRITE_CEILING = 13
+# Raised 13 -> 14 the same day (F-1122) for ONE site: menus.service.ts's
+# price-conflict write to a draft's `menu_items` (ADR 0340, lane 3c) is
+# `.update({ [column]: price })`, a computed key like the two above, where
+# `column` is `c.kind === "bottle" ? "bottle_price" : "by_glass_price"` on the
+# line before; both are menu_items columns.
+UNREADABLE_WRITE_CEILING = 14
 
 # KNOWN_BAD_COLUMNS — the shrink-only debt ratchet.
 #
