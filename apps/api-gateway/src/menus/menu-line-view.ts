@@ -704,3 +704,885 @@ export async function readKitchenInventoryIds(
   for (const inv of drink) kitchen.delete(inv);
   return { ids: kitchen, error: null };
 }
+
+/**
+ * A menu kind as the heading classifier reads it (ADR 0340 rule 15): the
+ * three kinds a menu can be, or `unknown` when the rules cannot tell. The
+ * stored `menu_type` for "drinks" is `beverage` (`menuTypeOfKind`).
+ */
+export type MenuKindGuess = "drinks" | "food" | "desserts" | "unknown";
+
+export const MENU_KIND_GUESSES: readonly MenuKindGuess[] = [
+  "drinks",
+  "food",
+  "desserts",
+  "unknown",
+];
+
+/*
+ * The heading word lists (ADR 0340 rule 15, lane 5a), in English, Turkish,
+ * French, Italian, Spanish and German. They are NOT the legacy kitchen lists
+ * above: `isKitchenLine` keeps today's words exactly (rule 7, and the CLAIMS
+ * rows and the refile migration that pin them), and these lists decide only
+ * new reads. Words are matched whole after folding (lower-cased, accents
+ * dropped, Turkish ı as i, ß as ss), so "Entrées" and "entrees", "İçecekler"
+ * and "ICECEKLER" are one word. A phrase matches as consecutive whole words.
+ * kind-of.golden.spec.ts holds every list to its headings.
+ */
+
+/** Words that name wine: they win over a food or dessert word in the same part ("Dessert wines", "Balık Şarapları", "Vini dolci"). */
+const KIND_WINE_WORDS = [
+  "wine",
+  "wines",
+  "champagne",
+  "champagnes",
+  "prosecco",
+  "cava",
+  "cavas",
+  "port",
+  "ports",
+  "sherry",
+  "sherries",
+  "madeira",
+  "bubbles",
+  "sparkling",
+  "vin",
+  "vins",
+  "crémant",
+  "bulles",
+  "vino",
+  "vini",
+  "bollicine",
+  "spumante",
+  "spumanti",
+  "vinos",
+  "espumosos",
+  "espumoso",
+  "wein",
+  "weine",
+  "weinkarte",
+  "sekt",
+];
+
+/** A heading that names a serving format of wine (§F17): a drink heading. */
+const KIND_FORMAT_PHRASES = [
+  "by the glass",
+  "by the bottle",
+  "half bottles",
+  "au verre",
+  "à la bouteille",
+  "en bouteille",
+  "al calice",
+  "alla bottiglia",
+  "in bottiglia",
+  "por copa",
+  "a copa",
+  "por botella",
+  "offene weine",
+  "im glas",
+  "vom fass",
+  "kadehle",
+  "kadeh",
+  "şişe",
+];
+
+/** Other drink words: a drink heading, unless the same part also names food or a dessert. */
+const KIND_DRINK_WORDS = [
+  // English
+  "drinks",
+  "drink",
+  "beverages",
+  "beverage",
+  "soft drinks",
+  "sodas",
+  "soda",
+  "juices",
+  "juice",
+  "smoothies",
+  "milkshakes",
+  "coffee",
+  "coffees",
+  "espresso",
+  "tea",
+  "teas",
+  "hot drinks",
+  "cold drinks",
+  "water",
+  "waters",
+  "beer",
+  "beers",
+  "draft",
+  "draught",
+  "ales",
+  "ale",
+  "lagers",
+  "cider",
+  "ciders",
+  "sake",
+  "cocktails",
+  "cocktail",
+  "mocktails",
+  "spirits",
+  "whisky",
+  "whiskey",
+  "whiskies",
+  "bourbon",
+  "scotch",
+  "gin",
+  "gins",
+  "vodka",
+  "rum",
+  "rums",
+  "tequila",
+  "mezcal",
+  "cognac",
+  "brandy",
+  "armagnac",
+  "liqueurs",
+  "liqueur",
+  "aperitifs",
+  "aperitif",
+  "digestifs",
+  "digestif",
+  "non-alcoholic",
+  "non alcoholic",
+  "zero proof",
+  "after dinner",
+  "longdrinks",
+  "shots",
+  // Turkish
+  "içecekler",
+  "içecek",
+  "meşrubat",
+  "meşrubatlar",
+  "rakı",
+  "rakılar",
+  "bira",
+  "biralar",
+  "fıçı bira",
+  "viski",
+  "viskiler",
+  "kokteyl",
+  "kokteyller",
+  "alkolsüz",
+  "alkolsüz içecekler",
+  "kahve",
+  "kahveler",
+  "türk kahvesi",
+  "çay",
+  "çaylar",
+  "sular",
+  "maden suyu",
+  "meyve suları",
+  "likör",
+  "likörler",
+  "votka",
+  "cin",
+  "konyak",
+  "tekila",
+  "köpüklü",
+  // French
+  "boissons",
+  "boisson",
+  "boissons chaudes",
+  "boissons fraîches",
+  "bières",
+  "bière",
+  "cidres",
+  "cidre",
+  "apéritifs",
+  "apéritif",
+  "spiritueux",
+  "cafés",
+  "café",
+  "thés",
+  "infusions",
+  "eaux",
+  "eaux minérales",
+  "jus",
+  "softs",
+  "sans alcool",
+  // Italian
+  "birre",
+  "birra",
+  "bevande",
+  "bibite",
+  "analcolici",
+  "acque",
+  "acqua",
+  "caffetteria",
+  "caffè",
+  "tè",
+  "tisane",
+  "liquori",
+  "amari",
+  "amaro",
+  "grappe",
+  "grappa",
+  "distillati",
+  "aperitivi",
+  // Spanish
+  "cerveza",
+  "cervezas",
+  "sidra",
+  "sidras",
+  "bebidas",
+  "refrescos",
+  "zumos",
+  "jugos",
+  "licores",
+  "cócteles",
+  "cocteles",
+  "sin alcohol",
+  "aguas",
+  "destilados",
+  "vermut",
+  "vermouth",
+  // German
+  "bier",
+  "biere",
+  "getränke",
+  "heißgetränke",
+  "spirituosen",
+  "schnäpse",
+  "schnaps",
+  "liköre",
+  "kaffee",
+  "tee",
+  "alkoholfrei",
+  "alkoholfreie",
+  "säfte",
+  "wasser",
+  "glas",
+  "flasche",
+];
+
+/** Colour words: a drink heading alone ("Reds", "Kırmızı"), but any food or dessert word beats them ("Kırmızı Et", "Red Velvet Cake"). */
+const KIND_COLOUR_WORDS = [
+  "red",
+  "reds",
+  "white",
+  "whites",
+  "rosé",
+  "rosés",
+  "rose",
+  "roses",
+  "orange",
+  "kırmızı",
+  "beyaz",
+  "roze",
+  "pembe",
+  "rouge",
+  "rouges",
+  "blanc",
+  "blancs",
+  "rosso",
+  "rossi",
+  "bianco",
+  "bianchi",
+  "rosato",
+  "rosati",
+  "tinto",
+  "tintos",
+  "blanco",
+  "blancos",
+  "rosado",
+  "rosados",
+  "rot",
+  "rote",
+  "rotweine",
+  "weiß",
+  "weisse",
+  "weiße",
+];
+
+/** Dessert words: a Desserts heading. */
+const KIND_DESSERT_WORDS = [
+  "desserts",
+  "sweets",
+  "puddings",
+  "pudding",
+  "cakes",
+  "cake",
+  "pastries",
+  "ice cream",
+  "ice creams",
+  "gelato",
+  "sorbets",
+  "sorbet",
+  "tatlılar",
+  "pastalar",
+  "dondurma",
+  "dondurmalar",
+  "baklava",
+  "douceurs",
+  "pâtisseries",
+  "glaces",
+  "dolci",
+  "gelati",
+  "torte",
+  "postres",
+  "helados",
+  "dulces",
+  "nachspeisen",
+  "nachtisch",
+  "süßspeisen",
+  "kuchen",
+  "eis",
+  "eisbecher",
+];
+
+/** Food words: a Food heading. */
+const KIND_FOOD_WORDS = [
+  // English
+  "food",
+  "kitchen",
+  "starters",
+  "starter",
+  "appetizers",
+  "appetizer",
+  "appetisers",
+  "small plates",
+  "plates",
+  "sharing",
+  "to share",
+  "mains",
+  "main",
+  "main courses",
+  "main course",
+  "entrees",
+  "entree",
+  "entrées",
+  "entrée",
+  "sides",
+  "side dishes",
+  "dishes",
+  "salads",
+  "salad",
+  "soups",
+  "soup",
+  "pasta",
+  "pizza",
+  "pizzas",
+  "burgers",
+  "sandwiches",
+  "wraps",
+  "breakfast",
+  "brunch",
+  "lunch",
+  "dinner",
+  "grill",
+  "seafood",
+  "fish",
+  "meat",
+  "steaks",
+  "steak",
+  "chicken",
+  "vegetarian",
+  "vegan",
+  "kids",
+  "snacks",
+  "tapas",
+  "mezze",
+  "meze",
+  "platters",
+  "boards",
+  "charcuterie",
+  "oysters",
+  "sushi",
+  "noodles",
+  "rice",
+  "curries",
+  "tacos",
+  "bowls",
+  "chips",
+  "fries",
+  "raw bar",
+  "cheese",
+  "cheeses",
+  // Turkish
+  "yemek",
+  "yemekler",
+  "yemekleri",
+  "başlangıçlar",
+  "başlangıç",
+  "mezeler",
+  "ara sıcak",
+  "ara sıcaklar",
+  "ana yemek",
+  "ana yemekler",
+  "salata",
+  "salatalar",
+  "çorba",
+  "çorbalar",
+  "mezeleri",
+  "ızgara",
+  "ızgaralar",
+  "kebap",
+  "kebaplar",
+  "pide",
+  "pideler",
+  "lahmacun",
+  "kahvaltı",
+  "makarna",
+  "sandviçler",
+  "makarnalar",
+  "pizzalar",
+  "burgerler",
+  "tost",
+  "tostlar",
+  "sandviç",
+  "dürüm",
+  "dürümler",
+  "balık",
+  "balıklar",
+  "deniz ürünleri",
+  "etler",
+  "tavuk",
+  "köfte",
+  "zeytinyağlılar",
+  "mantı",
+  "börek",
+  "börekler",
+  "aperatifler",
+  "atıştırmalıklar",
+  "peynirler",
+  "peynir",
+  "mutfak",
+  // French
+  "entrées",
+  "plats",
+  "plat",
+  "plats principaux",
+  "hors d'oeuvre",
+  "hors d oeuvre",
+  "poissons",
+  "poisson",
+  "viandes",
+  "viande",
+  "salades",
+  "soupes",
+  "potages",
+  "garnitures",
+  "accompagnements",
+  "à partager",
+  "fromages",
+  "fromage",
+  "enfants",
+  "enfant",
+  "tartines",
+  // Italian
+  "antipasti",
+  "antipasto",
+  "primi",
+  "primi piatti",
+  "secondi",
+  "secondi piatti",
+  "contorni",
+  "insalate",
+  "zuppe",
+  "pizze",
+  "piatti",
+  "risotti",
+  "pesce",
+  "carne",
+  "formaggi",
+  "taglieri",
+  // Spanish
+  "entrantes",
+  "raciones",
+  "primeros",
+  "segundos",
+  "platos principales",
+  "principales",
+  "platos",
+  "ensaladas",
+  "sopas",
+  "carnes",
+  "pescados",
+  "mariscos",
+  "arroces",
+  "arroz",
+  "pescado",
+  "paellas",
+  "quesos",
+  "montaditos",
+  "bocadillos",
+  "guarniciones",
+  "huevos",
+  // German
+  "vorspeisen",
+  "hauptspeisen",
+  "hauptgerichte",
+  "beilagen",
+  "salate",
+  "suppen",
+  "fleisch",
+  "fisch",
+  "vom grill",
+  "käse",
+  "speisen",
+  "kleine gerichte",
+  "brotzeit",
+  "flammkuchen",
+  "schnitzel",
+  "vegetarisch",
+  "kinderkarte",
+];
+
+/** Cheese courses (§F16): Food, but always Unsure. */
+const KIND_CHEESE_WORDS = [
+  "cheese",
+  "cheeses",
+  "peynirler",
+  "peynir",
+  "fromages",
+  "fromage",
+  "formaggi",
+  "quesos",
+  "käse",
+];
+
+/**
+ * Headings decided only as the whole part, never as a word inside one:
+ * Turkish "Et" is meat but French "et" is "and"; "Tatlı" alone is the
+ * dessert section but "Tatlı Beyaz" is a sweet white; "Su" and "Bar" alone.
+ * "Dessert" (singular) is `ambiguous` (§F14): in US menus often a food
+ * heading, in a wine list a dessert-wine one; the line's shape decides, and
+ * the heading is a blind spot (always Unsure).
+ */
+const KIND_WHOLE_HEADINGS: ReadonlyArray<
+  [string, MenuKindGuess | "ambiguous"]
+> = [
+  ["et", "food"],
+  ["kırmızı et", "food"],
+  ["beyaz et", "food"],
+  ["tatlı", "desserts"],
+  ["su", "drinks"],
+  ["bar", "drinks"],
+  // French "thé" folds to "the": only the whole heading is tea.
+  ["thé", "drinks"],
+  ["dessert", "ambiguous"],
+];
+
+/** Words that join two headings in one part ("Rouges et Rosés", "Primi e Secondi"). */
+const KIND_JOINERS = [
+  "and",
+  "ve",
+  "et",
+  "e",
+  "y",
+  "und",
+  "or",
+  "ou",
+  "o",
+  "oder",
+];
+
+/** One word or phrase as the classifier compares it: lower-cased, no accents, ı as i, ß as ss. */
+function foldWord(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .replace(/ı/g, "i");
+}
+
+/** A text's folded words, in order. */
+function foldedTokens(text: string): string[] {
+  return foldWord(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+const foldList = (words: readonly string[]) =>
+  words.map((w) => foldedTokens(w).join(" ")).filter(Boolean);
+
+const F_WINE = foldList(KIND_WINE_WORDS);
+const F_FORMAT = foldList(KIND_FORMAT_PHRASES);
+const F_DRINK = foldList(KIND_DRINK_WORDS);
+const F_COLOUR = foldList(KIND_COLOUR_WORDS);
+const F_DESSERT = foldList(KIND_DESSERT_WORDS);
+const F_FOOD = foldList(KIND_FOOD_WORDS);
+const F_CHEESE = foldList(KIND_CHEESE_WORDS);
+const F_WHOLE = new Map(
+  KIND_WHOLE_HEADINGS.map(([w, k]) => [foldedTokens(w).join(" "), k]),
+);
+const F_JOINERS = new Set(KIND_JOINERS);
+
+/**
+ * A heading split where it joins two headings: at "&", "/", "+", ",", "|"
+ * and at a joining word with words on both sides. "Kırmızı Et" stays one
+ * part (nothing follows "et"), "Rouges et Rosés" is two.
+ */
+function headingParts(heading: string): string[][] {
+  const parts: string[][] = [];
+  for (const chunk of heading.split(/[&+/|,;·•]+/)) {
+    const toks = foldedTokens(chunk);
+    let cur: string[] = [];
+    toks.forEach((t, i) => {
+      if (F_JOINERS.has(t) && cur.length > 0 && i < toks.length - 1) {
+        parts.push(cur);
+        cur = [];
+      } else cur.push(t);
+    });
+    if (cur.length > 0) parts.push(cur);
+  }
+  return parts;
+}
+
+/** German compounds: "Rotweine", "Dessertweine", "Fassbier", "Heißgetränke". "Schweine" is pork. */
+function germanCompoundKind(tok: string): "wine" | "drinks" | "food" | null {
+  if (tok.startsWith("schwein")) return null;
+  if (/.{2,}weine?$/.test(tok)) return "wine";
+  if (/.{2,}(getranke|biere?)$/.test(tok)) return "drinks";
+  if (/.{2,}(speisen|gerichte)$/.test(tok)) return "food";
+  return null;
+}
+
+/** What one part of a heading names, before any line is read. */
+function partKind(toks: string[]): MenuKindGuess | "ambiguous" {
+  if (toks.length === 0) return "unknown";
+  const whole = F_WHOLE.get(toks.join(" "));
+  if (whole) return whole;
+  const run = ` ${toks.join(" ")} `;
+  const has = (list: string[]) => list.some((w) => run.includes(` ${w} `));
+  const compounds = toks.map(germanCompoundKind);
+  // Turkish "şarap", "şarapları", "şarabı" in every form.
+  const wine =
+    has(F_WINE) ||
+    has(F_FORMAT) ||
+    compounds.includes("wine") ||
+    toks.some((t) => t.startsWith("sarap") || t.startsWith("sarab"));
+  if (wine) return "drinks";
+  const drink = has(F_DRINK) || compounds.includes("drinks");
+  // A drink phrase's own words vote once: "After dinner drinks" names no
+  // dinner. Every multi-word drink phrase found is blanked before the food
+  // and dessert words are read.
+  const rest = F_DRINK.filter((w) => w.includes(" ")).reduce(
+    (r, w) => r.split(` ${w} `).join(" _ "),
+    run,
+  );
+  const hasRest = (list: string[]) => list.some((w) => rest.includes(` ${w} `));
+  // Dessert words are checked before the German "-speisen" food compound,
+  // so "Nachspeisen" and "Süßspeisen" stay desserts.
+  const sweet = hasRest(F_DESSERT);
+  const food = hasRest(F_FOOD) || (!sweet && compounds.includes("food"));
+  if (drink && (food || sweet)) return "unknown";
+  if (drink) return "drinks";
+  if (food && sweet) return "unknown";
+  if (sweet) return "desserts";
+  if (food) return "food";
+  if (has(F_COLOUR)) return "drinks";
+  // "Dessert" (singular) with nothing that decides: §F14.
+  if (run.includes(" dessert ")) return "ambiguous";
+  return "unknown";
+}
+
+/** What one heading names: its parts must agree; a part that names nothing does not vote. */
+function oneHeadingKind(heading: string): MenuKindGuess | "ambiguous" {
+  const kinds = headingParts(heading).map(partKind);
+  const known = kinds.filter(
+    (k): k is Exclude<MenuKindGuess, "unknown"> =>
+      k !== "unknown" && k !== "ambiguous",
+  );
+  if (known.length === 0)
+    return kinds.includes("ambiguous") ? "ambiguous" : "unknown";
+  return known.every((k) => k === known[0]) ? known[0] : "unknown";
+}
+
+/** Whether a heading is a known blind spot of the rules (§F14 "Dessert", §F16 cheese). */
+function headingIsBlindSpot(heading: string): boolean {
+  return headingParts(heading).some((toks) => {
+    const run = ` ${toks.join(" ")} `;
+    return (
+      partKind(toks) === "ambiguous" ||
+      F_CHEESE.some((w) => run.includes(` ${w} `))
+    );
+  });
+}
+
+/** What the classifier reads of a line: only its shape, never its words. */
+export interface KindLineInput {
+  by_glass_price?: unknown;
+  bottle_price?: unknown;
+  price?: unknown;
+  drink_category?: unknown;
+  category?: unknown;
+}
+
+const isAmount = (v: unknown) =>
+  (typeof v === "number" && Number.isFinite(v)) ||
+  (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)));
+
+/**
+ * A line's shape: `drink` when it has a glass or bottle price or a drink
+ * category of its own, `dish` when it has a dish price and neither, else
+ * null (nothing to tell).
+ */
+export function lineShapeOf(
+  line: KindLineInput | null | undefined,
+): "drink" | "dish" | null {
+  if (!line) return null;
+  if (
+    isAmount(line.by_glass_price) ||
+    isAmount(line.bottle_price) ||
+    isMenuCategory(line.drink_category)
+  )
+    return "drink";
+  if (isAmount(line.price)) return "dish";
+  return null;
+}
+
+/** A heading, or a section's heading path from the top ("Wines", "Red", "Turkey"). */
+export type HeadingInput = string | readonly string[] | null | undefined;
+
+/** How `kindOf` decided, for the verdict. */
+export interface HeadingKindDetail {
+  kind: MenuKindGuess;
+  /** "heading": the section's own heading; "parent": a heading above it; "shape": the line (§F14); "none": nothing decided. */
+  by: "heading" | "parent" | "shape" | "none";
+  /** The deciding heading, or the ambiguous one, is a blind spot of the rules. */
+  blindSpot: boolean;
+}
+
+/**
+ * Section-level resolution (ADR 0340 rule 15, lane 5a): the nearest heading
+ * that decides wins, from the section itself up to the top ("Specials" under
+ * "Food" is food; "Dessert" under "Wines" is a drink). A path where only an
+ * ambiguous heading ("Dessert") speaks is decided by the line's shape, and
+ * otherwise is `unknown`. Nothing decided is `unknown`, never a drink.
+ */
+export function classifyHeading(
+  heading: HeadingInput,
+  line?: KindLineInput | null,
+): HeadingKindDetail {
+  const path = (
+    typeof heading === "string" ? [heading] : (heading ?? [])
+  ).filter((h): h is string => typeof h === "string" && h.trim() !== "");
+  let ambiguous: string | null = null;
+  for (let i = path.length - 1; i >= 0; i--) {
+    const k = oneHeadingKind(path[i]);
+    if (k === "ambiguous") {
+      ambiguous ??= path[i];
+      continue;
+    }
+    if (k !== "unknown")
+      return {
+        kind: k,
+        by: i === path.length - 1 ? "heading" : "parent",
+        blindSpot: headingIsBlindSpot(path[i]),
+      };
+  }
+  if (ambiguous !== null) {
+    const shape = lineShapeOf(line);
+    if (shape === "drink")
+      return { kind: "drinks", by: "shape", blindSpot: true };
+    if (shape === "dish")
+      return { kind: "desserts", by: "shape", blindSpot: true };
+    return { kind: "unknown", by: "none", blindSpot: true };
+  }
+  return { kind: "unknown", by: "none", blindSpot: false };
+}
+
+/**
+ * The menu kind a heading (or heading path) names, for NEW reads (ADR 0340
+ * rule 15). The default is `unknown`: a heading no rule knows is never a
+ * drink. Legacy lines keep `lineIsDrink`'s rule (rule 7); this does not
+ * replace `isKitchenLine`.
+ */
+export function kindOf(
+  heading: HeadingInput,
+  line?: KindLineInput | null,
+): MenuKindGuess {
+  return classifyHeading(heading, line).kind;
+}
+
+/** The stored `menu_type` of a kind; null for `unknown`. */
+export function menuTypeOfKind(kind: MenuKindGuess): string | null {
+  if (kind === "drinks") return "beverage";
+  if (kind === "unknown") return null;
+  return kind;
+}
+
+/** The stored `line_kind` of a kind (rule 7); null for `unknown`. */
+export function lineKindOfKind(kind: MenuKindGuess): "drink" | "dish" | null {
+  if (kind === "drinks") return "drink";
+  if (kind === "unknown") return null;
+  return "dish";
+}
+
+/** Why a line or section is Unsure (ADR 0340 rule 15). */
+export type UnsureReason =
+  | "rules_unknown"
+  | "model_disagrees"
+  | "kind_differs_from_section"
+  | "no_drink_category"
+  | "shape_contradicts_heading"
+  | "blind_spot";
+
+export interface KindVerdictInput {
+  heading: HeadingInput;
+  /** The line, for a line's verdict; absent for a section's. */
+  line?: KindLineInput | null;
+  /**
+   * The model's kind (the read's suggestion or the §F12 second opinion).
+   * Null or absent: no model opinion (rules only); it adds no reason.
+   */
+  modelKind?: string | null;
+  /** For a line: its section's decided kind. */
+  sectionKind?: MenuKindGuess | null;
+  /** For a line: its section's (or an ancestor's) drink category. */
+  sectionDrinkCategory?: string | null;
+}
+
+export interface KindVerdict {
+  kind: MenuKindGuess;
+  unsure: boolean;
+  reasons: UnsureReason[];
+}
+
+/**
+ * Whether a line or section is Unsure, and why (ADR 0340 rule 15): the rules
+ * cannot tell; the model says otherwise; a line's kind is not its section's;
+ * a drink line has no vocabulary category; the line's shape contradicts the
+ * heading (a dish under "Dessert wines", a wine under "Desserts" with no
+ * drink category); or the heading is a known blind spot. A confidence is no
+ * input: it never clears Unsure.
+ */
+export function kindVerdict(input: KindVerdictInput): KindVerdict {
+  const detail = classifyHeading(input.heading, input.line);
+  const kind = detail.kind;
+  const reasons: UnsureReason[] = [];
+  if (kind === "unknown") reasons.push("rules_unknown");
+  if (
+    input.modelKind !== null &&
+    input.modelKind !== undefined &&
+    input.modelKind !== kind
+  )
+    reasons.push("model_disagrees");
+  if (input.sectionKind && input.sectionKind !== kind)
+    reasons.push("kind_differs_from_section");
+  if (input.line) {
+    const shape = lineShapeOf(input.line);
+    const token =
+      isMenuCategory(input.line.drink_category) ||
+      isMenuCategory(input.sectionDrinkCategory) ||
+      isMenuCategory(
+        menuCategoryOf(
+          typeof input.line.category === "string"
+            ? input.line.category
+            : undefined,
+        ),
+      );
+    if (kind === "drinks" && !token) reasons.push("no_drink_category");
+    if (
+      (kind === "drinks" && shape === "dish") ||
+      ((kind === "food" || kind === "desserts") && shape === "drink" && !token)
+    )
+      reasons.push("shape_contradicts_heading");
+  }
+  if (detail.blindSpot) reasons.push("blind_spot");
+  return { kind, unsure: reasons.length > 0, reasons };
+}

@@ -643,6 +643,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 3b (`feat/menus-sections-api`, the sections API and sections on every upload) | Migration `20270107500000` adds ten section functions (materialise, rename, reparent, delete, move to a kind, set category, confirm a section, confirm a line, assign lines, keep a Gone line), each writing its `menu_section_changes` row in the same step and looking every id up inside the house; `MenuSectionsController` serves 12 owner/manager routes under `/menu-versions/:menuId`; every upload now materialises its sections and gets a `read_together_id`; resolve-on-tap links lines a tap made drinks. SQL test T1-T7 PASS on the PGlite corpus and FAIL without the migration; 5 new `menus.service` cases fail on the base; 59 cases in `menu-sections.service.spec.ts`, role-gating cases in the price-corrections spec; SQL, code and claim mutations all killed; one new claims fragment (two rows), one row edited in place; corrections in the Review log, "Lane 3b corrections". Not run: G0, L8 |
 | 2026-10-12 | Lane 3c (`feat/menus-make-live-per-kind`, the plan and make-live per kind) | `computePlan` works out a batch (one menu per kind) against the post-switch live set: retiring, `returned`, `dormantLocks`, `gone[]`, `unsure[]`, `conflicts[]` and dish matches by section key and name; `makeCurrent` reads every menu of the batch before the switch, refuses Unsure and unpicked conflicts, writes picks on drafts only, calls `make_menus_current`, carries per menu, sets `carried_at`, and on a retry carries again any menu whose carry did not finish. `GET plan?menuIds=` and the make-current body take the batch; the one-menu calls are unchanged. 9 new jest cases fail on the base and pass after; 4 code mutations all killed; three existing claim rows edited in place, one new fragment (three rows); corrections in the Review log, "Lane 3c corrections". Not run: G0, L8, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 4 (`fix/menus-union-readers-drink-kinds`, union readers read drink lines) | The cellar and beverages (through `readCurrentMenuLines(..., {drinks: true})`), vendor supply and price locks read only lines `lineIsDrink` keeps, on any live menu; promotions offers only lines not marked `kitchen_line` (`offerMenuLines`); price-lock rows name their menu and kind (`onMenus`). Migration `20270107600000` recreates `house_beverage_ledger` with a 35th column `menu_price_conflict`: drink lines only, a product counted once across menus, two prices named instead of `max()`, the section's own title. SQL test T1-T8 PASS on the PGlite corpus and FAIL at T2 without the migration; 8 SQL mutations, 7 code mutations and both claim mutations killed; two existing claim rows edited in place, no new fragment; corrections in the Review log, "Lane 4 corrections". Not run: G0, L8, Postgres other than PGlite, web tsc/vitest (no web file touched) |
+| 2026-10-12 | Lane 5a (`feat/menus-kindof`, heading classifier and golden set) | `kindOf(heading, line)` and `classifyHeading` in `menu-line-view.ts` read a heading or a section's heading path (nearest deciding heading wins) as drinks, food, desserts or `unknown` (the default) from their own word lists in English, Turkish, French, Italian, Spanish and German; "Dessert" (singular) is decided by the line's shape; `kindVerdict` gives the rule-15 Unsure reasons. `ScanParserService.classifyHeadings` is the F12 second opinion: one text-only call, `allowance: "unlimited"`, `spendLedgerUnreadable: "closed"`, resolving null (rules only) on any failure. `kind-of.golden.spec.ts` holds 460 headings; 25 new cases, 24 of which fail on the base (the row-count case calls no code) and all pass after; 9 code mutations and 9 claim mutations killed (a first row-count mutation survived, so the row now counts each list); one new fragment (two rows); corrections in the Review log, "Lane 5a corrections". Nothing calls either yet (lane 5b). Not run: G0, L8, web tsc/vitest (no web file touched) |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -985,6 +986,45 @@ with its basis and the alternative it rejected):
   stated drink category wait for a later lane. `menu_price_conflict` is returned but no
   house record or web page shows it yet. Founder-gated and not done: the G0 production read,
   the L8 eval and every flag flip; the README row for 0340 is owed in its own PR.
+
+Lane 5a corrections (2026-10-12, against base `836406695`; each is the smallest right fix,
+with its basis and the alternative it rejected):
+
+- **`kindOf` has its own word lists; `isKitchenLine`'s are unchanged.** The French,
+  Italian, Spanish and German words, and the new English and Turkish ones, live only in
+  the `KIND_*` lists beside `kindOf`. Basis: rule 7 keeps the legacy rule "exactly", and
+  `isKitchenLine`'s lists are pinned by CLAIMS rows, the web's `firstProof.ts` and the
+  refile migration. So the plan's items 7 (`firstProof.ts` mirror), 8 (the SQL refile
+  mirror migration) and 9 (`refile-turkish-sections.spec.ts`) are not needed: that spec
+  runs unchanged and green, no migration is added, and the word-list lane is not a
+  prerequisite for this lane. Rejected: adding the new words to `KITCHEN_HINTS`, which
+  would move stored lines on live Drinks menus (rule 7) and add three copies.
+- **"The golden set misses it" is a runtime blind-spot list**, not the spec's table: a
+  heading the rules know to be unreliable ("Dessert" singular, §F14; a cheese course,
+  §F16) is Unsure even when model and rules agree (`blind_spot`). The golden spec pins
+  that list. Rejected: reading the spec's table at runtime (a test file is not product
+  code).
+- **A heading naming two kinds is `unknown`.** A heading is split at "&", "/", "+", ","
+  and at a joining word with words on both sides (and, ve, et, e, y, und, or, ou, o,
+  oder); parts that decide must agree, and a part that decides nothing does not vote
+  ("Beer & Burgers", "Wine & Cheese": `unknown`; "Rouges et Rosés": drinks; "Kırmızı Et":
+  one part, food). Inside one part a wine word wins ("Dessert wines", "Balık Şarapları"),
+  then a food or dessert word beats a colour ("Kırmızı Et", "Red Velvet Cake"), and a
+  drink word beside a food or dessert word is `unknown`.
+- **"Dessert" (singular) by shape:** a glass or bottle price, or the line's own drink
+  category, makes it drinks; a dish `price` alone makes it desserts; neither leaves it
+  `unknown`. Under a deciding parent ("Wines › Dessert") the parent decides. Either way
+  it is a blind spot (Unsure).
+- **The F12 answer is held to four words.** A reply that is not a JSON array of one word
+  per heading is no opinion (null, rules only); a word outside the four leaves that
+  heading out of the map. At most 200 headings of at most 120 characters go in one call.
+  No API key is also no opinion.
+- **Not wired yet (this lane's 15-file budget and lane order).** No upload path calls
+  `kindOf`, `kindVerdict` or `classifyHeadings`, and new reads still store `line_kind`
+  NULL. Lane 5b, which owns the section table and `createVersion`, wires them and stores
+  the suggestion. Rejected: calling F12 from `parse()` now, which would pay for one call
+  per upload whose answer nothing stores. Founder-gated and not done: the G0 production
+  read, the L8 eval and every flag flip; the README row for 0340 is owed in its own PR.
 
 ## Founder forks
 

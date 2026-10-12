@@ -77,3 +77,72 @@ describe("the menu read waits when the spend ledger cannot be read", () => {
     }
   });
 });
+
+/**
+ * ADR 0340 rule 15, §F12: the heading second opinion runs under the same
+ * ledger, and an unreadable ledger fails closed FOR THIS CALL ONLY: the
+ * upload goes on with the rules alone. It never rejects, so it never turns
+ * a menu read already paid for into a 503.
+ */
+describe("the heading second opinion degrades to rules only, never a 503 (§F12)", () => {
+  const answer = (text: string) =>
+    jest
+      .fn()
+      .mockResolvedValue({ content: [{ text }], stop_reason: "end_turn" });
+
+  it("an unreadable ledger resolves null (rules only) with nothing sent, and does not reject", async () => {
+    const call = jest.fn().mockRejectedValue(waiting());
+    await expect(
+      service(call).classifyHeadings(["Wines", "Starters"], "rest-1"),
+    ).resolves.toBeNull();
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for the menu read's ledger terms: closed on an unreadable ledger, unlimited allowance, text only", async () => {
+    const call = answer('["drinks","food"]');
+    await service(call).classifyHeadings(["Wines", "Starters"], "rest-1");
+    const [opts] = call.mock.calls[0];
+    expect(opts).toMatchObject({
+      spendLedgerUnreadable: "closed",
+      allowance: "unlimited",
+      nf: { restaurantId: "rest-1" },
+    });
+    expect(opts.gateFirstAttempt).not.toBe(true);
+    const content = opts.body.messages[0].content;
+    expect(content.map((c: { type: string }) => c.type)).toEqual(["text"]);
+    expect(content[0].text).toContain('["Wines","Starters"]');
+  });
+
+  it("any other failure is rules only too, never a throw", async () => {
+    for (const call of [
+      jest.fn().mockRejectedValue(new Error("socket hang up")),
+      answer("not json"),
+      answer('{"Wines":"drinks"}'),
+      answer('["drinks"]'),
+    ]) {
+      await expect(
+        service(call).classifyHeadings(["Wines", "Starters"], "rest-1"),
+      ).resolves.toBeNull();
+    }
+  });
+
+  it("returns one kind per heading, and no opinion on a word outside the four", async () => {
+    const got = await service(
+      answer('["drinks","food","dessert??"]'),
+    ).classifyHeadings([" Wines ", "Starters", "Tatlılar", "Wines"], "rest-1");
+    expect(got).toEqual(
+      new Map([
+        ["Wines", "drinks"],
+        ["Starters", "food"],
+      ]),
+    );
+  });
+
+  it("makes no call for no headings", async () => {
+    const call = jest.fn();
+    await expect(
+      service(call).classifyHeadings(["", "  "], "rest-1"),
+    ).resolves.toEqual(new Map());
+    expect(call).not.toHaveBeenCalled();
+  });
+});

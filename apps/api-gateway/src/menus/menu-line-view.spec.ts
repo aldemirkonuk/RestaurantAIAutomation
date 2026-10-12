@@ -10,7 +10,12 @@ import {
   houseKindOf,
   isCocktailLine,
   isKitchenLine,
+  kindOf,
+  kindVerdict,
   lineForViewer,
+  lineKindOfKind,
+  lineShapeOf,
+  menuTypeOfKind,
   lineIsDrink,
   NON_DRINK_MENU_KINDS,
   readKitchenInventoryIds,
@@ -737,5 +742,106 @@ describe("menu-line-view — a line is a drink only when stored or proven (ADR 0
     );
     expect(f.error).toBe("denied");
     expect(f.sections.size).toBe(0);
+  });
+});
+
+describe("kindOf and the Unsure verdict (ADR 0340 rule 15, lane 5a)", () => {
+  it("defaults to unknown, never to a drink", () => {
+    expect(kindOf("Specials")).toBe("unknown");
+    expect(kindOf(null)).toBe("unknown");
+    expect(kindOf([])).toBe("unknown");
+    expect(kindOf("Specials", { bottle_price: 40 })).toBe("unknown");
+  });
+
+  it("maps a kind to its stored menu_type and line_kind", () => {
+    expect(menuTypeOfKind("drinks")).toBe("beverage");
+    expect(menuTypeOfKind("desserts")).toBe("desserts");
+    expect(menuTypeOfKind("unknown")).toBeNull();
+    expect(lineKindOfKind("drinks")).toBe("drink");
+    expect(lineKindOfKind("food")).toBe("dish");
+    expect(lineKindOfKind("desserts")).toBe("dish");
+    expect(lineKindOfKind("unknown")).toBeNull();
+  });
+
+  it("reads a line's shape from its prices and its own drink category only", () => {
+    expect(lineShapeOf({ bottle_price: 40 })).toBe("drink");
+    expect(lineShapeOf({ by_glass_price: "9.50" })).toBe("drink");
+    expect(lineShapeOf({ drink_category: "beer" })).toBe("drink");
+    expect(lineShapeOf({ price: 14 })).toBe("dish");
+    expect(lineShapeOf({ price: 14, bottle_price: 40 })).toBe("drink");
+    expect(lineShapeOf({ category: "red" })).toBeNull();
+    expect(lineShapeOf(null)).toBeNull();
+  });
+
+  it("is sure only when the rules know, the model agrees and the line fits", () => {
+    expect(
+      kindVerdict({
+        heading: ["Wines", "Red"],
+        line: { bottle_price: 40, category: "red" },
+        modelKind: "drinks",
+        sectionKind: "drinks",
+      }),
+    ).toEqual({ kind: "drinks", unsure: false, reasons: [] });
+    expect(
+      kindVerdict({
+        heading: "Starters",
+        line: { price: 12 },
+        modelKind: "food",
+      }),
+    ).toEqual({ kind: "food", unsure: false, reasons: [] });
+  });
+
+  it("is Unsure for each rule-15 reason", () => {
+    const reasons = (i: Parameters<typeof kindVerdict>[0]) =>
+      kindVerdict(i).reasons;
+    expect(reasons({ heading: "Specials" })).toEqual(["rules_unknown"]);
+    expect(reasons({ heading: "Starters", modelKind: "drinks" })).toEqual([
+      "model_disagrees",
+    ]);
+    expect(
+      reasons({
+        heading: "Starters",
+        line: { price: 9 },
+        sectionKind: "drinks",
+      }),
+    ).toEqual(["kind_differs_from_section"]);
+    expect(
+      reasons({ heading: "Cocktails", line: { by_glass_price: 12 } }),
+    ).toEqual(["no_drink_category"]);
+    // A dish under "Dessert wines".
+    expect(
+      reasons({
+        heading: "Dessert wines",
+        line: { price: 9, category: "dessert" },
+      }),
+    ).toEqual(["shape_contradicts_heading"]);
+    // A wine under "Desserts" with no drink category; with one, it fits.
+    expect(
+      reasons({ heading: "Desserts", line: { bottle_price: 60 } }),
+    ).toEqual(["shape_contradicts_heading"]);
+    expect(
+      reasons({
+        heading: "Desserts",
+        line: { bottle_price: 60 },
+        sectionDrinkCategory: "dessert",
+      }),
+    ).toEqual([]);
+    expect(reasons({ heading: "Fromages", modelKind: "food" })).toEqual([
+      "blind_spot",
+    ]);
+  });
+
+  it("takes no model opinion as rules only: it adds no reason (§F12 degraded)", () => {
+    expect(kindVerdict({ heading: "Starters", modelKind: null }).unsure).toBe(
+      false,
+    );
+    expect(
+      kindVerdict({ heading: "Specials", modelKind: null }).reasons,
+    ).toEqual(["rules_unknown"]);
+  });
+
+  it("takes no confidence: a model's certainty never clears Unsure", () => {
+    const input = { heading: "Specials", modelKind: "food", confidence: 0.99 };
+    expect(kindVerdict(input).unsure).toBe(true);
   });
 });
