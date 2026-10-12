@@ -221,6 +221,12 @@ export interface CalendarDay {
   /** The code `procurement_spend` is in; null for the house's when none is on record (F-1052). */
   procurement_spend_currency?: string | null;
   procurement_spend_by_currency?: SpendInCurrency[];
+  /**
+   * The day's deliveries that carry no price, left out of `procurement_spend`
+   * and counted (F-1442, F-701): a day of only those reads 0 paid beside
+   * `order_count` 1, which is "price not known", never "no deliveries".
+   */
+  procurement_unpriced?: number | null;
   /** Bottles DELIVERED by vendors (the frozen key is a misnomer). */
   bottles_sold: number | null;
   order_count: number | null;
@@ -251,6 +257,8 @@ export interface CalendarMonth {
   monthly_procurement_spend: number | null;
   monthly_procurement_spend_currency?: string | null;
   monthly_procurement_spend_by_currency?: SpendInCurrency[];
+  /** The month's deliveries left out of its spend for carrying no price (F-1442). */
+  monthly_procurement_unpriced?: number | null;
   monthly_bottles: number | null;
   /**
    * The month so far: the sum over the begun days the register counted, said
@@ -1152,6 +1160,7 @@ export class DashboardService {
           daily: dates.map((date) => ({
             date,
             procurement_spend: null,
+            procurement_unpriced: null,
             bottles_sold: null,
             order_count: null,
             net_sales: null,
@@ -1160,6 +1169,7 @@ export class DashboardService {
             events: eventsByDay.get(date) ?? [],
           })),
           monthly_procurement_spend: null,
+          monthly_procurement_unpriced: null,
           monthly_bottles: null,
           monthly_net_sales: null,
           monthly_checks: null,
@@ -1237,6 +1247,7 @@ export class DashboardService {
           procurement_spend: paid.total,
           procurement_spend_currency: paid.currency,
           procurement_spend_by_currency: paid.byCurrency,
+          procurement_unpriced: paid.unpricedCount,
           bottles_sold: s?.bottles ?? 0,
           order_count: s?.count ?? 0,
           net_sales: counted ? (sold ? sold.net_sales : 0) : null,
@@ -1286,6 +1297,7 @@ export class DashboardService {
         monthly_procurement_spend: monthSpend.total,
         monthly_procurement_spend_currency: monthSpend.currency,
         monthly_procurement_spend_by_currency: monthSpend.byCurrency,
+        monthly_procurement_unpriced: monthSpend.unpricedCount,
         monthly_bottles: daily.reduce(
           (sum, d) => sum + (d.bottles_sold ?? 0),
           0,

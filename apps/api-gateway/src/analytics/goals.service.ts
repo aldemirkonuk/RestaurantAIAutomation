@@ -1225,6 +1225,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     rowCount: number;
     /** Bottles sold only: the bottle basis of the window (ADR 0297). */
     units?: UnitsLabel;
+    /** pos_revenue only: checks with no total, left out of the sum (F-1444). */
+    untotaled?: number;
   }> {
     /**
      * Days of stock, before everything else, and deliberately OUTSIDE the
@@ -1257,8 +1259,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         await this.analyticsService.getFinancialSummary(restaurantId);
       const dio = financial?.daysInventoryOutstanding;
       if (typeof dio !== "number" || !Number.isFinite(dio)) {
+        // F-1443: say the reason the summary withheld it for, when it is
+        // the deliveries with no price rather than the cellar's cost.
+        const unpriced = Number(financial?.cogsUnpricedCount) || 0;
         throw new Error(
-          "Days of stock cannot be read for this restaurant yet: it is cost of goods over inventory value, and inventory value is only known when every bottle on hand carries a recorded cost.",
+          unpriced > 0
+            ? `Days of stock cannot be read for this restaurant yet: ${unpriced} delivered order${unpriced === 1 ? " has" : "s have"} no price, so cost of goods is short. Price ${unpriced === 1 ? "it" : "them"} to score this goal.`
+            : "Days of stock cannot be read for this restaurant yet: it is cost of goods over inventory value, and inventory value is only known when every bottle on hand carries a recorded cost.",
         );
       }
       return { current: dio, dailySeries: [], dailyDates: [], rowCount: 1 };
@@ -1304,6 +1311,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const daily = new Map<string, number>();
     let rowCount = 0;
     let units: UnitsLabel | undefined;
+    let untotaled = 0;
     const add = (date: string, v: number) => {
       daily.set(date, (daily.get(date) || 0) + v);
     };
@@ -1435,23 +1443,36 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           // The whole check total — the tender the restaurant actually booked,
           // which is the denominator a COGS ratio needs. `wine_revenue` below
           // deliberately sums only itemised wine lines and is NOT a substitute.
-          for (const { row: c, day } of checks) add(day, Number(c.total) || 0);
+          //
+          // F-1444: `total` is nullable, and an adapter with no total column
+          // writes null. Such a check is left out of the sum and counted, so
+          // Taken is not short by a silent 0 and the page can say how many.
+          for (const { row: c, day } of checks) {
+            const t = checkTotal(c);
+            if (t == null) untotaled += 1;
+            else add(day, t);
+          }
         } else if (metricKey === "checks") {
           for (const { day } of checks) add(day, 1);
         } else if (metricKey === "avg_check") {
-          const total = checks.reduce(
-            (s: number, { row: c }) => s + (c.total || 0),
-            0,
-          );
+          // F-1444: a check with no total is not a $0 check; it is left out
+          // of the sum and of the count the average divides by.
+          const totals = checks
+            .map(({ row: c }) => checkTotal(c))
+            .filter((t): t is number => t != null);
           if (!checks.length)
             throw new UnmeasuredGoalError(
               "No check has been filed since this goal was set, so there is no average check to measure yet.",
             );
+          if (!totals.length)
+            throw new UnmeasuredGoalError(
+              `None of the ${checks.length} checks filed since this goal was set carries a total, so there is no average check to measure yet.`,
+            );
           return {
-            current: total / checks.length,
+            current: totals.reduce((a, b) => a + b, 0) / totals.length,
             dailySeries: [],
             dailyDates: [],
-            rowCount: checks.length,
+            rowCount: totals.length,
           };
         } else if (metricKey === "wine_attach_rate") {
           const withWine = checks.filter(({ row: c }) =>
@@ -1504,7 +1525,14 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const dates = Array.from(daily.keys()).sort();
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
-    return { current, dailySeries, dailyDates: dates, rowCount, units };
+    return {
+      current,
+      dailySeries,
+      dailyDates: dates,
+      rowCount,
+      units,
+      ...(metricKey === "pos_revenue" ? { untotaled } : {}),
+    };
   }
 
   /**
@@ -1660,13 +1688,14 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       zoneUnset: zone === null,
       revenue: null,
       checkCount: null,
+      checksWithoutTotal: null,
       dailySeries: [],
     };
 
     if (!connected) return { ...unread, posConnected: false };
     if (!zone || !from || !to) return { ...unread, posConnected: true };
 
-    const { current, dailySeries, dailyDates, rowCount } =
+    const { current, dailySeries, dailyDates, rowCount, untotaled } =
       await this.computeMetricWithSeries(
         restaurantId,
         "pos_revenue",
@@ -1683,8 +1712,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       timezone: zone,
       zoneUnset: false,
       posConnected: true,
-      revenue: current,
+      // F-1444: checks with no total are left out of `revenue` and counted;
+      // when every check lacks one there is no figure, not $0.
+      revenue: rowCount > 0 && (untotaled ?? 0) >= rowCount ? null : current,
       checkCount: rowCount,
+      checksWithoutTotal: untotaled ?? 0,
       dailySeries: dailyDates.map((date, i) => ({
         date,
         revenue: dailySeries[i] ?? 0,
@@ -1742,6 +1774,16 @@ export function stripFence(text: string): string {
     .trim();
 }
 
+/**
+ * A check's total, or null when it carries none (F-1444): `pos_checks.total`
+ * is nullable and a missing total is not a $0 check. A real 0 stays 0.
+ */
+function checkTotal(c: { total?: unknown }): number | null {
+  if (c.total == null || c.total === "") return null;
+  const n = Number(c.total);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Sales revenue for one restaurant over one closed day range. */
 export interface PosRevenueWindow {
   restaurantId: string;
@@ -1756,10 +1798,16 @@ export interface PosRevenueWindow {
   zoneUnset: boolean;
   /** False when this restaurant has never had a POS check. */
   posConnected: boolean;
-  /** Sum of non-voided `pos_checks.total`. `null` when `posConnected` is false or `zoneUnset`. */
+  /** Sum of non-voided `pos_checks.total` that carry one (F-1444). `null` when `posConnected` is false, `zoneUnset`, or no check carries a total. */
   revenue: number | null;
   /** Non-voided checks filed in the window. `null` when `posConnected` is false or `zoneUnset`. */
   checkCount: number | null;
+  /**
+   * Of `checkCount`, the checks that carry no total (F-1444). They are left
+   * out of `revenue`, and an average check divides by the rest. `null` when
+   * `checkCount` is.
+   */
+  checksWithoutTotal?: number | null;
   /** Sparse — only days that actually had revenue appear. */
   dailySeries: Array<{ date: string; revenue: number }>;
 }

@@ -18,11 +18,14 @@ import { formatNumber } from '@/lib/utils';
 import { vendorLine } from '@/lib/mudavym/vendor';
 import {
   NOT_RECORDED,
+  PRICE_NOT_KNOWN,
   SPEND_KEPT_APART,
   barScaleOf,
   fromChecks,
   spendMoney,
   spendPartsSaid,
+  unpricedOf,
+  unpricedSaid,
   DAY_ACTIVITY_LIMIT,
   type AlertItem,
   type DayActivityState,
@@ -136,7 +139,7 @@ function EmptyLine({ children }: { children: ReactNode }) {
 
 function MiniFig({ label, value, note }: { label: string; value: string; note?: string | null }) {
   // "not recorded" is words, not a figure: the text face, smaller, muted.
-  const words = value === NOT_RECORDED;
+  const words = value === NOT_RECORDED || value === PRICE_NOT_KNOWN;
   return (
     <div>
       <p
@@ -331,9 +334,16 @@ export function DayDetail({
               note={SPEND_KEPT_APART}
             />
           ) : (
+            // F-1442: a delivery with no price is left out and said, so a
+            // day of only those reads "price not known", never 0 paid.
             <MiniFig
               label="Paid to vendors"
-              value={spendMoney(day.procurement_spend, day.procurement_spend_currency)}
+              value={
+                day.procurement_spend === 0 && unpricedOf(day) > 0
+                  ? PRICE_NOT_KNOWN
+                  : spendMoney(day.procurement_spend, day.procurement_spend_currency)
+              }
+              note={(day.procurement_spend ?? 0) > 0 ? unpricedSaid(unpricedOf(day)) : null}
             />
           ))}
         <MiniFig label="Deliveries" value={figure(day.order_count)} />

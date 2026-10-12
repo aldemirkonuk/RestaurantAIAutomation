@@ -689,6 +689,41 @@ describe('DashboardNext', () => {
     }
   });
 
+  // F-1442 (F-701): a delivery with no price is a delivery. The square, its
+  // label, the month line and the day sheet say "price not known", never
+  // "no deliveries" or 0 paid.
+  it('says a delivery with no price came in, on the square, the month line and the day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+    try {
+      const ledger: ReturnType<typeof monthLedger> & Record<string, unknown> = monthLedger();
+      ledger.daily[0] = { ...ledger.daily[0], procurement_spend: 0, order_count: 1, procurement_unpriced: 1 } as never;
+      ledger.daily[1] = { ...ledger.daily[1], procurement_spend: 400, order_count: 3, procurement_unpriced: 2 } as never;
+      // A gateway that sends no count: 0 paid for 2 deliveries is 2 unpriced.
+      ledger.daily[2] = { ...ledger.daily[2], procurement_spend: 0, order_count: 2 };
+      ledger.monthly_procurement_spend = 400;
+      ledger.monthly_procurement_unpriced = 3;
+      routeGets({ '/dashboard/calendar-revenue/': ledger });
+      mount();
+      const first = await screen.findByRole('button', {
+        name: 'Tuesday, September 1: 1 delivery, price not known, nothing on the calendar',
+      });
+      expect(first.textContent).toContain('price not known');
+      screen.getByRole('button', {
+        name: 'Wednesday, September 2: $400 paid to vendors, 2 with price not known, not counted, nothing on the calendar',
+      });
+      screen.getByRole('button', {
+        name: 'Thursday, September 3: 2 deliveries, price not known, nothing on the calendar',
+      });
+      expect(screen.getByTestId('dn-month-unpriced').textContent).toBe(' (3 with price not known, not counted)');
+
+      fireEvent.click(first);
+      const paid = await screen.findByText('Paid to vendors');
+      expect(paid.previousElementSibling?.textContent).toBe('price not known');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // DASH-W33 (P8): ADR 0042 / OD-112 — ink-3 is decorative only, never a
   // caption. The shared guard reads `color` keys, not Tailwind classes, so
   // this page holds the rule for its own files.

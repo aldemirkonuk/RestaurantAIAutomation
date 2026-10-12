@@ -19,8 +19,16 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { TILL_REFUNDS_NOT_TAKEN_OFF, pacing, till, week, type TillWindow, type WeekRegister } from './rp-registers-trade';
-import { AMOUNTS_WITHHELD, ledger, quadrants } from './rp-registers-house';
+import {
+  TILL_REFUNDS_NOT_TAKEN_OFF,
+  pacing,
+  till,
+  tillUntotaledSaid,
+  week,
+  type TillWindow,
+  type WeekRegister,
+} from './rp-registers-trade';
+import { AMOUNTS_WITHHELD, ledger, quadrants, type LedgerRegister } from './rp-registers-house';
 import { bench } from './rp-registers-bench';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
@@ -357,7 +365,7 @@ describe('a staff reader sees no house money on /reports (F-203)', () => {
     const base = { cogs: 1200, costCoverage: { total: 3, priced: 3, unpriced: 0, complete: true } };
     const two = ledger.view(ledger.select({ ...base, cogsUnpricedCount: 2 }), ctx);
     expect(two.notes).toEqual([
-      '2 delivered orders carry no price, so Cost of goods leaves them out and is short by what they cost.',
+      '2 delivered orders carry no price, so Cost of goods leaves them out and is short by what they cost. Inventory turns and Days of inventory are not taken from it.',
     ]);
     const one = ledger.view(ledger.select({ ...base, cogsUnpricedCount: 1 }), ctx);
     expect(String(one.notes)).toContain('1 delivered order carries no price');
@@ -451,5 +459,47 @@ describe('a staff reader sees no house money on /reports (F-203)', () => {
     const v = pacing.view(c, ctx);
     expect(v.figures.map((f) => f.label)).toEqual(['Pace', 'Committed, not yet delivered', 'Open orders']);
     expect(v.cats).toBeDefined();
+  });
+});
+
+// F-1444: a check with no total is left out of Taken and of the Average
+// check's count, and the page says how many. F-1443 sits here too, so the PR
+// stays within its 15 files: turns and days are not drawn from a Cost of
+// goods short of its deliveries with no price, and the page says why.
+describe('figures a missing price or total would make short (F-1443, F-1444)', () => {
+  const figureOf = (figs: Array<{ label: string; value: string; note?: string }> | undefined, label: string) =>
+    figs?.find((x) => x.label === label);
+
+  it('averages over the checks that carry a total and says the rest', () => {
+    const v = till.view(read({ ...OLD_PAYLOAD, revenue: 200, checkCount: 4, checksWithoutTotal: 2 }), ctx as never);
+    expect(figureOf(v.figures, 'Average check')?.value).toBe(figureOf(till.view(read({ ...OLD_PAYLOAD, revenue: 100, checkCount: 1 }), ctx as never).figures, 'Average check')?.value);
+    expect(v.notes).toContain(tillUntotaledSaid(2));
+    expect(tillUntotaledSaid(2)).toBe(
+      '2 checks have no total from the till, so they are left out of Taken and of the Average check rather than counted as nothing paid.',
+    );
+  });
+
+  it('an older payload with no count reads as before', () => {
+    const v = till.view(read(OLD_PAYLOAD), ctx as never);
+    expect(v.notes).toEqual([TILL_REFUNDS_NOT_TAKEN_OFF]);
+  });
+
+  it('draws no turns or days of inventory from a short Cost of goods, and says why', () => {
+    const v = ledger.view(
+      ledger.select({
+        inventoryValue: 2000,
+        cogs: 480,
+        cogsUnpricedCount: 1,
+        inventoryTurnover: 4.1,
+        daysInventoryOutstanding: 89,
+      }) as LedgerRegister,
+      ctx as never,
+    );
+    for (const label of ['Inventory turns', 'Days of inventory'])
+      expect(figureOf(v.figures as never, label)).toMatchObject({
+        value: '—',
+        note: '1 delivered order has no price, so Cost of goods is short',
+      });
+    expect(v.notes?.join(' ')).toContain('Inventory turns and Days of inventory are not taken from it.');
   });
 });

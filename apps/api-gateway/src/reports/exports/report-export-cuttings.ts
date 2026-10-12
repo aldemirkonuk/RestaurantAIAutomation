@@ -285,10 +285,16 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
 
   const revenue = num(d.revenue);
   const checks = num(d.checkCount);
+  // F-1444: checks with no total are left out of Taken, so the average
+  // divides by the checks that carry one. An older payload says none.
+  const untotaled = num(d.checksWithoutTotal) ?? 0;
+  const totaled = checks != null ? checks - untotaled : null;
   // The page's own derivation, rp-registers-trade.tsx `till.view`: an average
   // needs both operands and a non-zero count, or it is not an average.
   const avg =
-    revenue != null && checks != null && checks > 0 ? revenue / checks : null;
+    revenue != null && totaled != null && totaled > 0
+      ? revenue / totaled
+      : null;
   const series = arr(d.dailySeries).map((r) => ({
     date: str(r.date),
     revenue: num(r.revenue),
@@ -312,7 +318,10 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
     // field (pos-hub/pos-types.ts CanonicalCheck), no adapter reads one, and
     // Toast's `payment.refunded` has no handler. "Taken" is therefore what was
     // rung up, and the file says so rather than letting it read as net.
-    notes: revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : [],
+    notes: [
+      ...(revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : []),
+      ...(untotaled > 0 ? [tillUntotaledSaid(untotaled)] : []),
+    ],
     tables:
       series.length === 0
         ? []
@@ -345,6 +354,14 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
 /** Said on every till export that carries a figure: refunds are not taken off "Taken". */
 export const TILL_REFUNDS_NOT_TAKEN_OFF =
   "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.";
+
+/**
+ * F-1444: the till checks with no total, said on the till export as the
+ * screen says them (rp-registers-trade.tsx `tillUntotaledSaid`, word for word).
+ */
+export function tillUntotaledSaid(n: number): string {
+  return `${n} ${n === 1 ? "check has" : "checks have"} no total from the till, so ${n === 1 ? "it is" : "they are"} left out of Taken and of the Average check rather than counted as nothing paid.`;
+}
 
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
@@ -776,8 +793,12 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
   // the cost basis (the gateway's own reason, analytics.service.ts basis.cogs).
   const cogsOwn = str(d.cogsCurrency).trim().toUpperCase();
   const houseOwn = str(d.houseCurrency).trim().toUpperCase();
+  // F-1443: a COGS short of its unpriced deliveries is not set against the
+  // cellar either; that comes first, as the gateway withholds for it first.
   const turnsWhy =
-    cogsOwn && houseOwn && cogsOwn !== houseOwn
+    unpricedOrders > 0 && num(d.cogs) != null
+      ? `${unpricedOrders} delivered ${unpricedOrders === 1 ? "order has" : "orders have"} no price, so Cost of goods is short and is not set against the cellar`
+      : cogsOwn && houseOwn && cogsOwn !== houseOwn
       ? `Cost of goods is in ${cogsOwn}, not the house's ${houseOwn}, and with no exchange rate on record it is not set against the cellar`
       : str(d.cogsNote)
         ? `Cost of goods is withheld: ${str(d.cogsNote)}`
@@ -845,7 +866,7 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
         ? `${nounCount(unpricedPrices, "wine on hand has", "wines on hand have")} no bottle price, so ${unpricedPrices === 1 ? "it is" : "they are"} left out of the sell-price valuation, the gross margin and the COGS ratio, rather than counted as selling for nothing.`
         : "",
       unpricedOrders > 0
-        ? `${unpricedOrders} delivered ${unpricedOrders === 1 ? "order carries" : "orders carry"} no price, so Cost of goods leaves ${unpricedOrders === 1 ? "it" : "them"} out and is short by what ${unpricedOrders === 1 ? "it" : "they"} cost.`
+        ? `${unpricedOrders} delivered ${unpricedOrders === 1 ? "order carries" : "orders carry"} no price, so Cost of goods leaves ${unpricedOrders === 1 ? "it" : "them"} out and is short by what ${unpricedOrders === 1 ? "it" : "they"} cost. Inventory turns and Days of inventory are not taken from it.`
         : "",
     ],
     basis: sentences(b.revenue, b.cogs, b.inventoryValue, b.deadStock, b.costDerived),

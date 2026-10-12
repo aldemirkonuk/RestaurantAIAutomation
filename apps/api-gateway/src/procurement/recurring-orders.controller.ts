@@ -42,6 +42,23 @@ export function recurringOrderForRole<T extends object>(
   };
 }
 
+/**
+ * A write as this role may make it (F-1441). The POST and PUT replies go
+ * through `recurringOrderForRole` like the reads, so they cannot echo the
+ * price back. A reader who may not see `target_price` may not set or
+ * overwrite it either: the field is dropped from their body and the owner's
+ * figure stays as it was.
+ */
+function withoutPriceUnlessMoney<T extends { target_price?: number }>(
+  body: T,
+  role: string | null | undefined,
+): T {
+  if (holdsHouseMoney(role ?? null) || !body) return body;
+  const rest = { ...body };
+  delete rest.target_price;
+  return rest;
+}
+
 @ApiTags("recurring-orders")
 /**
  * OD-20 — guarded at class level 2026-08-25.
@@ -120,13 +137,17 @@ export class RecurringOrdersController {
     // `body.userId || "system"` let a caller claim to be anyone, and "system"
     // is not a uuid — `recurring_orders.created_by` has an FK to
     // public.users(user_id) and would have raised 22P02 on it.
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ) {
     try {
-      return await this.recurringOrdersService.createRecurringOrder(
-        restaurantId,
-        user?.userId,
-        body,
+      return recurringOrderForRole(
+        await this.recurringOrdersService.createRecurringOrder(
+          restaurantId,
+          user?.userId,
+          withoutPriceUnlessMoney(body, user?.role),
+        ),
+        user?.role,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -143,12 +164,16 @@ export class RecurringOrdersController {
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
     @Body() body: UpdateRecurringOrderDto,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.recurringOrdersService.updateRecurringOrder(
-        restaurantId,
-        id,
-        body,
+      return recurringOrderForRole(
+        await this.recurringOrdersService.updateRecurringOrder(
+          restaurantId,
+          id,
+          withoutPriceUnlessMoney(body, user?.role),
+        ),
+        user?.role,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

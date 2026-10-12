@@ -292,6 +292,17 @@ describe("DashboardService — a delivery with no price is counted, not summed a
     expect(august?.procurementSpend).toBe(250);
     expect(august?.unpricedOrders).toBe(1);
   });
+
+  // F-1442: the calendar said it as 0 paid and the page read "no deliveries".
+  it("the calendar day and month count it, so the page can say price not known", async () => {
+    const calendar: any = await service.getCalendarRevenue("r1", 2026, 8);
+    const day = calendar.daily.find((d: any) => d.date === "2026-08-15");
+    expect(day.order_count).toBeGreaterThan(0);
+    expect(day.procurement_unpriced).toBe(1);
+    expect(calendar.monthly_procurement_unpriced).toBe(1);
+    const quiet = calendar.daily.find((d: any) => d.date === "2026-08-20");
+    expect(quiet.procurement_unpriced).toBe(0);
+  });
 });
 
 // F-1039: the spend summary and the chart summed `total_cost` across every

@@ -82,6 +82,11 @@ export interface DayLedger {
   procurement_spend_currency: string | null;
   /** Each currency's part; what a two-currency day shows (F-1055). */
   procurement_spend_parts: SpendPart[];
+  /**
+   * Deliveries with no price, left out of `procurement_spend` (F-1442). Null
+   * when the gateway did not say; read it through `unpricedOf`.
+   */
+  procurement_unpriced: number | null;
   bottles_sold: number | null; // bottles DELIVERED by vendors (frozen misnomer)
   events: RawDayEvent[];
   order_count: number | null;
@@ -111,6 +116,8 @@ export interface MonthLedger {
   monthlySpendCurrency: string | null;
   /** Each currency's part of the month's spend (F-1055). */
   monthlySpendParts: SpendPart[];
+  /** The month's deliveries with no price, left out of `monthlySpend` (F-1442). */
+  monthlyUnpriced: number | null;
   monthlyBottles: number | null;
   /** The begun days the register counted, summed (founder 2026-10-05: "Sum, say N of M days"). */
   monthlyNetSales: number | null;
@@ -242,6 +249,28 @@ export function statsSpendOf(
     parts: spendPartsFrom(w?.byCurrency),
     note: typeof w?.note === "string" && w.note ? w.note : null,
   };
+}
+
+/** What a delivery with no price reads in place of an amount (F-1442). */
+export const PRICE_NOT_KNOWN = "price not known";
+
+/**
+ * A day's deliveries with no price, left out of its spend (F-1442, F-701). An
+ * older gateway sends no count; a day it says paid 0 for N deliveries was
+ * then N unpriced, since a priced order always carries more than 0.
+ */
+export function unpricedOf(day: DayLedger): number {
+  if (day.procurement_unpriced != null) return day.procurement_unpriced;
+  return day.procurement_spend === 0 && (day.order_count ?? 0) > 0
+    ? (day.order_count as number)
+    : 0;
+}
+
+/** "N with price not known, not counted", or null when there are none. */
+export function unpricedSaid(n: number | null | undefined): string | null {
+  return typeof n === "number" && n > 0
+    ? `${n.toLocaleString("en-US")} with ${PRICE_NOT_KNOWN}, not counted`
+    : null;
 }
 
 /** What a net figure reads when checks came and not one carried a subtotal. */
@@ -477,6 +506,7 @@ export function useMonthLedger(
             revenue?: number;
             procurement_spend_currency?: unknown;
             procurement_spend_by_currency?: unknown;
+            procurement_unpriced?: unknown;
           };
           return {
             date: raw.date,
@@ -486,6 +516,7 @@ export function useMonthLedger(
                 : num(raw.revenue),
             procurement_spend_currency: codeOf(raw.procurement_spend_currency),
             procurement_spend_parts: spendPartsFrom(raw.procurement_spend_by_currency),
+            procurement_unpriced: num(raw.procurement_unpriced),
             bottles_sold: num(raw.bottles_sold),
             events: raw.events ?? [],
             order_count: num(raw.order_count),
@@ -499,6 +530,7 @@ export function useMonthLedger(
           amounts?: string;
           monthly_procurement_spend_currency?: unknown;
           monthly_procurement_spend_by_currency?: unknown;
+          monthly_procurement_unpriced?: unknown;
         };
         const summedSpend = daily.every((d) => d.procurement_spend !== null)
           ? daily.reduce((sum, d) => sum + (d.procurement_spend ?? 0), 0)
@@ -515,6 +547,7 @@ export function useMonthLedger(
                 : summedSpend,
           monthlySpendCurrency: codeOf(legacyTotals.monthly_procurement_spend_currency),
           monthlySpendParts: spendPartsFrom(legacyTotals.monthly_procurement_spend_by_currency),
+          monthlyUnpriced: num(legacyTotals.monthly_procurement_unpriced),
           monthlyBottles: num(res.monthly_bottles),
           monthlyNetSales: num(res.monthly_net_sales),
           monthlyChecks: num(res.monthly_checks),
