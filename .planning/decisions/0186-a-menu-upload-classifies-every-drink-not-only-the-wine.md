@@ -1,6 +1,6 @@
 # 0186 — A menu upload classifies every drink, not only the wine
 
-- **Status:** Locked
+- **Status:** Locked **[Amended 2026-10-12 by ADR 0340 (founder answer S208). Decided, not yet built (its lanes 3b and 5b): the extraction will also return a section table (kept as `menu_sections.title_as_read`) with a suggested menu kind per section, and a dish price. The closed drink vocabulary is unchanged: `menu_items.category` keeps holding a vocabulary token for a drink line and will be NULL for a dish line, and a section's or line's `drink_category` uses the same tokens. Only a token reaches `menu_category` (ADR 0333). The /menu "Section" label will edit the section title, not `category`. The new prompt is re-measured against this ADR's baseline (identity agreement 0.909 against self-agreement 0.888, `scan-parser.service.ts:64-65`) before it ships.]**
 - **Date:** 2026-09-22
 - **Decider:** Aldemir (founder) — *"we can show beer as well, use opus 5 to make that change in the pipeline."* Rejected the proposal to ship the post-upload reveal as wine-only with beer left unknown.
 - **Keywords:** beverage_kind, cellar registers, menu import, beer, extraction prompt, menu_category, classifier
