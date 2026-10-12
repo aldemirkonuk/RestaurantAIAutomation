@@ -167,8 +167,13 @@ describe("OrganizationsService#createLocation — creator access", () => {
 
     const result = await svc.createLocation(USER_ID, DTO);
 
-    // Response shape is unchanged.
-    expect(result).toEqual({ id: REST_ID, name: "Sim Meyhouse" });
+    // The house, and the clock it was given (none here: no country, no zone
+    // sent) — F-1486, so the dialog can ask for one.
+    expect(result).toEqual({
+      id: REST_ID,
+      name: "Sim Meyhouse",
+      timezone: null,
+    });
 
     // The decisive assertion: the membership row the 403 was missing.
     expect(calls.accessInserts).toHaveLength(1);
@@ -375,5 +380,34 @@ describe("CreateLocationDto — currency and map point", () => {
       "latitude",
       "longitude",
     ]);
+  });
+});
+
+/**
+ * F-1486: a US house added from a device abroad gets no clock (ADR 0304: a US
+ * address names no zone, and a device outside the US vouches for none). The
+ * zone goes back with the house so the dialog can say so and ask for one.
+ */
+describe("OrganizationsService#createLocation — says which clock the house got", () => {
+  it("answers no zone for a US house added from Berlin", async () => {
+    const { svc } = makeService();
+    const result = await svc.createLocation(USER_ID, {
+      ...DTO,
+      city: "Detroit",
+      country: "United States",
+      timezone: "Europe/Berlin",
+    });
+    expect(result.timezone).toBeNull();
+  });
+
+  it("answers the zone a US house added from Detroit keeps", async () => {
+    const { svc } = makeService();
+    const result = await svc.createLocation(USER_ID, {
+      ...DTO,
+      city: "Detroit",
+      country: "United States",
+      timezone: "America/Detroit",
+    });
+    expect(result.timezone).toBe("America/Detroit");
   });
 });

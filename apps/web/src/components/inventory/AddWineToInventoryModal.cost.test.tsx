@@ -322,3 +322,43 @@ describe("AddWineToInventoryModal — a price that reads two ways is asked", () 
     expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(1250);
   });
 });
+
+/**
+ * F-1484: a Custom bottle size of "1,750 ml" in a US house read as 1.75 ml,
+ * turned red, and the add went through with the size chosen before (750 ml).
+ */
+describe("AddWineToInventoryModal — a custom size reads the house's way, or holds the add", () => {
+  const chooseCustomBottle = async (user: ReturnType<typeof userEvent.setup>) => {
+    const sizes = screen
+      .getAllByRole("combobox")
+      .find((s) => s.querySelector('option[value="750"]'))!;
+    await user.selectOptions(sizes, "custom");
+  };
+
+  it("saves 1,750 ml for '1,750 ml' in a ','-grouping house", async () => {
+    groupMark.value = ",";
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await chooseCustomBottle(user);
+    await user.type(screen.getByPlaceholderText(/750ml, 75cl/), "1,750 ml");
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4].bottleSizeMl).toBe(1750);
+  });
+
+  it("holds the add, and says why, while the custom size is not a size", async () => {
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await chooseCustomBottle(user);
+    await user.type(screen.getByPlaceholderText(/750ml, 75cl/), "1,750 ml");
+
+    expect(screen.getByText(/The bottle size is not a size we can use/)).toBeInTheDocument();
+    const add = screen.getByRole("button", { name: /Add to Inventory/i });
+    expect(add).toBeDisabled();
+    await user.click(add);
+    expect(onAddWine).not.toHaveBeenCalled();
+  });
+});

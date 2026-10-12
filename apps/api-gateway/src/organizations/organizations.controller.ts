@@ -135,7 +135,7 @@ export class OrganizationsController {
   async createLocation(
     @Req() req: Request & { user: AuthenticatedUser },
     @Body() body: CreateLocationDto,
-  ): Promise<{ id: string; name: string }> {
+  ): Promise<{ id: string; name: string; timezone: string | null }> {
     const userId: string = (req.user as AuthenticatedUser)?.userId;
     if (!userId) throw new UnauthorizedException("Missing user identity");
     this.logger.debug(`Creating location '${body.name}' for user ${userId}`);

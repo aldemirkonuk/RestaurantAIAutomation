@@ -30,6 +30,16 @@ describe('parseVolumeInput', () => {
     expect(parseVolumeInput('1,5,0 L')).toBeNull()
     expect(parseVolumeInput('0 ml')).toBeNull()
   })
+
+  // F-1484: in a house whose numbers group thousands with ",", "1,750 ml" is a
+  // handle, not 1.75 ml; "1,5 L" is still a litre and a half there.
+  it("reads a lone comma before three digits as the house's group mark", () => {
+    expect(parseVolumeInput('1,750 ml', ',')?.ml).toBe(1750)
+    expect(parseVolumeInput('1,750', ',')?.ml).toBe(1750)
+    expect(parseVolumeInput('1,5 L', ',')?.ml).toBe(1500)
+    expect(parseVolumeInput('1.750 ml', '.')?.ml).toBe(1750)
+    expect(parseVolumeInput('1,750 ml')?.ml).toBe(2)
+  })
 })
 
 describe('isValidBottleSize', () => {

@@ -363,6 +363,29 @@ describe("the review line and the cost note follow the house's country", () => {
     expect(screen.queryByText(/SGK|45h|45 worked/)).not.toBeInTheDocument();
   });
 
+  // F-1483: the cost prices every hour at the regular wage (ADR 0215's
+  // "review, never a price", kept by ADR 0330 item 5), so a US house is told
+  // the FLSA overtime pay is left out, not shown a figure that reads as the week.
+  it('a US house is told the cost leaves out overtime pay over 40 hours', async () => {
+    api.week = ownerWeek('United States');
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(
+      await within(labour).findByText(/overtime pay for hours over 40 a week is not included/),
+    ).toBeInTheDocument();
+  });
+
+  it('a Turkish, GB or German house is not told of an overtime pay line it has no rule for', async () => {
+    for (const country of ['Türkiye', 'United Kingdom', 'Germany']) {
+      api.week = ownerWeek(country);
+      const { unmount } = render(<TeamNext />, { wrapper });
+      const labour = await screen.findByRole('region', { name: 'Labour cost' });
+      await within(labour).findByText(/Wages only/);
+      expect(within(labour).queryByText(/overtime pay/)).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it('a Turkish house keeps the 45-hour week and SGK', async () => {
     api.week = ownerWeek('Türkiye');
     render(<TeamNext />, { wrapper });
