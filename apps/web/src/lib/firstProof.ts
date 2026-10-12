@@ -86,8 +86,12 @@ const KITCHEN = [
   'mutfak',
 ]
 
-/** A section that names wine ("Dessert wines", "Kırmızı şaraplar") is a drink section. */
-const WINE_WORDS = ['wine', 'wines', 'şarap', 'şaraplar']
+/**
+ * A section that names wine ("Dessert wines", "Kırmızı şaraplar", "Rouges et
+ * Rosés") is a drink section, whatever food it also names: "Balık Şarapları"
+ * are wines for fish (F-1392).
+ */
+const WINE_WORDS = ['wine', 'wines', 'şarap', 'şaraplar', 'şarapları', 'vin', 'vins', 'champagne', 'rouges', 'blancs', 'rosés']
 
 /**
  * Turkish drink sections, matched as whole words in the section (F-1272): a
@@ -101,7 +105,14 @@ const DRINK_WORDS = ['kırmızı', 'beyaz', 'roze', 'pembe', 'köpüklü', 'tatl
  * says (F-1317): "Kırmızı Et" is red meat, not red wine. The same list as the
  * gateway's FOOD_NOUNS.
  */
-const FOOD_NOUNS = ['et', 'etler', 'yemek', 'yemekler', 'yemekleri', 'tavuk', 'balık', 'balıklar', 'köfte', 'kebap', 'kebaplar', 'meze', 'mezeler', 'salata', 'salatalar', 'çorba', 'çorbalar', 'ızgara', 'ızgaralar']
+const FOOD_NOUNS = ['etler', 'yemek', 'yemekler', 'yemekleri', 'tavuk', 'balık', 'balıklar', 'köfte', 'kebap', 'kebaplar', 'meze', 'mezeler', 'salata', 'salatalar', 'çorba', 'çorbalar', 'ızgara', 'ızgaralar']
+
+/**
+ * Meat sections, as the whole heading only (F-1392): a bare 'et' is also the
+ * French "and" ("Rouges et Rosés"), so it marks food only as "Et" alone or
+ * after a Turkish colour. The same list as the gateway's MEAT_SECTIONS.
+ */
+const MEAT_SECTIONS = ['et', 'kırmızı et', 'beyaz et']
 
 /**
  * Hints that mark food only as the section's own heading, never inside a raw
@@ -204,9 +215,12 @@ export function isKitchenLine(item: Pick<MenuImportReviewItem, 'category' | 'raw
   const section = item.category ?? ''
   const sectionRuns = wordRuns(section)
   const sectionSays = (words: string[]) => sectionRuns.some((run) => words.some((w) => run.includes(` ${w} `)))
+  // A wine word beats a food noun: "Balık Şarapları" are wines (F-1392).
+  if (sectionSays(WINE_WORDS)) return false
   // A food noun beats a drink word: "Kırmızı Et" is meat (F-1317).
+  if (sectionRuns.some((run) => MEAT_SECTIONS.includes(run.trim()))) return true
   if (sectionSays(FOOD_NOUNS)) return true
-  if (sectionSays([...WINE_WORDS, ...DRINK_WORDS])) return false
+  if (sectionSays(DRINK_WORDS)) return false
   if (sectionSays(SECTION_HINTS)) return true
   const runs = wordRuns(`${section} ${item.rawText ?? ''}`)
   return KITCHEN.some((hint) => runs.some((run) => run.includes(` ${hint} `)))

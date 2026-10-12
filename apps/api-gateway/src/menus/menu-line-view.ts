@@ -124,8 +124,24 @@ export const DRINK_SECTIONS = [
   "non-alcoholic",
 ];
 
-/** A section that names wine ("Dessert wines", "Kırmızı şaraplar") is a drink section too. */
-export const WINE_WORDS = ["wine", "wines", "şarap", "şaraplar"];
+/**
+ * A section that names wine ("Dessert wines", "Kırmızı şaraplar", "Rouges et
+ * Rosés") is a drink section too, whatever food it also names: "Balık
+ * Şarapları" are wines for fish (F-1392).
+ */
+export const WINE_WORDS = [
+  "wine",
+  "wines",
+  "şarap",
+  "şaraplar",
+  "şarapları",
+  "vin",
+  "vins",
+  "champagne",
+  "rouges",
+  "blancs",
+  "rosés",
+];
 
 /**
  * Turkish drink sections, matched as whole words in the section (F-1272): a
@@ -178,7 +194,6 @@ export const DRINK_WORD_KINDS: ReadonlyArray<[string, MenuCategory]> = [
  * and white wine. The same list as the web's `FOOD_NOUNS`.
  */
 export const FOOD_NOUNS = [
-  "et",
   "etler",
   "yemek",
   "yemekler",
@@ -198,6 +213,13 @@ export const FOOD_NOUNS = [
   "ızgara",
   "ızgaralar",
 ];
+
+/**
+ * Meat sections, as the whole heading only (F-1392): a bare 'et' is also the
+ * French "and" ("Rouges et Rosés"), so it marks food only as "Et" alone or
+ * after a Turkish colour. The same list as the web's `MEAT_SECTIONS`.
+ */
+export const MEAT_SECTIONS = ["et", "kırmızı et", "beyaz et"];
 
 /**
  * Hints that mark food only as the section's own heading, never inside a raw
@@ -259,8 +281,8 @@ function wordRuns(text: string): string[] {
 
 /**
  * Whether a menu line is a kitchen (food) line, from its section and its raw
- * line. A known drink section wins, then a food noun in the section, then
- * a drink word in it; otherwise a whole-word hint in either decides. The same test as the web's `isKitchenLine`.
+ * line. A known drink section wins, then a wine word in the section, then
+ * a food noun, then a drink word; otherwise a whole-word hint in either decides. The same test as the web's `isKitchenLine`.
  */
 export function isKitchenLine(category: unknown, raw: unknown): boolean {
   const section = typeof category === "string" ? category : "";
@@ -268,9 +290,13 @@ export function isKitchenLine(category: unknown, raw: unknown): boolean {
   const sectionRuns = wordRuns(section);
   const sectionSays = (words: string[]) =>
     sectionRuns.some((run) => words.some((w) => run.includes(` ${w} `)));
+  // A wine word beats a food noun: "Balık Şarapları" are wines (F-1392).
+  if (sectionSays(WINE_WORDS)) return false;
   // A food noun beats a drink word: "Kırmızı Et" is meat (F-1317).
+  if (sectionRuns.some((run) => MEAT_SECTIONS.includes(run.trim())))
+    return true;
   if (sectionSays(FOOD_NOUNS)) return true;
-  if (sectionSays([...WINE_WORDS, ...DRINK_WORDS])) return false;
+  if (sectionSays(DRINK_WORDS)) return false;
   if (sectionSays(SECTION_HINTS)) return true;
   const runs = wordRuns(`${section} ${typeof raw === "string" ? raw : ""}`);
   return KITCHEN_HINTS.some((hint) =>
