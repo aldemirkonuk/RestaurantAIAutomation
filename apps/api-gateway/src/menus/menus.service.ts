@@ -1404,6 +1404,8 @@ export class MenusService {
     rawLineWithheld?: true;
     housePricesReadable?: boolean;
     housePricesReason?: string | null;
+    soldOutReadable?: boolean;
+    soldOutReason?: string | null;
   }> {
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
@@ -1422,24 +1424,81 @@ export class MenusService {
     // rows without saying so, and a long wine list is exactly that long.
     const items = await this.readLines(menu.id, restaurantId, view);
     const house = await this.readHousePrices(restaurantId, items);
+    const out = await this.readSoldOut(restaurantId, house.items);
 
     return {
       menuId: menu.id,
       name: menu.name,
       status: menu.status,
-      items: house.items,
+      items: out.items,
       ...withheld,
       housePricesReadable: house.readable,
       housePricesReason: house.reason,
+      soldOutReadable: out.readable,
+      soldOutReason: out.reason,
     };
   }
 
   /**
-   * F-618. The menu line keeps its own price (ADR 0193 item 3), but the
-   * house's price (`menu_price_current` / `menu_price_glass`) is what
-   * /inventory, the reports, the POS and the advice read, and three acts move
-   * it without touching the line ("Your price", accepted advice, a lock's
-   * change). So each linked line is sent the house's price beside its own:
+   * F-145 (S195). A line whose wine is 86'd (an open stock_outs row,
+   * 20261231900000) is sent `sold_out: true`, so the house's menu shows it
+   * unavailable. Read in this house only. A failed read marks nothing and
+   * says `soldOutReadable: false` with the reason -- never a menu that looks
+   * as if nothing is sold out.
+   */
+  private async readSoldOut(
+    restaurantId: string,
+    items: Array<Record<string, unknown>>,
+  ): Promise<{
+    items: Array<Record<string, unknown>>;
+    readable: boolean;
+    reason: string | null;
+  }> {
+    const ids = [
+      ...new Set(
+        items
+          .map((i) => i.inventory_item_id)
+          .filter((v): v is string => typeof v === "string" && v !== ""),
+      ),
+    ];
+    if (ids.length === 0) return { items, readable: true, reason: null };
+    const out = new Set<string>();
+    for (let k = 0; k < ids.length; k += 200) {
+      const { data, error } = await this.dbService.supabase
+        .from("stock_outs")
+        .select("inventory_id")
+        .eq("restaurant_id", restaurantId)
+        .is("ended_at", null)
+        .in("inventory_id", ids.slice(k, k + 200));
+      if (error) {
+        return {
+          items,
+          readable: false,
+          reason: `Which drinks are sold out could not be read, so none is marked; that is not the same as none sold out (${error.message}).`,
+        };
+      }
+      for (const r of (data ?? []) as Array<Record<string, unknown>>)
+        out.add(String(r.inventory_id));
+    }
+    return {
+      items: items.map((i) =>
+        typeof i.inventory_item_id === "string" && out.has(i.inventory_item_id)
+          ? { ...i, sold_out: true }
+          : i,
+      ),
+      readable: true,
+      reason: null,
+    };
+  }
+
+  /**
+   * F-618. The house's price (`menu_price_current` / `menu_price_glass`) is
+   * what /inventory, the reports, the POS and the advice read. Making a menu
+   * current sets it from the lines (ADR 0193 item 4), and since S195 any other
+   * change of it is written onto the current menu's lines (migration
+   * 20270105500000), so the two agree. They still differ where ADR 0193 keeps
+   * them apart: a locked price, a stale line, or a line older than that
+   * migration. So each linked line is sent the house's price beside its own:
    * `house_bottle_price` / `house_glass_price`, null when the house has none.
    * Neither is chosen over the other here; the page shows both when they
    * differ. Read in this house only. A failed read sends no house price and

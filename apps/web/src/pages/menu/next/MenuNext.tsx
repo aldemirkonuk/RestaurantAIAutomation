@@ -554,11 +554,12 @@ function EditRow({ line, saving, onSave, onCancel }: {
 }
 
 /**
- * F-618. The line keeps its own price (ADR 0193 item 3), and three acts move
- * the house's own price without touching it ("Your price" on Inventory,
- * accepted advice, a lock's change). Inventory, Reports and the till read the
- * house's. Where the two differ the cell shows both; neither is picked here.
- * A blank line price beside a known house price shows that price too.
+ * F-618. Inventory, Reports and the till read the house's own price. Since
+ * S195 a change of it is written onto the current menu's line (migration
+ * 20270105500000), so the two agree; ADR 0193 still keeps them apart for a
+ * locked price or a stale line, and a line older than that migration may
+ * differ. Only then does the cell show both; neither is picked here. A blank
+ * line price beside a known house price shows that price too.
  */
 function housePriceDiffers(linePrice: number | null, housePrice: number | null | undefined): boolean {
   if (housePrice === null || housePrice === undefined) return false;
@@ -617,6 +618,12 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
           {reason?.hand ? 'by hand' : line.status.replace('_', ' ')}
         </span>
+        {/* F-145: 86'd on /cellar, /inventory or the phone; back on when a delivery is booked in. */}
+        {line.sold_out ? (
+          <span className="cl-chip" data-testid="menu-sold-out" title="Not available to guests until it is brought back or a delivery is booked in.">
+            sold out
+          </span>
+        ) : null}
         {reason ? (
           <span className="cl-note" style={{ display: 'block' }} data-testid="menu-flag-reason">
             {reason.text}
@@ -852,19 +859,33 @@ function MenuPage() {
                   housePriceDiffers(l.bottle_price, l.house_bottle_price) ||
                   housePriceDiffers(l.by_glass_price, l.house_glass_price),
               ).length;
+              const soldOutUnread =
+                q.data.soldOutReadable === false ? (
+                  <p className="cl-note" role="alert" style={{ marginTop: 8 }} data-testid="menu-sold-out-unread">
+                    {q.data.soldOutReason ?? 'Which drinks are sold out could not be read, so none is marked.'}
+                  </p>
+                ) : null;
               if (q.data.housePricesReadable === false)
                 return (
-                  <p className="cl-note" role="alert" style={{ marginTop: 8 }} data-testid="menu-house-prices-unread">
-                    {q.data.housePricesReason ?? "This house's own prices could not be read, so a line whose price differs from them is not marked."}
-                  </p>
+                  <>
+                    {soldOutUnread}
+                    <p className="cl-note" role="alert" style={{ marginTop: 8 }} data-testid="menu-house-prices-unread">
+                      {q.data.housePricesReason ?? "This house's own prices could not be read, so a line whose price differs from them is not marked."}
+                    </p>
+                  </>
                 );
-              return differ > 0 ? (
-                <p className="cl-note" style={{ marginTop: 8 }} data-testid="menu-house-prices-differ">
-                  {differ} {differ === 1 ? 'line prints a price' : 'lines print a price'} that is not this
-                  house&rsquo;s own. Inventory, Reports and the till use your price, shown under the
-                  line&rsquo;s. Nothing was changed.
-                </p>
-              ) : null;
+              return (
+                <>
+                  {soldOutUnread}
+                  {differ > 0 ? (
+                    <p className="cl-note" style={{ marginTop: 8 }} data-testid="menu-house-prices-differ">
+                      {differ} {differ === 1 ? 'line prints a price' : 'lines print a price'} that is not this
+                      house&rsquo;s own. Inventory, Reports and the till use your price, shown under the
+                      line&rsquo;s. Nothing was changed.
+                    </p>
+                  ) : null}
+                </>
+              );
             })()}
             {discard.isError ? (
               <p role="alert" className="cl-said" style={{ marginTop: 8 }}>

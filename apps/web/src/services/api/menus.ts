@@ -236,6 +236,8 @@ export interface MenuLine {
    */
   house_bottle_price?: number | null
   house_glass_price?: number | null
+  /** The linked wine is 86'd (an open stock-out, F-145); absent otherwise. */
+  sold_out?: true
 }
 
 export interface ActiveMenu {
@@ -246,6 +248,9 @@ export interface ActiveMenu {
   /** false = this house's own prices could not be read, so no difference is marked. */
   housePricesReadable?: boolean
   housePricesReason?: string | null
+  /** False when which drinks are sold out could not be read (F-145); none is marked then. */
+  soldOutReadable?: boolean
+  soldOutReason?: string | null
 }
 
 /**

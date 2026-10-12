@@ -325,6 +325,55 @@ describe("MenusService.getMenu", () => {
     expect(result.housePricesReadable).toBe(false);
     expect(result.housePricesReason).toContain("timeout");
   });
+
+  // F-145 (S195): a drink 86'd shows on the house's menu as sold out.
+  it("marks a line sold out while its wine has an open stock-out, in this house only", async () => {
+    const tables: any = pricedMenu();
+    tables.stock_outs = [
+      {
+        id: "so-1",
+        restaurant_id: "rest-1",
+        inventory_id: "inv-1",
+        ended_at: null,
+      },
+      // Another house's open stock-out on a wine id this menu links.
+      {
+        id: "so-2",
+        restaurant_id: "rest-2",
+        inventory_id: "inv-9",
+        ended_at: null,
+      },
+    ];
+    const result: any = await makeService(tables).getMenu("rest-1");
+    const byId = Object.fromEntries(result.items.map((i: any) => [i.id, i]));
+    expect(byId["mi-1"].sold_out).toBe(true);
+    expect(byId["mi-2"]).not.toHaveProperty("sold_out");
+    expect(byId["mi-3"]).not.toHaveProperty("sold_out");
+    expect(result.soldOutReadable).toBe(true);
+
+    // Brought back: nothing is marked.
+    tables.stock_outs[0].ended_at = "2026-09-03T12:00:00Z";
+    const back: any = await makeService(tables).getMenu("rest-1");
+    expect(back.items.some((i: any) => "sold_out" in i)).toBe(false);
+  });
+
+  it("says when which drinks are sold out could not be read, and marks none", async () => {
+    const tables: any = pricedMenu();
+    tables.stock_outs = [
+      {
+        id: "so-1",
+        restaurant_id: "rest-1",
+        inventory_id: "inv-1",
+        ended_at: null,
+      },
+    ];
+    tables.__readFails = [{ stock_outs: "timeout" }];
+    const result: any = await makeService(tables).getMenu("rest-1");
+    expect(result.items.some((i: any) => "sold_out" in i)).toBe(false);
+    expect(result.soldOutReadable).toBe(false);
+    expect(result.soldOutReason).toContain("timeout");
+    expect(result.housePricesReadable).toBe(true);
+  });
 });
 
 /**
@@ -471,6 +520,8 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
           "rawLineWithheld",
           "housePricesReadable",
           "housePricesReason",
+          "soldOutReadable",
+          "soldOutReason",
         ].sort(),
       );
       expect(r.rawLineWithheld).toBe(true);
@@ -481,7 +532,13 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
     }
     const holder: any = await service.getMenu("rest-1", { rawLine: true });
     expect(Object.keys(holder).sort()).toEqual(
-      [...ROOT_KEYS, "housePricesReadable", "housePricesReason"].sort(),
+      [
+        ...ROOT_KEYS,
+        "housePricesReadable",
+        "housePricesReason",
+        "soldOutReadable",
+        "soldOutReason",
+      ].sort(),
     );
   });
 
