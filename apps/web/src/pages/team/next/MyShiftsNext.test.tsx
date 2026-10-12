@@ -159,6 +159,28 @@ describe('a time-off request still waiting can be taken back (F-936)', () => {
     api.timeOff = [];
   });
 
+  it('frees the same days to be asked again once the request just sent is withdrawn (F-1454)', async () => {
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      acknowledged: true,
+      mine: [],
+      open: [],
+    };
+    api.timeOff = [];
+    api.createTimeOff.mockResolvedValueOnce({ id: 't-new', managersTold: 1 });
+    mount();
+    const ask = await screen.findByRole('button', { name: /Ask for/ });
+    const day = (document.querySelector('input[type="date"]') as HTMLInputElement).value;
+    api.timeOff = [{ id: 't-new', member_id: 'm-1', start_date: day, end_date: day, status: 'pending' }];
+    fireEvent.click(ask);
+    expect(await screen.findByRole('button', { name: 'Asked' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Withdraw it' }));
+    expect(await screen.findByRole('button', { name: 'Ask for this day off' })).toBeTruthy();
+    expect(screen.queryByText(/went to your manager just now/)).toBeNull();
+    api.timeOff = [];
+  });
+
   it('says a withdrawal whose answer was lost may already be done, not "still waiting" (F-1118)', async () => {
     api.myWeek = {
       member: { id: 'm-1', display_name: 'Sam' },

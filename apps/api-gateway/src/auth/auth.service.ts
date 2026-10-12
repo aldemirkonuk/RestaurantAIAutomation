@@ -2887,7 +2887,7 @@ export class AuthService {
   ): Promise<{ restaurant: string; role: string; restaurantId: string }> {
     const { data: actor } = await this.databaseService.supabase
       .from("users")
-      .select("email")
+      .select("email, name")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -3034,7 +3034,9 @@ export class AuthService {
       inviteId: invite.id,
       userId,
       email: actor?.email ?? null,
-      name: null,
+      // F-1453: the account's own name replaces the invite's stand-in
+      // ("Pending staff", or the address's first half) on the roster.
+      name: actor?.name ?? null,
       role: invite.role,
     });
 

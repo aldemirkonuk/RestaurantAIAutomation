@@ -145,6 +145,53 @@ describe("acceptInviteAsExistingUser — only a current membership is 'already a
 });
 
 /**
+ * F-1453: an existing account that signs in to accept used to keep the
+ * invite's stand-in name ("Pending staff", or its address's first half) on the
+ * roster, My shifts and the managers' bell: this path passed no name to the
+ * claim, while the other two join paths pass the account's.
+ */
+describe("acceptInviteAsExistingUser — the roster row takes the account's name (F-1453)", () => {
+  it("hands the account's name to the claim", async () => {
+    const { svc, db } = makeService(null);
+    db.tables.users[0].name = "Ayşe Kaya";
+
+    await svc.acceptInviteAsExistingUser(JOINER, "abcd1234");
+
+    expect((svc as any).claimTeamMemberFromInvite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: JOINER,
+        email: "joiner@example.com",
+        name: "Ayşe Kaya",
+      }),
+    );
+  });
+
+  it("renames the invite's 'Pending manager' row to the person", async () => {
+    const { svc, db } = makeService(null);
+    db.tables.users[0].name = "Ayşe Kaya";
+    db.tables.team_members.push({
+      id: "tm-stand-in",
+      restaurant_id: HOUSE,
+      invite_id: "invite-2",
+      user_id: null,
+      display_name: "Pending manager",
+    });
+    delete (svc as any).claimTeamMemberFromInvite;
+
+    await svc.acceptInviteAsExistingUser(JOINER, "abcd1234");
+
+    expect(db.tables.team_members).toEqual([
+      expect.objectContaining({
+        id: "tm-stand-in",
+        user_id: JOINER,
+        invite_id: null,
+        display_name: "Ayşe Kaya",
+      }),
+    ]);
+  });
+});
+
+/**
  * F-898: Path A (`POST /auth/join`, typing the code on /register with an
  * existing account's address and password) kept the old rule — ANY row in the
  * house answered 409 "already_member" — after the signed-in accept above was
