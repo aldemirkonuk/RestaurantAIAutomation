@@ -22,6 +22,7 @@ import {
 } from "./pos-provider.registry";
 import { NotificationsService } from "../notifications/notifications.service";
 import { AreaRoutingService } from "../areas/area-routing.service";
+import { recipeMeasure } from "../beverages/cocktail-recipe";
 import {
   fileRefusedChecksNote,
   type RefusedCheck,
@@ -359,6 +360,8 @@ interface PlannedStockLine {
     qty: number;
     price: number | null;
     inventory_id: string | null;
+    /** F-1329: a cocktail's recipe line; its till price is the cocktail's. */
+    ingredient?: boolean;
   };
   inventoryId: string;
   idem: string;
@@ -421,6 +424,28 @@ interface CheckLedger {
  * are every source a house's checks can carry.
  */
 const IMPORT_TILLS = Object.keys(ADAPTERS).filter((k) => k !== "csv_import");
+
+/**
+ * F-1329: how a till line's name is compared with a cocktail's: trimmed, one
+ * space between words, case folded, and the Turkish dotted and dotless i read
+ * as one letter, so "SPRITZ" and "Spritz" and "RAKI" and "Rakı" are each one
+ * name. Exact after that; nothing fuzzier names a recipe.
+ */
+function cocktailNameKey(name: string | null | undefined): string {
+  return String(name ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[ıİI]/g, "i")
+    .toLowerCase();
+}
+
+/** F-1329: one linked line of a cocktail's recipe, as the till takes it. */
+interface RecipeStockLine {
+  inventoryId: string;
+  freeText: string | null;
+  quantity: unknown;
+  unit: unknown;
+}
 
 /** Every stock key of a check begins with this (B15). */
 function checkLedgerPrefix(source: string, externalCheckId: string): string {
@@ -1355,6 +1380,25 @@ export class PosHubService {
     ]);
     const mappings = mappingLookup.rows;
     if (mappingLookup.error) errors.push(mappingLookup.error);
+    // F-1329: the house's cocktails are read by name only when a line no
+    // mapping names could be one; a check of mapped lines reads nothing more.
+    const cocktailLookup = checks.some(
+      (c) =>
+        Array.isArray(c?.items) &&
+        c.items.some(
+          (it) =>
+            it &&
+            this.resolveWine(
+              it.name,
+              it.externalItemId,
+              mappings,
+              it.modifierIds ?? [],
+            ).unmapped,
+        ),
+    )
+      ? await this.loadHouseCocktails(restaurantId)
+      : { byName: new Map<string, string>(), error: null };
+    if (cocktailLookup.error) errors.push(cocktailLookup.error);
     const tables = tableLookup.tables;
     // Degrade, do not reject: table resolution is an enrichment, so a failed
     // lookup must not turn into a 500 the POS retries forever. But it is SAID,
@@ -1518,6 +1562,13 @@ export class PosHubService {
             typeof it.is_wine === "boolean" ? it.is_wine : mapped.isWine;
           if (is_wine) wineItems++;
           const category = it.category ?? mapped.category ?? null;
+          // F-1329: the cocktail this line sells, by its mapping, else by
+          // its exact name among the house's own cocktails.
+          const cocktailId =
+            mapped.cocktailId ??
+            (mapped.unmapped
+              ? (cocktailLookup.byName.get(cocktailNameKey(it.name)) ?? null)
+              : null);
           return {
             name: it.name,
             external_item_id: it.externalItemId ?? null,
@@ -1538,6 +1589,7 @@ export class PosHubService {
               typeof it.is_wine !== "boolean" &&
               !categoryIsFood(category),
             size_unnamed: mapped.sizeUnnamed,
+            cocktail_id: cocktailId,
           };
         });
 
@@ -1565,7 +1617,12 @@ export class PosHubService {
           // because every reader sums `total` with nothing to filter on.
           voided: check.voided === true,
           items: items.map(
-            ({ unmapped_drink: _u, size_unnamed: _s, ...line }) => line,
+            ({
+              unmapped_drink: _u,
+              size_unnamed: _s,
+              cocktail_id: _c,
+              ...line
+            }) => line,
           ),
           raw: check.raw ?? null,
           // F-639: written only when the till said, so a copy that names
@@ -1935,7 +1992,7 @@ export class PosHubService {
       .getClient()
       .from("pos_item_mappings")
       .select(
-        "external_item_id, item_name, category, is_wine, master_wine_id, inventory_id, sale_unit, sale_volume_ml",
+        "external_item_id, item_name, category, is_wine, master_wine_id, inventory_id, sale_unit, sale_volume_ml, cocktail_id",
       )
       .eq("restaurant_id", restaurantId)
       .in("source", [source, "*"]);
@@ -1947,6 +2004,83 @@ export class PosHubService {
       return { rows: [], error: `pos_item_mappings: ${error.message}` };
     }
     return { rows: data || [], error: null };
+  }
+
+  /**
+   * F-1329: the house's own cocktails by name, so a till line no mapping names
+   * still finds its recipe when it is called exactly what the house calls the
+   * cocktail. A name two cocktails share names neither. A failed read is
+   * said; its lines are then imported as before, with no recipe.
+   */
+  private async loadHouseCocktails(
+    restaurantId: string,
+  ): Promise<{ byName: Map<string, string>; error: string | null }> {
+    const byName = new Map<string, string>();
+    try {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("cocktails")
+        .select("id, name, display_name, deleted_at")
+        .eq("restaurant_id", restaurantId);
+      if (error) {
+        return {
+          byName,
+          error: `cocktails: ${error.message}; a till line was matched to no recipe by its name`,
+        };
+      }
+      const shared = new Set<string>();
+      for (const c of (Array.isArray(data) ? data : []) as any[]) {
+        // A cocktail taken off the list sells nothing by its name.
+        if (c.deleted_at) continue;
+        for (const key of new Set(
+          [c.name, c.display_name].filter(Boolean).map(cocktailNameKey),
+        )) {
+          if (byName.has(key) && byName.get(key) !== c.id) shared.add(key);
+          else byName.set(key, c.id);
+        }
+      }
+      for (const key of shared) byName.delete(key);
+      return { byName, error: null };
+    } catch (err: any) {
+      return {
+        byName,
+        error: `cocktails: ${err?.message ?? String(err)}; a till line was matched to no recipe by its name`,
+      };
+    }
+  }
+
+  /**
+   * F-1329: the linked lines of each cocktail's recipe, in recorded order. A
+   * line that names no stock row is not linked and takes nothing. The stock
+   * rows are checked against the house by the volume read, as a mapping's are.
+   */
+  private async loadRecipes(cocktailIds: string[]): Promise<{
+    recipes: Map<string, RecipeStockLine[]>;
+    error: string | null;
+  }> {
+    const recipes = new Map<string, RecipeStockLine[]>();
+    if (!cocktailIds.length) return { recipes, error: null };
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("cocktail_ingredients")
+      .select(
+        "cocktail_id, inventory_id, free_text, quantity, unit, sort_order",
+      )
+      .in("cocktail_id", cocktailIds)
+      .order("sort_order", { ascending: true });
+    if (error) return { recipes, error: error.message ?? "no message" };
+    for (const r of (Array.isArray(data) ? data : []) as any[]) {
+      if (!r.inventory_id) continue;
+      const list = recipes.get(r.cocktail_id) ?? [];
+      list.push({
+        inventoryId: r.inventory_id,
+        freeText: r.free_text ?? null,
+        quantity: r.quantity,
+        unit: r.unit,
+      });
+      recipes.set(r.cocktail_id, list);
+    }
+    return { recipes, error: null };
   }
 
   /**
@@ -2020,6 +2154,8 @@ export class PosHubService {
     inventoryId: string | null;
     saleUnit: string | null;
     saleVolumeMl: number | null;
+    /** F-1329: the cocktail this till button sells, when its mapping says. */
+    cocktailId: string | null;
   } {
     const lower = (name || "").toLowerCase();
     // F-641: a mapping keyed `<item id>:<modifier id>` names one size of the
@@ -2058,6 +2194,7 @@ export class PosHubService {
         saleUnit: (byName.sale_unit as string | null) ?? null,
         saleVolumeMl:
           byName.sale_volume_ml == null ? null : Number(byName.sale_volume_ml),
+        cocktailId: byName.cocktail_id ?? null,
       };
     }
     const isWine =
@@ -2074,6 +2211,7 @@ export class PosHubService {
       inventoryId: null,
       saleUnit: null,
       saleVolumeMl: null,
+      cocktailId: null,
     };
   }
 
@@ -2085,7 +2223,7 @@ export class PosHubService {
     restaurantId: string,
     source: string,
     check: CanonicalCheck,
-    items: Array<{
+    tillItems: Array<{
       name: string;
       external_item_id: string | null;
       qty: number;
@@ -2098,6 +2236,8 @@ export class PosHubService {
       unmapped_drink?: boolean;
       /** F-641: modifiers no mapping names, on a line mapped by item. */
       size_unnamed?: string[] | null;
+      /** F-1329: the cocktail this line sells; its recipe says what it takes. */
+      cocktail_id?: string | null;
     }>,
     report: StockReport = new StockReport(),
     // ADR 0281: ingest() reads closed_at once, before it stores the check,
@@ -2127,14 +2267,48 @@ export class PosHubService {
       if (when.backdatedOver72h) tally.backdatedOver72h++;
     };
 
+    // F-1329: the recipes of the cocktails this check sold. Read only when
+    // a line sells one; a failed read takes nothing for those lines.
+    const cocktailIds = [
+      ...new Set(
+        tillItems
+          .filter((it) => it.cocktail_id && Number(it.qty) > 0)
+          .map((it) => it.cocktail_id as string),
+      ),
+    ];
+    const recipeRead = cocktailIds.length
+      ? await this.loadRecipes(cocktailIds)
+      : { recipes: new Map<string, RecipeStockLine[]>(), error: null };
+    // Each linked line of a cocktail's recipe is a stock line of its own. The
+    // till line stands for the first; the rest follow the check's own lines,
+    // so no till line's position (its B15 key) moves.
+    type StockItem = (typeof tillItems)[number] & {
+      recipe?: { line: RecipeStockLine; lineNo: number; j: number };
+      recipeError?: string;
+    };
+    const following: StockItem[] = [];
+    const items: StockItem[] = tillItems.map((it, lineNo) => {
+      if (!it.cocktail_id || !(Number(it.qty) > 0)) return it;
+      if (recipeRead.error) return { ...it, recipeError: recipeRead.error };
+      const recipe = recipeRead.recipes.get(it.cocktail_id) ?? [];
+      // A recipe that links nothing: the line is imported exactly as before.
+      if (recipe.length === 0) return it;
+      for (let j = 1; j < recipe.length; j++) {
+        following.push({ ...it, recipe: { line: recipe[j], lineNo, j } });
+      }
+      return { ...it, recipe: { line: recipe[0], lineNo, j: 0 } };
+    });
+    items.push(...following);
+
     // One read for the whole check (ADR 0011): resolving a sale volume needs
     // the inventory row's bottle/pour sizes before any RPC is issued.
     const inventoryRead = await this.loadInventoryVolumes(restaurantId, [
-      ...new Set(
-        items
+      ...new Set([
+        ...items
           .filter((it) => it.is_wine && it.inventory_id)
           .map((it) => it.inventory_id as string),
-      ),
+        ...[...recipeRead.recipes.values()].flat().map((r) => r.inventoryId),
+      ]),
     ]);
     const inventories = inventoryRead.volumes;
     // queueUnresolvedLine counts its own outcome into this check's report, so
@@ -2154,6 +2328,45 @@ export class PosHubService {
     const planned: PlannedStockLine[] = [];
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
+      // F-1329 (OD-113, founder S195): a cocktail takes each linked line of
+      // its recipe off that line's stock row, by the recipe's amount times
+      // the quantity sold, through the same pours and keys as a glass. A line
+      // not linked to stock takes nothing.
+      if (it.recipeError) {
+        tally.failed++;
+        report.noteFailure(
+          "stock",
+          it.name,
+          `the cocktail's recipe could not be read, so nothing was taken: ${it.recipeError}`,
+          check.externalCheckId,
+        );
+        continue;
+      }
+      if (it.recipe) {
+        const line = this.planRecipeLine(
+          source,
+          check,
+          it,
+          it.recipe.lineNo,
+          it.recipe.j,
+          it.recipe.line,
+          inventoryRead,
+          inventories,
+        );
+        if (line === null) continue;
+        if (typeof line === "string") {
+          tally.failed++;
+          report.noteFailure(
+            "stock",
+            `${it.name}: ${it.recipe.line.freeText ?? "a recipe line"}`,
+            line,
+            check.externalCheckId,
+          );
+          continue;
+        }
+        planned.push(line);
+        continue;
+      }
       // Stock-scoped skip only. The full line set — food included — was
       // already persisted verbatim to pos_checks.items at the upsert above
       // (ingest(), ~line 202), before this loop runs, and is already read by
@@ -2676,7 +2889,14 @@ export class PosHubService {
           for (const l of pourLines) {
             if (ledger.glassVoided.has(l.idem)) {
               tally.alreadyBooked++;
-            } else if (ledger.pourKeys.has(l.idem) && !l.part) {
+            } else if (
+              ledger.pourKeys.has(l.idem) &&
+              !l.part &&
+              // F-1329: B19 covers a voided GLASS. A cocktail's recipe line
+              // is not one, and returning a whole bottle per ingredient for
+              // a 30 ml pour is not a reading of B19; it is poured, below.
+              !l.it.ingredient
+            ) {
               // B19 (unchanged, and wrong — see ADR 0011 Consequences): a
               // partial-volume void returns `qty` WHOLE BOTTLES because
               // record_glass_pour has no reversal mode. Voiding 5 glasses
@@ -2774,6 +2994,100 @@ export class PosHubService {
       }
     }
     return tally;
+  }
+
+  /**
+   * F-1329: one linked recipe line of a cocktail sold, as a stock line: a pour
+   * of its ml per serve, or whole units. A string is why nothing was taken
+   * (the till's import report names it); null is nothing to take.
+   *
+   * Its key is the cocktail line's own B15 key with the recipe line's place
+   * after it, so a replay of the check is a no-op and a void or correction
+   * finds what the sale took, as for a glass.
+   */
+  private planRecipeLine(
+    source: string,
+    check: CanonicalCheck,
+    it: {
+      name: string;
+      external_item_id: string | null;
+      qty: number;
+    },
+    lineNo: number,
+    j: number,
+    r: RecipeStockLine,
+    inventoryRead: { error: string | null },
+    inventories: Map<string, InventoryVolumes>,
+  ): PlannedStockLine | string | null {
+    // ADR 0141: only a row the house-scoped read returned may move.
+    if (inventoryRead.error) {
+      return `could not confirm that stock row ${r.inventoryId} belongs to this restaurant, so nothing was taken: ${inventoryRead.error}`;
+    }
+    const inv = inventories.get(r.inventoryId);
+    if (!inv) {
+      return `the recipe names stock row ${r.inventoryId}, which does not belong to this restaurant, so nothing was taken`;
+    }
+    const m = recipeMeasure(r.quantity, r.unit);
+    if (m.kind === "unread") {
+      return `nothing was taken because ${m.reason} (fix it in the cocktail's recipe)`;
+    }
+    const qty = Number(it.qty);
+    const line: PlannedStockLine = {
+      it: {
+        name: `${it.name}: ${r.freeText ?? "recipe line"}`,
+        external_item_id: it.external_item_id,
+        qty,
+        price: null,
+        inventory_id: r.inventoryId,
+        ingredient: true,
+      },
+      inventoryId: r.inventoryId,
+      idem: `pos:${source}:${check.externalCheckId}:${it.external_item_id ?? it.name}:${lineNo}:${j}`,
+      label: "recipe",
+      inv,
+      qty,
+      bottles: 0,
+      pours: 0,
+      pourMl: 0,
+      part: false,
+      consumed: { mode: "whole_bottle" },
+      consumedQty: qty,
+    };
+    if (m.kind === "units") {
+      const units = qty * m.units;
+      if (Number.isInteger(units)) {
+        line.bottles = units;
+        line.consumedQty = units;
+        return line;
+      }
+      if (inv.bottleMl == null) {
+        return `the recipe takes ${units} of a bottle, and the stock row carries no bottle size to say how much that is`;
+      }
+      line.part = true;
+      line.pours = 1;
+      line.pourMl = Math.round(units * inv.bottleMl);
+      if (line.pourMl < 1) return null;
+      line.consumed = { mode: "volume", ml: line.pourMl };
+      line.consumedQty = 1;
+      return line;
+    }
+    // A pour comes out of one container, as for a glass (resolveSaleVolume).
+    const capacity = inv.bottleMl ?? RPC_DEFAULT_BOTTLE_ML;
+    if (m.ml > capacity) {
+      return `one serve takes ${Math.round(m.ml)} ml, more than the ${capacity} ml bottle it pours from`;
+    }
+    if (Number.isInteger(qty)) {
+      line.pours = qty;
+      line.pourMl = Math.round(m.ml);
+    } else {
+      line.part = true;
+      line.pours = 1;
+      line.pourMl = Math.round(qty * m.ml);
+      line.consumedQty = 1;
+    }
+    if (line.pourMl < 1) return null;
+    line.consumed = { mode: "volume", ml: line.pourMl };
+    return line;
   }
 
   /**
@@ -3032,6 +3346,7 @@ export class PosHubService {
       qty: number;
       price: number | null;
       inventory_id: string | null;
+      ingredient?: boolean;
     },
     resolved: ResolvedSaleVolume,
     inv: InventoryVolumes | null,
@@ -3063,8 +3378,11 @@ export class PosHubService {
         item.price === null || item.price === undefined
           ? null
           : Number(item.price);
-      const unitPrice =
-        tillPrice !== null && Number.isFinite(tillPrice)
+      // F-1329: a cocktail's recipe line has no price of its own; the till's
+      // is the cocktail's, and the row's menu price is a bottle's or glass's.
+      const unitPrice = item.ingredient
+        ? null
+        : tillPrice !== null && Number.isFinite(tillPrice)
           ? tillPrice
           : (inv?.menuPrice ?? null);
 
@@ -3215,6 +3533,12 @@ export class PosHubService {
       inventory_id: mapping.inventory_id ?? null,
       sale_unit: saleUnit,
       sale_volume_ml: saleVolumeMl,
+      // F-1329: the cocktail this button sells, written only when sent, so
+      // an auto-map or a sale-unit review never unlinks one. The database
+      // refuses another house's cocktail (till_cocktail_is_the_house_s).
+      ...(mapping.cocktail_id !== undefined
+        ? { cocktail_id: mapping.cocktail_id || null }
+        : {}),
       updated_at: new Date().toISOString(),
     };
     if (!row.external_item_id && !row.item_name)

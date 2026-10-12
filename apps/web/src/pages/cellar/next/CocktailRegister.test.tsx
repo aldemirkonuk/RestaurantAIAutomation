@@ -16,6 +16,11 @@ const mock = vi.hoisted(() => ({
   retire: vi.fn(),
   setRecipe: vi.fn(),
   price: null as number | null,
+  // F-1329: the first cocktail's cost per serve, the list's withholding, and
+  // the recipe the leaf reads.
+  serve: undefined as Record<string, unknown> | null | undefined,
+  withheld: false,
+  recipe: { cocktailId: 'c1', rows: [], count: 0, writable: true } as Record<string, unknown>,
 }));
 
 // The house's thousands mark and the screen's (F-879), held per test.
@@ -37,16 +42,18 @@ vi.mock('./useCellarNextData', async (orig) => ({
       rows: [{
         id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
         method: null, glass: null, garnish: null, price: mock.price, description: null,
+        serve: mock.serve,
       }, {
         id: 'c2', name: 'Rakı Sour', display_name: null, menu_section: 'İmza',
         method: null, glass: null, garnish: null, price: null, description: null,
       }],
       count: 2, truncated: false, referenceRows: null, recipesAvailable: false,
       scopeNote: 'Only cocktails this restaurant owns.',
+      ...(mock.withheld ? { amountsWithheld: true } : {}),
     },
   }),
   useCocktailRecipe: () => ({
-    data: { cocktailId: 'c1', rows: [], count: 0, writable: true },
+    data: mock.recipe,
     loading: false,
     error: null,
   }),
@@ -84,6 +91,9 @@ beforeEach(() => {
   mock.retire.mockReset();
   mock.setRecipe.mockReset();
   mock.price = null;
+  mock.serve = undefined;
+  mock.withheld = false;
+  mock.recipe = { cocktailId: 'c1', rows: [], count: 0, writable: true };
   marks.house = null;
   marks.screen = null;
 });
@@ -311,5 +321,87 @@ describe('the register search folds Turkish letters', () => {
     fireEvent.change(box, { target: { value: 'IMZA' } });
     expect(screen.getByText('Rakı Sour')).toBeInTheDocument();
     expect(screen.queryByText('Negroni')).not.toBeInTheDocument();
+  });
+});
+
+// F-1329 (OD-113): a recipe line picks the stock row it takes from, and the
+// list shows what a serve costs and the margin on its price.
+describe('a recipe linked to stock', () => {
+  const GIN = 'inv-gin';
+  const linked = () => {
+    mock.recipe = {
+      cocktailId: 'c1',
+      count: 2,
+      writable: true,
+      rows: [
+        { id: 'l1', free_text: 'gin', quantity: 30, unit: 'ml', inventory_id: GIN, stockName: 'Tanqueray', cost: { state: 'costed', cost: 30 } },
+        { id: 'l2', free_text: 'orange peel', quantity: null, unit: null, inventory_id: null, cost: { state: 'not_linked' } },
+      ],
+      stockRows: [
+        { id: GIN, name: 'Tanqueray', kind: 'spirit', bottleMl: 700 },
+        { id: 'inv-campari', name: 'Campari', kind: 'spirit', bottleMl: 700 },
+      ],
+      stockRowsUnread: null,
+      costsUnread: null,
+    };
+  };
+
+  it('shows each cocktail’s cost a serve and margin', () => {
+    mock.price = 400;
+    mock.serve = { costPerServe: 30, margin: 370, marginPct: 92.5, linked: 1, notLinked: 1, withheldReason: null };
+    draw();
+    expect(screen.getAllByTestId('cocktail-cost')[0]).toHaveTextContent('30');
+    expect(screen.getAllByTestId('cocktail-margin')[0]).toHaveTextContent(/370.*92\.5%/);
+  });
+
+  it('says a cost is withheld when one is unknown, and not linked when nothing is', () => {
+    mock.serve = { costPerServe: null, linked: 1, notLinked: 0, withheldReason: 'its stock row has no recorded cost' };
+    draw();
+    const cost = screen.getAllByTestId('cocktail-cost')[0];
+    expect(cost).toHaveTextContent('withheld');
+    expect(cost).toHaveAttribute('title', 'its stock row has no recorded cost');
+    expect(screen.getAllByTestId('cocktail-cost')[1]).toHaveTextContent('—');
+  });
+
+  it('shows staff no cost columns, and says they are kept', () => {
+    mock.withheld = true;
+    draw();
+    expect(screen.queryByTestId('cocktail-cost')).toBeNull();
+    expect(screen.getByText(/kept for the owner and managers/)).toBeInTheDocument();
+  });
+
+  it('a line picks the stock row it takes from; the rest of the recipe is written as it stands', async () => {
+    linked();
+    mock.setRecipe.mockResolvedValue({ lines: 2 });
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    const lines = screen.getAllByTestId('recipe-line');
+    expect(lines[1]).toHaveTextContent(/Not linked — the till takes nothing off stock/);
+    await act(async () => {
+      fireEvent.change(screen.getAllByLabelText('Takes from')[1], { target: { value: 'inv-campari' } });
+    });
+    expect(mock.setRecipe).toHaveBeenCalledWith({
+      id: 'c1',
+      lines: [
+        { freeText: 'gin', quantity: 30, unit: 'ml', sortOrder: 0, inventoryId: GIN },
+        { freeText: 'orange peel', quantity: undefined, unit: undefined, sortOrder: 1, inventoryId: 'inv-campari' },
+      ],
+    });
+    expect(screen.getByText(/“orange peel” now takes from Campari/)).toBeInTheDocument();
+  });
+
+  it('a retyped recipe keeps a line’s stock while its words stay the same', async () => {
+    linked();
+    mock.setRecipe.mockResolvedValue({ lines: 2 });
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /Amend the recipe/ }));
+    fireEvent.change(screen.getByLabelText('Recipe lines'), { target: { value: '40 ml Gin\n2 dashes bitters' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the recipe/ }));
+    });
+    const sent = mock.setRecipe.mock.calls[0][0].lines;
+    expect(sent[0]).toMatchObject({ freeText: 'Gin', quantity: 40, inventoryId: GIN });
+    expect(sent[1].inventoryId).toBeUndefined();
   });
 });

@@ -36,6 +36,13 @@ import type {
   UpdateCocktailDto,
 } from "./dto/beverages.dto";
 import { ilikeValue } from "../wines/wines.service";
+import { resolveUnitCost } from "../analytics/inventory-cost";
+import {
+  lineCost,
+  serveCost,
+  type ServeCost,
+  type StockRowCost,
+} from "./cocktail-recipe";
 import { accentBlindLike, fold } from "../providers/vendor-wine-search";
 // The price register's one enforcement point (ADR 0117 addendum, 2026-09-05).
 import {
@@ -252,7 +259,24 @@ export interface CocktailListResult extends CatalogueScope {
    * recipe panel that will always be blank.
    */
   recipesAvailable: false;
+  /**
+   * F-1329: why no row carries a cost per serve, when the stock or cost read
+   * failed. Null when the costs were read (a row may still withhold its own).
+   */
+  costsUnread: string | null;
 }
+
+/** One stock row a recipe line may take from, for the register's picker. */
+export interface StockChoice {
+  id: string;
+  name: string;
+  kind: string | null;
+  bottleMl: number | null;
+}
+
+/** inventory_lot_rollup columns `resolveUnitCost` reads (F-343 currency too). */
+const ROLLUP_SELECT =
+  "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count";
 
 @Injectable()
 export class BeveragesService {
@@ -387,7 +411,18 @@ export class BeveragesService {
       .is("deleted_at", null);
     if (!refError) referenceRows = count ?? 0;
 
-    const rows = data ?? [];
+    // F-1329: each cocktail's cost per serve and margin, from its linked
+    // recipe lines. A failed read leaves every row uncosted and says why; it
+    // never fails the list, and never reads as a cost of nothing.
+    const listed = (data ?? []) as Array<{ id: string; price?: unknown }>;
+    const costs = await this.readServeCosts(
+      restaurantId,
+      listed.map((c) => ({ id: c.id, price: c.price })),
+    );
+    const rows = listed.map((c) => ({
+      ...c,
+      serve: costs.serves.get(c.id) ?? null,
+    }));
     return {
       restaurantId,
       rows,
@@ -396,6 +431,7 @@ export class BeveragesService {
       limit: opts.limit,
       referenceRows,
       recipesAvailable: false,
+      costsUnread: costs.error,
       scope: "tenant",
       scopeNote:
         "Only cocktails this restaurant owns. Rows with no restaurant are unattributed reference data and are counted separately, never listed here.",
@@ -803,6 +839,29 @@ export class BeveragesService {
       );
     }
 
+    // F-1329: a line may take only from this house's own stock. The database
+    // refuses another house's row too (recipe_line_stock_is_the_house_s);
+    // asked here first so the refusal is a sentence, not a constraint name.
+    const linked = [
+      ...new Set(dto.lines.map((l) => l.inventoryId).filter(Boolean)),
+    ] as string[];
+    if (linked.length > 0) {
+      const { data: stock, error: stockError } = await client
+        .from("restaurant_inventory")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .in("id", linked);
+      if (stockError) throw this.explain(stockError, "restaurant_inventory");
+      const found = new Set(
+        ((stock ?? []) as { id: string }[]).map((r) => r.id),
+      );
+      if (linked.some((id) => !found.has(id))) {
+        throw new Error(
+          "A recipe line names a stock row this house does not have. No recipe line was written.",
+        );
+      }
+    }
+
     // Write the new lines BEFORE removing the old ones (F-473). The two steps
     // are not one transaction, so the order decides what a failure leaves:
     // delete-first lost the old recipe whenever the insert then failed, and the
@@ -827,6 +886,7 @@ export class BeveragesService {
             free_text: l.freeText?.trim() ?? null,
             beverage_id: l.beverageId ?? null,
             wine_id: l.wineId ?? null,
+            inventory_id: l.inventoryId ?? null,
             quantity: l.quantity ?? null,
             unit: l.unit?.trim() ?? null,
             sort_order: l.sortOrder ?? i,
@@ -891,12 +951,34 @@ export class BeveragesService {
 
     const { data, error } = await client
       .from("cocktail_ingredients")
-      .select("id, free_text, beverage_id, wine_id, quantity, unit, sort_order")
+      .select(
+        "id, free_text, beverage_id, wine_id, inventory_id, quantity, unit, sort_order",
+      )
       .eq("cocktail_id", cocktailId)
       .order("sort_order", { ascending: true });
     if (error) throw this.explain(error, "cocktail_ingredients");
 
-    const rows = data ?? [];
+    // F-1329: each line's stock row and cost per serve, and the stock rows a
+    // line may be linked to. Either read failing is said, never an empty list.
+    const lines = (data ?? []) as Array<{
+      inventory_id?: string | null;
+      quantity?: unknown;
+      unit?: unknown;
+    }>;
+    const [stock, choices] = await Promise.all([
+      this.readStockCosts(
+        restaurantId,
+        lines.map((l) => l.inventory_id).filter(Boolean) as string[],
+      ),
+      this.readStockChoices(restaurantId),
+    ]);
+    const rows = lines.map((l) => ({
+      ...l,
+      stockName: l.inventory_id
+        ? (stock.rows.get(l.inventory_id)?.name ?? null)
+        : null,
+      cost: stock.error ? null : lineCost(l, stock.rows),
+    }));
     return {
       cocktailId,
       rows,
@@ -905,7 +987,139 @@ export class BeveragesService {
       // until somebody writes the recipe. Those are different sentences and the
       // register renders them differently.
       writable: true as const,
+      costsUnread: stock.error,
+      stockRows: choices.rows,
+      stockRowsUnread: choices.error,
     };
+  }
+
+  /**
+   * F-1329: the stock rows a recipe line may take from — every live row of
+   * this house's inventory, wine or not (ADR 0115: one house item id).
+   */
+  private async readStockChoices(
+    restaurantId: string,
+  ): Promise<{ rows: StockChoice[]; error: string | null }> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("restaurant_inventory")
+      .select("id, display_name, wine_name, kind, bottle_size_ml")
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .order("display_name", { ascending: true })
+      .limit(2000);
+    if (error) return { rows: [], error: error.message };
+    return {
+      rows: ((data ?? []) as any[]).map((r) => ({
+        id: r.id,
+        name: r.display_name ?? r.wine_name ?? "Unnamed stock row",
+        kind: r.kind ?? null,
+        bottleMl: r.bottle_size_ml == null ? null : Number(r.bottle_size_ml),
+      })),
+      error: null,
+    };
+  }
+
+  /**
+   * F-1329: the recorded cost of each named stock row, by the one rule
+   * analytics uses (`resolveUnitCost`: invoiced lot WAC, else last purchase
+   * price, else unknown; a cost in another money than the house's is
+   * unknown). Read for this house only, so a line cannot cost another
+   * house's row.
+   */
+  private async readStockCosts(
+    restaurantId: string,
+    ids: string[],
+  ): Promise<{
+    rows: Map<string, StockRowCost & { name: string }>;
+    error: string | null;
+  }> {
+    const rows = new Map<string, StockRowCost & { name: string }>();
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return { rows, error: null };
+    const client = this.dbService.getClient();
+    const [inv, rollup, house] = await Promise.all([
+      client
+        .from("restaurant_inventory")
+        .select(
+          "id, display_name, wine_name, bottle_size_ml, last_purchase_price",
+        )
+        .eq("restaurant_id", restaurantId)
+        .in("id", unique),
+      client
+        .from("inventory_lot_rollup")
+        .select(ROLLUP_SELECT)
+        .eq("restaurant_id", restaurantId)
+        .in("inventory_id", unique),
+      client
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle(),
+    ]);
+    const failed = inv.error ?? rollup.error ?? house.error;
+    if (failed) {
+      this.logger.error(`Recipe cost read failed: ${failed.message}`);
+      return {
+        rows,
+        error: `the stock costs could not be read (${failed.message})`,
+      };
+    }
+    const lots = new Map(
+      ((rollup.data ?? []) as any[]).map((l) => [String(l.inventory_id), l]),
+    );
+    const currency = (house.data as { currency?: string | null } | null)
+      ?.currency;
+    for (const r of (inv.data ?? []) as any[]) {
+      const bottle = Number(r.bottle_size_ml);
+      rows.set(r.id, {
+        name: r.display_name ?? r.wine_name ?? "Unnamed stock row",
+        unitCost: resolveUnitCost(r, lots.get(String(r.id)), currency).unitCost,
+        bottleMl: Number.isFinite(bottle) && bottle > 0 ? bottle : null,
+      });
+    }
+    return { rows, error: null };
+  }
+
+  /** F-1329: cost per serve and margin of each cocktail named, from its recipe. */
+  private async readServeCosts(
+    restaurantId: string,
+    cocktails: Array<{ id: string; price: unknown }>,
+  ): Promise<{ serves: Map<string, ServeCost>; error: string | null }> {
+    const serves = new Map<string, ServeCost>();
+    if (cocktails.length === 0) return { serves, error: null };
+    // The cocktails were read for this house, so their lines are its own.
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("cocktail_ingredients")
+      .select("cocktail_id, inventory_id, quantity, unit")
+      .in(
+        "cocktail_id",
+        cocktails.map((c) => c.id),
+      );
+    if (error) {
+      this.logger.error(`Recipe read for costs failed: ${error.message}`);
+      return {
+        serves,
+        error: `the recipes could not be read (${error.message})`,
+      };
+    }
+    const lines = (data ?? []) as Array<{
+      cocktail_id: string;
+      inventory_id: string | null;
+      quantity: unknown;
+      unit: unknown;
+    }>;
+    const stock = await this.readStockCosts(
+      restaurantId,
+      lines.map((l) => l.inventory_id).filter(Boolean) as string[],
+    );
+    if (stock.error) return { serves, error: stock.error };
+    for (const c of cocktails) {
+      const own = lines.filter((l) => l.cocktail_id === c.id);
+      if (own.length > 0) serves.set(c.id, serveCost(own, stock.rows, c.price));
+    }
+    return { serves, error: null };
   }
 
   /* ── the record behind ONE row: the lines the aggregates were made of ──── */
