@@ -1,6 +1,6 @@
 # 0193 — A house's price follows its menu and its manager, and advice aims at its own margin
 
-- **Status:** Locked on the founder's pick, 2026-09-21 ("Advise to target margin"). Seven implementation forks recorded below for his confirmation (F1-F6 from the build, F7 from the last-call review). **[Answered 2026-09-21, round 2: his seven answers settle F1-F7 and add menu versions; built — see "Amendment, round 2" below.]** **[Round 3, 2026-09-21: his five round-6c answers settle the four open questions of round 2; the price lock he delegated ("so think verify validate your decision and build") was decided by the lane, attacked, and built — see "Amendment, round 3".]** **[Round 3, later the same day: he confirmed the one fork it put back to him, verbatim, *"The menu sets it, locks keep"*; built as recorded there.]** **[Round 3, 2026-09-22, round 6w: the menu-read allowance's end date, left open, is answered -- *"Until I say (Recommended)"*, not a date or a spend figure; docs only, no code changed -- see "Amendment, round 3" §2.]**
+- **Status:** Locked on the founder's pick, 2026-09-21 ("Advise to target margin"). Seven implementation forks recorded below for his confirmation (F1-F6 from the build, F7 from the last-call review). **[Answered 2026-09-21, round 2: his seven answers settle F1-F7 and add menu versions; built — see "Amendment, round 2" below.]** **[Round 3, 2026-09-21: his five round-6c answers settle the four open questions of round 2; the price lock he delegated ("so think verify validate your decision and build") was decided by the lane, attacked, and built — see "Amendment, round 3".]** **[Round 3, later the same day: he confirmed the one fork it put back to him, verbatim, *"The menu sets it, locks keep"*; built as recorded there.]** **[Round 3, 2026-09-22, round 6w: the menu-read allowance's end date, left open, is answered -- *"Until I say (Recommended)"*, not a date or a spend figure; docs only, no code changed -- see "Amendment, round 3" §2.]** **[Amended 2026-10-12, founder answer S202 (sim ledger, F-618, "Option B ... if you're sure"): making a menu current is its own dated price change -- see the note under item 3. An amendment, not a repeal: item 3 stands.]**
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder). Decisions are locked by the founder, never by an agent.
 - **Keywords:** pricing, bottle price, glass price, menu_price_current, menu_price_versions, target margin, price advice, recommendations, menu import, tenant scope
@@ -87,6 +87,28 @@ What that is, concretely:
 3. **The newest dated change wins.** A change dated before the price now in effect is
    refused as `stale` and applied nowhere; the menu line keeps its own price in
    `menu_items`, the later price keeps its version row.
+   **[Amendment S202, 2026-10-12 (founder, F-618; recorded in its safe form after an
+   adversarial check: a blanket "the current menu line always sets the price" would let an
+   OLD menu scan overwrite a NEWER manager price, which this item exists to stop).
+   (a) Making a menu current is itself a dated price change: `change_source =
+   'menu_current'`, dated at activation (`made_current_at`, as L11 already dated it), naming
+   the menu -- so the live menu's prices are the newest and win under this item's own rule.
+   A line scanned, added or corrected stays `import`; a stale change of either kind is still
+   refused. (b) Where a lock, or a person's price newer than the activation, still differs
+   from the live line, `/menu` and the wine (the cellar's reading stand) say both --
+   "Locked at X — the menu says Y", or "Your price X — ..." -- and an owner or a manager
+   picks with one tap: **Keep X** corrects the menu line to X; **Use the menu's Y**
+   changes the lock to Y and keeps it locked (L6), or, unlocked, sets the house price to Y
+   through the same line correction. Never two prices in silence. The pick is offered to
+   owners and managers, because item 4's price corrections and L8's lock acts are both
+   theirs (claims `ADR-0193-MENU-PRICE-CORRECTIONS-ARE-OWNER-OR-MANAGER`,
+   `ADR-0193-LOCK-ACTS-ARE-OWNER-OR-MANAGER`); S202 said "the owner". Built: migration
+   `20270106000000_making_a_menu_current_is_a_dated_price_change.sql` (the CHECK, the
+   writer, and the S195 line-follows trigger skipping `menu_current` as it skips
+   `import`), `MenusService.makeCurrent` carrying `source: "menu_current"`,
+   `PricePick.tsx` on `/menu` and in `PriceLockNote.tsx`. Existing rows are not rewritten:
+   a line that already differs is shown with the pick. Claim
+   `ADR-0193-S202-A-MENU-MADE-CURRENT-IS-ITS-OWN-PRICE-CHANGE`.]**
 4. **The menu updates the price** (`change_source = 'import'`, by the person on the
    token): a menu scan or CSV import, a line added on `/menu`, and a price correction on a
    menu line all write the linked wine's price -- an imported or added line dated by its

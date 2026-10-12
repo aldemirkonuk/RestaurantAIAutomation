@@ -126,7 +126,13 @@ function pricesSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'lines'>): 
 function setWords(k: PlanKind, zone: string | null | undefined): string {
   if (!k.lastSet) return '';
   const who = k.lastSet.by.name ?? (k.lastSet.by.userId ? 'someone whose name is not on record' : 'no person named');
-  const how = k.lastSet.source === 'import' ? 'from a menu' : k.lastSet.source === 'agent_accepted' ? 'accepting advice' : 'by hand';
+  // 'menu_current' (S202): a menu made current; 'import': a menu line. Both are a menu, not a hand.
+  const how =
+    k.lastSet.source === 'import' || k.lastSet.source === 'menu_current'
+      ? 'from a menu'
+      : k.lastSet.source === 'agent_accepted'
+        ? 'accepting advice'
+        : 'by hand';
   return `set ${how} by ${who} on ${day(k.lastSet.at, zone)}${k.setAfterRead ? ', after this menu was read' : ''}`;
 }
 

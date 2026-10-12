@@ -1694,7 +1694,9 @@ describe("MenusService — every menu read is kept as its own version", () => {
         p_inventory_id: "inv-1",
         p_bottle_price: 64,
         p_glass_price: 15,
-        p_change_source: "import",
+        // S202 (ADR 0193 amendment): a menu made current is its own dated
+        // price change, 'menu_current'; a line added stays 'import'.
+        p_change_source: "menu_current",
         p_changed_by: "user-2",
         // ADR 0193 round 3, L11 (this assertion was flipped): dated by the
         // CHOICE, never by the line's created_at, and naming the menu.
@@ -2456,7 +2458,14 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     const r = await service.makeCurrent("rest-1", "menu-new", "user-2", plan.fingerprint);
     const writes = calls.filter(([fn]) => fn === "set_house_menu_price").map(([, a]) => a);
     expect(writes.length).toBeGreaterThan(0);
-    for (const w of writes) expect(w).toMatchObject({ p_effective_from: T0, p_menu_id: "menu-new", p_change_source: "import", p_changed_by: "user-2" });
+    // S202: the act is named, 'menu_current', never the line word 'import'.
+    for (const w of writes)
+      expect(w).toMatchObject({
+        p_effective_from: T0,
+        p_menu_id: "menu-new",
+        p_change_source: "menu_current",
+        p_changed_by: "user-2",
+      });
     // The Barolo line named both kinds: the bottle was held, the glass changed -- "changed" AND the held bottle named.
     expect(r.held).toEqual([
       expect.objectContaining({ menuItemId: "n-1", name: "Barolo", kind: "bottle", lockId: "lock-1", lockedPrice: 60 }),

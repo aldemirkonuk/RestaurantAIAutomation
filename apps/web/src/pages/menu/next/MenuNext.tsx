@@ -60,6 +60,7 @@ import {
 import { housePriceNote } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
+import { PricePick, housePriceDiffers } from './PricePick';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { displayGroupMark, readOptionalAmount, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
@@ -556,34 +557,36 @@ function EditRow({ line, saving, onSave, onCancel }: {
 /**
  * F-618. Inventory, Reports and the till read the house's own price. Since
  * S195 a change of it is written onto the current menu's line (migration
- * 20270105500000), so the two agree; ADR 0193 still keeps them apart for a
- * locked price or a stale line, and a line older than that migration may
- * differ. Only then does the cell show both; neither is picked here. A blank
- * line price beside a known house price shows that price too.
+ * 20270105500000), and since S202 a menu made current is the newest dated
+ * price (migration 20270106000000), so the two agree. A locked price, a price
+ * a person set after the menu became current, or a line older than those
+ * migrations can still differ. Only then does the cell show both, "Locked at
+ * X — the menu says Y", and an owner or a manager picks one (PricePick). A
+ * blank line price beside a known house price shows that price too.
  */
-function housePriceDiffers(linePrice: number | null, housePrice: number | null | undefined): boolean {
-  if (housePrice === null || housePrice === undefined) return false;
-  return linePrice === null || Math.abs(linePrice - housePrice) >= 0.005;
-}
-
-function PriceCell({ linePrice, housePrice, currency, kind }: {
+function PriceCell({ line, linePrice, housePrice, currency, kind, canPick }: {
+  line: MenuLine
   linePrice: number | null
   housePrice: number | null | undefined
   currency: string | null
   kind: 'glass' | 'bottle'
+  canPick: boolean
 }) {
+  const { activeRestaurantId } = useAuth();
   return (
     <td className="cl-num">
       {money(linePrice, currency)}
       {housePriceDiffers(linePrice, housePrice) ? (
-        <span
-          className="cl-note"
-          style={{ display: 'block' }}
-          data-testid={`menu-house-price-${kind}`}
-          title="This house's own price, the one Inventory, Reports and the till use. The menu line prints another."
-        >
-          your price {money(housePrice ?? null, currency)}
-        </span>
+        <PricePick
+          house={activeRestaurantId ?? null}
+          inventoryId={line.inventory_item_id}
+          lineId={line.id}
+          kind={kind}
+          linePrice={linePrice}
+          housePrice={housePrice as number}
+          canPick={canPick}
+          fmt={(v) => money(v, currency)}
+        />
       ) : null}
     </td>
   );
@@ -618,8 +621,8 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <PriceCell linePrice={line.by_glass_price} housePrice={line.house_glass_price} currency={currency} kind="glass" />
-      <PriceCell linePrice={line.bottle_price} housePrice={line.house_bottle_price} currency={currency} kind="bottle" />
+      <PriceCell line={line} linePrice={line.by_glass_price} housePrice={line.house_glass_price} currency={currency} kind="glass" canPick={canDiscard} />
+      <PriceCell line={line} linePrice={line.bottle_price} housePrice={line.house_bottle_price} currency={currency} kind="bottle" canPick={canDiscard} />
       <td>
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
           {reason?.hand ? 'by hand' : line.status.replace('_', ' ')}
@@ -900,8 +903,8 @@ function MenuPage() {
                   {differ > 0 ? (
                     <p className="cl-note" style={{ marginTop: 8 }} data-testid="menu-house-prices-differ">
                       {differ} {differ === 1 ? 'line prints a price' : 'lines print a price'} that is not this
-                      house&rsquo;s own. Inventory, Reports and the till use your price, shown under the
-                      line&rsquo;s. Nothing was changed.
+                      house&rsquo;s own. Inventory, Reports and the till use the house&rsquo;s price, shown under the
+                      line&rsquo;s{canManage ? '; pick on the line which one the house charges' : ''}. Nothing changes until an owner or a manager picks.
                     </p>
                   ) : null}
                 </>

@@ -38,7 +38,16 @@ import { fmtMoney, type HouseMoneyTerms } from "./margin-to-target";
  * same fake client rather than a mock of this function.
  */
 
-export type HousePriceSource = "manual" | "agent_accepted" | "import";
+/**
+ * `import` is a menu LINE (scanned, added or corrected); `menu_current` is a
+ * menu MADE current, dated at activation (ADR 0193, S202 amendment, migration
+ * 20270106000000).
+ */
+export type HousePriceSource =
+  | "manual"
+  | "agent_accepted"
+  | "import"
+  | "menu_current";
 
 export interface HousePriceChange {
   restaurantId: string;

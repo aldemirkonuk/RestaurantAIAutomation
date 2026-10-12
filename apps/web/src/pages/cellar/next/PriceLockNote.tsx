@@ -13,11 +13,18 @@
  * that says the locks could not be read, is said as such -- never shown as
  * "not locked" (L25). No lock is the ordinary state, so nothing is shown then.
  * No action here: changing a lock is an owner's or a manager's act on /menu.
+ *
+ * F-618 (the founder's answer S202, an amendment to ADR 0193): when the
+ * current menu prints another price for this wine than the house charges (a
+ * lock, or a price set after the menu became current), the stand says so,
+ * "Locked at X — the menu says Y", and an owner or a manager picks one with a
+ * tap (WineMenuPrices, the same pick as /menu).
  */
 import { useQuery } from '@tanstack/react-query';
 import { listPriceLocks, type PriceLock } from '../../../services/api/pricing';
 import { useAuthStore } from '../../../stores';
 import { money } from './cellar-format';
+import { WineMenuPrices } from '../../menu/next/PricePick';
 
 function day(iso: string): string {
   return String(iso).slice(0, 10);
@@ -31,8 +38,24 @@ export function lockWords(l: PriceLock, namesReadable = true): string {
 }
 
 export default function PriceLockNote({ inventoryId }: { inventoryId: string }) {
-  // Same key as Menu's Locked prices, house included (MENU-01).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
+  // The gateway refuses a pick from anyone else; this only hides the buttons.
+  const role = useAuthStore((s) => s.user?.role) ?? null;
+  return (
+    <>
+      <LockLines inventoryId={inventoryId} house={house} />
+      <WineMenuPrices
+        house={house}
+        inventoryId={inventoryId}
+        canPick={role === 'owner' || role === 'manager'}
+        fmt={(v) => money(v)}
+      />
+    </>
+  );
+}
+
+function LockLines({ inventoryId, house }: { inventoryId: string; house: string | null }) {
+  // Same key as Menu's Locked prices, house included (MENU-01).
   const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks });
   if (q.isLoading) return null;
   if (q.isError || !q.data || q.data.readable === false) {

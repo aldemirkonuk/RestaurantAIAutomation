@@ -3,18 +3,27 @@
  * (ADR 0193 round 3, L8, L25, L26). The API module is the boundary mocked
  * here; the component under test is real.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PriceLockNote from './PriceLockNote';
 import { setCellarCurrency } from './cellar-format';
 import { listPriceLocks as listPriceLocksReal, type LockReadout, type PriceLock } from '../../../services/api/pricing';
+import { getMenu as getMenuReal, reviewMenuItem as reviewMenuItemReal, type ActiveMenu } from '../../../services/api/menus';
+import { useAuthStore } from '../../../stores';
 
 vi.mock('../../../services/api/pricing', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/pricing')>('../../../services/api/pricing');
   return { ...actual, listPriceLocks: vi.fn() };
 });
 const listPriceLocks = vi.mocked(listPriceLocksReal);
+
+vi.mock('../../../services/api/menus', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
+  return { ...actual, getMenu: vi.fn(), reviewMenuItem: vi.fn() };
+});
+const getMenu = vi.mocked(getMenuReal);
+const reviewMenuItem = vi.mocked(reviewMenuItemReal);
 
 
 function lock(over: Partial<PriceLock> = {}): PriceLock {
@@ -137,5 +146,63 @@ describe('PriceLockNote -- a locked price is said beside the price', () => {
     listPriceLocks.mockResolvedValue(readout([lock({ lockedBy: { userId: 'u-1', name: null } })]));
     mount();
     expect(await screen.findByTestId('bottle-leaf-lock-bottle')).toHaveTextContent('by someone whose name is not on record');
+  });
+});
+
+describe('PriceLockNote -- the menu prints another price for this wine (F-618, S202)', () => {
+  const twoPrices: ActiveMenu = {
+    menuId: 'm1',
+    name: 'Main menu',
+    status: 'active',
+    housePricesReadable: true,
+    items: [
+      {
+        id: 'a', name: 'Boğazkere', producer: null, category: null, vintage: null, region: null, country: null,
+        grape_variety: null, by_glass_price: null, bottle_price: 80, wine_library_id: 'w1', inventory_item_id: 'inv-1',
+        source: 'scan', status: 'approved', created_at: '2026-10-01T00:00:00Z', house_bottle_price: 95, house_glass_price: null,
+      },
+    ],
+  };
+  afterEach(() => {
+    useAuthStore.setState({ activeRestaurantId: null, user: null } as never);
+    getMenu.mockReset();
+    reviewMenuItem.mockReset();
+  });
+
+  it("says 'Locked at X — the menu says Y' on the wine, and an owner keeps the locked price with one tap", async () => {
+    useAuthStore.setState({ activeRestaurantId: 'r1', user: { role: 'owner' } } as never);
+    listPriceLocks.mockResolvedValue(readout([lock({ menuPrice: 80, markers: ['menu_differs'] })]));
+    getMenu.mockResolvedValue(twoPrices);
+    reviewMenuItem.mockResolvedValue({ menuItemId: 'a', fieldName: 'bottle_price', newValue: '95', priceSync: 'locked' });
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-house-price-bottle')).toHaveTextContent('Locked at $95.00 — the menu says $80.00'),
+    );
+    expect(getMenu).toHaveBeenCalledWith('r1');
+    fireEvent.click(screen.getByTestId('price-pick-keep-bottle'));
+    await waitFor(() => expect(reviewMenuItem).toHaveBeenCalledWith('a', 'bottle_price', '95'));
+    expect(await screen.findByRole('status')).toHaveTextContent('The menu now says $95.00, the price the house charges.');
+  });
+
+  it('staff read both prices on the wine and get no pick', async () => {
+    useAuthStore.setState({ activeRestaurantId: 'r1', user: { role: 'staff' } } as never);
+    listPriceLocks.mockResolvedValue(readout([]));
+    getMenu.mockResolvedValue(twoPrices);
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-house-price-bottle')).toHaveTextContent('Your price $95.00 — the menu says $80.00'),
+    );
+    expect(screen.queryByTestId('price-pick-keep-bottle')).toBeNull();
+    expect(screen.queryByTestId('price-pick-menu-bottle')).toBeNull();
+  });
+
+  it('says a menu that could not be read, never as "no difference"', async () => {
+    useAuthStore.setState({ activeRestaurantId: 'r1', user: { role: 'owner' } } as never);
+    listPriceLocks.mockResolvedValue(readout([]));
+    getMenu.mockRejectedValue(new Error('timeout'));
+    mount();
+    expect(await screen.findByTestId('wine-menu-prices-unread')).toHaveTextContent(
+      'Whether the current menu prints another price for this wine could not be read (timeout).',
+    );
   });
 });
