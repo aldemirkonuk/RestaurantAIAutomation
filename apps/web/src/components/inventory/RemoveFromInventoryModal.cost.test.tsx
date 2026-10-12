@@ -6,7 +6,7 @@ import type { InventoryItem } from '../../pages/inventory/useInventoryPage'
 
 vi.mock('../../services/api/inventory', () => ({
   deleteInventoryItem: vi.fn(),
-  reconcileItem: vi.fn(),
+  adjustStock: vi.fn(),
 }))
 
 function wine(over: Partial<InventoryItem>): InventoryItem {

@@ -597,6 +597,34 @@ export class InventoryService {
       this.logger,
       { liveOnly: true },
     );
+    // F-1542: bottles land on a shelf, never on a place that holds other
+    // places. Filed there they sit on no shelf, so the wine can no longer be
+    // counted shelf by shelf (the F-945 rule the count panel follows). A read
+    // that fails refuses: an unanswered question is not a yes.
+    if (dto.toLocationId) {
+      const { data: inside, error: insideError } = await client
+        .from("storage_locations")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("parent_id", dto.toLocationId)
+        .is("deleted_at", null)
+        .limit(1);
+      if (insideError) {
+        this.logger.error(
+          `transferStock zone read failed: ${insideError.message}`,
+        );
+        throw new HttpException(
+          "Where the bottles were going could not be read, so nothing was moved.",
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      if ((inside ?? []).length > 0) {
+        throw new HttpException(
+          "That place holds other places. Move the bottles onto one of the shelves inside it, so they can be counted there.",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
     const { error } = await client.rpc("transfer_stock", {
       p_inventory_id: inventoryId,
       p_from_location_id: dto.fromLocationId ?? null,
