@@ -60,7 +60,16 @@ export function OrganisationHandOver() {
       </Card>
     );
   }
-  if (!owned.data || owned.data.length === 0) return null;
+  if (!owned.data || owned.data.length === 0) {
+    // F-1461: after a hand-over the refetch lists nothing, since the giver no
+    // longer owns it; the "now owns" line stays until the page is left.
+    if (!msg) return null;
+    return (
+      <Card title="Hand over your organisation">
+        <StatusLine tone={msg.tone}>{msg.text}</StatusLine>
+      </Card>
+    );
+  }
 
   const submit = (org: OwnedOrganisation, toUserId: string) => {
     if (armed !== org.id) {
@@ -83,7 +92,11 @@ export function OrganisationHandOver() {
         },
         onError: (e) => {
           if (stepUp.asked(e)) return;
-          setMsg({ tone: 'error', text: `${org.name} was NOT handed over — ${getErrorMessage(e)}` });
+          // F-1459: a refusal clears the typed code, so the next try asks for a new one.
+          setMsg({
+            tone: 'error',
+            text: `${org.name} was NOT handed over — ${getErrorMessage(e)}${stepUp.clearAfterRefusal()}`,
+          });
         },
       },
     );

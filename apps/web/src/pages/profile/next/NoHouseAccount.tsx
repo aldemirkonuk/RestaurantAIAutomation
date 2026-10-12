@@ -10,6 +10,8 @@
  * /privacy told them to do it "in your profile". The same rules as /profile
  * apply: an old sign-in is asked for the emailed code (F-1347), the last way
  * in cannot be unlinked, and deleting needs DELETE typed and the seal held.
+ * F-1460: the last owner of an organisation is refused the delete until they
+ * hand it over, so the hand-over is drawn here too, just above the delete.
  * Closed until opened, and nothing is read before that.
  */
 
@@ -19,6 +21,7 @@ import { HoldToApprove } from '../../../components/mudavym';
 import { useAuth } from '../../../contexts/AuthContext';
 import { getErrorMessage } from '../../../services/api/client';
 import { profileApi } from '../../../services/api/profile';
+import { OrganisationHandOver } from './OrganisationHandOver';
 import { Btn, Field, Note, PF_CSS, StatusLine } from './pf-ui';
 import { StepUpField, useStepUpCode } from './StepUpCode';
 
@@ -204,10 +207,13 @@ function AccountPanel() {
       )}
       {signInMsg && <StatusLine tone={signInMsg.tone}>{signInMsg.text}</StatusLine>}
 
+      <OrganisationHandOver />
+
       <h3 style={H3}>Delete your account</h3>
       <Note>
-        Permanently deletes your Mudavym account. It cannot be undone. If you opened a restaurant here, or you are the
-        only owner of one, it cannot be deleted yet. Both are checked before anything is deleted.
+        Permanently deletes your Mudavym account. It cannot be undone. If you opened a restaurant here, hand your
+        organisation over first (just above) to someone who owns one of its restaurants. If you are the only owner of a
+        restaurant, it cannot be deleted yet. Both are checked before anything is deleted.
       </Note>
       <Field
         id="nh-confirm-delete"

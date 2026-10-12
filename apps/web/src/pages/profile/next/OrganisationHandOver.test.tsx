@@ -89,4 +89,43 @@ describe('OrganisationHandOver (F-750)', () => {
     draw();
     expect(await screen.findByText(/Could not read whether you own an organisation/)).toBeInTheDocument();
   });
+
+  it('keeps the "now owns" line after the refetch lists nothing (F-1461)', async () => {
+    api.get.mockResolvedValueOnce({ data: { organizations: [ORG] } }).mockResolvedValue({ data: { organizations: [] } });
+    api.post.mockResolvedValue({ data: { organizationId: 'org-1', newOwnerUserId: 'user-heir' } });
+    draw();
+    fireEvent.change(await screen.findByLabelText('Meyhane Group: hand it to'), { target: { value: 'user-heir' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hand over' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Click again to hand it over' }));
+    await vi.waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByLabelText('Meyhane Group: hand it to')).not.toBeInTheDocument();
+    expect(screen.getByText(/Deniz now owns Meyhane Group\. You stay on as a manager of it/)).toBeInTheDocument();
+  });
+
+  it('clears the emailed code after a refusal, so the next try asks for a new one (F-1459)', async () => {
+    api.get.mockResolvedValue({ data: { organizations: [ORG] } });
+    api.post
+      .mockRejectedValueOnce({ response: { status: 403, data: { code: 'STEP_UP_REQUIRED', message: 'Confirm it is you.' } } })
+      .mockRejectedValueOnce({ response: { status: 400, data: { message: 'Make them an owner of a restaurant first.' } } });
+    draw();
+    fireEvent.change(await screen.findByLabelText('Meyhane Group: hand it to'), { target: { value: 'user-heir' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hand over' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Click again to hand it over' }));
+    fireEvent.change(await screen.findByLabelText('The code we emailed you'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hand over' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Click again to hand it over' }));
+    await vi.waitFor(() =>
+      expect(api.post).toHaveBeenLastCalledWith('/auth/me/organisations/org-1/hand-over', {
+        toUserId: 'user-heir',
+        emailCode: '123456',
+      }),
+    );
+    expect(
+      await screen.findByText(
+        /NOT handed over — Make them an owner of a restaurant first\. The code was cleared: try again and we will email you a new one\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('The code we emailed you')).not.toBeInTheDocument();
+  });
 });

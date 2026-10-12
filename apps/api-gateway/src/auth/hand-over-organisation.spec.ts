@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { MembersService } from "../restaurants/members.service";
 import { TeamService } from "../team/team.service";
@@ -196,5 +197,85 @@ describe("handOverOrganisation (F-750)", () => {
     );
     expect(roleOf(db, HEIR)).toBe("owner");
     expect(roleOf(db, OWNER)).toBe("owner");
+  });
+
+  it("names a place every owner can reach, not Profile, when the delete is refused (F-1460)", async () => {
+    const { svc } = makeService();
+    const out = svc.deleteAccount(OWNER);
+    await expect(out).rejects.toThrow(/"Hand over your organisation"/);
+    await expect(out).rejects.not.toThrow(/Profile/);
+  });
+});
+
+/**
+ * F-1459 (the F-1395 pattern): the step-up check spends the emailed code, so
+ * it runs after the hand-over's own refusals and before the first write. A
+ * refused hand-over keeps the code the person typed.
+ */
+describe("handOverOrganisation step-up order (F-1459)", () => {
+  it("refuses without asking for proof, so the typed code is not spent", async () => {
+    const { svc, db } = makeService();
+    const prove = jest.fn(async () => undefined);
+    await expect(
+      svc.handOverOrganisation(OWNER, ORG, STAFF, prove),
+    ).rejects.toThrow(/Make them an owner of a restaurant/);
+    await expect(
+      svc.handOverOrganisation(HEIR, ORG, OWNER, prove),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prove).not.toHaveBeenCalled();
+    expect(db.opsOn("organization_members", "update")).toHaveLength(0);
+  });
+
+  it("asks for proof before the first write, and a failed proof changes nothing", async () => {
+    const { svc, db } = makeService();
+    const prove = jest.fn(async () => {
+      expect(db.opsOn("organization_members", "update")).toHaveLength(0);
+      throw new ForbiddenException("code not right");
+    });
+    await expect(
+      svc.handOverOrganisation(OWNER, ORG, HEIR, prove),
+    ).rejects.toThrow(/code not right/);
+    expect(prove).toHaveBeenCalledTimes(1);
+    expect(roleOf(db, HEIR)).toBe("manager");
+    expect(roleOf(db, OWNER)).toBe("owner");
+  });
+
+  it("the route hands the proof to the service instead of spending the code first", async () => {
+    const ORG_ID = "11111111-1111-4111-8111-111111111111";
+    const TO_ID = "22222222-2222-4222-8222-222222222222";
+    const assertProvedItIsYou = jest.fn(async () => undefined);
+    const refusing = new AuthController({
+      assertProvedItIsYou,
+      handOverOrganisation: async () => {
+        throw new BadRequestException("They own none of its restaurants.");
+      },
+    } as any);
+    const req = { user: { userId: OWNER, authTime: 0 } } as any;
+    await expect(
+      refusing.handOverOrganisation(req, ORG_ID, TO_ID, "123456"),
+    ).rejects.toThrow(BadRequestException);
+    expect(assertProvedItIsYou).not.toHaveBeenCalled();
+
+    const passing = new AuthController({
+      assertProvedItIsYou,
+      handOverOrganisation: async (
+        _u: string,
+        organizationId: string,
+        toUserId: string,
+        prove: () => Promise<void>,
+      ) => {
+        await prove();
+        return { organizationId, newOwnerUserId: toUserId };
+      },
+    } as any);
+    await expect(
+      passing.handOverOrganisation(req, ORG_ID, TO_ID, "123456"),
+    ).resolves.toEqual({ organizationId: ORG_ID, newOwnerUserId: TO_ID });
+    expect(assertProvedItIsYou).toHaveBeenCalledWith(
+      OWNER,
+      0,
+      "123456",
+      expect.stringMatching(/organisation can be handed over/),
+    );
   });
 });
