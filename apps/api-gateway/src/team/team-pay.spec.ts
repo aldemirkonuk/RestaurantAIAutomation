@@ -1309,14 +1309,15 @@ describe("F-191 — the person who asked for time off hears the answer", () => {
     ).toEqual(["Your time off was approved", "Your time off was turned down"]);
   });
 
+  // An owner: a manager's own request is an owner's to decide (F-1547).
   it("sends no notice to a reviewer deciding their own request", async () => {
     const db = seed();
-    const req = await teamOf(db).createTimeOff(MANAGER, RID, {
-      memberId: "m-manager",
+    const req = await teamOf(db).createTimeOff(OWNER, RID, {
+      memberId: "m-owner",
       startDate: WEEK,
       endDate: WEEK,
     } as any);
-    const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+    const reviewed = await teamOf(db).reviewTimeOff(OWNER, RID, req.id, {
       status: "approved",
     } as any);
     expect(reviewed.requesterNotified).toBe(false);
@@ -3212,5 +3213,65 @@ describe("F-1227 — a staff member's time-off request reaches the house's leads
     } as any);
     expect(req.managersTold).toBeUndefined();
     expect(db.tables.notifications).toHaveLength(0);
+  });
+});
+
+describe("F-1547 — a manager's own time off is an owner's to decide", () => {
+  async function managerAsksForThemselves(db: StubDb) {
+    return teamOf(db).createTimeOff(MANAGER, RID, {
+      memberId: "m-manager",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+  }
+
+  it("puts a manager's own request on the owners' bell (no other manager here)", async () => {
+    const db = seed();
+    const req: any = await managerAsksForThemselves(db);
+    expect(req.leadsTold).toBe(1);
+    const told = db.tables.notifications.filter(
+      (n) => n.metadata?.action === "time_off_requested",
+    );
+    expect(told.map((n) => n.user_id)).toEqual([OWNER]);
+    expect(told[0].message).toContain("Moe asked for");
+  });
+
+  it("refuses the manager deciding it, and changes nothing", async () => {
+    const db = seed();
+    const req: any = await managerAsksForThemselves(db);
+    await expect(
+      teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+        status: "approved",
+        leaveType: "paid",
+      } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // The stub does not fill the column default (`pending`): no write at all.
+    const row = db.tables.time_off_requests.find((r) => r.id === req.id);
+    expect(row?.status).toBeUndefined();
+    expect(row?.reviewed_by).toBeUndefined();
+  });
+
+  it("lets the owner decide it, and tells the manager", async () => {
+    const db = seed();
+    const req: any = await managerAsksForThemselves(db);
+    const reviewed: any = await teamOf(db).reviewTimeOff(OWNER, RID, req.id, {
+      status: "approved",
+      leaveType: "paid",
+    } as any);
+    expect(reviewed).toMatchObject({ status: "approved", reviewed_by: OWNER });
+    expect(reviewed.requesterNotified).toBe(true);
+  });
+
+  it("still lets a manager decide a staff member's request", async () => {
+    const db = seed();
+    const req: any = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    const reviewed: any = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+    } as any);
+    expect(reviewed.status).toBe("approved");
   });
 });

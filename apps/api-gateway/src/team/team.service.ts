@@ -23,6 +23,7 @@ import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
 import { leavesNoOwner, NO_OWNER_LEFT } from "../restaurants/last-owner";
 import { noticeToHouseLeads, recordAccessChange } from "./access-audit";
+import { houseMembersInRoles } from "../common/tenant/live-membership";
 import { recordOwnWageChange, type OwnWageReceipt } from "./own-wage-notice";
 import {
   formerOwnerPeriods,
@@ -81,6 +82,18 @@ type Role = "owner" | "manager" | "staff";
 /** The leads' bell lines for one staff time-off ask share this key (F-1488). */
 export const timeOffBellKey = (requestId: string): string =>
   `time_off_requested:${requestId}`;
+
+/**
+ * F-1547: the owners' notice that a manager's time off was decided or
+ * re-marked paid/unpaid. Its own key, not `timeOffBellKey`: the next review
+ * runs `settleLeadsTimeOffLine` on that key and would mark this read unseen.
+ */
+export const managerLeaveOwnerKey = (requestId: string): string =>
+  `time_off_manager_leave:${requestId}`;
+
+/** Paid or unpaid, in words, for a notice. Never an amount (ADR 0215 item 14). */
+const leaveKindWords = (t: string | null | undefined): string =>
+  t === "paid" ? "paid" : t === "unpaid" ? "unpaid" : "paid or unpaid not said";
 
 /**
  * How long a removed person's records are kept: `wage_record_retention()` in
@@ -161,6 +174,8 @@ export interface RemovalReceipt {
   /** "Replace with" (item 27): shifts handed to `handedTo` instead of opened. */
   shiftsHandedOver: number;
   handedTo: string | null;
+  /** A "no account yet" person's unused invite this removal cancelled (F-1545). */
+  inviteCancelled: boolean;
 }
 
 @Injectable()
@@ -1405,6 +1420,28 @@ export class TeamService {
       );
     }
 
+    // A "no account yet" row stands in for an invite (F-1545): the invite
+    // stops being good with it, before the first write, or the person could
+    // still join days later and be given a fresh roster row and access the
+    // owner just took away. Expired the way `cancelPendingInvitesFrom`
+    // expires one, and refused if it cannot be: a removal that left the
+    // invite live is not the removal the dialog promised.
+    let inviteCancelled = false;
+    if (member && !member.user_id) {
+      const { data: standIn, error: standInErr } = await this.sb
+        .from("team_members")
+        .select("invite_id")
+        .eq("id", memberId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (standInErr) this.cannotReadRemovalTarget(memberId, standInErr);
+      inviteCancelled = await this.cancelStandInInvite(
+        restaurantId,
+        memberId,
+        standIn?.invite_id ?? null,
+      );
+    }
+
     // A roster row with no account passed no refusal above; its shifts open
     // here, still before the roster row goes (item 26).
     if (released === null)
@@ -1455,6 +1492,8 @@ export class TeamService {
         // Which door, and whether the person left on their own (ADR 0242).
         via: actor.via,
         self_leave: selfLeave,
+        // F-1545: the unused invite a "no account yet" row stood in for.
+        invite_cancelled: inviteCancelled,
       },
       notice: selfLeave
         ? undefined
@@ -1540,8 +1579,40 @@ export class TeamService {
       clock: released.clock,
       shiftsHandedOver: released.handedOver.length,
       handedTo: released.handedTo,
+      inviteCancelled,
       ...receipt,
     };
+  }
+
+  /**
+   * F-1545: the unused invite a "no account yet" roster row stands in for
+   * stops being good, the way `cancelPendingInvitesFrom` expires one. True
+   * when an invite was cancelled; false when there was none still open. A
+   * failed write throws before anything was removed.
+   */
+  private async cancelStandInInvite(
+    restaurantId: string,
+    memberId: string,
+    inviteId: string | null,
+  ): Promise<boolean> {
+    if (!inviteId) return false;
+    const now = new Date().toISOString();
+    const { data, error } = await this.sb
+      .from("organization_invites")
+      .update({ expires_at: now })
+      .eq("id", inviteId)
+      .eq("restaurant_id", restaurantId)
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .select("id");
+    if (error) {
+      this.logger.error(
+        `deleteMember could not cancel invite ${inviteId} for ${memberId} ` +
+          `in ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException("Failed to remove member");
+    }
+    return (data ?? []).length > 0;
   }
 
   /**
@@ -2422,6 +2493,17 @@ export class TeamService {
         );
       }
     }
+    // Whether a manager is filing for themselves (F-1547), read before the
+    // write: a failed lookup refuses, so the owners are never silently skipped.
+    const ownMember =
+      role === "manager" ? await this.ownMemberId(userId, restaurantId) : null;
+    // Whether the days are a MANAGER's (F-1547, decision manager-leave): the
+    // owners hear of every one, whoever files it. Read before the write, so a
+    // failed read refuses rather than skipping the owners.
+    const subject =
+      role === "staff"
+        ? null
+        : await this.leaveSubject(restaurantId, dto.memberId);
 
     // The same days asked for twice (F-1006): the page's own guard lasted one
     // session, so a reload or a second device filed them again, and two
@@ -2477,6 +2559,27 @@ export class TeamService {
       const managersTold = await this.tellLeaders(userId, restaurantId, data);
       return { ...data, managersTold };
     }
+    // F-1547: a manager's own time off is not theirs to decide
+    // (`reviewTimeOff`); another manager or an owner decides it, so it goes on
+    // the bell of every owner and every other manager here.
+    if (role === "manager" && ownMember === dto.memberId) {
+      const leadsTold = await this.tellLeaders(userId, restaurantId, data, {
+        kind: true,
+      });
+      return { ...data, leadsTold };
+    }
+    // Filed for a manager by someone else (a fellow manager, or an owner):
+    // the owners are told; a house with no owner row tells its managers. The
+    // manager it is about is not asked to decide it.
+    if (subject?.isManager) {
+      const leadsTold = await this.tellLeaders(userId, restaurantId, data, {
+        roles: ["owner"],
+        fallbackRoles: ["manager"],
+        alsoExcept: subject.userId ? [subject.userId] : [],
+        kind: true,
+      });
+      return { ...data, leadsTold };
+    }
     return data;
   }
 
@@ -2492,7 +2595,15 @@ export class TeamService {
       member_id?: string;
       start_date?: string;
       end_date?: string;
+      leave_type?: string | null;
     },
+    opts: {
+      roles?: readonly ("owner" | "manager")[];
+      fallbackRoles?: readonly ("owner" | "manager")[];
+      alsoExcept?: readonly string[];
+      /** Say paid or unpaid (a manager's leave, F-1547). */
+      kind?: boolean;
+    } = {},
   ): Promise<number> {
     const { data: member, error: memberErr } = await this.sb
       .from("team_members")
@@ -2515,11 +2626,16 @@ export class TeamService {
       restaurantId,
       exceptUserId: requesterId,
       title: `${who} asked for time off`,
-      message: `${who} asked for ${days} off. It waits for your decision under Time off on Team.`,
+      message: opts.kind
+        ? `${who} asked for ${days} off, ${leaveKindWords(row.leave_type)}. It waits for a decision under Time off on Team.`
+        : `${who} asked for ${days} off. It waits for your decision under Time off on Team.`,
       // F-1488: the request is named so the line clears when the ask is
       // taken back or answered (`settleLeadsTimeOffLine`).
       metadata: { action: "time_off_requested", request_id: row.id ?? null },
       groupKey: row.id ? timeOffBellKey(row.id) : undefined,
+      roles: opts.roles,
+      fallbackRoles: opts.fallbackRoles,
+      alsoExcept: opts.alsoExcept,
     });
     return told.length;
   }
@@ -2576,12 +2692,12 @@ export class TeamService {
     requestId: string,
     dto: ReviewRequestDto,
   ): Promise<any> {
-    await this.assertAccess(userId, restaurantId, "manager");
+    const { role } = await this.assertAccess(userId, restaurantId, "manager");
     // A removed person's request is kept, not reviewed (ADR 0215 item 20;
     // `assertOnTheRoster`). A failed read is an error, not a missing request.
     const { data: cur, error: curErr } = await this.sb
       .from("time_off_requests")
-      .select("member_id, status")
+      .select("member_id, status, leave_type, start_date, end_date")
       .eq("id", requestId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -2596,6 +2712,22 @@ export class TeamService {
     }
     if (!cur) throw new NotFoundException("Request not found");
     await this.assertOnTheRoster(restaurantId, cur, "Request not found");
+    // Nobody but an owner decides their own time off (F-1547): a manager's
+    // waits for another manager or an owner, whose bell it is on
+    // (`createTimeOff`). An owner deciding their own is still allowed —
+    // nobody stands above them in the house.
+    if (
+      role !== "owner" &&
+      (await this.ownMemberId(userId, restaurantId)) === cur.member_id
+    ) {
+      throw new ForbiddenException(
+        "This is your own time off, so another manager or an owner decides it. It is waiting for them. Nothing was changed.",
+      );
+    }
+    // Whose days these are, read before the write (F-1547): a manager's leave
+    // decided or re-marked tells the owners, and a failed read refuses here
+    // rather than saving a decision the owners never hear of.
+    const subject = await this.leaveSubject(restaurantId, cur.member_id);
     // The person who asked took it back (F-936); there is nothing to decide.
     if (cur.status === "withdrawn") {
       throw new ConflictException(
@@ -2611,6 +2743,11 @@ export class TeamService {
     }
     const before: string | undefined = cur.status;
     const leaveType: LeaveType | undefined = dto.leaveType;
+    // Paid or unpaid as it stood, kept before the write (F-1547): a re-mark
+    // that keeps the status is told by this alone.
+    const kindBefore: string = cur.leave_type ?? "unknown";
+    const kindAfter: string = leaveType || kindBefore;
+    const days = { start: cur.start_date, end: cur.end_date };
     const { data, error } = await this.sb
       .from("time_off_requests")
       .update({
@@ -2640,7 +2777,154 @@ export class TeamService {
       before === data.status
         ? false
         : await this.tellRequester(userId, restaurantId, cur.member_id, data);
+    // F-1547: a manager's leave approved, turned down, or re-marked paid or
+    // unpaid reaches the owners (a house with no owner: its managers), and is
+    // filed. Its own condition, not `requesterNotified`'s: a re-mark keeps the
+    // status, and is exactly the change the owners must see.
+    if (
+      subject.isManager &&
+      (before !== data.status || kindBefore !== kindAfter)
+    ) {
+      const told = await this.tellOwnersOfManagerLeave(
+        userId,
+        restaurantId,
+        requestId,
+        subject,
+        {
+          statusBefore: before ?? null,
+          statusAfter: data.status,
+          kindBefore,
+          kindAfter,
+          memberId: cur.member_id,
+          ...days,
+        },
+      );
+      return { ...data, requesterNotified, ...told };
+    }
     return { ...data, requesterNotified };
+  }
+
+  /**
+   * F-1547: whose time off a request is, and whether they are a manager here
+   * (an active, live `user_restaurant_access` row with role manager). Throws
+   * on a failed read: the callers refuse rather than skip the owners.
+   */
+  private async leaveSubject(
+    restaurantId: string,
+    memberId: string,
+  ): Promise<{ userId: string | null; name: string; isManager: boolean }> {
+    const cannot = (why: string): never => {
+      this.logger.error(
+        `leaveSubject: could not read whose time off ${memberId} is in ${restaurantId}: ${why}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not check whose time off this is, so nothing was changed.",
+      );
+    };
+    const { data, error } = await this.sb
+      .from("team_members")
+      .select("user_id, display_name")
+      .eq("id", memberId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) cannot(error.message);
+    const userId = (data?.user_id as string | null | undefined) ?? null;
+    const name = (data?.display_name as string | undefined) || "A manager";
+    if (!userId) return { userId, name, isManager: false };
+    let managers: string[] = [];
+    try {
+      managers = await houseMembersInRoles(this.sb, restaurantId, ["manager"]);
+    } catch (err: any) {
+      cannot(err?.message);
+    }
+    return { userId, name, isManager: managers.includes(userId) };
+  }
+
+  /**
+   * F-1547 (decision manager-leave): a manager's leave decided or re-marked.
+   * The owners' inbox under `managerLeaveOwnerKey` (a house with no owner row:
+   * its managers), saying the days and paid or unpaid — never an amount, never
+   * owner pay (ADR 0215 items 14, 24) — and an audit row naming who did it.
+   * Never throws: the decision is saved; what did not land is reported.
+   */
+  private async tellOwnersOfManagerLeave(
+    reviewerId: string,
+    restaurantId: string,
+    requestId: string,
+    subject: { userId: string | null; name: string },
+    c: {
+      statusBefore: string | null;
+      statusAfter: string;
+      kindBefore: string;
+      kindAfter: string;
+      memberId: string;
+      start?: string;
+      end?: string;
+    },
+  ): Promise<{ leadsTold: number; audited: boolean }> {
+    // The reviewer's name; unread, the notice says "Someone" and the audit
+    // row still names them by id.
+    let reviewer = "Someone";
+    const { data: me, error: meErr } = await this.sb
+      .from("team_members")
+      .select("display_name")
+      .eq("restaurant_id", restaurantId)
+      .eq("user_id", reviewerId)
+      .maybeSingle();
+    if (meErr) {
+      this.logger.warn(
+        `time_off_manager_leave: the reviewer's name was not read — ${meErr.message}`,
+      );
+    } else if (me?.display_name) reviewer = me.display_name;
+    const { locale } = await this.houseMoneyFor(restaurantId);
+    const from = c.start ? weekWords(c.start, locale) : "";
+    const until = c.end ? weekWords(c.end, locale) : "";
+    const days = c.start === c.end ? from : `${from} to ${until}`;
+    const decided = c.statusBefore !== c.statusAfter;
+    const who = subject.name;
+    const message = !decided
+      ? `${reviewer} changed ${who}'s time off for ${days} from ${leaveKindWords(c.kindBefore)} to ${leaveKindWords(c.kindAfter)}.`
+      : c.statusAfter === "approved"
+        ? `${reviewer} approved ${who}'s time off for ${days}, ${leaveKindWords(c.kindAfter)}.`
+        : `${reviewer} turned down ${who}'s time off for ${days}.`;
+    const action = decided
+      ? "time_off_decided_for_manager"
+      : "time_off_remarked_for_manager";
+    const told = await noticeToHouseLeads(this.sb, this.logger, {
+      restaurantId,
+      exceptUserId: reviewerId,
+      alsoExcept: subject.userId ? [subject.userId] : [],
+      roles: ["owner"],
+      fallbackRoles: ["manager"],
+      title: decided
+        ? `${who}'s time off was ${c.statusAfter === "approved" ? "approved" : "turned down"}`
+        : `${who}'s time off was re-marked ${leaveKindWords(c.kindAfter)}`,
+      message,
+      metadata: {
+        action,
+        request_id: requestId,
+        status: { from: c.statusBefore, to: c.statusAfter },
+        leave_type: { from: c.kindBefore, to: c.kindAfter },
+      },
+      groupKey: managerLeaveOwnerKey(requestId),
+    });
+    const receipt = await recordAccessChange(this.sb, this.logger, {
+      restaurantId,
+      actorUserId: reviewerId,
+      targetUserId: subject.userId,
+      action,
+      entityType: "team_member",
+      entityId: c.memberId,
+      changes: {
+        request_id: requestId,
+        subject: who,
+        start_date: c.start ?? null,
+        end_date: c.end ?? null,
+        status: { from: c.statusBefore, to: c.statusAfter },
+        leave_type: { from: c.kindBefore, to: c.kindAfter },
+      },
+    });
+    return { leadsTold: told.length, audited: receipt.audited };
   }
 
   /**

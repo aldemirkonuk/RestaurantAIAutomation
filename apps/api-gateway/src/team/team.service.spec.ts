@@ -295,6 +295,73 @@ describe("TeamService — T2: a removal leaves a record and tells the person", (
   });
 });
 
+describe("TeamService — F-1545: removing a 'no account yet' person cancels their invite", () => {
+  const LATER = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
+  function withInvitedStandIn(
+    db: StubDb,
+    inviteOverrides: Record<string, unknown> = {},
+  ) {
+    db.tables.organization_invites = [
+      {
+        id: "inv-1",
+        restaurant_id: RID,
+        invited_by: OWNER,
+        role: "staff",
+        used_at: null,
+        expires_at: LATER,
+        ...inviteOverrides,
+      },
+    ];
+    db.tables.team_members.push({
+      id: "m-new",
+      restaurant_id: RID,
+      user_id: null,
+      invite_id: "inv-1",
+      display_name: "New cook",
+      status: "active",
+    });
+  }
+
+  it("expires the unused invite the roster row stood in for, so it cannot be accepted later", async () => {
+    const db = seed();
+    withInvitedStandIn(db);
+    const receipt: any = await service(db).deleteMember(MANAGER, RID, "m-new");
+
+    const invite = db.tables.organization_invites[0];
+    expect(new Date(String(invite.expires_at)).getTime()).toBeLessThanOrEqual(
+      Date.now(),
+    );
+    expect(invite.used_at).toBeNull();
+    expect(
+      db.tables.team_members.find((m) => m.id === "m-new"),
+    ).toBeUndefined();
+    expect(receipt.inviteCancelled).toBe(true);
+    expect(db.tables.system_audit_log[0].changes?.invite_cancelled).toBe(true);
+  });
+
+  it("refuses the removal, keeping the row, when the invite cannot be cancelled", async () => {
+    const db = seed();
+    withInvitedStandIn(db);
+    db.errors["organization_invites:update"] = { message: "invites down" };
+
+    await expect(
+      service(db).deleteMember(MANAGER, RID, "m-new"),
+    ).rejects.toThrow("Failed to remove member");
+    expect(db.tables.team_members.find((m) => m.id === "m-new")).toBeDefined();
+    expect(db.tables.organization_invites[0].expires_at).toBe(LATER);
+  });
+
+  it("leaves an invite that was already used alone", async () => {
+    const db = seed();
+    withInvitedStandIn(db, { used_at: "2026-10-01T10:00:00.000Z" });
+    const receipt: any = await service(db).deleteMember(MANAGER, RID, "m-new");
+
+    expect(db.tables.organization_invites[0].expires_at).toBe(LATER);
+    expect(receipt.inviteCancelled).toBe(false);
+  });
+});
+
 describe("TeamService — T5: an authorisation default must not escalate", () => {
   it("treats a users-table row as proof of membership, never of privilege", async () => {
     const db = seed();

@@ -976,3 +976,81 @@ describe('hours print with the house decimal mark', () => {
     expect(fmtHours(7.5)).toBe('7.5h');
   });
 });
+
+// F-1547: a manager's own time off waits for an owner, and a decided request
+// names who decided it.
+describe("a manager's own time off is an owner's to decide (F-1547)", () => {
+  const own = {
+    id: 't-own', member_id: 'm-mgr', start_date: '2026-09-07', end_date: '2026-09-07', reason: null,
+    status: 'pending', leave_type: 'unknown', reviewed_by: null, created_at: '2026-09-01',
+  };
+  const theirs = { ...own, id: 't-theirs', member_id: 'm1' };
+  const members = [
+    member(),
+    member({ id: 'm-mgr', user_id: 'u-mgr', display_name: 'Moe Manager' }),
+    member({ id: 'm-own', user_id: 'u-own', display_name: 'Ada Owner' }),
+  ];
+  const sheet = (requests: unknown[], viewerIsOwner: boolean, viewerUserId: string) => (
+    <TimeOffSheet
+      requests={requests as never}
+      failed={false}
+      members={members as never}
+      weekStart="2026-09-07"
+      onClose={() => {}}
+      onChanged={() => {}}
+      viewerIsOwner={viewerIsOwner}
+      viewerUserId={viewerUserId}
+    />
+  );
+
+  it("offers a manager no decision on their own request, only on someone else's", () => {
+    render(sheet([own, theirs], false, 'u-mgr'), { wrapper });
+    expect(screen.getByText('Your own request: an owner decides it.')).toBeInTheDocument();
+    // Only the other person's row carries the buttons.
+    expect(screen.getAllByRole('button', { name: 'Approve as paid' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Approve as paid' })).toHaveAccessibleDescription(
+      'Ayşe Yılmaz',
+    );
+  });
+
+  it('says another manager may decide it when the house has one (F-1547, manager-leave)', () => {
+    const withPeer = [
+      ...members.map((m) => (m.id === 'm-mgr' ? { ...m, role: 'manager' } : m)),
+      member({ id: 'm-peer', user_id: 'u-peer', display_name: 'Pia Peer', role: 'manager' }),
+    ];
+    render(
+      <TimeOffSheet
+        requests={[own] as never}
+        failed={false}
+        members={withPeer as never}
+        weekStart="2026-09-07"
+        onClose={() => {}}
+        onChanged={() => {}}
+        viewerIsOwner={false}
+        viewerUserId="u-mgr"
+      />,
+      { wrapper },
+    );
+    expect(
+      screen.getByText('Your own request: another manager or an owner decides it.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Your own request: an owner decides it.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Approve as paid' })).toBeNull();
+  });
+
+  it("offers the owner the decision on the manager's request", () => {
+    render(sheet([own], true, 'u-own'), { wrapper });
+    expect(screen.queryByText('Your own request: an owner decides it.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Approve as paid' })).toBeInTheDocument();
+  });
+
+  it('names who decided a request', () => {
+    render(
+      sheet([{ ...own, status: 'approved', leave_type: 'paid', reviewed_by: 'u-own' }], false, 'u-mgr'),
+      { wrapper },
+    );
+    expect(screen.getByText(/approved by Ada Owner/)).toBeInTheDocument();
+    // Approved by the owner, still not the manager's to change.
+    expect(screen.queryByRole('button', { name: 'Turn it down' })).toBeNull();
+  });
+});

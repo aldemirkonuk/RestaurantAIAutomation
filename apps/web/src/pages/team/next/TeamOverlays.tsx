@@ -873,6 +873,8 @@ export function TimeOffSheet({
   weekStart,
   onClose,
   onChanged,
+  viewerIsOwner,
+  viewerUserId,
 }: {
   requests: TimeOffRow[] | null;
   failed: boolean;
@@ -880,6 +882,13 @@ export function TimeOffSheet({
   weekStart: string;
   onClose: () => void;
   onChanged: () => void;
+  /**
+   * F-1547: nobody but an owner decides their own time off; a manager's goes
+   * to another manager or an owner. The gateway refuses the manager, and this
+   * only keeps the desk from offering it.
+   */
+  viewerIsOwner?: boolean;
+  viewerUserId?: string | null;
 }) {
   const [addFor, setAddFor] = useState('');
   /**
@@ -958,6 +967,30 @@ export function TimeOffSheet({
   });
 
   const whoOf = (r: TimeOffRow) => nameOf.get(r.member_id) ?? 'Someone no longer on the roster';
+  const ownMemberId = viewerUserId
+    ? (members ?? []).find((m) => m.user_id === viewerUserId)?.id
+    : undefined;
+  /** The viewer's own request, and the viewer is not an owner (F-1547). */
+  const ownersToDecide = (r: TimeOffRow) =>
+    viewerIsOwner === false && !!ownMemberId && r.member_id === ownMemberId;
+  /**
+   * Who decides it (F-1547, decision manager-leave): another manager may, so
+   * "an owner decides it" is said only when the viewer is the house's only
+   * manager with an account here.
+   */
+  const anotherManager = (members ?? []).some(
+    (m) => m.role === 'manager' && !!m.user_id && m.id !== ownMemberId,
+  );
+  const ownDecider = anotherManager
+    ? 'Your own request: another manager or an owner decides it.'
+    : 'Your own request: an owner decides it.';
+  /** Who decided a request, when they are on the roster (F-1547). */
+  const deciderOf = (r: TimeOffRow) => {
+    const m = r.reviewed_by
+      ? (members ?? []).find((x) => x.user_id === r.reviewed_by)
+      : undefined;
+    return m ? resolveName(m).text : null;
+  };
   const pending = (requests ?? []).filter((r) => r.status === 'pending');
   const settled = (requests ?? []).filter((r) => r.status !== 'pending');
 
@@ -1018,35 +1051,39 @@ export function TimeOffSheet({
               {r.reason ? ` · ${r.reason}` : ''}
               {` · ${leaveWords(r.leave_type)}`}
             </div>
-            <div className="tm-actions">
-              <button
-                type="button"
-                className="tm-ctl tm-ctl--sm"
-                disabled={review.isPending}
-                aria-describedby={`tm-off-${r.id}`}
-                onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'paid', expect: 'pending' })}
-              >
-                Approve as paid
-              </button>
-              <button
-                type="button"
-                className="tm-ctl tm-ctl--sm"
-                disabled={review.isPending}
-                aria-describedby={`tm-off-${r.id}`}
-                onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'unpaid', expect: 'pending' })}
-              >
-                Approve as unpaid
-              </button>
-              <button
-                type="button"
-                className="tm-ctl tm-ctl--quiet tm-ctl--sm"
-                disabled={review.isPending}
-                aria-describedby={`tm-off-${r.id}`}
-                onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'denied', expect: 'pending' })}
-              >
-                Deny
-              </button>
-            </div>
+            {ownersToDecide(r) ? (
+              <p className="tm-note">{ownDecider}</p>
+            ) : (
+              <div className="tm-actions">
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--sm"
+                  disabled={review.isPending}
+                  aria-describedby={`tm-off-${r.id}`}
+                  onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'paid', expect: 'pending' })}
+                >
+                  Approve as paid
+                </button>
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--sm"
+                  disabled={review.isPending}
+                  aria-describedby={`tm-off-${r.id}`}
+                  onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'unpaid', expect: 'pending' })}
+                >
+                  Approve as unpaid
+                </button>
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+                  disabled={review.isPending}
+                  aria-describedby={`tm-off-${r.id}`}
+                  onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'denied', expect: 'pending' })}
+                >
+                  Deny
+                </button>
+              </div>
+            )}
           </div>
         ))}
 
@@ -1060,12 +1097,13 @@ export function TimeOffSheet({
                 : r.status === 'withdrawn'
                   ? 'withdrawn by them'
                   : r.status}
+              {r.status !== 'withdrawn' && deciderOf(r) ? ` by ${deciderOf(r)}` : ''}
             </div>
             <div className="tm-rrow__line">
               {fmtDayShort(r.start_date)} – {fmtDayShort(r.end_date)}
               {r.status === 'approved' ? ` · ${leaveWords(r.leave_type)}` : ''}
             </div>
-            {r.status === 'approved' && (
+            {r.status === 'approved' && !ownersToDecide(r) && (
               <div className="tm-actions">
                 {(r.leave_type ?? 'unknown') === 'unknown' && (
                   <>
@@ -1222,6 +1260,14 @@ export function ExportPopover({
     return m;
   }, [members]);
 
+  /**
+   * Nobody is paid for a shift nobody worked (F-1546): a called-out shift
+   * (its person stayed home; the cover is its own row) and an open one (no
+   * person on it) export blank hours and cost, as the week's total and the
+   * grid already leave them out. The State and Who columns still say why.
+   */
+  const paid = (s: Shift) => !!s.member_id && s.state !== 'callout';
+
   const columns: TableExportColumn<Shift>[] = [
     { header: 'Date', value: (s) => s.shift_date },
     { header: 'Who', value: (s) => (s.member_id ? (nameOf.get(s.member_id) ?? '') : 'open') },
@@ -1235,7 +1281,7 @@ export function ExportPopover({
     {
       header: 'Hours worked',
       value: (s) =>
-        Math.round(workedHours(s, rules, zone) * 100) / 100,
+        paid(s) ? Math.round(workedHours(s, rules, zone) * 100) / 100 : '',
     },
     // The owner only, and in the house's own money: the header names the
     // currency, because a bare number in a spreadsheet has none.
@@ -1244,7 +1290,8 @@ export function ExportPopover({
       ? [
           {
             header: `Labour cost (${money?.readable && money.currency ? money.currency : 'currency not recorded'})`,
-            value: (s: Shift) => (s.labor_cost == null ? '' : s.labor_cost),
+            value: (s: Shift) =>
+              !paid(s) || s.labor_cost == null ? '' : s.labor_cost,
           },
         ]
       : []),

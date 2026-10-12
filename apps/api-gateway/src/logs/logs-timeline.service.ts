@@ -172,6 +172,12 @@ function newestFirst(a: TimelineEvent, b: TimelineEvent): number {
 export const LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF = [
   "away_set_for_member",
   "away_ended_for_member",
+  // F-1547 (decision manager-leave, 2026-10-12): a manager's time off decided
+  // or re-marked by someone else. New rows, not a widening of the round-4
+  // list: they carry a colleague's leave dates and paid/unpaid, which staff
+  // never read (ADR 0088, `listTimeOff` scopes staff to their own).
+  "time_off_decided_for_manager",
+  "time_off_remarked_for_manager",
 ] as const;
 
 /**
