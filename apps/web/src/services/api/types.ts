@@ -89,6 +89,13 @@ export interface InventoryItem {
    */
   shelfCounts?: Array<{ locationId: string; countedAt: string }> | null;
   /**
+   * The open 86 (stock_outs, F-1434): why and since when; null when it is not
+   * sold out. Read on the list for every kind of drink, not only wine.
+   */
+  soldOut?: { cause: string; startedAt: string } | null;
+  /** false: the sold-out read failed, so a null `soldOut` is not "available". */
+  soldOutReadable?: boolean;
+  /**
    * What the house item IS (`restaurant_inventory.kind`, ADR 0115): set by
    * the house for a declared item, else from the library's kind.
    */

@@ -1,4 +1,4 @@
-import { STOCK_OUT_CHOICES, soldOutLine, type StockOutState } from "../soldOut";
+import { STOCK_OUT_CHOICES, soldOutChip, soldOutLine, type StockOutState } from "../soldOut";
 
 /** F-145 (S195): a drink can be 86'd from the phone, and the phone says so. */
 describe("sold out (86) on the phone", () => {
@@ -32,5 +32,28 @@ describe("sold out (86) on the phone", () => {
   it("never reads a failed read as available", () => {
     expect(soldOutLine(undefined, true)).toMatch(/could not be read/);
     expect(soldOutLine(undefined, true)).not.toMatch(/Available/);
+  });
+
+  it("F-1434: says a broken bottle is still on stock", () => {
+    expect(soldOutLine(open, false)).toContain("does not take the broken bottle off stock");
+    const ranOut: StockOutState = { open: { ...open.open!, cause: "ran_out" }, recent: [] };
+    expect(soldOutLine(ranOut, false)).not.toContain("broken bottle");
+  });
+});
+
+/** F-1434: the cellar list says which rows are 86'd, spirits and beer too. */
+describe("sold out (86) on the cellar list", () => {
+  it("marks a row with an open 86", () => {
+    expect(soldOutChip({ soldOut: { cause: "ran_out", startedAt: "2026-10-10T21:00:00Z" } })).toBe(
+      "sold out (86)",
+    );
+  });
+
+  it("says nothing for a row that is not sold out", () => {
+    expect(soldOutChip({ soldOut: null, soldOutReadable: true })).toBeNull();
+  });
+
+  it("says the read failed instead of showing the row available", () => {
+    expect(soldOutChip({ soldOut: null, soldOutReadable: false })).toBe("sold out? not read");
   });
 });

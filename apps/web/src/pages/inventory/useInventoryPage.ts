@@ -53,6 +53,10 @@ export interface InventoryItem extends Omit<Wine, "threshold"> {
    * (the read failed or was too large); the whole-wine date is used instead.
    */
   shelfCounts?: { locationId: string; countedAt: string }[] | null;
+  /** The open 86 (F-1434); null when it is not sold out. */
+  soldOut?: { cause: string; startedAt: string } | null;
+  /** false: whether it is sold out could not be read for this list. */
+  soldOutReadable?: boolean;
   lastManualAdjustment?: {
     timestamp: Date;
     managerName: string;
@@ -233,6 +237,8 @@ export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryI
     daysSinceSale: (item as any).daysSinceSale ?? undefined,
     locations: (item as any).locations ?? [],
     shelfCounts: (item as any).shelfCounts ?? null,
+    soldOut: (item as any).soldOut ?? null,
+    soldOutReadable: (item as any).soldOutReadable !== false,
     // The library's own name, carried for SEARCH only and never rendered
     // in place of the house's alias (ADR 0124, the naming rule). Read
     // through `as any` like every other field on this object that the

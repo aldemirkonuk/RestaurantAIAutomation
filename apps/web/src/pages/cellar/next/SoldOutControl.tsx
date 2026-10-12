@@ -1,5 +1,5 @@
 /**
- * Sold out (86) on the cellar's bottle leaf. F-145, coordinator decision D1
+ * Sold out (86) on the cellar's bottle leaf and the /inventory row. F-145, coordinator decision D1
  * (sim-run/bulletproof/reconcile/schema-decisions-decisions.md).
  *
  * A drink is sold out exactly while it has an open stock-out. Anyone of the
@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import { getHouseLocale } from '../../../lib/houseCurrency';
 import { useHouseZone } from '../../../lib/houseZone';
+import { queryKeys } from '../../../lib/query-keys';
 
 export type StockOutCause = 'ran_out' | 'broken' | 'pulled' | 'other';
 
@@ -54,6 +55,46 @@ function when(iso: string, zone?: string | null): string {
   return `${day} ${time}`;
 }
 
+/**
+ * The 86 on a list row (F-1434): one chip, so a sold-out drink -- a spirit or
+ * a beer as much as a wine -- reads as sold out without opening the row. The
+ * list carries the open stock-out; `readable: false` says the read failed
+ * rather than showing the row as available.
+ */
+export function SoldOutChip({
+  soldOut,
+  readable = true,
+}: {
+  soldOut?: { cause: string; startedAt: string } | null;
+  readable?: boolean;
+}) {
+  const zone = useHouseZone();
+  if (soldOut) {
+    const why = CAUSE_WORDS[soldOut.cause as StockOutCause] ?? soldOut.cause;
+    return (
+      <span
+        className="shrink-0 rounded bg-rose-100 px-1.5 py-px text-[9px] font-bold text-rose-700"
+        title={`Sold out since ${when(soldOut.startedAt, zone)}, ${why}.`}
+        data-testid="sold-out-chip"
+      >
+        Sold out (86)
+      </span>
+    );
+  }
+  if (!readable) {
+    return (
+      <span
+        className="shrink-0 rounded bg-gray-100 px-1.5 py-px text-[9px] text-gray-500"
+        title="Whether this is sold out could not be read. That is not the same as not sold out."
+        data-testid="sold-out-chip-unread"
+      >
+        Sold out? Not read
+      </span>
+    );
+  }
+  return null;
+}
+
 /** One past stock-out, in words. */
 export function pastWords(s: StockOut, zone?: string | null): string {
   return `${when(s.startedAt, zone)} (${CAUSE_WORDS[s.cause] ?? s.cause})`;
@@ -83,11 +124,16 @@ export default function SoldOutControl({
     onSuccess: (data) => {
       qc.setQueryData(key, data);
       setCause('');
+      // F-1434: the lists show the 86 too, so they read it again.
+      void qc.invalidateQueries({ queryKey: queryKeys.inventory.lists() });
     },
   });
   const back = useMutation({
     mutationFn: async () => (await apiClient.post<StockOutState>(`${base}/end`)).data,
-    onSuccess: (data) => qc.setQueryData(key, data),
+    onSuccess: (data) => {
+      qc.setQueryData(key, data);
+      void qc.invalidateQueries({ queryKey: queryKeys.inventory.lists() });
+    },
   });
 
   if (!house || q.isLoading) return null;
@@ -148,6 +194,12 @@ export default function SoldOutControl({
           </button>
         </p>
       )}
+      {!open && cause === 'broken' ? (
+        <p className="cl-note" data-testid="sold-out-broken-stock">
+          This does not take the broken bottle off stock. Record it as breakage
+          in the count too, or the books still hold it.
+        </p>
+      ) : null}
       {failed ? (
         <p className="cl-note" role="alert" data-testid="sold-out-failed">
           That did not save: {getErrorMessage(failed)}

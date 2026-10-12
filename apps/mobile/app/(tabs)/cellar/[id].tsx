@@ -209,14 +209,19 @@ function SoldOutCard({ itemId, house }: { itemId: string; house: HouseMoneyFrame
     queryFn: () => api<StockOutState>(base),
     enabled: signedIn && !!restaurantId && !!itemId,
   });
+  // F-1434: the cellar list shows the 86 too, so it reads it again.
+  const settled = (data: StockOutState) => {
+    qc.setQueryData(key, data);
+    void qc.invalidateQueries({ queryKey: ["inventory", "list", restaurantId] });
+  };
   const mark = useMutation({
     mutationFn: (cause: StockOutCause) =>
       api<StockOutState>(base, { method: "POST", body: { cause } }),
-    onSuccess: (data) => qc.setQueryData(key, data),
+    onSuccess: settled,
   });
   const back = useMutation({
     mutationFn: () => api<StockOutState>(`${base}/end`, { method: "POST" }),
-    onSuccess: (data) => qc.setQueryData(key, data),
+    onSuccess: settled,
   });
   if (!restaurantId || q.isLoading) return null;
   const failed = mark.error ?? back.error;

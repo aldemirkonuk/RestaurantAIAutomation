@@ -6,7 +6,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import SoldOutControl, { type StockOut, type StockOutState } from './SoldOutControl';
+import SoldOutControl, { SoldOutChip, type StockOut, type StockOutState } from './SoldOutControl';
+import { toInventoryItem } from '../../inventory/useInventoryPage';
 
 const get = vi.fn();
 const post = vi.fn();
@@ -100,5 +101,69 @@ describe('SoldOutControl -- a drink can be 86\'d, with why (F-145)', () => {
     mount(null);
     expect(get).not.toHaveBeenCalled();
     expect(screen.queryByTestId('sold-out')).toBeNull();
+  });
+});
+
+describe('F-1434: an 86 is seen on the lists, and a broken bottle is said to stay on stock', () => {
+  it('says choosing "it broke" does not take the bottle off stock', async () => {
+    get.mockResolvedValue({ data: { open: null, recent: [] } });
+    mount();
+
+    fireEvent.change(await screen.findByTestId('sold-out-cause'), { target: { value: 'broken' } });
+
+    expect(screen.getByTestId('sold-out-broken-stock')).toHaveTextContent(
+      /does not take the broken bottle off stock/,
+    );
+    fireEvent.change(screen.getByTestId('sold-out-cause'), { target: { value: 'ran_out' } });
+    expect(screen.queryByTestId('sold-out-broken-stock')).toBeNull();
+  });
+
+  it('has the lists read again after an 86 is marked or ended', async () => {
+    get.mockResolvedValue({ data: { open: null, recent: [] } });
+    post.mockResolvedValue({ data: { open: so(), recent: [so()] } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={qc}>
+        <SoldOutControl restaurantId="r1" inventoryId="inv-1" />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(await screen.findByTestId('sold-out-cause'), { target: { value: 'ran_out' } });
+    fireEvent.click(screen.getByTestId('sold-out-confirm'));
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['inventory', 'list'] }),
+    );
+  });
+
+  it('shows a sold-out chip on a list row, and says a failed read', () => {
+    const { rerender } = render(
+      <SoldOutChip soldOut={{ cause: 'ran_out', startedAt: '2026-10-10T21:00:00Z' }} />,
+    );
+    expect(screen.getByTestId('sold-out-chip')).toHaveTextContent('Sold out (86)');
+    expect(screen.getByTestId('sold-out-chip').getAttribute('title')).toMatch(/ran out/);
+
+    rerender(<SoldOutChip soldOut={null} readable />);
+    expect(screen.queryByTestId('sold-out-chip')).toBeNull();
+    expect(screen.queryByTestId('sold-out-chip-unread')).toBeNull();
+
+    rerender(<SoldOutChip soldOut={null} readable={false} />);
+    expect(screen.getByTestId('sold-out-chip-unread')).toHaveTextContent(/not read/i);
+  });
+
+  it('carries the list 86 onto an /inventory row of any kind', () => {
+    const row = toInventoryItem({
+      id: 'inv-titos',
+      kind: 'spirit',
+      stockLive: 3,
+      soldOut: { cause: 'ran_out', startedAt: '2026-10-10T21:00:00Z' },
+      soldOutReadable: true,
+    } as never);
+    expect(row.soldOut).toEqual({ cause: 'ran_out', startedAt: '2026-10-10T21:00:00Z' });
+    expect(row.soldOutReadable).toBe(true);
+
+    const unread = toInventoryItem({ id: 'inv-2', stockLive: 1, soldOut: null, soldOutReadable: false } as never);
+    expect(unread.soldOutReadable).toBe(false);
   });
 });
