@@ -7,6 +7,7 @@ import {
   HttpStatus,
   BadRequestException,
   ForbiddenException,
+  GoneException,
   Param,
   Patch,
   Post,
@@ -1106,24 +1107,20 @@ export class ProvidersController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary:
-      "Create retroactive order from off-app invoice (D-32-15 Scenario C)",
+      "Retired: was 'create retroactive order from off-app invoice' (D-32-15 Scenario C)",
   })
-  @ApiResponse({ status: 201, description: "Retroactive order created" })
   @ApiResponse({
-    status: 400,
+    status: 410,
     description:
-      "The invoice cannot be booked as stated — an unreadable unit, or a case " +
-      "quantity with no pack size, so the invoice total cannot be spread across bottles",
+      "Retired (ADR 0103 D5; F-669, founder S198). A delivery nobody ordered in " +
+      "the app is logged at the door instead; nothing is written here.",
   })
   async createRetroactiveOrder(
     @Param("id") providerId: string,
-    @Body() dto: RetroactiveOrderDto,
+    // Still validated, so an old client gets the same 400 for a bad body.
+    @Body() _dto: RetroactiveOrderDto,
     @CurrentUser() user: AuthUser,
-  ): Promise<{
-    orderId: string;
-    orderNumber: string;
-    conversationId: string;
-  }> {
+  ): Promise<never> {
     // Recording a past purchase against a vendor is a money act: manager or
     // owner only, the same rule as every other vendor write (VEN-W30).
     await assertVendorWriter(
@@ -1132,23 +1129,21 @@ export class ProvidersController {
       houseOf(user),
       "Recording a past purchase from a vendor",
     );
-    try {
-      return await this.providersService.createRetroactiveOrder(
-        providerId,
-        houseOf(user),
-        actorOf(user),
-        dto,
-      );
-    } catch (error: any) {
-      // A refusal is not a server error. `createOrder` throws
-      // BadRequestException for an unresolvable unit and ForbiddenException
-      // when the restaurant has no active vendors; collapsing both to 500 threw
-      // away the sentence telling the operator what to fix.
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        error.message || "Failed to create retroactive order",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+    // FENCED (F-669, founder S198; ADR 0103 D5 retired this route). A phoned-in
+    // delivery belongs AT THE DOOR, booked as source 'retroactive' and shown
+    // as "Logged at door": in spend and stock, out of the vendor's lead time,
+    // on-time and fill rate. This route booked the same order from a vendor's
+    // page with none of the door's checks, so it now writes nothing. (The
+    // door's "Add to the books" step is still owed; until it lands the door
+    // records such a truck as an UNORDERED delivery.)
+    // The vendor is still looked up in the caller's house first, so another
+    // house's id stays a 404 and never learns the route exists for it. The
+    // route string stays on purpose: CLAIMS ADR-0103 is open until the route
+    // and its service path are deleted together.
+    await this.providersService.getProvider(providerId, houseOf(user));
+    throw new GoneException(
+      "Booking a past purchase from the vendor's page is retired. Record the " +
+        "delivery at the door instead. Nothing was booked.",
+    );
   }
 }

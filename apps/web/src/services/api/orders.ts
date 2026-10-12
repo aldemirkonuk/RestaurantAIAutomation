@@ -217,7 +217,13 @@ export interface OrderBookSummary {
   total: number;
   counts: { pending: number; approved: number; ordered: number; delivered: number };
   recurring: number;
+  /** Closed by the house: cancelled or turned down. */
   cancelled: number;
+  /**
+   * Closed because the truck was refused at the door (F-669). Off the figures
+   * like a cancelled order, but never called one. Absent on an older gateway.
+   */
+  refused?: number;
   zone: string;
   thisMonth?: OrderBookMonth;
   lastMonth?: OrderBookMonth;

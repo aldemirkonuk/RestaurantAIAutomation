@@ -51,6 +51,7 @@ const SUMMARY = {
   counts: { pending: 1200, approved: 300, ordered: 400, delivered: 3000 },
   recurring: 40,
   cancelled: 60,
+  refused: 4,
   zone: 'Europe/Istanbul',
   thisMonth: { month: '2026-10', byCurrency: [{ currency: FIXTURE_CURRENCY, amount: 12480 }], unpriced: 2 },
   lastMonth: { month: '2026-09', byCurrency: [{ currency: null, amount: 900 }], unpriced: 0 },
@@ -101,6 +102,8 @@ describe('useOrdersNextData — the newest orders, the whole book’s figures (F
     expect(result.current.counts).toEqual({ pending: 1200, approved: 300, ordered: 400, delivered: 3000 })
     expect(result.current.recurringCount).toBe(40)
     expect(result.current.cancelledCount).toBe(60)
+    // Refused trucks are counted apart, never as cancelled (F-669).
+    expect(result.current.refusedCount).toBe(4)
     expect(result.current.month.thisMonth).toBe(12480)
     expect(result.current.month.unpricedThisMonth).toBe(2)
     expect(result.current.month.label).toBe('October')

@@ -266,6 +266,31 @@ describe('a cancelled order asked for by id', () => {
   });
 });
 
+describe('a truck refused at the door, asked for by id (F-669)', () => {
+  it('says it was refused, never cancelled, and counts it apart', async () => {
+    state.current = ordersData({
+      rows: [
+        row({
+          id: 'o-1',
+          stage: 'cancelled',
+          status: 'cancelled',
+          refusedAtDoor: 'Refused at door — wrong wine · credit requested',
+        }),
+      ],
+      cancelledCount: 0,
+      refusedCount: 1,
+    });
+    harness('/orders/o-1');
+
+    const banner = await screen.findByTestId('target-order-cancelled');
+    expect(banner).toHaveTextContent('Refused at door — wrong wine · credit requested');
+    expect(banner).not.toHaveTextContent(/cancelled/i);
+    expect(screen.getByTestId('refused-count')).toHaveTextContent(
+      '1 refused at the door — kept in the book, off the figures.',
+    );
+  });
+});
+
 describe('?station=recurring — recurring-order.template.ts, which has no order id', () => {
   it('opens the Recurring station on its own', async () => {
     state.current = ordersData({

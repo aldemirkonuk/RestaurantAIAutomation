@@ -168,6 +168,15 @@ export interface OrderRowVM {
   stage: Stage | 'cancelled';
   status: OrderStatus;
   /**
+   * "Refused at door — broken case · credit requested" (F-669, founder S198):
+   * the truck was turned away at the door. Null when it was not, or when the
+   * door could not be read. A refused order is NEVER called "cancelled", even
+   * though it sits off the figures with the cancelled ones; and an order still
+   * in transit whose truck was refused says so too. Absent only on a row built
+   * by hand rather than by `toRow`.
+   */
+  refusedAtDoor?: string | null;
+  /**
    * Does this order repeat? A MEASURED fact since 2026-09-05 — it was a
    * hardcoded `false` before that, because the route sent nothing. False here
    * now means either "read, and it does not" or "this route did not say"; read
@@ -432,6 +441,13 @@ export interface OrdersNextData {
    */
   recurrenceReadCount: number | null;
   cancelledCount: number | null;
+  /**
+   * Orders closed because the truck was refused at the door (F-669), counted
+   * apart from `cancelledCount` and never added to it. Null while unknown —
+   * an older gateway that does not send it — never a guessed zero. Absent
+   * only on data built by hand.
+   */
+  refusedCount?: number | null;
   month: MonthFigure;
   /** The house's currency, for a figure with no order behind it (an empty month). */
   houseCurrency?: string | null;
@@ -496,6 +512,18 @@ function readUnitType(v: unknown): PriceUom | null {
  * found lived entirely in the key names, and a test that builds an `OrderRowVM`
  * by hand cannot see a key name that was never read.
  */
+/**
+ * The door's own words for a refused truck (F-669). The gateway sends them on
+ * `doorRefusal`; a FAILED order from a route that does not read the door
+ * still says "Refused at door", because FAILED has no other writer than a
+ * refused truck (delivery.service.ts failRefusedOrder) — never "Cancelled".
+ */
+export function refusedAtDoorLabel(o: Pick<Order, 'status' | 'doorRefusal'>): string | null {
+  const label = o.doorRefusal?.label;
+  if (typeof label === 'string' && label.trim()) return label;
+  return String(o.status ?? '').toUpperCase() === 'FAILED' ? 'Refused at door' : null;
+}
+
 export function toRow(
   o: OrderWire,
   providerNameById: Map<string, string>,
@@ -633,6 +661,7 @@ export function toRow(
     currency,
     stage: stageOf(status),
     status,
+    refusedAtDoor: refusedAtDoorLabel(o),
     recurring,
     recurrence,
     recurrenceLabel: recurrenceLabel(recurrence),
@@ -737,6 +766,7 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
     let recurringCount: number | null = null;
     let recurrenceReadCount: number | null = null;
     let cancelledCount: number | null = null;
+    let refusedCount: number | null = null;
     let month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
 
     const amountsWithheld =
@@ -748,6 +778,7 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
       for (const s of STAGES) counts[s] = summary.counts[s] ?? null;
       recurringCount = summary.recurring;
       cancelledCount = summary.cancelled;
+      refusedCount = typeof summary.refused === 'number' ? summary.refused : null;
       // Withheld is not unpriced: a staff list summed to $0 here (F-441).
       if (!amountsWithheld) month = monthFigureFromSummary(summary, houseCurrency);
     }
@@ -792,6 +823,7 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
       recurringCount,
       recurrenceReadCount,
       cancelledCount,
+      refusedCount,
       month,
       amountsWithheld,
       hasData: known,

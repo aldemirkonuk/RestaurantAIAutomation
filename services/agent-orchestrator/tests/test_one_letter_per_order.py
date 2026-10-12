@@ -406,9 +406,15 @@ class TestApprovalTimeLetter:
 
 
 def _closed_migration_sql() -> str:
-    files = sorted(MIGRATIONS.glob("*_a_closed_order_gets_no_letter.sql"))
-    assert len(files) == 1, files
-    return files[0].read_text()
+    """The NEWEST definition of the door's closed-order check: F-516 wrote it,
+    F-669 (``a_refused_truck_can_still_be_written_about``) replaced it."""
+    files = sorted(
+        f for f in MIGRATIONS.glob("*.sql") if "IF v_order_status IN (" in f.read_text()
+    )
+    assert files and files[-1].name.endswith(
+        "_a_refused_truck_can_still_be_written_about.sql"
+    ), files
+    return files[-1].read_text()
 
 
 CLOSED = {"id": None, "staged": False, "order_status": "CANCELLED"}
@@ -437,7 +443,8 @@ class TestTheDoorRefusesAClosedOrder:
         [
             ("CANCELLED", "CANCELLED"),
             ("rejected", "REJECTED"),
-            ("FAILED", "FAILED"),
+            # A truck refused at the door still gets its letter (F-669).
+            ("FAILED", None),
             ("APPROVED", None),
             ("COMPLETED", None),
             (None, None),

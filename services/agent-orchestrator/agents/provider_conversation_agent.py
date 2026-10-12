@@ -175,9 +175,10 @@ SEND_MESSAGE_MAX_AGE_SECONDS = APPROVAL_MAX_AGE_SECONDS
 PUBLISHED_AT_FUTURE_TOLERANCE_SECONDS = 300
 
 #: An order in one of these states gets no letter sent about it (F-521). The
-#: same three the gateway's seal and staging door refuse (F-516): cancelled,
-#: turned down, failed.
-ORDER_CLOSED_STATUSES = frozenset({"CANCELLED", "REJECTED", "FAILED"})
+#: same two the gateway's seal and staging door refuse (F-516): cancelled and
+#: turned down. A FAILED order is a truck refused at the door, whose credit or
+#: replacement letter still goes (F-669, founder S198).
+ORDER_CLOSED_STATUSES = frozenset({"CANCELLED", "REJECTED"})
 
 #: The one row per restaurant that holds its switches
 #: (apps/api-gateway/src/settings/feature-flag-registry.ts, SETTINGS_ROW_FLAG_NAME).

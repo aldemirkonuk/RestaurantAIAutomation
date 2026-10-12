@@ -238,6 +238,12 @@ describe('settledWords — a hold only where the gateway approves', () => {
     expect(new Set(sentences).size).toBe(others.length);
   });
 
+  it('says a FAILED order was refused at the door, never that it "failed" (F-669)', () => {
+    const words = settledWords({ id: 'x', status: 'FAILED' });
+    expect(words).toBe('This order’s truck was refused at the door.');
+    expect(words).not.toMatch(/fail|cancel/i);
+  });
+
   it('refuses a state nobody listed, and a missing state, rather than offering a hold', () => {
     expect(settledWords({ id: 'x', status: 'ordered' })).toMatch(/is ordered, which is not a state waiting/);
     expect(settledWords({ id: 'x' })).toMatch(/without a state/);

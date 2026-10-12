@@ -106,7 +106,16 @@ was agreed.** Option 3, with the founder's answers folded in:
 - **D5 — No order preceded this → `UNORDERED`.** The receipt carries a permanent
   provenance mark; goods are accepted and inventory moves at `VERIFIED` like any other
   delivery; reporting can answer _what share of spend was never ordered_. The
-  `retroactive-order` endpoint is retired. In Turkey the e-İrsaliye is itself a structured
+  `retroactive-order` endpoint is retired. **[2026-10-11, F-669, founder S198: "Logged at door" is the official
+  replacement for that endpoint. A phoned-in delivery is booked at the door as an order
+  already delivered, with `source='retroactive'`, and shown as "Logged at door". It
+  counts in spend, stock, quality and refusal rate, and is kept out of lead time,
+  on-time and fill rate. The door asks one optional question, "When was this ordered?"
+  (Today / Yesterday / Don't know), stored in `procurement_orders.placed_on_stated`
+  (display only, never fed to lead-time estimates). `POST /providers/:id/retroactive-order`
+  is fenced: it answers 410 and writes nothing. It is not deleted, because CLAIMS row
+  ADR-0103 is open until the route and its service path go together. The door's
+  "Add to the books" step and the metrics exclusions land on later F-669 branches.]** In Turkey the e-İrsaliye is itself a structured
   statement of what the vendor claims to be delivering, so `UNORDERED` there is far less
   blind than in the US.
 - **D6 — Human gates, never automated:** `AGREED → VERIFIED`; accepting a substitution

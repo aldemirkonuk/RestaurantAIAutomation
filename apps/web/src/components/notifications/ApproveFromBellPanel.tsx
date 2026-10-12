@@ -115,7 +115,8 @@ const NOT_AWAITING: Record<string, string> = {
   COMPLETED: 'This order is complete.',
   CANCELLED: 'This order was cancelled.',
   REJECTED: 'This order was rejected.',
-  FAILED: 'This order failed.',
+  // FAILED's only writer is a truck refused at the door (F-669, founder S198).
+  FAILED: 'This order’s truck was refused at the door.',
 };
 
 /**

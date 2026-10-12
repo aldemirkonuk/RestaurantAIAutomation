@@ -80,6 +80,22 @@ export interface OrderFact {
   /** `procurement_orders.currency`: what the order was placed in, or null
    *  when it named none (orders composed before the column existed). */
   currency?: string | null;
+  /** `procurement_orders.source`: 'retroactive' is an order logged at the
+   *  door after its truck arrived ("Logged at door", F-669). Absent or null
+   *  reads as placed by the house. */
+  source?: string | null;
+}
+
+/**
+ * Was this order PLACED through the house, so that its `requestedAt` is a real
+ * placement time? A delivery logged at the door (F-669, founder S198) is
+ * booked after the truck came: its request date is the day somebody typed it
+ * in, never when the vendor was asked. It stays in spend and stock, and it is
+ * kept out of lead time and the order cutoff, which both difference that
+ * placement time.
+ */
+export function placedByTheHouse(o: Pick<OrderFact, "source">): boolean {
+  return o.source !== "retroactive";
 }
 
 /** How much the caller may lean on a finding, and why. */
@@ -387,6 +403,7 @@ export function inferLeadTime(
   let arrivals = 0;
   let negatives = 0;
   for (const o of orders) {
+    if (!placedByTheHouse(o)) continue;
     const placed = localMoment(o.requestedAt, zone);
     const landed = landedOn(o, zone);
     if (!placed || !landed) continue;
@@ -481,6 +498,7 @@ export function inferOrderCutoff(
 ): Finding<CutoffFinding> {
   const sample: Array<{ minute: number; gap: number }> = [];
   for (const o of orders) {
+    if (!placedByTheHouse(o)) continue;
     const placed = localMoment(o.requestedAt, zone);
     const landed = landedOn(o, zone);
     if (!placed || !landed) continue;

@@ -87,6 +87,7 @@ import {
   shelfUnreadable,
   type ShelfReceived,
 } from "./shelf-received";
+import { doorRefusalFor, readDoorRefusals } from "./door-refusal";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { resolveBellLines } from "../notifications/resolve-bell-lines";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
@@ -369,7 +370,13 @@ export interface OrderBookSummary {
   /** One-time orders per stage; a repeating order sits in `recurring` instead. */
   counts: Record<OrderBookStage, number>;
   recurring: number;
+  /** Closed by the house: cancelled or turned down. */
   cancelled: number;
+  /**
+   * Closed because the truck was refused at the door (FAILED; F-669, founder
+   * S198). Off the figures like a cancelled order, but never called one.
+   */
+  refused: number;
   /** The clock the months are filed by. */
   zone: string;
   /** Absent when the reader does not hold the house's money (F-441). */
@@ -707,8 +714,10 @@ export function draftSubjectLine(
  * `cancelOrder` cascaded the drafts that already existed. The database door
  * (`stage_order_letter`) now refuses to stage one; this is the brace at the
  * two places a person can still send one: the seal and the send. The same
- * three states `stage_order_letter` refuses. COMPLETED is not among them: a
+ * two states `stage_order_letter` refuses. COMPLETED is not among them: a
  * reply about a delivered order (a short case, a credit) is still a letter.
+ * Nor is FAILED, a truck refused at the door, whose credit or replacement
+ * letter is the next thing the house sends (F-669, founder S198).
  *
  * Returns the refusal in the owner's words, or null when the letter may go.
  */
@@ -717,7 +726,8 @@ const ORDER_LETTER_CLOSED_WORDS: Partial<
 > = {
   [ProcurementOrderStatus.CANCELLED]: "was cancelled",
   [ProcurementOrderStatus.REJECTED]: "was turned down",
-  [ProcurementOrderStatus.FAILED]: "was closed as failed",
+  // FAILED is not here (F-669, founder S198): a truck refused at the door is
+  // exactly when the house writes to the vendor for a credit or a replacement.
 };
 
 export function closedOrderLetterRefusal(
@@ -3619,6 +3629,13 @@ export class ProcurementService {
       restaurantId,
       (data || []) as any[],
     );
+    // A truck refused at the door says so, with its reason and credit
+    // standing, instead of a status word (F-669, founder S198).
+    const door = await readDoorRefusals(
+      this.databaseService.supabase,
+      restaurantId,
+      (data || []) as any[],
+    );
 
     const orders = (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
@@ -3638,7 +3655,7 @@ export class ProcurementService {
       // "read, and states nothing" — which is the honest reading of a header
       // with nothing under it, and is what the page prints the refusal for.
       const lines = embeddedOrderLines(row.procurement_order_items);
-      return this.mapOrderRow(
+      const mapped = this.mapOrderRow(
         orderRow,
         {
           read: true,
@@ -3653,6 +3670,8 @@ export class ProcurementService {
         },
         shelf.get(row.id),
       );
+      const doorRefusal = doorRefusalFor(door, row.id);
+      return doorRefusal === undefined ? mapped : { ...mapped, doorRefusal };
     });
     const total = count ?? orders.length;
 
@@ -3720,9 +3739,18 @@ export class ProcurementService {
     // Three states: a code, `null` (read, and the line names none or there is
     // no line), or ABSENT when the line could not be read.
     const agreedLine = await this.readAgreedLine(restaurantId, orderId);
+    // "Refused at door — <reason>" for the door, the phone and the desk too
+    // (F-669, founder S198); ABSENT when the door could not be read.
+    const doorRefusal = doorRefusalFor(
+      await readDoorRefusals(this.databaseService.supabase, restaurantId, [
+        row,
+      ]),
+      row.id,
+    );
     return {
       ...this.mapOrderRow(orderRow, undefined, received),
       agreedCurrency: agreedLine.read ? agreedLine.currency : undefined,
+      ...(doorRefusal === undefined ? {} : { doorRefusal }),
     };
   }
 
@@ -9254,6 +9282,7 @@ export class ProcurementService {
       counts: { pending: 0, approved: 0, ordered: 0, delivered: 0 },
       recurring: 0,
       cancelled: 0,
+      refused: 0,
       zone,
     };
     const months = new Map<
@@ -9297,7 +9326,14 @@ export class ProcurementService {
         const recurring =
           typeof r.recurrence_frequency === "string" &&
           frequencies.has(r.recurrence_frequency.trim().toLowerCase());
-        if (stage === "cancelled") summary.cancelled += 1;
+        if (stage === "cancelled") {
+          if (
+            String(r.status ?? "").toUpperCase() ===
+            ProcurementOrderStatus.FAILED
+          )
+            summary.refused += 1;
+          else summary.cancelled += 1;
+        }
         if (recurring) summary.recurring += 1;
         else if (stage !== "cancelled") summary.counts[stage] += 1;
 

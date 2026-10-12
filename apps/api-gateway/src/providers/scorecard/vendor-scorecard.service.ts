@@ -295,7 +295,7 @@ export class VendorScorecardService {
       let q = this.client()
         .from("procurement_orders")
         .select(
-          "id, order_number, provider_id, status, expected_delivery_date, delivered_at",
+          "id, order_number, provider_id, status, expected_delivery_date, delivered_at, source",
         )
         .eq("restaurant_id", house)
         .gte("delivered_at", since);
@@ -382,6 +382,7 @@ export class VendorScorecardService {
       ReceiptEventRow & {
         provider_id: string | null;
         order_number: string | null;
+        order_source: string | null;
       }
     >
   > {
@@ -444,13 +445,17 @@ export class VendorScorecardService {
     ];
     const orders = new Map<
       string,
-      { provider_id: string | null; order_number: string | null }
+      {
+        provider_id: string | null;
+        order_number: string | null;
+        source: string | null;
+      }
     >();
     for (let i = 0; i < ids.length; i += IN_CHUNK) {
       const chunk = ids.slice(i, i + IN_CHUNK);
       const { data, error } = await this.client()
         .from("procurement_orders")
-        .select("id, order_number, provider_id")
+        .select("id, order_number, provider_id, source")
         .eq("restaurant_id", house)
         .in("id", chunk);
       if (error)
@@ -459,6 +464,7 @@ export class VendorScorecardService {
         orders.set((o as any).id, {
           provider_id: (o as any).provider_id ?? null,
           order_number: (o as any).order_number ?? null,
+          source: (o as any).source ?? null,
         });
     }
     const collected = await this.anyRow(() =>
@@ -480,6 +486,9 @@ export class VendorScorecardService {
             : null,
         order_number: e.order_id
           ? (orders.get(e.order_id)?.order_number ?? null)
+          : null,
+        order_source: e.order_id
+          ? (orders.get(e.order_id)?.source ?? null)
           : null,
       })),
     };

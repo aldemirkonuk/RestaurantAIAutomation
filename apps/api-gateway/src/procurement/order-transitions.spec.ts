@@ -1,5 +1,6 @@
 import { ProcurementOrderStatus } from "./dto/procurement.dto";
 import {
+  ORDER_ENDS_ITS_SERIES_STATUSES,
   ORDER_GOODS_ARRIVED_STATUSES,
   ORDER_TERMINAL_STATUSES,
   ORDER_TRANSITIONS,
@@ -373,5 +374,26 @@ describe("a vendor's decline returns the order to negotiation", () => {
     ]) {
       expect(canTransition(from, ProcurementOrderStatus.NEGOTIATING)).toBe(false);
     }
+  });
+});
+
+describe("a truck refused at the door (F-669, founder S198)", () => {
+  it("says what happened, never 'failed' or 'cancelled'", () => {
+    const words = statusInWords(ProcurementOrderStatus.FAILED);
+    expect(words).toBe("refused at the door");
+    expect(words).not.toMatch(/fail|cancel/i);
+  });
+
+  it("does not end a standing order's series: next week's order still goes out", () => {
+    expect(ORDER_ENDS_ITS_SERIES_STATUSES).not.toContain(
+      ProcurementOrderStatus.FAILED,
+    );
+    // The house's own closing acts still end it.
+    expect([...ORDER_ENDS_ITS_SERIES_STATUSES].sort()).toEqual(
+      [
+        ProcurementOrderStatus.CANCELLED,
+        ProcurementOrderStatus.REJECTED,
+      ].sort(),
+    );
   });
 });

@@ -149,7 +149,11 @@ export function rowOpensReceipt(row: Pick<OrderRowVM, 'stage'>): boolean {
  * The chip's word. A short delivery with bottles still owed is not "Delivered"
  * (F-1127): it says so, and how many the next truck brings.
  */
-function stageChipLabel(row: Pick<OrderRowVM, 'stage' | 'stillOwedBottles'>): string {
+function stageChipLabel(
+  row: Pick<OrderRowVM, 'stage' | 'stillOwedBottles' | 'refusedAtDoor'>,
+): string {
+  // A truck turned away at the door is not a cancelled order (F-669).
+  if (row.refusedAtDoor) return 'Refused at door';
   if (row.stage === 'cancelled') return 'Cancelled';
   const owed = row.stillOwedBottles;
   if (row.stage === 'delivered' && owed != null && owed > 0) return `Part delivered · ${owed} owed`;
@@ -743,10 +747,21 @@ export function LedgerRow({
                     : `Delivered ${fmtDate(row.deliveredAt)}.`}
                 </p>
               )}
-              {row.stage === 'cancelled' && (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}>
-                  Cancelled — kept in the book, off the figures.
+              {row.refusedAtDoor ? (
+                <p
+                  data-testid="refused-at-door"
+                  style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}
+                >
+                  {row.stage === 'cancelled'
+                    ? `${row.refusedAtDoor}. Kept in the book, off the figures.`
+                    : `${row.refusedAtDoor}.`}
                 </p>
+              ) : (
+                row.stage === 'cancelled' && (
+                  <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}>
+                    Cancelled — kept in the book, off the figures.
+                  </p>
+                )
               )}
             </div>
           </div>
