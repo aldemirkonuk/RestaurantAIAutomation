@@ -385,7 +385,12 @@ export class MonthCloseService {
         action: "month_closed",
         entity_type: "month_close",
         entity_id: row.id,
-        changes: { month, version },
+        // F-1513: /logs prints `subject`; without it the line named no month.
+        changes: {
+          subject: `${monthName(month)} (version ${version})`,
+          month,
+          version,
+        },
         restaurant_id: restaurantId,
       });
     if (auditError)

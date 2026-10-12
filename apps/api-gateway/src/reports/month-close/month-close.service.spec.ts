@@ -277,6 +277,12 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     expect(arg(audit.ops, "insert")![0]).toMatchObject({
       action: "month_closed",
       restaurant_id: HOUSE,
+      // F-1513: the /logs line names the month it closed.
+      changes: {
+        subject: "July 2026 (version 3)",
+        month: "2026-07",
+        version: 3,
+      },
     });
     expect(dto.closedBy).toEqual({ id: ACTOR, name: "Ayla" });
     expect(dto.hasTillFile).toBe(true);

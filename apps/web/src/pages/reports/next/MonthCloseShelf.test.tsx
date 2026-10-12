@@ -107,6 +107,22 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(kept.textContent).toContain('for the priced wines; 3 wines have no cost');
   });
 
+  it('brings itself into view when /logs links to it (F-1513)', async () => {
+    api.get.mockResolvedValueOnce({ data: { closes: [] } });
+    const scroll = vi.fn();
+    const before = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    window.history.replaceState(null, '', '/reports#rp-month-close');
+    try {
+      wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+      await screen.findByText('No month has been closed for this house yet.');
+      expect(scroll).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = before;
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   it('says why a close was refused, in the gateway’s words', async () => {
     api.get.mockResolvedValueOnce({ data: { closes: [] } });
     api.post.mockRejectedValueOnce({

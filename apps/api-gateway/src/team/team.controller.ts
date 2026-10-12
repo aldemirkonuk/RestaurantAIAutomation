@@ -651,10 +651,10 @@ export class TeamController {
           rid,
           { what: "team_broadcast", by: userId },
         )
-      : new Map<string, unknown>();
+      : null;
     const pushIds = pushable
       .map((m: any) => m.user_id)
-      .filter((id: string) => !teamHolds.has(id));
+      .filter((id: string) => !teamHolds?.has(id));
     /**
      * WHAT THE PUSH ACTUALLY DID, 2026-09-05 (ADR 0121 P0).
      *
@@ -688,6 +688,8 @@ export class TeamController {
             ? "Nobody on this send has an account that could carry a push, or everybody addressed has switched push off."
             : "The caller did not ask for push.",
         };
+    // F-1510: the quiet-hours /logs row is filed only when the push went.
+    await teamHolds?.afterSend(pushResult);
 
     // Counted, not sent: how many people COULD have been reached on a removed
     // channel is the size of what this decision withholds, and reporting 0

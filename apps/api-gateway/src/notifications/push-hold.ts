@@ -64,7 +64,7 @@ export async function teamPushHolds(
   sent: TeamPushSend,
   log: { warn: (line: string) => void; note: (line: string) => void },
   now: Date = new Date(),
-): Promise<Map<string, PushHoldReason>> {
+): Promise<TeamPushHolds> {
   const { held, quiet } = await readHolds(
     supabase,
     restaurantId,
@@ -78,10 +78,33 @@ export async function teamPushHolds(
       `TEAM_PUSH_IN_QUIET_HOURS restaurant=${restaurantId} to=${id} by=${sent.by ?? "nobody (the system)"} what=${sent.what} at=${now.toISOString()} — sent during quiet hours: a team push may arrive inside quiet hours (F-540).`,
     );
   }
-  if (quiet.length > 0)
-    await logQuietHoursSend(supabase, restaurantId, quiet, sent, log.warn, now);
-  return held;
+  // F-1510: the /logs row waits for the send's outcome. Written here, before
+  // the caller pushed, it said "was sent" when no phone was registered or the
+  // device read failed, and nothing went.
+  return Object.assign(held, {
+    afterSend: async (result: { outcome: string } | null | undefined) => {
+      if (quiet.length > 0 && result?.outcome === "accepted_by_service")
+        await logQuietHoursSend(
+          supabase,
+          restaurantId,
+          quiet,
+          sent,
+          log.warn,
+          now,
+        );
+    },
+  });
 }
+
+/**
+ * Who is held from a team push (Push off), plus `afterSend`: call it with
+ * `sendToUsers`' outcome once the push was tried, and the quiet-hours /logs row
+ * is filed only when the push actually went (F-1510). Not calling it, or
+ * calling it with nothing, files no row: nothing was sent.
+ */
+export type TeamPushHolds = Map<string, PushHoldReason> & {
+  afterSend: (result: { outcome: string } | null | undefined) => Promise<void>;
+};
 
 /** The push's kind in the owner's words, for the /logs line. */
 const TEAM_PUSH_WORDS: Record<string, string> = {
@@ -89,6 +112,7 @@ const TEAM_PUSH_WORDS: Record<string, string> = {
   shift_offer: "A shift offer",
   shift_callout: "A call for cover",
   team_member_left: "A note that someone left the team",
+  team_note: "A team note",
 };
 
 /**
@@ -96,7 +120,8 @@ const TEAM_PUSH_WORDS: Record<string, string> = {
  * quiet hours (ADR 0332 §3, F-1463): the sender as actor, the house, and the
  * people inside their window by user id. /logs reads this table, so the row
  * reads there as "Ayşe: message sent in quiet hours — A shift offer was sent
- * to 2 people inside their quiet hours". Never throws: the push still goes,
+ * to 2 people inside their quiet hours". Filed only after the push service
+ * took the push (`afterSend`, F-1510). Never throws: the push still goes,
  * and a row that failed is said on `warn`, with the stdout line above as the
  * fallback record.
  */

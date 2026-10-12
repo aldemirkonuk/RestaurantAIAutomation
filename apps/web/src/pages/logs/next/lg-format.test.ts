@@ -144,6 +144,8 @@ describe('lg-format — the way out of the timeline', () => {
     expect(linkOutFor(audit('generated_report'), CTX)?.to).toBe('/documents-reports');
     expect(linkOutFor(audit('restaurant_feature_flag'), CTX)?.to).toBe('/settings?tab=features');
     expect(linkOutFor(audit('restaurant_member'), CTX)?.to).toBe('/team');
+    // F-1513: a month close opens the closed-months shelf on /reports.
+    expect(linkOutFor(audit('month_close'), CTX)).toEqual({ to: '/reports#rp-month-close', label: 'Open the closed months' });
     expect(linkOutFor(audit('payment_method'), CTX)).toBeNull();
     expect(linkOutFor(audit(null), CTX)).toBeNull();
   });

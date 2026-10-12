@@ -995,6 +995,37 @@ describe("LogsTimelineService.getTimeline", () => {
       expect(JSON.stringify(events)).not.toContain("Mert");
     });
 
+    it("[REVERT-FAILS] F-1512: names a former member of this house, whose access row is gone", async () => {
+      const { events } = await svc({
+        users: [
+          ...PEOPLE.users,
+          {
+            user_id: "u-sam",
+            name: "Sam Yilmaz",
+            email: "s@x",
+            restaurant_id: null,
+          },
+        ],
+        house_memberships_ended: [
+          { user_id: "u-sam", restaurant_id: "r1" },
+          // Ended in another house: still not named here.
+          { user_id: "u-mert", restaurant_id: "r9" },
+        ],
+        system_audit_log: [
+          {
+            ...audit("a1", "house_area_changed", "u-sam", null),
+            created_at: "2026-09-20T10:00:00Z",
+          },
+          audit("a2", "house_area_changed", "u-mert", null),
+        ],
+      }).getTimeline("r1", { role: "owner" });
+
+      expect(events.map((e) => e.summary)).toEqual([
+        "Sam Yilmaz: house area changed",
+        "Someone not on this house's team: house area changed",
+      ]);
+    });
+
     it("says a name could not be read rather than calling a colleague a stranger", async () => {
       const client = makeFakeClient({
         ...EMPTY,

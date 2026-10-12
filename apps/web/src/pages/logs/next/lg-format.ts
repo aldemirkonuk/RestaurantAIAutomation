@@ -421,6 +421,7 @@ export function linkOutFor(e: TimelineEvent, ctx: LinkContext): LinkOut | null {
       if (entity === 'generated_report') return { to: '/documents-reports', label: 'Open the reports' };
       if (entity === 'restaurant_feature_flag') return { to: '/settings?tab=features', label: 'Open the features' };
       if (entity === 'restaurant_member') return { to: '/team', label: 'Open the team' };
+      if (entity === 'month_close') return { to: '/reports#rp-month-close', label: 'Open the closed months' };
       return null;
     }
     default:
