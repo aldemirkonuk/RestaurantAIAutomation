@@ -5089,11 +5089,16 @@ export class AuthService {
    * (org-role.ts), and keeps every house role they hold. The receiver is
    * promoted BEFORE the giver steps down, so a failure in between leaves two
    * owners, never none; a retry finishes it.
+   *
+   * F-1459 (the F-1395 pattern): `proveItIsYou` (the step-up check) runs after
+   * every refusal below and before the first write, so "they own none of its
+   * restaurants" never spends the emailed code the person typed.
    */
   async handOverOrganisation(
     userId: string,
     organizationId: string,
     toUserId: string,
+    proveItIsYou?: () => Promise<void>,
   ): Promise<{ organizationId: string; newOwnerUserId: string }> {
     const db = this.databaseService.supabase;
     const nothing = "Nothing was changed; try again.";
@@ -5172,6 +5177,7 @@ export class AuthService {
       );
     }
 
+    await proveItIsYou?.();
     if (theirs.role !== ORG_OWNER) {
       const { error: promoteError } = await db
         .from("organization_members")
@@ -5284,8 +5290,9 @@ export class AuthService {
         throw new BadRequestException(
           "You are the only owner of your organisation. If your account goes, " +
             "nobody could open a new location in it. Hand the organisation over " +
-            "to someone who owns one of its restaurants first (Profile, " +
-            '"Hand over your organisation"), then try again. Nothing was deleted.',
+            'to someone who owns one of its restaurants first ("Hand over ' +
+            'your organisation", just above deleting your account), then try ' +
+            "again. Nothing was deleted.",
         );
       }
     }

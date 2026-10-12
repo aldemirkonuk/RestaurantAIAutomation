@@ -490,16 +490,18 @@ export class AuthController {
         "Choose the organisation and the person to hand it to. Nothing was changed.",
       );
     }
-    await this.authService.assertProvedItIsYou(
-      req.user.userId,
-      req.user.authTime,
-      emailCode,
-      "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then the organisation can be handed over. Nothing was changed.",
-    );
+    // F-1459: checked after the hand-over's own refusals, so they keep the code.
     return this.authService.handOverOrganisation(
       req.user.userId,
       organizationId,
       toUserId as string,
+      () =>
+        this.authService.assertProvedItIsYou(
+          req.user.userId,
+          req.user.authTime,
+          emailCode,
+          "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then the organisation can be handed over. Nothing was changed.",
+        ),
     );
   }
 

@@ -32,8 +32,10 @@ const profile = vi.hoisted(() => ({
 vi.mock('../../../services/api/profile', () => ({ profileApi: profile }));
 const deleteAccountAndSignOut = vi.hoisted(() => vi.fn());
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: vi.fn() }));
+const client = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
+  default: client,
+  apiClient: client,
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
@@ -238,5 +240,34 @@ describe('NoHouseAccount (F-1396)', () => {
     draw('/choose-house');
     expect(await screen.findByText('Join Moda')).toBeTruthy();
     await openAccount();
+  });
+
+  it('/no-access lets the last owner of an organisation hand it over, which the delete refusal points to (F-1460)', async () => {
+    authAs('');
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        organizations: [
+          {
+            id: 'org-1',
+            name: 'Meyhane Group',
+            candidates: [{ userId: 'user-heir', name: 'Deniz', email: 'deniz@example.com' }],
+          },
+        ],
+      },
+    } as never);
+    vi.mocked(apiClient.post).mockResolvedValue({ data: {} } as never);
+    draw('/no-access');
+    await openAccount();
+    expect(apiClient.get).toHaveBeenCalledWith('/auth/me/organisations');
+    expect(screen.getByText(/hand your organisation over first \(just above\)/)).toBeTruthy();
+    fireEvent.change(await screen.findByLabelText('Meyhane Group: hand it to'), { target: { value: 'user-heir' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hand over' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Click again to hand it over' }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith('/auth/me/organisations/org-1/hand-over', {
+        toUserId: 'user-heir',
+        emailCode: undefined,
+      }),
+    );
   });
 });
