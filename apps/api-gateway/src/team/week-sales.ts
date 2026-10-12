@@ -6,6 +6,10 @@
  * (`netSalesByHouseDay`, ADR 0290 / ADR 0296). A day the till was sending
  * and took no check is 0, as on the dashboard; a week the till did not
  * cover from its first day to its last has no sales figure, and says why.
+ * A day an owner or manager ruled out of the figures (a till outage, a
+ * closure: `analytics_day_exclusions`, ADR 0317) with no check is not a
+ * measured 0 either, as on the dashboard (F-1535): the week's sales are not
+ * all known (F-1557).
  */
 
 import {
@@ -57,7 +61,7 @@ export async function readWeekSales(
   }
   const bounds = houseDayBounds(weekStart, weekEnd, zone);
   try {
-    const [rows, first, latest] = await Promise.all([
+    const [rows, first, latest, ruled] = await Promise.all([
       readAll("The week's checks", (after) => {
         let q = client
           .from("pos_checks")
@@ -81,9 +85,22 @@ export async function readWeekSales(
         .eq("restaurant_id", restaurantId)
         .order("opened_at", { ascending: false })
         .limit(1),
+      client
+        .from("analytics_day_exclusions")
+        .select("business_date")
+        .eq("restaurant_id", restaurantId)
+        .gte("business_date", weekStart)
+        .lte("business_date", weekEnd),
     ]);
     if (first.error) throw new Error(first.error.message);
     if (latest.error) throw new Error(latest.error.message);
+    // An unread list would count a ruled-out outage as a quiet 0: say it.
+    if (ruled.error) throw new Error(ruled.error.message);
+    const ruledOut = new Set<string>(
+      (ruled.data ?? []).map((r: any) =>
+        String(r.business_date ?? "").slice(0, 10),
+      ),
+    );
     const since = houseDayOf(first.data?.[0]?.opened_at ?? null, zone);
     if (since === null) {
       return unknown(
@@ -107,7 +124,13 @@ export async function readWeekSales(
     }
     let sum = 0;
     for (let i = 0; i < 7; i++) {
-      const day = days.get(plusDays(weekStart, i));
+      const date = plusDays(weekStart, i);
+      const day = days.get(date);
+      if (!day && ruledOut.has(date)) {
+        return unknown(
+          "A day this week was ruled out of the figures and the till took nothing on it, so the week's sales are not all known.",
+        );
+      }
       if (!day) continue; // the till was sending and took nothing: 0
       if (day.net_sales === null) {
         return unknown(

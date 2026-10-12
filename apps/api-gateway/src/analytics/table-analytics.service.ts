@@ -387,6 +387,7 @@ export class TableAnalyticsService {
         wineChecks: number;
         tips: number;
         tipBase: number;
+        tipsWithoutNet: number;
         paidChecks: number;
         zeroChecks: number;
       }
@@ -408,6 +409,7 @@ export class TableAnalyticsService {
         wineChecks: 0,
         tips: 0,
         tipBase: 0,
+        tipsWithoutNet: 0,
         paidChecks: 0,
         zeroChecks: 0,
       };
@@ -449,7 +451,9 @@ export class TableAnalyticsService {
             : null,
         wineAttachRate: a && a.checks > 0 ? a.wineChecks / a.checks : null,
         tipPct: a && a.tipBase > 0 ? a.tips / a.tipBase : null,
-        tipPerSeat: a && t.seats > 0 ? a.tips / t.seats : null,
+        // F-1573: no tip counted (the till sent no amount before tax) is
+        // not a measured 0 a seat.
+        tipPerSeat: a && t.seats > 0 && a.tipBase > 0 ? a.tips / t.seats : null,
         turnoverPerSeat: a && t.seats > 0 ? a.checks / t.seats : null,
       };
     });
@@ -615,8 +619,8 @@ export class TableAnalyticsService {
        * out of every average check (F-1534).
        */
       checksTakingNoMoney: rows.reduce((n, r) => n + r.checksTakingNoMoney, 0),
-      /** Tip % is over net sales, the checks' subtotal (F-1532). */
-      tipBasis: "net" as const,
+      /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
+      ...tipBasisOf(Array.from(agg.values())),
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -637,6 +641,7 @@ export class TableAnalyticsService {
         wineChecks: number;
         tips: number;
         tipBase: number;
+        tipsWithoutNet: number;
         paidChecks: number;
         zeroChecks: number;
       }
@@ -657,6 +662,7 @@ export class TableAnalyticsService {
         wineChecks: 0,
         tips: 0,
         tipBase: 0,
+        tipsWithoutNet: 0,
         paidChecks: 0,
         zeroChecks: 0,
       };
@@ -683,6 +689,9 @@ export class TableAnalyticsService {
       avgCheck: a.paidChecks > 0 ? a.revenue / a.paidChecks : null,
       wineAttachRate: a.checks > 0 ? a.wineChecks / a.checks : null,
       tipPct: a.tipBase > 0 ? a.tips / a.tipBase : null,
+      /** F-1573: why Tip is blank when tips were recorded; null otherwise. */
+      tipPctWhy:
+        a.tipBase > 0 || a.tipsWithoutNet === 0 ? null : TIP_NO_NET_ON_SERVER,
       revenuePerCover: a.covers > 0 ? a.revenue / a.covers : null,
     }));
 
@@ -727,8 +736,8 @@ export class TableAnalyticsService {
         (n, w) => n + w.checksTakingNoMoney,
         0,
       ),
-      /** Tip % is over net sales, the checks' subtotal (F-1532). */
-      tipBasis: "net" as const,
+      /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
+      ...tipBasisOf(Array.from(byWaiter.values())),
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -866,7 +875,13 @@ function isoOf(v: string): string {
  *   tills already holds the tip, so a 20% tip read as 15.9%.
  */
 function tallyCheck(
-  a: { tips: number; tipBase: number; paidChecks: number; zeroChecks: number },
+  a: {
+    tips: number;
+    tipBase: number;
+    tipsWithoutNet: number;
+    paidChecks: number;
+    zeroChecks: number;
+  },
   c: { total?: unknown; subtotal?: unknown; tip?: unknown },
 ): void {
   const total = recorded(c.total);
@@ -877,5 +892,40 @@ function tallyCheck(
   if (Number.isFinite(tip) && Number.isFinite(net) && net > 0) {
     a.tips += tip;
     a.tipBase += net;
+  } else if (Number.isFinite(tip) && tip > 0) {
+    // F-1573: a tip on a check with no amount before tax (Clover, a CSV
+    // without one). It cannot be set against net sales, and it is not "no
+    // tip" either: it is counted so the register can say so.
+    a.tipsWithoutNet += 1;
   }
+}
+
+/** F-1573: Tip is blank on a server whose tipped checks carried no net. */
+export const TIP_NO_NET_ON_SERVER =
+  "tips were recorded, but the till sent no amount before tax, so no tip rate can be taken";
+
+/** F-1573: no check carried both a tip and an amount before tax. */
+export const TIP_NO_NET =
+  "Your till sends tips but no amount before tax, so no tip rate can be taken. The tips were recorded; Tip stays blank rather than be worked out on totals that hold tax.";
+
+/** F-1573: some tipped checks carried no amount before tax. */
+export const TIP_SOME_WITHOUT_NET =
+  "Some checks carried a tip but no amount before tax. Their tips are left out of Tip, which is worked out only on checks that carried both.";
+
+/**
+ * F-1532 / F-1573: Tip is over net sales only when some check carried both a
+ * tip and a subtotal. When tips came only on checks with no subtotal, the
+ * basis is null and says why, never "over net sales" over nothing.
+ */
+function tipBasisOf(aggs: Array<{ tipBase: number; tipsWithoutNet: number }>): {
+  tipBasis: "net" | null;
+  tipBasisWhy: string | null;
+} {
+  const based = aggs.some((a) => a.tipBase > 0);
+  const unbased = aggs.some((a) => a.tipsWithoutNet > 0);
+  if (!based && unbased) return { tipBasis: null, tipBasisWhy: TIP_NO_NET };
+  return {
+    tipBasis: "net",
+    tipBasisWhy: unbased ? TIP_SOME_WITHOUT_NET : null,
+  };
 }

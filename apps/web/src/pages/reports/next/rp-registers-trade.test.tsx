@@ -560,6 +560,22 @@ describe('the registers say what Taken holds and leave a check rung at 0 out of 
     expect(v.notes).toContain(zeroChecksSaid(2));
   });
 
+  it('F-1573: a till with no amount before tax says why Tip is blank, never "over net sales"', () => {
+    const why =
+      'Your till sends tips but no amount before tax, so no tip rate can be taken. The tips were recorded; Tip stays blank rather than be worked out on totals that hold tax.';
+    const reg = service.select({
+      sinceDays: 90,
+      dataStatus: 'live',
+      tipBasis: null,
+      tipBasisWhy: why,
+      checksInWindow: 3,
+      waiters: [{ name: 'Maya', checks: 3, revenue: 378, avgCheck: 126, tipPct: null }],
+    }) as ServiceRegister;
+    const v = service.view(reg, { days: 90 } as never);
+    expect(v.basis).not.toContain(REGISTER_TIP_ON_NET);
+    expect(v.basis).toContain(why);
+  });
+
   it('an older server payload (tip over the total) is not called net', () => {
     const reg = service.select({
       sinceDays: 90,

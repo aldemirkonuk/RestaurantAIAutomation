@@ -523,6 +523,41 @@ describe("F-1549 — the week's cost as a share of the till's net sales", () => 
     expect(week.labor.laborPctWhy).toMatch(/no amount before tax/);
   });
 
+  it("F-1557: a ruled-out day with no check leaves the week's sales unknown, as on the dashboard", async () => {
+    const db = seed({ country: "TR", timezone: "Europe/Istanbul" });
+    costedWeek(db);
+    db.tables.pos_checks = [
+      check("c0", "2026-08-01T12:00:00Z", 50),
+      check("c1", "2026-09-07T12:00:00Z", 1000),
+      check("c2", "2026-09-12T12:00:00Z", 800),
+      check("c3", "2026-09-14T12:00:00Z", 999),
+    ];
+    // Wednesday the till was down; the owner ruled it out of the figures.
+    db.tables.analytics_day_exclusions = [
+      { restaurant_id: RID, business_date: "2026-09-09" },
+      { restaurant_id: "other", business_date: "2026-09-10" },
+    ];
+    let week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.netSales).toBeNull();
+    expect(week.labor.laborPct).toBeNull();
+    expect(week.labor.laborPctWhy).toMatch(
+      /ruled out of the figures and the till took nothing on it/,
+    );
+
+    // A ruled-out day whose checks did land still stands, as on the dashboard.
+    db.tables.analytics_day_exclusions = [
+      { restaurant_id: RID, business_date: "2026-09-07" },
+    ];
+    week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.netSales).toBe(1800);
+
+    // An unread list is said, never a quiet 0.
+    db.errors["analytics_day_exclusions:select"] = { message: "boom" };
+    week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.netSales).toBeNull();
+    expect(week.labor.laborPctWhy).toMatch(/could not be read/);
+  });
+
   it("a week not over yet gives no share and says why", async () => {
     const sales = await readWeekSales(
       {

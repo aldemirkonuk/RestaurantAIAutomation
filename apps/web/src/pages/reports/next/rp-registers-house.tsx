@@ -690,6 +690,8 @@ export interface ServiceRegister extends PosWindow {
   dataStatus: string;
   /** 'net' when Tip % is over the checks' subtotal (F-1532); null from an older gateway, which took it over the total. */
   tipBasis: 'net' | null;
+  /** F-1573: the gateway's reason when Tip is not (all) over net sales — a till that sends no amount before tax; null otherwise. */
+  tipBasisWhy: string | null;
   /** Checks rung at 0, out of Avg check (F-1534); 0 from an older gateway. */
   checksTakingNoMoney: number;
   adjusted: { method?: string; r2?: number | null } | null;
@@ -720,6 +722,7 @@ const service = analysis<ServiceRegister>({
       ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
       tipBasis: d.tipBasis === 'net' ? 'net' : null,
+      tipBasisWhy: str(d.tipBasisWhy) || null,
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
@@ -738,6 +741,7 @@ const service = analysis<ServiceRegister>({
       `Non-voided pos_checks grouped by server name over the last ${s.sinceDays} days.`,
       REGISTER_TOTALS_NOT_NET,
       s.tipBasis === 'net' ? REGISTER_TIP_ON_NET : null,
+      s.tipBasisWhy,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
       s.adjusted?.method ?? null,
     ];
