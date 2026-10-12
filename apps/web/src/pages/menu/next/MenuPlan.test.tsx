@@ -160,6 +160,17 @@ describe("F-699: the plan's dates are the house's day, not UTC's", () => {
   });
 });
 
+describe('F-618 / S202: a price set by a menu made current reads as from a menu', () => {
+  it("says 'from a menu' for 'menu_current', never 'by hand'", async () => {
+    const fromMenu = line({ bottle: { ...line().bottle, lastSet: { by: person('Deniz'), at: '2026-09-10T12:00:00Z', source: 'menu_current' } } });
+    mockPlan.mockResolvedValue(plan({ lines: [fromMenu] }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows[0]).toHaveTextContent('set from a menu by Deniz on 2026-09-10');
+    expect(rows[0]).not.toHaveTextContent('by hand');
+  });
+});
+
 describe('MenuPlan -- the section before the choice (L13)', () => {
   it('shows each price it would change with who set it, each held price with its lock, the returned wine, the vintage to check, and the dormant locks', async () => {
     mockPlan.mockResolvedValue(plan());

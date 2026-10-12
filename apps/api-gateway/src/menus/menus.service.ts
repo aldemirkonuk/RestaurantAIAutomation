@@ -126,10 +126,13 @@ function carriedWine(line: InsertedMenuItem): string | null {
  * How a carry is dated and which menu it names (ADR 0193 round 3, L11). A
  * chosen menu passes the moment of the choice (`made_current_at`); a line
  * added to the current menu passes null, which the writer reads as now.
+ * `source` says which act it is (S202 amendment): a menu made current is
+ * 'menu_current', its own dated price change; a line added is 'import'.
  */
 interface CarryDating {
   effectiveFrom: string | null;
   menuId: string | null;
+  source: "import" | "menu_current";
 }
 
 /** The price flags a line can carry (founder answers 3 and 4). */
@@ -2174,6 +2177,7 @@ export class MenusService {
     const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId, {
       effectiveFrom: madeCurrentAt,
       menuId,
+        source: "menu_current",
     });
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
@@ -2430,7 +2434,11 @@ export class MenusService {
     // A line added to the CURRENT menu is dated now (the writer's default)
     // and names its menu (ADR 0193 round 3, L11).
     const { inventoryMap, priceSync } = current
-      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId })
+      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, {
+          effectiveFrom: null,
+          menuId,
+          source: "import",
+        })
       : {
           inventoryMap: Object.assign(new Map<string, string>(), {
             created: new Set<string>(),
@@ -2568,8 +2576,8 @@ export class MenusService {
    * row with no price at all -- the scanned line's by_glass_price /
    * bottle_price sat on `item` and were dropped -- and an existing row was
    * never touched by a re-scan. Now every linked line with a price writes it
-   * through set_house_menu_price as change_source 'import', DATED BY THE
-   * CHOICE of the menu (`dating.effectiveFrom`, ADR 0193 round 3, L11; it had
+   * through set_house_menu_price as change_source 'menu_current' (S202; a line
+   * added to the current menu stays 'import'), DATED BY THE CHOICE of the menu (`dating.effectiveFrom`, ADR 0193 round 3, L11; it had
    * been the line's own `created_at`, which backdated history and stopped an
    * older menu chosen again from bringing its prices back) and naming the
    * menu. A kind a price lock holds is not written and is named (L4, L5). A
@@ -2661,7 +2669,7 @@ export class MenusService {
       let inventoryId: string | null = existing?.id ?? null;
       if (!inventoryId) {
         // Inserted WITHOUT a price on purpose: the price goes through
-        // set_house_menu_price below, so its version row says 'import' and
+        // set_house_menu_price below, so its version row names the act and
         // names the person, instead of the trigger's "no person named".
         const { data: created, error } = await this.dbService.supabase
           .from("restaurant_inventory")
@@ -2841,7 +2849,7 @@ export class MenusService {
         inventoryId,
         ...(bottle !== null ? { bottle } : {}),
         ...(glass !== null ? { glass } : {}),
-        source: "import",
+        source: dating.source,
         changedBy: userId,
         // Dated by the choice of the menu, or now for a line added to the
         // current menu -- never by the line's own created_at (L11).

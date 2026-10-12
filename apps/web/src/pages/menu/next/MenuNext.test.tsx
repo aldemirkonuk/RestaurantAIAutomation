@@ -30,6 +30,7 @@ import {
   type MenuLine,
 } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
+import { changeLockedPrice, listPriceLocks, type LockReadout, type PriceLock } from '../../../services/api/pricing';
 
 
 // The house's thousands mark and the screen's, held per test (F-878). Left
@@ -94,6 +95,8 @@ vi.mock('../../../services/api/pricing', async () => {
       markersReadable: true,
       markersReason: null,
     }),
+    // F-618 / S202: "Use the menu's price" on a locked price.
+    changeLockedPrice: vi.fn(),
   };
 });
 
@@ -222,7 +225,7 @@ describe("MenuNext — a line price that is not the house's own (F-618)", () => 
     );
     mount();
     const rows = await screen.findAllByTestId('menu-row');
-    expect(rows[0].querySelector('[data-testid="menu-house-price-bottle"]')?.textContent).toMatch(/your price .*95/);
+    expect(rows[0].querySelector('[data-testid="menu-house-price-bottle"]')?.textContent).toMatch(/Your price .*95.* — the menu says .*80/);
     expect(rows[0].querySelector('[data-testid="menu-house-price-glass"]')).toBeNull();
     expect(rows[1].querySelector('[data-testid^="menu-house-price"]')).toBeNull();
     expect(screen.getByTestId('menu-house-prices-differ')).toHaveTextContent('1 line prints a price');
@@ -242,6 +245,101 @@ describe("MenuNext — a line price that is not the house's own (F-618)", () => 
     mount();
     expect(await screen.findByTestId('menu-house-prices-unread')).toHaveTextContent('timeout');
     expect(screen.queryByTestId('menu-house-prices-differ')).not.toBeInTheDocument();
+  });
+});
+
+describe('MenuNext — two prices, and an owner picks one (F-618, S202)', () => {
+  const twoPrices = () =>
+    menu({
+      housePricesReadable: true,
+      items: [line({ id: 'a', name: 'Yakut', bottle_price: 80, by_glass_price: null, inventory_item_id: 'inv-1', house_bottle_price: 95, house_glass_price: null })],
+    });
+  const noLocks = (locks: PriceLock[] = []): LockReadout => ({
+    restaurantId: 'r1',
+    generatedAt: '2026-10-12T12:00:00Z',
+    readable: true,
+    reason: null,
+    scope: 'this house',
+    currentMenus: [{ menuId: 'm1', name: 'Main menu' }],
+    locks,
+    counts: { open: locks.length, onCurrentMenu: locks.length, notOnCurrentMenu: 0, toReview: 0 },
+    namesReadable: true,
+    namesReason: null,
+    markersReadable: true,
+    markersReason: null,
+  });
+  const lockAt95: PriceLock = {
+    lockId: 'lk-1',
+    inventoryId: 'inv-1',
+    kind: 'bottle',
+    lockedPrice: 95,
+    lockedAt: '2026-10-01T10:00:00Z',
+    ageDays: 11,
+    note: null,
+    movedFromLockId: null,
+    lockedBy: { userId: 'u-1', name: 'Ayse' },
+    wine: { name: 'Yakut', vintage: null, masterWineId: 'w1', active: true, housePrice: 95 },
+    dormant: false,
+    menuPrice: 80,
+    markers: ['menu_differs'],
+    advice: null,
+    adviceUnknownReason: null,
+  };
+  afterEach(() => {
+    vi.mocked(listPriceLocks).mockResolvedValue(noLocks());
+    vi.mocked(changeLockedPrice).mockReset();
+  });
+
+  it('an owner keeps the house price: the menu line is corrected to it', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(twoPrices());
+    mockReview.mockResolvedValue({ menuItemId: 'a', fieldName: 'bottle_price', newValue: '95', priceSync: 'unchanged' });
+    mount();
+    fireEvent.click(await screen.findByTestId('price-pick-keep-bottle'));
+    await waitFor(() => expect(mockReview).toHaveBeenCalledWith('a', 'bottle_price', '95'));
+    expect(await screen.findByText(/The menu now says .*95.*, the price the house charges\./)).toHaveAttribute('role', 'status');
+  });
+
+  it("an owner takes the menu's price: the house price is set to it through the line", async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(twoPrices());
+    mockReview.mockResolvedValue({ menuItemId: 'a', fieldName: 'bottle_price', newValue: '80', priceSync: 'changed' });
+    mount();
+    fireEvent.click(await screen.findByTestId('price-pick-menu-bottle'));
+    await waitFor(() => expect(mockReview).toHaveBeenCalledWith('a', 'bottle_price', '80'));
+    expect(await screen.findByText(/The house now charges .*80.*, as the menu says\./)).toBeInTheDocument();
+  });
+
+  it("a locked price says 'Locked at X — the menu says Y', and the menu's price changes the lock, kept locked", async () => {
+    auth.role = 'manager';
+    vi.mocked(listPriceLocks).mockResolvedValue(noLocks([lockAt95]));
+    vi.mocked(changeLockedPrice).mockResolvedValue({
+      outcome: 'changed_and_locked',
+      lock: { lockId: 'lk-2', inventoryId: 'inv-1', kind: 'bottle', lockedPrice: 80 },
+      previousLockId: 'lk-1',
+      housePrice: 80,
+      sentence: 'The bottle price is now 80.00 and stays locked.',
+    });
+    mockGetMenu.mockResolvedValue(twoPrices());
+    mount();
+    const row = (await screen.findAllByTestId('menu-row'))[0];
+    await waitFor(() =>
+      expect(row.querySelector('[data-testid="menu-house-price-bottle"]')?.textContent).toMatch(/^Locked at .*95.* — the menu says .*80/),
+    );
+    fireEvent.click(within(row).getByTestId('price-pick-menu-bottle'));
+    await waitFor(() => expect(vi.mocked(changeLockedPrice)).toHaveBeenCalledWith('lk-1', 80, "picked the menu's price on Menu"));
+    expect(mockReview).not.toHaveBeenCalled();
+    expect(await screen.findByText('The bottle price is now 80.00 and stays locked.')).toBeInTheDocument();
+  });
+
+  it('staff read both prices and get no pick', async () => {
+    auth.role = 'staff';
+    mockGetMenu.mockResolvedValue(twoPrices());
+    mount();
+    const row = (await screen.findAllByTestId('menu-row'))[0];
+    expect(row.querySelector('[data-testid="menu-house-price-bottle"]')?.textContent).toMatch(/the menu says/);
+    expect(within(row).queryByTestId('price-pick-keep-bottle')).toBeNull();
+    expect(within(row).queryByTestId('price-pick-menu-bottle')).toBeNull();
   });
 });
 
