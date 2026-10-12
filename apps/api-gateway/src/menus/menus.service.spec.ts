@@ -2379,14 +2379,22 @@ describe("MenusService — every menu read is kept as its own version", () => {
     });
 
     it("a blank bottle price keeps the house's last known 60.00 and FLAGS the line (founder answer 3)", async () => {
-      const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", by_glass_price: 15 }]);
+      const { calls, tables, service, read } = await readThenChoose([
+        { name: "Opus One", by_glass_price: 15 },
+      ]);
       const r = await choose(service, read.menuId);
       const price = calls.filter(([fn]) => fn === "set_house_menu_price");
-      expect(price[0][1]).toMatchObject({ p_set_bottle: false, p_set_glass: true, p_glass_price: 15 });
+      expect(price[0][1]).toMatchObject({
+        p_set_bottle: false,
+        p_set_glass: true,
+        p_glass_price: 15,
+      });
       expect(r.flagged).toBe(1);
       expect(tables.menu_items[0].price_flag).toBe("blank_kept_last_known");
       // Past tense: the note must stay true after a manager changes the price.
-      expect(tables.menu_items[0].price_flag_note).toMatch(/no bottle price, so the house kept the bottle price 60\.00 it already had/);
+      expect(tables.menu_items[0].price_flag_note).toMatch(
+        /no bottle price, so the house kept the bottle price 60\.00 it already had/,
+      );
     });
 
     it("the kept price in the flag note is in the house's money and marks (F-1174)", async () => {
@@ -2402,7 +2410,9 @@ describe("MenusService — every menu read is kept as its own version", () => {
     });
 
     it("a blank kind the house never priced is not flagged: nothing is kept, nothing is unclear", async () => {
-      const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      const { tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64 },
+      ]);
       const r = await choose(service, read.menuId);
       expect(r.flagged).toBe(0);
       expect(tables.menu_items[0].price_flag).toBeNull();
@@ -2411,10 +2421,15 @@ describe("MenusService — every menu read is kept as its own version", () => {
     it("choosing the menu that is already current changes nothing and writes no price", async () => {
       const calls: RpcCall[] = [];
       const tables: Record<string, Row[]> = base();
-      const service = makeService(tables, { rpcCalls: calls, rpc: makeCurrentRpc(tables) });
+      const service = makeService(tables, {
+        rpcCalls: calls,
+        rpc: makeCurrentRpc(tables),
+      });
       const r = await choose(service, "menu-old");
       expect(r.outcome).toBe("already_current");
-      expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
+      expect(
+        calls.filter(([fn]) => fn === "set_house_menu_price"),
+      ).toHaveLength(0);
     });
 
     it("F-681: a menu with no lines is not made current; the house's menu stays", async () => {
@@ -2450,12 +2465,18 @@ describe("MenusService — every menu read is kept as its own version", () => {
     it("another house's menu id is a 404", async () => {
       const tables: Record<string, Row[]> = base();
       const service = makeService(tables, { rpc: makeCurrentRpc(tables) });
-      await expect(service.makeCurrent("rest-2", "menu-old", "user-2", "any-fingerprint")).rejects.toBeInstanceOf(NotFoundException);
-      await expect(service.planFor("rest-2", "menu-old")).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.makeCurrent("rest-2", "menu-old", "user-2", "any-fingerprint"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.planFor("rest-2", "menu-old"),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it("a failed read of the menu's lines changes NOTHING: the switch is not made, so it can be tried again", async () => {
-      const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      const { calls, tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64 },
+      ]);
       const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
       (tables as any).__readFails = [{ menu_items: "statement timeout" }];
       await expect(service.makeCurrent("rest-1", read.menuId, "user-2", fp)).rejects.toThrow(/statement timeout/);
