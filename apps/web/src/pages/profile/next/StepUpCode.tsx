@@ -34,8 +34,17 @@ export interface StepUp {
   /** True when `e` asked for a code: one is emailed and the field shows. */
   asked: (e: unknown) => boolean;
   reset: () => void;
+  /**
+   * F-1395: after any other refusal, clears a typed code so the next try asks
+   * for a fresh one. Returns the sentence to add to the refusal, or '' when no
+   * code was in play.
+   */
+  clearAfterRefusal: () => string;
   error: string | null;
 }
+
+/** Said after a refusal that cleared the code (F-1395). */
+const CODE_CLEARED = ' The code was cleared: try again and we will email you a new one.';
 
 export function useStepUpCode(): StepUp {
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -75,6 +84,13 @@ export function useStepUpCode(): StepUp {
       setSentTo(null);
       setCode('');
       setError(null);
+    },
+    clearAfterRefusal: () => {
+      if (sentTo === null) return '';
+      setSentTo(null);
+      setCode('');
+      setError(null);
+      return CODE_CLEARED;
     },
     error,
   };

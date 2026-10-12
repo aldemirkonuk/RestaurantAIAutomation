@@ -10,7 +10,10 @@ import { AppModule } from "../app.module";
 import { DatabaseService } from "../database/database.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { TeamService } from "../team/team.service";
-import { CODE_REFUSAL } from "../passkeys/sign-in-codes.service";
+import {
+  CODE_REFUSAL,
+  SignInCodesService,
+} from "../passkeys/sign-in-codes.service";
 import {
   asDatabaseService,
   defaultRpc,
@@ -490,6 +493,8 @@ describe("leave and delete account reach THE removal over the real routes (ADR 0
   });
 
   it("DELETE /auth/me/link/:provider on an old sign-in with no code is refused 403 STEP_UP_REQUIRED", async () => {
+    // Another way in, so the unlink's own "only sign-in" refusal does not answer first.
+    db.tables.users.find((u) => u.user_id === STAFF)!.password_hash = "hash";
     const res = await call("DELETE", "/auth/me/link/google", {
       user: STAFF,
       authTime: ELEVEN_MINUTES_AGO(),
@@ -497,6 +502,51 @@ describe("leave and delete account reach THE removal over the real routes (ADR 0
 
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ code: "STEP_UP_REQUIRED" });
+  });
+
+  // F-1395: the delete's and the unlink's own refusals answer before the code
+  // is checked, so they never spend it and the retry is not refused on it.
+  it("DELETE /auth/me by the only owner of a house is refused as that, and the typed code is not checked or spent", async () => {
+    const verifyStepUp = jest.spyOn(
+      SignInCodesService.prototype,
+      "verifyStepUp",
+    );
+    try {
+      const res = await call(
+        "DELETE",
+        "/auth/me",
+        { user: OWNER, authTime: ELEVEN_MINUTES_AGO() },
+        { emailCode: "123456" },
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/only owner of a restaurant/);
+      expect(verifyStepUp).not.toHaveBeenCalled();
+      expect(db.tables.users.some((u) => u.user_id === OWNER)).toBe(true);
+    } finally {
+      verifyStepUp.mockRestore();
+    }
+  });
+
+  it("DELETE /auth/me/link/:provider on the only sign-in is refused as that, and the typed code is not checked or spent", async () => {
+    const verifyStepUp = jest.spyOn(
+      SignInCodesService.prototype,
+      "verifyStepUp",
+    );
+    try {
+      const res = await call(
+        "DELETE",
+        "/auth/me/link/google",
+        { user: STAFF, authTime: ELEVEN_MINUTES_AGO() },
+        { emailCode: "123456" },
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/only sign-in method/);
+      expect(verifyStepUp).not.toHaveBeenCalled();
+    } finally {
+      verifyStepUp.mockRestore();
+    }
   });
 
   it("DELETE /auth/me leaves every house through the same removal before the account goes", async () => {

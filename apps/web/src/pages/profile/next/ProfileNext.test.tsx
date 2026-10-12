@@ -1540,6 +1540,67 @@ describe('ProfileNext — proof it is you (F-1347) and plain refusals (F-1348)',
     ).toBeInTheDocument();
     expect(screen.queryByText(/status code/)).not.toBeInTheDocument();
   });
+
+  // F-1395: a refusal that is not "confirm it is you" clears the typed code,
+  // and the next try asks for a fresh one instead of resending the old one.
+  const ownerRefusal = () =>
+    new AxiosError('Request failed with status code 400', '400', undefined, undefined, {
+      status: 400,
+      data: { message: 'You are the only owner of a restaurant. Nothing was deleted.', statusCode: 400 },
+    } as never);
+
+  it('clears the code after a delete refused for another reason, and the next hold asks for a new code', async () => {
+    const deleteAccount = vi.fn((code?: string) =>
+      Promise.reject(code ? ownerRefusal() : stepUpRefusal()),
+    );
+    mockData.current = base({ deleteAccount });
+    draw();
+    fireEvent.change(screen.getByLabelText('Type DELETE to arm the seal'), {
+      target: { value: 'DELETE' },
+    });
+    const hold = () => screen.getByRole('button', { name: 'Hold to delete this account' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    fireEvent.change(await screen.findByLabelText('The code we emailed you'), {
+      target: { value: '123456' },
+    });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+
+    expect(
+      await screen.findByText(/only owner of a restaurant\. Nothing was deleted\. The code was cleared/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('The code we emailed you')).not.toBeInTheDocument();
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    fireEvent.keyDown(hold(), { key: 'Enter' });
+    await waitFor(() => expect(deleteAccount).toHaveBeenCalledTimes(3));
+    expect(deleteAccount).toHaveBeenLastCalledWith(undefined);
+  }, 20_000);
+
+  it('clears the code after an unlink refused for another reason', async () => {
+    const unlinkProvider = vi.fn((_p: string, code?: string) =>
+      Promise.reject(
+        code
+          ? new AxiosError('Request failed with status code 400', '400', undefined, undefined, {
+              status: 400,
+              data: { message: 'Cannot unlink your only sign-in method. Set a password first.', statusCode: 400 },
+            } as never)
+          : stepUpRefusal(),
+      ),
+    );
+    mockData.current = base({ unlinkProvider });
+    draw();
+    fireEvent.click(within(rowFor('Google')).getByRole('button', { name: 'Unlink' }));
+    fireEvent.change(await screen.findByLabelText('The code we emailed you'), {
+      target: { value: '111222' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink Google' }));
+
+    expect(
+      await screen.findByText(/only sign-in method\. Set a password first\. The code was cleared/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('The code we emailed you')).not.toBeInTheDocument();
+  });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
