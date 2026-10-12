@@ -1893,10 +1893,14 @@ export class AuthService {
             postal_code: dto.postalCode,
             neighborhood: dto.neighborhood,
             phone: dto.restaurantPhone,
-            // ADR 0304 PR-2 (F-1519): the address's zone, else the device's
-            // when it is one of the country's own clocks, else none — each
-            // written with its source. Item 62's "browser zone, else none"
-            // is now the second and third steps. See sign-up-timezone.ts.
+            // ADR 0304 PR-2 (F-1519): the country's own zone; else, with no
+            // country or one `Intl` lists no zones for, the device's; else
+            // the device's when it is one of the country's or its listed
+            // territories' clocks (TERRITORIES); else none. The device's
+            // also stands over the country's own when it is one of those
+            // territories' clocks. Each is written with its source. Item 62's
+            // "browser zone, else none" is now the steps after the country.
+            // See newHouseZone in sign-up-timezone.ts.
             timezone: zone.timezone,
             timezone_source: zone.timezone_source,
             timezone_source_zone: zone.timezone_source_zone,
@@ -2064,9 +2068,13 @@ export class AuthService {
             // ADR 0116 removed from the column itself
             // (`20260903170000_a_default_is_not_an_answer.sql` dropped the
             // DEFAULT and left the column nullable). ADR 0304 PR-2 (F-1519)
-            // puts the address first: the country's own zone, else the
-            // device's when it is one of that country's clocks, else NULL,
-            // each written with its source. See sign-up-timezone.ts.
+            // puts the address first: the country's own zone; else, with no
+            // country or one `Intl` lists no zones for, the device's; else
+            // the device's when it is one of the country's or its listed
+            // territories' clocks (TERRITORIES); else NULL. The device's
+            // also stands over the country's own when it is one of those
+            // territories' clocks. Each is written with its source. See
+            // newHouseZone in sign-up-timezone.ts.
             timezone: zone.timezone,
             timezone_source: zone.timezone_source,
             timezone_source_zone: zone.timezone_source_zone,

@@ -9,9 +9,13 @@ import { isKnownTimeZone } from "../calendar/reminder-window";
  *
  * [Amended 2026-10-12 by ADR 0304 PR-2 (F-1519): the two sign-up routes no
  * longer write this function's answer directly. They write
- * `newHouseZoneColumns` (below): the address's zone first, then the browser's
- * when it is one of the country's own clocks, then none, each with its
- * source. This function still validates the browser's zone inside that.]
+ * `newHouseZoneColumns` (below), which follows `newHouseZone`: the
+ * country's own zone; else, when there is no country or `Intl` lists no
+ * zones for it, the browser's; else the browser's when it is one of the
+ * country's or its listed territories' clocks (`TERRITORIES`, below);
+ * else none. The browser's also stands over the country's own when it is
+ * one of those territories' clocks. Each is written with its source. This
+ * function still validates the browser's zone inside that.]
  *
  * `registerRestaurant` (auth.service.ts) wrote `dto.timezone || "America/New
  * York"` until this change: an application-level re-invention of the exact

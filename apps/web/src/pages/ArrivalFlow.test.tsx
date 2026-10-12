@@ -32,6 +32,16 @@ const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, revie
 }))
 
 const sonnerToast = vi.hoisted(() => vi.fn())
+// null: the real browser zone; undefined: this device gives none (F-1519).
+const deviceZone = vi.hoisted(() => ({ value: null as string | undefined | null }))
+vi.mock('../lib/browserTimezone', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/browserTimezone')>()
+  return {
+    ...actual,
+    getBrowserTimezone: () =>
+      deviceZone.value === null ? actual.getBrowserTimezone() : deviceZone.value,
+  }
+})
 vi.mock('sonner', async (importOriginal) => {
   const actual = await importOriginal<typeof import('sonner')>()
   return { ...actual, toast: Object.assign(sonnerToast, actual.toast) }
@@ -910,10 +920,25 @@ describe('a new owner is told what each step does, and a reload resumes it', () 
   it('says the timezone comes from the address first, then this device (F-003, F-1519)', async () => {
     await toRestaurantStep()
     expect(screen.queryByText(/The timezone is this device's clock, not the address's/)).not.toBeInTheDocument()
-    expect(screen.getByText('Timezone · from the address')).toBeInTheDocument()
+    expect(screen.queryByText('Timezone · from the address')).not.toBeInTheDocument()
+    expect(screen.getByText("Timezone · the country's clock, else this device's, else none")).toBeInTheDocument()
     expect(
       screen.getByText(/The house takes the clock its country keeps/),
-    ).toHaveTextContent(/this device's .* if it is one of them.*Change it in Settings once the house is open/)
+    ).toHaveTextContent(/Where the country keeps several clocks, it takes this device's \(.+\) only if it is one of them, and otherwise none; where the country is not one Mudavym can read clocks for, it takes this device's\..*one of their listed territories is taken instead.*Change it in Settings once the house is open/)
+  })
+
+  it('says none is set where the country keeps several clocks and this device gives no zone (F-1519)', async () => {
+    deviceZone.value = undefined
+    try {
+      await toRestaurantStep()
+      expect(screen.getByText("Timezone · the country's clock, else none")).toBeInTheDocument()
+      expect(screen.queryByText("Timezone · the country's clock, else this device's, else none")).not.toBeInTheDocument()
+      expect(
+        screen.getByText(/The house takes the clock its country keeps/),
+      ).toHaveTextContent(/This device did not give a timezone, so where the country keeps several clocks, or is not one Mudavym can read clocks for, none is set/)
+    } finally {
+      deviceZone.value = null
+    }
   })
 
   it('says how to go on when the restaurant is not on Google yet (F-005)', async () => {

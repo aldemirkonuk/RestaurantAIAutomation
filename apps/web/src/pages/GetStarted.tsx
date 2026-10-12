@@ -597,14 +597,18 @@ function GetStartedSteps() {
             </div>
           </div>
           <div className="border-y border-[#211f1b]/15 py-4 text-sm">
-            <span>Timezone · from the address</span>
-            {/* ADR 0304 PR-2 (F-1519): the gateway takes the country's own
-                clock first, then this device's when it is one of that
-                country's clocks, then none. */}
+            <span>{timezone ? "Timezone · the country's clock, else this device's, else none" : "Timezone · the country's clock, else none"}</span>
+            {/* ADR 0304 PR-2 (F-1519), newHouseZone in the gateway's
+                sign-up-timezone.ts: the country's own clock; else, with no
+                country or one whose clocks are not listed, this device's;
+                else this device's when it is one of the country's or its
+                listed territories' clocks (TERRITORIES); else none. This
+                device's also stands over the country's own when it is on
+                one of those territories' clocks. */}
             <p className="mt-2 text-xs text-[#6d685f]">
               {timezone
-                ? `The house takes the clock its country keeps. Where the country keeps several, it takes this device's (${timezone}) if it is one of them, and otherwise none. Change it in Settings once the house is open.`
-                : "The house takes the clock its country keeps. This device did not give a timezone, so where the country keeps several, set the restaurant's in Settings once the house is open."}
+                ? `The house takes the clock its country keeps. Where the country keeps several clocks, it takes this device's (${timezone}) only if it is one of them, and otherwise none; where the country is not one Mudavym can read clocks for, it takes this device's. For France, the Netherlands, Denmark, the UK and Türkiye, a device on the clock of one of their listed territories is taken instead. Change it in Settings once the house is open.`
+                : "The house takes the clock its country keeps. This device did not give a timezone, so where the country keeps several clocks, or is not one Mudavym can read clocks for, none is set: set the restaurant's in Settings once the house is open."}
             </p>
           </div>
           <CurrencyStep country={country} choice={currencyChoice} onChange={setCurrencyChoice} />
