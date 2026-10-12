@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { readHouseMoney } from "../common/house-money";
 import { DatabaseService } from "../database/database.service";
+import { lineIsDrink, RAW_LINE_COLUMN } from "../menus/menu-line-view";
 import { MarginAdviceService, type InventoryPriceRow } from "./margin-advice.service";
 import { fmtMoney, type HouseMoneyTerms } from "./margin-to-target";
 import { confirmedPourFrom, readHouseTargetMargin, targetsFrom } from "./target-margin.service";
@@ -76,6 +77,16 @@ export interface LockView {
   dormant: boolean | null;
   /** The current menu's price for this kind of this wine, when it lists one. */
   menuPrice: number | null;
+  /**
+   * Each live line that lists this wine, naming its menu and that menu's kind
+   * (ADR 0340 rule 25), with its price of the lock's kind. [] = on no live
+   * menu; null = UNKNOWN, as `dormant`.
+   */
+  onMenus: Array<{
+    menuId: string;
+    kind: string | null;
+    price: number | null;
+  }> | null;
   markers: LockMarker[];
   /** The advice for this kind at the held price, when it could be computed. */
   advice: { state: string; sentence: string; advisedPrice: number | null; gapPct: number | null } | null;
@@ -282,13 +293,22 @@ export class PriceLocksService {
       // Unknown until both the current menu and this lock's wine were read.
       let dormant: boolean | null = null;
       let menuPrice: number | null = null;
+      let onMenus: LockView["onMenus"] = null;
       if (!menus.error) {
         if (menus.menus.length === 0) {
           markers.push("no_current_menu");
           dormant = true;
+          onMenus = [];
         } else {
           const onMenu = master ? menus.lines.filter((x) => x.wineLibraryId === master) : [];
-          if (w) dormant = onMenu.length === 0;
+          if (w) {
+            dormant = onMenu.length === 0;
+            onMenus = onMenu.map((x) => ({
+              menuId: x.menuId,
+              kind: x.kind,
+              price: l.kind === "bottle" ? x.bottle : x.glass,
+            }));
+          }
           if (dormant === true) markers.push("not_on_current_menu");
           const prices = onMenu
             .map((x) => (l.kind === "bottle" ? x.bottle : x.glass))
@@ -338,6 +358,7 @@ export class PriceLocksService {
         },
         dormant,
         menuPrice,
+        onMenus,
         markers,
         advice,
         adviceUnknownReason,
@@ -563,30 +584,60 @@ export class PriceLocksService {
     return `The lock is released. ${stays}; nothing else changed.`;
   }
 
-  /** The current menu(s) of this house and their live lines, keyset-paged. A failed page is an error. */
+  /**
+   * The current menu(s) of this house and their live DRINK lines, keyset-paged.
+   * A failed page is an error. Every live menu is read, of any kind; a line
+   * counts only when `lineIsDrink` says so on its menu's kind (ADR 0340 rule
+   * 25), so a dish on the Food menu never makes a lock "on the menu" and a
+   * dessert wine on Desserts does. Each line names its menu and kind. The raw
+   * line is read for that test only and never kept.
+   */
   async currentMenuLines(restaurantId: string): Promise<{
     menus: Array<{ menuId: string; name: string | null }>;
-    lines: Array<{ wineLibraryId: string | null; bottle: number | null; glass: number | null }>;
+    lines: Array<{
+      menuId: string;
+      kind: string | null;
+      wineLibraryId: string | null;
+      bottle: number | null;
+      glass: number | null;
+    }>;
     error: string | null;
   }> {
     const client = this.databaseService.client;
     const { data: menuRows, error: menuErr } = await client
       .from("restaurant_menus")
-      .select("id, name")
+      .select("id, name, menu_type")
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
     if (menuErr) return { menus: [], lines: [], error: menuErr.message };
-    const menus = ((menuRows ?? []) as Array<{ id: string; name?: string | null }>).map((m) => ({
-      menuId: m.id,
-      name: m.name ?? null,
-    }));
-    const lines: Array<{ wineLibraryId: string | null; bottle: number | null; glass: number | null }> = [];
+    const read = (menuRows ?? []) as Array<{
+      id: string;
+      name?: string | null;
+      menu_type?: string | null;
+    }>;
+    const menus = read.map((m) => ({ menuId: m.id, name: m.name ?? null }));
+    const kindOf = new Map(
+      read.map((m) => [
+        m.id,
+        typeof m.menu_type === "string" ? m.menu_type : null,
+      ]),
+    );
+    const lines: Array<{
+      menuId: string;
+      kind: string | null;
+      wineLibraryId: string | null;
+      bottle: number | null;
+      glass: number | null;
+    }> = [];
     for (const m of menus) {
+      const kind = kindOf.get(m.menuId) ?? null;
       let after: string | null = null;
       for (;;) {
         let q = client
           .from("menu_items")
-          .select("id, wine_library_id, bottle_price, by_glass_price")
+          .select(
+            "id, wine_library_id, bottle_price, by_glass_price, line_kind, category, raw_extracted_text",
+          )
           .eq("menu_id", m.menuId)
           .eq("restaurant_id", restaurantId)
           .neq("status", "discarded");
@@ -595,7 +646,20 @@ export class PriceLocksService {
         if (error) return { menus, lines: [], error: error.message };
         const rows = (data ?? []) as Array<Record<string, unknown>>;
         for (const r of rows) {
+          if (
+            !lineIsDrink(
+              {
+                line_kind: r.line_kind,
+                category: r.category,
+                raw: r[RAW_LINE_COLUMN],
+              },
+              kind,
+            )
+          )
+            continue;
           lines.push({
+            menuId: m.menuId,
+            kind,
             wineLibraryId: typeof r.wine_library_id === "string" ? r.wine_library_id : null,
             bottle: num(r.bottle_price),
             glass: num(r.by_glass_price),

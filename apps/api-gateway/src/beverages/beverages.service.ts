@@ -1346,7 +1346,9 @@ export class BeveragesService {
    * counted the archived copy of the same menu too and printed each line
    * twice (A-028). The read is paged whole, so the old unordered 400-line
    * slice is gone from this book. A discarded line stays out (ADR 0160
-   * sec110 item 7).
+   * sec110 item 7). Only drink lines are read (ADR 0340 rule 25, `drinks:
+   * true`): a dish on the Food menu whose name matches a drink's label is not
+   * that drink on the menu, and a dessert wine on Desserts is.
    */
   private async readMenuLines(
     restaurantId: string,
@@ -1358,6 +1360,7 @@ export class BeveragesService {
       current = await readCurrentMenuLines(
         this.dbService.getClient(),
         restaurantId,
+        { drinks: true },
       );
     } catch (e) {
       return this.failed("menu", source, {

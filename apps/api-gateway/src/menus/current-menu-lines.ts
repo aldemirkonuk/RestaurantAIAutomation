@@ -1,4 +1,5 @@
 import { readAll, type Row } from "../providers/vendor-menu-supply";
+import { lineIsDrink, RAW_LINE_COLUMN } from "./menu-line-view";
 
 /**
  * The lines on this house's CURRENT menu — the one read the cellar's menu
@@ -40,6 +41,15 @@ import { readAll, type Row } from "../providers/vendor-menu-supply";
  */
 export const CURRENT_MENU_LINE_COLUMNS =
   "id, menu_id, name, producer, category, bottle_price, by_glass_price, created_at, section_id, position, line_kind, drink_category, price";
+
+/**
+ * The line columns a DRINK reader needs (ADR 0340 rule 25): the columns above,
+ * plus the raw line, read only so `lineIsDrink` can run its legacy kitchen
+ * test and dropped before a row is returned. A const so
+ * check_read_columns_exist.py checks it.
+ */
+export const CURRENT_DRINK_LINE_COLUMNS =
+  "id, menu_id, name, producer, category, bottle_price, by_glass_price, created_at, section_id, position, line_kind, drink_category, price, raw_extracted_text";
 
 /**
  * The kinds a house can make live (ADR 0340 rule 1), in the default reading
@@ -121,10 +131,22 @@ export interface CurrentMenuLines {
   rows: Row[];
 }
 
+/**
+ * `drinks: true` makes this a DRINK reader (ADR 0340 rule 25): every live
+ * menu of any kind is read (`menu_type` first), then a line stays only when
+ * `lineIsDrink` says so on its own menu's kind, so a dessert wine stored as a
+ * drink on Desserts is read and a dish on Food is not, while a line with no
+ * stored kind on a Drinks menu keeps today's rule exactly. The raw line is
+ * read for that test and never returned. `currentMenus` still counts every
+ * live menu. The effective category (rule 7), the step after `lineIsDrink`,
+ * is not applied here yet: each row keeps its own `drink_category`,
+ * `section_id` and `category`, and the cellar still places a line by its
+ * words (owed: ADR 0340, Lane 4 corrections).
+ */
 export async function readCurrentMenuLines(
   db: any,
   restaurantId: string,
-  opts: { kinds?: readonly string[] } = {},
+  opts: { kinds?: readonly string[]; drinks?: boolean } = {},
 ): Promise<CurrentMenuLines> {
   const menus = await readCurrentMenuRows(db, restaurantId, opts.kinds);
   const menuIds = menus.map((m) => m.id);
@@ -134,9 +156,12 @@ export async function readCurrentMenuLines(
   const rows = await readAll(
     "The current menu's lines (menu_items)",
     (after) => {
-      let q = db
-        .from("menu_items")
-        .select(CURRENT_MENU_LINE_COLUMNS)
+      // Two literal selects, so the read-columns guard can check each list.
+      let q = (
+        opts.drinks
+          ? db.from("menu_items").select(CURRENT_DRINK_LINE_COLUMNS)
+          : db.from("menu_items").select(CURRENT_MENU_LINE_COLUMNS)
+      )
         .in("menu_id", menuIds)
         .eq("restaurant_id", restaurantId)
         .neq("status", "discarded");
@@ -144,11 +169,24 @@ export async function readCurrentMenuLines(
       return q;
     },
   );
+  const withKind: Row[] = rows.map((r) => ({
+    ...r,
+    menu_type: kindOf.get(String(r.menu_id)) ?? null,
+  }));
+  if (!opts.drinks) return { currentMenus: menuIds.length, rows: withKind };
+
+  const drinks = withKind.filter((r) =>
+    lineIsDrink(
+      { line_kind: r.line_kind, category: r.category, raw: r[RAW_LINE_COLUMN] },
+      typeof r.menu_type === "string" ? r.menu_type : null,
+    ),
+  );
   return {
     currentMenus: menuIds.length,
-    rows: rows.map((r) => ({
-      ...r,
-      menu_type: kindOf.get(String(r.menu_id)) ?? null,
-    })),
+    rows: drinks.map((r) => {
+      const kept: Row = { ...r };
+      delete kept[RAW_LINE_COLUMN];
+      return kept;
+    }),
   };
 }

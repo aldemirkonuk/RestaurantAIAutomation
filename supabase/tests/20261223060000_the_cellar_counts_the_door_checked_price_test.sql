@@ -327,7 +327,11 @@ begin
 end $$;
 
 -- T12 the signature is unchanged and the 31 columns keep their names and
--- places; the three door columns come after them.
+-- places; the three door columns come after them. [CORRECTED 2026-10-12,
+-- the_ledger_reads_drink_lines_and_names_two_prices (ADR 0340 rule 25):
+-- that migration appends a 35th column, menu_price_conflict, after these
+-- 34, so this block pins at least 34 and the 35th is pinned by that
+-- migration's own test (T8); was "ncols = 34".]
 do $$
 declare args text; names text[]; ncols integer;
 begin
@@ -338,7 +342,7 @@ begin
     from pg_proc p
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer', format('T12 FAIL the signature changed: %s', args);
-  assert ncols = 34, format('T12 FAIL the return shape has %s columns, expected 34', ncols);
+  assert ncols >= 34, format('T12 FAIL the return shape has %s columns, expected at least 34', ncols);
   assert names[1:31] = array['house_key','label','books','first_seen','menu_lines','menu_bottle_price',
     'menu_glass_price','menu_sections','invoice_lines','first_bought','last_bought','bottles_bought',
     'paid_total','last_unit_price','last_bought_from','order_lines','last_ordered_at','last_order_price',

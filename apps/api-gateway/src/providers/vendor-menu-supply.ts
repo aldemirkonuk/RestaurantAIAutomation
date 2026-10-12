@@ -37,8 +37,14 @@
  *      that is empty for a reason it cannot say.
  *   5. A failed read throws. "Nobody supplies your menu" and "the price book
  *      did not answer" must never look the same.
+ *   6. Only DRINK lines are "my menu" (ADR 0340 rule 25). Every active menu is
+ *      read, of any kind (`menu_type` first); a line counts only when
+ *      `lineIsDrink` says so on its menu's kind, so a dish on the Food menu
+ *      never names a supplier and a dessert wine on Desserts does. The raw
+ *      line is read for that test only and never returned.
  */
 
+import { lineIsDrink, RAW_LINE_COLUMN } from "../menus/menu-line-view";
 import {
   ORDER_ARRIVED_STATUSES,
   ORDER_OPEN_WITH_VENDOR_STATUSES,
@@ -77,7 +83,7 @@ export interface VendorMenuSupply {
     menus: number;
     /** When the current menu became current (or was read, or is dated). */
     readAt: string | null;
-    /** Non-discarded lines on the active menu(s). */
+    /** Non-discarded DRINK lines on the active menu(s) (ADR 0340 rule 25). */
     lines: number;
     /** …of which carry a wine_library_id (food and unlinked lines do not). */
     linkedLines: number;
@@ -195,7 +201,7 @@ export async function readVendorMenuSupply(
   // 1. The current menu(s). Every active one, unioned (rule 3).
   const { data: menus, error: menuErr } = await db
     .from("restaurant_menus")
-    .select("id, made_current_at, extracted_at, menu_date")
+    .select("id, menu_type, made_current_at, extracted_at, menu_date")
     .eq("restaurant_id", restaurantId)
     .eq("status", "active");
   if (menuErr) {
@@ -214,17 +220,26 @@ export async function readVendorMenuSupply(
     });
   }
 
-  // 2. Its live lines.
-  const lines = await readAll("The current menu's lines", (after) => {
+  // 2. Its live DRINK lines (rule 6).
+  const kindOf = new Map(active.map((m) => [String(m.id), str(m.menu_type)]));
+  const read = await readAll("The current menu's lines", (after) => {
     let q = db
       .from("menu_items")
-      .select("id, wine_library_id")
+      .select(
+        "id, menu_id, wine_library_id, line_kind, category, raw_extracted_text",
+      )
       .in("menu_id", menuIds)
       .eq("restaurant_id", restaurantId)
       .neq("status", "discarded");
     if (after) q = q.gt("id", after);
     return q;
   });
+  const lines = read.filter((l) =>
+    lineIsDrink(
+      { line_kind: l.line_kind, category: l.category, raw: l[RAW_LINE_COLUMN] },
+      kindOf.get(String(l.menu_id)) ?? null,
+    ),
+  );
   const menuWines = new Set<string>();
   let linkedLines = 0;
   for (const l of lines) {

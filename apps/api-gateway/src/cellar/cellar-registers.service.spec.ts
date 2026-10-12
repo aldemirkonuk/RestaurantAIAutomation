@@ -233,10 +233,18 @@ describe("CellarRegistersService.read", () => {
     });
 
     const out = await service.read(RID);
-    expect(out.menuLines).toEqual({ read: 5, placed: 3, notPlaced: 2, currentMenus: 1 });
+    // [CHANGED 2026-10-12, ADR 0340 rule 25: the cellar reads DRINK lines
+    // only, so the Kitchen line (isKitchenLine) is not read: 4 read, 1 not
+    // placed; was 5 and 2.]
+    expect(out.menuLines).toEqual({
+      read: 4,
+      placed: 3,
+      notPlaced: 1,
+      currentMenus: 1,
+    });
     // The same pass: the placed lines are exactly the lines credited to a
     // register below, so the headline cannot drift from the body.
-    expect(out.sources.menu.rows).toBe(5);
+    expect(out.sources.menu.rows).toBe(4);
     expect(out.registers.find((r) => r.id === "wines")!.evidence.menuRows).toBe(2);
     expect(out.registers.find((r) => r.id === "beer")!.evidence.menuRows).toBe(1);
   });
@@ -432,16 +440,32 @@ describe("CellarRegistersService.readUnplaced", () => {
     expect(readout.menuLines).not.toBeNull();
     expect(unplaced.lines.length).toBe(readout.menuLines!.notPlaced);
     expect(unplaced.read).toBe(readout.menuLines!.read);
-    expect(unplaced.lines.map((l) => l.id)).toEqual(["m-3", "m-4", "m-7"]);
+    // [CHANGED 2026-10-12, ADR 0340 rule 25: m-3, the Kitchen line, is not a
+    // drink and is not read; was ["m-3", "m-4", "m-7"].]
+    expect(unplaced.lines.map((l) => l.id)).toEqual(["m-4", "m-7"]);
     expect(unplaced.restaurantId).toBe(RID);
   });
 
   it("sends only the id, section and name of each line", async () => {
     const service = await serviceWith(
-      tablesFor({ data: [{ id: "m-9", category: "Kitchen", name: "Bread", menu_id: "x", by_glass_price: 4 }] }),
+      // [CHANGED 2026-10-12, ADR 0340 rule 25: an unplaced DRINK line (a
+      // Kitchen line is no longer read); was "Kitchen" / "Bread".]
+      tablesFor({
+        data: [
+          {
+            id: "m-9",
+            category: "House Selection",
+            name: "Grilled halloumi",
+            menu_id: "x",
+            by_glass_price: 4,
+          },
+        ],
+      }),
     );
     const unplaced = await service.readUnplaced(RID);
-    expect(unplaced.lines).toEqual([{ id: "m-9", category: "Kitchen", name: "Bread" }]);
+    expect(unplaced.lines).toEqual([
+      { id: "m-9", category: "House Selection", name: "Grilled halloumi" },
+    ]);
   });
 
   it("reads the menu with the SAME query the readout's count is taken from", async () => {
@@ -590,7 +614,10 @@ describe("CellarRegistersService — only the CURRENT menu is on the menu (A-028
     { id: "l1", category: "Draft Beer", name: "Efes" },
     { id: "l2", category: "Draft Beer", name: "Tuborg" },
     { id: "l3", category: "Spirits", name: "Yeni Raki" },
-    { id: "l4", category: "Kitchen", name: "Mixed olives" },
+    // [CHANGED 2026-10-12, ADR 0340 rule 25: the unplaced line is one the
+    // drink rule keeps; a Kitchen line is no longer read. Was "Kitchen" /
+    // "Mixed olives".]
+    { id: "l4", category: "House Selection", name: "Grilled halloumi" },
   ];
   const on = (menuId: string, rows: FakeRow[], prefix: string): FakeRow[] =>
     rows.map((r) => ({
@@ -630,7 +657,9 @@ describe("CellarRegistersService — only the CURRENT menu is on the menu (A-028
     const { service } = await filteringService(tables);
     const readout = await service.read(RID);
     const unplaced = await service.readUnplaced(RID);
-    expect(unplaced.lines).toEqual([{ id: "a-l4", category: "Kitchen", name: "Mixed olives" }]);
+    expect(unplaced.lines).toEqual([
+      { id: "a-l4", category: "House Selection", name: "Grilled halloumi" },
+    ]);
     expect(unplaced.lines.length).toBe(readout.menuLines!.notPlaced);
     expect(unplaced.read).toBe(readout.menuLines!.read);
     expect(unplaced.currentMenus).toBe(1);
@@ -715,5 +744,88 @@ describe("CellarRegistersService — a cellar of more than 1,000 rows (F-1370)",
     expect(out.sources.inventory.readable).toBe(false);
     expect(out.sources.inventory.rows).toBeNull();
     expect(out.sources.inventory.reason).toMatch(/could not be read whole/);
+  });
+});
+
+/* ── only DRINK lines are the cellar's, on any live menu (ADR 0340 rule 25) ──
+   A house keeps one live menu per kind (Drinks, Food, Desserts). The cellar
+   reads every live menu, menu_type first, then keeps a line only when
+   lineIsDrink says so on that menu's kind. Placement is by words, as before
+   (the effective-category step is owed: ADR 0340, Lane 4 corrections).      */
+describe("CellarRegistersService — only DRINK lines, on any live menu (ADR 0340 rule 25)", () => {
+  const MENUS: FakeRow[] = [
+    {
+      id: "drinks",
+      restaurant_id: RID,
+      status: "active",
+      menu_type: "beverage",
+    },
+    { id: "food", restaurant_id: RID, status: "active", menu_type: "food" },
+    {
+      id: "desserts",
+      restaurant_id: RID,
+      status: "active",
+      menu_type: "desserts",
+    },
+  ];
+  const line = (id: string, menuId: string, over: FakeRow): FakeRow => ({
+    id,
+    menu_id: menuId,
+    restaurant_id: RID,
+    status: "approved",
+    line_kind: null,
+    drink_category: null,
+    section_id: null,
+    ...over,
+  });
+  const ITEMS: FakeRow[] = [
+    line("i1", "drinks", { category: "Draft Beer", name: "Efes" }),
+    line("i2", "drinks", { category: "Kitchen", name: "Mixed olives" }),
+    line("i3", "food", {
+      category: "Mains",
+      name: "Lamb shank",
+      line_kind: "dish",
+    }),
+    line("i4", "food", { category: "Wines", name: "Chablis" }),
+    line("i5", "desserts", {
+      category: "Sweet wines",
+      name: "Tokaji",
+      line_kind: "drink",
+      drink_category: "dessert",
+    }),
+    line("i6", "desserts", { category: "Puddings", name: "Baklava" }),
+    line("i7", "drinks", {
+      category: "House Selection",
+      name: "Pour of the day",
+    }),
+  ];
+  const tables = {
+    restaurant_cellar_registers: { rows: [] },
+    restaurant_inventory: { rows: [] },
+    restaurant_menus: { rows: MENUS },
+    menu_items: { rows: ITEMS },
+    cocktails: { count: 0 },
+  };
+
+  it("reads the drink lines of every live menu and never a dish, a kitchen line, or a kindless Food/Desserts line", async () => {
+    const { service } = await filteringService(tables);
+    const out = await service.read(RID);
+    // i1 Efes, i5 Tokaji (a drink on Desserts), i7 (a drink nobody placed).
+    expect(out.menuLines).toEqual({
+      read: 3,
+      placed: 2,
+      notPlaced: 1,
+      currentMenus: 3,
+    });
+    expect(out.registers.find((r) => r.id === "beer")!.evidence.menuRows).toBe(
+      1,
+    );
+    expect(out.registers.find((r) => r.id === "wines")!.evidence.menuRows).toBe(
+      1,
+    );
+    const unplaced = await service.readUnplaced(RID);
+    expect(unplaced.lines).toEqual([
+      { id: "i7", category: "House Selection", name: "Pour of the day" },
+    ]);
   });
 });

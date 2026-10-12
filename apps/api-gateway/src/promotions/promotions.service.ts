@@ -351,6 +351,30 @@ function isoDate(d: Date): string {
 }
 
 /**
+ * The current-menu lines an offer is scoped against: DRINK lines only (ADR
+ * 0340 rule 25). Every live menu is read, of any kind; a line the menus
+ * service marks `kitchen_line: true` (not a drink by `lineIsDrink` on its
+ * menu's kind) is dropped, so a dish on the Food menu never makes an offer
+ * "on my menu" and a dessert wine on the Desserts menu does.
+ */
+export function offerMenuLines(
+  lines: ReadonlyArray<Record<string, unknown> & { menu_id: string }>,
+): CurrentMenuLine[] {
+  return lines
+    .filter((l) => l.kitchen_line !== true)
+    .map((l) => ({
+      id: String(l.id),
+      menuId: l.menu_id,
+      name: typeof l.name === "string" ? l.name : null,
+      category: typeof l.category === "string" ? l.category : null,
+      wineLibraryId:
+        typeof l.wine_library_id === "string" && l.wine_library_id
+          ? l.wine_library_id
+          : null,
+    }));
+}
+
+/**
  * The calendar date at `now` on the house's clock. An offer runs through its
  * last day where the house is, not where UTC is: on UTC's date a Los Angeles
  * offer ended at 5 PM on its last day (F-260). No zone: UTC's date, as before.
@@ -542,14 +566,9 @@ export class PromotionsService {
 
     // 3b. The house's CURRENT menu(s) — active versions only, every line
     //     (MenusService pages them), several actives unioned (F1/F2).
+    //     Only DRINK lines count (ADR 0340 rule 25): `offerMenuLines`.
     const current = await this.menusService.readCurrentMenus(restaurantId);
-    const menuLines: CurrentMenuLine[] = current.lines.map((l) => ({
-      id: String(l.id),
-      menuId: l.menu_id,
-      name: typeof l.name === "string" ? l.name : null,
-      category: typeof l.category === "string" ? l.category : null,
-      wineLibraryId: typeof l.wine_library_id === "string" && l.wine_library_id ? l.wine_library_id : null,
-    }));
+    const menuLines = offerMenuLines(current.lines);
     const shelfIndex = indexShelf(shelf);
     const menuIndex = indexMenu(menuLines);
 

@@ -503,6 +503,15 @@ export class CellarRegistersService {
    * now infers `carried: false` with the basis "nothing on this menu", where
    * it used to infer `carried: true` from the draft's lines. /vendors and
    * price locks already read the current menu the same way.
+   *
+   * ONLY DRINK LINES (ADR 0340 rule 25). Every live menu is read, of any
+   * kind, and a line is counted only when `lineIsDrink` says so on its own
+   * menu's kind (`drinks: true`). So a dish on the Food menu is neither read
+   * nor "not placed", a dessert wine stored as a drink on Desserts is, and a
+   * line with no stored kind on a Drinks menu follows the legacy rule
+   * (`isKitchenLine`): a line it calls a kitchen line ("Kitchen · Bread")
+   * leaves `read` and `notPlaced` too. Placement is unchanged
+   * (`placeMenuLine`, by words).
    */
   private async readMenuRows(restaurantId: string): Promise<{
     rows: MenuItemRow[];
@@ -513,6 +522,7 @@ export class CellarRegistersService {
       const current = await readCurrentMenuLines(
         this.dbService.getClient(),
         restaurantId,
+        { drinks: true },
       );
       return {
         rows: current.rows as unknown as MenuItemRow[],

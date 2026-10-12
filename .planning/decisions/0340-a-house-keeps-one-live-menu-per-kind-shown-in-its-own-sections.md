@@ -642,6 +642,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 
 | 2026-10-12 | Lane 3b (`feat/menus-sections-api`, the sections API and sections on every upload) | Migration `20270107500000` adds ten section functions (materialise, rename, reparent, delete, move to a kind, set category, confirm a section, confirm a line, assign lines, keep a Gone line), each writing its `menu_section_changes` row in the same step and looking every id up inside the house; `MenuSectionsController` serves 12 owner/manager routes under `/menu-versions/:menuId`; every upload now materialises its sections and gets a `read_together_id`; resolve-on-tap links lines a tap made drinks. SQL test T1-T7 PASS on the PGlite corpus and FAIL without the migration; 5 new `menus.service` cases fail on the base; 59 cases in `menu-sections.service.spec.ts`, role-gating cases in the price-corrections spec; SQL, code and claim mutations all killed; one new claims fragment (two rows), one row edited in place; corrections in the Review log, "Lane 3b corrections". Not run: G0, L8 |
 | 2026-10-12 | Lane 3c (`feat/menus-make-live-per-kind`, the plan and make-live per kind) | `computePlan` works out a batch (one menu per kind) against the post-switch live set: retiring, `returned`, `dormantLocks`, `gone[]`, `unsure[]`, `conflicts[]` and dish matches by section key and name; `makeCurrent` reads every menu of the batch before the switch, refuses Unsure and unpicked conflicts, writes picks on drafts only, calls `make_menus_current`, carries per menu, sets `carried_at`, and on a retry carries again any menu whose carry did not finish. `GET plan?menuIds=` and the make-current body take the batch; the one-menu calls are unchanged. 9 new jest cases fail on the base and pass after; 4 code mutations all killed; three existing claim rows edited in place, one new fragment (three rows); corrections in the Review log, "Lane 3c corrections". Not run: G0, L8, web tsc/vitest (no web file touched) |
+| 2026-10-12 | Lane 4 (`fix/menus-union-readers-drink-kinds`, union readers read drink lines) | The cellar and beverages (through `readCurrentMenuLines(..., {drinks: true})`), vendor supply and price locks read only lines `lineIsDrink` keeps, on any live menu; promotions offers only lines not marked `kitchen_line` (`offerMenuLines`); price-lock rows name their menu and kind (`onMenus`). Migration `20270107600000` recreates `house_beverage_ledger` with a 35th column `menu_price_conflict`: drink lines only, a product counted once across menus, two prices named instead of `max()`, the section's own title. SQL test T1-T8 PASS on the PGlite corpus and FAIL at T2 without the migration; 8 SQL mutations, 7 code mutations and both claim mutations killed; two existing claim rows edited in place, no new fragment; corrections in the Review log, "Lane 4 corrections". Not run: G0, L8, Postgres other than PGlite, web tsc/vitest (no web file touched) |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -947,6 +948,43 @@ with its basis and the alternative it rejected):
   still make one Drinks draft), ENDPOINTS (not regenerated, as in lane 3b). The README row
   for 0340 is owed in its own PR. Founder-gated and not done: the G0 production read, the L8
   eval and every flag flip.
+
+Lane 4 corrections (2026-10-12, against base `5cedb1079`; each is the smallest right fix,
+with its basis and the alternative it rejected):
+
+- **The ledger's drink test is an SQL approximation of `lineIsDrink`:** a line counts when
+  `line_kind = 'drink'`, or `line_kind IS NULL` on a menu whose `menu_type` is NULL or not
+  `food`/`desserts`. The kitchen-word fallback for a kindless line on Drinks is not in SQL,
+  so such a line stays a ledger row as it is today. Rejected: porting the word lists into
+  SQL, which makes a third copy before the one-source word list (Not covered) exists.
+- **"Counted once" is the largest per-menu line count** of a product over the live menus
+  (`menu_per_menu`), so a wine on Drinks and Desserts counts 1 and two lines of one wine on
+  one menu still count 2. Rejected: `count(DISTINCT menu_id)` (drops the second line on one
+  menu) and `count(*)` (the double count this rule removes).
+- **Two prices are named, not maxed:** each menu price is the one distinct price
+  (`CASE WHEN cardinality = 1`), otherwise NULL with `menu_price_conflict` true; a price both
+  menus agree on stays. The section is `coalesce(nullif(btrim(ms.title), ''), mi.category)`
+  through a LEFT JOIN on `menu_sections` (same menu and house), so a line with no section
+  keeps today's category. The inner join on `restaurant_menus` is unchanged.
+- **Price locks keep their own reads** and filter with `lineIsDrink`; `list()` adds
+  `onMenus` (`[]` when no live menu lists the wine, null when the menus or the lock's wine were not read) and
+  keeps `currentMenus` for its existing readers. Rejected: moving price locks onto
+  `readCurrentMenuLines`, which changes its read shape and its spec beyond this lane.
+- **Vendor supply reads `menu_type` on its menus select** and filters lines in hand; no
+  embedded select, and its reads are unchanged in number. **Promotions** has no stored
+  `line_kind` on its offer lines, so `offerMenuLines` drops lines marked `kitchen_line` (the
+  flag `lineIsDrink` already set upstream).
+- **The two regressed claims are edited in place** with dated brackets
+  (`CELLAR-LEDGER-COUNTS-THE-DOOR-AND-KEEPS-THE-INVOICE-BOOK-PAPER`,
+  `A-MENU-RAW-LINE-IS-NAMED-ONLY-WHERE-IT-IS-GATED`), not in a new
+  `fix-menus-union-readers-drink-kinds.jsonl`. The raw line column is read by the three new
+  readers only to run `lineIsDrink` and is deleted before a row leaves the reader. The lane
+  1 ledger test's T12 now checks `>= 34` columns, with a dated bracket.
+- **Owed, not built (15-file budget):** "then the effective category" of rule 25. The
+  cellar still places a line by its words (`placeMenuLine`); the reader's section read and a
+  stated drink category wait for a later lane. `menu_price_conflict` is returned but no
+  house record or web page shows it yet. Founder-gated and not done: the G0 production read,
+  the L8 eval and every flag flip; the README row for 0340 is owed in its own PR.
 
 ## Founder forks
 
