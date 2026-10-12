@@ -1226,6 +1226,32 @@ with its basis and the rejected alternative):
   and not done: G0, L8 and the flag flip (`MENUS_SPLIT_BY_KIND` stays off); the README row
   for 0340 is owed in its own PR.
 
+Sim fix-up corrections (2026-10-12, wave 102, `fix/sim-w102-menus-ledger`; each is the
+smallest right fix, with its basis and the rejected alternative):
+
+- **F-1559: the ledger compares two prices within one vintage.** Migration
+  `a_vertical_on_one_menu_keeps_its_bottle_price` groups a product's live lines by
+  (house key, vintage) before naming two prices, so a vertical on one menu keeps its price
+  (the newest vintage's) and only two prices for one vintage are a conflict, as rule 19
+  keys a plan conflict by the wine (which carries the vintage). `menu_agg` is unchanged.
+  The cellar's Listed cell says "two prices" instead of showing the glass price as the
+  bottle's, and the record's stand names it; `house-record.ts` now carries
+  `priceConflict`. A size printed in the name already makes its own house key;
+  `menu_items` has no size column. Rejected: a row per vintage (changes the ledger's
+  shape and every register), and showing the lowest price (a price the menu does not
+  charge for the current vintage).
+- **F-1526: a line's own drink category, then the beer words, decide a mixed section.**
+  `isCocktailLine` takes the line's `drink_category` (rule 7's per-line override): a
+  vocabulary token decides, `cocktail` or not. With none, `BEER_WORDS` (now exported, the
+  one list) holds the styles and the brands a house prints alone ("Efes Pilsen",
+  "Heineken"); "ale" is left out, since "ginger ale" is in cocktails. Rejected: reading a
+  beer section as stocked for every line (a "Beer Cocktail" is made), and `kindOf` (it
+  names a menu kind, not beer against cocktail).
+- **F-1529 was already fixed by lane 6:** `MenuPlan` shows each conflict with a pick and
+  sends `picks` with "Make it current" even for one menu (`makeLiveArgs`), and the gateway
+  takes the batch path on `picks` alone. Two vintages of one wine are two wines to the
+  resolver, so they never conflict. Nothing changed here.
+
 ## Founder forks
 
 Filed as OD-228 (OPEN-DECISIONS.md:327) and OD-229 (OPEN-DECISIONS.md:328), marked decided under delegation and open to his veto.

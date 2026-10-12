@@ -171,6 +171,10 @@ export default function HouseRecordLeaf({
                 <Fact label="Lines" value={count(h.onMenu.lines)} />
                 <Fact label="By the bottle" value={money(h.onMenu.bottlePrice)} />
                 <Fact label="By the glass" value={money(h.onMenu.glassPrice)} />
+                {/* F-1559: a price the live menus give twice is named, not left as a dash. */}
+                {h.onMenu.priceConflict === true ? (
+                  <Fact label="Two prices" value="The menu lists it at two prices. Pick one on the menu." />
+                ) : null}
                 <Fact
                   label="Section"
                   value={

@@ -520,6 +520,11 @@ export interface OnMenuVM {
   bottlePrice: number | null;
   glassPrice: number | null;
   sections: string[];
+  /**
+   * The live menus give it two prices for one vintage (F-1559): the price of
+   * that kind is null. Absent from an older gateway: read as no conflict.
+   */
+  priceConflict?: boolean;
 }
 export interface BoughtVM {
   /** Invoice lines naming it. 0 when only door checks do. */

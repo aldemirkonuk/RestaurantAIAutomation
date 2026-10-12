@@ -55,6 +55,12 @@ export interface OnMenu {
   bottlePrice: number | null;
   glassPrice: number | null;
   sections: string[];
+  /**
+   * The live menus give it two prices for one vintage (ADR 0340 rule 25,
+   * F-1559): the price of that kind is null, and the cellar says "two prices"
+   * instead of falling back to the glass. Optional only for a hand-built row.
+   */
+  priceConflict?: boolean;
 }
 
 export interface Bought {
@@ -243,6 +249,12 @@ export interface LedgerRow {
   door_checked_lines?: number | null;
   first_bought_door_checked?: boolean | null;
   last_bought_door_checked?: boolean | null;
+  /**
+   * Appended by `the_ledger_reads_drink_lines_and_names_two_prices` (ADR 0340
+   * rule 25); per vintage since `a_vertical_on_one_menu_keeps_its_bottle_price`
+   * (F-1559). Absent reads as no conflict.
+   */
+  menu_price_conflict?: boolean | null;
 }
 
 /** One row of `public.beverages`, as the catalogue read selects it. */
@@ -306,6 +318,7 @@ export function toHouseRecord(r: LedgerRow): HouseRecord {
             lines: menuLines,
             bottlePrice: num(r.menu_bottle_price),
             glassPrice: num(r.menu_glass_price),
+            priceConflict: r.menu_price_conflict === true,
             sections: (r.menu_sections ?? []).filter(
               (s): s is string => typeof s === "string" && s.trim() !== "",
             ),

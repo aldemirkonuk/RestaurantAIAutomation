@@ -2357,6 +2357,43 @@ describe("MenusService — every menu read is kept as its own version", () => {
       ).toEqual(["mw-1", "mw-mi-makers"]);
     });
 
+    // F-1526: a beer by its brand alone, and a spirit a person filed as one,
+    // in "Kokteyller ve Biralar" keep their stock rows; the Mojito is made.
+    it("a brand beer and a line filed as a spirit in a mixed section are stocked, not cocktails", async () => {
+      const { tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64 },
+      ]);
+      for (const [id, name, drink_category] of [
+        ["mi-efes", "Efes Pilsen", null],
+        ["mi-hendricks", "Hendrick's", "spirit"],
+        ["mi-mojito", "Mojito", null],
+      ]) {
+        tables.menu_items.push({
+          id,
+          menu_id: read.menuId,
+          restaurant_id: "rest-1",
+          name,
+          category: "Kokteyller ve Biralar",
+          drink_category,
+          bottle_price: 16,
+          wine_library_id: `mw-${id}`,
+          status: "approved",
+        });
+      }
+      const plan = await service.planFor("rest-1", read.menuId);
+      const kind = (name: string) =>
+        plan.lines.find((l) => l.name === name)!.bottle.result;
+      expect(kind("Mojito")).toBe("cocktail");
+      expect(kind("Efes Pilsen")).not.toBe("cocktail");
+      expect(kind("Hendrick's")).not.toBe("cocktail");
+
+      const r = await choose(service, read.menuId);
+      expect(r.priceSync).toMatchObject({ cocktail: 1 });
+      expect(
+        tables.restaurant_inventory.map((i) => i.master_wine_id).sort(),
+      ).toEqual(["mw-1", "mw-mi-efes", "mw-mi-hendricks"]);
+    });
+
     // F-946: the house removed the wine; a menu made current lists it again.
     it("brings back a wine the house removed when the chosen menu lists it", async () => {
       const { tables, service, read } = await readThenChoose([

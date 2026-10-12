@@ -353,6 +353,33 @@ describe("isCocktailLine — mixed sections (F-1503)", () => {
   ])("in %s, %s is a cocktail", (section, name) => {
     expect(isCocktailLine(section, name)).toBe(true);
   });
+
+  // F-1526: a beer printed with no size or style word, by its brand.
+  it.each([
+    ["Kokteyller ve Biralar", "Efes Pilsen"],
+    ["Kokteyller ve Biralar", "Heineken"],
+    ["Beer & Cocktails", "Beck's"],
+    ["Beer & Cocktails", "Stella Artois"],
+  ])("in %s, %s is a stocked beer, not a cocktail", (section, name) => {
+    expect(isCocktailLine(section, name)).toBe(false);
+  });
+
+  it("keeps a cocktail with ginger ale a cocktail (F-1526)", () => {
+    expect(isCocktailLine("Beer & Cocktails", "Moscow Mule, ginger ale")).toBe(
+      true,
+    );
+  });
+
+  it("lets a line's own drink category decide (F-1526, ADR 0340 rule 7)", () => {
+    expect(isCocktailLine("Cocktails & Spirits", "Hendrick's", "spirit")).toBe(
+      false,
+    );
+    expect(isCocktailLine("Beer & Cocktails", "Efes Pilsen", "cocktail")).toBe(
+      true,
+    );
+    // Not a vocabulary token: the section and the name decide, as before.
+    expect(isCocktailLine("Cocktails & Spirits", "Negroni", "Bar")).toBe(true);
+  });
 });
 
 /**
