@@ -1713,8 +1713,11 @@ export class TeamService {
       .maybeSingle();
     if (houseErr) refuse("read the house's clock", houseErr);
     // The worked part and a handed-over shift are priced on the house's
-    // country's breaks (founder S195), on the wall clock as the cut is.
-    const labour: HouseLabour = { rules: houseLabour(house as any).rules };
+    // country's breaks (founder S195), on the wall clock as the cut is. The
+    // locale rides along so the over-week warning writes hours as the house
+    // does (F-1550).
+    const own = houseLabour(house as any);
+    const labour: HouseLabour = { rules: own.rules, locale: own.locale };
     const clock = removalClock(
       houseFrame(house as any),
       resolveSignUpTimezone(deviceZone ?? null),

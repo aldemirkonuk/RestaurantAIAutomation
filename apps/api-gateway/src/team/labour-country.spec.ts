@@ -14,6 +14,7 @@ import {
   workedHours,
 } from "./pay-rules";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
+import { labourShare, readWeekSales } from "./week-sales";
 
 /**
  * Labour rules follow the house's country (founder ruling S195, 2026-10-11:
@@ -397,5 +398,192 @@ describe("ADR 0330 US-CA — a Californian house gets its state's rules on top o
     } as any);
     const row = db.tables.shifts.find((s) => s.id === created.id)!;
     expect(row.labor_cost).toBe(190); // 9.5h x 20: the 30-minute meal is not paid
+  });
+});
+
+describe("F-1548 — a stored cost is priced again on the house's rules now", () => {
+  /** Priced when the house read as Turkish: 9h less the Art. 68 hour, x 20. */
+  function pricedOnTurkishRules(db: StubDb) {
+    db.tables.shifts.push({
+      id: "sh-old",
+      restaurant_id: RID,
+      schedule_id: "s1",
+      member_id: "m-staff",
+      shift_date: WEEK,
+      start_time: "09:00",
+      end_time: "18:00",
+      state: "scheduled",
+      shift_breaks: [],
+      labor_cost: 160,
+    });
+  }
+
+  it("a house whose country was fixed to the US reads 9 hours and 9 hours' cost", async () => {
+    const db = seed({ country: "US", timezone: "America/Los_Angeles" });
+    pricedOnTurkishRules(db);
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.totalHours).toBe(9);
+    expect(week.labor.totalCost).toBe(180);
+    expect(week.shifts[0].labor_cost).toBe(180);
+  });
+
+  it("prices the day at the wage the person had then, as a write does", async () => {
+    const db = seed({ country: "US", timezone: "America/Los_Angeles" });
+    pricedOnTurkishRules(db);
+    db.tables.team_member_wage_changes.push({
+      restaurant_id: RID,
+      member_id: "m-staff",
+      old_wage: 15,
+      changed_at: "2026-09-20T10:00:00Z",
+    });
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.totalCost).toBe(135);
+  });
+
+  it("a failed wage read is said, never the stored cost passed off as current", async () => {
+    const db = seed({ country: "US", timezone: "America/Los_Angeles" });
+    pricedOnTurkishRules(db);
+    db.errors["team_member_wage_changes:select"] = { message: "boom" };
+    await expect(scheduleOf(db).getWeek(OWNER, RID, WEEK)).rejects.toThrow(
+      "Could not read the wages to cost this week, so the week is not shown.",
+    );
+  });
+});
+
+describe("F-1549 — the week's cost as a share of the till's net sales", () => {
+  /** One 9-hour shift with no break taken: 9 x 20 = 180. */
+  function costedWeek(db: StubDb) {
+    db.tables.shifts.push({
+      id: "sh1",
+      restaurant_id: RID,
+      schedule_id: "s1",
+      member_id: "m-staff",
+      shift_date: WEEK,
+      start_time: "09:00",
+      end_time: "18:00",
+      state: "scheduled",
+      shift_breaks: [],
+      recorded_break_min: 0,
+      labor_cost: 180,
+    });
+  }
+  const check = (id: string, closed: string, subtotal: unknown) => ({
+    id,
+    restaurant_id: RID,
+    voided: false,
+    opened_at: closed,
+    closed_at: closed,
+    subtotal,
+  });
+
+  it("gives 10% when the till took 1800 over the whole week", async () => {
+    const db = seed({ country: "TR", timezone: "Europe/Istanbul" });
+    costedWeek(db);
+    db.tables.pos_checks = [
+      check("c0", "2026-08-01T12:00:00Z", 50), // the till's first day
+      check("c1", "2026-09-07T12:00:00Z", 1000),
+      check("c2", "2026-09-12T12:00:00Z", 800),
+      check("c3", "2026-09-14T12:00:00Z", 999), // the Monday after
+    ];
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.totalCost).toBe(180);
+    expect(week.labor.netSales).toBe(1800);
+    expect(week.labor.laborPct).toBe(10);
+    expect(week.labor.laborPctWhy).toBeNull();
+  });
+
+  it("with no till, gives no share and says the sales are not known", async () => {
+    const db = seed({ country: "TR", timezone: "Europe/Istanbul" });
+    costedWeek(db);
+    db.tables.pos_checks = [];
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.laborPct).toBeNull();
+    expect(week.labor.netSales).toBeNull();
+    expect(week.labor.laborPctWhy).toMatch(/No till is sending sales/);
+  });
+
+  it("a till that began mid-week, or checks with no amount, give no share", async () => {
+    const db = seed({ country: "TR", timezone: "Europe/Istanbul" });
+    costedWeek(db);
+    db.tables.pos_checks = [
+      check("c1", "2026-09-09T12:00:00Z", 1000),
+      check("c2", "2026-09-20T12:00:00Z", 10),
+    ];
+    let week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.laborPct).toBeNull();
+    expect(week.labor.laborPctWhy).toMatch(/partway through this week/);
+
+    db.tables.pos_checks = [
+      check("c0", "2026-08-01T12:00:00Z", 50),
+      check("c1", "2026-09-09T12:00:00Z", null),
+      check("c2", "2026-09-20T12:00:00Z", 10),
+    ];
+    week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.laborPct).toBeNull();
+    expect(week.labor.laborPctWhy).toMatch(/no amount before tax/);
+  });
+
+  it("a week not over yet gives no share and says why", async () => {
+    const sales = await readWeekSales(
+      {
+        from: () => {
+          throw new Error("must not read");
+        },
+      },
+      RID,
+      WEEK,
+      "Europe/Istanbul",
+      new Date("2026-09-10T12:00:00Z"),
+    );
+    expect(sales.netSales).toBeNull();
+    expect(sales.unknownWhy).toMatch(/not over yet/);
+  });
+
+  it("no share of a cost that is not known, or of a manager's partial cost", () => {
+    const known = { netSales: 1000, unknownWhy: null };
+    expect(labourShare(250, known, 0)).toEqual({
+      laborPct: 25,
+      laborPctWhy: null,
+    });
+    expect(labourShare(null, known, 0).laborPct).toBeNull();
+    expect(labourShare(250, known, 1).laborPct).toBeNull();
+    expect(
+      labourShare(250, { netSales: 0, unknownWhy: null }, 0).laborPct,
+    ).toBeNull();
+  });
+});
+
+describe("F-1550 — the hand-over warning writes hours as the house does", () => {
+  it("a Turkish house reads 46,5; an American one 46.5", () => {
+    const given = [
+      // No break taken anywhere, so both houses count 10.5 + 3 x 12 = 46.5.
+      {
+        id: "g",
+        shift_date: WEEK,
+        start_time: "09:00",
+        end_time: "19:30",
+        recorded_break_min: 0,
+      },
+    ];
+    const theirs = [1, 2, 3].map((d) => ({
+      id: `t${d}`,
+      shift_date: `2026-09-${String(7 + d).padStart(2, "0")}`,
+      start_time: "09:00",
+      end_time: "21:00",
+      recorded_break_min: 0,
+    }));
+    const message = (house: any) =>
+      handoverChecks(given as any, {}, theirs as any, [], false, house)
+        .get("g")!
+        .find((c) => c.code === "weekly_hours")!.message;
+    const tr = houseLabour({ country: "TR", timezone: "Europe/Istanbul" });
+    expect(tr.locale).toBe("tr-TR");
+    expect(message(tr)).toBe(
+      "With it they work 46,5 hours that week, over the 45-hour week.",
+    );
+    const us = houseLabour({ country: "US", timezone: "America/Chicago" });
+    expect(message(us)).toBe(
+      "With it they work 46.5 hours that week, over the 40-hour week.",
+    );
   });
 });

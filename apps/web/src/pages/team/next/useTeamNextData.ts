@@ -305,6 +305,12 @@ export interface LaborVM {
   weeklyReviewHours: number | null;
   totalCost: number | null;
   targetPct: number | null;
+  /**
+   * The week's cost as a percentage of its net sales from the till (F-1549);
+   * `null` when the sales are not all known, and `laborPctWhy` says why.
+   */
+  laborPct: number | null;
+  laborPctWhy: string | null;
   costComplete: boolean | null;
   pricedShifts: number | null;
   unpricedShifts: number | null;
@@ -698,6 +704,8 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
           : null,
         totalCost: typeof laborRaw.totalCost === 'number' ? laborRaw.totalCost : null,
         targetPct: typeof laborRaw.targetPct === 'number' ? laborRaw.targetPct : null,
+        laborPct: typeof laborRaw.laborPct === 'number' ? laborRaw.laborPct : null,
+        laborPctWhy: typeof laborRaw.laborPctWhy === 'string' ? laborRaw.laborPctWhy : null,
         costComplete:
           typeof laborRaw.costComplete === 'boolean' ? laborRaw.costComplete : null,
         pricedShifts:

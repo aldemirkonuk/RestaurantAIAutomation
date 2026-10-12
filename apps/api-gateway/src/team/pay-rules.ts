@@ -215,6 +215,12 @@ export function labourRulesFor(
 export interface HouseLabour {
   rules: LabourRules;
   zone?: string | null;
+  /**
+   * The house's formats tag ("tr-TR"), so an hour figure in a sentence carries
+   * the house's decimal mark ("46,5") as the page's do (F-1550); `null` or
+   * absent = no locale known, and the figure prints as before ("46.5").
+   */
+  locale?: string | null;
 }
 
 /**
@@ -237,7 +243,25 @@ export function houseLabour(
   // The state is read only inside the RECORDED country (ADR 0305): a zone
   // names no state, and "CA" means nothing without its country.
   const region = houseJurisdictionKey(row?.state_province, row?.country);
-  return { rules: labourRulesFor(frame.region, region), zone: frame.zone };
+  return {
+    rules: labourRulesFor(frame.region, region),
+    zone: frame.zone,
+    locale: frame.locale,
+  };
+}
+
+/**
+ * Hours as the house writes a number, to two places at most: "46,5" in a
+ * Turkish house, "46.5" in an American one or where no locale is known.
+ */
+export function hoursWords(hours: number, locale?: string | null): string {
+  const rounded = Math.round(hours * 100) / 100;
+  if (!locale) return String(rounded);
+  try {
+    return rounded.toLocaleString(locale, { maximumFractionDigits: 2 });
+  } catch {
+    return String(rounded);
+  }
 }
 
 /**
@@ -857,7 +881,7 @@ export function handoverChecks(
       checks.push({
         code: "weekly_hours",
         level: "warn",
-        message: `With it they work ${Math.round(hours * 100) / 100} hours that week, over the ${reviewAt}-hour week.`,
+        message: `With it they work ${hoursWords(hours, house.locale)} hours that week, over the ${reviewAt}-hour week.`,
       });
     }
     out.set(g.id, checks);

@@ -91,6 +91,8 @@ function matches(row: Row, filters: Filter[]): boolean {
         return actual <= f.value;
       case "gt":
         return actual > f.value;
+      case "lt":
+        return actual < f.value;
       case "ilike":
         return typeof actual === "string" && ilikeMatches(actual, f.value);
       default:
@@ -315,6 +317,10 @@ class Builder implements PromiseLike<any> {
   }
   gt(column: string, value: any) {
     this.filters.push({ kind: "gt", column, value });
+    return this;
+  }
+  lt(column: string, value: any) {
+    this.filters.push({ kind: "lt", column, value });
     return this;
   }
   ilike(column: string, value: any) {

@@ -310,8 +310,13 @@ describe("W1 — a manager's week carries hours, never money", () => {
     db.tables.team_settings[0].wage_visible = false; // used to hide it from the owner too
     const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
     expect(week.labor.moneyVisible).toBe(true);
-    expect(week.labor.totalCost).toBe(400);
-    expect(week.shifts.map((s: any) => s.labor_cost).sort()).toEqual([160, 240]);
+    // Priced on read on the house's rules (F-1548): the stored 160 and 240
+    // are 8 hours, but each shift is 7.5 worked hours with the Art. 68 half
+    // hour taken out, so the owner reads 150 and 225, as the hours say.
+    expect(week.labor.totalCost).toBe(375);
+    expect(week.shifts.map((s: any) => s.labor_cost).sort()).toEqual([
+      150, 225,
+    ]);
   });
 
   it("sends the owner the house's currency and country with the money, and a manager neither", async () => {
@@ -647,7 +652,7 @@ describe("L1 — approved paid leave is counted beside the cost, in days", () =>
       { id: "t3", restaurant_id: RID, member_id: "m-owner", start_date: WEEK, end_date: WEEK, status: "pending", leave_type: "paid", reason: "private" },
     );
     const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
-    expect(week.labor.totalCost).toBe(240);
+    expect(week.labor.totalCost).toBe(225); // 7.5 worked hours x 30 (F-1548)
     expect(week.labor.costCovers).toBe("scheduled_shifts");
     expect(week.labor.leave).toEqual({
       readable: true,
@@ -2439,6 +2444,39 @@ describe("K4 — a removal can hand the leaving person's shifts to someone named
     nothingWritten(db);
     await teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"], [code]));
     expect(byId(db, "thu").member_id).toBe(SAM);
+  });
+
+  it("F-1550: the over-week warning writes the hours as a Turkish house does", async () => {
+    const db = seedGone();
+    for (const d of [
+      "2026-09-22",
+      "2026-09-23",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+    ])
+      db.tables.shifts.push(
+        shift({ id: `sam-${d}`, member_id: SAM, shift_date: d }),
+      );
+    // Monday runs to 23:30, so the week ends on a half hour.
+    db.tables.shifts.push(
+      shift({
+        id: "sam-mon",
+        member_id: SAM,
+        shift_date: "2026-09-21",
+        start_time: "09:00",
+        end_time: "23:30",
+      }),
+    );
+    const e = await refusedWith(
+      teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"])),
+    );
+    const [warning] = e.getResponse().unaccepted.map((u: any) => u.check);
+    expect(warning.code).toBe("weekly_hours");
+    // 13.5 + 5 x 7.5 before Thursday + Thursday's 7.5: "58,5", never "58.5".
+    expect(warning.message).toBe(
+      "With it they work 58,5 hours that week, over the 45-hour week.",
+    );
   });
 
   it("a pending (not approved) time-off request, a call-out and an open shift are not clashes", async () => {

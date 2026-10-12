@@ -609,10 +609,27 @@ function TeamNextManager({
                 <span className="tm-fig">{fmtMoneyWhole(labor.totalCost, data.money)}</span>
                 <span style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 8 }}>
                   {fmtHours(labor.totalHours, hoursIn)} worked
+                  {/* The share is the gateway's, cost over the till's net
+                      sales for the week (F-1549); with none, the target
+                      stands alone and the line below says why. */}
+                  {labor.laborPct !== null &&
+                    ` · ${new Intl.NumberFormat(hoursIn, {
+                      style: 'percent',
+                      maximumFractionDigits: 1,
+                    }).format(labor.laborPct / 100)} of sales`}
                   {data.target.pct === null
                     ? ' · no target set'
-                    : ` · target ${data.target.pct}% of sales`}
+                    : ` · target ${data.target.pct}%`}
                 </span>
+                {labor.laborPct === null && (
+                  <p
+                    data-testid="labour-share-unknown"
+                    style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}
+                  >
+                    {labor.laborPctWhy ??
+                      "This week's sales are not known yet, so its labour cost is not given as a share of sales."}
+                  </p>
+                )}
                 <p style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}>
                   {labour.country === 'TR'
                     ? 'Wages only, for the shifts on the schedule — not SGK, meals or bonuses.'
