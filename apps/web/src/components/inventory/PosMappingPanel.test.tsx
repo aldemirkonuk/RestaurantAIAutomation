@@ -403,6 +403,98 @@ describe("PosMappingPanel: a button that sells a cocktail (F-1469)", () => {
     expect(rejectProposal).not.toHaveBeenCalled();
   });
 
+  // F-1506: a button linked to a cocktail stayed under "Not recognised"
+  // with its picker reset, as if the link had not been made.
+  it("shows a queued button linked to a cocktail as linked, not as not recognised", async () => {
+    listHouseCocktails.mockResolvedValue([spritz]);
+    getMatchProposals.mockResolvedValue([]);
+    getItemMappings.mockResolvedValue([
+      {
+        id: "map-1",
+        source: "simpos",
+        external_item_id: "btn-neg",
+        item_name: "Spritz dbl",
+        is_wine: false,
+        inventory_id: null,
+        master_wine_id: null,
+        sale_unit: null,
+        sale_volume_ml: null,
+        cocktail_id: "ck-spritz",
+        updated_at: null,
+      },
+    ]);
+    getUnresolvedLines.mockResolvedValue(
+      queue({
+        items: [
+          {
+            source: "simpos",
+            external_item_id: "btn-neg",
+            item_name: "Spritz dbl",
+            reason: "unmapped",
+            mapped_inventory_id: null,
+            occurrences: 3,
+            qty_total: 4,
+            first_seen: null,
+            last_seen: null,
+            line_ids: [],
+          },
+        ],
+      }),
+    );
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    expect(await screen.findByTestId("pos-linked-cocktail")).toHaveTextContent(
+      "Spritz dbl → Aperol Spritz",
+    );
+    expect(screen.queryByText(/Not recognised/)).toBeNull();
+    expect(screen.queryByLabelText("Cocktail for Spritz dbl")).toBeNull();
+  });
+
+  // F-1507: the toast promised the recipe when no line of it named stock,
+  // and every sale then took nothing.
+  it("says the sales will take nothing when no recipe line is linked to stock", async () => {
+    listHouseCocktails.mockResolvedValue([{ ...spritz, linkedLines: 0 }]);
+    getMatchProposals.mockResolvedValue([
+      proposal({ id: "prop-sp", external_item_id: "btn-sp", item_name: "Aperol Spritz" }),
+    ]);
+    const { toast } = await import("sonner");
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    const pick = await screen.findByLabelText("Cocktail for Aperol Spritz");
+    expect(pick).toHaveTextContent("Aperol Spritz (no recipe line linked to stock yet)");
+    await user.selectOptions(pick, "ck-spritz");
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toMatch(
+      /none of its recipe lines is linked to stock yet, so its sales will take nothing/,
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  // F-1508: the link was written, the proposal could not be set aside, and
+  // the panel said the whole link had failed.
+  it("says the link is made when only clearing the proposal fails", async () => {
+    listHouseCocktails.mockResolvedValue([{ ...spritz, linkedLines: 2 }]);
+    rejectProposal.mockRejectedValue(new Error("timeout"));
+    getMatchProposals.mockResolvedValue([
+      proposal({ id: "prop-sp", external_item_id: "btn-sp", item_name: "Aperol Spritz" }),
+    ]);
+    const { toast } = await import("sonner");
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    await user.selectOptions(
+      await screen.findByLabelText("Cocktail for Aperol Spritz"),
+      "ck-spritz",
+    );
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const said = vi.mocked(toast.error).mock.calls[0][0] as string;
+    expect(said).toMatch(/is linked to Aperol Spritz, but its stock suggestion could not be cleared/);
+    expect(said).not.toMatch(/Could not link/);
+  });
+
   it("says when the cocktails could not be read, rather than offering none", async () => {
     listHouseCocktails.mockRejectedValue(new Error("timeout"));
     render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);

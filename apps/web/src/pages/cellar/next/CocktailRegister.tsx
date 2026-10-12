@@ -198,7 +198,9 @@ function serveWords(c: CocktailVM): { cost: string; margin: string; title?: stri
     return { cost: 'not linked', margin: EM, title: 'No recipe line is linked to stock' };
   }
   if (s.costPerServe === null || s.costPerServe === undefined) {
-    return { cost: 'withheld', margin: EM, title: s.withheldReason ?? undefined };
+    // F-1509: the reason is said on the row, as the partial line is, never
+    // only in a hover title a touch screen cannot show.
+    return { cost: 'withheld', margin: EM, partial: s.withheldReason ?? undefined };
   }
   const margin =
     s.margin === null || s.margin === undefined
