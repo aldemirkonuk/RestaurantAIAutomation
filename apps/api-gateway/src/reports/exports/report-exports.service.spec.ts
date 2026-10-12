@@ -103,7 +103,7 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(started.export).toMatchObject({
       cutting: "ledger",
       title: "Figures of record",
-      windowLabel: "365 days of COGS; the cellar as it stands today",
+      windowLabel: "365 days of COGS; turns over up to a year of buying; the cellar as it stands today",
       status: "queued",
       failureReason: null,
       attempts: 1,
