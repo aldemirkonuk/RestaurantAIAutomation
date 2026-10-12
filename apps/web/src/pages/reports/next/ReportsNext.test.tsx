@@ -51,6 +51,10 @@ const asked = vi.hoisted(() => ({
   week: undefined as unknown,
 }));
 
+// The closed-months shelf reads its own routes (MonthCloseShelf.test.tsx); this
+// file pins the sheet, so it stands in as a marker.
+vi.mock('./MonthCloseShelf', () => ({ default: () => <section aria-label="Closed months" /> }));
+
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
     './useReportsNextData',
@@ -1903,6 +1907,19 @@ describe('ReportsNext — written up (OD-81)', () => {
     paint();
     arrange();
     expect(screen.queryByRole('region', { name: 'Written up' })).toBeNull();
+  });
+
+  it('lays the closed months under the shelf for an owner or manager, and not for a reader who cannot export (F-1013)', () => {
+    const owner = paint();
+    expect(screen.getByRole('region', { name: 'Closed months' })).toBeInTheDocument();
+    owner.unmount();
+    exportStub.canExport = false;
+    try {
+      paint();
+      expect(screen.queryByRole('region', { name: 'Closed months' })).toBeNull();
+    } finally {
+      exportStub.canExport = true;
+    }
   });
 });
 

@@ -13,6 +13,7 @@ import { ReportsModule } from "../reports.module";
 import { ReportCuttingReader } from "./report-cutting-reader.service";
 import { ReportExportsController } from "./report-exports.controller";
 import { ReportExportsService } from "./report-exports.service";
+import { MonthCloseService } from "../month-close/month-close.service";
 import { MemorySupabase } from "./__fixtures__/memory-supabase";
 import { HOUSE_A, HOUSE_B, MANAGER_A, PAYLOADS } from "./__fixtures__/cutting-payloads";
 
@@ -61,6 +62,13 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
         {
           provide: ReportCuttingReader,
           useValue: { read: jest.fn(payload) },
+        },
+        // The module's month-close controller (F-1013) rides along; its own
+        // behaviour is month-close.service.spec.ts. Here it only proves the
+        // route order holds for it too.
+        {
+          provide: MonthCloseService,
+          useValue: { listCloses: jest.fn(async () => ({ closes: [] })) },
         },
       ],
     })
@@ -118,6 +126,16 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
     const list = await res.json();
     expect(Array.isArray(list.exports)).toBe(true);
     expect(typeof list.total).toBe("number");
+  });
+
+  it("is not swallowed by GET /reports/:id at /reports/month-close either (F-1013)", async () => {
+    const res = await call("GET", "/reports/month-close");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ closes: [] });
+    // Staff are refused the closed months at the server, as the shelf.
+    expect(
+      (await call("GET", "/reports/month-close", { role: "staff" })).status,
+    ).toBe(403);
   });
 
   it("pages the list with offset, and the total is exact on every page", async () => {

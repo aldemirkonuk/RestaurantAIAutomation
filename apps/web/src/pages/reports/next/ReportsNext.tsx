@@ -76,6 +76,7 @@ import {
   type Slot,
 } from './rp-sheet';
 import ExportsShelf from './ExportsShelf';
+import MonthCloseShelf from './MonthCloseShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import { useHouseZone } from '@/lib/houseZone';
@@ -513,6 +514,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             tillWeek={tillWeek !== null}
             zone={zone ?? null}
           />
+        )}
+
+        {/* F-1013 (founder 2026-10-11, option C): closed months, for the
+            owner and managers who may write up the house's books. */}
+        {data.restaurantId !== null && !arranging && data.exportDesk.canExport && (
+          <MonthCloseShelf restaurantId={data.restaurantId} zone={zone ?? null} />
         )}
 
         <footer className="rp-foot">
