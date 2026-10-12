@@ -328,6 +328,10 @@ const PROCUREMENT_ORDER_COLUMNS = new Set([
   // 20270105700000_a_removed_persons_name_fades_and_a_cart_is_one_placement.sql
   // (F-731): the lines of one cart share a placement id.
   "placement_id",
+  // 20270105900000_a_refused_truck_can_still_be_written_about.sql (F-669):
+  // the day staff at the door said it was ordered, and who said it.
+  "placed_on_stated",
+  "placed_on_stated_by",
 ]);
 
 /** NOT NULL with no default. An insert missing any of these raises 23502. */
@@ -380,6 +384,62 @@ describe("createRetroactiveOrder — the insert can actually succeed", () => {
       expect(payload[col]).not.toBeNull();
     }
     expect(String(payload.order_number)).toMatch(/\S/);
+  });
+});
+
+describe("an order logged at the door states its order day (F-669)", () => {
+  // The door's "When was this ordered?" had a column and no writer: the day
+  // and who said it are written by the order insert itself, together.
+  it("writes placed_on_stated and the person who stated it", async () => {
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
+    await services(db).procurement.createOrder(
+      "rest-1",
+      USER,
+      {
+        inventoryId: INVENTORY,
+        providerId: PROVIDER,
+        quantity: 6,
+        unitType: "bottle",
+      } as any,
+      {
+        source: "retroactive",
+        alreadyFulfilled: {
+          deliveredAt: null,
+          invoiceTotal: null,
+          placedOnStated: "2026-10-10",
+        },
+      },
+    );
+    expect(calls.orderInserts[0]).toMatchObject({
+      source: "retroactive",
+      status: "DELIVERED",
+      placed_on_stated: "2026-10-10",
+      placed_on_stated_by: USER,
+    });
+  });
+
+  it("writes neither half on Don't know", async () => {
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
+    await services(db).procurement.createOrder(
+      "rest-1",
+      USER,
+      {
+        inventoryId: INVENTORY,
+        providerId: PROVIDER,
+        quantity: 6,
+        unitType: "bottle",
+      } as any,
+      {
+        source: "retroactive",
+        alreadyFulfilled: {
+          deliveredAt: null,
+          invoiceTotal: null,
+          placedOnStated: null,
+        },
+      },
+    );
+    expect(calls.orderInserts[0].placed_on_stated).toBeNull();
+    expect(calls.orderInserts[0].placed_on_stated_by).toBeNull();
   });
 });
 

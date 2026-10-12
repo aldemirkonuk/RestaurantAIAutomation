@@ -279,6 +279,66 @@ export class CreateOrderDto {
   placementId?: string;
 }
 
+/**
+ * The door's "No order on file → Add to the books" (F-669, founder S198).
+ * No price on purpose: the door shows none, and the paper sets the money at
+ * the desk. See `logged-at-door.ts`.
+ */
+export class LogDeliveryAtDoorDto {
+  /** The tap's id, made on the phone: the order's placement and the receipt's key. */
+  @ApiProperty()
+  @IsUUID()
+  key!: string;
+
+  @ApiProperty()
+  @IsUUID()
+  providerId!: string;
+
+  @ApiProperty()
+  @IsUUID()
+  inventoryId!: string;
+
+  @ApiProperty({ description: "How many came, in `unit`." })
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  quantity!: number;
+
+  @ApiProperty({ enum: ["case", "bottle"] })
+  @IsIn(["case", "bottle"])
+  unit!: "case" | "bottle";
+
+  @ApiPropertyOptional({
+    description: "Bottles in each case; needed for a case.",
+  })
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  @IsOptional()
+  bottlesPerCase?: number;
+
+  @ApiProperty({ enum: ["today", "yesterday", "unknown"] })
+  @IsIn(["today", "yesterday", "unknown"])
+  orderedOn!: "today" | "yesterday" | "unknown";
+
+  @ApiPropertyOptional({ description: "The phone's own date, YYYY-MM-DD." })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsOptional()
+  phoneToday?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(40)
+  @IsOptional()
+  clientCapturedAt?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(8)
+  @IsOptional()
+  signedByInitials?: string;
+}
+
 export class UpdateOrderDto {
   @ApiPropertyOptional({ enum: ProcurementOrderStatus })
   @IsEnum(ProcurementOrderStatus)
@@ -1240,6 +1300,25 @@ export class OrderResponseDto {
       "Refused at the door: the reason and the credit standing. null = not refused; key ABSENT = this route did not read the door.",
   })
   doorRefusal?: DoorRefusalDto | null;
+
+  /**
+   * "Logged at door" (F-669, founder S198): the truck came with no order on
+   * file and the door added it to the books (`source = 'retroactive'`). It
+   * counts in spend and stock and is kept out of the vendor's lead time,
+   * on-time and fill rate. Key ABSENT = this route did not read `source`.
+   */
+  @ApiPropertyOptional({
+    description:
+      "True when this order was logged at the door after its truck came (source 'retroactive'). Key ABSENT = this route did not read the source.",
+  })
+  loggedAtDoor?: boolean;
+
+  /**
+   * The day staff said it was ordered, `YYYY-MM-DD` (F-669), or null when
+   * nobody said ("Don't know"). Display only. Key ABSENT = not read.
+   */
+  @ApiPropertyOptional({ nullable: true, type: String })
+  placedOnStated?: string | null;
 
   /**
    * "Waiting on you"'s flag (ADR 0256). Sent by `GET /procurement/orders/pending`

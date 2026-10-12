@@ -150,10 +150,12 @@ export function rowOpensReceipt(row: Pick<OrderRowVM, 'stage'>): boolean {
  * (F-1127): it says so, and how many the next truck brings.
  */
 function stageChipLabel(
-  row: Pick<OrderRowVM, 'stage' | 'stillOwedBottles' | 'refusedAtDoor'>,
+  row: Pick<OrderRowVM, 'stage' | 'stillOwedBottles' | 'refusedAtDoor' | 'loggedAtDoor'>,
 ): string {
   // A truck turned away at the door is not a cancelled order (F-669).
   if (row.refusedAtDoor) return 'Refused at door';
+  // A truck with no order on file, added to the books at the door (F-669).
+  if (row.loggedAtDoor) return 'Logged at door';
   if (row.stage === 'cancelled') return 'Cancelled';
   const owed = row.stillOwedBottles;
   if (row.stage === 'delivered' && owed != null && owed > 0) return `Part delivered · ${owed} owed`;
@@ -750,6 +752,14 @@ export function LedgerRow({
                   {row.stillOwedBottles != null && row.stillOwedBottles > 0
                     ? `Part delivered ${fmtDate(row.deliveredAt)} — ${row.stillOwedBottles} ${row.stillOwedBottles === 1 ? 'bottle' : 'bottles'} still owed.`
                     : `Delivered ${fmtDate(row.deliveredAt)}.`}
+                </p>
+              )}
+              {row.loggedAtDoor && !row.refusedAtDoor && (
+                <p
+                  data-testid="logged-at-door"
+                  style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}
+                >
+                  {`${row.loggedAtDoor}. No order was on file when it came, so it counts in spend and stock but not in this vendor's on-time, lead-time or fill-rate figures.`}
                 </p>
               )}
               {row.refusedAtDoor ? (
