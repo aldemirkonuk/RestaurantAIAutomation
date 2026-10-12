@@ -21,7 +21,7 @@ import { useOrderWindow } from '@/hooks/queries/useOrderQueries';
 import { getOrder, type OrderBookSummary } from '@/services/api/orders';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
-import { num, sumByCurrency, type MoneyInCurrency } from './format';
+import { fmtDateTime, num, sumByCurrency, type MoneyInCurrency } from './format';
 import { settingsApi } from '@/services/api/settings';
 import { queryKeys } from '@/lib/query-keys';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
@@ -115,6 +115,8 @@ type OrderWire = Order & {
   freight?: number | null;
   /** `procurement_orders.currency`, sent by `mapOrderRow`; null names none. */
   currency?: string | null;
+  /** Who approved it (F-1417): null = no name on record; absent = not read. */
+  approvedByName?: string | null;
 };
 
 export interface OrderRowVM {
@@ -190,6 +192,8 @@ export interface OrderRowVM {
   recurrenceLabel: string | null;
   requestedAt: string | null;
   approvedAt: string | null;
+  /** "Approved by Ayşe at 11/10, 09:00." Null when it was never approved (F-1417). */
+  approvedLine?: string | null;
   deliveredAt: string | null;
   notes: string | null;
   /**
@@ -524,6 +528,25 @@ export function refusedAtDoorLabel(o: Pick<Order, 'status' | 'doorRefusal'>): st
   return String(o.status ?? '').toUpperCase() === 'FAILED' ? 'Refused at door' : null;
 }
 
+/**
+ * Who approved the order and when, in one sentence (F-1417): the approver
+ * was stored but shown nowhere. A route that did not read the name (the key
+ * absent) says only when, never "no one".
+ */
+export function approvedLine(
+  approvedAt: string | null | undefined,
+  approvedByName: string | null | undefined,
+): string | null {
+  if (!approvedAt) return null;
+  const at = fmtDateTime(approvedAt);
+  if (typeof approvedByName === 'string' && approvedByName.trim()) {
+    return `Approved by ${approvedByName} at ${at}.`;
+  }
+  return approvedByName === null
+    ? `Approved at ${at}. No name is on record for who approved it.`
+    : `Approved at ${at}.`;
+}
+
 export function toRow(
   o: OrderWire,
   providerNameById: Map<string, string>,
@@ -667,6 +690,7 @@ export function toRow(
     recurrenceLabel: recurrenceLabel(recurrence),
     requestedAt: o.requestedAt ?? null,
     approvedAt: o.approvedAt ?? null,
+    approvedLine: approvedLine(o.approvedAt, o.approvedByName),
     deliveredAt: o.deliveredAt ?? null,
     notes: null,
     amountsWithheld: o.amountsWithheld === true,

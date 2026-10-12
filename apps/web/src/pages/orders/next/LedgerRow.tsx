@@ -551,6 +551,11 @@ export function LedgerRow({
                   requested {fmtDate(row.requestedAt)} · approved {fmtDate(row.approvedAt)} · delivered{' '}
                   {fmtDate(row.deliveredAt)}
                 </div>
+                {row.approvedLine && (
+                  <div style={{ color: 'var(--ink-4, #665D50)' }} data-testid="order-approved-by">
+                    {row.approvedLine}
+                  </div>
+                )}
                 <div style={{ color: 'var(--ink-4, #665D50)' }}>
                   {row.orderNumber ? `no. ${row.orderNumber}` : `id ${row.id.slice(0, 8)}`}
                   {row.notes ? ` · ${row.notes}` : ''}

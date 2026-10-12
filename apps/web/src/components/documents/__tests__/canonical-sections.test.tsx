@@ -447,6 +447,25 @@ describe('DeliverySpine (ADR 0104 D13)', () => {
     for (const s of ['DELIVERED', 'RECONCILING', 'AGREED', 'VERIFIED'])
       expect(getByText(s)).toBeTruthy()
   })
+
+  it('prints a Turkish delivery’s days the Turkish way, card and line alike (F-1398)', () => {
+    const { getByTestId } = render(
+      <DeliverySpine
+        deliveries={[
+          spine([
+            spineDoc('doc-po', 'purchase_order'),
+            spineDoc('doc-irs', 'despatch_advice'),
+            spineDoc('doc-syn', 'invoice'),
+          ]),
+        ]}
+        selectedDocumentId="doc-syn"
+      />,
+    )
+    const text = getByTestId('spine-delivery').textContent ?? ''
+    expect(text).toContain('12.08.2026')
+    expect(text).toContain('14.08.2026')
+    expect(text).not.toMatch(/Aug 1[24], 2026/)
+  })
 })
 
 describe('DegradedNotice (ADR 0104 D6)', () => {

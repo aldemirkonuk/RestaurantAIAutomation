@@ -22,6 +22,7 @@ import {
   type UpdateProviderInput,
   type ProviderContact,
 } from '../../services/api/providers'
+import { isUnconfirmedWrite } from '../../services/api/client'
 import { useNotificationStore } from '../../stores'
 import { offlineStorage } from '../../lib/offline-storage'
 import { syncManager } from '../../lib/sync-manager'
@@ -432,14 +433,31 @@ export function useBulkImportProviders() {
       // Invalidate provider lists
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.lists() })
       
+      // Said the way an owner says it: vendors, added or not (S200).
+      const vendors = (n: number) => `${n} ${n === 1 ? 'vendor' : 'vendors'}`
       if (result.failed > 0) {
-        toast.warning('Import completed with errors', `${result.imported} imported, ${result.failed} failed.`)
+        toast.warning(
+          'Some vendors were not added',
+          `${vendors(result.imported)} added, ${vendors(result.failed)} not added.`,
+        )
       } else {
-        toast.success('Import successful', `${result.imported} providers imported.`)
+        toast.success('Vendors added', `${vendors(result.imported)} added to your list.`)
       }
     },
-    onError: (error: any) => {
-      toast.error('Import failed', error.response?.data?.message || error.message)
+    onError: (error: unknown) => {
+      // No status code or build words: the server's own reason when it gave
+      // one, and when nothing was confirmed, that some may already be in.
+      const said = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message
+      if (typeof said === 'string' && said) {
+        toast.error('No vendors were added', said)
+      } else if (isUnconfirmedWrite(error)) {
+        toast.error(
+          'The import may not have finished',
+          'It was not confirmed. Look at your vendors before importing the list again.',
+        )
+      } else {
+        toast.error('No vendors were added', 'No reason was given. Try again.')
+      }
     },
   })
 }

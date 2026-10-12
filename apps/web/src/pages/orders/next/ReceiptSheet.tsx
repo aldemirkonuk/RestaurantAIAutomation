@@ -133,6 +133,8 @@ export function ReceiptSheet({ open, onClose, row }: ReceiptSheetProps) {
       closeLabel="Close"
     >
       <div data-testid="receipt-sheet">
+        {/* Who approved the order, on its receipt too (F-1417). */}
+        {row.approvedLine && note(row.approvedLine)}
         {q.isLoading
           ? note('Reading the receipt…', 'status')
           : q.isError
