@@ -177,6 +177,16 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         longitude: placePoint?.longitude,
       })
       toast.success(`${name} added successfully!`)
+      // F-1486: a house given no clock (a US address added from a device
+      // abroad, ADR 0304) is said so and asked for one, and the note stays
+      // until it is closed. `null` is the gateway's "none"; an answer without
+      // the field says nothing.
+      if (location && location.timezone === null) {
+        toast.warning(
+          `${name.trim()} has no time zone yet: we could not tell it from the address or from this device. Switch to ${name.trim()} and set it in Settings under Time zone, so its hours and reports run on its own clock.`,
+          { duration: Infinity },
+        )
+      }
       onLocationAdded?.(location)
       // If the current restaurant already has providers, offer to transfer them to the new branch
       if (currentProviders.length > 0 && location?.id) {

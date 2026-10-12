@@ -276,6 +276,15 @@ export interface LabourRules {
   breakForWork: (workedMin: number) => number;
   /** The law a break figure cites, in the owner's words; `null` = none. */
   breakLaw: string | null;
+  /**
+   * The week past which the law owes overtime pay (F-1483): the US FLSA 40.
+   * The cost is never priced past it (ADR 0215's "review, never a price",
+   * kept by ADR 0330 item 5); the page only says the figure leaves it out.
+   * `null` where no pay line is claimed: Türkiye's depends on agreements
+   * Mudavym does not hold (ADR 0215 item 7), GB's and Germany's 48 are
+   * review lines, not pay.
+   */
+  overtimePayHours: number | null;
 }
 
 export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRules>> = {
@@ -286,6 +295,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakSteps: [15, 30, 60],
     breakForWork: (w) => art68BreakForWork(w),
     breakLaw: 'Labour Law 4857 Art. 68',
+    overtimePayHours: null,
   },
   US: {
     country: 'US',
@@ -294,6 +304,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakSteps: [],
     breakForWork: () => 0,
     breakLaw: null,
+    overtimePayHours: 40,
   },
   GB: {
     country: 'GB',
@@ -302,6 +313,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakSteps: [20],
     breakForWork: (w) => (w > 360 ? 20 : 0),
     breakLaw: 'the Working Time Regulations',
+    overtimePayHours: null,
   },
   DE: {
     country: 'DE',
@@ -310,6 +322,7 @@ export const LABOUR_RULES: Readonly<Record<'TR' | 'US' | 'GB' | 'DE', LabourRule
     breakSteps: [30, 45],
     breakForWork: (w) => (w > 540 ? 45 : w > 360 ? 30 : 0),
     breakLaw: 'the Arbeitszeitgesetz §4',
+    overtimePayHours: null,
   },
 };
 
@@ -320,6 +333,7 @@ export const NO_LABOUR_RULES: LabourRules = {
   breakSteps: [],
   breakForWork: () => 0,
   breakLaw: null,
+  overtimePayHours: null,
 };
 
 /** The rules for a house's region (`useHouseRegion`, or a country name or code). */

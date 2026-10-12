@@ -44,7 +44,10 @@ describe('FAQ entries — re-checkable claims', () => {
     expect(a.indexOf('Their upcoming shifts go to')).toBeLessThan(a.indexOf('Remove the leaving person last'));
     // The founder's checks: overlap refused unless the owner allows it; the rest warn.
     expect(a).toMatch(/overlaps.*cannot go to them unless the owner allows double booking/);
-    expect(a).toMatch(/time off, a different role and a week over 45 hours are shown as warnings/);
+    // F-1485: the week line is the house's country's (ADR 0330), not 45 everywhere.
+    expect(a).toMatch(/time off, a different role and a week over your country’s working-time line/);
+    expect(a).toMatch(/40 hours in the US, 45 in Türkiye, 48 in the UK and Germany/);
+    expect(a).not.toMatch(/a week over 45 hours/);
     expect(a).toMatch(/goes back to the open pool/);
     expect(a).toMatch(/past shifts stay in the owner’s former-staff history/);
   });

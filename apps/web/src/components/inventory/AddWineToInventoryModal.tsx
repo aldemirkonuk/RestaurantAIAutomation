@@ -197,11 +197,13 @@ export function AddWineToInventoryModal({
   const bottleRead = readOptionalAmount(menuPriceBottleText, group);
   const menuPriceBottle = bottleRead.ok ? bottleRead.value : null;
 
+  // Read in the house's number format (F-1484): "1,750 ml" is a handle in a
+  // US house, not 1.75 ml.
   const customBottleParsed = customBottleSizeInput
-    ? parseVolumeInput(customBottleSizeInput)
+    ? parseVolumeInput(customBottleSizeInput, group)
     : null;
   const customPourParsed = customPourSizeInput
-    ? parseVolumeInput(customPourSizeInput)
+    ? parseVolumeInput(customPourSizeInput, group)
     : null;
   const showGlassFields = saleType === "glass" || saleType === "both";
   // Mirrors showGlassFields exactly: a menu bottle price is only collected
@@ -217,6 +219,19 @@ export function AddWineToInventoryModal({
         : showGlassFields && !glassRead.ok
           ? menuPriceGlassText
           : null;
+  /**
+   * F-1484: a Custom size that does not read as one holds the add. It used to
+   * go through with the size chosen before (750 ml) and no word said so.
+   */
+  const unreadableSize =
+    isCustomBottleSize &&
+    !(customBottleParsed && isValidBottleSize(customBottleParsed.ml))
+      ? "bottle"
+      : showGlassFields &&
+          isCustomPourSize &&
+          !(customPourParsed && isValidPourSize(customPourParsed.ml))
+        ? "pour"
+        : null;
   /**
    * F-832: a price the house and this screen read two ways ("1,250" in a
    * "."-grouping house on an English screen) holds the add and asks, never
@@ -377,7 +392,13 @@ export function AddWineToInventoryModal({
   const [addRefusal, setAddRefusal] = useState<string | null>(null);
 
   const handleAddToInventory = async () => {
-    if (selectedWine && unreadablePrice === null && priceQuestion === null && !adding) {
+    if (
+      selectedWine &&
+      unreadablePrice === null &&
+      unreadableSize === null &&
+      priceQuestion === null &&
+      !adding
+    ) {
       const volumeFields: VolumeFields = {
         bottleSizeMl,
         saleType,
@@ -951,7 +972,7 @@ export function AddWineToInventoryModal({
                             value={customBottleSizeInput}
                             onChange={(e) => {
                               setCustomBottleSizeInput(e.target.value);
-                              const parsed = parseVolumeInput(e.target.value);
+                              const parsed = parseVolumeInput(e.target.value, group);
                               if (parsed && isValidBottleSize(parsed.ml)) {
                                 setBottleSizeMl(parsed.ml);
                               }
@@ -1040,7 +1061,7 @@ export function AddWineToInventoryModal({
                               value={customPourSizeInput}
                               onChange={(e) => {
                                 setCustomPourSizeInput(e.target.value);
-                                const parsed = parseVolumeInput(e.target.value);
+                                const parsed = parseVolumeInput(e.target.value, group);
                                 if (parsed && isValidPourSize(parsed.ml)) {
                                   setPourSizeMl(parsed.ml);
                                 }
@@ -1142,6 +1163,11 @@ export function AddWineToInventoryModal({
                         “{unreadablePrice}” is not an amount — fix or clear it to add this wine.
                       </p>
                     )}
+                    {unreadablePrice === null && unreadableSize !== null && (
+                      <p className="text-xs text-red-600 mb-2" role="status">
+                        {`The ${unreadableSize} size is not a size we can use — type it like 750ml, or pick one from the list, to add this wine.`}
+                      </p>
+                    )}
                     {addRefusal && (
                       <p role="alert" className="mb-3 text-sm text-red-700">
                         {addRefusal}
@@ -1154,7 +1180,12 @@ export function AddWineToInventoryModal({
                     )}
                     <button
                       onClick={() => void handleAddToInventory()}
-                      disabled={unreadablePrice !== null || priceQuestion !== null || adding}
+                      disabled={
+                        unreadablePrice !== null ||
+                        unreadableSize !== null ||
+                        priceQuestion !== null ||
+                        adding
+                      }
                       className="w-full px-4 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-40"
                     >
                       <Save className="w-5 h-5" />

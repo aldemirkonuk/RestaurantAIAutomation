@@ -1233,7 +1233,7 @@ export class OrganizationsService {
       latitude?: number;
       longitude?: number;
     },
-  ): Promise<{ id: string; name: string }> {
+  ): Promise<{ id: string; name: string; timezone: string | null }> {
     // Organisation owners only (ADR 0164, the founder 2026-09-18): the caller
     // must hold an `organization_members` row with role `owner` in the
     // organisation the location goes into, and they become the new house's
@@ -1483,6 +1483,9 @@ export class OrganizationsService {
       );
     }
 
-    return { id: restaurant.id, name: restaurant.name };
+    // F-1486: the zone goes back with the house, so a house given no clock
+    // (a US address added from a device abroad, ADR 0304) is told so and
+    // asked for one, not left with a success toast alone.
+    return { id: restaurant.id, name: restaurant.name, timezone: newZone.zone };
   }
 }

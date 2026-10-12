@@ -34,7 +34,14 @@ import { claimMudavymShell, resetMudavymShell } from '../../lib/mudavym/shellGro
 const FIXTURE_CURRENCY = 'USD';
 
 const toastError = vi.fn();
-vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toastError(...a), success: vi.fn() } }));
+const toastWarning = vi.fn();
+vi.mock('sonner', () => ({
+  toast: {
+    error: (...a: unknown[]) => toastError(...a),
+    warning: (...a: unknown[]) => toastWarning(...a),
+    success: vi.fn(),
+  },
+}));
 
 const post = vi.fn();
 const patch = vi.fn();
@@ -116,6 +123,7 @@ beforeEach(() => {
   post.mockResolvedValue({ data: { id: 'x' } });
   patch.mockResolvedValue({ data: {} });
   toastError.mockClear();
+  toastWarning.mockClear();
 });
 afterEach(() => {
   vi.clearAllMocks();
@@ -434,5 +442,37 @@ describe('a second house records its currency and its map point', () => {
     expect(body.currency).toBe('USD');
     expect(body.latitude).toBeUndefined();
     expect(body.longitude).toBeUndefined();
+  });
+});
+
+/**
+ * F-1486: a US house added from a device abroad gets no clock (ADR 0304), and
+ * the dialog gave only "added successfully". It now says the house has no
+ * time zone and asks for one; a house that got a zone hears nothing more.
+ */
+describe('a new house with no clock is said so', () => {
+  const addUptown = (onLocationAdded = vi.fn()) => {
+    render(<AddLocationDialog open onClose={() => {}} onLocationAdded={onLocationAdded} />);
+    fireEvent.change(screen.getByLabelText(/Location name/), { target: { value: 'Uptown' } });
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'United States' } });
+    fireEvent.change(screen.getByLabelText('Street Address'), { target: { value: '1 Main St' } });
+    fireEvent.change(screen.getByLabelText(/City/), { target: { value: 'Detroit' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+  };
+
+  it('asks for a time zone when the gateway gave the house none', async () => {
+    post.mockResolvedValueOnce({ data: { id: 'x', name: 'Uptown', timezone: null } });
+    addUptown();
+    await waitFor(() => expect(toastWarning).toHaveBeenCalled());
+    expect(toastWarning.mock.calls[0][0]).toMatch(/Uptown has no time zone yet/);
+    expect(toastWarning.mock.calls[0][0]).toMatch(/set it in Settings under Time zone/);
+  });
+
+  it('says nothing more when the house got its clock', async () => {
+    post.mockResolvedValueOnce({ data: { id: 'x', name: 'Uptown', timezone: 'America/Detroit' } });
+    const added = vi.fn();
+    addUptown(added);
+    await waitFor(() => expect(added).toHaveBeenCalled());
+    expect(toastWarning).not.toHaveBeenCalled();
   });
 });

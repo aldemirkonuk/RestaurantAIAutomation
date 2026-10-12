@@ -1,4 +1,4 @@
-import { parseDecimal } from '../lib/parseDecimal'
+import { parseDecimal, type GroupMark } from '../lib/parseDecimal'
 
 export type MeasurementUnit = 'ml' | 'oz'
 
@@ -98,9 +98,10 @@ export function glassMarginPercent(glassCost: number, glassMenuPrice: number): n
 
 // ==================== Smart Volume Parser ====================
 
-// The number in a size, as typed: "750", "1.5", "1,5" (F-834). parseDecimal
-// reads it with no house mark, so a lone comma is a decimal mark, as it is in
-// the price fields beside it ("37,5 cl", "1,5 L").
+// The number in a size, as typed: "750", "1.5", "1,5" (F-834). A lone comma
+// is a decimal mark ("37,5 cl", "1,5 L") unless the house's numbers group
+// thousands with it and three digits follow: "1,750 ml" is a handle in a US
+// house, not 1.75 ml (F-1484). With no house mark, parseDecimal's rule 4 holds.
 const NUM = String.raw`(\d[\d.,]*)`
 const VOLUME_PATTERNS = [
   { regex: new RegExp(String.raw`^${NUM}\s*L$`, 'i'), toMl: (v: number) => v * 1000 },
@@ -111,14 +112,17 @@ const VOLUME_PATTERNS = [
   { regex: new RegExp(String.raw`^${NUM}$`), toMl: (v: number) => v },
 ]
 
-export function parseVolumeInput(input: string): { ml: number; oz: number } | null {
+export function parseVolumeInput(
+  input: string,
+  group: GroupMark | null = null,
+): { ml: number; oz: number } | null {
   const trimmed = input.trim()
   if (!trimmed) return null
 
   for (const { regex, toMl } of VOLUME_PATTERNS) {
     const match = trimmed.match(regex)
     if (match) {
-      const value = parseDecimal(match[1])
+      const value = parseDecimal(match[1], group)
       if (value === null || !Number.isFinite(value) || value <= 0) return null
       const ml = Math.round(toMl(value))
       return { ml, oz: mlToOz(ml) }
