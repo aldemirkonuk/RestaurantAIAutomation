@@ -94,7 +94,21 @@ export interface MenuRead {
   notes: MenuReadNotes;
   /** When no line was read: why, in the owner's words. Null when lines were read. */
   emptyCause: string | null;
+  /**
+   * What of the file was not read at all, in plain words (a sheet with no
+   * name column): the version is kept as read in part (ADR 0340 rule 17).
+   * Only a section read (MENUS_SPLIT_BY_KIND) fills it.
+   */
+  gaps?: string[];
 }
+
+/** A read with sections (ADR 0340 rule 14), only with MENUS_SPLIT_BY_KIND. */
+export interface SectionReadOptions {
+  sections?: boolean;
+}
+
+/** Sections nest at most three levels (§F2). */
+const SECTION_LEVELS = 3;
 
 type Cell = string | number;
 
@@ -220,7 +234,11 @@ export class CsvParserService {
    * header row uses most (`,`, `;` as Turkish Excel saves, or a tab), and a
    * quoted cell may hold the delimiter or a line break (F-684).
    */
-  read(csvContent: string, houseGroup: GroupMark | null = null): MenuRead {
+  read(
+    csvContent: string,
+    houseGroup: GroupMark | null = null,
+    opts: SectionReadOptions = {},
+  ): MenuRead {
     const delimiter = sniffDelimiter(csvContent);
     const records = splitRecords(csvContent, delimiter).filter((r) =>
       r.cells.some((c) => c.trim() !== ""),
@@ -236,6 +254,7 @@ export class CsvParserService {
       })),
       [],
       houseGroup,
+      opts.sections ? [] : null,
     );
   }
 
@@ -248,6 +267,7 @@ export class CsvParserService {
   async readExcel(
     base64: string,
     houseGroup: GroupMark | null = null,
+    opts: SectionReadOptions = {},
   ): Promise<MenuRead> {
     const ExcelJS = await import("exceljs");
     const buffer = Buffer.from(base64, "base64");
@@ -279,7 +299,8 @@ export class CsvParserService {
       return cannotOpen();
     }
 
-    let first: MenuRead | null = null;
+    const sheets: Array<{ name: string; rows: Row[]; unreadable: string[] }> =
+      [];
     for (const worksheet of workbook.worksheets) {
       const rows: Row[] = [];
       const unreadable: string[] = [];
@@ -299,6 +320,11 @@ export class CsvParserService {
         rows.push({ number: rowNumber, cells });
       });
       if (rows.length < 2) continue;
+      sheets.push({ name: worksheet.name, rows, unreadable });
+    }
+    if (opts.sections) return this.readSheets(sheets, houseGroup);
+    let first: MenuRead | null = null;
+    for (const { rows, unreadable } of sheets) {
       const result = this.readRows(rows, unreadable, houseGroup);
       if (result.items.length > 0) return result;
       first ??= result;
@@ -307,6 +333,59 @@ export class CsvParserService {
       first ??
       this.nothing("The spreadsheet has no rows under its column names.")
     );
+  }
+
+  /**
+   * Every sheet of a workbook, read with its sections (ADR 0340 rule 14):
+   * when more than one sheet holds rows, each sheet's name is the top heading
+   * of its lines ("Wines", "Food"). A sheet with rows and no name column is
+   * not read, and the version says so (rule 17); notes name their sheet.
+   */
+  private readSheets(
+    sheets: Array<{ name: string; rows: Row[]; unreadable: string[] }>,
+    houseGroup: GroupMark | null,
+  ): MenuRead {
+    const many = sheets.length > 1;
+    const items: WineExtractItem[] = [];
+    const gaps: string[] = [];
+    const notes: MenuReadNotes = {
+      ignoredColumns: [],
+      dropped: [],
+      unreadable: [],
+    };
+    let first: MenuRead | null = null;
+    for (const sheet of sheets) {
+      const top = sheet.name.trim().slice(0, 200);
+      const result = this.readRows(
+        sheet.rows,
+        sheet.unreadable,
+        houseGroup,
+        many && top ? [top] : [],
+      );
+      first ??= result;
+      const said = (text: string) => (many ? `sheet "${top}": ${text}` : text);
+      if (result.items.length === 0 && many) {
+        gaps.push(
+          `the sheet "${top}" was not read: ${result.emptyCause?.replace(/^Nothing was read from this file, so nothing was kept\. /, "") ?? "it has no lines"}`,
+        );
+      }
+      items.push(...result.items);
+      for (const c of result.notes.ignoredColumns)
+        if (!notes.ignoredColumns.includes(c)) notes.ignoredColumns.push(c);
+      notes.dropped.push(
+        ...result.notes.dropped.map((d) => ({
+          row: d.row,
+          reason: said(d.reason),
+        })),
+      );
+      notes.unreadable.push(...result.notes.unreadable.map(said));
+    }
+    if (items.length === 0)
+      return (
+        first ??
+        this.nothing("The spreadsheet has no rows under its column names.")
+      );
+    return { items, notes, emptyCause: null, gaps };
   }
 
   /**
@@ -320,6 +399,7 @@ export class CsvParserService {
     rows: Row[],
     unreadable: string[] = [],
     houseGroup: GroupMark | null = null,
+    sectionTop: string[] | null = null,
   ): MenuRead {
     let headerAt = rows.findIndex(
       (r, i) => i < 10 && this.fieldMapFor(r.cells).includes("name"),
@@ -360,6 +440,10 @@ export class CsvParserService {
     const items: WineExtractItem[] = [];
     const unclear: string[] = [];
     const negative: string[] = [];
+    // A section read (ADR 0340 rule 14): a run of heading rows is the path
+    // the lines under it file under; the next run replaces it.
+    let path: string[] = sectionTop ? [...sectionTop] : [];
+    let inHeadingRun = false;
     for (const row of rows.slice(headerAt + 1)) {
       if (row.cells.every((c) => String(c ?? "").trim() === "")) continue;
       const item = this.buildItem(
@@ -378,6 +462,17 @@ export class CsvParserService {
       // nothing else, in a sheet that has prices (a row with a cell we could
       // not read is not one: it is kept, and the cell is named).
       const onlyName = Object.keys(item).every((k) => k === "name");
+      if (
+        sectionTop &&
+        hasPriceColumn &&
+        onlyName &&
+        !unreadableRows.has(row.number)
+      ) {
+        path = inHeadingRun ? [...path, item.name] : [...sectionTop, item.name];
+        inHeadingRun = true;
+        continue;
+      }
+      inHeadingRun = false;
       if (hasPriceColumn && onlyName && !unreadableRows.has(row.number)) {
         notes.dropped.push({
           row: row.number,
@@ -386,6 +481,8 @@ export class CsvParserService {
         continue;
       }
       if (row.raw !== undefined) item.raw_text = row.raw;
+      if (sectionTop && path.length > 0)
+        item.section = { path: path.slice(0, SECTION_LEVELS) };
       items.push(item);
     }
 

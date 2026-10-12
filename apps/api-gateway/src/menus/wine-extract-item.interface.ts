@@ -1,3 +1,5 @@
+import type { MenuKindGuess } from "./menu-line-view";
+
 /**
  * The vocabulary `category` may hold, and the reason it is a closed list.
  *
@@ -37,6 +39,23 @@ export const MENU_CATEGORY_VOCABULARY = [
 
 export type MenuCategory = (typeof MENU_CATEGORY_VOCABULARY)[number];
 
+/**
+ * The section a line was printed under, as the read saw it (ADR 0340 rule
+ * 14): the section table. `path` is the heading path from the top as printed
+ * ("Wines", "Red", "Turkey"); the rest is the read's suggestion, never a
+ * decision (rule 15). A CSV's heading rows and a workbook's sheet names give
+ * a path too, with no suggestion.
+ */
+export interface WineExtractSection {
+  path: string[];
+  /** The read's kind for the section: drinks, food, desserts or unknown. */
+  kind_suggested?: MenuKindGuess;
+  /** The read's vocabulary token for a drink section. */
+  drink_category?: MenuCategory;
+  /** The section began on an earlier page (a chunk seam). */
+  continues_from_previous?: boolean;
+}
+
 export interface WineExtractItem {
   name: string;
   producer?: string; // e.g. 'Chateau Margaux', 'Duckhorn' — required for reliable library matching
@@ -48,4 +67,18 @@ export interface WineExtractItem {
   by_glass_price?: number;
   bottle_price?: number;
   raw_text?: string; // original text line from scan/csv
+  /** The section the line was printed under (rule 14); absent on a flat read. */
+  section?: WineExtractSection;
+  /** The read's word for the line: a drink or a dish (rule 14). A suggestion. */
+  line_kind_suggested?: "drink" | "dish";
+  /** A dish's one price (rule 7, F20); never a glass or bottle price. */
+  price?: number;
+  /**
+   * The line's stored kind, set only by the split by kind (rule 15): "drink"
+   * or "dish" when the rules decided and nothing disagreed, null when the line
+   * is Unsure. Absent on a read that was not split: the legacy rule judges it.
+   */
+  line_kind?: "drink" | "dish" | null;
+  /** Why the line is Unsure, when it is (`menu_items.kind_flag`). */
+  kind_flag?: string | null;
 }

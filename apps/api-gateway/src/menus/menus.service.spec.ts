@@ -3954,3 +3954,223 @@ describe("MenusService — one live menu per kind: the plan and make-live per ki
     expect(tables.restaurant_inventory[0].menu_price_current).toBe(45);
   });
 });
+
+describe("MenusService — one upload, one draft per kind, behind MENUS_SPLIT_BY_KIND (ADR 0340 lane 5b)", () => {
+  const before = process.env.MENUS_SPLIT_BY_KIND;
+  afterEach(() => {
+    if (before === undefined) delete process.env.MENUS_SPLIT_BY_KIND;
+    else process.env.MENUS_SPLIT_BY_KIND = before;
+  });
+
+  const GAP = "pages 11-20 could not be read";
+  // A read of a menu that prints drinks, food and desserts, and a heading
+  // no rule knows.
+  const read = () => [
+    {
+      name: "Merlot",
+      producer: "Duckhorn",
+      category: "red",
+      bottle_price: 120,
+      line_kind_suggested: "drink",
+      section: {
+        path: ["Wines", "Red"],
+        kind_suggested: "drinks",
+        drink_category: "red",
+      },
+    },
+    {
+      name: "Lamb shank",
+      price: 32,
+      line_kind_suggested: "dish",
+      section: { path: ["Mains"], kind_suggested: "food" },
+    },
+    {
+      name: "Baklava",
+      price: 9,
+      line_kind_suggested: "dish",
+      section: { path: ["Desserts"], kind_suggested: "desserts" },
+    },
+    { name: "Mystery", bottle_price: 5, section: { path: ["Zzqx"] } },
+  ];
+  const resolved: unknown[][] = [];
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: unknown[]) => {
+      resolved.push(items);
+      return items.map(() => ({
+        masterWineId: "mw-1",
+        matched: true,
+        libraryTier: 1,
+        confidence: 99,
+      }));
+    },
+    normalizeText: (t: string | null | undefined) =>
+      t ? t.toLowerCase() : null,
+  };
+  const scanParser = () => ({
+    parse: jest.fn(
+      async (
+        _b: string,
+        _r: string,
+        _a: boolean,
+        gaps: string[],
+        _o: unknown,
+      ) => {
+        gaps.push(GAP);
+        return read();
+      },
+    ),
+    classifyHeadings: jest.fn(async () => new Map()),
+  });
+  const tables = (): Record<string, Row[]> => ({
+    restaurant_menus: [],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: [],
+    menu_items: [],
+    user_onboarding_progress: [],
+    master_wine_library_submissions: [],
+  });
+  const scan = {
+    method: "scan",
+    data: { imageBase64: Buffer.from("menu").toString("base64") },
+    restaurantId: "rest-1",
+  } as any;
+  beforeEach(() => {
+    resolved.length = 0;
+  });
+
+  it("off (the default): one Drinks draft, sections from categories, the partial read in its own column", async () => {
+    delete process.env.MENUS_SPLIT_BY_KIND;
+    const t = tables();
+    const parser = scanParser();
+    const service = makeService(t, { wineSubmissions, scanParser: parser });
+    const r = await service.importMenu(scan, "user-1");
+    expect(parser.parse.mock.calls[0][4]).toEqual({ sections: false });
+    expect(parser.classifyHeadings).not.toHaveBeenCalled();
+    expect(t.restaurant_menus).toHaveLength(1);
+    expect(t.restaurant_menus[0]).toMatchObject({
+      name: "Drinks list",
+      menu_type: "beverage",
+      part_read: GAP,
+    });
+    expect(r.partRead).toBe(GAP);
+    expect(r.drafts).toBeUndefined();
+    expect(t.__materialised).toHaveLength(1);
+    expect(
+      t.menu_items.every((l) => l.line_kind === null && l.price === null),
+    ).toBe(true);
+  });
+
+  it("on: a draft per kind, Drinks first, one read id, every draft says it was read in part", async () => {
+    process.env.MENUS_SPLIT_BY_KIND = "true";
+    const t = tables();
+    const parser = scanParser();
+    const sections: Row[] = [];
+    const service = makeService(t, {
+      wineSubmissions,
+      scanParser: parser,
+      rpc: (fn, args) => {
+        if (fn === "materialise_read_sections") sections.push(args);
+        return { data: {}, error: null };
+      },
+    });
+    const r = await service.importMenu(scan, "user-1");
+    expect(parser.parse.mock.calls[0][4]).toEqual({ sections: true });
+    expect(parser.classifyHeadings).toHaveBeenCalledTimes(1);
+    expect(
+      t.restaurant_menus.map((m) => [m.menu_type, m.name, m.part_read]),
+    ).toEqual([
+      ["beverage", "Drinks list", GAP],
+      ["food", "Food menu", GAP],
+      ["desserts", "Desserts menu", GAP],
+    ]);
+    expect(new Set(t.restaurant_menus.map((m) => m.read_together_id))).toEqual(
+      new Set([r.readTogetherId]),
+    );
+    expect(r.menuId).toBe(t.restaurant_menus[0].id);
+    expect(r.drafts!.map((d) => [d.kind, d.items.map((i) => i.name)])).toEqual([
+      ["beverage", ["Merlot", "Mystery"]],
+      ["food", ["Lamb shank"]],
+      ["desserts", ["Baklava"]],
+    ]);
+    // The printed sections, not the category back-fill.
+    expect(t.__materialised).toBeUndefined();
+    expect(sections.map((s) => s.p_sections.map((x: Row) => x.path))).toEqual([
+      [["Wines", "Red"], ["Zzqx"]],
+      [["Mains"]],
+      [["Desserts"]],
+    ]);
+    const line = (name: string) => t.menu_items.find((l) => l.name === name)!;
+    expect(sections[0].p_sections[0].lines).toEqual([line("Merlot").id]);
+    expect(line("Merlot")).toMatchObject({
+      line_kind: "drink",
+      price: null,
+      bottle_price: 120,
+    });
+    expect(line("Lamb shank")).toMatchObject({
+      line_kind: "dish",
+      price: 32,
+      bottle_price: null,
+      by_glass_price: null,
+    });
+    expect(line("Mystery").line_kind).toBeNull();
+    expect(line("Mystery").kind_flag).toMatch(/rules_unknown/);
+  });
+
+  it("on: only a line decided to be a drink reaches the resolver; a dish and an Unsure line never do", async () => {
+    process.env.MENUS_SPLIT_BY_KIND = "true";
+    const service = makeService(tables(), {
+      wineSubmissions,
+      scanParser: scanParser(),
+      rpc: () => ({ data: {}, error: null }),
+    });
+    await service.importMenu(scan, "user-1");
+    expect(resolved.flat().map((i: any) => i.name)).toEqual(["Merlot"]);
+  });
+
+  it("on: a failure at the second draft takes every draft of the read back out", async () => {
+    process.env.MENUS_SPLIT_BY_KIND = "true";
+    const t = tables();
+    let n = 0;
+    const service = makeService(t, {
+      wineSubmissions,
+      scanParser: scanParser(),
+      rpc: (fn) =>
+        fn === "materialise_read_sections" && ++n === 2
+          ? { data: null, error: { message: "sections down" } }
+          : { data: {}, error: null },
+    });
+    await expect(service.importMenu(scan, "user-1")).rejects.toThrow(
+      /nothing was kept/,
+    );
+    expect(t.restaurant_menus).toEqual([]);
+    expect(t.menu_items).toEqual([]);
+  });
+
+  it("a kept menu says why it was read in part from its column, and a version from before rule 17 from its name", async () => {
+    const t: Record<string, Row[]> = {
+      restaurant_menus: [
+        {
+          id: "m1",
+          restaurant_id: "rest-1",
+          status: "draft",
+          name: "Food menu",
+          part_read: GAP,
+          extracted_at: "2026-10-02T00:00:00Z",
+        },
+        {
+          id: "m2",
+          restaurant_id: "rest-1",
+          status: "draft",
+          name: "Drinks list, read in part: old reason",
+          extracted_at: "2026-10-01T00:00:00Z",
+        },
+      ],
+      users: [],
+    };
+    const r = await makeService(t).listVersions("rest-1");
+    expect(r.versions.map((v) => [v.menuId, v.partRead])).toEqual([
+      ["m1", GAP],
+      ["m2", "old reason"],
+    ]);
+  });
+});

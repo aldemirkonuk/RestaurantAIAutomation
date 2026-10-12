@@ -23,6 +23,14 @@ import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { WineExtractItem } from "./wine-extract-item.interface";
+import {
+  DRAFT_NAMES,
+  headingsOf,
+  menusSplitByKind,
+  splitByKind,
+  type DraftKind,
+  type KindSlice,
+} from "./section-table";
 import { itemNeedsPencil } from "./pencil-rule";
 import {
   LIVE_MENU_KINDS,
@@ -58,15 +66,17 @@ const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
 const SOURCE_BUCKET = "vendor-attachments";
 /**
- * A photo or PDF read that kept only part of the menu is named so, with the
- * reason (F-1292). The version has no column of its own for it, so its name
- * carries it and `partReadOf` reads it back: the import reply, the list of
- * kept menus and the plan all say it, and making it current asks first.
+ * A photo or PDF read that kept only part of the menu says so, with the
+ * reason (F-1292): the import reply, the list of kept menus and the plan all
+ * say it, and making it current asks first. ADR 0340 rule 17 (lane 5b): the
+ * reason is written to `restaurant_menus.part_read` and the name carries no
+ * data; a version kept before that has it in its name, after this prefix,
+ * and `partReadOf` reads it back from there.
  */
 const DRINKS_LIST = "Drinks list";
 const PART_READ_PREFIX = `${DRINKS_LIST}, read in part: `;
 
-/** Why a kept menu was read only in part, or null when it was read whole. */
+/** Why a version kept before rule 17 was read only in part, from its name; null when whole. */
 export function partReadOf(name: unknown): string | null {
   return typeof name === "string" && name.startsWith(PART_READ_PREFIX)
     ? name.slice(PART_READ_PREFIX.length) || null
@@ -792,6 +802,17 @@ export class MenusService {
     read: MenuReadNotes | null;
     /** Why a photo or PDF was read only in part; null when it was read whole (F-1292). */
     partRead: string | null;
+    /**
+     * Only with MENUS_SPLIT_BY_KIND (ADR 0340 rule 13): every draft the
+     * upload made, Drinks first, and the id they share. `menuId` is the
+     * Drinks draft, else the first.
+     */
+    drafts?: Array<{
+      menuId: string;
+      kind: DraftKind;
+      items: MenuImportReviewItem[];
+    }>;
+    readTogetherId?: string;
   }> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
@@ -805,12 +826,16 @@ export class MenusService {
     let sourceMime: { mime: string; ext: string } | null = null;
     let read: MenuRead | null = null;
     const gaps: string[] = [];
+    // ADR 0340 rule 13: the section read and the split by kind, OFF until
+    // the founder turns it on after lane 8.
+    const split = menusSplitByKind();
     if (dto.method === "scan") {
       items = await this.scanParser.parse(
         dto.data.imageBase64!,
         restaurantId,
         false,
         gaps,
+        { sections: split },
       );
       sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
       sourceMime = sniffMime(sourceBytes);
@@ -819,15 +844,23 @@ export class MenusService {
         read = await this.csvParser.readExcel(
           dto.data.fileBase64,
           dto.groupMark ?? null,
+          { sections: split },
         );
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
-        read = this.csvParser.read(dto.data.csvContent!, dto.groupMark ?? null);
+        read = this.csvParser.read(
+          dto.data.csvContent!,
+          dto.groupMark ?? null,
+          {
+            sections: split,
+          },
+        );
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
       items = read.items;
+      gaps.push(...(read.gaps ?? []));
     } else {
       items = dto.data.items ?? [];
     }
@@ -852,6 +885,16 @@ export class MenusService {
 
     // 3. A new version, in draft: kept whether or not it is ever made current.
     const partRead = gaps.length ? [...new Set(gaps)].join("; ") : null;
+    if (split)
+      return this.importSplitByKind(
+        dto,
+        userId,
+        items,
+        kept,
+        menuDate,
+        partRead,
+        read,
+      );
     const menu = await this.createVersion(
       restaurantId,
       userId,
@@ -860,6 +903,8 @@ export class MenusService {
       kept,
       menuDate,
       partRead,
+      "beverage",
+      crypto.randomUUID(),
     );
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
@@ -903,6 +948,174 @@ export class MenusService {
       read: read?.notes ?? null,
       partRead,
     };
+  }
+
+  /**
+   * The split by kind (ADR 0340 rules 13 and 15, lane 5b), only with
+   * MENUS_SPLIT_BY_KIND: one read becomes one draft per kind it found, made
+   * in the order Drinks, Food, Desserts and sharing one `read_together_id`.
+   * Each draft keeps its own lines (a dish and an Unsure line never reach
+   * the resolver) and the sections they were printed under
+   * (`materialise_read_sections`). Every draft carries the read's gaps: a
+   * page or sheet that was not read could have held any kind (rule 17).
+   * A failure anywhere takes every draft of the read back out, so an upload
+   * is kept whole or not at all.
+   */
+  private async importSplitByKind(
+    dto: ImportMenuDto,
+    userId: string,
+    items: WineExtractItem[],
+    kept: {
+      path: string | null;
+      sha256: string;
+      mime: string;
+      bytes: number;
+      failure: string | null;
+    } | null,
+    menuDate: { date: string; precision: "day" | "month" } | null,
+    partRead: string | null,
+    read: MenuRead | null,
+  ) {
+    const { restaurantId } = dto;
+    // The §F12 second opinion on the read's headings: never fails the read.
+    const headings = headingsOf(items);
+    const opinion = headings.length
+      ? await this.scanParser.classifyHeadings(headings, restaurantId)
+      : null;
+    const slices = splitByKind(items, opinion);
+    const readTogetherId = crypto.randomUUID();
+    const drafts: Array<{
+      menuId: string;
+      kind: DraftKind;
+      items: MenuImportReviewItem[];
+    }> = [];
+    try {
+      for (const slice of slices) {
+        const menu = await this.createVersion(
+          restaurantId,
+          userId,
+          dto,
+          slice.items,
+          kept,
+          menuDate,
+          partRead,
+          slice.kind,
+          readTogetherId,
+        );
+        const lines = await this.resolveAndPersistItems(
+          slice.items,
+          restaurantId,
+          menu.id,
+          userId,
+          dto.method,
+          false,
+          menu.menu_type ?? null,
+        );
+        await this.materialiseReadSections(
+          restaurantId,
+          menu.id,
+          userId,
+          slice,
+          lines,
+        );
+        drafts.push({ menuId: menu.id, kind: slice.kind, items: lines });
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Menu import failed after a draft was written: ${err?.message}`,
+      );
+      const left = await this.dropReadTogether(restaurantId, readTogetherId);
+      throw new ServiceUnavailableException(
+        left
+          ? `The menu was read, but its lines could not be saved, and the drafts it started could not be removed (${left}). They show under Menus kept; read the menu again in a moment.`
+          : "The menu was read, but its lines could not be saved, so nothing was kept. Read the menu again in a moment.",
+      );
+    }
+
+    await this.markMenuUploaded(restaurantId);
+
+    const all = drafts.flatMap((d) => d.items);
+    return {
+      menuId: (drafts.find((d) => d.kind === "beverage") ?? drafts[0]).menuId,
+      current: false as const,
+      itemsExtracted: items.length,
+      submissionsCreated: all.filter((r) => r.submissionId).length,
+      items: all,
+      source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+      unreadColumns: read?.notes.ignoredColumns ?? [],
+      read: read?.notes ?? null,
+      partRead,
+      drafts,
+      readTogetherId,
+    };
+  }
+
+  /**
+   * A split draft's printed sections (rule 14), its lines placed under them
+   * by the ids just written; the house's layout carried over by key.
+   */
+  private async materialiseReadSections(
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+    slice: KindSlice,
+    lines: MenuImportReviewItem[],
+  ): Promise<void> {
+    const { error } = await this.dbService.supabase.rpc(
+      "materialise_read_sections",
+      {
+        p_restaurant_id: restaurantId,
+        p_menu_id: menuId,
+        p_actor: userId,
+        p_sections: slice.sections.map((sec) => ({
+          path: sec.path,
+          suggested_kind: sec.suggestedKind,
+          suggested_category: sec.suggestedCategory,
+          suggested_by: sec.suggestedBy === "none" ? null : sec.suggestedBy,
+          lines: sec.lines
+            .map((i) => lines[i]?.menuItemId)
+            .filter((id): id is string => typeof id === "string"),
+        })),
+      },
+    );
+    if (error) {
+      throw new Error(
+        `the menu's sections could not be made: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Every draft of one read, its lines first, taken back out (rule 13: an
+   * upload is kept whole or not at all). Returns null when they are gone, or
+   * the reason they are not. Sections go with their menu (ON DELETE
+   * CASCADE); the section log is append-only and keeps its rows.
+   */
+  private async dropReadTogether(
+    restaurantId: string,
+    readTogetherId: string,
+  ): Promise<string | null> {
+    const { data, error: readErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("read_together_id", readTogetherId);
+    if (readErr) return readErr.message;
+    const ids = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (ids.length === 0) return null;
+    const { error: linesErr } = await this.dbService.supabase
+      .from("menu_items")
+      .delete()
+      .in("menu_id", ids)
+      .eq("restaurant_id", restaurantId);
+    if (linesErr) return linesErr.message;
+    const { error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .eq("read_together_id", readTogetherId)
+      .eq("status", "draft");
+    return error ? error.message : null;
   }
 
   /**
@@ -988,6 +1201,8 @@ export class MenusService {
     method: "scan" | "csv" | "manual",
   ) {
     const dto = { restaurantId, method, data: { items } } as ImportMenuDto;
+    // Arrival reads with the drinks prompt only, so its draft is the Drinks
+    // draft by what was read, never by a default (ADR 0340 rule 13).
     const menu = await this.createVersion(
       restaurantId,
       userId,
@@ -995,6 +1210,9 @@ export class MenusService {
       items,
       null,
       null,
+      null,
+      "beverage",
+      crypto.randomUUID(),
     );
     // The same step an upload takes (ADR 0340 rule 12, F-1296): lines, then
     // sections; a failure in either takes the version back out.
@@ -1063,16 +1281,23 @@ export class MenusService {
     items: WineExtractItem[],
     kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
-    partRead: string | null = null,
+    partRead: string | null,
+    // ADR 0340 rule 13: the kind the read decided for this draft, passed by
+    // every caller; never defaulted here.
+    kind: DraftKind,
+    // Rule 10: the id every draft of one upload shares.
+    readTogetherId: string,
   ): Promise<{ id: string; menu_type?: string | null }> {
     const { data, error } = await this.dbService.supabase
       .from("restaurant_menus")
       .insert({
         restaurant_id: restaurantId,
-        // Named for what it holds, every drink on the menu, not only the
-        // wine (F-018). Versions kept before this keep their old name.
-        name: partRead ? `${PART_READ_PREFIX}${partRead}` : DRINKS_LIST,
-        menu_type: "beverage",
+        // Named for what it holds (F-018: every drink, not only the wine);
+        // rule 17: the name carries no data, the reason a read is partial
+        // is its own column.
+        name: DRAFT_NAMES[kind],
+        part_read: partRead,
+        menu_type: kind,
         status: "draft",
         cadence: dto.cadence ?? null,
         menu_date: menuDate?.date ?? null,
@@ -1090,7 +1315,7 @@ export class MenusService {
         // ADR 0340 rule 10: the drafts of one upload share an id, so a
         // section can move to a Food or Desserts draft made in the review
         // (move_menu_section_to_kind) even when the read produced one draft.
-        read_together_id: crypto.randomUUID(),
+        read_together_id: readTogetherId,
       })
       .select("id, menu_type")
       .single();
@@ -3236,7 +3461,7 @@ export class MenusService {
     return {
       menuId: r.id,
       name: r.name ?? null,
-      partRead: partReadOf(r.name),
+      partRead: partReadOfRow(r),
       kind: r.menu_type ?? null,
       status: r.status,
       current: r.status === "active",
@@ -3561,9 +3786,13 @@ export class MenusService {
     // no stock row. /house/menu tells the owner these lines were set aside.
     // ADR 0340 rule 8: "kitchen" is NOT lineIsDrink on this menu's kind, so a
     // line on a Food or Desserts menu with no stored kind is set aside too.
-    const kitchen = items.map(
-      (item) =>
-        !lineIsDrink({ category: item.category, raw: item.raw_text }, menuKind),
+    // ADR 0340 rule 15 (lane 5b): a line the split decided is a drink only
+    // when it says so; a dish and an Unsure line (line_kind null) never go
+    // to the resolver. A line with no split verdict keeps the rule above.
+    const legacy = (item: WineExtractItem) =>
+      !lineIsDrink({ category: item.category, raw: item.raw_text }, menuKind);
+    const kitchen = items.map((item) =>
+      item.line_kind === undefined ? legacy(item) : item.line_kind !== "drink",
     );
     const resolved = await this.resolveDrinkLines(items, kitchen, restaurantId);
 
@@ -3590,6 +3819,11 @@ export class MenusService {
       grape_variety: item.grape_variety ?? null,
       by_glass_price: item.by_glass_price ?? null,
       bottle_price: item.bottle_price ?? null,
+      // Rule 7: only a dish holds a dish price; the split's verdict and its
+      // reasons when Unsure. A line with no verdict writes none of them.
+      price: item.line_kind === "dish" ? (item.price ?? null) : null,
+      line_kind: item.line_kind ?? null,
+      kind_flag: item.kind_flag ?? null,
       raw_extracted_text: item.raw_text ?? null,
       wine_library_id: masterWineId,
       source: method,

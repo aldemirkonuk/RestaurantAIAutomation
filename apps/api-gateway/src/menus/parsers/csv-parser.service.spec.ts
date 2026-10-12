@@ -386,3 +386,73 @@ describe("CsvParserService.readExcel — cells", () => {
     ]);
   });
 });
+
+/**
+ * ADR 0340 rule 14 (lane 5b), only with MENUS_SPLIT_BY_KIND: a heading row
+ * is a section, not a dropped row; a run of headings is a path; every sheet
+ * of a workbook is read, its name the top heading; a sheet with no name
+ * column is said (rule 17). Off, a heading row is dropped as before.
+ */
+describe("CsvParserService — a read with sections (ADR 0340 lane 5b)", () => {
+  const parser = new CsvParserService();
+  const csv =
+    "name,bottle\nWINES,\nRed,\nYakut,850\nWhite,\nÇankaya,700\nMAINS,\nKebap,40\n";
+
+  it("off: a heading row is dropped and no line has a section", () => {
+    const r = parser.read(csv);
+    expect(r.items.map((i) => i.section)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(r.notes.dropped.map((d) => d.reason)).toContain(
+      '"WINES" looks like a heading (no price)',
+    );
+  });
+
+  it("on: a run of heading rows is the path; the next run replaces it", () => {
+    const r = parser.read(csv, null, { sections: true });
+    expect(r.items.map((i) => [i.name, i.section?.path])).toEqual([
+      ["Yakut", ["WINES", "Red"]],
+      ["Çankaya", ["White"]],
+      ["Kebap", ["MAINS"]],
+    ]);
+    expect(r.notes.dropped).toEqual([]);
+  });
+
+  it("on: every sheet is read, each sheet's name its top heading; a sheet with no name column is said", async () => {
+    const wb = new ExcelJS.Workbook();
+    const wines = wb.addWorksheet("Wines");
+    [
+      ["Name", "Bottle"],
+      ["Red", ""],
+      ["Yakut", 850],
+    ].forEach((r) => wines.addRow(r));
+    const food = wb.addWorksheet("Food");
+    [
+      ["Name", "Bottle"],
+      ["Kebap", 40],
+    ].forEach((r) => food.addRow(r));
+    const notes = wb.addWorksheet("Notes");
+    [
+      ["Supplier", "Phone"],
+      ["Kavaklıdere", "555"],
+    ].forEach((r) => notes.addRow(r));
+    const b64 = Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
+
+    const off = await parser.readExcel(b64);
+    expect(off.items.map((i) => i.name)).toEqual(["Yakut"]);
+    expect(off.gaps).toBeUndefined();
+
+    const on = await parser.readExcel(b64, null, { sections: true });
+    expect(on.items.map((i) => [i.name, i.section?.path])).toEqual([
+      ["Yakut", ["Wines", "Red"]],
+      ["Kebap", ["Food"]],
+    ]);
+    expect(on.gaps).toEqual([
+      expect.stringMatching(
+        /^the sheet "Notes" was not read: We could not find a column for the drink's name/,
+      ),
+    ]);
+  });
+});

@@ -644,6 +644,7 @@ Each bracket is appended to an existing line, so no line of the amended record m
 | 2026-10-12 | Lane 3c (`feat/menus-make-live-per-kind`, the plan and make-live per kind) | `computePlan` works out a batch (one menu per kind) against the post-switch live set: retiring, `returned`, `dormantLocks`, `gone[]`, `unsure[]`, `conflicts[]` and dish matches by section key and name; `makeCurrent` reads every menu of the batch before the switch, refuses Unsure and unpicked conflicts, writes picks on drafts only, calls `make_menus_current`, carries per menu, sets `carried_at`, and on a retry carries again any menu whose carry did not finish. `GET plan?menuIds=` and the make-current body take the batch; the one-menu calls are unchanged. 9 new jest cases fail on the base and pass after; 4 code mutations all killed; three existing claim rows edited in place, one new fragment (three rows); corrections in the Review log, "Lane 3c corrections". Not run: G0, L8, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 4 (`fix/menus-union-readers-drink-kinds`, union readers read drink lines) | The cellar and beverages (through `readCurrentMenuLines(..., {drinks: true})`), vendor supply and price locks read only lines `lineIsDrink` keeps, on any live menu; promotions offers only lines not marked `kitchen_line` (`offerMenuLines`); price-lock rows name their menu and kind (`onMenus`). Migration `20270107600000` recreates `house_beverage_ledger` with a 35th column `menu_price_conflict`: drink lines only, a product counted once across menus, two prices named instead of `max()`, the section's own title. SQL test T1-T8 PASS on the PGlite corpus and FAIL at T2 without the migration; 8 SQL mutations, 7 code mutations and both claim mutations killed; two existing claim rows edited in place, no new fragment; corrections in the Review log, "Lane 4 corrections". Not run: G0, L8, Postgres other than PGlite, web tsc/vitest (no web file touched) |
 | 2026-10-12 | Lane 5a (`feat/menus-kindof`, heading classifier and golden set) | `kindOf(heading, line)` and `classifyHeading` in `menu-line-view.ts` read a heading or a section's heading path (nearest deciding heading wins) as drinks, food, desserts or `unknown` (the default) from their own word lists in English, Turkish, French, Italian, Spanish and German; "Dessert" (singular) is decided by the line's shape; `kindVerdict` gives the rule-15 Unsure reasons. `ScanParserService.classifyHeadings` is the F12 second opinion: one text-only call, `allowance: "unlimited"`, `spendLedgerUnreadable: "closed"`, resolving null (rules only) on any failure. `kind-of.golden.spec.ts` holds 460 headings; 25 new cases, 24 of which fail on the base (the row-count case calls no code) and all pass after; 9 code mutations and 9 claim mutations killed (a first row-count mutation survived, so the row now counts each list); one new fragment (two rows); corrections in the Review log, "Lane 5a corrections". Nothing calls either yet (lane 5b). Not run: G0, L8, web tsc/vitest (no web file touched) |
+| 2026-10-12 | Lane 5b (`feat/menus-section-extraction`, the section table and the split by kind, behind a flag) | Behind `MENUS_SPLIT_BY_KIND` (off unless exactly `true`): the scan parser reads a section table (sections before their lines, a path of at most three levels, a section open across a chunk seam carried by its path), the CSV and Excel readers keep heading rows as the path (a sheet's name tops it when more than one sheet has rows), and `importSplitByKind` makes one draft per kind found (`splitByKind`: the rules, else the read's kind, else the F12 second opinion), all with one `read_together_id`, each with its lines and its printed sections (`materialise_read_sections`, migration `20270107700000`); a failure drops every draft of the read. A line is stored `drink` or `dish` only with no Unsure reason; only a `drink` reaches the resolver. With the flag off and on: the seam key folds names in any script and holds no price, a draft's kind is passed, never defaulted, and `part_read` is its own column. 28 new jest cases (25 fail on the base, 3 pin unchanged flag-off behaviour) and SQL test T1-T4 (PASS on the PGlite corpus, FAIL without the migration); 12 code mutations, one SQL mutation and every claim row's mutation killed; one new fragment (five rows), no existing row edited; corrections in the Review log, "Lane 5b corrections". Not run: G0, L8, the flag flip, Postgres other than PGlite, web tsc/vitest (no web file touched) |
 ## Review log
 
 Fixed (grouped; reviewer.item): conflict key and scopes (R1.M1, R2.M5, R3.M6) → rule 19;
@@ -1025,6 +1026,61 @@ with its basis and the alternative it rejected):
   the suggestion. Rejected: calling F12 from `parse()` now, which would pay for one call
   per upload whose answer nothing stores. Founder-gated and not done: the G0 production
   read, the L8 eval and every flag flip; the README row for 0340 is owed in its own PR.
+
+Lane 5b corrections (2026-10-12, against base `7624dc123`; each is the smallest right fix,
+with its basis and the alternative it rejected):
+
+- **The flag is a deployment variable, not a per-house setting.** `menusSplitByKind()`
+  reads `process.env.MENUS_SPLIT_BY_KIND` and is on only for the exact string `true`.
+  Basis: the plan names one flag and no house setting table exists for it; a flip is the
+  founder's keystroke either way. Rejected: a per-house column (a migration and a reader
+  for a switch that is flipped once).
+- **An arrival read keeps the drinks prompt.** `parse()` builds a section read only when
+  `opts.sections` is set and the read is not an arrival read. `previewArrivalMenu` reads
+  with the drinks prompt and no sections, flag on or off, and the version Arrival keeps
+  after its held seal (`importParsedItems`) is made with the kind passed as `beverage`
+  and its own `read_together_id`, never split. Basis: an arrival is a
+  delivery document, not a menu with headings. Rejected: the section prompt on arrivals
+  (headings a delivery note does not print).
+- **Rule 17's per-kind gap taint is degenerate here.** A gap (pages a split read could not
+  read, "pages 11-20 could not be read") cannot be tied to a kind before it is read, so
+  every draft of the read carries the whole `part_read` reason. `menu-scan-verdict.ts` is
+  not changed. Rejected: guessing a gap's kind from its neighbours (a guess stored as a
+  verdict).
+- **Two fixes hold with the flag off too.** The chunk-seam key (`seamKeyOf`) folds names by
+  `\p{L}\p{N}` and holds no price, because the old `[^a-z0-9]` fold made every Greek or
+  Cyrillic name one key and dropped lines; and `part_read` is written to its column on
+  every new draft (`partReadOfRow` still reads the legacy name prefix of versions kept
+  before). Basis: both are defects of the flag-off path, not new behaviour. Rejected:
+  gating them behind the flag (keeping a known data loss on the default path).
+- **A new section's `drink_category` stays NULL.** `materialise_read_sections` copies the
+  category only from a section it inherits; a read's category goes to
+  `suggested_category` on the leaf, after the kind, category and source are checked.
+  Basis: rule 12, a suggestion is not a confirmation. Rejected: writing the read's
+  category as stated.
+- **The CSV `price` column is still read as `bottle_price`.** So a CSV dish line has a
+  bottle price and no dish price, and the split marks it Unsure
+  (`shape_contradicts_heading`) instead of a dish. Owed: a CSV column for a dish price.
+  Rejected here: renaming the column's meaning (it would move every flag-off CSV read).
+- **A new run of heading rows replaces the whole path.** Within one run of heading rows
+  each appends a level; the next run starts a new path. So a sheet that repeats only the
+  child heading loses its parent. Rejected: guessing the level of a lone heading (no
+  printed signal of depth in a CSV).
+- **A sheet's name tops the path only when more than one sheet has rows.** A one-sheet
+  workbook's sheet name ("Sheet1") is not a heading. A sheet that cannot be read becomes a
+  gap (`the sheet "X" was not read: ...`), not a refusal of the whole file.
+- **Section-change log rows stay after a dropped read.** `dropReadTogether` deletes the
+  drafts' `menu_items`, then the house's draft `restaurant_menus` rows with that
+  `read_together_id`; the `create` rows in `menu_section_changes` remain (append-only).
+  Rejected: deleting log rows (the log's guarantee is that it is never rewritten).
+- **CLAIMS row 515 (ADR-0193) is not edited.** The plan said to edit it in place; it still
+  holds unchanged against this branch, so editing it would rewrite a true row.
+- **Draft names are English only** (`Drinks list`, `Food menu`, `Desserts menu`, no data
+  in them, rule 17). Owed: names in the house's language.
+- **Owed by a later lane:** the F17 glass/bottle merge across lines, prices printed as
+  "1.250,00", and the review's "Same section as Reds?" prompt. Founder-gated and not done:
+  the G0 production read, the L8 eval and the flag flip (`MENUS_SPLIT_BY_KIND` stays off);
+  the README row for 0340 is owed in its own PR.
 
 ## Founder forks
 
