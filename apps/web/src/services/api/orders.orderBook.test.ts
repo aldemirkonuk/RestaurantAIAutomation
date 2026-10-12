@@ -67,4 +67,15 @@ describe('getOrderBook — the whole book, not the newest page', () => {
       .mockRejectedValueOnce(new Error('503'))
     await expect(getOrderBook(undefined, 'rest-1')).rejects.toThrow()
   })
+
+  it("asks for one wine's orders on every page when a wine is named (F-1538)", async () => {
+    http.get
+      .mockResolvedValueOnce({ data: { orders: rows(0, 100), total: 120, hasMore: true } })
+      .mockResolvedValueOnce({ data: { orders: rows(100, 20), total: 120, hasMore: false } })
+    await expect(getOrderBook({ inventoryId: 'inv-1' }, 'rest-1')).resolves.toHaveLength(120)
+    expect(http.get.mock.calls.map((c) => c[1].params)).toEqual([
+      { inventoryId: 'inv-1', page: 1, limit: 100 },
+      { inventoryId: 'inv-1', page: 2, limit: 100 },
+    ])
+  })
 })

@@ -3614,6 +3614,11 @@ export class ProcurementService {
       supabaseQuery = supabaseQuery.eq("provider_id", query.providerId);
     }
 
+    // One wine's orders (F-1538): its row paged the house's newest 50.
+    if (query.inventoryId) {
+      supabaseQuery = supabaseQuery.eq("inventory_id", query.inventoryId);
+    }
+
     // Named orders only (F-1368): the calendar's linked entries, by id.
     if (query.ids) {
       supabaseQuery = supabaseQuery.in("id", query.ids.split(","));

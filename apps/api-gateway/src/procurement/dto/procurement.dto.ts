@@ -868,6 +868,16 @@ export class OrderFilterDto {
   @IsOptional()
   providerId?: string;
 
+  /**
+   * One wine's orders only (F-1538): /inventory's row reads this wine's
+   * On order, Order history and Suggested order from them, not from the
+   * house's newest page.
+   */
+  @ApiPropertyOptional({ description: "Only this inventory item's orders." })
+  @Matches(/^[0-9a-f-]{36}$/i)
+  @IsOptional()
+  inventoryId?: string;
+
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()

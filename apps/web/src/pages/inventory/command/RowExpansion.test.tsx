@@ -8,7 +8,7 @@ import { setHouseLocale } from '../../../lib/houseCurrency'
 
 const navigate = vi.hoisted(() => vi.fn())
 const getItemActivity = vi.hoisted(() => vi.fn())
-const getOrders = vi.hoisted(() => vi.fn())
+const getOrderBook = vi.hoisted(() => vi.fn())
 const transferStock = vi.hoisted(() => vi.fn())
 const fetchAuctionLotRecords = vi.hoisted(() => vi.fn())
 const adjustStock = vi.hoisted(() => vi.fn())
@@ -30,7 +30,7 @@ vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
     '../../../services/api/orders',
   )
-  return { ...actual, getOrders }
+  return { ...actual, getOrderBook }
 })
 vi.mock('../../../services/api/client', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/client')>(
@@ -99,7 +99,7 @@ describe('RowExpansion — sold out (86)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -128,7 +128,7 @@ describe('RowExpansion — View ledger', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -167,7 +167,7 @@ describe('RowExpansion — moving bottles between locations', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
     transferStock.mockResolvedValue({})
   })
@@ -235,7 +235,7 @@ describe('RowExpansion — manual adjust sends the change, not a total', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
     adjustStock.mockResolvedValue({})
   })
@@ -276,7 +276,7 @@ describe('RowExpansion — the count panel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -412,7 +412,7 @@ describe('RowExpansion — the menu price is the house price (F-390)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -434,7 +434,7 @@ describe('RowExpansion — "You paid" is what the house paid (F-1311)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -458,7 +458,7 @@ describe('RowExpansion — the adjust steppers are thumb-sized (F-226)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -480,7 +480,7 @@ describe('RowExpansion — one reorder answer (F-081, F-391, F-630, F-689)', () 
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -504,7 +504,7 @@ describe('RowExpansion — one reorder answer (F-081, F-391, F-630, F-689)', () 
   })
 
   it('subtracts bottles already ordered and not here yet', async () => {
-    getOrders.mockResolvedValue([
+    getOrderBook.mockResolvedValue([
       { id: 'o1', inventoryId: 'inv-1', status: 'CONFIRMED', quantity: 1, bottlesTotal: 6 },
       { id: 'o2', inventoryId: 'inv-1', status: 'DELIVERED', quantity: 1, bottlesTotal: 12 },
       { id: 'o3', inventoryId: 'other', status: 'IN_TRANSIT', quantity: 1, bottlesTotal: 24 },
@@ -514,6 +514,43 @@ describe('RowExpansion — one reorder answer (F-081, F-391, F-630, F-689)', () 
     expect(await screen.findByRole('button', { name: 'Draft order, 6 btl' })).toBeTruthy()
     expect(kv('On order, not here yet')).toBe('6 btl')
     expect(kv('Suggested order')).toBe('6 btl')
+  })
+
+  it("[REVERT-FAILS] reads this wine's orders to the end, not the house's newest page (F-1538)", async () => {
+    getOrderBook.mockResolvedValue([
+      { id: 'o-old', inventoryId: 'inv-1', status: 'CONFIRMED', quantity: 1, bottlesTotal: 6 },
+    ])
+    renderRow({ velocityPerDay: 1, velocityDays: 30 })
+    expect(await screen.findByRole('button', { name: 'Draft order, 6 btl' })).toBeTruthy()
+    expect(getOrderBook).toHaveBeenCalledWith({ inventoryId: 'inv-1' })
+    expect(kv('On order, not here yet')).toBe('6 btl')
+  })
+
+  it('[REVERT-FAILS] counts the backorder on a partly received order, less what was refused (F-1540)', async () => {
+    getOrderBook.mockResolvedValue([
+      {
+        id: 'o-part',
+        inventoryId: 'inv-1',
+        status: 'PARTIALLY_RECEIVED',
+        quantity: 1,
+        bottlesTotal: 12,
+        // 12 ordered, 4 on the shelf, 2 refused at the door: 6 still owed.
+        received: { readable: true, quantityInStockUom: 4, backorderBottles: 8, rejectedAtDoorBottles: 2, rejectedAtDeskBottles: null },
+      },
+    ])
+    renderRow({ velocityPerDay: 1, velocityDays: 30 })
+    // 20 needed, 8 on the shelf, 6 still owed: 6, not 12.
+    expect(await screen.findByRole('button', { name: 'Draft order, 6 btl' })).toBeTruthy()
+    expect(kv('On order, not here yet')).toBe('6 btl')
+  })
+
+  it("says a partly received order's backorder could not be counted when its delivery is unreadable (F-1540)", async () => {
+    getOrderBook.mockResolvedValue([
+      { id: 'o-part', inventoryId: 'inv-1', status: 'PARTIALLY_RECEIVED', quantity: 1, bottlesTotal: 12, received: { readable: false, why: 'x' } },
+    ])
+    renderRow({ velocityPerDay: 1, velocityDays: 30 })
+    await screen.findByText('Selling')
+    await vi.waitFor(() => expect(kv('On order, not here yet')).toBe('could not be counted'))
   })
 
   it('an unset par is shown as not set and drafts nothing on its own', async () => {
@@ -561,7 +598,7 @@ describe('RowExpansion — a read that did not answer is not an empty history (F
   })
 
   it('says the orders and sales could not be read, and claims no empty history', async () => {
-    getOrders.mockRejectedValue(new Error('502'))
+    getOrderBook.mockRejectedValue(new Error('502'))
     getItemActivity.mockRejectedValue(new Error('502'))
     renderRow()
     expect(await screen.findByText(/The orders for this wine could not be read just now/)).toBeInTheDocument()
@@ -572,7 +609,7 @@ describe('RowExpansion — a read that did not answer is not an empty history (F
   })
 
   it('says it is still reading while the reads are open', () => {
-    getOrders.mockReturnValue(new Promise(() => {}))
+    getOrderBook.mockReturnValue(new Promise(() => {}))
     getItemActivity.mockReturnValue(new Promise(() => {}))
     renderRow()
     expect(screen.getByText('Reading orders…')).toBeInTheDocument()
@@ -581,7 +618,7 @@ describe('RowExpansion — a read that did not answer is not an empty history (F
   })
 
   it('still says there are no orders when the read answered with none', async () => {
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     renderRow()
     expect(await screen.findByText('No orders for this wine yet.')).toBeInTheDocument()
@@ -597,7 +634,7 @@ describe('RowExpansion — par editor', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
     updateInventoryItem.mockResolvedValue({})
   })
@@ -654,7 +691,7 @@ describe('RowExpansion — which shelf was counted', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -709,7 +746,7 @@ describe('RowExpansion — adjust and pour name their shelf', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
     adjustStock.mockResolvedValue({})
     recordPour.mockResolvedValue({ pour: {}, item: null })
@@ -791,7 +828,7 @@ describe('RowExpansion — figures in the house locale', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([{ id: 'o-1', inventoryId: 'inv-1', orderNumber: 'PO-1', createdAt: '2026-10-05T12:00:00Z', quantity: 6, status: 'DELIVERED' }])
+    getOrderBook.mockResolvedValue([{ id: 'o-1', inventoryId: 'inv-1', orderNumber: 'PO-1', createdAt: '2026-10-05T12:00:00Z', quantity: 6, status: 'DELIVERED' }])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
@@ -814,7 +851,7 @@ describe('RowExpansion — Reconcile N into live (F-1166)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
-    getOrders.mockResolvedValue([])
+    getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
     reconcileShadowItem.mockResolvedValue({ moved: 10 })
   })

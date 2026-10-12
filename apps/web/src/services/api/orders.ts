@@ -81,9 +81,11 @@ const BOOK_PAGE_SIZE = 100;
  * the total the first answer states, so a gateway that kept saying `hasMore`
  * cannot keep it reading forever. Any failed page fails the whole read: a
  * book with a hole in it is not the book.
+ *
+ * `inventoryId` reads one wine's orders the same way, to the end (F-1538).
  */
 export async function getOrderBook(
-  params?: { status?: OrderStatus },
+  params?: { status?: OrderStatus; inventoryId?: string },
   restaurantId?: string
 ): Promise<Order[]> {
   const id = restaurantId || getActiveRestaurantId();
@@ -101,7 +103,12 @@ export async function getOrderBook(
       hasMore?: boolean;
       amountsWithheld?: true;
     }>(`${ORDERS_PATH}`, {
-      params: { ...(status ? { status } : {}), page, limit: BOOK_PAGE_SIZE },
+      params: {
+        ...(status ? { status } : {}),
+        ...(params?.inventoryId ? { inventoryId: params.inventoryId } : {}),
+        page,
+        limit: BOOK_PAGE_SIZE,
+      },
     });
     const body = response.data;
     // An older gateway answered a bare array: that is the whole answer it has.

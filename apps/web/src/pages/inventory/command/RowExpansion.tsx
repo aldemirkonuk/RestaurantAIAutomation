@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adjustStock, getItemActivity, recordPour, reconcileShadowItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
-import { getOrders } from '../../../services/api/orders'
+import { getOrderBook } from '../../../services/api/orders'
 import { invalidateZoneCounts, type StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
@@ -29,6 +29,28 @@ import SoldOutControl from '../../cellar/next/SoldOutControl'
 
 /** Ordered and not yet in the cellar, from awaiting approval to on the truck (F-630). */
 const NOT_YET_ARRIVED = ['PENDING', 'APPROVAL_NEEDED', 'NEGOTIATING', 'APPROVED', 'CONFIRMED', 'IN_TRANSIT']
+
+const wholeBottles = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null)
+
+/**
+ * Bottles an order still owes, or null when that cannot be counted (F-1540).
+ * A not-yet-arrived order owes its bottles. A partly received one owes its
+ * backorder: ordered less what the shelf holds, less what was refused at the
+ * door or at the check — refused bottles were delivered and are a claim
+ * against the vendor, not bottles on their way (the gateway's close-short
+ * reads it the same way). Anything else owes none.
+ */
+function stillOwedBottles(o: any): number | null {
+  const status = String(o?.status)
+  if (NOT_YET_ARRIVED.includes(status)) return Number(o.bottlesTotal) > 0 ? Number(o.bottlesTotal) : null
+  if (status !== 'PARTIALLY_RECEIVED') return 0
+  const r = o?.received
+  const backorder = wholeBottles(r?.backorderBottles)
+  const doorRefused = wholeBottles(r?.rejectedAtDoorBottles)
+  const deskRefused = r?.rejectedAtDeskBottles == null ? 0 : wholeBottles(r.rejectedAtDeskBottles)
+  if (r?.readable !== true || backorder == null || doorRefused == null || deskRefused == null) return null
+  return Math.max(0, backorder - doorRefused - deskRefused)
+}
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -144,9 +166,11 @@ export function RowExpansion({
   })
   const activity = activityQ.data
 
+  // This wine's orders, every page (F-1538): the house's newest 50 left an
+  // older wine's On order, history and suggestion short.
   const ordersQ = useQuery({
     queryKey: ['orders', 'for-item', inventoryId],
-    queryFn: () => getOrders(),
+    queryFn: () => getOrderBook({ inventoryId }),
     enabled: !!inventoryId,
     staleTime: 60_000,
     select: (all) => (all || []).filter((o: any) => o.inventoryId === inventoryId),
@@ -155,15 +179,14 @@ export function RowExpansion({
   const ordersUnread = ordersQ.isError
   const ordersRead = ordersQ.isSuccess
   const orders = itemOrders.slice(0, 4)
-  // Bottles ordered and not here yet (F-630 sibling). PARTIALLY_RECEIVED is
-  // left out: its quantity still names bottles already on the shelf. null =
-  // cannot be counted: the orders could not be read, or an open order names
-  // no bottles.
-  const openOrders = itemOrders.filter((o: any) => NOT_YET_ARRIVED.includes(String(o.status)))
+  // Bottles ordered and not here yet (F-630 sibling), a partly received
+  // order's backorder included (F-1540). null = cannot be counted: the orders
+  // could not be read, or an open order's bottles cannot be counted.
+  const owed = itemOrders.map(stillOwedBottles)
   const onOrder: number | null =
-    ordersUnread || !ordersRead || openOrders.some((o: any) => !(Number(o.bottlesTotal) > 0))
+    ordersUnread || !ordersRead || owed.some((n) => n == null)
       ? null
-      : openOrders.reduce((n: number, o: any) => n + Number(o.bottlesTotal), 0)
+      : owed.reduce((sum: number, n) => sum + (n as number), 0)
 
   // An auction lot's own details, kept (founder, 2026-09-21) — see
   // AuctionLotStart.tsx's header for the full case.
@@ -404,7 +427,7 @@ export function RowExpansion({
                     : velocityLabel(item)
             }
           />
-          <KV k="On order, not here yet" v={onOrder == null ? (ordersUnread ? 'could not be read' : '—') : `${onOrder} btl`} />
+          <KV k="On order, not here yet" v={onOrder == null ? (ordersUnread ? 'could not be read' : ordersRead ? 'could not be counted' : '—') : `${onOrder} btl`} />
           <KV k="Suggested order" v={suggested == null ? 'set a par to get one' : `${suggested} btl`} />
           <KV k="Covers" v={run != null && velocity && suggested != null ? `${Math.round((live + (onOrder ?? 0) + suggested) / velocity)} days at this rate` : 'n/a'} />
           <KV k="Reorder point" v={reorderPoint == null ? 'n/a' : `${reorderPoint} btl (${ASSUMED_LEAD_DAYS}-day delivery wait)`} />
