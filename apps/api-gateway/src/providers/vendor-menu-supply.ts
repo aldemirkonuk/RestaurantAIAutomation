@@ -79,9 +79,9 @@ export interface VendorMenuSupply {
   menu: {
     /** At least one active menu exists. */
     current: boolean;
-    /** How many active menus were unioned (normally 1). */
+    /** How many live menus list a drink (Drinks, and Desserts with a dessert wine); a Food menu is not counted. */
     menus: number;
-    /** When the current menu became current (or was read, or is dated). */
+    /** When the newest of those menus became current (or was read, or is dated). */
     readAt: string | null;
     /** Non-discarded DRINK lines on the active menu(s) (ADR 0340 rule 25). */
     lines: number;
@@ -169,7 +169,7 @@ function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** The newest of the active menus' "became current" moments. */
+/** The newest of these menus' "became current" moments. */
 function readMomentOf(rows: Row[]): string | null {
   let best: string | null = null;
   for (const r of rows) {
@@ -248,10 +248,17 @@ export async function readVendorMenuSupply(
     linkedLines += 1;
     menuWines.add(w);
   }
+  // Only the live menus that list a drink are counted and dated (F-1562):
+  // with Drinks and Food live (ADR 0340, one live menu per kind) the supply
+  // is the Drinks menu's, so a newer Food menu must not date it. With no
+  // drink line anywhere the newest live menu still dates "current since".
+  const drinkMenus = active.filter((m) =>
+    lines.some((l) => String(l.menu_id) === String(m.id)),
+  );
   const menu: VendorMenuSupply["menu"] = {
     current: true,
-    menus: menuIds.length,
-    readAt: readMomentOf(active),
+    menus: drinkMenus.length,
+    readAt: readMomentOf(drinkMenus.length > 0 ? drinkMenus : active),
     lines: lines.length,
     linkedLines,
     wines: menuWines.size,

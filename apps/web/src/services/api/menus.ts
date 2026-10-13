@@ -825,6 +825,8 @@ export interface FullMenuKind {
 export interface FullMenu {
   /** When the gateway read it: the "as of" an offline copy shows. */
   readAt: string
+  /** The house's IANA zone, so a kept copy's "as of" is on the house's clock (F-1563). Null when unset. */
+  timezone?: string | null
   /** The kinds in the house's order. */
   kindOrder: string[]
   kindOrderSet: boolean

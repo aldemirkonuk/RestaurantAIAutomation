@@ -213,6 +213,14 @@ describe('/vendors opens on Supplies my menu', () => {
     expect(screen.queryByTestId('scope-widened')).not.toBeInTheDocument();
   });
 
+  it('two live menus with drinks are said as normal, never as menus wrongly marked current (F-1562)', async () => {
+    h.supply = menuSupply({ menus: 2 }, [{ providerId: 'p2', menuWines: 3, priced: 2, ordered: 1, stocked: 0 }]);
+    renderPage();
+    const basis = await screen.findByTestId('scope-menu-basis');
+    expect(basis).toHaveTextContent('your 2 live menus with drinks on them');
+    expect(basis).not.toHaveTextContent('marked current');
+  });
+
   it('the menu rung keeps the book’s order — it hides cards, never re-ranks them', async () => {
     renderPage();
     await waitFor(() => expect(count('menu')).toBe('2'));

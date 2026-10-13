@@ -27,6 +27,7 @@ import {
   reviewMenuItem,
   listMenuSections,
   renameMenuSection,
+  getFullMenu,
   type ActiveMenu,
   type DiscardedLine,
   type MenuLine,
@@ -687,6 +688,36 @@ describe('MenuNext — why a line is flagged (F-151)', () => {
     // No note: the status is all there is to say.
     expect(rows[2]).toHaveTextContent('flagged');
     expect(within(rows[2]).queryByTestId('menu-flag-reason')).toBeNull();
+  });
+});
+
+describe('MenuNext — the Full menu follows edits made on this page (F-1560)', () => {
+  afterEach(() => {
+    auth.role = null;
+  });
+
+  it('a discard, an add and an edit each read the Full menu again, so Print prints the menu as it now stands', async () => {
+    auth.role = 'manager';
+    const full = vi.mocked(getFullMenu);
+    full.mockClear();
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' }), line()] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mockAdd.mockResolvedValue({} as never);
+    mockReview.mockResolvedValue({ menuItemId: 'l1', fieldName: 'by_glass_price', newValue: '70', priceSync: 'changed' });
+    mount();
+    await waitFor(() => expect(full).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    await waitFor(() => expect(full).toHaveBeenCalledTimes(2));
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'American black coffee' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(full).toHaveBeenCalledTimes(3));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Glass price of Turkish coffee'), { target: { value: '70' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(full).toHaveBeenCalledTimes(4));
   });
 });
 

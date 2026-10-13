@@ -120,9 +120,13 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
   const queryClient = useQueryClient();
   const key = ['menu', 'active', restaurantId] as const;
   const discardedKey = ['menu', 'discarded', restaurantId] as const;
+  // The Full menu on this page reads the same lines: a change here refreshes
+  // it too, so it and its printed House copy show the menu as it now stands (F-1560).
+  const fullKey = ['menu', 'full'] as const;
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: key });
     void queryClient.invalidateQueries({ queryKey: discardedKey });
+    void queryClient.invalidateQueries({ queryKey: fullKey });
   };
 
   const q = useQuery({
@@ -181,7 +185,10 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
       if (!to) throw new Error('No active menu to add to');
       return addMenuItem(to, item);
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: key });
+      void queryClient.invalidateQueries({ queryKey: fullKey });
+    },
   });
 
   // One field per request: PATCH /menus/items/:id corrects one field. Sent
@@ -215,6 +222,7 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: key });
       void queryClient.invalidateQueries({ queryKey: ['menu', 'sections'] });
+      void queryClient.invalidateQueries({ queryKey: fullKey });
     },
   });
 

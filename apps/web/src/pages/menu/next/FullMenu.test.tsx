@@ -10,6 +10,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   FULL_MENU_PRINT_LABEL,
   FullMenu,
+  PRINT_CSS,
+  asOfWords,
   droppedOn,
   fullMenuCacheKey,
   kindOrderWith,
@@ -199,6 +201,32 @@ describe('the pure helpers', () => {
   });
 });
 
+describe('the kept copy is dated on the house clock (F-1563)', () => {
+  it('prints "as of" in the house zone, naming it, whatever the device zone', () => {
+    expect(asOfWords('2026-10-11T08:00:00Z', 'Europe/Istanbul')).toMatch(/11:00 AM GMT\+3$/);
+    expect(asOfWords('2026-10-11T08:00:00Z', 'America/Chicago')).toMatch(/3:00 AM CDT$/);
+  });
+
+  it('with no zone kept, says the time is on this device clock', () => {
+    expect(asOfWords('2026-10-11T08:00:00Z', null)).toMatch(/on this device's clock$/);
+  });
+
+  it('the page passes the zone kept with the copy', async () => {
+    kept.set(fullMenuCacheKey('house-1'), { asOf: '2026-10-11T08:00:00Z', menu: doc({ timezone: 'Europe/Istanbul' }) });
+    mockGet.mockRejectedValue(new Error('Network Error'));
+    mount(true);
+    expect(await screen.findByTestId('full-menu-as-of')).toHaveTextContent('11:00 AM GMT+3');
+  });
+});
+
+describe('printing (F-1564)', () => {
+  it('takes the rest of the page out of the layout, so it prints no blank pages', () => {
+    expect(PRINT_CSS).not.toMatch(/visibility:\s*hidden/);
+    expect(PRINT_CSS).toContain('body *:not(:has(.fm-doc)):not(.fm-doc):not(.fm-doc *) { display: none !important; }');
+    expect(PRINT_CSS).not.toMatch(/position:\s*absolute/);
+  });
+});
+
 describe('the copy kept on this device', () => {
   it('keeps every read under this house only, with the time it was read', async () => {
     mockGet.mockResolvedValue(doc());
@@ -338,6 +366,23 @@ describe('FullMenu', () => {
     mount(true);
     expect(await screen.findByTestId('full-menu-none')).toHaveTextContent('No menu is live yet.');
     expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument();
+  });
+
+  it('Print waits for a fresh read, so it never prints the prices from before an edit (F-1560)', async () => {
+    let answer: (d: FullMenuDoc) => void = () => undefined;
+    mockGet.mockResolvedValueOnce(doc());
+    mockGet.mockImplementationOnce(() => new Promise<FullMenuDoc>((r) => (answer = r)));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <FullMenu house="house-1" canManage={false} currency="EUR" />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole('button', { name: 'Print' });
+    void client.invalidateQueries({ queryKey: ['menu'] });
+    expect(await screen.findByRole('button', { name: 'Reading the latest prices…' })).toBeDisabled();
+    answer(doc());
+    expect(await screen.findByRole('button', { name: 'Print' })).toBeEnabled();
   });
 
   it('prints with the browser', async () => {

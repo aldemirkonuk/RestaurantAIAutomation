@@ -1367,6 +1367,8 @@ describe("MenusService.addMenuItem — the line's prices reach the house (ADR 01
       p_menu_id: "menu-1",
     });
     expect(item.priceSync).toBe("changed");
+    // F-1561: a line added by hand has no printed place; it sorts after the read's lines.
+    expect(tables.menu_items[0].position).toBeNull();
   });
 
   it("a new house wine is inserted WITHOUT a price, then priced through the writer (so its history names the person)", async () => {
@@ -1513,6 +1515,29 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.items[0].priceSync).toBe("not_current");
     // Lines are stored against the new version, not appended to the old menu.
     expect(tables.menu_items.every((l) => l.menu_id === r.menuId)).toBe(true);
+  });
+
+  it("F-1561: each line keeps its place as read, so the Full menu lists it where the house printed it, not A-Z", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, {
+      wineSubmissions,
+      csvParser: new CsvParserService(),
+    });
+    const printed =
+      "name,producer,bottle_price\nZinfandel,Ridge,70\nAmarone,Allegrini,90\nMerlot,Sea,40\n";
+    await service.importMenu(
+      {
+        method: "csv",
+        data: { csvContent: printed },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
+    expect(tables.menu_items.map((l) => [l.name, l.position])).toEqual([
+      ["Zinfandel", 0],
+      ["Amarone", 1],
+      ["Merlot", 2],
+    ]);
   });
 
   it("ADR 0340 rule 12: an upload makes its draft's sections in the same step, under the reader, and its drafts share one read id", async () => {

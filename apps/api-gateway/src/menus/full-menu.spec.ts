@@ -250,6 +250,20 @@ describe("GET /menus/:rid/full — the Full menu (ADR 0340 rule 22)", () => {
     expect(every).not.toContain("Their wines");
   });
 
+  it("F-1563: carries the house's zone, so a kept copy's 'as of' is on the house's clock", async () => {
+    const t = house();
+    t.restaurants[0].timezone = "Europe/Istanbul";
+    expect((await service(t).getFullMenu(RID)).timezone).toBe(
+      "Europe/Istanbul",
+    );
+    // No zone set: null, never the server's.
+    expect((await service(house()).getFullMenu(RID)).timezone).toBeNull();
+    // Another house's zone is never read for this one.
+    const other = house();
+    other.restaurants[1].timezone = "America/Chicago";
+    expect((await service(other).getFullMenu(RID)).timezone).toBeNull();
+  });
+
   it("follows the house's own kind order", async () => {
     const t = house();
     t.restaurants[0].menu_kind_order = ["food", "desserts", "beverage"];
