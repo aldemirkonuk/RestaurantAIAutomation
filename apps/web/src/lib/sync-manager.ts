@@ -29,6 +29,7 @@ import {
 import {
   flushSpotCountOutbox,
   isOvertakenCount,
+  isShelfToRecount,
   parkedSpotCountsOf,
   SPOT_COUNTS_CHANGED_EVENT,
   type ParkedSpotCount,
@@ -129,6 +130,22 @@ function parkedChangeOf(m: PendingMutation): ParkedChange {
     }
     case 'inventory.spotCount':
       return { id: m.id, label: `Count of ${text(d.itemLabel) ?? 'an item'}` }
+    // F-1544: a stock-take's "shelf done" and a parked unknown bottle, named
+    // by the shelf and the label, and sent back to the walk they belong to.
+    case 'inventory.countShelfDone':
+      return {
+        id: m.id,
+        label: `Shelf done: ${text(d.shelfLabel) ?? 'a shelf'}`,
+        ...(text(d.sessionId) ? { href: `/count/${text(d.sessionId)}` } : {}),
+      }
+    case 'inventory.countPark': {
+      const what = text((d.body as { description?: unknown } | undefined)?.description)
+      return {
+        id: m.id,
+        label: what ? `Not on the list: ${what}` : 'A bottle not on the list',
+        ...(text(d.sessionId) ? { href: `/count/${text(d.sessionId)}` } : {}),
+      }
+    }
     case 'provider.create':
       return { id: m.id, label: name ? `New vendor ${name}` : 'A new vendor' }
     case 'provider.update':
@@ -689,6 +706,9 @@ class SyncManagerService {
     for (const m of await this.getNotSent()) {
       if (m.parked?.reason !== 'refused') continue
       if (isOvertakenCount(m)) continue
+      // F-1544: a shelf done the house could not close is answered by a new
+      // done of that shelf, never by sending this one again.
+      if (isShelfToRecount(m)) continue
       if (
         m.type === 'receiving.door' &&
         doorResendNeed(m.parked, (m.data as QueuedDoorReceipt | undefined)?.body) !== 'nothing'

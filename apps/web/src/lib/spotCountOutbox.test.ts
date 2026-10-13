@@ -10,6 +10,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const recordSpotCount = vi.hoisted(() => vi.fn())
 vi.mock('../services/api/inventory', () => ({ recordSpotCount }))
+const sessionsApi = vi.hoisted(() => ({ markCountShelfDone: vi.fn(), parkCountLine: vi.fn() }))
+vi.mock('../services/api/countSessions', () => sessionsApi)
 
 const store = vi.hoisted(() => ({
   getPendingMutationsByType: vi.fn(),
@@ -23,7 +25,11 @@ import {
   flushSpotCountOutbox,
   isOvertakenCount,
   parkedSpotCountsOf,
+  submitParkedLine,
+  submitShelfDone,
   submitSpotCount,
+  PARK_TYPE,
+  SHELF_DONE_TYPE,
   SPOT_COUNTS_CHANGED_EVENT,
 } from './spotCountOutbox'
 
@@ -390,5 +396,200 @@ describe('F-831: a count refused as overtaken is named, and clears once counted 
 
     expect(store.removePendingMutation).toHaveBeenCalledWith('early')
     expect(store.removePendingMutation).not.toHaveBeenCalledWith('late')
+  })
+})
+
+describe('F-1544: a stock-take line rides this queue', () => {
+  it('a spot count with no count session is sent exactly as before: no sessionId, no open bottle (strict no-op)', async () => {
+    recordSpotCount.mockResolvedValue({ item: null, count: null })
+    await submitSpotCount({
+      itemId: 'i1',
+      itemLabel: 'Barolo',
+      restaurantId: H1,
+      body: { countedQty: 3, clientCountId: 'k', locationId: 'L' },
+    })
+    const sent = recordSpotCount.mock.calls[0][1]
+    expect(Object.keys(sent).sort()).toEqual(['clientCountId', 'countedQty', 'locationId'])
+  })
+
+  it("sends a walk line's count id and open tenths, and replays them with its age and the same key", async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    await submitSpotCount({
+      itemId: 'i1',
+      itemLabel: 'Barolo',
+      restaurantId: H1,
+      body: { countedQty: 3, clientCountId: 'k', locationId: 'L', sessionId: 'S', openTenths: 7 },
+    })
+    const queued = store.addPendingMutation.mock.calls[0][0]
+    expect(queued.type).toBe('inventory.spotCount')
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    store.getPendingMutationsByType.mockImplementation(async (t: string) =>
+      t === 'inventory.spotCount' ? [{ ...count('q'), data: queued.data }] : [],
+    )
+    recordSpotCount.mockResolvedValue({ item: null, count: null })
+    await flushSpotCountOutbox()
+    expect(recordSpotCount).toHaveBeenCalledTimes(1)
+    expect(recordSpotCount.mock.calls[0][1]).toMatchObject({
+      clientCountId: 'k',
+      sessionId: 'S',
+      openTenths: 7,
+      countedAgoMs: expect.any(Number),
+    })
+  })
+})
+
+describe('F-1544: "shelf done" and a parked bottle queue like a count', () => {
+  const done = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    type: SHELF_DONE_TYPE,
+    data: {
+      restaurantId: H1,
+      sessionId: 'S',
+      locationId: 'L',
+      shelfLabel: 'Back bar',
+      body: { clientDoneId: `d-${id}`, zeroItemIds: ['i2'] },
+      countedAt: new Date(Date.now() - 60_000).toISOString(),
+    },
+    timestamp: new Date(),
+    retryCount: 0,
+    owner: { userId: U1, restaurantId: H1 },
+    ...over,
+  })
+  const byType = (map: Record<string, unknown[]>) =>
+    store.getPendingMutationsByType.mockImplementation(async (t: string) => map[t] ?? [])
+
+  it('queues a done made with no signal, and says so', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const out = await submitShelfDone({
+      sessionId: 'S',
+      locationId: 'L',
+      shelfLabel: 'Back bar',
+      body: { clientDoneId: 'd1', zeroItemIds: ['i2'] },
+    })
+    expect(out.synced).toBe(false)
+    expect(sessionsApi.markCountShelfDone).not.toHaveBeenCalled()
+    expect(store.addPendingMutation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: SHELF_DONE_TYPE }),
+    )
+  })
+
+  it('a queued done is sent with the same key and its age, and leaves the queue once the shelf closed', async () => {
+    byType({ [SHELF_DONE_TYPE]: [done('x')] })
+    sessionsApi.markCountShelfDone.mockResolvedValue({ done: true, posted: ['i2'], held: [], refused: [] })
+    const res = await flushSpotCountOutbox()
+    expect(sessionsApi.markCountShelfDone).toHaveBeenCalledWith('S', 'L', {
+      clientDoneId: 'd-x',
+      zeroItemIds: ['i2'],
+      countedAgoMs: expect.any(Number),
+    })
+    const age = sessionsApi.markCountShelfDone.mock.calls[0][2].countedAgoMs
+    expect(age).toBeGreaterThanOrEqual(60_000)
+    expect(store.removePendingMutation).toHaveBeenCalledWith('x')
+    expect(res.sent).toBe(1)
+  })
+
+  it('a done the house could not close (bottles moved) is parked as "count again", never dropped', async () => {
+    byType({ [SHELF_DONE_TYPE]: [done('y')] })
+    sessionsApi.markCountShelfDone.mockResolvedValue({
+      done: false,
+      posted: [],
+      held: [],
+      refused: [{ inventoryId: 'i2', reason: 'moved' }],
+      message: 'Count this shelf again: some bottles moved after it was counted.',
+    })
+    const res = await flushSpotCountOutbox()
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'y',
+      expect.objectContaining({
+        lastError: 'Count this shelf again: some bottles moved after it was counted.',
+        parked: expect.objectContaining({ reason: 'refused', status: 409 }),
+      }),
+    )
+    expect(res.parked).toBe(1)
+  })
+
+  it('a done that fails on the network stays queued and is tried again', async () => {
+    byType({ [SHELF_DONE_TYPE]: [done('z')] })
+    sessionsApi.markCountShelfDone.mockRejectedValue(httpError(503))
+    const res = await flushSpotCountOutbox()
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(res.failed).toBe(1)
+  })
+
+  it('does not send a done queued in another house', async () => {
+    byType({ [SHELF_DONE_TYPE]: [done('h', { owner: { userId: U1, restaurantId: H2 } })] })
+    await flushSpotCountOutbox()
+    expect(sessionsApi.markCountShelfDone).not.toHaveBeenCalled()
+  })
+
+  it('a parked bottle queued offline is sent with its key and age, once', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    await submitParkedLine({
+      sessionId: 'S',
+      body: { clientLineId: 'p1', locationId: 'L', description: 'Unknown rosé', countedQty: 2 },
+    })
+    const queued = store.addPendingMutation.mock.calls[0][0]
+    expect(queued.type).toBe(PARK_TYPE)
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    byType({ [PARK_TYPE]: [{ ...done('p'), type: PARK_TYPE, data: queued.data }] })
+    sessionsApi.parkCountLine.mockResolvedValue({ id: 'r', sessionId: 'S', state: 'parked' })
+    await flushSpotCountOutbox()
+    expect(sessionsApi.parkCountLine).toHaveBeenCalledWith('S', {
+      clientLineId: 'p1',
+      locationId: 'L',
+      description: 'Unknown rosé',
+      countedQty: 2,
+      countedAgoMs: expect.any(Number),
+    })
+    expect(store.removePendingMutation).toHaveBeenCalledWith('p')
+  })
+
+  it('a done that closes the shelf clears that shelf\'s earlier "count again", and no other', async () => {
+    const refused = { reason: 'refused' as const, status: 409, at: new Date().toISOString() }
+    const older = done('old', { parked: refused })
+    const otherShelf = done('other', {
+      parked: refused,
+      data: { ...done('other').data, locationId: 'L2' },
+    })
+    byType({ [SHELF_DONE_TYPE]: [older, otherShelf, done('new')] })
+    sessionsApi.markCountShelfDone.mockResolvedValue({ done: true, posted: [], held: [], refused: [] })
+    await flushSpotCountOutbox()
+    expect(store.removePendingMutation).toHaveBeenCalledWith('new')
+    expect(store.removePendingMutation).toHaveBeenCalledWith('old')
+    expect(store.removePendingMutation).not.toHaveBeenCalledWith('other')
+  })
+
+  it('a done sent live that closes the shelf clears its earlier "count again" too', async () => {
+    byType({
+      [SHELF_DONE_TYPE]: [
+        done('old', { parked: { reason: 'refused', status: 409, at: new Date().toISOString() } }),
+      ],
+    })
+    sessionsApi.markCountShelfDone.mockResolvedValue({ done: true, posted: [], held: [], refused: [] })
+    const out = await submitShelfDone({
+      restaurantId: H1,
+      sessionId: 'S',
+      locationId: 'L',
+      shelfLabel: 'Back bar',
+      body: { clientDoneId: 'fresh', zeroItemIds: [] },
+    })
+    expect(out.synced).toBe(true)
+    expect(store.removePendingMutation).toHaveBeenCalledWith('old')
+  })
+
+  it('a refused done is thrown to the screen, not queued', async () => {
+    sessionsApi.markCountShelfDone.mockRejectedValue(httpError(409))
+    await expect(
+      submitShelfDone({
+        sessionId: 'S',
+        locationId: 'L',
+        shelfLabel: 'Back bar',
+        body: { clientDoneId: 'd2', zeroItemIds: [] },
+      }),
+    ).rejects.toThrow()
+    expect(store.addPendingMutation).not.toHaveBeenCalled()
   })
 })

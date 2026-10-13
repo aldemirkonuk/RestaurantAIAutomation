@@ -428,6 +428,11 @@ export interface SpotCountRecord {
   replayed?: boolean;
   /** F-1524: an opening count's cost per bottle was used (true) or the wine kept its own (false). */
   costApplied?: boolean;
+  /**
+   * F-1544: a stock-take line counted a second time on the same shelf in the
+   * same walk is kept for the manager and moves nothing (F2 a).
+   */
+  held?: boolean;
 }
 
 /**
@@ -452,6 +457,10 @@ export async function recordSpotCount(
     opening?: boolean;
     /** F-1524: an opening count's cost per bottle, used only when the wine has no cost yet. */
     costPerBottle?: number;
+    /** F-1544: the stock-take this line belongs to; absent = a spot count. */
+    sessionId?: string;
+    /** F-1544 (F3 a): what is left in the open bottles, in tenths of a bottle. */
+    openTenths?: number;
   },
   restaurantId?: string
 ): Promise<{ item: InventoryItem | null; count?: SpotCountRecord | null }> {

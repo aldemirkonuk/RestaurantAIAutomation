@@ -16,6 +16,11 @@
 import { offlineStorage, type PendingMutation } from './offline-storage'
 import { recordSpotCount, type SpotCountRecord } from '../services/api/inventory'
 import {
+  markCountShelfDone,
+  parkCountLine,
+  type ShelfDoneResult,
+} from '../services/api/countSessions'
+import {
   currentQueueOwner,
   isPermanentRefusal,
   isReplayable,
@@ -55,6 +60,15 @@ export interface QueuedSpotCount {
     performedBy?: string | null
     /** F-291: the shelf counted; absent = every shelf at once. */
     locationId?: string
+    /**
+     * F-1544: the stock-take this line belongs to. Sent only when set, so a
+     * spot count's body is exactly what it was.
+     */
+    sessionId?: string
+    /** F-1544 (F3 a): what is left in the open bottles, in tenths of a bottle. */
+    openTenths?: number
+    /** A line of an opening stock-take (ADR 0335 §2). */
+    opening?: boolean
   }
   /**
    * When the count was taken (this phone's clock), stamped at the tap. A
@@ -114,6 +128,88 @@ async function queue(entry: QueuedSpotCount): Promise<void> {
   })
 }
 
+// ── F-1544: a stock-take's two other acts ride the same queue ─────────────
+//
+// "Shelf done" and an item parked for review are made at the shelf, where
+// the signal is, like a count. They queue the same way (stamped with their
+// person and house, ADR 0241), replay with the same key (`clientDoneId`,
+// `clientLineId`), and say how old they are when they are finally sent, so a
+// stale "done" is refused like a stale count (F-249) instead of zeroing a
+// shelf that has been restocked since.
+
+export const SHELF_DONE_TYPE = 'inventory.countShelfDone'
+export const PARK_TYPE = 'inventory.countPark'
+
+const SHELF_RECOUNT = 'Count this shelf again: some bottles moved after it was counted.'
+
+export interface QueuedShelfDone {
+  restaurantId?: string
+  sessionId: string
+  locationId: string
+  /** The shelf's name, for the not-sent strip. */
+  shelfLabel: string
+  body: { clientDoneId: string; zeroItemIds: string[] }
+  countedAt?: string
+}
+
+export interface QueuedParkedLine {
+  restaurantId?: string
+  sessionId: string
+  body: { clientLineId: string; locationId: string; description: string; countedQty: number }
+  countedAt?: string
+}
+
+/** A 4xx other than a timeout or a throttle: the house's answer, not the network's. */
+function isRefusal(err: unknown): boolean {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  return !!status && status >= 400 && status < 500 && status !== 408 && status !== 429
+}
+
+/**
+ * Say a shelf is done. Online, the answer comes back (`done: false` names
+ * the items that moved, to count again); offline it is queued and the screen
+ * says it is saved on this phone.
+ */
+export async function submitShelfDone(
+  entry: QueuedShelfDone,
+): Promise<{ synced: boolean; result?: ShelfDoneResult }> {
+  entry = { ...entry, countedAt: entry.countedAt ?? new Date().toISOString() }
+  if (navigator.onLine) {
+    try {
+      const result = await markCountShelfDone(entry.sessionId, entry.locationId, entry.body)
+      if (result?.done) await clearRecountsBy(entry)
+      return { synced: true, result }
+    } catch (err) {
+      if (isRefusal(err)) throw err
+    }
+  }
+  await offlineStorage.addPendingMutation({
+    type: SHELF_DONE_TYPE,
+    data: entry,
+    timestamp: new Date(),
+  })
+  return { synced: false }
+}
+
+/** Park an item the house does not carry, for the manager's review. */
+export async function submitParkedLine(entry: QueuedParkedLine): Promise<{ synced: boolean }> {
+  entry = { ...entry, countedAt: entry.countedAt ?? new Date().toISOString() }
+  if (navigator.onLine) {
+    try {
+      await parkCountLine(entry.sessionId, entry.body)
+      return { synced: true }
+    } catch (err) {
+      if (isRefusal(err)) throw err
+    }
+  }
+  await offlineStorage.addPendingMutation({
+    type: PARK_TYPE,
+    data: entry,
+    timestamp: new Date(),
+  })
+  return { synced: false }
+}
+
 /** How many spot counts are waiting to sync. Drives the pending badge. */
 export async function pendingSpotCountCount(): Promise<number> {
   const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
@@ -136,7 +232,15 @@ export async function flushSpotCountOutbox(): Promise<{
   if (!navigator.onLine) return { sent: 0, failed: 0, parked: 0 }
 
   // Only this session's person and house (`getPendingMutations` filters).
-  const pending = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  // Counts first, then a stock-take's "shelf done" and parked items (F-1544):
+  // a done's zeros are for the items NOT counted, so it never depends on a
+  // count queued before it, but sending the counts first keeps the shelf's
+  // books in the order the person walked it.
+  const pending = [
+    ...(await pendingOf(MUTATION_TYPE)),
+    ...(await pendingOf(SHELF_DONE_TYPE)),
+    ...(await pendingOf(PARK_TYPE)),
+  ]
   const now = Date.now()
   let sent = 0
   let failed = 0
@@ -157,8 +261,38 @@ export async function flushSpotCountOutbox(): Promise<{
       parked++
       continue
     }
-    const entry = m.data as QueuedSpotCount
     try {
+      if (m.type === SHELF_DONE_TYPE) {
+        const done = m.data as QueuedShelfDone
+        const answer = await markCountShelfDone(done.sessionId, done.locationId, {
+          ...done.body,
+          ...ageOf(done.countedAt),
+        })
+        if (!answer?.done) {
+          // The house took the act but could not close the shelf: bottles of
+          // an item marked "not found" moved after the done (F-249). Sending
+          // it again gets the same answer, so it waits for the person, who
+          // counts those items and says "done" again (F-1544).
+          await markQuietly(m.id, {
+            lastError: answer?.message ?? SHELF_RECOUNT,
+            parked: { reason: 'refused', status: OVERTAKEN, at: new Date(now).toISOString() },
+          })
+          parked++
+          continue
+        }
+        await offlineStorage.removePendingMutation(m.id)
+        await clearRecountsBy(done)
+        sent++
+        continue
+      }
+      if (m.type === PARK_TYPE) {
+        const line = m.data as QueuedParkedLine
+        await parkCountLine(line.sessionId, { ...line.body, ...ageOf(line.countedAt) })
+        await offlineStorage.removePendingMutation(m.id)
+        sent++
+        continue
+      }
+      const entry = m.data as QueuedSpotCount
       await recordSpotCount(entry.itemId, replayBody(entry), entry.restaurantId)
       await offlineStorage.removePendingMutation(m.id)
       await clearOvertakenBy(entry)
@@ -189,6 +323,18 @@ export async function flushSpotCountOutbox(): Promise<{
   return { sent, failed, parked }
 }
 
+/** This session's queued entries of one type (a read that answers nothing is none). */
+async function pendingOf(type: string): Promise<PendingMutation[]> {
+  const all = (await offlineStorage.getPendingMutationsByType(type)) ?? []
+  return all.filter((m) => m.type === type)
+}
+
+/** A queued act's age at send time (F-249); nothing for one with no stamp. */
+function ageOf(countedAt: string | undefined): { countedAgoMs?: number } {
+  const at = countedAt ? Date.parse(countedAt) : NaN
+  return Number.isFinite(at) ? { countedAgoMs: Math.max(0, Date.now() - at) } : {}
+}
+
 /** The house's refusal in its own words, else the error's own message. */
 function refusalMessage(err: unknown): string {
   const said = (err as { response?: { data?: { message?: unknown } } } | null)
@@ -209,6 +355,43 @@ export function isOvertakenCount(m: PendingMutation): boolean {
     m.parked?.reason === 'refused' &&
     m.parked.status === OVERTAKEN
   )
+}
+
+/**
+ * A "shelf done" the house refused or could not close (F-1544). Sending it
+ * again gets the same answer, so it is never retried: the person counts the
+ * shelf again and says "done" again, and that newer done answers it.
+ */
+export function isShelfToRecount(m: PendingMutation): boolean {
+  return (
+    m.type === SHELF_DONE_TYPE &&
+    m.parked?.reason === 'refused' &&
+    m.parked.status === OVERTAKEN
+  )
+}
+
+/**
+ * A done of a shelf went through: every done of that same shelf, in that same
+ * count and house, parked as "count again" is answered now and leaves the
+ * not-sent strip. A failed read or delete leaves it parked.
+ */
+async function clearRecountsBy(sent: QueuedShelfDone): Promise<void> {
+  try {
+    const all = (await offlineStorage.getPendingMutationsByType(SHELF_DONE_TYPE)) ?? []
+    let cleared = 0
+    for (const m of all) {
+      if (!isShelfToRecount(m)) continue
+      const e = m.data as QueuedShelfDone
+      if (e.sessionId !== sent.sessionId || e.locationId !== sent.locationId) continue
+      if ((e.restaurantId ?? null) !== (sent.restaurantId ?? null)) continue
+      if (e.body?.clientDoneId === sent.body.clientDoneId) continue
+      await offlineStorage.removePendingMutation(m.id)
+      cleared++
+    }
+    if (cleared > 0) announce()
+  } catch {
+    /* left parked; the person can still discard it */
+  }
 }
 
 /** A refused count, as the not-sent strip names it: by item, in words. */

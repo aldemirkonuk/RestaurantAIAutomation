@@ -42,6 +42,8 @@ const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/Dashb
 const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
 const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
+const CountIndex = lazyWithRefresh(() => import('./pages/count/CountIndex'))
+const CountWalk = lazyWithRefresh(() => import('./pages/count/CountWalk'))
 // The route element re-reads the address on each navigation that carries a
 // query (F-1354); the page itself reads it once, at mount.
 const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/ProvidersNextRoute'))
@@ -279,6 +281,35 @@ function App() {
                     <PageBoundary>
                       <ProtectedRoute>
                         <PageGate page="receiving_door" next={<DoorNext />} />
+                      </ProtectedRoute>
+                    </PageBoundary>
+                  }
+                />
+
+                {/*
+                  The phone stock-take (F-1544 lane 3) — outside DashboardLayout
+                  for the door's reason: a bartender at a shelf with one hand,
+                  maybe no signal; every menu is a tap in the way. A new route
+                  with no legacy page, so no PageGate flag: it shows no money
+                  and no expected figure, and the gateway routes it calls are
+                  already live (count-sessions.controller.ts).
+                */}
+                <Route
+                  path="/count"
+                  element={
+                    <PageBoundary>
+                      <ProtectedRoute>
+                        <CountIndex />
+                      </ProtectedRoute>
+                    </PageBoundary>
+                  }
+                />
+                <Route
+                  path="/count/:sessionId"
+                  element={
+                    <PageBoundary>
+                      <ProtectedRoute>
+                        <CountWalk />
                       </ProtectedRoute>
                     </PageBoundary>
                   }

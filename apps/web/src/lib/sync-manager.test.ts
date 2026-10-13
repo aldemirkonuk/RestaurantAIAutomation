@@ -497,6 +497,54 @@ describe('F-1258: every parked change is named for the strip, and Discard remove
   })
 })
 
+describe('F-1544: a stock-take\'s parked acts are named by shelf and label, and point back at the walk', () => {
+  const parked = { reason: 'refused' as const, status: 409, at: '2026-10-12T23:00:00.000Z' }
+  it('names a shelf done and a parked bottle in plain words', async () => {
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      {
+        ...mutation('done-1', 'inventory.countShelfDone', 0),
+        data: { sessionId: 'S1', locationId: 'L1', shelfLabel: 'Back bar', body: {} },
+        parked,
+      },
+      {
+        ...mutation('park-1', 'inventory.countPark', 0),
+        data: { sessionId: 'S1', body: { description: 'Unknown rosé' } },
+        parked,
+      },
+    ])
+    await syncManager.refresh()
+
+    expect(syncManager.getStatus().parkedChanges).toEqual([
+      { id: 'done-1', label: 'Shelf done: Back bar', href: '/count/S1' },
+      { id: 'park-1', label: 'Not on the list: Unknown rosé', href: '/count/S1' },
+    ])
+  })
+
+  it('Try again leaves a shelf done the house could not close: only a new done of that shelf answers it', async () => {
+    vi.mocked(offlineStorage.updatePendingMutation).mockClear()
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      {
+        ...mutation('done-409', 'inventory.countShelfDone', 0),
+        data: { sessionId: 'S1', locationId: 'L1', shelfLabel: 'Back bar', body: {} },
+        parked,
+      },
+      {
+        ...mutation('park-503', 'inventory.countPark', 0),
+        data: { sessionId: 'S1', body: { description: 'Unknown rosé' } },
+        parked: { ...parked, status: 400 },
+      },
+    ])
+
+    await syncManager.retryNotSent()
+
+    const unparked = vi
+      .mocked(offlineStorage.updatePendingMutation)
+      .mock.calls.filter(([, patch]) => 'parked' in (patch as object))
+      .map(([id]) => id)
+    expect(unparked).toEqual(['park-503'])
+  })
+})
+
 describe('F-1320: Try again leaves the door receipts the house would refuse the same way', () => {
   const at = '2026-10-11T00:00:00.000Z'
   const door = (id: string, code: string, extra: Record<string, unknown> = {}): PendingMutation => ({
