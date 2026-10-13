@@ -101,6 +101,14 @@ SUFFIXES = {".ts", ".tsx", ".py"}
 TEST_MARKERS = (".spec.", ".test.", "/tests/", "/__tests__/")
 
 MIGRATION_GLOB = "supabase/migrations/*_a_count_is_a_record.sql"
+# [2026-10-12 L2] The writer has been redefined five times since ADR 0078
+# (20270104100000 .. 20270113100000), and arms B and C read only the FIRST file
+# above — so a later migration could move the INSERT below the delta branch and
+# this guard would still pass on the 2026-09-02 body. Arms B and C now read the
+# LATEST migration that (re)defines the function; that is the body a fresh
+# `db reset` installs. The original glob stays as the floor: if it vanishes the
+# record itself is gone.
+ALL_MIGRATIONS_GLOB = "supabase/migrations/*.sql"
 
 # A minimum the corpus must clear before any count over it is believed. Measured
 # on 2026-09-02: 1,196 files. A tenth of that is not this repo.
@@ -120,7 +128,7 @@ VANISHING_COUNT = re.compile(
 SANCTIONED = re.compile(r'rpc\(\s*\n?\s*["\']record_stock_count["\']')
 
 FUNC_START = re.compile(
-    r"create\s+or\s+replace\s+function\s+public\.record_stock_count", re.I
+    r"create\s+(?:or\s+replace\s+)?function\s+public\.record_stock_count\b", re.I
 )
 COUNT_INSERT = re.compile(r"INSERT\s+INTO\s+public\.stock_counts", re.I)
 DELTA_BRANCH = re.compile(r"^\s*IF\b.*\bv_delta\b", re.I | re.M)
@@ -202,6 +210,22 @@ def arm_a(files: list[Path]) -> tuple[list[str], int]:
     return violations, sanctioned
 
 
+def latest_writer_migration() -> Path | None:
+    """The last migration (by version order) that defines record_stock_count."""
+    if not sorted(ROOT.glob(MIGRATION_GLOB)):
+        return None
+    defining = [
+        m for m in sorted(ROOT.glob(ALL_MIGRATIONS_GLOB)) if FUNC_START.search(read(m))
+    ]
+    return defining[-1] if defining else None
+
+
+def writer_body(sql: str) -> str | None:
+    """The text from the LAST definition of the function in one file."""
+    starts = list(FUNC_START.finditer(sql))
+    return sql[starts[-1].start():] if starts else None
+
+
 def arm_b() -> tuple[list[str], str]:
     """Returns (violations, a one-line note about what was measured)."""
     migs = sorted(ROOT.glob(MIGRATION_GLOB))
@@ -214,13 +238,13 @@ def arm_b() -> tuple[list[str], str]:
             ],
             "no migration",
         )
-    mig = migs[0]
-    sql = read(mig)
-    start = FUNC_START.search(sql)
-    if not start:
+    mig = latest_writer_migration()
+    if mig is None:
+        return ([f"no migration defines record_stock_count"], "no function")
+    body = writer_body(read(mig))
+    if body is None:
         return ([f"{mig.name} does not define record_stock_count"], "no function")
 
-    body = sql[start.start():]
     ins = COUNT_INSERT.search(body)
     if not ins:
         return (
@@ -248,21 +272,30 @@ def arm_b() -> tuple[list[str], str]:
             ],
             f"INSERT line {ins_line}, branch line {br_line}",
         )
-    return ([], f"INSERT at function line {ins_line}, delta branch at {br_line}")
+    return (
+        [],
+        f"{mig.name}: INSERT at function line {ins_line}, delta branch at {br_line}",
+    )
 
 
 def arm_c() -> list[str]:
     migs = sorted(ROOT.glob(MIGRATION_GLOB))
     if not migs:
         return []  # arm B already reported the absence
-    sql = read(migs[0])
-    if ZERO_VARIANCE_CHECK.search(sql):
-        return [
-            f"{migs[0].name}: stock_counts carries a CHECK forbidding a zero variance — "
-            "the exact shape of inventory_transactions' CHECK (quantity_change <> 0), "
-            "which is half of how a count that agreed became unrepresentable"
-        ]
-    return []
+    # Every file that touches stock_counts, not only the first: a later ALTER
+    # can add the forbidden CHECK as easily as the CREATE could.
+    out = []
+    for m in sorted(ROOT.glob(ALL_MIGRATIONS_GLOB)):
+        if m.name < migs[0].name:
+            continue
+        sql = read(m)
+        if "stock_counts" in sql and ZERO_VARIANCE_CHECK.search(sql):
+            out.append(
+                f"{m.name}: stock_counts carries a CHECK forbidding a zero variance — "
+                "the exact shape of inventory_transactions' CHECK (quantity_change <> 0), "
+                "which is half of how a count that agreed became unrepresentable"
+            )
+    return out
 
 
 def run() -> int:
@@ -386,12 +419,13 @@ def self_test() -> int:
         print("  ok — the sanctioned primitive passes")
 
     print("self-test 4/5 — arm B's ordering test rejects the inverse ordering")
-    migs = sorted(ROOT.glob(MIGRATION_GLOB))
-    if not migs:
+    latest = latest_writer_migration()
+    if latest is None:
         print("  FAIL — no migration to test arm B against")
         failures += 1
     else:
-        body = read(migs[0])[FUNC_START.search(read(migs[0])).start():]
+        print(f"  arm B reads {latest.name}")
+        body = writer_body(read(latest))
         ins = COUNT_INSERT.search(body)
         br = DELTA_BRANCH.search(body)
         if not ins or not br:

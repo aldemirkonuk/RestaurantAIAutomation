@@ -20,8 +20,10 @@ import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import {
   mapStockCountResult,
+  openTenthsToMl,
   OPENING_COUNT_SOURCE,
 } from "./stock-count-result";
+import { resolveFactTime } from "../common/fact-time";
 import {
   setHouseMenuPrice,
   type HousePriceResult,
@@ -787,6 +789,9 @@ export class InventoryService {
     countedAgoMs: number | undefined,
     countedAt: string | null,
     locationId: string | null = null,
+    // F-1544 lane 2: a line of a stock-take (its held retry replays too) and
+    // whether it counted the open bottles.
+    line: { sessionId?: string | null; countsOpenMl?: boolean } = {},
   ): Promise<void> {
     if (
       countedAt == null ||
@@ -811,6 +816,39 @@ export class InventoryService {
       .limit(1);
     if (landed.error) throw transient("replay", landed.error);
     if ((landed.data ?? []).length > 0) return;
+    // A line held as a second count of its shelf (F2 a) replays as held.
+    if (line.sessionId) {
+      const held = await client
+        .from("stock_count_held_lines")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("idempotency_key", idempotencyKey)
+        .limit(1);
+      if (held.error) throw transient("held replay", held.error);
+      if ((held.data ?? []).length > 0) return;
+    }
+
+    // F-1544 lane 2. A glass poured from an open bottle and no new bottle
+    // opened writes no stock movement (record_glass_pour books only the
+    // bottles it opens), so the checks below cannot see it. A queued count of
+    // the open bottles is refused after any pour of the item since, from any
+    // shelf: a pour may draw on another shelf's open bottle (ADR 0285).
+    if (line.countsOpenMl) {
+      const poured = await client
+        .from("pour_events")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", inventoryId)
+        .gt("created_at", countedAt)
+        .limit(1);
+      if (poured.error) throw transient("pour", poured.error);
+      if ((poured.data ?? []).length > 0) {
+        throw new HttpException(
+          "A glass of this was poured after this count was taken, so the open bottles were not counted. Count it again.",
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
 
     if (locationId) {
       return this.refuseShelfCountOvertaken(
@@ -941,6 +979,72 @@ export class InventoryService {
     }
   }
 
+  /** The item's bottle size, for tenths of a bottle (ADR 0297's stand-in when unset). */
+  private async readBottleSizeMl(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+  ): Promise<number | null> {
+    const { data, error } = await client
+      .from("restaurant_inventory")
+      .select("bottle_size_ml")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", inventoryId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`Spot count bottle size read failed: ${error.message}`);
+      throw new HttpException(
+        "The bottle size could not be read just now, so nothing was counted. It will be tried again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const size = (data as { bottle_size_ml?: number | null } | null)
+      ?.bottle_size_ml;
+    return size == null ? null : Number(size);
+  }
+
+  /**
+   * F-1544 lane 2: a line names a stock-take of this house, and an opening
+   * stock-take's lines are opening counts (ADR 0335 §2-3; the controller lets
+   * only an owner or a manager send one). Any other stock-take's lines are
+   * counts. The writer checks the house again under its lock.
+   */
+  private async assertCountLineFitsSession(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    sessionId: string,
+    opening: boolean,
+  ): Promise<void> {
+    const { data, error } = await client
+      .from("stock_count_sessions")
+      .select("id, kind")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`Spot count session read failed: ${error.message}`);
+      throw new HttpException(
+        "The stock-take could not be read just now, so nothing was counted. It will be tried again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    if (!data) {
+      throw new HttpException(
+        "That stock-take is not one of this house's, so nothing was counted.",
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    const isOpening = (data as { kind?: string }).kind === "opening";
+    if (isOpening !== opening) {
+      throw new HttpException(
+        isOpening
+          ? "This stock-take loads opening stock, so its lines are opening counts. Nothing was counted."
+          : "Opening stock is not counted in this stock-take. Nothing was counted.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   /**
    * Spot count (SimPOS testbed plan, decisions E40-E43): per-item count with
    * immediate adjustment.
@@ -983,6 +1087,19 @@ export class InventoryService {
        */
       costPerBottle?: number | null;
       costProvenance?: "invoice" | "estimated" | "manual";
+      /**
+       * F-1544 lane 2: the stock-take this line belongs to (founder
+       * 2026-10-12, F2 a: it posts now, as its counter; a second line for the
+       * same shelf in the same walk is held). Absent = a spot count, exactly
+       * as before.
+       */
+      sessionId?: string | null;
+      /** F3 a: what is left in the open bottles, in ml. */
+      openMl?: number | null;
+      /** F3 a: the same, in tenths of a bottle, as staff enter it. */
+      openTenths?: number | null;
+      /** The counter's role in the house, for a line older than 72 h (ADR 0286). */
+      role?: string | null;
     },
   ) {
     // An age past the epoch is not a time anyone counted at, and one past
@@ -1035,6 +1152,32 @@ export class InventoryService {
       }
     }
 
+    // F-1544 lane 2 (F3 a): open bottles, in ml or in tenths, never both.
+    const namesOpenMl = dto.openMl != null;
+    const namesOpenTenths = dto.openTenths != null;
+    if (namesOpenMl && namesOpenTenths) {
+      throw new HttpException(
+        "Say what is left in the open bottles once, in tenths or in ml, not both. Nothing was counted.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (
+      namesOpenMl &&
+      !(Number.isInteger(Number(dto.openMl)) && Number(dto.openMl) >= 0)
+    ) {
+      throw new HttpException(
+        "What is left in the open bottles could not be read, so nothing was counted.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (namesOpenTenths && openTenthsToMl(dto.openTenths, null) === null) {
+      throw new HttpException(
+        "What is left in the open bottles could not be read, so nothing was counted.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const sessionId = dto.sessionId ? String(dto.sessionId) : null;
+
     const client = this.dbService.getClient();
     const stockState = dto.stockState ?? "live";
     // Decision E43: client-generated so a retry over flaky signal (the
@@ -1069,6 +1212,40 @@ export class InventoryService {
       "recordSpotCount",
       this.logger,
     );
+    const openMl = namesOpenTenths
+      ? openTenthsToMl(
+          dto.openTenths,
+          await this.readBottleSizeMl(client, restaurantId, inventoryId),
+        )
+      : namesOpenMl
+        ? Number(dto.openMl)
+        : null;
+    if (sessionId) {
+      await this.assertCountLineFitsSession(
+        client,
+        restaurantId,
+        sessionId,
+        dto.opening === true,
+      );
+      // ADR 0286, which names counts: a line taken more than 72 h before it
+      // reached the server is kept only on an owner's or a manager's word.
+      // It is refused, never re-dated to now: a count dated at its arrival
+      // is a count of a moment nobody counted at (F-777). Lines of a walk
+      // only, so a spot count is exactly what it was.
+      if (countedAt != null) {
+        const fact = resolveFactTime({
+          sentAt: countedAt,
+          receivedAt: new Date(),
+          role: dto.role ?? null,
+        });
+        if (fact.reason === "too_old") {
+          throw new HttpException(
+            "This count was taken more than 3 days ago. An owner or a manager can enter it; otherwise count this shelf again.",
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
+    }
     await this.refuseCountOvertakenByStock(
       client,
       restaurantId,
@@ -1078,6 +1255,7 @@ export class InventoryService {
       dto.countedAgoMs,
       countedAt,
       dto.locationId ?? null,
+      { sessionId, countsOpenMl: openMl !== null },
     );
     const { data: countResult, error: rpcErr } = await client.rpc(
       "record_stock_count",
@@ -1103,6 +1281,10 @@ export class InventoryService {
               p_cost_provenance: dto.costProvenance ?? "manual",
             }
           : {}),
+        // F-1544 lane 2: sent only when named, so a spot count calls the
+        // function exactly as before.
+        ...(openMl !== null ? { p_counted_open_ml: openMl } : {}),
+        ...(sessionId ? { p_session_id: sessionId } : {}),
       },
     );
     if (rpcErr) {
@@ -1132,10 +1314,15 @@ export class InventoryService {
     // photo-count model last suggested for this item. Fire-and-forget and after
     // the stock write, so a stumbling instrument cannot turn a count that
     // succeeded into an error the staff member sees.
-    void this.gradePhotoCountSuggestion(
-      inventoryId,
-      Math.round(Number(dto.countedQty)),
-    );
+    // F-1544 lane 2: a held line (a second count of its shelf in one
+    // stock-take) committed nothing, so it grades nothing.
+    const count = mapStockCountResult(countResult);
+    if (!count?.held) {
+      void this.gradePhotoCountSuggestion(
+        inventoryId,
+        Math.round(Number(dto.countedQty)),
+      );
+    }
 
     const [row, rollup, locations] = await Promise.all([
       client
@@ -1167,7 +1354,7 @@ export class InventoryService {
       // ADR 0078: the count itself, including the case that used to be invisible
       // — variance 0 with a null transactionId means "counted, and the books were
       // right", which is a result and not missing data.
-      count: mapStockCountResult(countResult),
+      count,
     };
   }
 

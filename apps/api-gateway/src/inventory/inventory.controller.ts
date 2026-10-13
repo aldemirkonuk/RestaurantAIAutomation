@@ -36,6 +36,7 @@ import {
   AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
+import { blindCountForStaff } from "./stock-count-result";
 import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 
 /**
@@ -790,7 +791,7 @@ export class InventoryController {
     summary:
       "Record a spot count (manual, voice-confirmed, or a confirmed photo proposal)",
     description:
-      "ADR 0078: writes a stock_counts row UNCONDITIONALLY through record_stock_count, and applies a stock movement only as a consequence of a non-zero difference. A count that agrees is recorded with variance 0 and a null transactionId — previously it wrote nothing at all, because set_stock_absolute returns NULL on a zero delta and inventory_transactions CHECKs quantity_change <> 0. last_counted_at is still stamped (decision E41), now inside the same transaction. The idempotency key count:{inventoryId}:{clientCountId} (decision E43) now covers the count row as well as the movement, so a retry on flaky signal records one count, not two. F-291: an optional locationId counts that one shelf: the expected figure and the correction are that shelf's lots only. Without it the count is of every shelf at once, as before.",
+      "ADR 0078: writes a stock_counts row UNCONDITIONALLY through record_stock_count, and applies a stock movement only as a consequence of a non-zero difference. A count that agrees is recorded with variance 0 and a null transactionId — previously it wrote nothing at all, because set_stock_absolute returns NULL on a zero delta and inventory_transactions CHECKs quantity_change <> 0. last_counted_at is still stamped (decision E41), now inside the same transaction. The idempotency key count:{inventoryId}:{clientCountId} (decision E43) now covers the count row as well as the movement, so a retry on flaky signal records one count, not two. F-291: an optional locationId counts that one shelf: the expected figure and the correction are that shelf's lots only. Without it the count is of every shelf at once, as before. F-1544: an optional sessionId makes it a line of that stock-take (a second line for the same item and shelf in one stock-take is held, not posted, and answers held: true); openMl or openTenths counts the open bottles (stored as ml). A stock-take line's answer leaves out the expected figure and the difference for anyone who does not hold the house's money.",
   })
   async recordSpotCount(
     @Param("restaurantId") restaurantId: string,
@@ -808,6 +809,12 @@ export class InventoryController {
       opening?: boolean;
       /** F-1524: an opening count's cost per bottle, used only for a wine with no cost yet. */
       costPerBottle?: number | null;
+      /** F-1544: the stock-take this line belongs to; absent = a spot count. */
+      sessionId?: string | null;
+      /** F-1544 (F3 a): what is left in the open bottles, in ml ... */
+      openMl?: number | null;
+      /** ... or in tenths of a bottle, as staff enter it. Not both. */
+      openTenths?: number | null;
     },
     @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
@@ -835,10 +842,21 @@ export class InventoryController {
           // F-1524: a cost sent here was typed by a person, whatever the body says.
           costProvenance: "manual",
           performedBy: user?.userId ?? null,
+          // ADR 0286: whose word keeps a line older than 72 h is the token's.
+          role: user?.role ?? null,
         },
       );
       return (
-        out && { ...out, item: inventoryItemForRole(out.item, user?.role) }
+        out && {
+          ...out,
+          item: inventoryItemForRole(out.item, user?.role),
+          // F-1544: a stock-take is a blind count. What the books expected,
+          // and the difference, are the owner's and the manager's (DASH-G6);
+          // a spot count's answer is as it was.
+          ...(dto?.sessionId && !holdsHouseMoney(user?.role ?? null)
+            ? { count: blindCountForStaff(out.count) }
+            : {}),
+        }
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

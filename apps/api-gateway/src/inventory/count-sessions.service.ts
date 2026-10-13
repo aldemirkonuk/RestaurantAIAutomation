@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { InventoryService } from "./inventory.service";
 import { zoneLabel } from "../cellar/zones.service";
+import { FACT_TIME_TRUST_MS } from "../common/fact-time";
 
 /**
  * A stock-take walked shelf by shelf on a phone (F-1544; F-076: a 112-wine
@@ -781,11 +782,21 @@ export class CountSessionsService {
       }
     }
 
+    // ADR 0286: a "done" taken more than 72 h ago is kept only on an owner's
+    // or a manager's word (recordSpotCount refuses it otherwise). Asked only
+    // then, so an ordinary "done" costs no role read.
+    const tooOldForStaff =
+      dto?.countedAgoMs != null &&
+      Number(dto.countedAgoMs) > FACT_TIME_TRUST_MS;
+    const role =
+      tooOldForStaff && (manager || (await isManager())) ? "manager" : null;
+
     const posted: string[] = [];
+    const held: string[] = [];
     const refused: Array<{ inventoryId: string; reason: string }> = [];
     for (const inventoryId of zeroItemIds) {
       try {
-        await this.inventory.recordSpotCount(house, inventoryId, {
+        const out = await this.inventory.recordSpotCount(house, inventoryId, {
           countedQty: 0,
           stockState: "live",
           clientCountId,
@@ -796,8 +807,17 @@ export class CountSessionsService {
           ...(dto?.countedAgoMs != null
             ? { countedAgoMs: Number(dto.countedAgoMs) }
             : {}),
+          // F-1544 lane 2: a line of this walk, and "not on the shelf"
+          // means no open bottle either, so an item there only as an open
+          // bottle does not stay on the books (F3 a).
+          sessionId,
+          openMl: 0,
+          role,
         });
-        posted.push(inventoryId);
+        // A zero for an item this walk already counted on this shelf is held
+        // for the manager (F2 a), not posted.
+        if (out?.count?.held) held.push(inventoryId);
+        else posted.push(inventoryId);
       } catch (e) {
         // A count the stock overtook, or one the writer refused: that item is
         // counted again. Anything else (the database away) is the house's,
@@ -825,6 +845,7 @@ export class CountSessionsService {
         locationId,
         done: false,
         posted,
+        held,
         refused,
         sessionStatus: session.status,
         message:
@@ -852,6 +873,7 @@ export class CountSessionsService {
       locationId,
       done: true,
       posted,
+      held,
       refused,
       sessionStatus: session.status,
       replayed: !data || (data as unknown[]).length === 0,

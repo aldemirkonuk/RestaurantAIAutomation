@@ -448,6 +448,10 @@ describe("shelf done -- the not-found items post as counts of 0, through the one
         locationId: "Shelf 1",
         opening: false,
         countedAgoMs: 600000,
+        // Lane 2: a line of this walk, and nothing open on the shelf either.
+        sessionId: id,
+        openMl: 0,
+        role: null,
       },
     );
     const row = db.tables.stock_count_session_shelves.find(
@@ -743,5 +747,82 @@ describe("a spot count with no session is exactly what it was (strict no-op)", (
       p_reason: "Spot count",
       p_performed_by: ME,
     });
+  });
+});
+
+describe("shelf done in lane 2 -- held zeros and old acts (F2 a, ADR 0286)", () => {
+  async function opened() {
+    const t = setup();
+    const s: any = await t.svc.open(HOUSE, BOSS, { kind: "closing" });
+    return { ...t, id: s.id as string };
+  }
+
+  it("a zero the walk already counted on this shelf comes back held, not posted, and the shelf is done", async () => {
+    const { svc, id, inventory } = await opened();
+    inventory.recordSpotCount.mockResolvedValueOnce({
+      count: { held: true, heldLineId: "h1", countId: null },
+    });
+    const out: any = await svc.shelfDone(
+      HOUSE,
+      id,
+      "Shelf 1",
+      ME,
+      { clientDoneId: "done-h", zeroItemIds: ["item-yakut"] },
+      no,
+    );
+    expect(out).toMatchObject({ done: true, posted: [], held: ["item-yakut"] });
+  });
+
+  it("a done taken more than 72 h ago is sent with the manager's word only when the person is one", async () => {
+    const staff = await opened();
+    const isManager = jest.fn().mockResolvedValue(false);
+    await staff.svc.shelfDone(
+      HOUSE,
+      staff.id,
+      "Shelf 1",
+      ME,
+      {
+        clientDoneId: "done-old",
+        zeroItemIds: ["item-yakut"],
+        countedAgoMs: 73 * 3_600_000,
+      },
+      isManager,
+    );
+    expect(isManager).toHaveBeenCalled();
+    expect(staff.inventory.recordSpotCount.mock.calls[0][2]).toMatchObject({
+      role: null,
+      sessionId: staff.id,
+    });
+
+    const boss = await opened();
+    await boss.svc.shelfDone(
+      HOUSE,
+      boss.id,
+      "Shelf 1",
+      BOSS,
+      {
+        clientDoneId: "done-old-2",
+        zeroItemIds: ["item-yakut"],
+        countedAgoMs: 73 * 3_600_000,
+      },
+      yes,
+    );
+    expect(boss.inventory.recordSpotCount.mock.calls[0][2]).toMatchObject({
+      role: "manager",
+    });
+  });
+
+  it("an ordinary done asks nobody's role", async () => {
+    const { svc, id } = await opened();
+    const isManager = jest.fn().mockResolvedValue(false);
+    await svc.shelfDone(
+      HOUSE,
+      id,
+      "Shelf 1",
+      ME,
+      { clientDoneId: "done-new", zeroItemIds: ["item-yakut"] },
+      isManager,
+    );
+    expect(isManager).not.toHaveBeenCalled();
   });
 });
