@@ -194,6 +194,37 @@ export function seasonalNaive(
   return out;
 }
 
+/**
+ * F-1579: a seasonal model reads index mod `period` as the weekday, so a day
+ * missing from a daily series cannot be cut out — every day after it would
+ * slide into the wrong seasonal slot. A `null` is filled in its place from
+ * the nearest observed value at the same phase on each side (the same weekday
+ * in the weeks around it), averaged; with none at that phase, from the mean of
+ * what was observed. Only observed values are read, never a filled one.
+ */
+export function fillSeasonalGaps(
+  series: Array<number | null>,
+  period: number,
+): number[] {
+  const seen = series.filter((v): v is number => v !== null);
+  const overall = seen.length > 0 ? (mean(seen) as number) : 0;
+  return series.map((v, i) => {
+    if (v !== null) return v;
+    const near: number[] = [];
+    for (let j = i - period; j >= 0; j -= period)
+      if (series[j] !== null) {
+        near.push(series[j] as number);
+        break;
+      }
+    for (let j = i + period; j < series.length; j += period)
+      if (series[j] !== null) {
+        near.push(series[j] as number);
+        break;
+      }
+    return near.length > 0 ? (mean(near) as number) : overall;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Classical additive decomposition (trend via centered MA)
 // ---------------------------------------------------------------------------
@@ -304,6 +335,9 @@ export function mape(actual: number[], predicted: number[]): number | null {
  *
  * `from` cannot pull the window earlier than `period`: a seasonal-naive pair
  * needs `period` points of history, so indices below it have no benchmark.
+ *
+ * `observed` (F-1579) marks which training points were counted; a filled-in
+ * point is never one end of a naive pair, as it is never scored by the caller.
  */
 export function mase(
   actual: number[],
@@ -311,12 +345,14 @@ export function mase(
   trainingSeries: number[],
   period = 1,
   from = 0,
+  observed?: boolean[],
 ): number | null {
   const forecastMae = mae(actual, predicted);
   if (forecastMae === null) return null;
   let naiveErr = 0;
   let count = 0;
   for (let i = Math.max(period, from); i < trainingSeries.length; i++) {
+    if (observed && (!observed[i] || !observed[i - period])) continue;
     naiveErr += Math.abs(trainingSeries[i] - trainingSeries[i - period]);
     count++;
   }

@@ -110,14 +110,15 @@ export function normalizeInventoryItem(
 }
 
 export interface ItemActivity {
-  daily: Array<{ date: string; out: number; in: number }>;
-  /** 7 rows (Mon..Sun) x 8 slots (4pm..11pm) of depletion counts, last 28d */
+  /** `out`/`in`: every movement off/onto the shelf; `sold`: sales only (F-1595). */
+  daily: Array<{ date: string; out: number; in: number; sold: number }>;
+  /** 7 rows (Mon..Sun) x 8 slots (4pm..11pm) of bottles sold, last 28d */
   heat: number[][];
   totalOut28d: number;
   /** Bottles booked ONTO the shelf in 28d — deliveries, adjustments, returns. */
   totalIn28d: number;
   /** What the door counted, in words, so an empty series is not read as silence. */
-  includes: { out: string; in: string; window: string };
+  includes: { out: string; in: string; sold?: string; window: string };
   /**
    * Each shelf's newest count of its own (F-1165), newest first. A count of one
    * shelf does not move the wine's lastCountedAt. null: not known (the read

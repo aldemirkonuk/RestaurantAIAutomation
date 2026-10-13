@@ -334,3 +334,25 @@ describe("forecasting engine", () => {
     expect(m as number).toBeLessThan(1);
   });
 });
+
+describe("fillSeasonalGaps + mase over counted points (F-1579)", () => {
+  it("fills a gap from the same phase on each side, never from a fill", () => {
+    expect(
+      Fc.fillSeasonalGaps([1, 5, null, 9, 3, null, 1, 7, 2, null], 3),
+    ).toEqual([1, 5, 2, 9, 3, 2, 1, 7, 2, 1]);
+  });
+
+  it("with no value at that phase it falls back to the observed mean", () => {
+    expect(Fc.fillSeasonalGaps([null, 2, 4, null, 2, 4], 3)).toEqual([
+      3, 2, 4, 3, 2, 4,
+    ]);
+  });
+
+  it("MASE skips a naive pair with a filled point at either end", () => {
+    const train = [1, 2, 9, 2, 1, 2];
+    const observed = [true, true, false, true, true, true];
+    // Pairs at lag 2: (0,2)x (1,3)=0 (2,4)x (3,5)=0 → naive error 0 → null.
+    expect(Fc.mase([1], [2], train, 2, 0, observed)).toBeNull();
+    expect(Fc.mase([1], [2], train, 2, 0)).not.toBeNull();
+  });
+});

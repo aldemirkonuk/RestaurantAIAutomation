@@ -233,3 +233,79 @@ describe("item activity says which shelf was counted when", () => {
     expect(a.shelfCounts).toBeNull();
   });
 });
+
+/**
+ * F-1595 (sim 52, bar-night-service): "Velocity, last 14 days" and "When it
+ * sells" are sales, but they counted any negative movement. Carrying 12
+ * bottles from the cellar to the bar at 18:00 on Friday (transfer_stock writes
+ * a -12 leg and a +12 leg) drew 12 sales on Friday 6pm; a broken bottle, a
+ * comp and a count correction drew a sale each.
+ */
+describe("item activity counts only sales as sales", () => {
+  let db: MockDb;
+  let inventory: InventoryService;
+  // Friday 2026-10-09 in Istanbul; 15:00Z is 18:00 there.
+  const at = "2026-10-09T15:00:00Z";
+  const row = (
+    quantity_change: number,
+    transaction_type: string,
+    source = "manual",
+  ) => ({
+    restaurant_id: REST,
+    inventory_id: ITEM,
+    quantity_change,
+    transaction_type,
+    source,
+    created_at: at,
+  });
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    inventory = new InventoryService(db.client as unknown as DatabaseService);
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-09T20:00:00Z"));
+    db.answers.restaurants = {
+      data: { timezone: "Europe/Istanbul", country: "TR" },
+      error: null,
+    };
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("a shelf move, breakage, comp and count correction draw no sale", async () => {
+    db.answers.inventory_transactions = {
+      data: [
+        row(-12, "transfer"),
+        row(12, "transfer"),
+        row(-1, "waste"),
+        row(-1, "comp"),
+        row(-2, "correction"),
+        row(-1, "adjustment"),
+      ],
+      error: null,
+    };
+    const a = await inventory.getItemActivity(REST, ITEM);
+    const today = a.daily[a.daily.length - 1];
+    expect(today.date).toBe("2026-10-09");
+    expect(today.sold).toBe(0);
+    expect(a.heat.flat().every((v) => v === 0)).toBe(true);
+    // They are still movements off the shelf, and the door says so.
+    expect(today.out).toBe(17);
+    expect(a.includes.sold).toMatch(/not a sale/);
+  });
+
+  it("a sale and a pour are sales, less what the till sent back", async () => {
+    db.answers.inventory_transactions = {
+      data: [
+        row(-3, "sale", "pos"),
+        row(-1, "pour"),
+        row(1, "return", "pos"),
+        row(-12, "transfer"),
+      ],
+      error: null,
+    };
+    const a = await inventory.getItemActivity(REST, ITEM);
+    expect(a.daily[a.daily.length - 1].sold).toBe(3);
+    // Fri = 4 (Mon=0), 18:00 = slot 2 (16:00 = 0).
+    expect(a.heat[4][2]).toBe(3);
+  });
+});

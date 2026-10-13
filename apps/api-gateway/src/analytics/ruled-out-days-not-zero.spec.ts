@@ -1,4 +1,5 @@
 import { AnalyticsService } from "./analytics.service";
+import * as E from "./engine";
 
 /**
  * F-1575 (sim 49, owner-first-quarter-analytics): a day an owner ruled out
@@ -144,7 +145,12 @@ describe("a day ruled out of the baselines is not fitted as zero (F-1575)", () =
   it("the risk series leaves it out too, so it is no -100% day", async () => {
     const service = analytics();
     const series = jest.spyOn(service as any, "toDailySeries");
+    const vol = jest.spyOn(E.risk, "volatility");
     const out: any = await service.getRiskProfile("r1");
+    // F-1579: 89 days give 88 day-to-day changes, less the one that would
+    // run across the outage from 2026-10-06 to 2026-10-08.
+    expect(vol.mock.calls[0][0]).toHaveLength(87);
+    expect(out.basis.demand).toMatch(/no day-to-day change is taken across it/);
     const { dates, values } = series.mock.results[0].value as any;
     expect(dates).not.toContain(OUTAGE);
     expect(dates).toHaveLength(89);

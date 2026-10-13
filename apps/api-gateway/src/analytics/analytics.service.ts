@@ -1383,14 +1383,16 @@ export class AnalyticsService {
         date: c.date,
         value: c.qty as number, // bottles/day as the "return-generating" flow
       }));
-    const { values: dailyDemand, left: riskLeft } = this.toDailySeries(
-      revRows,
-      90,
-      zone,
-      { ruledOut: exclusions.dates },
-    );
+    const {
+      dates: demandDates,
+      values: dailyDemand,
+      left: riskLeft,
+    } = this.toDailySeries(revRows, 90, zone, { ruledOut: exclusions.dates });
     const returns: number[] = [];
     for (let i = 1; i < dailyDemand.length; i++) {
+      // F-1579: no day-to-day change is taken across a ruled-out day; the
+      // two days either side of it are not consecutive.
+      if (shiftHouseDay(demandDates[i - 1], 1) !== demandDates[i]) continue;
       if (dailyDemand[i - 1] > 0)
         returns.push(
           (dailyDemand[i] - dailyDemand[i - 1]) / dailyDemand[i - 1],
@@ -1405,7 +1407,7 @@ export class AnalyticsService {
 
     return {
       basis: {
-        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}${ruledOutSaid(exclusions, riskLeft)}`,
+        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}${ruledOutSaid(exclusions, riskLeft, "risk")}`,
         revenueConcentration: `over what each drink sold in the last 90d (${skuRevenue.length} drink(s) with sales)${unpricedSales.size > 0 ? `; ${unpricedSales.size} drink(s) left out because a sale carried no price` : ""}${cocktailPours > 0 ? `; ${cocktailPours} pour(s) into cocktails are not counted as sales of the drinks poured, and the cocktails' own sales are not in these figures` : ""}`,
         vendorConcentration: mixedCurrency
           ? `delivered procurement_orders (trailing 365d) — null: the orders were placed in ${orderCurrencies.join(", ")}, and with no exchange rate on record their spend shares cannot be compared`
@@ -1508,11 +1510,26 @@ export class AnalyticsService {
       .map((c) => ({ date: c.date, value: c.qty as number }));
     // F-1575: a day ruled out of the baselines (a till outage, a closure)
     // is left out of the history, never fitted as a day that sold nothing.
-    const { dates, values, left } = this.toDailySeries(rows, sinceDays, zone, {
+    const {
+      dates,
+      values: counts,
+      left,
+    } = this.toDailySeries(rows, sinceDays, zone, {
       from: recordsFrom,
       throughYesterday: true,
       ruledOut: exclusions.dates,
     });
+    // F-1579: but the model reads index mod 7 as the weekday, so it is fitted
+    // on one value per calendar day: a ruled-out day keeps its place, filled
+    // from the same weekday in the weeks around it, and `observed` keeps it
+    // out of every accuracy figure. `history` still shows only counted days.
+    const counted = new Map(dates.map((d, i) => [d, counts[i]]));
+    const days = [...dates, ...left].sort();
+    const observed = days.map((d) => counted.has(d));
+    const values = E.forecast.fillSeasonalGaps(
+      days.map((d) => counted.get(d) ?? null),
+      7,
+    );
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
     // `warmup` is the seeding window each model reads before its recursion can
@@ -1563,8 +1580,13 @@ export class AnalyticsService {
     // would be a claim about sales that were never counted.
     if (result && !unmeasuredWine) {
       const w = Math.min(result.warmup, values.length);
-      const actual = values.slice(w);
-      const predicted = result.fitted.slice(w);
+      // Scored on counted days only (F-1579): a filled-in day is not a sale.
+      const scored = values
+        .map((_, i) => i)
+        .filter((i) => i >= w && observed[i]);
+      const { fitted } = result;
+      const actual = scored.map((i) => values[i]);
+      const predicted = scored.map((i) => fitted[i]);
       // `toDailySeries` zero-fills, so a restaurant (or SKU) with no
       // consumption yields an all-zero window. MAE and RMSE would both answer
       // 0 there — a *perfect forecast* claimed over a series holding no
@@ -1581,6 +1603,7 @@ export class AnalyticsService {
               values,
               period,
               w,
+              observed,
             ),
             basis: "rolling_one_step_ahead",
             scoredPoints: actual.length,
@@ -1628,7 +1651,7 @@ export class AnalyticsService {
       modelFitted: !!projection,
       masterWineId: opts.masterWineId ?? "all",
       horizon,
-      history: { dates, values },
+      history: { dates, values: counts },
       forecast:
         projection?.forecast.map((v, i) => ({
           date: futureDates[i],
@@ -1641,9 +1664,9 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${dates.length} days through yesterday (up to ${sinceDays}${recordsFrom ? `, from the house's first recorded sale on ${recordsFrom}` : ""}; today is not over and is not history), zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${ruledOutSaid(exclusions, left)}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
+        demand: `bottles/day over ${dates.length} days through yesterday (up to ${sinceDays}${recordsFrom ? `, from the house's first recorded sale on ${recordsFrom}` : ""}; today is not over and is not history), one figure per day, a day with no sale read as 0 — ${unitsBasisSentence(unitsCoverage, "series")}${ruledOutSaid(exclusions, left, "forecast")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
         model: projection
-          ? `${model} fitted on ${values.length} days of history`
+          ? `${model} fitted on ${values.length} days of history${left.length > 0 ? `, ${left.length} of them ruled out and filled in from the same weekday in the weeks around ${left.length === 1 ? "it" : "them"}` : ""}`
           : unmeasuredWine
             ? "no model fitted — this wine has lines that carry no bottle figure, so its history is short by an unknown amount and nothing is projected from it"
             : hasObservation
@@ -1667,10 +1690,17 @@ export class AnalyticsService {
 function ruledOutSaid(
   exclusions: DayExclusions,
   left: Iterable<string>,
+  /** F-1579: how the series kept the weekly pattern across the gap. */
+  use: "average" | "forecast" | "risk" = "average",
 ): string {
   if (!exclusions.readable)
     return "; the days ruled out of the figures could not be read, so a ruled-out day may be counted here as one that sold nothing";
   const days = Array.from(new Set(left)).sort();
   if (days.length === 0) return "";
-  return `; ${days.length} day${days.length === 1 ? "" : "s"} ruled out of the figures left out (${days.join(", ")}), not counted as days that sold nothing`;
+  const said = `; ${days.length} day${days.length === 1 ? "" : "s"} ruled out of the figures left out (${days.join(", ")}), not counted as days that sold nothing`;
+  if (use === "forecast")
+    return `${said}; the forecast holds ${days.length === 1 ? "its" : "their"} place with the same weekday in the weeks around ${days.length === 1 ? "it" : "them"}, so the weekly pattern holds, and its accuracy is scored only on days that were counted`;
+  if (use === "risk")
+    return `${said}, and no day-to-day change is taken across ${days.length === 1 ? "it" : "them"}`;
+  return said;
 }

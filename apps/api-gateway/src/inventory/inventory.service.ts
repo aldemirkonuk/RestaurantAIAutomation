@@ -1332,11 +1332,12 @@ export class InventoryService {
 
   /**
    * Activity for one inventory item, powering the row-expansion insight cards:
-   *   - daily: depletion per day for the last 14 days (velocity chart)
-   *   - heat:  7x8 matrix (Mon..Sun x 4pm..11pm) of depletion counts over the
+   *   - daily: movements and sales per day for the last 14 days (velocity
+   *            chart draws `sold`)
+   *   - heat:  7x8 matrix (Mon..Sun x 4pm..11pm) of bottles sold over the
    *            last 28 days (busy-hours heatmap)
-   * Sourced from the inventory_transactions ledger; only outbound movements
-   * (sales, pours, negative adjustments) count as depletion.
+   * Sourced from the inventory_transactions ledger. `out`/`in` are every
+   * movement off/onto the shelf; `sold` and `heat` are sales only (F-1595).
    */
   async getItemActivity(restaurantId: string, itemId: string) {
     const client = this.dbService.getClient();
@@ -1382,9 +1383,11 @@ export class InventoryService {
           };
     const outMap = new Map<string, number>();
     const inMap = new Map<string, number>();
-    // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00. Depletion
+    const soldMap = new Map<string, number>();
+    // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00. Sales
     // only — the heatmap answers "when do we pour this", and a truck arriving
-    // at 17:00 is not a busy hour.
+    // at 17:00 is not a busy hour, nor is 12 bottles carried from the cellar
+    // to the bar, a broken bottle, a comp or a count correction (F-1595).
     const heat: number[][] = Array.from({ length: 7 }, () => Array(8).fill(0));
     let totalOut = 0;
     let totalIn = 0;
@@ -1405,13 +1408,27 @@ export class InventoryService {
       const wall = wallAt(ts);
       const k = wall.dateKey;
 
+      // F-1595: a sale counts as the inventory_analytics view counts it — a
+      // sale or pour, less a return the till sent back. A transfer's out leg,
+      // breakage, a comp and a count correction are movements, not sales.
+      const sold = ["sale", "pour", "glass_pour"].includes(type)
+        ? magnitude
+        : type === "return" &&
+            String(row.source || "").toLowerCase() === "pos" &&
+            qty > 0
+          ? -magnitude
+          : 0;
+      if (sold !== 0) {
+        if (ts >= fourteenDaysAgo) soldMap.set(k, (soldMap.get(k) ?? 0) + sold);
+        const dow = (new Date(`${k}T00:00:00Z`).getUTCDay() + 6) % 7; // Mon=0
+        const slot = Math.floor(wall.minutes / 60) - 16;
+        if (slot >= 0 && slot < 8) heat[dow][slot] += sold;
+      }
+
       if (isOut) {
         totalOut += magnitude;
         if (ts >= fourteenDaysAgo)
           outMap.set(k, (outMap.get(k) ?? 0) + magnitude);
-        const dow = (new Date(`${k}T00:00:00Z`).getUTCDay() + 6) % 7; // Mon=0
-        const slot = Math.floor(wall.minutes / 60) - 16;
-        if (slot >= 0 && slot < 8) heat[dow][slot] += magnitude;
       } else {
         // EVERY inbound writer, named or not: a delivery booking
         // (`reference_type = 'delivery'`, `transaction_type = 'purchase'`), a
@@ -1424,12 +1441,25 @@ export class InventoryService {
     }
 
     // Dense 14-day series (zero-filled) so the chart has a stable x-axis.
-    const daily: Array<{ date: string; out: number; in: number }> = [];
+    // A return is never more than a sale in a day or an hour on the chart.
+    const daily: Array<{
+      date: string;
+      out: number;
+      in: number;
+      sold: number;
+    }> = [];
     const today = wallAt(new Date()).dateKey;
     for (let i = 13; i >= 0; i--) {
       const k = shiftHouseDay(today, -i);
-      daily.push({ date: k, out: outMap.get(k) ?? 0, in: inMap.get(k) ?? 0 });
+      daily.push({
+        date: k,
+        out: outMap.get(k) ?? 0,
+        in: inMap.get(k) ?? 0,
+        sold: Math.max(0, soldMap.get(k) ?? 0),
+      });
     }
+    for (const row of heat)
+      for (let s = 0; s < row.length; s++) row[s] = Math.max(0, row[s]);
 
     // F-1165: which shelf was counted when. A count of one shelf no longer
     // stamps the wine's last_counted_at (migration
@@ -1478,6 +1508,7 @@ export class InventoryService {
       includes: {
         out: "movements off the shelf: any negative quantity_change, plus sale/pour/glass_pour rows recorded as a positive magnitude",
         in: "movements onto the shelf: any other positive quantity_change, including deliveries booked at the door (reference_type 'delivery'), manual adjustments and transfers in",
+        sold: "bottles sold: sale and pour rows, less returns from the till; a move between shelves, breakage, a comp or a count correction is not a sale. The busy-hours grid counts the same",
         window: "28 days for the totals, the last 14 days for the daily series",
       },
     };
