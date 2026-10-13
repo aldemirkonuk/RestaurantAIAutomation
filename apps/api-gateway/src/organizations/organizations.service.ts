@@ -133,6 +133,15 @@ export interface RestaurantBranch {
    * may arrive from a cached session that predates this field.
    */
   updated_at: string | null;
+  /**
+   * Whether the caller owns this branch's organisation by the rule that
+   * gates opening a location, creating a chain and moving a branch between
+   * chains (`getOwnedOrgIds`). A house owner by invite is the organisation's
+   * manager and is refused all three, so the page offers them only on true
+   * (F-1570, F-242). Absent when the ownership could not be read: the
+   * branches are still served, and nothing is offered on a guess.
+   */
+  organization_owner?: boolean;
 }
 
 export interface RestaurantChain {
@@ -1008,7 +1017,7 @@ export class OrganizationsService {
     const { data: uraRows, error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .select(
-        "restaurant_id, restaurants(id, name, city, chain_id, updated_at, restaurant_chains(name))",
+        "restaurant_id, restaurants(id, name, city, chain_id, organization_id, updated_at, restaurant_chains(name))",
       )
       .eq("user_id", userId)
       .eq("is_active", true);
@@ -1018,6 +1027,18 @@ export class OrganizationsService {
         `Failed to fetch the houses of user ${userId}: ${uraErr.message}`,
       );
       throw new ServiceUnavailableException("Could not read branches");
+    }
+
+    // F-1570: which of these organisations the caller owns, so the page
+    // offers the owner's acts only where the gateway will take them. An
+    // unreadable answer leaves the field off rather than refusing the list.
+    let ownedOrgs: Set<string> | null = null;
+    if ((uraRows ?? []).length > 0) {
+      try {
+        ownedOrgs = new Set(await this.getOwnedOrgIds(userId));
+      } catch {
+        ownedOrgs = null;
+      }
     }
 
     const byId = new Map<string, RestaurantBranch>();
@@ -1031,6 +1052,9 @@ export class OrganizationsService {
           chain_id: r.chain_id ?? null,
           chain_name: r.restaurant_chains?.name ?? null,
           updated_at: r.updated_at ?? null,
+          ...(ownedOrgs
+            ? { organization_owner: ownedOrgs.has(r.organization_id) }
+            : {}),
         });
       }
     }

@@ -20,8 +20,11 @@ interface RestaurantBranchSwitcherProps {
 export function RestaurantBranchSwitcher({ compact = true, className }: RestaurantBranchSwitcherProps) {
   const { activeRestaurantId, availableRestaurants, setActiveRestaurantId, activeRole } = useAuth()
   // F-913: only an owner may open a location (the gateway refuses anyone
-  // else, F-242), so only an owner is offered the link.
-  const canAddLocation = activeRole === 'owner'
+  // else, F-242), so only an owner is offered the link. F-1570: the owner of
+  // the business, not a house owner by invite, whom the gateway also refuses.
+  const canAddLocation =
+    activeRole === 'owner' &&
+    availableRestaurants.find((b) => b.id === activeRestaurantId)?.organization_owner === true
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)

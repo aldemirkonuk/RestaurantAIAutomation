@@ -1,10 +1,13 @@
 import {
+  chooserStep,
   forget,
   hintFor,
   indexEmail,
+  landingAfterVerification,
   openHouse,
   orderHouses,
   parseEmailIndex,
+  parseHeld,
   parseMemory,
   remember,
 } from "@/auth/houseChoice";
@@ -129,5 +132,41 @@ describe("openHouse", () => {
 
   it("names nothing before the houses are read", () => {
     expect(openHouse(undefined, A)).toEqual({ name: null, canSwitch: false });
+  });
+});
+
+/**
+ * F-1569: a phone joiner whose address is not proved has a held house and a
+ * session that cannot read its houses. The chooser sent them to "We couldn't
+ * read your houses", and after verifying, to /get-started.
+ */
+describe("a held house on the phone (F-1569)", () => {
+  const HELD = [
+    { membershipId: "m1", id: A, name: "Moda", city: null, role: "staff" },
+  ];
+
+  it("an unproven session goes to /verify-email before reading its houses", () => {
+    expect(chooserStep(false, null, [])).toBe("verify");
+  });
+
+  it("a held house keeps the person on the chooser to accept it, not /no-access", () => {
+    expect(chooserStep(true, [], parseHeld(HELD))).toBe("choose");
+    expect(chooserStep(undefined, [], parseHeld(HELD))).toBe("choose");
+  });
+
+  it("no house and nothing held is /no-access; still loading is neither", () => {
+    expect(chooserStep(true, [], [])).toBe("noAccess");
+    expect(chooserStep(true, null, [])).toBe("loading");
+  });
+
+  it("reads held rows defensively, and an older gateway's missing field as none", () => {
+    expect(parseHeld(undefined)).toEqual([]);
+    expect(parseHeld([...HELD, { id: B, name: "No membership id" }, null])).toEqual(HELD);
+  });
+
+  it("after verifying, a session in no house goes to the chooser, not /get-started", () => {
+    expect(landingAfterVerification(undefined, null)).toBe("/choose-house");
+    expect(landingAfterVerification(A, null)).toBe("/get-started");
+    expect(landingAfterVerification(A, { menu_uploaded: true })).toBe("/");
   });
 });

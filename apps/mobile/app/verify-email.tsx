@@ -12,11 +12,8 @@ import { haptic } from "@/design/haptics";
 import { requestThenAdopt, useSession } from "@/state/session";
 import { confirmSignOut } from "@/lib/confirmSignOut";
 import { verifyTokenFromPaste } from "@/auth/deepLink";
-import {
-  authErrorMessage,
-  routeAfterVerification,
-  statusOf,
-} from "@/auth/outcomes";
+import { authErrorMessage, statusOf } from "@/auth/outcomes";
+import { landingAfterVerification } from "@/auth/houseChoice";
 import {
   fetchOnboardingProgress,
   resendVerification,
@@ -81,7 +78,14 @@ export default function VerifyEmailScreen() {
         if (outcome === "noTokens") await refreshUser();
         haptic.confirm();
         const progress = await fetchOnboardingProgress().catch(() => null);
-        router.replace(routeAfterVerification(progress) as never);
+        // A joiner whose house is held has none yet: the chooser accepts it
+        // (F-1569).
+        router.replace(
+          landingAfterVerification(
+            useSession.getState().user?.restaurantId,
+            progress,
+          ) as never,
+        );
       } catch (e) {
         // ADR 0229 fork 12 (the founder, 2026-09-28, item 81, "Link needs
         // sign-in (Recommended)"): the link verifies only for someone signed

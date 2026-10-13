@@ -303,10 +303,23 @@ describe('with a Mudavym page on screen', () => {
     expect(screen.queryByText('Add location')).toBeNull();
     unmount();
 
-    asManager({ availableRestaurants: BRANCHES, activeRole: 'owner' });
+    // F-1570: the owner of the business, whom the gateway lets open one.
+    const owned = BRANCHES.map((b) => ({ ...b, organization_owner: true }));
+    asManager({ availableRestaurants: owned, activeRole: 'owner' });
     renderShell(<RestaurantBranchSwitcher />);
     fireEvent.click(screen.getByText('Meyhouse Palo Alto'));
     expect(screen.getByText('Add location')).toBeInTheDocument();
+  });
+
+  // F-1570: a house owner by invite is the organisation's manager, and the
+  // gateway refuses them a new location.
+  it('does not offer "Add location" to a house owner who does not own the business', () => {
+    const notOwned = BRANCHES.map((b) => ({ ...b, organization_owner: false }));
+    asManager({ availableRestaurants: notOwned, activeRole: 'owner' });
+    renderShell(<RestaurantBranchSwitcher />);
+    fireEvent.click(screen.getByText('Meyhouse Palo Alto'));
+    expect(screen.getByText('Manage locations')).toBeInTheDocument();
+    expect(screen.queryByText('Add location')).toBeNull();
   });
 
   it("DashboardLayout's mobile scrim takes the house scrim, same element and same z", () => {
