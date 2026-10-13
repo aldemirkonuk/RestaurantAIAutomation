@@ -250,3 +250,38 @@ describe('copyText (F-600)', () => {
     expect(await copyText('x')).toBe(false)
   })
 })
+
+describe('the lines about a file (F-1607)', () => {
+  const about: Array<[string, string]> = [
+    ['House', 'Tuzlu Rüzgar'],
+    ['Left out', '=2 inactive wines'],
+  ]
+  const rows = [{ who: 'a', hours: 1, cost: 2 }]
+
+  it('a CSV says them above the table, guarded, then a blank row, then the header', async () => {
+    await exportTable({ format: 'csv', rows, columns, filename: 'x', locale: 'en-US', about })
+    const lines = new TextDecoder().decode(await bytesOf(created[0])).replace('\uFEFF', '').split('\n')
+    expect(lines[0]).toBe('"House","Tuzlu Rüzgar"')
+    expect(lines[1]).toBe(`"Left out","'=2 inactive wines"`)
+    expect(lines[2]).toBe('')
+    expect(lines[3]).toBe('"Who","Hours worked","Labour cost"')
+  })
+
+  it('a file with none is the table alone, as before', async () => {
+    await exportTable({ format: 'csv', rows, columns, filename: 'x', locale: 'en-US' })
+    const lines = new TextDecoder().decode(await bytesOf(created[0])).replace('\uFEFF', '').split('\n')
+    expect(lines[0]).toBe('"Who","Hours worked","Labour cost"')
+  })
+
+  it('a workbook says them above its header, which keeps the freeze and the filter', async () => {
+    await exportTable({ format: 'excel', rows, columns, filename: 'x', title: 'Valuation', about })
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load((await bytesOf(created[0])).buffer as ArrayBuffer)
+    const sheet = wb.getWorksheet('Valuation')!
+    expect(sheet.getRow(1).getCell(2).value).toBe('Tuzlu Rüzgar')
+    expect(sheet.getRow(4).getCell(1).value).toBe('Who')
+    expect(sheet.getRow(5).getCell(2).value).toBe(1)
+    expect(sheet.views[0]).toMatchObject({ state: 'frozen', ySplit: 4 })
+  })
+})

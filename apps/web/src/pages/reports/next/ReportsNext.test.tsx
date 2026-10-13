@@ -31,6 +31,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet, keepUnoffered, offeredFor } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
+import { yearBefore, type TillWindow } from './rp-registers-trade';
 import { DEFAULT_SLOTS, HOUSE_LAYOUT_TITLE } from './rp-sheet';
 import { targetToStore, targetToType } from './rp-registers-goals';
 import { localDayKey } from '@/lib/localDay';
@@ -575,8 +576,8 @@ describe('ReportsNext — the sheet', () => {
     const till = screen.getByRole('region', { name: 'Through the till' });
     expect(asked.month).toBeNull();
     const picker = within(till).getByLabelText('Calendar month') as HTMLSelectElement;
-    // Twelve months up to this one, after the "A month…" placeholder.
-    expect(picker.options).toHaveLength(13);
+    // 24 months up to this one, after the "A month…" placeholder (F-1604).
+    expect(picker.options).toHaveLength(25);
     const month = picker.options[2].value;
     expect(month).toMatch(/^\d{4}-\d{2}$/);
     fireEvent.change(picker, { target: { value: month } });
@@ -596,8 +597,8 @@ describe('ReportsNext — the sheet', () => {
     paint();
     const till = screen.getByRole('region', { name: 'Through the till' });
     const quarters = within(till).getByLabelText('Calendar quarter') as HTMLSelectElement;
-    // The house's quarter and the three before it, after "A quarter…".
-    expect(quarters.options).toHaveLength(5);
+    // The house's quarter and the seven before it, after "A quarter…" (F-1604).
+    expect(quarters.options).toHaveLength(9);
     const quarter = quarters.options[2].value;
     expect(quarter).toMatch(/^\d{4}-Q[1-4]$/);
     fireEvent.change(quarters, { target: { value: quarter } });
@@ -1910,7 +1911,7 @@ describe('ReportsNext — written up (OD-81)', () => {
     const offered = Array.from(picker.options).map((o) => o.textContent);
     expect(offered).toContain('Figures of record');
     expect(offered).not.toContain('The writing desk');
-    expect(within(shelf).getByText('Nothing has been written up for this house yet.')).toBeInTheDocument();
+    expect(within(shelf).getByText(/^Nothing is on the shelf\./)).toBeInTheDocument();
   });
 
   it('asks for the till over the window the till cutting is set to', () => {
@@ -2169,5 +2170,56 @@ describe('ReportsNext — the weekly report bell (F-1143)', () => {
     paint();
     const till = screen.getByRole('region', { name: 'Through the till' });
     expect(within(till).getByRole('button', { name: '30d' })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('a month is set beside the same month last year (F-1604)', () => {
+  const till = CATALOGUE.till;
+  const march = { days: 30, month: '2025-03', zone: 'Europe/Istanbul' };
+  const w = till.select({ ...TILL, revenue: 1200, checkCount: 40 }) as TillWindow;
+  const label = (period: string) => till.view(w, { ...march, month: period, lastYear: 'reading' }).figures[3]?.label;
+
+  it('names the period a year before', () => {
+    expect(yearBefore('2026-03')).toBe('2025-03');
+    expect(yearBefore('2026-Q1')).toBe('2025-Q1');
+    expect(yearBefore('30')).toBeNull();
+    expect(label('2025-03')).toMatch(/^Same month last year, /);
+    expect(label('2025-Q1')).toMatch(/^Same quarter last year, Q1 2024/);
+  });
+
+  it('gives last year’s Taken and the change for a month that has ended', () => {
+    const view = till.view(w, {
+      ...march,
+      lastYear: { revenue: 1000, checkCount: 30, posConnected: true, zoneUnset: false },
+    });
+    expect(view.figures).toHaveLength(4);
+    expect(view.figures[3].value).toContain('+20');
+    expect(view.figures[3].value).toContain('this year');
+  });
+
+  it('says a month the till sent nothing for, never 0 taken', () => {
+    const view = till.view(w, {
+      ...march,
+      lastYear: { revenue: null, checkCount: 0, posConnected: true, zoneUnset: false },
+    });
+    expect(view.figures[3].value).toBe('—');
+    expect(view.figures[3].note).toMatch(/^No check from your till reached Mudavym for /);
+    expect(till.view(w, { ...march, lastYear: 'unread' }).figures[3].note).toMatch(/could not be read$/);
+  });
+
+  it('adds nothing to a trailing window', () => {
+    expect(till.view(w, { days: 30, lastYear: 'reading' }).figures).toHaveLength(3);
+  });
+
+  it('draws last year beside the month on the page', () => {
+    hook.current = {
+      ...base(),
+      tillLastYear: { revenue: 1000, checkCount: 30, posConnected: true, zoneUnset: false },
+    };
+    paint();
+    const cut = screen.getByRole('region', { name: 'Through the till' });
+    const picker = within(cut).getByLabelText('Calendar month') as HTMLSelectElement;
+    fireEvent.change(picker, { target: { value: picker.options[13].value } });
+    expect(within(cut).getByText(/^Same month last year, /)).toBeInTheDocument();
   });
 });

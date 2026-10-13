@@ -30,6 +30,42 @@ import { REPORT_EXPORTS_PAGE_LIMIT, type ReportExport } from '@/services/api/rep
 import { getHouseLocale } from '@/lib/houseCurrency';
 import { useState } from 'react';
 
+/**
+ * How long the shelf keeps a file, and how many (F-1605). Word for word the
+ * gateway's EXPORT_RETENTION_DAYS and MAX_EXPORTS_PER_HOUSE
+ * (`reports/exports/report-exports.service.ts`); change one and the other with it.
+ */
+export const KEPT_DAYS = 90;
+export const KEPT_MAX = 50;
+
+/** The shelf's own rule, said where it is read, not only in a code comment (F-1605). */
+export const KEPT_SAID = `Files are kept for ${KEPT_DAYS} days, and only the newest ${KEPT_MAX} for this house; older ones are cleared, so download what you need to keep.`;
+
+/** The day a file is cleared, on the house's calendar, or null when its date is unreadable. */
+function day(ms: number, zone: string | null): string | null {
+  if (!Number.isFinite(ms)) return null;
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+  try {
+    return new Date(ms).toLocaleDateString(undefined, zone ? { ...opts, timeZone: zone } : opts);
+  } catch {
+    return new Date(ms).toLocaleDateString(undefined, opts);
+  }
+}
+
+const KEPT_MS = KEPT_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * An empty shelf is not "nothing was ever written" (F-1605): files past the
+ * keeping time are cleared, and nothing records that they were, so the
+ * sentence says what the shelf can know.
+ */
+export function emptyShelfSaid(zone: string | null, now: number = Date.now()): string {
+  const since = day(now - KEPT_MS, zone);
+  return since
+    ? `Nothing is on the shelf. Anything written up before ${since} has been cleared, as files are kept for ${KEPT_DAYS} days.`
+    : `Nothing is on the shelf. Files are kept for ${KEPT_DAYS} days, so anything older has been cleared.`;
+}
+
 /** The one analysis on the catalogue that reads no register, so has nothing to write up. */
 const UNEXPORTABLE: ReadonlySet<AnalysisId> = new Set<AnalysisId>(['writing']);
 
@@ -110,6 +146,10 @@ function Row({ exp, desk, zone }: { exp: ReportExport; desk: ExportDesk; zone: s
           {exp.attempts > 1 ? ` · attempt ${exp.attempts}` : ''}
           {exp.status !== 'queued' ? ` · settled ${when(exp.finishedAt, zone)}` : ''}
           {zone ? `, house time (${zone})` : ''}
+          {(() => {
+            const until = exp.requestedAt ? day(new Date(exp.requestedAt).getTime() + KEPT_MS, zone) : null;
+            return until ? ` · kept until ${until}` : '';
+          })()}
         </p>
         {exp.status === 'ready' && (
           <p className="rp-cap">
@@ -200,7 +240,7 @@ export default function ExportsShelf({
           <p className="rp-cap">
             A cutting written to a CSV and a page laid out for print, from the same register the
             sheet reads. A figure the engine could not compute, or could not state in the house’s
-            money, is written “withheld”, never 0.
+            money, is written “withheld”, never 0. {KEPT_SAID}
           </p>
         </div>
 
@@ -291,7 +331,7 @@ export default function ExportsShelf({
               </button>
             </p>
           ) : (
-            <p className="rp-cap">Nothing has been written up for this house yet.</p>
+            <p className="rp-cap">{emptyShelfSaid(zone)}</p>
           )
         ) : (
           <>

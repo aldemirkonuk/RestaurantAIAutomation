@@ -31,7 +31,7 @@ import {
   weekdayIndex,
 } from './rp-format';
 import { AMOUNTS_WITHHELD, zeroChecksSaid } from './rp-registers-house';
-import { analysis, arr, obj, str, type AnalysisSpec } from './rp-spec';
+import { analysis, arr, obj, str, type AnalysisSpec, type ViewCtx } from './rp-spec';
 import { houseToday } from '@/lib/houseZone';
 import type { Cat, Cell } from './rp-view';
 
@@ -152,6 +152,15 @@ export function monthLabel(month: string): string {
  */
 export function thisMonth(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * The same month, or quarter, one year before (F-1604): 2026-03 → 2025-03,
+ * 2026-Q1 → 2025-Q1. Null for anything else, so nothing is read for it.
+ */
+export function yearBefore(period: string): string | null {
+  const m = /^(\d{4})-(0[1-9]|1[0-2]|Q[1-4])$/.exec(period);
+  return m ? `${Number(m[1]) - 1}-${m[2]}` : null;
 }
 
 /** This quarter as YYYY-Qn, on the calendar of the Date given (F-1577). */
@@ -354,7 +363,45 @@ const till: AnalysisSpec = {
       : ctx.week
         ? `/analytics/pos-revenue/${rid}?week=${ctx.week}`
         : trailingTill.path!(rid, ctx),
+  // F-1604: a month (or quarter) is set beside the same one a year before.
+  view: (data, ctx) => {
+    const shown = trailingTill.view(data, ctx);
+    const before = ctx.month ? yearBefore(ctx.month) : null;
+    if (!before || !ctx.lastYear) return shown;
+    const w = data as TillWindow;
+    if (!w.posConnected || w.zoneUnset) return shown;
+    return { ...shown, figures: [...shown.figures, lastYearFigure(ctx.month!, before, w.revenue, ctx.lastYear, ctx.zone)] };
+  },
 };
+
+/**
+ * "Same month last year" beside a month the till is set to (F-1604). A month
+ * the till never sent a check for is said as that, not as 0 taken: the house
+ * may not have been on Mudavym then. The change is given only for a period
+ * that has ended, since a month so far set against a whole one is not a
+ * change.
+ */
+export function lastYearFigure(
+  period: string,
+  before: string,
+  taken: number | null,
+  last: NonNullable<ViewCtx['lastYear']>,
+  zone: string | null = null,
+): { label: string; value: string; note?: string } {
+  const label = `${isQuarter(period) ? 'Same quarter' : 'Same month'} last year, ${monthLabel(before)}`;
+  if (last === 'reading') return { label, value: EM, note: 'Being read' };
+  if (last === 'unread') return { label, value: EM, note: `${monthLabel(before)} could not be read` };
+  if (!last.posConnected || last.zoneUnset || last.revenue == null || !last.checkCount)
+    return {
+      label,
+      value: EM,
+      note: `No check from your till reached Mudavym for ${monthLabel(before)}, so there is nothing to set beside it`,
+    };
+  const running = period === (isQuarter(period) ? thisQuarter : thisMonth)(houseToday(zone));
+  const change =
+    !running && taken != null && last.revenue > 0 ? ` (${pct((taken - last.revenue) / last.revenue)} this year)` : '';
+  return { label, value: `${money(last.revenue)}${change}` };
+}
 
 /**
  * F-1536: said beside every till figure. Taken sums the checks' totals, which

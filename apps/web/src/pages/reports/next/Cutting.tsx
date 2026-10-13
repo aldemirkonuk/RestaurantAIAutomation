@@ -83,13 +83,18 @@ function GraphIcon({ graph }: { graph: GraphType }) {
  *
  * A trailing window (7, 30 or 90 days) or one calendar month (F-128): a month
  * is how a close and an accountant's period are cut, and "the last 30 days"
- * read on 2 October cannot isolate July. The twelve months up to this one are
- * offered; picking a trailing window again leaves the month.
+ * read on 2 October cannot isolate July. The 24 months up to this one are
+ * offered (F-1604): twelve left the closing year's January out of reach in
+ * January, and nothing to set a month against a year later; picking a
+ * trailing window again leaves the month.
  *
- * Or one calendar quarter (F-1577): the house's quarter and the three before
+ * Or one calendar quarter (F-1577): the house's quarter and the seven before
  * it, read whole by the same reader as a month, so Q3 is one figure rather
  * than three months added by hand. It rides the `month` value as YYYY-Qn.
  */
+/** Months the till's picker reaches back, this one included (F-1604). */
+const PICKER_MONTHS = 24;
+
 export function TillWindowPicker({
   days,
   month = null,
@@ -110,13 +115,13 @@ export function TillWindowPicker({
   const options = useMemo(() => [7, 30, 90], []);
   const months = useMemo(() => {
     const now = houseToday(zone);
-    return Array.from({ length: 12 }, (_, i) =>
+    return Array.from({ length: PICKER_MONTHS }, (_, i) =>
       thisMonth(new Date(now.getFullYear(), now.getMonth() - i, 1)),
     );
   }, [zone]);
   const quarters = useMemo(() => {
     const now = houseToday(zone);
-    return Array.from({ length: 4 }, (_, i) =>
+    return Array.from({ length: PICKER_MONTHS / 3 }, (_, i) =>
       thisQuarter(new Date(now.getFullYear(), now.getMonth() - 3 * i, 1)),
     );
   }, [zone]);
