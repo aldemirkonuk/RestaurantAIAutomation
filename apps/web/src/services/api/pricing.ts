@@ -35,6 +35,8 @@ export type TaxAdviceState = 'target_unconfirmed' | 'no_tax_rate' | 'cost_not_pr
  */
 export interface PricesIncludeTax {
   since: string | null
+  /** `since` on the house's clock, the day ingest switches (F-1585); absent on the advice readout. */
+  sinceDay?: string | null
   targetReconfirm: boolean
 }
 

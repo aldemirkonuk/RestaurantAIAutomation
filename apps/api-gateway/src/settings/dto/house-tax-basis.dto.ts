@@ -2,8 +2,8 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsOptional } from "class-validator";
 
 /**
- * The bodies of `PUT /settings/tax-basis` and `POST /settings/tax-rates`
- * (F-620 / F-1537, lane 2).
+ * The bodies of `PUT /settings/tax-basis`, `POST /settings/tax-rates` and
+ * `POST /settings/tax-rates/withdraw` (F-620 / F-1537, lane 2; F-1586).
  *
  * Only the property NAMES are declared here (the global pipe forbids any
  * other). Every value is checked in `HouseTaxBasisService` — the answer by
@@ -62,4 +62,14 @@ export class AddHouseTaxRateDto {
   })
   @IsOptional()
   effectiveTo?: string | null;
+}
+
+export class WithdrawHouseTaxRateDto {
+  @ApiProperty({
+    description:
+      "The number (version) of this house's rate row to withdraw. Nothing is edited: rows are appended that restate what applied before it.",
+    example: 2,
+  })
+  @IsOptional()
+  version: number;
 }

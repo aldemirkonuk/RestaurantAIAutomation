@@ -509,6 +509,21 @@ beforeEach(() => {
   mockData.current = base();
 });
 
+describe('the till asks the tax question before its first check (F-1590)', () => {
+  it('asks an unanswered house beside the till whether its prices include tax', async () => {
+    const get = vi.spyOn(apiClient, 'get').mockImplementation(async (url: string) => {
+      if (url === '/settings/tax-basis')
+        return { data: { readable: true, basis: 'unset', answered: false, taxWord: 'KDV' } };
+      throw new Error(`not served in this test: ${url}`);
+    });
+    render(<ConnectionsNext />);
+    expect(await screen.findByTestId('tax-basis-setup-line')).toHaveTextContent(
+      /include KDV.*only from the day you answer/,
+    );
+    get.mockRestore();
+  });
+});
+
 describe('who may look', () => {
   it('refuses a non-manager in words, and says the server refuses as well', () => {
     mockData.current = { ...base(), isManager: false, role: 'staff' };

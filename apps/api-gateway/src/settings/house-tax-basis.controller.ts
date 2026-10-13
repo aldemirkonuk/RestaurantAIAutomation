@@ -22,6 +22,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import {
   AddHouseTaxRateDto,
   ConfirmHouseTaxBasisDto,
+  WithdrawHouseTaxRateDto,
 } from "./dto/house-tax-basis.dto";
 import {
   HouseTaxBasisService,
@@ -134,5 +135,36 @@ export class HouseTaxBasisController {
       dto ?? ({} as AddHouseTaxRateDto),
       userId,
     );
+  }
+
+  // The rate is named in the body, like every other id here: nothing in the
+  // path, so the house can only ever be the token's.
+  @Post("tax-rates/withdraw")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Withdraw one tax rate — owner or manager only",
+    description:
+      "The rate table is append-only, so nothing is edited or deleted: rows are appended that restate, from the withdrawal day, whatever applied to that key before the withdrawn rate. A rate not yet in force is withdrawn from its own first day, so it never applies; one in force, from the house's next day. Audited as house_tax_rate_added.",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "No rate of this house has that number.",
+  })
+  async withdrawRate(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Body() dto: WithdrawHouseTaxRateDto,
+  ): Promise<HouseTaxBasisReadout> {
+    const house = this.requireHouse(restaurantId, "nothing was withdrawn");
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      house,
+      "withdraw a tax rate for this restaurant",
+    );
+    return this.taxBasis.withdrawRate(house, dto?.version, userId);
   }
 }

@@ -140,7 +140,8 @@ describe('TargetMarginSection', () => {
 // confirms its target again once, and Record takes the same numbers as that.
 describe('TargetMarginSection — the target is confirmed again when prices include tax (F-620)', () => {
   const SET = { ...UNSET, bottlePct: 65, bandPct: 2, statedAt: '2026-09-21T10:00:00Z', statedBy: { userId: 'u', name: 'Ada' } }
-  const SWITCHED = { ...SET, pricesIncludeTax: { since: '2026-10-12T08:00:00Z', targetReconfirm: true } }
+  // Confirmed at 01:30 on 13 Oct in Istanbul: 22:30Z on the 12th. The page prints the house day (F-1585).
+  const SWITCHED = { ...SET, pricesIncludeTax: { since: '2026-10-12T22:30:00Z', sinceDay: '2026-10-13', targetReconfirm: true } }
 
   it('the same numbers can be recorded again only as the re-confirmation', () => {
     const recorded = { bottlePct: 65, glassPct: null, bandPct: 2 }
@@ -156,7 +157,7 @@ describe('TargetMarginSection — the target is confirmed again when prices incl
     setTargetMargin.mockResolvedValue({ ...SET, statedAt: '2026-10-12T09:00:00Z', pricesIncludeTax: { since: '2026-10-12T08:00:00Z', targetReconfirm: false } })
     render(<TargetMarginSection canManage />)
     expect(await screen.findByTestId('st-target-reconfirm')).toHaveTextContent(
-      /Confirm your target again\..*include tax since 2026-10-12/,
+      /Confirm your target again\..*include tax since 2026-10-13,/,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Record' }))
     await waitFor(() => expect(setTargetMargin).toHaveBeenCalledWith({ bottlePct: 65, glassPct: null, bandPct: 2 }))

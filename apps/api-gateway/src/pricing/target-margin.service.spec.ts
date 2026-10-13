@@ -322,8 +322,26 @@ describe("TargetMarginService -- the target is confirmed again on the switch (F-
     const r = await fake(SWITCHED).svc.read("rest-1");
     expect(r.pricesIncludeTax).toEqual({
       since: "2026-10-12T08:00:00Z",
+      sinceDay: null,
       targetReconfirm: true,
     });
+  });
+
+  it("dates the switch on the house's own day, the day ingest switches on (F-1585)", async () => {
+    // 01:30 on 13 Oct in Istanbul is 22:30Z on 12 Oct.
+    const ist = await fake({
+      ...SWITCHED,
+      tax_basis_confirmed_at: "2026-10-12T22:30:00Z",
+      timezone: "Europe/Istanbul",
+    }).svc.read("rest-1");
+    expect(ist.pricesIncludeTax?.sinceDay).toBe("2026-10-13");
+    // 21:00 on 12 Oct in Detroit is 01:00Z on 13 Oct.
+    const det = await fake({
+      ...SWITCHED,
+      tax_basis_confirmed_at: "2026-10-13T01:00:00Z",
+      timezone: "America/Detroit",
+    }).svc.read("rest-1");
+    expect(det.pricesIncludeTax?.sinceDay).toBe("2026-10-12");
   });
 
   it("a target set after the switch is not asked for again", async () => {
@@ -333,6 +351,7 @@ describe("TargetMarginService -- the target is confirmed again on the switch (F-
     }).svc.read("rest-1");
     expect(r.pricesIncludeTax).toEqual({
       since: "2026-10-12T08:00:00Z",
+      sinceDay: null,
       targetReconfirm: false,
     });
   });
