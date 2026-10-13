@@ -175,7 +175,10 @@ export interface RemovalReceipt {
   /** "Replace with" (item 27): shifts handed to `handedTo` instead of opened. */
   shiftsHandedOver: number;
   handedTo: string | null;
-  /** A "no account yet" person's unused invite this removal cancelled (F-1545). */
+  /**
+   * An unused invite this removal cancelled: a "no account yet" person's
+   * (F-1545), or one emailed to an account holder's address (F-1580).
+   */
   inviteCancelled: boolean;
 }
 
@@ -1280,6 +1283,9 @@ export class TeamService {
 
     let previousRole: string | null = null;
     let accessRevoked = false;
+    // An unused invite this removal expired: the one a "no account yet" row
+    // stood in for (F-1545), or one emailed to the person's address (F-1580).
+    let inviteCancelled = false;
 
     if (member?.user_id) {
       // The access row in any state, because this removal deletes it in any
@@ -1342,8 +1348,30 @@ export class TeamService {
         }
       }
 
-      // Every refusal has run: their unstarted shifts go back to the open
-      // pool before the first membership write (item 26).
+      // Every refusal has run. An emailed invite to their address that is
+      // still good would let them back in after this removal (F-1580): a
+      // person who joined with a code handed over in person leaves the
+      // emailed link to the same address live. Expired the way a stand-in's
+      // are, before the first write, and refused if it cannot be.
+      let address = normalizeEmail(member.email);
+      if (!address) {
+        const { data: account, error: accountErr } = await this.sb
+          .from("users")
+          .select("email")
+          .eq("user_id", member.user_id)
+          .maybeSingle();
+        if (accountErr) this.cannotReadRemovalTarget(memberId, accountErr);
+        address = normalizeEmail(account?.email);
+      }
+      inviteCancelled = await this.cancelStandInInvite(
+        restaurantId,
+        memberId,
+        null,
+        address || null,
+      );
+
+      // Their unstarted shifts go back to the open pool before the first
+      // membership write (item 26).
       released = await this.releaseShiftsOf(
         restaurantId,
         memberId,
@@ -1427,7 +1455,6 @@ export class TeamService {
     // owner just took away. Expired the way `cancelPendingInvitesFrom`
     // expires one, and refused if it cannot be: a removal that left the
     // invite live is not the removal the dialog promised.
-    let inviteCancelled = false;
     if (member && !member.user_id) {
       const { data: standIn, error: standInErr } = await this.sb
         .from("team_members")
@@ -1591,7 +1618,8 @@ export class TeamService {
    * stops being good, the way `cancelPendingInvitesFrom` expires one. So does
    * every other unused invite this house made to the row's address (F-1555):
    * a re-invite points the row at the newest one only, and an older link
-   * would still let the person join. True when an invite was cancelled;
+   * would still let the person join. An account holder's removal passes no
+   * invite id and their address only (F-1580). True when an invite was cancelled;
    * false when there was none still open. A failed write throws before
    * anything was removed.
    */

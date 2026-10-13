@@ -43,7 +43,25 @@ export async function savedPushProblem(
 ): Promise<PushProblem> {
   if (!saved) return null;
   const allowed = await allowedByPhone().catch(() => null);
-  return allowed === false ? "refused" : null;
+  return pushProblemOnRecheck(null, saved, allowed);
+}
+
+/**
+ * The phone's answer read again, when the app comes back to the front or the
+ * screen is shown again (F-1583): someone who tapped "Open phone settings"
+ * and allowed notifications there comes back to a switch that no longer says
+ * they are off. A refusal clears once the phone allows; a saved on the phone
+ * now refuses reads as refused; an unreadable answer changes nothing, and a
+ * failed set-up stays until it is tried again.
+ */
+export function pushProblemOnRecheck(
+  current: PushProblem,
+  saved: boolean,
+  allowed: boolean | null,
+): PushProblem {
+  if (allowed === true) return current === "refused" ? null : current;
+  if (allowed === false && (saved || current === "refused")) return "refused";
+  return current;
 }
 
 /** What the screen says for each problem, and the one thing to do about it. */
