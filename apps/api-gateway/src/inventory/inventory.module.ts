@@ -3,6 +3,10 @@ import { InventoryController } from "./inventory.controller";
 import { InventoryService } from "./inventory.service";
 import { PhotoCountService } from "./photo-count.service";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
+// F-1544: a stock-take walked shelf by shelf; its zeros go through
+// InventoryService.recordSpotCount, so it lives beside it.
+import { CountSessionsController } from "./count-sessions.controller";
+import { CountSessionsService } from "./count-sessions.service";
 import { AuthModule } from "../auth/auth.module";
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -23,8 +27,13 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     WinesModule,
     OrganizationsModule,
   ],
-  controllers: [InventoryController],
-  providers: [InventoryService, PhotoCountService, AuctionLotRecordsService],
+  controllers: [InventoryController, CountSessionsController],
+  providers: [
+    InventoryService,
+    PhotoCountService,
+    AuctionLotRecordsService,
+    CountSessionsService,
+  ],
   exports: [InventoryService],
 })
 export class InventoryModule {}
