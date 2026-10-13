@@ -24,7 +24,7 @@
 import { CATALOGUE } from './rp-catalogue';
 import type { AnalysisId } from './rp-sheet';
 import { failureLine } from './rp-format';
-import { monthLabel } from './rp-registers-trade';
+import { isQuarter, monthLabel } from './rp-registers-trade';
 import type { ExportDesk } from './useReportExports';
 import { REPORT_EXPORTS_PAGE_LIMIT, type ReportExport } from '@/services/api/reports';
 import { getHouseLocale } from '@/lib/houseCurrency';
@@ -185,7 +185,10 @@ export default function ExportsShelf({
   // An export of the till re-reads its register later (a retry, a queue), so
   // it keeps its window on the row: the last N days, or the calendar month
   // the till is set to (F-1013) — never a month written as "the last N days".
-  const monthHeld = takesWindow ? tillMonth : null;
+  // A quarter (F-1577) is read on screen only: the export row keeps a month
+  // or a number of days, so it writes the trailing window and says so.
+  const quarterShown = takesWindow && tillMonth !== null && isQuarter(tillMonth);
+  const monthHeld = takesWindow && !quarterShown ? tillMonth : null;
 
   return (
     <section id="rp-exports" className="rp-exports" aria-labelledby="rp-exports-title">
@@ -223,7 +226,9 @@ export default function ExportsShelf({
               </label>
               {takesWindow && monthHeld === null && (
                 <span className="rp-cap">
-                  {tillWeek
+                  {quarterShown
+                    ? `over the last ${tillDays} days, not ${monthLabel(tillMonth as string)} as the till shows; a quarter is written up a month at a time`
+                    : tillWeek
                     ? `over the last ${tillDays} days, not last week as the till shows`
                     : `over the last ${tillDays} days, as the till is set`}
                 </span>

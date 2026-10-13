@@ -353,7 +353,15 @@ describe("a signed change is written in percent, from the engine's 0–1 fractio
       },
       { days: null },
     );
-    expect(figure(doc, "Pace against last month")).toBeCloseTo(33.33, 6);
+    expect(
+      figure(
+        doc,
+        "Pace, the last 30 days (today so far) against the 30 before",
+      ),
+    ).toBeCloseTo(33.33, 6);
+    // F-1574: two trailing 30-day windows, never called a month.
+    expect(doc.figures.map((x) => x.label).join("|")).not.toMatch(/month/i);
+    expect(EXPORT_CUTTINGS.pacing.window(null)).toMatch(/ending today so far/);
     expect(figure(doc, "Trend per day, last 28 days")).toBeCloseTo(20.689655, 6);
     const [buying, week] = doc.tables[0].rows;
     expect(buying[3]).toEqual({ n: expect.closeTo(33.33, 6), unit: "percent" });
@@ -571,7 +579,9 @@ describe("two currencies are said in the file, not read as an empty window (F-10
     );
     expect(why(doc, "Bought, the last 30 days")).toBe(SPEND);
     expect(why(doc, "Bought, the 30 before")).toBe(SPEND);
-    expect(why(doc, "Pace against last month")).toBe(SPEND);
+    expect(
+      why(doc, "Pace, the last 30 days (today so far) against the 30 before"),
+    ).toBe(SPEND);
     expect(why(doc, "Committed, not yet delivered")).toBe(ORDERED);
     expect(doc.notes).toContain(SPEND);
     expect(doc.notes).toContain(ORDERED);

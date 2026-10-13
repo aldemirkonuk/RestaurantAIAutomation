@@ -105,7 +105,7 @@ export const bench = analysis<BenchRegister>({
   path: (rid) => `/analytics/overview/${rid}`,
   graphs: ['bars', 'table', 'figure'],
   graphNote:
-    'Bars draw the one pair that shares a unit — money paid to vendors this month against last. No line or area: two windows are not a sequence. No scatter and no heat map: there is no second axis and no second dimension to lay one out on.',
+    'Bars draw the one pair that shares a unit — money paid to vendors in the last 30 days against the 30 before. No line or area: two windows are not a sequence. No scatter and no heat map: there is no second axis and no second dimension to lay one out on.',
   select: (raw) => {
     const d = obj(raw);
     const cf = obj(d.cashflow);
@@ -171,7 +171,10 @@ export const bench = analysis<BenchRegister>({
       },
       { label: 'Bought, the 30 before', value: money(b.spendPrev30d, 'full', b.spendCurrency) },
       {
-        label: 'Pace against last month',
+        // F-1574: two trailing 30-day windows ending today, not calendar
+        // months: the dashboard's "month" is the month to date, so the word
+        // "month" here read as the same figure when it is not.
+        label: 'Pace, last 30 days (today so far) against the 30 before',
         value: b.paceDeltaPct === null ? EM : pct(b.paceDeltaPct),
         note:
           b.paceDeltaPct === null

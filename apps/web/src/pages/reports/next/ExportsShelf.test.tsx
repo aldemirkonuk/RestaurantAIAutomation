@@ -250,6 +250,15 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     expect(screen.getByText('over the last 7 days, not last week as the till shows')).toBeInTheDocument();
   });
 
+  it('never sends a quarter to the export row, and says the file is the trailing window (F-1577)', () => {
+    const d = desk();
+    render(<ExportsShelf desk={d} onSheet={['till'] as never[]} tillDays={30} tillMonth="2026-Q3" />);
+    expect(screen.queryByText(/as the till is set/)).toBeNull();
+    expect(screen.getByText(/^over the last 30 days, not Q3 2026 .* as the till shows; a quarter is written up a month at a time$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Write it up' }));
+    expect(d.request).toHaveBeenLastCalledWith('till', 30);
+  });
+
   it('a role that cannot export is told so, and is offered no control and no list', () => {
     shelf(desk({ canExport: false, readOnlyReason: 'Exports are written for owners and managers. Every figure is still on the sheet above.', exports: undefined }));
     expect(screen.getByRole('note')).toHaveTextContent('Exports are written for owners and managers.');

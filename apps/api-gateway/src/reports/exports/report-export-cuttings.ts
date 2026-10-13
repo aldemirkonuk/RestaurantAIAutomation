@@ -1251,7 +1251,7 @@ function writeBench(payload: unknown, ctx: WriteCtx): ExportDoc {
         "money",
       ),
       f(
-        "Pace against last month",
+        "Pace, the last 30 days (today so far) against the 30 before",
         figure(pctOf(cf.paceDeltaPct), paceWhy),
         "percent",
       ),
@@ -1426,7 +1426,13 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     },
     goals: { title: "Goals", window: () => "each goal counted from the day it was set", takesWindow: false, write: writeGoals },
     bench: { title: "Against ourselves", window: () => "180 days of buying, 90 days of weekdays, each goal since it was set", takesWindow: false, write: writeBench },
-    pacing: { title: "Spend pacing", window: () => "180 days of purchasing, compared in two 30-day windows", takesWindow: false, write: writePacing },
+    pacing: {
+      title: "Spend pacing",
+      window: () =>
+        "180 days of purchasing, compared in two 30-day windows, the last one ending today so far",
+      takesWindow: false,
+      write: writePacing,
+    },
     week: { title: "The week’s shape", window: () => "the last 90 days of the consumption log", takesWindow: false, write: writeWeek },
     ahead: {
       title: "What’s coming",

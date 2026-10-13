@@ -455,6 +455,32 @@ describe("GoalsService.getPosRevenueWindow", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  // ── F-1577: a quarter, so Q3 is one read rather than three months added
+
+  it("(q) reads a whole past quarter, its first month's first day to its third month's last", async () => {
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    const result = await service.getPosRevenueWindow("r1", 30, "2026-Q2");
+    expect(result).toMatchObject({
+      from: "2026-04-01",
+      to: "2026-06-30",
+      days: 91,
+    });
+  });
+
+  it("(q2) ends a quarter still running on the house's today, and refuses one not begun or written wrong", async () => {
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    const result = await service.getPosRevenueWindow("r1", 30, "2026-Q3");
+    expect(result).toMatchObject({
+      from: "2026-07-01",
+      to: LA_TODAY,
+      days: 63,
+    });
+    for (const bad of ["2026-Q4", "2026-Q5", "2026-Q0"])
+      await expect(
+        service.getPosRevenueWindow("r1", 30, bad),
+      ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   // ── F-1236: the weekly bell's week is Monday to Sunday on the house's clock
 
   it("(w) reads the last full house week, Monday to Sunday, not the trailing seven days", async () => {

@@ -180,6 +180,16 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(kept[1].textContent).not.toContain('€0');
   });
 
+  it('says beside the net figure that the kept Till CSV is gross check totals (F-1578)', async () => {
+    api.get.mockResolvedValueOnce({ data: { closes: [close(), close({ id: 'c0', month: '2026-06', hasTillFile: false })] } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);
+    await screen.findAllByLabelText(/Figures kept for/);
+    const said = screen.getAllByText(/The Till CSV is the check totals as your till sent them/);
+    // Only the close that keeps a file says it.
+    expect(said).toHaveLength(1);
+    expect(said[0].textContent).toMatch(/reads higher than the net sales above/);
+  });
+
   it('never says nothing changed while a figure moved (F-1467)', async () => {
     api.get.mockImplementation(async (url: string) =>
       url === '/reports/month-close' ? { data: { closes: [close()] } } : { data: { ...detail(), changes: [] } },
