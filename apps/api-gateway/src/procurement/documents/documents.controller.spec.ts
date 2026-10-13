@@ -1163,3 +1163,80 @@ describe("F-1299 — the vendor's paper opens for owners, managers and the sende
     expect(sheet.original.imageUrl).toBe(SIGNED);
   });
 });
+
+describe("DocumentsController.detail — each paired line names its own order item (F-1566)", () => {
+  /** One invoice billing two orders: line 1 is paired to order o1, line 2 to o2. */
+  const items = [
+    {
+      id: "item-raki",
+      order_id: "o1",
+      wine_name: "Yeni Rakı 70cl",
+      quantity: 12,
+      unit_type: "bottle",
+    },
+    {
+      id: "item-wine",
+      order_id: "o2",
+      wine_name: "Kavaklıdere Yakut 75cl",
+      quantity: 6,
+      unit_type: "case",
+    },
+  ];
+  const controllerWith = (orderItems: unknown) => {
+    const tables: Record<string, unknown[]> = {
+      procurement_documents: [m2DocRow()],
+      procurement_document_lines: [
+        { ...m2LineRow(), id: "l1", order_line_id: "item-raki" },
+        { ...m2LineRow(), id: "l2", line_no: 2, order_line_id: "item-wine" },
+      ],
+      procurement_document_links: [
+        { document_id: M2_DOC, order_id: "o1" },
+        { document_id: M2_DOC, order_id: "o2" },
+      ],
+    };
+    const seen: [string, unknown][] = [];
+    const base = m2FakeDb(tables).getClient();
+    const from = (table: string) => {
+      if (table !== "procurement_order_items") return base.from(table);
+      const b: any = {};
+      b.select = () => b;
+      b.eq = (c: string, v: unknown) => (seen.push([c, v]), b);
+      b.in = (c: string, v: unknown) => (seen.push([c, v]), b);
+      b.then = (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+        Promise.resolve(orderItems).then(ok, ko);
+      return b;
+    };
+    const none = {} as never;
+    const c = new DocumentsController(
+      none,
+      { getClient: () => ({ ...base, from }) } as never,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+    );
+    return { c, seen };
+  };
+
+  it.each(["owner", "staff"])(
+    "sends the item each line is paired to, from every linked order, to a %s",
+    async (role) => {
+      const { c, seen } = controllerWith({ data: items, error: null });
+      const out = (await c.detail(M2_DOC, asRole(role) as never)) as any;
+      expect(out.orderLines).toEqual(items);
+      expect(seen).toContainEqual(["id", ["item-raki", "item-wine"]]);
+      expect(seen).toContainEqual(["restaurant_id", M2_HOUSE]);
+    },
+  );
+
+  it("says null, not an empty list, when the items could not be read", async () => {
+    const { c } = controllerWith({ data: null, error: { message: "down" } });
+    const out = (await c.detail(M2_DOC, asRole("owner") as never)) as any;
+    expect(out.orderLines).toBeNull();
+  });
+});

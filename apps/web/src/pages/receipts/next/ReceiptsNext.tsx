@@ -38,6 +38,7 @@ import { HoldToApprove, Wordmark } from '@/components/mudavym';
 import {
   documentsApi,
   type DocumentLineMatch,
+  type PairedOrderLine,
   type ProcurementDocument,
   type ProcurementDocumentLine,
 } from '../../../services/api/documents';
@@ -142,10 +143,19 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
         The lines add up to the stated total.
       </span>
     );
+  // The delta is signed, total − lines (parsed-document.ts applyTieOut), so
+  // the sentence says which way: billed more than the lines, or less (F-1568).
+  const delta = doc.tie_out_delta;
   return (
     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-      The total is off by{' '}
-      {doc.tie_out_delta == null ? EM : fmtMoney(Math.abs(doc.tie_out_delta), doc.currency)} from the lines.
+      {delta == null ? (
+        <>The total is off by {EM} from the lines.</>
+      ) : (
+        <>
+          The total is {fmtMoney(Math.abs(delta), doc.currency)} {delta > 0 ? 'more' : 'less'} than
+          the lines add up to.
+        </>
+      )}
     </span>
   );
 }
@@ -847,12 +857,16 @@ const MATCH_METHOD_WORDS: Record<string, string> = {
 
 function PairedCell({
   line,
-  order,
-  orderUnread,
+  orderLines,
 }: {
   line: ProcurementDocumentLine;
-  order: { wineName?: string; quantity?: number } | undefined;
-  orderUnread: boolean;
+  /**
+   * The order items this paper's lines are paired to, from every linked order
+   * (F-1566). Each line is named from its OWN item: one invoice may bill
+   * several orders, and naming every line from the first order's item put a
+   * rakı's name on a wine line. `null`/absent = they could not be read.
+   */
+  orderLines: PairedOrderLine[] | null | undefined;
 }) {
   if (!line.order_line_id)
     return (
@@ -874,13 +888,16 @@ function PairedCell({
     ? MATCH_METHOD_WORDS[line.match_method] ?? line.match_method
     : 'how it was matched is not recorded';
   const sure = conf === EM ? 'certainty not recorded' : `${conf} sure of the match`;
+  const item = orderLines?.find((o) => o.id === line.order_line_id);
   return (
     <span style={{ color: 'var(--seal-deep, #14515C)' }}>
-      {orderUnread
+      {orderLines == null
         ? 'paired with the order, which could not be read to name the item'
-        : `${order?.wineName ?? 'the order does not name the item'} · ${
-            order?.quantity == null ? EM : order.quantity
-          } ordered`}
+        : !item
+          ? 'paired with an order line this page could not find'
+          : `${item.wine_name ?? 'the order does not name the item'} · ${
+              item.quantity == null ? EM : item.quantity
+            } ordered`}
       {` · ${how} · ${sure}`}
     </span>
   );
@@ -1167,8 +1184,6 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
         }
       : shownDoc;
 
-  const orderUnread = !!orderId && orderQ.data === undefined;
-
   const appliedByLine = useMemo(() => {
     const m = new Map<string, DocumentLineMatch>();
     for (const a of matchResult?.applied ?? []) m.set(a.documentLineId, a);
@@ -1268,18 +1283,16 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
               {orderQ.data.orderNumber ? `Against order ${orderQ.data.orderNumber}` : 'Against an order with no number'}
               {vendorClause(orderQ.data)}
               {/*
-                THE ORDER'S OWN CURRENCY, WHICH DOES NOT EXIST. Neither
-                `procurement_orders` nor `procurement_order_items` has a
-                currency column (measured 2026-09-05,
-                `procurement/price-currency.ts`'s `agreementCurrencyClaim`),
-                so `null` is passed deliberately and this figure prints
-                "(currency not recorded)". Borrowing the DOCUMENT's currency
-                would state that the order was agreed in the money the vendor
-                happened to bill in — a claim nobody made, and exactly wrong
-                on a cross-currency order.
+                THE ORDER'S OWN CURRENCY (F-1567). `procurement_orders` has
+                carried one since 20260906170000, and `GET
+                /procurement/orders/:id` sends it as `currency`. A null or
+                absent one prints "(currency not recorded)". Never the
+                DOCUMENT's currency: that would state the order was agreed in
+                the money the vendor happened to bill in, a claim nobody made
+                and exactly wrong on a cross-currency order.
               */}
               {typeof orderQ.data.totalCost === 'number'
-                ? ` · ordered ${fmtMoney(orderQ.data.totalCost, null)}`
+                ? ` · ordered ${fmtMoney(orderQ.data.totalCost, orderQ.data.currency ?? null)}`
                 : ''}
               {(linkedOrderIds?.length ?? 0) > 1
                 ? ` · and ${linkedOrderIds!.length - 1} more order${linkedOrderIds!.length - 1 === 1 ? '' : 's'}`
@@ -1507,11 +1520,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                         );
                       })}
                       <td role="cell" data-cell="order" data-label="Order line" style={{ padding: '5px 6px', fontFamily: MONO, fontSize: 10 }}>
-                        <PairedCell
-                          line={l}
-                          order={orderQ.data as { wineName?: string; quantity?: number } | undefined}
-                          orderUnread={orderUnread}
-                        />
+                        <PairedCell line={l} orderLines={detailQ.data?.orderLines} />
                         {appliedByLine.has(l.id) && (
                           <div style={{ color: 'var(--ink-2, #4F473C)', marginTop: 2 }}>
                             written by the matcher just now: {appliedByLine.get(l.id)!.reason}

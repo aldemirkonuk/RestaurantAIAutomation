@@ -1625,19 +1625,75 @@ export class DocumentsController {
     );
 
     const document = { ...doc, imageUrl, imageUrlReason };
+    const orderLines = await this.pairedOrderLines(
+      (lines ?? []) as { order_line_id?: string | null }[],
+      user.restaurantId,
+    );
     // The house's money stays with those who hold it (money-policy M2).
     if (!holdsHouseMoney(user.role ?? null))
       return {
         document: documentRowWithoutMoney(document),
         lines: (lines ?? []).map(documentLineWithoutMoney),
         links: links ?? [],
+        orderLines,
         amountsWithheld: true,
       };
     return {
       document,
       lines: lines ?? [],
       links: links ?? [],
+      orderLines,
     };
+  }
+
+  /**
+   * The order items this paper's lines are paired to, each with its own order
+   * (F-1566). One invoice may bill several orders, so a line is named from the
+   * item its `order_line_id` points to, never from the first linked order.
+   * Item, quantity and unit only: no prices, so every role may read them.
+   * `null` when the read failed: the page then says it could not name the
+   * item, which is not the same as an item with no name.
+   */
+  private async pairedOrderLines(
+    lines: { order_line_id?: string | null }[],
+    restaurantId: string,
+  ): Promise<
+    | {
+        id: string;
+        order_id: string;
+        wine_name: string | null;
+        quantity: number | null;
+        unit_type: string | null;
+      }[]
+    | null
+  > {
+    const ids = [
+      ...new Set(
+        lines
+          .map((l) => l.order_line_id)
+          .filter((x): x is string => typeof x === "string" && x !== ""),
+      ),
+    ];
+    if (!ids.length) return [];
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_order_items")
+      .select("id, order_id, wine_name, quantity, unit_type")
+      .eq("restaurant_id", restaurantId)
+      .in("id", ids);
+    if (error) {
+      this.logger.warn(
+        `the order items paired to a paper could not be read: ${error.message}`,
+      );
+      return null;
+    }
+    return (data ?? []) as {
+      id: string;
+      order_id: string;
+      wine_name: string | null;
+      quantity: number | null;
+      unit_type: string | null;
+    }[];
   }
 
   /**

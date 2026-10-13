@@ -18,7 +18,12 @@ const api = vi.hoisted(() => ({
   /** Papers that read cleanly, `status = received` (W44). */
   clean: [] as ProcurementDocument[],
   unverified: { items: [] as unknown[] },
-  detail: { document: {}, lines: [] as unknown[], links: [] },
+  detail: { document: {}, lines: [] as unknown[], links: [] } as {
+    document: unknown;
+    lines: unknown[];
+    links: unknown[];
+    orderLines?: unknown[] | null;
+  },
   detailFails: null as unknown,
   unverifiedFails: null as unknown,
   /** Rejects both list reads (queue and verified book) when set. */
@@ -140,7 +145,7 @@ vi.mock('../../../services/api/orders', () => ({
 }));
 
 import ReceiptsNext, { PaperPane, previewKind } from './ReceiptsNext';
-import { isSignedUrlExpired } from './rc2-format';
+import { fmtMoney, isSignedUrlExpired } from './rc2-format';
 
 function doc(over: Partial<ProcurementDocument>): ProcurementDocument {
   return {
@@ -243,7 +248,7 @@ beforeEach(() => {
   api.editLine.mockReset();
   api.editLine.mockResolvedValue({
     line: { ...line, qty: 11 },
-    tieOut: { computedLinesTotal: 202.4, tieOutDelta: -210.1, tiesOut: false },
+    tieOut: { computedLinesTotal: 202.4, tieOutDelta: 210.1, tiesOut: false },
   });
   api.verify.mockClear();
   api.role = 'manager';
@@ -258,6 +263,11 @@ beforeEach(() => {
     lineFailures: [],
   });
 });
+
+/** An order item a line is paired to, as the detail route sends it (F-1566). */
+function item(id: string, orderId: string, name: string, quantity: number) {
+  return { id, order_id: orderId, wine_name: name, quantity, unit_type: 'bottle' };
+}
 
 async function openFirstDoc() {
   fireEvent.click(await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? '')));
@@ -293,7 +303,9 @@ describe('ReceiptsNext', () => {
     await waitFor(() =>
       expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }, 'seal-edit'),
     );
-    await waitFor(() => expect(container.textContent).toContain('off by $210.10'));
+    await waitFor(() =>
+      expect(container.textContent).toContain('The total is $210.10 more than the lines add up to.'),
+    );
   });
 
   it('locks the lines of a verified document, with the reason in words', async () => {
@@ -590,6 +602,7 @@ describe('ReceiptsNext', () => {
       document: doc({}),
       lines: [{ ...line, order_line_id: 'ol-abcdef12-9', match_method: 'vendor_sku', match_confidence: 0.97 }],
       links: [],
+      orderLines: [item('ol-abcdef12-9', 'o1', 'Albariño', 12)],
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
@@ -612,11 +625,11 @@ describe('ReceiptsNext', () => {
   });
 
   it('a paired line whose order cannot be read says so, naming no wine and no id (W37)', async () => {
-    api.orderFails = new Error('500');
     api.detail = {
       document: doc({}),
       lines: [{ ...line, order_line_id: 'ol-abcdef12-9', match_method: 'description', match_confidence: 0.94 }],
       links: [],
+      orderLines: null,
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
@@ -630,11 +643,11 @@ describe('ReceiptsNext', () => {
   });
 
   it('a paired line with no recorded method, certainty or item name says each in words (W37)', async () => {
-    api.orderOver = { wineName: undefined, quantity: undefined };
     api.detail = {
       document: doc({}),
       lines: [{ ...line, order_line_id: 'ol-abcdef12-9', match_method: null, match_confidence: null }],
       links: [],
+      orderLines: [{ id: 'ol-abcdef12-9', order_id: 'o1', wine_name: null, quantity: null, unit_type: null }],
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
@@ -642,6 +655,41 @@ describe('ReceiptsNext', () => {
     await waitFor(() =>
       expect(cell().textContent).toContain(
         'the order does not name the item · — ordered · how it was matched is not recorded · certainty not recorded',
+      ),
+    );
+  });
+
+  it('each paired line on a multi-order invoice names its own order item (F-1566)', async () => {
+    api.detail = {
+      document: doc({ order_id: null }),
+      lines: [
+        { ...line, order_line_id: 'item-raki', match_method: 'vendor_sku', match_confidence: 0.97 },
+        { ...line, id: 'l2', line_no: 2, description: 'Yakut 2021', order_line_id: 'item-wine', match_method: 'description', match_confidence: 0.9 },
+      ],
+      links: [{ order_id: 'o1' }, { order_id: 'o2' }],
+      orderLines: [item('item-raki', 'o1', 'Yeni Rakı 70cl', 12), item('item-wine', 'o2', 'Kavaklıdere Yakut 75cl', 6)],
+    };
+    api.orderOver = { wineName: 'Yeni Rakı 70cl', quantity: 12 };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const cells = () => [...container.querySelectorAll('td[data-cell="order"]')].map((c) => c.textContent);
+    await waitFor(() => expect(cells()[1]).toContain('Kavaklıdere Yakut 75cl · 6 ordered · matched by the description'));
+    expect(cells()[0]).toContain("Yeni Rakı 70cl · 12 ordered · matched by the supplier's code");
+    expect(cells()[1]).not.toContain('Rakı');
+  });
+
+  it('a paired line whose item is not among the order lines read says so', async () => {
+    api.detail = {
+      document: doc({}),
+      lines: [{ ...line, order_line_id: 'item-gone', match_method: 'manual', match_confidence: 1 }],
+      links: [],
+      orderLines: [],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await waitFor(() =>
+      expect(container.querySelector('td[data-cell="order"]')!.textContent).toContain(
+        'paired with an order line this page could not find',
       ),
     );
   });
@@ -1090,6 +1138,39 @@ describe('ReceiptsNext — the open document lives in the URL (ADR 0160)', () =>
     fireEvent.click(screen.getByRole('button', { name: 'Show the queue' }));
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(''));
     expect(screen.getByText(/Choose a document from the queue/)).toBeInTheDocument();
+  });
+});
+
+describe('ReceiptsNext — the tie-out says which way the total is off (F-1568)', () => {
+  it.each([
+    [43.47, 'The total is $43.47 more than the lines add up to.'],
+    [-43.47, 'The total is $43.47 less than the lines add up to.'],
+  ])('a delta of %s reads "%s"', async (delta, words) => {
+    api.queue = [doc({ ties_out: false, tie_out_delta: delta })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await waitFor(() => expect(container.textContent).toContain(words));
+    expect(container.textContent).not.toContain('off by');
+  });
+});
+
+describe('ReceiptsNext — the order total names the order\'s own currency (F-1567)', () => {
+  it('prints the currency the order was placed in', async () => {
+    api.orderOver = { totalCost: 12500, currency: 'TRY' };
+    api.queue = [doc({ currency: 'TRY' })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await waitFor(() => expect(container.textContent).toContain(`ordered ${fmtMoney(12500, 'TRY')}`));
+    expect(container.textContent).not.toContain(`ordered ${fmtMoney(12500, null)}`);
+  });
+
+  it('says the currency is not recorded when the order names none', async () => {
+    api.orderOver = { totalCost: 12500, currency: null };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await waitFor(() => expect(container.textContent).toContain(`ordered ${fmtMoney(12500, null)}`));
   });
 });
 

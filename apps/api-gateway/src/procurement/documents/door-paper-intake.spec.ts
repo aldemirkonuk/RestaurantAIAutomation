@@ -351,6 +351,123 @@ describe("F-746 — a second photo of a paper already on file", () => {
     ).toHaveLength(1);
   });
 
+  describe("F-1565 — a US invoice that prints no tax id", () => {
+    /** INV-1001 from a US vendor: no EIN printed, so no vendor was resolved. */
+    const usPaper = (over: Partial<ParsedDocument> = {}) =>
+      parse({
+        vendorName: "SYNTHETIC WINE DISTRIBUTORS LLC",
+        vendorTaxId: null,
+        vendorCountry: "US",
+        currency: "EUR",
+        docDate: "2026-09-14",
+        total: 1240.5,
+        ...over,
+      });
+    const earlier =
+      (row: Record<string, unknown>, linkedTo: string[]) =>
+      (op: Op): Answer | undefined => {
+        if (op.table === "procurement_document_links" && op.verb === "select")
+          return {
+            data: linkedTo.map((document_id) => ({ document_id })),
+            error: null,
+          };
+        if (
+          op.table === "procurement_documents" &&
+          op.verb === "select" &&
+          has(op, "doc_number")
+        )
+          return {
+            data: [
+              {
+                id: "doc-first",
+                provider_id: null,
+                status: "needs_review",
+                extracted: {
+                  docType: "invoice",
+                  docNumber: "INV-1001",
+                  docDate: "2026-09-14",
+                  total: 1240.5,
+                  vendorTaxId: null,
+                  vendorCountry: "US",
+                },
+                ...row,
+              },
+            ],
+            error: null,
+          };
+        return freshInsert(op);
+      };
+    const inserts = (ops: Op[]) =>
+      ops.filter(
+        (o) => o.table === "procurement_documents" && o.verb === "insert",
+      );
+
+    it("knows a second photo of a paper already filed to the same order", async () => {
+      const { service, ops } = build({
+        parsed: usPaper(),
+        respond: (op) => orderRow(op) ?? earlier({}, ["doc-first"])(op),
+      });
+      const r = await service.ingest(photo());
+      expect(r).toMatchObject({ documentId: "doc-first", duplicate: true });
+      expect(inserts(ops)).toHaveLength(0);
+      const lookup = ops.find(
+        (o) => o.table === "procurement_document_links" && o.verb === "select",
+      )!;
+      expect(has(lookup, "order_id", ORDER)).toBe(true);
+      expect(has(lookup, "restaurant_id", HOUSE)).toBe(true);
+    });
+
+    it("knows it by the order's vendor when the first copy was filed under it", async () => {
+      const { service, ops } = build({
+        parsed: usPaper(),
+        respond: (op) =>
+          orderRow(op) ?? earlier({ provider_id: "prov-A" }, [])(op),
+      });
+      const r = await service.ingest(photo());
+      expect(r).toMatchObject({ documentId: "doc-first", duplicate: true });
+      expect(inserts(ops)).toHaveLength(0);
+    });
+
+    it("keeps a paper with the same number but another total as its own", async () => {
+      const { service, ops } = build({
+        parsed: usPaper({ total: 980 }),
+        respond: (op) => orderRow(op) ?? earlier({}, ["doc-first"])(op),
+      });
+      const r = await service.ingest(photo());
+      expect(r).toMatchObject({ documentId: "doc-new", duplicate: false });
+      expect(inserts(ops)).toHaveLength(1);
+    });
+
+    it("keeps a paper with the same number but another date as its own", async () => {
+      const { service } = build({
+        parsed: usPaper({ docDate: "2026-10-02" }),
+        respond: (op) => orderRow(op) ?? earlier({}, ["doc-first"])(op),
+      });
+      const r = await service.ingest(photo());
+      expect(r).toMatchObject({ documentId: "doc-new", duplicate: false });
+    });
+
+    it("does not count a copy filed to another order, or another vendor's copy", async () => {
+      const notLinked = build({
+        parsed: usPaper(),
+        respond: (op) => orderRow(op) ?? earlier({}, [])(op),
+      });
+      expect(await notLinked.service.ingest(photo())).toMatchObject({
+        documentId: "doc-new",
+        duplicate: false,
+      });
+      const otherVendor = build({
+        parsed: usPaper(),
+        respond: (op) =>
+          orderRow(op) ?? earlier({ provider_id: "prov-B" }, ["doc-first"])(op),
+      });
+      expect(await otherVendor.service.ingest(photo())).toMatchObject({
+        documentId: "doc-new",
+        duplicate: false,
+      });
+    });
+  });
+
   it("does not report `matched` when the vendor could not be written onto the document", async () => {
     const { service } = build({
       vendor: { state: "matched", providerId: "prov-A" },
