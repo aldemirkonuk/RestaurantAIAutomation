@@ -273,6 +273,38 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(isWithheld(figure(service, "Table-adjusted fit (R²)"))).toBe(true);
   });
 
+  it("F-1573: who served it on a till with no amount before tax — Tip says why, never 'no tip recorded' or 'over net sales'", () => {
+    const why =
+      "Your till sends tips but no amount before tax, so no tip rate can be taken.";
+    const doc = EXPORT_CUTTINGS.service.write(
+      {
+        sinceDays: 90,
+        dataStatus: "live",
+        adjusted: null,
+        tipBasis: null,
+        tipBasisWhy: why,
+        waiters: [
+          {
+            name: "Maya",
+            checks: 3,
+            revenue: 378,
+            avgCheck: 126,
+            tipPct: null,
+            tipPctWhy:
+              "tips were recorded, but the till sent no amount before tax, so no tip rate can be taken",
+          },
+        ],
+      },
+      { days: null },
+    );
+    const tip = doc.tables[0].rows[0][5];
+    expect(isWithheld(tip)).toBe(true);
+    expect(JSON.stringify(tip)).toContain("no amount before tax");
+    expect(JSON.stringify(tip)).not.toContain("no tip recorded");
+    expect(doc.basis).toContain(why);
+    expect(doc.basis.join(" ")).not.toContain("over net sales");
+  });
+
   it("what to buy back: a wine with no measured demand has no cover and no risk", () => {
     const doc = EXPORT_CUTTINGS.restock.write(PAYLOADS.restock, { days: null });
     const chablis = doc.tables[0].rows[1];

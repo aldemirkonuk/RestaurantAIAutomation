@@ -302,6 +302,57 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     expect(out.waiters[0].tipPct).toBeCloseTo(0.2, 6);
   });
 
+  // F-1558 / F-1573: Clover and CSV tills send a tip and no subtotal. Tip
+  // went blank for every server with the basis still "over net sales", the
+  // export said "no tip recorded", and tips per seat read a measured 0.
+  it("a till that never sends a subtotal: no 'net' basis, a reason, and no tip per seat", async () => {
+    const clover = (id: string) => usCheck({ id, subtotal: null });
+    let { service } = makeService({
+      pos_checks: [ok([clover("a"), clover("b")])],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.waiters[0].tipPct).toBeNull();
+    expect(out.waiters[0].tipPctWhy).toMatch(/no amount before tax/);
+    expect(out.tipBasis).toBeNull();
+    expect(out.tipBasisWhy).toMatch(/no amount before tax/);
+
+    ({ service } = makeService({
+      restaurant_tables: [ok([{ id: "t1", label: "T1", seats: 4 }])],
+      pos_checks: [ok([clover("a")])],
+    }));
+    const room: any = await service.getTablePerformance("r1", 90);
+    expect(room.tables[0].tipPct).toBeNull();
+    expect(room.tables[0].tipPerSeat).toBeNull();
+    expect(room.tipBasis).toBeNull();
+  });
+
+  it("some checks with a subtotal and some without: 'net', and says the rest are left out", async () => {
+    const { service } = makeService({
+      pos_checks: [
+        ok([
+          usCheck({ id: "a" }),
+          usCheck({ id: "b", server_name: "Ali", subtotal: null }),
+        ]),
+      ],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.tipBasis).toBe("net");
+    expect(out.tipBasisWhy).toMatch(/left out of Tip/);
+    const ali = out.waiters.find((w: any) => w.name === "Ali");
+    expect(ali.tipPctWhy).toMatch(/no amount before tax/);
+    const maya = out.waiters.find((w: any) => w.name === "Maya");
+    expect(maya.tipPctWhy).toBeNull();
+  });
+
+  it("no tip at all is still said as no tip, not as a missing subtotal", async () => {
+    const { service } = makeService({
+      pos_checks: [ok([usCheck({ id: "a", subtotal: null, tip: null })])],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.waiters[0].tipPctWhy).toBeNull();
+    expect(out.tipBasisWhy).toBeNull();
+  });
+
   it("reads the subtotal with the check", async () => {
     const { service, calls } = makeService({ pos_checks: [ok([usCheck()])] });
     await service.getWaiterPerformance("r1", 90);

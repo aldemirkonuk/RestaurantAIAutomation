@@ -1031,6 +1031,8 @@ function writeService(payload: unknown): ExportDoc {
     `Non-voided pos_checks grouped by server name over the last ${sinceDays} days.`,
     REGISTER_TOTALS_NOT_NET,
     s.tipBasis === "net" ? REGISTER_TIP_ON_NET : null,
+    // F-1573: the gateway's own reason when Tip is not (all) over net sales.
+    str(s.tipBasisWhy) || null,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
     adj ? adj.method : null,
   );
@@ -1041,6 +1043,7 @@ function writeService(payload: unknown): ExportDoc {
     avgCheck: num(w.avgCheck),
     wineAttach: num(w.wineAttachRate),
     tip: num(w.tipPct),
+    tipWhy: str(w.tipPctWhy),
   }));
   const figures = [
     f("Servers with a check", waiters.length, "count"),
@@ -1082,7 +1085,8 @@ function writeService(payload: unknown): ExportDoc {
           figure(w.revenue, none),
           figure(w.avgCheck, none),
           figure(w.wineAttach, none),
-          figure(w.tip, "no tip recorded on this server's checks"),
+          // F-1573: tips with no amount before tax are not "no tip".
+          figure(w.tip, w.tipWhy || "no tip recorded on this server's checks"),
         ]),
       },
     ],

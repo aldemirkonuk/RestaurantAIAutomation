@@ -1,5 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import {
+  DayExclusions,
+  DayExclusionsService,
+} from "./insights/day-exclusions.service";
 import { readForKeys, readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
@@ -101,7 +105,15 @@ export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
   private readonly HOLDING_RATE = 0.26; // capital+storage+spoilage, %/yr
 
-  constructor(private readonly dbService: DatabaseService) {}
+  /** F-1575: the days an owner or manager ruled out of the baselines (ADR 0317). */
+  private readonly dayExclusions: DayExclusionsService;
+
+  constructor(
+    private readonly dbService: DatabaseService,
+    dayExclusions?: DayExclusionsService,
+  ) {
+    this.dayExclusions = dayExclusions ?? new DayExclusionsService(dbService);
+  }
 
   // =========================================================================
   // Metric catalog (registry) — the "formula library"
@@ -527,14 +539,20 @@ export class AnalyticsService {
   /**
    * Aggregate rows into a dense daily series over [sinceDays, today]. With
    * `bounds`, it ends yesterday and starts no earlier than `from` (F-1533).
+   * A day in `bounds.ruledOut` is left out of the series, never filled as
+   * 0, and named in `left` (F-1575, ADR 0317).
    */
   private toDailySeries(
     rows: Array<{ date: string; value: number }>,
     sinceDays: number,
     /** With a zone, "today" is the house's (ADR 0296); without, UTC's. */
     zone: string | null = null,
-    bounds: { from?: string | null; throughYesterday?: boolean } = {},
-  ): { dates: string[]; values: number[] } {
+    bounds: {
+      from?: string | null;
+      throughYesterday?: boolean;
+      ruledOut?: Set<string>;
+    } = {},
+  ): { dates: string[]; values: number[]; left: string[] } {
     const byDay = new Map<string, number>();
     for (const r of rows) {
       if (!r.date) continue;
@@ -542,6 +560,7 @@ export class AnalyticsService {
     }
     const dates: string[] = [];
     const values: number[] = [];
+    const left: string[] = [];
     const today = new Date();
     const houseDay = zone ? houseToday(zone, today) : null;
     const last = bounds.throughYesterday ? 1 : 0;
@@ -552,10 +571,14 @@ export class AnalyticsService {
             .toISOString()
             .substring(0, 10);
       if (bounds.from && day < bounds.from) continue;
+      if (bounds.ruledOut?.has(day)) {
+        left.push(day);
+        continue;
+      }
       dates.push(day);
       values.push(byDay.get(day) || 0);
     }
-    return { dates, values };
+    return { dates, values, left };
   }
 
   // =========================================================================
@@ -1093,11 +1116,13 @@ export class AnalyticsService {
       restaurantId,
     );
 
-    const [allInventory, consumption, house] = await Promise.all([
+    const [allInventory, consumption, house, exclusions] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadConsumption(restaurantId, sinceDays, zone),
       this.loadHouse(restaurantId),
+      this.dayExclusions.load(restaurantId),
     ]);
+    const ruledOutLeft = new Set<string>();
     const inventory = this.activeOnly(allInventory);
     const salesRecordedFrom = this.salesRecordedFrom(
       house.openedOn,
@@ -1135,7 +1160,10 @@ export class AnalyticsService {
         zone,
         salesRecordedFrom,
       );
-      const { values } = this.toDailySeries(rows, demandDays, zone);
+      const { values, left } = this.toDailySeries(rows, demandDays, zone, {
+        ruledOut: exclusions.dates,
+      });
+      for (const d of left) ruledOutLeft.add(d);
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
         stdev: 0,
@@ -1173,7 +1201,8 @@ export class AnalyticsService {
         onOrder: i.onOrder,
         nextArrival: i.nextArrival ?? null,
         avgDailyDemand: profile.mean,
-        demandDays,
+        // The days the mean is over: a ruled-out day is not one (F-1575).
+        demandDays: values.length,
         demandCv: profile.cv,
         xyzClass: E.inventory.xyzClassify(profile.cv),
         daysOfCover: doc,
@@ -1241,7 +1270,7 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d, or over the days since the wine was listed when that is fewer (skus[].demandDays)${salesRecordedFrom ? `, and never from before the house's first recorded sale on ${salesRecordedFrom}` : ""} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
+        demand: `bottles/day over ${sinceDays}d, or over the days since the wine was listed when that is fewer (skus[].demandDays)${salesRecordedFrom ? `, and never from before the house's first recorded sale on ${salesRecordedFrom}` : ""} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}${ruledOutSaid(exclusions, ruledOutLeft)}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost; stockout risk and the reorder list count bottles already ordered and not yet arrived (skus[].onOrder; null when an open order states no bottle count or the orders could not be read, and then only the shelf is counted)`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
@@ -1286,9 +1315,10 @@ export class AnalyticsService {
       this.dbService.getClient(),
       restaurantId,
     );
-    const [orders, consumption] = await Promise.all([
+    const [orders, consumption, exclusions] = await Promise.all([
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, 90, zone),
+      this.dayExclusions.load(restaurantId),
     ]);
 
     // Vendor concentration (HHI on spend share). An order with no price is
@@ -1353,7 +1383,12 @@ export class AnalyticsService {
         date: c.date,
         value: c.qty as number, // bottles/day as the "return-generating" flow
       }));
-    const { values: dailyDemand } = this.toDailySeries(revRows, 90, zone);
+    const { values: dailyDemand, left: riskLeft } = this.toDailySeries(
+      revRows,
+      90,
+      zone,
+      { ruledOut: exclusions.dates },
+    );
     const returns: number[] = [];
     for (let i = 1; i < dailyDemand.length; i++) {
       if (dailyDemand[i - 1] > 0)
@@ -1370,7 +1405,7 @@ export class AnalyticsService {
 
     return {
       basis: {
-        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}`,
+        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}${ruledOutSaid(exclusions, riskLeft)}`,
         revenueConcentration: `over what each drink sold in the last 90d (${skuRevenue.length} drink(s) with sales)${unpricedSales.size > 0 ? `; ${unpricedSales.size} drink(s) left out because a sale carried no price` : ""}${cocktailPours > 0 ? `; ${cocktailPours} pour(s) into cocktails are not counted as sales of the drinks poured, and the cocktails' own sales are not in these figures` : ""}`,
         vendorConcentration: mixedCurrency
           ? `delivered procurement_orders (trailing 365d) — null: the orders were placed in ${orderCurrencies.join(", ")}, and with no exchange rate on record their spend shares cannot be compared`
@@ -1448,9 +1483,10 @@ export class AnalyticsService {
       this.dbService.getClient(),
       restaurantId,
     );
-    const [consumption, house] = await Promise.all([
+    const [consumption, house, exclusions] = await Promise.all([
       this.loadConsumption(restaurantId, sinceDays, zone),
       this.loadHouse(restaurantId),
+      this.dayExclusions.load(restaurantId),
     ]);
     // F-1533: fitted from the house's first recorded sale (F-1516's rule),
     // never on the zeros before its till began, and through yesterday: today
@@ -1470,9 +1506,12 @@ export class AnalyticsService {
     const rows = scoped
       .filter((c) => c.qty != null)
       .map((c) => ({ date: c.date, value: c.qty as number }));
-    const { dates, values } = this.toDailySeries(rows, sinceDays, zone, {
+    // F-1575: a day ruled out of the baselines (a till outage, a closure)
+    // is left out of the history, never fitted as a day that sold nothing.
+    const { dates, values, left } = this.toDailySeries(rows, sinceDays, zone, {
       from: recordsFrom,
       throughYesterday: true,
+      ruledOut: exclusions.dates,
     });
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
@@ -1602,7 +1641,7 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${dates.length} days through yesterday (up to ${sinceDays}${recordsFrom ? `, from the house's first recorded sale on ${recordsFrom}` : ""}; today is not over and is not history), zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
+        demand: `bottles/day over ${dates.length} days through yesterday (up to ${sinceDays}${recordsFrom ? `, from the house's first recorded sale on ${recordsFrom}` : ""}; today is not over and is not history), zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${ruledOutSaid(exclusions, left)}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
         model: projection
           ? `${model} fitted on ${values.length} days of history`
           : unmeasuredWine
@@ -1618,4 +1657,20 @@ export class AnalyticsService {
       generatedAt: new Date().toISOString(),
     };
   }
+}
+
+/**
+ * F-1575: what a demand series says about the days ruled out of the
+ * baselines (ADR 0317) — the ones it left out, or that the list could not be
+ * read, so a ruled-out outage may be in it as a day that sold nothing.
+ */
+function ruledOutSaid(
+  exclusions: DayExclusions,
+  left: Iterable<string>,
+): string {
+  if (!exclusions.readable)
+    return "; the days ruled out of the figures could not be read, so a ruled-out day may be counted here as one that sold nothing";
+  const days = Array.from(new Set(left)).sort();
+  if (days.length === 0) return "";
+  return `; ${days.length} day${days.length === 1 ? "" : "s"} ruled out of the figures left out (${days.join(", ")}), not counted as days that sold nothing`;
 }
