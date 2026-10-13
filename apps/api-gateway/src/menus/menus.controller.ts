@@ -59,6 +59,11 @@ import { LIVE_MENU_KINDS } from "./current-menu-lines";
 
 /** The two fields of a menu line that are prices (ADR 0193). */
 const MENU_PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
+/**
+ * A dish's one price (ADR 0340 rule 7, F-1530): a menu price correction like
+ * the two above, so an owner's or a manager's.
+ */
+const DISH_PRICE_FIELD = "price";
 
 /** The order of the kind blocks on the Full menu (ADR 0340 rule 22). */
 export class SetMenuKindOrderDto {
@@ -229,7 +234,10 @@ export class MenusController {
     // correction is on the line's override trail, and on the current menu the
     // house price change is a menu_price_versions row naming the person).
     // Checked before anything is written. Other fields are unchanged.
-    if (MENU_PRICE_FIELDS.has(dto.fieldName)) {
+    if (
+      MENU_PRICE_FIELDS.has(dto.fieldName) ||
+      dto.fieldName === DISH_PRICE_FIELD
+    ) {
       if (!user.userId || !user.restaurantId) {
         throw new ForbiddenException(
           "A price correction names the person and the house, and this session names neither. Nothing was changed.",
