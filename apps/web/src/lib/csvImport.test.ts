@@ -63,6 +63,18 @@ describe('planVendorImport', () => {
     ]);
   });
 
+  // F-1602: a name in Greek, Georgian or Cyrillic is not folded to nothing.
+  it('[REVERT-FAILS] keeps vendors whose names are in another script apart', () => {
+    const plan = planVendorImport(
+      parseCsvRows(['Name;Email', 'Κτήμα Άλφα;', 'Шато Тамань;', 'ΚΤΗΜΑ ΑΛΦΑ;'].join('\n')),
+      [{ name: 'თელიანი ველი' }],
+    );
+    expect(plan.fresh.map((v) => v.name)).toEqual(['Κτήμα Άλφα', 'Шато Тамань']);
+    expect(plan.duplicate.map((d) => [d.line, d.reason])).toEqual([
+      [4, 'Listed twice in this file; the first one is used.'],
+    ]);
+  });
+
   it('says in plain words when the file has no name column', () => {
     const plan = planVendorImport(parseCsvRows('email,phone\na@b.co,1'), []);
     expect(plan.fileProblem).toMatch(/No column is called "Name"/);
@@ -104,6 +116,32 @@ describe('planOpeningStock', () => {
     ]);
     expect(plan.refused.map((r) => r.line)).toEqual([5, 6, 7, 8, 9]);
     expect(plan.refused[1].reason).toMatch(/No shelf called "Garage" in this restaurant/);
+  });
+
+  // F-1602: two Greek wines of one vintage are two wines, and a file's wine
+  // is never counted into a carried wine whose name is in another script.
+  it('[REVERT-FAILS] keeps wines whose names are in another script apart', () => {
+    const plan = planOpeningStock(
+      parseCsvRows(['wine,vintage,quantity', 'Ξινόμαυρο,2019,6', 'Ασύρτικο,2019,4', 'ქისი,2019,3'].join('\n')),
+      [{ inventoryId: 'inv-g', name: 'Арени', vintage: 2019 }],
+      [],
+      'en-US',
+    );
+    expect(plan.refused).toEqual([]);
+    expect(plan.count).toEqual([]);
+    expect(plan.receive.map((r) => [r.name, r.qty])).toEqual([
+      ['Ξινόμαυρο', 6],
+      ['Ασύρτικο', 4],
+      ['ქისი', 3],
+    ]);
+    // The same name in its own script still matches, accents and case aside.
+    const again = planOpeningStock(
+      parseCsvRows('wine,vintage,quantity\nΞΙΝΟΜΑΥΡΟ,2019,5'),
+      [{ inventoryId: 'inv-x', name: 'Ξινόμαυρο', vintage: 2019 }],
+      [],
+      'en-US',
+    );
+    expect(again.count[0]).toMatchObject({ inventoryId: 'inv-x', qty: 5 });
   });
 
   it('[REVERT-FAILS] uses the file cost for a carried wine with no cost, and keeps a cost the wine already has (F-1524)', () => {

@@ -36,6 +36,12 @@ interface Outcome {
   counted: number;
   /** F-1524: counted wines that had a cost before this file, kept. */
   costKept: string[];
+  /**
+   * F-1582: wines whose costed (last) line failed, so the file's cost is not
+   * on them; `earlier` when bottles from its other shelves were counted
+   * uncosted before it.
+   */
+  costNotApplied: { name: string; earlier: boolean }[];
   failed: string[];
 }
 
@@ -77,7 +83,7 @@ export function OpeningStockImport({
     if (!plan) return;
     setSending(true);
     setProblem(null);
-    const out: Outcome = { received: 0, addedToCarried: 0, counted: 0, costKept: [], failed: [] };
+    const out: Outcome = { received: 0, addedToCarried: 0, counted: 0, costKept: [], costNotApplied: [], failed: [] };
     try {
       if (plan.receive.length > 0) {
         const r = await bulkCreateInventoryItems(
@@ -125,6 +131,12 @@ export function OpeningStockImport({
           if (cost !== null && r?.count?.costApplied === false) out.costKept.push(c.name);
         } catch (e) {
           out.failed.push(`${c.name}: ${getErrorMessage(e)}`);
+          if (cost !== null) {
+            out.costNotApplied.push({
+              name: c.name,
+              earlier: plan.count.some((o) => o.inventoryId === c.inventoryId && o.line !== c.line),
+            });
+          }
         }
       }
       setOutcome(out);
@@ -215,6 +227,15 @@ export function OpeningStockImport({
           {outcome.costKept.length > 0 && (
             <p className="text-gray-500">
               Already had a cost before this file, which was kept: {outcome.costKept.join(", ")}
+            </p>
+          )}
+          {outcome.costNotApplied.length > 0 && (
+            <p data-testid="opening-stock-cost-not-applied" className="text-gray-900">
+              Cost not applied: {outcome.costNotApplied.map((w) => w.name).join(", ")}.{" "}
+              {outcome.costNotApplied.some((w) => w.earlier)
+                ? "The bottles already counted on its other shelves have no cost yet. "
+                : ""}
+              Sending the file again applies it.
             </p>
           )}
           {outcome.failed.map((f) => (
