@@ -48,8 +48,16 @@ import {
   lineCost,
   serveCost,
   type ServeCost,
+  type ServeTax,
   type StockRowCost,
 } from "./cocktail-recipe";
+import {
+  costTaxProof,
+  readAdviceTaxTerms,
+  type AdviceTaxTerms,
+  type InventoryPriceRow,
+} from "../pricing/margin-advice.service";
+import { rateRowInForce } from "../settings/house-tax-basis.service";
 import { accentBlindLike, fold } from "../providers/vendor-wine-search";
 // The price register's one enforcement point (ADR 0117 addendum, 2026-09-05).
 import {
@@ -297,7 +305,34 @@ export interface StockChoice {
 
 /** inventory_lot_rollup columns `resolveUnitCost` reads (F-343 currency too). */
 const ROLLUP_SELECT =
-  "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count";
+  "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count, wac_pre_tax_qty, wac_tax_included_qty";
+
+/**
+ * F-1587: the rate a cocktail's price holds on a house whose till prices
+ * include tax, by margin advice's rule (ADR 0341 §6) with no item rate, since
+ * a cocktail is not a stock row: the whole-house rate in force today, only
+ * when no till-category rate is. Otherwise the named reason.
+ */
+export function cocktailTax(terms: AdviceTaxTerms): ServeTax {
+  if (terms.day === null)
+    return {
+      refusal:
+        "No margin: this house's time zone isn't set, so the tax rate in force today is not known. Set it in Settings.",
+    };
+  const day = terms.day;
+  const byCategory = terms.rates.some(
+    (r) =>
+      r.keyKind === "pos_category" &&
+      rateRowInForce(terms.rates, "pos_category", r.key, day)?.rate != null,
+  );
+  const house = rateRowInForce(terms.rates, "house", "", day);
+  if (!byCategory && house && house.rate !== null) return { rate: house.rate };
+  return {
+    refusal: byCategory
+      ? "No margin: your tax rates are set by till category, and a cocktail is not matched to one here, so the tax inside its price is not known."
+      : "No margin: no tax rate of this house is in force today, so the tax inside this price is not known. Add one in Settings, under “Do its prices include tax?”.",
+  };
+}
 
 /**
  * F-1471: what a recipe takes off the shelf, as one comparable string: each
@@ -1170,7 +1205,7 @@ export class BeveragesService {
       client
         .from("restaurant_inventory")
         .select(
-          "id, display_name, wine_name, bottle_size_ml, last_purchase_price",
+          "id, display_name, wine_name, bottle_size_ml, last_purchase_price, last_purchase_price_tax_basis",
         )
         .eq("restaurant_id", restaurantId)
         .in("id", unique),
@@ -1200,10 +1235,19 @@ export class BeveragesService {
       ?.currency;
     for (const r of (inv.data ?? []) as any[]) {
       const bottle = Number(r.bottle_size_ml);
+      const lot = lots.get(String(r.id));
+      const cost = resolveUnitCost(r, lot, currency);
       rows.set(r.id, {
         name: r.display_name ?? r.wine_name ?? "Unnamed stock row",
-        unitCost: resolveUnitCost(r, lots.get(String(r.id)), currency).unitCost,
+        unitCost: cost.unitCost,
         bottleMl: Number.isFinite(bottle) && bottle > 0 ? bottle : null,
+        // F-1587: whether that cost is proven without tax.
+        costTax: costTaxProof(
+          cost.costBasis,
+          r as InventoryPriceRow,
+          lot ?? null,
+          null,
+        ),
       });
     }
     return { rows, error: null };
@@ -1246,9 +1290,25 @@ export class BeveragesService {
     if (stock.error) {
       return { serves, error: stock.error, lines, linesError: null };
     }
+    // F-1587: a house whose till prices include tax has its margins on the
+    // price without tax; every other house's are as before, key for key.
+    const read = await readAdviceTaxTerms(
+      this.dbService.getClient(),
+      restaurantId,
+      null,
+    );
+    const tax: ServeTax | undefined =
+      read.error !== null
+        ? {
+            refusal: `No margin: whether this house's prices include tax could not be read (${read.error}).`,
+          }
+        : read.terms
+          ? cocktailTax(read.terms)
+          : undefined;
     for (const c of cocktails) {
       const own = lines.filter((l) => l.cocktail_id === c.id);
-      if (own.length > 0) serves.set(c.id, serveCost(own, stock.rows, c.price));
+      if (own.length > 0)
+        serves.set(c.id, serveCost(own, stock.rows, c.price, tax));
     }
     return { serves, error: null, lines, linesError: null };
   }

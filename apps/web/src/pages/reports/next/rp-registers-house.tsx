@@ -33,6 +33,8 @@ export interface QuadrantItem {
   marginPerBottle: number | null;
   marginPct: number | null;
   quadrant: string | null;
+  /** F-1587: why a costed wine has no margin, when the till's prices include tax. */
+  marginRefusal?: string | null;
 }
 
 export interface QuadrantRegister {
@@ -75,6 +77,7 @@ const quadrants = analysis<QuadrantRegister>({
         marginPerBottle: num(i.marginPerBottle),
         marginPct: num(i.marginPct),
         quadrant: (i.quadrant ?? null) as string | null,
+        marginRefusal: typeof i.marginRefusal === 'string' ? i.marginRefusal : null,
       })),
       leftOut: arr(d.leftOut).map((w) => ({
         id: str(w.id),
@@ -86,6 +89,11 @@ const quadrants = analysis<QuadrantRegister>({
   view: (q) => {
     const unclassified = q.counts.unclassified ?? 0;
     const unmeasured = q.counts.unmeasured ?? 0;
+    // F-1587: prices that include tax, with a cost or rate not known without it.
+    const taxRefused = q.counts.taxRefused ?? 0;
+    const taxReasons = [
+      ...new Set(q.items.map((i) => i.marginRefusal).filter((r): r is string => !!r)),
+    ];
     const priced = q.items.filter((i) => i.marginPerBottle != null);
     // A wine whose movement is not measured has no place on the x axis.
     const plotted = priced.filter((i) => i.velocityPerDay != null);
@@ -94,6 +102,9 @@ const quadrants = analysis<QuadrantRegister>({
     const offPlot = [
       unclassified > 0
         ? `${countOf(unclassified, 'wine is', 'wines are')} off the plot for want of a recorded cost — an uncosted wine is unknown, not a dog.`
+        : null,
+      taxRefused > 0
+        ? `${countOf(taxRefused, 'wine is', 'wines are')} off the plot because the margin is worked out on the price without tax, and it could not be: ${taxReasons.slice(0, 3).join(' ')}`
         : null,
       unmeasured > 0
         ? `${countOf(unmeasured, 'wine is', 'wines are')} off the plot because some of its sales were recorded without a bottle figure, so how fast it moves is not measured — not 0 bottles a day.`
@@ -111,6 +122,9 @@ const quadrants = analysis<QuadrantRegister>({
       { label: 'Puzzles', value: figure(q.counts.puzzle ?? 0) },
       { label: 'Dogs', value: figure(q.counts.dog ?? 0) },
       { label: 'No quadrant', value: figure(unclassified + unmeasured) },
+      // A wine refused for tax has no quadrant either; it gets its own tile so
+      // the reason (no pre-tax margin, F-1587) is not folded into cost/velocity.
+      ...(taxRefused > 0 ? [{ label: 'No pre-tax margin', value: figure(taxRefused) }] : []),
     ];
     if (q.amountsWithheld)
       return {
@@ -121,7 +135,11 @@ const quadrants = analysis<QuadrantRegister>({
       };
     if (priced.length === 0)
       return {
-        say: `No wine on the list carries both a recorded cost and a menu price, so there is no margin axis to plot against.${
+        say: `${
+          taxRefused > 0
+            ? 'No wine on the list has a margin on its price without tax yet, so there is no margin axis to plot against.'
+            : 'No wine on the list carries both a recorded cost and a menu price, so there is no margin axis to plot against.'
+        }${
           unclassified > 0
             ? ` ${countOf(unclassified, 'wine is', 'wines are')} unclassified for that reason — not because they sell badly.`
             : ' Nothing is filed in a quadrant, and nothing is guessed into one.'

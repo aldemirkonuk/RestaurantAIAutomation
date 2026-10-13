@@ -25,6 +25,7 @@ import {
   countWithheld,
 } from "../exports/report-export-cuttings";
 import { renderCsv } from "../exports/report-export-render";
+import { taxWordFor } from "../../settings/house-tax-basis.service";
 
 /**
  * Month close — F-1013, the founder's ruling of 2026-10-11 (sim ledger S195):
@@ -75,7 +76,7 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 // useSommelierQueries already has a `TABLE` (F-1112).
 const MONTH_CLOSES_TABLE = "month_closes";
 const ROW_COLUMNS =
-  "id, restaurant_id, month, version, closed_by, closed_at, zone, figures";
+  "id, restaurant_id, month, version, closed_by, closed_at, zone, figures, tax_basis";
 
 /**
  * The till's month, NET (F-1494): ADR 0287 rule AW17 makes an owner's sales
@@ -93,6 +94,17 @@ export interface TillFigures {
   checkCount: number | null;
   /** Only days with a net figure. */
   days: Array<{ date: string; netSales: number }>;
+  /**
+   * F-1606: the tax inside the till's prices, gross less net (`gross_subtotal`
+   * − `subtotal`), over the checks ingest made pre-tax for a house whose
+   * prices include tax (ADR 0341): stamped `prices_include_tax`, carrying
+   * both figures, and the two differ. A check whose till had already taken
+   * the tax off carries the same figure twice and is not one of them. Null
+   * when no check carries it. Absent on a close kept before F-1606.
+   */
+  taxInside?: number | null;
+  /** Checks whose tax is in `taxInside`; the rest of `netSalesCheckCount` carry none. */
+  taxInsideCheckCount?: number | null;
   /**
    * Each counted check's net figure at the close, by id (F-1467). A later void
    * or change is found by setting the month's checks against this, not by a
@@ -148,6 +160,15 @@ export interface VarianceFigures {
 export interface MonthFigures {
   /** The house's money when the month was closed; null when none is recorded. */
   currency: string | null;
+  /**
+   * F-1606: the house day the house last stated its tax basis (ADR 0341's
+   * switch day: checks from it on are net without tax, checks before it are
+   * as the till sent them). Null when it never has. Absent on a close kept
+   * before F-1606.
+   */
+  taxBasisSince?: string | null;
+  /** How the house's country names its tax ("KDV", "sales tax", "tax"). */
+  taxWord?: string;
   till: TillFigures;
   valuation: ValuationFigures;
   purchases: PurchaseFigures;
@@ -163,6 +184,11 @@ export interface MonthCloseDto {
   closedBy: { id: string; name: string | null } | null;
   zone: string;
   figures: MonthFigures;
+  /**
+   * F-1606: the house's tax basis when it was closed (ADR 0341). Null on a
+   * close kept before the close recorded it: not stated, never guessed.
+   */
+  taxBasis: string | null;
   /** True when the till's month file was kept with the record. */
   hasTillFile: boolean;
 }
@@ -208,6 +234,9 @@ interface TillCheck {
   day: string;
   /** Its `subtotal`; null when the till sent none. */
   net: number | null;
+  /** F-1606: `gross_subtotal`, and the basis ingest wrote it under. */
+  gross: number | null;
+  taxBasis: string | null;
   voided: boolean;
   imported_at: string | null;
   source_modified_at: string | null;
@@ -227,6 +256,7 @@ interface CloseRow {
   closed_at: string;
   zone: string;
   figures: MonthFigures;
+  tax_basis?: string | null;
   till_csv?: string | null;
 }
 
@@ -330,13 +360,36 @@ export class MonthCloseService {
       );
 
     const house = await this.readHouse(restaurantId);
-    const { figures, tillWindow } = await this.readFigures(
+    const { figures: read, tillWindow } = await this.readFigures(
       restaurantId,
       month,
       zone,
       house.currency,
     );
-    const tillCsv = this.tillFile(tillWindow, month, zone, house);
+    // F-1606: the basis the month's net was on, and the day it was stated,
+    // so a year of closes shows where the net stopped holding the tax.
+    const figures: MonthFigures = {
+      ...read,
+      taxBasisSince: house.taxBasisConfirmedAt
+        ? houseDayOf(house.taxBasisConfirmedAt, zone)
+        : null,
+      taxWord: taxWordFor(house.country),
+    };
+    const tillCsv = this.tillFile(
+      // The month's tax rides with the till's file (F-1606).
+      tillWindow && typeof tillWindow === "object"
+        ? {
+            ...tillWindow,
+            taxInside: figures.till.taxInside ?? null,
+            taxInsideCheckCount: figures.till.taxInsideCheckCount ?? null,
+            netSalesCheckCount: figures.till.netSalesCheckCount,
+            taxWord: figures.taxWord,
+          }
+        : tillWindow,
+      month,
+      zone,
+      house,
+    );
 
     const { data: last, error: lastError } = await this.db
       .from(MONTH_CLOSES_TABLE)
@@ -366,6 +419,7 @@ export class MonthCloseService {
         zone,
         figures,
         till_csv: tillCsv,
+        tax_basis: house.taxBasis,
       })
       .select(ROW_COLUMNS)
       .single();
@@ -552,10 +606,14 @@ export class MonthCloseService {
     currency: string | null;
     timezone: string | null;
     country: string | null;
+    taxBasis: string | null;
+    taxBasisConfirmedAt: string | null;
   }> {
     const { data, error } = await this.db
       .from("restaurants")
-      .select("name, currency, timezone, country")
+      .select(
+        "name, currency, timezone, country, tax_basis, tax_basis_confirmed_at",
+      )
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) throw new Error(`The house could not be read: ${error.message}`);
@@ -565,6 +623,11 @@ export class MonthCloseService {
       currency: codeOf(h.currency),
       timezone: typeof h.timezone === "string" ? h.timezone : null,
       country: typeof h.country === "string" ? h.country : null,
+      taxBasis: typeof h.tax_basis === "string" ? h.tax_basis : null,
+      taxBasisConfirmedAt:
+        typeof h.tax_basis_confirmed_at === "string"
+          ? h.tax_basis_confirmed_at
+          : null,
     };
   }
 
@@ -596,7 +659,7 @@ export class MonthCloseService {
           this.db
             .from("pos_checks")
             .select(
-              "id, external_check_id, subtotal, voided, opened_at, closed_at, imported_at, source_modified_at",
+              "id, external_check_id, subtotal, gross_subtotal, tax_basis, voided, opened_at, closed_at, imported_at, source_modified_at",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -665,6 +728,8 @@ export class MonthCloseService {
         ref: typeof c.external_check_id === "string" ? c.external_check_id : "",
         day,
         net: finite(c.subtotal),
+        gross: finite(c.gross_subtotal),
+        taxBasis: typeof c.tax_basis === "string" ? c.tax_basis : null,
         voided: c.voided === true,
         imported_at: typeof c.imported_at === "string" ? c.imported_at : null,
         source_modified_at:
@@ -678,6 +743,8 @@ export class MonthCloseService {
     let netSales: number | null = null;
     let netSalesCheckCount = 0;
     let checkCount = 0;
+    let taxInside: number | null = null;
+    let taxInsideCheckCount = 0;
     for (const c of checks) {
       if (c.voided) continue;
       checkCount += 1;
@@ -686,6 +753,15 @@ export class MonthCloseService {
       netSales = (netSales ?? 0) + c.net;
       netSalesCheckCount += 1;
       netByDay.set(c.day, (netByDay.get(c.day) ?? 0) + c.net);
+      // F-1606: gross less net, only where ingest took tax out of the price.
+      if (
+        c.taxBasis === "prices_include_tax" &&
+        c.gross !== null &&
+        c.gross !== c.net
+      ) {
+        taxInside = (taxInside ?? 0) + (c.gross - c.net);
+        taxInsideCheckCount += 1;
+      }
     }
 
     let netBottles = 0;
@@ -713,6 +789,8 @@ export class MonthCloseService {
             days: [...netByDay.entries()]
               .sort(([a], [b]) => (a < b ? -1 : 1))
               .map(([date, net]) => ({ date, netSales: cents(net) })),
+            taxInside: taxInside === null ? null : cents(taxInside),
+            taxInsideCheckCount,
             kept: keptChecks,
           }
         : {
@@ -721,6 +799,8 @@ export class MonthCloseService {
             netSalesCheckCount: null,
             checkCount: null,
             days: [],
+            taxInside: null,
+            taxInsideCheckCount: null,
             kept: {},
           },
       valuation: {
@@ -1076,6 +1156,7 @@ export class MonthCloseService {
         : null,
       zone: row.zone,
       figures: withoutSnapshot(row.figures),
+      taxBasis: row.tax_basis ?? null,
       hasTillFile,
     };
   }

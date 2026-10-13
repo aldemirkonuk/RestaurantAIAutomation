@@ -53,6 +53,15 @@ import {
   confirmedWinePourFrom,
   readHouseTargetMargin,
 } from "../pricing/target-margin.service";
+import {
+  COST_NOT_PRE_TAX_SENTENCE,
+  costTaxProof,
+  readAdviceTaxTerms,
+  wineTaxRate,
+  type AdviceTaxTerms,
+  type CostTaxProof,
+  type InventoryPriceRow,
+} from "../pricing/margin-advice.service";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
 
 /**
@@ -89,6 +98,55 @@ function orderedInTwoNote(
     : null;
 }
 
+/** What menu engineering says of its margins for a house whose prices include tax (F-1587). */
+export const PRE_TAX_MARGIN_BASIS =
+  "Your till prices include tax, so margin is worked out on the price without tax, price ÷ (1 + the wine's tax rate), and only on a cost recorded without tax; a wine without both has no margin and says why (items[].marginRefusal, counted under counts.taxRefused)";
+
+/**
+ * A wine's margin for a house whose till prices include tax (F-1587, ADR 0341
+ * §6): margin advice's rule, read once more. The price is taken without tax
+ * at the wine's rate in force today, and the cost must be proven without tax;
+ * anything else is no margin, with the advice's own reason. A basis that
+ * could not be read refuses every margin rather than show one on a basis
+ * nobody read.
+ */
+export function preTaxMargin(
+  i: {
+    id: string;
+    unitCost: number | null;
+    unitPrice: number;
+    costTax: CostTaxProof;
+  },
+  terms: AdviceTaxTerms | null,
+  readError: string | null,
+): {
+  marginPerBottle: number | null;
+  marginPct: number | null;
+  marginRefusal: string | null;
+} {
+  const refuse = (reason: string) => ({
+    marginPerBottle: null,
+    marginPct: null,
+    marginRefusal: reason.replace(/^Cannot advise: /, "No margin: "),
+  });
+  if (i.unitCost == null)
+    return { marginPerBottle: null, marginPct: null, marginRefusal: null };
+  if (terms === null)
+    return refuse(
+      `No margin: whether this house's prices include tax could not be read, so no margin is worked out (${readError ?? "no answer"}).`,
+    );
+  const rate = wineTaxRate(terms, i.id);
+  if ("reason" in rate) return refuse(rate.reason);
+  if (i.costTax !== "pre_tax")
+    return refuse(COST_NOT_PRE_TAX_SENTENCE[i.costTax]);
+  const net = i.unitPrice / (1 + rate.rate);
+  return {
+    marginPerBottle: net - i.unitCost,
+    marginPct: E.grossMargin(i.unitCost, net),
+    marginRefusal: null,
+  };
+}
+
 @Injectable()
 export class AdvancedAnalyticsService {
   private readonly logger = new Logger(AdvancedAnalyticsService.name);
@@ -122,7 +180,7 @@ export class AdvancedAnalyticsService {
           // Same schema-drift fix as AnalyticsService.loadInventory: a single
           // unknown column 42703s the whole PostgREST query.
           .select(
-            "id, wine_name, stock_live, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
+            "id, wine_name, stock_live, menu_price_current, menu_price_glass, last_purchase_price, last_purchase_price_tax_basis, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -157,7 +215,8 @@ export class AdvancedAnalyticsService {
             // can tell a WAC that covers every on-hand bottle from one that
             // covers a single invoiced bottle in twenty-one.
             // cost_currency / cost_currency_count (F-343): which money the WAC is in.
-            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
+            // wac_pre_tax_qty / wac_tax_included_qty (F-1587): whether tax is inside it.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count, wac_pre_tax_qty, wac_tax_included_qty",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -181,6 +240,13 @@ export class AdvancedAnalyticsService {
         qty: lot?.live_qty ?? i.stock_live ?? 0,
         unitCost,
         costBasis,
+        // F-1587: whether that cost is proven without tax, by the advice's rule.
+        costTax: costTaxProof(
+          costBasis,
+          i as InventoryPriceRow,
+          lot ?? null,
+          null,
+        ),
         unitPrice,
         // Read for menu engineering (F-472): a wine sold only by the glass has
         // no bottle price, and its glass price needs a confirmed pour.
@@ -441,12 +507,17 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getMenuEngineering(restaurantId: string, sinceDays = 90) {
-    const [inventory, consumption, house] = await Promise.all([
+    const [inventory, consumption, house, tax] = await Promise.all([
       this.loadInventoryWithCost(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
       readHouseTargetMargin(this.dbService.getClient(), restaurantId),
+      // F-1587: the house's tax basis, as margin advice reads it.
+      readAdviceTaxTerms(this.dbService.getClient(), restaurantId, null),
     ]);
     if (house.error) this.logQueryFailure("restaurants", house.error);
+    // Only a house whose till prices include tax, or one whose basis could
+    // not be read, changes here; every other house is as before, key for key.
+    const taxed = tax.terms !== null || tax.error !== null;
     const housePourMl = confirmedPourFrom(house.row);
     // Sales per house item, the ledger's key (ADR 0115): keyed by master
     // wine, a drink that is not a wine read zero velocity — a Dog (F-1014).
@@ -503,20 +574,31 @@ export class AdvancedAnalyticsService {
       });
     }
     const costCoverage = summarizeCostBasis(priced);
-    const items = priced.map((i) => ({
-      id: i.id,
-      name: i.name,
-      type: i.type,
-      velocityPerDay: unmeasuredWines.has(i.id)
-        ? null
-        : (soldByWine.get(i.id) || 0) / sinceDays,
-      sizeStandIn: standInWines.has(i.id),
-      priceBasis: i.priceBasis,
-      marginPerBottle: i.marginPerBottle,
-      costBasis: i.costBasis,
-      marginPct:
-        i.unitCost == null ? null : E.grossMargin(i.unitCost, i.unitPrice),
-    }));
+    const items = priced.map((i) => {
+      const m = taxed
+        ? preTaxMargin(i, tax.terms, tax.error)
+        : {
+            marginPerBottle: i.marginPerBottle,
+            marginPct:
+              i.unitCost == null
+                ? null
+                : E.grossMargin(i.unitCost, i.unitPrice),
+          };
+      return {
+        id: i.id,
+        name: i.name,
+        type: i.type,
+        velocityPerDay: unmeasuredWines.has(i.id)
+          ? null
+          : (soldByWine.get(i.id) || 0) / sinceDays,
+        sizeStandIn: standInWines.has(i.id),
+        priceBasis: i.priceBasis,
+        marginPerBottle: m.marginPerBottle,
+        costBasis: i.costBasis,
+        marginPct: m.marginPct,
+        ...("marginRefusal" in m ? { marginRefusal: m.marginRefusal } : {}),
+      };
+    });
 
     const velocities = items
       .map((i) => i.velocityPerDay)
@@ -566,9 +648,13 @@ export class AdvancedAnalyticsService {
       unclassified: 0,
       unmeasured: 0,
       unpriced: leftOut.length,
+      // F-1587: a costed wine with no pre-tax margin, for its named reason.
+      ...(taxed ? { taxRefused: 0 } : {}),
     };
     for (const c of classified)
-      if (c.marginPerBottle == null || medMargin == null)
+      if ("marginRefusal" in c && c.marginRefusal != null)
+        counts.taxRefused += 1;
+      else if (c.marginPerBottle == null || medMargin == null)
         counts.unclassified += 1;
       else if (c.quadrant == null) counts.unmeasured += 1;
       else counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
@@ -579,7 +665,7 @@ export class AdvancedAnalyticsService {
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
-        margin: `menu_price_current − unit cost (a wine with no bottle price: menu_price_glass × bottle ml ÷ confirmed pour ml) — ${costBasisSentence(costCoverage)}`,
+        margin: `menu_price_current − unit cost (a wine with no bottle price: menu_price_glass × bottle ml ÷ confirmed pour ml) — ${costBasisSentence(costCoverage)}${taxed ? `. ${PRE_TAX_MARGIN_BASIS}` : ""}`,
         unpriced:
           "a wine with no bottle price and no glass price, or a glass price with no confirmed pour or bottle size, is not in items[]; it is named in leftOut[] and counted under counts.unpriced",
         costDerived:

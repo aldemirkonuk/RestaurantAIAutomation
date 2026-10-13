@@ -43,7 +43,14 @@ export interface MonthCloseFigures {
     netSalesCheckCount: number | null;
     checkCount: number | null;
     days: Array<{ date: string; netSales: number }>;
+    /** F-1606: gross less net where ingest took tax out; absent on older closes. */
+    taxInside?: number | null;
+    taxInsideCheckCount?: number | null;
   };
+  /** F-1606: the house day its tax basis was stated; absent on older closes. */
+  taxBasisSince?: string | null;
+  /** "KDV", "sales tax" or "tax". */
+  taxWord?: string;
   valuation: {
     inventoryValue: number | null;
     pricedInventoryValue: number | null;
@@ -62,6 +69,8 @@ export interface MonthClose {
   closedBy: { id: string; name: string | null } | null;
   zone: string;
   figures: MonthCloseFigures;
+  /** F-1606: the house's tax basis when closed; null on a close kept before it was recorded. */
+  taxBasis?: string | null;
   hasTillFile: boolean;
 }
 
@@ -172,6 +181,49 @@ function delta(c: Pick<MonthCloseChange, 'delta' | 'unit' | 'currency'>): string
   return signed(money(c.delta, 'full', c.currency), c.delta);
 }
 
+/**
+ * F-1606: which tax basis the month's net was on (ADR 0341: net is made
+ * without tax only from the day the house says its prices include it).
+ */
+export function taxBasisWords(close: MonthClose): string {
+  const word = close.figures.taxWord ?? 'tax';
+  const since = close.figures.taxBasisSince ?? null;
+  const first = `${close.month}-01`;
+  const last = `${close.month}-31`;
+  switch (close.taxBasis ?? null) {
+    case null:
+      return 'Tax basis: not recorded with this close, which was kept before closes recorded it.';
+    case 'prices_include_tax':
+      if (since === null || since <= first) return `Tax basis: till prices include ${word}, and net is without it.`;
+      if (since > last)
+        return `Tax basis: net is as the till sent it, with ${word} inside. The house said its prices include ${word} on ${since}, after this month.`;
+      return `Tax basis: till prices include ${word}. Net is as the till sent it, with ${word} inside, before ${since}, and without ${word} from that day on.`;
+    case 'prices_exclude_tax':
+      return `Tax basis: till prices do not include ${word}, so net is before ${word}.`;
+    case 'not_vat_charging':
+      return `Tax basis: this house charges no ${word}.`;
+    default:
+      return `Tax basis: not stated when this month was closed, so net is as the till sent it and may hold ${word}.`;
+  }
+}
+
+/** F-1606: the tax inside the till's prices this month, gross less net. */
+function taxInsideWords(close: MonthClose): string | null {
+  const t = close.figures.till;
+  if (!t.posConnected || t.taxInside === undefined) return null;
+  const word = close.figures.taxWord ?? 'tax';
+  const label = `${word[0].toUpperCase()}${word.slice(1)} inside till prices`;
+  if (t.taxInside === null)
+    return close.taxBasis === 'prices_include_tax'
+      ? `${label}: ${EM}, not recorded: no check this month had it taken out of its price.`
+      : `${label}: ${EM}, not recorded: it is worked out only when the house says its till prices include ${word}.`;
+  const of =
+    t.taxInsideCheckCount != null && t.netSalesCheckCount != null && t.taxInsideCheckCount < t.netSalesCheckCount
+      ? ` from ${t.taxInsideCheckCount} of ${countOf(t.netSalesCheckCount, 'check', 'checks')}`
+      : '';
+  return `${label}: ${money(t.taxInside, 'full', close.figures.currency)}${of}`;
+}
+
 function Kept({ close }: { close: MonthClose }) {
   const f = close.figures;
   const bought = f.purchases.totals.length
@@ -194,6 +246,8 @@ function Kept({ close }: { close: MonthClose }) {
             ? ` from ${f.till.netSalesCheckCount} of ${countOf(f.till.checkCount, 'check', 'checks')}; the rest carried no net figure`
             : ` over ${countOf(f.till.checkCount, 'check', 'checks')}`}
       </li>
+      {taxInsideWords(close) !== null && <li>{taxInsideWords(close)}</li>}
+      <li>{taxBasisWords(close)}</li>
       <li>
         Bought (delivered): {bought}
         {f.purchases.unpriced > 0 ? `, and ${countOf(f.purchases.unpriced, 'order', 'orders')} with no price` : ''}

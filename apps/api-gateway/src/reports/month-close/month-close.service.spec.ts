@@ -242,6 +242,9 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
       netSalesCheckCount: 1,
       checkCount: 2,
       days: [{ date: "2026-07-03", netSales: 900 }],
+      // F-1606: no check here was made pre-tax, so no tax figure.
+      taxInside: null,
+      taxInsideCheckCount: 0,
       kept: { k1: 900, k3: null },
     });
     expect(f.purchases.kept).toEqual({
@@ -286,6 +289,89 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     });
     expect(dto.closedBy).toEqual({ id: ACTOR, name: "Ayla" });
     expect(dto.hasTillFile).toBe(true);
+  });
+
+  it("keeps the house's tax basis, its switch day and the tax inside the till's prices (F-1606)", async () => {
+    const checks = [
+      // Before the switch: as the till sent it, no stamp.
+      {
+        id: "k1",
+        external_check_id: "T-1",
+        subtotal: 1200,
+        gross_subtotal: null,
+        tax_basis: null,
+        voided: false,
+        opened_at: "2026-07-03T18:00:00Z",
+        closed_at: "2026-07-03T20:00:00Z",
+      },
+      // After it: 600 with 20% KDV inside, net 500.
+      {
+        id: "k5",
+        external_check_id: "T-5",
+        subtotal: 500,
+        gross_subtotal: 600,
+        tax_basis: "prices_include_tax",
+        voided: false,
+        opened_at: "2026-07-20T18:00:00Z",
+        closed_at: "2026-07-20T20:00:00Z",
+      },
+      // A till that had already taken the tax off: the same figure twice.
+      {
+        id: "k6",
+        external_check_id: "T-6",
+        subtotal: 100,
+        gross_subtotal: 100,
+        tax_basis: "prices_include_tax",
+        voided: false,
+        opened_at: "2026-07-21T18:00:00Z",
+        closed_at: "2026-07-21T20:00:00Z",
+      },
+    ];
+    const { svc, calls } = service(
+      houseHandler({
+        restaurants: () => ({
+          data: {
+            name: "SYNTHETIC House",
+            currency: "try",
+            timezone: ZONE,
+            country: "TR",
+            tax_basis: "prices_include_tax",
+            // 01:30 on 15 July in Istanbul is still 14 July in UTC.
+            tax_basis_confirmed_at: "2026-07-14T22:30:00Z",
+          },
+          error: null,
+        }),
+        pos_checks: () => ({ data: checks, error: null, count: 3 }),
+      }),
+    );
+    const dto = await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const row = arg(insert.ops, "insert")![0] as Record<string, any>;
+    expect(row.tax_basis).toBe("prices_include_tax");
+    const f = row.figures as MonthFigures;
+    expect(f.taxBasisSince).toBe("2026-07-15");
+    expect(f.taxWord).toBe("KDV");
+    expect(f.till.netSales).toBe(1800);
+    expect(f.till.taxInside).toBe(100);
+    expect(f.till.taxInsideCheckCount).toBe(1);
+    expect(dto.taxBasis).toBe("prices_include_tax");
+    expect(row.till_csv).toContain("KDV inside till prices");
+    expect(row.till_csv).toContain("from 1 of 3 checks");
+  });
+
+  it("keeps no basis when the house row names none, and no tax figure", async () => {
+    const { svc, calls } = service(houseHandler());
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const row = arg(insert.ops, "insert")![0] as Record<string, any>;
+    // The fixture's house row names no basis: kept as not read, never guessed.
+    expect(row.tax_basis).toBeNull();
+    expect(row.figures.taxBasisSince).toBeNull();
+    expect(row.figures.till.taxInside).toBeNull();
   });
 
   it("refuses a month that has not ended on the house's clock", async () => {

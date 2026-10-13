@@ -587,6 +587,96 @@ describe("getMenuEngineering", () => {
   });
 });
 
+// F-1587: a house whose till prices include tax (ADR 0341 §6). The margin is
+// on the price without tax, by margin advice's rule, or refused with a reason.
+describe("getMenuEngineering on a house whose prices include tax (F-1587)", () => {
+  const HOUSE = {
+    currency: "TRY",
+    tax_basis: "prices_include_tax",
+    tax_basis_confirmed_at: "2026-10-01T09:00:00Z",
+    timezone: "Europe/Istanbul",
+    country: "TR",
+  };
+  const RATE = {
+    id: "r1",
+    version: 1,
+    key_kind: "house",
+    key: "",
+    rate: 0.2,
+    effective_from: "2026-01-01",
+    effective_to: null,
+  };
+  const PRE_TAX = {
+    id: "inv-pre-tax",
+    wine_name: "Kalecik Karası",
+    stock_live: 6,
+    menu_price_current: 600,
+    last_purchase_price: 200,
+    last_purchase_price_tax_basis: "excludes_tax",
+    master_wine_id: "mw-pre-tax",
+  };
+  const UNSTATED = {
+    ...PRE_TAX,
+    id: "inv-unstated",
+    wine_name: "Öküzgözü",
+    last_purchase_price_tax_basis: null,
+    master_wine_id: "mw-unstated",
+  };
+  const build = (house: Record<string, unknown> = HOUSE, rates = [RATE]) =>
+    advanced({
+      restaurants: [house],
+      house_tax_rates: rates,
+      restaurant_inventory: [PRE_TAX, UNSTATED],
+      wine_consumption_log: [],
+    });
+
+  it("works the margin on the price without tax (600 with 20% inside, cost 200: 60%, not 66.7%)", async () => {
+    const out = await build().getMenuEngineering(RESTAURANT);
+    const row = out.items.find((i: any) => i.id === PRE_TAX.id)!;
+    expect(row.marginPerBottle).toBeCloseTo(300, 6);
+    expect(row.marginPct).toBeCloseTo(0.6, 6);
+    expect(row.marginRefusal).toBeNull();
+    expect(out.basis.margin).toContain("without tax");
+  });
+
+  it("refuses a margin on a cost not proven without tax, by name, and does not call it uncosted", async () => {
+    const out = await build().getMenuEngineering(RESTAURANT);
+    const row = out.items.find((i: any) => i.id === UNSTATED.id)!;
+    expect(row.marginPerBottle).toBeNull();
+    expect(row.marginPct).toBeNull();
+    expect(row.quadrant).toBeNull();
+    expect(row.marginRefusal).toMatch(/^No margin: cost basis not stated/);
+    expect(out.counts.taxRefused).toBe(1);
+    expect(out.counts.unclassified).toBe(0);
+  });
+
+  it("refuses every margin when no tax rate is in force", async () => {
+    const out = await build(HOUSE, []).getMenuEngineering(RESTAURANT);
+    for (const row of out.items) {
+      expect(row.marginPerBottle).toBeNull();
+      expect(row.marginRefusal).toMatch(
+        /no tax rate of this house is in force/,
+      );
+    }
+    expect(out.counts.taxRefused).toBe(2);
+  });
+
+  it("leaves a US house exactly as before: gross price, no new keys", async () => {
+    const out = await build({
+      currency: "TRY",
+      tax_basis: "prices_exclude_tax",
+      tax_basis_confirmed_at: "2026-10-01T09:00:00Z",
+      timezone: "America/Detroit",
+      country: "US",
+    }).getMenuEngineering(RESTAURANT);
+    const row = out.items.find((i: any) => i.id === UNSTATED.id)!;
+    expect(row.marginPerBottle).toBe(400);
+    expect("marginRefusal" in row).toBe(false);
+    expect("taxRefused" in out.counts).toBe(false);
+    expect(out.basis.margin).not.toContain("without tax");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // getWine360
 // ---------------------------------------------------------------------------
