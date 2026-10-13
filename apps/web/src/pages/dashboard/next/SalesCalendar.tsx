@@ -60,6 +60,9 @@ import { TaxBasisSetupLine } from '@/pages/settings/next/TaxBasisSection';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+/** "1 check", "3 checks". */
+const checksSaid = (n: number): string => (n === 1 ? '1 check' : `${n} checks`);
+
 const MONTH_PARAM = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const DAY_PARAM = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
@@ -475,6 +478,32 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
 
       {/* F-1537: the one setup line while the house has not said whether its till prices include tax. */}
       {salesShown && <TaxBasisSetupLine className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" />}
+
+      {/* F-1591: checks whose net the house's own tax settings left unrecorded
+          name that cause and where to fix it, not the till. */}
+      {salesShown && (ledger?.monthlyNetNotRecordedByTax ?? 0) > 0 && (
+        <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-net-not-recorded-by-tax">
+          {DASH} {checksSaid(ledger?.monthlyNetNotRecordedByTax ?? 0)} this month{' '}
+          {ledger?.monthlyNetNotRecordedByTax === 1 ? 'has' : 'have'} no net sales: this house’s prices include tax,
+          and no tax rate of this house was in force for{' '}
+          {ledger?.monthlyNetNotRecordedByTax === 1 ? 'it' : 'them'} on the day.{' '}
+          <Link
+            to="/settings?tab=tax-basis"
+            className="not-italic text-inkm-1 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          >
+            Set the tax rates
+          </Link>
+        </p>
+      )}
+
+      {/* F-1588 (ADR 0341 F2): a month that spans the switch says where it is. */}
+      {salesShown && ledger?.taxSwitchDay && (
+        <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-tax-switch-day">
+          {DASH} Net sales are before tax from {longDay(ledger.taxSwitchDay)}.{' '}
+          {checksSaid(ledger.monthlyChecksAsSent ?? 0)} this month{' '}
+          {ledger.monthlyChecksAsSent === 1 ? 'is' : 'are'} the till’s figures as sent, tax included.
+        </p>
+      )}
 
       {zoneUnset && (
         <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-zone-unset">

@@ -10,6 +10,7 @@
  * Every `basis` array below holds the SERVER's own sentences, verbatim.
  */
 
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
 import { EM, MONO, codeOf, countOf, figure, money, num, ratioPct } from './rp-format';
@@ -692,6 +693,8 @@ export interface ServiceRegister extends PosWindow {
   tipBasis: 'net' | null;
   /** F-1573: the gateway's reason when Tip is not (all) over net sales — a till that sends no amount before tax; null otherwise. */
   tipBasisWhy: string | null;
+  /** F-1581: tipped checks whose net this house's tax settings left unrecorded; 0 from an older gateway. */
+  tipsNetNotRecorded: number;
   /** Checks rung at 0, out of Avg check (F-1534); 0 from an older gateway. */
   checksTakingNoMoney: number;
   adjusted: { method?: string; r2?: number | null } | null;
@@ -723,6 +726,7 @@ const service = analysis<ServiceRegister>({
       dataStatus: str(d.dataStatus),
       tipBasis: d.tipBasis === 'net' ? 'net' : null,
       tipBasisWhy: str(d.tipBasisWhy) || null,
+      tipsNetNotRecorded: num(d.tipsNetNotRecorded) ?? 0,
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
@@ -805,11 +809,29 @@ const service = analysis<ServiceRegister>({
       notes: [
         'A server’s raw average is partly the section they were given. The adjusted fit above is the engine’s attempt to remove it; where it reads an em dash, the raw ranking is all there is.',
         ...(s.checksTakingNoMoney > 0 ? [zeroChecksSaid(s.checksTakingNoMoney)] : []),
+        ...(s.tipsNetNotRecorded > 0 ? [tipsNetNotRecordedSaid(s.tipsNetNotRecorded)] : []),
       ],
       basis,
     };
   },
 });
+
+/**
+ * F-1581: tipped checks with no net because the house's prices include tax
+ * and none of its rates was in force for them. The fix is the house's, so
+ * the note says so and links to the rates, never to the till.
+ */
+function tipsNetNotRecordedSaid(n: number): ReactNode {
+  return (
+    <span key="tips-net-not-recorded" data-testid="rp-tips-net-not-recorded">
+      {n === 1 ? '1 tipped check has' : `${n} tipped checks have`} no net sales because no tax rate of this house was in
+      force for {n === 1 ? 'it' : 'them'}, so {n === 1 ? 'its tip is' : 'their tips are'} left out of Tip.{' '}
+      <Link to="/settings?tab=tax-basis" className="rp-link rp-ink rp-focus rp-no-drag">
+        Set the tax rates in Settings
+      </Link>
+    </span>
+  );
+}
 
 /* ──────────────────────────────────────────── 10. what to buy back ────── */
 

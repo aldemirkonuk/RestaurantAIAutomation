@@ -131,6 +131,11 @@ export interface MonthLedger {
   /** Begun days the register counted, of `monthlyDaysBegun`. */
   monthlyDaysCounted: number | null;
   monthlyDaysBegun: number | null;
+  /** F-1591: checks whose net the house's tax settings left unrecorded; null = not said. */
+  monthlyNetNotRecordedByTax: number | null;
+  /** F-1588: the first day net is before tax, when the month mixes it with checks as sent. */
+  taxSwitchDay: string | null;
+  monthlyChecksAsSent: number | null;
   /** The zone the days are filed in; null = the house has none; undefined = not said. */
   timezone: string | null | undefined;
   zoneUnset: boolean;
@@ -537,6 +542,9 @@ export function useMonthLedger(
           monthly_procurement_spend_currency?: unknown;
           monthly_procurement_spend_by_currency?: unknown;
           monthly_procurement_unpriced?: unknown;
+          monthly_net_not_recorded_by_tax?: unknown;
+          tax_switch_day?: unknown;
+          monthly_checks_as_sent?: unknown;
         };
         const summedSpend = daily.every((d) => d.procurement_spend !== null)
           ? daily.reduce((sum, d) => sum + (d.procurement_spend ?? 0), 0)
@@ -560,6 +568,9 @@ export function useMonthLedger(
           monthlyNetChecks: num(res.monthly_net_checks),
           monthlyDaysCounted: num(res.monthly_days_counted),
           monthlyDaysBegun: num(res.monthly_days_begun),
+          monthlyNetNotRecordedByTax: num(legacyTotals.monthly_net_not_recorded_by_tax),
+          taxSwitchDay: typeof legacyTotals.tax_switch_day === 'string' ? legacyTotals.tax_switch_day : null,
+          monthlyChecksAsSent: num(legacyTotals.monthly_checks_as_sent),
           timezone: res.timezone,
           zoneUnset: res.zone_unset === true,
           today: res.today,

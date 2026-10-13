@@ -202,6 +202,12 @@ export interface CheckForTax {
   tax?: number;
   /** The adapter already took the till's tax off (rung 1). */
   subtotalPreTax?: boolean;
+  /**
+   * F-1584: the till sent a `tax` or a line `tax_rate` that could not be read.
+   * Only an inclusive house on or after its switch day needs either, so only
+   * there does it leave net not recorded; every other house ignores it.
+   */
+  taxUnread?: boolean;
   closedAt: string | null;
   openedAt: string | null;
   lines: {
@@ -247,6 +253,8 @@ export const NET_NOT_RECORDED = {
   taxOverSubtotal: "the till's tax is more than its subtotal",
   taxOnTop:
     "the till adds its tax on top of the subtotal, but this house says its till prices include tax",
+  taxUnread:
+    "the till's tax, or a line's tax rate, could not be read — write tax as 12.50 and a rate as 20 for 20 percent",
 } as const;
 
 const round2 = (n: number): number =>
@@ -342,6 +350,11 @@ export function resolveCheckSubtotal(
       unresolved: null,
     };
   if (gross === null) return stamped("no_subtotal", null);
+  // F-1599: a check that took no money (fully comped, every line at 0) has a
+  // net of 0 whatever its rates; it is not a check with net not recorded.
+  if (gross === 0) return stamped("till_stated", 0);
+  if (check.taxUnread === true)
+    return stamped("unresolved", null, null, NET_NOT_RECORDED.taxUnread);
 
   // Rung 1: the tax the till states.
   if (check.subtotalPreTax === true) return stamped("till_stated", gross);
@@ -371,9 +384,15 @@ export function resolveCheckSubtotal(
     if (r !== null) usedHouseRate = true;
     return r;
   });
-  const weights = check.lines.map((l) =>
+  const signed = check.lines.map((l) =>
     l.price === null ? null : l.qty * l.price,
   );
+  // F-1599: a refund's lines sum below 0. It is prorated on the lines' sizes
+  // (absolute weights), so each rate carries the same share as in a sale.
+  const refund = !(signed.reduce<number>((a, w) => a + (w ?? 0), 0) > 0);
+  const weights = refund
+    ? signed.map((w) => (w === null ? null : Math.abs(w)))
+    : signed;
   const lineSum = weights.reduce<number>((a, w) => a + (w ?? 0), 0);
   if (
     check.lines.length > 0 &&

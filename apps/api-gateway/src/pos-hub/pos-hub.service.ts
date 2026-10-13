@@ -1535,14 +1535,11 @@ export class PosHubService {
           );
           continue;
         }
-        // F-1537: a line tax rate that reads as neither a percent nor absent
-        // is not guessed into one ("0.20" is 20 % or a fifth of one).
-        if (check.taxRateUnread !== undefined) {
-          errors.push(
-            `${check.externalCheckId}: not imported, ${check.taxRateUnread.field} not readable as a percent — write 20 for 20 percent (it was ${quoteClosedAt(check.taxRateUnread.value)})`,
-          );
-          continue;
-        }
+        // F-1537 / F-1584: a `tax` or line tax rate that reads as neither a
+        // figure nor absent is not guessed into one ("0.20" is 20 % or a fifth
+        // of one). It no longer refuses the check: only an inclusive house
+        // reads either, and there the resolver writes net not recorded with
+        // its reason. An unset or US house stores the check exactly as before.
         // F-1537: a check is not written on a tax basis nobody read.
         const tax = await houseTax();
         if (!tax.ok) {
@@ -1664,6 +1661,7 @@ export class PosHubService {
             tip: check.tip ?? null,
             ...(check.tax !== undefined ? { tax: check.tax } : {}),
             subtotalPreTax: check.subtotalPreTax === true,
+            ...(check.taxRateUnread !== undefined ? { taxUnread: true } : {}),
             closedAt: typeof when.closedAt === "string" ? when.closedAt : null,
             openedAt: check.openedAt ?? null,
             lines: items.map((l, i) => ({

@@ -344,6 +344,47 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     expect(maya.tipPctWhy).toBeNull();
   });
 
+  // F-1581: a house whose prices include tax, with no rate in force for a
+  // check, has the till's subtotal kept in gross_subtotal and its net left
+  // unrecorded. Tip blamed the till ("sends no amount before tax").
+  it("a check the house's tax settings left without net names the house's cause, not the till", async () => {
+    const unrated = (id: string, over: Record<string, unknown> = {}) =>
+      usCheck({
+        id,
+        subtotal: null,
+        gross_subtotal: 330,
+        tax_basis: "prices_include_tax",
+        ...over,
+      });
+    let { service } = makeService({
+      pos_checks: [ok([unrated("a"), unrated("b")])],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.tipBasis).toBeNull();
+    expect(out.tipBasisWhy).toMatch(/no tax rate of this house was in force/);
+    expect(out.tipBasisWhy).not.toMatch(/till sends/);
+    expect(out.tipsNetNotRecorded).toBe(2);
+    expect(out.waiters[0].tipPctWhy).toMatch(/tax settings gave no tax rate/);
+
+    ({ service } = makeService({
+      pos_checks: [
+        ok([usCheck({ id: "a" }), unrated("b", { server_name: "Ali" })]),
+      ],
+    }));
+    const some: any = await service.getWaiterPerformance("r1", 90);
+    expect(some.tipBasis).toBe("net");
+    expect(some.tipBasisWhy).toMatch(/no tax rate of this house was in force/);
+    expect(some.tipsNetNotRecorded).toBe(1);
+
+    // A till that sent no subtotal at all is still the till's cause.
+    ({ service } = makeService({
+      pos_checks: [ok([usCheck({ id: "a", subtotal: null })])],
+    }));
+    const till: any = await service.getWaiterPerformance("r1", 90);
+    expect(till.tipBasisWhy).toMatch(/no amount before tax/);
+    expect(till.tipsNetNotRecorded).toBe(0);
+  });
+
   it("no tip at all is still said as no tip, not as a missing subtotal", async () => {
     const { service } = makeService({
       pos_checks: [ok([usCheck({ id: "a", subtotal: null, tip: null })])],
@@ -360,5 +401,7 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
       (c) => c.table === "pos_checks" && c.method === "select",
     );
     expect(String(select?.args[0])).toMatch(/\bsubtotal\b/);
+    expect(String(select?.args[0])).toMatch(/\bgross_subtotal\b/);
+    expect(String(select?.args[0])).toMatch(/\btax_basis\b/);
   });
 });

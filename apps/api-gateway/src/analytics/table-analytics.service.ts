@@ -259,7 +259,7 @@ export class TableAnalyticsService {
         client
           .from("pos_checks")
           .select(
-            "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, subtotal, total, tip, items",
+            "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, subtotal, gross_subtotal, tax_basis, total, tip, items",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -388,6 +388,7 @@ export class TableAnalyticsService {
         tips: number;
         tipBase: number;
         tipsWithoutNet: number;
+        tipsNetNotRecorded: number;
         paidChecks: number;
         zeroChecks: number;
       }
@@ -410,6 +411,7 @@ export class TableAnalyticsService {
         tips: 0,
         tipBase: 0,
         tipsWithoutNet: 0,
+        tipsNetNotRecorded: 0,
         paidChecks: 0,
         zeroChecks: 0,
       };
@@ -642,6 +644,7 @@ export class TableAnalyticsService {
         tips: number;
         tipBase: number;
         tipsWithoutNet: number;
+        tipsNetNotRecorded: number;
         paidChecks: number;
         zeroChecks: number;
       }
@@ -663,6 +666,7 @@ export class TableAnalyticsService {
         tips: 0,
         tipBase: 0,
         tipsWithoutNet: 0,
+        tipsNetNotRecorded: 0,
         paidChecks: 0,
         zeroChecks: 0,
       };
@@ -691,7 +695,11 @@ export class TableAnalyticsService {
       tipPct: a.tipBase > 0 ? a.tips / a.tipBase : null,
       /** F-1573: why Tip is blank when tips were recorded; null otherwise. */
       tipPctWhy:
-        a.tipBase > 0 || a.tipsWithoutNet === 0 ? null : TIP_NO_NET_ON_SERVER,
+        a.tipBase > 0 || a.tipsWithoutNet === 0
+          ? null
+          : a.tipsNetNotRecorded > 0
+            ? TIP_NET_NOT_RECORDED_ON_SERVER
+            : TIP_NO_NET_ON_SERVER,
       revenuePerCover: a.covers > 0 ? a.revenue / a.covers : null,
     }));
 
@@ -879,10 +887,17 @@ function tallyCheck(
     tips: number;
     tipBase: number;
     tipsWithoutNet: number;
+    tipsNetNotRecorded: number;
     paidChecks: number;
     zeroChecks: number;
   },
-  c: { total?: unknown; subtotal?: unknown; tip?: unknown },
+  c: {
+    total?: unknown;
+    subtotal?: unknown;
+    gross_subtotal?: unknown;
+    tax_basis?: unknown;
+    tip?: unknown;
+  },
 ): void {
   const total = recorded(c.total);
   if (total === 0) a.zeroChecks += 1;
@@ -897,6 +912,16 @@ function tallyCheck(
     // without one). It cannot be set against net sales, and it is not "no
     // tip" either: it is counted so the register can say so.
     a.tipsWithoutNet += 1;
+    // F-1581: the till did send a subtotal, but this house's prices include
+    // tax and its tax settings gave no rate for the check, so ingest left the
+    // net unrecorded (tax-basis-resolver, rung 4). The cause is the house's
+    // settings, not the till.
+    if (
+      !Number.isFinite(net) &&
+      c.tax_basis === "prices_include_tax" &&
+      Number.isFinite(recorded(c.gross_subtotal))
+    )
+      a.tipsNetNotRecorded += 1;
   }
 }
 
@@ -908,6 +933,18 @@ export const TIP_NO_NET_ON_SERVER =
 export const TIP_NO_NET =
   "Your till sends tips but no amount before tax, so no tip rate can be taken. The tips were recorded; Tip stays blank rather than be worked out on totals that hold tax.";
 
+/** F-1581: Tip is blank on a server whose tipped checks the house's tax settings left without net. */
+export const TIP_NET_NOT_RECORDED_ON_SERVER =
+  "tips were recorded, but this house's tax settings gave no tax rate for these checks, so their net sales were not recorded and no tip rate can be taken";
+
+/** F-1581: no tipped check has net sales, because the house's tax settings gave no rate for them. */
+export const TIP_NET_NOT_RECORDED =
+  "Tips were recorded, but these checks have no net sales: this house's prices include tax, and no tax rate of this house was in force for them, so the tax could not be taken off. Tip stays blank until the house's tax rates are set in Settings.";
+
+/** F-1581: some tipped checks have no net sales, for the same house cause. */
+export const TIP_SOME_NET_NOT_RECORDED =
+  "Some checks carried a tip but have no net sales, because no tax rate of this house was in force for them. Their tips are left out of Tip, which is worked out only on checks that carried both.";
+
 /** F-1573: some tipped checks carried no amount before tax. */
 export const TIP_SOME_WITHOUT_NET =
   "Some checks carried a tip but no amount before tax. Their tips are left out of Tip, which is worked out only on checks that carried both.";
@@ -917,15 +954,37 @@ export const TIP_SOME_WITHOUT_NET =
  * tip and a subtotal. When tips came only on checks with no subtotal, the
  * basis is null and says why, never "over net sales" over nothing.
  */
-function tipBasisOf(aggs: Array<{ tipBase: number; tipsWithoutNet: number }>): {
+function tipBasisOf(
+  aggs: Array<{
+    tipBase: number;
+    tipsWithoutNet: number;
+    tipsNetNotRecorded: number;
+  }>,
+): {
   tipBasis: "net" | null;
   tipBasisWhy: string | null;
+  /** F-1581: tipped checks whose net the house's tax settings left unrecorded. */
+  tipsNetNotRecorded: number;
 } {
   const based = aggs.some((a) => a.tipBase > 0);
   const unbased = aggs.some((a) => a.tipsWithoutNet > 0);
-  if (!based && unbased) return { tipBasis: null, tipBasisWhy: TIP_NO_NET };
+  // F-1581: when the house's own tax settings are the cause, say that, not
+  // that the till sends no amount before tax.
+  const tipsNetNotRecorded = aggs.reduce((n, a) => n + a.tipsNetNotRecorded, 0);
+  const byHouse = tipsNetNotRecorded > 0;
+  if (!based && unbased)
+    return {
+      tipBasis: null,
+      tipBasisWhy: byHouse ? TIP_NET_NOT_RECORDED : TIP_NO_NET,
+      tipsNetNotRecorded,
+    };
   return {
     tipBasis: "net",
-    tipBasisWhy: unbased ? TIP_SOME_WITHOUT_NET : null,
+    tipBasisWhy: unbased
+      ? byHouse
+        ? TIP_SOME_NET_NOT_RECORDED
+        : TIP_SOME_WITHOUT_NET
+      : null,
+    tipsNetNotRecorded,
   };
 }

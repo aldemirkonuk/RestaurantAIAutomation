@@ -576,6 +576,27 @@ describe('the registers say what Taken holds and leave a check rung at 0 out of 
     expect(v.basis).toContain(why);
   });
 
+  it('F-1581: tips the house’s tax settings left without net point at the tax rates, not the till', () => {
+    const reg = service.select({
+      sinceDays: 90,
+      dataStatus: 'live',
+      tipBasis: null,
+      tipBasisWhy: 'Tips were recorded, but these checks have no net sales.',
+      tipsNetNotRecorded: 2,
+      checksInWindow: 2,
+      waiters: [{ name: 'Maya', checks: 2, revenue: 252, avgCheck: 126, tipPct: null }],
+    }) as ServiceRegister;
+    expect(reg.tipsNetNotRecorded).toBe(2);
+    const v = service.view(reg, { days: 90 } as never);
+    render(<MemoryRouter>{v.notes}</MemoryRouter>);
+    const note = screen.getByTestId('rp-tips-net-not-recorded');
+    expect(note.textContent).toMatch(/2 tipped checks have no net sales because no tax rate of this house was in force/);
+    expect(screen.getByRole('link', { name: 'Set the tax rates in Settings' })).toHaveAttribute(
+      'href',
+      '/settings?tab=tax-basis',
+    );
+  });
+
   it('an older server payload (tip over the total) is not called net', () => {
     const reg = service.select({
       sinceDays: 90,
