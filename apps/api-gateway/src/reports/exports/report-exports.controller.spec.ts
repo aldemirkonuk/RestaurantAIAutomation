@@ -14,6 +14,7 @@ import { ReportCuttingReader } from "./report-cutting-reader.service";
 import { ReportExportsController } from "./report-exports.controller";
 import { ReportExportsService } from "./report-exports.service";
 import { MonthCloseService } from "../month-close/month-close.service";
+import { VendorSpendService } from "../vendor-spend/vendor-spend.service";
 import { MemorySupabase } from "./__fixtures__/memory-supabase";
 import { HOUSE_A, HOUSE_B, MANAGER_A, PAYLOADS } from "./__fixtures__/cutting-payloads";
 
@@ -69,6 +70,18 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
         {
           provide: MonthCloseService,
           useValue: { listCloses: jest.fn(async () => ({ closes: [] })) },
+        },
+        // So does spend by vendor (F-1608); its own behaviour is
+        // vendor-spend.service.spec.ts.
+        {
+          provide: VendorSpendService,
+          useValue: {
+            read: jest.fn(async () => ({
+              vendors: [],
+              houseName: null,
+              locale: null,
+            })),
+          },
         },
       ],
     })
@@ -135,6 +148,26 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
     // Staff are refused the closed months at the server, as the shelf.
     expect(
       (await call("GET", "/reports/month-close", { role: "staff" })).status,
+    ).toBe(403);
+  });
+
+  it("is not swallowed by GET /reports/:id at /reports/vendor-spend either (F-1608)", async () => {
+    const res = await call(
+      "GET",
+      "/reports/vendor-spend?from=2026-01-01&to=2026-12-31",
+    );
+    expect(res.status).toBe(200);
+    // The file's own fields stay on the server; the page gets the figures.
+    expect(await res.json()).toEqual({ vendors: [] });
+    // Staff are refused the house's spend at the server, as the month close.
+    expect(
+      (
+        await call(
+          "GET",
+          "/reports/vendor-spend?from=2026-01-01&to=2026-12-31",
+          { role: "staff" },
+        )
+      ).status,
     ).toBe(403);
   });
 

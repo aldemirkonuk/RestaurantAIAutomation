@@ -558,6 +558,14 @@
     "owner",
     "manager"
   ],
+  "GET /reports/vendor-spend (VendorSpendController.read)": [
+    "owner",
+    "manager"
+  ],
+  "GET /reports/vendor-spend/file.csv (VendorSpendController.file)": [
+    "owner",
+    "manager"
+  ],
   "GET /vendor-intel/compare (VendorIntelController.compare)": [
     "owner",
     "manager"

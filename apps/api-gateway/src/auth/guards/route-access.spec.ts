@@ -171,6 +171,9 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // MonthCloseController joined with sim F-1013 (founder 2026-10-11,
     // option C, the snapshot close): a closed month is the house's books, so
     // its four routes name owner AND manager, as the export shelf does.
+    // VendorSpendController joined with sim F-1608: spend by vendor for a
+    // period is the house's books too, so its two reads name owner AND
+    // manager, as the month close does.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -194,6 +197,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "providers/provider-intelligence.controller.ts",
       "reports/exports/report-exports.controller.ts",
       "reports/month-close/month-close.controller.ts",
+      "reports/vendor-spend/vendor-spend.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);
   });
