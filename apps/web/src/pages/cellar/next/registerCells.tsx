@@ -111,6 +111,15 @@ export function cellFor(r: RegisterRowVM, id: string): ReactNode {
     case 'listed': {
       const m = h?.onMenu;
       if (!m) return dim(EM);
+      // F-1559: a bottle at two prices on the menu says so; the glass price
+      // is never shown in its place as if it were the bottle's.
+      if (m.bottlePrice === null && m.priceConflict === true) {
+        return (
+          <span className="cl-dim" data-testid="listed-two-prices" title="The menu lists it at two prices. Pick one on the menu.">
+            two prices
+          </span>
+        );
+      }
       const price = m.bottlePrice ?? m.glassPrice;
       if (price === null) return dim(EM);
       return (
@@ -181,7 +190,10 @@ export function sortValueFor(r: RegisterRowVM, id: string): string | number | nu
     // (ADR 0301 §2). It moves only the row's place: the books cell keeps its
     // five marks, and no figure reads this.
     case 'books': return h ? h.books.length + ((h.bought?.doorChecked ?? 0) > 0 ? 1 : 0) : null;
-    case 'listed': return h?.onMenu?.bottlePrice ?? h?.onMenu?.glassPrice ?? null;
+    case 'listed':
+      // F-1559: two bottle prices sort as no price, never as the glass.
+      if (h?.onMenu?.bottlePrice === null && h.onMenu.priceConflict === true) return null;
+      return h?.onMenu?.bottlePrice ?? h?.onMenu?.glassPrice ?? null;
     case 'first': return h?.bought?.first ? Date.parse(h.bought.first) : null;
     case 'paid': return h?.bought?.paidTotal ?? null;
     case 'sold': return h?.poured?.qty ?? null;

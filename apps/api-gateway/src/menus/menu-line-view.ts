@@ -349,8 +349,48 @@ const STOCKED_DRINK_WORDS = [
   "likörler",
 ];
 
-/** Words that make a line in a mixed section a beer, so stocked (F-1503). */
-const BEER_WORDS = ["beer", "lager", "pilsner", "pils", "ipa", "stout", "bira"];
+/**
+ * Words that make a line in a mixed section a beer, so stocked (F-1503): the
+ * style words, and the brands a house prints with no size or style beside
+ * them (F-1526: "Efes Pilsen", "Heineken" in "Kokteyller ve Biralar"). The
+ * one list `isCocktailLine` reads. Whole words only; "ale" is left out, since
+ * "ginger ale" is in many a cocktail.
+ */
+export const BEER_WORDS = [
+  // styles
+  "beer",
+  "lager",
+  "pilsner",
+  "pilsen",
+  "pils",
+  "ipa",
+  "stout",
+  "porter",
+  "weissbier",
+  "weizen",
+  "bock",
+  "bira",
+  // brands
+  "efes",
+  "bomonti",
+  "tuborg",
+  "carlsberg",
+  "heineken",
+  "amstel",
+  "guinness",
+  "corona",
+  "peroni",
+  "budweiser",
+  "beck",
+  "stella artois",
+  "hoegaarden",
+  "leffe",
+  "duvel",
+  "erdinger",
+  "paulaner",
+  "asahi",
+  "miller",
+];
 
 /**
  * A pour size or a bottle in a line's name (F-1503): "Maker's Mark 5cl",
@@ -368,12 +408,20 @@ const STOCKED_SIZE =
  *
  * F-1503: a section that also names a stocked drink ("Cocktails & Spirits",
  * "Kokteyller ve Rakılar") is decided line by line. A line with a pour size
- * or a bottle, or one naming a beer, is stocked and keeps its stock row; any
- * other line there is a cocktail, as before. A spirit with no size ("Gin
- * Tonic", "Hendrick's") cannot be told from a cocktail by its name and stays
- * a cocktail.
+ * or a bottle, or one naming a beer (a style or a brand, `BEER_WORDS`), is
+ * stocked and keeps its stock row; any other line there is a cocktail, as
+ * before. A spirit with no size ("Gin Tonic", "Hendrick's") cannot be told
+ * from a cocktail by its name and stays a cocktail, unless the line's own
+ * drink category says what it is.
  */
-export function isCocktailLine(category: unknown, name?: unknown): boolean {
+export function isCocktailLine(
+  category: unknown,
+  name?: unknown,
+  drinkCategory?: unknown,
+): boolean {
+  // F-1526 (ADR 0340 rule 7): a line's own drink category, a person's
+  // per-line call ("a Bar section mixes beer and spirits"), decides first.
+  if (isMenuCategory(drinkCategory)) return drinkCategory === "cocktail";
   const section = typeof category === "string" ? category : "";
   const runs = wordRuns(section);
   const says = (words: string[]) =>

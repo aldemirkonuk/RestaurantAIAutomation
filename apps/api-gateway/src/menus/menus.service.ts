@@ -250,7 +250,9 @@ function carriedWine(line: InsertedMenuItem): string | null {
   // F-1470: nor does a cocktail. It is made from its recipe's ingredients,
   // so a stock row of its own sat at 0 below its threshold and read as
   // critical low stock every morning. Its recipe's linked lines are its stock.
-  return line.kitchen_line === true || isCocktailLine(line.category, line.name)
+  // F-1526: the line's own drink category, when a person set one, decides.
+  return line.kitchen_line === true ||
+    isCocktailLine(line.category, line.name, line.drink_category)
     ? null
     : (line.wine_library_id ?? null);
 }
@@ -2350,7 +2352,8 @@ export class MenusService {
     // so it is matched by name too.
     const bare = items.filter(
       (i) =>
-        (!i.inventory_item_id || isCocktailLine(i.category, i.name)) &&
+        (!i.inventory_item_id ||
+          isCocktailLine(i.category, i.name, i.drink_category)) &&
         cocktailNameKey(i.name as string) !== "",
     );
     if (bare.length === 0) return none;
@@ -2979,7 +2982,9 @@ export class MenusService {
           const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
           let result: PlanResult;
           if (line.kitchen_line === true) result = "kitchen";
-          else if (isCocktailLine(line.category, line.name))
+          else if (
+            isCocktailLine(line.category, line.name, line.drink_category)
+          )
             result = "cocktail";
           else if (!wineId) result = "not_linked";
           else if (!row)
@@ -3681,7 +3686,7 @@ export class MenusService {
       const outcome =
         line.kitchen_line === true
           ? "kitchen"
-          : isCocktailLine(line.category, line.name)
+          : isCocktailLine(line.category, line.name, line.drink_category)
             ? "cocktail"
             : (entry?.outcome ?? "not_linked");
       counts[outcome] = (counts[outcome] ?? 0) + 1;

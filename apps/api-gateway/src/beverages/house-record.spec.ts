@@ -191,6 +191,34 @@ describe("toHouseRecord", () => {
     expect(r.onMenu).toBeNull();
   });
 
+  // F-1559: the ledger names two prices; the record carries it, so the
+  // cellar says "two prices" instead of showing the glass as the bottle.
+  it("carries the menu's two prices, and reads none as no conflict", () => {
+    const two = toHouseRecord(
+      ledger({
+        books: ["menu"],
+        menu_lines: 2,
+        menu_bottle_price: null,
+        menu_glass_price: 12,
+        menu_price_conflict: true,
+      }),
+    );
+    expect(two.onMenu).toEqual({
+      lines: 2,
+      bottlePrice: null,
+      glassPrice: 12,
+      priceConflict: true,
+      sections: [],
+    });
+    const row = ledger({
+      books: ["menu"],
+      menu_lines: 1,
+      menu_bottle_price: 70,
+    });
+    delete row.menu_price_conflict;
+    expect(toHouseRecord(row).onMenu?.priceConflict).toBe(false);
+  });
+
   it("reads a paid total of zero as unrecorded, never as free", () => {
     const r = toHouseRecord(ledger({ paid_total: 0, last_unit_price: 0 }));
     expect(r.bought?.paidTotal).toBeNull();
