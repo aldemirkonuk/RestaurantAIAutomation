@@ -207,6 +207,12 @@ export interface StockCountRow {
   cost: number | null;
   /** The line names a cost, but the wine already has one, which is kept. */
   costIgnored: boolean;
+  /**
+   * F-1556: the wine is on more than one line of the file (one per shelf) and
+   * `cost` covers its bottles on all of them: 'same' when the lines agree or
+   * only some state one, 'averaged' when they differ (averaged by bottles).
+   */
+  costAcrossShelves?: 'same' | 'averaged';
 }
 
 export interface OpeningStockPlan {
@@ -331,5 +337,25 @@ export function planOpeningStock(
       cost,
     });
   });
+  // F-1556: one wine on two shelves is two lines (F-1515), but a wine has one
+  // cost per bottle. Each line was costed on its own, so the second line,
+  // counted after the first had costed the wine, landed with no cost. Every
+  // line of the wine now carries the one cost the file gives it.
+  const byWine = new Map<string, StockCountRow[]>();
+  for (const c of plan.count) byWine.set(c.inventoryId, [...(byWine.get(c.inventoryId) ?? []), c]);
+  for (const lines of byWine.values()) {
+    const costed = lines.filter((c) => c.cost !== null);
+    if (lines.length < 2 || costed.length === 0) continue;
+    const bottles = costed.reduce((sum, c) => sum + c.qty, 0);
+    const folded =
+      bottles > 0
+        ? costed.reduce((sum, c) => sum + (c.cost as number) * c.qty, 0) / bottles
+        : costed.reduce((sum, c) => sum + (c.cost as number), 0) / costed.length;
+    const differ = costed.some((c) => c.cost !== costed[0].cost);
+    for (const c of lines) {
+      c.cost = Math.round(folded * 100) / 100;
+      c.costAcrossShelves = differ ? 'averaged' : 'same';
+    }
+  }
   return plan;
 }

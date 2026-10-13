@@ -34,7 +34,7 @@ interface Outcome {
   received: number;
   addedToCarried: number;
   counted: number;
-  /** F-1524: counted wines that turned out to have a cost already, kept. */
+  /** F-1524: counted wines that had a cost before this file, kept. */
   costKept: string[];
   failed: string[];
 }
@@ -103,7 +103,14 @@ export function OpeningStockImport({
           else out.received += 1;
         }
       }
+      // F-1556: a wine on several shelves is costed by its LAST line only.
+      // record_stock_count costs a wine only while it has no costed bottles,
+      // so a cost sent with its first line made every later line land
+      // uncosted. Sent last, it costs the bottles the earlier lines added
+      // too, and a "kept" answer can only mean a cost from before this file.
+      const lastLine = new Map(plan.count.map((c) => [c.inventoryId, c.line]));
       for (const c of plan.count) {
+        const cost = lastLine.get(c.inventoryId) === c.line ? c.cost : null;
         try {
           const r = await recordSpotCount(c.inventoryId, {
             countedQty: c.qty,
@@ -112,10 +119,10 @@ export function OpeningStockImport({
             opening: true,
             ...(c.shelfId ? { locationId: c.shelfId } : {}),
             // F-1524: used only if the wine still has no cost when it lands.
-            ...(c.cost !== null ? { costPerBottle: c.cost } : {}),
+            ...(cost !== null ? { costPerBottle: cost } : {}),
           });
           out.counted += 1;
-          if (c.cost !== null && r?.count?.costApplied === false) out.costKept.push(c.name);
+          if (cost !== null && r?.count?.costApplied === false) out.costKept.push(c.name);
         } catch (e) {
           out.failed.push(`${c.name}: ${getErrorMessage(e)}`);
         }
@@ -177,7 +184,15 @@ export function OpeningStockImport({
               <li key={`c${c.line}`}>
                 {c.name}: counted to {c.qty}
                 {c.shelfName ? ` on ${c.shelfName}` : ""}
-                {c.cost !== null ? `, ${formatHouseMoney(c.cost)} each (this wine has no cost yet, so this one is used)` : ""}
+                {c.cost !== null
+                  ? `, ${formatHouseMoney(c.cost)} each (this wine has no cost yet, so this one is used${
+                      c.costAcrossShelves === "averaged"
+                        ? "; the file gives it different costs on its shelves, so they are averaged by bottles and used on every shelf"
+                        : c.costAcrossShelves === "same"
+                          ? " for its bottles on every shelf in this file"
+                          : ""
+                    })`
+                  : ""}
                 {c.costIgnored ? " (this wine already has a cost, which is kept; the cost on this line is not used)" : ""}
               </li>
             ))}
@@ -199,7 +214,7 @@ export function OpeningStockImport({
           </p>
           {outcome.costKept.length > 0 && (
             <p className="text-gray-500">
-              Already had a cost, which was kept: {outcome.costKept.join(", ")}
+              Already had a cost before this file, which was kept: {outcome.costKept.join(", ")}
             </p>
           )}
           {outcome.failed.map((f) => (
