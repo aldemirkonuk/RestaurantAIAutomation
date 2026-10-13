@@ -286,7 +286,7 @@ function TaxBasisBody({
           {answer.sentence}
         </p>
         {!reg.answered && proposal && (
-          <p data-testid="tax-basis-proposal" style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+          <p data-testid="tax-basis-proposal" style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
             Suggested from the country on file: “{answerLabel(proposal.basis, reg.taxWord)}”. {proposal.why} Nothing is
             set until you confirm.{' '}
             {canManage && chosen !== proposal.basis && (
@@ -403,7 +403,7 @@ function TaxBasisBody({
             {rateRead.sentence}
           </p>
           {proposal && proposal.rates.length > 0 && canManage && (
-            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
               Common rates here:{' '}
               {proposal.rates.map((p, i) => (
                 <span key={p.label}>
