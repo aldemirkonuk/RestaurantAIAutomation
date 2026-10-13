@@ -4,8 +4,8 @@
  *
  * An owner or manager closes a month that has ended. The gateway keeps the
  * month's figures as they stood (the till, the cellar's value, what was
- * bought, the count variance, and the till's month as a file), and that is the
- * record. Nothing is locked: the books stay editable, and anything changed
+ * bought, the count variance, the month's write-offs, and the till's month as
+ * a file), and that is the record. Nothing is locked: the books stay editable, and anything changed
  * inside a closed month afterwards is listed here against the record — who,
  * what, by how much. There is no reopen; closing the month again keeps a new
  * version beside the old one.
@@ -34,6 +34,19 @@ export interface MonthCloseMoney {
   total: number;
 }
 
+/** One reason's share of the month's write-offs (F-1609). */
+export interface MonthCloseWriteOffLine {
+  movements: number;
+  bottles: number;
+  /** At the delivery lots' cost, in the house's money; null when no bottle carried a cost. */
+  cost: number | null;
+  uncostedBottles: number;
+}
+
+export interface MonthCloseWriteOffs extends MonthCloseWriteOffLine {
+  byReason: Array<MonthCloseWriteOffLine & { reason: 'breakage' | 'comp' | 'staff_pour' | 'other'; label: string }>;
+}
+
 export interface MonthCloseFigures {
   currency: string | null;
   /** Net, the checks' subtotal (ADR 0287 AW17, F-1494); null when no check carried one. */
@@ -52,6 +65,8 @@ export interface MonthCloseFigures {
   };
   purchases: { orders: number; unpriced: number; totals: MonthCloseMoney[] };
   variance: { counts: number; netBottles: number; shortBottles: number; overBottles: number };
+  /** F-1609. Absent on a close kept before write-offs were kept: unknown, never none. */
+  writeOffs?: MonthCloseWriteOffs;
 }
 
 export interface MonthClose {
@@ -77,7 +92,7 @@ export interface MonthCloseChange {
 }
 
 export interface MonthCloseAgainstNow {
-  figure: 'till_net_sales' | 'till_checks' | 'purchases' | 'variance_net';
+  figure: 'till_net_sales' | 'till_checks' | 'purchases' | 'variance_net' | 'writeoffs_bottles' | 'writeoffs_cost';
   label: string;
   atClose: number | null;
   now: number | null;
@@ -135,6 +150,22 @@ export async function downloadMonthCloseTill(
   };
 }
 
+/** The month's write-offs as they were kept at the close (F-1609). */
+export async function downloadMonthCloseWriteOffs(
+  close: Pick<MonthClose, 'id' | 'month' | 'version'>,
+): Promise<{ filename: string; mime: string; body: string }> {
+  const { data } = await apiClient.get<string>(
+    `/reports/month-close/${encodeURIComponent(close.id)}/writeoffs.csv`,
+    { responseType: 'text', transformResponse: [(raw: unknown) => raw] },
+  );
+  if (typeof data !== 'string') throw new Error('the gateway answered without the file');
+  return {
+    filename: `mudavym-writeoffs-${close.month}-closed-v${close.version}.csv`,
+    mime: 'text/csv;charset=utf-8',
+    body: data.startsWith('\uFEFF') ? data : `\uFEFF${data}`,
+  };
+}
+
 export interface MonthCloseShelfProps {
   restaurantId: string;
   /** The house's IANA zone; the month is the house's month. Null: the reader's. */
@@ -172,6 +203,35 @@ function delta(c: Pick<MonthCloseChange, 'delta' | 'unit' | 'currency'>): string
   return signed(money(c.delta, 'full', c.currency), c.delta);
 }
 
+/** "7 bottles, €240 at cost" — the cost said only for what carried one. */
+function writtenOff(l: MonthCloseWriteOffLine, currency: string | null): string {
+  const bottles = countOf(l.bottles, 'bottle', 'bottles');
+  if (l.cost === null) return `${bottles}, no cost recorded`;
+  const cost = money(l.cost, 'full', currency);
+  return l.uncostedBottles > 0
+    ? `${bottles}, ${cost} at cost for ${l.bottles - l.uncostedBottles} of them`
+    : `${bottles}, ${cost} at cost`;
+}
+
+/** F-1609: the month's write-offs, with their cost and count, by reason. */
+function WriteOffs({ f }: { f: MonthCloseFigures }) {
+  const w = f.writeOffs;
+  if (!w) return <>not kept with this close; close the month again to keep it</>;
+  if (w.movements === 0) return <>nothing written off in the month</>;
+  return (
+    <>
+      {writtenOff(w, f.currency)} over {countOf(w.movements, 'take-off', 'take-offs')}
+      <ul aria-label="Written off by reason">
+        {w.byReason.map((r) => (
+          <li key={r.reason}>
+            {r.label}: {writtenOff(r, f.currency)}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function Kept({ close }: { close: MonthClose }) {
   const f = close.figures;
   const bought = f.purchases.totals.length
@@ -205,6 +265,9 @@ function Kept({ close }: { close: MonthClose }) {
           : `${countOf(f.variance.shortBottles, 'bottle', 'bottles')} short, ${countOf(f.variance.overBottles, 'bottle', 'bottles')} over`}
       </li>
       <li>
+        Written off: <WriteOffs f={f} />
+      </li>
+      <li>
         Cellar value when closed:{' '}
         {f.valuation.inventoryValue !== null
           ? money(f.valuation.inventoryValue, 'full', f.currency)
@@ -222,7 +285,9 @@ function Since({ detail }: { detail: MonthCloseDetail }) {
       <ul className="rp-cap" aria-label="Kept against now">
         {detail.againstNow.map((a) => {
           const fmt = (v: number | null) =>
-            a.figure === 'till_checks' || a.figure === 'variance_net' ? figure(v) : money(v, 'full', a.currency);
+            a.figure === 'till_checks' || a.figure === 'variance_net' || a.figure === 'writeoffs_bottles'
+              ? figure(v)
+              : money(v, 'full', a.currency);
           return (
             <li key={`${a.figure}:${a.currency ?? ''}`}>
               {a.label}
@@ -341,6 +406,24 @@ function Row({ close, zone, latest }: { close: MonthClose; zone: string | null; 
             Till CSV
           </button>
         )}
+        {close.figures.writeOffs && (
+          <button
+            type="button"
+            className="rp-mini rp-ink rp-focus"
+            aria-label={`Download the write-offs of ${monthLabel(close.month)} as closed`}
+            onClick={async () => {
+              setError(null);
+              try {
+                const file = await downloadMonthCloseWriteOffs(close);
+                saveFile(file.filename, file.mime, file.body);
+              } catch (err) {
+                setError(`The write-offs file did not download: ${reasonOf(err)}`);
+              }
+            }}
+          >
+            Write-offs CSV
+          </button>
+        )}
       </div>
     </li>
   );
@@ -380,7 +463,7 @@ export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfP
           </h2>
           <p className="rp-cap">
             Closing a month keeps its figures as they stand today: the till’s net sales, what was
-            bought, the count variance and the cellar’s value. Nothing is locked. If anything dated
+            bought, the count variance, what was written off and the cellar’s value. Nothing is locked. If anything dated
             in that month changes later, it is listed under the month — who, what and by how much.
             Closing it again keeps a new version beside the first.
           </p>

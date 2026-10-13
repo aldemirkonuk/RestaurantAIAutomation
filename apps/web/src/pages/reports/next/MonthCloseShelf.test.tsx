@@ -236,6 +236,82 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(screen.getByRole('button', { name: 'Close the month' })).toBeEnabled();
   });
 
+  // F-1609 (sim 52): the close kept count variance only; a month's write-offs
+  // were no figure at all, only single lines under "Changed after close".
+  it('[REVERT-FAILS] shows the month’s write-offs with their cost and count, by reason (F-1609)', async () => {
+    const f = close().figures;
+    const writeOffs = {
+      movements: 4,
+      bottles: 5,
+      cost: 210,
+      uncostedBottles: 1,
+      byReason: [
+        { reason: 'breakage' as const, label: 'Breakage', movements: 2, bottles: 3, cost: 150, uncostedBottles: 0 },
+        { reason: 'comp' as const, label: 'Comps', movements: 1, bottles: 1, cost: 60, uncostedBottles: 0 },
+        { reason: 'staff_pour' as const, label: 'Staff pours', movements: 1, bottles: 1, cost: null, uncostedBottles: 1 },
+      ],
+    };
+    const nothing = { movements: 0, bottles: 0, cost: 0, uncostedBottles: 0, byReason: [] };
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/reports/month-close')
+        return {
+          data: {
+            closes: [
+              close({ figures: { ...f, writeOffs } }),
+              close({ id: 'c0', month: '2026-06' }),
+              close({ id: 'c9', month: '2026-05', figures: { ...f, writeOffs: nothing } }),
+            ],
+          },
+        };
+      if (url === '/reports/month-close/c1/writeoffs.csv') return { data: 'Cutting,Write-offs' };
+      return {
+        data: {
+          ...detail(),
+          againstNow: [
+            { figure: 'writeoffs_bottles', label: 'Written off, bottles', atClose: 5, now: 6, delta: 1, currency: null },
+            { figure: 'writeoffs_cost', label: 'Written off, at cost', atClose: 210, now: 250, delta: 40, currency: 'EUR' },
+          ],
+        },
+      };
+    });
+    const saved = vi.fn();
+    const before = URL.createObjectURL;
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    // saveFile revokes on a timer that may outlive the test; jsdom has none.
+    URL.revokeObjectURL ??= () => undefined;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(saved);
+    try {
+      wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+      const kept = await screen.findAllByLabelText(/Figures kept for/);
+      expect(kept[0].textContent).toContain('Written off: 5 bottles, €210 at cost for 4 of them over 4 take-offs');
+      const by = within(kept[0]).getByLabelText('Written off by reason');
+      expect(within(by).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+        'Breakage: 3 bottles, €150 at cost',
+        'Comps: 1 bottle, €60 at cost',
+        'Staff pours: 1 bottle, no cost recorded',
+      ]);
+      // Kept before write-offs were kept: unknown, never "nothing".
+      expect(kept[1].textContent).toContain('Written off: not kept with this close; close the month again to keep it');
+      expect(kept[2].textContent).toContain('Written off: nothing written off in the month');
+      // Only a close that kept write-offs offers their file.
+      const files = screen.getAllByRole('button', { name: /Download the write-offs of/ });
+      expect(files).toHaveLength(2);
+      fireEvent.click(files[0]);
+      await waitFor(() =>
+        expect(api.get).toHaveBeenCalledWith('/reports/month-close/c1/writeoffs.csv', expect.anything()),
+      );
+      await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'What changed since' })[0]);
+      const against = await screen.findByLabelText('Kept against now');
+      expect(against.textContent).toContain('Written off, bottles: 5 kept, 6 now (+1)');
+      expect(against.textContent).toContain('Written off, at cost: €210 kept, €250 now (+€40)');
+    } finally {
+      click.mockRestore();
+      URL.createObjectURL = before;
+    }
+  });
+
   it('says the list could not be read rather than showing an empty house', async () => {
     api.get.mockRejectedValueOnce(new Error('Network Error'));
     wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);

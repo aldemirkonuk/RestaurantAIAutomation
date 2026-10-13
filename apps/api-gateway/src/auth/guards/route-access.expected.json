@@ -558,6 +558,10 @@
     "owner",
     "manager"
   ],
+  "GET /reports/month-close/:id/writeoffs.csv (MonthCloseController.writeOffsFile)": [
+    "owner",
+    "manager"
+  ],
   "GET /vendor-intel/compare (VendorIntelController.compare)": [
     "owner",
     "manager"

@@ -62,7 +62,7 @@ export class MonthCloseController {
   @ApiOperation({
     summary: "Close a month: keep its figures as they stand, unchanged",
     description:
-      "Body { month: 'YYYY-MM' }. Only a month that has ended on the house's clock. Keeps the till's month (and its file), the cellar's value now, the purchases delivered and the count variance. Closing a month again keeps a new version; nothing is edited.",
+      "Body { month: 'YYYY-MM' }. Only a month that has ended on the house's clock. Keeps the till's month (and its file), the cellar's value now, the purchases delivered, the count variance and the month's write-offs (F-1609). Closing a month again keeps a new version; nothing is edited.",
   })
   @ApiResponse({ status: 201 })
   @ApiResponse({
@@ -138,6 +138,34 @@ export class MonthCloseController {
       });
     } catch (error) {
       this.fail(error, "Failed to read the till file");
+    }
+  }
+
+  @Get(":id/writeoffs.csv")
+  @ApiOperation({
+    summary:
+      "The month's write-offs (bottles, take-offs, cost, by reason) as they were kept when the month was closed",
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      "No such closed month, or one closed before write-offs were kept",
+  })
+  async writeOffsFile(
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: Caller,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    try {
+      const file = await this.closes.writeOffsCsv(user.restaurantId, id);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "private, no-store");
+      return new StreamableFile(Buffer.from(file.body, "utf8"), {
+        type: "text/csv; charset=utf-8",
+        disposition: `attachment; filename="${file.filename}"`,
+      });
+    } catch (error) {
+      this.fail(error, "Failed to read the write-offs file");
     }
   }
 }
