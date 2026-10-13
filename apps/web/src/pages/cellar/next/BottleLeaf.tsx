@@ -537,7 +537,7 @@ export default function BottleLeaf({
               {/* ADR 0193 round 3, L8: a locked price is said wherever the price is shown. */}
               <PriceLockNote inventoryId={cellar.inventoryId} />
               {/* F-145: a drink can be 86'd, with why; the stock-out is kept. */}
-              <SoldOutControl restaurantId={restaurantId} inventoryId={cellar.inventoryId} />
+              <SoldOutControl restaurantId={restaurantId} inventoryId={cellar.inventoryId} wineName={bottle.name} />
               {cellar.thresholdMin === null || cellar.menuPriceBottle === null || cellar.menuPriceGlass === null ? (
                 <p className="cl-note" style={{ marginTop: 4 }}>
                   {cellar.thresholdMin === null ? 'No par recorded for this bottle. ' : ''}

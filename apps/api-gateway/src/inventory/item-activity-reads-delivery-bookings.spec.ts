@@ -233,3 +233,84 @@ describe("item activity says which shelf was counted when", () => {
     expect(a.shelfCounts).toBeNull();
   });
 });
+
+/**
+ * F-1597: a glass poured by hand reached the ledger only when it opened a
+ * bottle, and nothing a person reads read pour_events, so the morning after
+ * nobody could see who recorded the six Barolo pours, or when.
+ */
+describe("item activity lists the glasses poured by hand", () => {
+  let db: MockDb;
+  let inventory: InventoryService;
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    inventory = new InventoryService(db.client as unknown as DatabaseService);
+    db.answers.inventory_transactions = { data: [], error: null };
+  });
+
+  it("names who poured and when, the till's own pours left out", async () => {
+    db.answers.pour_events = {
+      data: [
+        {
+          pours: 1,
+          pour_ml: 150,
+          bottles_opened: 0,
+          performed_by: "u-ayse",
+          created_at: "2026-10-09T21:40:00Z",
+        },
+        {
+          pours: 2,
+          pour_ml: 150,
+          bottles_opened: 1,
+          performed_by: null,
+          created_at: "2026-10-09T21:10:00Z",
+        },
+      ],
+      error: null,
+    };
+    db.answers.users = {
+      data: [
+        {
+          user_id: "u-ayse",
+          name: "Ayşe Demir",
+          email: "a@x",
+          restaurant_id: REST,
+        },
+      ],
+      error: null,
+    };
+    db.answers.user_restaurant_access = { data: [], error: null };
+    db.answers.house_memberships_ended = { data: [], error: null };
+
+    const activity: any = await inventory.getItemActivity(REST, ITEM);
+
+    expect(activity.handPours).toEqual([
+      {
+        at: "2026-10-09T21:40:00Z",
+        glasses: 1,
+        pourMl: 150,
+        bottlesOpened: 0,
+        byName: "Ayşe Demir",
+      },
+      {
+        at: "2026-10-09T21:10:00Z",
+        glasses: 2,
+        pourMl: 150,
+        bottlesOpened: 1,
+        byName: null,
+      },
+    ]);
+    // The till's pours are on its checks, not listed twice here.
+    expect(db.verbs).toContain("pour_events.neq");
+  });
+
+  it("a failed pour read is null, never an empty list", async () => {
+    db.answers.pour_events = { data: null, error: { message: "reset" } };
+    const activity: any = await inventory.getItemActivity(REST, ITEM);
+    expect(activity.handPours).toBeNull();
+    // The rest of the door still answers.
+    expect(activity.daily).toHaveLength(14);
+  });
+});

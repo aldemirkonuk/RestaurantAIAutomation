@@ -124,6 +124,12 @@ export interface ItemActivity {
    * failed or ran long), never "no shelf was counted".
    */
   shelfCounts?: Array<{ locationId: string; countedAt: string }> | null;
+  /**
+   * Glasses poured by hand in the last 28 days, newest first, with who poured
+   * them (F-1597). A pour reaches the ledger only when it opens a bottle.
+   * null: the read failed, never "nobody poured". Absent: an older gateway.
+   */
+  handPours?: Array<{ at: string; glasses: number; pourMl: number; bottlesOpened: number; byName: string | null }> | null;
 }
 
 /**
@@ -371,15 +377,23 @@ export async function transferStock(
     toLocationId?: string | null;
     qty: number;
     reason?: string;
+    /**
+     * One key per intended move (F-1594). A move re-sent after its answer was
+     * lost carries the same key, and the gateway's IdempotencyInterceptor
+     * answers it with the first result instead of moving the bottles again.
+     */
+    idempotencyKey?: string;
   },
   restaurantId?: string
 ): Promise<InventoryItem> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
+  const { idempotencyKey, ...move } = body;
   const response = await apiClient.post<InventoryItem>(
     `${INVENTORY_PATH}/${id}/item/${itemId}/transfer`,
-    body
+    move,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
   );
   return response.data;
 }

@@ -7,7 +7,7 @@ import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
  * Correlated logs timeline (SimPOS testbed plan, cross-cutting).
  *
  * Read-only view over pos_checks, decision_log, inventory_transactions,
- * procurement_documents, system_audit_log, and event_store, joined on
+ * pour_events, procurement_documents, system_audit_log, and event_store, joined on
  * correlation_id. inventory_transactions stores the id inside
  * metadata->>'correlation_id' rather than as a column — see
  * 20260805132000_counting_catalog_and_correlation_columns.sql.
@@ -36,6 +36,7 @@ export type TimelineSource =
   | "pos_checks"
   | "decision_log"
   | "inventory_transactions"
+  | "pour_events"
   | "procurement_documents"
   | "system_audit_log"
   | "event_store";
@@ -218,7 +219,7 @@ const NOT_OF_THIS_HOUSE = "Someone not on this house's team";
 const NAME_NOT_READ = "Someone (their name could not be read)";
 
 /** The name for one id, or why there is none. `names` null: the lookup failed. */
-function nameFor(names: Map<string, string> | null, id: string): string {
+export function nameFor(names: Map<string, string> | null, id: string): string {
   if (names === null) return NAME_NOT_READ;
   return names.get(id) ?? NOT_OF_THIS_HOUSE;
 }
@@ -320,6 +321,13 @@ export class LogsTimelineService {
         withholdMoney,
       ),
       this.fetchInventoryTxns(db, restaurantId, correlationId, cursor),
+      // F-1597: a glass poured by hand reaches the ledger only when it opens
+      // a bottle, so the pours themselves are read from pour_events. A pour
+      // carries no correlation_id, so it is not read along a thread (and the
+      // skip is reported, as event_store's is).
+      correlationId
+        ? Promise.resolve(null)
+        : this.fetchHandPours(db, restaurantId, cursor),
       this.fetchDocuments(
         db,
         restaurantId,
@@ -527,6 +535,59 @@ export class LogsTimelineService {
     });
   }
 
+  /**
+   * Glasses poured by hand (F-1597): who, when, how many. The till's own
+   * pours (`source = 'pos'`) are left out — they are on the till's checks.
+   * A pour that opened a bottle also has its ledger row above; this row is
+   * the glass, that one the bottle.
+   */
+  private fetchHandPours(
+    db: any,
+    restaurantId: string,
+    cursor: Cursor,
+  ): Promise<SourceResult> {
+    return this.guard("pour_events", async () => {
+      let q = db
+        .from("pour_events")
+        .select(
+          "id, inventory_id, pours, pour_ml, bottles_opened, location_id, source, performed_by, created_at",
+        )
+        .eq("restaurant_id", restaurantId)
+        .neq("source", "pos");
+      q = windowed(q, "created_at", cursor);
+      const { data, error } = await q;
+      if (error) throw error;
+      const rows = data || [];
+      const names = await this.namesInHouse(
+        db,
+        restaurantId,
+        rows.map((r: any) => r.performed_by),
+      );
+      return rows.map((r: any) => {
+        const by = r.performed_by ? nameFor(names, r.performed_by) : null;
+        const glasses = Number(r.pours) || 0;
+        const opened = Number(r.bottles_opened) || 0;
+        return {
+          id: r.id,
+          source: "pour_events" as const,
+          occurredAt: r.created_at ?? null,
+          correlationId: null,
+          summary: `${glasses} glass${glasses === 1 ? "" : "es"} poured (${r.pour_ml} ml)${opened > 0 ? `, ${opened} bottle${opened === 1 ? "" : "s"} opened` : ""}${by ? ` by ${by}` : ""}`,
+          detail: {
+            inventoryId: r.inventory_id,
+            pours: glasses,
+            pourMl: r.pour_ml,
+            bottlesOpened: opened,
+            locationId: r.location_id ?? null,
+            source: r.source,
+            performedBy: r.performed_by ?? null,
+            performedByName: by,
+          },
+        };
+      });
+    });
+  }
+
   private fetchDocuments(
     db: any,
     restaurantId: string,
@@ -666,67 +727,15 @@ export class LogsTimelineService {
     });
   }
 
-  /**
-   * Names for the people behind a page of rows, resolved WITHIN this house
-   * only (F-482): an id is named when `public.users` says it belongs to this
-   * house or it holds a `user_restaurant_access` row for it, or held one: a
-   * former member's acts stay theirs, so an id with a
-   * `house_memberships_ended` row for this house is named too (F-1512; the
-   * removal clears the other two). The month-close shelf names them the same
-   * way, and ADR 0337 never touches who acted. Any other id's name is read but
-   * dropped here, never returned to this reader, and its row reads "Someone
-   * not on this house's team". A lookup that fails returns null — said on each row as a name
-   * that could not be read, never as a stranger — and is logged; the rows
-   * still come back, because a change nobody can name still happened.
-   */
-  private async namesInHouse(
+  /** The house's names for a page of rows: see `readNamesInHouse`. */
+  private namesInHouse(
     db: any,
     restaurantId: string,
     ids: unknown[],
   ): Promise<Map<string, string> | null> {
-    const out = new Map<string, string>();
-    const unique = [
-      ...new Set(
-        ids.filter((v): v is string => typeof v === "string" && v.length > 0),
-      ),
-    ];
-    if (unique.length === 0) return out;
-    try {
-      const [users, access, ended] = await Promise.all([
-        db
-          .from("users")
-          .select("user_id, name, email, restaurant_id")
-          .in("user_id", unique),
-        db
-          .from("user_restaurant_access")
-          .select("user_id")
-          .eq("restaurant_id", restaurantId)
-          .in("user_id", unique),
-        db
-          .from("house_memberships_ended")
-          .select("user_id")
-          .eq("restaurant_id", restaurantId)
-          .in("user_id", unique),
-      ]);
-      if (users.error) throw users.error;
-      if (access.error) throw access.error;
-      if (ended.error) throw ended.error;
-      const held = new Set(
-        [...(access.data ?? []), ...(ended.data ?? [])].map(
-          (a: any) => a.user_id,
-        ),
-      );
-      for (const u of users.data ?? []) {
-        if (u.restaurant_id !== restaurantId && !held.has(u.user_id)) continue;
-        out.set(u.user_id, u.name?.trim() || u.email || "A team member");
-      }
-    } catch (err: any) {
-      this.logger.warn(
-        `/logs could not name the people on this page: ${err?.message ?? err}`,
-      );
-      return null;
-    }
-    return out;
+    return readNamesInHouse(db, restaurantId, ids, (m) =>
+      this.logger.warn(`/logs could not name the people on this page: ${m}`),
+    );
   }
 
   /**
@@ -922,4 +931,67 @@ function windowed(q: any, col: string, cursor: Cursor): any {
     out = out.or(`${col}.lte.${cursor.before},${col}.is.null`);
   }
   return out.limit(cursor.fetch);
+}
+
+/**
+ * Names for the people behind a page of rows, resolved WITHIN this house
+ * only (F-482): an id is named when `public.users` says it belongs to this
+ * house or it holds a `user_restaurant_access` row for it, or held one: a
+ * former member's acts stay theirs, so an id with a
+ * `house_memberships_ended` row for this house is named too (F-1512; the
+ * removal clears the other two). The month-close shelf names them the same
+ * way, and ADR 0337 never touches who acted. Any other id's name is read but
+ * dropped here, never returned to this reader, and its row reads "Someone
+ * not on this house's team". A lookup that fails returns null — said on each row as a name
+ * that could not be read, never as a stranger — and is `warn`ed; the rows
+ * still come back, because a change nobody can name still happened.
+ * Exported for a wine's own pours (inventory activity, F-1597).
+ */
+export async function readNamesInHouse(
+  db: any,
+  restaurantId: string,
+  ids: unknown[],
+  warn: (message: string) => void,
+): Promise<Map<string, string> | null> {
+  const out = new Map<string, string>();
+  const unique = [
+    ...new Set(
+      ids.filter((v): v is string => typeof v === "string" && v.length > 0),
+    ),
+  ];
+  if (unique.length === 0) return out;
+  try {
+    const [users, access, ended] = await Promise.all([
+      db
+        .from("users")
+        .select("user_id, name, email, restaurant_id")
+        .in("user_id", unique),
+      db
+        .from("user_restaurant_access")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId)
+        .in("user_id", unique),
+      db
+        .from("house_memberships_ended")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId)
+        .in("user_id", unique),
+    ]);
+    if (users.error) throw users.error;
+    if (access.error) throw access.error;
+    if (ended.error) throw ended.error;
+    const held = new Set(
+      [...(access.data ?? []), ...(ended.data ?? [])].map(
+        (a: any) => a.user_id,
+      ),
+    );
+    for (const u of users.data ?? []) {
+      if (u.restaurant_id !== restaurantId && !held.has(u.user_id)) continue;
+      out.set(u.user_id, u.name?.trim() || u.email || "A team member");
+    }
+  } catch (err: any) {
+    warn(String(err?.message ?? err));
+    return null;
+  }
+  return out;
 }

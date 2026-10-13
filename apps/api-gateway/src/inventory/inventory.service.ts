@@ -35,6 +35,7 @@ import {
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
 import { readHouseZone, shiftHouseDay } from "../common/house-day";
+import { nameFor, readNamesInHouse } from "../logs/logs-timeline.service";
 import {
   houseWallAt,
   type WallReading,
@@ -76,6 +77,8 @@ const OVERTAKEN_SCAN_LIMIT = 200;
  * never a shelf wrongly called uncounted.
  */
 const SHELF_COUNT_SCAN = 1000;
+/** The newest hand pours a wine's activity lists (F-1597). */
+const HAND_POURS_SHOWN = 20;
 
 /**
  * The /inventory list's shelf counts (F-1235): the window read and the most
@@ -1467,8 +1470,57 @@ export class InventoryService {
       }));
     }
 
+    // F-1597: glasses poured by hand, with who and when. A pour reaches the
+    // ledger above only when it opens a bottle, so the glasses themselves are
+    // read from pour_events. The till's own pours (`source = 'pos'`) are on
+    // its checks. `null` is a read that failed, never "nobody poured".
+    let handPours: Array<{
+      at: string;
+      glasses: number;
+      pourMl: number;
+      bottlesOpened: number;
+      byName: string | null;
+    }> | null = null;
+    const pours = await client
+      .from("pour_events")
+      .select("pours, pour_ml, bottles_opened, performed_by, created_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", itemId)
+      .neq("source", "pos")
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(HAND_POURS_SHOWN);
+    if (pours.error) {
+      this.logger.error(
+        `getItemActivity hand-pour read failed: ${pours.error.message}`,
+      );
+    } else {
+      const rows = (pours.data ?? []) as Array<{
+        pours: number;
+        pour_ml: number;
+        bottles_opened: number;
+        performed_by: string | null;
+        created_at: string;
+      }>;
+      const names = await readNamesInHouse(
+        client,
+        restaurantId,
+        rows.map((r) => r.performed_by),
+        (m) =>
+          this.logger.warn(`getItemActivity could not name the pourers: ${m}`),
+      );
+      handPours = rows.map((r) => ({
+        at: r.created_at,
+        glasses: Number(r.pours) || 0,
+        pourMl: Number(r.pour_ml) || 0,
+        bottlesOpened: Number(r.bottles_opened) || 0,
+        byName: r.performed_by ? nameFor(names, r.performed_by) : null,
+      }));
+    }
+
     return {
       shelfCounts,
+      handPours,
       daily,
       heat,
       totalOut28d: totalOut,

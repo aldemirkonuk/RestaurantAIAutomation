@@ -31,6 +31,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
   return {
     from(table: string) {
       const filters: Array<[string, any]> = [];
+      const neqFilters: Array<[string, any]> = [];
       const containsFilters: Array<[string, Row]> = [];
       const inFilters: Array<[string, any[]]> = [];
       const notInFilters: Array<[string, string[]]> = [];
@@ -43,6 +44,10 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         },
         eq(col: string, val: any) {
           filters.push([col, val]);
+          return api;
+        },
+        neq(col: string, val: any) {
+          neqFilters.push([col, val]);
           return api;
         },
         contains(col: string, val: Row) {
@@ -94,6 +99,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         then(resolve: any) {
           let rows = tables[table] || [];
           rows = rows.filter((r) => filters.every(([c, v]) => r[c] === v));
+          rows = rows.filter((r) => neqFilters.every(([c, v]) => r[c] !== v));
           for (const [col, obj] of containsFilters) {
             rows = rows.filter((r) => {
               const meta = r[col] || {};
@@ -301,6 +307,7 @@ describe("LogsTimelineService.getTimeline", () => {
         const api: any = {
           select: () => api,
           eq: () => api,
+          neq: () => api,
           contains: () => api,
           not: () => api,
           is: () => api,
@@ -435,6 +442,7 @@ describe("LogsTimelineService.getTimeline", () => {
           const api: any = {
             select: () => api,
             eq: () => api,
+            neq: () => api,
             contains: () => api,
             not: () => api,
             is: () => {
@@ -496,6 +504,7 @@ describe("LogsTimelineService.getTimeline", () => {
         "pos_checks",
         "decision_log",
         "inventory_transactions",
+        "pour_events",
         "procurement_documents",
         "system_audit_log",
       ]);
@@ -574,6 +583,7 @@ describe("LogsTimelineService.getTimeline", () => {
         "inventory_transactions",
         "pos_checks",
         "pos_checks",
+        "pour_events",
         "procurement_documents",
         "system_audit_log",
       ]);
@@ -957,6 +967,73 @@ describe("LogsTimelineService.getTimeline", () => {
         getClient: () => client,
       } as unknown as DatabaseService);
     }
+
+    // F-1597: a glass poured by hand wrote only a pour_events row (and a
+    // ledger row only when it opened a bottle), and /logs never read that
+    // table, so the next morning nobody could see who poured or when.
+    it("lists a glass poured by hand, with who and when; the till's own pours stay on its checks", async () => {
+      const { events, sourcesQueried } = await svc({
+        pour_events: [
+          {
+            id: "pe-hand",
+            restaurant_id: "r1",
+            inventory_id: "inv-barolo",
+            pours: 1,
+            pour_ml: 150,
+            bottles_opened: 0,
+            location_id: null,
+            source: "manual",
+            performed_by: "u-ayse",
+            created_at: "2026-09-20T21:40:00Z",
+          },
+          {
+            id: "pe-till",
+            restaurant_id: "r1",
+            inventory_id: "inv-barolo",
+            pours: 1,
+            pour_ml: 150,
+            bottles_opened: 0,
+            location_id: null,
+            source: "pos",
+            performed_by: null,
+            created_at: "2026-09-20T21:45:00Z",
+          },
+          {
+            id: "pe-other-house",
+            restaurant_id: "r9",
+            inventory_id: "inv-x",
+            pours: 1,
+            pour_ml: 150,
+            bottles_opened: 0,
+            location_id: null,
+            source: "manual",
+            performed_by: "u-mert",
+            created_at: "2026-09-20T21:50:00Z",
+          },
+        ],
+      }).getTimeline("r1", { role: "staff" });
+
+      expect(sourcesQueried).toContain("pour_events");
+      expect(events.map((e) => e.id)).toEqual(["pe-hand"]);
+      expect(events[0]).toMatchObject({
+        source: "pour_events",
+        occurredAt: "2026-09-20T21:40:00Z",
+        summary: "1 glass poured (150 ml) by Ayşe Demir",
+        detail: {
+          inventoryId: "inv-barolo",
+          pours: 1,
+          performedBy: "u-ayse",
+          performedByName: "Ayşe Demir",
+        },
+      });
+    });
+
+    it("does not read pours along a thread: a pour carries no correlation id", async () => {
+      const { sourcesQueried } = await svc({}).getTimeline("r1", {
+        correlationId: "corr-1",
+      });
+      expect(sourcesQueried).not.toContain("pour_events");
+    });
 
     it("prints 'Name: act (field: from → to)' for an audit row", async () => {
       const { events } = await svc({

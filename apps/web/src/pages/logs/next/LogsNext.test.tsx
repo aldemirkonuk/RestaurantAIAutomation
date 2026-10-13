@@ -64,10 +64,12 @@ import { settle, turn } from '@/lib/mudavym/motion';
 import { PageGate } from '@/components/mudavym/PageGate';
 import { localToday } from '@/components/mudavym';
 
+// Seven since F-1597 (glasses poured by hand); the name is kept.
 const SIX = [
   'pos_checks',
   'decision_log',
   'inventory_transactions',
+  'pour_events',
   'procurement_documents',
   'system_audit_log',
   'event_store',
@@ -153,10 +155,10 @@ describe('LogsNext — states', () => {
       window: null,
     };
     const { container } = renderPage();
-    expect(screen.getByRole('status')).toHaveTextContent('Reading six registers');
+    expect(screen.getByRole('status')).toHaveTextContent('Reading seven registers');
     expect(cell('Till')).toHaveTextContent('reading');
     expect(cell('Till')).not.toHaveTextContent('—');
-    expect(container.querySelectorAll('.lg-figure--wait')).toHaveLength(6);
+    expect(container.querySelectorAll('.lg-figure--wait')).toHaveLength(7);
   });
 
   it('keeps the dash for a register that WAS asked and did not answer', () => {
@@ -212,11 +214,11 @@ describe('LogsNext — states', () => {
   });
 
   it('renders a real empty feed as words, not as a dead list', () => {
-    mockData.current = ready({ events: [], sourcesQueried: SIX.slice(0, 5) as never });
+    mockData.current = ready({ events: [], sourcesQueried: SIX.slice(0, 6) as never });
     renderPage();
     expect(screen.getByRole('status')).toHaveTextContent('No entries.');
     expect(screen.getByText(/All 0 entries the registers hold are on the page/)).toBeTruthy();
-    expect(screen.getByText(/Read 5 of 6 registers/)).toBeTruthy();
+    expect(screen.getByText(/Read 6 of 7 registers/)).toBeTruthy();
     expect(cell('Event')).toHaveTextContent('read only along a thread');
   });
 });
@@ -268,10 +270,10 @@ describe('LogsNext — ADR 0086, every clause kept', () => {
     mockData.current = ready({
       events: [ev({})],
       failedSources: ['pos_checks', 'system_audit_log'],
-      sourcesQueried: SIX.slice(0, 5) as never,
+      sourcesQueried: SIX.slice(0, 6) as never,
     });
     renderPage();
-    const hint = screen.getByText(/Read 3 of 6 registers/);
+    const hint = screen.getByText(/Read 4 of 7 registers/);
     expect(hint).toHaveTextContent('could not be read: the till and the audit trail');
     expect(hint).toHaveTextContent('not read: the event store');
   });
@@ -308,7 +310,7 @@ describe('LogsNext — ADR 0086, every clause kept', () => {
       sourcesQueried: [...SIX, 'webhook_log'] as never,
     });
     renderPage();
-    expect(screen.getByText(/Read 7 of 7 registers/)).toBeTruthy();
+    expect(screen.getByText(/Read 8 of 8 registers/)).toBeTruthy();
     expect(cell('webhook_log')).toHaveTextContent('1');
     expect(screen.getAllByText('webhook_log').some((n) => n.className.includes('lg-mark'))).toBe(true);
   });
@@ -830,7 +832,7 @@ describe('LogsNext — the gate', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('legacy logs page')).toBeTruthy();
-    expect(screen.queryByText('What the house recorded, across six registers.')).toBeNull();
+    expect(screen.queryByText('What the house recorded, across seven registers.')).toBeNull();
     expect(document.querySelector('.mudavym')).toBeNull();
   });
 });

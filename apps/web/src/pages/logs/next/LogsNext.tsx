@@ -6,8 +6,9 @@
  * The founder's verdict, verbatim (MAKEOVER-VERDICTS.md): KEEP — *"That's
  * fine, the new version. I like it."*
  *
- * WHAT IT IS. The house's ledger of what happened, across six registers: the
- * till, the agents, the stock ledger, the paper that arrived, the audit trail
+ * WHAT IT IS. The house's ledger of what happened, across seven registers: the
+ * till, the agents, the stock ledger, the glasses poured by hand, the paper
+ * that arrived, the audit trail
  * and — along a thread — the platform's event store. Read-only; it writes
  * nothing. Its one act is the pivot: any correlation id on the page turns the
  * feed into a thread, and a thread reads like a ledger page — one
@@ -318,7 +319,7 @@ function Loading({ threadOn }: { threadOn: boolean }) {
   return (
     <div className="lg-band lg-band--quiet" role="status">
       <p>
-        <strong>{threadOn ? 'Reading every register for this thread.' : 'Reading six registers.'}</strong>
+        <strong>{threadOn ? 'Reading every register for this thread.' : 'Reading seven registers.'}</strong>
       </p>
       <p>
         {threadOn
@@ -919,7 +920,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
               Logs<span style={{ color: 'var(--seal)' }}>.</span>
             </h1>
             <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 15, color: 'var(--ink-2)', margin: '6px 0 0' }}>
-              What the house recorded, across six registers.
+              What the house recorded, across seven registers.
             </p>
             <p style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--ink-2)', margin: '8px 0 0', maxWidth: 680 }}>
               Every entry is a row one of the house’s registers wrote — the till, the agents, the stock ledger, the
@@ -1090,7 +1091,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
                           // this one out of the page entirely. Saying "nothing here"
                           // without saying "on this page, from this window" would be the
                           // page reporting a crowding-out as a quiet register.
-                          'This is the page you have read, not the register itself: the gateway merges all six before it cuts the window, so a busy register can crowd this one off the page. Read older entries, or clear the choice.'
+                          'This is the page you have read, not the register itself: the gateway merges all seven before it cuts the window, so a busy register can crowd this one off the page. Read older entries, or clear the choice.'
                         : jump
                           ? // NOT "nothing for this house yet": only the entries up
                             // to the end of the day were asked for.
@@ -1194,7 +1195,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
                 ))}
               </dl>
               <p>
-                Nothing here is destructive, because nothing here writes: this page reads six registers and changes
+                Nothing here is destructive, because nothing here writes: this page reads seven registers and changes
                 none of them. Following a thread is a change of address, and the back button undoes it.
               </p>
             </section>

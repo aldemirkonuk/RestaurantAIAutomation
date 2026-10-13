@@ -6,6 +6,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import SoldOutControl, { SoldOutChip, comesBackWords, type StockOut, type StockOutState } from './SoldOutControl';
 import { toInventoryItem } from '../../inventory/useInventoryPage';
 
@@ -196,5 +199,62 @@ describe('how an 86 comes back, by its cause', () => {
 
   it('says both when the cause is not known', () => {
     expect(comesBackWords()).toMatch(/unless it was pulled/);
+  });
+});
+
+/**
+ * F-1598: "it broke" said to record the breakage "in the count too". A count
+ * has no breakage reason, so the bottle counted short read as missing. The
+ * note now sends it to a take-off as breakage: the row's own Manual adjust on
+ * /inventory, or Inventory from the cellar's leaf.
+ */
+describe('F-1598: a broken bottle is taken off as breakage, not in a count', () => {
+  function mountWith(node: React.ReactNode) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+  }
+
+  it('never sends the breakage to the count', async () => {
+    get.mockResolvedValue({ data: { open: null, recent: [] } });
+    mount();
+    fireEvent.change(await screen.findByTestId('sold-out-cause'), { target: { value: 'broken' } });
+    const note = screen.getByTestId('sold-out-broken-stock');
+    expect(note).not.toHaveTextContent(/breakage in the count/i);
+    expect(note).toHaveTextContent(/Manual adjust, reason Breakage/);
+  });
+
+  it('links the cellar leaf to this wine on Inventory', async () => {
+    get.mockResolvedValue({ data: { open: null, recent: [] } });
+    mountWith(
+      <MemoryRouter>
+        <SoldOutControl restaurantId="r1" inventoryId="inv-1" wineName="Barolo 2019" />
+      </MemoryRouter>,
+    );
+    fireEvent.change(await screen.findByTestId('sold-out-cause'), { target: { value: 'broken' } });
+    expect(screen.getByTestId('sold-out-broken-link')).toHaveAttribute('href', '/inventory?wine=Barolo%202019');
+  });
+
+  it('offers the take-off itself where the page has one', async () => {
+    get.mockResolvedValue({ data: { open: null, recent: [] } });
+    const takeOff = vi.fn();
+    mountWith(<SoldOutControl restaurantId="r1" inventoryId="inv-1" onTakeOffBroken={takeOff} />);
+    fireEvent.change(await screen.findByTestId('sold-out-cause'), { target: { value: 'broken' } });
+    fireEvent.click(screen.getByTestId('sold-out-broken-take-off'));
+    expect(takeOff).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * F-1600: `.cl-note`/`.cl-btn` live in cellar-next.css, which only lazy
+ * chunks imported; /inventory loads first, so its 86 drew as bare buttons
+ * until a cellar or menu page had been opened.
+ */
+describe('F-1600: the 86 control brings its own styles', () => {
+  it('imports the sheet that defines .cl-note and .cl-btn', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/pages/cellar/next/SoldOutControl.tsx'), 'utf8');
+    expect(src).toMatch(/^import '\.\/cellar-next\.css';$/m);
+    const css = readFileSync(resolve(process.cwd(), 'src/pages/cellar/next/cellar-next.css'), 'utf8');
+    expect(css).toMatch(/^\.cl-btn \{/m);
+    expect(css).toMatch(/^\.cl-note \{/m);
   });
 });
