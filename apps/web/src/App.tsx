@@ -44,6 +44,7 @@ const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/Recei
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
 const CountIndex = lazyWithRefresh(() => import('./pages/count/CountIndex'))
 const CountWalk = lazyWithRefresh(() => import('./pages/count/CountWalk'))
+const CountReview = lazyWithRefresh(() => import('./pages/count/CountReview'))
 // The route element re-reads the address on each navigation that carries a
 // query (F-1354); the page itself reads it once, at mount.
 const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/ProvidersNextRoute'))
@@ -310,6 +311,21 @@ function App() {
                     <PageBoundary>
                       <ProtectedRoute>
                         <CountWalk />
+                      </ProtectedRoute>
+                    </PageBoundary>
+                  }
+                />
+                {/*
+                  F-1544 lane 4: a stock-take's review and sign-off. The
+                  books, the difference and its value come from the gateway
+                  only to an owner or a manager; every act on it is theirs.
+                */}
+                <Route
+                  path="/count/:sessionId/review"
+                  element={
+                    <PageBoundary>
+                      <ProtectedRoute>
+                        <CountReview />
                       </ProtectedRoute>
                     </PageBoundary>
                   }

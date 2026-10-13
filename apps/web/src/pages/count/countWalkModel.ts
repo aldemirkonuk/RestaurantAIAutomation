@@ -13,7 +13,12 @@
  *    confirmed, then each posts as 0. Absence is never read as zero.
  */
 
-import type { CountSessionKind, CountShelf, CountShelfItem } from '../../services/api/countSessions'
+import type {
+  CountSession,
+  CountSessionKind,
+  CountShelf,
+  CountShelfItem,
+} from '../../services/api/countSessions'
 
 export type LineState = 'sent' | 'saved' | 'held' | 'refused'
 
@@ -55,9 +60,53 @@ export interface WalkRecord {
   extras: Record<string, CountShelfItem[]>
   dones: Record<string, WalkDone>
   parked: WalkPark[]
+  /** F-1544 lane 4: the round of each shelf this phone last saw. */
+  rounds?: Record<string, number>
 }
 
 export const emptyWalk = (): WalkRecord => ({ lines: {}, extras: {}, dones: {}, parked: [] })
+
+/**
+ * F-1544 lane 4. A manager sent a shelf back to be counted again: this phone
+ * forgets its "done" for that shelf and the lines it counted there before the
+ * ask, so the shelf reads as not started and every item can be counted anew.
+ * Lines counted after the ask stay. What was already sent stays sent on the
+ * house's books; only this phone's copy is forgotten. The ask's time is the
+ * house's clock and a line's is this phone's, so a phone whose clock runs
+ * far behind forgets a line taken just after the ask -- it is then counted
+ * once more, never lost.
+ */
+export function forgetRecounted(
+  walk: WalkRecord,
+  session: Pick<CountSession, 'shelves'>,
+): { walk: WalkRecord; forgot: string[] } {
+  const seen = walk.rounds ?? {}
+  const forgot: string[] = []
+  const lines = { ...walk.lines }
+  const dones = { ...walk.dones }
+  const rounds = { ...seen }
+  for (const shelf of session.shelves) {
+    const round = shelf.round ?? 0
+    if (round <= (seen[shelf.locationId] ?? 0)) continue
+    rounds[shelf.locationId] = round
+    const asked = shelf.recountAskedAt ? Date.parse(shelf.recountAskedAt) : NaN
+    let changed = false
+    for (const [k, l] of Object.entries(lines)) {
+      if (l.locationId !== shelf.locationId) continue
+      if (Number.isFinite(asked) && Date.parse(l.at) >= asked) continue
+      delete lines[k]
+      changed = true
+    }
+    if (dones[shelf.locationId]) {
+      delete dones[shelf.locationId]
+      changed = true
+    }
+    if (changed) forgot.push(shelf.locationId)
+  }
+  const moved = Object.keys(rounds).some((k) => rounds[k] !== seen[k])
+  if (!moved) return { walk, forgot }
+  return { walk: { ...walk, lines, dones, rounds }, forgot }
+}
 
 export const lineKey = (locationId: string, itemId: string) => `${locationId}:${itemId}`
 
@@ -242,6 +291,7 @@ export function readWalk(key: string): WalkRecord {
     extras: w?.extras ?? {},
     dones: w?.dones ?? {},
     parked: w?.parked ?? [],
+    ...(w?.rounds ? { rounds: w.rounds } : {}),
   }
 }
 

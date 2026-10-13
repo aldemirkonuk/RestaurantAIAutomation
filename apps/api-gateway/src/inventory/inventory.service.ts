@@ -791,7 +791,17 @@ export class InventoryService {
     locationId: string | null = null,
     // F-1544 lane 2: a line of a stock-take (its held retry replays too) and
     // whether it counted the open bottles.
-    line: { sessionId?: string | null; countsOpenMl?: boolean } = {},
+    line: {
+      sessionId?: string | null;
+      countsOpenMl?: boolean;
+      // F-1544 lane 4: a manager posts a held line. The count it was held
+      // against is the other half of the same conflict, not a later count
+      // that overtakes it, so it and its own correction are set aside.
+      resolvesHeld?: {
+        countId: string | null;
+        transactionId: string | null;
+      } | null;
+    } = {},
   ): Promise<void> {
     if (
       countedAt == null ||
@@ -817,7 +827,8 @@ export class InventoryService {
     if (landed.error) throw transient("replay", landed.error);
     if ((landed.data ?? []).length > 0) return;
     // A line held as a second count of its shelf (F2 a) replays as held.
-    if (line.sessionId) {
+    // Unless a manager is posting that held line now (lane 4).
+    if (line.sessionId && !line.resolvesHeld) {
       const held = await client
         .from("stock_count_held_lines")
         .select("id")
@@ -859,8 +870,11 @@ export class InventoryService {
         countedAt,
         locationId,
         transient,
+        line.resolvesHeld ?? null,
       );
     }
+    const asideCount = line.resolvesHeld?.countId ?? null;
+    const asideMove = line.resolvesHeld?.transactionId ?? null;
 
     const newerCount = await client
       .from("stock_counts")
@@ -869,9 +883,13 @@ export class InventoryService {
       .eq("inventory_id", inventoryId)
       .eq("stock_state", stockState)
       .gt("counted_at", countedAt)
-      .limit(1);
+      .limit(2);
     if (newerCount.error) throw transient("newer-count", newerCount.error);
-    if ((newerCount.data ?? []).length > 0) {
+    if (
+      ((newerCount.data ?? []) as Array<{ id: string }>).some(
+        (c) => c.id !== asideCount,
+      )
+    ) {
       throw new HttpException(
         "This item was counted again after this count was taken, so this older count was not applied.",
         HttpStatus.CONFLICT,
@@ -885,9 +903,13 @@ export class InventoryService {
       .eq("inventory_id", inventoryId)
       .eq("stock_type", stockState)
       .gt("transaction_date", countedAt)
-      .limit(1);
+      .limit(2);
     if (moved.error) throw transient("movement", moved.error);
-    if ((moved.data ?? []).length > 0) {
+    if (
+      ((moved.data ?? []) as Array<{ id: string }>).some(
+        (m) => m.id !== asideMove,
+      )
+    ) {
       throw new HttpException(
         "Bottles of this item were sold, received or moved after this count was taken, so it was not applied. Count it again.",
         HttpStatus.CONFLICT,
@@ -904,6 +926,10 @@ export class InventoryService {
     countedAt: string,
     locationId: string,
     transient: (what: string, err: { message?: string }) => HttpException,
+    resolvesHeld: {
+      countId: string | null;
+      transactionId: string | null;
+    } | null = null,
   ): Promise<void> {
     // Every count since, of any shelf: a count of THIS shelf or of every
     // shelf (no location) overtakes; another shelf's count does not, and its
@@ -917,10 +943,13 @@ export class InventoryService {
       .gt("counted_at", countedAt)
       .limit(OVERTAKEN_SCAN_LIMIT);
     if (counts.error) throw transient("newer-count", counts.error);
-    const countRows = (counts.data ?? []) as Array<{
-      location_id: string | null;
-      transaction_id: string | null;
-    }>;
+    const countRows = (
+      (counts.data ?? []) as Array<{
+        id: string;
+        location_id: string | null;
+        transaction_id: string | null;
+      }>
+    ).filter((c) => c.id !== resolvesHeld?.countId);
     if (
       countRows.some(
         (c) => c.location_id == null || c.location_id === locationId,
@@ -934,6 +963,8 @@ export class InventoryService {
     const otherShelfCounts = new Set(
       countRows.map((c) => c.transaction_id).filter((t): t is string => !!t),
     );
+    if (resolvesHeld?.transactionId)
+      otherShelfCounts.add(resolvesHeld.transactionId);
 
     const moved = await client
       .from("inventory_transactions")
@@ -977,6 +1008,118 @@ export class InventoryService {
         HttpStatus.CONFLICT,
       );
     }
+  }
+
+  /**
+   * F-1544 lane 4: the count a held line was held against, and its own
+   * correction, which the overtaken check sets aside for that line. The
+   * writer checks the held line itself again under its lock.
+   */
+  private async readHeldAgainst(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    heldLineId: string,
+  ): Promise<{ countId: string | null; transactionId: string | null }> {
+    const held = await client
+      .from("stock_count_held_lines")
+      .select("held_against")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", heldLineId)
+      .maybeSingle();
+    if (held.error) {
+      this.logger.error(`Held line read failed: ${held.error.message}`);
+      throw new HttpException(
+        "The held line could not be read just now. Try again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const countId =
+      (held.data as { held_against?: string | null } | null)?.held_against ??
+      null;
+    if (!countId) return { countId: null, transactionId: null };
+    const against = await client
+      .from("stock_counts")
+      .select("transaction_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", countId)
+      .maybeSingle();
+    if (against.error) {
+      this.logger.error(`Held-against read failed: ${against.error.message}`);
+      throw new HttpException(
+        "The held line could not be read just now. Try again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    return {
+      countId,
+      transactionId:
+        (against.data as { transaction_id?: string | null } | null)
+          ?.transaction_id ?? null,
+    };
+  }
+
+  /**
+   * F-1544 lane 4: the two acts of a stock-take's review that reach the
+   * database through a function, kept beside the one count writer's call
+   * because sign-off stamps last_counted_at, the writer's own stamp (F-1165).
+   * Neither writes a count: a recount clears a shelf's done and sets its
+   * held lines aside; a sign-off closes the walk and stamps the items it
+   * counted on every shelf they sit on. The house is the token's.
+   */
+  async askShelfRecount(
+    restaurantId: string,
+    sessionId: string,
+    locationId: string,
+    askedBy: string,
+    seenRound: number,
+  ): Promise<Record<string, unknown>> {
+    return this.countReviewCall("ask_stock_count_shelf_recount", {
+      p_session_id: sessionId,
+      p_restaurant_id: restaurantId,
+      p_location_id: locationId,
+      p_asked_by: askedBy,
+      p_seen_round: seenRound,
+    });
+  }
+
+  async signOffCountSession(
+    restaurantId: string,
+    sessionId: string,
+    signedOffBy: string,
+    evenIfUnfinished: boolean,
+  ): Promise<Record<string, unknown>> {
+    return this.countReviewCall("sign_off_stock_count_session", {
+      p_session_id: sessionId,
+      p_restaurant_id: restaurantId,
+      p_signed_off_by: signedOffBy,
+      p_even_if_unfinished: evenIfUnfinished,
+    });
+  }
+
+  private async countReviewCall(
+    fn: "ask_stock_count_shelf_recount" | "sign_off_stock_count_session",
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const { data, error } = await this.dbService.getClient().rpc(fn, args);
+    if (error) {
+      // The function's own refusals are said in words; anything else is
+      // the house's, and the manager tries again.
+      if ((error as { code?: string }).code === "22023") {
+        throw new HttpException(String(error.message), HttpStatus.CONFLICT);
+      }
+      if ((error as { code?: string }).code === "42501") {
+        throw new HttpException(
+          "That is not part of this house's count.",
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      this.logger.error(`${fn} failed: ${error.message}`);
+      throw new HttpException(
+        "The count could not be changed just now. Try again in a moment.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    return (data ?? {}) as Record<string, unknown>;
   }
 
   /** The item's bottle size, for tenths of a bottle (ADR 0297's stand-in when unset). */
@@ -1101,6 +1244,13 @@ export class InventoryService {
       /** The counter's role in the house, for a line older than 72 h (ADR 0286). */
       role?: string | null;
     },
+    /**
+     * F-1544 lane 4: a manager posting a line held as a second count of its
+     * shelf, as its own counter at its own moment. A separate argument, never
+     * the body: the spot-count route spreads its body into `dto`, so a field
+     * there would let anyone name a held line.
+     */
+    resolve?: { heldLineId: string; resolvedBy: string | null } | null,
   ) {
     // An age past the epoch is not a time anyone counted at, and one past
     // Date's range made the replay check throw a RangeError (a 500) instead
@@ -1246,6 +1396,15 @@ export class InventoryService {
         }
       }
     }
+    if (resolve && !sessionId) {
+      throw new HttpException(
+        "A held line belongs to a stock-take, so it was not posted.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const resolvesHeld = resolve
+      ? await this.readHeldAgainst(client, restaurantId, resolve.heldLineId)
+      : null;
     await this.refuseCountOvertakenByStock(
       client,
       restaurantId,
@@ -1255,7 +1414,7 @@ export class InventoryService {
       dto.countedAgoMs,
       countedAt,
       dto.locationId ?? null,
-      { sessionId, countsOpenMl: openMl !== null },
+      { sessionId, countsOpenMl: openMl !== null, resolvesHeld },
     );
     const { data: countResult, error: rpcErr } = await client.rpc(
       "record_stock_count",
@@ -1285,6 +1444,13 @@ export class InventoryService {
         // function exactly as before.
         ...(openMl !== null ? { p_counted_open_ml: openMl } : {}),
         ...(sessionId ? { p_session_id: sessionId } : {}),
+        // F-1544 lane 4: sent only when a held line is named.
+        ...(resolve
+          ? {
+              p_resolves_held_line: resolve.heldLineId,
+              p_resolved_by: resolve.resolvedBy,
+            }
+          : {}),
       },
     );
     if (rpcErr) {

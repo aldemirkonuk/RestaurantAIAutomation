@@ -3,6 +3,7 @@ import { DatabaseService } from "../database/database.service";
 import { InventoryService } from "./inventory.service";
 import { zoneLabel } from "../cellar/zones.service";
 import { FACT_TIME_TRUST_MS } from "../common/fact-time";
+import { STAND_IN_BOTTLE_ML } from "./stock-count-result";
 
 /**
  * A stock-take walked shelf by shelf on a phone (F-1544; F-076: a 112-wine
@@ -123,12 +124,16 @@ interface ShelfRow {
   claimed_at: string | null;
   done_by: string | null;
   done_at: string | null;
+  // F-1544 lane 4: how many times a manager sent the shelf back, and when
+  // last. A phone that sees a newer round forgets its old pass.
+  recount_round: number;
+  recount_asked_at: string | null;
 }
 
 const SESSION_COLUMNS =
   "id, restaurant_id, kind, status, opened_by, opened_at, signed_off_at, abandoned_at";
 const SHELF_COLUMNS =
-  "location_id, sort_order, claimed_by, claimed_at, done_by, done_at";
+  "location_id, sort_order, claimed_by, claimed_at, done_by, done_at, recount_round, recount_asked_at";
 
 /** A person may say "done" for a shelf, given who holds its claim. */
 export function mayCloseShelf(
@@ -498,6 +503,8 @@ export class CountSessionsService {
         done: s.done_at != null,
         doneAt: s.done_at,
         doneBy: s.done_by ? (people.get(s.done_by) ?? "Someone") : null,
+        round: s.recount_round ?? 0,
+        recountAskedAt: s.recount_asked_at,
         items: [...(expected.get(s.location_id) ?? [])]
           .map((id) => ({
             inventoryId: id,
@@ -711,6 +718,23 @@ export class CountSessionsService {
 
     const session = await this.session(house, sessionId);
     const shelf = await this.shelf(house, sessionId, locationId);
+    // F-1544 lane 4: a "done" from before a manager sent the shelf back is
+    // the old pass. It posts no zeros and does not close the shelf again.
+    if (
+      shelf.recount_asked_at &&
+      (at ?? new Date()).getTime() < Date.parse(shelf.recount_asked_at)
+    ) {
+      return {
+        locationId,
+        done: false,
+        posted: [] as string[],
+        held: [] as string[],
+        refused: [] as Array<{ inventoryId: string; reason: string }>,
+        sessionStatus: session.status,
+        round: shelf.recount_round,
+        message: "A manager asked for this shelf to be counted again.",
+      };
+    }
     const heldByAnother = !!shelf.claimed_by && shelf.claimed_by !== userId;
     const manager =
       session.kind === "opening" || heldByAnother ? await isManager() : false;
@@ -996,4 +1020,824 @@ export class CountSessionsService {
       HttpStatus.CONFLICT,
     );
   }
+
+  // ---------------------------------------------------------------------
+  // F-1544 lane 4: the review. A manager reads the walk shelf by shelf,
+  // settles what it could not settle by itself (a shelf counted twice, an
+  // item the house does not carry), sends a shelf back, and signs it off.
+  // Every count was posted the moment it arrived (F2 a); nothing here
+  // approves one.
+  // ---------------------------------------------------------------------
+
+  /** Every row of a read, page by page (PostgREST stops at 1,000, F-293). */
+  private async everyRow<T>(
+    what: string,
+    page: (
+      from: number,
+      to: number,
+    ) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
+  ): Promise<T[]> {
+    const size = 1000;
+    const out: T[] = [];
+    for (let from = 0; ; from += size) {
+      const { data, error } = await page(from, from + size - 1);
+      if (error) throw this.unreadable(what, error);
+      const rows = (data ?? []) as T[];
+      out.push(...rows);
+      if (rows.length < size) return out;
+    }
+  }
+
+  /**
+   * The walk, for the review page. `seesMoney` (an owner or a manager, read
+   * by the caller) adds what the books expected, the difference and its
+   * value; anyone else sees what was counted, never the books (a blind
+   * count, DASH-G6).
+   */
+  async review(
+    house: string,
+    sessionId: string,
+    seesMoney: boolean,
+  ): Promise<CountReview> {
+    const client = this.dbService.getClient();
+    const session = await this.session(house, sessionId);
+    const signed = await client
+      .from("stock_count_sessions")
+      .select("signed_off_by")
+      .eq("restaurant_id", house)
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (signed.error) throw this.unreadable("sign-off read", signed.error);
+    const signedOffBy =
+      (signed.data as { signed_off_by?: string | null } | null)
+        ?.signed_off_by ?? null;
+
+    const shelvesRead = await client
+      .from("stock_count_session_shelves")
+      .select(SHELF_COLUMNS)
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .order("sort_order", { ascending: true });
+    if (shelvesRead.error)
+      throw this.unreadable("shelves read", shelvesRead.error);
+    const shelves = (shelvesRead.data ?? []) as ShelfRow[];
+    const shelfIds = shelves.map((s) => s.location_id);
+
+    const counts = await this.everyRow<ReviewCountRow>("lines read", (f, t) =>
+      client
+        .from("stock_counts")
+        .select(
+          "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at",
+        )
+        .eq("restaurant_id", house)
+        .eq("session_id", sessionId)
+        .order("id", { ascending: true })
+        .range(f, t),
+    );
+    const heldRead = await client
+      .from("stock_count_held_lines")
+      .select(
+        "id, inventory_id, location_id, counted_qty, counted_open_ml, counted_by, counted_at, held_against, state",
+      )
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .eq("state", "held")
+      .order("counted_at", { ascending: true });
+    if (heldRead.error) throw this.unreadable("held read", heldRead.error);
+    const held = (heldRead.data ?? []) as Array<{
+      id: string;
+      inventory_id: string;
+      location_id: string | null;
+      counted_qty: number;
+      counted_open_ml: number | null;
+      counted_by: string | null;
+      counted_at: string;
+      held_against: string | null;
+    }>;
+    const parkedRead = await client
+      .from("stock_count_parked_lines")
+      .select(
+        "id, location_id, description, counted_qty, counted_by, counted_at",
+      )
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .eq("state", "parked")
+      .order("counted_at", { ascending: true });
+    if (parkedRead.error)
+      throw this.unreadable("parked read", parkedRead.error);
+    const parked = (parkedRead.data ?? []) as Array<{
+      id: string;
+      location_id: string;
+      description: string;
+      counted_qty: number;
+      counted_by: string | null;
+      counted_at: string;
+    }>;
+
+    // What is on the books on a done shelf with no line from this walk: a
+    // line the phone could not send (refused, or never sent). Refusals are
+    // not kept on the server, so this is how the review sees them.
+    const done = new Set(
+      shelves.filter((s) => s.done_at).map((s) => s.location_id),
+    );
+    const lots = done.size
+      ? await this.everyRow<{
+          inventory_id: string;
+          location_id: string;
+          qty: number | null;
+          open_bottle_ml: number | null;
+        }>("shelf stock read", (f, t) =>
+          client
+            .from("inventory_lots")
+            .select("id, inventory_id, location_id, qty, open_bottle_ml")
+            .eq("restaurant_id", house)
+            .eq("stock_state", "live")
+            .in("location_id", [...done])
+            .order("id", { ascending: true })
+            .range(f, t),
+        )
+      : [];
+    const countedHere = new Set(
+      counts.map((c) => `${c.inventory_id}|${c.location_id ?? ""}`),
+    );
+    const missed = new Map<string, Set<string>>();
+    for (const l of lots) {
+      if (!((l.qty ?? 0) > 0 || (l.open_bottle_ml ?? 0) > 0)) continue;
+      if (countedHere.has(`${l.inventory_id}|${l.location_id}`)) continue;
+      const set = missed.get(l.location_id) ?? new Set<string>();
+      set.add(l.inventory_id);
+      missed.set(l.location_id, set);
+    }
+
+    const heldAgainstIds = held
+      .map((h) => h.held_against)
+      .filter((x): x is string => !!x);
+    const against = new Map<string, ReviewCountRow>();
+    for (const c of counts) against.set(c.id, c);
+    const missingAgainst = heldAgainstIds.filter((id) => !against.has(id));
+    if (missingAgainst.length) {
+      const more = await client
+        .from("stock_counts")
+        .select(
+          "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at",
+        )
+        .eq("restaurant_id", house)
+        .in("id", missingAgainst);
+      if (more.error) throw this.unreadable("held-against read", more.error);
+      for (const c of (more.data ?? []) as ReviewCountRow[])
+        against.set(c.id, c);
+    }
+
+    const itemIds = [
+      ...new Set([
+        ...counts.map((c) => c.inventory_id),
+        ...held.map((h) => h.inventory_id),
+        ...[...missed.values()].flatMap((s) => [...s]),
+      ]),
+    ];
+    const names = await this.itemNames(house, itemIds);
+    const nameOf = (id: string) =>
+      names.get(id)?.name ?? "An item with no name";
+
+    const placeIds = [
+      ...new Set([
+        ...shelfIds,
+        ...counts.map((c) => c.location_id ?? ""),
+        ...held.map((h) => h.location_id ?? ""),
+      ]),
+    ].filter(Boolean);
+    const label = new Map<string, string>();
+    if (placeIds.length) {
+      const where = await client
+        .from("storage_locations")
+        .select("id, zone, section, name")
+        .eq("restaurant_id", house)
+        .in("id", placeIds);
+      if (where.error) throw this.unreadable("shelf names read", where.error);
+      for (const l of (where.data ?? []) as HouseLocation[])
+        label.set(l.id, zoneLabel(l));
+    }
+    const placeName = (id: string | null) =>
+      id
+        ? (label.get(id) ?? "A shelf no longer in use")
+        : "Every shelf at once";
+
+    const people = await this.personNames([
+      ...counts.map((c) => c.counted_by ?? ""),
+      ...held.map((h) => h.counted_by ?? ""),
+      ...parked.map((p) => p.counted_by ?? ""),
+      ...shelves.map((s) => s.done_by ?? ""),
+      signedOffBy ?? "",
+    ]);
+    const person = (id: string | null) =>
+      id ? (people.get(id) ?? "Someone") : null;
+
+    // Money: the house's own currency and each item's cost per bottle. Read
+    // only for the people who see money.
+    let currency: string | null = null;
+    const cost = new Map<string, { wac: number | null; bottleMl: number }>();
+    if (seesMoney && itemIds.length) {
+      const cur = await client
+        .from("restaurants")
+        .select("currency")
+        .eq("id", house)
+        .maybeSingle();
+      if (cur.error) throw this.unreadable("currency read", cur.error);
+      currency =
+        (cur.data as { currency?: string | null } | null)?.currency ?? null;
+      const wac = await client
+        .from("inventory_lot_rollup")
+        .select("inventory_id, wac")
+        .eq("restaurant_id", house)
+        .in("inventory_id", itemIds);
+      if (wac.error) throw this.unreadable("cost read", wac.error);
+      const size = await client
+        .from("restaurant_inventory")
+        .select("id, bottle_size_ml")
+        .eq("restaurant_id", house)
+        .in("id", itemIds);
+      if (size.error) throw this.unreadable("bottle size read", size.error);
+      const ml = new Map<string, number>();
+      for (const r of (size.data ?? []) as Array<{
+        id: string;
+        bottle_size_ml: number | null;
+      }>) {
+        if (r.bottle_size_ml && r.bottle_size_ml > 0)
+          ml.set(r.id, Number(r.bottle_size_ml));
+      }
+      for (const r of (wac.data ?? []) as Array<{
+        inventory_id: string;
+        wac: number | null;
+      }>) {
+        cost.set(r.inventory_id, {
+          wac: r.wac == null ? null : Number(r.wac),
+          bottleMl: ml.get(r.inventory_id) ?? STAND_IN_BOTTLE_ML,
+        });
+      }
+    }
+    const valueOf = (c: ReviewCountRow): number | null => {
+      const k = cost.get(c.inventory_id);
+      if (!k || k.wac == null) return null;
+      const openDiff =
+        c.counted_open_ml != null && c.expected_open_ml != null
+          ? (c.counted_open_ml - c.expected_open_ml) / k.bottleMl
+          : 0;
+      return Math.round((c.variance_qty + openDiff) * k.wac * 100) / 100;
+    };
+
+    const signedAt = session.signed_off_at
+      ? Date.parse(session.signed_off_at)
+      : null;
+    const lineOf = (c: ReviewCountRow): ReviewLine => ({
+      countId: c.id,
+      inventoryId: c.inventory_id,
+      name: nameOf(c.inventory_id),
+      counted: c.counted_qty,
+      openMl: c.counted_open_ml,
+      countedBy: person(c.counted_by),
+      countedAt: c.counted_at,
+      afterSignOff:
+        signedAt != null &&
+        !!c.arrived_at &&
+        Date.parse(c.arrived_at) > signedAt,
+      ...(seesMoney
+        ? {
+            expected: c.expected_qty,
+            expectedOpenMl: c.expected_open_ml,
+            variance: c.variance_qty,
+            value: valueOf(c),
+          }
+        : {}),
+    });
+
+    const byShelf = new Map<string, ReviewCountRow[]>();
+    const elsewhere: ReviewCountRow[] = [];
+    const inWalk = new Set(shelfIds);
+    for (const c of counts) {
+      if (c.location_id && inWalk.has(c.location_id)) {
+        const list = byShelf.get(c.location_id) ?? [];
+        list.push(c);
+        byShelf.set(c.location_id, list);
+      } else elsewhere.push(c);
+    }
+    const sortLines = (a: ReviewLine, b: ReviewLine) =>
+      a.name.localeCompare(b.name) || a.countedAt.localeCompare(b.countedAt);
+
+    // A bottle short on one shelf and the same wine found where the books
+    // had none: most likely moved, not lost. Both counts already set each
+    // shelf right, so nothing is posted; the review says so (money only).
+    const moved: CountReview["moved"] = [];
+    if (seesMoney) {
+      const short = counts.filter((c) => c.variance_qty < 0 && c.location_id);
+      const found = counts.filter(
+        (c) => c.variance_qty > 0 && c.expected_qty === 0 && c.location_id,
+      );
+      for (const f of found) {
+        const s = short.find(
+          (x) =>
+            x.inventory_id === f.inventory_id &&
+            x.location_id !== f.location_id,
+        );
+        if (!s) continue;
+        moved.push({
+          inventoryId: f.inventory_id,
+          name: nameOf(f.inventory_id),
+          bottles: Math.min(-s.variance_qty, f.variance_qty),
+          from: placeName(s.location_id),
+          to: placeName(f.location_id),
+        });
+      }
+    }
+
+    const reviewShelves = shelves.map((s) => {
+      const lines = (byShelf.get(s.location_id) ?? [])
+        .map(lineOf)
+        .sort(sortLines);
+      return {
+        locationId: s.location_id,
+        name: placeName(s.location_id),
+        done: s.done_at != null,
+        doneAt: s.done_at,
+        doneBy: person(s.done_by),
+        round: s.recount_round ?? 0,
+        recountAskedAt: s.recount_asked_at,
+        lines,
+        missed: [...(missed.get(s.location_id) ?? [])]
+          .map((id) => ({ inventoryId: id, name: nameOf(id) }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        ...(seesMoney
+          ? {
+              value: lines.some((l) => l.value == null)
+                ? null
+                : Math.round(
+                    lines.reduce((t, l) => t + (l.value ?? 0), 0) * 100,
+                  ) / 100,
+            }
+          : {}),
+      };
+    });
+
+    return {
+      id: session.id,
+      kind: session.kind,
+      status: session.status,
+      openedAt: session.opened_at,
+      signedOffAt: session.signed_off_at,
+      signedOffBy: person(signedOffBy),
+      seesMoney,
+      currency,
+      shelves: reviewShelves,
+      notCounted: reviewShelves
+        .filter((s) => !s.done)
+        .map((s) => ({
+          locationId: s.locationId,
+          name: s.name,
+          round: s.round,
+        })),
+      elsewhere: elsewhere.map(lineOf).sort(sortLines),
+      held: held.map((h) => {
+        const a = h.held_against ? against.get(h.held_against) : undefined;
+        return {
+          id: h.id,
+          inventoryId: h.inventory_id,
+          name: nameOf(h.inventory_id),
+          locationId: h.location_id,
+          shelf: placeName(h.location_id),
+          counted: h.counted_qty,
+          openMl: h.counted_open_ml,
+          countedBy: person(h.counted_by),
+          countedAt: h.counted_at,
+          against: a ? lineOf(a) : null,
+        };
+      }),
+      parked: parked.map((p) => ({
+        id: p.id,
+        locationId: p.location_id,
+        shelf: placeName(p.location_id),
+        description: p.description,
+        counted: p.counted_qty,
+        countedBy: person(p.counted_by),
+        countedAt: p.counted_at,
+      })),
+      moved,
+      afterSignOff: counts
+        .map(lineOf)
+        .filter((l) => l.afterSignOff)
+        .sort(sortLines),
+    };
+  }
+
+  /** A held line the manager chose: posted now, as its counter, at its moment. */
+  async useHeldLine(
+    house: string,
+    sessionId: string,
+    heldLineId: string,
+    userId: string,
+  ) {
+    const client = this.dbService.getClient();
+    const read = await client
+      .from("stock_count_held_lines")
+      .select(
+        "id, inventory_id, location_id, stock_state, counted_qty, counted_open_ml, counted_by, counted_at, reason, idempotency_key, state, resolved_count_id",
+      )
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .eq("id", heldLineId)
+      .maybeSingle();
+    if (read.error) throw this.unreadable("held read", read.error);
+    const h = read.data as {
+      id: string;
+      inventory_id: string;
+      location_id: string | null;
+      stock_state: "live" | "shadow";
+      counted_qty: number;
+      counted_open_ml: number | null;
+      counted_by: string | null;
+      counted_at: string;
+      reason: string | null;
+      idempotency_key: string;
+      state: "held" | "posted" | "dropped";
+      resolved_count_id: string | null;
+    } | null;
+    if (!h) {
+      throw new HttpException(
+        "That line is not one of this count's.",
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (h.state === "posted") {
+      return {
+        heldLineId: h.id,
+        state: "posted",
+        countId: h.resolved_count_id,
+        replayed: true,
+      };
+    }
+    if (h.state === "dropped") {
+      throw new HttpException(
+        "This line was set aside, so it cannot be used now.",
+        HttpStatus.CONFLICT,
+      );
+    }
+    const prefix = `count:${h.inventory_id}:`;
+    if (!h.idempotency_key.startsWith(prefix)) {
+      throw new HttpException(
+        "This line could not be matched to its count. Count the shelf again.",
+        HttpStatus.CONFLICT,
+      );
+    }
+    const session = await this.session(house, sessionId);
+    const out = await this.inventory.recordSpotCount(
+      house,
+      h.inventory_id,
+      {
+        countedQty: h.counted_qty,
+        stockState: h.stock_state,
+        clientCountId: h.idempotency_key.slice(prefix.length),
+        reason: h.reason ?? "Stock-take line",
+        performedBy: h.counted_by,
+        countedAgoMs: Math.max(0, Date.now() - Date.parse(h.counted_at)),
+        locationId: h.location_id,
+        opening: session.kind === "opening",
+        sessionId,
+        openMl: h.counted_open_ml,
+        // The manager's word keeps a line older than 72 h (ADR 0286).
+        role: "manager",
+      },
+      { heldLineId: h.id, resolvedBy: userId },
+    );
+    return {
+      heldLineId: h.id,
+      state: "posted",
+      countId: out?.count?.countId ?? null,
+      replayed: false,
+    };
+  }
+
+  /** A held line set aside: it stays as a record; no stock moves. */
+  async dropHeldLine(
+    house: string,
+    sessionId: string,
+    heldLineId: string,
+    userId: string,
+  ) {
+    const client = this.dbService.getClient();
+    const upd = await client
+      .from("stock_count_held_lines")
+      .update({
+        state: "dropped",
+        resolved_by: userId,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .eq("id", heldLineId)
+      .eq("state", "held")
+      .select("id");
+    if (upd.error) throw this.unreadable("held drop", upd.error);
+    if ((upd.data as unknown[] | null)?.length)
+      return { heldLineId, state: "dropped", replayed: false };
+    const now = await client
+      .from("stock_count_held_lines")
+      .select("state")
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .eq("id", heldLineId)
+      .maybeSingle();
+    if (now.error) throw this.unreadable("held read", now.error);
+    const state = (now.data as { state?: string } | null)?.state;
+    if (!state) {
+      throw new HttpException(
+        "That line is not one of this count's.",
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (state === "dropped")
+      return { heldLineId, state: "dropped", replayed: true };
+    throw new HttpException(
+      "This line was already used, so it cannot be set aside.",
+      HttpStatus.CONFLICT,
+    );
+  }
+
+  private async parkedLine(house: string, sessionId: string, id: string) {
+    const read = await this.dbService
+      .getClient()
+      .from("stock_count_parked_lines")
+      .select(
+        "id, location_id, counted_qty, counted_by, counted_at, state, resolved_count_id",
+      )
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .eq("id", id)
+      .maybeSingle();
+    if (read.error) throw this.unreadable("parked read", read.error);
+    if (!read.data) {
+      throw new HttpException(
+        "That line is not one of this count's.",
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return read.data as {
+      id: string;
+      location_id: string;
+      counted_qty: number;
+      counted_by: string | null;
+      counted_at: string;
+      state: "parked" | "carried" | "dropped";
+      resolved_count_id: string | null;
+    };
+  }
+
+  /**
+   * A parked line the manager matched to an item the house already carries:
+   * its bottles are counted on its shelf, as its counter, at its moment,
+   * through the one count writer. Creating a new item from a parked line
+   * ("carry this", ADR 0115) is not built: that ADR is still proposed.
+   */
+  async carryParked(
+    house: string,
+    sessionId: string,
+    parkedId: string,
+    userId: string,
+    dto: { inventoryId?: unknown },
+  ) {
+    const inventoryId =
+      typeof dto?.inventoryId === "string" ? dto.inventoryId.trim() : "";
+    if (!inventoryId) {
+      throw new HttpException(
+        "Choose which of the house's items this is.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const p = await this.parkedLine(house, sessionId, parkedId);
+    if (p.state === "carried") {
+      return {
+        parkedId: p.id,
+        state: "carried",
+        countId: p.resolved_count_id,
+        replayed: true,
+      };
+    }
+    if (p.state === "dropped") {
+      throw new HttpException(
+        "This line was set aside, so it cannot be counted now.",
+        HttpStatus.CONFLICT,
+      );
+    }
+    const session = await this.session(house, sessionId);
+    const out = await this.inventory.recordSpotCount(house, inventoryId, {
+      countedQty: p.counted_qty,
+      stockState: "live",
+      // One key per parked line: a retry replays, never counts twice.
+      clientCountId: `parked:${p.id}`,
+      reason: "Stock-take: found on the shelf, matched in review",
+      performedBy: p.counted_by,
+      countedAgoMs: Math.max(0, Date.now() - Date.parse(p.counted_at)),
+      locationId: p.location_id,
+      opening: session.kind === "opening",
+      sessionId,
+      role: "manager",
+    });
+    const countId = out?.count?.countId ?? null;
+    const upd = await this.dbService
+      .getClient()
+      .from("stock_count_parked_lines")
+      .update({
+        state: "carried",
+        resolved_by: userId,
+        resolved_at: new Date().toISOString(),
+        resolved_count_id: countId,
+      })
+      .eq("restaurant_id", house)
+      .eq("id", p.id)
+      .eq("state", "parked")
+      .select("id");
+    if (upd.error) throw this.unreadable("parked carry", upd.error);
+    return {
+      parkedId: p.id,
+      state: "carried",
+      countId,
+      held: out?.count?.held === true,
+      replayed: false,
+    };
+  }
+
+  /** A parked line set aside: nothing is counted. */
+  async dropParked(
+    house: string,
+    sessionId: string,
+    parkedId: string,
+    userId: string,
+  ) {
+    const p = await this.parkedLine(house, sessionId, parkedId);
+    if (p.state === "dropped")
+      return { parkedId: p.id, state: "dropped", replayed: true };
+    if (p.state === "carried") {
+      throw new HttpException(
+        "This line was already counted, so it cannot be set aside.",
+        HttpStatus.CONFLICT,
+      );
+    }
+    const upd = await this.dbService
+      .getClient()
+      .from("stock_count_parked_lines")
+      .update({
+        state: "dropped",
+        resolved_by: userId,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("restaurant_id", house)
+      .eq("id", p.id)
+      .eq("state", "parked")
+      .select("id");
+    if (upd.error) throw this.unreadable("parked drop", upd.error);
+    return { parkedId: p.id, state: "dropped", replayed: false };
+  }
+
+  /**
+   * Sends a shelf back to be counted again. `seenRound` is the round the
+   * manager saw, so a double tap sends it back once.
+   */
+  async askRecount(
+    house: string,
+    sessionId: string,
+    locationId: string,
+    userId: string,
+    dto: { seenRound?: unknown },
+  ) {
+    const seen = Number(dto?.seenRound);
+    if (!Number.isInteger(seen) || seen < 0) {
+      throw new HttpException(
+        "The page is out of date. Refresh it and try again.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const r = await this.inventory.askShelfRecount(
+      house,
+      sessionId,
+      locationId,
+      userId,
+      seen,
+    );
+    return {
+      locationId,
+      round: Number(r.round ?? seen),
+      askedAt: (r.asked_at as string | null) ?? null,
+      setAside: Number(r.dropped_held ?? 0),
+      replayed: r.replayed === true,
+    };
+  }
+
+  /**
+   * Signs the walk off: the manager's word that it is complete (F2 a). With
+   * shelves not counted it asks first, unless the manager says to go on.
+   */
+  async signOff(
+    house: string,
+    sessionId: string,
+    userId: string,
+    dto: { evenIfUnfinished?: unknown },
+  ) {
+    const r = await this.inventory.signOffCountSession(
+      house,
+      sessionId,
+      userId,
+      dto?.evenIfUnfinished === true,
+    );
+    return {
+      id: sessionId,
+      status: String(r.status ?? ""),
+      signedOff: r.status === "signed_off",
+      signedOffAt: (r.signed_off_at as string | null) ?? null,
+      notCounted: r.not_counted == null ? 0 : Number(r.not_counted),
+      stamped: r.stamped == null ? null : Number(r.stamped),
+      replayed: r.replayed === true,
+    };
+  }
+}
+
+interface ReviewCountRow {
+  id: string;
+  inventory_id: string;
+  location_id: string | null;
+  counted_qty: number;
+  expected_qty: number;
+  variance_qty: number;
+  counted_open_ml: number | null;
+  expected_open_ml: number | null;
+  counted_by: string | null;
+  counted_at: string;
+  arrived_at: string | null;
+}
+
+export interface ReviewLine {
+  countId: string;
+  inventoryId: string;
+  name: string;
+  counted: number;
+  openMl: number | null;
+  countedBy: string | null;
+  countedAt: string;
+  afterSignOff: boolean;
+  /** Owner and manager only. */
+  expected?: number;
+  expectedOpenMl?: number | null;
+  variance?: number;
+  /** In the house's currency; null when the item has no cost. */
+  value?: number | null;
+}
+
+export interface CountReview {
+  id: string;
+  kind: CountSessionKind;
+  status: string;
+  openedAt: string;
+  signedOffAt: string | null;
+  signedOffBy: string | null;
+  seesMoney: boolean;
+  currency: string | null;
+  shelves: Array<{
+    locationId: string;
+    name: string;
+    done: boolean;
+    doneAt: string | null;
+    doneBy: string | null;
+    round: number;
+    recountAskedAt: string | null;
+    lines: ReviewLine[];
+    missed: Array<{ inventoryId: string; name: string }>;
+    value?: number | null;
+  }>;
+  notCounted: Array<{ locationId: string; name: string; round: number }>;
+  elsewhere: ReviewLine[];
+  held: Array<{
+    id: string;
+    inventoryId: string;
+    name: string;
+    locationId: string | null;
+    shelf: string;
+    counted: number;
+    openMl: number | null;
+    countedBy: string | null;
+    countedAt: string;
+    against: ReviewLine | null;
+  }>;
+  parked: Array<{
+    id: string;
+    locationId: string;
+    shelf: string;
+    description: string;
+    counted: number;
+    countedBy: string | null;
+    countedAt: string;
+  }>;
+  moved: Array<{
+    inventoryId: string;
+    name: string;
+    bottles: number;
+    from: string;
+    to: string;
+  }>;
+  afterSignOff: ReviewLine[];
 }

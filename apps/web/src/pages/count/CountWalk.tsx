@@ -49,6 +49,7 @@ import {
 } from '@/lib/spotCountOutbox'
 import {
   findItems,
+  forgetRecounted,
   itemsOnShelf,
   kindWords,
   lineBody,
@@ -119,6 +120,8 @@ export default function CountWalk() {
   const load = useCallback(async () => {
     try {
       const s = await pullCountSession(sessionId)
+      // F-1544 lane 4: a shelf a manager sent back reads as not started.
+      setWalk((w) => forgetRecounted(w, s).walk)
       setSession(s)
       setFromPhone(false)
       setLoadError(null)
@@ -127,7 +130,7 @@ export default function CountWalk() {
       if (readStored<CountSession>(pKey)) setFromPhone(true)
       else setLoadError(saidBy(err, 'The count could not be read. Check the signal and try again.'))
     }
-  }, [sessionId, pKey])
+  }, [sessionId, pKey, setWalk])
 
   /**
    * What the queue says about this walk: a line or a "done" saved on this
@@ -294,6 +297,16 @@ export default function CountWalk() {
         <p className="text-sm text-inkm-2">
           {doneCount} of {session.shelves.length} shelves done
         </p>
+        {manager && (
+          <button
+            type="button"
+            data-ux-key="count:review"
+            className={`${QUIET} w-full`}
+            onClick={() => navigate(`/count/${sessionId}/review`)}
+          >
+            Review and sign off
+          </button>
+        )}
         {fromPhone && (
           <p className="rounded-xl bg-white/5 px-3 py-2 text-sm text-inkm-2">
             No signal: this is the list saved on this phone.

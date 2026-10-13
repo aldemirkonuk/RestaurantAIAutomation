@@ -7,6 +7,7 @@ import type { CountShelf } from '../../services/api/countSessions'
 import {
   emptyWalk,
   findItems,
+  forgetRecounted,
   lineBody,
   lineKey,
   nextShelf,
@@ -143,5 +144,61 @@ describe('find a bottle', () => {
 describe('the walk kept on this phone', () => {
   it('reads as empty when storage holds nothing or refuses', () => {
     expect(readWalk('mdv:none')).toEqual(emptyWalk())
+  })
+})
+
+describe('a shelf a manager sent back (F-1544 lane 4)', () => {
+  const ASKED = '2026-10-12T22:00:00.000Z'
+  const before = line({ locationId: 'L1', itemId: 'a', at: '2026-10-12T21:30:00.000Z' })
+  const after = line({ locationId: 'L1', itemId: 'b', at: '2026-10-12T22:05:00.000Z' })
+  const other = line({ locationId: 'L2', itemId: 'a', at: '2026-10-12T21:30:00.000Z' })
+  const walked = () => ({
+    ...emptyWalk(),
+    lines: {
+      [lineKey('L1', 'a')]: before,
+      [lineKey('L1', 'b')]: after,
+      [lineKey('L2', 'a')]: other,
+    },
+    dones: {
+      L1: { clientDoneId: 'd1', state: 'sent' as const },
+      L2: { clientDoneId: 'd2', state: 'sent' as const },
+    },
+  })
+
+  it('forgets the old pass on that shelf only, keeps lines after the ask, and reads as not started', () => {
+    const sent = shelf('L1', { round: 1, recountAskedAt: ASKED })
+    const { walk, forgot } = forgetRecounted(walked(), { shelves: [sent, shelf('L2')] })
+    expect(forgot).toEqual(['L1'])
+    expect(Object.keys(walk.lines).sort()).toEqual([lineKey('L1', 'b'), lineKey('L2', 'a')])
+    expect(walk.dones.L1).toBeUndefined()
+    expect(walk.dones.L2).toBeDefined()
+    expect(walk.rounds).toEqual({ L1: 1 })
+    expect(shelfStatus(sent, walk).tone).toBe('open')
+  })
+
+  it('forgets once per round: a line counted again later is kept on the next pull', () => {
+    const sent = shelf('L1', { round: 1, recountAskedAt: ASKED })
+    const once = forgetRecounted(walked(), { shelves: [sent] }).walk
+    const recounted = {
+      ...once,
+      lines: { ...once.lines, [lineKey('L1', 'a')]: line({ ...before, at: '2026-10-12T21:00:00.000Z' }) },
+    }
+    const again = forgetRecounted(recounted, { shelves: [sent] })
+    expect(again.walk).toBe(recounted)
+    expect(again.forgot).toEqual([])
+  })
+
+  it('control: a walk no shelf of which was sent back is left exactly as it was', () => {
+    const w = walked()
+    const out = forgetRecounted(w, { shelves: [shelf('L1'), shelf('L2', { round: 0 })] })
+    expect(out.walk).toBe(w)
+    expect(out.forgot).toEqual([])
+  })
+
+  it('keeps the rounds it saw across a reload of the phone', () => {
+    const w = { ...emptyWalk(), rounds: { L1: 2 } }
+    localStorage.setItem('walk-test', JSON.stringify(w))
+    expect(readWalk('walk-test').rounds).toEqual({ L1: 2 })
+    localStorage.removeItem('walk-test')
   })
 })

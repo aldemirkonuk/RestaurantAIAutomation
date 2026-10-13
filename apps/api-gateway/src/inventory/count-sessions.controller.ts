@@ -183,4 +183,122 @@ export class CountSessionsController {
     );
     return this.sessions.abandon(house, sessionId, userId);
   }
+
+  // F-1544 lane 4: the review. Anyone in the house may read it; what the
+  // books expected, the difference and its value are the owner's and the
+  // manager's (DASH-G6). Every act on it is theirs alone.
+  private async manages(house: string, userId: string, act: string) {
+    await this.organizations.assertCanManageRestaurant(userId, house, act);
+  }
+
+  @Get(":sessionId/review")
+  @ApiOperation({
+    summary:
+      "A count's review: each shelf's lines, shelves not counted, held and parked lines, bottles probably moved, lines after sign-off. The books and money for owner or manager only.",
+  })
+  async review(
+    @Param("sessionId") sessionId: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    const seesMoney = await this.isManager(house, userId)();
+    return this.sessions.review(house, sessionId, seesMoney);
+  }
+
+  @Post(":sessionId/held/:heldLineId/use")
+  @ApiOperation({
+    summary:
+      "Use a held line (owner or manager): it posts through the one count writer as its counter, and the shelf's other held lines are set aside",
+  })
+  async useHeld(
+    @Param("sessionId") sessionId: string,
+    @Param("heldLineId") heldLineId: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    await this.manages(house, userId, "settle a stock count");
+    return this.sessions.useHeldLine(house, sessionId, heldLineId, userId);
+  }
+
+  @Post(":sessionId/held/:heldLineId/drop")
+  @ApiOperation({ summary: "Set a held line aside (owner or manager)" })
+  async dropHeld(
+    @Param("sessionId") sessionId: string,
+    @Param("heldLineId") heldLineId: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    await this.manages(house, userId, "settle a stock count");
+    return this.sessions.dropHeldLine(house, sessionId, heldLineId, userId);
+  }
+
+  @Post(":sessionId/parked/:parkedId/carry")
+  @ApiOperation({
+    summary:
+      "Count a parked line as one of the house's items (owner or manager), through the one count writer",
+  })
+  async carryParked(
+    @Param("sessionId") sessionId: string,
+    @Param("parkedId") parkedId: string,
+    @Body() body: { inventoryId?: string },
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    await this.manages(house, userId, "settle a stock count");
+    return this.sessions.carryParked(
+      house,
+      sessionId,
+      parkedId,
+      userId,
+      body ?? {},
+    );
+  }
+
+  @Post(":sessionId/parked/:parkedId/drop")
+  @ApiOperation({ summary: "Set a parked line aside (owner or manager)" })
+  async dropParked(
+    @Param("sessionId") sessionId: string,
+    @Param("parkedId") parkedId: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    await this.manages(house, userId, "settle a stock count");
+    return this.sessions.dropParked(house, sessionId, parkedId, userId);
+  }
+
+  @Post(":sessionId/shelves/:locationId/recount")
+  @ApiOperation({
+    summary: "Send a shelf back to be counted again (owner or manager)",
+  })
+  async recount(
+    @Param("sessionId") sessionId: string,
+    @Param("locationId") locationId: string,
+    @Body() body: { seenRound?: number },
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    await this.manages(house, userId, "send a shelf back to be counted");
+    return this.sessions.askRecount(
+      house,
+      sessionId,
+      locationId,
+      userId,
+      body ?? {},
+    );
+  }
+
+  @Post(":sessionId/sign-off")
+  @ApiOperation({
+    summary:
+      "Sign a count off as complete (owner or manager); stamps last counted for items counted on every shelf they sit on",
+  })
+  async signOff(
+    @Param("sessionId") sessionId: string,
+    @Body() body: { evenIfUnfinished?: boolean },
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    await this.manages(house, userId, "sign off a stock count");
+    return this.sessions.signOff(house, sessionId, userId, body ?? {});
+  }
 }
