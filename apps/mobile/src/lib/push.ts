@@ -50,14 +50,22 @@ Notifications.setNotificationHandler({
 });
 
 /**
+ * What turning Push on came to (F-1571): `registered` only when the phone
+ * allowed notifications AND the gateway took the device. `refused` is the
+ * phone's own setting; `failed` is a step that threw; `unavailable` is a
+ * device with no push at all (a simulator).
+ */
+export type PushOutcome = "registered" | "refused" | "failed" | "unavailable";
+
+/**
  * Ask for permission, fetch the Expo push token, and register it with the
  * gateway. Every push also warms the cache: by the time the manager opens
  * the app from a notification, the feed is already fresh.
  */
-export async function registerPush(opts: { ask?: boolean } = {}): Promise<void> {
+export async function registerPush(opts: { ask?: boolean } = {}): Promise<PushOutcome> {
   const ask = opts.ask ?? true;
   try {
-    if (!Device.isDevice) return; // simulators have no push
+    if (!Device.isDevice) return "unavailable"; // simulators have no push
 
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
@@ -73,7 +81,7 @@ export async function registerPush(opts: { ask?: boolean } = {}): Promise<void> 
       const req = await Notifications.requestPermissionsAsync();
       granted = req.status === "granted";
     }
-    if (!granted) return;
+    if (!granted) return "refused";
 
     const token = (await Notifications.getExpoPushTokenAsync(projectIdOption())).data;
 
@@ -88,8 +96,24 @@ export async function registerPush(opts: { ask?: boolean } = {}): Promise<void> 
       });
       registeredToken = token;
     }
+    return token ? "registered" : "failed";
   } catch {
-    // Push is additive; the app must never fail because of it.
+    // Push is additive; the app must never fail because of it. The caller is
+    // told, so the switch does not say on when this phone gets nothing.
+    return "failed";
+  }
+}
+
+/**
+ * Whether the phone still allows Mudavym's notifications, read without
+ * asking. Null when it cannot be read (a simulator, or the read threw).
+ */
+export async function pushAllowedByPhone(): Promise<boolean | null> {
+  try {
+    if (!Device.isDevice) return null;
+    return (await Notifications.getPermissionsAsync()).status === "granted";
+  } catch {
+    return null;
   }
 }
 

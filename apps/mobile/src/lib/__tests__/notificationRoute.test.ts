@@ -89,6 +89,13 @@ describe("routeForNotificationData", () => {
     );
   });
 
+  // F-1572: the Team tab shows tonight's shift, never the week's note.
+  it("opens a manager's week note in the inbox, where its words are", () => {
+    expect(
+      routeForNotificationData({ type: "team_note", actionUrl: "/team?week=2026-10-12" }),
+    ).toBe("/notifications");
+  });
+
   it("lands in the inbox rather than nowhere for an unmappable payload", () => {
     expect(routeForNotificationData({})).toBe("/notifications");
     expect(routeForNotificationData(null)).toBe("/notifications");

@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { ScrollView, Switch, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Linking, ScrollView, Switch, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
@@ -12,7 +12,14 @@ import { useHouses } from "@/api/queries";
 import { openHouse } from "@/auth/houseChoice";
 import { clearPersistedQueries } from "@/lib/queryClient";
 import { confirmSignOut } from "@/lib/confirmSignOut";
-import { registerPush, unregisterPush } from "@/lib/push";
+import { pushAllowedByPhone, registerPush, unregisterPush } from "@/lib/push";
+import {
+  PUSH_PROBLEM_WORDS,
+  pushSwitchOn,
+  savedPushProblem,
+  turnPushOn,
+  type PushProblem,
+} from "@/lib/pushSwitch";
 import { trackGuidance } from "@/guidance/analytics";
 import { useGuidanceOptional } from "@/guidance/GuidanceProvider";
 
@@ -37,7 +44,33 @@ export default function SettingsScreen() {
       await signOut();
     });
 
-  const pushOn = !!guidance?.servicePermissions?.push;
+  // F-1571: the switch says what this phone really gets. Saved on but refused
+  // by the phone, or not taken by the gateway, it shows off with the reason.
+  const pushSaved = !!guidance?.servicePermissions?.push;
+  const [pushProblem, setPushProblem] = useState<PushProblem>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const pushOn = pushSwitchOn(pushSaved, pushProblem);
+  const pushWords = pushProblem ? PUSH_PROBLEM_WORDS[pushProblem] : null;
+
+  useEffect(() => {
+    let live = true;
+    void savedPushProblem(pushSaved, pushAllowedByPhone).then((p) => {
+      if (live && p) setPushProblem(p);
+    });
+    return () => {
+      live = false;
+    };
+  }, [pushSaved]);
+
+  const turnOn = async () => {
+    setPushBusy(true);
+    const problem = await turnPushOn({
+      register: () => registerPush(),
+      save: (on) => guidance?.setServicePermission("push", on),
+    });
+    setPushProblem(problem);
+    setPushBusy(false);
+  };
 
   return (
     <>
@@ -162,14 +195,37 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={pushOn}
+              disabled={pushBusy}
               onValueChange={async (v) => {
-                guidance?.setServicePermission("push", v);
-                if (v) await registerPush().catch(() => {});
-                else await unregisterPush().catch(() => {});
+                if (v) return turnOn();
+                setPushProblem(null);
+                guidance?.setServicePermission("push", false);
+                await unregisterPush().catch(() => {});
               }}
               trackColor={{ true: color.wineStrong }}
             />
           </View>
+
+          {pushWords ? (
+            <View style={{ gap: space.sm }}>
+              <AppText variant="footnote" tone="warning">
+                {pushWords.message}
+              </AppText>
+              {pushWords.action ? (
+                <PressableScale
+                  disabled={pushBusy}
+                  onPress={() =>
+                    pushProblem === "refused" ? void Linking.openSettings() : void turnOn()
+                  }
+                  accessibilityLabel={pushWords.action}
+                >
+                  <AppText variant="bodyMedium" tone="wine">
+                    {pushWords.action}
+                  </AppText>
+                </PressableScale>
+              ) : null}
+            </View>
+          ) : null}
 
           <Hairline />
 

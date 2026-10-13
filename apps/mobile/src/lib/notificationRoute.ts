@@ -104,6 +104,10 @@ export function routeForNotificationData(
   // screen for that order, not the order page, which has no such control.
   if (type === "delivery_item_to_name" && orderId) return `/cellar/receive/${orderId}`;
   if (orderId) return `/supply/${orderId}`;
+  // F-1572: a manager's week note opens the inbox, where its words are. The
+  // Team tab shows tonight's shift only, never the note (the week view on
+  // the phone is the F-591 build).
+  if (type === "team_note") return "/notifications";
 
   const inventoryId = d.inventoryId ?? d.inventory_id;
   if (inventoryId) return `/cellar/${inventoryId}`;
