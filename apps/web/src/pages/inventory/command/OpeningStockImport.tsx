@@ -23,6 +23,7 @@ import {
   recordSpotCount,
 } from "../../../services/api/inventory";
 import { getErrorMessage } from "../../../services/api/client";
+import { writeOutcomeUnknown } from "../../../lib/draftWriteKey";
 import {
   parseCsvRows,
   planOpeningStock,
@@ -73,6 +74,12 @@ export function OpeningStockImport({
   const [problem, setProblem] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // F-1727: one key per plan, not per press. A Load whose answer never came
+  // back is pressed again with the same key, so the gateway hands back the
+  // first answer instead of receiving the file a second time.
+  const [planKey, setPlanKey] = useState("");
+  // F-1727: the last Load got no answer; the choices stay as they were sent.
+  const [unanswered, setUnanswered] = useState(false);
   // F-1683: the shelf new items the file puts on no shelf go on; '' = none.
   const [putAllOn, setPutAllOn] = useState('');
   // ADR 0341 F3: whether tax is inside the file's costs, one answer for the
@@ -89,9 +96,11 @@ export function OpeningStockImport({
     setOutcome(null);
     setProblem(null);
     setPutAllOn('');
+    setUnanswered(false);
     if (!file) return;
     try {
       setPlan(planOpeningStock(parseCsvRows(await readCsvFile(file)), carried, shelves));
+      setPlanKey(`opening-stock:${crypto.randomUUID()}`);
     } catch (e) {
       setProblem(e instanceof Error ? e.message : "The file could not be read, so nothing was sent.");
     }
@@ -122,7 +131,7 @@ export function OpeningStockImport({
             })),
           },
           undefined,
-          { idempotencyKey: `opening-stock:${crypto.randomUUID()}` },
+          { idempotencyKey: planKey },
         );
         for (const line of r.results) {
           if (line.status === "failed") out.failed.push(`${line.wineName}: ${line.error ?? "not received"}`);
@@ -164,10 +173,20 @@ export function OpeningStockImport({
         }
       }
       setOutcome(out);
+      setUnanswered(false);
       setPlan(null);
       onDone();
     } catch (e) {
-      setProblem(`Nothing was received — ${getErrorMessage(e)}`);
+      // F-1727: no answer (or the first try still running) is not a refusal;
+      // some lines may already be in. The same key makes a re-send safe.
+      if (writeOutcomeUnknown(e)) {
+        setUnanswered(true);
+        setProblem(
+          "The answer did not come back, so some of these may already be in. Press Load again to finish: nothing is received twice.",
+        );
+      } else {
+        setProblem(`Nothing was received — ${getErrorMessage(e)}`);
+      }
     } finally {
       setSending(false);
     }
@@ -247,7 +266,7 @@ export function OpeningStockImport({
               terms={costTax}
               value={costTaxBasis}
               onChange={setCostTaxBasis}
-              disabled={sending}
+              disabled={sending || unanswered}
               what="the costs in this file"
             />
           )}
@@ -264,6 +283,7 @@ export function OpeningStockImport({
                   aria-label="Shelf for the items with no shelf"
                   value={putAllOn}
                   onChange={(e) => setPutAllOn(e.target.value)}
+                  disabled={unanswered}
                   className="mt-1 h-8 rounded-lg border border-gray-200 px-2 text-xs"
                 >
                   <option value="">No shelf</option>

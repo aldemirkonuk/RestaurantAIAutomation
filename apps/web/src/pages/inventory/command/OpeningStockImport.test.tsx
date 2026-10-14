@@ -287,3 +287,78 @@ describe('OpeningStockImport: whether tax is inside the costs (ADR 0341 F3)', ()
     expect(screen.queryByTestId('cost-tax-choice')).toBeNull();
   });
 });
+
+/**
+ * F-1727 (sim 57): a Load whose answer never came back said "Nothing was
+ * received" although the lines may have landed, and every press carried a
+ * fresh key, so pressing again received the new items a second time. One key
+ * per plan now; the gateway's IdempotencyInterceptor answers the same key with
+ * the first answer.
+ */
+describe('OpeningStockImport: a Load whose answer did not come back (F-1727)', () => {
+  const lost = () =>
+    Object.assign(new Error('timeout of 30000ms exceeded'), {
+      isAxiosError: true,
+      request: {},
+      response: undefined,
+    });
+  const open = async () => {
+    api.bulkCreateInventoryItems.mockReset();
+    csv.text = 'Name,Quantity\nEfes Pilsen,24';
+    render(<OpeningStockImport carried={[]} shelves={[]} onDone={() => {}} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
+      target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
+    });
+    return screen.findByRole('button', { name: 'Load 1 item' });
+  };
+  const keyOf = (n: number) =>
+    (api.bulkCreateInventoryItems.mock.calls[n] as unknown[])[2] as { idempotencyKey: string };
+
+  it('[REVERT-FAILS] says the answer did not come back, and the second press carries the same key', async () => {
+    const load = await open();
+    api.bulkCreateInventoryItems
+      .mockRejectedValueOnce(lost())
+      .mockResolvedValueOnce({ results: [{ status: 'created', wineName: 'Efes Pilsen' }] });
+    fireEvent.click(load);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/The answer did not come back, so some of these may already be in/);
+    expect(alert.textContent).toMatch(/nothing is received twice/);
+    expect(alert.textContent).not.toMatch(/Nothing was received/);
+    fireEvent.click(screen.getByRole('button', { name: 'Load 1 item' }));
+    expect(await screen.findByText(/1 received · 0 counted/)).toBeTruthy();
+    expect(api.bulkCreateInventoryItems).toHaveBeenCalledTimes(2);
+    expect(keyOf(0).idempotencyKey).toMatch(/^opening-stock:/);
+    expect(keyOf(1).idempotencyKey).toBe(keyOf(0).idempotencyKey);
+    csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
+  });
+
+  it('control: a refusal still says nothing was received', async () => {
+    const load = await open();
+    api.bulkCreateInventoryItems.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 403'), {
+        isAxiosError: true,
+        request: {},
+        response: { status: 403, data: { message: 'Only an owner or a manager may load opening stock' } },
+      }),
+    );
+    fireEvent.click(load);
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /Nothing was received — Only an owner or a manager may load opening stock/,
+    );
+    csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
+  });
+
+  it('a new file gets a new key', async () => {
+    await open();
+    api.bulkCreateInventoryItems.mockResolvedValue({ results: [] });
+    fireEvent.click(screen.getByRole('button', { name: 'Load 1 item' }));
+    await waitFor(() => expect(api.bulkCreateInventoryItems).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
+      target: { files: [new File(['y'], 'stock2.csv', { type: 'text/csv' })] },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Load 1 item' }));
+    await waitFor(() => expect(api.bulkCreateInventoryItems).toHaveBeenCalledTimes(2));
+    expect(keyOf(1).idempotencyKey).not.toBe(keyOf(0).idempotencyKey);
+    csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
+  });
+});
