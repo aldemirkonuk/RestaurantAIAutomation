@@ -939,6 +939,7 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
         monthly_net_sales: 800,
         monthly_checks: 12,
         monthly_net_not_recorded_by_tax: 3,
+        monthly_net_not_recorded_by_reason: { no_rate: 3 },
         tax_switch_day: '2026-10-02',
         monthly_checks_as_sent: 1,
       }),
@@ -955,6 +956,41 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     const mark = screen.getByTestId('dn-tax-switch-day');
     expect(mark.textContent).toMatch(/Net sales are before tax from Friday, October 2\./);
     expect(mark.textContent).toMatch(/1 check this month is the till’s figures as sent/);
+  });
+
+  // F-1612 = F-1623: the calendar said "no tax rate of this house was in
+  // force" for every check without net, whatever ingest's reason was, and
+  // sent an owner whose rates were set to Settings.
+  it('says each reason a check has no net sales in its own words, with its own fix', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        days: TRADING_DAY,
+        monthly_net_sales: 800,
+        monthly_checks: 12,
+        monthly_net_not_recorded_by_tax: 6,
+        monthly_net_not_recorded_by_reason: { tax_unread: 2, tax_on_top: 1, no_zone: 1, tax_over_subtotal: 1, mixed_rates: 1 },
+      }),
+    );
+    mount();
+
+    const cause = await screen.findByTestId('dn-net-not-recorded-by-tax');
+    expect(cause.textContent).toMatch(/6 checks this month have no net sales/);
+    expect(cause.textContent).not.toMatch(/no tax rate/);
+    expect(screen.getByTestId('dn-net-not-recorded-tax_unread').textContent).toMatch(
+      /^2 checks: the till sent a tax figure, or a line’s tax rate, that could not be read\.$/,
+    );
+    expect(screen.getByTestId('dn-net-not-recorded-tax_over_subtotal').textContent).toMatch(/more than the check/);
+    expect(within(screen.getByTestId('dn-net-not-recorded-tax_on_top')).getByRole('link')).toHaveAttribute(
+      'href',
+      '/settings?tab=tax-basis',
+    );
+    expect(within(screen.getByTestId('dn-net-not-recorded-no_zone')).getByRole('link')).toHaveAttribute(
+      'href',
+      '/settings?tab=time-zone',
+    );
+    expect(screen.getByTestId('dn-net-not-recorded-mixed_rates').textContent).toMatch(/different tax rates/);
+    expect(within(cause).queryByRole('link', { name: 'Set the tax rates' })).toBeNull();
   });
 
   it('draws neither line for a month on one basis with every net recorded', async () => {

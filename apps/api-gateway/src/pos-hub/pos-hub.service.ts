@@ -18,6 +18,7 @@ import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import {
   loadHouseTaxContext,
+  keepsStoredStamp,
   resolveCheckSubtotal,
   type HouseTaxContextRead,
 } from "./tax-basis-resolver";
@@ -812,6 +813,10 @@ export interface StoredCheckCopy {
   closed_at: string | null;
   source_version: number | string | null;
   source_modified_at: string | null;
+  /** F-1624: what the copy was written with (absent from an older read). */
+  subtotal?: number | string | null;
+  gross_subtotal?: number | string | null;
+  tax_basis?: string | null;
 }
 
 /**
@@ -1610,6 +1615,8 @@ export class PosHubService {
         // is; without that, nothing here can call it newer, and a copy that
         // would take back stock a void returned is stopped at the stock
         // ledger instead (applyStockEffects, AFTER_VOID).
+        // F-1624: the stored copy, read once here when either rule needs it.
+        let storedCopy: StoredCheckCopy | null = null;
         if (check.sourceVersion != null || check.sourceModifiedAt) {
           const stored = await this.readStoredCheck(
             restaurantId,
@@ -1632,6 +1639,7 @@ export class PosHubService {
             olderCopies++;
             continue;
           }
+          storedCopy = stored.row;
           if (stored.row?.voided === true && check.voided !== true) {
             // Newer than the stored void, by the till's own word: the till
             // un-voided it, and the stock ledger may take the sale again.
@@ -1707,7 +1715,46 @@ export class PosHubService {
           },
           tax.ctx,
         );
-        if (taxStamp.kind === "stamped" && taxStamp.unresolved) {
+        // F-1624: a house that has answered reads the stored copy, so a check
+        // written under an earlier answer is not re-stamped by a re-send. An
+        // unset house reads nothing new (rule 1).
+        let keepStamp = false;
+        if (taxStamp.kind === "stamped") {
+          if (
+            storedCopy === null &&
+            !(check.sourceVersion != null || check.sourceModifiedAt)
+          ) {
+            const stored = await this.readStoredCheck(
+              restaurantId,
+              source,
+              check.externalCheckId,
+            );
+            if (!stored.ok) {
+              errors.push(
+                `${check.externalCheckId}: not imported, the copy already kept could not be read to tell whether its net was recorded under an earlier tax answer: ${stored.message}`,
+              );
+              continue;
+            }
+            storedCopy = stored.row;
+          }
+          keepStamp = keepsStoredStamp(
+            {
+              subtotal: check.subtotal ?? null,
+              closedAt:
+                typeof when.closedAt === "string" ? when.closedAt : null,
+              openedAt: check.openedAt ?? null,
+            },
+            tax.ctx,
+            storedCopy === null
+              ? null
+              : {
+                  subtotal: storedCopy.subtotal ?? null,
+                  gross_subtotal: storedCopy.gross_subtotal ?? null,
+                  tax_basis: storedCopy.tax_basis ?? null,
+                },
+          );
+        }
+        if (taxStamp.kind === "stamped" && taxStamp.unresolved && !keepStamp) {
           netNotRecorded.set(
             taxStamp.unresolved,
             (netNotRecorded.get(taxStamp.unresolved) ?? 0) + 1,
@@ -1754,16 +1801,26 @@ export class PosHubService {
             ? { source_modified_at: check.sourceModifiedAt }
             : {}),
           // F-1537: a house that stated its basis gets the pre-tax subtotal
-          // and the row says how; an unset house gets nothing new.
+          // and the row says how; an unset house gets nothing new. F-1612:
+          // why net was not recorded, as a code the pages count by.
           ...(taxStamp.kind === "stamped"
             ? {
                 subtotal: taxStamp.subtotal,
                 gross_subtotal: taxStamp.gross_subtotal,
                 tax_basis: taxStamp.tax_basis,
                 tax_rate_version: taxStamp.tax_rate_version,
+                net_not_recorded_reason: taxStamp.reason,
               }
             : {}),
         };
+        // F-1624: kept as written; the upsert leaves these columns alone.
+        if (keepStamp) {
+          delete (row as Record<string, unknown>).subtotal;
+          delete (row as Record<string, unknown>).gross_subtotal;
+          delete (row as Record<string, unknown>).tax_basis;
+          delete (row as Record<string, unknown>).tax_rate_version;
+          delete (row as Record<string, unknown>).net_not_recorded_reason;
+        }
         const { error } = await client.from("pos_checks").upsert(row, {
           onConflict: "restaurant_id,source,external_check_id",
         });
@@ -2086,7 +2143,9 @@ export class PosHubService {
       const { data, error } = await this.dbService
         .getClient()
         .from("pos_checks")
-        .select("voided, closed_at, source_version, source_modified_at")
+        .select(
+          "voided, closed_at, source_version, source_modified_at, subtotal, gross_subtotal, tax_basis",
+        )
         .eq("restaurant_id", restaurantId)
         .eq("source", source)
         .eq("external_check_id", externalCheckId)

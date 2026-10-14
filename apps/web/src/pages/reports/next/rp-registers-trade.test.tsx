@@ -583,6 +583,7 @@ describe('the registers say what Taken holds and leave a check rung at 0 out of 
       tipBasis: null,
       tipBasisWhy: 'Tips were recorded, but these checks have no net sales.',
       tipsNetNotRecorded: 2,
+      tipsNetNotRecordedByReason: { no_rate: 2 },
       checksInWindow: 2,
       waiters: [{ name: 'Maya', checks: 2, revenue: 252, avgCheck: 126, tipPct: null }],
     }) as ServiceRegister;
@@ -590,8 +591,35 @@ describe('the registers say what Taken holds and leave a check rung at 0 out of 
     const v = service.view(reg, { days: 90 } as never);
     render(<MemoryRouter>{v.notes}</MemoryRouter>);
     const note = screen.getByTestId('rp-tips-net-not-recorded');
-    expect(note.textContent).toMatch(/2 tipped checks have no net sales because no tax rate of this house was in force/);
-    expect(screen.getByRole('link', { name: 'Set the tax rates in Settings' })).toHaveAttribute(
+    expect(note.textContent).toMatch(/2 tipped checks have no net sales/);
+    expect(note.textContent).toMatch(/2 checks, no tax rate of this house was in force on the day\./);
+    expect(screen.getByRole('link', { name: 'Set the tax rates' })).toHaveAttribute('href', '/settings?tab=tax-basis');
+  });
+
+  // F-1612 = F-1623: every tipped check without net was blamed on "no tax
+  // rate in force", whatever ingest's reason, with a link to the rates.
+  it('F-1612: says each reason a tipped check has no net in its own words, never all as no rate', () => {
+    const reg = service.select({
+      sinceDays: 90,
+      dataStatus: 'live',
+      tipBasis: null,
+      tipBasisWhy: 'Tips were recorded, but these checks have no net sales.',
+      tipsNetNotRecorded: 3,
+      tipsNetNotRecordedByReason: { tax_unread: 2, tax_on_top: 1 },
+      checksInWindow: 3,
+      waiters: [{ name: 'Maya', checks: 3, revenue: 378, avgCheck: 126, tipPct: null }],
+    }) as ServiceRegister;
+    expect(reg.tipsNetNotRecordedByReason).toEqual({ tax_unread: 2, tax_on_top: 1 });
+    const v = service.view(reg, { days: 90 } as never);
+    render(<MemoryRouter>{v.notes}</MemoryRouter>);
+    const note = screen.getByTestId('rp-tips-net-not-recorded');
+    expect(note.textContent).not.toMatch(/no tax rate/);
+    expect(screen.getByTestId('rp-tips-net-not-recorded-tax_unread').textContent).toMatch(
+      /2 checks, the till sent a tax figure, or a line’s tax rate, that could not be read;/,
+    );
+    expect(screen.getByTestId('rp-tips-net-not-recorded-tax_on_top').textContent).toMatch(/adds tax on top/);
+    expect(screen.queryByRole('link', { name: 'Set the tax rates' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Check the answer in Settings' })).toHaveAttribute(
       'href',
       '/settings?tab=tax-basis',
     );

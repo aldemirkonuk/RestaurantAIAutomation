@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
 import { EM, MONO, codeOf, countOf, figure, money, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
+import { countsByReasonFrom, netNotRecordedReasonsSaid } from '../../dashboard/next/useDashboardNextData';
 
 /** What a staff reader is told in place of the house's money (F-203). */
 export const AMOUNTS_WITHHELD =
@@ -723,6 +724,8 @@ export interface ServiceRegister extends PosWindow {
   tipBasisWhy: string | null;
   /** F-1581: tipped checks whose net this house's tax settings left unrecorded; 0 from an older gateway. */
   tipsNetNotRecorded: number;
+  /** F-1612: the same, by the reason kept on each check; empty from an older gateway. */
+  tipsNetNotRecordedByReason: Record<string, number>;
   /** Checks rung at 0, out of Avg check (F-1534); 0 from an older gateway. */
   checksTakingNoMoney: number;
   adjusted: { method?: string; r2?: number | null } | null;
@@ -755,6 +758,7 @@ const service = analysis<ServiceRegister>({
       tipBasis: d.tipBasis === 'net' ? 'net' : null,
       tipBasisWhy: str(d.tipBasisWhy) || null,
       tipsNetNotRecorded: num(d.tipsNetNotRecorded) ?? 0,
+      tipsNetNotRecordedByReason: countsByReasonFrom(d.tipsNetNotRecordedByReason),
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
@@ -837,7 +841,7 @@ const service = analysis<ServiceRegister>({
       notes: [
         'A server’s raw average is partly the section they were given. The adjusted fit above is the engine’s attempt to remove it; where it reads an em dash, the raw ranking is all there is.',
         ...(s.checksTakingNoMoney > 0 ? [zeroChecksSaid(s.checksTakingNoMoney)] : []),
-        ...(s.tipsNetNotRecorded > 0 ? [tipsNetNotRecordedSaid(s.tipsNetNotRecorded)] : []),
+        ...(s.tipsNetNotRecorded > 0 ? [tipsNetNotRecordedSaid(s.tipsNetNotRecorded, s.tipsNetNotRecordedByReason)] : []),
       ],
       basis,
     };
@@ -846,17 +850,33 @@ const service = analysis<ServiceRegister>({
 
 /**
  * F-1581: tipped checks with no net because the house's prices include tax
- * and none of its rates was in force for them. The fix is the house's, so
- * the note says so and links to the rates, never to the till.
+ * and the tax could not be taken off. F-1612 = F-1623: counted by the reason
+ * kept on each check, each in its own words and with its own fix (no rate,
+ * an unreadable till tax, tax on top...), never all as "no rate in force".
+ * An older gateway that sends no reasons gets the count alone.
  */
-function tipsNetNotRecordedSaid(n: number): ReactNode {
+function tipsNetNotRecordedSaid(n: number, byReason: Record<string, number>): ReactNode {
+  const reasons = netNotRecordedReasonsSaid(byReason);
   return (
     <span key="tips-net-not-recorded" data-testid="rp-tips-net-not-recorded">
-      {n === 1 ? '1 tipped check has' : `${n} tipped checks have`} no net sales because no tax rate of this house was in
-      force for {n === 1 ? 'it' : 'them'}, so {n === 1 ? 'its tip is' : 'their tips are'} left out of Tip.{' '}
-      <Link to="/settings?tab=tax-basis" className="rp-link rp-ink rp-focus rp-no-drag">
-        Set the tax rates in Settings
-      </Link>
+      {n === 1 ? '1 tipped check has' : `${n} tipped checks have`} no net sales, because the tax could not be taken off{' '}
+      {n === 1 ? 'it' : 'them'}, so {n === 1 ? 'its tip is' : 'their tips are'} left out of Tip
+      {reasons.length > 0 ? ':' : '.'}
+      {reasons.map((r, i) => (
+        <span key={r.reason} data-testid={`rp-tips-net-not-recorded-${r.reason}`}>
+          {' '}
+          {countOf(r.n, 'check', 'checks')}, {r.why}
+          {i < reasons.length - 1 ? ';' : '.'}
+          {r.fix && (
+            <>
+              {' '}
+              <Link to={r.fix.to} className="rp-link rp-ink rp-focus rp-no-drag">
+                {r.fix.label}
+              </Link>
+            </>
+          )}
+        </span>
+      ))}
     </span>
   );
 }
