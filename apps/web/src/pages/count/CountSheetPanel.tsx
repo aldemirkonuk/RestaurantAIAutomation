@@ -7,6 +7,9 @@
  *
  * Each line posts as the person who loads the sheet (the token names the
  * counter, ADR 0078), at the moment the sheet says the shelf was counted.
+ * The person who counted on paper is named before Send (the loader by
+ * default), and each load is written down with how many lines went in and
+ * how many were refused (S227 owed, ADR 0335 §3).
  */
 
 import { useContext, useState } from 'react'
@@ -15,6 +18,7 @@ import {
   markCountShelfDone,
   parkCountLine,
   pullCountSession,
+  recordCountSheetLoad,
   type CountSession,
 } from '@/services/api/countSessions'
 import { getInventory, recordSpotCount } from '@/services/api/inventory'
@@ -27,6 +31,7 @@ import {
   countSheetRows,
   planCountSheet,
   sendCountSheet,
+  sheetDoneKey,
   type CountSheetPlan,
   type SheetShelfOutcome,
 } from './countSheet'
@@ -44,9 +49,33 @@ function saidBy(err: unknown, fallback: string): string {
 
 const linesWords = (n: number) => `${n} ${n === 1 ? 'line' : 'lines'}`
 
+/**
+ * What a load of the sheet did, for the logs (ADR 0335 §3: each import is
+ * recorded with how many rows went in and how many were refused). In: counted,
+ * held as a second count, or kept for the manager. Refused: by the preview or
+ * the house, a refused shelf's lines included. Not sent: no signal; loading
+ * the sheet again sends them. The shelf keys are what the sent shelves' lines
+ * are kept under, so the paper counter is named on them.
+ */
+function sheetLoadTally(plan: CountSheetPlan, outcome: SheetShelfOutcome[], sessionId: string) {
+  let rowsIn = 0
+  let rowsRefused = plan.refused.length + plan.refusedShelves.reduce((n, s) => n + s.lines, 0)
+  let rowsNotSent = 0
+  for (const o of outcome) {
+    rowsIn += o.posted + o.held.length + o.parked
+    rowsRefused += o.refused.length
+    rowsNotSent += o.notSent.length
+  }
+  return { rowsIn, rowsRefused, rowsNotSent, shelfKeys: plan.shelves.map((s) => sheetDoneKey(sessionId, s)) }
+}
+
 export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: string; house: string; onSent: () => void }) {
   const zone = useHouseZone()
-  const houseName = useContext(AuthContext)?.availableRestaurants?.find((b) => b.id === house)?.name ?? null
+  const auth = useContext(AuthContext)
+  const houseName = auth?.availableRestaurants?.find((b) => b.id === house)?.name ?? null
+  const loader = auth?.user?.name?.trim() ?? ''
+  const [paperBy, setPaperBy] = useState(loader)
+  const [unlogged, setUnlogged] = useState(false)
   const [open, setOpen] = useState(false)
   const [session, setSession] = useState<CountSession | null>(null)
   const [plan, setPlan] = useState<CountSheetPlan | null>(null)
@@ -81,6 +110,7 @@ export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: strin
     setPlan(null)
     setOutcome(null)
     setProblem(null)
+    setUnlogged(false)
     if (!file) return
     setBusy(true)
     try {
@@ -111,14 +141,29 @@ export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: strin
     setBusy(true)
     setProblem(null)
     try {
-      setOutcome(
-        await sendCountSheet(plan, session, {
-          recordSpotCount: (id, body) => recordSpotCount(id, body, house || undefined),
-          parkCountLine,
-          markCountShelfDone,
-        }),
-      )
+      const sent = await sendCountSheet(plan, session, {
+        recordSpotCount: (id, body) => recordSpotCount(id, body, house || undefined),
+        parkCountLine,
+        markCountShelfDone,
+      })
+      setOutcome(sent)
       setPlan(null)
+      // Written down after the lines: what went in stays in if this fails.
+      const name = paperBy.trim()
+      const tally = sheetLoadTally(plan, sent, session.id)
+      try {
+        const r = await recordCountSheetLoad(session.id, {
+          // The loader counted it unless someone else is named.
+          countedByName: name === loader ? '' : name,
+          rowsIn: tally.rowsIn,
+          rowsRefused: tally.rowsRefused,
+          rowsNotSent: tally.rowsNotSent,
+          shelfKeys: tally.shelfKeys,
+        })
+        setUnlogged(!r?.logged)
+      } catch {
+        setUnlogged(true)
+      }
       onSent()
     } catch (err) {
       setProblem(saidBy(err, 'The sheet was not sent. Load it again; what already went in is not sent twice.'))
@@ -207,6 +252,17 @@ export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: strin
               Line {r.line}, {r.label}: {r.reason}
             </p>
           ))}
+          <label className={`${CARD} block`}>
+            <span className="block font-semibold text-inkm-1">Who counted on paper?</span>
+            <input
+              type="text"
+              value={paperBy}
+              maxLength={120}
+              disabled={busy}
+              onChange={(e) => setPaperBy(e.target.value)}
+              className="mt-2 w-full rounded-lg bg-white/10 px-3 py-2 text-base text-inkm-1"
+            />
+          </label>
           <button
             type="button"
             data-ux-key="count:sheet-send"
@@ -220,6 +276,12 @@ export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: strin
       )}
       {outcome && (
         <div role="status" className="space-y-2 text-sm">
+          {unlogged && (
+            <p className="text-amber-300">
+              The lines went in, but this load could not be written down, so the logs miss it and who counted on
+              paper is not kept. Load the same sheet again to write it down; nothing is counted twice.
+            </p>
+          )}
           {outcome.map((o) => (
             <div key={o.name} className={CARD}>
               <p className="font-semibold text-inkm-1">

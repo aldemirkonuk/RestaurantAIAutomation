@@ -1713,6 +1713,123 @@ describe("MonthCloseService — a stock-take's count files in its session's mont
       "2026-07-31T21:45:00+00:00",
     ]);
   });
+
+  it("lists each count's open bottles that reached the books after the close, by who and in ml (S227 owed)", async () => {
+    const closeRow = {
+      id: "close-1",
+      restaurant_id: HOUSE,
+      month: "2026-07",
+      version: 1,
+      closed_by: ACTOR,
+      closed_at: "2026-08-01T09:00:00+00:00",
+      zone: ZONE,
+      figures: {
+        currency: "TRY",
+        till: {
+          posConnected: false,
+          netSales: null,
+          netSalesCheckCount: null,
+          checkCount: null,
+          days: [],
+          kept: {},
+        },
+        valuation: {
+          inventoryValue: null,
+          pricedInventoryValue: null,
+          unpricedWines: null,
+          valuedAt: "2026-08-01T09:00:00Z",
+        },
+        purchases: { orders: 0, unpriced: 0, totals: [], kept: {} },
+        variance: {
+          counts: 1,
+          netBottles: 0,
+          shortBottles: 0,
+          overBottles: 0,
+          openMl: { counts: 1, netMl: -100, shortMl: 100, overMl: 0 },
+        },
+      } as MonthFigures,
+      till_csv: null,
+    };
+    const month = [
+      // Counted and on the books before the close: in the kept figure.
+      {
+        id: "m-kept",
+        inventory_id: "w1",
+        expected_qty: 3,
+        counted_qty: 3,
+        variance_qty: 0,
+        variance_open_ml: -100,
+        counted_by: ACTOR,
+        counted_at: "2026-07-20T10:00:00Z",
+        arrived_at: "2026-07-20T10:00:05Z",
+        session_id: S_JULY,
+      },
+      // A paper sheet counted on 30 July, loaded after the close. The whole
+      // bottles agreed, so no stock moved; the open bottle was 250 ml short.
+      {
+        id: "m-late",
+        inventory_id: "w1",
+        expected_qty: 2,
+        counted_qty: 2,
+        variance_qty: 0,
+        variance_open_ml: -250,
+        counted_by: ACTOR,
+        counted_at: "2026-07-30T18:00:00Z",
+        arrived_at: "2026-08-01T12:00:00Z",
+        session_id: S_JULY,
+      },
+      // Arrived after the close but named no open bottle: not an ml change.
+      {
+        id: "m-whole",
+        inventory_id: "w1",
+        expected_qty: 2,
+        counted_qty: 2,
+        variance_qty: 0,
+        variance_open_ml: null,
+        counted_by: ACTOR,
+        counted_at: "2026-07-30T18:00:00Z",
+        arrived_at: "2026-08-01T12:00:00Z",
+        session_id: S_JULY,
+      },
+    ];
+    const { svc } = service(
+      houseHandler({
+        month_closes: () => ({ data: closeRow, error: null }),
+        pos_checks: () => ({ data: [], error: null, count: 0 }),
+        procurement_orders: () => ({ data: [], error: null, count: 0 }),
+        stock_counts: (ops) => {
+          const cols = String(arg(ops, "select")?.[0] ?? "");
+          if (cols.includes("transaction_id")) return { data: [], error: null };
+          const rows = has(ops, "not") ? [] : month;
+          return { data: rows, error: null, count: rows.length };
+        },
+        stock_count_sessions: sessionsAnswer,
+        inventory_transactions: () => ({ data: [], error: null, count: 0 }),
+        restaurant_inventory: () => ({
+          data: [{ id: "w1", display_name: "Barolo 2019", wine_name: null }],
+          error: null,
+        }),
+      }),
+      { ...till, posConnected: false },
+    );
+    const detail = await svc.getClose(HOUSE, "close-1");
+    expect(detail.changes).toEqual([
+      {
+        kind: "stock",
+        at: "2026-08-01T12:00:00Z",
+        day: "2026-07-30",
+        who: "Ayla",
+        what: "Open bottles counted: Barolo 2019",
+        delta: -250,
+        unit: "ml",
+        currency: null,
+      },
+    ]);
+    // The listed ml add up to the open-bottle figure's move.
+    expect(
+      detail.againstNow.find((a) => a.figure === "variance_open_ml"),
+    ).toMatchObject({ atClose: -100, now: -350, delta: -250 });
+  });
 });
 
 describe("againstNow — open bottles (F-1544 lane 5)", () => {

@@ -157,6 +157,8 @@ export interface ReviewLine {
   counted: number;
   openMl: number | null;
   countedBy: string | null;
+  /** S227: on a line loaded from a paper sheet, who counted it on paper. */
+  paperBy?: string;
   countedAt: string;
   afterSignOff: boolean;
   expected?: number;
@@ -199,6 +201,7 @@ export interface CountReview {
     counted: number;
     openMl: number | null;
     countedBy: string | null;
+    paperBy?: string;
     countedAt: string;
     against: ReviewLine | null;
   }>;
@@ -209,6 +212,7 @@ export interface CountReview {
     description: string;
     counted: number;
     countedBy: string | null;
+    paperBy?: string;
     countedAt: string;
   }>;
   moved: Array<{ inventoryId: string; name: string; bottles: number; from: string; to: string }>;
@@ -226,6 +230,31 @@ export interface SignOffResult {
 }
 
 const at = (sessionId: string) => `${PATH}/${encodeURIComponent(sessionId)}`;
+
+/**
+ * Writes down a loaded count sheet (S227 owed, ADR 0335 §3): who counted on
+ * paper (blank: the person loading it), how many lines went in, were refused
+ * and were not sent, and the sheet's shelf keys its lines are keyed on.
+ */
+export async function recordCountSheetLoad(
+  sessionId: string,
+  body: {
+    countedByName: string;
+    rowsIn: number;
+    rowsRefused: number;
+    rowsNotSent: number;
+    shelfKeys: string[];
+  },
+): Promise<{ id: string; logged: boolean }> {
+  const res = await apiClient.post(`${at(sessionId)}/sheet-loads`, {
+    countedByName: body.countedByName,
+    rowsIn: body.rowsIn,
+    rowsRefused: body.rowsRefused,
+    rowsNotSent: body.rowsNotSent,
+    shelfKeys: body.shelfKeys,
+  });
+  return res.data;
+}
 
 export async function reviewCountSession(sessionId: string): Promise<CountReview> {
   const res = await apiClient.get<CountReview>(`${at(sessionId)}/review`);

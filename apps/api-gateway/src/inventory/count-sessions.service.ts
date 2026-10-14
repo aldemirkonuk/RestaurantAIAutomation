@@ -1139,6 +1139,112 @@ export class CountSessionsService {
   }
 
   /**
+   * A count sheet loaded back (S227 owed): kept, with who counted on paper,
+   * and written to the logs with how many rows went in and how many were
+   * refused (ADR 0335 §3). The lines themselves went through the walk's own
+   * path, as the loader (ADR 0078); this names the person who counted them,
+   * by the sheet's shelf keys the lines are keyed on. A blank name is the
+   * loader. The caller has checked the person is an owner or a manager. A
+   * failed log row does not undo the kept load; the reply says so.
+   */
+  async recordSheetLoad(
+    house: string,
+    sessionId: string,
+    userId: string,
+    dto: {
+      countedByName?: unknown;
+      rowsIn?: unknown;
+      rowsRefused?: unknown;
+      rowsNotSent?: unknown;
+      shelfKeys?: unknown;
+    },
+  ): Promise<{ id: string; logged: boolean }> {
+    const name =
+      typeof dto?.countedByName === "string"
+        ? dto.countedByName.trim().replace(/\s+/g, " ")
+        : "";
+    if (name.length > 120) {
+      throw new HttpException(
+        "That name is too long. Write the name of the person who counted.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const rows = (v: unknown) => {
+      const n = v == null ? 0 : Number(v);
+      if (!(Number.isInteger(n) && n >= 0 && n <= 100_000)) {
+        throw new HttpException(
+          "How many lines went in could not be read, so the load was not written down.",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      return n;
+    };
+    const rowsIn = rows(dto?.rowsIn);
+    const rowsRefused = rows(dto?.rowsRefused);
+    const rowsNotSent = rows(dto?.rowsNotSent);
+    const prefix = `sheet:${sessionId}:`;
+    const keys = Array.isArray(dto?.shelfKeys) ? dto.shelfKeys : [];
+    if (
+      keys.length > 500 ||
+      !keys.every(
+        (k): k is string =>
+          typeof k === "string" && k.startsWith(prefix) && k.length <= 300,
+      )
+    ) {
+      throw new HttpException(
+        "The sheet's shelves are not this count's, so the load was not written down.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    await this.session(house, sessionId);
+
+    const client = this.dbService.getClient();
+    const put = await client
+      .from("stock_count_sheet_loads")
+      .insert({
+        session_id: sessionId,
+        restaurant_id: house,
+        loaded_by: userId,
+        counted_by_name: name || null,
+        shelf_keys: [...new Set(keys)],
+        rows_in: rowsIn,
+        rows_refused: rowsRefused,
+        rows_not_sent: rowsNotSent,
+      })
+      .select("id")
+      .maybeSingle();
+    if (put.error) throw this.unreadable("sheet load", put.error);
+    const id = String((put.data as { id?: string } | null)?.id ?? "");
+
+    const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
+    const audit = await client.from("system_audit_log").insert({
+      actor_type: "user",
+      actor_id: userId,
+      action: "count_sheet_loaded",
+      entity_type: "stock_count_session",
+      entity_id: sessionId,
+      restaurant_id: house,
+      reason: null,
+      changes: {
+        // Read on /logs as "Name: count sheet loaded — 4 lines in, 1 refused".
+        subject: `${lines(rowsIn)} in, ${rowsRefused} refused${rowsNotSent ? `, ${rowsNotSent} not sent` : ""}${name ? `, counted on paper by ${name}` : ""}`,
+        rows_in: rowsIn,
+        rows_refused: rowsRefused,
+        rows_not_sent: rowsNotSent,
+        counted_on_paper_by: name || null,
+        load_id: id || null,
+      },
+    });
+    if (audit.error) {
+      this.logger.error(
+        `count sheet load kept but the log row failed: ${audit.error.message}`,
+      );
+      return { id, logged: false };
+    }
+    return { id, logged: true };
+  }
+
+  /**
    * Stops a count. The counts it already caused stay: each was a count in its
    * own right the moment it posted (ADR 0078, F2 a). The caller has checked
    * the person is an owner or a manager. Abandoning twice is a no-op.
@@ -1246,7 +1352,7 @@ export class CountSessionsService {
       client
         .from("stock_counts")
         .select(
-          "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at",
+          "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at, idempotency_key",
         )
         .eq("restaurant_id", house)
         .eq("session_id", sessionId)
@@ -1256,7 +1362,7 @@ export class CountSessionsService {
     const heldRead = await client
       .from("stock_count_held_lines")
       .select(
-        "id, inventory_id, location_id, counted_qty, counted_open_ml, counted_by, counted_at, held_against, state",
+        "id, inventory_id, location_id, counted_qty, counted_open_ml, counted_by, counted_at, held_against, state, idempotency_key",
       )
       .eq("restaurant_id", house)
       .eq("session_id", sessionId)
@@ -1272,11 +1378,12 @@ export class CountSessionsService {
       counted_by: string | null;
       counted_at: string;
       held_against: string | null;
+      idempotency_key?: string | null;
     }>;
     const parkedRead = await client
       .from("stock_count_parked_lines")
       .select(
-        "id, location_id, description, counted_qty, counted_by, counted_at",
+        "id, location_id, description, counted_qty, counted_by, counted_at, client_line_id",
       )
       .eq("restaurant_id", house)
       .eq("session_id", sessionId)
@@ -1291,6 +1398,7 @@ export class CountSessionsService {
       counted_qty: number;
       counted_by: string | null;
       counted_at: string;
+      client_line_id?: string | null;
     }>;
 
     // What is on the books on a done shelf with no line from this walk: a
@@ -1349,7 +1457,7 @@ export class CountSessionsService {
       const more = await client
         .from("stock_counts")
         .select(
-          "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at",
+          "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at, idempotency_key",
         )
         .eq("restaurant_id", house)
         .in("id", missingAgainst);
@@ -1401,6 +1509,39 @@ export class CountSessionsService {
     ]);
     const person = (id: string | null) =>
       id ? (people.get(id) ?? "Someone") : null;
+
+    // S227 owed: who counted a sheet's lines on paper. A load names the
+    // sheet's shelf keys; each line of that shelf is keyed under one. The
+    // latest load of a shelf says who counted it; a blank name is the loader.
+    const loadsRead = await client
+      .from("stock_count_sheet_loads")
+      .select("counted_by_name, shelf_keys, loaded_at")
+      .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
+      .order("loaded_at", { ascending: true });
+    if (loadsRead.error)
+      throw this.unreadable("sheet loads read", loadsRead.error);
+    const paperName = new Map<string, string | null>();
+    for (const l of (loadsRead.data ?? []) as Array<{
+      counted_by_name: string | null;
+      shelf_keys: string[] | null;
+    }>)
+      for (const k of l.shelf_keys ?? [])
+        paperName.set(k, l.counted_by_name?.trim() || null);
+    /** `{ paperBy }` for a line keyed under a loaded sheet's shelf, else `{}`. */
+    const onPaper = (
+      key: string | null | undefined,
+      countedBy: string | null,
+    ): { paperBy?: string } => {
+      if (!key || paperName.size === 0) return {};
+      const at = key.indexOf("sheet:");
+      if (at < 0) return {};
+      const rest = key.slice(at);
+      for (const [k, name] of paperName)
+        if (rest === k || rest.startsWith(`${k}:`))
+          return { paperBy: name ?? countedBy ?? "Someone" };
+      return {};
+    };
 
     // Money: the house's own currency and each item's cost per bottle. Read
     // only for the people who see money.
@@ -1475,6 +1616,7 @@ export class CountSessionsService {
       counted: c.counted_qty,
       openMl: c.counted_open_ml,
       countedBy: person(c.counted_by),
+      ...onPaper(c.idempotency_key, person(c.counted_by)),
       countedAt: c.counted_at,
       afterSignOff:
         signedAt != null &&
@@ -1587,6 +1729,7 @@ export class CountSessionsService {
           counted: h.counted_qty,
           openMl: h.counted_open_ml,
           countedBy: person(h.counted_by),
+          ...onPaper(h.idempotency_key, person(h.counted_by)),
           countedAt: h.counted_at,
           against: a ? lineOf(a) : null,
         };
@@ -1598,6 +1741,7 @@ export class CountSessionsService {
         description: p.description,
         counted: p.counted_qty,
         countedBy: person(p.counted_by),
+        ...onPaper(p.client_line_id, person(p.counted_by)),
         countedAt: p.counted_at,
       })),
       moved,
@@ -1978,6 +2122,7 @@ interface ReviewCountRow {
   counted_by: string | null;
   counted_at: string;
   arrived_at: string | null;
+  idempotency_key?: string | null;
 }
 
 export interface ReviewLine {
@@ -1987,6 +2132,11 @@ export interface ReviewLine {
   counted: number;
   openMl: number | null;
   countedBy: string | null;
+  /**
+   * S227 owed: on a line loaded from a paper sheet, who counted it on paper
+   * (the loader when the load named nobody else). Absent otherwise.
+   */
+  paperBy?: string;
   countedAt: string;
   afterSignOff: boolean;
   /** Owner and manager only. */
@@ -2031,6 +2181,7 @@ export interface CountReview {
     counted: number;
     openMl: number | null;
     countedBy: string | null;
+    paperBy?: string;
     countedAt: string;
     against: ReviewLine | null;
   }>;
@@ -2041,6 +2192,7 @@ export interface CountReview {
     description: string;
     counted: number;
     countedBy: string | null;
+    paperBy?: string;
     countedAt: string;
   }>;
   moved: Array<{

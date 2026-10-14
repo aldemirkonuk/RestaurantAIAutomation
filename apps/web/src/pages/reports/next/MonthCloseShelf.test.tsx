@@ -190,6 +190,36 @@ describe('MonthCloseShelf (F-1013)', () => {
     );
   });
 
+  it('lists a count’s open bottles that reached the books after the close, in ml (S227 owed)', async () => {
+    api.get.mockImplementation(async (url: string) =>
+      url === '/reports/month-close'
+        ? { data: { closes: [close()] } }
+        : {
+            data: {
+              ...detail(),
+              changes: [
+                {
+                  kind: 'stock',
+                  at: '2026-08-04T08:00:00Z',
+                  day: '2026-07-30',
+                  who: 'Deniz',
+                  what: 'Open bottles counted: Barolo 2019',
+                  delta: -250,
+                  unit: 'ml',
+                  currency: null,
+                },
+              ],
+            },
+          },
+    );
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'What changed since' }));
+    const changed = await screen.findByLabelText('Changed after close');
+    expect(within(changed).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      '2026-07-30 · Deniz · Open bottles counted: Barolo 2019 -250 ml',
+    ]);
+  });
+
   it('[REVERT-FAILS] says a delivery still open beside Bought (delivered) (F-1632)', async () => {
     const f = close().figures;
     const open = close({

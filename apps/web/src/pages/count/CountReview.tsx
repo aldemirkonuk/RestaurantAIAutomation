@@ -95,6 +95,16 @@ function timeWords(iso: string | null): string {
     : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
+/**
+ * Who counted it. A line loaded from a paper sheet (S227) names the person
+ * who counted on paper, and the person who loaded it when that was someone else.
+ */
+function byWords(countedBy: string | null, paperBy?: string): string {
+  if (paperBy)
+    return `, counted on paper by ${paperBy}${countedBy && countedBy !== paperBy ? `, loaded by ${countedBy}` : ''}`
+  return countedBy ? `, by ${countedBy}` : ''
+}
+
 function Line({ line, money, currency }: { line: ReviewLine; money: boolean; currency: string | null }) {
   return (
     <li className="flex items-start justify-between gap-3 py-2">
@@ -102,7 +112,7 @@ function Line({ line, money, currency }: { line: ReviewLine; money: boolean; cur
         <span className="block font-semibold">{line.name}</span>
         <span className="block text-sm text-inkm-2">
           {countedWords(line.counted, line.openMl)}
-          {line.countedBy ? `, by ${line.countedBy}` : ''}
+          {byWords(line.countedBy, line.paperBy)}
         </span>
       </span>
       {money && line.variance != null && (
@@ -238,12 +248,12 @@ export default function CountReview() {
                   {h.against && (
                     <p className="text-sm text-inkm-1">
                       First: {countedWords(h.against.counted, h.against.openMl)}
-                      {h.against.countedBy ? `, by ${h.against.countedBy}` : ''}
+                      {byWords(h.against.countedBy, h.against.paperBy)}
                     </p>
                   )}
                   <p className="text-sm text-inkm-1">
                     Second: {countedWords(h.counted, h.openMl)}
-                    {h.countedBy ? `, by ${h.countedBy}` : ''}
+                    {byWords(h.countedBy, h.paperBy)}
                   </p>
                   {canAct && (
                     <div className="grid gap-2">
@@ -305,7 +315,7 @@ export default function CountReview() {
                 <p className="font-semibold">{p.description}</p>
                 <p className="text-sm text-inkm-2">
                   {countedWords(p.counted, null)} on {p.shelf}
-                  {p.countedBy ? `, by ${p.countedBy}` : ''}
+                  {byWords(p.countedBy, p.paperBy)}
                 </p>
                 {canAct &&
                   (matching === p.id ? (

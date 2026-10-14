@@ -153,6 +153,20 @@ describe('the review shows the walk', () => {
     expect(screen.getByRole('button', { name: 'Count on paper' })).toBeTruthy()
   })
 
+  it('names who counted a line on paper, and who loaded it when that was someone else (S227 owed)', async () => {
+    const r = review(false)
+    r.shelves[0].lines = [line({ paperBy: 'Mert' })]
+    const parkedOnPaper: (typeof r.parked)[number] & { paperBy?: string } = { ...r.parked[0], paperBy: 'Deniz' }
+    r.parked = [parkedOnPaper]
+    api.reviewCountSession.mockResolvedValue(r)
+    show()
+    expect(await screen.findByText(/, counted on paper by Mert, loaded by Ayşe/)).toBeTruthy()
+    // Loaded by the person who counted it: named once.
+    expect(screen.getByText(/on Back bar, counted on paper by Deniz$/)).toBeTruthy()
+    // A line counted on the phone reads as it did.
+    expect(screen.getAllByText(/, by Deniz/).length).toBeGreaterThan(0)
+  })
+
   it('the difference counts the open bottles in tenths, short in amber, as its value does (F-1621)', async () => {
     const shelves = review(true).shelves
     shelves[0].lines = [
