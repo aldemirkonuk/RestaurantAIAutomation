@@ -1344,10 +1344,14 @@ describe("F-1699 -- a count's lines clear when it is signed off or stopped", () 
     const t = setup();
     const s: any = await t.svc.open(HOUSE, BOSS, { kind: "closing" });
     t.db.tables.notifications = [line("mine", s.id)];
-    (t.inventory as any).signOffCountSession = jest
-      .fn()
-      .mockResolvedValueOnce({ status: "open", not_counted: 2 })
-      .mockResolvedValueOnce({ status: "signed_off", signed_off_at: "t" });
+    // Keyed on "even if unfinished", not on call order: since F-1683 the
+    // gateway may ask first without reaching the RPC at all (F-1147).
+    (t.inventory as any).signOffCountSession = jest.fn(
+      async (_h: string, _s: string, _u: string, even: boolean) =>
+        even
+          ? { status: "signed_off", signed_off_at: "t" }
+          : { status: "open", not_counted: 2 },
+    );
 
     await t.svc.signOff(HOUSE, s.id, BOSS, {});
     expect(statusOf(t.db.tables.notifications)).toEqual({ mine: "unread" });
