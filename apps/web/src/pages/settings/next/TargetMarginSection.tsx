@@ -280,7 +280,7 @@ function TargetMarginBody({
         <div role="status" data-testid="st-target-reconfirm">
           <Note>
             <strong>Confirm your target again.</strong> Your till prices include tax
-            {reg.pricesIncludeTax?.since ? ` since ${reg.pricesIncludeTax.since.slice(0, 10)}` : ''}, so margin is now
+            {reg.pricesIncludeTax?.sinceDay ? ` since ${reg.pricesIncludeTax.sinceDay}` : ''}, so margin is now
             worked out on prices without tax. Your target was set before that, so no wine is advised until you check the
             numbers below and press Record.
           </Note>

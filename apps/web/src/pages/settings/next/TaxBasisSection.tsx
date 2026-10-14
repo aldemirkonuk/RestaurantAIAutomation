@@ -44,6 +44,8 @@ export interface TaxRateRow {
   effectiveFrom: string;
   effectiveTo: string | null;
   inForceToday: boolean;
+  /** Starts after today and will apply unless withdrawn (F-1586). */
+  upcoming?: boolean;
   createdAt: string | null;
 }
 
@@ -55,6 +57,8 @@ export interface TaxBasisReadout {
   basis: HouseTaxBasis | null;
   answered: boolean;
   confirmedAt: string | null;
+  /** The house day of `confirmedAt`, the day ingest switches (F-1585). */
+  switchDay?: string | null;
   confirmedBy: { userId: string; name: string | null } | null;
   country: string | null;
   taxWord: string;
@@ -88,6 +92,31 @@ export async function addTaxRate(body: {
   return data;
 }
 
+/**
+ * Withdraw one rate (F-1586). The table is append-only, so the gateway
+ * appends rows restating what applied before it; nothing is edited.
+ */
+export async function withdrawTaxRate(version: number): Promise<TaxBasisReadout> {
+  const { data } = await apiClient.post<TaxBasisReadout>('/settings/tax-rates/withdraw', { version });
+  return data;
+}
+
+/** The day after a house date, calendar-safe. */
+function nextDay(day: string): string {
+  const t = new Date(`${day}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + 1);
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * The day a withdrawal starts, the gateway's `withdrawalStart`: a rate not
+ * yet in force from its own first day (it never applies); one in force from
+ * tomorrow, so a day already trading keeps one rate.
+ */
+export function withdrawFrom(r: Pick<TaxRateRow, 'effectiveFrom'>, today: string): string {
+  return r.effectiveFrom > today ? r.effectiveFrom : nextDay(today);
+}
+
 function capital(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -102,8 +131,10 @@ export function answerLabel(basis: TaxBasisAnswer, taxWord: string): string {
 export const ANSWERS: readonly TaxBasisAnswer[] = ['prices_include_tax', 'prices_exclude_tax', 'not_vat_charging'];
 
 /** What the recorded answer means for the figures, in one sentence. */
-export function basisConsequence(reg: Pick<TaxBasisReadout, 'basis' | 'taxWord' | 'confirmedAt'>): string {
-  const since = reg.confirmedAt ? reg.confirmedAt.slice(0, 10) : null;
+export function basisConsequence(reg: Pick<TaxBasisReadout, 'basis' | 'taxWord' | 'confirmedAt' | 'switchDay'>): string {
+  // F-1585: the HOUSE day the answer was given, the day ingest switches on —
+  // never the UTC date of the instant, which is a day off near midnight.
+  const since = reg.switchDay ?? null;
   switch (reg.basis) {
     case 'prices_include_tax':
       return `Net sales are taken before ${reg.taxWord} for every check from ${since ?? 'the day this was answered'}: by the tax your till states, or by your rates below. Checks recorded before then stay as your till sent them.`;
@@ -139,7 +170,8 @@ export function readRateInputs(
   from: string,
   taxWord: string,
 ): { canAdd: boolean; sentence: string; body: Parameters<typeof addTaxRate>[0] | null } {
-  const t = rateRaw.trim().replace(/%$/, '');
+  // '20%', '%20' (how Turkish writes it) and '20,5' all read as a percent (F-1589).
+  const t = rateRaw.trim().replace(/^%\s*/, '').replace(/\s*%$/, '');
   if (t === '') return { canAdd: false, sentence: `Type the ${taxWord} rate as a percent (20 means 20 percent).`, body: null };
   const pct = parseDecimal(t);
   if (pct === null) return { canAdd: false, sentence: `“${rateRaw.trim()}” is not a number.`, body: null };
@@ -222,6 +254,19 @@ function TaxBasisBody({
   const rateRead = readRateInputs(covers, category, rate, from, reg.taxWord);
   const showRates = reg.basis === 'prices_include_tax' || chosen === 'prices_include_tax';
   const inForce = (reg.rates ?? []).filter((r) => r.inForceToday);
+  // F-1586: a rate dated ahead stays on the page with its first day.
+  const upcoming = (reg.rates ?? [])
+    .filter((r) => r.upcoming === true)
+    .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0));
+  const [withdrawing, setWithdrawing] = useState<TaxRateRow | null>(null);
+  const [withdrawFailed, setWithdrawFailed] = useState<string | null>(null);
+
+  /** A quick-fill covers one kind of sale, so it is a till category, never everything (F-1593). */
+  const quickFill = (p: { label: string; ratePct: number }) => {
+    setRate(String(p.ratePct));
+    setCovers('pos_category');
+    setCategory((c) => (c.trim() ? c : p.label));
+  };
 
   const confirm = async () => {
     if (!answer.canConfirm || chosen === null) return;
@@ -249,6 +294,40 @@ function TaxBasisBody({
       setRateBusy(false);
     }
   };
+
+  const withdraw = async () => {
+    if (!withdrawing) return;
+    setRateBusy(true);
+    setWithdrawFailed(null);
+    try {
+      onRecorded(await withdrawTaxRate(withdrawing.version));
+      setWithdrawing(null);
+    } catch (err) {
+      setWithdrawFailed(messageOf(err));
+    } finally {
+      setRateBusy(false);
+    }
+  };
+  const rateSaid = (r: TaxRateRow) =>
+    r.ratePct === null ? `none on ${rateCovers(r)} (withdrawn)` : `${r.ratePct}% on ${rateCovers(r)}`;
+  const withdrawButton = (r: TaxRateRow) =>
+    canManage && r.ratePct !== null ? (
+      <>
+        {' '}
+        <button
+          type="button"
+          className="st-ink st-focus"
+          disabled={rateBusy}
+          onClick={() => {
+            setWithdrawFailed(null);
+            setWithdrawing(r);
+          }}
+          style={{ fontFamily: SANS, fontSize: 11.5, border: 'none', background: 'none', padding: 0, textDecoration: 'underline', cursor: 'pointer', color: 'var(--ink-1)' }}
+        >
+          Withdraw
+        </button>
+      </>
+    ) : null;
 
   const proposal = reg.proposal;
   return (
@@ -325,19 +404,40 @@ function TaxBasisBody({
           consequence={
             reg.rates === null ? (
               <>The rates could not be read — {reg.ratesReason ?? 'no reason was given'}.</>
-            ) : inForce.length === 0 ? (
-              <>
-                <strong>No rate is recorded.</strong> Until one is, a check whose till states no tax has no net figure,
-                and it is counted as “not recorded” rather than guessed.
-              </>
             ) : (
               <>
-                In force on {reg.today}
-                {reg.todayOnHouseClock ? '' : ' (UTC; this house has no time zone set)'}:{' '}
-                {inForce
-                  .map((r) => (r.ratePct === null ? `none on ${rateCovers(r)} (withdrawn)` : `${r.ratePct}% on ${rateCovers(r)}`))
-                  .join('; ')}
-                .
+                {inForce.length === 0 ? (
+                  <>
+                    <strong>No rate is in force today.</strong> Until one is, a check whose till states no tax has no net
+                    figure, and it is counted as “not recorded” rather than guessed.
+                  </>
+                ) : (
+                  <>
+                    In force on {reg.today}
+                    {reg.todayOnHouseClock ? '' : ' (UTC; this house has no time zone set)'}:{' '}
+                    {inForce.map((r, i) => (
+                      <span key={r.version}>
+                        {i > 0 && '; '}
+                        {rateSaid(r)}
+                        {withdrawButton(r)}
+                      </span>
+                    ))}
+                    .
+                  </>
+                )}
+                {upcoming.length > 0 && (
+                  <span data-testid="tax-rates-upcoming">
+                    {' '}Coming:{' '}
+                    {upcoming.map((r, i) => (
+                      <span key={r.version}>
+                        {i > 0 && '; '}
+                        from {r.effectiveFrom}, {rateSaid(r)}
+                        {withdrawButton(r)}
+                      </span>
+                    ))}
+                    .
+                  </span>
+                )}
               </>
             )
           }
@@ -402,6 +502,28 @@ function TaxBasisBody({
           <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
             {rateRead.sentence}
           </p>
+          {withdrawing && (
+            <p role="status" data-testid="tax-rate-withdraw" style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-1)', margin: '5px 0 0' }}>
+              Withdraw will stop {withdrawing.ratePct}% on {rateCovers(withdrawing)} from{' '}
+              {withdrawFrom(withdrawing, reg.today)}; whatever applied before it applies again from that day. Checks
+              already recorded are not changed.{' '}
+              <Action disabled={!canManage || rateBusy} onClick={() => void withdraw()}>
+                {rateBusy ? 'Withdrawing…' : 'Withdraw it'}
+              </Action>{' '}
+              <button
+                type="button"
+                className="st-ink st-focus"
+                disabled={rateBusy}
+                onClick={() => setWithdrawing(null)}
+                style={{ fontFamily: SANS, fontSize: 11.5, border: 'none', background: 'none', padding: 0, textDecoration: 'underline', cursor: 'pointer', color: 'var(--ink-4)' }}
+              >
+                Keep it
+              </button>
+              {withdrawFailed && (
+                <span role="alert"> The rate was not withdrawn — {withdrawFailed}. Nothing was changed.</span>
+              )}
+            </p>
+          )}
           {proposal && proposal.rates.length > 0 && canManage && (
             <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
               Common rates here:{' '}
@@ -411,14 +533,14 @@ function TaxBasisBody({
                   <button
                     type="button"
                     className="st-ink st-focus"
-                    onClick={() => setRate(String(p.ratePct))}
+                    onClick={() => quickFill(p)}
                     style={{ fontFamily: SANS, fontSize: 11.5, border: 'none', background: 'none', padding: 0, textDecoration: 'underline', cursor: 'pointer', color: 'var(--ink-1)' }}
                   >
                     {p.ratePct}% {p.label.toLowerCase()}
                   </button>
                 </span>
               ))}
-              . A rate covering one kind of sale needs the till category your till puts it under.
+              . Each covers one kind of sale, so it fills in a till category: change it to the name your till uses.
             </p>
           )}
         </Row>
@@ -442,6 +564,9 @@ function TaxBasisBody({
 /**
  * The setup line (decision §2): one sentence and a link, shown only while the
  * house has not answered — in every country, never because of the country.
+ * Shown before the till's first check too (F-1590): on the dashboard of a
+ * house with no till yet and beside the till on Connections, because a check
+ * that arrives before the answer is never made pre-tax later (F2).
  * Renders nothing while loading, on a failed read, or once answered, so an
  * answered or unreadable house sees the page exactly as before.
  */
@@ -464,7 +589,8 @@ export function TaxBasisSetupLine({ className }: { className?: string }) {
   return (
     <p className={className} data-testid="tax-basis-setup-line">
       — This house hasn’t said whether its till prices include {reg.taxWord}, so net sales are the till’s figures as
-      sent.{' '}
+      sent. Net is taken before {reg.taxWord} only from the day you answer; checks recorded before then stay as the
+      till sent them.{' '}
       <Link
         to="/settings?tab=tax-basis"
         className="not-italic text-inkm-1 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"

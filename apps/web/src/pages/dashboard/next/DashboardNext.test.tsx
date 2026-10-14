@@ -1149,6 +1149,33 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     expect(screen.queryByText('Net sales')).not.toBeInTheDocument();
   });
 
+  it('asks an unanswered house whether its till prices include tax before the till sends a check (F-1590)', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(
+      () =>
+        houseMonth({
+          dayDefault: { net_sales: null, checks: null },
+          pos_connected: false,
+          monthly_net_sales: null,
+          monthly_checks: null,
+        }),
+      {
+        '/settings/tax-basis': {
+          restaurantId: 'rest-A',
+          readable: true,
+          reason: null,
+          basis: 'unset',
+          answered: false,
+          taxWord: 'KDV',
+        },
+      },
+    );
+    mount();
+    expect(await screen.findByTestId('tax-basis-setup-line')).toHaveTextContent(
+      /include KDV.*only from the day you answer/,
+    );
+  });
+
   it("lists a delivery on the house's day, not the UTC date of its timestamp", async () => {
     browserAt('2026-10-05T19:00:00Z');
     routeMonth(() => houseMonth({ today: '2026-10-05', days: TRADING_DAY }), {

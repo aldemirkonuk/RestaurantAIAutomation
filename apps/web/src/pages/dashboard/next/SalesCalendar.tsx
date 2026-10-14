@@ -476,8 +476,9 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
         </p>
       </div>
 
-      {/* F-1537: the one setup line while the house has not said whether its till prices include tax. */}
-      {salesShown && <TaxBasisSetupLine className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" />}
+      {/* F-1537: the one setup line while the house has not said whether its till prices include tax.
+          F-1590: asked before the first check as well, since one recorded before the answer stays as sent. */}
+      {seesAmounts && (salesShown || ledger?.sales === 'no-register') && <TaxBasisSetupLine className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" />}
 
       {/* F-1591: checks whose net the house's own tax settings left unrecorded
           name that cause and where to fix it, not the till. */}

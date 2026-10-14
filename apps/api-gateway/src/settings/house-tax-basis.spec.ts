@@ -25,6 +25,8 @@ import {
   proposalFor,
   rateRowInForce,
   taxWordFor,
+  withdrawalRows,
+  type TaxRateRow,
 } from "./house-tax-basis.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import {
@@ -41,6 +43,7 @@ class FakeQuery {
   private orderBy: { col: string; asc: boolean } | null = null;
   private one = false;
   private write: { kind: "insert" | "update"; row: Row } | null = null;
+  private many: Row[] | null = null;
 
   constructor(
     private readonly db: FakeDb,
@@ -74,8 +77,10 @@ class FakeQuery {
     this.one = true;
     return this;
   }
-  insert(row: Row) {
-    this.write = { kind: "insert", row };
+  insert(row: Row | Row[]) {
+    // An array is ONE statement: every row lands, or (on a failure) none.
+    if (Array.isArray(row)) this.many = row;
+    else this.write = { kind: "insert", row };
     return this;
   }
   update(row: Row) {
@@ -91,6 +96,15 @@ class FakeQuery {
   private run(): { data: any; error: any } {
     const fail = this.db.failures[this.table];
     if (fail) return { data: null, error: { code: "57014", message: fail } };
+    if (this.many) {
+      const rows = this.many;
+      this.many = null;
+      for (const row of rows) {
+        this.write = { kind: "insert", row };
+        this.run();
+      }
+      return { data: null, error: null };
+    }
     if (this.write) {
       this.db.writes.push({ table: this.table, ...this.write });
       const t = (this.db.tables[this.table] ??= []);
@@ -602,5 +616,152 @@ describe("rateRowInForce — the rule lane 3's ingest reads", () => {
     expect(
       rateRowInForce(rows, "pos_category", "Yemek", "2026-10-12"),
     ).toBeNull();
+  });
+});
+
+/**
+ * Wave 52 (F-1585, F-1586): the switch is dated on the house's day, a rate
+ * dated ahead stays on the page, and a rate can be withdrawn on a table that
+ * refuses every edit.
+ */
+describe("GET /settings/tax-basis — the switch day is the house's own (F-1585)", () => {
+  it("an Istanbul answer at 01:30 on 13 Oct switches on the 13th, not on the UTC 12th", async () => {
+    const { db, service } = make();
+    Object.assign(house(db, TR), {
+      tax_basis: "prices_include_tax",
+      tax_basis_confirmed_by: "owner-tr",
+      tax_basis_confirmed_at: "2026-10-12T22:30:00Z",
+    });
+    const out = await service.read(TR, new Date("2026-10-13T08:00:00Z"));
+    expect(out.confirmedAt).toBe("2026-10-12T22:30:00Z");
+    expect(out.switchDay).toBe("2026-10-13");
+  });
+
+  it("an unset house has no switch day", async () => {
+    const { service } = make();
+    expect((await service.read(TR)).switchDay).toBeNull();
+  });
+});
+
+describe("POST /settings/tax-rates/withdraw — appended, never edited (F-1586)", () => {
+  const NOW = new Date("2026-10-12T09:00:00Z"); // 12 Oct in Istanbul
+  const rowsAt = (out: { rates: TaxRateRow[] | null }) =>
+    new Map(out.rates!.map((r) => [r.version, r]));
+
+  async function withFuture() {
+    const m = make();
+    await m.service.addRate(
+      TR,
+      { keyKind: "house", ratePct: 18, effectiveFrom: "2020-01-01" },
+      "owner-tr",
+    );
+    await m.service.addRate(
+      TR,
+      { keyKind: "house", ratePct: 20, effectiveFrom: "2027-01-01" },
+      "owner-tr",
+    );
+    return m;
+  }
+
+  it("a rate dated ahead is read as upcoming, not lost", async () => {
+    const { service } = await withFuture();
+    const r = rowsAt(await service.read(TR, NOW));
+    expect(r.get(1)).toMatchObject({ inForceToday: true, upcoming: false });
+    expect(r.get(2)).toMatchObject({ inForceToday: false, upcoming: true });
+  });
+
+  it("withdrawing a rate not yet in force restates what applied before it, from its first day", async () => {
+    const { db, service } = await withFuture();
+    const out = await service.withdrawRate(TR, 2, "owner-tr", NOW);
+    expect(db.tables.house_tax_rates.slice(2)).toEqual([
+      expect.objectContaining({
+        key_kind: "house",
+        key: "",
+        rate: 0.18,
+        effective_from: "2027-01-01",
+        effective_to: null,
+        version: 3,
+      }),
+    ]);
+    // No row was edited: the withdrawn one is still there, as it was.
+    expect(db.writes.every((w) => w.kind === "insert")).toBe(true);
+    expect(db.tables.house_tax_rates[1]).toMatchObject({ rate: 0.2 });
+    const rows = out.rates!;
+    expect(rateRowInForce(rows, "house", "", "2027-03-01")?.ratePct).toBe(18);
+    expect(rowsAt(out).get(2)).toMatchObject({ upcoming: false });
+    expect(db.tables.system_audit_log.at(-1)).toMatchObject({
+      action: TAX_RATE_AUDIT_ACTION,
+    });
+  });
+
+  it("withdrawing a rate in force stops it from the house's next day, so today keeps one rate", async () => {
+    const { service } = make();
+    await service.addRate(
+      TR,
+      {
+        keyKind: "pos_category",
+        key: "Alkol",
+        ratePct: 2,
+        effectiveFrom: "2026-10-01",
+      },
+      "owner-tr",
+    );
+    const out = await service.withdrawRate(TR, 1, "owner-tr", NOW);
+    const rows = out.rates!;
+    expect(
+      rateRowInForce(rows, "pos_category", "Alkol", "2026-10-12")?.ratePct,
+    ).toBe(2);
+    const after = rateRowInForce(rows, "pos_category", "Alkol", "2026-10-13");
+    expect(after).toMatchObject({ ratePct: null, version: 2 });
+  });
+
+  it("answers 404 for a number this house does not have, and refuses staff, writing nothing", async () => {
+    const { db, controller } = await withFuture();
+    const before = db.writes.length;
+    await expect(
+      controller.withdrawRate(US, "owner-us", { version: 2 }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      controller.withdrawRate(TR, "staff-tr", { version: 2 }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      controller.withdrawRate(TR, "owner-tr", {
+        version: "two" as never,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.writes).toHaveLength(before);
+  });
+
+  it("withdrawalRows restores each piece of the key's history, ending where the next row starts", () => {
+    const row = (
+      version: number,
+      ratePct: number | null,
+      effectiveFrom: string,
+      effectiveTo: string | null = null,
+    ): TaxRateRow => ({
+      version,
+      keyKind: "house",
+      key: "",
+      itemName: null,
+      ratePct,
+      effectiveFrom,
+      effectiveTo,
+      inForceToday: false,
+      upcoming: false,
+      createdAt: null,
+    });
+    // 10% until March, then a 12% added earlier from June; a 20% (v3) from
+    // February masks both. Withdrawn, the house has 10% to March, nothing
+    // until June, then 12%.
+    const rows = [
+      row(1, 10, "2027-01-01", "2027-03-01"),
+      row(2, 12, "2027-06-01"),
+      row(3, 20, "2027-02-01"),
+    ];
+    expect(withdrawalRows(rows, rows[2], "2027-02-01")).toEqual([
+      { ratePct: 10, effectiveFrom: "2027-02-01", effectiveTo: "2027-03-01" },
+      { ratePct: null, effectiveFrom: "2027-03-01", effectiveTo: "2027-06-01" },
+      { ratePct: 12, effectiveFrom: "2027-06-01", effectiveTo: null },
+    ]);
   });
 });

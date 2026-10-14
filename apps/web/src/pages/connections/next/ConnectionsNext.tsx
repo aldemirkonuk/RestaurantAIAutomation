@@ -121,6 +121,7 @@ import {
 } from './AttachmentRow';
 import { grantHolds, wouldAskFor } from './cx-permissions';
 import { HouseServerControls } from './HouseServerControls';
+import { TaxBasisSetupLine } from '../../settings/next/TaxBasisSection';
 import { DistributorFeedPanel } from './DistributorFeedPanel';
 import { StripeCardPanel } from '../../../components/mudavym/StripeCardPanel';
 import {
@@ -497,6 +498,9 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               onSwitch={d.setPosConnection}
             />
           )}
+          {/* F-1590: asked where the till is connected, before its first check
+              arrives — a check recorded before the answer stays as the till sent it. */}
+          <TaxBasisSetupLine className="cx-sec-d" />
 
           {/* — the payment provider — */}
           {d.provider.loading ? (

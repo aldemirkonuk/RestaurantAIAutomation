@@ -7,6 +7,8 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { SettingsAuditService } from "../settings-audit/settings-audit.service";
+import { houseFrame } from "../common/house-frame";
+import { houseDayOf } from "../common/house-day";
 
 /**
  * The margin this house needs on a bottle and on a glass, and how close is
@@ -78,7 +80,12 @@ export interface TargetMarginReadout {
    * 2026-10-12, S218, F3): since when, and whether the target was set before
    * that and must be confirmed again before advice resumes.
    */
-  pricesIncludeTax?: { since: string | null; targetReconfirm: boolean };
+  pricesIncludeTax?: {
+    since: string | null;
+    /** `since` on the house's clock: the day ingest switches (F-1585). */
+    sinceDay: string | null;
+    targetReconfirm: boolean;
+  };
 }
 
 /**
@@ -102,6 +109,19 @@ export function targetReconfirmOwed(
   return set < since;
 }
 
+/**
+ * The house day the tax basis was confirmed on, the day ingest starts making
+ * net pre-tax (tax-basis-resolver.ts: `houseDayOf(confirmedAt, zone)`), so
+ * the page never prints the UTC date of the instant (F-1585). Null with no
+ * time zone or no moment.
+ */
+function switchDayOf(row: TargetRow): string | null {
+  const zone = houseFrame(row).zone;
+  return zone && row.tax_basis_confirmed_at
+    ? houseDayOf(row.tax_basis_confirmed_at, zone)
+    : null;
+}
+
 interface TargetRow {
   target_margin_bottle_pct: number | string | null;
   target_margin_glass_pct: number | string | null;
@@ -116,6 +136,9 @@ interface TargetRow {
   /** `restaurants.tax_basis` and its confirmation moment (F-620). */
   tax_basis?: string | null;
   tax_basis_confirmed_at?: string | null;
+  /** The house's zone, for the switch's house day (F-1585). */
+  timezone?: string | null;
+  country?: string | null;
 }
 
 /** NUMERIC arrives from PostgREST as a string; anything unparseable is "not set". */
@@ -137,7 +160,7 @@ export async function readHouseTargetMargin(
   const { data, error } = await client
     .from("restaurants")
     .select(
-      "target_margin_bottle_pct, target_margin_glass_pct, target_margin_band_pct, target_margin_set_by, target_margin_set_at, default_pour_ml, pour_size_confirmed_by, pour_size_confirmed_at, currency, tax_basis, tax_basis_confirmed_at",
+      "target_margin_bottle_pct, target_margin_glass_pct, target_margin_band_pct, target_margin_set_by, target_margin_set_at, default_pour_ml, pour_size_confirmed_by, pour_size_confirmed_at, currency, tax_basis, tax_basis_confirmed_at, timezone, country",
     )
     .eq("id", restaurantId)
     .maybeSingle();
@@ -524,6 +547,7 @@ export class TargetMarginService {
         ? {
             pricesIncludeTax: {
               since: row.tax_basis_confirmed_at ?? null,
+              sinceDay: switchDayOf(row),
               targetReconfirm: targetReconfirmOwed(
                 row.target_margin_set_at,
                 row.tax_basis,

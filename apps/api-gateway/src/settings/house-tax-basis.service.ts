@@ -14,7 +14,7 @@ import {
   type TaxRateKeyKind,
 } from "../common/tax-basis";
 import { countryCodeOf, houseFrame } from "../common/house-frame";
-import { houseToday } from "../common/house-day";
+import { houseDayOf, houseToday, shiftHouseDay } from "../common/house-day";
 
 /**
  * Whether this house's till prices include tax, and the rates it charges —
@@ -40,7 +40,9 @@ import { houseToday } from "../common/house-day";
  *      value this route writes, the rule the target margin holds.
  *   4. Rates are appended, never edited (`house_tax_rates` is append-only in
  *      the database). A rate is a PERCENT here (20 = 20 percent) and a
- *      fraction in the table. A rate keyed to one of the house's own items
+ *      fraction in the table. Withdrawing a rate (F-1586) is appended too:
+ *      rows that restate, from the withdrawal day, what was in force for that
+ *      key as if the withdrawn row had never been added (`withdrawalRows`). A rate keyed to one of the house's own items
  *      must be an item OF THIS HOUSE; any other id answers 404 (ADR 0147), so
  *      the answer never says whether another house's item exists.
  *   5. A failed read is never an empty one: `readable: false` with the reason.
@@ -140,6 +142,12 @@ export interface TaxRateRow {
   effectiveTo: string | null;
   /** This row is the one in force for its key on `today`. */
   inForceToday: boolean;
+  /**
+   * It starts after `today` and is the row in force for its key on its own
+   * first day, so it will apply unless withdrawn (F-1586). A row a later
+   * version masks from its first day is not upcoming.
+   */
+  upcoming: boolean;
   createdAt: string | null;
 }
 
@@ -153,6 +161,12 @@ export interface HouseTaxBasisReadout {
   answered: boolean;
   /** The switch date reports mark (F2). Null while unset. */
   confirmedAt: string | null;
+  /**
+   * The house day of `confirmedAt`: the first day ingest makes net pre-tax
+   * (tax-basis-resolver.ts compares house days, not instants; F-1585). Null
+   * while unset or when the house has no time zone.
+   */
+  switchDay: string | null;
   confirmedBy: { userId: string; name: string | null } | null;
   /** The house's recorded country, as a code; null when none is recorded or known. */
   country: string | null;
@@ -281,6 +295,79 @@ export function notARateBecause(body: {
   return null;
 }
 
+/** A row `withdrawalRows` asks to append: PERCENT, null for no rate. */
+export interface RestatedRate {
+  ratePct: number | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+/**
+ * The day a withdrawal starts (F-1586): a rate not yet in force is withdrawn
+ * from its own first day, so it never applies; one already in force from
+ * the house's next day, so a day already trading is never split between two
+ * rates. Null when the row has ended by then and there is nothing to stop.
+ */
+export function withdrawalStart(
+  row: { effectiveFrom: string; effectiveTo: string | null },
+  today: string,
+): string | null {
+  const from =
+    row.effectiveFrom > today ? row.effectiveFrom : shiftHouseDay(today, 1);
+  if (row.effectiveTo !== null && row.effectiveTo <= from) return null;
+  return from;
+}
+
+/**
+ * How a rate is withdrawn on an append-only table (F-1586). The table refuses
+ * UPDATE and DELETE, and a row with no rate would also cut off whatever rate
+ * the key had before (a 20% from January withdrawn by a NULL row leaves the
+ * key with no rate at all, not with the 18% it had). So the withdrawal
+ * appends rows that restate, from `from` to the end of the withdrawn row's
+ * span, what was in force for the key WITHOUT that row. Each piece runs
+ * until the restated row ends or another of the key's rows starts, so the
+ * newest-version-wins rule (`rateRowInForce`) reads exactly the table the
+ * house would have had; a piece with nothing to restate is a NULL row, the
+ * migration's own spelling of "this key has no rate from here".
+ */
+export function withdrawalRows(
+  rows: readonly TaxRateRow[],
+  withdrawn: TaxRateRow,
+  from: string,
+): RestatedRate[] {
+  const others = rows.filter(
+    (r) =>
+      r.keyKind === withdrawn.keyKind &&
+      r.key === withdrawn.key &&
+      r.version !== withdrawn.version,
+  );
+  const end = withdrawn.effectiveTo;
+  const out: RestatedRate[] = [];
+  let start = from;
+  while (end === null || start < end) {
+    const before = rateRowInForce(
+      others,
+      withdrawn.keyKind,
+      withdrawn.key,
+      start,
+    );
+    let stop: string | null = end;
+    if (before?.effectiveTo && (stop === null || before.effectiveTo < stop))
+      stop = before.effectiveTo;
+    for (const o of others)
+      if (o.effectiveFrom > start && (stop === null || o.effectiveFrom < stop))
+        stop = o.effectiveFrom;
+    out.push({
+      ratePct: before?.ratePct ?? null,
+      effectiveFrom: start,
+      effectiveTo: stop,
+    });
+    if (stop === null) break;
+    start = stop;
+  }
+  return out;
+}
+
 @Injectable()
 export class HouseTaxBasisService {
   private readonly logger = new Logger(HouseTaxBasisService.name);
@@ -318,6 +405,7 @@ export class HouseTaxBasisService {
         basis: null,
         answered: false,
         confirmedAt: null,
+        switchDay: null,
         confirmedBy: null,
         rates: null,
         ratesReason: null,
@@ -330,15 +418,18 @@ export class HouseTaxBasisService {
       this.nameOf(by),
       this.readRates(restaurantId, today),
     ]);
+    const confirmedAt = answered
+      ? (house.row?.tax_basis_confirmed_at ?? null)
+      : null;
     return {
       ...base,
       readable: true,
       reason: null,
       basis,
       answered,
-      confirmedAt: answered
-        ? (house.row?.tax_basis_confirmed_at ?? null)
-        : null,
+      confirmedAt,
+      switchDay:
+        confirmedAt && frame.zone ? houseDayOf(confirmedAt, frame.zone) : null,
       confirmedBy: by ? { userId: by, name } : null,
       rates: rates.rows,
       ratesReason: rates.error,
@@ -512,6 +603,92 @@ export class HouseTaxBasisService {
     };
   }
 
+  /**
+   * Withdraw one rate row (F-1586), by appending the rows `withdrawalRows`
+   * restates, in ONE insert so the house never reads half a withdrawal. The
+   * row is named by its version within THIS house; any other answers 404.
+   */
+  async withdrawRate(
+    restaurantId: string,
+    version: unknown,
+    actorUserId: string,
+    now: Date = new Date(),
+  ): Promise<HouseTaxBasisReadout> {
+    const v = typeof version === "string" ? Number(version) : version;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 1)
+      throw new BadRequestException(
+        "Name the rate to withdraw by its number. Nothing was recorded.",
+      );
+    const current = await this.read(restaurantId, now);
+    if (!current.readable || current.rates === null) {
+      throw new InternalServerErrorException(
+        `This house's rates could not be read, so nothing was withdrawn: ${current.reason ?? current.ratesReason ?? "no reason was given"}`,
+      );
+    }
+    // The restated rows are worked out from the key's whole history; a read
+    // cut at the cap could miss a row and restate the wrong rate.
+    if (current.rates.length >= TAX_RATE_READ_CAP)
+      throw new InternalServerErrorException(
+        `This house has more than ${TAX_RATE_READ_CAP} rate rows, so a withdrawal cannot be worked out safely here. Nothing was changed.`,
+      );
+    const row = current.rates.find((r) => r.version === v);
+    if (!row)
+      throw new NotFoundException(
+        "No rate of this house by that number. Nothing was recorded.",
+      );
+    if (row.ratePct === null)
+      throw new BadRequestException(
+        "That row already says the rate is withdrawn. Nothing was recorded.",
+      );
+    const from = withdrawalStart(row, current.today);
+    if (from === null)
+      throw new BadRequestException(
+        `That rate ended on ${row.effectiveTo}, so there is nothing to withdraw. Nothing was recorded.`,
+      );
+    const restated = withdrawalRows(current.rates, row, from);
+    const { error } = await this.databaseService.client
+      .from("house_tax_rates")
+      .insert(
+        restated.map((r) => ({
+          restaurant_id: restaurantId,
+          key_kind: row.keyKind,
+          key: row.key,
+          rate: r.ratePct === null ? null : toFraction(r.ratePct),
+          effective_from: r.effectiveFrom,
+          effective_to: r.effectiveTo,
+          created_by: actorUserId,
+        })),
+      );
+    if (error) {
+      this.logger.error(
+        `Could not withdraw tax rate ${v} for ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        `The rate was not withdrawn. Nothing was changed. ${error.message}`,
+      );
+    }
+    const receipt = await this.audit.record({
+      restaurantId,
+      actorUserId,
+      action: TAX_RATE_AUDIT_ACTION,
+      register: "tax-basis",
+      entityType: "house_tax_rates",
+      entityId: restaurantId,
+      subject: `withdrawing the ${row.ratePct}% tax rate on ${row.keyKind === "house" ? "everything" : row.keyKind === "pos_category" ? `the till category “${row.key}”` : (row.itemName ?? "an item")}`,
+      fields: {
+        withdrawn_version: { from: v, to: null },
+        effective_from: { from: null, to: from },
+      },
+    });
+    const after = await this.read(restaurantId, now);
+    return {
+      ...after,
+      changed: true,
+      audited: receipt.recorded,
+      auditReason: receipt.reason,
+    };
+  }
+
   private async readHouse(
     restaurantId: string,
   ): Promise<{ row: HouseRow | null; error: string | null }> {
@@ -560,11 +737,15 @@ export class HouseTaxBasisService {
         effectiveFrom: r.effective_from,
         effectiveTo: r.effective_to,
         inForceToday: false,
+        upcoming: false,
         createdAt: r.created_at,
       });
     }
     for (const r of rows) {
       r.inForceToday = rateRowInForce(rows, r.keyKind, r.key, today) === r;
+      r.upcoming =
+        r.effectiveFrom > today &&
+        rateRowInForce(rows, r.keyKind, r.key, r.effectiveFrom) === r;
     }
     const itemIds = [
       ...new Set(
