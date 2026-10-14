@@ -77,6 +77,11 @@ export interface AnalysisSpec {
   graphNote: string;
   /** True for the one register whose endpoint takes a `days` parameter. */
   takesWindow?: boolean;
+  /**
+   * True for a register that follows the page's calendar month when one is
+   * picked, and keeps its own fixed window otherwise (w111-tips-owed).
+   */
+  takesMonth?: boolean;
   select: (raw: unknown) => unknown;
   view: (data: unknown, ctx: ViewCtx) => AnalysisView;
 }

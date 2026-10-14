@@ -317,7 +317,11 @@ export function useReportsNextData(
           ROOT,
           id,
           rid,
-          spec.takesWindow ? (tillMonth ?? (tillWeek ? `week:${tillWeek}` : tillDays)) : null,
+          spec.takesWindow
+            ? (tillMonth ?? (tillWeek ? `week:${tillWeek}` : tillDays))
+            : spec.takesMonth
+              ? tillMonth
+              : null,
         ],
         enabled: !!rid,
         staleTime: 60_000,

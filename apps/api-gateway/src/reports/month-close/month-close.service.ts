@@ -152,6 +152,13 @@ export interface TillFigures {
    * the record; never sent to the page.
    */
   kept?: Record<string, number | null>;
+  /**
+   * Each counted check's tip at the close, by id, for the checks that carried
+   * one (w111-tips-owed): a counted check absent here carried none. A later
+   * tip change is listed against it, so `tips` never moves in silence. Absent
+   * on a close kept before: no tip change can be listed, only the move.
+   */
+  keptTips?: Record<string, number>;
 }
 
 /** One server's share of the month's tips (F-1691). */
@@ -341,7 +348,8 @@ export interface MonthCloseDto {
 
 /** One change dated inside a closed month and made after it was closed. */
 export interface ChangedAfterClose {
-  kind: "till" | "stock" | "purchase";
+  /** "tips": a check's tip, on a line of its own so each kind adds up to its figure. */
+  kind: "till" | "tips" | "stock" | "purchase";
   /** When the change reached the books. */
   at: string;
   /** The house day inside the month it is dated on. */
@@ -360,6 +368,7 @@ export interface FigureAgainstNow {
   figure:
     | "till_net_sales"
     | "till_checks"
+    | "till_tips"
     | "purchases"
     | "variance_net"
     | "variance_open_ml"
@@ -452,7 +461,7 @@ function codeOf(v: unknown): string | null {
 
 /** The figures as the page reads them: the per-check and per-order snapshot stays in the record. */
 function withoutSnapshot(f: MonthFigures): MonthFigures {
-  const { kept: _till, ...till } = f.till;
+  const { kept: _till, keptTips: _tips, ...till } = f.till;
   const { kept: _orders, ...purchases } = f.purchases;
   return { ...f, till, purchases };
 }
@@ -1178,6 +1187,7 @@ export class MonthCloseService {
       });
     }
     const keptChecks: Record<string, number | null> = {};
+    const keptTips: Record<string, number> = {};
     const netByDay = new Map<string, number>();
     let netSales: number | null = null;
     let netSalesCheckCount = 0;
@@ -1194,6 +1204,7 @@ export class MonthCloseService {
       // F-1691: a tip is money of its own, whether or not the check carried
       // a net figure.
       if (c.tip !== null) {
+        keptTips[c.id] = c.tip;
         tips = (tips ?? 0) + c.tip;
         tipsCheckCount += 1;
         const s = tipsByServer.get(c.server) ?? {
@@ -1265,6 +1276,7 @@ export class MonthCloseService {
                   String(a.server ?? "").localeCompare(String(b.server ?? "")),
               ),
             kept: keptChecks,
+            keptTips,
           }
         : {
             posConnected: false,
@@ -1278,6 +1290,7 @@ export class MonthCloseService {
             tipsCheckCount: null,
             tipsByServer: [],
             kept: {},
+            keptTips: {},
           },
       valuation: {
         inventoryValue: finite(s.inventoryValue),
@@ -1457,9 +1470,14 @@ export class MonthCloseService {
     const has = (id: string) => Object.prototype.hasOwnProperty.call(kept, id);
     const ref = (c: TillCheck) => (c.ref ? ` ${c.ref}` : "");
     const rows: ChangedAfterClose[] = [];
-    const push = (c: TillCheck | null, what: string, delta: number | null) =>
+    const push = (
+      c: TillCheck | null,
+      what: string,
+      delta: number | null,
+      kind: "till" | "tips" = "till",
+    ) =>
       rows.push({
-        kind: "till",
+        kind,
         at: c ? at(c) : row.closed_at,
         day: c ? c.day : row.month,
         who: "The till",
@@ -1468,9 +1486,34 @@ export class MonthCloseService {
         unit: "money",
         currency: null,
       });
+    // w111-tips-owed: a tip is money of its own, so a tip that moved after
+    // the close is listed on a line of its own ("tips"), never folded into
+    // the net figure's line, and the tip lines add up to Tips' move.
+    const keptTips = row.figures.till?.keptTips;
+    const tipWas = (id: string): number | null | undefined =>
+      !keptTips || !has(id)
+        ? undefined
+        : Object.prototype.hasOwnProperty.call(keptTips, id)
+          ? keptTips[id]
+          : null;
+    const tipMoved = (c: TillCheck | null, id: string) => {
+      if (!keptTips) return;
+      const was = tipWas(id) ?? null;
+      const now = c && !c.voided ? c.tip : null;
+      if (now === was) return;
+      push(
+        c,
+        `${c ? `Check${ref(c)}` : "A check kept at the close"}: tip ${
+          was === null ? "added" : now === null ? "taken off" : "changed"
+        } at the till`,
+        (now ?? 0) - (was ?? 0),
+        "tips",
+      );
+    };
     const seen = new Set<string>();
     for (const c of checks) {
       seen.add(c.id);
+      if (has(c.id) || !c.voided) tipMoved(c, c.id);
       const was = has(c.id) ? kept[c.id] : undefined;
       if (was !== undefined && c.voided)
         push(
@@ -1488,12 +1531,14 @@ export class MonthCloseService {
         push(c, `Check${ref(c)} arrived from the till`, c.net);
     }
     for (const id of Object.keys(kept))
-      if (!seen.has(id))
+      if (!seen.has(id)) {
         push(
           null,
           "A check kept at the close is no longer in this month",
           kept[id] === null ? null : -(kept[id] as number),
         );
+        tipMoved(null, id);
+      }
     rows.sort((x, y) => Date.parse(y.at) - Date.parse(x.at));
     return {
       rows: rows.slice(0, CHANGED_AFTER_CLOSE_CAP),
@@ -1995,6 +2040,19 @@ export function againstNow(
       null,
     ),
   ];
+  // w111-tips-owed: the month's tips as kept against as read now, so a tip
+  // changed after the close is never a silent move. A close kept before
+  // F-1691 has no tips figure: unknown, never 0.
+  if (kept.till.tips !== undefined || now.till.tips != null)
+    out.push(
+      pair(
+        "till_tips",
+        "Tips through the till",
+        kept.till.tips ?? null,
+        now.till.tips ?? null,
+        kept.currency,
+      ),
+    );
   const codes = new Set<string | null>([
     ...kept.purchases.totals.map((t) => t.currency),
     ...now.purchases.totals.map((t) => t.currency),

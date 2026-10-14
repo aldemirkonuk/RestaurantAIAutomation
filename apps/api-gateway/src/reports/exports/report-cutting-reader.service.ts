@@ -100,9 +100,10 @@ export class ReportCuttingReader {
       // GET /analytics/table-performance/:rid?sinceDays=90
       case "seats":
         return this.tables.getTablePerformance(restaurantId, 90);
-      // GET /analytics/waiters/:rid?sinceDays=90
+      // GET /analytics/waiters/:rid?sinceDays=90 (or ?month=, the page's
+      // month on the house's days, as the till's).
       case "service":
-        return this.tables.getWaiterPerformance(restaurantId, 90);
+        return this.tables.getWaiterPerformance(restaurantId, 90, month);
       // GET /analytics/inventory-science/:rid — no params on the page's path.
       case "restock":
         return this.analytics.getInventoryScience(restaurantId, {

@@ -905,13 +905,18 @@ export class AnalyticsController {
       "Per-server revenue, avg check, wine attach, tip%; peer ranks; ridge fixed-effects 'adjusted plus-minus' controlling for table assignments.",
   })
   @ApiQuery({ name: "sinceDays", required: false })
+  // A calendar month (YYYY-MM, or YYYY-Qn) on the house's days, as the
+  // till's month is read (F-128); absent keeps the trailing window.
+  @ApiQuery({ name: "month", required: false })
   async getWaiters(
     @Param("restaurantId") restaurantId: string,
     @Query("sinceDays") sinceDaysStr?: string,
+    @Query("month") month?: string,
   ) {
     return this.tableAnalytics.getWaiterPerformance(
       restaurantId,
       sinceDaysStr ? parseInt(sinceDaysStr, 10) : undefined,
+      month || null,
     );
   }
 
