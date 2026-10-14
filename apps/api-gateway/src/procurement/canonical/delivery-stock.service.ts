@@ -2,6 +2,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
+import {
+  costTaxStampFor,
+  readHouseCostTaxTerms,
+  stampLotsCostTaxBasis,
+} from "../../common/cost-tax-stamp";
+import type { CostTaxBasis } from "../../common/tax-basis";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -418,6 +424,7 @@ export class DeliveryStockService {
     restaurantId: string,
     deliveryId: string,
     userId: string | null,
+    statedTaxBasis: CostTaxBasis | null = null,
   ): Promise<StockResult<CostReceipt>> {
     const delivery = await this.deliveryFor(restaurantId, deliveryId);
     if (!delivery.ok) return delivery;
@@ -480,13 +487,37 @@ export class DeliveryStockService {
       });
     }
 
-    if (finalised.length)
+    if (finalised.length) {
       await this.stampCostCurrency(
         restaurantId,
         deliveryId,
         delivery.value.orderId,
         finalised.map((f) => f.inventoryId),
       );
+      // WHETHER TAX IS INSIDE THE SETTLED PRICE (ADR 0341 F3), in its own
+      // statement after the cost (the trigger clears a basis the cost write
+      // left as it was). Only what the verifier said, never a guess from the
+      // house's country; nothing where the house's prices do not include tax.
+      const basis = costTaxStampFor(
+        await readHouseCostTaxTerms(
+          this.db.getClient(),
+          restaurantId,
+          this.logger,
+        ),
+        statedTaxBasis,
+      );
+      if (basis)
+        await stampLotsCostTaxBasis(
+          this.db.getClient(),
+          {
+            restaurantId,
+            inventoryIds: finalised.map((f) => f.inventoryId),
+            scope: { deliveryId },
+            basis,
+          },
+          this.logger,
+        );
+    }
 
     return { ok: true, value: { deliveryId, finalised, stillProvisional } };
   }

@@ -109,7 +109,10 @@ function makeDb(opts: {
         if (table === "menu_items")
           return { data: opts.menuItems ?? [], error: null };
         if (table === "restaurants" && opts.restaurant)
-          return { data: [opts.restaurant], error: null };
+          return {
+            data: shape === "one" ? opts.restaurant : [opts.restaurant],
+            error: null,
+          };
         if (table === "procurement_order_items" && op === "select")
           return {
             data: shape === "one" ? (opts.orderLine ?? null) : [],
@@ -286,6 +289,104 @@ describe("createOrder — the line table finally gets written", () => {
     expect(calls.lineInserts).toHaveLength(1);
     expect(calls.lineInserts[0].master_wine_id).toBeNull();
     expect(calls.lineInserts[0].wine_name).toContain(insertedOrder.id);
+  });
+});
+
+describe("createOrder — the line says whether tax is inside its price (ADR 0341 F3)", () => {
+  const bottles = {
+    inventoryId: "inv-1",
+    providerId: "prov-1",
+    quantity: 6,
+    finalPrice: 40,
+    currency: "TRY",
+  } as any;
+  const kdvHouse = {
+    tax_basis: "prices_include_tax",
+    country: "TR",
+    currency: "TRY",
+  };
+
+  it.each([["TR"], ["US"]])(
+    "[REVERT-FAILS] an inclusive house (%s) where nobody said leaves it not stated, never guessed from the country",
+    async (country) => {
+      const { db, calls } = makeDb({
+        insertedOrder,
+        inventory: inventoryRow,
+        restaurant: { ...kdvHouse, country },
+      });
+      await service(db).createOrder("rest-1", USER, bottles);
+      expect(calls.lineInserts[0]).toHaveProperty("price_tax_basis", null);
+    },
+  );
+
+  it.each([["includes_tax"], ["excludes_tax"]])(
+    "what the owner or manager said (%s) is stamped",
+    async (said) => {
+      const { db, calls } = makeDb({
+        insertedOrder,
+        inventory: inventoryRow,
+        restaurant: kdvHouse,
+      });
+      await service(db).createOrder("rest-1", USER, {
+        ...bottles,
+        priceTaxBasis: said,
+      });
+      expect(calls.lineInserts[0].price_tax_basis).toBe(said);
+    },
+  );
+
+  it("what the owner or manager said is stamped at a US inclusive house too", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      restaurant: { ...kdvHouse, country: "US" },
+    });
+    await service(db).createOrder("rest-1", USER, {
+      ...bottles,
+      priceTaxBasis: "excludes_tax",
+    });
+    expect(calls.lineInserts[0].price_tax_basis).toBe("excludes_tax");
+  });
+
+  it.each([
+    ["unset", "TR"],
+    ["prices_exclude_tax", "US"],
+  ])(
+    "a %s house (%s) leaves it not stated, even when told",
+    async (basis, country) => {
+      const { db, calls } = makeDb({
+        insertedOrder,
+        inventory: inventoryRow,
+        restaurant: { tax_basis: basis, country, currency: "EUR" },
+      });
+      await service(db).createOrder("rest-1", USER, {
+        ...bottles,
+        priceTaxBasis: "excludes_tax",
+      });
+      expect(calls.lineInserts[0].price_tax_basis).toBeNull();
+    },
+  );
+
+  it("a line with no price states nothing about tax", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      restaurant: kdvHouse,
+    });
+    await service(db).createOrder("rest-1", USER, {
+      ...bottles,
+      finalPrice: undefined,
+    });
+    expect(calls.lineInserts[0].price_tax_basis).toBeNull();
+  });
+
+  it("the body refuses a basis that is not one of the two", async () => {
+    const dto = plainToInstance(CreateOrderDto, {
+      ...bottles,
+      priceTaxBasis: "kdv_dahil",
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === "priceTaxBasis")).toBe(true);
   });
 });
 

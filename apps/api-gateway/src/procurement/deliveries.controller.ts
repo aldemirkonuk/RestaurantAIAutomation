@@ -23,6 +23,7 @@ import {
   LinkDocumentDto,
   ProposeDto,
   RunClocksDto,
+  VerifyDeliveryDto,
 } from "./dto/deliveries.dto";
 
 type AuthedUser = {
@@ -377,12 +378,17 @@ export class DeliveriesController {
     description:
       "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. Idempotent — a second verify returns the first one's stamp. Settles the lots' cost at the agreed invoice price (`finaliseAtVerified`); writes no stock. Owners and managers only (F-317).",
   })
-  async verify(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+  async verify(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+    @Body() body?: VerifyDeliveryDto,
+  ) {
     assertMaySettleDelivery(user, "verify");
     const res = await this.deliveries.verify(
       user.restaurantId,
       id,
       user.userId,
+      { priceTaxBasis: body?.priceTaxBasis ?? null },
     );
     if (!res.ok) throw new HttpException(res.error, res.status);
     return res.value;

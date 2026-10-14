@@ -23,6 +23,7 @@ import { receivingPriceNeedsACurrency } from "../price-currency";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
 import { PRICE_UOM_TYPES } from "../agreed-price";
+import { COST_TAX_BASES, type CostTaxBasis } from "../../common/tax-basis";
 import {
   PENDING_FLAG_REASONS,
   type PendingFlagReason,
@@ -235,6 +236,16 @@ export class CreateOrderDto {
   @IsNumber()
   @IsOptional()
   finalPrice?: number;
+
+  /**
+   * Whether tax is inside this line's prices (ADR 0341 F3). Read only where
+   * the house's till prices include tax; omitted, it stays not stated
+   * (`common/cost-tax-stamp.ts`). An owner's or a manager's to say.
+   */
+  @ApiPropertyOptional({ enum: COST_TAX_BASES })
+  @IsIn(COST_TAX_BASES as unknown as string[])
+  @IsOptional()
+  priceTaxBasis?: CostTaxBasis;
 
   /**
    * Checked, never trusted: the server works the total out from the quantity
@@ -609,6 +620,16 @@ export class VerifyReceiptDto {
   })
   @IsOptional()
   invoiceCurrency?: string;
+
+  /**
+   * Whether tax is inside `invoiceUnitPrice` (ADR 0341 F3). Read only where
+   * the house's till prices include tax; omitted, it stays not stated
+   * (`common/cost-tax-stamp.ts`). Money, so an owner's or a manager's.
+   */
+  @ApiPropertyOptional({ enum: COST_TAX_BASES })
+  @IsIn(COST_TAX_BASES as unknown as string[])
+  @IsOptional()
+  invoicePriceTaxBasis?: CostTaxBasis;
 
   @ApiPropertyOptional({
     description:

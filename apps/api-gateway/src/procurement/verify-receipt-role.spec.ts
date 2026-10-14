@@ -78,6 +78,13 @@ describe("POST /procurement/orders/:id/verify-receipt — who may put money on a
       "freight charges",
       { acceptedQuantityInCountedUom: 12, allocatedCharges: 4 },
     ],
+    [
+      "whether tax is inside the price (ADR 0341 F3)",
+      {
+        acceptedQuantityInCountedUom: 12,
+        invoicePriceTaxBasis: "excludes_tax",
+      },
+    ],
   ])("refuses staff %s with a 403 and writes nothing", async (_label, body) => {
     const { controller, verifyReceipt } = harness();
     const { error } = await outcome(
@@ -124,4 +131,51 @@ describe("POST /procurement/orders/:id/verify-receipt — who may put money on a
       });
     },
   );
+});
+
+describe("POST /procurement/orders — who may say whether tax is inside the price (ADR 0341 F3)", () => {
+  function orderHarness() {
+    const createOrder = jest.fn().mockResolvedValue({ id: ORDER });
+    const controller = new ProcurementController({
+      createOrder,
+    } as unknown as ProcurementService);
+    return { controller, createOrder };
+  }
+  const order = {
+    inventoryId: "inv-1",
+    providerId: "prov-1",
+    quantity: 6,
+    finalPrice: 40,
+    currency: "TRY",
+  };
+
+  it("refuses staff stating it, with a 403, and places nothing", async () => {
+    const { controller, createOrder } = orderHarness();
+    const { error } = await outcome(
+      controller.createOrder(
+        { ...order, priceTaxBasis: "excludes_tax" } as any,
+        as("staff"),
+      ),
+    );
+    expect((error as HttpException).getStatus()).toBe(HttpStatus.FORBIDDEN);
+    expect(String((error as HttpException).message)).toMatch(
+      /owner's or a manager's/,
+    );
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("lets staff place the order without saying it", async () => {
+    const { controller, createOrder } = orderHarness();
+    await controller.createOrder(order as any, as("staff"));
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["manager", "owner"])("lets a %s say it", async (role) => {
+    const { controller, createOrder } = orderHarness();
+    const body = { ...order, priceTaxBasis: "includes_tax" } as any;
+    await controller.createOrder(body, as(role));
+    expect(createOrder).toHaveBeenCalledWith("rest-1", "u-1", body, {
+      source: "manual",
+    });
+  });
 });

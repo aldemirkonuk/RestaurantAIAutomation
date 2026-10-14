@@ -15,6 +15,7 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import { DELIVERY_ROLES, REASON_CLASSES } from "../canonical/delivery.service";
+import { COST_TAX_BASES, type CostTaxBasis } from "../../common/tax-basis";
 
 /**
  * The delivery doors' bodies (ADR 0103 D1/D3/D5/D6/D7).
@@ -354,4 +355,17 @@ export class AcceptAsBilledDto {
   @MinLength(3)
   @MaxLength(2000)
   reason!: string;
+}
+
+/**
+ * VERIFIED's one optional word (ADR 0341 F3): whether tax is inside the
+ * prices this delivery's cost is settled at. Read only where the house's till
+ * prices include tax; omitted, it stays not stated
+ * (`common/cost-tax-stamp.ts`). The route is an owner's or a manager's already.
+ */
+export class VerifyDeliveryDto {
+  @ApiPropertyOptional({ enum: COST_TAX_BASES })
+  @IsIn(COST_TAX_BASES as unknown as string[])
+  @IsOptional()
+  priceTaxBasis?: CostTaxBasis;
 }

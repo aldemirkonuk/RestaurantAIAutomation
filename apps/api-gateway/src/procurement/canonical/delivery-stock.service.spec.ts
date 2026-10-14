@@ -413,6 +413,111 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     });
   });
 
+  describe("the settled cost says whether tax is inside it (ADR 0341 F3)", () => {
+    const invoiceLine = {
+      data: [
+        {
+          document_id: "inv-1",
+          line_no: 1,
+          inventory_id: ITEM,
+          qty_bottles: 10,
+          unit_price: 20,
+          description: "Öküzgözü",
+          vendor_sku: null,
+        },
+      ],
+      error: null,
+    };
+    const taxStamps = () =>
+      db.writes.filter(
+        (w) =>
+          w.table === "inventory_lots" &&
+          w.verb === "update" &&
+          "unit_cost_tax_basis" in (w.payload as Record<string, unknown>),
+      );
+
+    beforeEach(() => {
+      db.answers.procurement_document_lines = invoiceLine;
+      db.answers.procurement_documents = {
+        data: [{ currency: "TRY" }],
+        error: null,
+      };
+    });
+
+    it.each([["TR"], ["US"]])(
+      "[REVERT-FAILS] an inclusive house (%s) where the verifier said nothing stamps nothing, never a guess from the country",
+      async (country) => {
+        db.answers.restaurants = {
+          data: { tax_basis: "prices_include_tax", country },
+          error: null,
+        };
+        const res = await service.finaliseAtVerified(REST, DEL, USER);
+        expect(res.ok).toBe(true);
+        expect(taxStamps()).toEqual([]);
+      },
+    );
+
+    it("what the verifier said is stamped as said", async () => {
+      db.answers.restaurants = {
+        data: { tax_basis: "prices_include_tax", country: "TR" },
+        error: null,
+      };
+      await service.finaliseAtVerified(REST, DEL, USER, "excludes_tax");
+      expect(taxStamps()).toEqual([
+        {
+          table: "inventory_lots",
+          verb: "update",
+          payload: { unit_cost_tax_basis: "excludes_tax" },
+        },
+      ]);
+    });
+
+    it.each([
+      ["unset", "TR"],
+      ["prices_exclude_tax", "US"],
+      ["not_vat_charging", "TR"],
+    ])(
+      "a %s house (%s) stamps nothing, even when told",
+      async (basis, country) => {
+        db.answers.restaurants = {
+          data: { tax_basis: basis, country },
+          error: null,
+        };
+        const res = await service.finaliseAtVerified(
+          REST,
+          DEL,
+          USER,
+          "excludes_tax",
+        );
+        expect(res.ok).toBe(true);
+        expect(taxStamps()).toEqual([]);
+      },
+    );
+
+    it("an unread house stamps nothing, and the cost still posts", async () => {
+      db.answers.restaurants = { data: null, error: { message: "boom" } };
+      const res = await service.finaliseAtVerified(
+        REST,
+        DEL,
+        USER,
+        "excludes_tax",
+      );
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.value.finalised).toHaveLength(1);
+      expect(taxStamps()).toEqual([]);
+    });
+
+    it("an inclusive house in a country with no rule, told nothing, stamps nothing", async () => {
+      db.answers.restaurants = {
+        data: { tax_basis: "prices_include_tax", country: "GB" },
+        error: null,
+      };
+      await service.finaliseAtVerified(REST, DEL, USER);
+      expect(taxStamps()).toEqual([]);
+    });
+  });
+
   it("an ACCEPTED proposal beats the invoice line it is about", async () => {
     db.answers.procurement_document_lines = {
       data: [
