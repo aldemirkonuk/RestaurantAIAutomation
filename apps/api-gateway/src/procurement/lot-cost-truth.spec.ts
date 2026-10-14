@@ -452,12 +452,25 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
           u.table === "inventory_lots" && "unit_cost_tax_basis" in u.values,
       );
 
-    it("[REVERT-FAILS] a house whose prices include KDV stamps the country rule, after the cost", async () => {
+    it("[REVERT-FAILS] an inclusive house where nobody said stamps nothing, never a guess from the country", async () => {
       const { db, calls } = makeDb(
         { currency: "TRY" },
         { tax_basis: "prices_include_tax", country: "TR" },
       );
       await service(db).verifyReceipt(REST, ORDER, USER, check as any);
+      expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(true);
+      expect(taxStamps(calls)).toEqual([]);
+    });
+
+    it("what the owner or manager said is stamped, after the cost", async () => {
+      const { db, calls } = makeDb(
+        { currency: "TRY" },
+        { tax_basis: "prices_include_tax", country: "TR" },
+      );
+      await service(db).verifyReceipt(REST, ORDER, USER, {
+        ...check,
+        invoicePriceTaxBasis: "includes_tax",
+      } as any);
       const stamps = taxStamps(calls);
       expect(stamps.map((u) => u.values)).toEqual([
         { unit_cost_tax_basis: "includes_tax" },
@@ -471,7 +484,7 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
       expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(true);
     });
 
-    it("[REVERT-FAILS] what the owner or manager said beats the country rule", async () => {
+    it("what the owner or manager said is stamped as said", async () => {
       const { db, calls } = makeDb(
         { currency: "TRY" },
         { tax_basis: "prices_include_tax", country: "TR" },

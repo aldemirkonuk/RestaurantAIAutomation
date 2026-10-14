@@ -496,8 +496,8 @@ export class DeliveryStockService {
       );
       // WHETHER TAX IS INSIDE THE SETTLED PRICE (ADR 0341 F3), in its own
       // statement after the cost (the trigger clears a basis the cost write
-      // left as it was). What the verifier said, else the house's country
-      // rule; nothing where the house's prices do not include tax.
+      // left as it was). Only what the verifier said, never a guess from the
+      // house's country; nothing where the house's prices do not include tax.
       const basis = costTaxStampFor(
         await readHouseCostTaxTerms(
           this.db.getClient(),

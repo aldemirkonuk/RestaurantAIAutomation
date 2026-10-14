@@ -239,8 +239,8 @@ export class CreateOrderDto {
 
   /**
    * Whether tax is inside this line's prices (ADR 0341 F3). Read only where
-   * the house's till prices include tax; omitted, the house's country rule
-   * stands (`common/cost-tax-stamp.ts`). An owner's or a manager's to say.
+   * the house's till prices include tax; omitted, it stays not stated
+   * (`common/cost-tax-stamp.ts`). An owner's or a manager's to say.
    */
   @ApiPropertyOptional({ enum: COST_TAX_BASES })
   @IsIn(COST_TAX_BASES as unknown as string[])
@@ -623,8 +623,8 @@ export class VerifyReceiptDto {
 
   /**
    * Whether tax is inside `invoiceUnitPrice` (ADR 0341 F3). Read only where
-   * the house's till prices include tax; omitted, the house's country rule
-   * stands (`common/cost-tax-stamp.ts`). Money, so an owner's or a manager's.
+   * the house's till prices include tax; omitted, it stays not stated
+   * (`common/cost-tax-stamp.ts`). Money, so an owner's or a manager's.
    */
   @ApiPropertyOptional({ enum: COST_TAX_BASES })
   @IsIn(COST_TAX_BASES as unknown as string[])

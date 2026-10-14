@@ -360,7 +360,7 @@ export class AcceptAsBilledDto {
 /**
  * VERIFIED's one optional word (ADR 0341 F3): whether tax is inside the
  * prices this delivery's cost is settled at. Read only where the house's till
- * prices include tax; omitted, the house's country rule stands
+ * prices include tax; omitted, it stays not stated
  * (`common/cost-tax-stamp.ts`). The route is an owner's or a manager's already.
  */
 export class VerifyDeliveryDto {

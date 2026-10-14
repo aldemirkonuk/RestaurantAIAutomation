@@ -8851,7 +8851,7 @@ export class ProcurementService {
           // The ledger this delta was measured against (F-464).
           `${stockedLedger.movements}:${stockedQtyInBottles}${match.ledgerDelta >= 0 ? "+" : ""}${match.ledgerDelta}`,
           // Whether tax is inside the landed cost (ADR 0341 F3): what the
-          // owner or manager said, else the house's country rule; nothing
+          // owner or manager said; not stated when nobody said, and nothing
           // where the house's prices do not include tax.
           landedCost != null
             ? costTaxStampFor(

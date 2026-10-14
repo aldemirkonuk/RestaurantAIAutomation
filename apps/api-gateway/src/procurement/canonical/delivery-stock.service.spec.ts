@@ -444,23 +444,20 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
       };
     });
 
-    it("a house whose prices include KDV stamps the country rule: tax inside", async () => {
-      db.answers.restaurants = {
-        data: { tax_basis: "prices_include_tax", country: "TR" },
-        error: null,
-      };
-      const res = await service.finaliseAtVerified(REST, DEL, USER);
-      expect(res.ok).toBe(true);
-      expect(taxStamps()).toEqual([
-        {
-          table: "inventory_lots",
-          verb: "update",
-          payload: { unit_cost_tax_basis: "includes_tax" },
-        },
-      ]);
-    });
+    it.each([["TR"], ["US"]])(
+      "[REVERT-FAILS] an inclusive house (%s) where the verifier said nothing stamps nothing, never a guess from the country",
+      async (country) => {
+        db.answers.restaurants = {
+          data: { tax_basis: "prices_include_tax", country },
+          error: null,
+        };
+        const res = await service.finaliseAtVerified(REST, DEL, USER);
+        expect(res.ok).toBe(true);
+        expect(taxStamps()).toEqual([]);
+      },
+    );
 
-    it("what the verifier said beats the country rule", async () => {
+    it("what the verifier said is stamped as said", async () => {
       db.answers.restaurants = {
         data: { tax_basis: "prices_include_tax", country: "TR" },
         error: null,

@@ -8,24 +8,24 @@
  * at the three places a cost is recorded: the order line, the receipt check
  * and the delivery's verification.
  *
- * THE RULE, IN ORDER:
+ * THE RULE:
  *   1. A house whose till prices do NOT include tax (unset, prices exclude
  *      tax, no VAT charged) gets no stamp at all: nothing reads one there, and
  *      those houses stay exactly as they were. So does a house whose basis
  *      could not be read.
- *   2. What an owner or a manager said for this cost. Each route refuses the
- *      statement from anyone who does not hold the house's money
- *      (`holdsHouseMoney`), before anything is written.
- *   3. Otherwise the house's country rule: in Türkiye a vendor's price is
- *      taken to include KDV, in the United States a wholesale price is taken
- *      to exclude sales tax. A country with no rule here stamps nothing:
- *      "not stated", which advice refuses on.
+ *   2. Otherwise only what an owner or a manager said for this cost. Each
+ *      route refuses the statement from anyone who does not hold the house's
+ *      money (`holdsHouseMoney`), before anything is written.
+ *   3. Nothing said, nothing stamped: "not stated", which advice refuses on.
+ *      The house's country is NEVER turned into a stamp. ADR 0341 §1 calls
+ *      the country "a proposal, never a value", and a stored stamp carries no
+ *      mark of who said it, so a guessed one could never be found again.
+ *      Whether a country default is wanted at all is OD-232.
  *
  * Writing the stamp on a lot is a SEPARATE statement after the cost: the
  * trigger `a_changed_cost_loses_its_unstated_tax_basis` clears the basis of a
  * cost changed in a write that leaves the basis as it was.
  */
-import { countryCodeOf } from "./house-frame";
 import {
   asCostTaxBasis,
   asHouseTaxBasis,
@@ -36,36 +36,26 @@ import {
 export interface HouseCostTaxTerms {
   /** The house says its till prices include tax. */
   inclusive: boolean;
-  /** The house's recorded country, as a code; null when none is known. */
-  country: string | null;
 }
 
 /** The minimum of a Supabase client these helpers use. */
 type Client = { from: (table: string) => any };
 type Log = { warn: (msg: string) => void };
 
-/** The country rule (step 3), or null where none is recorded here. */
-export function costTaxDefaultFor(country: string | null): CostTaxBasis | null {
-  if (country === "TR") return "includes_tax";
-  if (country === "US") return "excludes_tax";
-  return null;
-}
-
 /**
  * The stamp for one cost: null writes nothing (step 1), else what was said
- * (step 2), else the country rule (step 3). A value outside the two reads as
- * not said.
+ * (step 2), else null (step 3). A value outside the two reads as not said.
  */
 export function costTaxStampFor(
   terms: HouseCostTaxTerms | null,
   stated: unknown,
 ): CostTaxBasis | null {
   if (!terms || !terms.inclusive) return null;
-  return asCostTaxBasis(stated) ?? costTaxDefaultFor(terms.country);
+  return asCostTaxBasis(stated);
 }
 
 /**
- * The house's basis and country, or null when they could not be read. Never
+ * Whether the house's till prices include tax, or null when they could not be read. Never
  * throws: a cost is recorded either way, and an unread house stamps nothing,
  * which advice reads as "not stated" -- never as a proven cost.
  */
@@ -77,7 +67,7 @@ export async function readHouseCostTaxTerms(
   try {
     const read = await client
       .from("restaurants")
-      .select("tax_basis, country")
+      .select("tax_basis")
       .eq("id", restaurantId)
       .maybeSingle();
     if (read?.error || !read?.data) {
@@ -86,12 +76,9 @@ export async function readHouseCostTaxTerms(
       );
       return null;
     }
-    const row = read.data as { tax_basis?: unknown; country?: unknown };
+    const row = read.data as { tax_basis?: unknown };
     return {
       inclusive: asHouseTaxBasis(row.tax_basis) === "prices_include_tax",
-      country: countryCodeOf(
-        typeof row.country === "string" ? row.country : null,
-      ),
     };
   } catch (err: any) {
     log?.warn(

@@ -306,21 +306,40 @@ describe("createOrder — the line says whether tax is inside its price (ADR 034
     currency: "TRY",
   };
 
-  it("[REVERT-FAILS] a house whose prices include KDV stamps the country rule: tax inside", async () => {
-    const { db, calls } = makeDb({
-      insertedOrder,
-      inventory: inventoryRow,
-      restaurant: kdvHouse,
-    });
-    await service(db).createOrder("rest-1", USER, bottles);
-    expect(calls.lineInserts[0].price_tax_basis).toBe("includes_tax");
-  });
+  it.each([["TR"], ["US"]])(
+    "[REVERT-FAILS] an inclusive house (%s) where nobody said leaves it not stated, never guessed from the country",
+    async (country) => {
+      const { db, calls } = makeDb({
+        insertedOrder,
+        inventory: inventoryRow,
+        restaurant: { ...kdvHouse, country },
+      });
+      await service(db).createOrder("rest-1", USER, bottles);
+      expect(calls.lineInserts[0]).toHaveProperty("price_tax_basis", null);
+    },
+  );
 
-  it("[REVERT-FAILS] what the owner or manager said beats the country rule", async () => {
+  it.each([["includes_tax"], ["excludes_tax"]])(
+    "what the owner or manager said (%s) is stamped",
+    async (said) => {
+      const { db, calls } = makeDb({
+        insertedOrder,
+        inventory: inventoryRow,
+        restaurant: kdvHouse,
+      });
+      await service(db).createOrder("rest-1", USER, {
+        ...bottles,
+        priceTaxBasis: said,
+      });
+      expect(calls.lineInserts[0].price_tax_basis).toBe(said);
+    },
+  );
+
+  it("what the owner or manager said is stamped at a US inclusive house too", async () => {
     const { db, calls } = makeDb({
       insertedOrder,
       inventory: inventoryRow,
-      restaurant: kdvHouse,
+      restaurant: { ...kdvHouse, country: "US" },
     });
     await service(db).createOrder("rest-1", USER, {
       ...bottles,
