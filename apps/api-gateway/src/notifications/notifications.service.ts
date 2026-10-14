@@ -1188,7 +1188,8 @@ export class NotificationsService {
       this.logger.error(`markBulkAsRead error: ${error.message}`);
       throw error;
     }
-    await this.recordTeamNoteOpens(data ?? [], userId);
+    // F-1663: no note open here. A bulk write is lines ruled off together,
+    // or a fold's hidden rows, never one line whose text was shown.
 
     return data?.length || 0;
   }
@@ -1199,7 +1200,10 @@ export class NotificationsService {
    * "opened" tally counts it: the same first-open-only write as
    * `POST /team/notes/:id/opened` (`NotesService.markOpened`), on this
    * person's own recipient row. Ruling off every line at once
-   * (`markAllAsRead`) is not reading one, so it records nothing. Best effort:
+   * (`markAllAsRead`), lines by their ids (`markBulkAsRead`) or the lines on
+   * screen is not reading one, so it records nothing (F-1663): only the one
+   * row whose text was shown counts (`markAsRead`, or `markFoldAsRead` with
+   * `opened`, for that row alone). Best effort:
    * the line is ruled off either way, and a failed write is logged.
    */
   private async recordTeamNoteOpens(
@@ -1249,11 +1253,17 @@ export class NotificationsService {
    * person in this house that the bell folds with it (`foldKeyOf`), however
    * far past the bell's page of 25 they sit (F-253, F-1125). The rows are read
    * in pages first and written after, so the write never moves the read.
+   *
+   * `opened`: the person opened this line (a tap on it, which shows its
+   * text), so a crew note on the named row counts as opened. The rows folded
+   * behind it were never shown and never count, and neither does a rule-off
+   * of the lines on screen, which leaves `opened` unset (F-1663).
    */
   async markFoldAsRead(params: {
     id: string;
     userId: string;
     restaurantId: string;
+    opened?: boolean;
   }): Promise<number> {
     const sb = this.databaseService.supabase;
     const { data: anchor, error: anchorErr } = await sb
@@ -1298,6 +1308,12 @@ export class NotificationsService {
     let count = 0;
     for (let i = 0; i < all.length; i += 100) {
       count += await this.markBulkAsRead(all.slice(i, i + 100), params.userId);
+    }
+    if (params.opened) {
+      await this.recordTeamNoteOpens(
+        [{ restaurant_id: params.restaurantId, metadata: anchor.metadata }],
+        params.userId,
+      );
     }
     return count;
   }

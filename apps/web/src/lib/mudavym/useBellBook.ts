@@ -441,8 +441,10 @@ export function useBellBook(open: boolean): BellBook {
       // A folded line is every row it folds; ruling it off rules them all off.
       // The server finds the fold by its key, so the rows past this page of
       // BELL_PAGE go too: a burst of 60 no longer comes back with 35 (F-1125).
+      // `opened=1`: this tap opens the line, so a crew note on it counts as
+      // opened; the rows folded behind it and "Rule these off" never do (F-1663).
       apiClient
-        .patch(`/notifications/${encodeURIComponent(id)}/read/fold`)
+        .patch(`/notifications/${encodeURIComponent(id)}/read/fold?opened=1`)
         .then(() => read())
         .catch((err) => {
           const f = bellFailureOf(err);

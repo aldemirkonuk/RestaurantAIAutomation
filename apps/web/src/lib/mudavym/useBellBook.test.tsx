@@ -79,8 +79,26 @@ describe('useBellBook', () => {
     await waitFor(() => expect(api.patch).toHaveBeenCalled());
     expect(api.patch).toHaveBeenCalledTimes(1);
     const [url, body] = api.patch.mock.calls[0];
-    expect(url).toBe(`/notifications/${line.id}/read/fold`);
+    expect(url).toBe(`/notifications/${line.id}/read/fold?opened=1`);
     expect(body).toBeUndefined();
+  });
+
+  it('[PRE-FIX-FAILS] says a tap opened the line, and "Rule these off" never does (F-1663)', async () => {
+    const { result } = renderHook(() => useBellBook(true));
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    const line = result.current.items[0];
+
+    await act(async () => {
+      result.current.ruleOffShown([line.id]);
+    });
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+    expect(api.patch.mock.calls[0][0]).toBe(`/notifications/${line.id}/read/fold`);
+
+    await act(async () => {
+      result.current.markRead(line.id);
+    });
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
+    expect(api.patch.mock.calls[1][0]).toBe(`/notifications/${line.id}/read/fold?opened=1`);
   });
 
   it('prints the count another surface read last, and never another house count', async () => {

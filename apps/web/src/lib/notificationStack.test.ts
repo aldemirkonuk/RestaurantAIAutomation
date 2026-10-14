@@ -109,3 +109,16 @@ describe("collapseStackedNotifications — low-stock bursts", () => {
     expect(items).toHaveLength(1);
   });
 });
+
+describe("collapseStackedNotifications — crew notes (F-1663)", () => {
+  it("[PRE-FIX-FAILS] keeps two notes about the same week as two lines", () => {
+    const title = "A note about the week of Mon 12 Oct";
+    const a = notif({ type: "system", title, metadata: { teamNoteId: "note-1" } as any });
+    const b = notif({ type: "system", title, metadata: { teamNoteId: "note-2" } as any });
+
+    const { items, foldedCount } = collapseStackedNotifications([a, b]);
+
+    expect(items.map((i) => i.id).sort()).toEqual([a.id, b.id].sort());
+    expect(foldedCount).toBe(0);
+  });
+});

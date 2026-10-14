@@ -171,7 +171,17 @@ describe("ruling off a folded bell line rules off the whole fold (F-1125)", () =
       id: "n-0",
       userId: "user-1",
       restaurantId: "house-a",
+      opened: false,
     });
+    // F-1663: only a tap that opened the line says so.
+    await controller.markFoldAsRead(
+      "n-0",
+      { user: { userId: "user-1", restaurantId: "house-a" } } as any,
+      "1",
+    );
+    expect(markFoldAsRead).toHaveBeenLastCalledWith(
+      expect.objectContaining({ opened: true }),
+    );
   });
 });
 
@@ -203,5 +213,15 @@ describe("the fold key matches the bell's (lib/notificationStack.ts stackKey)", 
         title: "3 wines dropped below par",
       }),
     ).toBeNull();
+  });
+
+  it("[PRE-FIX-FAILS] never folds a crew note, even under the same title (F-1663)", () => {
+    const note = (teamNoteId: string) => ({
+      type: "system",
+      title: "A note about the week of Mon 12 Oct",
+      metadata: { teamNoteId },
+    });
+    expect(foldKeyOf(note("note-1"))).toBeNull();
+    expect(foldKeyOf(note("note-2"))).toBeNull();
   });
 });
