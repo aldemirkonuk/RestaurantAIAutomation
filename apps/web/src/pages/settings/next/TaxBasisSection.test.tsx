@@ -327,6 +327,36 @@ describe('item rates and earlier answers (S222, F-1624)', () => {
     expect(screen.queryByTestId('tax-items-cut')).toBeNull();
   });
 
+  it('F-1703: an item past the first list is found by name and can be given a rate', async () => {
+    const answered = readout({ basis: 'prices_include_tax', answered: true, items, itemsCapped: true });
+    api.get.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/settings/tax-basis/items'
+          ? { data: { items: [{ id: 'i-late', name: 'Yakut Late Harvest' }], capped: false } }
+          : { data: answered },
+      ),
+    );
+    api.post.mockResolvedValue({ data: answered });
+    render(<TaxBasisSection canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'One item' }));
+    expect(screen.getByTestId('tax-items-cut')).toHaveTextContent('find any other item by its name');
+    fireEvent.change(screen.getByLabelText('Find an item by name'), { target: { value: ' yakut ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/settings/tax-basis/items', { params: { q: 'yakut' } }));
+    expect(await screen.findByTestId('tax-items-found')).toHaveTextContent('Items with “yakut” in their name.');
+    fireEvent.change(screen.getByLabelText('Item'), { target: { value: 'i-late' } });
+    fireEvent.change(screen.getByLabelText('Rate'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add rate' }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/settings/tax-rates', {
+        keyKind: 'house_item',
+        key: 'i-late',
+        ratePct: 20,
+        effectiveFrom: '2026-10-12',
+      }),
+    );
+  });
+
   it('says each answer the house gave, from its day, and that checks keep theirs', async () => {
     const answers = [
       { basis: 'prices_include_tax' as const, answeredAt: '2026-10-03T09:00:00Z', fromDay: '2026-10-03' },

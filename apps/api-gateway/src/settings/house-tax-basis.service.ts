@@ -19,6 +19,8 @@ import {
   readTaxBasisHistory,
   type TaxBasisAnswerKind,
 } from "../common/tax-basis-history";
+import { readWholeWindow } from "../common/read-whole-window";
+import { ilikeValue } from "../wines/wines.service";
 
 /**
  * Whether this house's till prices include tax, and the rates it charges —
@@ -77,11 +79,11 @@ export const TAX_RATE_MAX_PCT = 100;
 /** A till category name is at most this long. */
 export const POS_CATEGORY_MAX_LENGTH = 120;
 
-/** How many rate rows a readout carries; the table is append-only, so it is capped. */
-export const TAX_RATE_READ_CAP = 500;
-
 /** How many of the house's items the item-rate picker lists (S222 owed). */
 export const TAX_ITEM_PICK_CAP = 500;
+
+/** The longest name search the item picker sends (F-1703). */
+export const TAX_ITEM_SEARCH_MAX_LENGTH = 100;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -775,12 +777,8 @@ export class HouseTaxBasisService {
         `This house's rates could not be read, so nothing was withdrawn: ${current.reason ?? current.ratesReason ?? "no reason was given"}`,
       );
     }
-    // The restated rows are worked out from the key's whole history; a read
-    // cut at the cap could miss a row and restate the wrong rate.
-    if (current.rates.length >= TAX_RATE_READ_CAP)
-      throw new InternalServerErrorException(
-        `This house has more than ${TAX_RATE_READ_CAP} rate rows, so a withdrawal cannot be worked out safely here. Nothing was changed.`,
-      );
+    // The restated rows are worked out from the key's whole history, which
+    // `readRates` reads whole or not at all (F-1704).
     const row = current.rates.find((r) => r.version === v);
     if (!row)
       throw new NotFoundException(
@@ -853,27 +851,37 @@ export class HouseTaxBasisService {
     return { row: (data as HouseRow | null) ?? null, error: null };
   }
 
+  /**
+   * Every rate row of the house, newest version first. F-1704: read whole, as
+   * ingest reads them (tax-basis-resolver.ts), never the newest 500: a cut set
+   * dropped the oldest rows unsaid, so "in force today" could name a rate
+   * ingest does not use. A read that cannot be whole is a failed read.
+   */
   private async readRates(
     restaurantId: string,
     today: string,
   ): Promise<{ rows: TaxRateRow[] | null; error: string | null }> {
     const client = this.databaseService.client;
-    const { data, error } = await client
-      .from("house_tax_rates")
-      .select(
-        "version, key_kind, key, rate, effective_from, effective_to, created_at",
-      )
-      .eq("restaurant_id", restaurantId)
-      .order("version", { ascending: false })
-      .limit(TAX_RATE_READ_CAP);
-    if (error) {
-      this.logger.warn(
-        `The tax rates of ${restaurantId} could not be read: ${error.message}`,
+    let data: RateDbRow[];
+    try {
+      data = await readWholeWindow<RateDbRow>("The house's tax rates", () =>
+        client
+          .from("house_tax_rates")
+          .select(
+            "id, version, key_kind, key, rate, effective_from, effective_to, created_at",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId),
       );
-      return { rows: null, error: error.message };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.warn(
+        `The tax rates of ${restaurantId} could not be read: ${message}`,
+      );
+      return { rows: null, error: message };
     }
     const rows: TaxRateRow[] = [];
-    for (const r of (data as RateDbRow[] | null) ?? []) {
+    for (const r of data) {
       const keyKind = asTaxRateKeyKind(r.key_kind);
       const version = asNumber(r.version);
       if (keyKind === null || version === null) continue;
@@ -891,6 +899,8 @@ export class HouseTaxBasisService {
         createdAt: r.created_at,
       });
     }
+    // The whole read comes back in id order; the readout is newest first.
+    rows.sort((a, b) => b.version - a.version);
     for (const r of rows) {
       r.inForceToday = rateRowInForce(rows, r.keyKind, r.key, today) === r;
       r.upcoming =
@@ -947,17 +957,27 @@ export class HouseTaxBasisService {
    * null (the picker says so), never an empty list. F-1665: removed items are
    * left out in the query and the read is ordered before the cap, so the cap
    * cuts the same live items every time, never a live one for a removed one;
-   * one row past the cap says whether it cut anything.
+   * one row past the cap says whether it cut anything. F-1703: with a `term`,
+   * only the items whose name holds it, so an item past the first 500 can
+   * still be found; the same cap and the same cut flag apply.
    */
-  private async readItems(restaurantId: string): Promise<{
+  private async readItems(
+    restaurantId: string,
+    term?: string,
+  ): Promise<{
     items: Array<{ id: string; name: string }>;
     capped: boolean;
   } | null> {
-    const { data, error } = await this.databaseService.client
+    let query = this.databaseService.client
       .from("restaurant_inventory")
       .select("id, display_name, wine_name, deleted_at")
       .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null)
+      .is("deleted_at", null);
+    if (term) {
+      const v = ilikeValue(term);
+      query = query.or(`display_name.ilike.${v},wine_name.ilike.${v}`);
+    }
+    const { data, error } = await query
       .order("display_name", { ascending: true })
       .order("wine_name", { ascending: true })
       .order("id", { ascending: true })
@@ -981,6 +1001,30 @@ export class HouseTaxBasisService {
       if (typeof r.id === "string" && name) out.push({ id: r.id, name });
     }
     return { items: out.sort((a, b) => a.name.localeCompare(b.name)), capped };
+  }
+
+  /**
+   * F-1703: the house's own items whose name holds `q`, for the item-rate
+   * picker when the house has more items than its first list carries. Only
+   * this house's items (the token's house); a failed read says so.
+   */
+  async searchItems(
+    restaurantId: string,
+    q: unknown,
+  ): Promise<{ items: Array<{ id: string; name: string }>; capped: boolean }> {
+    const term = typeof q === "string" ? q.trim() : "";
+    if (!term)
+      throw new BadRequestException("Type part of the item's name to find it.");
+    if (term.length > TAX_ITEM_SEARCH_MAX_LENGTH)
+      throw new BadRequestException(
+        `Type at most ${TAX_ITEM_SEARCH_MAX_LENGTH} letters of the item's name.`,
+      );
+    const found = await this.readItems(restaurantId, term);
+    if (found === null)
+      throw new InternalServerErrorException(
+        "The house's items could not be searched just now.",
+      );
+    return found;
   }
 
   /** `public.users.user_id`; a failed lookup is a null name, never the raw id. */

@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Post,
   Put,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -72,6 +73,22 @@ export class HouseTaxBasisController {
   ): Promise<HouseTaxBasisReadout> {
     return this.taxBasis.read(
       this.requireHouse(restaurantId, "there is no tax setting to read"),
+    );
+  }
+
+  @Get("tax-basis/items")
+  @ApiOperation({
+    summary: "Find this house's items by name, for a rate kept on one item",
+    description:
+      "F-1703. `q` is part of an item's name (its display name or wine name), case-insensitive. Only this house's live items, by name, at most 500; `capped` says more matched than are listed.",
+  })
+  async searchItems(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Query("q") q: string,
+  ): Promise<{ items: Array<{ id: string; name: string }>; capped: boolean }> {
+    return this.taxBasis.searchItems(
+      this.requireHouse(restaurantId, "there are no items to search"),
+      q,
     );
   }
 
