@@ -34,7 +34,7 @@ describe('OpeningStockImport (F-1514)', () => {
     fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
       target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Load 1 wine' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load 1 item' }));
     await waitFor(() =>
       expect(api.recordSpotCount).toHaveBeenCalledWith('inv-1', expect.objectContaining({ countedQty: 7, opening: true })),
     );
@@ -57,8 +57,8 @@ describe('OpeningStockImport (F-1514)', () => {
     fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
       target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
     });
-    expect(await screen.findByText(/this wine has no cost yet, so this one is used/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Load 1 wine' }));
+    expect(await screen.findByText(/this item has no cost yet, so this one is used/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Load 1 item' }));
     await waitFor(() =>
       expect(api.recordSpotCount).toHaveBeenCalledWith('inv-1', expect.objectContaining({ opening: true, costPerBottle: 300 })),
     );
@@ -77,8 +77,8 @@ describe('OpeningStockImport (F-1514)', () => {
     fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
       target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
     });
-    expect(await screen.findByText(/this wine already has a cost, which is kept/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Load 1 wine' }));
+    expect(await screen.findByText(/this item already has a cost, which is kept/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Load 1 item' }));
     await waitFor(() => expect(api.recordSpotCount).toHaveBeenCalled());
     expect(api.recordSpotCount.mock.calls[0][1]).not.toHaveProperty('costPerBottle');
   });
@@ -97,7 +97,7 @@ describe('OpeningStockImport (F-1514)', () => {
     fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
       target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Load 1 wine' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load 1 item' }));
     expect(await screen.findByText(/Already had a cost before this file, which was kept: Yakut/)).toBeTruthy();
   });
 
@@ -127,7 +127,7 @@ describe('OpeningStockImport (F-1514)', () => {
       target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
     });
     expect(await screen.findAllByText(/so this one is used for its bottles on every shelf in this file/)).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: 'Load 2 wines' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load 2 items' }));
     await waitFor(() => expect(api.recordSpotCount).toHaveBeenCalledTimes(2));
     expect(api.recordSpotCount.mock.calls[0][1]).toMatchObject({ locationId: 'shelf-c', countedQty: 4 });
     expect(api.recordSpotCount.mock.calls[0][1]).not.toHaveProperty('costPerBottle');
@@ -162,12 +162,71 @@ describe('OpeningStockImport (F-1514)', () => {
     fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
       target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Load 2 wines' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load 2 items' }));
     const said = await screen.findByTestId('opening-stock-cost-not-applied');
     expect(said.textContent).toBe(
       'Cost not applied: Yakut. The bottles already counted on its other shelves have no cost yet. Sending the file again applies it.',
     );
     expect(screen.getByText(/Not changed: Yakut/)).toBeTruthy();
+    csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
+  });
+
+  // F-1684 (sim 55): every drink in the file went to the library with no
+  // kind, so a beer or a rakı became a wine.
+  it('[REVERT-FAILS] sends the Type of each new item on its draft', async () => {
+    api.bulkCreateInventoryItems.mockClear();
+    api.bulkCreateInventoryItems.mockResolvedValueOnce({ results: [] });
+    csv.text = 'Name,Type,Quantity\nEfes Pilsen,Beer,24\nYeni Rakı,Rakı,12\nChablis,,4';
+    render(<OpeningStockImport carried={[]} shelves={[]} onDone={() => {}} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
+      target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Load 3 items' }));
+    await waitFor(() => expect(api.bulkCreateInventoryItems).toHaveBeenCalled());
+    const drafts = (api.bulkCreateInventoryItems.mock.calls[0][0] as { items: { wineDraft: object }[] }).items.map(
+      (i) => i.wineDraft,
+    );
+    expect(drafts[0]).toMatchObject({ name: 'Efes Pilsen', category: 'beer' });
+    expect(drafts[1]).toMatchObject({ name: 'Yeni Rakı', category: 'spirit' });
+    expect(drafts[2]).not.toHaveProperty('category');
+    csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
+  });
+
+  // F-1683 (sim 55): a file with no Shelf column put every new item on no
+  // shelf, so the first phone count listed nothing and Find booked the
+  // bottles a second time. The import says so and offers a shelf, never a
+  // place that holds other places.
+  it('[REVERT-FAILS] says new items on no shelf are not on a phone count, and puts them on the shelf chosen', async () => {
+    api.bulkCreateInventoryItems.mockClear();
+    api.bulkCreateInventoryItems.mockResolvedValue({ results: [] });
+    csv.text = 'Name,Quantity\nEfes Pilsen,24';
+    render(
+      <OpeningStockImport
+        carried={[]}
+        shelves={[
+          { id: 'zone-cellar', name: 'Cellar' },
+          { id: 'rack-1', name: 'Rack 1', parentId: 'zone-cellar' },
+        ]}
+        onDone={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
+      target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
+    });
+    expect((await screen.findByTestId('opening-stock-no-shelf')).textContent).toMatch(
+      /1 new item names no shelf\. A stock-take on the phone goes shelf by shelf/,
+    );
+    const pick = screen.getByLabelText('Shelf for the items with no shelf') as HTMLSelectElement;
+    expect([...pick.options].map((o) => o.textContent)).toEqual(['No shelf', 'Rack 1']);
+    fireEvent.change(pick, { target: { value: 'rack-1' } });
+    expect(await screen.findByText(/Efes Pilsen: 24 bottles on Rack 1/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Load 1 item' }));
+    await waitFor(() => expect(api.bulkCreateInventoryItems).toHaveBeenCalled());
+    expect(
+      (api.bulkCreateInventoryItems.mock.calls[0][0] as { items: { storageLocationId: string | null }[] }).items[0]
+        .storageLocationId,
+    ).toBe('rack-1');
     csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
   });
 });

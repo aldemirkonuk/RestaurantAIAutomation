@@ -284,6 +284,14 @@ export class AnalyticsService {
       const hasPrice = unitPrice > 0;
       const { unitCost, costBasis } = resolveUnitCost(i, lot, houseCurrency);
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
+      // F-1652: a WAC that averages 12 bottles of 36 prices those 12 only.
+      // The other 24 carry no cost, so the row has no whole value; its costed
+      // bottles' value is kept apart, for the priced wines' total.
+      const partial =
+        unitCost != null && costBasis === "invoice_lot_wac_partial";
+      const costedQty = partial
+        ? Math.max(0, Math.min(qty, Number(lot?.wac_qty) || 0))
+        : qty;
       return {
         id: i.id,
         // Absent reads as active: only an explicit false took a wine off.
@@ -313,7 +321,18 @@ export class AnalyticsService {
         // A row we cannot cost has no value we can state. `qty × null` must
         // not become 0 — that is the fabrication ADR 0051 names, wearing an
         // arithmetic costume.
-        inventoryValue: unitCost == null ? null : qty * unitCost,
+        inventoryValue: unitCost == null || partial ? null : qty * unitCost,
+        /** The costed bottles' value: the whole row's, or a partial row's part. */
+        pricedValue: unitCost == null ? null : costedQty * unitCost,
+        /** A partial row's bottles with no cost of their own (F-1652). */
+        uncostedBottles: partial ? qty - costedQty : 0,
+        // F-1654: no cost under the invoice rule (OD-100), yet its lots carry
+        // one -- typed in by the house, or an order's price. Said, not hidden.
+        notInvoiced:
+          unitCost == null &&
+          costBasis === "unknown" &&
+          lot?.wac != null &&
+          !lot?.has_invoice_cost,
       };
     });
     // An inactive wine with nothing on hand is gone from every lens; one that
@@ -764,12 +783,17 @@ export class AnalyticsService {
     // name, beside costCoverage.unpriced — the count of wines it leaves out.
     // inventoryValue and every ratio built on it stay null: a part is not
     // the whole, and nothing below divides by this.
+    // F-1654: of the unpriced wines, those whose lots carry a cost that is
+    // not an invoice's, so a page can say so rather than "no cost".
+    const notInvoicedWines = onHand.filter((i) => i.notInvoiced).length;
+    // F-1652: a partly costed wine adds its costed bottles only, and its
+    // uncosted ones are counted in costCoverage.uncostedBottles.
     const pricedInventoryValue =
       costCoverage.priced > 0
         ? E.stats.sum(
             onHand
-              .filter((i) => i.inventoryValue != null)
-              .map((i) => i.inventoryValue as number),
+              .filter((i) => i.pricedValue != null)
+              .map((i) => i.pricedValue as number),
           )
         : null;
 
@@ -1011,7 +1035,9 @@ export class AnalyticsService {
         // 0.6 × menu price. A basis now describes the rows it covered.
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}${inactiveHeld > 0 ? `; includes ${inactiveHeld} wine${inactiveHeld === 1 ? "" : "s"} marked inactive that still hold bottles` : ""}`,
         pricedInventoryValue:
-          "on-hand qty × unit cost over the on-hand rows that carry a recorded cost only; the rows it leaves out are costCoverage.unpriced; null when no on-hand row carries a cost",
+          "on-hand qty × unit cost over the on-hand bottles that carry a recorded cost only; the rows it leaves out are costCoverage.unpriced, and the bottles of partly costed rows it leaves out are costCoverage.uncostedBottles; null when no on-hand row carries a cost",
+        notInvoicedWines:
+          "of costCoverage.unpriced, the on-hand rows whose lots carry a cost typed in by the house or an order's price but no invoice's",
         turns:
           cogs != null && cogsUnpricedCount > 0
             ? `null: ${cogsUnpricedCount} delivered order${cogsUnpricedCount === 1 ? "" : "s"} with no price ${cogsUnpricedCount === 1 ? "is" : "are"} left out of cost of goods, so it is short, and turns and days of stock are not taken from it`
@@ -1036,6 +1062,7 @@ export class AnalyticsService {
       priceCoverage,
       inventoryValue,
       pricedInventoryValue,
+      notInvoicedWines,
       cogs,
       cogsCurrency,
       /** The house's stated money; null when none is on record (F-1052). */

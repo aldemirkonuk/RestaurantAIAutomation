@@ -315,6 +315,28 @@ describe('find (F-1620, ADR 0124)', () => {
     fireEvent.change(screen.getByLabelText('Name on the label'), { target: { value: 'yakut' } })
     expect(await screen.findByText('Ev Kırmızısı')).toBeInTheDocument()
   })
+
+  it('a found item with bottles on no shelf is counted on Inventory, never on this shelf (F-1683)', async () => {
+    inv.getInventory.mockResolvedValue([
+      {
+        id: 'c',
+        wineName: 'Efes Pilsen',
+        wineProducer: null,
+        wineVintage: null,
+        locations: [{ locationId: null, qty: 12, wac: null }],
+      },
+    ])
+    await openBackBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: /Find/ }))
+    fireEvent.change(await screen.findByLabelText('Name on the label'), { target: { value: 'efes' } })
+    fireEvent.click(await screen.findByRole('button', { name: /Efes Pilsen/ }))
+    expect(
+      await screen.findByText('Some of this sits off the shelves. Count it on Inventory, all at once.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Full bottles')).not.toBeInTheDocument()
+    expect(outbox.submitSpotCount).not.toHaveBeenCalled()
+  })
 })
 
 describe('the month a count is for (S230 owed)', () => {

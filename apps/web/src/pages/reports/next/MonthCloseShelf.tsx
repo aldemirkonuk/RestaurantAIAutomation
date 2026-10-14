@@ -40,9 +40,13 @@ export interface MonthCloseMoney {
 export interface MonthCloseWriteOffLine {
   movements: number;
   bottles: number;
-  /** At the delivery lots' cost, in the house's money; null when no bottle carried a cost. */
+  /** At the lots' cost, in the house's money; null when no bottle carried one. */
   cost: number | null;
   uncostedBottles: number;
+  /** F-1653: of the uncosted, those at a cost in another money; absent on older closes. */
+  otherMoneyBottles?: number;
+  /** F-1653: of the costed, those whose cost is not an invoice's; absent on older closes. */
+  notInvoicedBottles?: number;
 }
 
 export interface MonthCloseWriteOffs extends MonthCloseWriteOffLine {
@@ -72,6 +76,11 @@ export interface MonthCloseFigures {
     inventoryValue: number | null;
     pricedInventoryValue: number | null;
     unpricedWines: number | null;
+    /** F-1652: wines costed for only some bottles, and those bottles; absent on older closes. */
+    partlyCostedWines?: number | null;
+    uncostedBottles?: number | null;
+    /** F-1654: of the unpriced, wines with a typed-in or order-price cost; absent on older closes. */
+    notInvoicedWines?: number | null;
     valuedAt: string;
   };
   purchases: {
@@ -292,11 +301,52 @@ function taxInsideWords(close: MonthClose): string | null {
 /** "7 bottles, €240 at cost" — the cost said only for what carried one. */
 function writtenOff(l: MonthCloseWriteOffLine, currency: string | null): string {
   const bottles = countOf(l.bottles, 'bottle', 'bottles');
-  if (l.cost === null) return `${bottles}, no cost recorded`;
+  // F-1653: a cost in another money is never added to the house's total.
+  const other = l.otherMoneyBottles ?? 0;
+  const otherWords = other > 0 ? `; ${countOf(other, 'bottle is', 'bottles are')} at a cost in another money, left out` : '';
+  if (l.cost === null) return other > 0 ? `${bottles}, no cost in the house's money${otherWords}` : `${bottles}, no cost recorded`;
   const cost = money(l.cost, 'full', currency);
-  return l.uncostedBottles > 0
-    ? `${bottles}, ${cost} at cost for ${l.bottles - l.uncostedBottles} of them`
-    : `${bottles}, ${cost} at cost`;
+  const notInvoiced = l.notInvoicedBottles ?? 0;
+  const notInvoicedWords =
+    notInvoiced > 0
+      ? `; ${countOf(notInvoiced, 'bottle is', 'bottles are')} at an order's price or a cost typed in, not an invoice's`
+      : '';
+  return (
+    (l.uncostedBottles > 0
+      ? `${bottles}, ${cost} at cost for ${l.bottles - l.uncostedBottles} of them`
+      : `${bottles}, ${cost} at cost`) +
+    notInvoicedWords +
+    otherWords
+  );
+}
+
+/**
+ * F-1652 / F-1654: what the priced cellar total leaves out, in the owner's
+ * words: wines with no cost at all, wines whose cost the house typed in or
+ * took from an order (no invoice, so the close does not count it), and
+ * bottles of wines costed only in part.
+ */
+function cellarGaps(v: MonthCloseFigures['valuation']): string {
+  const unpriced = v.unpricedWines ?? 0;
+  const typed = Math.min(v.notInvoicedWines ?? 0, unpriced);
+  const none = unpriced - typed;
+  const part = v.partlyCostedWines ?? 0;
+  return [
+    none > 0 ? `${countOf(none, 'wine has', 'wines have')} no cost` : null,
+    typed > 0
+      ? `${countOf(typed, 'wine has', 'wines have')} a cost typed in by the house or an order's price, not invoiced, so ${typed === 1 ? 'it is' : 'they are'} left out`
+      : null,
+    part > 0
+      ? `${countOf(v.uncostedBottles ?? 0, 'bottle', 'bottles')} of ${countOf(part, 'wine', 'wines')} costed only in part ${(v.uncostedBottles ?? 0) === 1 ? 'has' : 'have'} no cost`
+      : null,
+  ]
+    .filter((x): x is string => x !== null)
+    .join('; ');
+}
+
+function gapsAfter(v: MonthCloseFigures['valuation']): string {
+  const gaps = cellarGaps(v);
+  return gaps ? `; ${gaps}` : '';
 }
 
 /** F-1609: the month's write-offs, with their cost and count, by reason. */
@@ -375,7 +425,7 @@ function Kept({ close }: { close: MonthClose }) {
         {f.valuation.inventoryValue !== null
           ? money(f.valuation.inventoryValue, 'full', f.currency)
           : f.valuation.pricedInventoryValue !== null
-            ? `${money(f.valuation.pricedInventoryValue, 'full', f.currency)} for the priced wines; ${countOf(f.valuation.unpricedWines ?? 0, 'wine has', 'wines have')} no cost`
+            ? `${money(f.valuation.pricedInventoryValue, 'full', f.currency)} for the priced bottles${gapsAfter(f.valuation)}`
             : EM}
       </li>
     </ul>

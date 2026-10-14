@@ -37,6 +37,22 @@ describe('Figures of record — one uncosted wine does not blank the cellar', ()
     expect(v.notes?.[0]).toContain('1 of 12 on-hand wines have no cost yet');
   });
 
+  // F-1652 (sim 54): 24 bottles loaded with no cost, 12 invoiced. The wine
+  // counted as costed and the page said nothing was left out.
+  it('[REVERT-FAILS] a wine costed for part of its bottles is said, in bottles', () => {
+    const v = view({
+      ...base,
+      pricedInventoryValue: 7200,
+      costCoverage: { total: 1, priced: 1, unpriced: 0, complete: false, partial: 1, uncostedBottles: 24 },
+    });
+    expect(v.figures?.[0]).toMatchObject({
+      label: 'Cellar at cost (priced wines)',
+      value: money(7200),
+      note: 'Leaves out 24 bottles with no cost in 1 wine costed only in part',
+    });
+    expect(v.notes?.[0]).toContain('counts only the bottles that carry a cost');
+  });
+
   it('a fully priced cellar keeps its plain label', () => {
     const v = view({
       ...base,

@@ -106,8 +106,8 @@ describe('planOpeningStock', () => {
       'tr-TR',
     );
     expect(plan.receive).toEqual([
-      { line: 2, name: 'Öküzgözü Reserve', vintage: 2019, qty: 12, shelfId: 'shelf-a', shelfName: 'Mahzen A', cost: 1250.5 },
-      { line: 4, name: 'Doluca DLC', vintage: null, qty: 2, shelfId: null, shelfName: null, cost: null },
+      { line: 2, name: 'Öküzgözü Reserve', vintage: 2019, qty: 12, shelfId: 'shelf-a', shelfName: 'Mahzen A', cost: 1250.5, category: null },
+      { line: 4, name: 'Doluca DLC', vintage: null, qty: 2, shelfId: null, shelfName: null, cost: null, category: null },
     ]);
     expect(plan.count).toEqual([
       // F-1524: Yakut has no cost yet (a menu put it on the list), so the
@@ -229,6 +229,41 @@ describe('planOpeningStock', () => {
 
   it('says in plain words when the quantity column is missing', () => {
     const plan = planOpeningStock(parseCsvRows('wine,shelf\nOpus One,A'), [], []);
-    expect(plan.fileProblem).toMatch(/needs a "Wine" column and a "Quantity" column/);
+    expect(plan.fileProblem).toMatch(/needs a "Name" \(or "Wine"\) column and a "Quantity" column/);
+  });
+
+  // F-1684 (sim 55): the file had no kind column, so every beer, rakı and
+  // spirit was received as a wine. The Type is read as the menu-category word
+  // the library's classifier knows.
+  it('[REVERT-FAILS] reads a Type column into the kind of drink, and refuses one it does not know', () => {
+    const plan = planOpeningStock(
+      parseCsvRows(
+        [
+          'Ürün;Tür;Adet',
+          'Efes Pilsen;Bira;24',
+          'Yeni Rakı;Rakı;12',
+          "Tito's;Votka;3",
+          'Jameson;Viski;2',
+          'Yakut;Kırmızı Şarap;6',
+          'Chablis;;4',
+          'Sula;Şarap;2',
+          'Ayran;Süt ürünü;10',
+        ].join('\n'),
+      ),
+      [],
+      [],
+      'tr-TR',
+    );
+    expect(plan.receive.map((w) => [w.name, w.category])).toEqual([
+      ['Efes Pilsen', 'beer'],
+      ['Yeni Rakı', 'spirit'],
+      ["Tito's", 'spirit'],
+      ['Jameson', 'whiskey'],
+      ['Yakut', 'red'],
+      ['Chablis', null],
+      ['Sula', null],
+    ]);
+    expect(plan.refused.map((r) => r.line)).toEqual([9]);
+    expect(plan.refused[0].reason).toMatch(/"Süt ürünü" is not a kind of drink we know/);
   });
 });

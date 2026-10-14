@@ -218,6 +218,25 @@ describe("resolveUnitCost never invents a number", () => {
     });
     expect(cov.byBasis.unknown).toBe(2);
   });
+
+  it("F-1652: a row costed for some of its bottles is priced, but never complete", () => {
+    const cov = summarizeCostBasis([
+      { unitCost: 12, costBasis: "invoice_lot_wac" },
+      {
+        unitCost: 600,
+        costBasis: "invoice_lot_wac_partial",
+        uncostedBottles: 24,
+      },
+    ]);
+    expect(cov).toMatchObject({
+      total: 2,
+      priced: 2,
+      unpriced: 0,
+      partial: 1,
+      uncostedBottles: 24,
+      complete: false,
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -379,6 +398,55 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
       restaurants: [{ currency: "EUR" }],
     }).getFinancialSummary(RESTAURANT);
     expect(same.inventoryValue).toBe(100);
+  });
+
+  // F-1652: 24 bottles loaded with no cost, then 12 invoiced at 600. The WAC
+  // is the 12's; the other 24 were never costed.
+  const PART = { ...RECORDED, stock_live: 36, last_purchase_price: null };
+  const partLot = {
+    inventory_id: RECORDED.id,
+    live_qty: 36,
+    wac: 600,
+    has_invoice_cost: true,
+    wac_qty: 12,
+  };
+
+  it("F-1652: values a partly costed wine at its costed bottles only, and never calls the cellar whole", async () => {
+    const out = await analytics({
+      restaurant_inventory: [PART],
+      inventory_lot_rollup: [partLot],
+    }).getFinancialSummary(RESTAURANT);
+    // Not 36 × 600 = 21,600: 24 of those bottles carry no cost.
+    expect(out.inventoryValue).toBeNull();
+    expect(out.pricedInventoryValue).toBe(7200); // 12 × 600
+    expect(out.costCoverage).toMatchObject({
+      complete: false,
+      partial: 1,
+      uncostedBottles: 24,
+    });
+    expect(out.basis.inventoryValue).not.toContain(
+      "every row in scope has a recorded cost",
+    );
+    expect(out.basis.inventoryValue).toContain("only part of their bottles");
+    expect(out.grossMarginDollars).toBeNull();
+  });
+
+  it("F-1654: says which uncosted wines carry a typed-in or order-price cost", async () => {
+    const out = await analytics({
+      restaurant_inventory: [{ ...RECORDED, last_purchase_price: null }],
+      inventory_lot_rollup: [
+        {
+          ...partLot,
+          live_qty: 5,
+          wac: 20,
+          wac_qty: 5,
+          has_invoice_cost: false,
+        },
+      ],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.pricedInventoryValue).toBeNull();
+    expect(out.costCoverage.unpriced).toBe(1);
+    expect(out.notInvoicedWines).toBe(1);
   });
 
   it("does not let a zero-quantity uncosted row block the valuation", async () => {

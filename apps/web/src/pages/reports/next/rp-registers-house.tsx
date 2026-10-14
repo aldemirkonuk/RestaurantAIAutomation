@@ -258,7 +258,15 @@ export interface LedgerRegister {
   /** The house's tax basis could not be read, so every margin is refused (F-1626). */
   taxBasisUnread?: boolean;
   basis?: Record<string, string>;
-  costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
+  costCoverage?: {
+    total: number;
+    priced: number;
+    unpriced: number;
+    complete: boolean;
+    /** F-1652: wines with a cost for only some of their bottles, and those bottles. */
+    partial?: number;
+    uncostedBottles?: number;
+  };
   /** The on-hand wines with no recorded cost, by name (F-133); capped by the gateway. */
   uncosted?: Array<{ id: string; name: string }>;
   /** On-hand wines with and without a bottle price (F-574); absent on an older gateway. */
@@ -332,7 +340,17 @@ const ledger = analysis<LedgerRegister>({
     const cc = f.costCoverage;
     const uncosted = f.uncosted ?? [];
     const pc = f.priceCoverage;
-    const partial = f.inventoryValue == null && f.pricedInventoryValue != null && !!cc && cc.unpriced > 0;
+    // F-1652: a wine costed for some of its bottles is a gap too, said in bottles.
+    const partWines = cc?.partial ?? 0;
+    const partBottles = cc?.uncostedBottles ?? 0;
+    const partial =
+      f.inventoryValue == null && f.pricedInventoryValue != null && !!cc && (cc.unpriced > 0 || partWines > 0);
+    const leftOut = [
+      cc && cc.unpriced > 0 ? `${figure(cc.unpriced)} wine${cc.unpriced === 1 ? '' : 's'} with no cost yet` : null,
+      partWines > 0
+        ? `${countOf(partBottles, 'bottle', 'bottles')} with no cost in ${countOf(partWines, 'wine', 'wines')} costed only in part`
+        : null,
+    ].filter((x): x is string => x !== null);
     const shortCogs = (f.cogsUnpricedCount ?? 0) > 0;
     const shortCogsWhy = shortCogs
       ? `${figure(f.cogsUnpricedCount as number)} delivered ${f.cogsUnpricedCount === 1 ? 'order has' : 'orders have'} no price, so Cost of goods is short`
@@ -357,7 +375,7 @@ const ledger = analysis<LedgerRegister>({
         ? {
             label: 'Cellar at cost (priced wines)',
             value: money(f.pricedInventoryValue),
-            note: `Leaves out ${figure(cc!.unpriced)} wine${cc!.unpriced === 1 ? '' : 's'} with no cost yet`,
+            note: `Leaves out ${leftOut.join(' and ')}`,
           }
         : {
             label: 'Cellar at cost',
@@ -413,8 +431,10 @@ const ledger = analysis<LedgerRegister>({
           ? [
               cc.total === 0
                 ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
-                : partial
+                : partial && partWines === 0
                   ? `${figure(cc.unpriced)} of ${figure(cc.total)} on-hand wines have no cost yet, so the cellar figure above counts only the ${figure(cc.priced)} that do, and the figures built on the whole cellar read ${EM}.`
+                  : partial
+                  ? `The cellar figure above leaves out ${leftOut.join(' and ')}, so it counts only the bottles that carry a cost, and the figures built on the whole cellar read ${EM}.`
                   : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
               // Which wines, and how to cost them (F-133): a wine's cost is
               // what its invoice says, so the way back is to file it.

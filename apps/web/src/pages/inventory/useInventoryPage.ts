@@ -31,6 +31,11 @@ export interface InventoryItem extends Omit<Wine, "threshold"> {
   /** This house's own bottle price (ADR 0193). Undefined = not set. */
   menuPriceBottle?: number;
   wac?: number;
+  /**
+   * F-1652: the bottles `wac` averages. Fewer than `liveStock` means the rest
+   * carry no cost. Undefined = not sent: read as covering every bottle.
+   */
+  wacQty?: number;
   costProvenance?: "invoice" | "estimated";
   lotLocationCount?: number;
   openMl?: number;
@@ -219,6 +224,7 @@ export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryI
     menuPriceBottle: item.menuPriceBottle ?? undefined,
     marketPrice: (item as any).retailPriceAvg ?? undefined,
     wac: (item as any).wac ?? undefined,
+    wacQty: (item as any).wacQty ?? undefined,
     costProvenance: (item as any).costProvenance ?? undefined,
     lotLocationCount: (item as any).lotLocationCount ?? undefined,
     openMl: (item as any).openMl ?? 0,
@@ -286,7 +292,20 @@ export function stockValueCell(
 ): number | string {
   const cost = recordedCost(i);
   if (cost == null) return units === 0 ? 0 : WITHHELD;
+  // F-1652: a cost for some of the wine's bottles is not the wine's value.
+  if (units > 0 && costedPart(i) != null) return WITHHELD;
   return Math.round(cost * units * 100) / 100;
+}
+
+/**
+ * F-1652: the bottles a wine's cost covers, when that is fewer than its live
+ * bottles (24 loaded with no cost, then 12 invoiced: 12); null when the cost
+ * covers them all, or nothing says otherwise.
+ */
+export function costedPart(i: Pick<InventoryItem, "wacQty" | "liveStock">): number | null {
+  const live = i.liveStock ?? 0;
+  if (i.wacQty == null || !Number.isFinite(i.wacQty) || live <= 0) return null;
+  return i.wacQty < live ? Math.max(0, i.wacQty) : null;
 }
 
 /**
@@ -297,15 +316,40 @@ export function stockValueCell(
 export function stockValueTotal(
   items: InventoryItem[],
   unitsOf: (i: InventoryItem) => number = (i) => i.liveStock ?? 0,
-): { value: number; withheld: number } {
+): {
+  value: number;
+  withheld: number;
+  /** F-1652: wines whose cost covers only some of their bottles. */
+  partial: number;
+  /** The bottles valued, and of them those that carry a cost. */
+  bottles: number;
+  costedBottles: number;
+} {
   let value = 0;
   let withheld = 0;
+  let partial = 0;
+  let bottles = 0;
+  let costedBottles = 0;
   for (const i of items) {
-    const cell = stockValueCell(i, unitsOf(i));
-    if (typeof cell === "number") value += cell;
-    else withheld++;
+    const units = unitsOf(i);
+    bottles += units;
+    const cost = recordedCost(i);
+    const part = costedPart(i);
+    // F-1652: the whole wine's bottles, part costed: its costed bottles only.
+    // One zone's share of them cannot be told apart, so it is left out.
+    if (cost != null && part != null && units === (i.liveStock ?? 0)) {
+      value += Math.round(cost * part * 100) / 100;
+      costedBottles += part;
+      partial++;
+      continue;
+    }
+    const cell = stockValueCell(i, units);
+    if (typeof cell === "number") {
+      value += cell;
+      costedBottles += units;
+    } else withheld++;
   }
-  return { value, withheld };
+  return { value, withheld, partial, bottles, costedBottles };
 }
 
 /**
