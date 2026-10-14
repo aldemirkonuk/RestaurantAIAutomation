@@ -23,6 +23,8 @@ const mock = vi.hoisted(() => ({
   // F-1474: the first cocktail's 86'd ingredients, and the list's unread note.
   soldOut: null as string[] | null,
   soldOutUnread: null as string | null,
+  // F-1668: the first cocktail's prices on a live menu.
+  menuPrices: undefined as number[] | null | undefined,
   withheld: false,
   recipe: { cocktailId: 'c1', rows: [], count: 0, writable: true } as Record<string, unknown>,
 }));
@@ -48,6 +50,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
         method: null, glass: null, garnish: null, price: mock.price, description: null,
         serve: mock.serve,
         soldOut: mock.soldOut,
+        menuPrices: mock.menuPrices,
       }, {
         id: 'c2', name: 'Rakı Sour', display_name: null, menu_section: 'İmza',
         method: null, glass: null, garnish: null, price: null, description: null,
@@ -104,6 +107,7 @@ beforeEach(() => {
   mock.serve = undefined;
   mock.soldOut = null;
   mock.soldOutUnread = null;
+  mock.menuPrices = undefined;
   mock.withheld = false;
   mock.recipe = { cocktailId: 'c1', rows: [], count: 0, writable: true };
   marks.house = null;
@@ -443,6 +447,25 @@ describe('a recipe linked to stock', () => {
       'margin worked out without the 20% rate of the till category “Alkol”',
     );
     expect(screen.getAllByTestId('cocktail-margin')[0]).toHaveTextContent(/350.*87\.5%/);
+  });
+
+  // F-1668: a menu read that moved the Negroni to 520 left its margin on 450,
+  // the price kept here, with nothing said.
+  it('says when the live menu prices a cocktail differently, and which price the margin uses', () => {
+    mock.price = 450;
+    mock.menuPrices = [520];
+    draw();
+    const said = screen.getByTestId('cocktail-menu-price');
+    expect(said).toHaveTextContent(/your live menu says .*520/);
+    expect(said).toHaveTextContent('the margin uses this price');
+    expect(screen.getAllByTestId('cocktail-menu-price')).toHaveLength(1);
+  });
+
+  it('says nothing when the live menu agrees with the price kept here', () => {
+    mock.price = 450;
+    mock.menuPrices = [450];
+    draw();
+    expect(screen.queryByTestId('cocktail-menu-price')).toBeNull();
   });
 
   // F-1474: an 86'd spirit did not reach the cocktails whose recipe takes it.

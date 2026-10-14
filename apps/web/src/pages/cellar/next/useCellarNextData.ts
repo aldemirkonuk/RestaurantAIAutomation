@@ -480,6 +480,11 @@ export interface CocktailVM {
    * cocktail cannot be served while any is. Null when none is, or unread.
    */
   soldOut?: string[] | null;
+  /**
+   * F-1668: the prices its line on a live menu carries; empty when it is on
+   * no live menu, null when the menu was not read. Absent from an older gateway.
+   */
+  menuPrices?: number[] | null;
 }
 
 /** Mirrored from `apps/api-gateway/src/beverages/cocktail-recipe.ts`. */
@@ -506,6 +511,8 @@ export interface CocktailListVM {
   costsUnread?: string | null;
   /** F-1474: why no row says whether an 86 stops it, when that was not read. */
   soldOutUnread?: string | null;
+  /** F-1668: why no row says what the live menu prices it at, when that was not read. */
+  menuPricesUnread?: string | null;
   /** The costs are kept for the owner and managers (ADR 0145). */
   amountsWithheld?: true;
 }

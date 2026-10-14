@@ -782,6 +782,8 @@ function writeQuadrants(payload: unknown): ExportDoc {
   const taxRefused = counts === null ? null : (num(counts.taxRefused) ?? 0);
   const tooFewCount = counts === null ? null : (num(counts.tooFewDays) ?? 0);
   const tooFew = "under a week of sales on record";
+  // F-1667: priced wines on no live menu are not placed; named apart.
+  const offMenu = arr(q.offMenu).map((w) => str(w.name));
   const priced = items.filter((i) => i.margin != null).length;
 
   return doc({
@@ -796,16 +798,34 @@ function writeQuadrants(payload: unknown): ExportDoc {
       f("Dogs", count("dog"), "count"),
       // Uncosted and unmeasured items both sit outside the four quadrants;
       // the notes say which is which (ADR 0297).
+      // F-1670: the screen's own breakdown. A tax refusal and a wine under a
+      // week of sales have rows of their own there, so they are not folded
+      // into "No quadrant" here: one label, one number, on both.
       f(
         "No quadrant",
         counts === null
           ? count("unclassified")
-          : (unclassified ?? 0) +
-              (unmeasuredCount ?? 0) +
-              (taxRefused ?? 0) +
-              (tooFewCount ?? 0),
+          : (unclassified ?? 0) + (unmeasuredCount ?? 0),
         "count",
       ),
+      ...(tooFewCount && tooFewCount > 0
+        ? [f("Under a week of sales", tooFewCount, "count")]
+        : []),
+      ...(taxRefused && taxRefused > 0
+        ? [
+            f(
+              q.taxBasisUnread === true
+                ? "No margin: tax basis not read"
+                : "No pre-tax margin",
+              taxRefused,
+              "count",
+            ),
+          ]
+        : []),
+      // F-1667: priced wines on no live menu, named in the notes.
+      ...(offMenu.length > 0
+        ? [f("Not on any menu", offMenu.length, "count")]
+        : []),
       f("Median bottles per day", figure(medians.velocityPerDay, "the register published no median"), "bottles"),
       f("Median margin per bottle", figure(medians.marginPerBottle, "no wine carries a recorded cost"), "money"),
     ],
@@ -861,8 +881,11 @@ function writeQuadrants(payload: unknown): ExportDoc {
       cc && cc.complete === false && num(cc.total) != null
         ? `${num(cc.priced) ?? 0} of ${num(cc.total)} wines carry a recorded cost.`
         : "",
+      offMenu.length > 0
+        ? `Not on any menu, so not placed: ${offMenu.slice(0, 8).join(", ")}${offMenu.length > 8 ? ` and ${offMenu.length - 8} more` : ""}.`
+        : "",
     ],
-    basis: sentences(b.velocity, b.margin),
+    basis: sentences(b.velocity, b.margin, b.list),
   });
 }
 
@@ -1514,7 +1537,7 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     quadrants: {
       title: "Margin against movement",
       window: () =>
-        "the list as it stands, each wine against its own days on the list, up to 90 days to yesterday",
+        "the wines on your live Drinks and Desserts menus (your priced stock when no Drinks menu is live), each against its own days on the list, up to 90 days to yesterday",
       takesWindow: false,
       write: writeQuadrants,
     },

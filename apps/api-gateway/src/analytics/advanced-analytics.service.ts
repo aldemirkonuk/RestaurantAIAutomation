@@ -5,8 +5,10 @@ import * as E from "./engine";
 import {
   AnalyticsService,
   demandDaysOnList,
+  isRecipePour,
   salesRecordedFromOf,
 } from "./analytics.service";
+import { readCurrentMenuStockLinks } from "../menus/current-menu-lines";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
 import {
@@ -308,7 +310,9 @@ export class AdvancedAnalyticsService {
             .from("wine_consumption_log")
             // No master_wine_id column on this table — resolve via the inventory FK.
             .select(
-              "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
+              // F-1666: source, notes, wine_name and total_revenue tell a
+              // pour into a cocktail from a sale (isRecipePour, F-1492).
+              "id, inventory_id, consumption_type, quantity, volume_ml, created_at, source, notes, wine_name, total_revenue, restaurant_inventory(master_wine_id, bottle_size_ml)",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -334,6 +338,9 @@ export class AdvancedAnalyticsService {
         inventoryId: c.inventory_id ?? null,
         qty: bottles,
         how,
+        // F-1666: a pour the till took for a cocktail's recipe (F-1329); its
+        // price is the cocktail's, so it is not a sale of this drink.
+        recipePour: isRecipePour(c),
         date: house.zone
           ? (houseDayOf(c.created_at ?? null, house.zone) ?? "")
           : (c.created_at || "").substring(0, 10),
@@ -553,15 +560,76 @@ export class AdvancedAnalyticsService {
     }
   }
 
+  /**
+   * F-1667: the stock links of the house's live menus, or null when they
+   * could not be read (the register then keeps every wine and says so).
+   */
+  private async loadMenuStockLinks(restaurantId: string) {
+    try {
+      return await readCurrentMenuStockLinks(
+        this.dbService.getClient(),
+        restaurantId,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `menu engineering could not read the live menus' lines, so every priced wine is placed and the register says so: ${err?.message ?? err}`,
+      );
+      return null;
+    }
+  }
+
   async getMenuEngineering(restaurantId: string, sinceDays = 90) {
     const { zone, openedOn } = await this.readHouseDays(restaurantId);
-    const [inventory, consumption, house, tax] = await Promise.all([
+    const [stock, allLines, house, tax, menuLinks] = await Promise.all([
       this.loadInventoryWithCost(restaurantId),
       this.loadConsumption(restaurantId, sinceDays, zone ? { zone } : {}),
       readHouseTargetMargin(this.dbService.getClient(), restaurantId),
       // F-1587: the house's tax basis, as margin advice reads it.
       readAdviceTaxTerms(this.dbService.getClient(), restaurantId, null),
+      this.loadMenuStockLinks(restaurantId),
     ]);
+    // F-1667: the list is what is on the house's live menus. A wine taken off
+    // every menu (a discarded line leaves its stock row's price as it was)
+    // or a reserve bottle never listed is not filed in a quadrant, does not
+    // move the medians, and is named apart under `offMenu`. A house with no
+    // live menu has no other list than its priced stock, and a failed read
+    // keeps every wine and says so (`menuStanding`), never a shorter list.
+    const menuStanding: "on_menu" | "no_current_menu" | "unread" =
+      menuLinks === null
+        ? "unread"
+        : menuLinks.currentMenus === 0
+          ? "no_current_menu"
+          : "on_menu";
+    const offMenu: Array<{ id: string; name: string }> = [];
+    const inventory =
+      menuStanding === "on_menu" && menuLinks
+        ? stock.filter((i) => {
+            const on =
+              menuLinks.inventoryIds.has(i.id) ||
+              (i.masterWineId != null && menuLinks.wineIds.has(i.masterWineId));
+            if (!on && (i.unitPrice > 0 || i.glassPrice > 0))
+              offMenu.push({ id: i.id, name: i.name });
+            return on;
+          })
+        : stock;
+    // F-1666: a pour the till took for a cocktail's recipe is not a sale of
+    // the drink poured: its price is the cocktail's, and the margin here is
+    // the drink's own bottle or glass price. Counted as the gin's movement it
+    // filed a Negroni gin a Star or a Plowhorse and sent "raise those prices"
+    // at the gin's own price. Those pours are left out of velocity, and each
+    // wine says how many bottles went into cocktails (`pouredIntoCocktails`).
+    const consumption = allLines.filter((c) => !c.recipePour);
+    const cocktailBottles = new Map<string, number>();
+    let cocktailPours = 0;
+    for (const c of allLines) {
+      if (!c.recipePour || !c.inventoryId) continue;
+      cocktailPours++;
+      if (c.qty != null)
+        cocktailBottles.set(
+          c.inventoryId,
+          (cocktailBottles.get(c.inventoryId) || 0) + c.qty,
+        );
+    }
     if (house.error) this.logQueryFailure("restaurants", house.error);
     // Only a house whose till prices include tax, or one whose basis could
     // not be read, changes here; every other house is as before, key for key.
@@ -577,7 +645,8 @@ export class AdvancedAnalyticsService {
     const today = zone
       ? houseToday(zone)
       : new Date().toISOString().slice(0, 10);
-    const recordsFrom = salesRecordedFromOf(openedOn, consumption, sinceDays);
+    // The house's first recorded line counts a cocktail's pour: it was trading.
+    const recordsFrom = salesRecordedFromOf(openedOn, allLines, sinceDays);
     const soldByWine = new Map<string, number>();
     const saleDaysByWine = new Map<string, Array<{ date: string }>>();
     const standInWines = new Set<string>();
@@ -667,6 +736,10 @@ export class AdvancedAnalyticsService {
           ? { tooFewDays: true as const }
           : {}),
         sizeStandIn: standInWines.has(i.id),
+        // F-1666: bottles of it poured into cocktails, not in its velocity.
+        ...(cocktailBottles.has(i.id)
+          ? { pouredIntoCocktails: cocktailBottles.get(i.id) as number }
+          : {}),
         priceBasis: i.priceBasis,
         marginPerBottle: m.marginPerBottle,
         costBasis: i.costBasis,
@@ -697,6 +770,9 @@ export class AdvancedAnalyticsService {
       dog: "Low volume, low margin: candidate to delist, flight off, or replace.",
     };
 
+    const DOG_IN_COCKTAILS =
+      "Slow and thin on its own price, but it also goes into cocktails, which this does not count: weigh it with the cocktails before you delist it.";
+
     // The quadrant is a two-axis claim. With no cost there is no margin axis,
     // so there is no quadrant and no action — `dog` ("candidate to delist") is
     // not the safe default for a wine we simply never costed.
@@ -716,6 +792,10 @@ export class AdvancedAnalyticsService {
         : highMargin
           ? "puzzle"
           : "dog";
+      // F-1666: slow on its own price, but poured into cocktails this does
+      // not count, a drink is not one to delist on this reading alone.
+      if (quadrant === "dog" && "pouredIntoCocktails" in i)
+        return { ...i, quadrant, action: DOG_IN_COCKTAILS };
       return { ...i, quadrant, action: ACTIONS[quadrant] };
     });
 
@@ -725,6 +805,8 @@ export class AdvancedAnalyticsService {
       unclassified: 0,
       unmeasured: 0,
       unpriced: leftOut.length,
+      // F-1667: priced wines on no live menu, named in offMenu[].
+      offMenu: offMenu.length,
       // F-1645: a costed, measured wine with too few days of sales.
       tooFewDays: 0,
       // F-1587: a costed wine with no pre-tax margin, for its named reason.
@@ -744,8 +826,17 @@ export class AdvancedAnalyticsService {
       ...(tax.terms === null && tax.error !== null
         ? { taxBasisUnread: true }
         : {}),
+      menuStanding,
+      offMenu,
+      cocktailPoursLeftOut: cocktailPours,
       basis: {
-        velocity: `bottles/day over ${sinceDays}d at most, ending yesterday: each wine over the days since it was listed when that is fewer (items[].velocityDays)${recordsFrom ? `, and never from before the house's first recorded sale on ${recordsFrom}` : ""}; a wine with fewer than ${AdvancedAnalyticsService.MENU_MIN_DAYS} days is given no quadrant (counts.tooFewDays) — ${unitsBasisSentence(unitsCoverage)}`,
+        velocity: `bottles/day over ${sinceDays}d at most, ending yesterday: each wine over the days since it was listed when that is fewer (items[].velocityDays)${recordsFrom ? `, and never from before the house's first recorded sale on ${recordsFrom}` : ""}; a wine with fewer than ${AdvancedAnalyticsService.MENU_MIN_DAYS} days is given no quadrant (counts.tooFewDays)${cocktailPours > 0 ? `; ${cocktailPours} pour${cocktailPours === 1 ? "" : "s"} into cocktails ${cocktailPours === 1 ? "is" : "are"} not counted as sales of the drink poured, since a cocktail's price is not that drink's (items[].pouredIntoCocktails)` : ""} — ${unitsBasisSentence(unitsCoverage)}`,
+        list:
+          menuStanding === "on_menu"
+            ? "the wines on the house's live Drinks and Desserts menus; a priced wine on neither is not placed, and is named in offMenu[] (counts.offMenu)"
+            : menuStanding === "no_current_menu"
+              ? "every priced wine in stock: the house has no live Drinks menu"
+              : "every priced wine in stock: which wines are on a live menu could not be read just now",
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.

@@ -247,6 +247,31 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(figure(doc, "Dogs")).toBe(0);
   });
 
+  it("margin against movement: 'No quadrant' is the screen's count, and tax, too-new and off-menu wines have rows of their own (F-1670, F-1667)", () => {
+    const doc = EXPORT_CUTTINGS.quadrants.write(
+      {
+        ...(PAYLOADS.quadrants as object),
+        counts: {
+          star: 1,
+          unclassified: 2,
+          unmeasured: 1,
+          taxRefused: 3,
+          tooFewDays: 4,
+          offMenu: 1,
+        },
+        offMenu: [{ id: "w9", name: "SYNTHETIC Reserve" }],
+      },
+      { days: null },
+    );
+    expect(figure(doc, "No quadrant")).toBe(3);
+    expect(figure(doc, "Under a week of sales")).toBe(4);
+    expect(figure(doc, "No pre-tax margin")).toBe(3);
+    expect(figure(doc, "Not on any menu")).toBe(1);
+    expect(doc.notes).toContain(
+      "Not on any menu, so not placed: SYNTHETIC Reserve.",
+    );
+  });
+
   it("margin against movement: a register with no counts object withholds the counts rather than printing zeros", () => {
     const doc = EXPORT_CUTTINGS.quadrants.write({ ...(PAYLOADS.quadrants as object), counts: null }, { days: null });
     for (const label of ["Stars", "Plowhorses", "Puzzles", "Dogs"])

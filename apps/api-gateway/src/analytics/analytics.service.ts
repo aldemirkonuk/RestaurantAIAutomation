@@ -39,7 +39,7 @@ import {
  * line's own key with the recipe line's place after it (`…:lineNo:j`), named
  * `<cocktail>: <recipe line>`. A plain sale's key ends at `:lineNo`.
  */
-function isRecipePour(c: {
+export function isRecipePour(c: {
   source?: unknown;
   notes?: unknown;
   wine_name?: unknown;

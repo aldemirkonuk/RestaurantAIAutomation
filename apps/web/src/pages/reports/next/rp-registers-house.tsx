@@ -48,20 +48,23 @@ export interface QuadrantRegister {
   amountsWithheld?: boolean;
   /** The house's tax basis could not be read, so every margin is refused (F-1626). */
   taxBasisUnread?: boolean;
-  basis?: { velocity?: string; margin?: string; unpriced?: string };
+  basis?: { velocity?: string; margin?: string; unpriced?: string; list?: string };
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   medians: { velocityPerDay: number | null; marginPerBottle: number | null };
   counts: Record<string, number>;
   items: QuadrantItem[];
   /** Wines the engine could not price at all, by name (F-472). */
   leftOut?: { id: string; name: string; reason: string }[];
+  /** F-1667: priced wines on no live menu, not placed; absent from an older gateway. */
+  offMenu?: { id: string; name: string }[];
 }
 
 const quadrants = analysis<QuadrantRegister>({
   title: 'Margin against movement',
   register: 'menu-engineering register',
   answers: 'Which wines earn their place: margin against how fast they move',
-  window: () => 'the list as it stands, each wine against its own days on the list, up to 90 days to yesterday',
+  // F-1667: the list is the live menus' wines; a house with none places its priced stock (basis.list says which).
+  window: () => 'the wines on your live Drinks and Desserts menus (your priced stock when no Drinks menu is live), each against its own days on the list, up to 90 days to yesterday',
   path: (rid) => `/analytics/menu-engineering/${rid}`,
   graphs: ['scatter', 'bars', 'table'],
   graphNote:
@@ -95,6 +98,7 @@ const quadrants = analysis<QuadrantRegister>({
         name: str(w.name),
         reason: str(w.reason),
       })),
+      offMenu: arr(d.offMenu).map((w) => ({ id: str(w.id), name: str(w.name) })),
     };
   },
   view: (q) => {
@@ -111,7 +115,8 @@ const quadrants = analysis<QuadrantRegister>({
     // A wine whose movement is not measured has no place on the x axis.
     const plotted = priced.filter((i) => i.velocityPerDay != null && !i.tooFewDays);
     const leftOut = q.leftOut ?? [];
-    const basis = [q.basis?.velocity, q.basis?.margin, q.basis?.unpriced];
+    const offMenu = q.offMenu ?? [];
+    const basis = [q.basis?.list, q.basis?.velocity, q.basis?.margin, q.basis?.unpriced];
     const offPlot = [
       unclassified > 0
         ? `${countOf(unclassified, 'wine is', 'wines are')} off the plot for want of a recorded cost — an uncosted wine is unknown, not a dog.`
@@ -133,6 +138,12 @@ const quadrants = analysis<QuadrantRegister>({
             .map((w) => w.name)
             .join(', ')}${leftOut.length > 8 ? ` and ${leftOut.length - 8} more` : ''}.`
         : null,
+      offMenu.length > 0
+        ? `Not on any menu, so not placed and not in the medians: ${offMenu
+            .slice(0, 8)
+            .map((w) => w.name)
+            .join(', ')}${offMenu.length > 8 ? ` and ${offMenu.length - 8} more` : ''}.`
+        : null,
     ].filter((n): n is string => n != null);
     const figures = [
       { label: 'Stars', value: figure(q.counts.star ?? 0) },
@@ -148,6 +159,8 @@ const quadrants = analysis<QuadrantRegister>({
       ...(taxRefused > 0
         ? [{ label: q.taxBasisUnread ? 'No margin: tax basis not read' : 'No pre-tax margin', value: figure(taxRefused) }]
         : []),
+      // F-1667: priced wines on no live menu; the export carries the same row.
+      ...(offMenu.length > 0 ? [{ label: 'Not on any menu', value: figure(offMenu.length) }] : []),
     ];
     if (q.amountsWithheld)
       return {
@@ -241,9 +254,11 @@ const quadrants = analysis<QuadrantRegister>({
             : undefined,
       },
       figures,
+      // F-1670: the uncosted sentence is offPlot's own, said only when a wine
+      // is uncosted; it read "0 wines are off the plot…" on a costed list.
       notes: [
-        `Fast is right of the vertical rule, fat-margin is above the horizontal one; both rules are the engine’s own medians. ${countOf(unclassified, 'wine is', 'wines are')} off the plot for want of a recorded cost — an uncosted wine is unknown, not a dog.`,
-        ...offPlot.slice(unclassified > 0 ? 1 : 0),
+        'Fast is right of the vertical rule, fat-margin is above the horizontal one; both rules are the engine’s own medians.',
+        ...offPlot,
       ],
       basis,
     };

@@ -240,7 +240,11 @@ function project(cols: string, row: any) {
   return out;
 }
 
-/** Keyset paging on `id`, an exact count past the cursor, filters ignored. */
+/**
+ * Keyset paging on `id`, an exact count past the cursor, filters ignored but
+ * one: `.in("menu_type", …)`, so a reader that asks for some menu kinds only
+ * is seen to (F-1667 repair).
+ */
 function dbOver(rowsByTable: Rows) {
   const client = {
     from(table: string) {
@@ -251,6 +255,7 @@ function dbOver(rowsByTable: Rows) {
       let lim: number | null = null;
       let counted = false;
       let selected: string | null = null;
+      let kinds: Set<unknown> | null = null;
       const b: any = {};
       for (const m of [
         "eq",
@@ -258,12 +263,15 @@ function dbOver(rowsByTable: Rows) {
         "gte",
         "lte",
         "lt",
-        "in",
         "is",
         "or",
         "not",
       ])
         b[m] = () => b;
+      b.in = (col: string, v: unknown[]) => {
+        if (col === "menu_type") kinds = new Set(v);
+        return b;
+      };
       b.select = (cols: string, opts?: { count?: string }) => {
         if (opts?.count === "exact") counted = true;
         if (table === "wine_consumption_log") selected = cols;
@@ -288,10 +296,14 @@ function dbOver(rowsByTable: Rows) {
       b.single = () => Promise.resolve({ data: all[0] ?? null, error: null });
       b.update = () => b;
       b.then = (resolve: any, reject: any) => {
+        const kept =
+          kinds === null
+            ? all
+            : all.filter((r) => (kinds as Set<unknown>).has(r.menu_type));
         const past =
           cursor === null
-            ? all
-            : all.filter(
+            ? kept
+            : kept.filter(
                 (r) => String(r.id).localeCompare(cursor as string) > 0,
               );
         const page = lim === null ? past : past.slice(0, lim);
@@ -1579,5 +1591,139 @@ describe("revenue concentration is over what sold, not the shelf (F-1016)", () =
     ).getRiskProfile(RESTAURANT);
     expect(out.revenueConcentration.unpricedLeftOut).toBe(1);
     expect(out.revenueConcentration.cocktailPoursLeftOut).toBe(0);
+  });
+});
+
+/**
+ * F-1666 (wave-55 sim): a cocktail's recipe pours (F-1329) were read as the
+ * spirit's own sales by margin against movement, so a gin that goes into
+ * forty Negronis read as a fast mover at its own neat price, and
+ * "raise those prices 5-8%" fired on it.
+ */
+describe("margin against movement leaves a cocktail's pours out of the drink's movement (F-1666)", () => {
+  /** A pour the till took for line 2 of a check's Negroni: no price of its own. */
+  const pour = (n: number, count: number) =>
+    lines(n, count, BOTTLE).map((l, j) => ({
+      ...l,
+      source: "pos",
+      notes: `pos:sq:chk-${l.id}:negroni:2:${j}`,
+      wine_name: `Negroni: Item ${n}`,
+      total_revenue: null,
+    }));
+  const sale = (n: number, count: number) =>
+    lines(n, count, BOTTLE).map((l) => ({
+      ...l,
+      source: "pos",
+      notes: `pos:sq:chk-${l.id}:item:1`,
+      wine_name: `Item ${n}`,
+      total_revenue: 60,
+    }));
+
+  it("one neat bottle and ten bottles poured into cocktails: one bottle of movement, the ten said apart", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2)],
+      wine_consumption_log: [...sale(1, 1), ...pour(1, 10), ...sale(2, 3)],
+    }).getMenuEngineering(RESTAURANT, 90);
+    const gin = out.items.find((i: any) => i.id === "inv-1");
+    expect(gin.velocityPerDay).toBeCloseTo(1 / 90, 12);
+    expect(gin.pouredIntoCocktails).toBe(10);
+    expect(out.cocktailPoursLeftOut).toBe(10);
+    expect(out.basis.velocity).toContain(
+      "pours into cocktails are not counted",
+    );
+    // A plain sale is unchanged.
+    const other = out.items.find((i: any) => i.id === "inv-2");
+    expect(other.velocityPerDay).toBeCloseTo(3 / 90, 12);
+    expect(other.pouredIntoCocktails).toBeUndefined();
+  });
+});
+
+/**
+ * F-1667 (wave-55 sim): a wine discarded from the menu keeps its stock
+ * price, and margin against movement placed it anyway: a Dog told
+ * "candidate to delist" for a wine already off the list, medians moved by it.
+ */
+describe("margin against movement places only the wines on a live menu (F-1667)", () => {
+  const menu = {
+    restaurant_menus: [
+      { id: "m-1", name: "Drinks", status: "active", menu_type: "beverage" },
+    ],
+    menu_items: [
+      // Linked to the stock row, as the price triggers follow it.
+      { id: "l-1", inventory_item_id: "inv-1", wine_library_id: null },
+      // Linked to the library wine only, as a lock matches it.
+      { id: "l-2", inventory_item_id: null, wine_library_id: "mw-2" },
+    ],
+  };
+
+  it("a priced wine on no live menu is named apart, not placed", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2), item(3)],
+      wine_consumption_log: lines(1, 3, BOTTLE),
+      ...menu,
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.items.map((i: any) => i.id).sort()).toEqual(["inv-1", "inv-2"]);
+    expect(out.offMenu).toEqual([{ id: "inv-3", name: "Item 3" }]);
+    expect(out.counts.offMenu).toBe(1);
+    expect(out.menuStanding).toBe("on_menu");
+    expect(out.basis.list).toContain("live Drinks and Desserts menus");
+  });
+
+  it("a house with no live menu keeps every priced wine, and says why", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2), item(3)],
+      wine_consumption_log: lines(1, 3, BOTTLE),
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.items).toHaveLength(3);
+    expect(out.offMenu).toEqual([]);
+    expect(out.menuStanding).toBe("no_current_menu");
+  });
+
+  // Audit repair: a house keeps one live menu per kind (ADR 0340 rule 2). A
+  // live Food menu with no live Drinks menu is no drinks list at all, so it
+  // must not file every wine as "not on any menu".
+  it("a live Food menu alone is no drinks list: every priced wine stays", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2), item(3)],
+      wine_consumption_log: lines(1, 3, BOTTLE),
+      restaurant_menus: [
+        { id: "m-f", name: "Food", status: "active", menu_type: "food" },
+      ],
+      menu_items: [
+        { id: "l-f", inventory_item_id: null, wine_library_id: null },
+      ],
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.items).toHaveLength(3);
+    expect(out.offMenu).toEqual([]);
+    expect(out.menuStanding).toBe("no_current_menu");
+    expect(out.basis.list).toContain("no live Drinks menu");
+  });
+
+  it("a dessert wine on the live Desserts menu is on the list beside Drinks", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2), item(3)],
+      wine_consumption_log: lines(1, 3, BOTTLE),
+      restaurant_menus: [
+        ...menu.restaurant_menus,
+        {
+          id: "m-d",
+          name: "Desserts",
+          status: "active",
+          menu_type: "desserts",
+        },
+        { id: "m-f", name: "Food", status: "active", menu_type: "food" },
+      ],
+      menu_items: [
+        ...menu.menu_items,
+        { id: "l-3", inventory_item_id: "inv-3", wine_library_id: null },
+      ],
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.items.map((i: any) => i.id).sort()).toEqual([
+      "inv-1",
+      "inv-2",
+      "inv-3",
+    ]);
+    expect(out.offMenu).toEqual([]);
+    expect(out.menuStanding).toBe("on_menu");
   });
 });
