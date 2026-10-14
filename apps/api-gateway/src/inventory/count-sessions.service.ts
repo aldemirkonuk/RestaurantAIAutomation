@@ -1,5 +1,14 @@
-import { HttpException, HttpStatus, Injectable, Logger } from "@nestjs/common";
+import {
+  forwardRef,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { InventoryService } from "./inventory.service";
 import { zoneLabel } from "../cellar/zones.service";
 import { FACT_TIME_TRUST_MS } from "../common/fact-time";
@@ -38,6 +47,14 @@ export const COUNT_SESSION_KINDS = [
   "opening",
 ] as const;
 export type CountSessionKind = (typeof COUNT_SESSION_KINDS)[number];
+
+/** A count's kind as the floor reads it (the web's `kindWords`). */
+const COUNT_KIND_WORDS: Record<CountSessionKind, string> = {
+  closing: "Closing count",
+  month_end: "Month-end count",
+  full: "Full count",
+  opening: "Opening stock",
+};
 
 export interface HouseLocation {
   id: string;
@@ -179,7 +196,58 @@ export class CountSessionsService {
   constructor(
     private readonly dbService: DatabaseService,
     private readonly inventory: InventoryService,
+    // F-1638: the floor is told when a count opens or a shelf is sent back.
+    // Optional so the specs that build this with two arguments still do.
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications?: NotificationsService,
   ) {}
+
+  /**
+   * F-1638: a team prompt to the house, on the bell and the phone. A team
+   * push: Push off holds it, quiet hours do not, and each one sent inside
+   * someone's quiet hours is logged (the founder's F-540 ruling, F-1340).
+   * Never fails the act it follows: the count is already open, the shelf is
+   * already sent back.
+   */
+  private async tellTheFloor(
+    house: string,
+    by: string,
+    what: "count_opened" | "count_recount",
+    payload: { title: string; message: string; actionUrl: string },
+    only?: string[],
+  ) {
+    if (!this.notifications) return;
+    try {
+      // Not the person who did it (their own act), and no one outside the house.
+      const others = only
+        ? only.filter((id) => id !== by)
+        : (await this.dbService.getRestaurantMemberIds(house)).filter(
+            (id) => id !== by,
+          );
+      if (others.length === 0) return;
+      await this.notifications.persistForRestaurant(
+        house,
+        {
+          type: "system",
+          title: payload.title,
+          message: payload.message,
+          priority: "medium",
+          actionUrl: payload.actionUrl,
+          actionLabel: "Open the count",
+          metadata: { action: what },
+        },
+        only
+          ? { onlyUserIds: others, teamPush: { what, by } }
+          : // Routed (ADR 0218): someone who is Away is not called in.
+            { wantedBy: others, teamPush: { what, by } },
+      );
+    } catch (e) {
+      this.logger.warn(
+        `count ${what} notice for ${house} failed: ${(e as Error)?.message}`,
+      );
+    }
+  }
 
   private unreadable(what: string, err: { message?: string }) {
     this.logger.error(`count session ${what} failed: ${err.message}`);
@@ -464,6 +532,14 @@ export class CountSessionsService {
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+    // An opening count takes lines from owners and managers only (ADR 0335
+    // §3), so the floor is not called to it.
+    if (kind !== "opening")
+      await this.tellTheFloor(house, userId, "count_opened", {
+        title: "A stock count is open",
+        message: `${COUNT_KIND_WORDS[kind]}: ${shelves.length} ${shelves.length === 1 ? "shelf" : "shelves"} to count. Take a shelf when you can.`,
+        actionUrl: `/count/${sessionId}`,
+      });
     return this.pull(house, sessionId, userId);
   }
 
@@ -1818,6 +1894,8 @@ export class CountSessionsService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    // Who said it was done, read before the send-back clears it (F-1638).
+    const before = await this.shelf(house, sessionId, locationId);
     const r = await this.inventory.askShelfRecount(
       house,
       sessionId,
@@ -1825,6 +1903,32 @@ export class CountSessionsService {
       userId,
       seen,
     );
+    if (r.replayed !== true) {
+      // The person who counted it, and whoever holds it now.
+      const told = [
+        ...new Set(
+          [before.done_by, before.claimed_by].filter(
+            (id): id is string => typeof id === "string",
+          ),
+        ),
+      ];
+      if (told.length) {
+        const where = await this.houseLocations(house)
+          .then((all) => all.find((l) => l.id === locationId))
+          .catch(() => undefined);
+        await this.tellTheFloor(
+          house,
+          userId,
+          "count_recount",
+          {
+            title: "A shelf to count again",
+            message: `${where ? zoneLabel(where) : "A shelf you counted"} was sent back. Count it again when you can.`,
+            actionUrl: `/count/${sessionId}`,
+          },
+          told,
+        );
+      }
+    }
     return {
       locationId,
       round: Number(r.round ?? seen),

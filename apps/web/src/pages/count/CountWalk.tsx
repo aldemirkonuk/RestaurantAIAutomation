@@ -21,6 +21,11 @@
  *  5. a bottle the house does not carry is parked for the manager, never
  *     created here.
  * No money and no expected figure is ever shown here, to anyone.
+ *
+ * F-1628: the page names its house and offers the person's other houses; a
+ * switch goes back to `/count`, because this count is the house left. F-1629:
+ * a link to a count in another of their houses offers to open it there.
+ * F-1617: an owner or a manager can stop the count from here.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -72,6 +77,7 @@ import {
   type WalkLine,
   type WalkRecord,
 } from './countWalkModel'
+import { CountHeldElsewhere, CountHouseLine, StopCount } from './CountHouse'
 
 const TAP = 'min-h-[56px] min-w-[56px]'
 const BTN = `${TAP} rounded-xl px-4 text-base font-semibold`
@@ -274,7 +280,8 @@ export default function CountWalk() {
           {loadError ?? 'Getting the shelves…'}
         </p>
         {loadError && (
-          <div className="px-4">
+          <div className="space-y-3 px-4">
+            <CountHeldElsewhere sessionId={sessionId} />
             <button type="button" className={`${QUIET} w-full`} onClick={() => void load()}>
               Try again
             </button>
@@ -324,6 +331,15 @@ export default function CountWalk() {
           >
             Review and sign off
           </button>
+        )}
+        {manager && !ended && !fromPhone && (
+          <StopCount
+            sessionId={sessionId}
+            onStopped={() => {
+              setNotice('This count is stopped. What was counted stays on the books.')
+              void load()
+            }}
+          />
         )}
         {fromPhone && (
           <p className="rounded-xl bg-white/5 px-3 py-2 text-sm text-inkm-2">
@@ -396,6 +412,7 @@ function Frame({
   onBack: () => void
   children: ReactNode
 }) {
+  const navigate = useNavigate()
   return (
     <div
       className="mudavym mx-auto flex min-h-screen w-full max-w-[480px] flex-col bg-paper-0 text-inkm-1"
@@ -417,6 +434,7 @@ function Frame({
           </span>
         )}
       </div>
+      <CountHouseLine onSwitched={() => navigate('/count')} />
       {children}
     </div>
   )

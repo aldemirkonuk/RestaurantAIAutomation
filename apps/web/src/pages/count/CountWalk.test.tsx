@@ -11,6 +11,11 @@ const auth = vi.hoisted(() => ({
     user: { userId: 'u1', restaurantId: 'h1' },
     activeRestaurantId: 'h1',
     activeRole: 'staff' as string | null,
+    availableRestaurants: [
+      { id: 'h1', name: 'Kadıköy', city: 'Istanbul', chain_id: null, chain_name: null },
+      { id: 'h2', name: 'Detroit', city: 'Detroit', chain_id: null, chain_name: null },
+    ],
+    setActiveRestaurantId: vi.fn(),
   },
 }))
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth.value }))
@@ -18,6 +23,8 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth.value }))
 const api = vi.hoisted(() => ({
   pullCountSession: vi.fn(),
   claimCountShelf: vi.fn(),
+  abandonCountSession: vi.fn(),
+  houseHoldingCount: vi.fn(),
 }))
 vi.mock('@/services/api/countSessions', () => api)
 const inv = vi.hoisted(() => ({ getInventory: vi.fn() }))
@@ -321,5 +328,40 @@ describe('who may count', () => {
     const { unmount } = renderWalk()
     expect(await screen.findByText(/this is the list saved on this phone/)).toBeInTheDocument()
     unmount()
+  })
+})
+
+describe('the house and stopping (F-1628, F-1629, F-1617)', () => {
+  it('[REVERT-FAILS] names the house the count is in', async () => {
+    renderWalk()
+    expect((await screen.findByTestId('count-house')).textContent).toContain('Kadıköy, Istanbul')
+  })
+
+  it('[REVERT-FAILS] a count held by another of your houses offers to open it there', async () => {
+    api.pullCountSession.mockRejectedValue({
+      response: { status: 404, data: { message: "That count is not one of this house's." } },
+    })
+    api.houseHoldingCount.mockResolvedValue({ id: 'h2', name: 'Detroit', city: 'Detroit' })
+    auth.value.setActiveRestaurantId.mockResolvedValue(true)
+    renderWalk()
+    fireEvent.click(await screen.findByRole('button', { name: 'Open it in Detroit' }))
+    await waitFor(() => expect(auth.value.setActiveRestaurantId).toHaveBeenCalledWith('h2'))
+    expect(api.houseHoldingCount).toHaveBeenCalledWith('S1')
+  })
+
+  it('staff are not offered "Stop this count"', async () => {
+    renderWalk()
+    await screen.findByText('Ayşe is counting')
+    expect(screen.queryByRole('button', { name: 'Stop this count' })).toBeNull()
+  })
+
+  it('[REVERT-FAILS] a manager stops it only after the question', async () => {
+    auth.value.activeRole = 'manager'
+    api.abandonCountSession.mockResolvedValue({ id: 'S1', status: 'abandoned', abandonedAt: 'x' })
+    renderWalk()
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop this count' }))
+    expect(api.abandonCountSession).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop it' }))
+    await waitFor(() => expect(api.abandonCountSession).toHaveBeenCalledWith('S1'))
   })
 })

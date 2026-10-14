@@ -1030,3 +1030,93 @@ describe("sessionPeriodFor -- the month a count being opened states", () => {
     );
   });
 });
+
+describe("F-1638 -- the floor is told when a count opens or a shelf is sent back", () => {
+  function told(extra: Record<string, Row[]> = {}) {
+    const base = setup(extra);
+    const notifications = {
+      persistForRestaurant: jest
+        .fn()
+        .mockResolvedValue({ inserted: 1, ids: ["n-1"] }),
+    };
+    const inventory = {
+      recordSpotCount: jest.fn().mockResolvedValue({ count: {} }),
+      askShelfRecount: jest
+        .fn()
+        .mockResolvedValue({ round: 1, asked_at: "t", dropped_held: 0 }),
+    };
+    const svc = new CountSessionsService(
+      {
+        getClient: () => base.db.client,
+        getRestaurantMemberIds: async () => [ME, AYSE, BOSS],
+      } as any,
+      inventory as unknown as InventoryService,
+      notifications as any,
+    );
+    return { ...base, svc, inventory, notifications };
+  }
+
+  it("[REVERT-FAILS] an opened count is a team push to everyone else in the house, linking to it", async () => {
+    const { svc, notifications } = told();
+    const s: any = await svc.open(HOUSE, BOSS, {
+      kind: "closing",
+      openKey: "k1",
+    });
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    const [house, payload, opts] =
+      notifications.persistForRestaurant.mock.calls[0];
+    expect(house).toBe(HOUSE);
+    expect(payload.actionUrl).toBe(`/count/${s.id}`);
+    expect(payload.message).toMatch(/^Closing count: 3 shelves to count/);
+    expect(opts.wantedBy).toEqual([ME, AYSE]);
+    expect(opts.teamPush).toEqual({ what: "count_opened", by: BOSS });
+    // A retried tap is the same count, and tells no one twice.
+    await svc.open(HOUSE, BOSS, { kind: "closing", openKey: "k1" });
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  it("an opening count calls nobody from the floor", async () => {
+    const { svc, notifications } = told();
+    await svc.open(HOUSE, BOSS, { kind: "opening" });
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("a failed notice never fails the open", async () => {
+    const { svc, notifications, db } = told();
+    notifications.persistForRestaurant.mockRejectedValue(new Error("down"));
+    await expect(svc.open(HOUSE, BOSS, { kind: "full" })).resolves.toBeTruthy();
+    expect(db.tables.stock_count_sessions).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS] a shelf sent back tells the person who counted it, by name of shelf", async () => {
+    const { svc, notifications, db } = told();
+    const s: any = await svc.open(HOUSE, BOSS, { kind: "closing" });
+    notifications.persistForRestaurant.mockClear();
+    const shelf = db.tables.stock_count_session_shelves.find(
+      (r) => r.location_id === "Shelf 1",
+    )!;
+    Object.assign(shelf, { done_by: ME, done_at: "2026-10-14T01:00:00Z" });
+    await svc.askRecount(HOUSE, s.id, "Shelf 1", BOSS, { seenRound: 0 });
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    const [, payload, opts] = notifications.persistForRestaurant.mock.calls[0];
+    expect(opts.onlyUserIds).toEqual([ME]);
+    expect(opts.teamPush).toEqual({ what: "count_recount", by: BOSS });
+    expect(payload.message).toMatch(/was sent back/);
+    expect(payload.actionUrl).toBe(`/count/${s.id}`);
+  });
+
+  it("a replayed send-back tells no one again", async () => {
+    const { svc, notifications, db, inventory } = told();
+    const s: any = await svc.open(HOUSE, BOSS, { kind: "closing" });
+    notifications.persistForRestaurant.mockClear();
+    Object.assign(
+      db.tables.stock_count_session_shelves.find(
+        (r) => r.location_id === "Bar",
+      )!,
+      { done_by: ME, done_at: "2026-10-14T01:00:00Z" },
+    );
+    inventory.askShelfRecount.mockResolvedValue({ round: 1, replayed: true });
+    await svc.askRecount(HOUSE, s.id, "Bar", BOSS, { seenRound: 0 });
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+});

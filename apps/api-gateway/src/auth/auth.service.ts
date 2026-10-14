@@ -639,13 +639,39 @@ export class AuthService {
     userId: string,
     orderId: string,
   ): Promise<HouseSummary | null> {
+    return this.houseHolding(userId, "procurement_orders", orderId, "order");
+  }
+
+  /**
+   * Which of this person's own houses holds a stock count (F-1629): a count
+   * link from another of their houses offers to switch there, as an order
+   * link does (F-245), under the same rule: only a house they are in.
+   */
+  async houseHoldingCount(
+    userId: string,
+    sessionId: string,
+  ): Promise<HouseSummary | null> {
+    return this.houseHolding(
+      userId,
+      "stock_count_sessions",
+      sessionId,
+      "count",
+    );
+  }
+
+  private async houseHolding(
+    userId: string,
+    table: "procurement_orders" | "stock_count_sessions",
+    id: string,
+    what: "order" | "count",
+  ): Promise<HouseSummary | null> {
     const houses = await this.memberHouses(userId);
     if (houses.length === 0) return null;
 
     const { data, error } = await this.databaseService.supabase
-      .from("procurement_orders")
+      .from(table)
       .select("restaurant_id")
-      .eq("id", orderId)
+      .eq("id", id)
       .in(
         "restaurant_id",
         houses.map((h) => h.id),
@@ -653,10 +679,10 @@ export class AuthService {
       .maybeSingle();
     if (error) {
       this.logger.error(
-        `houseHoldingOrder could not read order ${orderId} for ${userId}: ${error.message}`,
+        `houseHolding could not read ${what} ${id} for ${userId}: ${error.message}`,
       );
       throw new ServiceUnavailableException(
-        "Could not look for that order in your houses. Try again.",
+        `Could not look for that ${what} in your houses. Try again.`,
       );
     }
     const holder = (data as { restaurant_id?: string } | null)?.restaurant_id;
