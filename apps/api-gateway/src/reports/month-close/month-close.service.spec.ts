@@ -583,7 +583,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     )!;
     const f = (arg(insert.ops, "insert")![0] as Record<string, any>)
       .figures as MonthFigures;
-    expect(f.taxBasisSince).toBe("2026-07-03");
+    // The day the answer in force took effect, which the basis line pairs it with.
+    expect(f.taxBasisSince).toBe("2026-07-20");
     expect(f.taxChangeNote).toContain(
       "From 10 July 2026, KDV is added on top of till prices, so net is as the till sent it.",
     );
@@ -592,6 +593,73 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     );
     expect(f.taxChangeNote).toContain(
       "Until 2 July 2026, nobody had said whether till prices include KDV",
+    );
+  });
+
+  // F-1624 audit: "added on top" on 1 July, corrected to include on 20 July.
+  // The first answer's day (1 July) was kept as the include day, so the basis
+  // line read all of July as net without KDV; 1-19 July were as sent.
+  const closeJuly = async (
+    answers: Array<[string, string]>,
+    now: [string, string],
+  ) => {
+    const { svc, calls } = service(
+      houseHandler({
+        restaurants: () => ({
+          data: {
+            name: "SYNTHETIC House",
+            currency: "try",
+            timezone: ZONE,
+            country: "TR",
+            tax_basis: now[0],
+            tax_basis_confirmed_at: now[1],
+          },
+          error: null,
+        }),
+        house_tax_basis_answers: () => ({
+          data: answers.map(([basis, at]) => ({
+            basis,
+            answered_at: at,
+            answered_by: ACTOR,
+          })),
+          error: null,
+        }),
+      }),
+    );
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    return (arg(insert.ops, "insert")![0] as Record<string, any>)
+      .figures as MonthFigures;
+  };
+
+  it("keeps the include day, not an earlier 'added on top' answer's, as the switch day", async () => {
+    const f = await closeJuly(
+      [
+        ["prices_exclude_tax", "2026-07-01T09:00:00Z"],
+        ["prices_include_tax", "2026-07-20T09:00:00Z"],
+      ],
+      ["prices_include_tax", "2026-07-20T09:00:00Z"],
+    );
+    expect(f.taxBasisSince).toBe("2026-07-20");
+    expect(f.taxChangeNote).toContain(
+      "Until 19 July 2026, KDV is added on top of till prices, so net is as the till sent it.",
+    );
+  });
+
+  it("says a month that was wholly on an answer the house replaced after it", async () => {
+    const f = await closeJuly(
+      [
+        ["prices_include_tax", "2026-05-02T09:00:00Z"],
+        ["prices_exclude_tax", "2026-06-10T09:00:00Z"],
+        ["prices_include_tax", "2026-08-05T09:00:00Z"],
+      ],
+      ["prices_include_tax", "2026-08-05T09:00:00Z"],
+    );
+    expect(f.taxBasisSince).toBe("2026-08-05");
+    expect(f.taxChangeNote).toBe(
+      "All of this month, KDV is added on top of till prices, so net is as the till sent it. The house changed its answer about KDV after the month; checks already recorded keep the answer they were recorded under.",
     );
   });
 

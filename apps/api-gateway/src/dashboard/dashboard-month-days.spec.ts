@@ -883,6 +883,50 @@ describe("AW21 — net sales on the house's day", () => {
     expect(nov.tax_change_note).toBeNull();
   });
 
+  // F-1624 audit: "added on top" on Oct 5, include on Oct 20. The switch day
+  // was the first answer of any kind (Oct 5), so the calendar said net was
+  // before tax by taking it out from Oct 5.
+  it("marks the first include day, not an earlier 'added on top' answer's", async () => {
+    const on = (n: number, d: string, sub: number, extra: Row = {}) =>
+      check(n, `2026-10-${d}T20:00:00Z`, `2026-10-${d}T21:00:00Z`, sub, extra);
+    const answer = (basis: string, at: string) => ({
+      restaurant_id: HOUSE,
+      basis,
+      answered_at: at,
+      answered_by: "owner-1",
+    });
+    const db = fakeDb({
+      restaurants: [
+        {
+          ...house(LA, "TR")[0],
+          tax_basis: "prices_include_tax",
+          tax_basis_confirmed_at: "2026-10-20T16:00:00Z",
+        },
+      ],
+      house_tax_basis_answers: [
+        answer("prices_exclude_tax", "2026-10-05T16:00:00Z"),
+        answer("prices_include_tax", "2026-10-20T16:00:00Z"),
+      ],
+      pos_checks: [
+        check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
+        on(1, "02", 50),
+        on(2, "12", 60, {
+          tax_basis: "prices_exclude_tax",
+          gross_subtotal: 60,
+        }),
+        on(3, "21", 40, {
+          tax_basis: "prices_include_tax",
+          gross_subtotal: 44,
+        }),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    expect(month.tax_switch_day).toBe("2026-10-20");
+    expect(month.monthly_checks_as_sent).toBe(1);
+  });
+
   it("reads a month whose checks all lack a subtotal as not recorded, with its checks counted", async () => {
     // A Clover house's shape: its adapter writes subtotal null.
     const db = fakeDb({

@@ -266,6 +266,32 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(kept[1].textContent).toContain('Tax basis: not recorded with this close');
   });
 
+  // F-1624 audit: "added on top" on 1 July, then include on 20 July. The
+  // basis line said the whole month's net was without KDV, under a note
+  // saying 1-19 July were as the till sent them.
+  it('does not claim one basis for a month the house changed its answer in (F-1624)', async () => {
+    const f = close().figures;
+    const note =
+      'The house changed its answer about KDV during this period, so its net is not on one basis. Until 30 June 2026, nobody had said whether till prices include KDV, so net is as the till sent it. From 1 July 2026, KDV is added on top of till prices, so net is as the till sent it. From 20 July 2026, till prices include KDV, and net is without it. Checks already recorded keep the answer they were recorded under.';
+    api.get.mockResolvedValueOnce({
+      data: {
+        closes: [
+          close({
+            taxBasis: 'prices_include_tax',
+            figures: { ...f, taxWord: 'KDV', taxBasisSince: '2026-07-01', taxChangeNote: note },
+          }),
+        ],
+      },
+    });
+    wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);
+    const kept = await screen.findAllByLabelText(/Figures kept for/);
+    expect(kept[0].textContent).not.toContain('Tax basis: till prices include KDV, and net is without it.');
+    expect(kept[0].textContent).toContain(
+      'Tax basis when this month was closed: till prices include KDV. The month was not all on that answer; see below.',
+    );
+    expect(kept[0].textContent).toContain(note);
+  });
+
   it('gives a US or unset house no tax-inside line when its close names no inclusive basis (F-1625)', async () => {
     const f = close().figures;
     const none = { ...f, taxWord: 'sales tax', till: { ...f.till, taxInside: null, taxInsideCheckCount: 0 } };

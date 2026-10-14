@@ -713,8 +713,8 @@ async function readMonthTakings(
   days: Map<string, HouseDaySales>;
   tax: Map<string, HouseDayTax>;
   /**
-   * F-1624: the house day the house's first answer took effect (checks are
-   * stamped from it on), when one of its answers is "prices include tax".
+   * F-1624: the house day the house's first "prices include tax" answer took
+   * effect (net without tax from it on); null when it never gave one.
    */
   taxSwitchDay: string | null;
   /** F-1624: each answer's stretch of house days, oldest first. */
@@ -817,11 +817,13 @@ async function readMonthTakings(
     until,
     days,
     tax: taxStampsByHouseDay(stamped, zone),
-    // Checks are stamped from the FIRST answer on (F-1624: a later answer
-    // does not make the earlier stamped checks "as sent").
-    taxSwitchDay: taxStretches.some((s) => s.basis === "prices_include_tax")
-      ? (taxStretches[0]?.fromDay ?? null)
-      : null,
+    // The day net first had tax taken out: the first "prices include tax"
+    // stretch, not the first answer of any kind (an "added on top" answer
+    // before it leaves net as the till sent it). A later include answer does
+    // not move it, since the checks of the first are already stamped.
+    taxSwitchDay:
+      taxStretches.find((s) => s.basis === "prices_include_tax")?.fromDay ??
+      null,
     taxStretches,
     taxWord: taxWordFor(
       countryCodeOf(

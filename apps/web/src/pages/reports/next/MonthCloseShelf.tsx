@@ -241,6 +241,19 @@ export function taxBasisWords(close: MonthClose): string {
   const since = close.figures.taxBasisSince ?? null;
   const first = `${close.month}-01`;
   const last = `${close.month}-31`;
+  // F-1624: the month was not on the answer in force at the close (the note
+  // below names each stretch), so this line names that answer, not the month's.
+  if (close.figures.taxChangeNote && close.taxBasis) {
+    const now =
+      close.taxBasis === 'prices_include_tax'
+        ? `till prices include ${word}`
+        : close.taxBasis === 'prices_exclude_tax'
+          ? `till prices do not include ${word}`
+          : close.taxBasis === 'not_vat_charging'
+            ? `this house charges no ${word}`
+            : null;
+    if (now) return `Tax basis when this month was closed: ${now}. The month was not all on that answer; see below.`;
+  }
   switch (close.taxBasis ?? null) {
     case null:
       return 'Tax basis: not recorded with this close, which was kept before closes recorded it.';

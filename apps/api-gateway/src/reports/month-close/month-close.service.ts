@@ -40,6 +40,8 @@ import { renderCsv } from "../exports/report-export-render";
 import { taxWordFor } from "../../settings/house-tax-basis.service";
 import {
   readTaxBasisHistory,
+  stretchOn,
+  stretchWords,
   taxBasisStretches,
   taxChangeNote,
 } from "../../common/tax-basis-history";
@@ -255,7 +257,9 @@ export interface MonthFigures {
    * F-1624 / F-1588: when the house changed its tax answer inside the month
    * (include, then "added on top", then include again), one sentence naming
    * each stretch. Null when the month is on one answer. Absent on a close
-   * kept before answers were kept.
+   * kept before answers were kept. Also set when the whole month was on an
+   * answer the house replaced after it, so the basis line (which names the
+   * answer in force at the close) is never read as the month's own.
    */
   taxChangeNote?: string | null;
   /** How the house's country names its tax ("KDV", "sales tax", "tax"). */
@@ -577,10 +581,9 @@ export class MonthCloseService {
     );
     // F-1606: the basis the month's net was on, and the day it was stated,
     // so a year of closes shows where the net stopped holding the tax.
-    // F-1624: every answer the house gave, not only the last. Checks are
-    // stamped from the FIRST answer on, so that is where net stopped being
-    // the till's figures as sent; a later change inside the month is named
-    // stretch by stretch. A history that cannot be read refuses the close.
+    // F-1624: every answer the house gave, not only the last; a change inside
+    // the month is named stretch by stretch. A history that cannot be read
+    // refuses the close.
     const stretches = taxBasisStretches(
       await readTaxBasisHistory(this.db, restaurantId, {
         basis: house.taxBasis,
@@ -590,10 +593,25 @@ export class MonthCloseService {
     );
     const days = monthDays(month);
     const taxWord = taxWordFor(house.country);
+    // taxBasisSince stays the day the answer in force took effect (F-1606):
+    // the basis line pairs it with that answer, so the first answer's day
+    // would read an earlier "added on top" stretch as net without tax.
+    const current = stretches[stretches.length - 1];
+    const opening = stretchOn(stretches, days.first);
     const figures: MonthFigures = {
       ...read,
-      taxBasisSince: stretches[0]?.fromDay ?? null,
-      taxChangeNote: taxChangeNote(stretches, days.first, days.last, taxWord),
+      taxBasisSince:
+        current && current.basis === house.taxBasis
+          ? current.fromDay
+          : house.taxBasisConfirmedAt
+            ? houseDayOf(house.taxBasisConfirmedAt, zone)
+            : null,
+      taxChangeNote:
+        taxChangeNote(stretches, days.first, days.last, taxWord) ??
+        // The whole month on an answer the house replaced after it.
+        (opening && opening !== current
+          ? `All of this month, ${stretchWords(opening.basis, taxWord)}. The house changed its answer about ${taxWord} after the month; checks already recorded keep the answer they were recorded under.`
+          : null),
       taxWord,
     };
     // F-1625: only a house whose prices include tax (or a month that took tax
