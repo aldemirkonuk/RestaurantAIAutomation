@@ -300,7 +300,8 @@ export function RowExpansion({
   const { suggested, reorderPoint } = reorderAdvice(item, onOrder)
 
   const daily = activity?.daily ?? []
-  const maxDaily = Math.max(1, ...daily.map((d) => d.out))
+  // F-1595: the card is sales; a shelf move or a broken bottle is not one.
+  const maxDaily = Math.max(1, ...daily.map((d) => d.sold ?? 0))
 
   return (
     <div className="bg-gray-50/70 border-b border-gray-100 px-6 py-4">
@@ -491,14 +492,17 @@ export function RowExpansion({
           ) : daily.length > 0 ? (
             <>
               <div className="flex items-end gap-1 h-16">
-                {daily.map((d) => (
-                  <i
-                    key={d.date}
-                    title={`${d.date}: ${d.out}`}
-                    className={cn('flex-1 rounded-t', d.out >= maxDaily * 0.75 ? 'bg-blue-600' : 'bg-blue-100')}
-                    style={{ height: `${Math.max((d.out / maxDaily) * 100, 4)}%` }}
-                  />
-                ))}
+                {daily.map((d) => {
+                  const sold = d.sold ?? 0
+                  return (
+                    <i
+                      key={d.date}
+                      title={`${d.date}: ${sold} sold`}
+                      className={cn('flex-1 rounded-t', sold >= maxDaily * 0.75 ? 'bg-blue-600' : 'bg-blue-100')}
+                      style={{ height: `${Math.max((sold / maxDaily) * 100, 4)}%` }}
+                    />
+                  )
+                })}
               </div>
               <div className="flex justify-between font-mono text-[9px] text-gray-400 mt-1.5">
                 <span>{daily[0]?.date.slice(5)}</span>
@@ -506,7 +510,7 @@ export function RowExpansion({
               </div>
             </>
           ) : (
-            <p className="text-[11px] text-gray-400">No depletion recorded yet.</p>
+            <p className="text-[11px] text-gray-400">No sales recorded yet.</p>
           )}
           <KV k="Current velocity" v={velocityLabel(item)} />
         </Card>

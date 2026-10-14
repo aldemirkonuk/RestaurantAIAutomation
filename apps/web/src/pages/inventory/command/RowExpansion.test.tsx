@@ -623,7 +623,7 @@ describe('RowExpansion — a read that did not answer is not an empty history (F
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     renderRow()
     expect(await screen.findByText('No orders for this wine yet.')).toBeInTheDocument()
-    expect(await screen.findByText('No depletion recorded yet.')).toBeInTheDocument()
+    expect(await screen.findByText('No sales recorded yet.')).toBeInTheDocument()
   })
 })
 
@@ -886,5 +886,35 @@ describe('RowExpansion — Reconcile N into live (F-1166)', () => {
     expect(reconcileItem).not.toHaveBeenCalled()
     expect(reconcileShadowItem).toHaveBeenCalledTimes(1)
     expect(reconcileShadowItem).toHaveBeenCalledWith('inv-1')
+  })
+})
+
+/**
+ * F-1595: "Velocity, last 14 days" drew every movement off the shelf, so 12
+ * bottles carried from the cellar to the bar drew as 12 sales. It draws the
+ * day's sales.
+ */
+describe('RowExpansion — velocity is sales', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getOrderBook.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('a shelf move is not drawn as a sale', async () => {
+    getItemActivity.mockResolvedValue({
+      daily: [
+        { date: '2026-10-08', out: 2, in: 0, sold: 2 },
+        { date: '2026-10-09', out: 12, in: 12, sold: 0 },
+      ],
+      heat: [],
+      totalOut28d: 14,
+      totalIn28d: 12,
+      includes: { out: '', in: '', window: '' },
+    })
+    renderRow()
+    expect(await screen.findByTitle('2026-10-08: 2 sold')).toBeInTheDocument()
+    expect(screen.getByTitle('2026-10-09: 0 sold')).toBeInTheDocument()
+    expect(screen.queryByTitle(/: 12/)).not.toBeInTheDocument()
   })
 })
