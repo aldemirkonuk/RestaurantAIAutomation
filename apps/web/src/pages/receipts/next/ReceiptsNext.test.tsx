@@ -51,6 +51,7 @@ const api = vi.hoisted(() => ({
   /** The caller's role at this house, for rule 3's control. */
   role: 'manager' as 'owner' | 'manager' | 'staff' | null,
   restateCurrency: vi.fn(),
+  markPaid: vi.fn(),
   /**
    * The three mints (founder, 2026-09-06, batch 64: "Decide as a module: seal
    * all three"). Each returns a token the write then has to carry back; the
@@ -100,6 +101,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       match: vi.fn(),
       linkLine: api.linkLine,
       restateCurrency: api.restateCurrency,
+      markPaid: api.markPaid,
       mintVerifySeal: api.mintVerifySeal,
       mintLineEditSeal: api.mintLineEditSeal,
       mintCurrencySeal: api.mintCurrencySeal,
@@ -1418,5 +1420,40 @@ describe('ReceiptsNext — every paper type in words (W44)', () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByText((_, el) => el?.tagName === 'SPAN' && /^Document · SYN-X-1$/.test(el.textContent ?? ''));
     expect(container.textContent).not.toContain('a_new_kind');
+  });
+});
+
+describe('ReceiptsNext — marking an invoice paid (F-1635)', () => {
+  it('[REVERT-FAILS] a manager marks an unpaid invoice paid, and can undo it', async () => {
+    api.markPaid.mockReset();
+    api.markPaid.mockResolvedValue({ id: 'd1', paidAt: '2026-10-14T09:00:00Z', paidBy: 'restaurant' });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(screen.getByText('Not marked paid yet.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid' }));
+    await waitFor(() => expect(api.markPaid).toHaveBeenCalledWith('d1', true));
+  });
+
+  it('[REVERT-FAILS] says when a paid invoice was marked paid, and offers to undo it', async () => {
+    api.markPaid.mockReset();
+    api.markPaid.mockResolvedValue({ id: 'd1', paidAt: null, paidBy: null });
+    const paid = doc({ paid_at: '2026-10-01T09:00:00Z', paid_by: 'restaurant' });
+    api.queue = [paid];
+    api.detail = { document: paid, lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/^Marked paid on /)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark not paid' }));
+    await waitFor(() => expect(api.markPaid).toHaveBeenCalledWith('d1', false));
+  });
+
+  it('shows staff whether it is paid, with no button', async () => {
+    api.role = 'staff';
+    api.markPaid.mockReset();
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(screen.getByText('Not marked paid yet.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Mark paid' })).toBeNull();
+    expect(container.textContent).toContain('An owner or a manager can mark it paid.');
   });
 });

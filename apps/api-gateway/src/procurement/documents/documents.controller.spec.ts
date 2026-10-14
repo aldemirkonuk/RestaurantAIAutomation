@@ -1240,3 +1240,125 @@ describe("DocumentsController.detail — each paired line names its own order it
     expect(out.orderLines).toBeNull();
   });
 });
+
+/**
+ * F-1635 (sim 53): `paid_at` / `paid_by` existed (ADR 0103 A3) with no
+ * writer, so no invoice could be marked paid. `markPaid` did not exist; every
+ * case here failed on a build without it.
+ */
+describe("DocumentsController.markPaid — payment is a fact on the invoice (F-1635)", () => {
+  const PAID_DOC = "66666666-6666-4666-8666-666666666666";
+  function paidHarness(
+    role: string | null,
+    doc: Record<string, unknown> | null,
+  ) {
+    const writes: Array<{ table: string; op: string; row: any; eqs: any[] }> =
+      [];
+    const client = {
+      from: (table: string) => {
+        const eqs: any[] = [];
+        let op = "select";
+        let row: any = null;
+        const chain: any = {
+          select: () => chain,
+          update: (r: any) => {
+            op = "update";
+            row = r;
+            return chain;
+          },
+          insert: (r: any) => {
+            writes.push({ table, op: "insert", row: r, eqs });
+            return Promise.resolve({ error: null });
+          },
+          eq: (...a: any[]) => {
+            eqs.push(a);
+            return chain;
+          },
+          maybeSingle: () => Promise.resolve({ data: doc, error: null }),
+          then: (res: any, rej: any) => {
+            if (op === "update") writes.push({ table, op, row, eqs });
+            return Promise.resolve({ error: null }).then(res, rej);
+          },
+        };
+        return chain;
+      },
+    };
+    const none = {} as any;
+    const controller = new DocumentsController(
+      none,
+      { getClient: () => client } as any,
+      none,
+      none,
+      none,
+      none,
+      {
+        resolveRestaurantRole: async () => role,
+        assertCanManageRestaurant: async () => {
+          if (role !== "owner" && role !== "manager") throw new Error("no");
+        },
+      } as any,
+      none,
+      none,
+      none,
+      none,
+    );
+    return { controller, writes };
+  }
+  const user = { userId: "u-1", restaurantId: "r-1" } as any;
+  const invoice = {
+    id: PAID_DOC,
+    doc_type: "invoice",
+    doc_number: "A-1",
+    paid_at: null,
+  };
+
+  it("[REVERT-FAILS] a manager marks an invoice paid, in this house only, and it is logged", async () => {
+    const { controller, writes } = paidHarness("manager", invoice);
+    const out = await controller.markPaid(PAID_DOC, { paid: true }, user);
+    expect(out.paidBy).toBe("restaurant");
+    expect(typeof out.paidAt).toBe("string");
+    const update = writes.find((w) => w.op === "update")!;
+    expect(update.table).toBe("procurement_documents");
+    expect(update.row).toEqual({ paid_at: out.paidAt, paid_by: "restaurant" });
+    expect(update.eqs).toContainEqual(["restaurant_id", "r-1"]);
+    const audit = writes.find((w) => w.table === "system_audit_log")!;
+    expect(audit.row.action).toBe("invoice_marked_paid");
+    expect(audit.row.actor_id).toBe("u-1");
+  });
+
+  it("[REVERT-FAILS] an owner marks it not paid again, clearing both facts", async () => {
+    const { controller, writes } = paidHarness("owner", {
+      ...invoice,
+      paid_at: "2026-10-01T09:00:00Z",
+    });
+    const out = await controller.markPaid(PAID_DOC, { paid: false }, user);
+    expect(out).toEqual({ id: PAID_DOC, paidAt: null, paidBy: null });
+    expect(writes.find((w) => w.op === "update")!.row).toEqual({
+      paid_at: null,
+      paid_by: null,
+    });
+  });
+
+  it("refuses staff in words, before any read or write", async () => {
+    const { controller, writes } = paidHarness("staff", invoice);
+    await expect(
+      controller.markPaid(PAID_DOC, { paid: true }, user),
+    ).rejects.toThrow("manager's or an owner's call");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("refuses a credit note, and a way of paying the column does not hold", async () => {
+    const credit = paidHarness("owner", {
+      ...invoice,
+      doc_type: "credit_memo",
+    });
+    await expect(
+      credit.controller.markPaid(PAID_DOC, { paid: true }, user),
+    ).rejects.toThrow("Only an invoice can be marked paid");
+    expect(credit.writes).toHaveLength(0);
+    const odd = paidHarness("owner", invoice);
+    await expect(
+      odd.controller.markPaid(PAID_DOC, { paid: true, paidBy: "cash" }, user),
+    ).rejects.toThrow("not a way an invoice can be paid");
+  });
+});

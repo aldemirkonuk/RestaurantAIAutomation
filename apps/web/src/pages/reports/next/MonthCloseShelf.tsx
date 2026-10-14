@@ -72,7 +72,13 @@ export interface MonthCloseFigures {
     unpricedWines: number | null;
     valuedAt: string;
   };
-  purchases: { orders: number; unpriced: number; totals: MonthCloseMoney[] };
+  purchases: {
+    orders: number;
+    unpriced: number;
+    totals: MonthCloseMoney[];
+    /** Delivered in the month, still open (F-1632); absent on a close kept before. */
+    awaiting?: { orders: number; totals: MonthCloseMoney[] };
+  };
   variance: {
     counts: number;
     netBottles: number;
@@ -322,6 +328,14 @@ function Kept({ close }: { close: MonthClose }) {
       <li>
         Bought (delivered): {bought}
         {f.purchases.unpriced > 0 ? `, and ${countOf(f.purchases.unpriced, 'order', 'orders')} with no price` : ''}
+        {/* F-1632: a delivery still open is said, never silently left out. */}
+        {f.purchases.awaiting && f.purchases.awaiting.orders > 0
+          ? `. Not in it: ${countOf(f.purchases.awaiting.orders, 'order', 'orders')} delivered but still open (part still to come, or the invoice not checked yet)${
+              f.purchases.awaiting.totals.length
+                ? `, ${f.purchases.awaiting.totals.map((t) => money(t.total, 'full', t.currency ?? f.currency)).join(' + ')} at order total`
+                : ''
+            }; counted once closed`
+          : ''}
       </li>
       <li>
         Count variance:{' '}

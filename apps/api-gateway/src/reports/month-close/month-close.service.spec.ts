@@ -274,6 +274,47 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
   });
   afterEach(() => jest.useRealTimers());
 
+  it("[REVERT-FAILS] says a delivery still open beside Bought (delivered), not in it (F-1632)", async () => {
+    const { svc, calls } = service(
+      houseHandler({
+        procurement_orders: () => ({
+          data: [
+            {
+              id: "o1",
+              status: "COMPLETED",
+              total_cost: 300,
+              currency: null,
+              delivered_at: "2026-07-04T10:00:00Z",
+            },
+            {
+              // 10 of 12 accepted, 2 backordered: delivered, still open.
+              id: "o2",
+              status: "PARTIALLY_RECEIVED",
+              total_cost: 28800,
+              currency: "TRY",
+              delivered_at: "2026-07-05T10:00:00Z",
+            },
+          ],
+          error: null,
+          count: 2,
+        }),
+      }),
+    );
+    const dto = await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const p = dto.figures.purchases;
+    expect(p.orders).toBe(1);
+    expect(p.totals).toEqual([{ currency: "TRY", total: 300 }]);
+    expect(p.awaiting).toEqual({
+      orders: 1,
+      totals: [{ currency: "TRY", total: 28800 }],
+    });
+    const read = calls.find((c) => c.table === "procurement_orders")!.ops;
+    expect(read).toContainEqual({
+      m: "in",
+      a: ["status", ["DELIVERED", "PARTIALLY_RECEIVED", "COMPLETED"]],
+    });
+  });
+
   it("keeps the month's figures as a new version, with the till's file and who closed it", async () => {
     const { svc, calls, goals } = service(houseHandler());
     const dto = await svc.closeMonth(HOUSE, ACTOR, "2026-07");
@@ -334,6 +375,7 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
         { currency: "EUR", total: 50 },
         { currency: "TRY", total: 300 },
       ],
+      awaiting: { orders: 0, totals: [] },
       kept: expect.any(Object),
     });
     expect(f.variance).toEqual({

@@ -32,11 +32,18 @@ export interface VendorSpendRow {
   received: SpendMoney[];
   receivedOrders: number;
   unpricedOrders: number;
+  /** Delivered in the period, still open (F-1632): not in `received`. */
+  awaitingOrders: number;
+  awaiting: SpendMoney[];
   invoiced: SpendMoney[];
   invoices: number;
   credited: SpendMoney[];
   creditNotes: number;
   paperWithoutTotal: number;
+  /** Invoices on file, any date, nobody has marked paid (F-1635). */
+  unpaid: SpendMoney[];
+  unpaidInvoices: number;
+  unpaidWithoutTotal: number;
 }
 
 export interface VendorSpend {
@@ -45,7 +52,13 @@ export interface VendorSpend {
   zone: string;
   currency: string | null;
   vendors: VendorSpendRow[];
-  totals: { received: SpendMoney[]; invoiced: SpendMoney[]; credited: SpendMoney[] };
+  totals: {
+    received: SpendMoney[];
+    awaiting: SpendMoney[];
+    invoiced: SpendMoney[];
+    credited: SpendMoney[];
+    unpaid: SpendMoney[];
+  };
   unverifiedPaper: number;
   duplicatePaper: number;
   paperWithoutCurrency: number;
@@ -228,6 +241,7 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
             {s.from} to {s.to}, both days included. Delivered: {amounts(s.totals.received, s.currency)}.
             Invoiced: {amounts(s.totals.invoiced, s.currency)}
             {s.totals.credited.length ? `, and ${amounts(s.totals.credited, s.currency)} in credit notes` : ''}.
+            {s.totals.unpaid.length ? ` Not marked paid, any date: ${amounts(s.totals.unpaid, s.currency)}.` : ''}
           </p>
           {s.vendors.length === 0 ? (
             <p className="rp-cap">No order was delivered and no invoice is dated in this period.</p>
@@ -248,6 +262,14 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
                         ? `, and ${countOf(v.unpricedOrders, 'order', 'orders')} with no price`
                         : ''}
                     </p>
+                    {/* F-1632: delivered but still open is said, not silently left out. */}
+                    {v.awaitingOrders > 0 && (
+                      <p className="rp-cap">
+                        Not in Delivered yet: {countOf(v.awaitingOrders, 'order', 'orders')} delivered but still
+                        open (part still to come, or the invoice not checked yet)
+                        {v.awaiting.length ? `, ${amounts(v.awaiting, s.currency)} at order total` : ''}
+                      </p>
+                    )}
                     <p className="rp-cap">
                       Invoiced: {v.invoices + v.creditNotes === 0 ? EM : amounts(v.invoiced, s.currency)} over{' '}
                       {countOf(v.invoices, 'invoice', 'invoices')}
@@ -258,6 +280,14 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
                         ? `; ${countOf(v.paperWithoutTotal, 'invoice', 'invoices')} with no total yet`
                         : ''}
                     </p>
+                    {/* F-1635: what the house has not marked paid, any date. */}
+                    {v.unpaidInvoices > 0 && (
+                      <p className="rp-cap">
+                        Not marked paid: {v.unpaid.length ? amounts(v.unpaid, s.currency) : EM} over{' '}
+                        {countOf(v.unpaidInvoices, 'invoice', 'invoices')}
+                        {v.unpaidWithoutTotal > 0 ? `, ${v.unpaidWithoutTotal} with no total yet` : ''}
+                      </p>
+                    )}
                   </div>
                 </li>
               ))}

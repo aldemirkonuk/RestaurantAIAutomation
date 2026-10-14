@@ -2059,6 +2059,41 @@ describe("verifyReceipt — purchases and the lot are booked at one price (F-700
     expect(calls.orderUpdates[0]).not.toHaveProperty("total_estimated_cost");
   });
 
+  it("[REVERT-FAILS] keeps a lira order's total when the invoice is in euros (F-1633)", async () => {
+    // 12 × ₺2.400 = ₺28.800 agreed, billed at €62 a bottle.
+    const lira = {
+      ...agreed,
+      final_price: 2400,
+      total_cost: 28800,
+      currency: "TRY",
+    };
+    const { db, calls } = makeDb({ orderRow: lira, bookedBottles: 12 });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 12,
+      invoiceUnitPrice: 62,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 12,
+      priceOverrideReason: "billed in euros",
+    } as any);
+
+    // The order keeps its own total in its own money; no euro figure under a lira code.
+    expect(calls.orderUpdates[0]).not.toHaveProperty("total_cost");
+    expect(calls.orderUpdates[0]).not.toHaveProperty("total_estimated_cost");
+    expect(calls.orderUpdates[0]).not.toHaveProperty("currency");
+  });
+
+  it("still writes the invoiced total when the invoice is in the order's own money", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...agreed, currency: "USD" },
+      bookedBottles: 12,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, billed as any);
+
+    expect(calls.orderUpdates[0].total_cost).toBe(240);
+  });
+
   it("leaves the order's money alone when the paper carries no price", async () => {
     const { db, calls } = makeDb({ orderRow: agreed, bookedBottles: 12 });
 

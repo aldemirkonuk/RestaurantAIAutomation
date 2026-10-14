@@ -190,6 +190,22 @@ describe('MonthCloseShelf (F-1013)', () => {
     );
   });
 
+  it('[REVERT-FAILS] says a delivery still open beside Bought (delivered) (F-1632)', async () => {
+    const f = close().figures;
+    const open = close({
+      figures: {
+        ...f,
+        purchases: { ...f.purchases, awaiting: { orders: 1, totals: [{ currency: 'EUR', total: 744 }] } },
+      },
+    });
+    api.get.mockResolvedValue({ data: { closes: [open] } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    const line = await screen.findByText(/Bought \(delivered\):/);
+    expect(line.textContent).toContain(
+      'Not in it: 1 order delivered but still open (part still to come, or the invoice not checked yet), €744 at order total; counted once closed',
+    );
+  });
+
   it('says nothing of open bottles when no count named them', async () => {
     api.get.mockResolvedValue({ data: { closes: [close()] } });
     wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);

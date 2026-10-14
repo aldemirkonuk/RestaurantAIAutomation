@@ -3,7 +3,8 @@ import { DatabaseService } from "../../database/database.service";
 import { houseDayBounds } from "../../common/house-day";
 import { houseFrame } from "../../common/house-frame";
 import { readWholeWindow } from "../../common/read-whole-window";
-import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
+import { ORDER_ARRIVED_STATUSES } from "../../procurement/order-status";
+import { ProcurementOrderStatus } from "../../procurement/dto/procurement.dto";
 import { orderCurrency, orderSpend } from "../../procurement/order-spend";
 import { renderCsv } from "../exports/report-export-render";
 import {
@@ -32,6 +33,19 @@ import { houseSlug } from "../exports/report-export-naming";
  *    them as their own figure. Rejected and superseded paper is not the bill
  *    (the rule `usual-currency-from-invoices.ts` states), and the same invoice
  *    number from one vendor counts once — photographed and emailed is one bill.
+ *
+ * OPEN DELIVERIES ARE SAID, NOT COUNTED (F-1632, sim 53). A delivery still
+ * waiting on its invoice check, or one with a backorder still to come, stays
+ * `PARTIALLY_RECEIVED`, which is not in `ORDER_SPEND_STATUSES`; widening that
+ * set is a house-wide money-rule change (F-130 / D6 chose to disclose). So
+ * they are read beside Received — counted and summed at their order total as
+ * `awaiting` — and the page and the file say why they are not in it. The
+ * month close says the same of "Bought (delivered)".
+ *
+ * NOT MARKED PAID (F-1635). Every invoice on file with no `paid_at` (ADR 0103
+ * A3: payment is a fact on the invoice), any date, at its printed total per
+ * currency: what the house has not recorded paying. It is not period-bound,
+ * because what is owed today does not depend on the dates picked.
  *
  * The two are never added together: an order's total becomes the invoiced
  * total once its invoice is verified (F-700), so the same money can sit in
@@ -66,12 +80,23 @@ export interface VendorSpendRow {
   receivedOrders: number;
   /** Delivered orders with no price, left out of `received` and counted. */
   unpricedOrders: number;
+  /**
+   * Delivered in the period but still open (F-1632): a backorder still to
+   * come, or the invoice not checked yet. Not in `received`; at order total.
+   */
+  awaitingOrders: number;
+  awaiting: MoneyTotal[];
   invoiced: MoneyTotal[];
   invoices: number;
   credited: MoneyTotal[];
   creditNotes: number;
   /** Invoices and credit notes on file with no total (still being read, or their money held). */
   paperWithoutTotal: number;
+  /** Invoices on file, any date, not marked paid, at their printed totals (F-1635). */
+  unpaid: MoneyTotal[];
+  unpaidInvoices: number;
+  /** Of `unpaidInvoices`, those with no total or no currency, so not in `unpaid`. */
+  unpaidWithoutTotal: number;
 }
 
 export interface VendorSpendDto {
@@ -83,8 +108,10 @@ export interface VendorSpendDto {
   vendors: VendorSpendRow[];
   totals: {
     received: MoneyTotal[];
+    awaiting: MoneyTotal[];
     invoiced: MoneyTotal[];
     credited: MoneyTotal[];
+    unpaid: MoneyTotal[];
   };
   /** Invoices counted above that nobody has checked against the paper yet. */
   unverifiedPaper: number;
@@ -147,9 +174,11 @@ export function periodLabel(from: string, to: string): string {
 
 export function spendBasis(currency: string | null): string[] {
   return [
-    "Received is the delivered and completed orders, at each order's total, filed on the house day they were delivered — the same figure the month close keeps as Bought (delivered). Once an invoice is checked against an order, the order's total is the invoiced total.",
+    "Received is the delivered and completed orders, at each order's total, filed on the house day they were delivered — the same figure the month close keeps as Bought (delivered). Once an invoice is checked against an order, the order's total is what the invoice charged for the goods plus its freight and fees, without tax; an invoice in another currency leaves the order's total as it was. So Received does not include tax, and Invoiced does.",
+    "An order delivered in the period that is still open — part of it still to come, or its invoice not checked yet — is not in Received until it is closed. It is listed beside Received at its order total.",
     "Invoiced is the vendor's invoices dated in the period, at the total printed on them, so any tax on the invoice is inside it. Credit notes are their own column and are not taken off. Rejected and replaced paper is left out, and the same invoice number from one vendor counts once.",
     "Received and Invoiced are two views of the same buying and are never added together.",
+    "Not marked paid is every invoice on file, from any date, that nobody has marked paid, at the total printed on it. Credit notes are not taken off it.",
     currency
       ? `Money is in ${currency}, the house's currency. An amount in another currency stays in its own currency and is not added in, because there is no exchange rate on record.`
       : "This house has not set its currency, so each amount is given in the currency its order or invoice names.",
@@ -206,17 +235,21 @@ export class VendorSpendService {
       );
 
     const bounds = houseDayBounds(from, to, zone);
-    const [orders, paper] = await Promise.all([
+    const [orders, paper, unpaidPaper] = await Promise.all([
       readWholeWindow<Record<string, unknown>>(
         "The orders delivered in this period",
         () =>
           this.db
             .from("procurement_orders")
-            .select("id, provider_id, total_cost, currency, delivered_at", {
-              count: "exact",
-            })
+            .select(
+              "id, provider_id, status, total_cost, currency, delivered_at",
+              {
+                count: "exact",
+              },
+            )
             .eq("restaurant_id", restaurantId)
-            .in("status", ORDER_SPEND_STATUSES as unknown as string[])
+            // Spend statuses, and the still-open deliveries said beside them (F-1632).
+            .in("status", ORDER_ARRIVED_STATUSES as unknown as string[])
             .gte("delivered_at", bounds.startIso)
             .lt("delivered_at", bounds.endIso) as never,
       ),
@@ -234,6 +267,19 @@ export class VendorSpendService {
             .gte("doc_date", from)
             .lte("doc_date", to) as never,
       ),
+      readWholeWindow<Record<string, unknown>>(
+        "The invoices not marked paid",
+        () =>
+          this.db
+            .from("procurement_documents")
+            .select(
+              "id, provider_id, doc_type, doc_number, status, total, currency, created_at",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .eq("doc_type", "invoice")
+            .is("paid_at", null) as never,
+      ),
     ]);
 
     const rows = new Map<string | null, VendorSpendRow>();
@@ -247,11 +293,16 @@ export class VendorSpendService {
           received: [],
           receivedOrders: 0,
           unpricedOrders: 0,
+          awaitingOrders: 0,
+          awaiting: [],
           invoiced: [],
           invoices: 0,
           credited: [],
           creditNotes: 0,
           paperWithoutTotal: 0,
+          unpaid: [],
+          unpaidInvoices: 0,
+          unpaidWithoutTotal: 0,
         };
         rows.set(key, r);
       }
@@ -261,6 +312,12 @@ export class VendorSpendService {
     for (const o of orders) {
       const r = rowOf(o.provider_id);
       const cost = orderSpend(o);
+      if (o.status === ProcurementOrderStatus.PARTIALLY_RECEIVED) {
+        // Delivered but still open (F-1632): said beside Received, not in it.
+        r.awaitingOrders += 1;
+        if (cost !== null) add(r.awaiting, orderCurrency(o) ?? currency, cost);
+        continue;
+      }
       if (cost === null) {
         r.unpricedOrders += 1;
         continue;
@@ -270,35 +327,12 @@ export class VendorSpendService {
       add(r.received, orderCurrency(o) ?? currency, cost);
     }
 
-    // One bill per vendor, kind and number: the verified copy, else the newest.
-    const bills = new Map<string, Record<string, unknown>>();
-    const loose: Record<string, unknown>[] = [];
-    let duplicatePaper = 0;
-    for (const d of paper) {
-      if (NOT_THE_BILL.has(String(d.status))) continue;
-      const number =
-        typeof d.doc_number === "string" ? d.doc_number.trim() : "";
-      if (!number) {
-        loose.push(d);
-        continue;
-      }
-      const key = `${String(d.provider_id)}|${String(d.doc_type)}|${number.toUpperCase()}`;
-      const kept = bills.get(key);
-      if (!kept) {
-        bills.set(key, d);
-        continue;
-      }
-      duplicatePaper += 1;
-      const better =
-        (d.status === "verified") !== (kept.status === "verified")
-          ? d.status === "verified"
-          : String(d.created_at ?? "") > String(kept.created_at ?? "");
-      if (better) bills.set(key, d);
-    }
+    const { bills: periodBills, duplicates: duplicatePaper } =
+      onePerBill(paper);
 
     let unverifiedPaper = 0;
     let paperWithoutCurrency = 0;
-    for (const d of [...bills.values(), ...loose]) {
+    for (const d of periodBills) {
       const r = rowOf(d.provider_id);
       const credit = d.doc_type === "credit_memo";
       if (credit) r.creditNotes += 1;
@@ -316,6 +350,24 @@ export class VendorSpendService {
       }
       // A credit note may be printed negative or positive; it is a credit either way.
       add(credit ? r.credited : r.invoiced, code, credit ? Math.abs(n) : n);
+    }
+
+    // Not marked paid (F-1635): the same one-bill rule, any date.
+    for (const d of onePerBill(unpaidPaper).bills) {
+      const r = rowOf(d.provider_id);
+      r.unpaidInvoices += 1;
+      const n = Number(d.total);
+      const code = codeOf(d.currency);
+      if (
+        d.total === null ||
+        d.total === undefined ||
+        !Number.isFinite(n) ||
+        !code
+      ) {
+        r.unpaidWithoutTotal += 1;
+        continue;
+      }
+      add(r.unpaid, code, n);
     }
 
     const ids = [...rows.keys()].filter((k): k is string => k !== null);
@@ -338,18 +390,24 @@ export class VendorSpendService {
 
     const totals = {
       received: [] as MoneyTotal[],
+      awaiting: [] as MoneyTotal[],
       invoiced: [] as MoneyTotal[],
       credited: [] as MoneyTotal[],
+      unpaid: [] as MoneyTotal[],
     };
     const vendors = [...rows.values()].map((r) => {
       for (const t of r.received) add(totals.received, t.currency, t.total);
+      for (const t of r.awaiting) add(totals.awaiting, t.currency, t.total);
       for (const t of r.invoiced) add(totals.invoiced, t.currency, t.total);
       for (const t of r.credited) add(totals.credited, t.currency, t.total);
+      for (const t of r.unpaid) add(totals.unpaid, t.currency, t.total);
       return {
         ...r,
         received: ordered(r.received, currency),
+        awaiting: ordered(r.awaiting, currency),
         invoiced: ordered(r.invoiced, currency),
         credited: ordered(r.credited, currency),
+        unpaid: ordered(r.unpaid, currency),
       };
     });
     // Biggest first in the house's money; a vendor with no name last.
@@ -372,8 +430,10 @@ export class VendorSpendService {
       vendors,
       totals: {
         received: ordered(totals.received, currency),
+        awaiting: ordered(totals.awaiting, currency),
         invoiced: ordered(totals.invoiced, currency),
         credited: ordered(totals.credited, currency),
+        unpaid: ordered(totals.unpaid, currency),
       },
       unverifiedPaper,
       duplicatePaper,
@@ -412,11 +472,50 @@ export class VendorSpendService {
   }
 }
 
+/** One bill per vendor, kind and number: the verified copy, else the newest. */
+function onePerBill(paper: Record<string, unknown>[]): {
+  bills: Record<string, unknown>[];
+  duplicates: number;
+} {
+  const bills = new Map<string, Record<string, unknown>>();
+  const loose: Record<string, unknown>[] = [];
+  let duplicates = 0;
+  for (const d of paper) {
+    if (NOT_THE_BILL.has(String(d.status))) continue;
+    const number = typeof d.doc_number === "string" ? d.doc_number.trim() : "";
+    if (!number) {
+      loose.push(d);
+      continue;
+    }
+    const key = `${String(d.provider_id)}|${String(d.doc_type)}|${number.toUpperCase()}`;
+    const kept = bills.get(key);
+    if (!kept) {
+      bills.set(key, d);
+      continue;
+    }
+    duplicates += 1;
+    const better =
+      (d.status === "verified") !== (kept.status === "verified")
+        ? d.status === "verified"
+        : String(d.created_at ?? "") > String(kept.created_at ?? "");
+    if (better) bills.set(key, d);
+  }
+  return { bills: [...bills.values(), ...loose], duplicates };
+}
+
 /**
  * One money cell in the house's money. An amount in another currency is not a
  * bare number under the house's header (F-1145); it is withheld, and the reason
  * gives it in its own code.
  */
+/** Amounts in a sentence, each in its own code. */
+function moneyWords(totals: MoneyTotal[], house: string | null): string {
+  if (totals.length === 0) return "no priced order";
+  return totals
+    .map((t) => `${t.total} ${t.currency ?? house ?? "in no named currency"}`)
+    .join(" and ");
+}
+
 function moneyCell(totals: MoneyTotal[], house: string | null): Cell {
   if (totals.length === 0) return 0;
   const own = totals.find((t) => t.currency === house);
@@ -436,6 +535,16 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
   const notes: string[] = [];
   const unpriced = s.vendors.reduce((n, v) => n + v.unpricedOrders, 0);
   const noTotal = s.vendors.reduce((n, v) => n + v.paperWithoutTotal, 0);
+  const awaiting = s.vendors.reduce((n, v) => n + v.awaitingOrders, 0);
+  const unpaidNoTotal = s.vendors.reduce((n, v) => n + v.unpaidWithoutTotal, 0);
+  if (awaiting > 0)
+    notes.push(
+      `${awaiting} ${awaiting === 1 ? "order was" : "orders were"} delivered in this period but ${awaiting === 1 ? "is" : "are"} still open — part still to come, or the invoice not checked yet — so Received leaves ${awaiting === 1 ? "it" : "them"} out until ${awaiting === 1 ? "it is" : "they are"} closed. Still open, at order total: ${moneyWords(s.totals.awaiting, s.currency)}.`,
+    );
+  if (unpaidNoTotal > 0)
+    notes.push(
+      `${unpaidNoTotal} ${unpaidNoTotal === 1 ? "invoice" : "invoices"} not marked paid ${unpaidNoTotal === 1 ? "has" : "have"} no total or no currency yet, so Not marked paid leaves ${unpaidNoTotal === 1 ? "it" : "them"} out.`,
+    );
   if (unpriced > 0)
     notes.push(
       `${unpriced} delivered ${unpriced === 1 ? "order carries" : "orders carry"} no price, so Received leaves ${unpriced === 1 ? "it" : "them"} out and may be short by what ${unpriced === 1 ? "it" : "they"} cost.`,
@@ -477,6 +586,16 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
         value: moneyCell(s.totals.credited, s.currency),
         unit: "money",
       },
+      {
+        label: "Delivered, still open, all vendors",
+        value: moneyCell(s.totals.awaiting, s.currency),
+        unit: "money",
+      },
+      {
+        label: "Not marked paid, all vendors",
+        value: moneyCell(s.totals.unpaid, s.currency),
+        unit: "money",
+      },
     ],
     tables: [
       {
@@ -490,6 +609,10 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
           { label: "Invoices", unit: "count" },
           { label: "Credited", unit: "money" },
           { label: "Credit notes", unit: "count" },
+          { label: "Delivered, still open", unit: "money" },
+          { label: "Orders still open", unit: "count" },
+          { label: "Not marked paid", unit: "money" },
+          { label: "Invoices not marked paid", unit: "count" },
         ],
         rows: s.vendors.map((v) => [
           v.providerId === null
@@ -502,6 +625,10 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
           v.invoices,
           moneyCell(v.credited, s.currency),
           v.creditNotes,
+          moneyCell(v.awaiting, s.currency),
+          v.awaitingOrders,
+          moneyCell(v.unpaid, s.currency),
+          v.unpaidInvoices,
         ]),
       },
     ],
