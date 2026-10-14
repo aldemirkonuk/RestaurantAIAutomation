@@ -2,6 +2,7 @@ import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { resolveUnitCost, summarizeCostBasis } from "./inventory-cost";
 import { AnalyticsController } from "./analytics.controller";
+import * as marginAdvice from "../pricing/margin-advice.service";
 
 /**
  * Regression guard — analytics never invents what a bottle cost.
@@ -661,6 +662,28 @@ describe("getMenuEngineering on a house whose prices include tax (F-1587)", () =
     expect(out.counts.taxRefused).toBe(2);
   });
 
+  it("on a failed basis read says it could not be read, never that prices include tax (F-1626)", async () => {
+    const spy = jest
+      .spyOn(marginAdvice, "readAdviceTaxTerms")
+      .mockResolvedValue({ terms: null, error: "connection reset" });
+    try {
+      const out: any = await build({
+        currency: "TRY",
+        tax_basis: "prices_exclude_tax",
+        tax_basis_confirmed_at: "2026-10-01T09:00:00Z",
+        timezone: "America/Detroit",
+        country: "US",
+      }).getMenuEngineering(RESTAURANT);
+      expect(out.taxBasisUnread).toBe(true);
+      expect(out.basis.margin).toContain("could not be read");
+      expect(out.basis.margin).not.toContain("Your till prices include tax");
+      for (const row of out.items)
+        expect(row.marginRefusal).toMatch(/could not be read/);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("leaves a US house exactly as before: gross price, no new keys", async () => {
     const out = await build({
       currency: "TRY",
@@ -674,6 +697,7 @@ describe("getMenuEngineering on a house whose prices include tax (F-1587)", () =
     expect("marginRefusal" in row).toBe(false);
     expect("taxRefused" in out.counts).toBe(false);
     expect(out.basis.margin).not.toContain("without tax");
+    expect("taxBasisUnread" in out).toBe(false);
   });
 });
 

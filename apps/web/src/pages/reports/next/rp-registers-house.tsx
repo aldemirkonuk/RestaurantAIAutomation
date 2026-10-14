@@ -41,6 +41,8 @@ export interface QuadrantItem {
 export interface QuadrantRegister {
   /** Staff are sent no margins (F-203); the gateway says so at the root. */
   amountsWithheld?: boolean;
+  /** The house's tax basis could not be read, so every margin is refused (F-1626). */
+  taxBasisUnread?: boolean;
   basis?: { velocity?: string; margin?: string; unpriced?: string };
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   medians: { velocityPerDay: number | null; marginPerBottle: number | null };
@@ -64,6 +66,7 @@ const quadrants = analysis<QuadrantRegister>({
     const medians = obj(d.medians);
     return {
       amountsWithheld: d.amountsWithheld === true,
+      taxBasisUnread: d.taxBasisUnread === true,
       basis: d.basis as QuadrantRegister['basis'],
       costCoverage: d.costCoverage as QuadrantRegister['costCoverage'],
       medians: {
@@ -105,7 +108,9 @@ const quadrants = analysis<QuadrantRegister>({
         ? `${countOf(unclassified, 'wine is', 'wines are')} off the plot for want of a recorded cost — an uncosted wine is unknown, not a dog.`
         : null,
       taxRefused > 0
-        ? `${countOf(taxRefused, 'wine is', 'wines are')} off the plot because the margin is worked out on the price without tax, and it could not be: ${taxReasons.slice(0, 3).join(' ')}`
+        ? q.taxBasisUnread
+          ? `${countOf(taxRefused, 'wine is', 'wines are')} off the plot because whether your till prices include tax could not be read just now, so no margin is worked out. Try again in a moment.`
+          : `${countOf(taxRefused, 'wine is', 'wines are')} off the plot because the margin is worked out on the price without tax, and it could not be: ${taxReasons.slice(0, 3).join(' ')}`
         : null,
       unmeasured > 0
         ? `${countOf(unmeasured, 'wine is', 'wines are')} off the plot because some of its sales were recorded without a bottle figure, so how fast it moves is not measured — not 0 bottles a day.`
@@ -125,7 +130,9 @@ const quadrants = analysis<QuadrantRegister>({
       { label: 'No quadrant', value: figure(unclassified + unmeasured) },
       // A wine refused for tax has no quadrant either; it gets its own tile so
       // the reason (no pre-tax margin, F-1587) is not folded into cost/velocity.
-      ...(taxRefused > 0 ? [{ label: 'No pre-tax margin', value: figure(taxRefused) }] : []),
+      ...(taxRefused > 0
+        ? [{ label: q.taxBasisUnread ? 'No margin: tax basis not read' : 'No pre-tax margin', value: figure(taxRefused) }]
+        : []),
     ];
     if (q.amountsWithheld)
       return {
@@ -233,6 +240,8 @@ const quadrants = analysis<QuadrantRegister>({
 export interface LedgerRegister {
   /** Staff are sent no amounts or margins (F-203). */
   amountsWithheld?: boolean;
+  /** The house's tax basis could not be read, so every margin is refused (F-1626). */
+  taxBasisUnread?: boolean;
   basis?: Record<string, string>;
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   /** The on-hand wines with no recorded cost, by name (F-133); capped by the gateway. */
@@ -281,6 +290,7 @@ const ledger = analysis<LedgerRegister>({
     const d = obj(raw);
     return {
       amountsWithheld: d.amountsWithheld === true,
+      taxBasisUnread: d.taxBasisUnread === true,
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
       uncosted: arr(d.uncosted).map((u) => ({ id: str(u.id), name: str(u.name) || str(u.id) })),

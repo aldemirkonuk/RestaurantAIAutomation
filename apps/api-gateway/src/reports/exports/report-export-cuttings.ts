@@ -303,7 +303,8 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
     revenue: num(r.revenue),
   }));
   // F-1606: a month close's till file carries the tax inside the till's
-  // prices (gross less net); a plain window read carries no such key.
+  // prices (gross less net); a plain window read carries no such key, and
+  // neither does a US or unset house's close (F-1625).
   const taxSaid = "taxInside" in d;
   const taxWord = str(d.taxWord) || "tax";
   const taxChecks = num(d.taxInsideCheckCount) ?? 0;
@@ -328,7 +329,7 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
               `${taxWord[0].toUpperCase()}${taxWord.slice(1)} inside till prices`,
               figure(
                 num(d.taxInside),
-                `No check this month had ${taxWord} taken out of its price: it is recorded only after the house says its till prices include ${taxWord}`,
+                `No check this month had ${taxWord} taken out of its price`,
               ),
               "money",
             ),

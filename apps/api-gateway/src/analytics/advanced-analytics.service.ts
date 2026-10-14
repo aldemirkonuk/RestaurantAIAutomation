@@ -103,6 +103,14 @@ export const PRE_TAX_MARGIN_BASIS =
   "Your till prices include tax, so margin is worked out on the price without tax, price ÷ (1 + the wine's tax rate), and only on a cost recorded without tax; a wine without both has no margin and says why (items[].marginRefusal, counted under counts.taxRefused)";
 
 /**
+ * What menu engineering says when the house's tax basis could not be read
+ * (F-1626): every margin is still refused, but the house is not told its
+ * prices include tax, which nobody read.
+ */
+export const TAX_BASIS_UNREAD =
+  "Whether your till prices include tax could not be read, so no margin is worked out until it can be; nothing here says they do (items[].marginRefusal, counted under counts.taxRefused)";
+
+/**
  * A wine's margin for a house whose till prices include tax (F-1587, ADR 0341
  * §6): margin advice's rule, read once more. The price is taken without tax
  * at the wine's rate in force today, and the cost must be proven without tax;
@@ -660,12 +668,16 @@ export class AdvancedAnalyticsService {
       else counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
 
     return {
+      // F-1626: present only when the basis read failed, so the page says so.
+      ...(tax.terms === null && tax.error !== null
+        ? { taxBasisUnread: true }
+        : {}),
       basis: {
         velocity: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}`,
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
-        margin: `menu_price_current − unit cost (a wine with no bottle price: menu_price_glass × bottle ml ÷ confirmed pour ml) — ${costBasisSentence(costCoverage)}${taxed ? `. ${PRE_TAX_MARGIN_BASIS}` : ""}`,
+        margin: `menu_price_current − unit cost (a wine with no bottle price: menu_price_glass × bottle ml ÷ confirmed pour ml) — ${costBasisSentence(costCoverage)}${taxed ? `. ${tax.terms === null ? TAX_BASIS_UNREAD : PRE_TAX_MARGIN_BASIS}` : ""}`,
         unpriced:
           "a wine with no bottle price and no glass price, or a glass price with no confirmed pour or bottle size, is not in items[]; it is named in leftOut[] and counted under counts.unpriced",
         costDerived:

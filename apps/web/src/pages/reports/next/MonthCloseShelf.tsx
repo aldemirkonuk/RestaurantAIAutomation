@@ -249,12 +249,11 @@ export function taxBasisWords(close: MonthClose): string {
 function taxInsideWords(close: MonthClose): string | null {
   const t = close.figures.till;
   if (!t.posConnected || t.taxInside === undefined) return null;
+  // F-1625: a house that never said its prices include tax gets no line.
+  if (t.taxInside === null && close.taxBasis !== 'prices_include_tax') return null;
   const word = close.figures.taxWord ?? 'tax';
   const label = `${word[0].toUpperCase()}${word.slice(1)} inside till prices`;
-  if (t.taxInside === null)
-    return close.taxBasis === 'prices_include_tax'
-      ? `${label}: ${EM}, not recorded: no check this month had it taken out of its price.`
-      : `${label}: ${EM}, not recorded: it is worked out only when the house says its till prices include ${word}.`;
+  if (t.taxInside === null) return `${label}: ${EM}, not recorded: no check this month had it taken out of its price.`;
   const of =
     t.taxInsideCheckCount != null && t.netSalesCheckCount != null && t.taxInsideCheckCount < t.netSalesCheckCount
       ? ` from ${t.taxInsideCheckCount} of ${countOf(t.netSalesCheckCount, 'check', 'checks')}`

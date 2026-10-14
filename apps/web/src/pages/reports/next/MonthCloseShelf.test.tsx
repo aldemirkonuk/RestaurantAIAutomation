@@ -249,6 +249,23 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(kept[1].textContent).toContain('Tax basis: not recorded with this close');
   });
 
+  it('gives a US or unset house no tax-inside line when its close names no inclusive basis (F-1625)', async () => {
+    const f = close().figures;
+    const none = { ...f, taxWord: 'sales tax', till: { ...f.till, taxInside: null, taxInsideCheckCount: 0 } };
+    api.get.mockResolvedValueOnce({
+      data: {
+        closes: [
+          close({ taxBasis: 'unset', figures: none }),
+          close({ id: 'c0', month: '2026-06', taxBasis: 'prices_include_tax', figures: none }),
+        ],
+      },
+    });
+    wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);
+    const kept = await screen.findAllByLabelText(/Figures kept for/);
+    expect(kept[0].textContent).not.toContain('inside till prices');
+    expect(kept[1].textContent).toContain('Sales tax inside till prices: —, not recorded: no check this month had it taken out');
+  });
+
   it('says beside the net figure that the kept Till CSV is gross check totals (F-1578)', async () => {
     api.get.mockResolvedValueOnce({ data: { closes: [close(), close({ id: 'c0', month: '2026-06', hasTillFile: false })] } });
     wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);

@@ -495,6 +495,37 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     expect(row.tax_basis).toBeNull();
     expect(row.figures.taxBasisSince).toBeNull();
     expect(row.figures.till.taxInside).toBeNull();
+    // F-1625: a US or unset house's till file carries no tax line at all.
+    expect(typeof row.till_csv).toBe("string");
+    expect(row.till_csv).not.toContain("inside till prices");
+  });
+
+  it("says an inclusive house's month with no tax taken out as such (F-1625)", async () => {
+    const { svc, calls } = service(
+      houseHandler({
+        restaurants: () => ({
+          data: {
+            name: "SYNTHETIC House",
+            currency: "try",
+            timezone: ZONE,
+            country: "TR",
+            tax_basis: "prices_include_tax",
+            tax_basis_confirmed_at: "2026-07-14T22:30:00Z",
+          },
+          error: null,
+        }),
+      }),
+    );
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const row = arg(insert.ops, "insert")![0] as Record<string, any>;
+    expect(row.figures.till.taxInside).toBeNull();
+    expect(row.till_csv).toContain(
+      "No check this month had KDV taken out of its price",
+    );
+    expect(row.till_csv).not.toContain("recorded only after");
   });
 
   it("refuses a month that has not ended on the house's clock", async () => {

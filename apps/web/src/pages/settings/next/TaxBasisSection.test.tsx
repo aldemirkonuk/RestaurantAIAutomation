@@ -185,6 +185,55 @@ describe('TaxBasisSection', () => {
     );
   });
 
+  it('food 10% then alcohol 20% from the quick-fills adds two rates, not food at 20% (F-1611)', async () => {
+    const answered = readout({ basis: 'prices_include_tax', answered: true });
+    api.get.mockResolvedValue({ data: answered });
+    api.post.mockResolvedValue({ data: answered });
+    render(<TaxBasisSection canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: '10% food and soft drinks' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add rate' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByLabelText('Till category') as HTMLInputElement).value).toBe(''));
+    fireEvent.click(screen.getByRole('button', { name: '20% alcohol' }));
+    expect((screen.getByLabelText('Till category') as HTMLInputElement).value).toBe('Alcohol');
+    // Without an add in between, a second quick-fill still replaces the first one's label.
+    fireEvent.click(screen.getByRole('button', { name: '10% food and soft drinks' }));
+    expect((screen.getByLabelText('Till category') as HTMLInputElement).value).toBe('Food and soft drinks');
+    fireEvent.click(screen.getByRole('button', { name: '20% alcohol' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add rate' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post.mock.calls.map((c) => c[1])).toEqual([
+      { keyKind: 'pos_category', key: 'Food and soft drinks', ratePct: 10, effectiveFrom: '2026-10-12' },
+      { keyKind: 'pos_category', key: 'Alcohol', ratePct: 20, effectiveFrom: '2026-10-12' },
+    ]);
+  });
+
+  it('warns that no rate is in force once the only rate is withdrawn (F-1627)', async () => {
+    api.get.mockResolvedValue({
+      data: readout({
+        basis: 'prices_include_tax',
+        answered: true,
+        rates: [
+          {
+            version: 2,
+            keyKind: 'house',
+            key: '',
+            itemName: null,
+            ratePct: null,
+            effectiveFrom: '2026-10-11',
+            effectiveTo: null,
+            inForceToday: true,
+            upcoming: false,
+            createdAt: '2026-10-11T09:00:00Z',
+          },
+        ],
+      }),
+    });
+    render(<TaxBasisSection canManage />);
+    expect(await screen.findByText(/No rate is in force today/)).toBeTruthy();
+    expect(screen.queryByText(/none on everything \(withdrawn\)/)).toBeNull();
+  });
+
   it('keeps a rate dated ahead on the page with its first day, and withdraws it (F-1586)', async () => {
     const row = (version: number, ratePct: number, effectiveFrom: string, now: boolean) => ({
       version,

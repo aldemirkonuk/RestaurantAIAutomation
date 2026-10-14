@@ -254,6 +254,8 @@ function TaxBasisBody({
   const rateRead = readRateInputs(covers, category, rate, from, reg.taxWord);
   const showRates = reg.basis === 'prices_include_tax' || chosen === 'prices_include_tax';
   const inForce = (reg.rates ?? []).filter((r) => r.inForceToday);
+  // F-1627: a withdrawn rate restates as a row with no percent; it is not a rate in force.
+  const ratedInForce = inForce.filter((r) => r.ratePct !== null);
   // F-1586: a rate dated ahead stays on the page with its first day.
   const upcoming = (reg.rates ?? [])
     .filter((r) => r.upcoming === true)
@@ -261,11 +263,16 @@ function TaxBasisBody({
   const [withdrawing, setWithdrawing] = useState<TaxRateRow | null>(null);
   const [withdrawFailed, setWithdrawFailed] = useState<string | null>(null);
 
-  /** A quick-fill covers one kind of sale, so it is a till category, never everything (F-1593). */
+  /**
+   * A quick-fill covers one kind of sale, so it is a till category, never everything (F-1593).
+   * A category another quick-fill wrote is replaced, so 10% food then 20% alcohol is two
+   * rates, not food at 20% (F-1611); a name the owner typed is kept.
+   */
   const quickFill = (p: { label: string; ratePct: number }) => {
     setRate(String(p.ratePct));
     setCovers('pos_category');
-    setCategory((c) => (c.trim() ? c : p.label));
+    const filled = new Set((reg.proposal?.rates ?? []).map((q) => q.label));
+    setCategory((c) => (c.trim() && !filled.has(c.trim()) ? c : p.label));
   };
 
   const confirm = async () => {
@@ -288,6 +295,8 @@ function TaxBasisBody({
     try {
       onRecorded(await addTaxRate(rateRead.body));
       setRate('');
+      // F-1611: the next rate starts from an empty category, never this one's.
+      setCategory('');
     } catch (err) {
       setRateFailed(messageOf(err));
     } finally {
@@ -406,7 +415,7 @@ function TaxBasisBody({
               <>The rates could not be read — {reg.ratesReason ?? 'no reason was given'}.</>
             ) : (
               <>
-                {inForce.length === 0 ? (
+                {ratedInForce.length === 0 ? (
                   <>
                     <strong>No rate is in force today.</strong> Until one is, a check whose till states no tax has no net
                     figure, and it is counted as “not recorded” rather than guessed.

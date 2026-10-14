@@ -567,9 +567,14 @@ export class MonthCloseService {
         : null,
       taxWord: taxWordFor(house.country),
     };
+    // F-1625: only a house whose prices include tax (or a month that took tax
+    // out of some check) gets the line; a US or unset house's file is unchanged.
+    const saysTaxInside =
+      house.taxBasis === "prices_include_tax" ||
+      (figures.till.taxInside ?? null) !== null;
     const tillCsv = this.tillFile(
       // The month's tax rides with the till's file (F-1606).
-      tillWindow && typeof tillWindow === "object"
+      tillWindow && typeof tillWindow === "object" && saysTaxInside
         ? {
             ...tillWindow,
             taxInside: figures.till.taxInside ?? null,

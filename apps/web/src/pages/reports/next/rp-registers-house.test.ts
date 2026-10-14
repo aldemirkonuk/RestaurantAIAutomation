@@ -43,3 +43,27 @@ describe('Margin against movement: a wine whose movement is not measured', () =>
     expect(draw().notes?.join(' ')).toMatch(/Not on this list at all.*Narince/);
   });
 });
+
+describe('Margin against movement: a tax basis that could not be read (F-1626)', () => {
+  const failed = {
+    ...payload,
+    taxBasisUnread: true,
+    counts: { star: 0, unclassified: 0, unmeasured: 0, unpriced: 0, taxRefused: 2 },
+    items: payload.items.map((i) => ({
+      ...i,
+      marginPerBottle: null,
+      marginPct: null,
+      quadrant: null,
+      marginRefusal: "No margin: whether this house's prices include tax could not be read, so no margin is worked out (connection reset).",
+    })),
+    leftOut: [],
+  };
+
+  it('says the basis was not read, and never that the prices include tax', () => {
+    const v = quadrants.view(quadrants.select(failed), { days: 90 } as ViewCtx);
+    const said = JSON.stringify(v);
+    expect(said).toContain('could not be read just now');
+    expect(said).not.toContain('worked out on the price without tax');
+    expect(said).not.toContain('No pre-tax margin');
+  });
+});
