@@ -193,3 +193,31 @@ export function taxChangeNote(
   ];
   return `The house changed its answer about ${taxWord} during this period, so its net is not on one basis. ${parts.join(" ")} Checks already recorded keep the answer they were recorded under.`;
 }
+
+/**
+ * F-1588 remainder: the sentence a period's net carries when it spans a day
+ * the net changed basis, for readers with no switch-day line of their own
+ * (recorded days, the team's week sales, report exports). It is
+ * `taxChangeNote` when the house replaced one answer with another, and the
+ * same stretch-by-stretch sentence when the house's first "prices include
+ * tax" answer falls inside the period. Null when every day of the period has
+ * net on one basis: an "added on top" or "charges none" answer leaves net as
+ * the till sent it, as no answer does, so a US or unset house never gets one.
+ */
+export function taxSwitchNote(
+  stretches: readonly TaxBasisStretch[],
+  first: string,
+  last: string,
+  taxWord: string,
+): string | null {
+  const switches = taxSwitchesIn(stretches, first, last);
+  if (switches.length === 0) return null;
+  const inside = (b: TaxBasisAnswerKind | null) => b === "prices_include_tax";
+  const was = inside(stretchOn(stretches, first)?.basis ?? null);
+  if (switches.every((s) => inside(s.basis) === was)) return null;
+  const changed = taxChangeNote(stretches, first, last, taxWord);
+  if (changed !== null) return changed;
+  // Only the first answer falls in the period, and it is "include".
+  const day = switches[0].fromDay as string;
+  return `The house said its till prices include ${taxWord} from ${dayWords(day)}, so this period's net is not on one basis. Until ${dayWords(shiftHouseDay(day, -1))}, ${stretchWords(null, taxWord)}. From ${dayWords(day)}, ${stretchWords("prices_include_tax", taxWord)}. Checks already recorded keep the answer they were recorded under.`;
+}

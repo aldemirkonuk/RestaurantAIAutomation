@@ -16,6 +16,10 @@ import {
   readHouseZone,
   shiftHouseDay,
 } from "../common/house-day";
+import {
+  PERIOD_TAX_NOTE_UNREAD,
+  readPeriodTaxNote,
+} from "../common/period-tax-note";
 import * as E from "./engine";
 
 /** A table's id as Postgres stores it; anything else cannot be one of the house's. */
@@ -244,8 +248,7 @@ export class TableAnalyticsService {
         "The house's time zone could not be read, so no day's checks are claimed.",
       );
     }
-    const to = zone ? houseToday(zone) : null;
-    const from = to ? shiftHouseDay(to, -(sinceDays - 1)) : null;
+    const { from, to } = houseWindowOf(zone, sinceDays);
     // A check opened up to a day before the first midnight may close on it,
     // so the read starts at the till's own lookback and the filing below
     // drops whatever falls before the window.
@@ -282,6 +285,31 @@ export class TableAnalyticsService {
       const day = houseDayOf(c, houseZone);
       return day !== null && day >= from && day <= to;
     });
+  }
+
+  /**
+   * F-1588 (ADR 0341 F2): the sentence a net-based figure over `loadChecks`'
+   * window carries when the window spans a day the house's net changed tax
+   * basis; null when every day is on one basis, or with no house zone. No
+   * check is restamped, and an unread zone or answer history is said, never
+   * taken as no change.
+   */
+  private async windowTaxNote(
+    restaurantId: string,
+    sinceDays: number,
+  ): Promise<string | null> {
+    const client = this.dbService.getClient();
+    try {
+      const { zone } = await readHouseZone(client, restaurantId);
+      const { from, to } = houseWindowOf(zone, sinceDays);
+      if (!from || !to) return null;
+      return await readPeriodTaxNote(client, restaurantId, zone, from, to);
+    } catch (err: any) {
+      this.logger.warn(
+        `tax answer history unreadable for r=${restaurantId}: ${err?.message ?? err}`,
+      );
+      return PERIOD_TAX_NOTE_UNREAD;
+    }
   }
 
   /**
@@ -753,6 +781,7 @@ export class TableAnalyticsService {
       }
     }
 
+    const tipBasis = tipBasisOf(Array.from(byWaiter.values()));
     return {
       sinceDays,
       waiters: waiters.sort(
@@ -767,7 +796,18 @@ export class TableAnalyticsService {
       /** Refunds: taken off Taken, out of Avg check (F-1644). */
       checksRefunded: waiters.reduce((n, w) => n + w.checksRefunded, 0),
       /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
-      ...tipBasisOf(Array.from(byWaiter.values())),
+      ...tipBasis,
+      /**
+       * F-1588: Tip is over net sales, so a window across the day net began
+       * leaving tax out (or the house changed its answer) takes tips over two
+       * kinds of net. The sentence naming each stretch; null when every day
+       * is on one basis, or no Tip is worked out. No check is restamped (ADR
+       * 0341 F2), and an unread answer history is said, not taken as none.
+       */
+      tipTaxNote:
+        tipBasis.tipBasis === "net"
+          ? await this.windowTaxNote(restaurantId, sinceDays)
+          : null,
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -993,6 +1033,15 @@ export const TIP_SOME_NET_NOT_RECORDED =
 /** F-1573: some tipped checks carried no amount before tax. */
 export const TIP_SOME_WITHOUT_NET =
   "Some checks carried a tip but no amount before tax. Their tips are left out of Tip, which is worked out only on checks that carried both.";
+
+/** The `sinceDays` house days ending today, which `loadChecks` files on; nulls with no zone. */
+function houseWindowOf(
+  zone: string | null,
+  sinceDays: number,
+): { from: string | null; to: string | null } {
+  const to = zone ? houseToday(zone) : null;
+  return { from: to ? shiftHouseDay(to, -(sinceDays - 1)) : null, to };
+}
 
 /**
  * F-1532 / F-1573: Tip is over net sales only when some check carried both a

@@ -223,6 +223,17 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     return null;
   })();
 
+  /**
+   * F-1588 (ADR 0341 F2): when the passed days' net sales sit on two tax
+   * bases, the gateway names the day it changed. Said beside the takings,
+   * never for a refused window or a viewer who is not shown them.
+   */
+  const taxLine = (() => {
+    const win = data.record.window;
+    if (!win || win.recordedRefusal || win.takingsWithheld) return null;
+    return win.taxNote || null;
+  })();
+
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {
     if (headRef.current) {
@@ -701,6 +712,12 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
           )}
 
         {recordLine && <p className="cn-quiet">{recordLine}</p>}
+
+        {taxLine && (
+          <p className="cn-quiet" data-testid="cn-tax-note">
+            {taxLine}
+          </p>
+        )}
 
         {!data.ordersKnown && (
           <p className="cn-quiet">

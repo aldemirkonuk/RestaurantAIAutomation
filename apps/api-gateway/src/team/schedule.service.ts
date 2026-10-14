@@ -2342,6 +2342,8 @@ export class ScheduleService {
       totalCost,
       /** The week's net sales from the till; `null` = not all known. */
       netSales: sales.netSales,
+      /** F-1588: the week's net is not on one tax basis, and why; else null. */
+      netSalesTaxNote: sales.taxNote ?? null,
       ...labourShare(totalCost, sales, ownerShiftsLeftOut),
       costComplete,
       pricedShifts: priced.length,

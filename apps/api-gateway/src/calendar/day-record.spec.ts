@@ -795,6 +795,10 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
       /** `restaurants.timezone`; absent means the house states none. */
       zone?: string;
       zoneReadError?: boolean;
+      /** More of the house's row: its tax answer (F-1588). */
+      house?: Record<string, unknown>;
+      /** `house_tax_basis_answers` rows, or a failed read. */
+      answers?: Array<Record<string, unknown>> | "error";
     } = {},
   ) {
     const CAP = 1000;
@@ -833,7 +837,11 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
             opts.zoneReadError
               ? { data: null, error: { message: "connection reset" } }
               : {
-                  data: { timezone: opts.zone ?? null, country: null },
+                  data: {
+                    timezone: opts.zone ?? null,
+                    country: null,
+                    ...opts.house,
+                  },
                   error: null,
                 },
           ),
@@ -850,6 +858,13 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
           return c;
         },
         then: (resolve: (v: unknown) => unknown) => {
+          if (table === "house_tax_basis_answers") {
+            return Promise.resolve(
+              opts.answers === "error"
+                ? { data: null, error: { message: "connection reset" } }
+                : { data: opts.answers ?? [], error: null },
+            ).then(resolve);
+          }
           if (table !== "pos_checks") {
             return Promise.resolve({ data: [], error: null }).then(resolve);
           }
@@ -955,6 +970,85 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
     expect(
       reads.filter((r) => r.table === "pos_checks" && r.columns !== "id"),
     ).toHaveLength(3);
+  });
+
+  describe("F-1588: a window across the day net began leaving tax out says so", () => {
+    const included = {
+      country: "TR",
+      tax_basis: "prices_include_tax",
+      tax_basis_confirmed_at: "2026-08-12T09:00:00Z",
+    };
+    const answer = {
+      basis: "prices_include_tax",
+      answered_at: "2026-08-12T09:00:00Z",
+      answered_by: "u1",
+    };
+
+    it("names the switch day when the window spans it, and not when it does not", async () => {
+      const { db } = pagedDb(month(62), {
+        zone: "Europe/Istanbul",
+        house: included,
+        answers: [answer],
+      });
+      const out = await new RecordedDaysService(db).windowFor(
+        "r1",
+        "2026-08-01",
+        "2026-08-31",
+      );
+      expect(out.days).toHaveLength(31);
+      expect(out.taxNote).toMatch(
+        /include KDV from 12 August 2026, so this period's net is not on one basis\. Until 11 August 2026, nobody had said/,
+      );
+
+      const after = await new RecordedDaysService(
+        pagedDb(month(62), {
+          zone: "Europe/Istanbul",
+          house: included,
+          answers: [answer],
+        }).db,
+      ).windowFor("r1", "2026-08-12", "2026-08-31");
+      expect(after.taxNote).toBeNull();
+    });
+
+    it("an unset house reads no history and gets no note; an unread history is said", async () => {
+      const unset = await new RecordedDaysService(
+        pagedDb(month(62), { zone: "Europe/Istanbul", answers: "error" }).db,
+      ).windowFor("r1", "2026-08-01", "2026-08-31");
+      expect(unset.taxNote).toBeNull();
+
+      const unread = await new RecordedDaysService(
+        pagedDb(month(62), {
+          zone: "Europe/Istanbul",
+          house: included,
+          answers: "error",
+        }).db,
+      ).windowFor("r1", "2026-08-01", "2026-08-31");
+      // The days stand; the note says the basis could not be checked.
+      expect(unread.days).toHaveLength(31);
+      expect(unread.taxNote).toMatch(/could not be read/);
+    });
+
+    it("reaches an owner's window and is left out of a staff one", async () => {
+      const ledger = await new RecordedDaysService(
+        pagedDb(month(62), {
+          zone: "Europe/Istanbul",
+          house: included,
+          answers: [answer],
+        }).db,
+      ).windowFor("r1", "2026-08-01", "2026-08-31");
+      const { service } = makeService({ recorded: ledger, weather: WEATHER() });
+      const out = await service.windowFor(
+        "r1",
+        "2026-08-01",
+        "2026-08-31",
+        OWNER,
+      );
+      expect(out.taxNote).toBe(ledger.taxNote);
+      const staff = await service.windowFor("r1", "2026-08-01", "2026-08-31", {
+        seesHouseMoney: false,
+      });
+      expect("taxNote" in staff).toBe(false);
+    });
   });
 
   it("a register read only in part refuses: no day, so no takings, is drawn from part of it", async () => {
@@ -1353,7 +1447,8 @@ describe("withholdHouseMoney", () => {
 
     expect(Object.keys(out).sort()).toEqual(
       Object.keys(full)
-        .filter((k) => k !== "currency")
+        // The tax note is about the takings, so it goes with them (F-1588).
+        .filter((k) => k !== "currency" && k !== "taxNote")
         .concat("takingsWithheld")
         .sort(),
     );

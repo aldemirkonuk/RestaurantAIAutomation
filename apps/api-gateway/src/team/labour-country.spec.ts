@@ -558,6 +558,83 @@ describe("F-1549 — the week's cost as a share of the till's net sales", () => 
     expect(week.labor.laborPctWhy).toMatch(/could not be read/);
   });
 
+  it("F-1588: a week across the day prices began to include KDV says its net is on two bases", async () => {
+    const db = seed({
+      country: "TR",
+      timezone: "Europe/Istanbul",
+      tax_basis: "prices_include_tax",
+      tax_basis_confirmed_at: "2026-09-10T09:00:00Z", // Thursday, house day
+    });
+    costedWeek(db);
+    db.tables.house_tax_basis_answers = [
+      {
+        restaurant_id: RID,
+        basis: "prices_include_tax",
+        answered_at: "2026-09-10T09:00:00Z",
+        answered_by: OWNER,
+      },
+    ];
+    db.tables.pos_checks = [
+      check("c0", "2026-08-01T12:00:00Z", 50),
+      check("c1", "2026-09-07T12:00:00Z", 1000),
+      check("c2", "2026-09-12T12:00:00Z", 800),
+      check("c3", "2026-09-14T12:00:00Z", 999),
+    ];
+    let week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    // The figure stands; it says where its days change basis.
+    expect(week.labor.netSales).toBe(1800);
+    expect(week.labor.netSalesTaxNote).toMatch(
+      /include KDV from 10 September 2026, so this period's net is not on one basis/,
+    );
+    expect(week.labor.netSalesTaxNote).toMatch(
+      /Until 9 September 2026, .*as the till sent it/,
+    );
+
+    // The next week is wholly on the answer: no mark.
+    db.tables.house_tax_basis_answers[0].answered_at = "2026-09-07T05:00:00Z";
+    db.tables.restaurants[0].tax_basis_confirmed_at = "2026-09-07T05:00:00Z";
+    week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.netSalesTaxNote).toBeNull();
+
+    // An unread answer history is said, and the figure still stands.
+    db.tables.house_tax_basis_answers[0].answered_at = "2026-09-10T09:00:00Z";
+    db.errors["house_tax_basis_answers:select"] = { message: "boom" };
+    week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.netSales).toBe(1800);
+    expect(week.labor.netSalesTaxNote).toMatch(/could not be read/);
+  });
+
+  it('F-1588: an "added on top" answer mid-week leaves net as sent: no mark, and an unset house reads no history', async () => {
+    const db = seed({
+      country: "US",
+      timezone: "America/Detroit",
+      tax_basis: "prices_exclude_tax",
+      tax_basis_confirmed_at: "2026-09-10T15:00:00Z",
+    });
+    costedWeek(db);
+    db.tables.house_tax_basis_answers = [
+      {
+        restaurant_id: RID,
+        basis: "prices_exclude_tax",
+        answered_at: "2026-09-10T15:00:00Z",
+        answered_by: OWNER,
+      },
+    ];
+    db.tables.pos_checks = [
+      check("c0", "2026-08-01T16:00:00Z", 50),
+      check("c1", "2026-09-07T16:00:00Z", 1000),
+      check("c3", "2026-09-14T16:00:00Z", 999),
+    ];
+    let week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.netSales).toBe(1000);
+    expect(week.labor.netSalesTaxNote).toBeNull();
+
+    db.tables.restaurants[0].tax_basis = null;
+    db.errors["house_tax_basis_answers:select"] = { message: "boom" };
+    week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.netSalesTaxNote).toBeNull();
+  });
+
   it("a week not over yet gives no share and says why", async () => {
     const sales = await readWeekSales(
       {

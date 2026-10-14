@@ -780,6 +780,41 @@ describe("an owner's pay is not shown or offered to a manager who sees pay", () 
     expect(within(labour).queryByTestId('owner-pay-left-out')).not.toBeInTheDocument();
   });
 
+  // F-1588 remainder (ADR 0341 F2): the gateway sends `netSalesTaxNote` when
+  // the week's net sales sit on two tax bases; the page printed nothing.
+  it('says when the share of sales rests on a week whose net changed tax basis', async () => {
+    const note =
+      "The house said its till prices include KDV from 10 September 2026, so this period's net is not on one basis.";
+    const labor = {
+      enabled: true,
+      moneyVisible: true,
+      totalHours: 22.5,
+      totalCost: 675,
+      costComplete: true,
+      pricedShifts: 3,
+      unpricedShifts: 0,
+      ownerShiftsLeftOut: 0,
+      targetPct: null,
+      netSales: 1800,
+      laborPct: 37.5,
+      overtime: [],
+      leave: { readable: true, paid: [], paidDays: 0, unknownTypeDays: 0 },
+    };
+    api.week = weekPayload({ labor: { ...labor, netSalesTaxNote: note }, money: TRY_HOUSE });
+    const first = render(<TeamNext />, { wrapper });
+    let region = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(await within(region).findByTestId('labour-share-tax-note')).toHaveTextContent(
+      `The share of sales is worked out on net sales. ${note}`,
+    );
+    first.unmount();
+
+    api.week = weekPayload({ labor: { ...labor, netSalesTaxNote: null }, money: TRY_HOUSE });
+    render(<TeamNext />, { wrapper });
+    region = await screen.findByRole('region', { name: 'Labour cost' });
+    await within(region).findByText(/of sales/);
+    expect(within(region).queryByTestId('labour-share-tax-note')).not.toBeInTheDocument();
+  });
+
   it('shows the owner’s shift in the labour lens as hours, not “not priced”, and names whose it is', () => {
     const shiftRow = (id: string, member_id: string, over: Record<string, unknown> = {}) => ({
       id,

@@ -274,6 +274,12 @@ export interface DayRecordWindow {
    */
   posConnected: boolean | null;
   recordedRefusal: string | null;
+  /**
+   * F-1588 (ADR 0341 F2): the gateway's sentence when the window's net is not
+   * on one tax basis, naming the day it changed; null or absent when it is,
+   * on a refusal, and for a viewer who is not shown the house's money.
+   */
+  taxNote?: string | null;
   weatherRefusal: string | null;
   pairsWritten: number;
 }

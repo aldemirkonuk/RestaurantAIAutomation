@@ -981,3 +981,100 @@ describe("ReportExportsService — a report export is written, or says why not (
     );
   });
 });
+
+describe("F-1588 — an export whose net spans the day prices began to include tax says so", () => {
+  /** HOUSE_A in Istanbul, its prices said to include KDV from `day` (house day). */
+  function includedFrom(mem: MemorySupabase, at: string) {
+    const house = mem.rows("restaurants").find((r) => r.id === HOUSE_A)!;
+    Object.assign(house, {
+      timezone: "Europe/Istanbul",
+      country: "TR",
+      tax_basis: "prices_include_tax",
+      tax_basis_confirmed_at: at,
+    });
+    mem.seed("house_tax_basis_answers", {
+      restaurant_id: HOUSE_A,
+      basis: "prices_include_tax",
+      answered_at: at,
+      answered_by: MANAGER_A,
+    });
+  }
+
+  it("the till's window across the switch carries the note; one wholly after it does not", async () => {
+    const { mem, service } = build();
+    // The fixture till window is 2026-08-19 .. 2026-09-17.
+    includedFrom(mem, "2026-09-01T09:00:00Z");
+    await (
+      await service.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        days: 30,
+      })
+    ).settled;
+    const across = exportsOf(mem)[0] as {
+      status: string;
+      csv: string;
+      html: string;
+    };
+    expect(across.status).toBe("ready");
+    expect(across.csv).toMatch(
+      /include KDV from 1 September 2026, so this period's net is not on one basis/,
+    );
+    expect(across.html).toMatch(/include KDV from 1 September 2026/);
+
+    const { mem: mem2, service: service2 } = build();
+    includedFrom(mem2, "2026-08-10T09:00:00Z");
+    await (
+      await service2.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        days: 30,
+      })
+    ).settled;
+    const after = exportsOf(mem2)[0] as { status: string; csv: string };
+    expect(after.status).toBe("ready");
+    expect(after.csv).not.toMatch(/not on one basis/);
+  });
+
+  it("a cutting with no net figure, and a house that never answered, are unchanged", async () => {
+    const { mem, service } = build();
+    includedFrom(mem, "2026-09-01T09:00:00Z");
+    await (
+      await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "ledger" })
+    ).settled;
+    expect((exportsOf(mem)[0] as { csv: string }).csv).not.toMatch(
+      /not on one basis|tax answer/,
+    );
+
+    const { mem: mem2, service: service2 } = build();
+    Object.assign(mem2.rows("restaurants").find((r) => r.id === HOUSE_A)!, {
+      timezone: "Europe/Istanbul",
+      country: "TR",
+    });
+    mem2.failNext("house_tax_basis_answers", "select", "must not be read");
+    await (
+      await service2.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        days: 30,
+      })
+    ).settled;
+    const row = exportsOf(mem2)[0] as { status: string; csv: string };
+    expect(row.status).toBe("ready");
+    expect(row.csv).not.toMatch(/not on one basis|could not be read/);
+  });
+
+  it("an unread answer history is said in the file, and the export is still written", async () => {
+    const { mem, service } = build();
+    includedFrom(mem, "2026-09-01T09:00:00Z");
+    mem.failNext("house_tax_basis_answers", "select", "connection reset");
+    await (
+      await service.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        days: 30,
+      })
+    ).settled;
+    const row = exportsOf(mem)[0] as { status: string; csv: string };
+    expect(row.status).toBe("ready");
+    expect(row.csv).toMatch(
+      /Whether the house changed its answer about tax in this period could not be read/,
+    );
+  });
+});

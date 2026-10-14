@@ -2,6 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import { houseDayBounds, houseDayOf, readHouseZone } from "../common/house-day";
+import {
+  PERIOD_TAX_NOTE_UNREAD,
+  readPeriodTaxNote,
+} from "../common/period-tax-note";
 
 /**
  * What the ledger actually recorded, day by day — slice 3 of ADR 0111.
@@ -102,6 +106,13 @@ export interface RecordedWindow {
    * success — including the success where the answer is "nothing yet".
    */
   refusal: string | null;
+  /**
+   * F-1588: when the window spans a day the house's net changed basis (its
+   * till prices include tax from that day, or it changed its answer), the
+   * sentence naming each stretch (`taxSwitchNote`); null when every day's
+   * net is on one basis. Absent on a refusal.
+   */
+  taxNote?: string | null;
 }
 
 interface CheckRow {
@@ -351,6 +362,19 @@ export class RecordedDaysService {
       days.set(date, day);
     }
 
+    // F-1588: a window across the day net began leaving tax out sums two
+    // kinds of net; it says so rather than restamping a stored check (ADR
+    // 0341 F2). An unread answer history is said, never taken as no change.
+    let taxNote: string | null;
+    try {
+      taxNote = await readPeriodTaxNote(client, restaurantId, zone, from, to);
+    } catch (err: any) {
+      this.logger.warn(
+        `tax answer history unreadable for r=${restaurantId}: ${err?.message ?? err}`,
+      );
+      taxNote = PERIOD_TAX_NOTE_UNREAD;
+    }
+
     return {
       from,
       to,
@@ -359,6 +383,7 @@ export class RecordedDaysService {
         a.businessDate.localeCompare(b.businessDate),
       ),
       refusal: null,
+      taxNote,
     };
   }
 }

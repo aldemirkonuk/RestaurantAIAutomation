@@ -135,6 +135,11 @@ export interface DayRecordWindow {
   posConnected: boolean | null;
   /** The ledger's refusal, when it could not be read. */
   recordedRefusal: string | null;
+  /**
+   * F-1588: the ledger's sentence when the window's net is not on one tax
+   * basis (`RecordedWindow.taxNote`); null when it is, or on a refusal.
+   */
+  taxNote: string | null;
   /** The weather register's refusal, when it could not be read. */
   weatherRefusal: string | null;
   /** Pairs actually written to `prediction_outcomes` on this call. */
@@ -174,7 +179,7 @@ export interface WithheldDay extends Omit<ReconciledDay, "recorded"> {
  */
 export interface WithheldDayRecordWindow extends Omit<
   DayRecordWindow,
-  "days" | "currency"
+  "days" | "currency" | "taxNote"
 > {
   days: WithheldDay[];
   takingsWithheld: true;
@@ -489,6 +494,7 @@ export class DayRecordService {
       currency,
       posConnected,
       recordedRefusal: ledger.refusal,
+      taxNote: ledger.refusal === null ? (ledger.taxNote ?? null) : null,
       weatherRefusal: weather.refusal,
       // A pair is written once per day and never again (`keepPairs`), so one
       // written while the sales register refused would freeze "0 checks, no

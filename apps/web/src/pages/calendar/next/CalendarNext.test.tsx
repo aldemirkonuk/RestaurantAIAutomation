@@ -1348,6 +1348,31 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
       }),
     });
 
+  // F-1588 remainder (ADR 0341 F2): the gateway sends `taxNote` when the
+  // window's net sits on two tax bases; the page printed nothing.
+  it('says when the passed days’ net sales change tax basis, and only to a viewer shown them', () => {
+    const note =
+      "The house said its till prices include KDV from 10 September 2026, so this period's net is not on one basis.";
+    state.current = withRecorded({}, { taxNote: note });
+    const { unmount } = draw();
+    expect(screen.getByTestId('cn-tax-note')).toHaveTextContent(note);
+    unmount();
+
+    state.current = withRecorded({}, { taxNote: null });
+    const second = draw();
+    expect(screen.queryByTestId('cn-tax-note')).toBeNull();
+    second.unmount();
+
+    state.current = withRecorded({}, { taxNote: note, takingsWithheld: true });
+    const third = draw();
+    expect(screen.queryByTestId('cn-tax-note')).toBeNull();
+    third.unmount();
+
+    state.current = withRecorded({}, { taxNote: note, recordedRefusal: 'The sales register could not be read.' });
+    draw();
+    expect(screen.queryByTestId('cn-tax-note')).toBeNull();
+  });
+
   it('shows the net takings in the house currency beside the covers', () => {
     draw();
     const panel = openDay();

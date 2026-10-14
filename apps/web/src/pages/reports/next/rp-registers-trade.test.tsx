@@ -577,6 +577,28 @@ describe('the registers say what Taken holds and leave a check rung at 0 out of 
     expect(v.notes).toContain(zeroChecksSaid(2));
   });
 
+  // F-1588 remainder (ADR 0341 F2): Tip is over net sales, and a window across
+  // the day prices began to include tax holds two kinds of net.
+  it('F-1588: the server register says when Tip’s window spans a tax-basis switch, and nothing when it does not', () => {
+    const note =
+      "The house said its till prices include KDV from 10 September 2026, so this period's net is not on one basis.";
+    const payload = {
+      sinceDays: 90,
+      dataStatus: 'live',
+      tipBasis: 'net',
+      checksInWindow: 9,
+      waiters: [{ name: 'Maya', checks: 9, revenue: 882, avgCheck: 126, tipPct: 0.2 }],
+    };
+    const v = service.view(service.select({ ...payload, tipTaxNote: note }) as ServiceRegister, {
+      days: 90,
+    } as never);
+    expect(v.notes).toContain(`Tip is worked out on net sales. ${note}`);
+    const plain = service.view(service.select({ ...payload, tipTaxNote: null }) as ServiceRegister, {
+      days: 90,
+    } as never);
+    expect(plain.notes?.join(' ')).not.toMatch(/not on one basis/);
+  });
+
   it('F-1573: a till with no amount before tax says why Tip is blank, never "over net sales"', () => {
     const why =
       'Your till sends tips but no amount before tax, so no tip rate can be taken. The tips were recorded; Tip stays blank rather than be worked out on totals that hold tax.';
